@@ -8,6 +8,9 @@
  * host load and system info when subscribed, plus any slow topic whose refresh came due (fetched
  * off the tick, delivered on the next one). A tick with nothing to send sends nothing.
  *
+ * Only what the tab asked for is sent: `system` is a list of parts (cpu, memory, uptime, disks,
+ * network, processes) and the packet's `system` carries just those fields plus `at`.
+ *
  * Packet: { type: 'sidebar_live', data: { at, host?, system?, weather?, fx?: { 'EUR:USD': rate },
  *           quotes?: { 'AAPL,MSFT': { quotes } }, feeds?: { <url>: feed } } }
  */
@@ -23,6 +26,8 @@ const REFRESH_MS = {
     feed: 10 * 60 * 1000
 };
 const MAX_KEYED = 8;
+/** system part -> field of sidebarSystemInfo.getSystemInfo() */
+const SYSTEM_PARTS = { cpu: 'cpu', memory: 'memory', uptime: 'uptimeSec', disks: 'disks', network: 'network', processes: 'processes' };
 const MAX_BUFFERED_BYTES = 512 * 1024;
 
 /** @type {Map<object, object>} ws -> subscription */
@@ -58,9 +63,13 @@ function normalizeTopics(raw) {
         }
         return out;
     };
+    // system: true (every part, older clients) or a list of parts
+    const system = t.system === true
+        ? Object.keys(SYSTEM_PARTS)
+        : (Array.isArray(t.system) ? Object.keys(SYSTEM_PARTS).filter((part) => t.system.includes(part)) : []);
     return {
         host: t.host === true,
-        system: t.system === true,
+        system,
         weather: t.weather === true,
         fx: keyed(t.fx, (p) => fxPairKey(p && p.from, p && p.to)),
         quotes: keyed(t.quotes, (s) => quotesKey(s)),
@@ -69,7 +78,7 @@ function normalizeTopics(raw) {
 }
 
 function isEmptyTopics(t) {
-    return !t.host && !t.system && !t.weather && !t.fx.size && !t.quotes.size && !t.feeds.size;
+    return !t.host && !t.system.length && !t.weather && !t.fx.size && !t.quotes.size && !t.feeds.size;
 }
 
 /** Slow keys of a topic set: 'weather', 'fx:EUR:USD', 'quotes:AAPL', 'feed:<url>'. */
@@ -129,7 +138,7 @@ async function tick() {
     let host = null;
     let system = null;
     let wantsSystem = false;
-    subscriptions.forEach((sub) => { if (sub.topics.system) wantsSystem = true; });
+    subscriptions.forEach((sub) => { if (sub.topics.system.length) wantsSystem = true; });
     if (wantsSystem) {
         try { system = await sidebarSystemInfo.getSystemInfo(); } catch (_err) { system = null; }
     }
@@ -146,7 +155,11 @@ async function tick() {
             }
             if (host) payload.host = host;
         }
-        if (sub.topics.system && system) payload.system = system;
+        if (sub.topics.system.length && system) {
+            const picked = { at: system.at };
+            sub.topics.system.forEach((part) => { picked[SYSTEM_PARTS[part]] = system[SYSTEM_PARTS[part]]; });
+            payload.system = picked;
+        }
         for (const key of slowKeys(sub.topics)) {
             if (sub.ready.has(key)) {
                 placeSlow(payload, key, sub.ready.get(key));
@@ -214,7 +227,7 @@ function subscribe(globalResources, ws, clientIP, rawTopics) {
 function describeTopics(t) {
     return {
         host: t.host,
-        system: t.system,
+        system: t.system.slice(),
         weather: t.weather,
         fx: [...t.fx],
         quotes: [...t.quotes],

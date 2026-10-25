@@ -21,7 +21,7 @@ stub('sidebarGadgets', {
     getFeed: async (url) => { calls.feed.push(url); throw new Error('feed down'); },
     getClientWeather: async (_gr, ip) => { calls.weather.push(ip); return { available: true, temp: 20 }; }
 });
-stub('sidebarSystemInfo', { getSystemInfo: async () => { calls.system += 1; return { cpu: { total: 5, cores: [5] }, at: Date.now() }; } });
+stub('sidebarSystemInfo', { getSystemInfo: async () => { calls.system += 1; return { cpu: { total: 5, cores: [5] }, memory: { totalBytes: 8, freeBytes: 4 }, uptimeSec: 9, disks: [{ letter: 'C:' }], network: [{ name: 'eth0' }], processes: [{ pid: 1 }], at: Date.now() }; } });
 
 const feed = require('../modules/sidebarLiveFeed');
 const { tick, subscriptions, stopTimer } = feed._test;
@@ -35,7 +35,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     const a = fakeWs();
     const b = fakeWs();
     feed.subscribe(null, a, '10.0.0.1', { host: true, fx: [{ from: 'eur', to: 'usd' }, { from: 'bad', to: 'x' }], feeds: ['https://example.com/rss'] });
-    feed.subscribe(null, b, '10.0.0.2', { system: true, quotes: [['aapl', 'msft']] });
+    feed.subscribe(null, b, '10.0.0.2', { system: ['memory', 'cpu', 'bogus'], quotes: [['aapl', 'msft']] });
     stopTimer(); // drive ticks by hand
 
     await tick();
@@ -45,7 +45,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(a.sent[0].data.fx, undefined, 'slow topics are fetched off the tick');
     assert.deepStrictEqual(calls.fx, ['EUR:USD'], 'invalid pair dropped, valid pair upper-cased');
     assert.strictEqual(b.sent.length, 1);
-    assert.ok(b.sent[0].data.system, 'system on its own subscriber');
+    assert.deepStrictEqual(Object.keys(b.sent[0].data.system).sort(), ['at', 'cpu', 'memory'], 'only the asked system parts are sent');
     assert.strictEqual(b.sent[0].data.host, undefined, 'b did not ask for host');
 
     await flush();
@@ -74,6 +74,14 @@ const flush = () => new Promise((r) => setImmediate(r));
     b.readyState = 3;
     await tick();
     assert.ok(!subscriptions.has(b), 'closed socket removed');
+
+    // system: true (older clients) still means every part
+    const d = fakeWs();
+    feed.subscribe(null, d, '10.0.0.4', { system: true });
+    stopTimer();
+    await tick();
+    assert.deepStrictEqual(Object.keys(d.sent[0].data.system).sort(), ['at', 'cpu', 'disks', 'memory', 'network', 'processes', 'uptimeSec']);
+    feed.unsubscribe(d);
 
     // empty topics unsubscribe
     const r = feed.subscribe(null, a, '10.0.0.1', {});

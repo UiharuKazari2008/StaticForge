@@ -195,7 +195,7 @@ const vghSystem = function (ctx) {
             knownFolderPath: () => '',
             RecycleBin: { fileCount: 0, folderCount: 0, sizeUsed: 0, emptyAll: () => {}, showRecycleSettings: () => {} },
             drive: (letter) => vghDrive(ctx, letter),
-            get Drive() { return { list: vghSysUse(ctx).disks.map((d) => d.letter.charAt(0)) }; }
+            get Drive() { return { list: vghSysUse(ctx, ['disks']).disks.map((d) => d.letter.charAt(0)) }; }
         },
         Machine: vghMachine(ctx),
         Network: { Wireless: { signalStrength: 0, ssid: '', connected: false } },
@@ -216,7 +216,7 @@ const vghSystem = function (ctx) {
  * gadget that asked, once a second while the tab is visible, and stops when none is left. Reads are synchronous in
  * JScript, so they answer from the last sample.
  */
-const VGH_SYS = { data: null, users: new Set(), release: null, acc: { disk: new Map(), proc: new Map(), idle: 0, at: 0 } };
+const VGH_SYS = { data: null, last: null, users: new Set(), release: null, acc: { disk: new Map(), proc: new Map(), idle: 0, at: 0 } };
 const VGH_SYS_EMPTY = {
     cpu: { name: 'Processor', mhz: 0, cores: [0], total: 0 },
     memory: { totalBytes: 0, freeBytes: 0 },
@@ -240,22 +240,74 @@ const vghSysAccumulate = function (data) {
         acc.proc.set(p.pid, a + (p.cpu / 100) * dt * 1e7);
     });
     // the System Idle Process: every core's unused time
-    acc.idle += ((100 - data.cpu.total) / 100) * data.cpu.cores.length * dt * 1e7;
+    if (data.cpu) acc.idle += ((100 - data.cpu.total) / 100) * data.cpu.cores.length * dt * 1e7;
     if (acc.proc.size > 500) acc.proc.clear();
 };
 
-/** The latest sample; the first user follows the Sidebar's live feed (vistaSidebar.js vsbLiveUse,
- * one sidebar_live push per second for the tab, Yozora #653) and vghDestroy lets go after the last. */
-const vghSysUse = function (ctx) {
+/** WMI class -> the sample parts its rows read (vghWmiRows). */
+const vghWmiParts = function (cls) {
+    const c = String(cls || '').toLowerCase();
+    if (/perfproc_process|^win32_process$/.test(c)) return ['processes', 'cpu', 'memory'];
+    if (/operatingsystem/.test(c)) return ['memory', 'uptime', 'processes'];
+    if (/perfos_system/.test(c)) return ['uptime', 'processes'];
+    if (/memory/.test(c)) return ['memory'];
+    if (/computersystem/.test(c)) return ['memory', 'cpu'];
+    if (/processor/.test(c)) return ['cpu'];
+    if (/disk/.test(c)) return ['disks'];
+    if (/network|tcpip/.test(c)) return ['network'];
+    return [];
+};
+
+const vghSysPartsKey = (ctx) => `vgh.sysParts.${ctx.entry && ctx.entry.id}`;
+
+/** Parts the shown gadgets read; the live feed sends only these (Yozora #653). */
+const vghSysShownParts = function () {
+    const parts = new Set();
+    VGH_SYS.users.forEach((ctx) => {
+        if (ctx.inst && typeof vsbIsShown === 'function' && !vsbIsShown(ctx.inst)) return;
+        (ctx.sysParts || []).forEach((part) => parts.add(part));
+    });
+    return [...parts];
+};
+
+const VGH_SYS_SPEC = { get system() { return vghSysShownParts(); } };
+
+const vghSysOnData = function (data) {
+    if (!data || data === VGH_SYS.last) return;
+    VGH_SYS.last = data;
+    // a push carries only the subscribed parts; the rest keep their last value
+    VGH_SYS.data = { ...VGH_SYS_EMPTY, ...(VGH_SYS.data || {}), ...data };
+    // counters only add what this push measured, never a held-over part
+    vghSysAccumulate({ at: data.at, disks: data.disks || [], processes: data.processes || [], cpu: data.cpu || null });
+};
+
+/**
+ * The latest sample for the parts this gadget reads (cpu, memory, uptime, disks, network,
+ * processes). The first user follows the Sidebar's live feed (vistaSidebar.js vsbLiveUse, one
+ * sidebar_live push per second for the tab) and vghDestroy lets go after the last. A part read for
+ * the first time is remembered per gadget, so the next start subscribes it up front.
+ */
+const vghSysUse = function (ctx, parts) {
+    if (!ctx.sysParts) {
+        let saved = [];
+        try { saved = JSON.parse(localStorage.getItem(vghSysPartsKey(ctx)) || '[]'); } catch (_) { saved = []; }
+        ctx.sysParts = Array.isArray(saved) ? saved.filter((p) => typeof p === 'string') : [];
+    }
+    let added = false;
+    (parts || []).forEach((part) => {
+        if (!ctx.sysParts.includes(part)) { ctx.sysParts.push(part); added = true; }
+    });
+    if (added) {
+        try { localStorage.setItem(vghSysPartsKey(ctx), JSON.stringify(ctx.sysParts)); } catch (_) { /* private mode */ }
+    }
     if (!VGH_SYS.users.has(ctx)) {
         VGH_SYS.users.add(ctx);
-        if (!VGH_SYS.release && typeof window.vsbLiveUse === 'function') {
-            VGH_SYS.release = window.vsbLiveUse('vgh-system', { system: true }, (data) => {
-                if (!data || !data.cpu || data === VGH_SYS.data) return;
-                vghSysAccumulate(data);
-                VGH_SYS.data = data;
-            });
-        }
+        added = true;
+    }
+    if (!VGH_SYS.release && typeof window.vsbLiveUse === 'function') {
+        VGH_SYS.release = window.vsbLiveUse('vgh-system', VGH_SYS_SPEC, vghSysOnData);
+    } else if (added && typeof vsbLiveSync === 'function') {
+        vsbLiveSync(false);
     }
     return VGH_SYS.data || VGH_SYS_EMPTY;
 };
@@ -265,20 +317,22 @@ const vghSysRelease = function (ctx) {
     if (!VGH_SYS.users.size && VGH_SYS.release) {
         VGH_SYS.release();
         VGH_SYS.release = null;
+    } else if (typeof vsbLiveSync === 'function') {
+        vsbLiveSync(false);
     }
 };
 
 const vghMachine = function (ctx) {
-    const sys = () => vghSysUse(ctx);
+    const sys = (part) => vghSysUse(ctx, [part]);
     return {
         get CPUs() {
-            const cores = sys().cpu.cores;
+            const cores = sys('cpu').cpu.cores;
             const list = cores.map((pct, i) => ({ usagePercentage: pct, name: `CPU ${i}` }));
             return { count: list.length, item: (i) => list[i] || list[0] };
         },
         // megabytes, as Vista gives them
-        get totalMemory() { return Math.round(sys().memory.totalBytes / 1048576); },
-        get availableMemory() { return Math.round(sys().memory.freeBytes / 1048576); },
+        get totalMemory() { return Math.round(sys('memory').memory.totalBytes / 1048576); },
+        get availableMemory() { return Math.round(sys('memory').memory.freeBytes / 1048576); },
         get processorArchitecture() { return 'x64'; },
         PowerStatus: { isBatteryPresent: false, isPowerLineConnected: true, isBatteryCharging: false, batteryPercentRemaining: 100, batteryCapacityRemaining: 0, batteryCapacityTotal: 0, timeRemaining: -1, powerLineStatusChanged: null },
         PowerStatusChanged: null
@@ -288,7 +342,7 @@ const vghMachine = function (ctx) {
 /** System.Shell.drive("C"): the server's disks, lettered from C: (the root). */
 const vghDrive = function (ctx, letter) {
     const id = String(letter || '').charAt(0).toUpperCase() + ':';
-    const d = vghSysUse(ctx).disks.find((x) => x.letter === id);
+    const d = vghSysUse(ctx, ['disks']).disks.find((x) => x.letter === id);
     if (!d) return null;
     // freeSpace and totalSize in megabytes, as Vista's System.Shell.Drive gives them
     return { name: id, path: id + '\\', driveType: 3, isReady: true, volumeLabel: d.label, fileSystem: 'NTFS', freeSpace: Math.floor(d.freeBytes / 1048576), totalSize: Math.floor(d.totalBytes / 1048576) };
@@ -527,7 +581,7 @@ const vghNetLib = function (win) {
     try { frame = win.frameElement; } catch (_e) { return null; }
     const hit = frame && VGH_FRAMES.get(frame);
     if (!hit) return null;
-    const nets = () => vghSysUse(hit.ctx).network;
+    const nets = () => vghSysUse(hit.ctx, ['network']).network;
     return {
         // the last interface index: callers loop n = 0 .. Initialize()
         Initialize: () => nets().length - 1,
@@ -547,7 +601,7 @@ const vghWmi = function (win, moniker) {
     const ctx = hit.ctx;
     const ns = /root\\?\\?(\w+)\s*$/i.exec(String(moniker || ''));
     const cimv2 = !ns || /cimv2/i.test(ns[1]);
-    const query = (cls, where) => vghWmiSet(cimv2 ? vghWmiRows(String(cls).toLowerCase(), vghSysUse(ctx)).filter(vghWmiFilter(where)) : []);
+    const query = (cls, where) => vghWmiSet(cimv2 ? vghWmiRows(String(cls).toLowerCase(), vghSysUse(ctx, vghWmiParts(cls))).filter(vghWmiFilter(where)) : []);
     return {
         ExecQuery(sql) {
             const m = /^\s*SELECT\s+[\s\S]+?\s+FROM\s+(\w+)(?:\s+WHERE\s+([\s\S]+))?$/i.exec(String(sql || ''));
@@ -845,7 +899,8 @@ const vghMount = function (inst) {
     if (entry.fs) needs.push(vghFsLoad(entry).then((fs) => { ctx.fs = fs; }));
     if (entry.picture) needs.push(vghPicture(ctx));
     if (entry.group === 'system' && !VGH_SYS.data) {
-        vghSysUse(ctx);
+        vghSysUse(ctx, []);
+        if (!ctx.sysParts.length) vghSysUse(ctx, ['cpu', 'memory']);
         needs.push(new Promise((resolve) => {
             let tries = 0;
             const wait = () => {

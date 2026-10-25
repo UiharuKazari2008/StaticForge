@@ -135,8 +135,11 @@ const vsbLoadImage = function (url) {
  * interval. Gadgets register what they show with vsbLiveUse(owner, spec, onData) and get back a
  * release function; the hub sends the union as one `sidebar_live_subscribe`
  * (modules/sidebarLiveFeed.js) and hands each push to the gadgets that asked for it.
- * spec: { host: true } | { system: true } | { weather: true } | { fx: { from, to } }
+ * spec: { host: true } | { system: [parts] } | { weather: true } | { fx: { from, to } }
  *       | { quotes: [symbols] } | { feed: url }
+ * system parts: cpu, memory, uptime, disks, network, processes. Only what a shown gadget reads is
+ * subscribed, and the server sends only that: `isActive()` (optional) drops a user while its
+ * gadget is off screen (another page, Sidebar closed); vsbRender / vsbPaginate resync.
  */
 const VSB_LIVE_WATCH_MS = 5000;
 
@@ -172,14 +175,20 @@ const vsbLivePart = function (data, key) {
     return undefined;
 };
 
+const VSB_LIVE_SYSTEM_PARTS = ['cpu', 'memory', 'uptime', 'disks', 'network', 'processes'];
+
 const vsbLiveTopics = function () {
-    const t = { host: false, system: false, weather: false, fx: [], quotes: [], feeds: [] };
+    const t = { host: false, system: [], weather: false, fx: [], quotes: [], feeds: [] };
     const fx = new Set();
     const quotes = new Set();
     const feeds = new Set();
-    vsbLive.users.forEach(({ spec }) => {
+    const system = new Set();
+    vsbLive.users.forEach(({ spec, isActive }) => {
+        if (isActive) {
+            try { if (!isActive()) return; } catch (_) { return; }
+        }
         if (spec.host) t.host = true;
-        if (spec.system) t.system = true;
+        if (Array.isArray(spec.system)) spec.system.forEach((part) => system.add(part));
         if (spec.weather) t.weather = true;
         if (spec.fx && spec.fx.from && spec.fx.to) {
             const key = `${spec.fx.from}:${spec.fx.to}`;
@@ -191,13 +200,14 @@ const vsbLiveTopics = function () {
         }
         if (spec.feed && !feeds.has(spec.feed)) { feeds.add(spec.feed); t.feeds.push(spec.feed); }
     });
+    t.system = VSB_LIVE_SYSTEM_PARTS.filter((part) => system.has(part));
     return t;
 };
 
 const vsbLiveSend = function (force) {
     vsbLive.syncTimer = null;
     if (typeof wsClient === 'undefined' || !wsClient || !wsClient.ws || wsClient.ws.readyState !== 1) return;
-    const topics = document.hidden ? { host: false, system: false, weather: false, fx: [], quotes: [], feeds: [] } : vsbLiveTopics();
+    const topics = document.hidden ? { host: false, system: [], weather: false, fx: [], quotes: [], feeds: [] } : vsbLiveTopics();
     const key = JSON.stringify(topics);
     if (!force && key === vsbLive.sentKey && vsbLive.socket === wsClient.ws) return;
     vsbLive.sentKey = key;
@@ -221,7 +231,10 @@ const vsbLiveOnPush = function (msg) {
     const data = msg && (msg.data || msg);
     if (!data) return;
     vsbLive.lastPushAt = Date.now();
-    vsbLive.users.forEach(({ key, onData }) => {
+    vsbLive.users.forEach(({ key, onData, isActive }) => {
+        if (isActive) {
+            try { if (!isActive()) return; } catch (_) { return; }
+        }
         const part = vsbLivePart(data, key);
         if (part === undefined) return;
         vsbLive.last.set(key, part);
@@ -239,9 +252,8 @@ const vsbLiveWatch = function () {
 
 /** Only host/system arrive every second, so only they prove a dead feed by being quiet. */
 const vsbLiveTopicsTick = function () {
-    let tick = false;
-    vsbLive.users.forEach(({ spec }) => { if (spec.host || spec.system) tick = true; });
-    return tick;
+    const t = vsbLiveTopics();
+    return t.host || t.system.length > 0;
 };
 
 const vsbLiveBind = function () {
@@ -253,10 +265,10 @@ const vsbLiveBind = function () {
     vsbLive.watchTimer = setInterval(vsbLiveWatch, VSB_LIVE_WATCH_MS);
 };
 
-const vsbLiveUse = function (owner, spec, onData) {
+const vsbLiveUse = function (owner, spec, onData, isActive = null) {
     vsbLiveBind();
     const key = vsbLiveSpecKey(spec || {});
-    vsbLive.users.set(owner, { spec: spec || {}, key, onData });
+    vsbLive.users.set(owner, { spec: spec || {}, key, onData, isActive });
     vsbLiveSync(false);
     // the server sends a slow topic once per refresh period per tab: a second gadget on the same
     // key starts from the value the first one already got
@@ -640,8 +652,8 @@ const vsbCpuMount = function (inst) {
     inst.liveRelease = vsbLiveUse(inst, { host: true }, (data) => {
         if (inst.destroyed || !data) return;
         inst.metrics = { cpu: Math.min(100, Math.max(0, Number(data.cpu) || 0)), ram: Math.min(100, Math.max(0, Number(data.ram) || 0)) };
-        if (vsbIsShown(inst)) vsbCpuPaint(inst);
-    });
+        vsbCpuPaint(inst);
+    }, () => vsbIsShown(inst));
 };
 
 const vsbCpuApply = function (inst) {
@@ -1167,13 +1179,15 @@ const vsbSlideOpenGlancewell = function (inst) {
         return;
     }
     // Workspaces defers its catalog until the window opens (galleryImagesLoad.js),
-    // so the frame's picture is often not in allImages yet. Open that file directly.
+    // so the frame's picture is often not in allImages yet. Open that file by URL: Glancewell
+    // shows it with the file's name and no metadata (showLightbox url mode asks the server nothing).
     // resolveGalleryFullImageUrl: public/scripts/comp/assetUrlResolver.js
     const item = inst.history[inst.cursor];
     const url = resolveGalleryFullImageUrl(item || image);
     if (!url) return;
     showLightbox({
         url,
+        title: names[0],
         width: (item && item.width) || image.width,
         height: (item && item.height) || image.height
     });
@@ -1443,7 +1457,7 @@ const vsbWeatherMount = function (inst) {
         if (inst.destroyed) return;
         inst.data = data || { available: false };
         vsbWeatherApply(inst);
-    });
+    }, () => vsbIsShown(inst));
 };
 
 const vsbWeatherApply = function (inst) {
@@ -2463,7 +2477,7 @@ const vsbFxPoll = async function (inst, now = false) {
             if (inst.destroyed || inst.g.settings.from !== from || inst.g.settings.to !== to) return;
             inst.rate = data && data.available ? data : false;
             vsbFxPaint(inst);
-        });
+        }, () => vsbIsShown(inst));
     }
     if (!now) return;
     try {
@@ -2531,7 +2545,7 @@ const vsbQuotesPoll = async function (inst, now = false) {
                 if (inst.destroyed || (inst.g.settings.symbols || []).join(',') !== key) return;
                 inst.quotes = (data && data.quotes) || symbols.map((symbol) => ({ symbol, available: false }));
                 vsbQuotesPaint(inst);
-            });
+            }, () => vsbIsShown(inst));
         }
     }
     if (!symbols.length) {
@@ -2640,7 +2654,7 @@ const vsbFeedPoll = async function (inst, now = false) {
                 inst.items = (data && data.items) || [];
                 inst.feedTitle = (data && data.title) || 'Feed Headlines';
                 vsbFeedPaint(inst);
-            });
+            }, () => vsbIsShown(inst));
         }
     }
     if (!url) {
@@ -2981,6 +2995,7 @@ const vsbRender = function () {
         vsb.instances.forEach(vsbDestroyInstance);
         vsb.instances.clear();
         vsbCloseFlyout();
+        vsbLiveSync(false);
         return;
     }
     vsb.root.dataset.side = state.side;
@@ -3029,6 +3044,7 @@ const vsbRender = function () {
     });
     vsbClampDesktopGadgets();
     vsbPaginate();
+    vsbLiveSync(false);
 };
 
 const vsbPaginate = function () {
@@ -3053,6 +3069,8 @@ const vsbPaginate = function () {
     docked.forEach((inst) => inst.el.classList.toggle('hidden', pageOf.get(inst) !== vsb.page));
     vsb.prevBtn.disabled = vsb.page === 0;
     vsb.nextBtn.disabled = vsb.page >= vsb.pages - 1;
+    // gadgets on another page stop asking the live feed; the ones now shown start
+    vsbLiveSync(false);
 };
 
 const vsbClampDesktopGadgets = function () {
