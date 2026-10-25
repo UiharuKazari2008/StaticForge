@@ -620,6 +620,25 @@ async function createTables() {
         }
     }
 
+    // updateSeedChainForFilename looks up a +-24 h mtime window per saved print. Without this
+    // index that was a full images scan running json_extract over every row's metadata
+    // (6.5 s on 65k images, #652), and every query on the handle waited behind it.
+    try {
+        await db.exec('CREATE INDEX IF NOT EXISTS idx_images_mtime ON images (mtime)');
+    } catch (error) {
+        logger.warn('Could not create idx_images_mtime:', error.message);
+    }
+
+    // FTS5 cannot look up its UNINDEXED filename column, so DELETE ... WHERE filename = ? scanned
+    // every row's body (twice per table per print, #652). An index on the content shadow
+    // table's filename column (c0) lets deletePromptFtsForFile go by rowid instead.
+    try {
+        await db.exec('CREATE INDEX IF NOT EXISTS idx_prompt_fts_compiled_content_c0 ON prompt_fts_compiled_content (c0)');
+        await db.exec('CREATE INDEX IF NOT EXISTS idx_prompt_fts_input_content_c0 ON prompt_fts_input_content (c0)');
+    } catch (error) {
+        logger.warn('Could not index prompt FTS filenames:', error.message);
+    }
+
     // Migration: BlurHash on images + gallery_workspace_items (list path has no joins)
     try {
         const imageColsBh = await db.all('PRAGMA table_info(images)');
@@ -3295,14 +3314,18 @@ function buildPromptFtsBodiesFromBlobRows(blobRows) {
 async function deletePromptFtsForFile(filename) {
     if (!dbInitialized || !db || !filename) return;
 
-    await db.run('DELETE FROM prompt_fts_compiled WHERE filename = ?', [filename]);
-    await db.run('DELETE FROM prompt_fts_input WHERE filename = ?', [filename]);
+    // By rowid through the content table's c0 index (see idx_prompt_fts_*_content_c0).
+    await db.run('DELETE FROM prompt_fts_compiled WHERE rowid IN (SELECT id FROM prompt_fts_compiled_content WHERE c0 = ?)', [filename]);
+    await db.run('DELETE FROM prompt_fts_input WHERE rowid IN (SELECT id FROM prompt_fts_input_content WHERE c0 = ?)', [filename]);
 }
 
-async function upsertPromptFts(filename, pngMeta) {
+async function upsertPromptFts(filename, pngMeta, options = {}) {
     if (!dbInitialized || !db || !filename) return;
 
-    await deletePromptFtsForFile(filename);
+    // updateSearchIndexesInner already cleared this file's rows earlier in the same transaction.
+    if (!options.alreadyDeleted) {
+        await deletePromptFtsForFile(filename);
+    }
     const { compiledBody, inputBody } = buildPromptFtsBodiesFromLanes(extractPromptBlobLanes(pngMeta));
     if (compiledBody) {
         await db.run(`
@@ -6301,7 +6324,7 @@ async function updateSearchIndexesInner(filename, metadata) {
         }
 
         if (WRITE_PROMPT_FTS) {
-            await upsertPromptFts(filename, pngMeta);
+            await upsertPromptFts(filename, pngMeta, { alreadyDeleted: true });
         }
 
         await markInputPromptTagsExtractAttempted(filename);

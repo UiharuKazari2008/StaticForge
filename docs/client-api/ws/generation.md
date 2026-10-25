@@ -111,6 +111,8 @@ Implementation: `modules/ws/handlers/generationImpl.js`
 
 **Success response:** `cancel_generation_response`
 
+**Dispatch:** parallel. It is not on the session's FIFO chain, so it reaches the server while the print it cancels is still queued or running.
+
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `compile_dynamic_generation`
@@ -215,7 +217,7 @@ Additional response/push types from handler:
 
 **Character prompt names:** Studio `chara_name` on each enabled character maps to NovelAI `parameters.characterPrompts[i].name` (`modules/characterPromptApiFormat.js`). Default/blank labels omit `name` so captions stay prompt-only. Renamed characters keep their custom label on the API payload.
 
-Studio `generate_image`, `generate_preset`, and `reroll_image` enqueue on the same **global generation FIFO** as MCP (`modules/generationJobQueue.js`). One NovelAI generate at a time. After a job finishes, the next waits a semi-random 8–20s gap. While waiting, the handler pushes `image_generation_progress` with `phase: "queued"`, `jobId`, `position`, and `delayMs` (existing toast; no new chrome). `skipGenerationQueue` is set only when MCP already submitted the job (`async: true`).
+Studio `generate_image`, `generate_preset`, and `reroll_image` enqueue on the same **global generation FIFO** as MCP (`modules/generationJobQueue.js`). One NovelAI generate at a time. After a job finishes, the next waits a semi-random 8–20s gap. While waiting, the handler pushes `image_generation_progress` with `phase: "queued"`, `jobId`, `position`, and `delayMs` (existing toast; no new chrome). `skipGenerationQueue` is set only when MCP already submitted the job (`async: true`). The WS handler returns as soon as the job is on the FIFO: it no longer holds the session's WS FIFO chain until the print finishes, so a second Generate gets its `queued` reply at once and other packets on the session are not held behind a running print. The `image_generation_progress` / `image_generation_response` messages still come from the job when it runs.
 
 **Request fields:**
 

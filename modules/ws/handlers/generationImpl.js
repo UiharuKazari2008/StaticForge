@@ -105,7 +105,15 @@ async function runOnGenerationFifo(handlers, ws, message, type, workFn, clientIn
         });
     } catch (_err) { /* history must not block the print */ }
     notifyGenerationQueued(handlers, ws, requestId, job);
-    return job.promise;
+    // Return once the job is on the global FIFO. Awaiting job.promise here held this
+    // session's WS FIFO chain for the whole print plus the queue gap, so cancel_generation,
+    // workspace packets and the next Generate (and its 'queued' reply) waited behind it (#652).
+    // workFn reports its own errors to the client; this catch covers queue cancels.
+    job.promise.catch((err) => {
+        if (err && err.code !== 'GENERATION_JOB_CANCELLED') {
+            console.error(`❌ ${type} job ${job.id} failed:`, err.message || err);
+        }
+    });
 }
 
 function collectSavedGenerationFilenames(result) {

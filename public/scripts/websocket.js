@@ -6058,6 +6058,9 @@ class WebSocketClient {
     }
 
     STREAMING_FIRST_STEP_CROSSFADE_MS = 250;
+    // Paced playback may trail the NovelAI stream by at most this many frames; older ones are
+    // dropped so the preview shows the current step, not one from seconds ago (#652).
+    STREAMING_STEP_MAX_BACKLOG = 2;
 
     _createEmptyStreamingStepSession(requestId) {
         return {
@@ -6201,6 +6204,17 @@ class WebSocketClient {
         const rttMs = this.currentRtt;
 
         while (!session.aborted && session.playIndex < session.steps.length) {
+            // Once the print is done (or the replay trails the stream), jump to the newest
+            // buffered frame instead of replaying every one at the paced rate (#652).
+            const caughtUpIndex = (session.serverGenerationComplete || session.finalPrefetch?.ready)
+                ? session.steps.length - 1
+                : session.steps.length - this.STREAMING_STEP_MAX_BACKLOG;
+            if (session.playIndex < caughtUpIndex) {
+                for (let i = session.playIndex; i < caughtUpIndex; i += 1) {
+                    session.steps[i].imageData = null;
+                }
+                session.playIndex = caughtUpIndex;
+            }
             const frame = session.steps[session.playIndex];
             const totalSteps = session.totalSteps || frame.totalSteps || session.steps.length;
             const finalReady = !!(session.finalPrefetch && session.finalPrefetch.ready);
@@ -6644,25 +6658,20 @@ class WebSocketClient {
         const session = this.getStreamingStepSession(modalType);
         if (!session) return;
 
-        let idleSince = 0;
-
         while (!session.aborted) {
             if (session.isPlaying) {
-                idleSince = 0;
+                // still drawing a frame
             } else if (session.playIndex < session.steps.length) {
-                idleSince = 0;
                 this.processStreamingStepSession(modalType);
             } else {
                 if (this._isStreamingStepPlaybackComplete(session)) {
                     break;
                 }
 
+                // The server flushes its step batcher before phase:complete and the response,
+                // so no frame can arrive after either; no idle grace period (#652).
                 if (session.serverGenerationComplete) {
-                    if (!idleSince) {
-                        idleSince = Date.now();
-                    } else if (Date.now() - idleSince >= 500) {
-                        break;
-                    }
+                    break;
                 }
             }
 

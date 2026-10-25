@@ -165,9 +165,11 @@ async function ensureForgeDataBlurhash(forgeData, imageBuffer) {
     return forgeData;
 }
 
-async function storePreviewBlurhash(globalResources, filename, previewResult) {
+async function storePreviewBlurhash(globalResources, filename, previewResult, knownHash = null) {
     const hash = previewResult?.blurhash;
     if (!hash || !filename || !globalResources?.getMetadataDatabase) return;
+    // The images row already carries forge_data.blurhash from the same pixels (persistImageRowToDb).
+    if (knownHash && hash === knownHash) return;
     // modules/metadataDatabase.js — setImageBlurhash
     await globalResources.getMetadataDatabase().setImageBlurhash(filename, hash);
 }
@@ -5177,7 +5179,11 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
 
             // Generate main / @2x / @lq previews + BlurHash (replaces @blur.webp)
             const previewResult = await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), name), baseName);
-            await storePreviewBlurhash(__runtimeGr, name, previewResult);
+            // Not awaited: the UPDATE queues on the metadata write handle and Studio's
+            // complete / response must not wait behind it (#652).
+            storePreviewBlurhash(__runtimeGr, name, previewResult, forgeData.blurhash || null).catch((err) => {
+                console.warn(`⚠️ Preview blurhash store failed for ${name}:`, err.message);
+            });
             __runtimeGr.getLogger().detailed(`📸 Generated previews for ${baseName}`);
 
             // Last pipeline stage keeps phase:complete; earlier saved stages use stage_complete

@@ -48,7 +48,9 @@ function registerPackets(handlersCtx) {
     regFn('max_enhance_image', handleMaxEnhanceImage, GENERATION_DESTRUCTIVE);
     regFn('preview_expand_image_prompt', handlePreviewExpandImagePrompt, GENERATION_DESTRUCTIVE);
     regFn('reroll_expanded_image', handleImageExpansionReroll, GENERATION_DESTRUCTIVE);
-    regFn('cancel_generation', handleCancelGeneration, WS_DISPATCH_FIFO_CONNECTION);
+    // Parallel: a cancel must reach markGenerationCancelled while the print it cancels is
+    // still running, not after it on the session's FIFO chain (#652).
+    regFn('cancel_generation', handleCancelGeneration);
     regFn('dynamic_generation_progress', handleDynamicGenerationProgress);
     regFn('resolve_dynamic_context', handleResolveDynamicContext);
     regFn('compile_dynamic_generation', handleCompileDynamicGeneration, GENERATION_DESTRUCTIVE);
