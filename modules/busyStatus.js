@@ -316,6 +316,8 @@ function attachExpress(app) {
         if (req.path === '/gadget-stream') return next();
         // a remote browser window's audio (grimoireBrowserBridge.js) stays open as long as the window does
         if (/^\/api\/grimoire-browser\/sessions\/[a-f0-9]{32}\/audio$/.test(req.path)) return next();
+        // the log viewer's live tail (web_server.js `${logPath}/stream`) stays open while the viewer is
+        if (req.method === 'GET' && /^\/[^/]+\/stream$/.test(req.path) && req.query && req.query.source) return next();
         const id = beginHttp(req);
         let ended = false;
         const done = () => {

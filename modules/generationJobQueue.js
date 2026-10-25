@@ -1,12 +1,13 @@
 /**
  * Global FIFO for NovelAI generations (Studio WS + MCP).
- * One job at a time. Semi-random gap after each finished job so bursts cannot stack.
+ * One job at a time. No gap between jobs by default (the old 8-20 s gap was removed in #652);
+ * delayMinMs / delayMaxMs still add a semi-random gap when a caller passes them.
  */
 
 const crypto = require('crypto');
 
-const DEFAULT_DELAY_MIN_MS = 8000;
-const DEFAULT_DELAY_MAX_MS = 20000;
+const DEFAULT_DELAY_MIN_MS = 0;
+const DEFAULT_DELAY_MAX_MS = 0;
 const DEFAULT_JOB_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_AWAIT_TIMEOUT_MS = 12 * 60 * 1000;
 
