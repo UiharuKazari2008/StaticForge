@@ -463,16 +463,24 @@ const glancewellShow = {
     lumenExit: null
 };
 
-/** The current slide's picture: { filename, metadata, src } (both open paths' slide shapes). */
+/**
+ * The current slide's picture: { filename, title, metadata, src } (both open paths' slide shapes).
+ * A picture opened by URL (standaloneUrlSlide) has no filename and no metadata: the gallery
+ * commands stay off and nothing asks the server about it.
+ */
 function glancewellCurrentPicture() {
     const p = getActivePhotoSwipe();
     const slide = p && p.currSlide ? p.currSlide.data || {} : {};
     const inner = slide.data || slide;
+    if (inner.isStandalone) {
+        return { filename: '', title: inner.title || '', metadata: {}, src: slide.src || '' };
+    }
     const filename = inner.filename || inner.original || inner.upscaled || '';
     // findImageByFilename: public/scripts/comp/galleryView.js
     const record = filename && typeof findImageByFilename === 'function' ? findImageByFilename(filename) : null;
     return {
         filename,
+        title: filename,
         // a Director print off the loaded page has no record: deleteImage needs original
         metadata: record || { filename, original: inner.original || filename, upscaled: inner.upscaled, ...(inner.metadata || {}) },
         src: slide.src || ''
@@ -486,7 +494,7 @@ function glancewellViewerCall(method, ...args) {
     const ctx = {
         metadata: pic.metadata,
         imageSrc: pic.src,
-        title: pic.filename,
+        title: pic.title,
         getImageFilename: () => pic.filename,
         getImageWorkspaceId: () => (pic.metadata && pic.metadata.workspaceId) || null
     };
@@ -504,7 +512,7 @@ function syncGlancewellChrome() {
     const pic = glancewellCurrentPicture();
     const title = document.getElementById('photoSwipeWindowTitle');
     if (title) {
-        const name = String(pic.filename || '').replace(/\.[a-z0-9]{2,5}$/i, '');
+        const name = String(pic.title || '').replace(/\.[a-z0-9]{2,5}$/i, '');
         title.textContent = name ? `${name} - Glancewell` : 'Glancewell';
     }
     const count = typeof p.getNumItems === 'function' ? p.getNumItems() : 0;
@@ -577,11 +585,11 @@ function renderGlancewellInfo() {
     // the file's date and size for Vista's "4/25/2005 12:00 AM" / "648 KB (1024 x 768)" lines:
     // the gallery record's mtime and size, else the epoch the print's name starts with
     const meta = pic.metadata || {};
-    const stamp = Number(meta.mtime) || Number((String(pic.filename).match(/^(\d{13})_/) || [])[1]) || null;
+    const stamp = Number(meta.mtime) || Number((String(pic.title).match(/^(\d{13})_/) || [])[1]) || null;
     renderPhotoGalleryInfoPane(pane, {
         metadata: pic.metadata,
         src: pic.src,
-        title: pic.filename,
+        title: pic.title,
         img,
         when: stamp,
         sizeText: glancewellFileSizeText(meta.size)
@@ -972,7 +980,7 @@ function glancewellMenuItems(key) {
             { text: 'Save a Copy...', action: 'gw-download' },
             { separator: true },
             { text: 'Set as Desktop Background', action: 'gw-wallpaper', disabled: !gallery },
-            { text: 'Properties', action: 'gw-properties' },
+            { text: 'Properties', action: 'gw-properties', disabled: !gallery },
             { separator: true },
             scraps
                 ? { text: 'Restore from Scraps', action: 'gw-unscrap', disabled: !gallery }
@@ -1017,6 +1025,7 @@ async function runGlancewellAction(action, event) {
         case 'gw-download': glancewellViewerCall('download'); break;
         case 'gw-wallpaper': glancewellViewerCall('setAsWallpaper'); break;
         case 'gw-properties':
+            if (!pic.filename) break;
             // openImagePromptInspector: public/scripts/comp/imagePromptInspector.js
             void featureLoader.loadFeature('image_prompt_inspector').then(() => openImagePromptInspector(pic.metadata));
             break;
@@ -1842,6 +1851,33 @@ async function openStandalonePhotoSwipe(dataSource, index, options) {
     }
 }
 
+/**
+ * One slide for a picture known only by its URL. It carries no filename, base, original or
+ * upscaled, so nothing takes the URL for a gallery file (a metadata request for "/images/x.png"
+ * failed as "Image not found"); title is the name Glancewell's caption shows.
+ */
+function standaloneUrlSlide(url, width, height, title) {
+    return {
+        src: url,
+        width: Number(width) || 1024,
+        height: Number(height) || 1024,
+        data: { title: title || standaloneUrlTitle(url), isStandalone: true }
+    };
+}
+
+/** "/images/1779683665531_generated_1445417434.png?sha=..." -> "1779683665531_generated_1445417434.png" */
+function standaloneUrlTitle(url) {
+    const raw = String(url || '');
+    if (/^(data|blob):/i.test(raw)) return '';
+    const path = raw.split(/[?#]/)[0];
+    const last = path.slice(path.lastIndexOf('/') + 1);
+    try {
+        return decodeURIComponent(last);
+    } catch (_err) {
+        return last;
+    }
+}
+
 // Show lightbox with PhotoSwipe
 async function showLightbox(input) {
     if (!lightbox) {
@@ -1887,65 +1923,19 @@ async function showLightbox(input) {
                 });
             }
         } else if (input.url) {
-            // Standalone image URL - get dimensions if not provided
+            // A picture by URL alone (a Sidebar frame's file, a reference, a preview): no gallery
+            // record and no metadata, so Glancewell shows it without asking the server about it.
+            // Dimensions come from the picture itself when the caller has none.
             if (!input.width || !input.height) {
-                // Create a temporary image to get natural dimensions
                 const tempImg = new Image();
-                tempImg.onload = function() {
-                    const standaloneData = [{
-                        src: input.url,
-                        width: input.width || tempImg.naturalWidth || 1024,
-                        height: input.height || tempImg.naturalHeight || 1024,
-                        data: {
-                            filename: input.url,
-                            base: input.url,
-                            upscaled: input.url,
-                            original: input.url,
-                            isStandalone: true
-                        }
-                    }];
-                    
-                    // Use PhotoSwipe core directly for standalone images
-                    openStandalonePhotoSwipe(standaloneData);
-                };
-                tempImg.onerror = function() {
-                    // Fallback with default dimensions if image fails to load
-                    const standaloneData = [{
-                        src: input.url,
-                        width: input.width || 1024,
-                        height: input.height || 1024,
-                        data: {
-                            filename: input.url,
-                            base: input.url,
-                            upscaled: input.url,
-                            original: input.url,
-                            isStandalone: true
-                        }
-                    }];
-                    
-                    openStandalonePhotoSwipe(standaloneData);
-                };
+                const open = () => openStandalonePhotoSwipe([standaloneUrlSlide(input.url, input.width || tempImg.naturalWidth, input.height || tempImg.naturalHeight, input.title)]);
+                tempImg.onload = open;
+                tempImg.onerror = open;
                 tempImg.src = input.url;
                 return;
-            } else {
-                // Dimensions provided, create data source immediately
-                const standaloneData = [{
-                    src: input.url,
-                    width: input.width,
-                    height: input.height,
-                    data: {
-                        filename: input.url,
-                        base: input.url,
-                        upscaled: input.url,
-                        original: input.url,
-                        isStandalone: true
-                    }
-                }];
-                
-                // Use PhotoSwipe core directly for standalone images
-                openStandalonePhotoSwipe(standaloneData);
-                return;
             }
+            openStandalonePhotoSwipe([standaloneUrlSlide(input.url, input.width, input.height, input.title)]);
+            return;
         } else if (input.element) {
             // Gallery item element - use filename as unique identifier (more reliable than indices)
             const filename = input.element.getAttribute('data-filename');
@@ -1997,21 +1987,7 @@ async function showLightbox(input) {
                 // No filename - try standalone element
                 const img = input.element.querySelector('img');
                 if (img && img.src) {
-                    const standaloneData = [{
-                        src: img.src,
-                        width: input.width || img.naturalWidth || 1024,
-                        height: input.height || img.naturalHeight || 1024,
-                        data: {
-                            filename: img.src,
-                            base: img.src,
-                            upscaled: img.src,
-                            original: img.src,
-                            isStandalone: true
-                        }
-                    }];
-                    
-                    // Use PhotoSwipe core directly for standalone images
-                    openStandalonePhotoSwipe(standaloneData);
+                    openStandalonePhotoSwipe([standaloneUrlSlide(img.src, input.width || img.naturalWidth, input.height || img.naturalHeight, input.title)]);
                     return;
                 } else {
                     imageIndex = -1;
