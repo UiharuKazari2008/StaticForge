@@ -800,19 +800,21 @@
         const logo = csLogo(row);
         const picture = logo || `${CS}/personal-card.png`;
         const dot = row.querySelector('.cpl-vault-status');
-        // one group holds every card: the tip says which kind it is
-        const sub = (row.querySelector('.cpl-vault-sub') || {}).textContent || '';
-        const tip = `${CARD_KINDS[csKindOf(row)][1]}${sub ? `: ${sub}` : ''}`;
+        const tip = (row.querySelector('.cpl-vault-sub') || {}).textContent || '';
         return `<button type="button" class="cs-card${extra || ''}" data-cs-key="${esc(row.dataset.cplVaultKey)}" title="${esc(tip)}">
             <span class="cs-card-pic${logo ? ' is-logo' : ''}"><img src="${esc(picture)}" alt="" draggable="false"></span>
             <span class="cs-card-name">${esc(csName(row))}</span>${dot ? `<span class="cs-card-dots">${dot.innerHTML}</span>` : ''}</button>`;
     }
 
-    /** Your cards: every card in one group (kinds in the vault's order), Add a card right after them (the VM). */
+    /** A group per kind of card (as CardSpace's "Your cards:" group), Add a card in its own group after them. */
     function csRenderHome() {
-        const rows = Object.keys(CARD_KINDS).flatMap((kind) => csRows().filter((r) => csKindOf(r) === kind));
-        csEl('.cs-home').innerHTML = `<div class="cs-group"><div class="cs-group-label"><span>Your cards:</span></div>
-            <div class="cs-cards">${rows.map((r) => csCard(r, r.dataset.cplVaultKey === csSel ? ' is-selected' : '')).join('')}<button type="button" class="cs-card cs-card-add" data-cs-go="add"><span class="cs-card-add-face"><span>Add a card</span></span></button></div></div>`;
+        const groups = Object.keys(CARD_KINDS).map((kind) => {
+            const rows = csRows().filter((r) => csKindOf(r) === kind);
+            if (!rows.length) return '';
+            return `<div class="cs-group"><div class="cs-group-label"><span>${esc(CARD_KINDS[kind][0])}:</span></div>
+                <div class="cs-cards">${rows.map((r) => csCard(r, r.dataset.cplVaultKey === csSel ? ' is-selected' : '')).join('')}</div></div>`;
+        }).join('');
+        csEl('.cs-home').innerHTML = `${groups}<div class="cs-group"><div class="cs-cards"><button type="button" class="cs-card cs-card-add" data-cs-go="add"><span class="cs-card-add-face"><span>Add a card</span></span></button></div></div>`;
     }
 
     function csTask(label, attrs, enabled) {
@@ -1010,7 +1012,7 @@
                 <button type="button" class="btn-danger close-btn btn-small cs-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
             <div class="modal-content win7 tbp-client cs-client">
-                <button type="button" class="cs-back" title="Back" disabled></button>
+                <button type="button" class="cs-back" title="Back" disabled><span class="cs-back-orb"></span></button>
                 <div class="cs-title"></div>
                 <div class="cs-desc"></div>
                 <div class="cs-panel">

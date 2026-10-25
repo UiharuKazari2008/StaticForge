@@ -24,25 +24,35 @@
     font: inherit;
 }
 
-/* the back orb: the arrow (413, 25 px states) on its dimple (412) */
+/* the back orb: the arrow (413, 25 px states) on its dimple (412), which CardSpace draws at 56 x 29
+   with the orb in its left end (VM: dimple at 10, 11 of the client, orb at 10, 14) */
 #dreamscapeCardSpaceModal .cs-back {
     position: absolute;
     left: 10px;
-    top: 12px;
-    width: 57px;
-    height: 28px;
+    top: 11px;
+    width: 56px;
+    height: 29px;
     min-width: 0;
     min-height: 0;
     margin: 0;
     padding: 0;
     border: 0;
-    background: url('/static_images/vista-cardspace/back.png') 1px 1px / 25px 100px no-repeat, url('/static_images/vista-cardspace/back-dimple.png') 19px 4px no-repeat;
+    background: url('/static_images/vista-cardspace/back-dimple.png') 0 0 / 56px 29px no-repeat;
     box-shadow: none;
 }
 
-#dreamscapeCardSpaceModal .cs-back:hover:not(:disabled) { background-position: 1px -24px, 19px 4px; }
-#dreamscapeCardSpaceModal .cs-back:active:not(:disabled) { background-position: 1px -49px, 19px 4px; }
-#dreamscapeCardSpaceModal .cs-back:disabled { background-position: 1px -74px, 19px 4px; }
+#dreamscapeCardSpaceModal .cs-back-orb {
+    position: absolute;
+    left: 0;
+    top: 3px;
+    width: 25px;
+    height: 25px;
+    background: url('/static_images/vista-cardspace/back.png') 0 0 / 25px 100px no-repeat;
+}
+
+#dreamscapeCardSpaceModal .cs-back:hover:not(:disabled) .cs-back-orb { background-position: 0 -25px; }
+#dreamscapeCardSpaceModal .cs-back:active:not(:disabled) .cs-back-orb { background-position: 0 -50px; }
+#dreamscapeCardSpaceModal .cs-back:disabled .cs-back-orb { background-position: 0 -75px; }
 
 #dreamscapeCardSpaceModal .cs-title {
     position: absolute;
