@@ -999,7 +999,8 @@ async function ensureSiteIcon(globalResources, parsed, siteInfo) {
             `https://${parsed.host}/wiki/Special:FilePath/Site-logo.png`,
             `https://${parsed.host}/wiki/Special:FilePath/Wiki.png`
         ];
-    const uniqueCandidates = candidates.filter((u, i, arr) => u && arr.indexOf(u) === i);
+    // JULES: perf optimization — Set lookup O(N) deduplication instead of O(N^2) filter/indexOf
+    const uniqueCandidates = [...new Set(candidates.filter(Boolean))];
     for (const url of uniqueCandidates) {
         try {
             await sleep(RATE_MS);
