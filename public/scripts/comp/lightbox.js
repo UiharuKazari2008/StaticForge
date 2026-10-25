@@ -522,6 +522,8 @@ function syncGlancewellChrome() {
     if (next) next.disabled = p.currIndex >= count - 1;
     const del = shell.querySelector('[data-gw="delete"]');
     if (del) del.disabled = !pic.filename;
+    // Edit (DreamStudio) and Make a Movie work from the gallery file and its print parameters
+    shell.querySelectorAll('.wpg-cmds > [data-gw="fix"], .wpg-cmds > [data-gw="movie"]').forEach((btn) => { btn.disabled = !pic.filename; });
     syncGlancewellZoomChrome();
     glancewellRotation = 0;
     applyGlancewellRotation();
@@ -990,10 +992,10 @@ function glancewellMenuItems(key) {
     }
     if (key === 'print') {
         return [
-            { text: 'Recast Spell', action: 'gw-reroll' },
-            { text: 'Enhance...', action: 'gw-enhance' },
-            { text: 'Upscale', action: 'gw-upscale', disabled: !!meta.upscaled },
-            { text: 'Expand Canvas...', action: 'gw-expand' }
+            { text: 'Recast Spell', action: 'gw-reroll', disabled: !gallery },
+            { text: 'Enhance...', action: 'gw-enhance', disabled: !gallery },
+            { text: 'Upscale', action: 'gw-upscale', disabled: !gallery || !!meta.upscaled },
+            { text: 'Expand Canvas...', action: 'gw-expand', disabled: !gallery }
         ];
     }
     if (key === 'burn') {
@@ -1006,7 +1008,7 @@ function glancewellMenuItems(key) {
     if (key === 'open') {
         return [
             { text: 'Lumen', action: 'gw-lumen', disabled: !gallery },
-            { text: 'DreamStudio', action: 'gw-studio' },
+            { text: 'DreamStudio', action: 'gw-studio', disabled: !gallery },
             { text: 'Paint', action: 'gw-paint', disabled: !pic.src && !gallery },
             { text: 'Gallery', action: 'gw-gallery', disabled: !gallery },
             { separator: true },
@@ -1016,10 +1018,15 @@ function glancewellMenuItems(key) {
     return [];
 }
 
+const GLANCEWELL_GALLERY_ACTIONS = new Set(['gw-fix', 'gw-studio', 'gw-reroll', 'gw-enhance', 'gw-upscale', 'gw-expand', 'gw-movie']);
+
 /** One command or menu row, by action; ImageViewer's own methods do the work (glancewellViewerCall). */
 async function runGlancewellAction(action, event) {
     const p = getActivePhotoSwipe();
     const pic = glancewellCurrentPicture();
+    // a picture opened by URL has no gallery file and no print parameters: Studio, the prints and
+    // the movie have nothing to load (openManualModalWithContent threw "No filename available")
+    if (!pic.filename && GLANCEWELL_GALLERY_ACTIONS.has(action)) return;
     switch (action) {
         case 'gw-copy': glancewellViewerCall('copyToClipboard'); break;
         case 'gw-download': glancewellViewerCall('download'); break;
@@ -1138,7 +1145,7 @@ function wireGlancewellToolbar(shell) {
                     const text = GLANCEWELL_COMMAND_LABELS[key] || key;
                     return btn.classList.contains('has-menu')
                         ? { text, submenu: glancewellMenuItems(key) }
-                        : { text, action: `gw-${key}` };
+                        : { text, action: `gw-${key}`, disabled: btn.disabled };
                 });
                 config.sections = [{ type: 'list', items }];
             },

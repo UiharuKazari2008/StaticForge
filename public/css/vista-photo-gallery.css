@@ -129,6 +129,18 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
     background-position: -48px 0;
 }
 
+/* a command the picture does not support (one opened by URL, no gallery file): the strip's
+   disabled frame, grey text, no hot face */
+.wpg-viewer .wpg-toolbar button.wpg-cmd:disabled {
+    color: #8d8d8d;
+    border-image: none;
+}
+
+.wpg-viewer .wpg-cmd:disabled .wpg-icon,
+.wpg-viewer .wpg-cmd:disabled:hover .wpg-icon {
+    background-position: 0 0;
+}
+
 .wpg-viewer .wpg-drop {
     flex: none;
     width: 7px;
