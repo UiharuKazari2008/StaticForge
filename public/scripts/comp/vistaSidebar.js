@@ -1173,24 +1173,31 @@ const vsbSlideOpenGlancewell = function (inst) {
     if (!image) return;
     const names = [image.upscaled, image.original, image.filename].filter(Boolean);
     const hit = vsbGalleryHit(names);
-    // showLightbox: public/scripts/comp/lightbox.js
+    // showLightbox / openStandalonePhotoSwipe: public/scripts/comp/lightbox.js
     if (hit) {
         showLightbox({ filename: hit.filename || hit.upscaled || hit.original });
         return;
     }
     // Workspaces defers its catalog until the window opens (galleryImagesLoad.js),
-    // so the frame's picture is often not in allImages yet. Open that file by URL: Glancewell
-    // shows it with the file's name and no metadata (showLightbox url mode asks the server nothing).
+    // so the frame's picture is often not in allImages yet. Open that gallery file as a one-slide
+    // Glancewell, like a Director print off the loaded page (mcpActivityClient.js): the slide names
+    // the file, so Edit, Print and Delete work from it and load its parameters by filename.
     // resolveGalleryFullImageUrl: public/scripts/comp/assetUrlResolver.js
     const item = inst.history[inst.cursor];
     const url = resolveGalleryFullImageUrl(item || image);
     if (!url) return;
-    showLightbox({
-        url,
-        title: names[0],
-        width: (item && item.width) || image.width,
-        height: (item && item.height) || image.height
-    });
+    const width = Number((item && item.width) || image.width) || 0;
+    const height = Number((item && item.height) || image.height) || 0;
+    const slide = { src: url, width, height, filename: names[0], original: image.original, upscaled: image.upscaled };
+    const open = () => openStandalonePhotoSwipe([slide], 0);
+    if (width > 0 && height > 0) {
+        void open();
+        return;
+    }
+    const probe = new Image();
+    probe.onload = () => { slide.width = probe.naturalWidth || 1024; slide.height = probe.naturalHeight || 1024; void open(); };
+    probe.onerror = () => { slide.width = 1024; slide.height = 1024; void open(); };
+    probe.src = url;
 };
 
 /** The picture on screen as the gallery's own image object when it is loaded, otherwise built from the frame's item. */
