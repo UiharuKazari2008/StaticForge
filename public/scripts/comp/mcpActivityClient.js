@@ -297,10 +297,17 @@ async function glancewellSlides(filenames) {
             || localGalleryImageUrl(image.upscaled || image.original || name)
             || ('/images/' + encodeURIComponent(name));
         const cached = glancewellSizeCache.get(src);
+        let width = Number(image.width) || 0;
+        let height = Number(image.height) || 0;
+        const meta = image.metadata || null;
+        if ((!width || !height) && meta) {
+            width = Number(meta.actual_width || meta.width) || 0;
+            height = Number(meta.actual_height || meta.height) || 0;
+        }
         return {
             src: src,
-            width: Number(image.width) || (cached && cached.width) || 0,
-            height: Number(image.height) || (cached && cached.height) || 0,
+            width: width || (cached && cached.width) || 0,
+            height: height || (cached && cached.height) || 0,
             filename: name
         };
     });
