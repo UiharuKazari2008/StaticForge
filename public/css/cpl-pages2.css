@@ -981,8 +981,10 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 /* ---- Melaton SideShow (Yozora #654), measured on the VM's AuxiliaryDisplayCpl home page (800x600):
    the grid runs 550 px from the content's left; the header rule 22 px under the intro; 38 px gadget
    rows between #cccccc rules, the 32 px icon 2 px in and the name 7 px after it, a grey band behind
-   the name (white, #f2f2f2 from 105 to 146 px, white at 235 px); the check box 11 px in, 9 px under
-   the last rule; the info bar #ffffc6 inside a #cccccc border, 32 px tall, its icon 8 px in. ---- */
+   the name (UIFILE 110: white to #f0f0f0 over 130 px, back to white over 107 px); the check box 11 px
+   in, 9 px under the last rule; the info bar #ffffc6 inside a #cccccc border, 32 px tall, its icon
+   8 px in. A device column (wss_grid_device_header): the device's icon over its name, 5 px either
+   side; its check box centred in a 25 px box. The pane's Devices block follows a divider line. ---- */
 
 #melatonControlPanelModal .cpl-vpage.cpl-ss-page {
     max-width: 584px;
@@ -1050,8 +1052,8 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 }
 
 #melatonControlPanelModal .cpl-ss-grid td.cpl-ss-gadget {
-    background: linear-gradient(90deg, #fff 0, #f2f2f2 105px, #f2f2f2 146px, #fff 235px) no-repeat;
-    background-size: 235px 100%;
+    background: linear-gradient(90deg, #fff 0, #f0f0f0 130px, #fff 237px) no-repeat;
+    background-size: 237px 100%;
 }
 
 #melatonControlPanelModal .cpl-ss-grid td.cpl-ss-gadget img {
@@ -1169,4 +1171,51 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 
 #melatonControlPanelModal .cpl-ss-settings input.cpl-ss-num {
     width: 60px;
+}
+
+#melatonControlPanelModal .cpl-ss-devhead {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 0 5px;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+#melatonControlPanelModal .cpl-ss-devhead img {
+    width: 32px;
+    height: 32px;
+}
+
+#melatonControlPanelModal .cpl-ss-devhead span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#melatonControlPanelModal .cpl-ss-grid tr.is-head td.cpl-ss-col {
+    text-align: center;
+}
+
+#melatonControlPanelModal .cpl-ss-cell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 25px;
+    height: 25px;
+    margin: 0;
+}
+
+#melatonControlPanelModal .cpl-ss-cell label {
+    padding-left: 13px;
+}
+
+/* the pane's Devices block (cp_nav_line, then 7 px above and below the label) */
+#melatonControlPanelModal .cpl-tasks .cpl-task-group.cpl-ss-devices {
+    margin-top: 10px;
+    padding-top: 7px;
+    border-top: 1px solid rgba(255, 255, 255, 0.35);
 }

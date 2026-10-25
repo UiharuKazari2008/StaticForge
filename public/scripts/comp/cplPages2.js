@@ -725,9 +725,9 @@
                     ${li(byDate, '<button type="button" class="cpl-link" data-cpl-vpage="sort" data-sort="date">View gadgets by date installed</button>')}
                 </ul>
             </div>${list.length ? `
-            <div class="cpl-task-group cpl-vtasks">
+            <div class="cpl-task-group cpl-vtasks cpl-ss-devices">
                 <h3 class="cpl-task-heading">Devices</h3>
-                <ul class="cpl-task-list">${list.map((d) => `<li class="cpl-vtask"><button type="button" class="cpl-link" data-cpl-vpage="open" data-device="${esc(d.deviceId)}" title="Click to change settings for ${esc(d.name)}">${esc(d.name)}</button></li>`).join('')}</ul>
+                <ul class="cpl-task-list">${list.map((d) => `<li class="cpl-vtask has-icon"><img src="${SS}/sideshow-16.png" alt="" draggable="false"><button type="button" class="cpl-link" data-cpl-vpage="open" data-device="${esc(d.deviceId)}" title="Click to change settings for ${esc(d.name)}">${esc(d.name)}</button></li>`).join('')}</ul>
             </div>` : ''}`;
     }
 
@@ -744,8 +744,8 @@
             <p class="cpl-vtext">${has ? 'You can change settings for some gadgets by clicking the gadget name in the list. To change device settings, click the device name in the left pane.' : 'A Melaton SideShow-compatible device is a secondary display that accesses information from your computer. You can use it to do things like check your calendar, read e-mail messages, or scan top news stories even when your computer is off.'}</p>
             ${ss.error ? `<p class="cpl-vtext cpl-vgap">${esc(ss.error)}</p>` : ''}
             <table class="cpl-ss-grid">
-                <tr class="is-head"><td>Gadgets</td>${has ? list.map((d) => `<td class="cpl-ss-col"><button type="button" class="cpl-ss-devhead" data-cpl-vpage="open" data-device="${esc(d.deviceId)}" title="Click to change settings for ${esc(d.name)}">${esc(d.name)}</button></td>`).join('') : '<td class="cpl-ss-none">Devices (none)</td>'}</tr>
-                <tr class="cpl-ss-row"><td class="cpl-ss-gadget"><img src="${SS}/slideshow-gadget-32.png" alt=""><button type="button" class="cpl-ss-gadget-link" data-cpl-vpage="gadget">${esc(SS_GADGET)}</button></td>${has ? list.map((d) => `<td class="cpl-ss-col"><input type="checkbox" checked disabled title="${esc(ssStateText(d))}"></td>`).join('') : '<td></td>'}</tr>
+                <tr class="is-head"><td>Gadgets</td>${has ? list.map((d) => `<td class="cpl-ss-col"><button type="button" class="cpl-ss-devhead" data-cpl-vpage="open" data-device="${esc(d.deviceId)}" title="Click to change settings for ${esc(d.name)}"><img src="${SS}/sideshow-32.png" alt=""><span>${esc(d.name)}</span></button></td>`).join('') : '<td class="cpl-ss-none">Devices (none)</td>'}</tr>
+                <tr class="cpl-ss-row"><td class="cpl-ss-gadget"><img src="${SS}/slideshow-gadget-32.png" alt=""><button type="button" class="cpl-ss-gadget-link" data-cpl-vpage="gadget">${esc(SS_GADGET)}</button></td>${has ? list.map((d) => `<td class="cpl-ss-col"><span class="cpl-vcheck cpl-ss-cell"><input type="checkbox" id="cpl-ss-on-${esc(d.deviceId)}" checked disabled><label for="cpl-ss-on-${esc(d.deviceId)}" title="${esc(ssStateText(d))}"></label></span></td>`).join('') : '<td></td>'}</tr>
             </table>
             <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-notify" data-ss-pref="NotifyNewGadgets"${notify ? ' checked' : ''}><label for="cpl-ss-notify">Notify me when new gadgets are installed</label></div>
             <p class="cpl-ss-link"><img src="${SS}/globe-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="more">Get more gadgets online</button></p>
