@@ -86,8 +86,11 @@ async function rerollImage(image, event = null) {
                     const rerolledFilename = result.filename;
                     stopStudioPreviewForReroll();
 
-                    if (result.image && progressToastId && typeof updateGlassToastImagePreview === 'function') {
-                        updateGlassToastImagePreview(progressToastId, result.image);
+                    // The reply carries no base64 any more (imageTransport http, #649): the toast loads
+                    // the saved file. localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+                    if (progressToastId && typeof updateGlassToastImagePreview === 'function') {
+                        const toastPreview = result.image || (typeof localGalleryImageUrl === 'function' ? localGalleryImageUrl(rerolledFilename) : null);
+                        if (toastPreview) updateGlassToastImagePreview(progressToastId, toastPreview);
                     }
                     if (progressToastId) {
                         updateGlassToastProgress(progressToastId, 100);
@@ -504,7 +507,7 @@ const NAI_ONLY_MENU_ACTIONS = new Set([
     'reroll', 'copy', 'modify', 'use-as-compare-source', 'expand-canvas', 'enhance', 'upscale',
     'animate', 'create-animation', 'view-image-data', 'start-chat', 'ask-wren', 'publish-to-explorer',
     'set-wallpaper', 'create-reference', 'creator', 'inspect-prompts', 'expand', 'copy-lookback',
-    'transparent-background'
+    'transparent-background', 'edit-in-paint'
 ]);
 
 // Mutates a contextMenu config: hides NAI-only items (and the "Original" submenu) when

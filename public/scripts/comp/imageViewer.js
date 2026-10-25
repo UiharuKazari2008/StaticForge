@@ -878,6 +878,7 @@ class ImageViewer {
             menu('open', [
                 { text: 'DreamStudio', action: 'image-viewer-creator' },
                 { text: 'Glancewell', action: 'image-viewer-slideshow' },
+                { text: 'Paint', action: 'image-viewer-edit-in-paint' },
                 { text: 'Gallery', action: 'image-viewer-jump-workspace', disabled: !gallery },
                 { separator: true },
                 { text: 'Chat', action: 'image-viewer-start-chat', disabled: !gallery }
@@ -1138,6 +1139,11 @@ class ImageViewer {
                     action: 'image-viewer-creator'
                 },
                 {
+                    icon: 'fas fa-paintbrush',
+                    text: 'Edit in Paint',
+                    action: 'image-viewer-edit-in-paint'
+                },
+                {
                     icon: 'fas fa-glasses-round',
                     text: 'Properties',
                     action: 'image-viewer-inspect-prompts'
@@ -1237,6 +1243,11 @@ class ImageViewer {
                     }
                 ]
             });
+        } else {
+            contextMenuConfig.sections.push({
+                type: 'list',
+                items: [{ icon: 'fas fa-paintbrush', text: 'Edit in Paint', action: 'image-viewer-edit-in-paint' }]
+            });
         }
 
         // applyAnimatedResultMenuFilter: public/scripts/comp/galleryActions.js
@@ -1283,6 +1294,9 @@ class ImageViewer {
                 break;
             case 'image-viewer-creator':
                 this.openInCreator();
+                break;
+            case 'image-viewer-edit-in-paint':
+                void window.editImageInPaint(this.imageSrc, this.getImageFilename() || this.title);
                 break;
             case 'image-viewer-inspect-prompts':
                 // public/scripts/comp/featureLoader.js
@@ -2048,23 +2062,33 @@ window.openImageInViewer = function (imageSrc, title = 'Image', metadata = {}) {
 };
 
 // Helper for opening gallery images
+function galleryImageFullUrl(imageData) {
+    const hasPersistentFile = !!(imageData.filename || imageData.original || imageData.upscaled);
+    if (imageData.url && (!imageData.url.startsWith('blob:') || !hasPersistentFile)) return imageData.url;
+    // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+    return resolveGalleryFullImageUrl(imageData)
+        || localGalleryImageUrl(imageData.upscaled || imageData.original || imageData.filename)
+        || imageData.url;
+}
+
 window.openGalleryImageInViewer = function (imageData) {
     if (!imageData) return null;
-
-    // Determine the correct URL for gallery images
-    let imageSrc;
-    const hasPersistentFile = !!(imageData.filename || imageData.original || imageData.upscaled);
-    if (imageData.url && (!imageData.url.startsWith('blob:') || !hasPersistentFile)) {
-        imageSrc = imageData.url;
-    } else {
-        // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
-        imageSrc = resolveGalleryFullImageUrl(imageData)
-            || localGalleryImageUrl(imageData.upscaled || imageData.original || imageData.filename)
-            || imageData.url;
-    }
-
     const title = imageData.filename || imageData.base || 'Gallery Image';
-    return imageViewerManager.createViewer(imageSrc, title, imageData);
+    return imageViewerManager.createViewer(galleryImageFullUrl(imageData), title, imageData);
+};
+
+// "Edit in Paint" from any image menu: opens a copy of the picture in Paint (desktop-apps/paint/paintApp.js)
+window.editImageInPaint = async function (src, name) {
+    if (!src) return null;
+    await featureLoader.loadFeature('paint');
+    if (typeof window.openMelatonPaint !== 'function') return null;
+    return window.openMelatonPaint({ image: src, name: name || 'Untitled' });
+};
+
+window.editGalleryImageInPaint = function (imageData) {
+    if (!imageData) return null;
+    const name = imageData.upscaled || imageData.filename || imageData.original || imageData.base || 'Untitled';
+    return window.editImageInPaint(galleryImageFullUrl(imageData), name);
 };
 
 // Helper for opening reference images (in-app image viewer window; public/scripts/comp/referenceManager.js)

@@ -282,6 +282,12 @@ async function handleGalleryUpdatedData(data) {
         return;
     }
 
+    // isGalleryDeleteBroadcastHeld: public/scripts/comp/galleryView.js — one per batch of this tab's
+    // own delete; removing per batch made the grid reflow mid-operation
+    if (data.action === 'bulk_delete' && isGalleryDeleteBroadcastHeld(data.deletedFilenames)) {
+        return;
+    }
+
     if (window.skipNextGalleryRefresh && window.skipNextGalleryRefresh > 0) {
         window.skipNextGalleryRefresh--;
         return;

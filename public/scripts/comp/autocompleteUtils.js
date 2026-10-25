@@ -1009,11 +1009,11 @@ function isAutofillSearchHighlightValid(textarea) {
     return !!resolveAutofillSearchHighlightMode(textarea);
 }
 
-function syncAutofillSearchHighlight(textarea) {
+function syncAutofillSearchHighlight(textarea, scroll = null) {
     if (!textarea) return;
     const mode = resolveAutofillSearchHighlightMode(textarea);
     if (mode) {
-        updateAutofillSearchHighlight(textarea, mode);
+        updateAutofillSearchHighlight(textarea, mode, scroll);
     } else {
         clearAutofillSearchHighlight(textarea);
     }
@@ -1021,7 +1021,7 @@ function syncAutofillSearchHighlight(textarea) {
 
 const autofillSearchHighlightState = new WeakMap();
 
-function updateAutofillSearchHighlight(textarea, mode) {
+function updateAutofillSearchHighlight(textarea, mode, scroll = null) {
     if (!textarea || !isAutofillTarget(textarea)) return;
     const highlightMode = mode === 'passive' ? 'passive' : 'await';
     if (!isAutofillDetachedMode() && !isCharacterAutocompleteOverlayOpen()) {
@@ -1047,24 +1047,38 @@ function updateAutofillSearchHighlight(textarea, mode) {
         return;
     }
 
+    // Scroll offsets are layout reads: take them before any write below, or pass them in from
+    // measureAutofillOverlayAnchor when the caller already measured (#649)
+    const scrollTop = scroll ? scroll.scrollTop : textarea.scrollTop;
+    const scrollLeft = scroll ? scroll.scrollLeft : textarea.scrollLeft;
+    const prev = autofillSearchHighlightState.get(textarea);
+    // Writing scrollTop/scrollLeft forces a layout too (the value is clamped against the scroll
+    // bounds), ~40-400 ms on this page, so the overlay is only scrolled when the offset changed
+    const syncScroll = () => {
+        if (prev && prev.scrollTop === scrollTop && prev.scrollLeft === scrollLeft) return;
+        highlightOverlay.scrollTop = scrollTop;
+        highlightOverlay.scrollLeft = scrollLeft;
+    };
+    const remember = () => {
+        autofillSearchHighlightState.set(textarea, {
+            start, end, value: text, mode: highlightMode, scrollTop, scrollLeft
+        });
+    };
+
     const modeClass = highlightMode === 'passive'
         ? 'autofill-search-highlight-passive'
         : 'autofill-search-highlight-await';
-    const prev = autofillSearchHighlightState.get(textarea);
     if (prev && prev.start === start && prev.end === end && prev.value === text) {
         if (prev.mode === highlightMode) {
-            highlightOverlay.scrollTop = textarea.scrollTop;
-            highlightOverlay.scrollLeft = textarea.scrollLeft;
+            syncScroll();
+            remember();
             return;
         }
         const span = highlightOverlay.querySelector('.autofill-search-highlight');
         if (span) {
             span.className = `autofill-search-highlight ${modeClass}`;
-            autofillSearchHighlightState.set(textarea, {
-                start, end, value: text, mode: highlightMode
-            });
-            highlightOverlay.scrollTop = textarea.scrollTop;
-            highlightOverlay.scrollLeft = textarea.scrollLeft;
+            syncScroll();
+            remember();
             return;
         }
     }
@@ -1074,11 +1088,8 @@ function updateAutofillSearchHighlight(textarea, mode) {
     const after = text.substring(end);
     // escapeHtml: public/scripts/comp/utilities.js
     highlightOverlay.innerHTML = `${escapeHtml(before)}<span class="autofill-search-highlight ${modeClass}">${escapeHtml(match)}</span>${escapeHtml(after)}`;
-    autofillSearchHighlightState.set(textarea, {
-        start, end, value: text, mode: highlightMode
-    });
-    highlightOverlay.scrollTop = textarea.scrollTop;
-    highlightOverlay.scrollLeft = textarea.scrollLeft;
+    syncScroll();
+    remember();
 }
 
 function clearAutofillSearchHighlight(textarea) {
@@ -1554,6 +1565,15 @@ function syncAutofillViewBarPlacement() {
     }
 
     bar.classList.remove('hidden');
+    // The overlay box was just written by applyCharacterAutocompleteOverlayBox; reading it back
+    // here forced a layout per render pass (#649)
+    const known = autofillOverlayBoxNumbers;
+    if (known) {
+        bar.style.left = known.left + 'px';
+        bar.style.width = known.width + 'px';
+        bar.style.top = Math.max(0, known.top - (known.barH || 32) - 4) + 'px';
+        return;
+    }
     const overlayRect = characterAutocompleteOverlay.getBoundingClientRect();
     const barHeight = bar.offsetHeight || 32;
     bar.style.left = overlayRect.left + 'px';
@@ -1561,26 +1581,55 @@ function syncAutofillViewBarPlacement() {
     bar.style.top = Math.max(0, overlayRect.top - barHeight - 4) + 'px';
 }
 
-function applyCharacterAutocompleteOverlayBox(target) {
+/**
+ * Layout reads for the overlay box and the search highlight, taken before any DOM write of
+ * the render pass. Each read after a write (list rebuild, overlay styles, bar moves) forced a
+ * full style+layout of the page (~40-60 ms here); the autofill render did three or four per
+ * result burst (#649). Read once, then write.
+ * @param {HTMLElement} target prompt field
+ * @returns {{rect: DOMRect, barH: number, innerHeight: number, scrollTop: number, scrollLeft: number}|null}
+ */
+function measureAutofillOverlayAnchor(target) {
+    if (!target) return null;
+    const bar = getAutofillViewBarEl();
+    const barH = bar && !isAutofillDetachedMode() ? (bar.offsetHeight || 32) : 0;
+    return {
+        rect: target.getBoundingClientRect(),
+        barH,
+        innerHeight: window.innerHeight,
+        scrollTop: target.scrollTop,
+        scrollLeft: target.scrollLeft
+    };
+}
+
+// Numbers of the last overlay box set by applyCharacterAutocompleteOverlayBox (the only writer
+// of the overlay position), so the view bar can follow it without reading the overlay back.
+let autofillOverlayBoxNumbers = null;
+
+function applyCharacterAutocompleteOverlayBox(target, measured = null) {
     if (!characterAutocompleteOverlay || !target) return null;
     const bar = getAutofillViewBarEl();
+    // Read before the writes below (measureAutofillOverlayAnchor, #649)
+    const m = measured || measureAutofillOverlayAnchor(target);
     if (bar && !isAutofillDetachedMode()) {
         bar.classList.remove('hidden', 'autofill-view-bar-detached');
         if (bar.parentElement !== document.body) {
             document.body.appendChild(bar);
         }
     }
-    const rect = target.getBoundingClientRect();
-    const barH = bar && !isAutofillDetachedMode() ? (bar.offsetHeight || 32) : 0;
+    const rect = m.rect;
+    const barH = m.barH;
     const gap = 5;
-    const spaceBelow = window.innerHeight - rect.bottom - gap - barH - 4;
-    const maxHeight = Math.min(400, Math.max(80, spaceBelow), window.innerHeight * 0.6);
+    const spaceBelow = m.innerHeight - rect.bottom - gap - barH - 4;
+    const maxHeight = Math.min(400, Math.max(80, spaceBelow), m.innerHeight * 0.6);
+    const top = rect.bottom + gap + barH + 4;
     const box = {
         left: rect.left + 'px',
-        top: (rect.bottom + gap + barH + 4) + 'px',
+        top: top + 'px',
         width: rect.width + 'px',
         maxHeight: maxHeight + 'px'
     };
+    autofillOverlayBoxNumbers = { left: rect.left, top, width: rect.width, barH };
     characterAutocompleteOverlay.style.left = box.left;
     characterAutocompleteOverlay.style.top = box.top;
     characterAutocompleteOverlay.style.width = box.width;
@@ -2665,11 +2714,13 @@ function showAutofillLoadingShell(target) {
 
     if (!characterAutocompleteOverlay) return;
 
-    applyCharacterAutocompleteOverlayBox(target);
+    // One layout read, then the writes (#649)
+    const anchor = measureAutofillOverlayAnchor(target);
+    applyCharacterAutocompleteOverlayBox(target, anchor);
     characterAutocompleteOverlay.classList.remove('hidden');
     isAutocompleteVisible = true;
     syncAutofillViewBarPlacement();
-    syncAutofillSearchHighlight(target);
+    syncAutofillSearchHighlight(target, anchor);
     requestAutofillWikiPreviewsForSession();
 }
 
@@ -8371,6 +8422,10 @@ function updateAutocompleteDisplayImmediate(results, target) {
     // Show all results if expanded or detached tool window; otherwise show only first 5 items
     const limitedResults = shouldAutofillShowAllResults() ? displayResults : displayResults.slice(0, 5);
 
+    // Layout reads first (#649): the rebuild below dirties the page, and every read after it
+    // (overlay box, view bar, highlight scroll) would force a full layout
+    const anchor = measureAutofillOverlayAnchor(target);
+
     // Always rebuild the display when we have new results
     // This ensures we show the latest results from all services
     rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckResult, target);
@@ -8378,12 +8433,12 @@ function updateAutocompleteDisplayImmediate(results, target) {
     // Ensure overlay is positioned and visible (only with active session + server packet)
     if (!isAutofillDetachedMode()) {
         if (!isAutocompleteVisible && canShowAutofillOverlay(target)) {
-            applyCharacterAutocompleteOverlayBox(target);
+            applyCharacterAutocompleteOverlayBox(target, anchor);
             characterAutocompleteOverlay.classList.remove('hidden');
             isAutocompleteVisible = true;
             syncAutofillViewBarPlacement();
         } else if (isAutocompleteVisible) {
-            applyCharacterAutocompleteOverlayBox(target);
+            applyCharacterAutocompleteOverlayBox(target, anchor);
             syncAutofillViewBarPlacement();
         }
     } else {
@@ -8408,7 +8463,7 @@ function updateAutocompleteDisplayImmediate(results, target) {
         updateCharacterAutocompleteSelection();
     }
 
-    syncAutofillSearchHighlight(target);
+    syncAutofillSearchHighlight(target, anchor);
     updateAutofillKeyguide();
     if (isAutofillDetachedMode()) {
         relocateAutofillSearchStatusForMode();

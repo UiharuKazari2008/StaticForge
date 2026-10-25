@@ -318,7 +318,7 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `action` | Optional |
 | `contextTags` | Optional |
 
-**Success response:** `search_files_response`
+**Success response:** `search_files_response` — `data.status` `cache_ready` / `cache_cleared` / `suggestions` / `complete`. For `complete`, `data.results[]` is `{ filename, matchScore, metadata? }` where `metadata` holds only `width`, `height`, `upscaled`, `size`, `mtime` (`getImageDimensionsBatch`, no metadata JSON is loaded for a search, #649), plus `data.count` and `data.tagSuggestions` for the first term.
 
 Additional response/push types from handler:
 - `search_indexing_status`

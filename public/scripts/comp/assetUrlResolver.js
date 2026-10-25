@@ -51,6 +51,30 @@ function localGalleryPreviewUrl(previewName) {
     return `/previews/${encodeURIComponent(previewName)}`;
 }
 
+/** Studio preview WebP for a gallery file: /previews/<stem>@studio.webp, made by the server from /images/ (#648). */
+function localStudioPreviewUrl(filename) {
+    if (!filename || !/\.(png|jpe?g)$/i.test(filename)) return '';
+    return localGalleryPreviewUrl(`${filename.replace(/\.(png|jpe?g)$/i, '')}@studio.webp`);
+}
+
+/**
+ * What Studio's preview <img> shows for a local /images/ URL: the optimised WebP, not the PNG.
+ * Anything else (blob:, data:, remote, already a preview) comes back unchanged. The full
+ * /images/ URL stays the one for download, copy, compare and opening (#648).
+ */
+function studioPreviewDisplayUrl(imageUrl) {
+    const match = /^\/images\/([^?#]+)$/.exec(imageUrl || '');
+    if (!match) return imageUrl;
+    let filename;
+    try {
+        filename = decodeURIComponent(match[1]);
+    } catch (_) {
+        return imageUrl;
+    }
+    // localStudioPreviewUrl: this file
+    return localStudioPreviewUrl(filename) || imageUrl;
+}
+
 /** Local /image/slim|opti URL — always encode path segment. */
 function localGalleryDerivedImageUrl(kind, filename) {
     if (!filename || (kind !== 'slim' && kind !== 'opti')) return '';

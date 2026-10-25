@@ -543,6 +543,10 @@ class StageResultsReviewManager {
                 // openGalleryImageInViewer: public/scripts/comp/galleryView.js
                 openGalleryImageInViewer(image);
                 break;
+            case 'edit-in-paint':
+                // editGalleryImageInPaint: public/scripts/comp/imageViewer.js
+                void editGalleryImageInPaint(image);
+                break;
             case 'view-image-data':
                 // featureLoader: public/scripts/comp/featureLoader.js
                 void featureLoader.loadFeature('image_prompt_inspector').then(() => {

@@ -572,6 +572,7 @@ function processNextPlaceholders() {
         placeholderResolutionDelay = 0;
         placeholderResolutionFrameCount = 0;
         placeholderQueueSizeHistory = [];
+        sweepVisiblePlaceholdersOnce();
         return;
     }
 
@@ -849,9 +850,20 @@ function processNextPlaceholders() {
     }
     placeholderWatcherRunning = false;
     placeholderWatcherFrameId = null;
+    sweepVisiblePlaceholdersOnce();
     } finally {
         updateGalleryCatchupBusyLine();
     }
+}
+
+// Once per scroll gesture, when the resolver runs dry: queue any placeholder still on screen. A
+// cell the stop pass missed (or one the full queue refused) otherwise waited for the next scroll.
+// The flag resets on the next user scroll (throttledInfiniteScroll), so this cannot loop.
+let placeholderIdleSweepDone = false;
+function sweepVisiblePlaceholdersOnce() {
+    if (placeholderIdleSweepDone || isScrolling || isFastScrolling) return;
+    placeholderIdleSweepDone = true;
+    resolveVisiblePlaceholders();
 }
 
 // Add placeholder to resolution queue
@@ -868,8 +880,27 @@ function queuePlaceholderResolution(element, fileImageIndex, filteredIndex) {
     const currentCapacity = galleryRows * realGalleryColumns;
     const queueLimit = currentCapacity + (multiplexingLevel * 12); // Larger buffer so fast scroll does not starve visible rows
 
-    // Don't add to queue if we're already at capacity
-    if (placeholderResolutionQueue.length >= queueLimit) return;
+    // At capacity the entry farthest from this one (by gallery index, no layout) gives way: during a
+    // fling the queue fills with cells long scrolled past, and refusing the new ones left the cells on
+    // screen at the stop on their BlurHash for good (#647)
+    if (placeholderResolutionQueue.length >= queueLimit) {
+        let evict = -1;
+        let evictDistance = -1;
+        for (let qi = 0; qi < placeholderResolutionQueue.length; qi++) {
+            const entry = placeholderResolutionQueue[qi];
+            if (!entry.element || !entry.element.isConnected || !entry.element.classList.contains('gallery-placeholder')) {
+                evict = qi;
+                break;
+            }
+            const distance = Math.abs((entry.filteredIndex || 0) - (filteredIndex || 0));
+            if (distance > evictDistance) {
+                evictDistance = distance;
+                evict = qi;
+            }
+        }
+        if (evict < 0) return;
+        placeholderResolutionQueue.splice(evict, 1);
+    }
 
     placeholderResolutionQueue.push({ element, fileImageIndex, filteredIndex });
     if (!placeholderWatcherRunning) {
@@ -1406,6 +1437,9 @@ function isGalleryImageDeleteHeld(image) {
     return false;
 }
 
+// While a delete runs, its cells keep the thumbnails they already show (stripping them blanked
+// the cells for the whole operation); only loads not yet finished are stopped, since the files
+// are going away. The cells leave the grid together when the delete completes.
 function holdGalleryImageLoads(names) {
     const items = new Set();
     for (let i = 0; i < names.length; i++) {
@@ -1416,11 +1450,16 @@ function holdGalleryImageLoads(names) {
         const item = getGalleryItemByFilename(name);
         if (item) items.add(item);
     }
-    items.forEach((item) => {
-        abortPendingGalleryItemImage(item);
-        const img = item.querySelector('img');
-        if (img) releaseGalleryItemImage(img);
-    });
+    items.forEach((item) => abortPendingGalleryItemImage(item));
+}
+
+/** A gallery_updated bulk_delete for files this tab is still deleting: the delete removes them itself when done. */
+function isGalleryDeleteBroadcastHeld(filenames) {
+    if (!galleryDeleteHold.size || !Array.isArray(filenames) || !filenames.length) return false;
+    for (let i = 0; i < filenames.length; i++) {
+        if (!galleryDeleteHold.has(filenames[i])) return false;
+    }
+    return true;
 }
 
 function releaseGalleryImageLoads(names) {
@@ -3952,6 +3991,12 @@ function buildGalleryItemContextMenuConfigBase(image, item) {
                         hideOnBreakpoint: "small-mobile"
                     },
                     {
+                        icon: 'fas fa-paintbrush',
+                        text: 'Edit in Paint',
+                        action: 'edit-in-paint',
+                        hideOnBreakpoint: "small-mobile"
+                    },
+                    {
                         icon: 'fas fa-eye-dropper',
                         text: 'Use as Comparison Source',
                         action: 'use-as-compare-source',
@@ -4778,28 +4823,23 @@ async function loadMoreImages() {
         isLoadingMore = true;
         if (infiniteScrollLoading) infiniteScrollLoading.classList.remove('hidden');
 
-        // Check if there are actually more images to load
-        const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-        let lastRealIndex = -1;
+        // Continue after the strip's last cell, placeholders included. Starting after the last
+        // resolved cell appended a second copy of every trailing placeholder (#647: 163 of 360
+        // cells were duplicates after a few flings, interleaved out of order).
+        const lastChild = gallery.lastElementChild;
+        const lastIndex = lastChild && lastChild.dataset.index !== undefined
+            ? parseInt(lastChild.dataset.index, 10)
+            : -1;
+        const lastStripIndex = Number.isFinite(lastIndex) ? lastIndex : -1;
 
-        for (let i = items.length - 1; i >= 0; i--) {
-            if (items[i].classList.contains('gallery-placeholder')) {
-                continue;
-            } else {
-                lastRealIndex = parseInt(items[i].dataset.index);
-                break;
-            }
-        }
-
-        // If lastRealIndex is at or beyond the end, there are no more images to load
-        // lastRealIndex is a filtered index, so compare to filteredImageIndices length
+        // lastStripIndex is a filtered index, so compare to filteredImageIndices length
         const loadMoreBeforeLength = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
-        if (lastRealIndex >= loadMoreBeforeLength - 1) {
+        if (lastStripIndex >= loadMoreBeforeLength - 1) {
             return;
         }
 
         // Determine the starting index for new images
-        const startIndex = lastRealIndex + 1;
+        const startIndex = lastStripIndex + 1;
         const batchSize = calculateDynamicBatchSize();
         // Use filteredImageIndices length if filtering is active, otherwise use allImages length
         const loadMoreEffectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
@@ -4818,6 +4858,10 @@ async function loadMoreImages() {
                     ? window.filteredImageIndices[i]
                     : i;
                 const image = allImages[fileIndex];
+                if (!image) continue;
+                const filename = image.filename || image.original || image.upscaled;
+                // getGalleryItemByFilename: this file
+                if (filename && getGalleryItemByFilename(filename)) continue;
                 const item = createGalleryItem(image, i); // i is filtered position for data-index
                 gallery.appendChild(item);
 
@@ -4862,12 +4906,17 @@ async function loadMoreImagesBefore() {
         // Calculate dynamic batch size based on viewport
         const dynamicBatchSize = calculateDynamicBatchSize();
 
-        // Calculate previous batch of images
-        const endIndex = displayedStartIndex;
+        // Calculate previous batch of images: above the strip's first cell. displayedStartIndex
+        // can lag behind the placeholders added above, and getOrCreateGalleryItem then pulled
+        // cells already in the strip back to the top, out of order and without their picture (#647).
+        const firstChild = gallery.firstElementChild;
+        const firstIndex = firstChild && firstChild.dataset.index !== undefined
+            ? parseInt(firstChild.dataset.index, 10)
+            : NaN;
+        const endIndex = Number.isFinite(firstIndex) ? firstIndex : displayedStartIndex;
         const startIndex = Math.max(0, endIndex - dynamicBatchSize);
-        const prevBatch = allImages.slice(startIndex, endIndex);
 
-        if (prevBatch.length === 0) {
+        if (endIndex <= 0) {
             hasMoreImagesBefore = false;
             return;
         }
@@ -4881,7 +4930,9 @@ async function loadMoreImagesBefore() {
                 : i;
             // Create as gallery-item with placeholder class
             const image = allImages[fileIndex];
-            if (image) {
+            const filename = image && (image.filename || image.original || image.upscaled);
+            // getGalleryItemByFilename: this file
+            if (image && !(filename && getGalleryItemByFilename(filename))) {
                 const item = getOrCreateGalleryItem(image, i, true); // Skip img element for placeholders
                 item.classList.add('gallery-placeholder');
                 gallery.insertBefore(item, gallery.firstChild);
@@ -5344,39 +5395,26 @@ function processPlaceholderCleanup() {
         return;
     }
 
-    // Get row height from first valid placeholder (single getBoundingClientRect call)
-    const firstPlaceholder = validPlaceholders[0];
-    const firstRect = firstPlaceholder.getBoundingClientRect();
-    const rowHeight = firstRect.height > 0 ? firstRect.height : 100;
-    const firstRowTop = firstRect.top;
-
-    // Batch getBoundingClientRect calls - read all positions in one layout pass
-    const rects = validPlaceholders.map(p => ({
-        element: p,
-        rect: p.getBoundingClientRect()
-    }));
-
-    // Group placeholders by row in a single pass
-    const placeholdersByRow = new Map();
-    for (const { element, rect } of rects) {
-        const rowKey = Math.round(rect.top / rowHeight);
-        if (!placeholdersByRow.has(rowKey)) {
-            placeholdersByRow.set(rowKey, []);
-        }
-        placeholdersByRow.get(rowKey).push(element);
-    }
-
-    // Collect only complete rows, but cap per cleanup pass to avoid rapid reflow jumps.
+    // Whole rows at the strip's top and bottom edges only, capped per pass to avoid rapid reflow
+    // jumps. Any complete queued row used to go: rows added above since the queue was built put
+    // those in the middle of the strip, and removing them left holes in the gallery (#647).
+    const queued = new Set(validPlaceholders);
+    const removable = (el) => queued.has(el) && el.classList.contains('gallery-placeholder') && el.dataset.selected !== 'true';
     const maxRowsPerCleanup = isIOS ? 3 : 6;
-    const placeholdersToRemove = [];
-    let rowsQueuedForRemoval = 0;
-    for (const placeholdersInRow of placeholdersByRow.values()) {
-        if (placeholdersInRow.length >= currentItemsPerRow) {
-            placeholdersToRemove.push(...placeholdersInRow.slice(0, currentItemsPerRow));
-            rowsQueuedForRemoval++;
-            if (rowsQueuedForRemoval >= maxRowsPerCleanup) break;
-        }
+    const maxCells = maxRowsPerCleanup * currentItemsPerRow;
+    const fromTop = [];
+    for (let el = gallery.firstElementChild; el && removable(el) && fromTop.length < maxCells; el = el.nextElementSibling) {
+        fromTop.push(el);
     }
+    fromTop.length -= fromTop.length % currentItemsPerRow;
+    const takenFromTop = new Set(fromTop);
+    const fromBottom = [];
+    for (let el = gallery.lastElementChild; el && removable(el) && !takenFromTop.has(el)
+        && fromTop.length + fromBottom.length < maxCells; el = el.previousElementSibling) {
+        fromBottom.push(el);
+    }
+    fromBottom.length -= fromBottom.length % currentItemsPerRow;
+    const placeholdersToRemove = fromTop.concat(fromBottom);
 
     if (placeholdersToRemove.length === 0) {
         placeholderCleanupQueue.clear();
@@ -5414,8 +5452,18 @@ function processPlaceholderCleanup() {
         });
     }
 
-    // Clear the queue
-    placeholderCleanupQueue.clear();
+    // A capped pass leaves the rest of the queued edge rows for the next tick. Clearing the queue
+    // here dropped them, so each stop removed 6 rows while a fling adds 30+ and the strip only grew
+    // (600+ cells after a few flings, #647).
+    for (const placeholder of placeholdersToRemove) placeholderCleanupQueue.delete(placeholder);
+    if (placeholdersToRemove.length >= maxCells && placeholderCleanupQueue.size > 0) {
+        cleanupTimeout = setTimeout(() => {
+            cleanupTimeout = null;
+            processPlaceholderCleanup();
+        }, 120);
+    } else {
+        placeholderCleanupQueue.clear();
+    }
 }
 
 // Resolve all currently visible placeholders after fast scrolling stops using the existing queue system
@@ -5883,26 +5931,26 @@ function updateVirtualScrollInternal() {
                         continue;
                     }
                 }
-                if (allowObserverResolution) {
-                    // Fast connection: resolve directly via observer with throttling
-                    const now = Date.now();
-                    if (now - lastObserverResolutionTime >= observerResolutionThrottleMs) {
-                        lastObserverResolutionTime = now;
-                        const fileIndex = parseInt(el.dataset.fileIndex, 10);
-                        const image = allImages && Number.isFinite(fileIndex) ? allImages[fileIndex] : null;
-                        // ensureGalleryItemComplete: public/scripts/comp/galleryView.js
+                // Fast connection: one cell per throttle window directly. The others go to the queue:
+                // the throttle is Date.now()-based, so in one pass only the first cell got through and
+                // the rest stayed on their BlurHash until the next scroll (#647).
+                const now = Date.now();
+                if (allowObserverResolution && now - lastObserverResolutionTime >= observerResolutionThrottleMs) {
+                    lastObserverResolutionTime = now;
+                    const fileIndex = parseInt(el.dataset.fileIndex, 10);
+                    const image = allImages && Number.isFinite(fileIndex) ? allImages[fileIndex] : null;
+                    // ensureGalleryItemComplete: public/scripts/comp/galleryView.js
+                    if (image) {
+                        ensureGalleryItemComplete(el, image, fileIndex);
+                    }
+                    el.classList.remove('gallery-placeholder');
+                    if (!galleryItemHasImageWork(el)) {
                         if (image) {
-                            ensureGalleryItemComplete(el, image, fileIndex);
-                        }
-                        el.classList.remove('gallery-placeholder');
-                        if (!galleryItemHasImageWork(el)) {
-                            if (image) {
-                                addImgToGalleryItemAsync(el, image);
-                            }
+                            addImgToGalleryItemAsync(el, image);
                         }
                     }
                 } else {
-                    // Slow connection or scrolling: queue for background resolution to prevent flickering
+                    // Slow connection, scrolling, or past the throttle: queue for background resolution
                     const fileImageIndex = parseInt(el.dataset.fileIndex);
                     const filteredIndex = parseInt(el.dataset.index);
                     queuePlaceholderResolution(el, fileImageIndex, filteredIndex);
@@ -5915,17 +5963,14 @@ function updateVirtualScrollInternal() {
                     immediateVisibleResolved++;
                     continue;
                 }
-                if (allowObserverResolution) {
-                    // Fast connection: resolve standalone placeholders directly with throttling
-                    const now = Date.now();
-                    if (now - lastObserverResolutionTime >= observerResolutionThrottleMs) {
-                        lastObserverResolutionTime = now;
-                        // Remove placeholder class and replace with gallery-item
-                        el.classList.remove('gallery-placeholder');
-                        el.classList.add('gallery-item');
-                    }
+                const now = Date.now();
+                if (allowObserverResolution && now - lastObserverResolutionTime >= observerResolutionThrottleMs) {
+                    lastObserverResolutionTime = now;
+                    // Remove placeholder class and replace with gallery-item
+                    el.classList.remove('gallery-placeholder');
+                    el.classList.add('gallery-item');
                 } else {
-                    // Slow connection or scrolling: queue standalone placeholders too
+                    // Slow connection, scrolling, or past the throttle: queue standalone placeholders too
                     const fileImageIndex = parseInt(el.dataset.fileIndex);
                     const filteredIndex = parseInt(el.dataset.index);
                     queuePlaceholderResolution(el, fileImageIndex, filteredIndex);
@@ -6851,6 +6896,7 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
     function throttledInfiniteScroll() {
         // Mark as scrolling and clear any existing timeout
         isScrolling = true;
+        placeholderIdleSweepDone = false;
         setGalleryScrollShield(true);
         if (scrollEndTimeout) clearTimeout(scrollEndTimeout);
 
@@ -8246,6 +8292,11 @@ function handleGalleryContextMenuAction(event) {
         case 'copy':
             // Copy image to clipboard directly
             copyImageToClipboard(image);
+            break;
+
+        case 'edit-in-paint':
+            // editGalleryImageInPaint: public/scripts/comp/imageViewer.js
+            void editGalleryImageInPaint(image);
             break;
 
         case 'open-in-window':
@@ -10264,7 +10315,6 @@ async function deleteImage(image, event = null) {
             holdNames.push(filenameToDelete);
         }
         holdGalleryImageLoads(holdNames);
-        window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
 
         let deleted = false;
         try {
@@ -10290,9 +10340,6 @@ async function deleteImage(image, event = null) {
             }
         } finally {
             releaseGalleryImageLoads(holdNames);
-            if (!deleted) {
-                window.skipNextGalleryRefresh = Math.max(0, (window.skipNextGalleryRefresh || 1) - 1);
-            }
         }
 
         return deleted;

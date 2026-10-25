@@ -1060,6 +1060,7 @@ const vsbSlideMenu = function (inst) {
     items.push({ separator: true },
         { text: 'Go to Photo', icon: 'fas fa-images', action: 'vsb-slide-goto' },
         { text: 'Open in Studio', icon: 'fas fa-compass-drafting', action: 'vsb-slide-studio' },
+        { text: 'Edit in Paint', icon: 'fas fa-paintbrush', action: 'vsb-slide-paint' },
         { text: 'Properties', icon: 'fas fa-glasses-round', action: 'vsb-slide-properties' },
         // checkIfImageIsPinned: public/scripts/comp/galleryView.js (local gallery data only)
         { text: 'Favorite', action: 'vsb-slide-favorite', showIndicator: true, checked: !!checkIfImageIsPinned(image.filename) });
@@ -1078,6 +1079,10 @@ const vsbSlidePhotoAction = function (inst, action, event) {
         case 'vsb-slide-studio':
             // openManualModalWithContent: public/scripts/comp/manualModalManager.js
             openManualModalWithContent({ type: 'image', image, metadata: image.metadata || null }, event);
+            break;
+        case 'vsb-slide-paint':
+            // editGalleryImageInPaint: public/scripts/comp/imageViewer.js
+            void editGalleryImageInPaint(image);
             break;
         case 'vsb-slide-properties':
             // featureLoader: public/scripts/comp/featureLoader.js; openImagePromptInspector: public/scripts/comp/imagePromptInspector.js
@@ -3279,6 +3284,7 @@ const vsbHandleMenuAction = function (action, inst, event, item) {
         case 'vsb-slide-prev': vsbSlideStep(inst, -1); break;
         case 'vsb-slide-goto':
         case 'vsb-slide-studio':
+        case 'vsb-slide-paint':
         case 'vsb-slide-properties':
         case 'vsb-slide-favorite': vsbSlidePhotoAction(inst, action, event); break;
         default: break;

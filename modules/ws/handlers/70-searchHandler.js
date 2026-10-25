@@ -52,7 +52,7 @@ function pruneOmegasearchSessionsForClient(clientSessionId) {
 async function enrichOmegasearchPageResults(metadataDb, pageResults, viewType) {
     const enriched = [];
     const filenames = pageResults.map(r => r.filename);
-    const metadataBatch = await metadataDb.getMultipleMetadata(filenames);
+    const metadataBatch = await metadataDb.getImageDimensionsBatch(filenames);
 
     for (const result of pageResults) {
         const row = { filename: result.filename, matchScore: result.matchScore || 0 };
@@ -83,7 +83,7 @@ async function filterOmegasearchResultsForView(metadataDb, searchResults, viewTy
     }
     const upscaled = [];
     const filenames = searchResults.map(r => r.filename);
-    const metadataBatch = await metadataDb.getMultipleMetadata(filenames);
+    const metadataBatch = await metadataDb.getImageDimensionsBatch(filenames);
     for (const result of searchResults) {
         const metadata = metadataBatch[result.filename];
         if (metadata && metadata.upscaled) {
@@ -1191,10 +1191,10 @@ async function searchFilesByTags(handlers, query, viewType, sessionId) {
             // Filter by upscaled status if needed
             let filteredResults = searchResults;
             if (viewType === 'upscaled') {
-                // Get metadata for results to check upscaled status
+                // Dimensions only (#649): getMultipleMetadata parsed every hit's metadata JSON
                 const resultsWithMetadata = [];
                 const filenames = searchResults.map(r => r.filename);
-                const metadataBatch = await metadataDb.getMultipleMetadata(filenames);
+                const metadataBatch = await metadataDb.getImageDimensionsBatch(filenames);
                 for (const result of searchResults) {
                     const metadata = metadataBatch[result.filename];
                     if (metadata && metadata.upscaled) {
@@ -1210,9 +1210,9 @@ async function searchFilesByTags(handlers, query, viewType, sessionId) {
                 }
                 filteredResults = resultsWithMetadata;
             } else {
-                // Get metadata for all results
+                // Dimensions only for all results (#649)
                 const filenames = filteredResults.map(r => r.filename);
-                const metadataBatch = await metadataDb.getMultipleMetadata(filenames);
+                const metadataBatch = await metadataDb.getImageDimensionsBatch(filenames);
                 for (const result of filteredResults) {
                     const metadata = metadataBatch[result.filename];
                     if (metadata) {

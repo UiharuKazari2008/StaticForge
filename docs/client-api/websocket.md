@@ -204,7 +204,7 @@ When `enableStreaming: true` on `generate_image`, `generate_preset`, `expand_ima
 - Intermediate/progress via `image_generation_progress`, `dynamic_generation_progress_update`
 - Under congestion / high client RTT, server still sends progress counters but **drops** step-preview image payloads (`imageData` / `stepFrames`) so the WS backlog does not grow (`modules/websocketHandlers.js` `shouldSendStepPreviewImages`, threshold aligned with client `pingWarningThreshold` 500ms)
 - Staged/pipeline runs emit `phase: "stage_complete"` after each earlier stage so the editor preview can swap to that result; `phase: "complete"` is reserved for the last stage
-- Final result still on `image_generation_response` (or domain-specific `*_response`)
+- Final result still on `image_generation_response` (or domain-specific `*_response`). With `imageTransport: "http"` on the request (the web client's default) the reply carries no base64 `image`; the file is fetched over HTTP (#649)
 - Client tracks streaming sessions in `WebSocketClient` (`beginStreamingStepSession`, etc.)
 
 ## Server-initiated messages (no requestId)

@@ -1877,6 +1877,12 @@ const omegasearchDsapDriver = {
                     icon: 'fas fa-window',
                     action: 'omega-open-window-file',
                     data: { filename }
+                },
+                {
+                    text: 'Edit in Paint',
+                    icon: 'fas fa-paintbrush',
+                    action: 'omega-edit-paint-file',
+                    data: { filename }
                 }
             ];
         });
@@ -1893,6 +1899,11 @@ const omegasearchDsapDriver = {
                     text: 'Open in Studio',
                     icon: 'fas fa-compass-drafting',
                     action: 'omega-open-studio-detail'
+                },
+                {
+                    text: 'Edit in Paint',
+                    icon: 'fas fa-paintbrush',
+                    action: 'omega-edit-paint-detail'
                 }
             ];
         });
@@ -1941,6 +1952,18 @@ const omegasearchDsapDriver = {
 
         host.registerContextMenuAction('omega-open-studio-detail', () => {
             this._openDetailInEditor();
+        });
+
+        // editGalleryImageInPaint: public/scripts/comp/imageViewer.js
+        host.registerContextMenuAction('omega-edit-paint-file', (el, item) => {
+            const filename = (item && item.data && item.data.filename)
+                || el?.closest?.('.omega-dsap-gallery-item')?.dataset?.filename;
+            if (filename) void editGalleryImageInPaint(omegasearchDsapResolveDetailImage(filename, null));
+        });
+
+        host.registerContextMenuAction('omega-edit-paint-detail', () => {
+            const filename = this._state?.detailFile;
+            if (filename) void editGalleryImageInPaint(omegasearchDsapResolveDetailImage(filename, this._state?.detailMetadata));
         });
 
         host.registerContextMenuItems('.omega-dsap-usage-row', (el) => {

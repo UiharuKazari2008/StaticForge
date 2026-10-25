@@ -999,6 +999,7 @@ function glancewellMenuItems(key) {
         return [
             { text: 'Lumen', action: 'gw-lumen', disabled: !gallery },
             { text: 'DreamStudio', action: 'gw-studio' },
+            { text: 'Paint', action: 'gw-paint', disabled: !pic.src && !gallery },
             { text: 'Gallery', action: 'gw-gallery', disabled: !gallery },
             { separator: true },
             { text: 'Create Persona', action: 'gw-persona', disabled: !gallery }
@@ -1048,6 +1049,11 @@ async function runGlancewellAction(action, event) {
             break;
         case 'gw-fix':
         case 'gw-studio': glancewellViewerCall('openInCreator'); break;
+        case 'gw-paint':
+            // editGalleryImageInPaint / editImageInPaint: public/scripts/comp/imageViewer.js
+            if (pic.filename) void editGalleryImageInPaint(pic.metadata);
+            else if (pic.src) void editImageInPaint(pic.src, 'Picture');
+            break;
         case 'gw-persona': void glancewellViewerCall('startChat'); break;
         case 'gw-email':
             // askWrenAboutImage: public/scripts/comp/director.js

@@ -454,7 +454,8 @@ function isPreviewSameAsCompareSource() {
     if (!previewImage || !previewImage.src) {
         return true;
     }
-    if (previewImage.src === compareSourceImageData.url) {
+    // The preview shows the Studio WebP; manualPreviewUrl is the file it stands for (#648)
+    if (previewImage.src === compareSourceImageData.url || previewImage.dataset.manualPreviewUrl === compareSourceImageData.url) {
         return true;
     }
     const cur = window.currentManualPreviewImage;

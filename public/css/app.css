@@ -19,9 +19,11 @@
     --window-inset-right: env(safe-area-inset-right, 0px);
 
     /* Build on --titlebar-area-height so the Android caption bar (--caption-bar-height) counts too;
-       env(titlebar-area-*) only exists in an installed PWA with Window Controls Overlay. */
-    --true-inset-top: calc(var(--titlebar-area-height, 0px) + env(safe-area-inset-top, 0px));
-    --true-window-inset-top: calc(var(--titlebar-area-height, 0px) + env(safe-area-inset-top, 0px));
+       env(titlebar-area-*) only exists in an installed PWA with Window Controls Overlay.
+       max(), not a sum: the Android WebView also reports its caption bar as safe-area-inset-top,
+       so adding the two counted the same 40px band twice. */
+    --true-inset-top: max(var(--titlebar-area-height, 0px), env(safe-area-inset-top, 0px));
+    --true-window-inset-top: max(var(--titlebar-area-height, 0px), env(safe-area-inset-top, 0px));
 
     /*
      * Window Controls Overlay: regions outside titlebar-area-x / (x + width) are reserved by the OS for
@@ -758,6 +760,11 @@ body.desktop-mode #titlebar-grab-area-container #menu-bar-controls-right {
 body.desktop-mode #titlebar-grab-area-container #menu-bar-controls-right-gutter {
     min-width: 56px;
     background: linear-gradient(270deg, black 0px, transparent 56px, transparent 100%);
+}
+
+/* The Android host draws its own caption buttons; no fade next to them */
+.titlebar-android body.desktop-mode #titlebar-grab-area-container #menu-bar-controls-right-gutter {
+    background: none;
 }
 
 body.desktop-mode #titlebar-grab-area-container #menu-bar-controls-right-gutter .websocket-ticker,

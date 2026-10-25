@@ -224,9 +224,10 @@ Studio `generate_image`, `generate_preset`, and `reroll_image` enqueue on the sa
 | `requestId` | Optional |
 | `enableStreaming` | Optional |
 | `n` | Optional print count (2–8). Server runs the existing generate path that many times and emits print-level `stage_complete` / `complete`. Omitted or `1` is a single generate |
+| `imageTransport` | Optional. `"http"` drops the base64 `image` from the reply (`data.image` is `null`); the caller fetches `/images/<filename>` with `data.contentLength`. The web client always sends it on `generate_image`, `reroll_image`, `upscale_image`, `expand_image`, `reroll_expanded_image`, `enhance_image` and `max_enhance_image` (#649). Omitted: the reply keeps the inline image as before |
 | `...data` | Optional |
 
-**Success response:** `image_generation_response`
+**Success response:** `image_generation_response` — `data.image` (base64 PNG unless `imageTransport: "http"`), `filename`, `seed`, `metadata`, `contentLength`, `jobId?`
 
 Additional response/push types from handler:
 - `image_generation_intermediate`

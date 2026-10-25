@@ -2536,6 +2536,60 @@ async function getLightweightMetadata(filenames) {
  * Note: Receipts are excluded for performance - use getCachedMetadata() for single image with receipts
  * Uses batching to prevent OOM when processing large lists
  */
+/**
+ * Width/height/upscaled/size/mtime for many files, without loading the metadata JSON.
+ * Image Search and Omegasearch only need these five fields per hit; getMultipleMetadata
+ * read and JSON.parse'd the whole metadata column (avg 14 KB, 23 MB for a 1.7k-file
+ * workspace) on the main thread for every search (#649). Hot (just-written, not yet
+ * flushed) rows come from the write queue so a fresh print is never missing.
+ * @param {string[]} filenames
+ * @returns {Promise<Object<string, {width:number|null,height:number|null,upscaled:boolean,size:number|null,mtime:number|null}>>}
+ */
+async function getImageDimensionsBatch(filenames) {
+    const result = {};
+    if (!Array.isArray(filenames) || filenames.length === 0) {
+        return result;
+    }
+    if (!dbInitialized || !db) {
+        throw new Error('Database not initialized');
+    }
+
+    const hot = metadataWriteQueue.getHotImagesBatch(filenames);
+    for (const [filename, record] of Object.entries(hot)) {
+        if (!record) continue;
+        result[filename] = {
+            width: record.width ?? null,
+            height: record.height ?? null,
+            upscaled: Boolean(record.upscaled),
+            size: record.size ?? null,
+            mtime: record.mtime ?? null
+        };
+    }
+
+    const dbLookup = filenames.filter((filename) => !result[filename]);
+    const readDb = await getReadOnlyDatabase();
+    const readHandle = readDb || db;
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < dbLookup.length; i += BATCH_SIZE) {
+        const batch = dbLookup.slice(i, i + BATCH_SIZE);
+        const placeholders = batch.map(() => '?').join(',');
+        const rows = await readHandle.all(
+            `SELECT filename, width, height, upscaled, size, mtime FROM images WHERE filename IN (${placeholders})`,
+            batch
+        );
+        for (const row of rows) {
+            result[row.filename] = {
+                width: row.width,
+                height: row.height,
+                upscaled: Boolean(row.upscaled),
+                size: row.size,
+                mtime: row.mtime
+            };
+        }
+    }
+    return result;
+}
+
 async function getMultipleMetadata(filenames) {
     if (!filenames || filenames.length === 0) {
         return {};
@@ -8321,6 +8375,7 @@ module.exports = {
     reconcileGalleryOwnershipFromWorkspaces,
     removeGalleryOwnershipForFilenames,
     getMultipleMetadata,
+    getImageDimensionsBatch,
     addReceiptMetadata,
     setImageBlurhash,
     syncGalleryItemBlurhashesFromImages,

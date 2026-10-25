@@ -410,6 +410,12 @@ class SpellbookModalManager {
                             disabled: () => !hasImage()
                         },
                         {
+                            icon: 'fas fa-paintbrush',
+                            text: 'Edit in Paint',
+                            action: 'spellcaster-edit-paint',
+                            disabled: () => !hasImage()
+                        },
+                        {
                             icon: 'mdi mdi-1-25 mdi-relative-scale',
                             text: 'Expand Canvas',
                             action: 'spellcaster-expand',
@@ -547,6 +553,10 @@ class SpellbookModalManager {
                 if (image) {
                     openManualModalWithContent({ type: 'image', image });
                 }
+                break;
+            case 'spellcaster-edit-paint':
+                // editGalleryImageInPaint: public/scripts/comp/imageViewer.js
+                if (image) void editGalleryImageInPaint(image);
                 break;
             case 'spellcaster-expand':
                 void this.handleExpand();

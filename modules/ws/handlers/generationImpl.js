@@ -179,6 +179,23 @@ function normalizeExpansionOverrideParams(data) {
     return merged;
 }
 
+/**
+ * The base64 copy of the finished print in a generation-family reply (#649).
+ * The web client never reads it: it fetches /images/<filename> over HTTP (contentLength
+ * drives its progress) and asks for `imageTransport: "http"` on the request, which drops
+ * the field here so neither side stringifies/parses several MB of JSON on its main thread
+ * per print. Other WS consumers that did not send the flag keep the inline image.
+ * @param {object} message request packet
+ * @param {Buffer|null} buffer image bytes, if the result carries them
+ * @param {string|null} [base64] already-encoded image (expansion results)
+ * @returns {string|null}
+ */
+function generationReplyImage(message, buffer, base64 = null) {
+    if (message && message.imageTransport === 'http') return null;
+    if (buffer) return buffer.toString('base64');
+    return base64 || null;
+}
+
 async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsServer) {
     const requestId = message.requestId || 'unknown';
     let outcome = null;
@@ -248,7 +265,7 @@ async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsSe
 
             const contentLength = handlers.resolveGeneratedImageContentLength(result);
             const responseData = {
-                image: result.buffer ? result.buffer.toString('base64') : null,
+                image: generationReplyImage(message, result.buffer),
                 filename: result.filename,
                 seed: result.seed || null,
                 metadata: result.metadata,
@@ -276,7 +293,7 @@ async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsSe
 
             const contentLength = handlers.resolveGeneratedImageContentLength(result);
             const responseData = {
-                image: result.buffer ? result.buffer.toString('base64') : null,
+                image: generationReplyImage(message, result.buffer),
                 filename: result.filename,
                 seed: result.seed || null,
                 metadata: result.metadata,
@@ -377,7 +394,7 @@ async function handleImageRerollWork(handlers, ws, message, clientInfo, wsServer
             type: 'image_reroll_response',
             requestId: requestId,
             data: {
-                image: result.buffer ? result.buffer.toString('base64') : null,
+                image: generationReplyImage(message, result.buffer),
                 filename: result.filename,
                 seed: result.seed || null,
                 originalFilename: filename
@@ -450,7 +467,7 @@ async function handleImageUpscaling(handlers, ws, message, clientInfo, wsServer)
             type: 'image_upscaling_response',
             requestId: requestId,
             data: {
-                image: result.buffer ? result.buffer.toString('base64') : null,
+                image: generationReplyImage(message, result.buffer),
                 filename: result.filename,
                 metadata: result.metadata,
                 contentLength,
@@ -679,7 +696,7 @@ async function handleImageExpansion(handlers, ws, message, clientInfo, wsServer)
             type: 'image_expansion_response',
             requestId: requestId,
             data: {
-                image: result.image,
+                image: generationReplyImage(message, null, result.image),
                 filename: result.filename,
                 seed: result.seed,
                 expansionPrompt: result.expansionPrompt,
@@ -755,7 +772,7 @@ async function handleMaxEnhanceImage(handlers, ws, message, clientInfo, wsServer
             type: 'max_enhance_image_response',
             requestId,
             data: {
-                image: result.buffer ? result.buffer.toString('base64') : null,
+                image: generationReplyImage(message, result.buffer),
                 filename: result.filename,
                 seed: result.seed,
                 metadata: result.metadata,
@@ -822,7 +839,7 @@ async function handleEnhanceImage(handlers, ws, message, clientInfo, wsServer) {
                 type: 'enhance_image_response',
                 requestId,
                 data: {
-                    image: result.buffer ? result.buffer.toString('base64') : null,
+                    image: generationReplyImage(message, result.buffer),
                     filename: result.filename,
                     seed: null,
                     metadata: result.metadata,
@@ -871,7 +888,7 @@ async function handleEnhanceImage(handlers, ws, message, clientInfo, wsServer) {
             type: 'enhance_image_response',
             requestId,
             data: {
-                image: result.buffer ? result.buffer.toString('base64') : null,
+                image: generationReplyImage(message, result.buffer),
                 filename: result.filename,
                 seed: result.seed,
                 metadata: result.metadata,
@@ -949,7 +966,7 @@ async function handleImageExpansionReroll(handlers, ws, message, clientInfo, wsS
             type: 'image_expansion_reroll_response',
             requestId: requestId,
             data: {
-                image: result.image,
+                image: generationReplyImage(message, null, result.image),
                 filename: result.filename,
                 seed: result.seed,
                 expansionPrompt: result.expansionPrompt,
@@ -1213,6 +1230,7 @@ async function handleLocalAnimateStatus(handlers, ws, message) {
 }
 
 module.exports = {
+    generationReplyImage,
     handleImageGeneration,
     handleImageReroll,
     handleImageUpscaling,

@@ -2187,6 +2187,7 @@ function studioIsPreviewMenuAction(action) {
         || action === 'copy'
         || action === 'download'
         || action === 'open-in-window'
+        || action === 'edit-in-paint'
         || action === 'view-image-data'
         || action === 'expand-canvas'
         || action === 'enhance'

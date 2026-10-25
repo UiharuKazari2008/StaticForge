@@ -103,6 +103,42 @@ assert.ok(!rootAnchoredHas('.gallery-item:has(.x) .y'), 'a :has() on an ordinary
 assert.ok(rootAnchoredHas('html:has(body.desktop-mode)'), 'guard catches subject :has() on html too (~4 ms per DOM change)');
 assert.ok(!rootAnchoredHas('body.desktop-mode .modal:has(.x) .y'), 'a :has() anchored below body is not this guard');
 
+// `:not(.x:has(y) *)` puts every element under any .x behind a :has(): the Vista default-button rules
+// written that way cost ~220 ms of style per class change or insert inside the gallery (#647)
+function notArguments(selector) {
+    const out = [];
+    let from = 0;
+    for (;;) {
+        const at = selector.indexOf(':not(', from);
+        if (at < 0) return out;
+        let depth = 0;
+        let i = at + 4;
+        for (; i < selector.length; i++) {
+            if (selector[i] === '(') depth++;
+            else if (selector[i] === ')' && --depth === 0) break;
+        }
+        out.push(selector.slice(at + 5, i));
+        from = at + 5;
+    }
+}
+// Known exception: `:not(.button-group:has(.form-control, input...) *)` on title-toolbar buttons
+// (log-viewer.css, vista-explorer.css) only reaches a .button-group's own buttons, not a window
+function hasUnderNotDescendant(selector) {
+    return notArguments(selector).some((arg) => splitTop(arg, ',')
+        .some((part) => part.includes(':has(') && /\s\*\s*$/.test(part) && !part.trim().startsWith('.button-group:has(')));
+}
+const notHasOffenders = [];
+for (const [file, css] of sheets) {
+    for (const prelude of css.match(/[^{}]+(?=\{)/g) || []) {
+        if (prelude.includes(':has(') && !prelude.trim().startsWith('@') && hasUnderNotDescendant(prelude)) {
+            notHasOffenders.push(`${path.relative(root, file)}: ${prelude.trim().slice(0, 160)}`);
+        }
+    }
+}
+assert.deepStrictEqual(notHasOffenders, [], `:has() inside :not(... *) (use a rootStateFlags.js class):\n${notHasOffenders.join('\n')}`);
+assert.ok(hasUnderNotDescendant('button.primary:not(.modal:has(button:focus) *)'), 'guard catches :not(.x:has() *)');
+assert.ok(!hasUnderNotDescendant('button:not(.modal-window-title *):not(:has(+ label))'), 'plain :not(.x *) and :not(:has()) are not this guard');
+
 const appCss = read('public/css/app.css');
 const shellCss = read('public/css/desktop-shell.css');
 const aeroCss = read('public/css/aero-glass.css');

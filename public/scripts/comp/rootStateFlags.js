@@ -26,6 +26,9 @@
  * .manual-preview-container.has-workspace-overlay | :has(.manual-preview-workspace-overlay:not(.hidden))
  * .manual-preview-content.has-quickstart-placeholder | :has(#manualPreviewPlaceholder.has-quickstart:not(.hidden))
  * .manual-preview-content.has-reasoning-items | :has(.progress-reasoning-container .progress-reasoning-item)
+ * .modal.push-button-focused             | .modal:has(button:focus:is(<push button>):not(<default/tab/...>))
+ *                                          (focusin/focusout, not observed; used as :not(.modal.push-button-focused *),
+ *                                          whose :has() form cost ~220 ms per change inside the gallery, #647)
  *
  * Do not add new :has() rules anchored on html/body or on a big container with a descendant
  * part after them; add a flag here instead (scripts/test-root-state-flags.js checks html/body).
@@ -193,6 +196,28 @@
         setClass(bar, 'net-recv', !!flags.recv);
         if (flags.limited !== undefined) setClass(bar, 'net-limited', !!flags.limited);
     }
+
+    // .modal.push-button-focused: every .modal around a focused non-default push button (Vista moves the
+    // default ring to it, vista-glass-controls.css). Focus is not a mutation, so it follows focusin /
+    // focusout: the element gaining focus is the event target, or relatedTarget when focus leaves.
+    const PUSH_BUTTON_FOCUSED = 'push-button-focused';
+    const PUSH_BUTTON_SELECTOR = 'button:is(.btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])):not(.btn-primary, [data-dialog-primary="1"], .primary, [role="tab"], [role="menuitem"], .round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn)';
+    let pushButtonFocusModals = [];
+
+    function syncPushButtonFocus(focused) {
+        const next = [];
+        if (focused && focused.nodeType === 1 && focused.matches(PUSH_BUTTON_SELECTOR)) {
+            for (let m = focused.closest('.modal'); m; m = m.parentElement && m.parentElement.closest('.modal')) next.push(m);
+        }
+        for (let i = 0; i < pushButtonFocusModals.length; i++) {
+            if (!next.includes(pushButtonFocusModals[i])) setClass(pushButtonFocusModals[i], PUSH_BUTTON_FOCUSED, false);
+        }
+        for (let i = 0; i < next.length; i++) setClass(next[i], PUSH_BUTTON_FOCUSED, true);
+        pushButtonFocusModals = next;
+    }
+
+    document.addEventListener('focusin', (event) => syncPushButtonFocus(event.target), true);
+    document.addEventListener('focusout', (event) => syncPushButtonFocus(event.relatedTarget), true);
 
     window.syncRootStateFlags = syncRootStateFlags;
     window.setDesktopTaskbarNetFlags = setDesktopTaskbarNetFlags;

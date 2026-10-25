@@ -545,6 +545,11 @@ function createManualPreviewImageContextMenuConfig() {
                         action: 'open-in-window'
                     },
                     {
+                        icon: 'fas fa-paintbrush',
+                        text: 'Edit in Paint',
+                        action: 'edit-in-paint'
+                    },
+                    {
                         icon: 'fas fa-glasses-round',
                         text: 'Properties',
                         action: 'view-image-data',
@@ -830,6 +835,11 @@ async function handleManualPreviewImageContextMenuAction(event) {
                 // Store the full image data in the modal's dataset for future features
                 viewer.element.dataset.imageData = JSON.stringify(image);
             }
+            break;
+
+        case 'edit-in-paint':
+            // editGalleryImageInPaint: public/scripts/comp/imageViewer.js
+            void editGalleryImageInPaint(image);
             break;
 
         case 'scrap-preview':

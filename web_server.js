@@ -1898,6 +1898,13 @@ app.use('/previews/:preview', authMiddleware, async (req, res, next) => {
     try {
     const previewFile = decodeURIComponent(req.params.preview);
     const previewPath = path.join(previewsDir, previewFile);
+    // Studio preview WebP (<file stem>@studio.webp): made from images/ on first request (#648)
+    const studioPreview = require('./modules/previewUtils');
+    if (studioPreview.isStudioPreviewName(previewFile)) {
+        if (!await studioPreview.ensureStudioPreview(imagesDir, previewsDir, previewFile)) {
+            return res.status(404).json({ success: false, error: 'Preview not found' });
+        }
+    }
     const previewStat = await statOrNull(previewPath);
     if (!previewStat || !previewStat.isFile()) {
         return res.status(404).json({ success: false, error: 'Preview not found' });

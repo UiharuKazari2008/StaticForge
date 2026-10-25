@@ -105,6 +105,21 @@ function slimLastGenerationRef(metadata, imageObj) {
     };
 }
 
+// Studio shows the optimised WebP of a gallery file, never the PNG; if the WebP fails it falls back
+// to the full file once. Callers keep dataset.manualPreviewUrl / blobUrl on the full /images/ URL
+// (download, copy, compare, tools, lightbox) (#648).
+// studioPreviewDisplayUrl: public/scripts/comp/assetUrlResolver.js
+function setStudioPreviewImageSrc(img, fullUrl) {
+    if (!img) return;
+    const shown = studioPreviewDisplayUrl(fullUrl);
+    if (shown && shown !== fullUrl) {
+        img.addEventListener('error', () => {
+            if (img.getAttribute('src') === shown) img.src = fullUrl;
+        }, { once: true });
+    }
+    img.src = shown || fullUrl;
+}
+
 async function loadTempImagePreview(previewUrl, imageData) {
     try {
         // Get the preview image element
@@ -563,9 +578,12 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 return;
             }
 
-            // Single load on preview element (avoids duplicate decode; SW handles /images/ cache)
+            // Single load on preview element. It shows the optimised WebP (#648); imageUrl stays the
+            // full file for download, copy, compare and opening.
             let imageWidth, imageHeight;
             previewImage.dataset.manualPreviewUrl = imageUrl;
+            // studioPreviewDisplayUrl: public/scripts/comp/assetUrlResolver.js
+            const displayUrl = studioPreviewDisplayUrl(imageUrl);
             let timedOut = false;
             let trackedBlobUrl = null;
             const isGenerationFinalize = !!(response && response.headers);
@@ -610,7 +628,8 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     if (isGenerationFinalize) {
                         showManualPreviewNavigationLoading(true, 'Downloading…', knownContentLength > 0 ? 0 : 'indeterminate');
                     }
-                    const fetchResult = await fetchTrackedImageBlob(imageUrl, knownContentLength, (progress) => {
+                    // Content-Length from the response headers is the PNG's; the WebP reports its own
+                    const fetchResult = await fetchTrackedImageBlob(displayUrl, displayUrl === imageUrl ? knownContentLength : 0, (progress) => {
                         if (isGenerationFinalize || progress.total > 0 || progress.loaded > 0) {
                             reportDownloadProgress(progress);
                         }
@@ -633,7 +652,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 trackManualPreviewBlobUrl(trackedBlobUrl);
             }
 
-            const loadSrc = trackedBlobUrl || imageUrl;
+            const loadSrc = trackedBlobUrl || displayUrl;
 
             await new Promise((resolve, reject) => {
                 let timeoutId;
@@ -642,6 +661,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 let retryCount = 0;
                 const MAX_LOAD_RETRIES = 5;
                 let currentLoadSrc = loadSrc;
+                let fellBackToFull = displayUrl === imageUrl;
 
                 const cleanup = () => {
                     if (timeoutId) clearTimeout(timeoutId);
@@ -685,6 +705,14 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                         if (settled) return;
                         if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
 
+                        // The WebP could not be made or loaded: show the full file instead (#648)
+                        if (!fellBackToFull && !currentLoadSrc.startsWith('blob:')) {
+                            fellBackToFull = true;
+                            currentLoadSrc = imageUrl;
+                            attemptLoad();
+                            return;
+                        }
+
                         if (retryCount < MAX_LOAD_RETRIES) {
                             retryCount += 1;
                             const delay = Math.min(400 * Math.pow(1.5, retryCount), 3000);
@@ -693,9 +721,9 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
 
                             retryTimeoutId = setTimeout(() => {
                                 if (settled || previewImage.dataset.manualPreviewUrl !== imageUrl) return;
-                                // If a blob URL failed, fallback to canonical HTTP URL
+                                // If a blob URL failed, fallback to the HTTP URL (the WebP unless it failed too)
                                 if (currentLoadSrc.startsWith('blob:')) {
-                                    currentLoadSrc = imageUrl;
+                                    currentLoadSrc = fellBackToFull ? imageUrl : displayUrl;
                                 }
                                 // Cache-bust HTTP URLs on retry
                                 if (!currentLoadSrc.startsWith('data:') && !currentLoadSrc.startsWith('blob:')) {
@@ -766,7 +794,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 if (originalImage) {
                     const originalImageUrl = localGalleryImageUrl(window.initialEdit.image.original || window.initialEdit.image.filename);
                     releaseManualPreviewOriginalImageSrc();
-                    originalImage.src = originalImageUrl;
+                    setStudioPreviewImageSrc(originalImage, originalImageUrl);
                     originalImage.classList.remove('hidden');
 
                     // Add click handler to load original image into main preview
@@ -794,7 +822,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
                     if (lastGenFilename) {
                         releaseManualPreviewOriginalImageSrc();
-                        originalImage.src = localGalleryImageUrl(lastGenFilename);
+                        setStudioPreviewImageSrc(originalImage, localGalleryImageUrl(lastGenFilename));
                         originalImage.classList.remove('hidden');
                         originalImage.onclick = function () {
                             // When clicked, restore the original image
@@ -832,7 +860,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                         const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
                         if (lastGenFilename) {
                             releaseManualPreviewOriginalImageSrc();
-                            originalImage.src = localGalleryImageUrl(lastGenFilename);
+                            setStudioPreviewImageSrc(originalImage, localGalleryImageUrl(lastGenFilename));
                             originalImage.classList.remove('hidden');
                             originalImage.onclick = function () {
                                 swapManualPreviewImages();
@@ -1074,7 +1102,10 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                 let settled = false;
                 let retryCount = 0;
                 const MAX_LOAD_RETRIES = 5;
-                let currentLoadSrc = imageUrl;
+                // The optimised WebP, the full file only if that fails (#648)
+                // studioPreviewDisplayUrl: public/scripts/comp/assetUrlResolver.js
+                let currentLoadSrc = studioPreviewDisplayUrl(imageUrl);
+                let fellBackToFull = currentLoadSrc === imageUrl;
 
                 const cleanup = () => {
                     if (timeoutId) clearTimeout(timeoutId);
@@ -1120,6 +1151,13 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                         if (settled) return;
                         // Ignore stale errors if a newer preview request repointed the element.
                         if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
+
+                        if (!fellBackToFull) {
+                            fellBackToFull = true;
+                            currentLoadSrc = imageUrl;
+                            attemptLoad();
+                            return;
+                        }
 
                         if (retryCount < MAX_LOAD_RETRIES) {
                             retryCount += 1;
@@ -1355,7 +1393,7 @@ function swapManualPreviewImages() {
             const generatedImageUrl = localGalleryImageUrl(window.lastGeneration.filename);
             releaseManualPreviewImageSrc();
             previewImage.dataset.manualPreviewUrl = generatedImageUrl;
-            previewImage.src = generatedImageUrl;
+            setStudioPreviewImageSrc(previewImage, generatedImageUrl);
 
             // Update blurred background
             updateBlurredBackground(generatedImageUrl);
@@ -1430,7 +1468,7 @@ function swapManualPreviewImages() {
         if (originalImageUrl) {
             releaseManualPreviewImageSrc();
             previewImage.dataset.manualPreviewUrl = originalImageUrl;
-            previewImage.src = originalImageUrl;
+            setStudioPreviewImageSrc(previewImage, originalImageUrl);
             updateSproutSeedButtonFromPreviewSeed();
 
             // Update blurred background
@@ -1850,7 +1888,7 @@ async function restoreOriginalImage() {
             const imageUrl = targetFilename ? localGalleryImageUrl(targetFilename) : (targetImg?.url || '');
             releaseManualPreviewImageSrc();
             previewImage.dataset.manualPreviewUrl = imageUrl;
-            previewImage.src = imageUrl;
+            setStudioPreviewImageSrc(previewImage, imageUrl);
 
             // Update blurred background
             updateBlurredBackground(imageUrl);

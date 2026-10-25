@@ -31,8 +31,10 @@ body:not(.desktop-mode) #vistaSidebar {
 /* ---------- pane ---------- */
 
 .vsb-pane {
+    /* The pane art runs up under the caption bar; the bar and dock keep clear of it */
+    --vsb-inset-top: var(--true-inset-top, 0px);
     position: fixed;
-    top: var(--true-inset-top, 0px);
+    top: 0;
     right: 0;
     /* 1px under the taskbar: its top line is translucent and showed the wallpaper below the pane */
     bottom: calc(var(--taskbar-height, 35px) - 1px);
@@ -81,7 +83,7 @@ body:not(.desktop-mode) #vistaSidebar {
 
 .vsb-bar {
     position: absolute;
-    top: 10px;
+    top: calc(10px + var(--vsb-inset-top));
     right: 11px;
     display: flex;
     width: 79px;
@@ -110,7 +112,7 @@ body:not(.desktop-mode) #vistaSidebar {
 
 .vsb-dock {
     position: absolute;
-    top: 42px;
+    top: calc(42px + var(--vsb-inset-top));
     right: 0;
     bottom: 0;
     left: 0;

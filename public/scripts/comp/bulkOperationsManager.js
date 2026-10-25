@@ -538,8 +538,9 @@ async function handleBulkDelete(event = null) {
             throw new Error('WebSocket not connected');
         }
 
+        // holdGalleryImageLoads: public/scripts/comp/galleryView.js — the batches' broadcasts wait
+        // for this; the selection leaves the grid in one step once every batch is done
         holdGalleryImageLoads(validFilenames);
-        window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
         let deleted = false;
         try {
             const transfer = await galleryTransfer('delete', validFilenames,
@@ -584,9 +585,6 @@ async function handleBulkDelete(event = null) {
             }
         } finally {
             releaseGalleryImageLoads(validFilenames);
-            if (!deleted) {
-                window.skipNextGalleryRefresh = Math.max(0, (window.skipNextGalleryRefresh || 1) - 1);
-            }
         }
     } catch (error) {
         console.error('Bulk delete error:', error);

@@ -13,6 +13,8 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { Readable, Transform } = require('stream');
+const { pipeline } = require('stream/promises');
 const { WebSocket } = require('ws');
 
 const ROOT = path.join(__dirname, '..');
@@ -23,7 +25,8 @@ const ALCHEMY_MAX_BOOKMARKS = 200;
 // Grimoire's Search ▾ (public/scripts/comp/grimoireIeChrome.js SEARCH_PROVIDERS)
 const ALCHEMY_SEARCH_PROVIDERS = ['grimoire', 'danbooru', 'e621', 'web'];
 const ALCHEMY_DOWNLOADS_FOLDER = 'Downloads';
-const ALCHEMY_SAVE_MAX_BYTES = 512 * 1024 * 1024;
+// streamed to a temp file, never buffered, so ISOs and installers fit (GRIMOIRE_SAVE_MAX_BYTES overrides)
+const ALCHEMY_SAVE_MAX_BYTES = Number(process.env.GRIMOIRE_SAVE_MAX_BYTES) || 16 * 1024 * 1024 * 1024;
 const DOWNLOAD_MIME_BY_EXT = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml', pdf: 'application/pdf', zip: 'application/zip', json: 'application/json', txt: 'text/plain', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg' };
 
 function clampInt(value, fallback, min, max) {
@@ -534,15 +537,39 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
         }
         const query = '?t=' + encodeURIComponent(token);
         const suffix = guid ? '/downloads/' + guid + query : '/resource' + query + '&url=' + encodeURIComponent(url);
+        const tmpDir = path.join(globalResources.getPath('cache'), 'grimoire-downloads');
+        const tmpPath = path.join(tmpDir, crypto.randomBytes(12).toString('hex') + '.part');
+        // Cancel in the progress dialog drops this request; stop pulling from the remote browser too
+        const controller = new AbortController();
+        res.on('close', () => { if (!res.writableEnded) controller.abort(); });
         try {
-            const upstream = await fetch(config.origin + '/sessions/' + id + suffix);
-            if (!upstream.ok) {
-                res.status(upstream.status).json({ error: 'remote browser could not read the file' });
+            const upstream = await fetch(config.origin + '/sessions/' + id + suffix, { signal: controller.signal });
+            if (!upstream.ok || !upstream.body) {
+                res.status(upstream.status || 502).json({ error: 'remote browser could not read the file' });
                 return;
             }
-            const buffer = Buffer.from(await upstream.arrayBuffer());
-            if (!buffer.length || buffer.length > ALCHEMY_SAVE_MAX_BYTES) {
-                res.status(413).json({ error: 'file is empty or too large' });
+            const declared = Number(upstream.headers.get('content-length'));
+            if (declared > ALCHEMY_SAVE_MAX_BYTES) {
+                res.status(413).json({ error: 'file is too large' });
+                return;
+            }
+            await fs.promises.mkdir(tmpDir, { recursive: true });
+            let size = 0;
+            const counter = new Transform({
+                transform(chunk, _enc, done) {
+                    size += chunk.length;
+                    done(size > ALCHEMY_SAVE_MAX_BYTES ? new Error('file is too large') : null, chunk);
+                }
+            });
+            try {
+                await pipeline(Readable.fromWeb(upstream.body), counter, fs.createWriteStream(tmpPath));
+            } catch (err) {
+                const tooLarge = size > ALCHEMY_SAVE_MAX_BYTES;
+                res.status(tooLarge ? 413 : 502).json({ error: tooLarge ? 'file is too large' : 'download from the remote browser broke off' });
+                return;
+            }
+            if (!size) {
+                res.status(413).json({ error: 'file is empty' });
                 return;
             }
             let name = path.basename(String(body.filename || 'download')).replace(/[\\/:*?"<>|\x00-\x1f]+/g, '_').slice(0, 200) || 'download';
@@ -561,13 +588,15 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
             const vfs = globalResources.getVfsManager();
             const folder = await vfs._findWorkspaceFolderByName(workspaceId, null, ALCHEMY_DOWNLOADS_FOLDER, { excludeDesktop: true })
                 || await vfs.createFolderAtPath('/Workspaces/' + workspaceId, ALCHEMY_DOWNLOADS_FOLDER);
-            const file = await vfs.saveUserFileBuffer(buffer, { originalName: name, mimeType, scope: 'workspace', workspaceId, folderId: folder.id });
+            const file = await vfs.saveUserFileFromPath(tmpPath, { originalName: name, mimeType, scope: 'workspace', workspaceId, folderId: folder.id });
             const folderPath = '/Workspaces/' + workspaceId + '/' + folder.id;
             const wsServer = globalResources.getWebSocketServer();
             if (wsServer && wsServer.broadcast) wsServer.broadcast({ type: 'vfs_updated', data: { path: folderPath }, timestamp: new Date().toISOString() });
-            res.json({ ok: true, name, path: folderPath, fileId: file && file.id, size: buffer.length });
+            res.json({ ok: true, name, path: folderPath, fileId: file && file.id, size });
         } catch (err) {
             if (!res.headersSent) res.status(502).json({ error: (err && err.message) || 'save failed' });
+        } finally {
+            await fs.promises.rm(tmpPath, { force: true }).catch(() => {});
         }
     });
 

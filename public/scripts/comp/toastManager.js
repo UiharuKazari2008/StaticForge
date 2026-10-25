@@ -1316,7 +1316,10 @@ function updateGlassToastImagePreview(toastId, imageData) {
             imageElement.onclick = null;
             imageElement.removeAttribute('src');
         }
-        imageElement.src = `data:image/png;base64,${imageData}`;
+        // A URL (/images/<file>, /previews/..., data:) is used as is; anything else is raw base64 PNG (#649)
+        imageElement.src = /^(data:|blob:|https?:\/\/|\/)/.test(String(imageData))
+            ? String(imageData)
+            : `data:image/png;base64,${imageData}`;
 
         // Add click handler to open in PhotoSwipe
         imageElement.onclick = () => {

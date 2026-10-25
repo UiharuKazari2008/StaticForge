@@ -254,6 +254,9 @@ function handleNsfwTagDetection(textarea, currentValue) {
     previousTextareaValues.set(textarea, cleanedValue);
 }
 
+// Last scroll offset written to each emphasis overlay (#649)
+const emphasisOverlayScrollCache = new WeakMap();
+
 function updateEmphasisHighlighting(textarea) {
     if (!textarea) return;
 
@@ -272,14 +275,25 @@ function updateEmphasisHighlighting(textarea) {
     }
 
     const currentValue = textarea.value;
+    // Layout reads first: taken after the overlay writes below they forced a full layout each
+    // keystroke, and writing scrollTop forces one too, so the overlay is only scrolled when the
+    // offset changed (#649)
+    const scrollTop = textarea.scrollTop;
+    const scrollLeft = textarea.scrollLeft;
     const overlay = ensurePromptEmphasisHighlightOverlay(textarea);
     if (!overlay) return;
+    const syncOverlayScroll = () => {
+        const last = emphasisOverlayScrollCache.get(overlay);
+        if (last && last.scrollTop === scrollTop && last.scrollLeft === scrollLeft) return;
+        overlay.scrollTop = scrollTop;
+        overlay.scrollLeft = scrollLeft;
+        emphasisOverlayScrollCache.set(overlay, { scrollTop, scrollLeft });
+    };
 
     const cacheSig = getEmphasisHighlightCacheSignature(textarea, currentValue);
     const cachedValue = emphasisHighlightValueCache.get(textarea);
     if (cachedValue === cacheSig) {
-        overlay.scrollTop = textarea.scrollTop;
-        overlay.scrollLeft = textarea.scrollLeft;
+        syncOverlayScroll();
         syncEmphasisGroupBoundaryCarets(textarea);
         return;
     }
@@ -303,9 +317,8 @@ function updateEmphasisHighlighting(textarea) {
     }
     invalidateEmphasisSpanIndex(overlay);
 
-    // Sync scroll position
-    overlay.scrollTop = textarea.scrollTop;
-    overlay.scrollLeft = textarea.scrollLeft;
+    // Sync scroll position (skipped when unchanged, see above)
+    syncOverlayScroll();
     syncEmphasisGroupBoundaryCarets(textarea);
 }
 

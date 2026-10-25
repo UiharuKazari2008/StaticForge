@@ -849,6 +849,12 @@ class WebSocketClient {
     static TIMEOUT_PROGRESS_MS = 10 * 60 * 1000;
     static STUCK_TICKER_MS = 8000;
 
+    // Generation-family requests whose reply used to inline the finished image as base64 (#649)
+    static HTTP_IMAGE_TRANSPORT_REQUEST_TYPES = new Set([
+        'generate_image', 'reroll_image', 'upscale_image', 'expand_image', 'reroll_expanded_image',
+        'enhance_image', 'max_enhance_image'
+    ]);
+
     static SILENT_TICKER_REQUEST_TYPES = new Set([
         'ping',
         'get_generation_quips',
@@ -6598,10 +6604,13 @@ class WebSocketClient {
             }
         };
 
+        // Studio shows the optimised WebP, not the PNG (#648); knownBytes is the PNG's size
+        // studioPreviewDisplayUrl: public/scripts/comp/assetUrlResolver.js
+        const fetchUrl = modalType === 'manual' ? studioPreviewDisplayUrl(imageUrl) : imageUrl;
         // fetchTrackedImageBlob: public/scripts/comp/utilities.js
         prefetch.promise = fetchTrackedImageBlob(
-            imageUrl,
-            knownBytes > 0 ? knownBytes : null,
+            fetchUrl,
+            knownBytes > 0 && fetchUrl === imageUrl ? knownBytes : null,
             reportDownloadProgress,
             { headers: { 'X-Preview-Finalize': '1' } }
         ).then((fetchResult) => {
@@ -8648,6 +8657,12 @@ class WebSocketClient {
                 requestId,
                 ...data
             };
+            // The finished print is fetched over HTTP (/images/<filename>, contentLength drives
+            // progress), so the reply needs no base64 copy: several MB of JSON parsed on this
+            // thread per print (#649). generationReplyImage: modules/ws/handlers/generationImpl.js
+            if (WebSocketClient.HTTP_IMAGE_TRANSPORT_REQUEST_TYPES.has(type) && message.imageTransport === undefined) {
+                message.imageTransport = 'http';
+            }
 
             if (data.enableStreaming === true) {
                 if (type === 'generate_image' || type === 'expand_image' || type === 'reroll_expanded_image' || type === 'reroll_image') {
