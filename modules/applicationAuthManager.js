@@ -13,7 +13,9 @@ const SCOPE_WS_PACKETS = {
         'delete_unupscaled_original',
         'gallery_position_hint', 'send_to_sequenzia_bulk', 'update_image_preset_bulk',
         'get_similar_image_groups', 'scrap_similar_images', 'get_nax_vibes_gallery',
-        'set_gallery_show_shared'
+        'set_gallery_show_shared',
+        // Dreamscape Frame slideshow devices (modules/slideshowDevices.js)
+        'client_identify', 'client_device_state', 'device_command_ack'
     ],
     generation: [
         'generate_image', 'generate_preset', 'cancel_generation', 'upscale_image',

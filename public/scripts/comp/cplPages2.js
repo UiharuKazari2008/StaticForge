@@ -4,7 +4,8 @@
  * Solutions (the server's fault reports, GET /api/fault-reports), Programs and Features (the
  * Start menu's programs), Ease of Access Center (the on-screen keyboard, a narrator over the
  * browser's speech, High Contrast), AutoPlay, Melaton Firewall, BitLocker Drive Encryption,
- * Parental Controls, Sync Center, Melaton SideShow and Melaton CardSpace.
+ * Parental Controls, Sync Center, Melaton SideShow (its devices: modules/slideshowDevices.js) and
+ * Melaton CardSpace.
  */
 (function (root) {
     'use strict';
@@ -623,18 +624,319 @@
         return syncBody();
     };
 
+    // Melaton SideShow (Yozora #654): Dreamscape Frame tablets and the Device Simulator are its
+    // devices (modules/slideshowDevices.js), Dreamscape Slideshow its one gadget. The pages follow
+    // the VM's AuxiliaryDisplayCpl.dll (UIFILE 101 home, 102 device settings; its string table):
+    // the gadget-by-device grid, a device's settings page, and the gadget's own settings page.
+    const SS = '/static_images/vista-sideshow';
+    const SS_GADGET = 'Dreamscape Slideshow';
+    const SS_VIEWS = [['images', 'All pictures'], ['pinned', 'Pinned pictures'], ['upscaled', 'Upscaled pictures']];
+    const SS_OVERLAYS = [['off', 'Off'], ['minimal', 'Minimal'], ['full', 'Full']];
+    const SS_KEY = 'HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\SideShow';
+    const ss = { devices: null, error: '', loading: false, wired: false, deviceId: null, busy: '', loadedAt: 0 };
+
+    function ssClient() {
+        return root.wsClient && typeof root.wsClient.listDevices === 'function' ? root.wsClient : null;
+    }
+
+    function ssDevice(id) {
+        return (ss.devices || []).find((d) => d.deviceId === id) || null;
+    }
+
+    function ssPreview(filename) {
+        const base = String(filename || '').replace(/\.(png|jpg|jpeg|webp)$/i, '').replace(/_upscaled$/i, '');
+        return base ? `/previews/${encodeURIComponent(`${base}.webp`)}` : '';
+    }
+
+    function ssStateText(d) {
+        if (!d.online) return 'Disconnected';
+        return {
+            showing: 'Connected', paused: 'Connected, paused', offline_cache: 'Connected, showing saved pictures',
+            signin_needed: 'Connected, sign-in needed'
+        }[d.state] || 'Connected';
+    }
+
+    function ssOnPage() {
+        const page = CP() && CP().currentPage();
+        return page === 'sideshow' || page === 'sideshow-device' || page === 'sideshow-gadget';
+    }
+
+    /** Pages with fields keep their edits: only the live parts are redrawn in place. */
+    function ssRefreshView() {
+        const page = CP() && CP().currentPage();
+        if (page === 'sideshow') { rerender(); return; }
+        const m = main();
+        if (!m || !ssOnPage()) return;
+        const d = ssDevice(ss.deviceId);
+        m.querySelectorAll('[data-ss-live="status"]').forEach((el) => { el.textContent = d ? ssStateText(d) : 'Disconnected'; });
+        m.querySelectorAll('[data-ss-live="showing"]').forEach((el) => { el.innerHTML = d ? ssShowingHtml(d) : ''; });
+        m.querySelectorAll('[data-ss-live="offline"]').forEach((el) => { el.hidden = !!(d && d.online); });
+        const pause = m.querySelector('[data-cpl-vpage="cmd"][data-cmd="pause"], [data-cpl-vpage="cmd"][data-cmd="resume"]');
+        if (pause && d) { pause.dataset.cmd = d.state === 'paused' ? 'resume' : 'pause'; pause.textContent = d.state === 'paused' ? 'Resume' : 'Pause'; }
+        m.querySelectorAll('[data-cpl-vpage="cmd"]').forEach((b) => { b.disabled = !d || !d.online || !!ss.busy; });
+    }
+
+    function ssWire() {
+        if (ss.wired || !root.wsClient || typeof root.wsClient.on !== 'function') return;
+        ss.wired = true;
+        root.wsClient.on('devices_updated', (msg) => {
+            const list = msg && msg.data && msg.data.devices;
+            if (!Array.isArray(list)) return;
+            ss.devices = list;
+            if (ssOnPage()) ssRefreshView();
+        });
+    }
+
+    /** A fresh list each time the home page opens; devices_updated keeps it current after that. */
+    function ssLoad() {
+        const c = ssClient();
+        ssWire();
+        if (!c || ss.loading || Date.now() - ss.loadedAt < 2000) return;
+        ss.loading = true;
+        c.listDevices().then((res) => {
+            ss.devices = (res && res.devices) || [];
+            // read-only logons cannot manage devices (the CPL's own string 906)
+            ss.error = res && res.code === 'INSUFFICIENT_PERMISSIONS' ? 'You do not have the correct permissions to change this setting. For more information, contact your system administrator.' : '';
+        }).catch(() => {
+            ss.devices = [];
+            ss.error = '';
+        }).finally(() => {
+            ss.loading = false;
+            ss.loadedAt = Date.now();
+            if (CP() && CP().currentPage() === 'sideshow') rerender();
+        });
+    }
+
+    function ssShowingHtml(d) {
+        const files = d.showing || [];
+        if (!d.online || !files.length) return '<span class="cpl-ss-dim">Nothing is on the screen.</span>';
+        return files.map((f) => `<figure class="cpl-ss-thumb"><img src="${esc(ssPreview(f))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><figcaption title="${esc(f)}">${esc(f)}</figcaption></figure>`).join('');
+    }
+
+    /** The pane: Tasks (the two gadget sorts), then Devices with each device's name (string 1161). */
+    function ssTasks() {
+        const byDate = reg(SS_KEY, 'SortByDate', false);
+        const li = (on, inner) => `<li class="cpl-vtask${on ? ' cpl-ss-current' : ''}">${inner}</li>`;
+        const list = ss.devices || [];
+        return `<div class="cpl-task-group cpl-vtasks">
+                <h3 class="cpl-task-heading">Tasks</h3>
+                <ul class="cpl-task-list">
+                    ${li(!byDate, '<button type="button" class="cpl-link" data-cpl-vpage="sort" data-sort="name">View gadgets by name</button>')}
+                    ${li(byDate, '<button type="button" class="cpl-link" data-cpl-vpage="sort" data-sort="date">View gadgets by date installed</button>')}
+                </ul>
+            </div>${list.length ? `
+            <div class="cpl-task-group cpl-vtasks">
+                <h3 class="cpl-task-heading">Devices</h3>
+                <ul class="cpl-task-list">${list.map((d) => `<li class="cpl-vtask"><button type="button" class="cpl-link" data-cpl-vpage="open" data-device="${esc(d.deviceId)}" title="Click to change settings for ${esc(d.name)}">${esc(d.name)}</button></li>`).join('')}</ul>
+            </div>` : ''}`;
+    }
+
     pages.sideshow = {
         title: () => 'Melaton SideShow',
-        tasks: () => tasks([[{ t: 'Change the order of gadgets', a: 'js:order' }, { t: 'Set default device', a: 'js:device' }]], [{ t: 'Melaton Sidebar', a: 'item:sidebar-properties' }]),
-        body: () => `<div class="cpl-vpage">${help('sideshow')}
-            <h1 class="cpl-vtitle">Change settings for Melaton SideShow-compatible devices</h1>
-            <p class="cpl-vtext">Select which gadgets you want to use on your Melaton SideShow-compatible devices.</p>
-            <p class="cpl-vtext cpl-vgap">No Melaton SideShow-compatible devices are installed on your computer. <a href="#" class="cpl-vlink is-underlined" data-cpl-vpage="help" data-topic="sideshow">Learn more about Melaton SideShow.</a></p>
-        </div>`
+        tasks: () => ssTasks(),
+        body: () => {
+            ssLoad();
+            const list = ss.devices || [];
+            const has = list.length > 0;
+            const notify = reg(SS_KEY, 'NotifyNewGadgets', true);
+            return `<div class="cpl-vpage cpl-ss-page">${help('sideshow')}
+            <h1 class="cpl-vtitle">${has ? 'Select which gadgets appear on your Melaton SideShow-compatible devices' : 'Learn about using Melaton SideShow'}</h1>
+            <p class="cpl-vtext">${has ? 'You can change settings for some gadgets by clicking the gadget name in the list. To change device settings, click the device name in the left pane.' : 'A Melaton SideShow-compatible device is a secondary display that accesses information from your computer. You can use it to do things like check your calendar, read e-mail messages, or scan top news stories even when your computer is off.'}</p>
+            ${ss.error ? `<p class="cpl-vtext cpl-vgap">${esc(ss.error)}</p>` : ''}
+            <table class="cpl-ss-grid">
+                <tr class="is-head"><td>Gadgets</td>${has ? list.map((d) => `<td class="cpl-ss-col"><button type="button" class="cpl-ss-devhead" data-cpl-vpage="open" data-device="${esc(d.deviceId)}" title="Click to change settings for ${esc(d.name)}">${esc(d.name)}</button></td>`).join('') : '<td class="cpl-ss-none">Devices (none)</td>'}</tr>
+                <tr class="cpl-ss-row"><td class="cpl-ss-gadget"><img src="${SS}/slideshow-gadget-32.png" alt=""><button type="button" class="cpl-ss-gadget-link" data-cpl-vpage="gadget">${esc(SS_GADGET)}</button></td>${has ? list.map((d) => `<td class="cpl-ss-col"><input type="checkbox" checked disabled title="${esc(ssStateText(d))}"></td>`).join('') : '<td></td>'}</tr>
+            </table>
+            <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-notify" data-ss-pref="NotifyNewGadgets"${notify ? ' checked' : ''}><label for="cpl-ss-notify">Notify me when new gadgets are installed</label></div>
+            <p class="cpl-ss-link"><img src="${SS}/globe-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="more">Get more gadgets online</button></p>
+            <p class="cpl-ss-info"><img src="${SS}/info-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="help" data-topic="sideshow">How do I use my mobile phone or another device with Melaton SideShow?</button></p>
+        </div>`;
+        }
     };
     handlers.sideshow = {
-        order() { msg('There are no gadgets to order.', 'Melaton SideShow'); },
-        device() { msg('No Melaton SideShow-compatible devices are installed.', 'Melaton SideShow'); }
+        open(t) {
+            ss.deviceId = t.dataset.device;
+            nav('sideshow-device');
+        },
+        gadget() {
+            const list = ss.devices || [];
+            if (!list.some((d) => d.deviceId === ss.deviceId)) ss.deviceId = list.length ? list[0].deviceId : null;
+            nav('sideshow-gadget');
+        },
+        async sort(t) {
+            if (R()) await R().set(SS_KEY, { SortByDate: t.dataset.sort === 'date' });
+            rerender();
+        },
+        more() { msg('No more gadgets are available for Melaton SideShow.', 'Melaton SideShow'); },
+        change(ev) {
+            const k = ev.target.dataset && ev.target.dataset.ssPref;
+            if (k && R()) void R().set(SS_KEY, { [k]: !!ev.target.checked });
+        }
+    };
+
+    function ssOptions(list, value) {
+        return list.map(([v, t]) => `<option value="${v}"${v === value ? ' selected' : ''}>${esc(t)}</option>`).join('');
+    }
+
+    function ssBackPane() {
+        return ssTasks();
+    }
+
+    // Change Device Settings (UIFILE 101's pageDevice): the device's logo and name, then Gadgets
+    // and More options; this device has no screen settings of its own (wss_enhanced_device stays hidden)
+    pages['sideshow-device'] = {
+        parent: 'sideshow',
+        title: () => 'Change Device Settings',
+        tasks: () => ssBackPane(),
+        body: () => {
+            const d = ssDevice(ss.deviceId);
+            if (!d) return `<div class="cpl-vpage cpl-ss-page">${help('sideshow')}<p class="cpl-vtext">This device is no longer installed.</p></div>`;
+            return `<div class="cpl-vpage cpl-ss-page">${help('sideshow')}
+                <div class="cpl-ss-logo"><img src="${SS}/sideshow-48.png" alt=""><div><b>${esc(d.name)}</b><br><span data-ss-live="status">${esc(ssStateText(d))}</span>${d.model ? `<br><span class="cpl-ss-dim">${esc([d.model, d.os].filter(Boolean).join(', '))}</span>` : ''}</div></div>
+                <p class="cpl-vtext cpl-ss-para" data-ss-live="offline"${d.online ? ' hidden' : ''}>To change settings, first connect the device.</p>
+                <div class="cpl-vsection"><span>Gadgets</span></div>
+                <p class="cpl-ss-link"><img src="${SS}/gadgets-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="hub">Turn gadgets on or off</button></p>
+                <p class="cpl-ss-link"><img src="${SS}/slideshow-gadget-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="gadget">${esc(SS_GADGET)} settings</button></p>
+                <div class="cpl-vsection"><span>More options</span></div>
+                <p class="cpl-ss-link"><img src="${SS}/sideshow-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="rename">Additional settings</button></p>
+                <p class="cpl-ss-link"><img src="${SS}/troubleshoot-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="help" data-topic="sideshow">Troubleshoot connection problems for this device</button></p>
+                <p class="cpl-ss-link"><img src="${SHIELD}" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="forget">Uninstall this device</button></p>
+            </div>`;
+        }
+    };
+
+    async function ssSend(command, extra) {
+        const c = ssClient();
+        if (!c || !ss.deviceId) return null;
+        try {
+            const res = await c.deviceSendCommand(ss.deviceId, command, extra || {});
+            if (res && res.success === false) {
+                // the CPL's own 907 when the device does not take it
+                msg(res.code === 'BAD_SETTINGS' || res.code === 'BAD_NAME' ? esc(res.error || 'That setting is not valid.') : 'Melaton was unable to save the changes to the device. Make sure the device is connected to the computer, and then try again.', 'Melaton SideShow');
+            }
+            return res;
+        } catch (err) {
+            msg(esc((err && err.message) || 'Melaton was unable to save the changes to the device.'), 'Melaton SideShow');
+            return null;
+        }
+    }
+
+    handlers['sideshow-device'] = {
+        hub() { nav('sideshow'); },
+        gadget() { nav('sideshow-gadget'); },
+        open(t) { ss.deviceId = t.dataset.device; rerender(); },
+        sort() { nav('sideshow'); },
+        rename() {
+            const d = ssDevice(ss.deviceId);
+            if (!d) return;
+            callGlobal('showConfirmationDialog', `<p><label for="cpl-ss-rename">Device name:</label></p><p><input type="text" class="cpl-vedit" id="cpl-ss-rename" maxlength="64" value="${esc(d.name)}" style="width:100%"></p>`, [
+                { text: 'OK', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }
+            ], null, { title: `${d.name} settings`, width: 340, resolveValue: (v, dlg) => (v ? String((dlg.querySelector('#cpl-ss-rename') || {}).value || '').trim().slice(0, 64) : null) })
+                .then(async (name) => {
+                    if (!name || name === d.name) return;
+                    await ssSend('rename', { name });
+                    d.name = name;
+                    rerender();
+                });
+        },
+        forget() {
+            const d = ssDevice(ss.deviceId);
+            if (!d) return;
+            callGlobal('showConfirmationDialog', '<p>Are you sure you want to uninstall this device?</p>', [
+                { text: 'OK', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }
+            ], null, { title: 'Confirm Device Uninstallation', width: 360 }).then(async (yes) => {
+                if (!yes || !ssClient()) return;
+                try {
+                    await ssClient().deviceForget(d.deviceId);
+                    ss.devices = (ss.devices || []).filter((x) => x.deviceId !== d.deviceId);
+                } catch (err) {
+                    msg(esc((err && err.message) || 'The device could not be uninstalled.'), 'Melaton SideShow');
+                }
+                nav('sideshow');
+            });
+        }
+    };
+
+    // the gadget's own settings page ("%s settings", string 801): which device, what it shows, the remote, the slide show
+    pages['sideshow-gadget'] = {
+        parent: 'sideshow',
+        title: () => `${SS_GADGET} settings`,
+        tasks: () => ssBackPane(),
+        body: () => {
+            const list = ss.devices || [];
+            const d = ssDevice(ss.deviceId);
+            if (!d) return `<div class="cpl-vpage cpl-ss-page">${help('sideshow')}<h1 class="cpl-vtitle">${esc(SS_GADGET)} settings</h1><p class="cpl-vtext">No Melaton SideShow-compatible devices are installed on your computer.</p></div>`;
+            const st = d.settings || {};
+            const off = !d.online ? ' disabled' : '';
+            const queued = d.pendingSettings || d.pendingName ? '<p class="cpl-vtext cpl-ss-dim cpl-ss-para">Some changes will be sent to the device the next time it connects.</p>' : '';
+            return `<div class="cpl-vpage cpl-ss-page">${help('sideshow')}
+                <h1 class="cpl-vtitle">${esc(SS_GADGET)} settings</h1>
+                ${list.length > 1 ? `<p class="cpl-vtext">For which device do you want to change settings?</p><p class="cpl-ss-field"><select class="cpl-vselect" data-ss-device>${list.map((x) => `<option value="${esc(x.deviceId)}"${x.deviceId === d.deviceId ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></p>` : ''}
+                <div class="cpl-vsection"><span>Now showing on ${esc(d.name)}</span></div>
+                <p class="cpl-vtext" data-ss-live="status">${esc(ssStateText(d))}</p>
+                <div class="cpl-ss-showing" data-ss-live="showing">${ssShowingHtml(d)}</div>
+                <div class="cpl-ss-remote">
+                    <button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cmd" data-cmd="previous"${off}>Previous</button>
+                    <button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cmd" data-cmd="${d.state === 'paused' ? 'resume' : 'pause'}"${off}>${d.state === 'paused' ? 'Resume' : 'Pause'}</button>
+                    <button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cmd" data-cmd="next"${off}>Next</button>
+                    <button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cmd" data-cmd="refresh"${off}>Refresh</button>
+                </div>
+                <div class="cpl-vsection"><span>Slide show</span></div>
+                <table class="cpl-power-grid cpl-ss-settings">
+                    <tr><td><label for="cpl-ss-view">Show pictures from:</label></td><td><select class="cpl-vselect" id="cpl-ss-view">${ssOptions(SS_VIEWS, st.viewType || 'images')}</select></td></tr>
+                    <tr><td><label for="cpl-ss-interval">Show each picture for:</label></td><td><input type="number" class="cpl-vedit cpl-ss-num" id="cpl-ss-interval" min="5" max="3600" value="${esc(st.intervalSec != null ? st.intervalSec : 45)}"> seconds</td></tr>
+                    <tr><td><label for="cpl-ss-pool">Pictures in rotation:</label></td><td><input type="number" class="cpl-vedit cpl-ss-num" id="cpl-ss-pool" min="1" max="1000" value="${esc(st.poolSize != null ? st.poolSize : 60)}"></td></tr>
+                    <tr><td><label for="cpl-ss-overlay">Picture information:</label></td><td><select class="cpl-vselect" id="cpl-ss-overlay">${ssOptions(SS_OVERLAYS, st.infoOverlay || 'minimal')}</select></td></tr>
+                </table>
+                <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-shuffle"${st.shuffle !== false ? ' checked' : ''}><label for="cpl-ss-shuffle">Shuffle pictures</label></div>
+                <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-pair"${st.pairPortraits !== false ? ' checked' : ''}><label for="cpl-ss-pair">Show tall pictures side by side</label></div>
+                ${queued}
+                <div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="save">OK</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cancel">Cancel</button></div>
+            </div>`;
+        }
+    };
+
+    handlers['sideshow-gadget'] = {
+        open(t) { ss.deviceId = t.dataset.device; nav('sideshow-device'); },
+        sort() { nav('sideshow'); },
+        change(ev) {
+            if (ev.target.matches && ev.target.matches('[data-ss-device]')) {
+                ss.deviceId = ev.target.value;
+                rerender();
+            }
+        },
+        async cmd(t) {
+            if (ss.busy) return;
+            ss.busy = t.dataset.cmd;
+            ssRefreshView();
+            await ssSend(t.dataset.cmd);
+            ss.busy = '';
+            ssRefreshView();
+        },
+        async save() {
+            const d = ssDevice(ss.deviceId);
+            const m = main();
+            if (!d || !m) return;
+            const val = (id) => (m.querySelector(`#${id}`) || {}).value;
+            const num = (id, lo, hi, fallback) => {
+                const n = Math.round(Number(val(id)));
+                return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
+            };
+            const st = d.settings || {};
+            const next = {
+                viewType: val('cpl-ss-view'),
+                intervalSec: num('cpl-ss-interval', 5, 3600, st.intervalSec || 45),
+                poolSize: num('cpl-ss-pool', 1, 1000, st.poolSize || 60),
+                infoOverlay: val('cpl-ss-overlay'),
+                shuffle: !!(m.querySelector('#cpl-ss-shuffle') || {}).checked,
+                pairPortraits: !!(m.querySelector('#cpl-ss-pair') || {}).checked
+            };
+            const changed = {};
+            Object.keys(next).forEach((k) => { if (next[k] !== st[k]) changed[k] = next[k]; });
+            if (Object.keys(changed).length) await ssSend('set_settings', { settings: changed });
+            nav('sideshow');
+        },
+        cancel() { nav('sideshow'); }
     };
 
     function register() {

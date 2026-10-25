@@ -8480,7 +8480,7 @@ async function callTool(globalResources, req, name, args) {
         return mcpTextResult({
             success: true,
             boundClientId: getBoundClientId(bindKey),
-            clients: listClients(globalResources, bindKey)
+            clients: listClients(globalResources, bindKey, { includeDevices: true })
         });
     }
 

@@ -977,3 +977,196 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 #melatonControlPanelModal :is(.cpl-flist-head > .cpl-flist-col, .cpl-vtable tr.is-head td.cpl-flist-col).is-sorted.is-desc::before {
     background-position: 0 -5px;
 }
+
+/* ---- Melaton SideShow (Yozora #654), measured on the VM's AuxiliaryDisplayCpl home page (800x600):
+   the grid runs 550 px from the content's left; the header rule 22 px under the intro; 38 px gadget
+   rows between #cccccc rules, the 32 px icon 2 px in and the name 7 px after it, a grey band behind
+   the name (white, #f2f2f2 from 105 to 146 px, white at 235 px); the check box 11 px in, 9 px under
+   the last rule; the info bar #ffffc6 inside a #cccccc border, 32 px tall, its icon 8 px in. ---- */
+
+#melatonControlPanelModal .cpl-vpage.cpl-ss-page {
+    max-width: 584px;
+    padding-right: 11px;
+}
+
+#melatonControlPanelModal .cpl-ss-grid {
+    width: 550px;
+    margin-top: 22px;
+    border: 0;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+#melatonControlPanelModal .cpl-ss-grid td {
+    padding: 0;
+    border: 0;
+    border-bottom: 1px solid #cccccc;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#melatonControlPanelModal .cpl-ss-grid tr.is-head td {
+    height: 15px;
+    padding-bottom: 6px;
+    vertical-align: bottom;
+}
+
+#melatonControlPanelModal .cpl-ss-grid tr.is-head td:first-child {
+    width: 366px;
+}
+
+#melatonControlPanelModal .cpl-ss-grid td.cpl-ss-col {
+    width: 92px;
+    text-align: center;
+}
+
+#melatonControlPanelModal .cpl-ss-grid tr.is-head td.cpl-ss-col,
+#melatonControlPanelModal .cpl-ss-grid td.cpl-ss-none {
+    text-align: left;
+}
+
+#melatonControlPanelModal .cpl-ss-devhead,
+#melatonControlPanelModal .cpl-ss-gadget-link {
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+#melatonControlPanelModal .cpl-ss-devhead:hover,
+#melatonControlPanelModal .cpl-ss-gadget-link:hover {
+    color: #3399ff;
+    text-decoration: underline;
+}
+
+#melatonControlPanelModal .cpl-ss-grid tr.cpl-ss-row td {
+    height: 38px;
+}
+
+#melatonControlPanelModal .cpl-ss-grid td.cpl-ss-gadget {
+    background: linear-gradient(90deg, #fff 0, #f2f2f2 105px, #f2f2f2 146px, #fff 235px) no-repeat;
+    background-size: 235px 100%;
+}
+
+#melatonControlPanelModal .cpl-ss-grid td.cpl-ss-gadget img {
+    width: 32px;
+    height: 32px;
+    margin: 0 7px 0 2px;
+    vertical-align: middle;
+}
+
+#melatonControlPanelModal .cpl-vcheck.cpl-ss-check {
+    margin: 9px 0 0 11px;
+}
+
+#melatonControlPanelModal .cpl-ss-link {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 13px 0 0 1px;
+}
+
+#melatonControlPanelModal .cpl-ss-link img {
+    width: 16px;
+    height: 16px;
+}
+
+#melatonControlPanelModal .cpl-ss-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-sizing: border-box;
+    width: 550px;
+    height: 32px;
+    margin: 8px 0 0;
+    padding: 0 0 0 7px;
+    border: 1px solid #cccccc;
+    background: #ffffc6;
+}
+
+#melatonControlPanelModal .cpl-ss-info img {
+    width: 16px;
+    height: 16px;
+}
+
+/* View gadgets by name / by date installed: the current sort carries a bullet 19 px left of its text */
+#melatonControlPanelModal .cpl-tasks .cpl-vtask.cpl-ss-current {
+    position: relative;
+}
+
+#melatonControlPanelModal .cpl-tasks .cpl-vtask.cpl-ss-current::before {
+    content: '\2022';
+    position: absolute;
+    left: -19px;
+    color: inherit;
+}
+
+/* Change Device Settings: the device's logo, then the Gadgets and More options sections */
+#melatonControlPanelModal .cpl-ss-logo {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-bottom: 11px;
+}
+
+#melatonControlPanelModal .cpl-ss-logo img {
+    width: 48px;
+    height: 48px;
+}
+
+#melatonControlPanelModal .cpl-ss-para {
+    margin-bottom: 7px;
+}
+
+#melatonControlPanelModal .cpl-ss-dim {
+    color: #6d6d6d;
+}
+
+/* the gadget's settings: what is on the screen, the remote, the slide show */
+#melatonControlPanelModal .cpl-ss-showing {
+    display: flex;
+    gap: 10px;
+    min-height: 20px;
+    margin: 6px 0 8px 14px;
+}
+
+#melatonControlPanelModal .cpl-ss-thumb {
+    margin: 0;
+    width: 120px;
+}
+
+#melatonControlPanelModal .cpl-ss-thumb img {
+    display: block;
+    width: 120px;
+    height: 90px;
+    object-fit: contain;
+    border: 1px solid #cccccc;
+    background: #000;
+}
+
+#melatonControlPanelModal .cpl-ss-thumb figcaption {
+    overflow: hidden;
+    color: #6d6d6d;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#melatonControlPanelModal .cpl-ss-remote {
+    display: flex;
+    gap: 6px;
+    margin-left: 14px;
+}
+
+#melatonControlPanelModal .cpl-ss-field {
+    margin: 6px 0 0 14px;
+}
+
+#melatonControlPanelModal .cpl-ss-settings input.cpl-ss-num {
+    width: 60px;
+}

@@ -371,6 +371,9 @@ class WebSocketMessageHandlers {
     // This function checks if an operation is destructive (not allowed for read-only users)
     isDestructiveOperation(messageType) {
         const destructiveOperations = [
+            // slideshow devices (Control Panel's SideShow page; modules/slideshowDevices.js)
+            'device_send_command',
+            'device_forget',
             'workspace_create',
             'workspace_delete',
             'workspace_rename',

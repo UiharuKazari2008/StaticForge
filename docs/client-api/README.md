@@ -77,6 +77,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Director | [ws/director.md](./ws/director.md) | 12 |
 | Notes (+ novels) | [ws/notes.md](./ws/notes.md) | 14 |
 | Windows Sidebar | [ws/sidebar.md](./ws/sidebar.md) | 5 (+ `sidebar_updated` push) |
+| Slideshow devices (Melaton SideShow) | [ws/slideshowDevices.md](./ws/slideshowDevices.md) | 6 (+ `device_command`, `devices_updated` push) |
 | NAX | [ws/nax.md](./ws/nax.md) | 11 |
 | Agora (NovelAI Explore) | [ws/explore.md](./ws/explore.md) | 11 |
 | Text replacements | [ws/textReplacements.md](./ws/textReplacements.md) | 6 |

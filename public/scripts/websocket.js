@@ -7930,6 +7930,20 @@ class WebSocketClient {
         return this.sendMessage('wallpaper_history_delete', { id });
     }
 
+    /** Slideshow devices (Dreamscape Frame tablets) for Control Panel's Melaton SideShow page. */
+    async listDevices() {
+        return this.sendMessage('list_devices', {}, false);
+    }
+
+    /** command: next | previous | pause | resume | show | refresh | set_settings | rename */
+    async deviceSendCommand(deviceId, command, extra = {}) {
+        return this.sendMessage('device_send_command', { deviceId, command, ...extra }, false);
+    }
+
+    async deviceForget(deviceId) {
+        return this.sendMessage('device_forget', { deviceId });
+    }
+
     async replaceReference(hash, imageData, workspaceId, tempFile = null, filename = null) {
         return this.sendMessage('replace_reference', { hash, imageData, workspaceId, tempFile, filename });
     }

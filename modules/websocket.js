@@ -208,6 +208,17 @@ class WebSocketServer {
                 lastActivity: new Date(),
                 heartbeat: createSocketHeartbeatEntry()
             };
+            // Dreamscape Frame tablets (modules/slideshowDevices.js) say so before they identify,
+            // so agent auto-bind never picks one in between
+            // (browsers cannot set headers on a socket: the Device Simulator app passes ?dreamscapeClient=)
+            let queryApp = '';
+            try {
+                const q = String(req.url || '').indexOf('?');
+                queryApp = q < 0 ? '' : new URLSearchParams(String(req.url).slice(q + 1)).get('dreamscapeClient') || '';
+            } catch (_) { /* no query */ }
+            const frameApp = [req.headers['x-dreamscape-client'], req.headers['user-agent'], queryApp]
+                .map((h) => String(h || '').trim().split(/\s+/)[0]).find((h) => /^(DreamscapeFrame|VirtualSideShow)\//.test(h));
+            if (frameApp) clientInfo.deviceApp = frameApp.slice(0, 64);
 
             this.clients.set(ws, clientInfo);
             try {
@@ -311,8 +322,10 @@ class WebSocketServer {
                         handlers.detachClientActiveGenerations(ws);
                     }
 
-                    // Clean up session workspace
-                    this.globalResources.getWorkspaceManager().cleanupSessionWorkspace(clientInfo.sessionId);
+                    // Clean up session workspace (not for a slideshow device: it shares the tab's session)
+                    if (!(info.deviceId || info.deviceApp)) {
+                        this.globalResources.getWorkspaceManager().cleanupSessionWorkspace(clientInfo.sessionId);
+                    }
                     
                     // Clean up metadata cache for this client
                     if (handlers && handlers.cleanupClientCache) {
@@ -334,6 +347,8 @@ class WebSocketServer {
                     }
                     // the tab's Melaton apps end with it (their session runners stop; services stay)
                     require('./ws/handlers/245-melatonAppsHandler').onClientClosed(ws);
+                    // a slideshow device is offline from here (Control Panel's SideShow page)
+                    require('./slideshowDevices').onSocketClosed(this.globalResources, this, info);
                 }
             });
 

@@ -154,6 +154,11 @@ function normalizeClientIP(ip) {
     return String(ip).replace(/^::ffff:/i, '').toLowerCase();
 }
 
+/** A slideshow tablet (modules/slideshowDevices.js): no desktop, never an agent's client. */
+function isDeviceClientInfo(info) {
+    return !!(info && (info.deviceId || info.deviceApp));
+}
+
 function isLoopbackClientIP(ip) {
     const s = normalizeClientIP(ip);
     return s === '127.0.0.1' || s === '::1' || s === 'localhost';
@@ -857,7 +862,8 @@ function handleClientDesktopState(handlersCtx, ws, message, clientInfo) {
     info.desktopStateAt = Date.now();
 }
 
-function listClients(globalResources, bindKey) {
+function listClients(globalResources, bindKey, opts) {
+    const includeDevices = !!(opts && opts.includeDevices);
     const wsServer = getWsServer(globalResources);
     pruneShareCodes();
     expireIdleBind(bindKey);
@@ -866,6 +872,8 @@ function listClients(globalResources, bindKey) {
     const out = [];
     for (const [ws, info] of wsServer.clients) {
         if (ws.readyState !== WebSocket.OPEN) continue;
+        const device = isDeviceClientInfo(info) ? require('./slideshowDevices').clientDeviceFields(info) : null;
+        if (device && !includeDevices) continue;
         const clientId = ensureClientId(info);
         const lastMs = clientLastActivityMs(info);
         out.push({
@@ -879,7 +887,8 @@ function listClients(globalResources, bindKey) {
             authenticated: !!info.authenticated,
             priority: priorityClient.clientId === clientId,
             desktopState: clientDesktopState(info),
-            desktopReady: isDesktopStateReady(clientDesktopState(info)) && !!info.authenticated
+            desktopReady: !device && isDesktopStateReady(clientDesktopState(info)) && !!info.authenticated,
+            ...(device ? { kind: device.kind, name: device.name, deviceId: device.deviceId, bindable: false } : {})
         });
     }
     out.sort((a, b) => {
@@ -938,6 +947,11 @@ function bindClient(globalResources, { clientId, code, bindKey, actorName, prior
     if (!found) {
         const err = new Error('Client is not connected');
         err.status = 404;
+        throw err;
+    }
+    if (isDeviceClientInfo(found.info)) {
+        const err = new Error('That client is a slideshow device, not a Dreamscape tab');
+        err.status = 409;
         throw err;
     }
     const previous = bindSessions.get(key);
@@ -1148,7 +1162,7 @@ function pickNearestClient(globalResources, requestIP, exceptClientId) {
     let bestScore = -1;
     for (const [ws, info] of wsServer.clients) {
         if (ws.readyState !== WebSocket.OPEN) continue;
-        if (!info || !info.authenticated) continue;
+        if (!info || !info.authenticated || isDeviceClientInfo(info)) continue;
         const clientId = ensureClientId(info);
         if (skipId && clientId === skipId) continue;
         const score = scoreClientNearness(info, requestIP);
@@ -1300,7 +1314,7 @@ function pickSuccessorForDeadClient(globalResources, deadId) {
     let bestAt = -1;
     for (const [ws, info] of wsServer.clients) {
         if (ws.readyState !== WebSocket.OPEN) continue;
-        if (!info || !info.authenticated) continue;
+        if (!info || !info.authenticated || isDeviceClientInfo(info)) continue;
         const clientId = ensureClientId(info);
         if (clientId === deadId) continue;
         const at = info.connectedAt ? new Date(info.connectedAt).getTime() : 0;
@@ -1515,7 +1529,7 @@ function findClientsBySessionId(wsServer, sessionId) {
     if (!wsServer || !wsServer.clients || !sessionId) return out;
     for (const [ws, info] of wsServer.clients) {
         if (ws.readyState !== WebSocket.OPEN) continue;
-        if (info && info.sessionId === sessionId) {
+        if (info && info.sessionId === sessionId && !isDeviceClientInfo(info)) {
             out.push({ ws, info, clientId: ensureClientId(info) });
         }
     }
@@ -1558,7 +1572,7 @@ function pickReattachTarget(globalResources, hint) {
             if (ws.readyState !== WebSocket.OPEN) continue;
             const clientId = ensureClientId(info);
             if (!isPostRestartConnection({ ws, info, clientId }, hint || { previousClientId })) continue;
-            if (!info || !info.authenticated) continue;
+            if (!info || !info.authenticated || isDeviceClientInfo(info)) continue;
             live.push({ ws, info, clientId });
         }
     }
@@ -2062,7 +2076,7 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
             const bindKey = resolveBindKey(req);
             return res.json({
                 success: true,
-                clients: listClients(globalResources, bindKey),
+                clients: listClients(globalResources, bindKey, { includeDevices: true }),
                 boundClientId: getBoundClientId(bindKey)
             });
         } catch (error) {
