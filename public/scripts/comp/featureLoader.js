@@ -111,6 +111,11 @@ const FEATURE_MANIFEST = {
         styles: ['css/vista-charmap.css'],
         scripts: ['scripts/comp/desktop-apps/charmap/charmapApp.js']
     },
+    // Device Simulator for Melaton SideShow (Yozora #655): VirtualSideShow.exe, a real SideShow device
+    sideshow_simulator: {
+        styles: ['css/vista-sideshow-simulator.css'],
+        scripts: ['scripts/comp/desktop-apps/sideshow/sideshowSimulator.js']
+    },
     // Paint (Yozora #632): mspaint.exe with layers; its dialogs are Vista's own templates
     paint: {
         depends: ['vista_dialog_templates'],

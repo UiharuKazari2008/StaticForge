@@ -1,0 +1,313 @@
+/* Device Simulator for Melaton SideShow (Yozora #655; scripts/comp/desktop-apps/sideshow/sideshowSimulator.js).
+   The client is the VM's capture; the buttons are hit areas over it that show VirtualSideShow.exe's
+   pressed bitmaps while held. The LCD's screens follow the firmware art and the archive.org shots
+   of the connected simulator (Welcome band, the header clock, the landscape icon column). */
+
+/* VirtualSideShow's form is FixedSingle: Vista draws it with the thin Aero frame, 3 px around the
+   client (262 x 572 outside a 256 x 546 client) under a 23 px caption band */
+body.desktop-mode .modal.sss-window {
+    --window-frame-inset: 2px;
+    --modal-title-chrome-height: 22px;
+    padding-top: 22px;
+}
+
+/* the thin frame's caption: icon 4 px nearer the edge than on a sizing frame */
+body.desktop-mode:not(.windows-classic-theme) .modal.sss-window.tbp-window > .modal-window-title .modal-window-title-main {
+    margin-left: -9px;
+}
+
+.sss-window .sss-client {
+    position: relative;
+    box-sizing: content-box;
+    padding: 0;
+    overflow: hidden;
+    outline: none;
+    background: #000 no-repeat 0 0;
+    user-select: none;
+}
+
+.sss-window .sss-btn {
+    position: absolute;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: default;
+}
+
+.sss-window .sss-btn.is-down {
+    background: var(--down) no-repeat 0 0;
+}
+
+.sss-window .sss-btn:focus {
+    outline: none;
+}
+
+/* "Always on top": the capture holds the box; the check mark is laid over it when on */
+.sss-window .sss-ontop {
+    position: absolute;
+    width: 92px;
+    height: 17px;
+    cursor: default;
+}
+
+.sss-window .sss-ontop input {
+    display: none;
+}
+
+.sss-window .sss-ontop .sss-mark {
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    pointer-events: none;
+}
+
+.sss-window .sss-ontop input:not(:checked) + .sss-mark {
+    display: none;
+}
+
+/* ---- the LCD ---- */
+
+.sss-window .sss-lcd {
+    position: absolute;
+    overflow: hidden;
+    background: #000;
+    color: #fff;
+    font: 13px/1.2 'Segoe UI', Tahoma, sans-serif;
+}
+
+.sss-window .sss-splash {
+    position: absolute;
+    inset: 0;
+    background: #000 no-repeat center / 320px 240px;
+}
+
+.sss-window.is-portrait .sss-splash {
+    background-size: 240px 180px;
+}
+
+.sss-window .sss-header {
+    position: relative;
+    height: 25px;
+    background: no-repeat 0 0 / 100% 25px;
+}
+
+.sss-window .sss-clock {
+    position: absolute;
+    top: 5px;
+    right: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.sss-window .sss-home,
+.sss-window .sss-gadget {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #0d4f7a no-repeat 0 0;
+}
+
+.sss-window .sss-home.is-portrait,
+.sss-window .sss-gadget {
+    top: 25px;
+}
+
+.sss-window .sss-home.is-landscape {
+    top: 0;
+}
+
+/* portrait home: the Welcome band (the firmware's own picture), then the gadgets */
+.sss-window .sss-welcome {
+    position: absolute;
+    left: 0;
+    top: 98px;
+    width: 240px;
+    height: 70px;
+}
+
+.sss-window .sss-welcome b {
+    position: absolute;
+    left: 10px;
+    top: 9px;
+    font-size: 17px;
+    font-weight: bold;
+}
+
+.sss-window .sss-welcome span {
+    position: absolute;
+    left: 10px;
+    top: 35px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.sss-window .sss-welcome img {
+    position: absolute;
+    right: 0;
+    top: -14px;
+    width: 48px;
+    height: 48px;
+}
+
+.sss-window .sss-item {
+    position: absolute;
+    left: 0;
+    top: 186px;
+    width: 240px;
+    height: 24px;
+    padding-left: 18px;
+    box-sizing: border-box;
+    line-height: 24px;
+    font-size: 13px;
+}
+
+.sss-window .sss-item.is-selected {
+    background: var(--sel) no-repeat 0 0 / 240px 24px;
+    color: #000;
+}
+
+.sss-window .sss-welcome.is-selected {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+
+/* landscape home: the icon column and the selected gadget's name */
+.sss-window .sss-clock-free {
+    top: 4px;
+}
+
+.sss-window .sss-tiles {
+    position: absolute;
+    left: 8px;
+    top: 5px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 66px;
+}
+
+.sss-window .sss-tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 44px;
+    height: 42px;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 4px;
+    background: linear-gradient(rgba(120, 190, 230, 0.55), rgba(10, 70, 120, 0.55));
+}
+
+.sss-window .sss-tile img {
+    max-width: 34px;
+    max-height: 30px;
+}
+
+.sss-window .sss-tile.is-selected {
+    width: 66px;
+    height: 67px;
+    border: 2px solid #fff;
+    background: linear-gradient(rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.15));
+}
+
+.sss-window .sss-tile.is-selected img {
+    max-width: 48px;
+    max-height: 48px;
+}
+
+.sss-window .sss-home-text {
+    position: absolute;
+    left: 83px;
+    right: 6px;
+    top: 58px;
+}
+
+.sss-window .sss-home-text b {
+    display: block;
+    font-size: 14px;
+}
+
+.sss-window .sss-home-text span {
+    display: block;
+    margin-top: 4px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* the Dreamscape Slideshow gadget */
+.sss-window .sss-pics {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: #000;
+}
+
+.sss-window .sss-pics img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.sss-window .sss-pics.is-pair img {
+    max-width: calc(50% - 1px);
+}
+
+.sss-window .sss-msg {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: 40%;
+    text-align: center;
+}
+
+.sss-window .sss-info {
+    position: absolute;
+    right: 4px;
+    bottom: 3px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.55);
+    font-size: 11px;
+}
+
+.sss-window .sss-info.is-full {
+    left: 4px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.sss-window .sss-paused {
+    position: absolute;
+    left: 4px;
+    top: 3px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.55);
+    font-size: 11px;
+}
+
+.sss-window .sss-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 4px 0;
+    background: rgba(0, 0, 0, 0.75);
+}
+
+.sss-window .sss-menu-item {
+    height: 26px;
+    padding-left: 12px;
+    line-height: 26px;
+}
+
+.sss-window .sss-menu-item.is-selected {
+    background: var(--bar) no-repeat 0 0 / 100% 26px;
+    color: #000;
+}

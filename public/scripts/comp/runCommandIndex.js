@@ -57,6 +57,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['notepad', 'notepad.exe'], launchIds: ['notepad'] },
     { aliases: ['mspaint', 'mspaint.exe', 'paint', 'pbrush'], launchIds: ['paint'] },
     { aliases: ['charmap', 'charmap.exe', 'character map'], launchIds: ['charmap'] },
+    { aliases: ['virtualsideshow', 'virtualsideshow.exe', 'sideshow simulator', 'device simulator'], launchIds: ['sideshow-simulator-landscape'] },
     { aliases: ['snippingtool', 'snippingtool.exe', 'snipping tool'], launchIds: ['snipping'] },
     { aliases: ['wincal', 'wincal.exe', 'windows calendar', 'calendar'], launchIds: ['calendar'] },
     { aliases: ['wab', 'wab.exe', 'contacts', 'windows contacts'], launchIds: ['contacts'] },

@@ -6644,6 +6644,9 @@ function buildToolsSubmenuItems() {
         { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'vista-performance.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
         // Accessories > Welcome Center (public/scripts/comp/welcomeCenter.js)
         { launchId: 'welcome-center', icon: 'fas fa-house', imageIcon: 'vista-welcome-center.png', text: 'Welcome Center', appMenuLocation: 'tools', action: () => { window.openWelcomeCenter(); } },
+        // Windows SideShow > Device Simulator 3.0 (Yozora #655; public/scripts/comp/desktop-apps/sideshow/sideshowSimulator.js)
+        { launchId: 'sideshow-simulator-landscape', icon: 'fas fa-tablet', imageIcon: 'vista-sideshow-simulator.png', text: 'Simulator (Landscape mode)', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('sideshow_simulator'); window.openSideShowSimulator('landscape'); } },
+        { launchId: 'sideshow-simulator-portrait', icon: 'fas fa-mobile', imageIcon: 'vista-sideshow-simulator.png', text: 'Simulator (Portrait mode)', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('sideshow_simulator'); window.openSideShowSimulator('portrait'); } },
         // Accessories > Paint (Yozora #632; public/scripts/comp/desktop-apps/paint/paintApp.js)
         { launchId: 'paint', icon: 'fas fa-palette', imageIcon: 'vista-paint.png', text: 'Paint', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('paint'); window.openMelatonPaint(); } },
         // System Tools > Melaton Task Manager (Yozora #632; apps/taskmgr, a system package; Ctrl+Shift+Esc)
