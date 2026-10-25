@@ -175,7 +175,11 @@ function createStore(options = {}) {
         const byAge = Array.from(index.values()).sort((a, b) => String(a.lastSeen).localeCompare(String(b.lastSeen)));
         const drop = byAge.filter((s) => Date.parse(s.lastSeen) < cutoff);
         const keep = byAge.length - drop.length;
-        if (keep > maxReports) drop.push(...byAge.filter((s) => !drop.includes(s)).slice(0, keep - maxReports));
+        if (keep > maxReports) {
+            /* JULES: Optimize drop array lookup from O(N^2) Array.includes to O(N) Set.has */
+            const dropSet = new Set(drop);
+            drop.push(...byAge.filter((s) => !dropSet.has(s)).slice(0, keep - maxReports));
+        }
         for (const s of drop) {
             index.delete(s.id);
             await fsp.unlink(fileFor(s.id)).catch(() => {});
