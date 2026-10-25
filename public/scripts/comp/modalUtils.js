@@ -7989,6 +7989,51 @@ function renderStartMenuPrograms(list) {
 // ---- Start Search ----
 
 const START_MENU_SEARCH_GROUPS = { app: 'Programs', workspace: 'Planets', note: 'Notes', shortcut: 'Shortcuts' };
+// Group order as Vista lists them: Programs first, then the rest; the Gallery rows close the list
+const START_MENU_SEARCH_GROUP_ORDER = { app: 0, workspace: 1, note: 2, shortcut: 3 };
+const START_MENU_SEARCH_GROUP_CAP = { app: 6 };
+const START_MENU_SEARCH_GROUP_CAP_DEFAULT = 3;
+const START_MENU_SEARCH_MAX_ROWS = 12;
+// id of the row the arrow keys are on, kept when the list is re-rendered for the same query
+let startMenuSearchHotId = null;
+
+function startMenuSearchGroupOrder(entry) {
+    const category = entry.category || '';
+    if (category in START_MENU_SEARCH_GROUP_ORDER) return START_MENU_SEARCH_GROUP_ORDER[category];
+    return category.startsWith('gallery-') ? 9 : 4;
+}
+
+/**
+ * Start Search results for a query: word-prefix matches from the Run index
+ * (searchRunCommandsPrefix: public/scripts/comp/runCommandIndex.js), programs first, better
+ * matches first inside a group, then alphabetical; a few rows per group; network rows
+ * (Grimoire, tags) stay in Run behind "See all results".
+ * @param {string} query
+ * @returns {Array<object>}
+ */
+function collectStartMenuSearchEntries(query) {
+    const raw = typeof searchRunCommandsPrefix === 'function' ? searchRunCommandsPrefix(query) : [];
+    const entries = raw.filter((entry) => typeof entry.execute === 'function'
+        && !entry.isDeferredNetwork && !entry.isNetworkResult && entry.category !== 'wiki');
+    entries.sort((a, b) => startMenuSearchGroupOrder(a) - startMenuSearchGroupOrder(b)
+        || (a.matchRank ?? 3) - (b.matchRank ?? 3)
+        || String(a.label || '').localeCompare(String(b.label || '')));
+    const perGroup = new Map();
+    const out = [];
+    const tail = [];
+    entries.forEach((entry) => {
+        if (startMenuSearchGroupOrder(entry) === 9) {
+            tail.push(entry);
+            return;
+        }
+        const cap = START_MENU_SEARCH_GROUP_CAP[entry.category] ?? START_MENU_SEARCH_GROUP_CAP_DEFAULT;
+        const n = perGroup.get(entry.category) || 0;
+        if (n >= cap || out.length >= START_MENU_SEARCH_MAX_ROWS) return;
+        perGroup.set(entry.category, n + 1);
+        out.push(entry);
+    });
+    return out.concat(tail);
+}
 
 function renderStartMenuSearchResults(list) {
     const query = startMenuEls ? startMenuEls.search.value.trim() : '';
@@ -8014,12 +8059,14 @@ function renderStartMenuSearchResults(list) {
         list.appendChild(header);
         entries.forEach((entry) => {
             const app = entry.launchId ? appItems.get(entry.launchId) : null;
-            list.appendChild(createStartMenuListRow({
+            const row = createStartMenuListRow({
                 text: entry.label,
                 icon: entry.icon || (window.RUN_CATEGORY_ICONS && window.RUN_CATEGORY_ICONS[entry.category]) || 'fas fa-circle',
                 imageIcon: app ? app.imageIcon : null,
                 action: entry.execute
-            }, 'result'));
+            }, 'result');
+            row.dataset.entryId = entry.id || '';
+            list.appendChild(row);
         });
     });
     list.appendChild(createStartMenuSeparator());
@@ -8028,8 +8075,21 @@ function renderStartMenuSearchResults(list) {
         icon: 'fas fa-magnifying-glass',
         action: () => openRunWithStartSearch(query)
     }, 'result'));
-    const first = list.querySelector('.start-menu-row');
-    if (first) first.classList.add('is-hot');
+    // the arrow-key row survives a re-render for the same query (notes arriving); else the first row
+    const kept = startMenuSearchHotId
+        ? [...list.querySelectorAll('.start-menu-row')].find((row) => row.dataset.entryId === startMenuSearchHotId)
+        : null;
+    const hot = kept || list.querySelector('.start-menu-row');
+    if (hot) hot.classList.add('is-hot');
+}
+
+/** Show a result set; a re-render for the same rows (notes loaded, nothing new) is skipped. */
+function applyStartMenuSearchResults(entries, force) {
+    const key = (list) => list.map((entry) => entry.id).join('\n');
+    if (!force && startMenuView === 'search' && key(entries) === key(startMenuSearchEntries)) return;
+    startMenuSearchEntries = entries;
+    startMenuView = 'search';
+    renderStartMenuList();
 }
 
 /** "See all results": the Run window with the query (network results, the action panel). */
@@ -8050,19 +8110,23 @@ function onStartMenuSearchInput() {
         return;
     }
     // the run index is lazy (featureLoader run_index): load it on the first keystroke
-    if (typeof searchRunCommands !== 'function') {
+    if (typeof searchRunCommandsPrefix !== 'function') {
         featureLoader.loadFeature('run_index').then(() => {
-            if (seq === startMenuSearchSeq && typeof searchRunCommands === 'function') onStartMenuSearchInput();
+            if (seq === startMenuSearchSeq && typeof searchRunCommandsPrefix === 'function') onStartMenuSearchInput();
         }).catch((err) => console.warn('[startMenu] run index failed to load', err));
         return;
     }
-    searchRunCommands(query, (results) => {
-        if (seq !== startMenuSearchSeq) return;
-        // network results stay in Run ("See all results")
-        startMenuSearchEntries = (results || []).filter((entry) => typeof entry.execute === 'function' && !entry.isDeferredNetwork);
-        startMenuView = 'search';
-        renderStartMenuList();
-    });
+    // a new query starts at the top; results are synchronous (word-prefix over the local index)
+    startMenuSearchHotId = null;
+    applyStartMenuSearchResults(collectStartMenuSearchEntries(query), true);
+    // notes load once per index (getRunNoteEntriesCached: runCommandIndex.js); when they arrive
+    // the same query is searched again and the list only re-renders if a row changed
+    if (typeof getRunNoteEntriesCached === 'function') {
+        getRunNoteEntriesCached().then(() => {
+            if (seq !== startMenuSearchSeq || startMenuView !== 'search') return;
+            applyStartMenuSearchResults(collectStartMenuSearchEntries(query), false);
+        }).catch(() => {});
+    }
 }
 
 // ---- keyboard: typing goes to Start Search, arrows move through the left pane ----
@@ -8075,6 +8139,7 @@ function moveStartMenuHot(delta) {
     index = index < 0 ? (delta > 0 ? 0 : rows.length - 1) : (index + delta + rows.length) % rows.length;
     rows[index].classList.add('is-hot');
     rows[index].scrollIntoView({ block: 'nearest' });
+    if (startMenuView === 'search') startMenuSearchHotId = rows[index].dataset.entryId || null;
 }
 
 function onStartMenuSearchKeydown(e) {

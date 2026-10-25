@@ -1419,6 +1419,72 @@ function searchRunCommandsFast(rawQuery) {
     return mergeRunResults(lists, 14);
 }
 
+/** Words of a label for Start Search: "DreamStudio 2026" -> dream, studio, 2026. */
+function runSearchWords(text) {
+    return String(text || '')
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean);
+}
+
+/**
+ * Vista's Start Search matches the start of words, not substrings or near misses: "pa" finds
+ * Paint and Control Panel, not Expanders or Dreamscape; "note" finds Notepad, not Notion.
+ * Every query word must start a word of the label (rank 1) or of a keyword (rank 2); the whole
+ * label starting with the query is rank 0. -1 is no match. The Run window keeps the fuzzy ranking.
+ * @param {string} query normalized query
+ * @param {{label?: string, keywords?: string[]}} entry
+ * @returns {number}
+ */
+function runWordPrefixRank(query, entry) {
+    const q = String(query || '').toLowerCase().trim();
+    const terms = q.split(/\s+/).filter(Boolean);
+    if (!terms.length || !entry) return -1;
+    const label = String(entry.label || '').toLowerCase();
+    if (label.startsWith(q)) return 0;
+    const startsAll = (words) => terms.every((term) => words.some((word) => word.startsWith(term)));
+    if (startsAll(runSearchWords(entry.label))) return 1;
+    const keywords = (entry.keywords || []).filter(Boolean);
+    if (keywords.some((kw) => String(kw).toLowerCase().startsWith(q) || startsAll(runSearchWords(kw)))) return 2;
+    return -1;
+}
+
+/**
+ * Start Search's local results: the same index as Run (programs with their aliases, planets,
+ * notes once loaded, shortcuts, presets, references) matched by word prefix, every match
+ * returned with a matchRank, no per-category slots (the Start menu caps its own groups).
+ * Synchronous; call getRunNoteEntriesCached() once so notes join on the next search.
+ * @param {string} rawQuery
+ * @returns {Array<object>}
+ */
+function searchRunCommandsPrefix(rawQuery) {
+    const { query, categoryHint } = normalizeRunQuery(rawQuery);
+    if (!query) return [];
+    if (!runStaticCache) runStaticCache = buildRunStaticEntries();
+    const pools = [
+        runStaticCache,
+        runNoteCache || [],
+        buildRunReferenceEntries(query),
+        buildRunPresetEntriesFast(query, categoryHint)
+    ];
+    const byId = new Map();
+    pools.forEach((list) => {
+        (list || []).forEach((entry) => {
+            if (!entry || byId.has(entry.id)) return;
+            const matchRank = runWordPrefixRank(query, entry);
+            if (matchRank < 0) return;
+            byId.set(entry.id, { ...entry, matchRank });
+        });
+    });
+    const out = Array.from(byId.values());
+    const dateEntry = buildRunGalleryDateEntry(query, categoryHint);
+    if (dateEntry) out.push({ ...dateEntry, matchRank: 3 });
+    const tagEntry = buildRunGalleryTagEntry(query, categoryHint, false);
+    if (tagEntry) out.push({ ...tagEntry, matchRank: 3 });
+    return out;
+}
+
 async function fetchRunAsyncEntries(query, categoryHint, generation) {
     const asyncLists = [];
     const inPrompt = Boolean(getRunPromptInsertTarget());
