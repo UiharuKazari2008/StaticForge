@@ -297,13 +297,12 @@
         }
 
         reportState() {
-            let state = 'stopped';
+            // stopped only when the window closes (close()): the splash and home list are a running device
+            let state = 'paused';
             let showing = [];
-            if (this.screen === 'gadget') {
+            if (this.screen === 'gadget' || this.screen === 'menu') {
                 state = this.paused ? 'paused' : 'showing';
                 showing = this.current();
-            } else if (this.screen === 'home' || this.screen === 'menu') {
-                state = 'paused';
             }
             this.send({ type: 'client_device_state', data: { deviceId: this.deviceId, state, showing, since: Date.now() } });
         }
