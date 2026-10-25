@@ -2,6 +2,7 @@ const wsPacketRegistry = require('../wsPacketRegistry');
 const sidebarGadgets = require('../../sidebarGadgets');
 const searchHandler = require('./70-searchHandler');
 const sidebarSystemInfo = require('../../sidebarSystemInfo');
+const sidebarLiveFeed = require('../../sidebarLiveFeed');
 
 // Windows Sidebar gadgets (modules/sidebarGadgets.js, client public/scripts/comp/vistaSidebar.js).
 // Administrators only: the state carries Notes text and the Mail gadget reads Yukimi's inbox.
@@ -108,6 +109,21 @@ async function handleHostMetrics(handlersCtx, ws, message, clientInfo) {
     }
 }
 
+/**
+ * One live feed per tab (Yozora #653): `topics` is the union of what its gadgets show
+ * ({ host, system, weather, fx: [{from,to}], quotes: [[symbols]], feeds: [url] }); the server then
+ * pushes `sidebar_live` at most once a second (modules/sidebarLiveFeed.js). Empty topics unsubscribe.
+ */
+async function handleLiveSubscribe(handlersCtx, ws, message, clientInfo) {
+    if (!requireAdmin(handlersCtx, ws, message, clientInfo)) return;
+    try {
+        const result = sidebarLiveFeed.subscribe(handlersCtx.globalResources, ws, clientInfo.clientIP, message.topics);
+        reply(handlersCtx, ws, message, { success: true, ...result });
+    } catch (error) {
+        handlersCtx.sendError(ws, 'Failed to subscribe the Sidebar', error.message, message.requestId);
+    }
+}
+
 /** Hosted gadgets' machine (Yozora #629): the server's cores, memory, disks, network and processes. */
 async function handleSystemInfo(handlersCtx, ws, message, clientInfo) {
     if (!requireAdmin(handlersCtx, ws, message, clientInfo)) return;
@@ -160,6 +176,7 @@ function registerPackets(handlersCtx) {
     reg('sidebar_random_image', handleRandomImage);
     reg('sidebar_weather', handleWeather);
     reg('sidebar_host_metrics', handleHostMetrics);
+    reg('sidebar_live_subscribe', handleLiveSubscribe);
     reg('sidebar_system_info', handleSystemInfo);
     reg('sidebar_fx', handleFx);
     reg('sidebar_quotes', handleQuotes);

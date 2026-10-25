@@ -212,11 +212,11 @@ const vghSystem = function (ctx) {
 
 /**
  * Gadgets read "this computer": here that is Dreamscape's server, as the CPU Meter shows it.
- * One poll (sidebar_system_info, modules/sidebarSystemInfo.js) feeds every gadget that asked, once
- * a second while the tab is visible, and stops when none is left. Reads are synchronous in
+ * The Sidebar's live feed (system topic of sidebar_live, modules/sidebarLiveFeed.js) feeds every
+ * gadget that asked, once a second while the tab is visible, and stops when none is left. Reads are synchronous in
  * JScript, so they answer from the last sample.
  */
-const VGH_SYS = { data: null, users: new Set(), timer: null, acc: { disk: new Map(), proc: new Map(), idle: 0, at: 0 } };
+const VGH_SYS = { data: null, users: new Set(), release: null, acc: { disk: new Map(), proc: new Map(), idle: 0, at: 0 } };
 const VGH_SYS_EMPTY = {
     cpu: { name: 'Processor', mhz: 0, cores: [0], total: 0 },
     memory: { totalBytes: 0, freeBytes: 0 },
@@ -244,31 +244,28 @@ const vghSysAccumulate = function (data) {
     if (acc.proc.size > 500) acc.proc.clear();
 };
 
-const vghSysTick = function () {
-    if (!VGH_SYS.users.size) {
-        clearInterval(VGH_SYS.timer);
-        VGH_SYS.timer = null;
-        return;
-    }
-    if (document.hidden) return;
-    // sidebar_system_info: modules/ws/handlers/290-sidebarHandler.js
-    wsClient.sendMessage('sidebar_system_info', {}, false).then((data) => {
-        if (!data || !data.cpu) return;
-        vghSysAccumulate(data);
-        VGH_SYS.data = data;
-    }).catch(() => {});
-};
-
-/** The latest sample; starts the poll for this gadget (vghDestroy stops it). */
+/** The latest sample; the first user follows the Sidebar's live feed (vistaSidebar.js vsbLiveUse,
+ * one sidebar_live push per second for the tab, Yozora #653) and vghDestroy lets go after the last. */
 const vghSysUse = function (ctx) {
     if (!VGH_SYS.users.has(ctx)) {
         VGH_SYS.users.add(ctx);
-        if (!VGH_SYS.timer) {
-            vghSysTick();
-            VGH_SYS.timer = setInterval(vghSysTick, 1000);
+        if (!VGH_SYS.release && typeof window.vsbLiveUse === 'function') {
+            VGH_SYS.release = window.vsbLiveUse('vgh-system', { system: true }, (data) => {
+                if (!data || !data.cpu || data === VGH_SYS.data) return;
+                vghSysAccumulate(data);
+                VGH_SYS.data = data;
+            });
         }
     }
     return VGH_SYS.data || VGH_SYS_EMPTY;
+};
+
+const vghSysRelease = function (ctx) {
+    VGH_SYS.users.delete(ctx);
+    if (!VGH_SYS.users.size && VGH_SYS.release) {
+        VGH_SYS.release();
+        VGH_SYS.release = null;
+    }
 };
 
 const vghMachine = function (ctx) {
@@ -968,7 +965,7 @@ const vghDestroy = function (inst) {
     const ctx = vghCtx(inst);
     if (!ctx) return;
     ctx.timers.forEach((t) => { clearTimeout(t); clearInterval(t); });
-    VGH_SYS.users.delete(ctx);
+    vghSysRelease(ctx);
     clearTimeout(ctx.fitTimer);
     if (ctx.resizeObserver) ctx.resizeObserver.disconnect();
     if (vsb.flyout && vsb.flyout.vgh === ctx) vsbCloseFlyout();

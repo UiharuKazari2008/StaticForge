@@ -19,6 +19,7 @@ Every packet is admin only. A non-admin session gets `type: "error"` with code `
 | `sidebar_system_info` | `sidebar_system_info_response` | admin | `{}` -> `{ cpu: { name, mhz, cores: [percent], total }, memory: { totalBytes, freeBytes }, uptimeSec, disks: [{ letter, label, mount, totalBytes, freeBytes, readBps, writeBps, busy }], network: [{ name, rxBps, txBps, rxBytes, txBytes, speedBps, ip, mac }], processes: [{ pid, name, cpu, memBytes }], at }`. The server's own machine for hosted gadgets (System.Machine, System.Shell.drive, WMI). Sampled at most once a second (`modules/sidebarSystemInfo.js`); disks are mounted block devices lettered from C: (the root); processes are the top 12 by CPU, every 3 s. |
 | `sidebar_fx` | `sidebar_fx_response` | admin | `{ from, to }` ISO codes from the ECB set -> `{ available, from, to, date, rate }`. `rate` converts 1 `from` into `to` (Frankfurter, cached a few hours). |
 | `sidebar_quotes` | `sidebar_quotes_response` | admin | `{ symbols }` up to 4 (`A-Z`, digits, `.`, `^`, 12 chars) -> `{ quotes: [{ symbol, name, price, prev, currency, available }] }`. Yahoo chart, cached a few minutes. |
+| `sidebar_live_subscribe` | `sidebar_live_subscribe_response` | admin | `{ topics: { host?, system?, weather?, fx?: [{ from, to }], quotes?: [[symbols]], feeds?: [url] } }` -> `{ success, subscribed, topics }` (normalised). Replaces this socket's live feed subscription (below); empty topics unsubscribe. At most 8 entries per keyed list. The tab sends the union of what its gadgets show (`vsbLiveUse`, `public/scripts/comp/vistaSidebar.js`) and resends it when gadgets change, the tab is shown or hidden, or the socket changes. |
 | `sidebar_feed` | `sidebar_feed_response` | admin | `{ url }` https only -> `{ available, title, items: [{ title, link, date }] }` (at most 12). Private, link-local, and single-label hosts are refused. Redirects are re-checked. Body cap 256 KB. Cached 10 minutes. |
 
 ## Push
@@ -26,6 +27,9 @@ Every packet is admin only. A non-admin session gets `type: "error"` with code `
 | Type | When | Data |
 |---|---|---|
 | `sidebar_updated` | After a `sidebar_save`, to every other admin session | `{ workspaceId, sidebar }` |
+| `sidebar_live` | At most once a second to each socket with a `sidebar_live_subscribe` (Yozora #653), only when there is something to send | `{ at, host?, system?, weather?, fx?: { "EUR:USD": <sidebar_fx data> }, quotes?: { "AAPL,MSFT": <sidebar_quotes data> }, feeds?: { <url>: <sidebar_feed data> } }`. `host` / `system` come every tick; weather, quotes, fx and feeds come once when subscribed and again every 15 min / 3 min / 6 h / 10 min. A failed fetch is `{ available: false, error }`. A socket with over 512 KB buffered skips the tick. `modules/sidebarLiveFeed.js`. |
+
+The CPU Meter, Weather, Currency, Stocks, Feed Headlines and hosted gadgets' machine figures read this feed instead of polling the request packets above; those stay for a manual Refresh and other callers.
 
 ## Sidebar state
 
@@ -88,5 +92,5 @@ runs it in an iframe and gives it the Sidebar's object model.
 - The first time a gadget is added it is downloaded under the file progress dialog ("Downloading"), file by
   file from `<id>/__install.json`; `localStorage` `vgh.installed` remembers the version.
 - `System.Machine`, `System.Shell.drive` (megabytes) and WMI (`GetObject("winmgmts:...")`) answer from
-  `sidebar_system_info`; FileSystemObject text files are kept per gadget in `localStorage` (`vgh.file.<id>.<name>`).
+  the `system` topic of `sidebar_live`; FileSystemObject text files are kept per gadget in `localStorage` (`vgh.file.<id>.<name>`).
 

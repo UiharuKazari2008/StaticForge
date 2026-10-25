@@ -128,6 +128,154 @@ const vsbLoadImage = function (url) {
     });
 };
 
+// ---------------------------------------------------------------- live feed (Yozora #653)
+
+/*
+ * One `sidebar_live` push per second for the whole tab instead of a request per gadget per
+ * interval. Gadgets register what they show with vsbLiveUse(owner, spec, onData) and get back a
+ * release function; the hub sends the union as one `sidebar_live_subscribe`
+ * (modules/sidebarLiveFeed.js) and hands each push to the gadgets that asked for it.
+ * spec: { host: true } | { system: true } | { weather: true } | { fx: { from, to } }
+ *       | { quotes: [symbols] } | { feed: url }
+ */
+const VSB_LIVE_WATCH_MS = 5000;
+
+const vsbLive = {
+    users: new Map(),
+    last: new Map(),
+    sentKey: null,
+    socket: null,
+    lastPushAt: 0,
+    syncTimer: null,
+    watchTimer: null,
+    bound: false
+};
+
+const vsbLiveQuotesKey = (symbols) => (symbols || []).join(',');
+
+/** The push field a spec reads, as a cache key: 'host', 'fx:EUR:USD', 'quotes:AAPL', 'feed:<url>'. */
+const vsbLiveSpecKey = function (spec) {
+    if (spec.host) return 'host';
+    if (spec.system) return 'system';
+    if (spec.weather) return 'weather';
+    if (spec.fx) return `fx:${spec.fx.from}:${spec.fx.to}`;
+    if (spec.quotes) return `quotes:${vsbLiveQuotesKey(spec.quotes)}`;
+    if (spec.feed) return `feed:${spec.feed}`;
+    return '';
+};
+
+const vsbLivePart = function (data, key) {
+    if (key === 'host' || key === 'system' || key === 'weather') return data[key];
+    if (key.startsWith('fx:')) return data.fx && data.fx[key.slice(3)];
+    if (key.startsWith('quotes:')) return data.quotes && data.quotes[key.slice(7)];
+    if (key.startsWith('feed:')) return data.feeds && data.feeds[key.slice(5)];
+    return undefined;
+};
+
+const vsbLiveTopics = function () {
+    const t = { host: false, system: false, weather: false, fx: [], quotes: [], feeds: [] };
+    const fx = new Set();
+    const quotes = new Set();
+    const feeds = new Set();
+    vsbLive.users.forEach(({ spec }) => {
+        if (spec.host) t.host = true;
+        if (spec.system) t.system = true;
+        if (spec.weather) t.weather = true;
+        if (spec.fx && spec.fx.from && spec.fx.to) {
+            const key = `${spec.fx.from}:${spec.fx.to}`;
+            if (!fx.has(key)) { fx.add(key); t.fx.push({ from: spec.fx.from, to: spec.fx.to }); }
+        }
+        if (Array.isArray(spec.quotes) && spec.quotes.length) {
+            const key = vsbLiveQuotesKey(spec.quotes);
+            if (!quotes.has(key)) { quotes.add(key); t.quotes.push(spec.quotes.slice()); }
+        }
+        if (spec.feed && !feeds.has(spec.feed)) { feeds.add(spec.feed); t.feeds.push(spec.feed); }
+    });
+    return t;
+};
+
+const vsbLiveSend = function (force) {
+    vsbLive.syncTimer = null;
+    if (typeof wsClient === 'undefined' || !wsClient || !wsClient.ws || wsClient.ws.readyState !== 1) return;
+    const topics = document.hidden ? { host: false, system: false, weather: false, fx: [], quotes: [], feeds: [] } : vsbLiveTopics();
+    const key = JSON.stringify(topics);
+    if (!force && key === vsbLive.sentKey && vsbLive.socket === wsClient.ws) return;
+    vsbLive.sentKey = key;
+    vsbLive.socket = wsClient.ws;
+    vsbLive.lastPushAt = Date.now();
+    // sidebar_live_subscribe: modules/ws/handlers/290-sidebarHandler.js
+    wsClient.sendMessage('sidebar_live_subscribe', { topics }, false).catch(() => {
+        vsbLive.sentKey = null;
+    });
+};
+
+const vsbLiveSync = function (force) {
+    if (vsbLive.syncTimer) {
+        if (!force) return;
+        clearTimeout(vsbLive.syncTimer);
+    }
+    vsbLive.syncTimer = setTimeout(() => vsbLiveSend(force), 0);
+};
+
+const vsbLiveOnPush = function (msg) {
+    const data = msg && (msg.data || msg);
+    if (!data) return;
+    vsbLive.lastPushAt = Date.now();
+    vsbLive.users.forEach(({ key, onData }) => {
+        const part = vsbLivePart(data, key);
+        if (part === undefined) return;
+        vsbLive.last.set(key, part);
+        try { onData(part); } catch (err) { console.warn('Sidebar live update failed:', err); }
+    });
+};
+
+/** A reconnect (new socket) or a server restart (no pushes) loses the subscription: send it again. */
+const vsbLiveWatch = function () {
+    if (!vsbLive.users.size || document.hidden) return;
+    if (typeof wsClient === 'undefined' || !wsClient || !wsClient.ws || wsClient.ws.readyState !== 1) return;
+    const quiet = Date.now() - vsbLive.lastPushAt > VSB_LIVE_WATCH_MS;
+    if (vsbLive.socket !== wsClient.ws || (quiet && vsbLiveTopicsTick())) vsbLiveSync(true);
+};
+
+/** Only host/system arrive every second, so only they prove a dead feed by being quiet. */
+const vsbLiveTopicsTick = function () {
+    let tick = false;
+    vsbLive.users.forEach(({ spec }) => { if (spec.host || spec.system) tick = true; });
+    return tick;
+};
+
+const vsbLiveBind = function () {
+    if (vsbLive.bound) return;
+    vsbLive.bound = true;
+    // wsClient.on: public/scripts/websocket.js
+    wsClient.on('sidebar_live', vsbLiveOnPush);
+    document.addEventListener('visibilitychange', () => vsbLiveSync(true));
+    vsbLive.watchTimer = setInterval(vsbLiveWatch, VSB_LIVE_WATCH_MS);
+};
+
+const vsbLiveUse = function (owner, spec, onData) {
+    vsbLiveBind();
+    const key = vsbLiveSpecKey(spec || {});
+    vsbLive.users.set(owner, { spec: spec || {}, key, onData });
+    vsbLiveSync(false);
+    // the server sends a slow topic once per refresh period per tab: a second gadget on the same
+    // key starts from the value the first one already got
+    if (vsbLive.last.has(key)) {
+        const cached = vsbLive.last.get(key);
+        setTimeout(() => {
+            const user = vsbLive.users.get(owner);
+            if (user && user.onData === onData) onData(cached);
+        }, 0);
+    }
+    return () => {
+        if (vsbLive.users.get(owner) && vsbLive.users.get(owner).onData === onData) {
+            vsbLive.users.delete(owner);
+            vsbLiveSync(false);
+        }
+    };
+};
+window.vsbLiveUse = vsbLiveUse;
+
 // ---------------------------------------------------------------- gadget definitions
 
 const VSB_GADGETS = {
@@ -488,7 +636,12 @@ const vsbCpuMount = function (inst) {
     };
     inst.metrics = { cpu: 0, ram: 0 };
     vsbCpuApply(inst);
-    vsbCpuPoll(inst);
+    // host figures arrive on the tab's live feed every second (Yozora #653)
+    inst.liveRelease = vsbLiveUse(inst, { host: true }, (data) => {
+        if (inst.destroyed || !data) return;
+        inst.metrics = { cpu: Math.min(100, Math.max(0, Number(data.cpu) || 0)), ram: Math.min(100, Math.max(0, Number(data.ram) || 0)) };
+        if (vsbIsShown(inst)) vsbCpuPaint(inst);
+    });
 };
 
 const vsbCpuApply = function (inst) {
@@ -512,24 +665,6 @@ const vsbCpuPaint = function (inst) {
     p.cpuText.classList.toggle('is-full', Math.round(cpu) >= 100);
     p.ramText.classList.toggle('is-full', Math.round(ram) >= 100);
     p.cpu.title = `CPU usage: ${Math.round(cpu)}%\nMemory usage: ${Math.round(ram)}%`;
-};
-
-const vsbCpuPoll = async function (inst) {
-    clearTimeout(inst.timer);
-    if (inst.destroyed) return;
-    if (!document.hidden && vsbIsShown(inst)) {
-        try {
-            // sidebar_host_metrics: modules/ws/handlers/290-sidebarHandler.js
-            const data = await wsClient.sendMessage('sidebar_host_metrics', {}, false);
-            if (data) {
-                inst.metrics = { cpu: Math.min(100, Math.max(0, Number(data.cpu) || 0)), ram: Math.min(100, Math.max(0, Number(data.ram) || 0)) };
-                vsbCpuPaint(inst);
-            }
-        } catch (_) {
-            // keep the last reading
-        }
-    }
-    if (!inst.destroyed) inst.timer = setTimeout(() => vsbCpuPoll(inst), 2000);
 };
 
 // ---------------------------------------------------------------- notes
@@ -1303,7 +1438,12 @@ const vsbWeatherMount = function (inst) {
     inst.parts = { wx };
     inst.data = null;
     vsbWeatherApply(inst);
-    vsbWeatherPoll(inst);
+    // sidebar_live weather (client IP, then the configured home), refreshed every 15 min (Yozora #653)
+    inst.liveRelease = vsbLiveUse(inst, { weather: true }, (data) => {
+        if (inst.destroyed) return;
+        inst.data = data || { available: false };
+        vsbWeatherApply(inst);
+    });
 };
 
 const vsbWeatherApply = function (inst) {
@@ -1377,19 +1517,6 @@ const vsbWeatherPlaceAlt = function (alt, today, condition, hi, lo) {
     return '';
 };
 
-const vsbWeatherPoll = async function (inst) {
-    clearTimeout(inst.timer);
-    if (inst.destroyed) return;
-    try {
-        // sidebar_weather: modules/ws/handlers/290-sidebarHandler.js (client IP, then the configured home)
-        inst.data = await wsClient.sendMessage('sidebar_weather', {}, false) || { available: false };
-    } catch (_) {
-        inst.data = { available: false };
-    }
-    if (inst.destroyed) return;
-    vsbWeatherApply(inst);
-    inst.timer = setTimeout(() => vsbWeatherPoll(inst), 15 * 60000);
-};
 
 const vsbWeatherOptions = {
     html(set) {
@@ -2308,7 +2435,7 @@ const vsbFxMount = function (inst) {
         vsbFxPaint(inst);
     });
     inst.parts = { amount, from, to, result, meta };
-    inst.refresh = () => vsbFxPoll(inst);
+    inst.refresh = () => vsbFxPoll(inst, true);
     vsbFxPaint(inst);
     vsbFxPoll(inst);
 };
@@ -2324,11 +2451,21 @@ const vsbFxPaint = function (inst) {
     p.meta.textContent = rate == null ? '' : (inst.rate.date || '');
 };
 
-const vsbFxPoll = async function (inst) {
-    clearTimeout(inst.timer);
+/** Follow the pair on the live feed (6 h refresh, Yozora #653); `now` also asks once right away. */
+const vsbFxPoll = async function (inst, now = false) {
     if (inst.destroyed) return;
     const from = inst.g.settings.from;
     const to = inst.g.settings.to;
+    if (inst.liveKey !== `${from}:${to}`) {
+        if (inst.liveRelease) inst.liveRelease();
+        inst.liveKey = `${from}:${to}`;
+        inst.liveRelease = vsbLiveUse(inst, { fx: { from, to } }, (data) => {
+            if (inst.destroyed || inst.g.settings.from !== from || inst.g.settings.to !== to) return;
+            inst.rate = data && data.available ? data : false;
+            vsbFxPaint(inst);
+        });
+    }
+    if (!now) return;
     try {
         // sidebar_fx: modules/ws/handlers/290-sidebarHandler.js
         const data = await wsClient.sendMessage('sidebar_fx', { from, to }, false);
@@ -2339,7 +2476,6 @@ const vsbFxPoll = async function (inst) {
         inst.rate = false;
     }
     vsbFxPaint(inst);
-    inst.timer = setTimeout(() => vsbFxPoll(inst), 6 * 60 * 60 * 1000);
 };
 
 const vsbStockList = function (raw) {
@@ -2354,7 +2490,7 @@ const vsbStockList = function (raw) {
 const vsbQuotesMount = function (inst) {
     inst.parts = { box: vsbEl('div', 'vsb-quotes', inst.body) };
     inst.quotes = [];
-    inst.refresh = () => vsbQuotesPoll(inst);
+    inst.refresh = () => vsbQuotesPoll(inst, true);
     vsbQuotesPaint(inst);
     vsbQuotesPoll(inst);
 };
@@ -2381,15 +2517,29 @@ const vsbQuotesPaint = function (inst) {
     }).join('');
 };
 
-const vsbQuotesPoll = async function (inst) {
-    clearTimeout(inst.timer);
+/** Follow the symbols on the live feed (3 min refresh, Yozora #653); `now` also asks once right away. */
+const vsbQuotesPoll = async function (inst, now = false) {
     if (inst.destroyed) return;
     const symbols = (inst.g.settings.symbols || []).slice();
+    const key = symbols.join(',');
+    if (inst.liveKey !== key) {
+        if (inst.liveRelease) inst.liveRelease();
+        inst.liveRelease = null;
+        inst.liveKey = key;
+        if (symbols.length) {
+            inst.liveRelease = vsbLiveUse(inst, { quotes: symbols }, (data) => {
+                if (inst.destroyed || (inst.g.settings.symbols || []).join(',') !== key) return;
+                inst.quotes = (data && data.quotes) || symbols.map((symbol) => ({ symbol, available: false }));
+                vsbQuotesPaint(inst);
+            });
+        }
+    }
     if (!symbols.length) {
         inst.quotes = [];
         vsbQuotesPaint(inst);
         return;
     }
+    if (!now) return;
     try {
         // sidebar_quotes: modules/ws/handlers/290-sidebarHandler.js
         const data = await wsClient.sendMessage('sidebar_quotes', { symbols }, false);
@@ -2400,7 +2550,6 @@ const vsbQuotesPoll = async function (inst) {
         inst.quotes = symbols.map((symbol) => ({ symbol, available: false }));
     }
     vsbQuotesPaint(inst);
-    inst.timer = setTimeout(() => vsbQuotesPoll(inst), 3 * 60 * 1000);
 };
 
 const vsbQuotesOptions = {
@@ -2439,7 +2588,7 @@ const vsbFeedMount = function (inst) {
         const row = e.target.closest('[data-feed-link]');
         if (row && row.dataset.feedLink) openGrimoireUrl(row.dataset.feedLink);
     });
-    inst.refresh = () => vsbFeedPoll(inst);
+    inst.refresh = () => vsbFeedPoll(inst, true);
     vsbFeedPoll(inst);
 };
 
@@ -2475,11 +2624,25 @@ const vsbFeedApply = function (inst) {
     else vsbFeedPaint(inst);
 };
 
-const vsbFeedPoll = async function (inst) {
-    clearTimeout(inst.timer);
+/** Follow the feed on the live feed (10 min refresh, Yozora #653); `now` also asks once right away. */
+const vsbFeedPoll = async function (inst, now = false) {
     if (inst.destroyed) return;
     const url = inst.g.settings.url;
     inst.loadedUrl = url;
+    if (inst.liveKey !== (url || '')) {
+        if (inst.liveRelease) inst.liveRelease();
+        inst.liveRelease = null;
+        inst.liveKey = url || '';
+        if (url) {
+            inst.liveRelease = vsbLiveUse(inst, { feed: url }, (data) => {
+                if (inst.destroyed || inst.g.settings.url !== url) return;
+                inst.error = !data || !data.available;
+                inst.items = (data && data.items) || [];
+                inst.feedTitle = (data && data.title) || 'Feed Headlines';
+                vsbFeedPaint(inst);
+            });
+        }
+    }
     if (!url) {
         inst.items = [];
         inst.error = false;
@@ -2487,6 +2650,7 @@ const vsbFeedPoll = async function (inst) {
         vsbFeedPaint(inst);
         return;
     }
+    if (!now) return;
     try {
         // sidebar_feed: modules/ws/handlers/290-sidebarHandler.js
         const data = await wsClient.sendMessage('sidebar_feed', { url }, false);
@@ -2499,7 +2663,6 @@ const vsbFeedPoll = async function (inst) {
         inst.error = true;
     }
     vsbFeedPaint(inst);
-    inst.timer = setTimeout(() => vsbFeedPoll(inst), 10 * 60 * 1000);
 };
 
 const vsbFeedOptions = {
@@ -2726,6 +2889,7 @@ const vsbDestroyInstance = function (inst) {
         vsbNotesSaveLinked(inst);
     }
     inst.destroyed = true;
+    if (inst.liveRelease) inst.liveRelease();
     if (inst.def.destroy) inst.def.destroy(inst);
     clearTimeout(inst.timer);
     clearInterval(inst.timer);

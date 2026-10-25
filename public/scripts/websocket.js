@@ -527,6 +527,7 @@ class BannerManager {
             'sidebar_random_image': 'Sidebar Picture',
             'sidebar_weather': 'Sidebar Weather',
             'sidebar_host_metrics': 'Sidebar CPU Meter',
+            'sidebar_live_subscribe': 'Sidebar Live Feed',
 
             // Cursor accounts
             'get_cursor_accounts': 'Get Cursor Accounts',
@@ -870,6 +871,8 @@ class WebSocketClient {
         'runpod_pod_stop',
         'report_client_perf',
         'replication_delegation_status',
+        // Sidebar live feed (Yozora #653): resubscribed on gadget changes, not user work
+        'sidebar_live_subscribe',
     ]);
 
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
@@ -1293,6 +1296,10 @@ class WebSocketClient {
             return true;
         }
         if (type === 'replication_delegation_status' || type === 'replication_delegation_status_response') {
+            return true;
+        }
+        // one push per second for the Sidebar gadgets (modules/sidebarLiveFeed.js)
+        if (type === 'sidebar_live' || type === 'sidebar_live_subscribe' || type === 'sidebar_live_subscribe_response') {
             return true;
         }
         return false;
