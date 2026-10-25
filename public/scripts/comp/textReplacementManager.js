@@ -221,14 +221,8 @@ function wireTextReplacementKeyboardShortcuts() {
 // Initialize create text replacement modal
 function initializeCreateTextReplacementModal() {
     const modal = document.getElementById('createTextReplacementModal');
-    const closeBtn = document.getElementById('closeCreateTextReplacementBtn');
     const cancelBtn = document.getElementById('createTextReplacementCancelBtn');
     const saveBtn = document.getElementById('createTextReplacementSaveBtn');
-    const typeSelect = document.getElementById('textReplacementTypeSelect');
-
-    if (closeBtn) {
-        closeBtn.addEventListener('click', hideCreateTextReplacementModal);
-    }
 
     if (cancelBtn) {
         cancelBtn.addEventListener('click', hideCreateTextReplacementModal);
