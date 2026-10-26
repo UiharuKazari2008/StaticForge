@@ -411,6 +411,34 @@
     }
 
     let customProviderRows = [];
+    // Supported hosts from director_custom_providers_response (modules/customModelProviders.js PRESETS).
+    let customProviderPresets = [];
+    // id -> director_custom_providers_balance_response row (cached on the server; never blocks a turn).
+    let customProviderBalances = {};
+
+    // Standard key dot for a provider: key set / not set, then what its balance says.
+    const BALANCE_DOT = { ok: 'ok', free: 'ok', none: 'ok', low: 'warn', error: 'warn', out: 'fail', nokey: 'none' };
+
+    function customProviderGlance(row) {
+        if (!row.hasKey) return [{ state: 'none', label: 'API key not set' }];
+        const balance = customProviderBalances[row.id];
+        if (!balance) return [{ state: 'unchecked', label: 'API key set' }];
+        const words = String(balance.title || '').split('\n').join(' · ');
+        return [{ state: BALANCE_DOT[balance.state] || 'unchecked', label: `API key set · ${words}` }];
+    }
+
+    function loadCustomProviderBalances() {
+        if (!window.wsClient || typeof window.wsClient.sendMessage !== 'function') return;
+        window.wsClient.sendMessage('director_custom_providers_balance', {}).then((resp) => {
+            const body = resp && resp.data && typeof resp.data === 'object' ? resp.data : (resp || {});
+            const next = {};
+            (Array.isArray(body.balances) ? body.balances : []).forEach((item) => {
+                if (item && item.id && item.engine !== 'tokenrouter') next[item.id] = item;
+            });
+            customProviderBalances = next;
+            if (hostEl && hostEl.isConnected) paintCustomProviders();
+        }).catch(() => { /* the dots stay unchecked */ });
+    }
 
     function customField(label, control) {
         const item = document.createElement('div');
@@ -480,10 +508,14 @@
             if (row.obliteratedMemories) bits.push('Obliterated Memories');
             if (row.ageTool === false) bits.push('No age tool');
             if (!row.hasKey && row.id) bits.push('No key');
+            const balance = row.id ? customProviderBalances[row.id] : null;
+            if (balance && balance.balanceText) bits.push(balance.balanceText);
             summary.textContent = bits.join(' · ');
             const chevron = document.createElement('span');
             chevron.className = 'cpl-vault-chevron';
-            line.append(name, summary, chevron);
+            line.append(name, summary);
+            if (row.id) line.append(makeGlance(customProviderGlance(row)));
+            line.append(chevron);
             line.addEventListener('click', () => {
                 row._open = !row._open;
                 paintCustomProviders();
@@ -498,34 +530,32 @@
             const modelInput = customInput(row.defaultModel, 'model id');
             const preset = document.createElement('select');
             preset.className = 'cpl-ua-input';
-            // Same hosts as PRESETS in modules/customModelProviders.js.
-            [
-                ['', 'Custom'],
-                ['google', 'Google'],
-                ['openai', 'OpenAI'],
-                ['tokenrouter', 'TokenRouter'],
-                ['openrouter', 'OpenRouter']
-            ].forEach(([id, label]) => {
+            const presetHosts = {};
+            [{ id: '', name: 'Custom' }].concat(customProviderPresets).forEach((item) => {
                 const option = document.createElement('option');
-                option.value = id;
-                option.textContent = label;
+                option.value = item.id;
+                option.textContent = item.name;
                 preset.appendChild(option);
+                if (item.id) presetHosts[item.id] = item;
             });
-            const presetHosts = {
-                google: ['google', 'Google', 'https://generativelanguage.googleapis.com/v1beta/openai'],
-                openai: ['openai', 'OpenAI', 'https://api.openai.com'],
-                tokenrouter: ['tokenrouter', 'TokenRouter', 'https://api.tokenrouter.com'],
-                openrouter: ['openrouter', 'OpenRouter', 'https://openrouter.ai/api']
-            };
             if (presetHosts[row.kind]) preset.value = row.kind;
             preset.addEventListener('change', () => {
                 const fill = presetHosts[preset.value];
                 if (!fill) return;
-                if (!idInput.readOnly) idInput.value = fill[0];
-                nameInput.value = fill[1];
-                urlInput.value = fill[2];
+                if (!idInput.readOnly) idInput.value = fill.id;
+                nameInput.value = fill.name;
+                urlInput.value = fill.baseUrl;
+                if (fill.defaultModel) modelInput.value = fill.defaultModel;
                 syncManagement();
             });
+            // The key itself never comes back from the server: only whether one is saved.
+            const keyState = document.createElement('span');
+            keyState.textContent = row.hasKey ? 'Set' : 'Not set';
+            const balanceInfo = row.id ? customProviderBalances[row.id] : null;
+            const balanceText = document.createElement('span');
+            balanceText.textContent = balanceInfo
+                ? (String(balanceInfo.title || '').split('\n').join(' · ') || 'No balance on this host')
+                : (row.hasKey ? 'Checking…' : 'Add a key to read the balance');
             const keyInput = document.createElement('input');
             keyInput.type = 'password';
             keyInput.className = 'cpl-ua-input';
@@ -604,7 +634,9 @@
                 customField('URL', urlInput),
                 customField('Model', modelInput),
                 customField('Key', keyInput),
+                customField('Key status', keyState),
                 managementField,
+                customField('Balance', balanceText),
                 customField('Picture', logoWrap),
                 customField('Usage', usage.wrap),
                 customField('Memories', memories.wrap),
@@ -635,7 +667,9 @@
                     customProviderRows = customProviderPayload(resp);
                     const savedId = String(idInput.value || '').trim().toLowerCase();
                     customProviderRows.forEach((item) => { item._open = item.id === savedId; });
+                    delete customProviderBalances[savedId];
                     paintCustomProviders();
+                    loadCustomProviderBalances();
                 } catch (err) {
                     save.disabled = false;
                     if (typeof showGlassToast === 'function') showGlassToast('error', 'Dreamscape CardSpace', err.message || 'Could not save the provider');
@@ -684,8 +718,11 @@
             if (!hostEl || !hostEl.isConnected) return;
             const openIds = new Set(customProviderRows.filter((row) => row._open).map((row) => row.id));
             customProviderRows = customProviderPayload(resp);
+            const body = resp && resp.data && typeof resp.data === 'object' ? resp.data : (resp || {});
+            if (Array.isArray(body.presets)) customProviderPresets = body.presets;
             customProviderRows.forEach((row) => { row._open = openIds.has(row.id); });
             paintCustomProviders();
+            loadCustomProviderBalances();
         }).catch((err) => {
             const note = hostEl && hostEl.querySelector('#cplCustomProviderList');
             if (!note) return;

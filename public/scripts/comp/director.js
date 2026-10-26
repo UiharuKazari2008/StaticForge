@@ -400,6 +400,10 @@ class Director {
         this.ENGINE_KEY = 'staticforge_director_engine';
         // OpenAI-compatible hosts from director_get_models_response.providers.
         this.customProviders = [];
+        // engine -> director_custom_providers_balance_response row; shown beside each engine in
+        // the pickers. The server caches every read, so this never waits on (or holds) a turn.
+        this.engineBalances = {};
+        this._engineBalancesAt = 0;
         // New Wren chats default to TokenRouter (DeepSeek V4.1 Flash, Yukimi 2026-10-20).
         // A saved last-used engine still wins; Cursor and Claude stay selectable.
         this.engine = 'tokenrouter';
@@ -595,6 +599,7 @@ class Director {
         this._chromeEngine = engine;
         this.paintCursorUsage(null);
         this.requestCursorUsage();
+        this.requestEngineBalances();
     }
 
     // Header marks use the *-mark class names; the inline icon uses the short ones.
@@ -670,6 +675,20 @@ class Director {
         return true;
     }
 
+    // Asks for every engine's balance at most once a minute (the server holds them longer).
+    requestEngineBalances(force) {
+        if (!window.wsClient || !window.wsClient.isConnected()) return;
+        if (!force && Date.now() - this._engineBalancesAt < 60000) return;
+        this._engineBalancesAt = Date.now();
+        window.wsClient.send({ type: 'director_custom_providers_balance', requestId: `bal-${Date.now()}` });
+    }
+
+    // Balance, credits, or "Free tier" for an engine's picker row; '' when its host shows none.
+    engineBalanceText(engine) {
+        const row = this.engineBalances[this.normalizeEngine(engine)];
+        return row && row.balanceText ? row.balanceText : '';
+    }
+
     engineMenuItem() {
         const director = this;
         return {
@@ -677,12 +696,16 @@ class Director {
             text: 'Engine',
             hidden: () => director.persona === 'xi',
             valueDisplay: () => director.engineName(director.activeEngine()),
-            optionsfn: () => director.engineChoices().map((id) => ({
-                text: director.engineName(id),
-                action: `director-tools-engine-${id}`,
-                showIndicator: true,
-                loadfn: (item) => { item.checked = director.activeEngine() === id; }
-            }))
+            optionsfn: () => {
+                director.requestEngineBalances();
+                return director.engineChoices().map((id) => ({
+                    text: director.engineName(id),
+                    subtext: director.engineBalanceText(id) || null,
+                    action: `director-tools-engine-${id}`,
+                    showIndicator: true,
+                    loadfn: (item) => { item.checked = director.activeEngine() === id; }
+                }));
+            }
         };
     }
 
@@ -1261,8 +1284,10 @@ class Director {
                     this.paintRuntimePicker();
                 },
                 beforeShow: () => {
+                    this.requestEngineBalances();
                     runtimeMenu.sections[0].items = this.engineChoices().map((id) => ({
                         text: this.engineName(id),
+                        subtext: this.engineBalanceText(id) || null,
                         action: `director-runtime-${id}`,
                         runtimeId: id,
                         showIndicator: true,
@@ -6660,6 +6685,15 @@ class Director {
             } else if (data.data.engine && director.normalizeEngine(data.data.engine) === director.activeEngine()) {
                 director.paintModelPick();
             }
+        });
+
+        window.wsClient.on('director_custom_providers_balance_response', (data) => {
+            const director = window.directorInstance;
+            const rows = data && data.data && Array.isArray(data.data.balances) ? data.data.balances : null;
+            if (!director || !rows) return;
+            const next = {};
+            rows.forEach((row) => { if (row && row.engine) next[row.engine] = row; });
+            director.engineBalances = next;
         });
 
         window.wsClient.on('director_get_cursor_usage_response', (data) => {

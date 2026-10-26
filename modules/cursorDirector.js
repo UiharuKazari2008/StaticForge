@@ -1160,8 +1160,7 @@ function publicTokenRouterCatalog(families) {
 
 function publicCustomCatalog(families, provider) {
     const list = Array.isArray(families) ? families : [];
-    const preferred = (provider && provider.defaultModel)
-        || (provider && provider.kind === 'tokenrouter' ? tokenRouter.DEFAULT_MODEL : '');
+    const preferred = customProviders.preferredModel(provider);
     const fallback = list.find((item) => item.id === preferred) || list[0];
     return list.map((family) => ({
         id: family.id,
@@ -6535,7 +6534,8 @@ async function handleDirectorCustomProvidersGet(handler, ws, message, clientInfo
     try {
         requireAdmin(clientInfo);
         sendOk(handler, ws, 'director_custom_providers_response', message.requestId, {
-            providers: customProviders.publicAdminList(handler.globalResources)
+            providers: customProviders.publicAdminList(handler.globalResources),
+            presets: customProviders.PRESETS
         });
     } catch (error) {
         handler.sendError(ws, error.message || 'Failed to list custom model providers', error.code || 'DIRECTOR_ERROR', message.requestId);
@@ -6552,6 +6552,46 @@ async function handleDirectorCustomProvidersSave(handler, ws, message, clientInf
         });
     } catch (error) {
         handler.sendError(ws, error.message || 'Failed to save the custom model provider', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
+// The built-in TokenRouter engine in the same shape as customProviders.balanceSummary.
+async function tokenRouterBalanceSummary(gr) {
+    const base = { id: 'tokenrouter', engine: 'tokenrouter', name: 'TokenRouter', kind: 'tokenrouter' };
+    if (!tokenRouter.hasApiKey(gr)) return { ...base, state: 'nokey', balance: null, balanceText: '', title: 'TokenRouter: no API key' };
+    const usage = await tokenRouterUsageSummary(gr);
+    if (usage.balance == null) return { ...base, state: 'error', balance: null, balanceText: '', title: usage.title };
+    const state = usage.balance <= 0 ? 'out' : usage.balance <= 1 ? 'low' : 'ok';
+    return { ...base, state, balance: usage.balance, currency: 'USD', balanceText: usage.balanceText, title: usage.title };
+}
+
+// Balances for the engine pickers and CardSpace. Every read is cached (customModelProviders
+// BALANCE_TTL_MS, TokenRouter's wallet a minute); nothing here waits on a turn or holds one.
+async function handleDirectorCustomProvidersBalance(handler, ws, message, clientInfo) {
+    try {
+        // Restricted users see no balances (and no error: the pickers ask on every open).
+        if (!clientInfo || clientInfo.userType !== 'admin') {
+            sendOk(handler, ws, 'director_custom_providers_balance_response', message.requestId, { balances: [] });
+            return;
+        }
+        const gr = handler.globalResources;
+        const engine = message && message.engine ? String(message.engine).trim().toLowerCase() : '';
+        let balances;
+        if (customProviders.isEngine(engine)) {
+            const one = await customProviders.balanceSummary(gr, engine);
+            balances = one ? [one] : [];
+        } else if (engine === 'tokenrouter') {
+            balances = [await tokenRouterBalanceSummary(gr)];
+        } else {
+            const [builtIn, custom] = await Promise.all([
+                tokenRouterBalanceSummary(gr).catch(() => null),
+                customProviders.balanceSummaries(gr)
+            ]);
+            balances = [builtIn].concat(custom).filter(Boolean);
+        }
+        sendOk(handler, ws, 'director_custom_providers_balance_response', message.requestId, { balances });
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to read provider balances', error.code || 'DIRECTOR_ERROR', message.requestId);
     }
 }
 
@@ -7184,6 +7224,7 @@ module.exports = {
     handleDirectorGetModels,
     handleDirectorCustomProvidersGet,
     handleDirectorCustomProvidersSave,
+    handleDirectorCustomProvidersBalance,
     activeChatBrief,
     handleDirectorComputerSize,
     handleDirectorComputerStatus,

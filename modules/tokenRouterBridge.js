@@ -885,16 +885,84 @@ function sendError(res, status, message) {
     });
 }
 
-function upstreamMessage(text, status) {
+function upstreamMessage(text, status, label) {
     let message = '';
     try {
         const parsed = JSON.parse(text);
         const err = parsed && (parsed.error || parsed);
-        message = (err && (err.message || err.msg)) || '';
+        message = (err && (err.message || err.msg || err.detail)) || (parsed && parsed.detail) || '';
+        // FastAPI hosts (DeepInfra) can nest it: { detail: { error: "..." } }
+        if (message && typeof message === 'object') message = message.error || message.message || JSON.stringify(message);
     } catch (_) {
         message = String(text || '').trim();
     }
-    return `TokenRouter ${status}: ${(message || 'request failed').slice(0, 1500)}`;
+    const who = label || 'TokenRouter';
+    const said = String(message || '').slice(0, 1500);
+    if (status === 402) {
+        return `${who} 402: insufficient balance. Top up the ${who} account, then send again.${said ? ` (${said})` : ''}`;
+    }
+    if (status === 429) {
+        return `${who} 429: rate limit reached and still limited after waiting. Wait a minute, then send again.${said ? ` (${said})` : ''}`;
+    }
+    return `${who} ${status}: ${said || 'request failed'}`;
+}
+
+// 429 backoff for hosts outside the TokenRouter gate: Retry-After when the host sends one,
+// else 2 s, 4 s, 8 s; never more than RATE_LIMIT_MAX_WAIT_MS per wait.
+const RATE_LIMIT_RETRIES = 3;
+const RATE_LIMIT_BASE_MS = 2000;
+const RATE_LIMIT_MAX_WAIT_MS = 30000;
+// All waits together stay under this, so a limited host answers the turn within ~30 s.
+const RATE_LIMIT_TOTAL_MS = 30000;
+
+function rateLimitWaitMs(attempt, retryAfterMs) {
+    const asked = Number(retryAfterMs);
+    const wait = Number.isFinite(asked) && asked > 0 ? asked : RATE_LIMIT_BASE_MS * (2 ** attempt);
+    return Math.min(RATE_LIMIT_MAX_WAIT_MS, Math.max(250, Math.round(wait)));
+}
+
+function retryAfterMs(res) {
+    const header = res && res.headers && typeof res.headers.get === 'function' ? res.headers.get('retry-after') : null;
+    if (!header) return 0;
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
+    const at = Date.parse(header);
+    return Number.isFinite(at) ? Math.max(0, at - Date.now()) : 0;
+}
+
+function sleep(ms, signal) {
+    return new Promise((resolve, reject) => {
+        if (signal && signal.aborted) {
+            reject(signal.reason instanceof Error ? signal.reason : Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+            return;
+        }
+        const timer = setTimeout(() => {
+            if (signal) signal.removeEventListener('abort', onAbort);
+            resolve();
+        }, ms);
+        const onAbort = () => {
+            clearTimeout(timer);
+            reject(signal.reason instanceof Error ? signal.reason : Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+        };
+        if (signal) signal.addEventListener('abort', onAbort, { once: true });
+    });
+}
+
+// send() makes one request. A 429 is drained and sent again after the backoff.
+async function withRateLimitBackoff(send, options) {
+    const o = options || {};
+    const wait = o.sleep || sleep;
+    let waited = 0;
+    for (let attempt = 0; ; attempt++) {
+        const res = await send();
+        if (!res || res.status !== 429 || attempt >= RATE_LIMIT_RETRIES) return res;
+        const ms = rateLimitWaitMs(attempt, retryAfterMs(res));
+        if (waited + ms > (o.totalMs || RATE_LIMIT_TOTAL_MS)) return res;
+        waited += ms;
+        try { await res.text(); } catch (_) { /* body already gone */ }
+        console.warn(`${o.label || 'Custom provider'}: 429, trying again in ${Math.round(ms / 100) / 10}s`);
+        await wait(ms, o.signal);
+    }
 }
 
 function readBody(req) {
@@ -951,6 +1019,7 @@ function resolveUpstream(run) {
         }
         return {
             id: provider.engine,
+            providerId: provider.id,
             baseUrl: provider.baseUrl,
             chatUrl: provider.chatUrl,
             key: provider.apiKey,
@@ -983,12 +1052,18 @@ async function callUpstream(body, run, signal, stream) {
         });
         const res = upstream.gated
             ? await gate.run(send, { lane: run.lane, signal, label: `${run.lane || 'interactive'} ${model}` })
-            : await send();
+            : await withRateLimitBackoff(send, { signal, label: `${upstream.label} ${model}` });
+        // NVIDIA NIM's balance line reads these (customModelProviders.balanceInfo).
+        if (upstream.providerId) {
+            const cmp = require('./customModelProviders');
+            cmp.noteRateLimit(upstream.providerId, res.headers);
+            cmp.noteKeyResult(upstream.providerId, upstream.key, res.status);
+        }
         if (res.ok) return res;
         const text = await res.text().catch(() => '');
-        if (res.status !== 400 && res.status !== 422) return { status: res.status, text };
+        if (res.status !== 400 && res.status !== 422) return { status: res.status, text, label: upstream.label };
         const relaxer = RELAXERS.find((item) => !flags[item.key] && item.test.test(text) && relaxerApplies(item.key, request));
-        if (!relaxer) return { status: res.status, text };
+        if (!relaxer) return { status: res.status, text, label: upstream.label };
         flags[relaxer.key] = true;
         learned.add(relaxer.key);
         learnedRelaxers.set(learnKey, learned);
@@ -1077,7 +1152,7 @@ async function handleMessages(req, res) {
     const stream = body.stream === true;
     const upstream = await callUpstream(body, run, abort.signal, stream);
     if (!upstream.ok) {
-        sendError(res, upstream.status === 402 ? 403 : upstream.status, upstreamMessage(upstream.text, upstream.status));
+        sendError(res, upstream.status === 402 ? 403 : upstream.status, upstreamMessage(upstream.text, upstream.status, upstream.label));
         return;
     }
     const names = toolNames(body.tools);
@@ -1295,6 +1370,10 @@ module.exports = {
         undoubledReasoning,
         toolNames,
         safeToolName,
+        upstreamMessage,
+        rateLimitWaitMs,
+        withRateLimitBackoff,
+        callUpstream,
         resetCatalog: () => { catalogCache = { at: 0, families: null }; learnedRelaxers.clear(); },
         resetWallet: () => { walletCache = { at: 0, key: '', value: null }; }
     }

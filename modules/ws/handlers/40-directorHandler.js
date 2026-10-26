@@ -12,6 +12,7 @@ const {
     handleDirectorGetModels,
     handleDirectorCustomProvidersGet,
     handleDirectorCustomProvidersSave,
+    handleDirectorCustomProvidersBalance,
     handleRentanAgentGet,
     handleRentanAgentSetDefault,
     handleDirectorAbort,
@@ -70,6 +71,7 @@ function registerPackets(handlersCtx) {
     reg('director_get_models', handleDirectorGetModels);
     reg('director_custom_providers_get', handleDirectorCustomProvidersGet);
     reg('director_custom_providers_save', handleDirectorCustomProvidersSave, DIRECTOR_DESTRUCTIVE);
+    reg('director_custom_providers_balance', handleDirectorCustomProvidersBalance);
     // Rentan menu: the saved default engine / model / reasoning / fast for every Rentan turn (#409).
     reg('director_rentan_agent_get', handleRentanAgentGet);
     reg('director_rentan_agent_set_default', handleRentanAgentSetDefault, DIRECTOR_DESTRUCTIVE);

@@ -362,7 +362,7 @@ async function testBridge() {
     const err = JSON.parse(limited.raw);
     assert.strictEqual(err.type, 'error');
     assert.strictEqual(err.error.type, 'rate_limit_error');
-    assert.ok(/TokenRouter 429: slow down/.test(err.error.message));
+    assert.ok(/^TokenRouter 429: rate limit reached.*\(slow down\)$/.test(err.error.message), err.error.message);
 
     const counted = await post(`${link.url}/v1/messages/count_tokens`, auth, { messages: [{ role: 'user', content: 'x'.repeat(400) }] });
     assert.strictEqual(counted.status, 200);
