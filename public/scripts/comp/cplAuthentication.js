@@ -633,7 +633,7 @@
                 logoInput.value = '';
             });
             const logoWrap = document.createElement('div');
-            logoWrap.className = 'cpl-vault-actions';
+            logoWrap.className = 'cpl-vault-picture';
             logoWrap.append(logoPreview, logoBrowse, logoClear, logoInput);
             details.append(
                 customField('Preset', preset),
@@ -975,10 +975,13 @@
         const first = csRows().find((r) => csKindOf(r) === csPendingSection);
         if (!first) return false;
         csPendingSection = null;
-        csSel = first.dataset.cplVaultKey;
-        if (csView !== 'home') csGo('home'); else csRender();
-        const card = win.querySelector('.cs-home .cs-card.is-selected');
-        if (card && typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'nearest' });
+        const key = first.dataset.cplVaultKey;
+        if (csView !== 'home') csGo('home');
+        // the same path a user's click takes: selection, Tasks and Preview all follow
+        const card = [...win.querySelectorAll('.cs-home .cs-card[data-cs-key]')].find((c) => c.dataset.csKey === key);
+        if (!card) { csPendingSection = csKindOf(first); return false; }
+        card.click();
+        if (typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'nearest' });
         return true;
     }
 
