@@ -57,15 +57,15 @@ function createGenerationJobQueue(options) {
         return idx < 0 ? -1 : idx + (running ? 1 : 0);
     }
 
-    function estimatedDelayMs(job) {
-        const pos = positionOf(job);
+    function estimatedDelayMs(job, optionalPos) {
+        const pos = optionalPos !== undefined ? optionalPos : positionOf(job);
         if (pos < 0) return 0;
         const cooldownLeft = Math.max(0, cooldownUntil - nowFn());
         if (pos === 0 && !running) return cooldownLeft;
         return cooldownLeft + pos * Math.round((delayMinMs + delayMaxMs) / 2);
     }
 
-    function snapshot(job) {
+    function snapshot(job, optionalPos) {
         const result = job.result && typeof job.result === 'object' ? job.result : {};
         const flat = result.flat && typeof result.flat === 'object' ? result.flat : {};
         return {
@@ -74,8 +74,8 @@ function createGenerationJobQueue(options) {
             type: job.type,
             source: job.source,
             requestId: job.requestId || null,
-            position: Math.max(0, positionOf(job)),
-            delayMs: estimatedDelayMs(job),
+            position: Math.max(0, optionalPos !== undefined ? optionalPos : positionOf(job)),
+            delayMs: estimatedDelayMs(job, optionalPos),
             createdAt: job.createdAt,
             startedAt: job.startedAt,
             finishedAt: job.finishedAt,
@@ -258,7 +258,13 @@ function createGenerationJobQueue(options) {
 
     function listPublic() {
         prune();
-        return Array.from(jobs.values()).map(snapshot);
+        // JULES: perf sweep - O(N^2) to O(N) optimization for queue listing by pre-calculating pending job positions
+        const positions = new Map();
+        if (running) positions.set(running.id, 0);
+        for (let i = 0; i < pending.length; i++) {
+            positions.set(pending[i].id, i + (running ? 1 : 0));
+        }
+        return Array.from(jobs.values()).map((job) => snapshot(job, positions.has(job.id) ? positions.get(job.id) : -1));
     }
 
     return {
