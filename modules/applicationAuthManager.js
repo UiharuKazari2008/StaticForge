@@ -108,7 +108,7 @@ const SCOPE_WS_PACKETS = {
         'list_novelai_explore_blocked_creators', 'clear_novelai_explore_gallery_cache',
         'ensure_novelai_explore_image', 'check_novelai_explore_upload', 'upload_novelai_explore_image'
     ],
-    infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check', 'runpod_pods_status', 'remote_workers_status'],
+    infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check', 'get_system_info', 'runpod_pods_status', 'remote_workers_status'],
     sfapp_mail_exchange: [
         'exchange_list_mailboxes', 'exchange_get_mailbox', 'exchange_create_mailbox',
         'exchange_update_mailbox', 'exchange_disable_mailbox',
@@ -140,7 +140,7 @@ const AVAILABLE_SCOPES = [
     { id: 'knowledge', label: 'Knowledge', description: 'Knowledge memory read and update' },
     { id: 'nax', label: 'NAX', description: 'NovelAI Explore tags database and galleries' },
     { id: 'explore', label: 'Explore', description: 'NovelAI Explore (Agora) gallery and post operations' },
-    { id: 'infrastructure', label: 'Infrastructure', description: 'Ping, status, version checks' },
+    { id: 'infrastructure', label: 'Infrastructure', description: 'Ping, status, version checks, system info' },
     // Module-based scopes (sfapp_ prefix)
     { id: 'sfapp_cake_pantry', label: 'Cake Pantry', description: 'Account-based cake tracking (deliver, feed, inspect, consume)' },
     { id: 'sfapp_cake_pantry:deliver', label: 'Cake Pantry (Deliver)', description: 'Deliver cake slices only' },
