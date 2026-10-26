@@ -942,6 +942,8 @@
 
     function csRender() {
         if (!win) return;
+        const picked = csApplyPending();
+        if (picked && csView !== 'home') { csPutBack(); csView = 'home'; }
         win.dataset.csView = csView;
         csEl('.cs-title').textContent = CS_TEXT[csView][0];
         csEl('.cs-desc').textContent = CS_TEXT[csView][1];
@@ -950,6 +952,10 @@
         if (csView === 'details') csRenderDetails();
         csRenderTasks();
         csRenderFoot();
+        if (picked) {
+            const card = [...win.querySelectorAll('.cs-home .cs-card[data-cs-key]')].find((c) => c.dataset.csKey === csSel);
+            if (card && typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'nearest' });
+        }
     }
 
     /** Drop an unsaved "New provider" draft (Cancel, Back, or leaving its details). */
@@ -968,21 +974,36 @@
         csRender();
     }
 
-    /** Select the first card of the asked-for group (the tray's Service keys link); the group's
-     * rows arrive after the driver's first load, so a miss waits for the next refresh. */
-    function csPickSection() {
-        if (!csPendingSection || !win) return false;
-        const first = csRows().find((r) => csKindOf(r) === csPendingSection);
-        if (!first) return false;
+    /**
+     * Which card is selected, from state alone (no DOM): the selection the user made, or the first
+     * card of a group the window was opened on (the tray's Service keys link). A pending group stays
+     * pending until its rows exist, so a render before the driver's first load (or any later
+     * rebuild) cannot lose it. rows: [{ key, kind }] in display order.
+     */
+    function resolveSelection(sel, pendingKind, rows) {
+        if (pendingKind) {
+            const first = rows.find((r) => r.kind === pendingKind);
+            if (first) return { sel: first.key, pending: null, picked: true };
+            return { sel, pending: pendingKind, picked: false };
+        }
+        return { sel, pending: null, picked: false };
+    }
+
+    /** Apply a pending group selection to csSel; true when it just landed. */
+    function csApplyPending() {
+        if (!csPendingSection) return false;
+        const next = resolveSelection(csSel, csPendingSection, csRows().map((r) => ({ key: r.dataset.cplVaultKey, kind: csKindOf(r) })));
+        csSel = next.sel;
+        csPendingSection = next.pending;
+        return next.picked;
+    }
+
+    /** The one select path: a user's click on a card and the Service keys link both come here. */
+    function csSelect(key) {
+        csSel = key || null;
         csPendingSection = null;
-        const key = first.dataset.cplVaultKey;
-        if (csView !== 'home') csGo('home');
-        // the same path a user's click takes: selection, Tasks and Preview all follow
-        const card = [...win.querySelectorAll('.cs-home .cs-card[data-cs-key]')].find((c) => c.dataset.csKey === key);
-        if (!card) { csPendingSection = csKindOf(first); return false; }
-        card.click();
-        if (typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'nearest' });
-        return true;
+        if (csView !== 'home') { csGo('home'); return; }
+        csRender();
     }
 
     /** The vault changed under the window (the driver re-rendered, a provider was saved). */
@@ -990,8 +1011,7 @@
         if (!win || csTimer) return;
         csTimer = setTimeout(() => {
             csTimer = 0;
-            if (csPickSection()) return;
-            if (csView === 'details') {
+            if (csView === 'details' && !csPendingSection) {
                 const row = csSel && csRow(csSel);
                 if (!row) { csGo('home'); return; }
                 if (csMoved && csMoved.row === row && row.isConnected) { csRenderTasks(); csRenderFoot(); return; }
@@ -1032,11 +1052,7 @@
             const t = ev.target;
             const card = t.closest('.cs-card[data-cs-key]');
             if (card && csView === 'home') {
-                csSel = card.dataset.csKey;
-                win.querySelectorAll('.cs-home .cs-card.is-selected').forEach((c) => c.classList.remove('is-selected'));
-                card.classList.add('is-selected');
-                csRenderTasks();
-                csRenderFoot();
+                csSelect(card.dataset.csKey);
                 return;
             }
             const go = t.closest('[data-cs-go]');
@@ -1118,6 +1134,7 @@
         const wasOpen = !win.classList.contains('hidden') && !!hostEl;
         // closed some other way (the taskbar's Close): let go of the old copy first
         if (!wasOpen && hostEl) csClose();
+        if (section) csPendingSection = section;
         if (typeof root.openModal === 'function') root.openModal(win); else win.classList.remove('hidden');
         if (typeof root.bringModalToFront === 'function') root.bringModalToFront(win);
         if (!wasOpen) {
@@ -1131,7 +1148,7 @@
             csObserver.observe(hostEl, { childList: true, subtree: true });
             csRender();
         }
-        if (section) { csPendingSection = section; csPickSection(); }
+        if (section) csRender();
         return true;
     }
 
@@ -1213,6 +1230,7 @@
         _test: {
             vault: (el) => { hostEl = el; vault(); },
             directorGlance,
+            resolveSelection,
             appKeyGlance,
             keyDotState
         }
