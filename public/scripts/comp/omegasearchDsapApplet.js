@@ -3832,7 +3832,9 @@ const omegasearchDsapDriver = {
         if (btn) {
             btn.innerHTML = state?.frameId === 'screensaver'
                 ? '<i class="fas fa-save"></i> Save for the screen saver'
-                : '<i class="fas fa-image"></i> Show in photo frame';
+                : String(state?.frameId || '').startsWith('sideshow:')
+                    ? '<i class="fas fa-tablet"></i> Show on the SideShow device'
+                    : '<i class="fas fa-image"></i> Show in photo frame';
         }
     },
 
@@ -3855,6 +3857,15 @@ const omegasearchDsapDriver = {
             showGlassToast(saved ? 'success' : 'error', 'Image Search',
                 saved ? `The Photos screen saver now shows ${state.total} matching pictures` : 'The screen saver settings are not open',
                 false, 3000, `<i class="fas fa-${saved ? 'save' : 'exclamation-circle'}"></i>`);
+            return;
+        }
+        if (String(state.frameId).startsWith('sideshow:')) {
+            // cplSideShow.setDeviceSearch: public/scripts/comp/cplPages2.js (Melaton SideShow, Yozora #654)
+            const deviceId = String(state.frameId).slice('sideshow:'.length);
+            const set = window.cplSideShow ? window.cplSideShow.setDeviceSearch(deviceId, search) : Promise.resolve(false);
+            Promise.resolve(set).then((ok) => showGlassToast(ok ? 'success' : 'error', 'Image Search',
+                ok ? `The SideShow device will show ${state.total} matching pictures` : 'The SideShow device could not take the search',
+                false, 3000, `<i class="fas fa-${ok ? 'tablet' : 'exclamation-circle'}"></i>`));
             return;
         }
         // vsbSetFrameSearch: public/scripts/comp/vistaSidebar.js

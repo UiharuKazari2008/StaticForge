@@ -669,7 +669,7 @@
         if (!m || !ssOnPage()) return;
         const d = ssDevice(ss.deviceId);
         m.querySelectorAll('[data-ss-live="status"]').forEach((el) => { el.textContent = d ? ssStateText(d) : 'Disconnected'; });
-        m.querySelectorAll('[data-ss-live="showing"]').forEach((el) => { el.innerHTML = d ? ssShowingHtml(d) : ''; });
+        m.querySelectorAll('[data-ss-live="device"]').forEach((el) => { el.innerHTML = d ? ssDeviceHtml(d) : ''; });
         m.querySelectorAll('[data-ss-live="offline"]').forEach((el) => { el.hidden = !!(d && d.online); });
         const pause = m.querySelector('[data-cpl-vpage="cmd"][data-cmd="pause"], [data-cpl-vpage="cmd"][data-cmd="resume"]');
         if (pause && d) { pause.dataset.cmd = d.state === 'paused' ? 'resume' : 'pause'; pause.textContent = d.state === 'paused' ? 'Resume' : 'Pause'; }
@@ -705,12 +705,6 @@
             ss.loadedAt = Date.now();
             if (CP() && CP().currentPage() === 'sideshow') rerender();
         });
-    }
-
-    function ssShowingHtml(d) {
-        const files = d.showing || [];
-        if (!d.online || !files.length) return '<span class="cpl-ss-dim">Nothing is on the screen.</span>';
-        return files.map((f) => `<figure class="cpl-ss-thumb"><img src="${esc(ssPreview(f))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><figcaption title="${esc(f)}">${esc(f)}</figcaption></figure>`).join('');
     }
 
     /** The pane: Tasks (the two gadget sorts), then Devices with each device's name (string 1161). */
@@ -857,7 +851,55 @@
         }
     };
 
-    // the gadget's own settings page ("%s settings", string 801): which device, what it shows, the remote, the slide show
+    // the gadget's own settings page ("%s settings", string 801): which device, a picture of its screen
+    // with the remote under it, where the pictures come from (workspaces or an Image Search, how old),
+    // and the slide show. The picture list is the server's (device_slideshow_images / device_preview_images).
+    function ssScreenSize(d) {
+        const disp = d.display || {};
+        const portrait = disp.orientation === 'portrait' || (disp.height > disp.width);
+        const ratio = disp.width && disp.height ? Math.max(disp.width, disp.height) / Math.min(disp.width, disp.height) : 4 / 3;
+        const long = 336;
+        const short = Math.round(long / ratio);
+        return portrait ? { w: Math.round(short * 0.9), h: Math.round(long * 0.9), portrait } : { w: long, h: short, portrait };
+    }
+
+    /** What the device's screen shows: the picture (or a tall pair side by side), its overlay, Paused. */
+    function ssScreenHtml(d) {
+        const st = d.settings || {};
+        if (!d.online) return '<div class="cpl-ss-screen-msg">Disconnected</div>';
+        const files = d.showing || [];
+        if (!files.length) return `<div class="cpl-ss-screen-msg">${d.state === 'signin_needed' ? 'Sign-in needed' : 'Nothing is on the screen'}</div>`;
+        const pics = `<div class="cpl-ss-screen-pics${files.length > 1 ? ' is-pair' : ''}">${files.map((f) => `<img src="${esc(ssPreview(f))}" alt="" title="${esc(f)}" onerror="this.style.visibility='hidden'">`).join('')}</div>`;
+        // the device's own "3 of 60" counter is not reported; Full also names the file
+        const info = st.infoOverlay === 'full' ? `<div class="cpl-ss-screen-info">${esc(files.join('  '))}</div>` : '';
+        return pics + info + (d.state === 'paused' ? '<div class="cpl-ss-screen-badge">Paused</div>' : '') + (d.state === 'offline_cache' ? '<div class="cpl-ss-screen-badge">Saved pictures</div>' : '');
+    }
+
+    function ssDeviceHtml(d) {
+        const sz = ssScreenSize(d);
+        return `<div class="cpl-ss-device${sz.portrait ? ' is-portrait' : ''}${d.online ? '' : ' is-off'}">
+            <div class="cpl-ss-bezel"><div class="cpl-ss-screen" style="width:${sz.w}px;height:${sz.h}px" data-ss-live="screen">${ssScreenHtml(d)}</div></div>
+            <div class="cpl-ss-device-name">${esc(d.name)}${d.model ? ` <span class="cpl-ss-dim">(${esc(d.model)})</span>` : ''}</div>
+        </div>`;
+    }
+
+    // the form's picture source while the page is open: { search } set by Image Search, undefined = unchanged
+    const ssDraft = { deviceId: null, search: undefined, previewTimer: null, previewSeq: 0, workspaces: null };
+
+    function ssDraftSearch(d) {
+        if (ssDraft.deviceId === d.deviceId && ssDraft.search !== undefined) return ssDraft.search;
+        return (d.settings || {}).search || null;
+    }
+
+    function ssWorkspaceListHtml(selected) {
+        const all = ssDraft.workspaces || [];
+        const every = selected.includes('*');
+        return `<div class="cpl-ss-wslist">
+            <div class="cpl-vcheck"><input type="checkbox" id="cpl-ss-ws-all" data-ss-ws="*"${every ? ' checked' : ''}><label for="cpl-ss-ws-all">All workspaces</label></div>
+            ${all.map((w, i) => `<div class="cpl-vcheck"><input type="checkbox" id="cpl-ss-ws-${i}" data-ss-ws="${esc(w.id)}"${every || selected.includes(w.id) ? ' checked' : ''}${every ? ' disabled' : ''}><label for="cpl-ss-ws-${i}">${esc(w.name)}</label></div>`).join('')}
+        </div>`;
+    }
+
     pages['sideshow-gadget'] = {
         parent: 'sideshow',
         title: () => `${SS_GADGET} settings`,
@@ -866,26 +908,46 @@
             const list = ss.devices || [];
             const d = ssDevice(ss.deviceId);
             if (!d) return `<div class="cpl-vpage cpl-ss-page">${help('sideshow')}<h1 class="cpl-vtitle">${esc(SS_GADGET)} settings</h1><p class="cpl-vtext">No Melaton SideShow-compatible devices are installed on your computer.</p></div>`;
+            if (ssDraft.deviceId !== d.deviceId) { ssDraft.deviceId = d.deviceId; ssDraft.search = undefined; }
             const st = d.settings || {};
             const off = !d.online ? ' disabled' : '';
+            const search = ssDraftSearch(d);
+            const ws = Array.isArray(st.workspaces) ? st.workspaces : [];
+            const age = Number(st.maxAgeDays) || 0;
             const queued = d.pendingSettings || d.pendingName ? '<p class="cpl-vtext cpl-ss-dim cpl-ss-para">Some changes will be sent to the device the next time it connects.</p>' : '';
-            return `<div class="cpl-vpage cpl-ss-page">${help('sideshow')}
+            setTimeout(() => ssPreviewSoon(0), 0);
+            return `<div class="cpl-vpage cpl-ss-page cpl-ss-gadget-page">${help('sideshow')}
                 <h1 class="cpl-vtitle">${esc(SS_GADGET)} settings</h1>
                 ${list.length > 1 ? `<p class="cpl-vtext">For which device do you want to change settings?</p><p class="cpl-ss-field"><select class="cpl-vselect" data-ss-device>${list.map((x) => `<option value="${esc(x.deviceId)}"${x.deviceId === d.deviceId ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></p>` : ''}
-                <div class="cpl-vsection"><span>Now showing on ${esc(d.name)}</span></div>
-                <p class="cpl-vtext" data-ss-live="status">${esc(ssStateText(d))}</p>
-                <div class="cpl-ss-showing" data-ss-live="showing">${ssShowingHtml(d)}</div>
+                <div class="cpl-ss-stage" data-ss-live="device">${ssDeviceHtml(d)}</div>
+                <p class="cpl-vtext cpl-ss-center" data-ss-live="status">${esc(ssStateText(d))}</p>
                 <div class="cpl-ss-remote">
                     <button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cmd" data-cmd="previous"${off}>Previous</button>
                     <button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cmd" data-cmd="${d.state === 'paused' ? 'resume' : 'pause'}"${off}>${d.state === 'paused' ? 'Resume' : 'Pause'}</button>
                     <button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cmd" data-cmd="next"${off}>Next</button>
                     <button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cmd" data-cmd="refresh"${off}>Refresh</button>
                 </div>
+                <div class="cpl-vsection"><span>Pictures</span></div>
+                <div class="cpl-ss-source">
+                    <div class="cpl-ss-radio"><input type="radio" name="cpl-ss-src" id="cpl-ss-src-ws" value="ws"${search ? '' : ' checked'}><label for="cpl-ss-src-ws">Pictures from these workspaces:</label></div>
+                    <div class="cpl-ss-indent">
+                        <p class="cpl-ss-field"><select class="cpl-vselect" id="cpl-ss-view">${ssOptions(SS_VIEWS, st.viewType || 'images')}</select></p>
+                        <div data-ss-live="wslist">${ssWorkspaceListHtml(ws)}</div>
+                        <p class="cpl-vtext cpl-ss-dim">With no workspace ticked, the device shows the workspace its logon has open.</p>
+                    </div>
+                    <div class="cpl-ss-radio"><input type="radio" name="cpl-ss-src" id="cpl-ss-src-search" value="search"${search ? ' checked' : ''}><label for="cpl-ss-src-search">Pictures from an Image Search:</label></div>
+                    <div class="cpl-ss-indent cpl-ss-searchrow">
+                        <input type="text" class="cpl-vedit" id="cpl-ss-search" readonly placeholder="No search" value="${esc(search ? search.label || 'Saved search' : '')}">
+                        <button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="search">Image Search...</button>
+                    </div>
+                    <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-age-on"${age > 0 ? ' checked' : ''}><label for="cpl-ss-age-on">Only pictures from the last</label>
+                        <input type="number" class="cpl-vedit cpl-ss-num" id="cpl-ss-age" min="1" max="3650" value="${age > 0 ? age : 7}"${age > 0 ? '' : ' disabled'}> days</div>
+                    <p class="cpl-vtext cpl-ss-rotation"><label for="cpl-ss-pool">Pictures in rotation:</label> <input type="number" class="cpl-vedit cpl-ss-num" id="cpl-ss-pool" min="1" max="1000" value="${esc(st.poolSize != null ? st.poolSize : 60)}"> <span class="cpl-ss-dim" data-ss-live="count"></span></p>
+                    <div class="cpl-ss-strip" data-ss-live="strip"></div>
+                </div>
                 <div class="cpl-vsection"><span>Slide show</span></div>
                 <table class="cpl-power-grid cpl-ss-settings">
-                    <tr><td><label for="cpl-ss-view">Show pictures from:</label></td><td><select class="cpl-vselect" id="cpl-ss-view">${ssOptions(SS_VIEWS, st.viewType || 'images')}</select></td></tr>
                     <tr><td><label for="cpl-ss-interval">Show each picture for:</label></td><td><input type="number" class="cpl-vedit cpl-ss-num" id="cpl-ss-interval" min="5" max="3600" value="${esc(st.intervalSec != null ? st.intervalSec : 45)}"> seconds</td></tr>
-                    <tr><td><label for="cpl-ss-pool">Pictures in rotation:</label></td><td><input type="number" class="cpl-vedit cpl-ss-num" id="cpl-ss-pool" min="1" max="1000" value="${esc(st.poolSize != null ? st.poolSize : 60)}"></td></tr>
                     <tr><td><label for="cpl-ss-overlay">Picture information:</label></td><td><select class="cpl-vselect" id="cpl-ss-overlay">${ssOptions(SS_OVERLAYS, st.infoOverlay || 'minimal')}</select></td></tr>
                 </table>
                 <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-shuffle"${st.shuffle !== false ? ' checked' : ''}><label for="cpl-ss-shuffle">Shuffle pictures</label></div>
@@ -896,14 +958,83 @@
         }
     };
 
+    /** The form as settings (only the picture source and slide show keys). */
+    function ssCollect(d) {
+        const m = main();
+        const st = d.settings || {};
+        const q = (sel) => m && m.querySelector(sel);
+        const val = (id) => (q(`#${id}`) || {}).value;
+        const num = (id, lo, hi, fallback) => {
+            const n = Math.round(Number(val(id)));
+            return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
+        };
+        const useSearch = !!(q('#cpl-ss-src-search') || {}).checked;
+        const search = ssDraftSearch(d);
+        const every = !!(q('#cpl-ss-ws-all') || {}).checked;
+        const ws = every ? ['*'] : Array.from(m ? m.querySelectorAll('[data-ss-ws]:checked') : []).map((i) => i.dataset.ssWs).filter((x) => x !== '*');
+        return {
+            viewType: val('cpl-ss-view') || st.viewType || 'images',
+            workspaces: ws,
+            search: useSearch ? (search || null) : null,
+            maxAgeDays: (q('#cpl-ss-age-on') || {}).checked ? num('cpl-ss-age', 1, 3650, 7) : 0,
+            poolSize: num('cpl-ss-pool', 1, 1000, st.poolSize || 60),
+            intervalSec: num('cpl-ss-interval', 5, 3600, st.intervalSec || 45),
+            infoOverlay: val('cpl-ss-overlay') || st.infoOverlay || 'minimal',
+            shuffle: !!(q('#cpl-ss-shuffle') || {}).checked,
+            pairPortraits: !!(q('#cpl-ss-pair') || {}).checked
+        };
+    }
+
+    /** "N pictures" and the first few, for the form as it stands. */
+    function ssPreviewSoon(delay) {
+        clearTimeout(ssDraft.previewTimer);
+        ssDraft.previewTimer = setTimeout(async () => {
+            const c = ssClient();
+            const d = ssDevice(ss.deviceId);
+            const m = main();
+            if (!c || !d || !m || !m.querySelector('.cpl-ss-gadget-page') || typeof c.devicePreviewImages !== 'function') return;
+            const seq = ++ssDraft.previewSeq;
+            let res = null;
+            try { res = await c.devicePreviewImages(d.deviceId, ssCollect(d), 10); } catch (_) { res = null; }
+            if (seq !== ssDraft.previewSeq || !res) return;
+            const firstLoad = !ssDraft.workspaces && Array.isArray(res.workspaces);
+            if (Array.isArray(res.workspaces)) ssDraft.workspaces = res.workspaces.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+            const count = m.querySelector('[data-ss-live="count"]');
+            if (count) count.textContent = res.success === false ? '' : `${res.total} picture${res.total === 1 ? '' : 's'} match${res.total === 1 ? 'es' : ''}`;
+            const strip = m.querySelector('[data-ss-live="strip"]');
+            if (strip) strip.innerHTML = (res.items || []).map((it) => `<img src="${esc(ssPreview(it.filename))}" alt="" title="${esc(it.filename)}" loading="lazy" onerror="this.style.visibility='hidden'">`).join('');
+            if (firstLoad) {
+                const box = m.querySelector('[data-ss-live="wslist"]');
+                const st = d.settings || {};
+                if (box) box.innerHTML = ssWorkspaceListHtml(Array.isArray(st.workspaces) ? st.workspaces : []);
+            }
+        }, delay == null ? 350 : delay);
+    }
+
     handlers['sideshow-gadget'] = {
         open(t) { ss.deviceId = t.dataset.device; nav('sideshow-device'); },
         sort() { nav('sideshow'); },
         change(ev) {
-            if (ev.target.matches && ev.target.matches('[data-ss-device]')) {
-                ss.deviceId = ev.target.value;
+            const t = ev.target;
+            if (t.matches && t.matches('[data-ss-device]')) {
+                ss.deviceId = t.value;
                 rerender();
+                return;
             }
+            const m = main();
+            if (t.id === 'cpl-ss-ws-all' && m) m.querySelectorAll('[data-ss-ws]:not([data-ss-ws="*"])').forEach((i) => { i.disabled = t.checked; if (t.checked) i.checked = true; });
+            if (t.id === 'cpl-ss-age-on' && m) m.querySelector('#cpl-ss-age').disabled = !t.checked;
+            if (t.dataset && t.dataset.ssWs && m) m.querySelector('#cpl-ss-src-ws').checked = true;
+            ssPreviewSoon();
+        },
+        async search() {
+            const d = ssDevice(ss.deviceId);
+            if (!d) return;
+            const search = ssDraftSearch(d);
+            // resolveDsap, loadDsapEntryAssets: public/scripts/comp/dsapRegistry.js; openIspyDsap: omegasearchDsapApplet.js
+            if (typeof resolveDsap !== 'function' || typeof openIspyDsap !== 'function') return;
+            await loadDsapEntryAssets(resolveDsap('dsap://ispy.dreamscape.jp/').entry);
+            openIspyDsap(search ? { ...search, view: 'gallery', frame: `sideshow:${d.deviceId}` } : { workspaceId: '*', view: 'search', frame: `sideshow:${d.deviceId}` });
         },
         async cmd(t) {
             if (ss.busy) return;
@@ -915,29 +1046,47 @@
         },
         async save() {
             const d = ssDevice(ss.deviceId);
-            const m = main();
-            if (!d || !m) return;
-            const val = (id) => (m.querySelector(`#${id}`) || {}).value;
-            const num = (id, lo, hi, fallback) => {
-                const n = Math.round(Number(val(id)));
-                return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
-            };
+            if (!d || !main()) return;
             const st = d.settings || {};
-            const next = {
-                viewType: val('cpl-ss-view'),
-                intervalSec: num('cpl-ss-interval', 5, 3600, st.intervalSec || 45),
-                poolSize: num('cpl-ss-pool', 1, 1000, st.poolSize || 60),
-                infoOverlay: val('cpl-ss-overlay'),
-                shuffle: !!(m.querySelector('#cpl-ss-shuffle') || {}).checked,
-                pairPortraits: !!(m.querySelector('#cpl-ss-pair') || {}).checked
-            };
+            const next = ssCollect(d);
             const changed = {};
-            Object.keys(next).forEach((k) => { if (next[k] !== st[k]) changed[k] = next[k]; });
+            Object.keys(next).forEach((k) => { if (JSON.stringify(next[k]) !== JSON.stringify(st[k] === undefined ? (k === 'search' ? null : st[k]) : st[k])) changed[k] = next[k]; });
             if (Object.keys(changed).length) await ssSend('set_settings', { settings: changed });
+            ssDraft.search = undefined;
             nav('sideshow');
         },
-        cancel() { nav('sideshow'); }
+        cancel() { ssDraft.search = undefined; nav('sideshow'); }
     };
+    // the form's text and number fields refresh the preview as you type
+    if (doc) {
+        doc.addEventListener('input', (ev) => {
+            if (ev.target && ev.target.closest && ev.target.closest('#melatonControlPanelModal .cpl-ss-gadget-page') && /^cpl-ss-(age|pool)$/.test(ev.target.id)) ssPreviewSoon();
+        });
+    }
+
+    /**
+     * Image Search's "Show on the SideShow device" (omegasearchDsapApplet.js, frame=sideshow:<deviceId>):
+     * the open settings page takes the search; with the page closed it goes straight to the device.
+     */
+    async function setDeviceSearch(deviceId, search) {
+        const page = CP() && CP().currentPage();
+        if (page === 'sideshow-gadget' && ss.deviceId === deviceId && main()) {
+            ssDraft.deviceId = deviceId;
+            ssDraft.search = search;
+            const m = main();
+            const field = m.querySelector('#cpl-ss-search');
+            if (field) field.value = search.label || 'Saved search';
+            const radio = m.querySelector('#cpl-ss-src-search');
+            if (radio) radio.checked = true;
+            ssPreviewSoon(0);
+            return true;
+        }
+        const c = ssClient();
+        if (!c) return false;
+        const res = await c.deviceSendCommand(deviceId, 'set_settings', { settings: { search } });
+        return !!(res && res.success !== false);
+    }
+    root.cplSideShow = { setDeviceSearch };
 
     function register() {
         const cp = CP();

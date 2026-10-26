@@ -124,7 +124,7 @@
             const [lx, ly, lw, lh] = this.m.lcd;
             const w = doc.createElement('div');
             w.id = `sideshowSimulatorModal-${this.mode}`;
-            w.className = `modal hidden tbp-window sss-window is-${this.mode}`;
+            w.className = `modal hidden sss-window is-${this.mode}`;
             w.dataset.windowIdentifier = `sideshowSimulator-${this.mode}`;
             w.dataset.windowClient = 'light';
             w.dataset.windowFixedSize = 'true';
@@ -223,6 +223,12 @@
             ws.onmessage = (ev) => {
                 let msg;
                 try { msg = JSON.parse(ev.data); } catch (_) { return; }
+                if (msg.requestId && this.pending && this.pending.has(msg.requestId)) {
+                    const done = this.pending.get(msg.requestId);
+                    this.pending.delete(msg.requestId);
+                    done(msg);
+                    if (msg.type !== 'client_identify_response') return;
+                }
                 if (msg.type === 'connection') this.identify();
                 else if (msg.type === 'client_identify_response') this.onIdentified(msg.data || {});
                 else if (msg.type === 'device_command') this.onCommand(msg);
@@ -237,6 +243,18 @@
 
         send(obj) {
             if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(obj));
+        }
+
+        /** A request on the device socket; resolves with the reply (or null after 15 s). */
+        request(type, data) {
+            if (!this.ws || this.ws.readyState !== 1) return Promise.resolve(null);
+            if (!this.pending) this.pending = new Map();
+            const requestId = `sim-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            return new Promise((resolve) => {
+                const t = setTimeout(() => { this.pending.delete(requestId); resolve(null); }, 15000);
+                this.pending.set(requestId, (msg) => { clearTimeout(t); resolve(msg); });
+                this.send({ type, requestId, data: data || {} });
+            });
         }
 
         identify() {
@@ -284,8 +302,11 @@
                 case 'set_settings': {
                     const before = JSON.stringify([this.settings.viewType, this.settings.poolSize]);
                     this.applySettings(d.settings);
+                    const src = d.settings || {};
+                    const sourceChanged = JSON.stringify([this.settings.viewType, this.settings.poolSize]) !== before
+                        || 'workspaces' in src || 'maxAgeDays' in src || 'search' in src;
                     if (this.screen === 'gadget') {
-                        if (JSON.stringify([this.settings.viewType, this.settings.poolSize]) !== before) void this.loadImages();
+                        if (sourceChanged) void this.loadImages();
                         else { this.render(); this.arm(); }
                     }
                     break;
@@ -309,16 +330,15 @@
 
         // ---- the slideshow ----
 
+        /** The server picks the pictures from this device's settings (workspaces, age, Image Search). */
         async loadImages() {
-            const c = root.wsClient;
-            if (!c || typeof c.sendMessage !== 'function') return;
             this.loading = true;
             this.render();
             try {
-                const ws = (typeof root.activeWorkspace !== 'undefined' && root.activeWorkspace) || root.currentWorkspace || 'default';
-                const res = await c.sendMessage('request_gallery', { viewType: this.settings.viewType, workspaceId: ws, offset: 0, limit: this.settings.poolSize, light: true, includePinnedStatus: false }, false);
-                const rows = (res && res.gallery) || [];
-                const names = rows.map((r) => (this.settings.viewType === 'upscaled' ? (r.upscaled || r.original) : (r.original || r.upscaled))).filter(Boolean);
+                const res = await this.request('device_slideshow_images');
+                const items = (res && res.data && res.data.items) || [];
+                items.forEach((it) => { if (it.width && it.height && it.height > it.width) this.tall.add(it.filename); });
+                const names = items.map((it) => it.filename).filter(Boolean);
                 this.images = this.settings.shuffle ? shuffled(names) : names;
                 this.pos = 0;
             } catch (_) {

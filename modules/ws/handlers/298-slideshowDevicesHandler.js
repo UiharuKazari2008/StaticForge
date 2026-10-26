@@ -1,5 +1,6 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const slideshowDevices = require('../../slideshowDevices');
+const searchHandler = require('./70-searchHandler');
 
 // Slideshow devices (Yozora #654, modules/slideshowDevices.js): Dreamscape Frame tablets identify,
 // report what they show and ack commands (any signed-in session, read-only PIN included); Control
@@ -41,6 +42,29 @@ function registerPackets(handlersCtx) {
         slideshowDevices.commandAck(clientInfo, message);
     });
 
+    const imageCtx = (clientInfo) => ({
+        metadataDb: gr().getMetadataDatabase(),
+        workspaceManager: gr().getWorkspaceManager(),
+        sessionId: clientInfo && clientInfo.sessionId,
+        runSearch: (query) => searchHandler.omegasearchMatchFilenames(handlersCtx, clientInfo && clientInfo.sessionId, query)
+    });
+
+    // the device's pictures for its stored settings (workspaces, age, Image Search), newest first
+    reg('device_slideshow_images', async ({ ws, message, clientInfo }) => {
+        try {
+            const deviceId = clientInfo && clientInfo.deviceId;
+            if (!deviceId) {
+                reply(ws, 'device_slideshow_images_response', message, { success: false, code: 'NOT_IDENTIFIED', total: 0, items: [] });
+                return;
+            }
+            const settings = slideshowDevices.deviceSettings(gr(), deviceId) || {};
+            const res = await slideshowDevices.resolveImages(imageCtx(clientInfo), settings);
+            reply(ws, 'device_slideshow_images_response', message, { success: true, deviceId, ...res });
+        } catch (error) {
+            handlersCtx.sendError(ws, 'Failed to list the pictures', error.message, message.requestId);
+        }
+    });
+
     // ---- Control Panel (admin) ----
 
     // a read-only logon gets an answer, not an error packet (the desktop shows those as exceptions):
@@ -54,6 +78,25 @@ function registerPackets(handlersCtx) {
             reply(ws, 'list_devices_response', message, { success: true, devices: slideshowDevices.listDevices(gr(), wsServer) });
         } catch (error) {
             handlersCtx.sendError(ws, 'Failed to list the devices', error.message, message.requestId);
+        }
+    });
+
+    // Control Panel's preview: what a device would show with these (unsaved) settings, and the workspaces
+    reg('device_preview_images', async ({ ws, message, clientInfo }) => {
+        if (!isAdmin(clientInfo)) {
+            reply(ws, 'device_preview_images_response', message, { success: false, code: 'INSUFFICIENT_PERMISSIONS', total: 0, items: [] });
+            return;
+        }
+        const src = message.data && typeof message.data === 'object' ? message.data : message;
+        try {
+            const stored = slideshowDevices.isDeviceId(src.deviceId) ? (slideshowDevices.deviceSettings(gr(), String(src.deviceId)) || {}) : {};
+            const settings = Object.assign({}, stored, slideshowDevices.sanitizeSettings(src.settings));
+            const res = await slideshowDevices.resolveImages(imageCtx(clientInfo), settings);
+            const all = gr().getWorkspaceManager().getWorkspaces() || {};
+            const workspaces = Object.entries(all).map(([id, w]) => ({ id, name: (w && w.name) || id }));
+            reply(ws, 'device_preview_images_response', message, { success: true, total: res.total, items: res.items.slice(0, Number(src.limit) > 0 ? Math.min(60, Number(src.limit)) : 12), workspaces });
+        } catch (error) {
+            reply(ws, 'device_preview_images_response', message, { success: false, error: error.message, total: 0, items: [] });
         }
     });
 

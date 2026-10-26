@@ -3,18 +3,8 @@
    pressed bitmaps while held. The LCD's screens follow the firmware art and the archive.org shots
    of the connected simulator (Welcome band, the header clock, the landscape icon column). */
 
-/* VirtualSideShow's form is FixedSingle: Vista draws it with the thin Aero frame, 3 px around the
-   client (262 x 572 outside a 256 x 546 client) under a 23 px caption band */
-body.desktop-mode .modal.sss-window {
-    --window-frame-inset: 2px;
-    --modal-title-chrome-height: 22px;
-    padding-top: 22px;
-}
-
-/* the thin frame's caption: icon 4 px nearer the edge than on a sizing frame */
-body.desktop-mode:not(.windows-classic-theme) .modal.sss-window.tbp-window > .modal-window-title .modal-window-title-main {
-    margin-left: -9px;
-}
+/* the window takes the desktop's standard frame and caption (like every other window); only the
+   client is the simulator's own 256 x 546 / 515 x 256 */
 
 .sss-window .sss-client {
     position: relative;

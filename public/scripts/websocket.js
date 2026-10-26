@@ -7940,6 +7940,11 @@ class WebSocketClient {
         return this.sendMessage('device_send_command', { deviceId, command, ...extra }, false);
     }
 
+    /** What a device would show with these settings (unsaved): { total, items, workspaces }. */
+    async devicePreviewImages(deviceId, settings, limit = 12) {
+        return this.sendMessage('device_preview_images', { deviceId, settings, limit }, false);
+    }
+
     async deviceForget(deviceId) {
         return this.sendMessage('device_forget', { deviceId });
     }

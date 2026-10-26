@@ -130,6 +130,30 @@ async function main() {
     const dev = all.find((c) => c.clientId === ID);
     assert.ok(dev && dev.kind === 'slideshow' && dev.name === 'Kitchen' && dev.bindable === false && dev.desktopReady === false);
 
+    // picture sources: workspaces, age, Image Search
+    const now = Date.now();
+    const fakeDb = {
+        async listWorkspaceGalleryItemsPaginated(id) {
+            const rows = { a: [{ original: 'a1.png', mtime: now - 1000 }, { original: 'a2.png', mtime: now - 40 * 86400000 }], b: [{ original: 'b1.png', mtime: now - 2000, width: 10, height: 20 }] };
+            return { items: rows[id] || [] };
+        },
+        async getLightweightMetadata(names) { return Object.fromEntries(names.map((n) => [n, { mtime: now, width: 1, height: 1 }])); }
+    };
+    const wm = { getWorkspaces: () => ({ a: {}, b: {} }), getActiveWorkspace: () => 'b' };
+    const ctx = { metadataDb: fakeDb, workspaceManager: wm, sessionId: 's', runSearch: async () => [`${now - 3 * 86400000}_old.png`, 's2.png', `${now - 1000}_new.png`] };
+    let pics = await devices.resolveImages(ctx, devices.sanitizeSettings({ workspaces: ['*'] }));
+    assert.deepStrictEqual(pics.items.map((i) => i.filename), ['a1.png', 'b1.png', 'a2.png']);
+    pics = await devices.resolveImages(ctx, devices.sanitizeSettings({ workspaces: ['*'], maxAgeDays: 30 }));
+    assert.deepStrictEqual(pics.items.map((i) => i.filename), ['a1.png', 'b1.png']);
+    pics = await devices.resolveImages(ctx, {});
+    assert.deepStrictEqual(pics.items.map((i) => i.filename), ['b1.png'], 'no workspaces = the active one');
+    pics = await devices.resolveImages(ctx, devices.sanitizeSettings({ search: { blocks: [{ terms: ['cat'] }] }, poolSize: 2 }));
+    assert.deepStrictEqual(pics.items.map((i) => i.filename), [`${now - 1000}_new.png`, `${now - 3 * 86400000}_old.png`], 'search: newest first by filename time');
+    assert.strictEqual(pics.total, 3);
+    pics = await devices.resolveImages(ctx, devices.sanitizeSettings({ search: { blocks: [{ terms: ['cat'] }] }, maxAgeDays: 2 }));
+    assert.deepStrictEqual(pics.items.map((i) => i.filename), [`${now - 1000}_new.png`]);
+    assert.strictEqual(devices.sanitizeSettings({ search: { blocks: [] } }).search, undefined);
+
     // forget
     assert.strictEqual(devices.forget(gr, server, ID), true);
     assert.strictEqual(devices.listDevices(gr, server).length, 0);

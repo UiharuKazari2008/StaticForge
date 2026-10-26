@@ -58,7 +58,89 @@ function sanitizeSettings(raw) {
     if (typeof src.shuffle === 'boolean') out.shuffle = src.shuffle;
     if (typeof src.pairPortraits === 'boolean') out.pairPortraits = src.pairPortraits;
     if (INFO_OVERLAYS.has(src.infoOverlay)) out.infoOverlay = src.infoOverlay;
+    // where the pictures come from (served by device_slideshow_images): workspace ids (empty = the
+    // session's active one, "*" = every workspace), an age limit in days (0 = any), or an Image Search
+    // (the Sidebar Slide Show's omegasearch query; null clears it)
+    if (Array.isArray(src.workspaces)) {
+        out.workspaces = Array.from(new Set(src.workspaces.map((w) => clampString(w, 100)).filter(Boolean))).slice(0, 20);
+        if (out.workspaces.includes('*')) out.workspaces = ['*'];
+    }
+    const age = clampInt(src.maxAgeDays, 0, 3650);
+    if (src.maxAgeDays != null && age != null) out.maxAgeDays = age;
+    if (src.search === null) out.search = null;
+    else if (src.search && typeof src.search === 'object') {
+        const search = require('./sidebarGadgets').sanitizeFrameSearch(src.search);
+        if (search) out.search = search;
+    }
     return out;
+}
+
+const MAX_CANDIDATES = 5000;
+
+/** Gallery files start with their creation time in ms ("1792945938451_generated_..."). */
+function filenameMs(name) {
+    const m = /^(\d{12,14})_/.exec(String(name || ''));
+    const ms = m ? Number(m[1]) : 0;
+    // some names carry a seed-like number, not a time: past tomorrow counts as undated
+    return ms && ms <= Date.now() + 86400000 ? ms : 0;
+}
+
+function mtimeMs(value) {
+    if (value == null) return 0;
+    const n = typeof value === 'number' ? value : Date.parse(value);
+    if (!Number.isFinite(n)) return 0;
+    return n < 1e12 ? n * 1000 : n;
+}
+
+/**
+ * The pictures a device shows for these settings: newest first, at most poolSize, each
+ * { filename, width, height, mtime }. ctx: { metadataDb, workspaceManager, sessionId, runSearch(search) }.
+ */
+async function resolveImages(ctx, rawSettings) {
+    const settings = Object.assign({ viewType: 'images', poolSize: 60, maxAgeDays: 0, workspaces: [] }, rawSettings || {});
+    const db = ctx.metadataDb;
+    if (!db) return { total: 0, items: [] };
+    const cutoff = settings.maxAgeDays > 0 ? Date.now() - settings.maxAgeDays * 86400000 : 0;
+    const pickName = (row) => (settings.viewType === 'upscaled' ? (row.upscaled || row.original) : (row.original || row.upscaled));
+    let rows = [];
+    if (settings.search) {
+        // search results come unordered and without dates: the filename's leading timestamp dates them,
+        // and only the pictures that make the cut get their sizes looked up
+        let found = (await ctx.runSearch(settings.search)).map((f) => ({ filename: f, width: null, height: null, mtime: filenameMs(f) }));
+        found.sort((x, y) => y.mtime - x.mtime);
+        if (cutoff) found = found.filter((r) => r.mtime >= cutoff);
+        const picked = found.slice(0, settings.poolSize);
+        const light = picked.length ? await db.getLightweightMetadata(picked.map((r) => r.filename)) : {};
+        picked.forEach((r) => {
+            const m = (light && light[r.filename]) || {};
+            r.width = m.width || null;
+            r.height = m.height || null;
+            if (!r.mtime) r.mtime = mtimeMs(m.mtime);
+        });
+        return { total: found.length, items: picked };
+    } else {
+        let ids = Array.isArray(settings.workspaces) ? settings.workspaces : [];
+        if (ids.includes('*')) ids = Object.keys((ctx.workspaceManager && ctx.workspaceManager.getWorkspaces()) || {});
+        if (!ids.length) ids = [(ctx.workspaceManager && ctx.sessionId && ctx.workspaceManager.getActiveWorkspace(ctx.sessionId)) || 'default'];
+        const seen = new Set();
+        for (const id of ids) {
+            const page = await db.listWorkspaceGalleryItemsPaginated(id, settings.viewType, 0, MAX_CANDIDATES);
+            for (const row of (page && page.items) || []) {
+                const f = pickName(row);
+                if (!f || seen.has(f)) continue;
+                seen.add(f);
+                rows.push({ filename: f, width: row.width || null, height: row.height || null, mtime: mtimeMs(row.mtime) || filenameMs(f) });
+            }
+        }
+        rows.sort((a, b) => b.mtime - a.mtime);
+    }
+    if (cutoff) rows = rows.filter((r) => r.mtime >= cutoff);
+    return { total: rows.length, items: rows.slice(0, settings.poolSize) };
+}
+
+function deviceSettings(globalResources, deviceId) {
+    const row = rowOf(globalResources, deviceId);
+    return row ? parseJson(row.settings, {}) : null;
 }
 
 function sanitizeDisplay(raw) {
@@ -405,6 +487,8 @@ module.exports = {
     isDeviceId,
     sanitizeSettings,
     sanitizeShowing,
+    resolveImages,
+    deviceSettings,
     identify,
     deviceState,
     commandAck,
