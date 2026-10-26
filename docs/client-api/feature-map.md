@@ -55,6 +55,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Feature | REST | WS | Push | Client-only |
 |---------|------|-----|------|-------------|
 | List gallery | — | `request_gallery` | `gallery_updated` | Virtual scroll |
+| Melaton SideShow / Dreamscape Frame | — | Device socket: `client_identify`, `client_device_state`, `device_slideshow_images`, `device_command_ack`; admin Control Panel: `list_devices`, `device_preview_images`, `device_send_command`, `device_forget` | `device_command` to devices; `devices_updated` to admin tabs | Control Panel SideShow pages, Device Simulator landscape / portrait, Image Search handoff via `frame=sideshow:<deviceId>` |
 | Image metadata | — | `request_image_metadata`, `request_image_by_index` | — | Studio / viewer; `blurhash` on metadata + gallery rows |
 | Bulk delete | — | `delete_images_bulk` | `gallery_updated` | Selection UI |
 | Zanzou (afterimage keep/scrap) | — | `get_similar_image_groups`, `scrap_similar_images` (wraps `delete_images_bulk`) | `gallery_updated` (on scrap) | Zanzou DSAP (`zanzou.dyna.dreamscape.jp`); Control Panel only |
