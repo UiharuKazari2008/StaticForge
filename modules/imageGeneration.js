@@ -625,16 +625,24 @@ function applyBiasToText(input, bias) {
         });
         return result;
     } else if (hasBiasGroups) {
-        // Input has bias groups but not wrapped - add/subtract adjustment and wrap
-        const biasAdjustment = bias - 1.0;
-        let result = input.replace(/(-?\d+\.?\d*)::((?:(?!-?\d+\.?\d*::).)*?)::(?=(?:[^:]|$))/g, (match, innerBias, content) => {
-            const innerBiasValue = parseFloat(innerBias);
-            const newInnerBias = innerBiasValue + biasAdjustment;
-            const rounded = Math.round(newInnerBias * 10) / 10;
-
-            return `${rounded.toFixed(1)}::${content}, ${bias}::`;
-        });
-        return `${bias}::${result}::`;
+        // Mixed text and N::...:: groups. NAI groups do not nest and a bare :: closes the
+        // open one, so wrap each plain run in its own bias group and scale the inner weights
+        // by the bias (a stronger toggle makes its negative groups more negative too).
+        const groupRe = /(-?\d+(?:\.\d+)?)::([\s\S]*?)::/g;
+        const wrapPlain = (text) => {
+            const m = /^([\s,]*)([\s\S]*?)([\s,]*)$/.exec(text);
+            return m[2] ? `${m[1]}${bias}::${m[2]}::${m[3]}` : text;
+        };
+        let result = '';
+        let last = 0;
+        let match;
+        while ((match = groupRe.exec(input)) !== null) {
+            result += wrapPlain(input.slice(last, match.index));
+            const scaled = Math.round(parseFloat(match[1]) * bias * 10) / 10;
+            result += `${scaled.toFixed(1)}::${match[2]}::`;
+            last = groupRe.lastIndex;
+        }
+        return result + wrapPlain(input.slice(last));
     } else {
         // No bias groups - wrap the entire input
         return `${bias}::${input}::`;

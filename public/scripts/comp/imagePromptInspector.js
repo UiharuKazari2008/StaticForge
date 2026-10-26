@@ -764,6 +764,19 @@ class ImagePromptInspector {
                 || dynamicCompiled.characterPrompts
                 || [];
             if (!Array.isArray(characters)) characters = [];
+            if (!characters.length) {
+                // Raw PNG metadata (latest print) has no compiled_* fields; v4 captions are what NAI received.
+                const captions = this.metadata.v4_prompt?.caption?.char_captions;
+                const negatives = this.metadata.v4_negative_prompt?.caption?.char_captions || [];
+                if (Array.isArray(captions)) {
+                    const names = forge.allCharacters || [];
+                    characters = captions.map((caption, index) => ({
+                        prompt: caption?.char_caption || '',
+                        uc: negatives[index]?.char_caption || '',
+                        name: names[index]?.chara_name || names[index]?.name
+                    }));
+                }
+            }
             return {
                 prompt: compiledPrompt
                     || dynamicCompiled.prompt
