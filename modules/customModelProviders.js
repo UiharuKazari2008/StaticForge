@@ -38,6 +38,9 @@ const LOW_BALANCE = 1;
 const catalogs = new Map();
 const balances = new Map();   // id -> { at, fp, value, promise }
 const rateLimits = new Map(); // id -> { at, limit, remaining, resetMs }
+// NVIDIA's /v1/models answers without a key, so it cannot prove one. The first authed chat
+// does: id -> { fp, state: 'ok' | 'fail', status, at }. A new key (fp) starts unverified.
+const keyChecks = new Map();
 const LOGO_MAX_BYTES = 64 * 1024;
 let logoDirectory = path.join(__dirname, '..', 'data', 'provider-logos');
 
@@ -142,12 +145,34 @@ function cacheHome() {
     return path.join(os.homedir(), '.cache', 'dreamscape-director');
 }
 
+// The server fetches this URL with the stored key, so internal hosts are refused: loopback,
+// private, link-local and CGNAT literals, localhost, and .local/.internal/.lan names. (DNS that
+// resolves a public name to a private address is not checked; saving stays admin-only.)
+function isInternalHost(hostname) {
+    const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+    if (!host) return true;
+    if (host === 'localhost' || /\.(localhost|local|internal|lan|home|arpa)$/.test(host) || !host.includes('.') && !host.includes(':')) return true;
+    const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (v4) {
+        const [a, b] = [Number(v4[1]), Number(v4[2])];
+        return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
+            || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+    }
+    if (host.includes(':')) {
+        if (host === '::' || host === '::1' || /^f[cd]/.test(host) || /^fe[89ab]/.test(host)) return true;
+        const mapped = host.match(/^::ffff:(.+)$/);
+        if (mapped) return mapped[1].includes('.') ? isInternalHost(mapped[1]) : true;
+    }
+    return false;
+}
+
 function normalizeBaseUrl(value) {
     const raw = String(value || '').trim();
     if (!raw) return '';
     let url;
     try { url = new URL(raw); } catch (_) { return ''; }
     if (url.protocol !== 'https:' || url.username || url.password) return '';
+    if (isInternalHost(url.hostname)) return '';
     const pathName = url.pathname.replace(/\/+$/, '').replace(/\/v1$/i, '');
     return `${url.origin}${pathName === '/' ? '' : pathName}`;
 }
@@ -487,15 +512,26 @@ function parseDeepSeekBalance(body) {
 // DeepInfra GET /payment/checklist. stripe_balance is negative when prepaid funds are ready
 // to spend and positive when money is owed; recent is the spend since the last invoice and
 // limit the account's spending limit (both USD). null when the body has no stripe_balance.
+// DeepInfra's OpenAPI does not state the unit of stripe_balance / recent / limit. Its console
+// and third-party clients (CodexBar, Quota Monitor) read them as whole US dollars, while
+// /payment/usage total_cost is documented as cents. If DeepInfra ever confirms cents here,
+// change this one constant to 100.
+const DEEPINFRA_CHECKLIST_UNITS_PER_USD = 1;
+
+// Spendable = -(stripe_balance + max(recent, 0)): recent is spend not yet invoiced, so it has
+// already come out of the prepaid funds (DeepInfra console formula).
 function parseDeepInfraChecklist(body) {
-    const stripe = body ? finite(body.stripe_balance) : null;
-    if (stripe == null) return null;
-    const limit = finite(body.limit);
+    const rawStripe = body ? finite(body.stripe_balance) : null;
+    if (rawStripe == null) return null;
+    const usd = (n) => (n == null ? null : n / DEEPINFRA_CHECKLIST_UNITS_PER_USD);
+    const stripe = usd(rawStripe);
+    const recent = usd(finite(body.recent));
+    const limit = usd(finite(body.limit));
     return {
         currency: 'USD',
-        balance: Math.round(-stripe * 100) / 100,
-        recent: finite(body.recent),
-        limit: limit != null && limit >= 0 ? limit : null,
+        balance: Math.round(-(stripe + Math.max(recent || 0, 0)) * 100) / 100,
+        recent,
+        limit: limit != null && limit > 0 ? limit : null,
         suspended: body.suspended === true,
         suspendReason: body.suspend_reason ? String(body.suspend_reason) : '',
         paymentMethod: body.payment_method === true
@@ -555,6 +591,24 @@ function parseRateLimitHeaders(headers) {
     const resetMs = durationMs(pick(['x-ratelimit-reset-requests', 'x-ratelimit-reset']));
     if (limit == null && remaining == null) return null;
     return { limit, remaining, resetMs };
+}
+
+function keyFingerprint(apiKey) {
+    return require('crypto').createHash('sha256').update(String(apiKey || '')).digest('hex').slice(0, 16);
+}
+
+// The bridge reports each custom chat's status here. 2xx proves the key, 401/403 refuses it.
+function noteKeyResult(idOrEngine, apiKey, status) {
+    const id = providerKey(idOrEngine);
+    if (!id || !apiKey) return;
+    const code = Number(status);
+    const state = code >= 200 && code < 300 ? 'ok' : (code === 401 || code === 403) ? 'fail' : null;
+    if (state) keyChecks.set(id, { fp: keyFingerprint(apiKey), state, status: code, at: Date.now() });
+}
+
+function keyCheckFor(row) {
+    const seen = keyChecks.get(row.id);
+    return seen && seen.fp === keyFingerprint(row.apiKey) ? seen : null;
 }
 
 // The bridge passes every custom chat response here (modules/tokenRouterBridge.js).
@@ -839,6 +893,13 @@ async function apiStatus(gr, idOrEngine) {
         try { body = text ? JSON.parse(text) : null; } catch (_) { body = null; }
         const verdict = require('./apiKeyHealth').classify(res.status, body, text.slice(0, 400));
         const models = res.ok && row.kind !== 'openrouter' && body && Array.isArray(body.data) ? body.data.length : null;
+        if (row.kind === 'nvidia' && verdict.state === 'ok') {
+            // The list is public: reachable is not the same as a working key.
+            const check = keyCheckFor(row);
+            if (!check) return { state: 'warn', message: 'Host reachable; key unverified until the first chat succeeds', status: res.status, ms, models, keyVerified: false };
+            if (check.state === 'fail') return { state: 'fail', message: `Refused (HTTP ${check.status}) on the last chat`, status: check.status, ms, models, keyVerified: false };
+            return { state: 'ok', message: 'Key accepted (last chat succeeded)', status: res.status, ms, models, keyVerified: true };
+        }
         return { state: verdict.state, message: verdict.message, status: res.status, ms, models };
     } catch (error) {
         const why = error && error.name === 'TimeoutError' ? 'timed out' : String((error && error.message) || error);
@@ -936,6 +997,8 @@ module.exports = {
     catalogFromDeepInfra,
     parseRateLimitHeaders,
     noteRateLimit,
+    noteKeyResult,
+    isInternalHost,
     moneyText,
     preferredModel,
     apiStatus,
@@ -946,7 +1009,7 @@ module.exports = {
     normalizeBaseUrl,
     _test: {
         resetCatalogs: () => catalogs.clear(),
-        resetBalances: () => { balances.clear(); rateLimits.clear(); },
+        resetBalances: () => { balances.clear(); rateLimits.clear(); keyChecks.clear(); },
         setLogoDir: (dir) => { logoDirectory = dir; }
     }
 };

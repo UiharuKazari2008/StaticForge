@@ -912,6 +912,8 @@ function upstreamMessage(text, status, label) {
 const RATE_LIMIT_RETRIES = 3;
 const RATE_LIMIT_BASE_MS = 2000;
 const RATE_LIMIT_MAX_WAIT_MS = 30000;
+// All waits together stay under this, so a limited host answers the turn within ~30 s.
+const RATE_LIMIT_TOTAL_MS = 30000;
 
 function rateLimitWaitMs(attempt, retryAfterMs) {
     const asked = Number(retryAfterMs);
@@ -950,10 +952,13 @@ function sleep(ms, signal) {
 async function withRateLimitBackoff(send, options) {
     const o = options || {};
     const wait = o.sleep || sleep;
+    let waited = 0;
     for (let attempt = 0; ; attempt++) {
         const res = await send();
         if (!res || res.status !== 429 || attempt >= RATE_LIMIT_RETRIES) return res;
         const ms = rateLimitWaitMs(attempt, retryAfterMs(res));
+        if (waited + ms > (o.totalMs || RATE_LIMIT_TOTAL_MS)) return res;
+        waited += ms;
         try { await res.text(); } catch (_) { /* body already gone */ }
         console.warn(`${o.label || 'Custom provider'}: 429, trying again in ${Math.round(ms / 100) / 10}s`);
         await wait(ms, o.signal);
@@ -1049,7 +1054,11 @@ async function callUpstream(body, run, signal, stream) {
             ? await gate.run(send, { lane: run.lane, signal, label: `${run.lane || 'interactive'} ${model}` })
             : await withRateLimitBackoff(send, { signal, label: `${upstream.label} ${model}` });
         // NVIDIA NIM's balance line reads these (customModelProviders.balanceInfo).
-        if (upstream.providerId) require('./customModelProviders').noteRateLimit(upstream.providerId, res.headers);
+        if (upstream.providerId) {
+            const cmp = require('./customModelProviders');
+            cmp.noteRateLimit(upstream.providerId, res.headers);
+            cmp.noteKeyResult(upstream.providerId, upstream.key, res.status);
+        }
         if (res.ok) return res;
         const text = await res.text().catch(() => '');
         if (res.status !== 400 && res.status !== 422) return { status: res.status, text, label: upstream.label };

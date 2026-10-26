@@ -302,6 +302,44 @@ async function testHandler(gr) {
     assert.ok(!JSON.stringify(got).includes('nvapi-secret'));
 }
 
+async function testBackoffBudget() {
+    const waits = [];
+    let tries = 0;
+    const res = await bridge._test.withRateLimitBackoff(async () => {
+        tries++;
+        return reply(429, { error: { message: 'slow' } }, { 'retry-after': '20' });
+    }, { sleep: async (ms) => { waits.push(ms); }, label: 'test' });
+    assert.strictEqual(res.status, 429);
+    assert.deepStrictEqual(waits, [20000], 'all waits together stay within 30 s');
+    assert.strictEqual(tries, 2);
+}
+async function testKeyVerification(gr) {
+    custom._test.resetBalances();
+    routes = { 'GET https://integrate.api.nvidia.com/v1/models': () => reply(200, { object: 'list', data: [{ id: 'a' }, { id: 'b' }] }) };
+    const before = await custom.apiStatus(gr, 'custom:nvidia');
+    assert.strictEqual(before.state, 'warn', 'the public model list cannot prove the key');
+    assert.strictEqual(before.keyVerified, false);
+    assert.ok(/unverified/.test(before.message));
+    const row = custom.lookup(gr, 'nvidia');
+    custom.noteKeyResult('nvidia', row.apiKey, 401);
+    assert.strictEqual((await custom.apiStatus(gr, 'custom:nvidia')).state, 'fail', 'a refused chat marks the key bad');
+    custom.noteKeyResult('nvidia', row.apiKey, 200);
+    const good = await custom.apiStatus(gr, 'custom:nvidia');
+    assert.strictEqual(good.state, 'ok');
+    assert.strictEqual(good.keyVerified, true);
+    custom.noteKeyResult('nvidia', 'some-other-key', 401);
+    assert.strictEqual((await custom.apiStatus(gr, 'custom:nvidia')).state, 'warn', 'a result for a different key does not count');
+    custom._test.resetBalances();
+}
+function testInternalHosts() {
+    ['https://127.0.0.1', 'https://localhost:8443', 'https://10.1.2.3/v1', 'https://172.20.0.1', 'https://192.168.0.5',
+        'https://169.254.169.254', 'https://100.64.0.1', 'https://[::1]', 'https://[fd00::1]', 'https://[::ffff:127.0.0.1]',
+        'https://box.internal', 'https://printer.local', 'https://intranet'].forEach((url) => {
+        assert.strictEqual(custom.normalizeBaseUrl(url), '', `${url} is refused`);
+    });
+    assert.strictEqual(custom.normalizeBaseUrl('https://integrate.api.nvidia.com/v1'), 'https://integrate.api.nvidia.com');
+    assert.strictEqual(custom.normalizeBaseUrl('https://8.8.8.8'), 'https://8.8.8.8');
+}
 (async () => {
     const gr = testConfig();
     await testModelList(gr);
@@ -310,6 +348,9 @@ async function testHandler(gr) {
     testErrorText();
     await testBackoff();
     await testCallUpstream(gr);
+    await testBackoffBudget();
+    await testKeyVerification(gr);
+    testInternalHosts();
     await testHandler(gr);
     global.fetch = realFetch;
     console.log('director nim providers: ok');

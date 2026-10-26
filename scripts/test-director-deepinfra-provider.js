@@ -113,12 +113,15 @@ async function testModelList(gr) {
 
 function testParsers() {
     assert.deepStrictEqual(custom.parseDeepInfraChecklist(checklist({ limit: 50 })), {
-        currency: 'USD', balance: 12.5, recent: 0.75, limit: 50, suspended: false, suspendReason: '', paymentMethod: false
+        currency: 'USD', balance: 11.75, recent: 0.75, limit: 50, suspended: false, suspendReason: '', paymentMethod: false
     });
     // Positive stripe_balance is money owed; a negative limit means no limit.
     assert.deepStrictEqual(custom.parseDeepInfraChecklist(checklist({
         stripe_balance: 3.1, recent: 3.1, limit: -1, payment_method: true, suspended: true, suspend_reason: 'bad-cc'
-    })), { currency: 'USD', balance: -3.1, recent: 3.1, limit: null, suspended: true, suspendReason: 'bad-cc', paymentMethod: true });
+    })), { currency: 'USD', balance: -6.2, recent: 3.1, limit: null, suspended: true, suspendReason: 'bad-cc', paymentMethod: true });
+    assert.strictEqual(custom.parseDeepInfraChecklist(checklist({ stripe_balance: -10, recent: -1 })).balance, 10,
+        'a negative recent (credit) never adds to the spendable balance');
+    assert.strictEqual(custom.parseDeepInfraChecklist(checklist({ limit: 0 })).limit, null, 'limit 0 is no limit');
     assert.strictEqual(custom.parseDeepInfraChecklist({ detail: 'Not authenticated' }), null);
     assert.strictEqual(custom.parseDeepInfraChecklist(null), null);
 
@@ -142,22 +145,22 @@ async function testBalances(gr) {
     };
     const ok = await custom.balanceSummary(gr, 'custom:deepinfra');
     assert.strictEqual(ok.state, 'ok');
-    assert.strictEqual(ok.balance, 12.5);
+    assert.strictEqual(ok.balance, 11.75, 'spendable = -(stripe_balance + recent)');
     assert.strictEqual(ok.currency, 'USD');
-    assert.strictEqual(ok.balanceText, '$12.50');
+    assert.strictEqual(ok.balanceText, '$11.75');
     assert.strictEqual(ok.recent, 0.75);
     assert.strictEqual(ok.monthSpend, 4.2);
     assert.strictEqual(ok.limit, 50);
     assert.strictEqual(ok.suspended, false);
     assert.deepStrictEqual(ok.title.split('\n'), [
-        'DeepInfra balance: $12.50',
+        'DeepInfra balance: $11.75',
         'Spent since the last invoice: $0.75',
         'Spent this month: $4.20',
         'Spending limit: $50.00'
     ]);
     assert.ok(!JSON.stringify(ok).includes('di-secret'), 'a balance row never carries the key');
 
-    body = checklist({ stripe_balance: -0.4 });
+    body = checklist({ stripe_balance: -0.4, recent: 0 });
     await custom.balanceSummary(gr, 'custom:deepinfra');
     assert.strictEqual(reads, 1, 'a second read inside the cache window does not call DeepInfra');
     const low = await custom.balanceInfo(custom.lookup(gr, 'deepinfra'), { force: true });
@@ -166,7 +169,7 @@ async function testBalances(gr) {
     assert.strictEqual((await custom.balanceSummary(gr, 'custom:deepinfra')).state, 'low');
 
     // Owed with a card on file: billed later, the engine keeps running.
-    body = checklist({ stripe_balance: 2, payment_method: true });
+    body = checklist({ stripe_balance: 2, recent: 0, payment_method: true });
     await custom.balanceInfo(custom.lookup(gr, 'deepinfra'), { force: true });
     const owed = await custom.balanceSummary(gr, 'custom:deepinfra');
     assert.strictEqual(owed.state, 'ok');
@@ -269,7 +272,7 @@ async function testHandler(gr) {
     };
     custom._test.resetBalances();
     routes = {
-        [CHECKLIST]: () => reply(200, checklist({ stripe_balance: -7 })),
+        [CHECKLIST]: () => reply(200, checklist({ stripe_balance: -7, recent: 0 })),
         [USAGE]: () => reply(200, { months: [{ period: '2026.10', items: [], total_cost: 99 }], initial_month: '2026.01' })
     };
     await director.handleDirectorCustomProvidersBalance(handler, null, { requestId: 'r1', engine: 'custom:deepinfra' }, { userType: 'admin' });
