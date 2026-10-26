@@ -35,6 +35,7 @@ module.exports = {
     handleDirectorGetModels: cursor.handleDirectorGetModels,
     handleDirectorCustomProvidersGet: cursor.handleDirectorCustomProvidersGet,
     handleDirectorCustomProvidersSave: cursor.handleDirectorCustomProvidersSave,
+    handleDirectorCustomProvidersBalance: cursor.handleDirectorCustomProvidersBalance,
     handleRentanAgentGet: cursor.handleRentanAgentGet,
     handleRentanAgentSetDefault: cursor.handleRentanAgentSetDefault,
     handleDirectorAbort: route(xi.handleDirectorAbort, cursor.handleDirectorAbort),

@@ -55,6 +55,11 @@ function registerPackets(handlersCtx) {
     }
 
     const reg = (type, fn, meta = {}) => {
+        // A handler missing from directorImpl used to register and then throw "fn is not a function" per packet.
+        if (typeof fn !== 'function') {
+            console.error(`[40-directorHandler] ${type}: no handler exported from directorImpl; not registered`);
+            return;
+        }
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             await fn(ctx.handlers, ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer);
         }, { owner: 'director', ...meta });
