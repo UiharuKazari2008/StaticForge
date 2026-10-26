@@ -297,10 +297,22 @@ async function glancewellSlides(filenames) {
             || localGalleryImageUrl(image.upscaled || image.original || name)
             || ('/images/' + encodeURIComponent(name));
         const cached = glancewellSizeCache.get(src);
+        let width = Number(image.width) || 0;
+        let height = Number(image.height) || 0;
+        const meta = image.metadata && typeof image.metadata === 'object' ? image.metadata : null;
+        if ((!(width > 0) || !(height > 0)) && meta) {
+            // JULES GH #389: no size on the gallery row, so use the generation metadata when it has both sides.
+            const metaWidth = Number(meta.actual_width || meta.width) || 0;
+            const metaHeight = Number(meta.actual_height || meta.height) || 0;
+            if (metaWidth > 0 && metaHeight > 0) {
+                width = metaWidth;
+                height = metaHeight;
+            }
+        }
         return {
             src: src,
-            width: Number(image.width) || (cached && cached.width) || 0,
-            height: Number(image.height) || (cached && cached.height) || 0,
+            width: width || (cached && cached.width) || 0,
+            height: height || (cached && cached.height) || 0,
             filename: name
         };
     });
