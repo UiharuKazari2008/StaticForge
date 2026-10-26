@@ -2112,6 +2112,12 @@ class WorkspaceManager {
             workspaceFilesSets[id] = new Set(ws.files);
         });
 
+        // JULES: perf optimization — pre-calculate sets for O(1) lookups instead of O(N) array includes inside loops
+        const pinnedSets = {};
+        Object.entries(workspaces).forEach(([id, ws]) => {
+            if (ws.pinned) pinnedSets[id] = new Set(ws.pinned);
+        });
+
         // Check each workspace for pinned/scrapped files that don't exist in that workspace's files
         Object.entries(workspaces).forEach(([workspaceId, workspace]) => {
             const workspaceFiles = workspaceFilesSets[workspaceId];
@@ -2121,6 +2127,10 @@ class WorkspaceManager {
                 const invalidPinned = workspace.pinned.filter(file => !workspaceFiles.has(file));
                 if (invalidPinned.length > 0) {
                     console.log(`🔧 Found ${invalidPinned.length} pinned files in workspace ${workspace.name} that are not in its files list`);
+
+                    // JULES: perf optimization — pre-filter O(N) instead of O(N^2) filter inside loop
+                    const invalidPinnedSet = new Set(invalidPinned);
+                    workspace.pinned = workspace.pinned.filter(file => !invalidPinnedSet.has(file));
 
                     // Find which this.workspaces actually have these files
                     invalidPinned.forEach(file => {
@@ -2135,8 +2145,6 @@ class WorkspaceManager {
                             // Move pinned file to the first workspace that has the file
                             const targetWorkspaceId = fileInWorkspaces[0];
                             if (targetWorkspaceId !== workspaceId) {
-                                // Remove from current workspace
-                                workspace.pinned = workspace.pinned.filter(f => f !== file);
                                 pinChanges.push({
                                     op: 'remove', filename: file, workspaceId
                                 });
@@ -2144,9 +2152,11 @@ class WorkspaceManager {
                                 // Add to target workspace
                                 if (!workspaces[targetWorkspaceId].pinned) {
                                     workspaces[targetWorkspaceId].pinned = [];
+                                    pinnedSets[targetWorkspaceId] = new Set();
                                 }
-                                if (!workspaces[targetWorkspaceId].pinned.includes(file)) {
+                                if (!pinnedSets[targetWorkspaceId].has(file)) {
                                     workspaces[targetWorkspaceId].pinned.push(file);
+                                    pinnedSets[targetWorkspaceId].add(file);
                                     pinChanges.push({
                                         op: 'upsert', filename: file, workspaceId: targetWorkspaceId
                                     });
@@ -2158,7 +2168,6 @@ class WorkspaceManager {
                             }
                         } else {
                             // File doesn't exist in any workspace, remove it
-                            workspace.pinned = workspace.pinned.filter(f => f !== file);
                             pinChanges.push({
                                 op: 'remove', filename: file, workspaceId
                             });
