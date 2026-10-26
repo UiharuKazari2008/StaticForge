@@ -6567,34 +6567,42 @@ async function tokenRouterBalanceSummary(gr) {
 
 // Balances for the engine pickers and CardSpace. Every read is cached (customModelProviders
 // BALANCE_TTL_MS, TokenRouter's wallet a minute); nothing here waits on a turn or holds one.
+// Never throws and never answers with an error: a host with no balance (or a failed read) is an
+// empty row, and anything unexpected is an empty list.
 async function handleDirectorCustomProvidersBalance(handler, ws, message, clientInfo) {
+    const requestId = message && message.requestId;
+    let balances = [];
     try {
-        // Restricted users see no balances (and no error: the pickers ask on every open).
-        if (!clientInfo || clientInfo.userType !== 'admin') {
-            sendOk(handler, ws, 'director_custom_providers_balance_response', message.requestId, { balances: [] });
-            return;
+        if (clientInfo && clientInfo.userType === 'admin') {
+            const gr = handler.globalResources;
+            const engine = message && message.engine ? String(message.engine).trim().toLowerCase() : '';
+            const safe = (fn) => Promise.resolve().then(fn).catch((error) => {
+                console.warn('[Director] provider balance read failed:', (error && error.message) || error);
+                return null;
+            });
+            if (customProviders.isEngine(engine)) {
+                balances = [await safe(() => customProviders.balanceSummary(gr, engine))];
+            } else if (engine === 'tokenrouter') {
+                balances = [await safe(() => tokenRouterBalanceSummary(gr))];
+            } else {
+                const [builtIn, custom] = await Promise.all([
+                    safe(() => tokenRouterBalanceSummary(gr)),
+                    safe(() => customProviders.balanceSummaries(gr))
+                ]);
+                balances = [builtIn].concat(Array.isArray(custom) ? custom : []);
+            }
+            balances = balances.filter(Boolean);
         }
-        const gr = handler.globalResources;
-        const engine = message && message.engine ? String(message.engine).trim().toLowerCase() : '';
-        let balances;
-        if (customProviders.isEngine(engine)) {
-            const one = await customProviders.balanceSummary(gr, engine);
-            balances = one ? [one] : [];
-        } else if (engine === 'tokenrouter') {
-            balances = [await tokenRouterBalanceSummary(gr)];
-        } else {
-            const [builtIn, custom] = await Promise.all([
-                tokenRouterBalanceSummary(gr).catch(() => null),
-                customProviders.balanceSummaries(gr)
-            ]);
-            balances = [builtIn].concat(custom).filter(Boolean);
-        }
-        sendOk(handler, ws, 'director_custom_providers_balance_response', message.requestId, { balances });
     } catch (error) {
-        handler.sendError(ws, error.message || 'Failed to read provider balances', error.code || 'DIRECTOR_ERROR', message.requestId);
+        console.warn('[Director] provider balances failed:', (error && error.message) || error);
+        balances = [];
+    }
+    try {
+        sendOk(handler, ws, 'director_custom_providers_balance_response', requestId, { balances });
+    } catch (error) {
+        console.warn('[Director] provider balances reply failed:', (error && error.message) || error);
     }
 }
-
 async function handleDirectorGetModels(handler, ws, message) {
     try {
         const providers = customProviders.publicList(handler.globalResources);

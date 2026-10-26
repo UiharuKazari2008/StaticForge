@@ -579,9 +579,11 @@
             const usage = customCheck('Monitor Usage', row.monitorUsage === true);
             const memories = customCheck('Obliterated Memories', row.obliteratedMemories === true);
             const age = customCheck('Age tool', row.ageTool !== false);
+            // As cplUserAccounts' picture picker: the native input stays hidden behind a DSAP button.
             const logoInput = document.createElement('input');
             logoInput.type = 'file';
-            logoInput.className = 'cpl-ua-input';
+            logoInput.className = 'hidden';
+            logoInput.hidden = true;
             logoInput.accept = 'image/png,image/jpeg,image/webp,image/gif';
             const logoPreview = document.createElement('img');
             logoPreview.width = 32;
@@ -614,9 +616,14 @@
                 };
                 img.src = url;
             });
+            const logoBrowse = document.createElement('button');
+            logoBrowse.type = 'button';
+            logoBrowse.className = 'sec-dsap-action-btn';
+            logoBrowse.textContent = 'Choose picture…';
+            logoBrowse.addEventListener('click', () => logoInput.click());
             const logoClear = document.createElement('button');
             logoClear.type = 'button';
-            logoClear.className = 'cpl-vault-link';
+            logoClear.className = 'sec-dsap-action-btn';
             logoClear.textContent = 'Remove picture';
             logoClear.addEventListener('click', () => {
                 row._logoData = '';
@@ -626,7 +633,8 @@
                 logoInput.value = '';
             });
             const logoWrap = document.createElement('div');
-            logoWrap.append(logoPreview, logoInput, logoClear);
+            logoWrap.className = 'cpl-vault-actions';
+            logoWrap.append(logoPreview, logoBrowse, logoClear, logoInput);
             details.append(
                 customField('Preset', preset),
                 customField('Id', idInput),
@@ -756,6 +764,7 @@
     let csSel = null;
     let csMoved = null;
     let csTimer = 0;
+    let csPendingSection = null;
     let csObserver = null;
 
     function csEl(sel) {
@@ -943,11 +952,34 @@
         csRenderFoot();
     }
 
+    /** Drop an unsaved "New provider" draft (Cancel, Back, or leaving its details). */
+    function csDiscardDraft() {
+        if (!customProviderRows.some((row) => !row.id)) return false;
+        customProviderRows = customProviderRows.filter((row) => row.id);
+        if (csSel === 'custom:') csSel = null;
+        paintCustomProviders();
+        return true;
+    }
+
     function csGo(next) {
         if (next === 'details' && !(csSel && csRow(csSel))) return;
-        if (next !== 'details') csPutBack();
+        if (next !== 'details') { csPutBack(); csDiscardDraft(); }
         csView = next;
         csRender();
+    }
+
+    /** Select the first card of the asked-for group (the tray's Service keys link); the group's
+     * rows arrive after the driver's first load, so a miss waits for the next refresh. */
+    function csPickSection() {
+        if (!csPendingSection || !win) return false;
+        const first = csRows().find((r) => csKindOf(r) === csPendingSection);
+        if (!first) return false;
+        csPendingSection = null;
+        csSel = first.dataset.cplVaultKey;
+        if (csView !== 'home') csGo('home'); else csRender();
+        const card = win.querySelector('.cs-home .cs-card.is-selected');
+        if (card && typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'nearest' });
+        return true;
     }
 
     /** The vault changed under the window (the driver re-rendered, a provider was saved). */
@@ -955,6 +987,7 @@
         if (!win || csTimer) return;
         csTimer = setTimeout(() => {
             csTimer = 0;
+            if (csPickSection()) return;
             if (csView === 'details') {
                 const row = csSel && csRow(csSel);
                 if (!row) { csGo('home'); return; }
@@ -1071,6 +1104,7 @@
         if (csObserver) { csObserver.disconnect(); csObserver = null; }
         unmount();
         csSel = null;
+        csPendingSection = null;
         csView = 'home';
     }
 
@@ -1094,10 +1128,7 @@
             csObserver.observe(hostEl, { childList: true, subtree: true });
             csRender();
         }
-        if (section) {
-            const first = csRows().find((r) => csKindOf(r) === section);
-            if (first) { csSel = first.dataset.cplVaultKey; csRender(); }
-        }
+        if (section) { csPendingSection = section; csPickSection(); }
         return true;
     }
 

@@ -823,7 +823,10 @@ async function balanceSummary(gr, idOrEngine) {
 
 async function balanceSummaries(gr) {
     const ids = readRows(gr).map((item) => providerKey(item && item.id)).filter(Boolean);
-    const rows = await Promise.all(ids.map((id) => balanceSummary(gr, id)));
+    // One host failing never sinks the others: it reads as an empty (errored) row.
+    const rows = await Promise.all(ids.map((id) => Promise.resolve()
+        .then(() => balanceSummary(gr, id))
+        .catch((error) => ({ id, engine: `custom:${id}`, name: id, state: 'error', balance: null, balanceText: '', title: `${id} balance unavailable: ${(error && error.message) || error}` }))));
     return rows.filter(Boolean);
 }
 
