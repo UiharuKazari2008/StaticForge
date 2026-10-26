@@ -96,7 +96,7 @@ assert.strictEqual(custom.hostKind('https://api.openai.com/v1'), 'openai');
 assert.strictEqual(custom.hostKind('https://generativelanguage.googleapis.com/v1beta/openai'), 'google');
 assert.strictEqual(custom.hostKind('https://openrouter.ai/api'), 'openrouter');
 assert.strictEqual(custom.hostKind('https://sloproxy-10af421.gcti.moe'), 'generic');
-assert.deepStrictEqual(custom.PRESETS.map((item) => item.id), ['google', 'openai', 'tokenrouter', 'openrouter', 'nvidia', 'deepseek']);
+assert.deepStrictEqual(custom.PRESETS.map((item) => item.id), ['google', 'openai', 'tokenrouter', 'openrouter', 'nvidia', 'deepseek', 'deepinfra']);
 
 const routed = custom.saveProvider(memoryGr, {
     id: 'routerbox',

@@ -891,6 +891,8 @@ function upstreamMessage(text, status, label) {
         const parsed = JSON.parse(text);
         const err = parsed && (parsed.error || parsed);
         message = (err && (err.message || err.msg || err.detail)) || (parsed && parsed.detail) || '';
+        // FastAPI hosts (DeepInfra) can nest it: { detail: { error: "..." } }
+        if (message && typeof message === 'object') message = message.error || message.message || JSON.stringify(message);
     } catch (_) {
         message = String(text || '').trim();
     }

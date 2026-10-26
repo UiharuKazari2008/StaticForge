@@ -6,11 +6,13 @@
 // The bearer token stays in secure.config.json customModelProviders.keys[]
 // (key name = id). A TokenRouter URL can also store managementKey on that
 // entry. The public row is config.json customModelProviders[]. The host kind
-// (tokenrouter, openai, google, openrouter, nvidia, deepseek, generic) comes from the URL.
-// Google's and DeepSeek's OpenAI paths are {baseUrl}/chat/completions; everyone else is
-// {baseUrl}/v1/chat/completions. TokenRouter catalogs come from /api/pricing.
+// (tokenrouter, openai, google, openrouter, nvidia, deepseek, deepinfra, generic) comes from
+// the URL. Google's, DeepSeek's and DeepInfra's OpenAI paths are {baseUrl}/chat/completions;
+// everyone else is {baseUrl}/v1/chat/completions. TokenRouter catalogs come from /api/pricing.
 // Balances (balanceInfo) are cached for BALANCE_TTL_MS and only read by the badge, the
 // engine pickers and the wallet; a turn never waits on one. DeepSeek: GET /user/balance.
+// DeepInfra: GET {origin}/payment/checklist (prepaid funds, spend since the last invoice,
+// spending limit, suspension) and GET {origin}/payment/usage?from=current (month cost, cents).
 // NVIDIA NIM (build.nvidia.com) has no credits endpoint: it reports free tier, plus the
 // x-ratelimit-* headers of the last chat response when the host sent any (noteRateLimit).
 // monitorUsage off means no usage cap and the Director badge stays hidden.
@@ -47,7 +49,8 @@ const PRESETS = [
     { id: 'tokenrouter', name: 'TokenRouter', baseUrl: 'https://api.tokenrouter.com', defaultModel: 'deepseek/deepseek-v4.1-flash' },
     { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api', defaultModel: '' },
     { id: 'nvidia', name: 'NVIDIA NIM', baseUrl: 'https://integrate.api.nvidia.com/v1', defaultModel: 'deepseek-ai/deepseek-v4.1-flash' },
-    { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com', defaultModel: '' }
+    { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com', defaultModel: '' },
+    { id: 'deepinfra', name: 'DeepInfra', baseUrl: 'https://api.deepinfra.com/v1/openai', defaultModel: 'deepseek-ai/DeepSeek-V4.1-Flash' }
 ];
 
 function presetDefaultModel(kind) {
@@ -71,11 +74,12 @@ function hostKind(baseUrl) {
     if (host === 'openrouter.ai') return 'openrouter';
     if (host === 'integrate.api.nvidia.com') return 'nvidia';
     if (host === 'api.deepseek.com') return 'deepseek';
+    if (host === 'api.deepinfra.com') return 'deepinfra';
     return 'generic';
 }
 
 function endpointsFor(baseUrl, kind) {
-    if (kind === 'google' || kind === 'deepseek') {
+    if (kind === 'google' || kind === 'deepseek' || kind === 'deepinfra') {
         return { chatUrl: `${baseUrl}/chat/completions`, modelsUrl: `${baseUrl}/models` };
     }
     if (kind === 'tokenrouter') {
@@ -387,6 +391,24 @@ function catalogFromModels(body, providerName) {
     return families;
 }
 
+// DeepInfra's /v1/openai/models lists embedding, image, speech and video models too. Only the
+// ones priced per output token are chat models; metadata.pricing is USD per million tokens.
+function catalogFromDeepInfra(body, providerName) {
+    const rows = body && Array.isArray(body.data) ? body.data : [];
+    const chat = rows.filter((row) => {
+        const pricing = row && row.metadata && row.metadata.pricing;
+        return pricing && finite(pricing.output_tokens) != null;
+    });
+    const families = catalogFromModels({ data: chat }, providerName);
+    const prices = new Map(chat.map((row) => [String(row.id).trim(), row.metadata.pricing]));
+    families.forEach((family) => {
+        const pricing = prices.get(family.id) || {};
+        family.input = finite(pricing.input_tokens);
+        family.output = finite(pricing.output_tokens);
+    });
+    return families;
+}
+
 function cacheFileFor(id) {
     return path.join(cacheHome(), `custom-models-${id}.json`);
 }
@@ -416,7 +438,9 @@ async function fetchCatalog(provider) {
     const body = await res.json();
     const families = provider.kind === 'tokenrouter'
         ? require('./tokenRouterBridge').catalogFromPricing(body)
-        : catalogFromModels(body, provider.name);
+        : provider.kind === 'deepinfra'
+            ? catalogFromDeepInfra(body, provider.name)
+            : catalogFromModels(body, provider.name);
     if (!families.length) throw new Error(`${provider.name} model list is empty`);
     return families;
 }
@@ -459,6 +483,42 @@ function parseDeepSeekBalance(body) {
         available: body.is_available !== false
     };
 }
+
+// DeepInfra GET /payment/checklist. stripe_balance is negative when prepaid funds are ready
+// to spend and positive when money is owed; recent is the spend since the last invoice and
+// limit the account's spending limit (both USD). null when the body has no stripe_balance.
+function parseDeepInfraChecklist(body) {
+    const stripe = body ? finite(body.stripe_balance) : null;
+    if (stripe == null) return null;
+    const limit = finite(body.limit);
+    return {
+        currency: 'USD',
+        balance: Math.round(-stripe * 100) / 100,
+        recent: finite(body.recent),
+        limit: limit != null && limit >= 0 ? limit : null,
+        suspended: body.suspended === true,
+        suspendReason: body.suspend_reason ? String(body.suspend_reason) : '',
+        paymentMethod: body.payment_method === true
+    };
+}
+
+// DeepInfra GET /payment/usage?from=current: months[].total_cost in cents -> USD this month.
+// null when the body has no month.
+function parseDeepInfraUsage(body) {
+    const months = body && Array.isArray(body.months) ? body.months : [];
+    const costs = months.map((month) => finite(month && month.total_cost)).filter((n) => n != null);
+    if (!costs.length) return null;
+    return Math.round(costs.reduce((sum, n) => sum + n, 0)) / 100;
+}
+
+const DEEPINFRA_SUSPENDED = {
+    balance: 'out of funds',
+    'payment-method': 'no payment method',
+    'overdue-invoices': 'overdue invoices',
+    'limit-reached': 'spending limit reached',
+    'bad-cc': 'card declined',
+    'missing-address': 'billing address missing'
+};
 
 function headerGetter(headers) {
     if (!headers) return () => null;
@@ -585,6 +645,42 @@ async function readBalance(row) {
             return { balance: null, title: `${name} balance unavailable: ${error.message}` };
         }
     }
+    if (row.kind === 'deepinfra') {
+        // Billing lives on the API origin, not under the /v1/openai base URL.
+        const origin = new URL(row.baseUrl).origin;
+        try {
+            const [checklist, usage] = await Promise.all([
+                readJson(`${origin}/payment/checklist`, row.apiKey),
+                readJson(`${origin}/payment/usage?from=current`, row.apiKey).catch(() => null)
+            ]);
+            const info = checklist.ok ? parseDeepInfraChecklist(checklist.body) : null;
+            if (!info) return { balance: null, title: `${name} balance unavailable${checklist.ok ? '' : ` (HTTP ${checklist.status})`}` };
+            const month = usage && usage.ok ? parseDeepInfraUsage(usage.body) : null;
+            // A positive stripe_balance is an amount owed; with a card on file it is billed later.
+            const owed = info.balance < 0;
+            const postpaid = owed && info.paymentMethod && !info.suspended;
+            const text = owed ? `${usdText(-info.balance)} owed` : usdText(info.balance);
+            const lines = [owed ? `${name}: ${usdText(-info.balance)} owed` : `${name} balance: ${usdText(info.balance)}`];
+            if (info.recent != null) lines.push(`Spent since the last invoice: ${usdText(info.recent)}`);
+            if (month != null) lines.push(`Spent this month: ${usdText(month)}`);
+            if (info.limit != null) lines.push(`Spending limit: ${usdText(info.limit)}`);
+            if (info.suspended) lines.push(`Suspended: ${DEEPINFRA_SUSPENDED[info.suspendReason] || info.suspendReason || 'billing action needed'}`);
+            return {
+                balance: info.balance,
+                currency: 'USD',
+                text,
+                recent: info.recent,
+                monthSpend: month,
+                limit: info.limit,
+                suspended: info.suspended,
+                postpaid,
+                available: !info.suspended,
+                title: lines.join('\n')
+            };
+        } catch (error) {
+            return { balance: null, title: `${name} balance unavailable: ${error.message}` };
+        }
+    }
     if (row.kind === 'nvidia') {
         // build.nvidia.com shows no credits over the API; the free tier is limited per minute.
         const rate = rateLimitFor(row.id);
@@ -651,6 +747,10 @@ async function balanceSummary(gr, idOrEngine) {
     };
     if (info.granted !== undefined) out.granted = info.granted;
     if (info.toppedUp !== undefined) out.toppedUp = info.toppedUp;
+    if (info.recent !== undefined) out.recent = info.recent;
+    if (info.monthSpend !== undefined) out.monthSpend = info.monthSpend;
+    if (info.limit !== undefined) out.limit = info.limit;
+    if (info.suspended !== undefined) out.suspended = info.suspended;
     if (info.freeTier) {
         out.freeTier = true;
         out.rateLimit = info.rateLimit || null;
@@ -658,6 +758,9 @@ async function balanceSummary(gr, idOrEngine) {
         return out;
     }
     if (info.balance == null) out.state = 'error';
+    else if (info.available === false) out.state = 'out';
+    // Owed on a card-billed account: DeepInfra charges the card, the engine keeps running.
+    else if (info.postpaid) out.state = 'ok';
     else if (info.balance <= 0 || info.available === false) out.state = 'out';
     else if (info.balance <= LOW_BALANCE) out.state = 'low';
     else out.state = 'ok';
@@ -694,7 +797,7 @@ async function usageSummary(gr, idOrEngine) {
         ...base,
         balance: info.balance,
         balanceText: info.text || usdText(info.balance),
-        limited: info.balance <= 0,
+        limited: info.available === false || (!info.postpaid && info.balance <= 0),
         title: info.title
     };
 }
@@ -828,6 +931,9 @@ module.exports = {
     balanceSummary,
     balanceSummaries,
     parseDeepSeekBalance,
+    parseDeepInfraChecklist,
+    parseDeepInfraUsage,
+    catalogFromDeepInfra,
     parseRateLimitHeaders,
     noteRateLimit,
     moneyText,
