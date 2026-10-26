@@ -945,11 +945,14 @@ class ImagePromptInspector {
         return modelNames[modelKey]
             || this.metadata.model_display_name
             || this.metadata.model
+            || this.metadata.model_name
             || '';
     }
 
     getModelKey() {
-        const rawModel = String(this.metadata.model || '').toLowerCase();
+        // Raw PNG metadata (latest print) has only model_name, e.g. "NovelAI Diffusion V5".
+        const naiName = /^NovelAI Diffusion (V\d+(?:\.\d+)?)$/i.exec(String(this.metadata.model_name || '').trim());
+        const rawModel = String(this.metadata.model || (naiName ? naiName[1].replace('.', '_') : '')).toLowerCase();
         const modelAliases = {
             furry: 'v3_furry',
             v5: 'v5',

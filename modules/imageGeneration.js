@@ -593,60 +593,44 @@ function applyBiasToText(input, bias) {
         return input;
     }
 
-    // Check if input is already a complete emphasis group (starts with BIAS:: and ends with ::)
-    const isCompleteGroup = /^(-?\d+\.?\d*)::.+::$/s.test(input);
-
-    // Check if input contains any bias groups
-    const hasBiasGroups = /(-?\d+\.?\d*)::/g.test(input);
-
-    if (isCompleteGroup) {
-        // Input is already wrapped - add or subtract based on bias value
-        let result = input.replace(/(-?\d+\.?\d*)::/g, (match, biasValue) => {
-            const currentBias = parseFloat(biasValue);
-            let newBias;
-
-            if (bias >= 1.0) {
-                // Increase emphasis - add the bias value
-                newBias = currentBias + bias;
-            } else {
-                // Decrease emphasis
-                const difference = 1.0 - bias;
-                if (currentBias < 0) {
-                    // For negative emphasis, add to make less negative
-                    newBias = currentBias + difference;
-                } else {
-                    // For positive emphasis, subtract to reduce
-                    newBias = currentBias - difference;
-                }
-            }
-
-            const rounded = Math.round(newBias * 10) / 10; // Round to 1 decimal place
-            return `${rounded.toFixed(1)}::`;
-        });
-        return result;
-    } else if (hasBiasGroups) {
-        // Mixed text and N::...:: groups. NAI groups do not nest and a bare :: closes the
-        // open one, so wrap each plain run in its own bias group and scale the inner weights
-        // by the bias (a stronger toggle makes its negative groups more negative too).
-        const groupRe = /(-?\d+(?:\.\d+)?)::([\s\S]*?)::/g;
-        const wrapPlain = (text) => {
-            const m = /^([\s,]*)([\s\S]*?)([\s,]*)$/.exec(text);
-            return m[2] ? `${m[1]}${bias}::${m[2]}::${m[3]}` : text;
-        };
-        let result = '';
-        let last = 0;
-        let match;
-        while ((match = groupRe.exec(input)) !== null) {
-            result += wrapPlain(input.slice(last, match.index));
-            const scaled = Math.round(parseFloat(match[1]) * bias * 10) / 10;
-            result += `${scaled.toFixed(1)}::${match[2]}::`;
-            last = groupRe.lastIndex;
+    // Scale every N:: weight by the bias and wrap plain runs in their own bias group.
+    // NAI groups do not nest: a new N:: switches the weight, a bare :: returns to 1.0.
+    const formatWeight = (value) => (Math.round(value * 10) / 10).toFixed(1);
+    const wrapPlain = (text) => {
+        const m = /^([\s,]*)([\s\S]*?)([\s,]*)$/.exec(text);
+        return m[2] ? `${m[1]}${bias}::${m[2]}::${m[3]}` : text;
+    };
+    const tokenRe = /(-?\d+(?:\.\d+)?)::|::/g;
+    let result = '';
+    let last = 0;
+    let inGroup = false;
+    let match;
+    while ((match = tokenRe.exec(input)) !== null) {
+        const between = input.slice(last, match.index);
+        result += inGroup ? between : wrapPlain(between);
+        if (match[1] !== undefined) {
+            result += `${formatWeight(parseFloat(match[1]) * bias)}::`;
+            inGroup = true;
+        } else {
+            result += '::';
+            inGroup = false;
         }
-        return result + wrapPlain(input.slice(last));
-    } else {
-        // No bias groups - wrap the entire input
-        return `${bias}::${input}::`;
+        last = tokenRe.lastIndex;
     }
+    const tail = input.slice(last);
+    // An unclosed group is closed here so the bias cannot run on into the rest of the prompt.
+    return result + (inGroup ? `${tail.replace(/[\s,]+$/, '')}::` : wrapPlain(tail));
+}
+
+/**
+ * Text overlay type tags: the overlay emphasis is added to weights the tags already carry
+ * (2.0::english text, speech bubble:: at 1.5 -> 3.5::...::), plain tags are wrapped.
+ * Kept additive so bubble prints keep the weights they were tuned with.
+ */
+function applyOverlayTagEmphasis(tags, emphasis) {
+    if (!/(-?\d+(?:\.\d+)?)::/.test(tags)) return applyBiasToText(tags, emphasis);
+    return tags.replace(/(-?\d+(?:\.\d+)?)::/g, (match, weight) =>
+        `${(Math.round((parseFloat(weight) + emphasis) * 10) / 10).toFixed(1)}::`);
 }
 
 /**
@@ -1113,207 +1097,6 @@ function selectPresetItem(presetConfig, modelKey, combinedPrompt, providedId = n
 }
 
 // Build options for image generation
-// Function to deduplicate tags in prompts and remove empty groups
-function deduplicateTagsInOptions(options) {
-    if (!options) return options;
-
-    // Create a copy to avoid modifying the original
-    const deduplicatedOptions = { ...options };
-
-    // Deduplicate main prompt and negative prompt
-    if (deduplicatedOptions.prompt) {
-        deduplicatedOptions.prompt = deduplicateTagsInText(deduplicatedOptions.prompt);
-    }
-    if (deduplicatedOptions.negative_prompt) {
-        deduplicatedOptions.negative_prompt = deduplicateTagsInText(deduplicatedOptions.negative_prompt);
-    }
-
-    // Deduplicate character prompts if they exist
-    if (deduplicatedOptions.allCharacterPrompts && Array.isArray(deduplicatedOptions.allCharacterPrompts)) {
-        deduplicatedOptions.allCharacterPrompts = deduplicatedOptions.allCharacterPrompts.map(char => ({
-            ...char,
-            prompt: char.prompt ? deduplicateTagsInText(char.prompt) : char.prompt,
-            uc: char.uc ? deduplicateTagsInText(char.uc) : char.uc
-        }));
-    }
-
-    return deduplicatedOptions;
-}
-
-// Function to deduplicate tags in a single text string
-function deduplicateTagsInText(text) {
-    if (!text || typeof text !== 'string') return text;
-
-    // Split by common delimiters while preserving emphasis groups
-    const tokens = splitTextIntoTokens(text);
-
-    // Track seen tags (case-insensitive)
-    const seenTags = new Set();
-    const deduplicatedTokens = [];
-
-    for (const token of tokens) {
-        const normalizedTag = normalizeTag(token);
-
-        // Skip empty or whitespace-only tokens
-        if (!normalizedTag || normalizedTag.trim() === '') {
-            continue;
-        }
-
-        // Check for empty groups and skip them
-        if (isEmptyGroup(token)) {
-            continue;
-        }
-
-        if (!seenTags.has(normalizedTag)) {
-            seenTags.add(normalizedTag);
-            deduplicatedTokens.push(token);
-        }
-    }
-
-    // Join tokens back together with appropriate separators
-    return deduplicatedTokens.join(', ');
-}
-
-// Function to split text into tokens while preserving emphasis groups
-function splitTextIntoTokens(text) {
-    const tokens = [];
-    let currentToken = '';
-    let braceLevel = 0;
-    let bracketLevel = 0;
-    let inEmphasisGroup = false;
-    let emphasisGroupContent = '';
-
-    for (let i = 0; i < text.length; i++) {
-        const char = text[i];
-        const nextChar = text[i + 1];
-
-        // Handle emphasis groups (#.#::text::)
-        if (char === ':' && nextChar === ':' && !inEmphasisGroup) {
-            // Check if this is the start of an emphasis group
-            const beforeColons = text.substring(0, i).trim();
-            const emphasisMatch = beforeColons.match(/(-?\d+(?:\.\d+)?)$/);
-
-            if (emphasisMatch) {
-                // This is an emphasis group
-                if (currentToken.trim()) {
-                    tokens.push(currentToken.trim());
-                    currentToken = '';
-                }
-
-                inEmphasisGroup = true;
-                emphasisGroupContent = emphasisMatch[1] + '::';
-                continue;
-            }
-        }
-
-        if (inEmphasisGroup) {
-            emphasisGroupContent += char;
-
-            // Check for end of emphasis group
-            if (char === ':' && nextChar === ':') {
-                inEmphasisGroup = false;
-                tokens.push(emphasisGroupContent + ':');
-                i++; // Skip the next colon
-                continue;
-            }
-            continue;
-        }
-
-        // Handle curly braces
-        if (char === '{') {
-            braceLevel++;
-        } else if (char === '}') {
-            braceLevel--;
-        }
-
-        // Handle square brackets
-        if (char === '[') {
-            bracketLevel++;
-        } else if (char === ']') {
-            bracketLevel--;
-        }
-
-        // Split on commas and pipes when not inside braces/brackets
-        if ((char === ',' || char === '|') && braceLevel === 0 && bracketLevel === 0) {
-            if (currentToken.trim()) {
-                tokens.push(currentToken.trim());
-                currentToken = '';
-            }
-            continue;
-        }
-
-        currentToken += char;
-    }
-
-    // Add the last token
-    if (currentToken.trim()) {
-        tokens.push(currentToken.trim());
-    }
-
-    return tokens;
-}
-
-// Function to normalize a tag for comparison
-function normalizeTag(token) {
-    if (!token || typeof token !== 'string') return '';
-
-    let normalized = token.trim().toLowerCase();
-
-    // Remove emphasis formatting but keep the content
-    // Handle #.#::text:: format
-    const emphasisMatch = normalized.match(/^(-?\d+(?:\.\d+)?)::(.+)::$/);
-    if (emphasisMatch) {
-        normalized = emphasisMatch[2];
-    }
-
-    // Handle curly braces {text} - extract inner content
-    const braceMatch = normalized.match(/^\{+\s*(.+?)\s*\}+$/);
-    if (braceMatch) {
-        normalized = braceMatch[1];
-    }
-
-    // Handle square brackets [text] - extract inner content
-    const bracketMatch = normalized.match(/^\[+\s*(.+?)\s*\]+$/);
-    if (bracketMatch) {
-        normalized = bracketMatch[1];
-    }
-
-    return normalized;
-}
-
-// Function to check if a token represents an empty group
-function isEmptyGroup(token) {
-    if (!token || typeof token !== 'string') return false;
-
-    const trimmed = token.trim();
-
-    // Check for empty curly braces: {}, {{}}, etc.
-    if (/^\{\s*\}+$/.test(trimmed)) {
-        return true;
-    }
-
-    // Check for empty square brackets: [], [[]], etc.
-    if (/^\[\s*\]+\s*$/.test(trimmed)) {
-        return true;
-    }
-
-    // Check for empty emphasis groups: #.#::::, etc.
-    if (/^-?\d+(?:\.\d+)?::\s*::$/.test(trimmed)) {
-        return true;
-    }
-
-    // Check for groups with only whitespace or commas
-    const contentOnly = trimmed.replace(/^[-+]?\d+(?:\.\d+)?::/, '').replace(/::$/, '');
-    const contentOnly2 = contentOnly.replace(/^\{+\s*/, '').replace(/\s*\}+$/, '');
-    const contentOnly3 = contentOnly2.replace(/^\[+\s*/, '').replace(/\s*\]+$/, '');
-
-    if (contentOnly3.trim() === '' || /^[\s,]*$/.test(contentOnly3.trim())) {
-        return true;
-    }
-
-    return false;
-}
-
 // Function to strip emphasis syntax from a phrase to get the core text
 function stripEmphasisSyntax(text) {
     if (!text) return '';
@@ -2429,7 +2212,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
 
             textOverlayBuckets.forEach((group, targetIndex) => {
                 const textAppend = compileTextOverlayAppend(
-                    group, textTags, applyBiasToText,
+                    group, textTags, applyOverlayTagEmphasis,
                     require('../public/scripts/comp/keyboardPromptChars').protectKeyboardDisplayText
                 );
                 if (!textAppend) return;

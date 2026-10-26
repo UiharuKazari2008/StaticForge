@@ -70,7 +70,7 @@ assert.ok(/else if \(typeof out === 'string'\) \{[\s\S]*?stripUnmanagedEmphasisI
 assert.ok(san.indexOf('stripUnmanagedEmphasisInvisibles(out)') < san.indexOf('normalizeEmphasisPromptSyntax('),
     'ZW must go before emphasis syntax normalize');
 assert.ok(!/normalizeKeyboardPromptChars\(text\)/.test(san), 'raw fold must not be used in sanitize');
-assert.ok(/compileTextOverlayAppend\(\s*group, textTags, applyBiasToText,\s*require\('..\/public\/scripts\/comp\/keyboardPromptChars'\)\.protectKeyboardDisplayText/.test(gen));
+assert.ok(/compileTextOverlayAppend\(\s*group, textTags, applyOverlayTagEmphasis,\s*require\('..\/public\/scripts\/comp\/keyboardPromptChars'\)\.protectKeyboardDisplayText/.test(gen));
 assert.ok(/baseOptions\.prompt = sanitizeAndNormalizeText\(baseOptions\.prompt/.test(gen));
 assert.ok(/prompt: sanitizeAndNormalizeText\(char\.prompt/.test(gen));
 const nax = fs.readFileSync(path.join(root, 'modules/naxTagGeneration.js'), 'utf8');

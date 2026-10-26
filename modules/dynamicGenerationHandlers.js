@@ -109,60 +109,33 @@ function applyBiasToText(input, bias) {
         return input;
     }
 
-    // Check if input is already a complete emphasis group (starts with BIAS:: and ends with ::)
-    const isCompleteGroup = /^(-?\d+\.?\d*)::.+::$/s.test(input);
-    
-    // Check if input contains any bias groups
-    const hasBiasGroups = /(-?\d+\.?\d*)::/g.test(input);
-
-    if (isCompleteGroup) {
-        // Input is already wrapped - add or subtract based on bias value
-        let result = input.replace(/(-?\d+\.?\d*)::/g, (match, biasValue) => {
-            const currentBias = parseFloat(biasValue);
-            let newBias;
-            
-            if (bias >= 1.0) {
-                // Increase emphasis - add the bias value
-                newBias = currentBias + bias;
-            } else {
-                // Decrease emphasis
-                const difference = 1.0 - bias;
-                if (currentBias < 0) {
-                    // For negative emphasis, add to make less negative
-                    newBias = currentBias + difference;
-                } else {
-                    // For positive emphasis, subtract to reduce
-                    newBias = currentBias - difference;
-                }
-            }
-            
-            const rounded = Math.round(newBias * 10) / 10; // Round to 1 decimal place
-            return `${rounded.toFixed(1)}::`;
-        });
-        return result;
-    } else if (hasBiasGroups) {
-        // Mixed text and N::...:: groups. NAI groups do not nest and a bare :: closes the
-        // open one, so wrap each plain run in its own bias group and scale the inner weights
-        // by the bias (a stronger toggle makes its negative groups more negative too).
-        const groupRe = /(-?\d+(?:\.\d+)?)::([\s\S]*?)::/g;
-        const wrapPlain = (text) => {
-            const m = /^([\s,]*)([\s\S]*?)([\s,]*)$/.exec(text);
-            return m[2] ? `${m[1]}${bias}::${m[2]}::${m[3]}` : text;
-        };
-        let result = '';
-        let last = 0;
-        let match;
-        while ((match = groupRe.exec(input)) !== null) {
-            result += wrapPlain(input.slice(last, match.index));
-            const scaled = Math.round(parseFloat(match[1]) * bias * 10) / 10;
-            result += `${scaled.toFixed(1)}::${match[2]}::`;
-            last = groupRe.lastIndex;
+    // Scale every N:: weight by the bias and wrap plain runs in their own bias group.
+    // NAI groups do not nest: a new N:: switches the weight, a bare :: returns to 1.0.
+    const formatWeight = (value) => (Math.round(value * 10) / 10).toFixed(1);
+    const wrapPlain = (text) => {
+        const m = /^([\s,]*)([\s\S]*?)([\s,]*)$/.exec(text);
+        return m[2] ? `${m[1]}${bias}::${m[2]}::${m[3]}` : text;
+    };
+    const tokenRe = /(-?\d+(?:\.\d+)?)::|::/g;
+    let result = '';
+    let last = 0;
+    let inGroup = false;
+    let match;
+    while ((match = tokenRe.exec(input)) !== null) {
+        const between = input.slice(last, match.index);
+        result += inGroup ? between : wrapPlain(between);
+        if (match[1] !== undefined) {
+            result += `${formatWeight(parseFloat(match[1]) * bias)}::`;
+            inGroup = true;
+        } else {
+            result += '::';
+            inGroup = false;
         }
-        return result + wrapPlain(input.slice(last));
-    } else {
-        // No bias groups - wrap the entire input
-        return `${bias}::${input}::`;
+        last = tokenRe.lastIndex;
     }
+    const tail = input.slice(last);
+    // An unclosed group is closed here so the bias cannot run on into the rest of the prompt.
+    return result + (inGroup ? `${tail.replace(/[\s,]+$/, '')}::` : wrapPlain(tail));
 }
 
 // Weather provider - Open-Meteo API (free, no API key required)

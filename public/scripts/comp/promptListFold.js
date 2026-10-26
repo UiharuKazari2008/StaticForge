@@ -524,7 +524,9 @@ function rewriteEmphasis(text, weightMul, marks, depth) {
         const cleaned = processChunk(inner, weightMul * (Math.abs(open.weight) || 1), marks, depth + 1);
         if (visible(cleaned)) {
             if (onlyInverse(cleaned)) out += cleaned.trim();
-            else out += text.slice(i, i + open.len) + cleaned.trim() + (found.closed ? '::' : '');
+            // An unclosed group runs into the next N:: switch; keep the separator before it.
+            else out += text.slice(i, i + open.len) + cleaned.trim()
+                + (found.closed ? '::' : (found.end < text.length ? /[\s,]*$/.exec(inner)[0] : ''));
         }
         i = found.end;
     }
