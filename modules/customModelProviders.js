@@ -6,9 +6,13 @@
 // The bearer token stays in secure.config.json customModelProviders.keys[]
 // (key name = id). A TokenRouter URL can also store managementKey on that
 // entry. The public row is config.json customModelProviders[]. The host kind
-// (tokenrouter, openai, google, openrouter, generic) comes from the URL.
-// Google's OpenAI path is {baseUrl}/chat/completions; everyone else is
+// (tokenrouter, openai, google, openrouter, nvidia, deepseek, generic) comes from the URL.
+// Google's and DeepSeek's OpenAI paths are {baseUrl}/chat/completions; everyone else is
 // {baseUrl}/v1/chat/completions. TokenRouter catalogs come from /api/pricing.
+// Balances (balanceInfo) are cached for BALANCE_TTL_MS and only read by the badge, the
+// engine pickers and the wallet; a turn never waits on one. DeepSeek: GET /user/balance.
+// NVIDIA NIM (build.nvidia.com) has no credits endpoint: it reports free tier, plus the
+// x-ratelimit-* headers of the last chat response when the host sent any (noteRateLimit).
 // monitorUsage off means no usage cap and the Director badge stays hidden.
 // A PNG logo lives in data/provider-logos/<id>.png. Upstream /v1/models
 // payloads can echo other hosts' keys under _provider; only id and name are kept.
@@ -24,18 +28,32 @@ const EFFORTS = ['none', 'low', 'medium', 'high'];
 const OBLITERATED_STORE = 'obliterated';
 const CATALOG_TTL_MS = 10 * 60 * 1000;
 const STATUS_TIMEOUT_MS = 12000;
+const BALANCE_TTL_MS = 3 * 60 * 1000;
+const BALANCE_TIMEOUT_MS = 10000;
+// Same thresholds as the wallet tray (walletTray.js balanceLevel): low at 1 or less.
+const LOW_BALANCE = 1;
 
 const catalogs = new Map();
+const balances = new Map();   // id -> { at, fp, value, promise }
+const rateLimits = new Map(); // id -> { at, limit, remaining, resetMs }
 const LOGO_MAX_BYTES = 64 * 1024;
 let logoDirectory = path.join(__dirname, '..', 'data', 'provider-logos');
 
-// Presets only fill the form. The host kind is read from the saved URL.
+// Supported hosts. A preset only fills the form (director_custom_providers_response presets);
+// the host kind is read from the saved URL. defaultModel is used when the row names none.
 const PRESETS = [
-    { id: 'google', name: 'Google', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' },
-    { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com' },
-    { id: 'tokenrouter', name: 'TokenRouter', baseUrl: 'https://api.tokenrouter.com' },
-    { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api' }
+    { id: 'google', name: 'Google', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', defaultModel: '' },
+    { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com', defaultModel: '' },
+    { id: 'tokenrouter', name: 'TokenRouter', baseUrl: 'https://api.tokenrouter.com', defaultModel: 'deepseek/deepseek-v4.1-flash' },
+    { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api', defaultModel: '' },
+    { id: 'nvidia', name: 'NVIDIA NIM', baseUrl: 'https://integrate.api.nvidia.com/v1', defaultModel: 'deepseek-ai/deepseek-v4.1-flash' },
+    { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com', defaultModel: '' }
 ];
+
+function presetDefaultModel(kind) {
+    const preset = PRESETS.find((item) => item.id === kind);
+    return preset ? preset.defaultModel : '';
+}
 
 function hostKind(baseUrl) {
     let host = '';
@@ -51,11 +69,13 @@ function hostKind(baseUrl) {
     if (host === 'api.openai.com') return 'openai';
     if (host === 'generativelanguage.googleapis.com' || (host.endsWith('.googleapis.com') && pathName.includes('/openai'))) return 'google';
     if (host === 'openrouter.ai') return 'openrouter';
+    if (host === 'integrate.api.nvidia.com') return 'nvidia';
+    if (host === 'api.deepseek.com') return 'deepseek';
     return 'generic';
 }
 
 function endpointsFor(baseUrl, kind) {
-    if (kind === 'google') {
+    if (kind === 'google' || kind === 'deepseek') {
         return { chatUrl: `${baseUrl}/chat/completions`, modelsUrl: `${baseUrl}/models` };
     }
     if (kind === 'tokenrouter') {
@@ -406,9 +426,111 @@ function usdText(amount) {
     return `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
 }
 
-// TokenRouter (management key) and OpenRouter credits. { balance, title, topUp?, vouchers? };
-// balance is null when it could not be read. null: the host has no balance to read.
-async function balanceInfo(row) {
+const CURRENCY_SIGNS = { USD: '$', CNY: '¥' };
+
+function moneyText(amount, currency) {
+    const code = String(currency || 'USD').trim().toUpperCase();
+    if (code === 'USD') return usdText(amount);
+    const n = Math.round(Number(amount) * 100) / 100;
+    const sign = CURRENCY_SIGNS[code];
+    const digits = Math.abs(n).toFixed(2);
+    return sign ? `${n < 0 ? '-' : ''}${sign}${digits}` : `${n < 0 ? '-' : ''}${digits} ${code}`;
+}
+
+function finite(value) {
+    if (value == null || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+}
+
+// DeepSeek GET /user/balance: { is_available, balance_infos: [{ currency, total_balance,
+// granted_balance, topped_up_balance }] } with the amounts as strings. USD first, else the
+// first currency listed. null when the body has no balance row.
+function parseDeepSeekBalance(body) {
+    const infos = body && Array.isArray(body.balance_infos) ? body.balance_infos : [];
+    const rows = infos.filter((row) => row && finite(row.total_balance) != null);
+    if (!rows.length) return null;
+    const row = rows.find((item) => String(item.currency || '').toUpperCase() === 'USD') || rows[0];
+    return {
+        currency: String(row.currency || 'USD').toUpperCase(),
+        balance: finite(row.total_balance),
+        granted: finite(row.granted_balance),
+        toppedUp: finite(row.topped_up_balance),
+        available: body.is_available !== false
+    };
+}
+
+function headerGetter(headers) {
+    if (!headers) return () => null;
+    if (typeof headers.get === 'function') return (name) => headers.get(name);
+    const lower = {};
+    Object.keys(headers).forEach((key) => { lower[key.toLowerCase()] = headers[key]; });
+    return (name) => (lower[name] == null ? null : String(lower[name]));
+}
+
+// "1s", "6m0s", "250ms", "30" (seconds) -> ms. null when it does not parse.
+function durationMs(text) {
+    const raw = String(text == null ? '' : text).trim();
+    if (!raw) return null;
+    if (/^\d+(\.\d+)?$/.test(raw)) return Math.round(Number(raw) * 1000);
+    const re = /(\d+(?:\.\d+)?)(ms|h|m|s)/g;
+    let total = 0;
+    let matched = '';
+    let part;
+    while ((part = re.exec(raw))) {
+        const n = Number(part[1]);
+        total += part[2] === 'h' ? n * 3600000 : part[2] === 'm' ? n * 60000 : part[2] === 's' ? n * 1000 : n;
+        matched += part[0];
+    }
+    return matched === raw ? Math.round(total) : null;
+}
+
+// x-ratelimit-{limit,remaining,reset}-requests (OpenAI style) or the bare x-ratelimit-*
+// names. null when the response carried none.
+function parseRateLimitHeaders(headers) {
+    const get = headerGetter(headers);
+    const pick = (names) => names.map((name) => get(name)).find((value) => value != null && value !== '');
+    const limit = finite(pick(['x-ratelimit-limit-requests', 'x-ratelimit-limit']));
+    const remaining = finite(pick(['x-ratelimit-remaining-requests', 'x-ratelimit-remaining']));
+    const resetMs = durationMs(pick(['x-ratelimit-reset-requests', 'x-ratelimit-reset']));
+    if (limit == null && remaining == null) return null;
+    return { limit, remaining, resetMs };
+}
+
+// The bridge passes every custom chat response here (modules/tokenRouterBridge.js).
+function noteRateLimit(idOrEngine, headers) {
+    const id = providerKey(idOrEngine);
+    if (!id) return;
+    const seen = parseRateLimitHeaders(headers);
+    if (seen) rateLimits.set(id, { at: Date.now(), ...seen });
+}
+
+function rateLimitFor(id) {
+    const seen = rateLimits.get(id);
+    if (!seen) return null;
+    if (seen.resetMs != null && Date.now() - seen.at > seen.resetMs) return { ...seen, remaining: seen.limit, stale: true };
+    return seen;
+}
+
+function rateLimitText(rate) {
+    if (!rate) return '';
+    if (rate.limit != null && rate.remaining != null) return `${rate.remaining} of ${rate.limit} requests left`;
+    if (rate.remaining != null) return `${rate.remaining} requests left`;
+    return `${rate.limit} requests per window`;
+}
+
+async function readJson(url, apiKey) {
+    const res = await fetch(url, {
+        headers: { accept: 'application/json', authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(BALANCE_TIMEOUT_MS)
+    });
+    const body = await res.json().catch(() => null);
+    return { status: res.status, ok: res.ok, body };
+}
+
+// { balance, text?, currency?, title, ... }; balance is null when it could not be read.
+// null: the host has no balance to read. Uncached; balanceInfo wraps it.
+async function readBalance(row) {
     const name = row.name;
     if (row.kind === 'tokenrouter') {
         const missing = { balance: null, title: `${name}: add a management key to show the balance` };
@@ -418,6 +540,8 @@ async function balanceInfo(row) {
         if (!info.configured) return missing;
         return {
             balance: info.remaining,
+            currency: 'USD',
+            text: usdText(info.remaining),
             topUp: info.topUp,
             vouchers: info.vouchers,
             title: [
@@ -428,21 +552,122 @@ async function balanceInfo(row) {
     }
     if (row.kind === 'openrouter') {
         try {
-            const res = await fetch(`${row.baseUrl}/v1/credits`, {
-                headers: { authorization: `Bearer ${row.apiKey}` },
-                signal: AbortSignal.timeout(10000)
-            });
-            const body = await res.json().catch(() => null);
+            const { ok, body } = await readJson(`${row.baseUrl}/v1/credits`, row.apiKey);
             const data = body && body.data;
-            if (!res.ok || !data) return { balance: null, title: `${name} credits unavailable` };
+            if (!ok || !data) return { balance: null, title: `${name} credits unavailable` };
             const remaining = (Number(data.total_credits) || 0) - (Number(data.total_usage) || 0);
             const rounded = Math.round(remaining * 100) / 100;
-            return { balance: rounded, title: `${name} credits: ${usdText(rounded)}` };
+            return { balance: rounded, currency: 'USD', text: usdText(rounded), title: `${name} credits: ${usdText(rounded)}` };
         } catch (error) {
             return { balance: null, title: `${name} credits unavailable: ${error.message}` };
         }
     }
+    if (row.kind === 'deepseek') {
+        try {
+            const { ok, status, body } = await readJson(`${row.baseUrl}/user/balance`, row.apiKey);
+            const info = ok ? parseDeepSeekBalance(body) : null;
+            if (!info) return { balance: null, title: `${name} balance unavailable${ok ? '' : ` (HTTP ${status})`}` };
+            const lines = [`${name} balance: ${moneyText(info.balance, info.currency)}`];
+            if (info.granted != null || info.toppedUp != null) {
+                lines.push(`Topped up ${moneyText(info.toppedUp || 0, info.currency)} + granted ${moneyText(info.granted || 0, info.currency)}`);
+            }
+            if (!info.available) lines.push('DeepSeek says the balance is not enough for API calls');
+            return {
+                balance: info.balance,
+                currency: info.currency,
+                text: moneyText(info.balance, info.currency),
+                granted: info.granted,
+                toppedUp: info.toppedUp,
+                available: info.available,
+                title: lines.join('\n')
+            };
+        } catch (error) {
+            return { balance: null, title: `${name} balance unavailable: ${error.message}` };
+        }
+    }
+    if (row.kind === 'nvidia') {
+        // build.nvidia.com shows no credits over the API; the free tier is limited per minute.
+        const rate = rateLimitFor(row.id);
+        const left = rateLimitText(rate);
+        return {
+            balance: null,
+            freeTier: true,
+            text: 'Free tier',
+            rateLimit: rate ? { limit: rate.limit, remaining: rate.remaining, resetMs: rate.resetMs } : null,
+            title: [`${name}: free tier, rate-limited`, left].filter(Boolean).join('\n')
+        };
+    }
     return null;
+}
+
+function balanceFingerprint(row) {
+    return require('crypto').createHash('sha256')
+        .update([row.baseUrl, row.kind, row.apiKey, row.managementKey].join('\n')).digest('hex').slice(0, 16);
+}
+
+// Cached readBalance: one read per provider every BALANCE_TTL_MS (failures included), one in
+// flight at a time. NVIDIA's answer is local (rate-limit headers), so it is never cached.
+async function balanceInfo(row, options) {
+    if (!row) return null;
+    if (row.kind === 'nvidia') return readBalance(row);
+    const opts = options || {};
+    const fp = balanceFingerprint(row);
+    let slot = balances.get(row.id);
+    if (!slot || slot.fp !== fp) {
+        slot = { at: 0, fp, value: undefined, promise: null };
+        balances.set(row.id, slot);
+    }
+    if (slot.value !== undefined && !opts.force && Date.now() - slot.at < BALANCE_TTL_MS) return slot.value;
+    if (!slot.promise) {
+        slot.promise = readBalance(row).then((value) => {
+            slot.at = Date.now();
+            slot.value = value;
+            return value;
+        }).finally(() => { slot.promise = null; });
+    }
+    return slot.promise;
+}
+
+// The engine pickers and Dreamscape CardSpace (director_custom_providers_balance). No key, no URL.
+// state: ok | low | out | free | error | none (the host has no balance) | nokey
+async function balanceSummary(gr, idOrEngine) {
+    const row = lookup(gr, idOrEngine);
+    if (!row) return null;
+    const base = { id: row.id, engine: row.engine, name: row.name, kind: row.kind };
+    if (!row.apiKey) return { ...base, state: 'nokey', balance: null, balanceText: '', title: `${row.name}: no API key` };
+    let info;
+    try {
+        info = await balanceInfo(row);
+    } catch (error) {
+        info = { balance: null, title: `${row.name} balance unavailable: ${error.message}` };
+    }
+    if (!info) return { ...base, state: 'none', balance: null, balanceText: '', title: row.name };
+    const out = {
+        ...base,
+        balance: info.balance == null ? null : info.balance,
+        currency: info.currency || null,
+        balanceText: info.balance == null ? (info.freeTier ? info.text : '') : (info.text || usdText(info.balance)),
+        title: info.title
+    };
+    if (info.granted !== undefined) out.granted = info.granted;
+    if (info.toppedUp !== undefined) out.toppedUp = info.toppedUp;
+    if (info.freeTier) {
+        out.freeTier = true;
+        out.rateLimit = info.rateLimit || null;
+        out.state = 'free';
+        return out;
+    }
+    if (info.balance == null) out.state = 'error';
+    else if (info.balance <= 0 || info.available === false) out.state = 'out';
+    else if (info.balance <= LOW_BALANCE) out.state = 'low';
+    else out.state = 'ok';
+    return out;
+}
+
+async function balanceSummaries(gr) {
+    const ids = readRows(gr).map((item) => providerKey(item && item.id)).filter(Boolean);
+    const rows = await Promise.all(ids.map((id) => balanceSummary(gr, id)));
+    return rows.filter(Boolean);
 }
 
 // Director badge. Monitor Usage off means this host has no cap: the client hides the indicator.
@@ -464,11 +689,11 @@ async function usageSummary(gr, idOrEngine) {
     if (base.hidden || !row) return base;
     const info = await balanceInfo(row);
     if (!info) return base;
-    if (info.balance == null) return { ...base, title: info.title };
+    if (info.balance == null) return { ...base, balanceText: info.freeTier ? info.text : null, title: info.title };
     return {
         ...base,
         balance: info.balance,
-        balanceText: usdText(info.balance),
+        balanceText: info.text || usdText(info.balance),
         limited: info.balance <= 0,
         title: info.title
     };
@@ -553,11 +778,16 @@ async function listModels(gr, idOrEngine, options) {
     return slot.promise;
 }
 
+// The row's model, else the supported host's default (NVIDIA: DeepSeek V4.1 Flash).
+function preferredModel(provider) {
+    if (!provider) return '';
+    return provider.defaultModel || presetDefaultModel(provider.kind);
+}
+
 function resolveRun(families, choice, provider) {
     const list = Array.isArray(families) ? families : [];
     const requested = String((choice && choice.model) || '').trim();
-    const preferred = (provider && provider.defaultModel)
-        || (provider && provider.kind === 'tokenrouter' ? 'deepseek/deepseek-v4.1-flash' : '');
+    const preferred = preferredModel(provider);
     const fallback = list.find((item) => item.id === preferred) || list[0] || null;
     const family = list.find((item) => item.id === requested) || fallback;
     const wanted = String((choice && choice.effort) || 'medium').trim().toLowerCase();
@@ -595,6 +825,13 @@ module.exports = {
     saveProvider,
     usageSummary,
     balanceInfo,
+    balanceSummary,
+    balanceSummaries,
+    parseDeepSeekBalance,
+    parseRateLimitHeaders,
+    noteRateLimit,
+    moneyText,
+    preferredModel,
     apiStatus,
     listModels,
     resolveRun,
@@ -603,6 +840,7 @@ module.exports = {
     normalizeBaseUrl,
     _test: {
         resetCatalogs: () => catalogs.clear(),
+        resetBalances: () => { balances.clear(); rateLimits.clear(); },
         setLogoDir: (dir) => { logoDirectory = dir; }
     }
 };

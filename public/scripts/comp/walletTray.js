@@ -40,7 +40,7 @@
     // --tr-color-brand-primary.
     const BRAND = { novelai: '#4f46c8', cursor: '#555555', claude: '#d97757', tokenrouter: '#0086ff', runpod: '#7046e0' };
     // Custom Director engines by host kind (customModelProviders.js hostKind); generic hosts get none
-    const CUSTOM_BRAND = { tokenrouter: BRAND.tokenrouter, openrouter: '#6467f2', openai: '#10a37f', google: '#4285f4' };
+    const CUSTOM_BRAND = { tokenrouter: BRAND.tokenrouter, openrouter: '#6467f2', openai: '#10a37f', google: '#4285f4', nvidia: '#76b900', deepseek: '#4d6bfe' };
 
     let server = null;       // last wallet_status data
     let serverError = '';
@@ -518,7 +518,8 @@
 
     // Custom Director engines (Dreamscape CardSpace > Custom Model Providers). Every one shows its
     // API status in the right-hand column, usage or not; a balance column comes first where the
-    // host has one (TokenRouter with a management key, OpenRouter credits).
+    // host has one (TokenRouter with a management key, OpenRouter credits, DeepSeek). NVIDIA NIM
+    // has none: its title line says free tier, rate-limited.
     function customApiSide(api) {
         const ms = api.ms != null ? `${count(api.ms)} ms` : '';
         if (api.state === 'ok') return sideColumn('API', 'Online', null, 'ok', ms, api.message);
@@ -556,9 +557,10 @@
                 if (b.balance <= 0) {
                     alert(alerts, `${key}:out`, 'critical', p.name, `${p.name} balance used up`, 'Top up to keep this engine running.');
                 } else if (level === 'bad') {
-                    alert(alerts, `${key}:low`, 'warning', p.name, `${p.name} balance almost used up: ${usd(b.balance)}`, 'Top up to keep this engine running.');
+                    alert(alerts, `${key}:low`, 'warning', p.name, `${p.name} balance almost used up: ${b.text || usd(b.balance)}`, 'Top up to keep this engine running.');
                 }
-                sides.push(sideColumn('Balance', usd(b.balance), null, level, '', b.title || ''));
+                // text carries the host's currency (DeepSeek can answer in CNY)
+                sides.push(sideColumn('Balance', b.text || usd(b.balance), null, level, '', b.title || ''));
             } else if (b && b.title) {
                 lines.push(b.title.replace(`${p.name}: `, '').replace(/^./, (c) => c.toUpperCase()));
             }
