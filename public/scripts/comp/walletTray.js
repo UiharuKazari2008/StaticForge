@@ -1021,9 +1021,31 @@
             void root.openWebUrl('https://novelai.net/');
         } else if (action === 'keys') {
             hideFlyout();
-            // openSecurityCenterDsap: public/scripts/comp/securityCenterDsapApplet.js (Service Keys live on the auth view)
-            if (typeof root.openSecurityCenterDsap === 'function') root.openSecurityCenterDsap('auth');
+            return openServiceKeys();
         }
+        return undefined;
+    }
+
+    // Service keys live in Control Panel's Dreamscape CardSpace (cplAuthentication.js open('service')),
+    // which loads with the control_panel feature (featureLoader.js). Security Center is the fallback.
+    async function openServiceKeys() {
+        try {
+            if (!root.cplAuthentication && root.featureLoader && typeof root.featureLoader.loadFeature === 'function') {
+                await root.featureLoader.loadFeature('control_panel');
+            }
+            if (root.cplAuthentication && typeof root.cplAuthentication.open === 'function') {
+                root.cplAuthentication.open('service');
+                return 'cardspace';
+            }
+            // openSecurityCenterDsap: public/scripts/comp/securityCenterDsapApplet.js
+            if (typeof root.openSecurityCenterDsap === 'function') {
+                root.openSecurityCenterDsap('auth');
+                return 'security-center';
+            }
+        } catch (error) {
+            console.warn('Wallet: could not open Service keys', error);
+        }
+        return null;
     }
 
     // ---- right-click menu ---------------------------------------------------------------------
@@ -1162,7 +1184,9 @@
             unseen,
             markSeen,
             setServer: (data) => { server = data; restricted = false; },
-            setRestricted: (value) => { restricted = !!value; }
+            setRestricted: (value) => { restricted = !!value; },
+            runAction,
+            openServiceKeys
         }
     };
     if (root) root.walletTray = api;
