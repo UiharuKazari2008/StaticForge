@@ -683,6 +683,39 @@ class Director {
         window.wsClient.send({ type: 'director_custom_providers_balance', requestId: `bal-${Date.now()}` });
     }
 
+    // Class on an engine's picker row, so a balance reply can repaint a menu that is already open.
+    engineBalanceClass(engine) {
+        return `director-engine-bal-${String(this.normalizeEngine(engine)).replace(/[^a-z0-9_-]/gi, '_')}`;
+    }
+
+    // Puts each engine's balance text on the open Engine / runtime menu rows (contextMenu.js
+    // draws subtext as .context-menu-item-subtext inside .context-menu-item-text-container).
+    paintEngineBalances(rootEl) {
+        const scope = rootEl || (typeof document !== 'undefined' ? document : null);
+        if (!scope || typeof scope.querySelectorAll !== 'function') return 0;
+        let painted = 0;
+        this.engineChoices().forEach((id) => {
+            const text = this.engineBalanceText(id);
+            scope.querySelectorAll(`.${this.engineBalanceClass(id)}`).forEach((row) => {
+                const box = row.querySelector('.context-menu-item-text-container');
+                if (!box) return;
+                let sub = box.querySelector('.context-menu-item-subtext');
+                if (!text) {
+                    if (sub) sub.remove();
+                    return;
+                }
+                if (!sub) {
+                    sub = document.createElement('span');
+                    sub.className = 'context-menu-item-subtext';
+                    box.appendChild(sub);
+                }
+                sub.textContent = text;
+                painted++;
+            });
+        });
+        return painted;
+    }
+
     // Balance, credits, or "Free tier" for an engine's picker row; '' when its host shows none.
     engineBalanceText(engine) {
         const row = this.engineBalances[this.normalizeEngine(engine)];
@@ -701,6 +734,7 @@ class Director {
                 return director.engineChoices().map((id) => ({
                     text: director.engineName(id),
                     subtext: director.engineBalanceText(id) || null,
+                    className: director.engineBalanceClass(id),
                     action: `director-tools-engine-${id}`,
                     showIndicator: true,
                     loadfn: (item) => { item.checked = director.activeEngine() === id; }
@@ -1288,6 +1322,7 @@ class Director {
                     runtimeMenu.sections[0].items = this.engineChoices().map((id) => ({
                         text: this.engineName(id),
                         subtext: this.engineBalanceText(id) || null,
+                        className: this.engineBalanceClass(id),
                         action: `director-runtime-${id}`,
                         runtimeId: id,
                         showIndicator: true,
@@ -6694,6 +6729,14 @@ class Director {
             const next = {};
             rows.forEach((row) => { if (row && row.engine) next[row.engine] = row; });
             director.engineBalances = next;
+            // An Engine or runtime menu opened before the reply came back gets its text now.
+            director.paintEngineBalances();
+        });
+
+        // The first ask can go out before the socket is up; ask again on every (re)connect.
+        window.wsClient.on('connected', () => {
+            const director = window.directorInstance;
+            if (director) director.requestEngineBalances(true);
         });
 
         window.wsClient.on('director_get_cursor_usage_response', (data) => {
