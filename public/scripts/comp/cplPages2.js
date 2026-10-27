@@ -942,7 +942,8 @@
                     </div>
                     <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-age-on"${age > 0 ? ' checked' : ''}><label for="cpl-ss-age-on">Only pictures from the last</label>
                         <input type="number" class="cpl-vedit cpl-ss-num" id="cpl-ss-age" min="1" max="3650" value="${age > 0 ? age : 7}"${age > 0 ? '' : ' disabled'}> days</div>
-                    <p class="cpl-vtext cpl-ss-rotation"><label for="cpl-ss-pool">Pictures in rotation:</label> <input type="number" class="cpl-vedit cpl-ss-num" id="cpl-ss-pool" min="1" max="1000" value="${esc(st.poolSize != null ? st.poolSize : 60)}"> <span class="cpl-ss-dim" data-ss-live="count"></span></p>
+                    <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-pool-all"${!(Number(st.poolSize) > 0) ? ' checked' : ''}><label for="cpl-ss-pool-all">Every matching picture</label> <span class="cpl-ss-dim" data-ss-live="count"></span></div>
+                    <div class="cpl-vcheck cpl-ss-check cpl-ss-poolrow">or only the newest <input type="number" class="cpl-vedit cpl-ss-num" id="cpl-ss-pool" min="1" max="1000000" value="${Number(st.poolSize) > 0 ? esc(st.poolSize) : 500}"${!(Number(st.poolSize) > 0) ? ' disabled' : ''}> pictures</div>
                     <div class="cpl-ss-strip" data-ss-live="strip"></div>
                 </div>
                 <div class="cpl-vsection"><span>Slide show</span></div>
@@ -977,7 +978,7 @@
             workspaces: ws,
             search: useSearch ? (search || null) : null,
             maxAgeDays: (q('#cpl-ss-age-on') || {}).checked ? num('cpl-ss-age', 1, 3650, 7) : 0,
-            poolSize: num('cpl-ss-pool', 1, 1000, st.poolSize || 60),
+            poolSize: (q('#cpl-ss-pool-all') || {}).checked ? 0 : num('cpl-ss-pool', 1, 1000000, 500),
             intervalSec: num('cpl-ss-interval', 5, 3600, st.intervalSec || 45),
             infoOverlay: val('cpl-ss-overlay') || st.infoOverlay || 'minimal',
             shuffle: !!(q('#cpl-ss-shuffle') || {}).checked,
@@ -1000,7 +1001,7 @@
             const firstLoad = !ssDraft.workspaces && Array.isArray(res.workspaces);
             if (Array.isArray(res.workspaces)) ssDraft.workspaces = res.workspaces.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
             const count = m.querySelector('[data-ss-live="count"]');
-            if (count) count.textContent = res.success === false ? '' : `${res.total} picture${res.total === 1 ? '' : 's'} match${res.total === 1 ? 'es' : ''}`;
+            if (count) count.textContent = res.success === false ? '' : `(${Number(res.total).toLocaleString('en-US')} picture${res.total === 1 ? '' : 's'})`;
             const strip = m.querySelector('[data-ss-live="strip"]');
             if (strip) strip.innerHTML = (res.items || []).map((it) => `<img src="${esc(ssPreview(it.filename))}" alt="" title="${esc(it.filename)}" loading="lazy" onerror="this.style.visibility='hidden'">`).join('');
             if (firstLoad) {
@@ -1024,6 +1025,7 @@
             const m = main();
             if (t.id === 'cpl-ss-ws-all' && m) m.querySelectorAll('[data-ss-ws]:not([data-ss-ws="*"])').forEach((i) => { i.disabled = t.checked; if (t.checked) i.checked = true; });
             if (t.id === 'cpl-ss-age-on' && m) m.querySelector('#cpl-ss-age').disabled = !t.checked;
+            if (t.id === 'cpl-ss-pool-all' && m) m.querySelector('#cpl-ss-pool').disabled = t.checked;
             if (t.dataset && t.dataset.ssWs && m) m.querySelector('#cpl-ss-src-ws').checked = true;
             ssPreviewSoon();
         },

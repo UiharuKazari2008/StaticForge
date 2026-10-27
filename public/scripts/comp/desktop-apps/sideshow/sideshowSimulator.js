@@ -43,7 +43,7 @@
         }
     };
     const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok', ' ': 'ok', Backspace: 'back', Escape: 'back', F10: 'menu', ContextMenu: 'menu' };
-    const DEFAULT_SETTINGS = { viewType: 'images', intervalSec: 45, poolSize: 60, shuffle: true, pairPortraits: true, infoOverlay: 'minimal' };
+    const DEFAULT_SETTINGS = { viewType: 'images', intervalSec: 45, poolSize: 0, shuffle: true, pairPortraits: true, infoOverlay: 'minimal' };
     const VIEW_TYPES = new Set(['images', 'pinned', 'upscaled']);
     const OVERLAYS = new Set(['off', 'minimal', 'full']);
 
@@ -77,15 +77,6 @@
         return landscape ? `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]} ${t}` : t;
     }
 
-    function shuffled(list) {
-        const a = list.slice();
-        for (let i = a.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [a[i], a[j]] = [a[j], a[i]];
-        }
-        return a;
-    }
-
     class Simulator {
         constructor(mode) {
             this.mode = MODES[mode] ? mode : 'portrait';
@@ -101,7 +92,10 @@
             this.screen = 'splash';
             this.homeIndex = 1;
             this.menuIndex = 0;
-            this.images = [];
+            this.images = []; // sparse: the server's list by position, filled a page at a time
+            this.total = 0;
+            this.seed = '';
+            this.pages = new Map(); // page offset -> pending fetch
             this.pos = 0;
             this.paused = false;
             this.ws = null;
@@ -282,7 +276,7 @@
             const src = s || {};
             if (VIEW_TYPES.has(src.viewType)) this.settings.viewType = src.viewType;
             if (Number.isFinite(Number(src.intervalSec))) this.settings.intervalSec = Math.min(3600, Math.max(5, Math.round(Number(src.intervalSec))));
-            if (Number.isFinite(Number(src.poolSize))) this.settings.poolSize = Math.min(1000, Math.max(1, Math.round(Number(src.poolSize))));
+            if (Number.isFinite(Number(src.poolSize))) this.settings.poolSize = Math.min(1000000, Math.max(0, Math.round(Number(src.poolSize))));
             if (typeof src.shuffle === 'boolean') this.settings.shuffle = src.shuffle;
             if (typeof src.pairPortraits === 'boolean') this.settings.pairPortraits = src.pairPortraits;
             if (OVERLAYS.has(src.infoOverlay)) this.settings.infoOverlay = src.infoOverlay;
@@ -330,46 +324,79 @@
 
         // ---- the slideshow ----
 
-        /** The server picks the pictures from this device's settings (workspaces, age, Image Search). */
+        /**
+         * The server keeps the whole list for this device's settings (workspaces, age, Image Search);
+         * the simulator holds a window of it: 50 names a page, the next page asked for a few pictures
+         * ahead, each picture loaded only when it is shown (and the next two prefetched).
+         */
         async loadImages() {
             this.loading = true;
             this.render();
-            try {
-                const res = await this.request('device_slideshow_images');
-                const items = (res && res.data && res.data.items) || [];
-                items.forEach((it) => { if (it.width && it.height && it.height > it.width) this.tall.add(it.filename); });
-                const names = items.map((it) => it.filename).filter(Boolean);
-                this.images = this.settings.shuffle ? shuffled(names) : names;
-                this.pos = 0;
-            } catch (_) {
-                this.images = [];
-            }
+            this.images = [];
+            this.pages.clear();
+            this.total = 0;
+            this.pos = 0;
+            this.seed = this.settings.shuffle ? String(Math.floor(Math.random() * 2147483647) + 1) : '';
+            await this.fetchPage(0);
             this.loading = false;
             this.render();
             this.arm();
             this.reportState();
         }
 
+        fetchPage(offset) {
+            const PAGE = 50;
+            const start = Math.floor(offset / PAGE) * PAGE;
+            if (this.pages.has(start)) return this.pages.get(start);
+            const job = this.request('device_slideshow_images', { offset: start, limit: PAGE, seed: this.seed || undefined }).then((res) => {
+                const data = (res && res.data) || {};
+                if (Number.isFinite(data.total)) this.total = data.total;
+                (data.items || []).forEach((it, k) => {
+                    this.images[start + k] = it.filename;
+                    if (it.width && it.height && it.height > it.width) this.tall.add(it.filename);
+                });
+                if (!res) this.pages.delete(start);
+            });
+            this.pages.set(start, job);
+            return job;
+        }
+
+        /** The name at a position (wrapping), or null while its page is on the way. */
+        at(i) {
+            if (!this.total) return null;
+            const k = ((i % this.total) + this.total) % this.total;
+            const name = this.images[k];
+            if (!name) void this.fetchPage(k).then(() => { if (this.screen === 'gadget' && this.images[((this.pos % this.total) + this.total) % this.total]) this.render(); });
+            return name || null;
+        }
+
+        /** Keep the next page coming before the cursor gets there. */
+        prefetchAhead() {
+            if (!this.total) return;
+            for (let d = 0; d <= 5; d++) this.at(this.pos + d);
+        }
+
         /** One picture, or two tall ones side by side on the landscape screen. */
         current() {
-            if (!this.images.length) return [];
-            const a = this.images[this.pos % this.images.length];
+            const a = this.at(this.pos);
+            if (!a) return [];
             const pair = this.pairAt(this.pos);
             return pair ? [a, pair] : [a];
         }
 
         pairAt(pos) {
-            if (!this.landscape || !this.settings.pairPortraits || this.images.length < 2) return null;
-            const a = this.images[pos % this.images.length];
-            const b = this.images[(pos + 1) % this.images.length];
-            return this.tall.has(a) && this.tall.has(b) ? b : null;
+            if (!this.landscape || !this.settings.pairPortraits || this.total < 2) return null;
+            const a = this.at(pos);
+            const b = this.at(pos + 1);
+            return a && b && this.tall.has(a) && this.tall.has(b) ? b : null;
         }
 
         step(dir) {
-            if (!this.images.length) return;
-            const n = this.images.length;
+            if (!this.total) return;
+            const n = this.total;
             const span = dir > 0 && this.pairAt(this.pos) ? 2 : 1;
-            this.pos = (this.pos + dir * span + n * 2) % n;
+            this.pos = (((this.pos + dir * span) % n) + n) % n;
+            this.prefetchAhead();
             this.render();
             this.arm();
             this.reportState();
@@ -378,7 +405,7 @@
         showFile(name) {
             const i = this.images.indexOf(name);
             if (i >= 0) this.pos = i;
-            else if (name) { this.images.splice(this.pos, 0, name); }
+            else if (name) this.images[((this.pos % this.total) + this.total) % this.total || 0] = name;
             this.render();
             this.arm();
             this.reportState();
@@ -393,14 +420,14 @@
 
         arm() {
             clearTimeout(this.timer);
-            if (this.screen !== 'gadget' || this.paused || this.images.length < 2) return;
+            if (this.screen !== 'gadget' || this.paused || this.total < 2) return;
             this.timer = setTimeout(() => this.step(1), this.settings.intervalSec * 1000);
         }
 
         openGadget() {
             if (this.screen === 'gadget') return;
             this.screen = 'gadget';
-            if (!this.images.length) void this.loadImages();
+            if (!this.total) void this.loadImages();
             else { this.render(); this.arm(); }
         }
 
@@ -458,7 +485,7 @@
                 if (L) {
                     const items = [
                         { title: 'Welcome', text: 'Welcome to Melaton SideShow', icon: `${ART}/fw-logo.png` },
-                        { title: GADGET, text: this.images.length ? `${this.images.length} pictures` : 'Pictures from your gallery', icon: '/static_images/vista-sideshow/slideshow-gadget-32.png' }
+                        { title: GADGET, text: this.total ? `${this.total.toLocaleString('en-US')} pictures` : 'Pictures from your gallery', icon: '/static_images/vista-sideshow/slideshow-gadget-32.png' }
                     ];
                     const sel = items[this.homeIndex];
                     this.lcd.innerHTML = `<div class="sss-home is-landscape" style="background-image:url('${ART}/fw-bg-landscape.jpg')">
@@ -477,8 +504,8 @@
             const files = this.current();
             const s = this.settings;
             let info = '';
-            if (files.length && s.infoOverlay === 'minimal') info = `<div class="sss-info">${this.pos % this.images.length + 1} of ${this.images.length}</div>`;
-            else if (files.length && s.infoOverlay === 'full') info = `<div class="sss-info is-full">${esc(files.join('  '))}<br>${this.pos % this.images.length + 1} of ${this.images.length}</div>`;
+            if (files.length && s.infoOverlay === 'minimal') info = `<div class="sss-info">${(this.pos % this.total + 1).toLocaleString('en-US')} of ${this.total.toLocaleString('en-US')}</div>`;
+            else if (files.length && s.infoOverlay === 'full') info = `<div class="sss-info is-full">${esc(files.join('  '))}<br>${(this.pos % this.total + 1).toLocaleString('en-US')} of ${this.total.toLocaleString('en-US')}</div>`;
             const body = this.loading ? '<div class="sss-msg">Updating...</div>'
                 : !files.length ? '<div class="sss-msg">There are no pictures to show.</div>'
                     : `<div class="sss-pics${files.length > 1 ? ' is-pair' : ''}">${files.map((f) => `<img src="${esc(previewUrl(f))}" alt="" data-file="${esc(f)}">`).join('')}</div>`;
@@ -497,7 +524,7 @@
                 }, { once: true });
             });
             // and the next ones, so a pair is known before it comes up
-            this.images.slice(this.pos + 1, this.pos + 3).forEach((f) => {
+            [this.at(this.pos + 1), this.at(this.pos + 2)].filter(Boolean).forEach((f) => {
                 if (this.tall.has(f)) return;
                 const im = new Image();
                 im.onload = () => { if (im.naturalHeight > im.naturalWidth) this.tall.add(f); };

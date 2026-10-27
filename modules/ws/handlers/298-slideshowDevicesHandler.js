@@ -49,7 +49,8 @@ function registerPackets(handlersCtx) {
         runSearch: (query) => searchHandler.omegasearchMatchFilenames(handlersCtx, clientInfo && clientInfo.sessionId, query)
     });
 
-    // the device's pictures for its stored settings (workspaces, age, Image Search), newest first
+    // one page of the device's pictures for its stored settings (workspaces, age, Image Search):
+    // { offset, limit, seed } -> names and sizes only; the device fetches each picture as it shows it
     reg('device_slideshow_images', async ({ ws, message, clientInfo }) => {
         try {
             const deviceId = clientInfo && clientInfo.deviceId;
@@ -58,7 +59,8 @@ function registerPackets(handlersCtx) {
                 return;
             }
             const settings = slideshowDevices.deviceSettings(gr(), deviceId) || {};
-            const res = await slideshowDevices.resolveImages(imageCtx(clientInfo), settings);
+            const src = message.data && typeof message.data === 'object' ? message.data : message;
+            const res = await slideshowDevices.resolveImages(imageCtx(clientInfo), settings, { offset: src.offset, limit: src.limit, seed: src.seed });
             reply(ws, 'device_slideshow_images_response', message, { success: true, deviceId, ...res });
         } catch (error) {
             handlersCtx.sendError(ws, 'Failed to list the pictures', error.message, message.requestId);
@@ -91,10 +93,10 @@ function registerPackets(handlersCtx) {
         try {
             const stored = slideshowDevices.isDeviceId(src.deviceId) ? (slideshowDevices.deviceSettings(gr(), String(src.deviceId)) || {}) : {};
             const settings = Object.assign({}, stored, slideshowDevices.sanitizeSettings(src.settings));
-            const res = await slideshowDevices.resolveImages(imageCtx(clientInfo), settings);
+            const res = await slideshowDevices.resolveImages(imageCtx(clientInfo), settings, { offset: 0, limit: Number(src.limit) > 0 ? Math.min(60, Number(src.limit)) : 12 });
             const all = gr().getWorkspaceManager().getWorkspaces() || {};
             const workspaces = Object.entries(all).map(([id, w]) => ({ id, name: (w && w.name) || id }));
-            reply(ws, 'device_preview_images_response', message, { success: true, total: res.total, items: res.items.slice(0, Number(src.limit) > 0 ? Math.min(60, Number(src.limit)) : 12), workspaces });
+            reply(ws, 'device_preview_images_response', message, { success: true, total: res.total, items: res.items, workspaces });
         } catch (error) {
             reply(ws, 'device_preview_images_response', message, { success: false, error: error.message, total: 0, items: [] });
         }

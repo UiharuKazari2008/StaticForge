@@ -53,7 +53,8 @@ function sanitizeSettings(raw) {
     if (VIEW_TYPES.has(src.viewType)) out.viewType = src.viewType;
     const interval = clampInt(src.intervalSec, 5, 3600);
     if (src.intervalSec != null && interval != null) out.intervalSec = interval;
-    const pool = clampInt(src.poolSize, 1, 1000);
+    // 0 = every matching picture (the default); otherwise only the newest N
+    const pool = clampInt(src.poolSize, 0, 1000000);
     if (src.poolSize != null && pool != null) out.poolSize = pool;
     if (typeof src.shuffle === 'boolean') out.shuffle = src.shuffle;
     if (typeof src.pairPortraits === 'boolean') out.pairPortraits = src.pairPortraits;
@@ -75,7 +76,6 @@ function sanitizeSettings(raw) {
     return out;
 }
 
-const MAX_CANDIDATES = 5000;
 
 /** Gallery files start with their creation time in ms ("1792945938451_generated_..."). */
 function filenameMs(name) {
@@ -92,39 +92,41 @@ function mtimeMs(value) {
     return n < 1e12 ? n * 1000 : n;
 }
 
-/**
- * The pictures a device shows for these settings: newest first, at most poolSize, each
- * { filename, width, height, mtime }. ctx: { metadataDb, workspaceManager, sessionId, runSearch(search) }.
- */
-async function resolveImages(ctx, rawSettings) {
-    const settings = Object.assign({ viewType: 'images', poolSize: 60, maxAgeDays: 0, workspaces: [] }, rawSettings || {});
+const LIST_TTL_MS = 2 * 60 * 1000;
+const MAX_LISTS = 20;
+const PAGE_DEFAULT = 500;
+const PAGE_MAX = 2000;
+const listCache = new Map(); // key -> { rows, expiresAt }
+
+/** Every picture these settings match, newest first, capped by poolSize (0 = no cap); cached 2 minutes. */
+async function resolveAll(ctx, settings) {
     const db = ctx.metadataDb;
-    if (!db) return { total: 0, items: [] };
-    const cutoff = settings.maxAgeDays > 0 ? Date.now() - settings.maxAgeDays * 86400000 : 0;
+    if (!db) return [];
+    let ids = Array.isArray(settings.workspaces) ? settings.workspaces : [];
+    if (!settings.search) {
+        if (ids.includes('*')) ids = Object.keys((ctx.workspaceManager && ctx.workspaceManager.getWorkspaces()) || {});
+        if (!ids.length) ids = [(ctx.workspaceManager && ctx.sessionId && ctx.workspaceManager.getActiveWorkspace(ctx.sessionId)) || 'default'];
+    }
+    const key = JSON.stringify([settings.search || null, settings.search ? null : ids, settings.viewType, settings.maxAgeDays, settings.poolSize]);
+    const now = Date.now();
+    const hit = listCache.get(key);
+    if (hit && hit.expiresAt > now) return hit.rows;
+
+    const cutoff = settings.maxAgeDays > 0 ? now - settings.maxAgeDays * 86400000 : 0;
     const pickName = (row) => (settings.viewType === 'upscaled' ? (row.upscaled || row.original) : (row.original || row.upscaled));
     let rows = [];
     if (settings.search) {
-        // search results come unordered and without dates: the filename's leading timestamp dates them,
-        // and only the pictures that make the cut get their sizes looked up
-        let found = (await ctx.runSearch(settings.search)).map((f) => ({ filename: f, width: null, height: null, mtime: filenameMs(f) }));
-        found.sort((x, y) => y.mtime - x.mtime);
-        if (cutoff) found = found.filter((r) => r.mtime >= cutoff);
-        const picked = found.slice(0, settings.poolSize);
-        const light = picked.length ? await db.getLightweightMetadata(picked.map((r) => r.filename)) : {};
-        picked.forEach((r) => {
-            const m = (light && light[r.filename]) || {};
-            r.width = m.width || null;
-            r.height = m.height || null;
-            if (!r.mtime) r.mtime = mtimeMs(m.mtime);
-        });
-        return { total: found.length, items: picked };
+        // search results come unordered and without dates: the filename's leading timestamp dates them;
+        // sizes are looked up per page (pageOf)
+        rows = (await ctx.runSearch(settings.search)).map((f) => ({ filename: f, width: null, height: null, mtime: filenameMs(f) }));
     } else {
-        let ids = Array.isArray(settings.workspaces) ? settings.workspaces : [];
-        if (ids.includes('*')) ids = Object.keys((ctx.workspaceManager && ctx.workspaceManager.getWorkspaces()) || {});
-        if (!ids.length) ids = [(ctx.workspaceManager && ctx.sessionId && ctx.workspaceManager.getActiveWorkspace(ctx.sessionId)) || 'default'];
         const seen = new Set();
         for (const id of ids) {
-            const page = await db.listWorkspaceGalleryItemsPaginated(id, settings.viewType, 0, MAX_CANDIDATES);
+            const head = await db.listWorkspaceGalleryItemsPaginated(id, settings.viewType, 0, 0);
+            const count = head && head.totalItems ? Number(head.totalItems) : 0;
+            if (!count) continue;
+            // past the block size this is one plain ordered query for the whole workspace
+            const page = await db.listWorkspaceGalleryItemsPaginated(id, settings.viewType, 0, Math.max(count, 1000));
             for (const row of (page && page.items) || []) {
                 const f = pickName(row);
                 if (!f || seen.has(f)) continue;
@@ -132,10 +134,69 @@ async function resolveImages(ctx, rawSettings) {
                 rows.push({ filename: f, width: row.width || null, height: row.height || null, mtime: mtimeMs(row.mtime) || filenameMs(f) });
             }
         }
-        rows.sort((a, b) => b.mtime - a.mtime);
     }
+    rows.sort((a, b) => b.mtime - a.mtime);
     if (cutoff) rows = rows.filter((r) => r.mtime >= cutoff);
-    return { total: rows.length, items: rows.slice(0, settings.poolSize) };
+    if (settings.poolSize > 0) rows = rows.slice(0, settings.poolSize);
+    listCache.delete(key);
+    listCache.set(key, { rows, expiresAt: now + LIST_TTL_MS });
+    while (listCache.size > MAX_LISTS) listCache.delete(listCache.keys().next().value);
+    return rows;
+}
+
+/** A seeded shuffle (mulberry32 + Fisher-Yates): the same seed walks the same order. */
+function seededOrder(length, seed) {
+    let a = (Number(seed) >>> 0) || 1;
+    const rand = () => {
+        a = (a + 0x6D2B79F5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const order = Array.from({ length }, (_, i) => i);
+    for (let i = length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+    }
+    return order;
+}
+
+/**
+ * One page of the pictures a device shows for these settings: { total, offset, items }, each item
+ * { filename, width, height, mtime }. Newest first, or a seeded shuffle with `seed` (a device keeps
+ * its seed and pages through; there is no pool limit unless poolSize is set). ctx: { metadataDb,
+ * workspaceManager, sessionId, runSearch(search) }.
+ */
+async function resolveImages(ctx, rawSettings, page) {
+    const settings = Object.assign({ viewType: 'images', poolSize: 0, maxAgeDays: 0, workspaces: [] }, rawSettings || {});
+    const opts = page || {};
+    const rows = await resolveAll(ctx, settings);
+    const total = rows.length;
+    const offset = Math.max(0, Math.min(total, Math.round(Number(opts.offset)) || 0));
+    const limit = Math.max(1, Math.min(PAGE_MAX, Math.round(Number(opts.limit)) || PAGE_DEFAULT));
+    let items;
+    if (opts.seed != null && opts.seed !== '') {
+        const order = seededOrder(total, opts.seed);
+        items = order.slice(offset, offset + limit).map((i) => Object.assign({}, rows[i]));
+    } else {
+        items = rows.slice(offset, offset + limit).map((r) => Object.assign({}, r));
+    }
+    const unsized = items.filter((r) => !r.width).map((r) => r.filename);
+    if (unsized.length && ctx.metadataDb) {
+        const light = await ctx.metadataDb.getLightweightMetadata(unsized);
+        items.forEach((r) => {
+            const m = (light && light[r.filename]) || {};
+            if (!r.width) r.width = m.width || null;
+            if (!r.height) r.height = m.height || null;
+            if (!r.mtime) r.mtime = mtimeMs(m.mtime);
+        });
+    }
+    return { total, offset, items };
+}
+
+function clearImageCache() {
+    listCache.clear();
 }
 
 function deviceSettings(globalResources, deviceId) {
@@ -488,6 +549,7 @@ module.exports = {
     sanitizeSettings,
     sanitizeShowing,
     resolveImages,
+    clearImageCache,
     deviceSettings,
     identify,
     deviceState,

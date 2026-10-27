@@ -1359,3 +1359,7 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 #melatonControlPanelModal .cpl-ss-page input.cpl-ss-num {
     width: 60px;
 }
+
+#melatonControlPanelModal .cpl-ss-source .cpl-ss-poolrow {
+    margin-left: 20px;
+}

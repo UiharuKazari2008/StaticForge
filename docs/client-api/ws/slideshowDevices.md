@@ -26,7 +26,7 @@ MCP `list_clients` still list them with `kind`, `name`, `deviceId`, `bindable: f
 | `client_identify` | `client_identify_response` | `data: { kind, deviceId, name, app, model, os, display: { width, height, orientation }, settings }` -> `{ success, deviceId, name, settings? }`. Send after every connect. `kind` must be `slideshow` (else error `BAD_DEVICE_KIND`); `deviceId` 12 hex (`BAD_DEVICE_ID`). Strings are clamped to 64 characters. The reply's `settings` holds only what Control Panel changed while the device was offline (apply and persist the keys you know); `name` is the stored name (a Control Panel rename wins). Both are cleared once sent. |
 | `client_device_state` | none | `data: { deviceId, state, showing, since }`. Fire-and-forget on every slide and state change. `state`: `showing`, `paused`, `offline_cache`, `signin_needed`, `stopped`. `showing`: one gallery filename, or two for a portrait pair. Send `stopped` when the screensaver ends; the socket's close marks the device offline. Ignored before `client_identify`. |
 | `device_command_ack` | none | `{ commandId, data: { ok, error? } }`, the answer to a `device_command`. |
-| `device_slideshow_images` | `device_slideshow_images_response` | `{}` -> `{ success, deviceId, total, items: [{ filename, width, height, mtime }] }`: the pictures for this device's stored settings, newest first, at most `poolSize` (`total` counts every match). Workspace pictures follow `viewType`; an Image Search follows its own query; `maxAgeDays` filters both (search results are dated by the filename's leading timestamp). Before `client_identify`: `success: false, code: "NOT_IDENTIFIED"`. Shuffling is the device's job. |
+| `device_slideshow_images` | `device_slideshow_images_response` | `{ offset?, limit?, seed? }` -> `{ success, deviceId, total, offset, items: [{ filename, width, height, mtime }] }`: one page (default 500, max 2000) of the pictures for this device's stored settings. Newest first; with a `seed` (any integer the device keeps until it reloads) the same seeded shuffle every call, so a device pages through a stable random order. `total` counts the whole rotation. No pool limit unless `poolSize` is set. The server keeps the resolved list 2 minutes per settings; names and sizes only, the device loads each picture (`/previews/<base>.webp` or `/images/<filename>`) as it shows it. Workspace pictures follow `viewType`; an Image Search follows its own query; `maxAgeDays` filters both (search results are dated by the filename's leading timestamp). Before `client_identify`: `success: false, code: "NOT_IDENTIFIED"`. |
 
 ### Settings keys
 
@@ -34,7 +34,7 @@ MCP `list_clients` still list them with `kind`, `name`, `deviceId`, `bindable: f
 |---|---|
 | `viewType` | `images`, `pinned`, `upscaled` |
 | `intervalSec` | 5 - 3600 seconds per picture |
-| `poolSize` | 1 - 1000 pictures in rotation |
+| `poolSize` | 0 (default) = every matching picture; otherwise only the newest N (up to 1000000) |
 | `shuffle` | boolean |
 | `pairPortraits` | boolean |
 | `infoOverlay` | `off`, `minimal`, `full` |
