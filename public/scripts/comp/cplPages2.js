@@ -900,6 +900,15 @@
         </div>`;
     }
 
+    // Show each picture for: a number and its unit; seconds are kept, whole minutes or hours read back as such
+    const SS_UNITS = [[1, 'seconds'], [60, 'minutes'], [3600, 'hours']];
+    function ssIntervalHtml(sec) {
+        const n = Math.max(5, Number(sec) || 45);
+        const unit = n % 3600 === 0 ? 3600 : n % 60 === 0 ? 60 : 1;
+        return `<input type="number" class="cpl-vedit cpl-ss-num" id="cpl-ss-interval" min="1" max="86400" value="${n / unit}">
+            <select class="cpl-vselect cpl-ss-unit" id="cpl-ss-interval-unit">${SS_UNITS.map(([v, t]) => `<option value="${v}"${v === unit ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+    }
+
     pages['sideshow-gadget'] = {
         parent: 'sideshow',
         title: () => `${SS_GADGET} settings`,
@@ -948,7 +957,7 @@
                 </div>
                 <div class="cpl-vsection"><span>Slide show</span></div>
                 <table class="cpl-power-grid cpl-ss-settings">
-                    <tr><td><label for="cpl-ss-interval">Show each picture for:</label></td><td><input type="number" class="cpl-vedit cpl-ss-num" id="cpl-ss-interval" min="5" max="3600" value="${esc(st.intervalSec != null ? st.intervalSec : 45)}"> seconds</td></tr>
+                    <tr><td><label for="cpl-ss-interval">Show each picture for:</label></td><td>${ssIntervalHtml(st.intervalSec != null ? st.intervalSec : 45)}</td></tr>
                     <tr><td><label for="cpl-ss-overlay">Picture information:</label></td><td><select class="cpl-vselect" id="cpl-ss-overlay">${ssOptions(SS_OVERLAYS, st.infoOverlay || 'minimal')}</select></td></tr>
                 </table>
                 <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-shuffle"${st.shuffle !== false ? ' checked' : ''}><label for="cpl-ss-shuffle">Shuffle pictures</label></div>
@@ -979,7 +988,7 @@
             search: useSearch ? (search || null) : null,
             maxAgeDays: (q('#cpl-ss-age-on') || {}).checked ? num('cpl-ss-age', 1, 3650, 7) : 0,
             poolSize: (q('#cpl-ss-pool-all') || {}).checked ? 0 : num('cpl-ss-pool', 1, 1000000, 500),
-            intervalSec: num('cpl-ss-interval', 5, 3600, st.intervalSec || 45),
+            intervalSec: Math.min(86400, Math.max(5, num('cpl-ss-interval', 1, 86400, 45) * (Number(val('cpl-ss-interval-unit')) || 1))),
             infoOverlay: val('cpl-ss-overlay') || st.infoOverlay || 'minimal',
             shuffle: !!(q('#cpl-ss-shuffle') || {}).checked,
             pairPortraits: !!(q('#cpl-ss-pair') || {}).checked

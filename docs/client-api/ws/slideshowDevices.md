@@ -33,7 +33,7 @@ MCP `list_clients` still list them with `kind`, `name`, `deviceId`, `bindable: f
 | Key | Values |
 |---|---|
 | `viewType` | `images`, `pinned`, `upscaled` |
-| `intervalSec` | 5 - 3600 seconds per picture |
+| `intervalSec` | 5 - 86400 seconds per picture (Control Panel enters it in seconds, minutes or hours) |
 | `poolSize` | 0 (default) = every matching picture; otherwise only the newest N (up to 1000000) |
 | `shuffle` | boolean |
 | `pairPortraits` | boolean |

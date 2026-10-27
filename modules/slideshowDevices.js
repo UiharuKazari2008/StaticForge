@@ -51,7 +51,7 @@ function sanitizeSettings(raw) {
     const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     const out = {};
     if (VIEW_TYPES.has(src.viewType)) out.viewType = src.viewType;
-    const interval = clampInt(src.intervalSec, 5, 3600);
+    const interval = clampInt(src.intervalSec, 5, 86400);
     if (src.intervalSec != null && interval != null) out.intervalSec = interval;
     // 0 = every matching picture (the default); otherwise only the newest N
     const pool = clampInt(src.poolSize, 0, 1000000);

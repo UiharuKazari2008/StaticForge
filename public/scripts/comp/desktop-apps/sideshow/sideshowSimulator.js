@@ -275,7 +275,7 @@
         applySettings(s) {
             const src = s || {};
             if (VIEW_TYPES.has(src.viewType)) this.settings.viewType = src.viewType;
-            if (Number.isFinite(Number(src.intervalSec))) this.settings.intervalSec = Math.min(3600, Math.max(5, Math.round(Number(src.intervalSec))));
+            if (Number.isFinite(Number(src.intervalSec))) this.settings.intervalSec = Math.min(86400, Math.max(5, Math.round(Number(src.intervalSec))));
             if (Number.isFinite(Number(src.poolSize))) this.settings.poolSize = Math.min(1000000, Math.max(0, Math.round(Number(src.poolSize))));
             if (typeof src.shuffle === 'boolean') this.settings.shuffle = src.shuffle;
             if (typeof src.pairPortraits === 'boolean') this.settings.pairPortraits = src.pairPortraits;
