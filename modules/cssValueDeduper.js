@@ -67,11 +67,6 @@ function parseColorInfo(raw) {
     return { raw, key: `raw:${v.toLowerCase()}`, rgb: null };
 }
 
-function colorKey(value) {
-    const info = parseColorInfo(value);
-    return info.key;
-}
-
 function rgbDistance(a, b) {
     const dr = a.r - b.r;
     const dg = a.g - b.g;
@@ -84,12 +79,6 @@ function colorInfosSimilar(infoA, infoB, tolerance) {
     if (infoA.key === infoB.key) return true;
     if (!infoA.rgb || !infoB.rgb) return false;
     return rgbDistance(infoA.rgb, infoB.rgb) <= tolerance;
-}
-
-function colorsSimilar(a, b, tolerance) {
-    const infoA = parseColorInfo(a);
-    const infoB = parseColorInfo(b);
-    return colorInfosSimilar(infoA, infoB, tolerance);
 }
 
 function collectLiterals(source, pattern, normalizeFn) {
