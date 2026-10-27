@@ -596,6 +596,12 @@ class WebSocketMessageHandlers {
             'director_prompt_guide_push',
             'director_reinstall',
             'director_rentan_agent_set_default',
+            // JULES: Fix privilege leak for read-only clients on search index and director custom providers
+            'search_index_rebuild_all',
+            'search_index_trigger',
+            'search_index_toggle_pause',
+            'search_index_clear_cache',
+            'director_custom_providers_save',
         ];
         return destructiveOperations.includes(messageType) || isReplicationDestructivePacket(messageType);
     }
