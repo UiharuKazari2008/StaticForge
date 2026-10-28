@@ -2,7 +2,8 @@
 
 // Slideshow devices (Yozora #654, modules/slideshowDevices.js): identify, state, commands and
 // their acks, offline queueing into the next identify reply, forget, and that device sockets
-// stay out of agent auto-bind (listClients) while list_clients still shows them.
+// stay out of agent auto-bind (listClients) while list_clients still shows them; device previews
+// (frame / mask / live screen) stored, listed as metadata, served to administrators only.
 
 const assert = require('assert');
 const os = require('os');
@@ -170,6 +171,7 @@ async function main() {
     assert.strictEqual(devices.listDevices(gr, server).length, 0);
 
     await deviceConfigCases();
+    await previewCases();
 
     console.log('slideshow devices: ok');
 }
@@ -339,12 +341,165 @@ async function deviceConfigCases() {
     old.prepare("INSERT INTO slideshow_devices (device_id, kind, name, first_seen, last_seen) VALUES ('0123456789ab', 'slideshow', 'Old tablet', 1, 1)").run();
     old.close();
     const migrated = devices.resetForTests(oldDir);
-    assert.ok(['device_config', 'gadgets', 'pending_device_config'].every((c) => migrated.prepare('PRAGMA table_info(slideshow_devices)').all().some((x) => x.name === c)));
+    assert.ok(['device_config', 'gadgets', 'pending_device_config', 'preview'].every((c) => migrated.prepare('PRAGMA table_info(slideshow_devices)').all().some((x) => x.name === c)));
     const oldGr = { getPath: () => oldDir, getWebSocketServer: () => server };
     const oldDev = devices.listDevices(oldGr, server).find((x) => x.deviceId === '0123456789ab');
     assert.strictEqual(oldDev.name, 'Old tablet');
     assert.strictEqual(oldDev.deviceConfig, null);
     assert.strictEqual(oldDev.pendingDeviceConfig, null);
+}
+
+// a real (tiny) RGBA PNG: signature, IHDR, one IDAT, IEND
+function png(width, height) {
+    const zlib = require('zlib');
+    const crcTable = Array.from({ length: 256 }, (_, n) => {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        return c >>> 0;
+    });
+    const crc = (buf) => {
+        let c = 0xffffffff;
+        for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8);
+        return (c ^ 0xffffffff) >>> 0;
+    };
+    const chunk = (type, data) => {
+        const len = Buffer.alloc(4);
+        len.writeUInt32BE(data.length);
+        const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+        const sum = Buffer.alloc(4);
+        sum.writeUInt32BE(crc(body));
+        return Buffer.concat([len, body, sum]);
+    };
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(width, 0);
+    ihdr.writeUInt32BE(height, 4);
+    ihdr[8] = 8;
+    ihdr[9] = 6;
+    const raw = Buffer.alloc((width * 4 + 1) * height);
+    return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+
+/** mountPreviewRoutes on a fake app: get(deviceId, name, userType, headers) -> { status, headers, body }. */
+function previewRoute() {
+    let handler = null;
+    const app = {
+        get(pattern, auth, fn) {
+            assert.strictEqual(pattern, '/api/sideshow/devices/:deviceId/preview/:name');
+            handler = fn;
+        }
+    };
+    devices.mountPreviewRoutes(app, null, gr);
+    return (deviceId, name, userType, headers) => {
+        const out = { status: 200, headers: {}, body: null };
+        const res = {
+            set(k, v) { out.headers[k.toLowerCase()] = v; return res; },
+            status(code) { out.status = code; return res; },
+            type(t) { out.headers['content-type'] = t; return res; },
+            json(b) { out.body = b; return res; },
+            send(b) { out.body = b; return res; },
+            end() { return res; }
+        };
+        handler({ params: { deviceId, name }, userType, headers: headers || {} }, res);
+        return out;
+    };
+}
+
+// device preview (DS-SlideShow-win64/docs/DEVICE_CONFIG_PROTOCOL.md section 4)
+async function previewCases() {
+    const ID = 'db2eecdf19d8';
+    devices.resetForTests(tmpDir); // deviceConfigCases ends on another database
+    const ws = socket();
+    const info = { authenticated: true, userType: 'readonly', clientId: ID, connectedAt: new Date(), deviceApp: 'DreamscapeFrame-Win/1.0' };
+    server.clients.set(ws, info);
+    const other = { deviceId: 'aabbccddeeff' };
+    const frame = png(48, 99);
+    const mask = png(48, 99);
+    const geometry = {
+        deviceId: ID, version: 1, model: 'wacca', width: 480, height: 996,
+        screen: { x: 105.5, y: 133.28, width: 268.42, height: 477.19, sourceWidth: 1080, sourceHeight: 1920 },
+        shape: { type: 'circle', cx: 239.71, cy: 358.45, r: 134.21 }
+    };
+    const packet = Object.assign({}, geometry, { frame: frame.toString('base64'), mask: `data:image/png;base64,${mask.toString('base64')}` });
+    const get = previewRoute();
+    const find = () => devices.listDevices(gr, server).find((x) => x.deviceId === ID);
+
+    // before identify, for another device, or with bad images: ignored
+    assert.strictEqual(devices.devicePreview(gr, server, info, packet), false, 'not identified yet');
+    devices.identify(gr, server, info, { kind: 'slideshow', deviceId: ID, name: 'plgwacca', app: 'DreamscapeFrame-Win/1.0' });
+    assert.strictEqual(find().preview, null, 'no preview until the device sends one');
+    assert.strictEqual(devices.devicePreview(gr, server, other, packet), false);
+    assert.strictEqual(devices.devicePreview(gr, server, info, Object.assign({}, packet, { frame: Buffer.from('not a png').toString('base64') })), false);
+    assert.strictEqual(devices.devicePreview(gr, server, info, Object.assign({}, packet, { screen: { x: 1 } })), false);
+    assert.strictEqual(get(ID, 'frame.png', 'admin').status, 404);
+
+    // stored: files next to the sqlite, metadata (no image data) in list_devices and devices_updated
+    assert.strictEqual(devices.devicePreview(gr, server, info, packet), true);
+    assert.ok(fs.existsSync(path.join(tmpDir, 'slideshow_previews', ID, 'frame.png')));
+    let p = find().preview;
+    assert.deepStrictEqual({ width: p.width, height: p.height, model: p.model, screen: p.screen, shape: p.shape }, {
+        width: 480, height: 996, model: 'wacca', screen: geometry.screen, shape: geometry.shape
+    });
+    assert.strictEqual(p.hasScreen, false);
+    assert.strictEqual(p.screenAt, null);
+    assert.ok(!JSON.stringify(devices.listDevices(gr, server)).includes(frame.toString('base64').slice(0, 40)), 'no base64 in the list');
+    await sleep(300);
+    const upd = server.broadcasts.filter((b) => b.msg.type === 'devices_updated').pop();
+    assert.strictEqual(upd.msg.data.devices.find((x) => x.deviceId === ID).preview.width, 480);
+
+    // served to administrators, refused to everyone else
+    let r = get(ID, 'frame.png', 'admin');
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.headers['content-type'], 'image/png');
+    assert.ok(Buffer.compare(r.body, frame) === 0);
+    assert.match(r.headers['cache-control'], /private/);
+    assert.strictEqual(get(ID, 'frame.png', 'admin', { 'if-none-match': r.headers.etag }).status, 304);
+    assert.ok(Buffer.compare(get(ID, 'mask.png', 'admin').body, mask) === 0, 'a data: URL is accepted too');
+    assert.strictEqual(get(ID, 'frame.png', 'readonly').status, 403);
+    assert.strictEqual(get(ID, 'frame.png', undefined).status, 403);
+    assert.strictEqual(get(ID, '../slideshow_devices.db', 'admin').status, 404);
+    assert.strictEqual(get('../../etc', 'frame.png', 'admin').status, 404);
+    assert.strictEqual(get(ID, 'screen.jpg', 'admin').status, 404, 'no capture yet');
+
+    // screen capture: kept in memory, listed, relayed to admin tabs as device_screen_updated (coalesced)
+    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64, 7), Buffer.from([0xff, 0xd9])]);
+    assert.strictEqual(devices.deviceScreen(gr, server, other, { deviceId: ID, format: 'jpeg', image: jpeg.toString('base64') }), false);
+    assert.strictEqual(devices.deviceScreen(gr, server, info, { deviceId: ID, format: 'jpeg', image: frame.toString('base64') }), false, 'not a JPEG');
+    assert.strictEqual(devices.deviceScreen(gr, server, info, { deviceId: ID, format: 'gif', image: jpeg.toString('base64') }), false);
+    const at = Date.now() - 5000;
+    const nScreen = server.broadcasts.filter((b) => b.msg.type === 'device_screen_updated').length;
+    assert.strictEqual(devices.deviceScreen(gr, server, info, { deviceId: ID, format: 'jpeg', image: jpeg.toString('base64'), width: 270, height: 480, at: at - 1000 }), true);
+    assert.strictEqual(devices.deviceScreen(gr, server, info, { deviceId: ID, format: 'jpeg', image: jpeg.toString('base64'), width: 270, height: 480, at }), true);
+    p = find().preview;
+    assert.strictEqual(p.hasScreen, true);
+    assert.strictEqual(p.screenAt, at);
+    assert.strictEqual(p.screenWidth, 270);
+    r = get(ID, 'screen.jpg', 'admin');
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.headers['content-type'], 'image/jpeg');
+    assert.match(r.headers['cache-control'], /no-store/);
+    assert.ok(Buffer.compare(r.body, jpeg) === 0);
+    assert.strictEqual(get(ID, 'screen.jpg', 'readonly').status, 403);
+    await sleep(1200);
+    const shots = server.broadcasts.filter((b) => b.msg.type === 'device_screen_updated').slice(nScreen);
+    assert.strictEqual(shots.length, 1, 'two captures within a second: one broadcast');
+    assert.deepStrictEqual(shots[0].msg.data, { deviceId: ID, at });
+    assert.ok(shots[0].to.length >= 1 && shots[0].to.every((i) => i.userType === 'admin' && !i.deviceId && !i.deviceApp));
+
+    // a new preview replaces the old one; the stored preview survives a reopen, the capture does not
+    const frame2 = png(24, 50);
+    assert.strictEqual(devices.devicePreview(gr, server, info, Object.assign({}, packet, { frame: frame2.toString('base64'), width: 240, height: 498 })), true);
+    assert.strictEqual(find().preview.width, 240);
+    assert.ok(Buffer.compare(get(ID, 'frame.png', 'admin').body, frame2) === 0);
+    devices.resetForTests(tmpDir);
+    p = find().preview;
+    assert.strictEqual(p.width, 240);
+    assert.strictEqual(p.hasScreen, false);
+
+    // forget removes the files
+    assert.strictEqual(devices.forget(gr, server, ID), true);
+    assert.ok(!fs.existsSync(path.join(tmpDir, 'slideshow_previews', ID)));
+    assert.strictEqual(get(ID, 'frame.png', 'admin').status, 404);
+    server.clients.delete(ws);
 }
 
 main().then(() => {

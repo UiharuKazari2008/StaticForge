@@ -679,6 +679,8 @@
         m.querySelectorAll('[data-ss-live="frame"]').forEach((el) => { el.textContent = d ? ssFrameNote(d) : ''; el.hidden = !(d && ssFrameNote(d)); });
         m.querySelectorAll('[data-ss-live="status"]').forEach((el) => { el.textContent = d ? ssStateText(d) : 'Disconnected'; });
         m.querySelectorAll('[data-ss-live="device"]').forEach((el) => { el.innerHTML = d ? ssDeviceHtml(d) : ''; });
+        // the device photo: online / offline, and the picture on screen until a capture arrives
+        m.querySelectorAll('[data-ss-live="phys"]').forEach((el) => { el.innerHTML = d ? ssPhysicalHtml(d, 200) : ''; });
         m.querySelectorAll('[data-ss-live="offline"]').forEach((el) => { el.hidden = !!(d && d.online); });
         const pause = m.querySelector('[data-cpl-vpage="cmd"][data-cmd="pause"], [data-cpl-vpage="cmd"][data-cmd="resume"]');
         if (pause && d) { pause.dataset.cmd = d.state === 'paused' ? 'resume' : 'pause'; pause.textContent = d.state === 'paused' ? 'Resume' : 'Pause'; }
@@ -693,6 +695,10 @@
             if (!Array.isArray(list)) return;
             ss.devices = list;
             if (ssOnPage()) ssRefreshView();
+        });
+        root.wsClient.on('device_screen_updated', (msg) => {
+            const data = msg && msg.data;
+            if (data && data.deviceId) ssScreenUpdated(String(data.deviceId), Number(data.at) || 0);
         });
     }
 
@@ -747,7 +753,7 @@
             <p class="cpl-vtext">${has ? 'You can change settings for some gadgets by clicking the gadget name in the list. To change device settings, click the device name in the left pane.' : 'A Melaton SideShow-compatible device is a secondary display that accesses information from your computer. You can use it to do things like check your calendar, read e-mail messages, or scan top news stories even when your computer is off.'}</p>
             ${ss.error ? `<p class="cpl-vtext cpl-vgap">${esc(ss.error)}</p>` : ''}
             <table class="cpl-ss-grid">
-                <tr class="is-head"><td>Gadgets</td>${has ? list.map((d) => `<td class="cpl-ss-col"><button type="button" class="cpl-ss-devhead" data-cpl-vpage="open" data-device="${esc(d.deviceId)}" title="Click to change settings for ${esc(d.name)}"><img src="${SS}/sideshow-32.png" alt=""><span>${esc(d.name)}</span></button></td>`).join('') : '<td class="cpl-ss-none">Devices (none)</td>'}</tr>
+                <tr class="is-head"><td>Gadgets</td>${has ? list.map((d) => `<td class="cpl-ss-col"><button type="button" class="cpl-ss-devhead" data-cpl-vpage="open" data-device="${esc(d.deviceId)}" title="Click to change settings for ${esc(d.name)}">${ssPhysicalHtml(d, 72) || `<img src="${SS}/sideshow-32.png" alt="">`}<span>${esc(d.name)}</span></button></td>`).join('') : '<td class="cpl-ss-none">Devices (none)</td>'}</tr>
                 <tr class="cpl-ss-row"><td class="cpl-ss-gadget"><img src="${SS}/slideshow-gadget-32.png" alt=""><button type="button" class="cpl-ss-gadget-link" data-cpl-vpage="gadget">${esc(SS_GADGET)}</button></td>${has ? list.map((d) => (ssGadget(d, 'slideshow') ? ssModeCellHtml(d, 'slideshow') : `<td class="cpl-ss-col"><span class="cpl-vcheck cpl-ss-cell"><input type="checkbox" id="cpl-ss-on-${esc(d.deviceId)}" checked disabled><label for="cpl-ss-on-${esc(d.deviceId)}" title="${esc(ssStateText(d))}"></label></span></td>`)).join('') : '<td></td>'}</tr>
                 ${list.some((d) => ssGadget(d, 'clock')) ? `<tr class="cpl-ss-row"><td class="cpl-ss-gadget"><img src="${SS_CLOCK_ICON}-32.png" alt=""><button type="button" class="cpl-ss-gadget-link" data-cpl-vpage="clock">Clock</button></td>${list.map((d) => (ssGadget(d, 'clock') ? ssModeCellHtml(d, 'clock') : '<td class="cpl-ss-col"></td>')).join('')}</tr>` : ''}
             </table>
@@ -828,7 +834,7 @@
             const own = ssSchema(d).length > 0;
             if (own) ssCfgAfterDraw(d);
             return `<div class="cpl-vpage cpl-ss-page">${help('sideshow')}
-                <div class="cpl-ss-logo"><img src="${SS}/sideshow-48.png" alt=""><div><b>${esc(d.name)}</b><br><span data-ss-live="status">${esc(ssStateText(d))}</span>${d.model ? `<br><span class="cpl-ss-dim">${esc([d.model, d.os].filter(Boolean).join(', '))}</span>` : ''}${d.gadgets ? `<br><span data-ss-live="gadget">${esc(ssGadgetText(d))}</span>` : ''}</div></div>
+                <div class="cpl-ss-logo">${d.preview ? `<span data-ss-live="phys">${ssPhysicalHtml(d, 200)}</span>` : `<img src="${SS}/sideshow-48.png" alt="">`}<div><b>${esc(d.name)}</b><br><span data-ss-live="status">${esc(ssStateText(d))}</span>${d.model ? `<br><span class="cpl-ss-dim">${esc([d.model, d.os].filter(Boolean).join(', '))}</span>` : ''}${d.gadgets ? `<br><span data-ss-live="gadget">${esc(ssGadgetText(d))}</span>` : ''}</div></div>
                 <p class="cpl-vtext cpl-ss-para" data-ss-live="offline"${d.online ? ' hidden' : ''}>To change settings, first connect the device.${own ? ' Changes to the device-specific settings are sent to it the next time it connects.' : ''}</p>
                 <div class="cpl-vsection"><span>Gadgets</span></div>
                 <p class="cpl-ss-link"><img src="${SS}/gadgets-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="hub">Turn gadgets on or off</button></p>
@@ -1345,7 +1351,68 @@
         return pics + info + (d.state === 'paused' ? '<div class="cpl-ss-screen-badge">Paused</div>' : '') + (d.state === 'offline_cache' ? '<div class="cpl-ss-screen-badge">Saved pictures</div>' : '');
     }
 
+    // ---- the device as it looks (DEVICE_CONFIG_PROTOCOL.md section 4) ----
+    // A device that sends client_device_preview has a photo of itself with a see-through screen
+    // (frame.png), a mask and where its whole-screen capture goes. Drawn as: capture at `screen`
+    // (percentages of the frame) inside a layer masked by mask.png, the frame on top. No capture yet:
+    // the picture it shows (/previews/<base>.webp). Images: GET /api/sideshow/devices/:id/preview/*.
+    function ssPreviewUrl(d, name) {
+        const p = d.preview || {};
+        const v = name === 'screen.jpg' ? p.screenAt : p.updatedAt;
+        return `/api/sideshow/devices/${encodeURIComponent(d.deviceId)}/preview/${name}?v=${encodeURIComponent(v || 0)}`;
+    }
+
+    /** What goes behind the opening: the live capture, else the picture on screen, else nothing. */
+    function ssShotSrc(d) {
+        const p = d.preview || {};
+        if (p.hasScreen) return ssPreviewUrl(d, 'screen.jpg');
+        return d.online && d.showing && d.showing.length ? ssPreview(d.showing[0]) : '';
+    }
+
+    /** The device drawn from its preview, `height` px tall; '' when it sent none. */
+    function ssPhysicalHtml(d, height) {
+        const p = d.preview;
+        if (!p || !(p.width > 0) || !(p.height > 0) || !p.screen) return '';
+        const pct = (v, of) => `${((Number(v) || 0) / of * 100).toFixed(3)}%`;
+        const s = p.screen;
+        const mask = `url('${ssPreviewUrl(d, 'mask.png')}')`;
+        const src = ssShotSrc(d);
+        // a still picture fills the screen like the device's own slideshow does; a capture is exact
+        const fit = p.hasScreen ? 'fill' : 'cover';
+        return `<div class="cpl-ss-phys${d.online ? '' : ' is-off'}" style="height:${height}px;width:${Math.round(height * p.width / p.height)}px" title="${esc(d.name)}">
+            <div class="cpl-ss-phys-screen" style="-webkit-mask-image:${mask};mask-image:${mask}">
+                <img class="cpl-ss-phys-shot" data-ss-shot="${esc(d.deviceId)}" alt="" draggable="false"${src ? ` src="${esc(src)}"` : ' hidden'} style="left:${pct(s.x, p.width)};top:${pct(s.y, p.height)};width:${pct(s.width, p.width)};height:${pct(s.height, p.height)};object-fit:${fit}" onerror="this.hidden=true">
+            </div>
+            <img class="cpl-ss-phys-frame" src="${esc(ssPreviewUrl(d, 'frame.png'))}" alt="" draggable="false">
+        </div>`;
+    }
+
+    /** device_screen_updated: swap every drawing's capture once the new one has loaded (no flicker, no redraw). */
+    function ssScreenUpdated(deviceId, at) {
+        const d = ssDevice(deviceId);
+        if (!d || !d.preview) return;
+        d.preview = Object.assign({}, d.preview, { hasScreen: true, screenAt: at || Date.now() });
+        const m = main();
+        if (!m || !ssOnPage()) return;
+        const imgs = Array.from(m.querySelectorAll('img[data-ss-shot]')).filter((el) => el.dataset.ssShot === deviceId);
+        if (!imgs.length) return;
+        const src = ssPreviewUrl(d, 'screen.jpg');
+        const next = new Image();
+        next.onload = () => imgs.forEach((el) => {
+            el.src = src;
+            el.hidden = false;
+            el.style.objectFit = 'fill';
+        });
+        next.src = src;
+    }
+
     function ssDeviceHtml(d) {
+        const phys = ssPhysicalHtml(d, 360);
+        if (phys) {
+            return `<div class="cpl-ss-device is-physical${d.online ? '' : ' is-off'}">${phys}
+                <div class="cpl-ss-device-name">${esc(d.name)}${d.model ? ` <span class="cpl-ss-dim">(${esc(d.model)})</span>` : ''}</div>
+            </div>`;
+        }
         const sz = ssScreenSize(d);
         return `<div class="cpl-ss-device${sz.portrait ? ' is-portrait' : ''}${d.online ? '' : ' is-off'}">
             <div class="cpl-ss-bezel"><div class="cpl-ss-screen" style="width:${sz.w}px;height:${sz.h}px" data-ss-live="screen">${ssScreenHtml(d)}</div></div>

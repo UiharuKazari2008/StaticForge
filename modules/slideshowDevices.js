@@ -12,6 +12,10 @@
  * A set_device_config / set_mode for an offline device waits in pending_device_config and goes out
  * as a set_device_config command right after its next identify reply.
  *
+ * A device may also send a picture of itself (client_device_preview: frame and mask PNGs kept as files
+ * beside the sqlite, the geometry in the preview column) and live screen captures (client_device_screen,
+ * the latest per device in memory); administrators read them over GET /api/sideshow/devices/:id/preview/*.
+ *
  * The live half lives on the socket's clientInfo (deviceId, deviceKind, deviceName, deviceState),
  * so the online list is always the open sockets, never a second registry.
  */
@@ -399,7 +403,7 @@ function getDb(globalResources) {
     `);
     // device-specific settings and gadgets (device config protocol v1), added after the first release
     const cols = new Set(db.prepare('PRAGMA table_info(slideshow_devices)').all().map((c) => c.name));
-    for (const col of ['device_config', 'gadgets', 'pending_device_config']) {
+    for (const col of ['device_config', 'gadgets', 'pending_device_config', 'preview']) {
         if (!cols.has(col)) db.exec(`ALTER TABLE slideshow_devices ADD COLUMN ${col} TEXT`);
     }
     return db;
@@ -460,13 +464,15 @@ function describe(row, live) {
         pendingName: row.pending_name || null,
         deviceConfig: parseJson(row.device_config, null),
         gadgets: parseJson(row.gadgets, null),
-        pendingDeviceConfig: parseJson(row.pending_device_config, null)
+        pendingDeviceConfig: parseJson(row.pending_device_config, null),
+        preview: describePreview(row)
     };
 }
 
 function listDevices(globalResources, wsServer) {
     const server = wsServerOf(globalResources, wsServer);
     const rows = getDb(globalResources).prepare('SELECT * FROM slideshow_devices').all();
+    pruneScreens(globalResources, server);
     const out = rows.map((row) => describe(row, findDeviceSocket(server, row.device_id)));
     out.sort((a, b) => (b.online - a.online) || (b.lastSeen - a.lastSeen) || a.name.localeCompare(b.name));
     return out;
@@ -598,6 +604,253 @@ function deviceConfigReport(globalResources, wsServer, clientInfo, data) {
     getDb(globalResources).prepare(`UPDATE slideshow_devices SET ${sets.join(', ')}, last_seen = ? WHERE device_id = ?`).run(...args, Date.now(), deviceId);
     scheduleDevicesUpdated(globalResources, wsServer);
     return true;
+}
+
+// ---- device preview (physical representation, DEVICE_CONFIG_PROTOCOL.md section 4) ----
+//
+// The frame and mask PNGs live as files next to the sqlite (slideshow_previews/<deviceId>/), their
+// geometry in the preview column; the latest screen capture only in memory. Lists carry metadata
+// only; the images go to administrators over GET /api/sideshow/devices/:id/preview/<name>.
+
+const PREVIEW_MAX_PNG_BYTES = 4 * 1024 * 1024;
+const SCREEN_MAX_BYTES = 512 * 1024;
+const SCREEN_KEEP_OFFLINE_MS = 6 * 60 * 60 * 1000;
+const SCREEN_BROADCAST_MS = 1000;
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+const screens = new Map(); // deviceId -> { buffer, width, height, at, receivedAt }
+const screenBroadcasts = new Map(); // deviceId -> { timer, at }
+
+function previewDir(globalResources, deviceId) {
+    getDb(globalResources);
+    return path.join(path.dirname(dbPath), 'slideshow_previews', deviceId);
+}
+
+/** base64 (optionally a data: URL) to a Buffer, or null. */
+function decodeBase64(value, maxBytes) {
+    if (typeof value !== 'string' || !value) return null;
+    const text = value.replace(/^data:[^,]*,/, '');
+    if (text.length > Math.ceil(maxBytes / 3) * 4 + 4) return null;
+    const buf = Buffer.from(text, 'base64');
+    return buf.length && buf.length <= maxBytes ? buf : null;
+}
+
+/** A PNG's { width, height } from its IHDR, or null when it is not a PNG. */
+function pngSize(buf) {
+    if (!buf || buf.length < 24 || !buf.subarray(0, 8).equals(PNG_MAGIC) || buf.toString('latin1', 12, 16) !== 'IHDR') return null;
+    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+function finiteNum(value, min, max) {
+    const n = Number(value);
+    return Number.isFinite(n) && n >= min && n <= max ? Math.round(n * 100) / 100 : null;
+}
+
+/** The preview's geometry: { version, model, width, height, screen, shape }, or null when it does not add up. */
+function sanitizePreviewGeometry(src) {
+    const width = clampInt(src.width, 1, 8192);
+    const height = clampInt(src.height, 1, 8192);
+    if (!width || !height || Number(src.width) !== width || Number(src.height) !== height) return null;
+    const s = isPlainObject(src.screen) ? src.screen : null;
+    if (!s) return null;
+    const screen = {
+        x: finiteNum(s.x, -width * 4, width * 4),
+        y: finiteNum(s.y, -height * 4, height * 4),
+        width: finiteNum(s.width, 0.01, width * 8),
+        height: finiteNum(s.height, 0.01, height * 8),
+        sourceWidth: clampInt(s.sourceWidth, 1, 100000),
+        sourceHeight: clampInt(s.sourceHeight, 1, 100000)
+    };
+    if (Object.values(screen).some((v) => v == null)) return null;
+    let shape = null;
+    const sh = isPlainObject(src.shape) ? src.shape : null;
+    if (sh && sh.type === 'circle') {
+        const c = { type: 'circle', cx: finiteNum(sh.cx, 0, width), cy: finiteNum(sh.cy, 0, height), r: finiteNum(sh.r, 0.01, Math.max(width, height)) };
+        if (c.cx != null && c.cy != null && c.r != null) shape = c;
+    } else if (sh && sh.type === 'rect') {
+        const r = { type: 'rect', x: finiteNum(sh.x, 0, width), y: finiteNum(sh.y, 0, height), width: finiteNum(sh.width, 0.01, width), height: finiteNum(sh.height, 0.01, height) };
+        if (Object.values(r).every((v) => v != null)) shape = r;
+    }
+    return {
+        version: Number.isFinite(Number(src.version)) ? Number(src.version) : 1,
+        model: clampString(src.model, 64),
+        width,
+        height,
+        screen,
+        shape
+    };
+}
+
+function sameDevice(clientInfo, src) {
+    const deviceId = String(src.deviceId || (clientInfo && clientInfo.deviceId) || '').trim().toLowerCase();
+    return clientInfo && clientInfo.deviceId && deviceId === clientInfo.deviceId ? deviceId : null;
+}
+
+/**
+ * client_device_preview: the device's picture of itself (frame with a see-through screen, mask) and
+ * where its screen capture goes. Replaces the stored one; false when ignored.
+ */
+function devicePreview(globalResources, wsServer, clientInfo, data) {
+    const src = isPlainObject(data) ? data : {};
+    const deviceId = sameDevice(clientInfo, src);
+    if (!deviceId) return false;
+    const geometry = sanitizePreviewGeometry(src);
+    if (!geometry) return false;
+    const frame = decodeBase64(src.frame, PREVIEW_MAX_PNG_BYTES);
+    const mask = decodeBase64(src.mask, PREVIEW_MAX_PNG_BYTES);
+    if (!pngSize(frame) || !pngSize(mask)) return false;
+    const dir = previewDir(globalResources, deviceId);
+    fs.mkdirSync(dir, { recursive: true });
+    // write beside, then rename: a panel reading mid-update gets the old file or the new one
+    for (const [name, buf] of [['frame.png', frame], ['mask.png', mask]]) {
+        const tmp = path.join(dir, `${name}.${process.pid}.tmp`);
+        fs.writeFileSync(tmp, buf);
+        fs.renameSync(tmp, path.join(dir, name));
+    }
+    const preview = Object.assign(geometry, {
+        updatedAt: Date.now(),
+        etag: crypto.createHash('sha1').update(frame).update(mask).digest('hex').slice(0, 16)
+    });
+    getDb(globalResources).prepare('UPDATE slideshow_devices SET preview = ? WHERE device_id = ?').run(JSON.stringify(preview), deviceId);
+    scheduleDevicesUpdated(globalResources, wsServer);
+    return true;
+}
+
+/** device_screen_updated { deviceId, at } to the administrators' tabs, at most one per device per second. */
+function scheduleScreenUpdated(globalResources, wsServer, deviceId, at) {
+    const server = wsServerOf(globalResources, wsServer);
+    if (!server || typeof server.broadcast !== 'function') return;
+    const pending = screenBroadcasts.get(deviceId);
+    if (pending) {
+        pending.at = at;
+        return;
+    }
+    const entry = { at, timer: null };
+    entry.timer = setTimeout(() => {
+        screenBroadcasts.delete(deviceId);
+        server.broadcast({ type: 'device_screen_updated', data: { deviceId, at: entry.at }, timestamp: new Date().toISOString() },
+            (info) => !!(info && info.authenticated && info.userType === 'admin' && !info.deviceId && !info.deviceApp));
+    }, SCREEN_BROADCAST_MS);
+    if (typeof entry.timer.unref === 'function') entry.timer.unref();
+    screenBroadcasts.set(deviceId, entry);
+}
+
+/** client_device_screen: the latest capture of the whole device screen, kept in memory. */
+function deviceScreen(globalResources, wsServer, clientInfo, data) {
+    const src = isPlainObject(data) ? data : {};
+    const deviceId = sameDevice(clientInfo, src);
+    if (!deviceId) return false;
+    const format = String(src.format || 'jpeg').toLowerCase();
+    if (format !== 'jpeg' && format !== 'jpg') return false;
+    const buffer = decodeBase64(src.image, SCREEN_MAX_BYTES);
+    if (!buffer || buffer[0] !== 0xff || buffer[1] !== 0xd8) return false;
+    const at = Number(src.at);
+    const rec = {
+        buffer,
+        width: clampInt(src.width, 1, 100000),
+        height: clampInt(src.height, 1, 100000),
+        // the device's own clock; the server's receipt time when it sends none or a silly one
+        at: Number.isFinite(at) && at > 0 && Math.abs(at - Date.now()) < 86400000 ? Math.round(at) : Date.now(),
+        receivedAt: Date.now()
+    };
+    screens.set(deviceId, rec);
+    scheduleScreenUpdated(globalResources, wsServer, deviceId, rec.at);
+    return true;
+}
+
+/** Captures of devices offline for long are dropped (their picture is stale and only costs memory). */
+function pruneScreens(globalResources, server) {
+    const now = Date.now();
+    for (const [deviceId, rec] of screens) {
+        if (now - rec.receivedAt < SCREEN_KEEP_OFFLINE_MS || findDeviceSocket(server, deviceId)) continue;
+        screens.delete(deviceId);
+    }
+}
+
+/** What list_devices says about the preview (no image data), or null when the device sent none. */
+function describePreview(row) {
+    const p = parseJson(row.preview, null);
+    if (!p) return null;
+    const shot = screens.get(row.device_id);
+    return {
+        version: p.version,
+        model: p.model,
+        width: p.width,
+        height: p.height,
+        screen: p.screen,
+        shape: p.shape,
+        updatedAt: p.updatedAt,
+        hasScreen: !!shot,
+        screenAt: shot ? shot.at : null,
+        screenWidth: shot ? shot.width : null,
+        screenHeight: shot ? shot.height : null
+    };
+}
+
+/**
+ * One preview image for the HTTP route: { buffer, contentType, etag } or null. name: frame.png,
+ * mask.png or screen.jpg (the in-memory capture; served even for a device that sent no frame).
+ */
+function previewImage(globalResources, deviceId, name) {
+    const id = String(deviceId || '').trim().toLowerCase();
+    if (!isDeviceId(id)) return null;
+    if (name === 'screen.jpg') {
+        const shot = screens.get(id);
+        return shot ? { buffer: shot.buffer, contentType: 'image/jpeg', etag: `"s-${shot.at}-${shot.buffer.length}"` } : null;
+    }
+    if (name !== 'frame.png' && name !== 'mask.png') return null;
+    const row = rowOf(globalResources, id);
+    const p = row ? parseJson(row.preview, null) : null;
+    if (!p) return null;
+    try {
+        const buffer = fs.readFileSync(path.join(previewDir(globalResources, id), name));
+        return { buffer, contentType: 'image/png', etag: `"${name[0]}-${p.etag || p.updatedAt}"` };
+    } catch (_) {
+        return null;
+    }
+}
+
+function removePreview(globalResources, deviceId) {
+    screens.delete(deviceId);
+    try {
+        fs.rmSync(previewDir(globalResources, deviceId), { recursive: true, force: true });
+    } catch (err) {
+        console.warn('[slideshowDevices] removing the preview failed:', err.message);
+    }
+}
+
+/**
+ * GET /api/sideshow/devices/:deviceId/preview/(frame.png|mask.png|screen.jpg), administrators only.
+ * screen.jpg is no-store; frame and mask are private and revalidated by ETag (a frame is ~650 KB and rarely changes).
+ */
+function mountPreviewRoutes(app, authMiddleware, globalResources) {
+    const auth = authMiddleware || ((req, res, next) => next());
+    app.get('/api/sideshow/devices/:deviceId/preview/:name', auth, (req, res) => {
+        // the capture changes all the time: never stored; frame and mask revalidate by ETag
+        res.set('Cache-Control', req.params.name === 'screen.jpg' ? 'private, no-store' : 'private, no-cache');
+        if (req.userType !== 'admin') {
+            res.status(403).json({ success: false, error: 'Admin access required', code: 'INSUFFICIENT_PERMISSIONS' });
+            return;
+        }
+        let img;
+        try {
+            img = previewImage(globalResources, req.params.deviceId, req.params.name);
+        } catch (err) {
+            res.status(500).json({ success: false, error: err.message });
+            return;
+        }
+        if (!img) {
+            res.status(404).json({ success: false, error: 'No such preview image', code: 'NOT_FOUND' });
+            return;
+        }
+        res.set('ETag', img.etag);
+        res.set('X-Content-Type-Options', 'nosniff');
+        if (req.headers['if-none-match'] === img.etag) {
+            res.status(304).end();
+            return;
+        }
+        res.type(img.contentType).send(img.buffer);
+    });
 }
 
 /** An ack's answer: { ok, error? }, and for set_device_config / set_mode { applied, rejected, restarting }. */
@@ -785,6 +1038,7 @@ function forget(globalResources, wsServer, deviceId) {
     const id = String(deviceId || '').trim().toLowerCase();
     if (!isDeviceId(id)) throw badRequest('deviceId must be 12 lowercase hex', 'BAD_DEVICE_ID');
     const removed = getDb(globalResources).prepare('DELETE FROM slideshow_devices WHERE device_id = ?').run(id).changes > 0;
+    removePreview(globalResources, id);
     scheduleDevicesUpdated(globalResources, wsServer);
     return removed;
 }
@@ -808,6 +1062,9 @@ function resetForTests(databasesPath) {
     lastWsServer = null;
     if (broadcastTimer) clearTimeout(broadcastTimer);
     broadcastTimer = null;
+    screens.clear();
+    for (const entry of screenBroadcasts.values()) clearTimeout(entry.timer);
+    screenBroadcasts.clear();
     return getDb({ getPath: () => databasesPath });
 }
 
@@ -827,6 +1084,10 @@ module.exports = {
     identify,
     deviceState,
     deviceConfigReport,
+    devicePreview,
+    deviceScreen,
+    previewImage,
+    mountPreviewRoutes,
     deliverPendingDeviceConfig,
     commandAck,
     onSocketClosed,

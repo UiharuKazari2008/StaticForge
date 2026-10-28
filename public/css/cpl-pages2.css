@@ -1122,6 +1122,53 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     height: 48px;
 }
 
+/* The device as it looks (client_device_preview): its capture inside a layer masked to the screen
+   opening, the device photo (transparent where the screen is) on top; positions are % of the photo */
+#melatonControlPanelModal .cpl-ss-phys {
+    position: relative;
+    flex: none;
+}
+
+#melatonControlPanelModal .cpl-ss-phys-screen {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #000;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+}
+
+#melatonControlPanelModal .cpl-ss-phys img.cpl-ss-phys-shot {
+    position: absolute;
+    max-width: none;
+}
+
+#melatonControlPanelModal .cpl-ss-phys img.cpl-ss-phys-frame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+#melatonControlPanelModal .cpl-ss-phys.is-off .cpl-ss-phys-shot {
+    filter: grayscale(1) brightness(0.45);
+}
+
+/* the 32 / 48 px icon sizes of the column heads and the logo do not apply to the photo */
+#melatonControlPanelModal .cpl-ss-devhead .cpl-ss-phys img.cpl-ss-phys-frame,
+#melatonControlPanelModal .cpl-ss-logo .cpl-ss-phys img.cpl-ss-phys-frame {
+    width: 100%;
+    height: 100%;
+}
+
+#melatonControlPanelModal .cpl-ss-logo [data-ss-live="phys"] {
+    display: block;
+    margin-right: 6px;
+}
+
 #melatonControlPanelModal .cpl-ss-para {
     margin-bottom: 7px;
 }

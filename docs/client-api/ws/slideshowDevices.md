@@ -26,6 +26,8 @@ MCP `list_clients` still list them with `kind`, `name`, `deviceId`, `bindable: f
 | `client_identify` | `client_identify_response` | `data: { kind, deviceId, name, app, model, os, display: { width, height, orientation }, settings, deviceConfig?, gadgets? }` -> `{ success, deviceId, name, settings? }`. Send after every connect. `kind` must be `slideshow` (else error `BAD_DEVICE_KIND`); `deviceId` 12 hex (`BAD_DEVICE_ID`). Strings are clamped to 64 characters. The reply's `settings` holds only what Control Panel changed while the device was offline (apply and persist the keys you know); `name` is the stored name (a Control Panel rename wins). Both are cleared once sent. `deviceConfig` / `gadgets`: see [Device-specific settings and gadgets](#device-specific-settings-and-gadgets); device settings Control Panel changed while the device was offline follow the reply as a `set_device_config` command. |
 | `client_device_state` | none | `data: { deviceId, state, showing, since, mode?, face?, scheduleEntry? }`. Fire-and-forget on every slide and state change. `state`: `showing`, `paused`, `offline_cache`, `signin_needed`, `stopped`. `showing`: one gallery filename, or two for a portrait pair. Send `stopped` when the screensaver ends; the socket's close marks the device offline. Ignored before `client_identify`. A gadget device adds `mode` (`slideshow` or `clock`, what is on screen), `face` (the clock face while `mode` is `clock`, else `null`) and `scheduleEntry` (the active time frame's index, or `null`); it sends the state again whenever a time frame starts or ends, and the stored `gadgets` follow it. |
 | `client_device_config` | none | `data: { deviceId, deviceConfig, gadgets }`. Fire-and-forget whenever the device's own values change (a command, the device's own settings page, a restart). Replaces the stored copy and refreshes Control Panel (`devices_updated`). Ignored before `client_identify` or for another device's id. |
+| `client_device_preview` | none | `data: { deviceId, version, model, width, height, frame, mask, screen: { x, y, width, height, sourceWidth, sourceHeight }, shape? }`. Fire-and-forget, once per connection after `client_identify`. See [Device preview](#device-preview-physical-representation). |
+| `client_device_screen` | none | `data: { deviceId, format: "jpeg", image, width, height, at }`. Fire-and-forget live capture of the whole device screen (~480 px long side, 20-40 KB); after slide / mode changes and every 30 s while a clock shows. |
 | `device_command_ack` | none | `{ commandId, data: { ok, error? } }`, the answer to a `device_command`. For `set_device_config` / `set_mode`: `{ ok, applied: [keys], rejected: { key: reason }, restarting }` (`ok` false if anything was rejected; `restarting`: a non-live key changed, the device reconnects in about a second). |
 | `device_slideshow_images` | `device_slideshow_images_response` | `{ offset?, limit?, seed? }` -> `{ success, deviceId, total, offset, items: [{ filename, width, height, mtime }] }`: one page (default 500, max 2000) of the pictures for this device's stored settings. Newest first; with a `seed` (any integer the device keeps until it reloads) the same seeded shuffle every call, so a device pages through a stable random order. `total` counts the whole rotation. No pool limit unless `poolSize` is set. The server keeps the resolved list 2 minutes per settings; names and sizes only, the device loads each picture (`/previews/<base>.webp` or `/images/<filename>`) as it shows it. Workspace pictures follow `viewType`; an Image Search follows its own query; `maxAgeDays` filters both (search results are dated by the filename's leading timestamp). Before `client_identify`: `success: false, code: "NOT_IDENTIFIED"`. |
 
@@ -77,6 +79,44 @@ descriptors (`time`, `days` included; unknown item keys are dropped). Any bad ke
 `deviceConfig` gets `NO_DEVICE_CONFIG`. `set_mode` needs the gadget in `available` (`BAD_MODE`) and `face` among the
 clock's faces (`BAD_FACE`).
 
+## Device preview (physical representation)
+
+Wire format: section 4 of `DS-SlideShow-win64/docs/DEVICE_CONFIG_PROTOCOL.md`. A device (the WACCA cabinet's Windows
+Dreamscape SlideShow, the Device Simulator) sends a front-on picture of itself so Control Panel can draw it as it looks.
+
+- `client_device_preview`: `frame` and `mask` are base64 PNGs (a `data:` URL prefix is accepted), the same size,
+  at most 4 MB each decoded; `frame` is transparent where the screen is, `mask`'s alpha is where the capture shows.
+  `width` / `height` (1 - 8192, whole px) are the frame size and every other number is in those units. `screen` is
+  where the **whole** screen capture goes (it already carries the offsets / scale that put the visible part behind
+  the opening). `shape` is optional: `{ type: "circle", cx, cy, r }` or `{ type: "rect", x, y, width, height }`.
+  Not PNGs or a missing / non-finite `screen` field: ignored. Ignored before `client_identify` or for another
+  device's id. Stored: the PNGs as files in `slideshow_previews/<deviceId>/` next to the sqlite, the geometry in its
+  `preview` column; a new preview replaces the old one, `device_forget` deletes them. Refreshes Control Panel
+  (`devices_updated`).
+- `client_device_screen`: JPEG only, at most 512 KB decoded. Kept in memory, the latest one per device (lost on a
+  server restart; dropped once a device has been offline for 6 hours). `at` is the device's clock (the server's
+  receipt time if missing or more than a day off). Admin tabs get `device_screen_updated { deviceId, at }`, at
+  most one per device per second (the newest `at`).
+
+Both are read-only-PIN safe (not destructive) and in the `gallery` application-key scope.
+
+Images, **administrators only** (`userType: "admin"`; anything else gets 403 `INSUFFICIENT_PERMISSIONS`), behind the
+normal session auth:
+
+| `GET` | Type | Caching |
+|---|---|---|
+| `/api/sideshow/devices/:deviceId/preview/frame.png` | `image/png` | `private, no-cache` + `ETag` (revalidated, 304 when unchanged) |
+| `/api/sideshow/devices/:deviceId/preview/mask.png` | `image/png` | `private, no-cache` + `ETag` |
+| `/api/sideshow/devices/:deviceId/preview/screen.jpg` | `image/jpeg` | `private, no-store` |
+
+404 `NOT_FOUND` when the device sent no preview (frame / mask) or no capture yet (screen). Control Panel adds
+`?v=<preview.updatedAt>` / `?v=<preview.screenAt>` so a new image is a new URL.
+
+Control Panel (Melaton SideShow, `cplPages2.js` `ssPhysicalHtml`) draws: a layer with `mask-image: url(mask.png)` /
+`mask-size: 100% 100%` holding the capture absolutely positioned at `screen` as percentages of `width` / `height`,
+then `frame.png` over it. Without a capture it shows the picture on screen (`/previews/<base>.webp`, `object-fit:
+cover`) in the same place; without a preview, the old icon / bezel drawing.
+
 ## Server to device
 
 `device_command`: `{ type: "device_command", commandId: "c-...", data: { command, filename?, settings?, name?, config?, mode?, face? } }`
@@ -96,7 +136,7 @@ clock's faces (`BAD_FACE`).
 
 | Request type | Response | Notes |
 |---|---|---|
-| `list_devices` | `list_devices_response` | `{}` -> `{ success, devices: [{ deviceId, kind, name, app, model, os, display, online, lastSeen, firstSeen, state, showing, since, settings, pendingSettings, pendingName }] }`. Online first, then by last seen. A device is online while its socket is open and has not reported `stopped`. A non-admin session gets `{ success: false, code: "INSUFFICIENT_PERMISSIONS", devices: [] }` (an answer, not an error packet). Devices that declare them also carry `deviceConfig`, `gadgets` and `pendingDeviceConfig` (the keys queued for the next connect, or `null`); the last-known config stays while the device is offline. |
+| `list_devices` | `list_devices_response` | `{}` -> `{ success, devices: [{ deviceId, kind, name, app, model, os, display, online, lastSeen, firstSeen, state, showing, since, settings, pendingSettings, pendingName, preview }] }`. `preview` is `null` until the device sends `client_device_preview`, then `{ version, model, width, height, screen, shape, updatedAt, hasScreen, screenAt, screenWidth, screenHeight }` (metadata only; the images are on the HTTP routes above). Online first, then by last seen. A device is online while its socket is open and has not reported `stopped`. A non-admin session gets `{ success: false, code: "INSUFFICIENT_PERMISSIONS", devices: [] }` (an answer, not an error packet). Devices that declare them also carry `deviceConfig`, `gadgets` and `pendingDeviceConfig` (the keys queued for the next connect, or `null`); the last-known config stays while the device is offline. |
 | `device_send_command` | `device_send_command_response` | `{ deviceId, command, filename?, settings?, name?, config?, mode?, face? }` (top level or in `data`) -> `{ success, deviceId, command, commandId?, queued?, applied?, rejected?, restarting?, error?, code? }`. Online: relays `device_command` and waits up to 6 s for the ack (`ACK_TIMEOUT`). Offline: `set_settings` and `rename` are stored (`queued: true`) for the next identify, `set_device_config` and `set_mode` (as `{ mode, clockFace }`) are merged into `pendingDeviceConfig` and sent as one `set_device_config` right after the next identify reply (queued again should the device not answer); other commands fail with `DEVICE_OFFLINE`. `set_device_config` / `set_mode` pass the ack's `applied`, `rejected` and `restarting` through (`success` is the ack's `ok`), or fail validation as above. Settings and name changes show in `list_devices` at once. Destructive (read-only sessions get `READONLY_RESTRICTED`). |
 | `device_preview_images` | `device_preview_images_response` | `{ deviceId?, settings?, limit? }` -> `{ success, total, items, workspaces: [{ id, name }] }`. What a device would show with its stored settings overlaid by `settings` (unsaved form values); `items` is the first `limit` (default 12, max 60). The SideShow settings page's count and thumbnails. Non-admin: `success: false, code: "INSUFFICIENT_PERMISSIONS"`. |
 | `device_forget` | `device_forget_response` | `{ deviceId }` -> `{ success, deviceId, removed }`. Deletes the stored device; it comes back the next time it identifies. Destructive. |
@@ -105,11 +145,12 @@ clock's faces (`BAD_FACE`).
 
 | Type | When | Data |
 |---|---|---|
-| `devices_updated` | To admin tabs (not device sockets) when a device identifies, reports state or its own settings (`client_device_config`), closes, or a command / forget changes it; coalesced to one per 250 ms | `{ devices }`, the `list_devices` shape |
+| `devices_updated` | To admin tabs (not device sockets) when a device identifies, reports state or its own settings (`client_device_config`), sends a preview, closes, or a command / forget changes it; coalesced to one per 250 ms | `{ devices }`, the `list_devices` shape |
+| `device_screen_updated` | To admin tabs when a device sends a `client_device_screen`; at most one per device per second | `{ deviceId, at }`; fetch `screen.jpg` again (the list's `preview.hasScreen` / `screenAt` follow) |
 
 ## Application keys
 
-`client_identify`, `client_device_state`, `client_device_config`, `device_command_ack` and `device_slideshow_images` are in the `gallery` scope
+`client_identify`, `client_device_state`, `client_device_config`, `client_device_preview`, `client_device_screen`, `device_command_ack` and `device_slideshow_images` are in the `gallery` scope
 (`modules/applicationAuthManager.js`), next to `request_gallery`.
 
 Test: `node scripts/test-slideshow-devices.js`.

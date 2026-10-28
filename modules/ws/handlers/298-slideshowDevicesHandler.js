@@ -45,6 +45,24 @@ function registerPackets(handlersCtx) {
         }
     });
 
+    // fire-and-forget: the device's picture of itself (once per connection) and live captures of its
+    // screen; Control Panel reads them over GET /api/sideshow/devices/:id/preview/* (admin)
+    reg('client_device_preview', async ({ message, clientInfo, wsServer }) => {
+        try {
+            slideshowDevices.devicePreview(gr(), wsServer, clientInfo, message.data);
+        } catch (error) {
+            console.warn('[slideshowDevices] client_device_preview failed:', error.message);
+        }
+    });
+
+    reg('client_device_screen', async ({ message, clientInfo, wsServer }) => {
+        try {
+            slideshowDevices.deviceScreen(gr(), wsServer, clientInfo, message.data);
+        } catch (error) {
+            console.warn('[slideshowDevices] client_device_screen failed:', error.message);
+        }
+    });
+
     // fire-and-forget: no reply, and a socket that never identified is ignored
     reg('client_device_state', async ({ message, clientInfo, wsServer }) => {
         try {
