@@ -1038,7 +1038,19 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     font: inherit;
     overflow: hidden;
     text-overflow: ellipsis;
-    cursor: pointer;
+    cursor: var(--c-pointer);
+    /* 7.css .win7 button: 75 px push-button face, inset shadow, centred text */
+    min-width: 0;
+    min-height: 0;
+    box-shadow: none;
+    text-align: left;
+}
+
+#melatonControlPanelModal .cpl-ss-devhead::before,
+#melatonControlPanelModal .cpl-ss-devhead::after,
+#melatonControlPanelModal .cpl-ss-gadget-link::before,
+#melatonControlPanelModal .cpl-ss-gadget-link::after {
+    content: none;
 }
 
 #melatonControlPanelModal .cpl-ss-devhead:hover,
@@ -1281,7 +1293,8 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     color: #333;
 }
 
-#melatonControlPanelModal .cpl-ss-center {
+/* beats .cpl-content p { text-align: left } */
+#melatonControlPanelModal .cpl-content p.cpl-ss-center {
     text-align: center;
 }
 
@@ -1369,10 +1382,30 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 /* Device-specific settings and the Clock gadget, drawn from each device's own schema: one Vista group
    box per group, the settings grid inside, hints and errors under their fields */
 #melatonControlPanelModal .cpl-ss-group {
+    min-width: 0;
     margin: 0 0 10px;
     padding: 4px 10px 6px;
     border: 1px solid #d5dfe5;
     border-radius: 3px;
+}
+
+/* 7.css .win7 table draws a list-view frame and column rules; these are plain label/field grids */
+#melatonControlPanelModal .cpl-ss-page table.cpl-ss-settings {
+    border: 0;
+    background: none;
+}
+
+#melatonControlPanelModal .cpl-ss-page table.cpl-ss-settings > tbody > tr > td {
+    border: 0;
+}
+
+#melatonControlPanelModal .cpl-ss-group > table.cpl-ss-settings {
+    margin: 6px 0 2px 4px;
+}
+
+/* a field's help line wraps instead of widening the page */
+#melatonControlPanelModal .cpl-ss-page table.cpl-ss-settings > tbody > tr > td:last-child {
+    white-space: normal;
 }
 
 #melatonControlPanelModal .cpl-ss-group legend {
@@ -1380,7 +1413,7 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     color: #1e395b;
 }
 
-#melatonControlPanelModal .cpl-ss-cfg .cpl-ss-settings td:first-child {
+#melatonControlPanelModal .cpl-ss-cfg .cpl-ss-settings > tbody > tr > td:first-child {
     width: 150px;
     vertical-align: top;
     padding-top: 6px;
@@ -1422,11 +1455,13 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 
 #melatonControlPanelModal .cpl-ss-items {
     width: auto;
+    min-width: 320px;
     margin-bottom: 4px;
 }
 
+/* list-view cells keep the header's text inset */
 #melatonControlPanelModal .cpl-ss-items td {
-    padding: 2px 6px 2px 0;
+    padding: 2px 6px;
     white-space: nowrap;
 }
 

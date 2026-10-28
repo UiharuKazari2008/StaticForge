@@ -469,8 +469,9 @@
     function addressIcon(page) {
         if (page && page.icon16) return page.icon16;
         const cat = root.cplCatalog;
-        if (cat && current && current !== 'home') {
-            const it = cat.ITEMS.find((i) => i.art && (i.id === current || i.open === `page:${current}`));
+        // an item's sub-page (its parent chain) keeps the item's icon
+        for (let id = current, hops = 0; cat && id && id !== 'home' && hops < 8; id = pages[id] && pages[id].parent, hops++) {
+            const it = cat.ITEMS.find((i) => i.art && (i.id === id || i.open === `page:${id}`));
             if (it) return cat.art(it.art, 16);
         }
         return '/static_images/app_icons/16/vista-control-panel.webp';

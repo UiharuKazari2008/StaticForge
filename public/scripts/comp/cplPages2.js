@@ -639,6 +639,13 @@
         return root.wsClient && typeof root.wsClient.listDevices === 'function' ? root.wsClient : null;
     }
 
+    /** The server lists online devices by last seen (now, for each), so the order changes from list to
+     *  list; the pane and the grid's columns keep one order: by name. */
+    function ssByName(list) {
+        return list.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
+            || String(a.deviceId).localeCompare(String(b.deviceId)));
+    }
+
     function ssDevice(id) {
         return (ss.devices || []).find((d) => d.deviceId === id) || null;
     }
@@ -691,7 +698,7 @@
         root.wsClient.on('devices_updated', (msg) => {
             const list = msg && msg.data && msg.data.devices;
             if (!Array.isArray(list)) return;
-            ss.devices = list;
+            ss.devices = ssByName(list);
             if (ssOnPage()) ssRefreshView();
         });
     }
@@ -703,7 +710,7 @@
         if (!c || ss.loading || Date.now() - ss.loadedAt < 2000) return;
         ss.loading = true;
         c.listDevices().then((res) => {
-            ss.devices = (res && res.devices) || [];
+            ss.devices = ssByName((res && res.devices) || []);
             // read-only logons cannot manage devices (the CPL's own string 906)
             ss.error = res && res.code === 'INSUFFICIENT_PERMISSIONS' ? 'You do not have the correct permissions to change this setting. For more information, contact your system administrator.' : '';
         }).catch(() => {
@@ -869,7 +876,8 @@
     // ---- device-specific settings and gadgets (DS-SlideShow-win64/docs/DEVICE_CONFIG_PROTOCOL.md) ----
     // Each device describes its own fields (deviceConfig.schema) and gadgets (slideshow, clock and its
     // faces); the forms are built from that alone, so a field the device adds shows up with no change here.
-    const SS_CLOCK_ICON = '/static_images/vista-cpl/categories/clock-language-and-region';
+    // the Sidebar Clock gadget's own icon, as the slide show row carries Picture Viewer's
+    const SS_CLOCK_ICON = '/static_images/vista-sideshow/clock-gadget';
     const SS_WEEKDAYS = [['S', 'Sunday'], ['M', 'Monday'], ['T', 'Tuesday'], ['W', 'Wednesday'], ['T', 'Thursday'], ['F', 'Friday'], ['S', 'Saturday']];
     const SS_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
     const SS_UNSAVED = 'Melaton was unable to save the changes to the device. Make sure the device is connected to the computer, and then try again.';
@@ -1273,7 +1281,7 @@
                 ${pendingMode ? '<p class="cpl-vtext cpl-ss-dim cpl-ss-para">A gadget change will be sent to the device the next time it connects.</p>' : ''}
                 <div class="cpl-ss-remote cpl-ss-left">
                     <button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="showclock">Show on device</button>
-                    ${ssGadget(d, 'slideshow') ? `<button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="showslides">Show ${esc(ssGadget(d, 'slideshow').name || 'Slideshow')} instead</button>` : ''}
+                    ${ssGadget(d, 'slideshow') ? `<button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="showslides">Show ${esc(SS_GADGET)} instead</button>` : ''}
                 </div>
                 ${entries ? `<div class="cpl-vsection"><span>Time frames</span></div>
                 <p class="cpl-vtext cpl-ss-para">During a time frame the device shows what you choose for it, by itself, even when it cannot reach this computer. The first time frame that covers the time wins; one that ends before it starts runs past midnight. With no day ticked it applies every day.</p>
