@@ -58,6 +58,9 @@ const RESOLUTIONS = [
     { value: 'wallpaper_landscape', label: 'Wallpaper Widescreen', width: 1920, height: 1088 }
 ];
 
+// What the dataset ids mean. Listed tools rewrite dataset_config.description, so this keeps it visible.
+const DATASET_RULE = 'Datasets and style presets are toggles here, never typed tags. include replaces the on-list (send every id you want on). "fur dataset" (alias furry) = the furry/e621 side: anthro, kemono, feral, furry artists, e621-only tags; turn it on for furry characters. Always set settings["fur dataset"].furry_human with it (on by default; it adds not furry): enabled true for a human in a furry style, false for an anthro/furry character. "background dataset" = scenery. "anime dataset" is V4.5 only. __visual_novel__, __quality__, __transparency__ are V5 presets. get_prompt_guide pageId agent-tools explains each.';
+
 const PRESET_RULE = 'Prefer the matching append_* flag over pasting that preset text. If you need to change a tag inside a preset, turn that preset off (append_quality false / append_uc 0) and put the edited string in prompt or uc. Never leave the preset on and also paste a variant — the server prepends the live value and you would duplicate or fight it. No-text is the Quality sub-toggle dataset_config.settings.__quality__.no_text (default on); disable it for in-image text instead of pasting "no text" or turning quality off.';
 
 function resolvePresetModelKey(table, modelKey) {
@@ -357,7 +360,7 @@ function patchParamSchema(props, catalog) {
         if (Array.isArray(qualitySubs) && qualitySubs.length) {
             settingsHint = qualitySubs.map((st) => `${st.param} (${st.name}=${st.value}${st.defaultEnabled ? ', default on' : ''})`).join('; ');
         }
-        props.dataset_config.description = `${nsfwDesc} Quality sub-toggles: ${settingsHint}`;
+        props.dataset_config.description = `${DATASET_RULE} ${nsfwDesc} Quality sub-toggles: ${settingsHint}`;
         props.dataset_config.properties.nsfw.description = nsfwDesc;
         const ids = ((catalog && catalog.nsfw && catalog.nsfw.levels) || []).map((row) => row.id);
         if (ids.length) props.dataset_config.properties.nsfw.enum = ids;
@@ -402,7 +405,7 @@ function patchParamSchemaSlim(props) {
     }
     if (props.dataset_config) {
         if (!props.dataset_config.properties) props.dataset_config.properties = {};
-        props.dataset_config.description = 'nsfw level + settings.__quality__ sub-toggles (high_complexity, no_text). Full add/remove strings: get_studio_state.settings or verboseSchema.';
+        props.dataset_config.description = `${DATASET_RULE} Also nsfw level + settings.__quality__ sub-toggles (high_complexity, no_text). Full add/remove strings: get_studio_state.settings or verboseSchema.`;
         if (props.dataset_config.properties.nsfw) {
             props.dataset_config.properties.nsfw.enum = [3, 2, 1, 0, -1, -2];
             props.dataset_config.properties.nsfw.description = 'NSFW level id. Do not paste that level\'s tags.';
@@ -445,6 +448,7 @@ module.exports = {
     NOISE_SCHEDULERS,
     RESOLUTIONS,
     PRESET_RULE,
+    DATASET_RULE,
     buildStudioSettingsCatalog,
     slimStudioSettingsCatalog,
     applyCatalogToListedTool,

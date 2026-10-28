@@ -58,7 +58,7 @@ const MODULE_DEFS = {
         scope: 'search',
         label: 'Core Search',
         description: 'Tag and file search, NAX',
-        tools: ['search_nax', 'list_nax_galleries', 'omegasearch', 'search_explore', 'count_explore', 'get_explore_post', 'get_explore_image']
+        tools: ['search_nax', 'list_nax_galleries', 'generate_nax_tag', 'delete_nax_tag', 'omegasearch', 'search_explore', 'count_explore', 'get_explore_post', 'get_explore_image']
     },
     core_autofill: {
         id: 'core_autofill',

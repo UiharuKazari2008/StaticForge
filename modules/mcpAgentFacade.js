@@ -284,7 +284,7 @@ const STUDIO_PARAM_SCHEMA = {
     sampler: { type: 'string', description: 'k_euler_ancestral (Euler Ancestral), k_dpmpp_sde (DPM++ SDE), k_dpmpp_2m (DPM++ 2M), k_dpmpp_2m_sde (DPM++ 2M SDE), k_euler (Euler), k_dpmpp_2s_ancestral (DPM++ 2S Ancestral)', enum: ['k_euler_ancestral', 'k_dpmpp_sde', 'k_dpmpp_2m', 'k_dpmpp_2m_sde', 'k_euler', 'k_dpmpp_2s_ancestral'] },
     noiseScheduler: { type: 'string', description: 'karras, exponential, or polyexponential', enum: ['karras', 'exponential', 'polyexponential'] },
     model: { type: 'string', description: 'e.g. v5, v5_cur, v4_5, v4_5_cur, v4, v4_cur, v3, furry. Live ids are on tools/list and get_studio_state.settings.models' },
-    effort: { type: 'string', description: 'V5 Full only. high (default, nai-diffusion-5-full) or medium (nai-diffusion-5-full-medium). Medium forces steps 14, sampler k_euler_ancestral, the heavy UC preset, and CFG rescale off. No UC is sent: put negatives in input_prompt_negative / character promptNegative. Any uc (base, character, NSFW level, presets) is folded into the inline negative automatically. Guidance still applies. Server clamps these even if steps, sampler, rescale, or UC are also set.', enum: ['high', 'medium'] },
+    effort: { type: 'string', description: 'V5 Full only: how much work NovelAI spends per image. high (default, nai-diffusion-5-full) = every control (steps, sampler, rescale, UC, UC preset) and the best detail and prompt-following; use it for finals, dense scenes, several characters, in-image text, or when a fix needs UC. medium (nai-diffusion-5-full-medium) = fast, cheap drafting model; use it to scout ideas, poses, and seeds, then switch to high for the keeper. Medium locks steps 14, sampler k_euler_ancestral, CFG rescale 0, and the heavy UC preset; guidance still applies. MEDIUM HAS NO UC: write every negative as the prompt negative (promptNegative / input_prompt_negative for the base, promptNegative per character), which compiles to -1::tag:: inside the prompt. Any uc you send anyway (base, character, NSFW level, presets) is moved into that prompt negative for you, and the reply says so. Server clamps these even if steps, sampler, rescale, or UC are also set.', enum: ['high', 'medium'] },
     seed: { type: ['string', 'number'], description: 'Specific seed, or "last" to lock last used' },
     seedLock: { type: 'boolean', description: 'true locks last used seed (Studio sprout). false rolls a new variation' },
     resolution: { type: 'string', description: 'Named size (normal_portrait=832x1216, normal_landscape=1216x832, normal_square=1024x1024, normal_wallpaper_landscape=1024x576, normal_wallpaper_portrait=576x1024, large_*, xlarge_*, wallpaper_*, small_*) or custom plus width/height. Live px sizes are on tools/list and get_studio_state.settings.resolutions' },
@@ -388,13 +388,13 @@ const GENERATE_IMAGE_PROPERTIES = {
     },
     dataset_config: {
         type: 'object',
-        description: 'dataset_config.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Set the level; do not paste that level\'s add/remove tags. include replaces the selected dataset list. settings.__quality__.no_text.enabled false for in-image text (keep append_quality on). Live strings are on tools/list and get_studio_state.settings.nsfw.',
+        description: "Datasets and style presets (Studio toggles). Set them here; never type their tags into prompt or UC. include REPLACES the selected list (send every id you want on; [] turns all off). Ids: \"fur dataset\" (alias furry/fur) = the e621/furry training side: anthro, kemono, feral, furry artists and e621-only tags — turn it on for furry characters or any tag search_autofill shows with datasets [e621] only; and always set settings[\"fur dataset\"].furry_human (on by default; it adds not furry): enabled true for a human in a furry style, false for an anthro/furry character. \"background dataset\" = scenery/no-humans backgrounds (sub-toggle photorealistic). \"anime dataset\" is V4.5 only (V5 is anime by default). __visual_novel__ (V5) = VN art/bg/cg/chibi/sprite sub-toggles. __quality__ = quality tags with complexity sub-toggles (high_complexity, ultra_complexity) and no_text (set settings.__quality__.no_text.enabled false for in-image text). __transparency__ (V5) = transparent background. \"expert shading\" (Detail) and \"flat color, simple illustration, simple eyes\" (High Definition, negative) are style presets. bias is the weight per id (typical 1). nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense — set the level; do not paste that level's tags. Live list: get_studio_state.settings.",
         properties: {
             nsfw: { type: 'number', description: '3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense' },
             nsfw_bias: { type: 'number' },
-            include: { type: 'array', items: { type: 'string' }, description: 'Replace selected datasets (does not toggle)' },
+            include: { type: 'array', items: { type: 'string' }, description: 'Every dataset/preset id to have on (replaces the list, does not toggle). e.g. ["fur dataset"] for furry.' },
             bias: { type: 'object' },
-            settings: { type: 'object', description: 'Nested {datasetValue:{settingId:{enabled,bias,value}}}. Quality no-text: settings.__quality__.no_text.enabled false.' }
+            settings: { type: 'object', description: 'Sub-toggles: {datasetId:{subToggleId:{enabled,bias}}}. e.g. {"fur dataset":{"furry_human":{"enabled":true}}}, {"__quality__":{"no_text":{"enabled":false}}}.' }
         }
     },
     userApprovedPaidRequest: { type: 'boolean', description: 'Required if this request spends paid Anlas/Opus (upscale, expand, large/xlarge/wallpaper, custom >1024²). Alias of allow_paid. Ask the user first. n>1 is not this gate.' },
@@ -1143,7 +1143,7 @@ const TOOL_DEFS = [
                 },
                 dataset_config: {
                     type: 'object',
-                    description: 'dataset_config.nsfw sets the Studio NSFW dropdown (same as params.nsfw / nsfw). include replaces the selected dataset list. settings writes sub-toggles (settings.__quality__.no_text.enabled false for in-image text).',
+                    description: "Datasets and style presets (Studio toggles). Set them here; never type their tags into prompt or UC. include REPLACES the selected list (send every id you want on; [] turns all off). Ids: \"fur dataset\" (alias furry/fur) = the e621/furry training side: anthro, kemono, feral, furry artists and e621-only tags — turn it on for furry characters or any tag search_autofill shows with datasets [e621] only; and always set settings[\"fur dataset\"].furry_human (on by default; it adds not furry): enabled true for a human in a furry style, false for an anthro/furry character. \"background dataset\" = scenery/no-humans backgrounds (sub-toggle photorealistic). \"anime dataset\" is V4.5 only (V5 is anime by default). __visual_novel__ (V5) = VN art/bg/cg/chibi/sprite sub-toggles. __quality__ = quality tags with complexity sub-toggles (high_complexity, ultra_complexity) and no_text (set settings.__quality__.no_text.enabled false for in-image text). __transparency__ (V5) = transparent background. \"expert shading\" (Detail) and \"flat color, simple illustration, simple eyes\" (High Definition, negative) are style presets. bias is the weight per id (typical 1). nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense — set the level; do not paste that level's tags. Live list: get_studio_state.settings.",
                     properties: {
                         nsfw: { type: 'number', description: '3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense' },
                         nsfw_bias: { type: 'number' },
@@ -1339,7 +1339,7 @@ const TOOL_DEFS = [
     {
         name: 'search_autofill',
         core: true,
-        description: 'Live autocomplete / SmartText for 1–8 terms (default cap 8). Pass model from live Studio (v5 / v4_5 / …); omit defaults to v5. Default exactOnly: exact match or same name with a qualifier in parens (elegg → elegg (nikke)); _ and space are the same. artist: and art by are stripped before that match, same as the Studio box. Hits are {tag, count, confidence, exact, model} (max 10). untrained:true only means NovelAI autofill did not expose the tag. It is not proof the model never learned it — tags are hidden for NSFW, explicit, or copyright, and the Danbooru name is often different. Do not drop it on that flag. Artist tags: try them before you drop them, and look the name up if search missed. Pass v4_5 if Studio is on V4.5. Generate, look, save_memory. Wraps test_autofill_ranking.',
+        description: 'Live autocomplete / SmartText for 1–8 terms (default cap 8): is this tag spelled right and how common is it. Pass model from live Studio (v5 / v4_5 / …); omit defaults to v5. Artists: pass category "artist" (or start the term with artist:) — that searches artist tags only (local Danbooru/e621 artists plus NAX artist galleries), allows prefix matches, and each hit carries prompt (artist:name, ready for Studio). category character / copyright / general / species keeps only that tag type. Default exactOnly: exact match or same name with a qualifier in parens (elegg → elegg (nikke)); _ and space are the same. Hits are {tag, prompt?, category, datasets, count, confidence, exact, model} (max 10). datasets [e621] only = a furry-side tag: it needs the fur dataset on (dataset_config include fur dataset). untrained:true only means NovelAI autofill did not expose the tag. It is not proof the model never learned it — tags are hidden for NSFW, explicit, or copyright, and the Danbooru name is often different. Do not drop it on that flag. Artist tags: try them before you drop them, and look the name up if search missed. Pass v4_5 if Studio is on V4.5. Generate, look, save_memory. Wraps test_autofill_ranking.',
         scope: 'autofill',
         inputSchema: {
             type: 'object',
@@ -1352,7 +1352,12 @@ const TOOL_DEFS = [
                 },
                 query: { type: 'string', description: 'Single term; merged with terms if both sent' },
                 model: { type: 'string', description: 'Studio model for suggest-tags (v5, v4_5, …). Default v5. Pass v4_5 when Studio is on V4.5.' },
-                exactOnly: { type: 'boolean', description: 'Default true. false allows any prefix (alice → alice margatroid).' },
+                category: {
+                    type: 'string',
+                    description: 'any (default), artist, character, copyright, general, species, meta. artist runs the artist-only search (same as typing artist: in the Studio box).',
+                    enum: ['any', 'artist', 'character', 'copyright', 'general', 'species', 'meta']
+                },
+                exactOnly: { type: 'boolean', description: 'Default true (false for category artist). false allows any prefix (alice → alice margatroid).' },
                 spellCheck: { type: 'boolean', description: 'Default false. Omit spellcheck noise (sauna/Jasun). Set true only if you asked for it.' }
             }
         }
@@ -1361,7 +1366,7 @@ const TOOL_DEFS = [
         name: 'search_nax',
         core: true,
         allowAutofill: true,
-        description: 'Quick preview of a NAX tag, and its votes when the tag is not custom. Not trained-data ranking (that is search_autofill). Kinds: artists, characters, faces, copyrights, hair, curated. Wraps get_nax_tags / queryTags. Default kind is ARTIST. Omit query for the current vote order. sort=score (default) is top votes first; sort=ratio is upvote ratio; sort=name is A-Z; invert true reverses. markFilter=favorites|try|unmarked|custom|all. Custom tags have a preview and no vote score. Use item.prompt in Studio (artist:name or art by …). Pass gallerySlug to search one dataset.',
+        description: 'NAX is a catalog of one-tag preview pictures (artists, characters, faces, copyrights, hair, curated artists) with community votes. Use it to SEE what a tag looks like on the model. Not trained-data ranking (that is search_autofill). Default kind is ARTIST. preview:true attaches up to 4 hit pictures. Omit query for the current vote order. sort=score (default) is top votes first; sort=ratio is upvote ratio; sort=name is A-Z; invert true reverses. markFilter=favorites|try|unmarked|custom|all. Custom tags have a preview and no vote score. Use item.prompt in Studio (artist:name or art by …). Pass gallerySlug to search one dataset. No match is not a dead end: the reply carries a ready generate_nax_tag call — run it to make the preview, then look.',
         scope: 'search',
         inputSchema: {
             type: 'object',
@@ -1388,7 +1393,8 @@ const TOOL_DEFS = [
                 },
                 limit: { type: 'number', description: '1–100, default 20' },
                 offset: { type: 'number', description: 'Skip this many merged hits (default 0)' },
-                randomSeed: { type: 'number', description: 'Only used when sort=random' }
+                randomSeed: { type: 'number', description: 'Only used when sort=random' },
+                preview: { type: 'boolean', description: 'true attaches the preview pictures of the first hits (max 4) so you can see the tag. Default false.' }
             }
         }
     },
@@ -1396,20 +1402,20 @@ const TOOL_DEFS = [
         name: 'generate_nax_tag',
         core: true,
         allowAutofill: true,
-        description: 'Generate one NAX preview to test a single tag. kind CHARA: tag is name (copyright), no commas, and the picture shows whether the model knows that pair. kind ARTIST: tag is the artist name only. Returns the preview. If the picture is not that character or artist, call delete_nax_tag. Do not leave a failed preview.',
+        description: 'Make a NAX preview picture for one tag that the catalog does not have yet, and return the picture. Use it whenever you need to see a character, artist, hair, face, or series tag and search_nax / get_character_card came back empty — do not give up or guess. Free (no Anlas); a few seconds. kind CHARA: tag is name (copyright). ARTIST or CURATED: the artist name alone. FACE, HAIR, COPYRIGHT: the one Danbooru tag. No commas. The reply has prompt (the string to put in Studio). If the picture does not show that tag, call delete_nax_tag; do not leave a failed preview. A tag that already has a preview returns it without generating.',
         scope: 'search',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             required: ['tag'],
             properties: {
-                tag: { type: 'string', description: 'One tag. Character: name (copyright). Artist: the artist name. No commas.' },
+                tag: { type: 'string', description: 'One tag. Character: name (copyright). Artist: the artist name. Hair/face/copyright: the Danbooru tag. No commas.' },
                 kind: {
                     type: 'string',
-                    description: 'CHARA (default) or ARTIST',
-                    enum: ['CHARA', 'ARTIST']
+                    description: 'CHARA (default), ARTIST, CURATED, FACE, HAIR, or COPYRIGHT',
+                    enum: ['CHARA', 'ARTIST', 'CURATED', 'FACE', 'HAIR', 'COPYRIGHT']
                 },
-                model: { type: 'string', description: 'v5 (default) or v4_5. Picks the character or artist gallery.' },
+                model: { type: 'string', description: 'v5 (default) or v4_5. Picks the gallery for that kind.' },
                 gallerySlug: { type: 'string', description: 'Optional. Overrides the gallery kind would pick.' }
             }
         }
@@ -1618,7 +1624,7 @@ const TOOL_DEFS = [
             type: 'object',
             additionalProperties: false,
             properties: {
-                pageId: { type: 'string', description: 'Page id (default prompt-optimiser-grok). Also accepts prompt-guide, BOTS, README, constraints/v5.' }
+                pageId: { type: 'string', description: 'Page id (default prompt-optimiser-grok). agent-tools explains V5 High vs Medium effort, datasets and presets (fur dataset), artist lookup, and NAX previews in plain words — read it when any of those is unclear. Also accepts prompt-guide, BOTS, README, constraints/v5.' }
             }
         }
     },
@@ -3574,14 +3580,41 @@ function listNaxGalleries(nax) {
 function naxSingleTagError(tag) {
     const text = String(tag || '').trim();
     if (!text) return 'Enter one tag';
-    if (text.includes(',')) return 'NAX test is one tag. Character: name (copyright). Artist: the artist name only.';
+    if (text.includes(',')) return 'NAX test is one tag. Character: name (copyright). Artist: the artist name only. Hair, face, copyright: the one Danbooru tag.';
     return null;
 }
 
-function naxTestGallerySlug(nax, kind, model) {
+// Kinds generate_nax_tag can preview: each needs a gallery with a template in nax_generation_config.json.
+const NAX_GENERATE_KINDS = ['CHARA', 'ARTIST', 'CURATED', 'FACE', 'HAIR', 'COPYRIGHT'];
+
+const NAX_GENERATE_TAG_SHAPE = {
+    CHARA: 'name (copyright), e.g. hatsune miku (vocaloid)',
+    ARTIST: 'the artist name alone, no artist: prefix',
+    CURATED: 'the artist name alone, no artist: prefix',
+    FACE: 'one face/expression tag, e.g. smug',
+    HAIR: 'one hair tag, e.g. drill hair',
+    COPYRIGHT: 'the series tag, e.g. blue archive'
+};
+
+/** First gallery for kind that has a preview template; the kind's first gallery when none does. */
+function naxTestGallerySlug(nax, kind, model, generationSlugs) {
     const preset = nax && typeof nax.getNaxExpanderPreset === 'function' ? nax.getNaxExpanderPreset(kind) : null;
     const slugs = preset && typeof preset.resolveSlugs === 'function' ? (preset.resolveSlugs(model) || []) : [];
+    const canGenerate = Array.isArray(generationSlugs) && generationSlugs.length ? new Set(generationSlugs) : null;
+    if (canGenerate) {
+        const hit = slugs.find((slug) => canGenerate.has(slug));
+        if (hit) return hit;
+    }
     return slugs[0] || '';
+}
+
+/** Ready generate_nax_tag call for a search_nax miss, or null when that kind cannot be previewed. */
+function naxGenerateSuggestion(query, kind, model) {
+    const tag = String(query || '').trim();
+    if (!tag || tag.includes(',') || !NAX_GENERATE_KINDS.includes(kind)) return null;
+    const args = { tag, kind };
+    if (model) args.model = model;
+    return { tool: 'generate_nax_tag', arguments: args };
 }
 
 async function generateNaxTag(globalResources, input) {
@@ -3590,8 +3623,8 @@ async function generateNaxTag(globalResources, input) {
     const single = naxSingleTagError(tagRaw);
     if (single) return { success: false, error: single };
     const kind = normalizeNaxKind(src.kind || 'CHARA');
-    if (kind !== 'CHARA' && kind !== 'ARTIST') {
-        return { success: false, error: 'kind is CHARA or ARTIST' };
+    if (!NAX_GENERATE_KINDS.includes(kind)) {
+        return { success: false, error: `kind is one of ${NAX_GENERATE_KINDS.join(', ')}` };
     }
     const gen = globalResources && typeof globalResources.getNaxTagGeneration === 'function'
         ? globalResources.getNaxTagGeneration()
@@ -3602,11 +3635,18 @@ async function generateNaxTag(globalResources, input) {
     const tag = gen.prepareTagInput(tagRaw);
     const nax = resolveNaxModule(globalResources);
     const model = src.model || DEFAULT_FORGE_MODEL;
+    const generationSlugs = typeof gen.getGenerationSlugs === 'function' ? gen.getGenerationSlugs() : [];
     let gallerySlug = String(src.gallerySlug || src.gallery || '').trim();
-    if (!gallerySlug) gallerySlug = naxTestGallerySlug(nax, kind, model);
-    if (!gallerySlug) return { success: false, error: 'No NAX gallery for that kind' };
+    if (!gallerySlug) gallerySlug = naxTestGallerySlug(nax, kind, model, generationSlugs);
+    if (!gallerySlug) return { success: false, error: `No NAX gallery for ${kind} on ${model}` };
     if (typeof nax.slugExists === 'function' && !nax.slugExists(gallerySlug)) {
         return { success: false, error: 'Unknown gallery' };
+    }
+    if (generationSlugs.length && !generationSlugs.includes(gallerySlug)) {
+        return {
+            success: false,
+            error: `Gallery ${gallerySlug} has no preview template. Galleries that can generate: ${generationSlugs.join(', ')}`
+        };
     }
     let alreadyExists = false;
     let item = null;
@@ -3628,14 +3668,24 @@ async function generateNaxTag(globalResources, input) {
     }
     const filename = item && item.filename ? item.filename : null;
     const url = filename ? `/naxCache/${encodeURIComponent(gallerySlug)}/${encodeURIComponent(filename)}` : null;
-    const next = kind === 'CHARA'
-        ? 'Single-tag test of name (copyright). If this picture is not that character, delete_nax_tag with this gallerySlug and tag, describe them vividly, and save_character_db_entry. Do not leave a failed preview.'
-        : 'Single-tag artist test. If this picture is not that artist, delete_nax_tag with this gallerySlug and tag. Do not leave a failed preview.';
+    const prompt = typeof nax.formatTagForPrompt === 'function' ? nax.formatTagForPrompt(tag, gallerySlug) : tag;
+    let next;
+    if (kind === 'CHARA') {
+        next = 'Single-tag test of name (copyright). Look at the picture. If it is that character, the model knows the tag: use prompt and describe the outfit/hair you see. If it is not, delete_nax_tag with this gallerySlug and tag, describe them vividly, and save_character_db_entry. Do not leave a failed preview.';
+    } else if (kind === 'ARTIST' || kind === 'CURATED') {
+        next = 'Single-tag artist test. Look at the picture. If it shows a distinct style, use prompt as the artist tag. If it is generic anime with no style, the model does not know that name: delete_nax_tag with this gallerySlug and tag, and try another spelling (search_autofill category artist). Do not leave a failed preview.';
+    } else {
+        next = `Single-tag ${kind.toLowerCase()} test. Look at the picture. If the tag shows, use prompt. If it does not, delete_nax_tag with this gallerySlug and tag, and describe the look in words instead. Do not leave a failed preview.`;
+    }
+    if (alreadyExists) {
+        next = `This tag already had a preview in ${gallerySlug}; nothing new was generated. ${next}`;
+    }
     return {
         success: true,
         kind,
         gallerySlug,
         tag,
+        prompt,
         filename,
         url,
         alreadyExists,
@@ -3707,6 +3757,17 @@ function searchNaxTags(nax, input) {
     const kind = src.gallerySlug || src.gallery || src.slug
         ? null
         : normalizeNaxKind(src.kind);
+    const generate = !items.length && query
+        ? naxGenerateSuggestion(query, kind, src.model || null)
+        : null;
+    let next;
+    if (items.length) {
+        next = 'Use item.prompt in Studio (do not invent a different artist string). preview:true attaches the pictures. sort=score is top votes; sort=ratio is upvote ratio; invert reverses.';
+    } else if (generate) {
+        next = `No preview of "${query}" yet. That does not mean the model does not know it. Call generate_nax_tag with the generate arguments (one tag: ${NAX_GENERATE_TAG_SHAPE[kind]}) and look at the picture before you give up on it. A shorter query or another kind may also hit.`;
+    } else {
+        next = 'No matches. Try a shorter query, kind=CHARA / FACE / COPYRIGHT / HAIR / CURATED, or list_nax_galleries. generate_nax_tag {tag, kind} makes a preview for a tag that is not there.';
+    }
     return {
         success: true,
         query,
@@ -3718,10 +3779,33 @@ function searchNaxTags(nax, input) {
         items,
         total,
         hasMore: offset + items.length < total,
-        next: items.length
-            ? 'Use item.prompt in Studio (do not invent a different artist string). sort=score is top votes; sort=ratio is upvote ratio; invert reverses.'
-            : 'No matches. Try a shorter query, kind=CHARA / FACE / COPYRIGHT / HAIR / CURATED, or list_nax_galleries.'
+        ...(generate ? { generate } : {}),
+        next
     };
+}
+
+const NAX_SEARCH_PREVIEW_MAX = 4;
+
+/** Local preview files for the first search_nax hits. Stock previews not fetched yet are skipped. */
+async function loadNaxSearchPreviews(globalResources, nax, items, limit) {
+    const gen = globalResources && typeof globalResources.getNaxTagGeneration === 'function'
+        ? globalResources.getNaxTagGeneration()
+        : null;
+    if (!gen || typeof nax.getTagFilename !== 'function') return { images: [], shown: [] };
+    const images = [];
+    const shown = [];
+    for (const item of items) {
+        if (images.length >= limit) break;
+        const filename = nax.getTagFilename(item.gallerySlug, item.tag);
+        if (!filename) continue;
+        const abs = path.join(gen.naxImageDirForSlug(item.gallerySlug), filename);
+        if (!fs.existsSync(abs)) continue;
+        try {
+            images.push(await resizeImageForGrok(abs));
+            shown.push(item.tag);
+        } catch (_) { /* skip a preview that will not decode */ }
+    }
+    return { images, shown };
 }
 
 const LOOKBACK_TYPES = new Set(['img', 'note', 'wiki', 'swiki', 'wimg', 'sel', 'page', 'ref']);
@@ -7022,6 +7106,31 @@ async function applyStudioChanges(globalResources, rawBody) {
     return applyResult;
 }
 
+/**
+ * Note for a generate/apply that asks for V5 Medium and also carries UC text. Medium sends no UC;
+ * imageGeneration.js moves it into the prompt negative (mediumUcResidual), so say so instead of
+ * letting the agent think its UC landed.
+ * @param {object} input tool arguments
+ * @returns {string|null}
+ */
+function mediumEffortUcNote(input) {
+    const src = input && typeof input === 'object' ? input : {};
+    const change = src.change && typeof src.change === 'object' ? src.change : {};
+    const params = { ...(change.params || {}), ...(src.params || {}) };
+    const effort = String(src.effort || change.effort || params.effort || '').toLowerCase();
+    const model = String(src.model || change.model || params.model || '').toLowerCase();
+    if (effort !== 'medium' && !/^v5_medium/.test(model)) return null;
+    const fields = change.fields && typeof change.fields === 'object' ? change.fields : {};
+    const texts = [src.uc, change.uc, fields.uc];
+    const chars = []
+        .concat(Array.isArray(src.characters) ? src.characters : [])
+        .concat(Array.isArray(change.characters) ? change.characters : [])
+        .concat(Array.isArray(src.characterPrompts) ? src.characterPrompts : []);
+    chars.forEach((ch) => { if (ch && typeof ch === 'object') texts.push(ch.uc); });
+    if (!texts.some((t) => typeof t === 'string' && t.trim())) return null;
+    return 'V5 Medium has no UC. Your uc was moved into the prompt negative (-1::tag:: in the prompt) for this print. Next time write negatives as promptNegative (base) or promptNegative per character, and keep uc empty; switch effort to high if you need a real UC.';
+}
+
 function mcpTextResult(obj, isError) {
     return {
         content: [{ type: 'text', text: typeof obj === 'string' ? obj : JSON.stringify(obj) }],
@@ -7083,7 +7192,7 @@ const MCP_GENERATE_JOB_KEYS = new Set([
     'createdAt', 'startedAt', 'finishedAt', 'caller', 'workspace', 'filename', 'filenames',
     'seed', 'dest_path', 'destPath', 'error', 'contentLength', 'saved_memory', 'qualityDropped',
     'qualityInherited', 'pending', 'next', 'stages', 'generateStarted', 'filenameBefore',
-    'total_stages', 'walk', 'appliedWithoutRestart', 'readyForRestart', 'alreadyCurrent'
+    'total_stages', 'walk', 'appliedWithoutRestart', 'readyForRestart', 'alreadyCurrent', 'effortNote'
 ]);
 
 function wireGenerateJobFlat(flat) {
@@ -7189,6 +7298,7 @@ async function runQueuedMcpGenerate(globalResources, req, name, packetType, payl
                 }
                 if (extra.qualityDropped) flat.qualityDropped = extra.qualityDropped;
                 if (extra.qualityInherited) flat.qualityInherited = extra.qualityInherited;
+                if (extra.effortNote) flat.effortNote = extra.effortNote;
                 const names = collectFilenames({ filename: flat.filename, filenames: flat.filenames });
                 try {
                     patchGenerationRequest(globalResources, id, {
@@ -7234,6 +7344,7 @@ async function runQueuedMcpGenerate(globalResources, req, name, packetType, payl
             position: job.position,
             delayMs: job.estimatedDelayMs,
             dest_path: destPathHint || null,
+            ...(extra.effortNote ? { effortNote: extra.effortNote } : {}),
             next: 'Call await_generation_job with this jobId and the same dest_path. Do not invent a save after polling.'
         });
     }
@@ -7639,9 +7750,12 @@ async function callTool(globalResources, req, name, args) {
         }
         const model = resolveAutofillSearchModel(input);
         const batches = [];
+        const artistOnly = normalizeAutofillCategory(input) === 'artist';
         for (const term of terms) {
+            // An artist: prefix is what switches the backend to the artist-only search (searchService.js).
+            const query = artistOnly && !parseAutofillArtistSearchPrefix(term).isArtistSearch ? `artist:${term}` : term;
             const packet = await dispatchPacketTool(globalResources, req, 'test_autofill_ranking', {
-                query: term,
+                query,
                 model
             });
             const data = packet.data && typeof packet.data === 'object' ? packet.data : {};
@@ -7696,7 +7810,16 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'search_nax') {
-        const result = searchNaxTags(resolveNaxModule(globalResources), input);
+        const nax = resolveNaxModule(globalResources);
+        const result = searchNaxTags(nax, input);
+        if (result.success && input.preview === true && result.items.length) {
+            const { images, shown } = await loadNaxSearchPreviews(globalResources, nax, result.items, NAX_SEARCH_PREVIEW_MAX);
+            if (images.length) {
+                return mcpImageResult({ ...result, previewTags: shown }, images);
+            }
+            result.previewTags = [];
+            result.next = `No preview file is cached for these hits yet. ${result.next}`;
+        }
         return mcpTextResult(result, !result.success);
     }
 
@@ -8296,7 +8419,7 @@ async function callTool(globalResources, req, name, args) {
                 payload,
                 destPathHint,
                 wantAsync,
-                { qualityDropped, qualityInherited }
+                { qualityDropped, qualityInherited, effortNote: mediumEffortUcNote(input) }
             );
         }
 
@@ -8848,10 +8971,12 @@ async function callTool(globalResources, req, name, args) {
             responseNext = data.warning || `Did not apply: ${unapplied.join(', ')}`;
         }
         const applyOk = !decompileBlock && !tokenLimitBlock && !applyFailed && !partialApply;
+        const applyEffortNote = mediumEffortUcNote(input);
         return mcpTextResult({
             success: applyOk,
             autoBound: !!bind.auto,
             ...applied,
+            ...(applyEffortNote ? { effortNote: applyEffortNote } : {}),
             ...(unapplied.length ? { unapplied } : {}),
             ...(applyJob ? {
                 jobId: applyJob.jobId,
@@ -9848,6 +9973,38 @@ function autofillNameMatches(name, needle, exactOnly) {
     return n.startsWith(q);
 }
 
+const AUTOFILL_CATEGORIES = ['artist', 'character', 'copyright', 'general', 'species', 'meta'];
+
+// Danbooru numeric categories (tag-lookup.js getCategoryName).
+const AUTOFILL_CATEGORY_IDS = { 0: 'general', 1: 'artist', 3: 'copyright', 4: 'character', 5: 'meta', 6: 'species' };
+
+/** search_autofill category filter, or '' for any. */
+function normalizeAutofillCategory(input) {
+    const raw = String((input && (input.category || input.type)) || '').trim().toLowerCase();
+    if (!raw || raw === 'any' || raw === 'all') return '';
+    const single = raw.replace(/s$/, '');
+    return AUTOFILL_CATEGORIES.includes(single) ? single : '';
+}
+
+/** Lowercase category of one autofill row ('' when the source did not say, e.g. NovelAI suggest-tags). */
+function autofillHitCategory(row) {
+    if (!row || typeof row !== 'object') return '';
+    if (row.categoryName) return String(row.categoryName).trim().toLowerCase();
+    if (typeof row.category === 'number') return AUTOFILL_CATEGORY_IDS[row.category] || '';
+    if (typeof row.category === 'string' && row.category.trim()) return row.category.trim().toLowerCase();
+    return '';
+}
+
+/** danbooru / e621 sides a row was found on. */
+function autofillHitDatasets(row) {
+    if (!row || typeof row !== 'object') return [];
+    if (Array.isArray(row.datasets) && row.datasets.length) return row.datasets.slice();
+    const out = [];
+    if ((Number(row.d_count) || 0) > 0) out.push('danbooru');
+    if ((Number(row.e_count) || 0) > 0) out.push('e621');
+    return out;
+}
+
 function slimAutofillHit(row, needle) {
     if (!row || typeof row !== 'object') return row;
     const tag = autofillHitName(row);
@@ -9855,6 +10012,11 @@ function slimAutofillHit(row, needle) {
         tag,
         exact: normalizeAutofillTagKey(tag) === normalizeAutofillTagKey(needle)
     };
+    const category = autofillHitCategory(row);
+    if (category) out.category = category;
+    if (category === 'artist') out.prompt = `artist:${tag.toLowerCase()}`;
+    const datasets = autofillHitDatasets(row);
+    if (datasets.length) out.datasets = datasets;
     const count = row.postCount != null ? row.postCount
         : (row.count != null ? row.count : row.n_count);
     if (count != null) out.count = count;
@@ -9869,9 +10031,16 @@ function slimAutofillHit(row, needle) {
 function trimAutofillBatch(term, success, data, input, model) {
     const raw = Array.isArray(data && data.results) ? data.results.slice() : [];
     const needle = autofillCompareNeedle(term);
-    const exactOnly = !(input && (input.exactOnly === false || input.exact_only === false || input.fuzzy === true));
+    const category = normalizeAutofillCategory(input) || (parseAutofillArtistSearchPrefix(term).isArtistSearch ? 'artist' : '');
+    const exactDefault = category !== 'artist';
+    const exactFlag = input && (input.exactOnly != null ? input.exactOnly : input.exact_only);
+    const exactOnly = input && input.fuzzy === true ? false : (exactFlag == null ? exactDefault : exactFlag !== false);
     const searchedModel = resolveAutofillSearchModel({ model: model || (input && input.model) });
-    const close = raw.filter((row) => autofillNameMatches(autofillHitName(row), needle, exactOnly));
+    // The artist search already returns artist rows only; other categories filter on the row's own category.
+    const pool = category && category !== 'artist'
+        ? raw.filter((row) => autofillHitCategory(row) === category)
+        : raw;
+    const close = pool.filter((row) => autofillNameMatches(autofillHitName(row), needle, exactOnly));
     close.sort((a, b) => {
         const an = normalizeAutofillTagKey(autofillHitName(a));
         const bn = normalizeAutofillTagKey(autofillHitName(b));
@@ -9883,7 +10052,7 @@ function trimAutofillBatch(term, success, data, input, model) {
         return (Number(b.matchScore || b.score || b.confidence) || 0) - (Number(a.matchScore || a.score || a.confidence) || 0);
     });
     if (close.length === 0) {
-        const qualifierHits = raw.filter((row) => {
+        const qualifierHits = pool.filter((row) => {
             const n = normalizeAutofillTagKey(autofillHitName(row));
             const q = normalizeAutofillTagKey(needle);
             return q && n.startsWith(`${q} (`);
@@ -9905,18 +10074,26 @@ function trimAutofillBatch(term, success, data, input, model) {
         ? raw.slice(0, 3).map((row) => autofillHitName(row)).filter(Boolean)
         : undefined;
     let next;
-    if (miss) {
+    if (miss && category === 'artist') {
+        const other = neighbors && neighbors.length ? ` Nearby artist names: ${neighbors.join('; ')}.` : '';
+        next = `No artist tag matched "${needle}".${other} Try the Danbooru spelling (romaji, underscores as spaces, no "art by"), a shorter prefix, or exactOnly false. Then generate_nax_tag {tag: "${needle}", kind: "ARTIST"} and look at the picture: a distinct style means the model knows the name even when autofill does not list it.`;
+    } else if (miss) {
         const other = raw.length
             ? ` (${raw.length} other hits${neighbors && neighbors.length ? `: ${neighbors.join('; ')}` : ''})`
             : '';
-        next = `Autofill did not expose this on ${searchedModel}${other}. untrained is not proof the model never learned it — NovelAI hides tags (NSFW, explicit, copyright) and a Danbooru name is often a different string. Pass the live Studio model if this is the wrong family (v5 vs v4_5). Artist tags: try them before you drop them, and look the name up if search missed. You may still try it; generate, look, then save_memory.`;
+        next = `Autofill did not expose this${category ? ` as a ${category} tag` : ''} on ${searchedModel}${other}. untrained is not proof the model never learned it — NovelAI hides tags (NSFW, explicit, copyright) and a Danbooru name is often a different string. Pass the live Studio model if this is the wrong family (v5 vs v4_5). Artist tags: try them before you drop them, and look the name up if search missed. You may still try it; generate, look, then save_memory.`;
     } else if (close.length > AUTOFILL_RESULT_MAX) {
         next = `Showing ${AUTOFILL_RESULT_MAX} of ${close.length} close hits.`;
+    }
+    if (!miss && trimmed.some((hit) => hit.datasets && hit.datasets.length === 1 && hit.datasets[0] === 'e621')) {
+        const furry = 'Hits with datasets [e621] only are furry-side tags: they need the fur dataset on (dataset_config {include: ["fur dataset"]}).';
+        next = next ? `${next} ${furry}` : furry;
     }
     return {
         term,
         success: success !== false,
         model: searchedModel,
+        ...(category ? { category } : {}),
         trained: !miss,
         untrained: miss,
         truncated: close.length > AUTOFILL_RESULT_MAX,
@@ -10375,6 +10552,11 @@ module.exports = {
         WIKI_EMPTY_NEXT,
         NAX_WIKI_EMPTY_NEXT,
         naxSingleTagError,
+        naxTestGallerySlug,
+        naxGenerateSuggestion,
+        generateNaxTag,
+        normalizeAutofillCategory,
+        mediumEffortUcNote,
         characterLookupQueries,
         pickWikiPageTitles,
         promiseWithTimeout,

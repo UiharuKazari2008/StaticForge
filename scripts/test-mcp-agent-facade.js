@@ -599,6 +599,50 @@ const naxMiss = _test.searchNaxTags({
 }, {});
 assert.strictEqual(naxMiss.success, false);
 
+// A named miss hands over a ready generate_nax_tag call instead of a dead end.
+const naxNamedMiss = _test.searchNaxTags(mockNax, { query: 'nobody here', kind: 'ARTIST' });
+assert.strictEqual(naxNamedMiss.items.length, 0);
+assert.deepStrictEqual(naxNamedMiss.generate, { tool: 'generate_nax_tag', arguments: { tag: 'nobody here', kind: 'ARTIST' } });
+assert.ok(naxNamedMiss.next.includes('generate_nax_tag'));
+assert.strictEqual(_test.searchNaxTags(mockNax, { query: 'kago' }).generate, undefined);
+assert.strictEqual(_test.naxGenerateSuggestion('a, b', 'CHARA'), null);
+assert.strictEqual(_test.naxGenerateSuggestion('x', 'ALL'), null);
+assert.deepStrictEqual(_test.naxGenerateSuggestion('drill hair', 'HAIR', 'v5').arguments, { tag: 'drill hair', kind: 'HAIR', model: 'v5' });
+
+// The test gallery is the first one for the kind that has a preview template.
+const presetNax = { getNaxExpanderPreset: () => ({ resolveSlugs: () => ['face-v5', 'face-v4.5'] }) };
+assert.strictEqual(_test.naxTestGallerySlug(presetNax, 'FACE', 'v5', ['face-v4.5']), 'face-v4.5');
+assert.strictEqual(_test.naxTestGallerySlug(presetNax, 'FACE', 'v5', []), 'face-v5');
+
+(async () => {
+    const made = [];
+    const genGr = {
+        getNaxTagGeneration: () => ({
+            getCustomTagValidationError: () => null,
+            prepareTagInput: (t) => String(t).trim(),
+            getGenerationSlugs: () => ['hair-v4.5'],
+            generateNaxTagImage: async (slug, tag) => { made.push([slug, tag]); return { filename: 'x.png', absPath: '/nonexistent/x.png' }; }
+        }),
+        getNaxTagsDatabase: () => ({
+            getNaxExpanderPreset: () => ({ resolveSlugs: () => ['hair-v5', 'hair-v4.5'] }),
+            slugExists: () => true,
+            tagExists: () => false,
+            insertCustomTag: (slug, tag, filename) => ({ tag, filename }),
+            formatTagForPrompt: (tag) => tag
+        })
+    };
+    const hair = await _test.generateNaxTag(genGr, { tag: 'drill hair', kind: 'HAIR' });
+    assert.strictEqual(hair.success, true, JSON.stringify(hair));
+    assert.strictEqual(hair.gallerySlug, 'hair-v4.5');
+    assert.strictEqual(hair.prompt, 'drill hair');
+    assert.deepStrictEqual(made, [['hair-v4.5', 'drill hair']]);
+    const noTemplate = await _test.generateNaxTag(genGr, { tag: 'drill hair', kind: 'HAIR', gallerySlug: 'hair-v5' });
+    assert.strictEqual(noTemplate.success, false);
+    assert.ok(noTemplate.error.includes('no preview template'));
+    const badKind = await _test.generateNaxTag(genGr, { tag: 'x', kind: 'ALL' });
+    assert.strictEqual(badKind.success, false);
+})().catch((err) => { console.error(err); process.exit(1); });
+
 const savedMemory = _test.runMemoryTool({
     getKnowledgeMemoryDb: () => ({
         listKnowledgeMemoriesPaged: () => ({ items: [{ name: 'a', description: 'b', confidence: 0.1, model: 'v4_5' }], total: 1 }),
@@ -1184,6 +1228,41 @@ const aliceFuzzy = _test.trimAutofillBatch('alice', true, {
     ]
 }, { exactOnly: false });
 assert.strictEqual(aliceFuzzy.results.length, 2);
+
+// category artist: prefix matches by default, hits carry the Studio string and their side.
+assert.strictEqual(_test.normalizeAutofillCategory({ category: 'Artists' }), 'artist');
+assert.strictEqual(_test.normalizeAutofillCategory({ category: 'any' }), '');
+const ningen = _test.trimAutofillBatch('ningen', true, {
+    results: [
+        { title: 'ningen mame', categoryName: 'Artist', d_count: 40, e_count: 0, matchScore: 40 },
+        { title: 'ningen (ningen96)', categoryName: 'Artist', d_count: 3, e_count: 9, matchScore: 40 },
+        { title: 'pawsome', categoryName: 'Artist', d_count: 0, e_count: 12, matchScore: 10 }
+    ]
+}, { category: 'artist' });
+assert.strictEqual(ningen.category, 'artist');
+assert.strictEqual(ningen.results.length, 2);
+assert.strictEqual(ningen.results[0].prompt, 'artist:ningen mame');
+assert.deepStrictEqual(ningen.results[1].datasets, ['danbooru', 'e621']);
+const furOnly = _test.trimAutofillBatch('pawsome', true, {
+    results: [{ title: 'pawsome', categoryName: 'Artist', d_count: 0, e_count: 12 }]
+}, { category: 'artist' });
+assert.ok(furOnly.next.includes('fur dataset'));
+const artistMiss = _test.trimAutofillBatch('zzqq', true, { results: [] }, { category: 'artist' });
+assert.ok(artistMiss.next.includes('generate_nax_tag'));
+const charOnly = _test.trimAutofillBatch('rapi', true, {
+    results: [
+        { title: 'rapi (nikke)', category: 4 },
+        { title: 'rapi (artist)', category: 1 }
+    ]
+}, { category: 'character' });
+assert.deepStrictEqual(charOnly.results.map((r) => r.tag), ['rapi (nikke)']);
+assert.strictEqual(charOnly.results[0].category, 'character');
+
+// Medium + UC tells the agent where the UC went.
+assert.ok(_test.mediumEffortUcNote({ params: { effort: 'medium' }, uc: 'blurry' }).includes('prompt negative'));
+assert.ok(_test.mediumEffortUcNote({ change: { params: { effort: 'medium' }, characters: [{ uc: 'hat' }] } }));
+assert.strictEqual(_test.mediumEffortUcNote({ params: { effort: 'medium' }, promptNegative: 'blurry' }), null);
+assert.strictEqual(_test.mediumEffortUcNote({ params: { effort: 'high' }, uc: 'blurry' }), null);
 
 const rapiUnderscore = _test.trimAutofillBatch('rapi (nikke)', true, {
     results: [
