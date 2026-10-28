@@ -101,10 +101,14 @@ async function testModelList(gr) {
     };
     const cacheFile = path.join(os.tmpdir(), `deepinfra-models-${process.pid}.json`);
     const families = await custom.listModels(gr, 'custom:deepinfra', { cacheFile, force: true });
-    assert.deepStrictEqual(families.map((item) => [item.id, item.input, item.output]), [
-        ['deepseek-ai/DeepSeek-V4.1-Flash', 0.14, 0.28],
-        ['Qwen/Qwen3.8-Max', 1.2, 6]
-    ], 'only chat models (priced per output token) are listed');
+    assert.deepStrictEqual(families.map((item) => [item.id, item.provider, item.input, item.output]), [
+        ['deepseek-ai/DeepSeek-V4.1-Flash', 'DeepSeek', 0.14, 0.28],
+        ['Qwen/Qwen3.8-Max', 'Alibaba', 1.2, 6]
+    ], 'only chat models (priced per output token) are listed, grouped by the id\'s org');
+    assert.deepStrictEqual(custom.catalogFromDeepInfra({ data: [
+        { id: 'SomeLab/Tiny-Chat', metadata: { pricing: { output_tokens: 1 } } },
+        { id: 'bare-model', metadata: { pricing: { output_tokens: 1 } } }
+    ] }, 'DeepInfra').map((item) => item.provider), ['SomeLab', 'Other'], 'unknown orgs keep their name; no org is Other');
     assert.strictEqual(calls[calls.length - 1].auth, 'Bearer di-secret-456');
     const run = custom.resolveRun(families, { model: '', effort: 'low' }, custom.lookup(gr, 'deepinfra'));
     assert.strictEqual(run.model, 'deepseek-ai/DeepSeek-V4.1-Flash');

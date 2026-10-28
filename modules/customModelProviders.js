@@ -416,6 +416,40 @@ function catalogFromModels(body, providerName) {
     return families;
 }
 
+// DeepInfra ids are "<hf org>/<model>". The org is the menu group; known orgs get the vendor
+// name the TokenRouter menu uses, others keep the org as written.
+const DEEPINFRA_VENDORS = {
+    anthropic: 'Anthropic',
+    bytedance: 'ByteDance',
+    'deepseek-ai': 'DeepSeek',
+    google: 'Google',
+    'ibm-granite': 'IBM',
+    inclusionai: 'inclusionAI',
+    'meta-llama': 'Meta',
+    'meta-models': 'Meta',
+    microsoft: 'Microsoft',
+    minimaxai: 'MiniMax',
+    mistralai: 'Mistral',
+    moonshotai: 'Moonshot',
+    nvidia: 'NVIDIA',
+    openai: 'OpenAI',
+    qwen: 'Alibaba',
+    sao10k: 'Sao10K',
+    tencent: 'Tencent',
+    thinkingmachines: 'Thinking Machines',
+    xiaomimimo: 'Xiaomi',
+    'zai-org': 'Z.ai'
+};
+
+function deepInfraVendor(id) {
+    const slash = id.indexOf('/');
+    if (slash <= 0) return 'Other';
+    const org = id.slice(0, slash);
+    const known = DEEPINFRA_VENDORS[org.toLowerCase()];
+    if (known) return known;
+    return /^[A-Za-z0-9 .&-]{1,40}$/.test(org) ? org : 'Other';
+}
+
 // DeepInfra's /v1/openai/models lists embedding, image, speech and video models too. Only the
 // ones priced per output token are chat models; metadata.pricing is USD per million tokens.
 function catalogFromDeepInfra(body, providerName) {
@@ -428,6 +462,7 @@ function catalogFromDeepInfra(body, providerName) {
     const prices = new Map(chat.map((row) => [String(row.id).trim(), row.metadata.pricing]));
     families.forEach((family) => {
         const pricing = prices.get(family.id) || {};
+        family.provider = deepInfraVendor(family.id);
         family.input = finite(pricing.input_tokens);
         family.output = finite(pricing.output_tokens);
     });
