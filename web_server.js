@@ -1490,6 +1490,10 @@ const sessionMiddleware = session({
     resave: false,
     saveUninitialized: false,
     store: sessionStore, // Use the shared session store
+    // Behind the nginx proxy the app sees plain HTTP, so the secure cookie below was never set and PIN
+    // logins left no connect.sid (WebSocket clients got auth_error). Trust X-Forwarded-Proto for this
+    // check only; app-wide 'trust proxy' would also change req.ip for the IP block list and rate limits.
+    proxy: true,
     cookie: {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
