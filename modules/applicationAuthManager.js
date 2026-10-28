@@ -45,7 +45,9 @@ const SCOPE_WS_PACKETS = {
         // omegasearch_query — see OMEGASEARCH_QUERY_PACKET_SCHEMA in omegasearchFilters.js
         'omegasearch_query',
         'search_index_status', 'search_index_pause', 'search_index_resume',
-        'search_index_rebuild', 'spellcheck_add_word', 'prompt_index_reconcile'
+        'search_index_rebuild', 'spellcheck_add_word', 'prompt_index_reconcile',
+        // JULES: Search index mutation WS packets under search scope
+        'search_index_rebuild_all', 'search_index_trigger', 'search_index_toggle_pause', 'search_index_clear_cache'
     ],
     vfs: [
         'vfs_list', 'vfs_read', 'vfs_write', 'vfs_delete', 'vfs_mkdir', 'vfs_move',

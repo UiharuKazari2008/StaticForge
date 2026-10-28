@@ -483,6 +483,12 @@ class WebSocketMessageHandlers {
             'approve_application_auth_request',
             'deny_application_auth_request',
             'clear_search_cache',
+            // JULES: Restrict search index mutation and director custom providers save packets for read-only clients
+            'search_index_rebuild_all',
+            'search_index_trigger',
+            'search_index_toggle_pause',
+            'search_index_clear_cache',
+            'director_custom_providers_save',
             'refresh_server_cache',
             'recompile_runtime_assets',
             'set_runtime_assets_auto_recompile',
