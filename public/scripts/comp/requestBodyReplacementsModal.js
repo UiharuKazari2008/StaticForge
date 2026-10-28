@@ -90,6 +90,22 @@ function attachRequestBodyReplacementsModalListeners(signal) {
             showTextReplacementManager();
         }, { signal });
     }
+
+    const makeGlobalBtn = document.getElementById('makeGlobalRequestBodyReplacementsBtn');
+    if (makeGlobalBtn) {
+        makeGlobalBtn.addEventListener('click', openMakeGlobalWizard, { signal });
+    }
+}
+
+// Make Global (Yozora #668): public/scripts/comp/expanderMakeGlobalWizard.js, loaded on first use
+async function openMakeGlobalWizard() {
+    try {
+        await window.featureLoader.loadFeature('expander_make_global');
+    } catch (error) {
+        console.error('Make Global wizard did not load:', error);
+        return;
+    }
+    if (window.expanderMakeGlobalWizard) await window.expanderMakeGlobalWizard.open();
 }
 
 function attachCreateRequestBodyReplacementModalListeners(signal) {

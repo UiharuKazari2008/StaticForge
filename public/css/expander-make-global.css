@@ -1,0 +1,23 @@
+/* Make Global (Yozora #668), public/scripts/comp/expanderMakeGlobalWizard.js: the wizard's list
+   views fill their template rects; the choose page's rows carry a check box before the name */
+#expanderMakeGlobalWizard .vdt-html > .dsexp-list {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    background: #fff;
+}
+
+#expanderMakeGlobalWizard .dsexp-row {
+    cursor: default;
+}
+
+#expanderMakeGlobalWizard .dsexp-name {
+    display: flex;
+    align-items: center;
+}
+
+#expanderMakeGlobalWizard .dsexp-name label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 13px;
+}
