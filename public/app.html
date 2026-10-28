@@ -6525,95 +6525,18 @@ Examples:
         </div>
     </div>
 
-    <!-- Emphasis Groups Tool Template (will be cloned for multiple instances) -->
+    <!-- Weight Rack (emphasis groups tool) template, cloned per prompt field. A light Vista owned
+         tool window: Explorer's command bar, a Minimum / Maximum strip with spin boxes, and the
+         groups in a white list well with Vista track bars (css/emphasis-groups-tool.css). -->
     <div id="emphasisGroupsToolTemplate"
-        class="modal toolbar-visible hidden transient tool-window resizeable-window emphasis-groups-tool"
+        class="modal hidden transient tool-window resizeable-window emphasis-groups-tool"
+        data-window-client="light"
         data-window-identifier="emphasis-groups-tool" data-window-min-width="500" data-window-min-height="550"
         data-window-max-width="900" data-window-max-height="2009" data-window-default-width="480"
         data-window-default-height="640">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
-                <i class="fas fa-weight-scale icon-fa"></i>
                 <span id="emphasisGroupsToolTitle">Weight Rack</span>
-            </div>
-            <div class="modal-window-title-toolbar emphasis-groups-title-toolbar">
-                <button type="button" id="emphasisGroupsNormalizeBtn" class="btn-secondary btn-toggle" data-state="off"
-                    title="Normalize distribution across groups">
-                    <i class="fas fa-chart-pie"></i>
-                </button>
-                <div id="emphasisGroupsNormalizeRange" class="button-group hidden">
-                    <button type="button" id="emphasisGroupsMinWeightDown"
-                        class="btn-secondary toolbar-input-segment icon-only emphasis-groups-range-step emphasis-groups-range-nudge"
-                        title="Decrease minimum by 0.25" aria-label="Decrease minimum weight">
-                        <i class="fas fa-minus"></i>
-                    </button>
-                    <input type="text" id="emphasisGroupsMinWeight"
-                        class="form-control colored toolbar-input-segment emphasis-groups-weight-input"
-                        inputmode="decimal" autocomplete="off" spellcheck="false" value="1" placeholder="Min"
-                        title="Minimum weight" aria-label="Minimum weight">
-                    <button type="button" id="emphasisGroupsMinWeightUp"
-                        class="btn-secondary toolbar-input-segment icon-only emphasis-groups-range-step emphasis-groups-range-nudge"
-                        title="Increase minimum by 0.25" aria-label="Increase minimum weight">
-                        <i class="fas fa-plus"></i>
-                    </button>
-                    <button type="button" id="emphasisGroupsMaxWeightDown"
-                        class="btn-secondary toolbar-input-segment icon-only emphasis-groups-range-step emphasis-groups-range-nudge"
-                        title="Decrease maximum by 0.25" aria-label="Decrease maximum weight">
-                        <i class="fas fa-minus"></i>
-                    </button>
-                    <input type="text" id="emphasisGroupsMaxWeight"
-                        class="form-control colored toolbar-input-segment emphasis-groups-weight-input"
-                        inputmode="decimal" autocomplete="off" spellcheck="false" value="2" placeholder="Max"
-                        title="Maximum weight" aria-label="Maximum weight">
-                    <button type="button" id="emphasisGroupsMaxWeightUp"
-                        class="btn-secondary toolbar-input-segment icon-only emphasis-groups-range-step emphasis-groups-range-nudge"
-                        title="Increase maximum by 0.25" aria-label="Increase maximum weight">
-                        <i class="fas fa-plus"></i>
-                    </button>
-                    <button type="button" id="emphasisGroupsPullBandBtn"
-                        class="btn-secondary toolbar-input-segment icon-only emphasis-groups-range-step emphasis-groups-normalize-control hidden"
-                        title="Pull Band Range — peak slider to 100%, set max to that weight">
-                        <i class="fas fa-arrow-left-long-to-line"></i>
-                    </button>
-                    <button type="button" id="emphasisGroupsAutoRangeBtn"
-                        class="btn-secondary toolbar-input-segment icon-only emphasis-groups-range-step indicator hidden emphasis-groups-normalize-control"
-                        data-state="off" title="Auto Band — click for one-shot; right-click for automatic scaling">
-                        <i class="fas fa-wand-magic-sparkles"></i>
-                    </button>
-                </div>
-                <div id="emphasisGroupsModeGroup" class="button-group hidden emphasis-groups-normalize-control">
-                    <button type="button" id="emphasisGroupsDeltaModeBtn"
-                        class="btn-secondary btn-toggle toolbar-input-segment icon-only" data-state="off"
-                        title="Delta mode — adjusting one group redistributes the others proportionally">
-                        <span class="emphasis-delta-glyph" aria-hidden="true">Δ</span>
-                    </button>
-                    <button type="button" id="emphasisGroupsDistributionModeBtn"
-                        class="btn-secondary btn-toggle toolbar-input-segment icon-only" data-state="off"
-                        title="Distribution mode — importance 50 unbiased; >75 forces over peers, <25 forces under; preview until Apply">
-                        <i class="fas fa-chart-area"></i>
-                    </button>
-                </div>
-                <button type="button" id="emphasisGroupsScopeBtn" class="btn-secondary btn-toggle icon-only hidden"
-                    data-state="off" title="Selected groups only" hidden aria-hidden="true" tabindex="-1">
-                    <i class="fas fa-list-check"></i>
-                </button>
-                <div class="emphasis-groups-toolbar-spacer" aria-hidden="true"></div>
-                <button type="button" id="emphasisGroupsRebalanceBtn" class="btn-secondary btn-small hidden"
-                    title="One-shot band + attention rescale">
-                    <i class="fas fa-blender"></i>
-                    <span class="emphasis-groups-rebalance-label">Rebalance</span>
-                </button>
-                <button type="button" id="emphasisGroupsAttentionRescaleBtn"
-                    class="btn-secondary btn-small icon-only indicator hidden emphasis-groups-normalize-control"
-                    data-state="off" title="Attention Rescale — click for one-shot; right-click for automatic scaling">
-                    <i class="fas fa-balance-scale"></i>
-                </button>
-                <button type="button" id="emphasisGroupsApplyBtn"
-                    class="btn-primary btn-small hidden emphasis-groups-normalize-control"
-                    title="Apply normalized weights to prompt">
-                    <i class="fas fa-check"></i>
-                    <span>Apply</span>
-                </button>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -6625,7 +6548,85 @@ Examples:
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content dark">
+        <div class="modal-content win7">
+            <div class="explorer-actions-header emphasis-groups-command-bar" role="toolbar">
+                <div class="explorer-command-set">
+                    <button type="button" id="emphasisGroupsNormalizeBtn"
+                        class="btn-secondary btn-small explorer-command-btn" data-state="off"
+                        title="Normalize distribution across groups">
+                        <i class="fas fa-chart-pie"></i>Normalize
+                    </button>
+                    <span id="emphasisGroupsModeGroup" class="emphasis-groups-mode-group hidden emphasis-groups-normalize-control">
+                        <button type="button" id="emphasisGroupsDeltaModeBtn"
+                            class="btn-secondary btn-small explorer-command-btn" data-state="off"
+                            title="Delta mode - adjusting one group redistributes the others proportionally">Delta</button>
+                        <button type="button" id="emphasisGroupsDistributionModeBtn"
+                            class="btn-secondary btn-small explorer-command-btn" data-state="off"
+                            title="Distribution mode - importance 50 unbiased; >75 forces over peers, <25 forces under; preview until Apply">Distribution</button>
+                    </span>
+                    <button type="button" id="emphasisGroupsScopeBtn" class="btn-secondary btn-small explorer-command-btn hidden"
+                        data-state="off" title="Selected groups only" hidden aria-hidden="true" tabindex="-1">Selected</button>
+                </div>
+                <div class="explorer-command-set">
+                    <button type="button" id="emphasisGroupsRebalanceBtn"
+                        class="btn-secondary btn-small explorer-command-btn hidden"
+                        title="One-shot band + attention rescale">
+                        <span class="emphasis-groups-rebalance-label">Rebalance</span>
+                    </button>
+                    <button type="button" id="emphasisGroupsAttentionRescaleBtn"
+                        class="btn-secondary btn-small explorer-command-btn emphasis-groups-lamp-btn hidden emphasis-groups-normalize-control"
+                        data-state="off" title="Attention Rescale - click for one-shot; right-click for automatic scaling"><span class="emphasis-groups-lamp" aria-hidden="true"></span>Rescale</button>
+                    <button type="button" id="emphasisGroupsApplyBtn"
+                        class="btn-secondary btn-small explorer-command-btn hidden emphasis-groups-normalize-control"
+                        title="Apply normalized weights to prompt">
+                        <i class="fas fa-check"></i>Apply
+                    </button>
+                </div>
+            </div>
+            <div id="emphasisGroupsNormalizeRange" class="emphasis-groups-range-bar hidden">
+                <span class="emphasis-groups-range-field emphasis-groups-range-field-min">
+                    <label>Minimum:</label>
+                    <span class="emphasis-groups-spin-box">
+                        <input type="text" id="emphasisGroupsMinWeight"
+                            class="form-control emphasis-groups-weight-input"
+                            inputmode="decimal" autocomplete="off" spellcheck="false" value="1"
+                            title="Minimum weight" aria-label="Minimum weight">
+                        <span class="emphasis-groups-spin">
+                            <button type="button" id="emphasisGroupsMinWeightUp"
+                                class="emphasis-groups-spin-up" tabindex="-1"
+                                title="Increase minimum by 0.25" aria-label="Increase minimum weight"></button>
+                            <button type="button" id="emphasisGroupsMinWeightDown"
+                                class="emphasis-groups-spin-down" tabindex="-1"
+                                title="Decrease minimum by 0.25" aria-label="Decrease minimum weight"></button>
+                        </span>
+                    </span>
+                </span>
+                <span class="emphasis-groups-range-field">
+                    <label>Maximum:</label>
+                    <span class="emphasis-groups-spin-box">
+                        <input type="text" id="emphasisGroupsMaxWeight"
+                            class="form-control emphasis-groups-weight-input"
+                            inputmode="decimal" autocomplete="off" spellcheck="false" value="2"
+                            title="Maximum weight" aria-label="Maximum weight">
+                        <span class="emphasis-groups-spin">
+                            <button type="button" id="emphasisGroupsMaxWeightUp"
+                                class="emphasis-groups-spin-up" tabindex="-1"
+                                title="Increase maximum by 0.25" aria-label="Increase maximum weight"></button>
+                            <button type="button" id="emphasisGroupsMaxWeightDown"
+                                class="emphasis-groups-spin-down" tabindex="-1"
+                                title="Decrease maximum by 0.25" aria-label="Decrease maximum weight"></button>
+                        </span>
+                    </span>
+                </span>
+                <span class="emphasis-groups-range-actions">
+                    <button type="button" id="emphasisGroupsPullBandBtn"
+                        class="btn-secondary emphasis-groups-normalize-control hidden"
+                        title="Pull Band Range - peak slider to 100%, set max to that weight">Pull Band</button>
+                    <button type="button" id="emphasisGroupsAutoRangeBtn"
+                        class="btn-secondary emphasis-groups-lamp-btn hidden emphasis-groups-normalize-control"
+                        data-state="off" title="Auto Band - click for one-shot; right-click for automatic scaling"><span class="emphasis-groups-lamp" aria-hidden="true"></span>Auto Band</button>
+                </span>
+            </div>
             <div class="modal-body emphasis-groups-tool-content">
                 <div class="emphasis-groups-grid-shell" data-custom-scrollbar
                     data-scrollable-wrapper-class="emphasis-groups-grid-scrollable">

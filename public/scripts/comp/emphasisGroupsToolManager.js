@@ -333,14 +333,14 @@ function inferEmphasisWeightBand(weight, currentSignMode) {
     return { signMode, band: inferBandForSign(w, signMode) };
 }
 
-/** Uniform tick alpha for major/minor weight notches (1.0 ramp is transparent → grayish white). */
-const EMPHASIS_SLIDER_TICK_ALPHA = 0.5;
+/** Uniform tick alpha for major/minor weight notches on the Rack's white list well. */
+const EMPHASIS_SLIDER_TICK_ALPHA = 0.85;
 
 /** Tick color for weight notch — emphasis rgb at fixed transparency for all major/minor marks. */
 function getEmphasisSliderTickColor(weight) {
-    // 1.0 highlight is fully transparent in the ramp — use neutral gray
+    // 1.0 highlight is fully transparent in the ramp: a plain trackbar tick (black)
     if (Math.abs(weight - 1) < 1e-9) {
-        return `rgba(232, 232, 232, ${EMPHASIS_SLIDER_TICK_ALPHA})`;
+        return 'rgba(0, 0, 0, 0.55)';
     }
     // computeEmphasisWeightColor: public/scripts/comp/emphasisParse.js
     const c = computeEmphasisWeightColor(weight);
@@ -385,9 +385,9 @@ function buildEmphasisWeightSliderTicks(min, max) {
 function getEmphasisCardTypeIcon(target) {
     if (target.type === 'group') return '';
     if (target.braceKind === 'bracket') {
-        return '<i class="fas fa-brackets-square emphasis-groups-type-icon mode-normal" title="Bracket"></i>';
+        return '<span class="emphasis-groups-type-icon mode-normal" title="Bracket">[ ]</span>';
     }
-    return '<i class="fas fa-brackets-curly emphasis-groups-type-icon mode-brace" title="Brace"></i>';
+    return '<span class="emphasis-groups-type-icon mode-brace" title="Brace">{ }</span>';
 }
 
 function updateCardSignBtn(btn, signMode) {
@@ -395,10 +395,7 @@ function updateCardSignBtn(btn, signMode) {
     const negative = signMode === 'negative';
     btn.setAttribute('data-state', negative ? 'on' : 'off');
     btn.title = negative ? 'Negative weights' : 'Positive weights';
-    const icon = btn.querySelector('i');
-    if (icon) {
-        icon.className = negative ? 'fas fa-minus' : 'fas fa-plus';
-    }
+    btn.textContent = negative ? '-' : '+';
 }
 
 function updateCardBandToggle(toggleEl, signMode, weightBand) {
@@ -1615,10 +1612,6 @@ class EmphasisGroupsToolInstance {
                     `emphasis-groups-slider-notch-arrow-${m.side}`
                 ].join(' ');
                 el.title = title;
-                const icon = document.createElement('i');
-                icon.className = m.side === 'left' ? 'fas fa-arrow-left' : 'fas fa-arrow-right';
-                icon.setAttribute('aria-hidden', 'true');
-                el.appendChild(icon);
                 track.appendChild(el);
                 return;
             }
@@ -2116,18 +2109,16 @@ class EmphasisGroupsToolInstance {
             : `<p>Rebalancing assigns each group a weight between 1 and the top weight below so short concepts are not starved by longer phrases.</p>
             <p class="text-secondary" style="font-size:0.85rem;margin-top:0.5rem;">Ranks are attention-equalized (soft inverse of √token length with a floor), not raw token %. Recommended top weights stay in the NovelAI-safe ~2–3 band.</p>`;
         return `${explain}
-            <div class="emphasis-groups-rebalance-weight-row form-row" style="margin-top:0.75rem;align-items:center;gap:0.35rem;">
-                <label for="emphasisRebalanceMaxWeight" style="flex:0 0 auto;font-size:0.85rem;">Top weight</label>
-                <div class="button-group" style="flex:0 0 auto;">
-                    <button type="button" id="emphasisRebalanceMaxDown" class="btn-secondary toolbar-input-segment icon-only emphasis-groups-range-step" title="Decrease top weight">
-                        <i class="fas fa-minus"></i>
-                    </button>
-                    <input type="text" id="emphasisRebalanceMaxWeight" class="form-control colored toolbar-input-segment emphasis-groups-weight-input"
+            <div class="emphasis-groups-rebalance-weight-row">
+                <label for="emphasisRebalanceMaxWeight">Top weight:</label>
+                <span class="emphasis-groups-spin-box">
+                    <input type="text" id="emphasisRebalanceMaxWeight" class="form-control emphasis-groups-weight-input"
                         inputmode="decimal" autocomplete="off" spellcheck="false" value="${formatEmphasisWeightNormalize(idealMax)}" title="Top weight in range (minimum 1)">
-                    <button type="button" id="emphasisRebalanceMaxUp" class="btn-secondary toolbar-input-segment icon-only emphasis-groups-range-step" title="Increase top weight">
-                        <i class="fas fa-plus"></i>
-                    </button>
-                </div>
+                    <span class="emphasis-groups-spin">
+                        <button type="button" id="emphasisRebalanceMaxUp" class="emphasis-groups-spin-up" tabindex="-1" title="Increase top weight"></button>
+                        <button type="button" id="emphasisRebalanceMaxDown" class="emphasis-groups-spin-down" tabindex="-1" title="Decrease top weight"></button>
+                    </span>
+                </span>
             </div>`;
     }
 
@@ -3155,14 +3146,14 @@ class EmphasisGroupsToolInstance {
             if (btn) btn.remove();
             return;
         }
-        const icon = info.kind === 'under' ? 'fa-arrow-right-to-bracket' : 'fa-arrow-left-to-bracket';
+        const icon = info.kind === 'under' ? 'forward' : 'back';
         const title = info.kind === 'under'
             ? 'Raise slider to suggested value'
             : 'Lower slider to suggested value';
         if (!btn) {
             btn = document.createElement('button');
             btn.type = 'button';
-            btn.className = 'btn-secondary btn-toggle icon-only emphasis-groups-card-snap-suggest';
+            btn.className = 'emphasis-groups-card-tool emphasis-groups-card-snap-suggest';
             const row = card.querySelector('.emphasis-groups-card-row');
             const lock = card.querySelector('.emphasis-groups-card-delta-lock');
             const direct = card.querySelector('.emphasis-groups-card-direct');
@@ -3181,7 +3172,7 @@ class EmphasisGroupsToolInstance {
         }
         btn.dataset.snap = info.kind;
         btn.title = title;
-        btn.innerHTML = `<i class="fas ${icon}" aria-hidden="true"></i>`;
+        btn.innerHTML = `<img src="/static_images/vista-cmdbar/${icon}.png" alt="">`;
     }
 
     _snapToSuggestion(index) {
@@ -4198,10 +4189,8 @@ class EmphasisGroupsToolInstance {
                     : formatEmphasisWeightDisplay(displayWeight);
                 const snapInfo = this._getSuggestionSnapInfo(index);
                 const snapMarkup = snapInfo ? `
-                    <button type="button" class="btn-secondary btn-toggle icon-only emphasis-groups-card-snap-suggest"
-                        data-snap="${snapInfo.kind}" title="${snapInfo.kind === 'under' ? 'Raise slider to suggested value' : 'Lower slider to suggested value'}">
-                        <i class="fas fa-arrow-${snapInfo.kind === 'under' ? 'right' : 'left'}-to-bracket" aria-hidden="true"></i>
-                    </button>` : '';
+                    <button type="button" class="emphasis-groups-card-tool emphasis-groups-card-snap-suggest"
+                        data-snap="${snapInfo.kind}" title="${snapInfo.kind === 'under' ? 'Raise slider to suggested value' : 'Lower slider to suggested value'}"><img src="/static_images/vista-cmdbar/${snapInfo.kind === 'under' ? 'forward' : 'back'}.png" alt=""></button>` : '';
                 // canSplitEmphasisGroupAtCommas / canMergeEmphasisGroupWithNeighbor: public/scripts/comp/emphasisParse.js
                 const canSplitCommas = !readOnly && target.type === 'group' && canSplitEmphasisGroupAtCommas(target);
                 const mergeNeighborIdx = (!readOnly && target.type === 'group')
@@ -4217,20 +4206,14 @@ class EmphasisGroupsToolInstance {
                         index
                     );
                 const mergeMarkup = canMergeNeighbor ? `
-                    <button type="button" class="btn-secondary btn-toggle icon-only emphasis-groups-card-merge-groups"
-                        title="Merge with previous group">
-                        <i class="fas fa-arrow-up-to-dotted-line" aria-hidden="true"></i>
-                    </button>` : '';
+                    <button type="button" class="emphasis-groups-card-tool emphasis-groups-card-merge-groups"
+                        title="Merge with previous group"><img src="/static_images/vista-cmdbar/move-up.png" alt=""></button>` : '';
                 const splitMarkup = canSplitCommas ? `
-                    <button type="button" class="btn-secondary btn-toggle icon-only emphasis-groups-card-split-commas"
-                        title="Split at commas into separate groups and normalize">
-                        <i class="fas fa-knife-kitchen" aria-hidden="true"></i>
-                    </button>` : '';
+                    <button type="button" class="emphasis-groups-card-tool emphasis-groups-card-split-commas"
+                        title="Split at commas into separate groups and normalize"><img src="/static_images/vista-cmdbar/cut.png" alt=""></button>` : '';
                 const lockMarkup = (this.normalizeEnabled && !this.distributionMode && isParticipant) ? `
-                    <button type="button" class="btn-secondary btn-toggle icon-only emphasis-groups-card-delta-lock"
-                        data-state="${target.cardState.deltaLocked ? 'on' : 'off'}" title="${target.cardState.deltaLocked ? 'Locked — excluded from share / delta rebalancing and Apply' : 'Lock — exclude from share / delta rebalancing and Apply'}">
-                        <i class="fas fa-${target.cardState.deltaLocked ? 'lock' : 'lock-open'}"></i>
-                    </button>` : '';
+                    <button type="button" class="emphasis-groups-card-tool emphasis-groups-card-delta-lock"
+                        data-state="${target.cardState.deltaLocked ? 'on' : 'off'}" title="${target.cardState.deltaLocked ? 'Locked - excluded from share / delta rebalancing and Apply' : 'Lock - exclude from share / delta rebalancing and Apply'}"><img src="/static_images/vista-cmdbar/lock.png" alt=""></button>` : '';
 
                 let ticksMarkup = '';
                 if (showSlider) {
@@ -4272,26 +4255,24 @@ class EmphasisGroupsToolInstance {
                     ${snapMarkup}
                     ${lockMarkup}
                     <div class="emphasis-groups-card-direct">
-                        <button type="button" class="btn-secondary btn-toggle icon-only emphasis-groups-card-sign"
-                            data-state="${signNegative ? 'on' : 'off'}" title="${signNegative ? 'Negative weights' : 'Positive weights'}">
-                            <i class="fas fa-${signNegative ? 'minus' : 'plus'}"></i>
-                        </button>
+                        <button type="button" class="emphasis-groups-card-tool emphasis-groups-card-sign"
+                            data-state="${signNegative ? 'on' : 'off'}" title="${signNegative ? 'Negative weights' : 'Positive weights'}">${signNegative ? '-' : '+'}</button>
                     </div>
                 </div>
                 <div class="emphasis-groups-card-slider-row">
-                    <div class="slider-container emphasis-groups-card-value-host">
+                    <div class="emphasis-groups-card-value-host">
                         <div class="slider-ticks-container">
-                            <input type="range" class="glass-slider emphasis-groups-card-slider${showSlider ? '' : ' hidden'}"
+                            <input type="range" class="emphasis-groups-card-slider${showSlider ? '' : ' hidden'}"
                                 min="${sliderMin}" max="${sliderMax}" step="${sliderStep}" value="${sliderVal}"
                                 ${sliderDisabled ? 'disabled' : ''}>
                             <div class="slider-ticks${showSlider ? '' : ' hidden'}">
                                 ${ticksMarkup}
                             </div>
                         </div>
-                        <input type="text" class="slider-value-input emphasis-groups-card-weight-input${showValueInput ? '' : ' hidden'}"
+                        <input type="text" class="form-control emphasis-groups-card-weight-input${showValueInput ? '' : ' hidden'}"
                             value="${weightDisplay}" ${readOnly ? 'disabled' : ''} inputmode="decimal" autocomplete="off" spellcheck="false">
                     </div>
-                    <span class="slider-value emphasis-groups-card-weight${showValueSpan ? '' : ' hidden'}" title="${readOnly ? '' : 'Scroll to adjust (Shift for finer steps)'}">${weightDisplay}</span>
+                    <span class="emphasis-groups-card-weight${showValueSpan ? '' : ' hidden'}" title="${readOnly ? '' : 'Scroll to adjust (Shift for finer steps)'}">${weightDisplay}</span>
                 </div>
             `;
 
@@ -4467,9 +4448,9 @@ class EmphasisGroupsToolInstance {
                     <div class="emphasis-groups-card-direct"></div>
                 </div>
                 <div class="emphasis-groups-card-slider-row emphasis-groups-card-slider-row-context">
-                    <div class="slider-container emphasis-groups-card-value-host">
+                    <div class="emphasis-groups-card-value-host">
                     </div>
-                    <span class="slider-value emphasis-groups-card-weight">${formatEmphasisWeightDisplay(1)}</span>
+                    <span class="emphasis-groups-card-weight">${formatEmphasisWeightDisplay(1)}</span>
                 </div>
             `;
             const textEl = card.querySelector('.emphasis-text');

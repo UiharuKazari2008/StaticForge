@@ -482,3 +482,40 @@
     flex-wrap: wrap;
     margin-top: 4px;
 }
+
+/* Stop ticks (studioVSliderStopTicksHtml). Moved here from emphasis-groups-tool.css when the Weight
+   Rack went Vista; each mark uses left = thumbHalf + frac * (100% - thumbW), where the thumb
+   centre sits. */
+#studioVSliderTool .slider-ticks-container {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    z-index: 1;
+}
+
+#studioVSliderTool .slider-ticks {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 1;
+    padding: 0;
+}
+
+#studioVSliderTool .slider-tick {
+    position: absolute;
+    width: 1.5px;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.2);
+    left: calc(var(--emphasis-slider-thumb-half) + (100% - var(--emphasis-slider-thumb-w)) * var(--tick-frac, 0));
+    transform: translateX(-50%);
+}
+
+#studioVSliderTool .slider-tick.half-height {
+    height: 50%;
+    bottom: 0;
+    top: auto;
+}

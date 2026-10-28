@@ -1,69 +1,170 @@
-/* Emphasis groups tool — scripts/comp/emphasisGroupsToolManager.js */
-.emphasis-groups-tool>.modal-content {
-    padding: 0;
-    overflow: hidden;
-}
+/* Weight Rack (emphasis groups tool): scripts/comp/emphasisGroupsToolManager.js, template in app.html.
+   A light Vista owned tool window (data-window-client="light", vista-glass-controls.css #444):
+   Explorer's command bar (vista-explorer.css; Normalize / Delta / Distribution, Rebalance /
+   Rescale / Apply), a dialog strip with the Minimum / Maximum spin boxes and Pull Band / Auto Band
+   push buttons, and the groups as rows in the white list-box well (#fff in #828790, as #485).
+   Each row keeps its Vista track bar (TRACKBAR THUMBBOTTOM 11x19 on the 4 px groove) with the
+   Rack's own marks: weight ticks under the groove (emphasis colours, green at 0, blue at -1), the
+   suggested (orange) and abs max (red) notches over it, off-axis triangles at the ends, and the
+   coloured weight chip on the right (emphasis highlight ramp, set inline by _setCardWeightDisplay).
+   Rescale and Auto Band keep their state lamps as a child span (.emphasis-groups-lamp), since
+   Vista's button faces own ::before / ::after. */
 
-.emphasis-groups-tool .emphasis-groups-title-toolbar>.emphasis-groups-toolbar-spacer {
-    flex: 1 1 auto;
-    min-width: 0;
-    align-self: stretch;
-    pointer-events: none;
-}
-
-.emphasis-groups-tool .emphasis-groups-title-toolbar>.button-group:has(.form-control, input:not([type="hidden"])) {
-    flex: 0 1 auto;
-    min-width: 0;
-}
-
-.emphasis-groups-tool .emphasis-delta-glyph {
-    display: inline-block;
-    font-weight: 700;
-    font-size: 1rem;
-    line-height: 1;
-    font-family: inherit;
-}
-
-.emphasis-groups-rebalance-weight-row .emphasis-groups-weight-input {
-    flex: 0 0 auto;
-    width: 3.15rem;
-    min-width: 3.15rem;
-    max-width: 3.15rem;
-}
-
-.emphasis-groups-tool-content {
-    height: 100%;
+.emphasis-groups-tool > .modal-content {
     display: flex;
     flex-direction: column;
-    gap: 0;
-    padding: 0;
     min-height: 0;
+    padding: 0;
     overflow: hidden;
 }
 
-.modal.toolbar-visible .modal-window-title-toolbar .button-group .emphasis-groups-weight-input {
-    flex: 0 0 auto;
-    width: 3.15rem;
-    min-width: 3.15rem;
-    max-width: 3.15rem;
-    padding: 0 0.2rem;
-    text-align: center;
-    font-size: 0.75rem;
+/* ---- command bar ---- */
+
+.emphasis-groups-tool .emphasis-groups-command-bar {
+    flex: none;
+}
+
+.emphasis-groups-tool .emphasis-groups-mode-group {
+    display: inline-flex;
+    align-items: center;
+}
+
+
+/* ---- Minimum / Maximum strip: a dialog row under the bar ---- */
+
+.emphasis-groups-tool .emphasis-groups-range-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    padding: 7px 8px 6px;
+}
+
+.emphasis-groups-tool .emphasis-groups-range-field,
+.emphasis-groups-rebalance-weight-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.emphasis-groups-tool .emphasis-groups-range-field > label,
+.emphasis-groups-rebalance-weight-row > label {
+    margin: 0;
+    font: inherit;
+    color: inherit;
+}
+
+.emphasis-groups-tool.emphasis-groups-distribution-active .emphasis-groups-range-field-min {
+    display: none;
+}
+
+.emphasis-groups-tool .emphasis-groups-range-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+
+.emphasis-groups-tool.emphasis-groups-auto-band-active :is(#emphasisGroupsMaxWeight, [id^="emphasisGroupsMaxWeight_"]) {
+    pointer-events: none;
+    color: #6d6d6d;
+}
+
+/* ---- spin boxes: an edit with Vista's up-down pair inside its right edge (spin-*.png 14x9,
+   2 px in), each half lit on its own hover ---- */
+
+.emphasis-groups-spin-box {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* doubled class: beats .modal-content input { width: 100% } */
+:is(.emphasis-groups-tool, .emphasis-groups-rebalance-weight-row) .emphasis-groups-spin-box > input.emphasis-groups-weight-input.emphasis-groups-weight-input {
+    flex: none;
+    box-sizing: border-box;
+    width: 58px;
+    min-width: 0;
+    max-width: none;
+    height: 21px;
+    min-height: 0;
+    padding: 0 18px 0 3px;
     font-variant-numeric: tabular-nums;
 }
 
-.emphasis-groups-tool .modal-window-title-toolbar input.emphasis-groups-weight-input.toolbar-input-segment {
-    text-align: center;
+.emphasis-groups-spin {
+    position: absolute;
+    z-index: 3;
+    top: 50%;
+    right: 2px;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(-50%);
 }
 
-.emphasis-groups-tool .emphasis-groups-card-weight-input.slider-value-input {
-    text-align: center;
+/* 7.css paints a push face and hover / pressed layers on every .win7 button: these are bare */
+:is(.emphasis-groups-tool, .emphasis-groups-rebalance-weight-row) .emphasis-groups-spin > button {
+    display: block;
+    width: 14px;
+    height: 9px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: center / 14px 9px no-repeat;
+    transition: none;
+    cursor: var(--c-default, default);
+}
+
+:is(.emphasis-groups-tool, .emphasis-groups-rebalance-weight-row) .emphasis-groups-spin > button::before,
+:is(.emphasis-groups-tool, .emphasis-groups-rebalance-weight-row) .emphasis-groups-spin > button::after,
+.emphasis-groups-tool .emphasis-groups-card-tool::before,
+.emphasis-groups-tool .emphasis-groups-card-tool::after {
+    content: none;
+}
+
+:is(.emphasis-groups-tool, .emphasis-groups-rebalance-weight-row) .emphasis-groups-spin > button.emphasis-groups-spin-up { background-image: url("/static_images/vista-controls/spin-up-normal.png"); }
+:is(.emphasis-groups-tool, .emphasis-groups-rebalance-weight-row) .emphasis-groups-spin > button.emphasis-groups-spin-down { background-image: url("/static_images/vista-controls/spin-down-normal.png"); }
+:is(.emphasis-groups-tool, .emphasis-groups-rebalance-weight-row) .emphasis-groups-spin > button.emphasis-groups-spin-up:hover { background-image: url("/static_images/vista-controls/spin-up-hot.png"); }
+:is(.emphasis-groups-tool, .emphasis-groups-rebalance-weight-row) .emphasis-groups-spin > button.emphasis-groups-spin-down:hover { background-image: url("/static_images/vista-controls/spin-down-hot.png"); }
+:is(.emphasis-groups-tool, .emphasis-groups-rebalance-weight-row) .emphasis-groups-spin > button:active { filter: brightness(0.9); }
+
+/* hidden halves (Auto Band locks the nudges) take the pair with them */
+.emphasis-groups-spin:not(:has(> button:not(.hidden))) {
+    display: none;
+}
+
+.emphasis-groups-tool .emphasis-groups-spin-box:has(.emphasis-groups-spin > button.hidden) > input.emphasis-groups-weight-input {
+    padding-right: 3px;
+}
+
+.emphasis-groups-rebalance-weight-row {
+    margin-top: 10px;
+}
+
+/* ---- the list well ---- */
+
+.emphasis-groups-tool-content {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0 8px 8px;
+    overflow: hidden;
 }
 
 .emphasis-groups-grid-shell {
     flex: 1 1 auto;
     min-height: 0;
     overflow: hidden;
+    background: #fff;
+    border: 1px solid #828790;
 }
 
 .emphasis-groups-grid-scrollable {
@@ -75,72 +176,110 @@
 .emphasis-groups-grid {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 4px 6px 6px;
 }
 
 .emphasis-groups-card {
-    background: var(--glass-layer-dark-4);
-    border: 1px solid var(--glass-border-4);
-    border-radius: var(--border-radius-sm);
-    padding: 5px 6px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 1px;
     min-width: 0;
+    padding: 4px 6px 3px;
+    border-bottom: 1px solid #f0f0f0;
+    color: #000;
 }
 
-.emphasis-groups-card.emphasis-groups-card-wheelable {
-    cursor: var(--c-ns-resize);
-}
-
+.emphasis-groups-card.emphasis-groups-card-wheelable,
 .emphasis-groups-card-weight-wheelable {
     cursor: var(--c-ns-resize);
-    min-width: 5.5rem;
-}
-
-.emphasis-groups-card-band.two-tabs {
-    grid-template-columns: 1fr 1fr;
-    flex-shrink: 0;
-    padding: 0;
-    min-width: 5rem;
-    min-height: 1.75rem;
-    height: 1.75rem;
-    border-radius: var(--border-radius-sm);
-}
-
-.emphasis-groups-card-band .gallery-toggle-btn {
-    min-width: 0;
-    min-height: 1.65rem;
-    height: 1.65rem;
-    padding: 0 0.3rem;
-    font-size: 0.64rem;
-    gap: 0;
 }
 
 .emphasis-groups-card-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 2px;
     min-width: 0;
+    min-height: 22px;
 }
 
 .emphasis-groups-type-icon {
-    flex-shrink: 0;
-    font-size: 0.75rem;
-    opacity: 0.85;
-    line-height: 1;
+    flex: none;
+    margin-right: 4px;
+    color: #6d6d6d;
+    white-space: pre;
 }
 
-.emphasis-groups-card-row .emphasis-text {
+.emphasis-groups-tool .emphasis-groups-card-row .emphasis-text {
     flex: 1 1 auto;
+    color: #000;
+    font: inherit;
     min-width: 0;
-    white-space: nowrap;
     overflow: hidden;
+    white-space: nowrap;
     text-overflow: ellipsis;
-    font-size: 0.82rem;
-    line-height: 1.25;
-    color: var(--text-primary);
+}
+
+.emphasis-groups-card-context {
+    color: #6d6d6d;
+    pointer-events: none;
+}
+
+.emphasis-groups-tool .emphasis-groups-card-context .emphasis-text {
+    color: #6d6d6d;
+}
+
+/* ---- row tools: Vista toolbar buttons, bare at rest; hot is the light blue face, a latched one
+   (lock on, negative sign) the pressed face ---- */
+
+/* doubled class: beats 7.css's .win7 button:not(:disabled):not(:hover) border */
+.emphasis-groups-tool .emphasis-groups-card-row button.emphasis-groups-card-tool.emphasis-groups-card-tool {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+    color: #000;
+    font: 700 12px "Segoe UI", "Noto Sans", sans-serif;
+    transition: none;
+    line-height: 1;
+    cursor: var(--c-default, default);
+}
+
+.emphasis-groups-tool .emphasis-groups-card-row button.emphasis-groups-card-tool > img {
+    width: 16px;
+    height: 16px;
+}
+
+.emphasis-groups-tool .emphasis-groups-card-row button.emphasis-groups-card-tool.emphasis-groups-card-tool:hover:not(:disabled) {
+    background: linear-gradient(#f2f9fd, #e1f2fc 50%, #d3ecfb 50%, #c5e6fa);
+    border-color: #3c7fb1;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 70%);
+}
+
+.emphasis-groups-tool .emphasis-groups-card-row button.emphasis-groups-card-tool.emphasis-groups-card-tool:is(:active, [data-state="on"]):not(:disabled) {
+    background: linear-gradient(#e5f4fc, #c4e5f6 50%, #98d1ef 50%, #68b3db);
+    border-color: #2c628b;
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 30%);
+}
+
+/* unlocked: the padlock greyed, as a disabled toolbar picture */
+.emphasis-groups-card-delta-lock[data-state="off"] > img {
+    opacity: 0.4;
+    filter: grayscale(1);
+}
+
+.emphasis-groups-card-direct {
+    display: flex;
+    flex: none;
+    align-items: center;
 }
 
 .emphasis-groups-normalize-active .emphasis-groups-card-normalize-participant .emphasis-groups-card-direct {
@@ -148,350 +287,215 @@
 }
 
 .emphasis-groups-card-delta-locked .emphasis-groups-card-slider-row {
-    opacity: 0.72;
+    opacity: 0.6;
 }
 
-.emphasis-groups-card-delta-lock[data-state="on"] {
-    color: var(--accent-warning, #e8b84a);
-}
-
-.modal-window-title-toolbar .emphasis-groups-range-step {
-    min-width: 1.5rem;
-    width: 1.5rem;
-    padding: 0;
-    font-size: 0.65rem;
-}
-
-.modal-window-title-toolbar .emphasis-groups-range-nudge {
-    min-width: 1.25rem;
-    width: 1.25rem;
-}
-
-@media (pointer: fine) {
-    .modal-window-title-toolbar .emphasis-groups-range-nudge {
-        display: none;
-    }
-}
-
-/* Auto Band locks min/max nudges regardless of pointer type */
-.emphasis-groups-tool.emphasis-groups-auto-band-active .modal-window-title-toolbar .emphasis-groups-range-nudge {
-    display: none !important;
-}
-
-.emphasis-groups-tool.emphasis-groups-auto-band-active #emphasisGroupsMaxWeight,
-.emphasis-groups-tool.emphasis-groups-auto-band-active [id^="emphasisGroupsMaxWeight_"] {
-    pointer-events: none;
-    opacity: 0.85;
-}
-
-.emphasis-groups-tool.emphasis-groups-direct-mode .emphasis-groups-card-band {
-    display: none;
-}
-
-.emphasis-groups-card-direct {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-}
-
-.emphasis-groups-card-direct .emphasis-groups-card-sign {
-    min-width: 1.75rem;
-    min-height: 1.75rem;
-    width: 1.75rem;
-    height: 1.75rem;
-    padding: 0;
-    font-size: 0.72rem;
-    flex-shrink: 0;
-}
-
-.emphasis-groups-card-band .gallery-toggle-btn .tab-text {
-    max-width: none;
-    font-size: 0.64rem;
-    font-variant-numeric: tabular-nums;
-    line-height: 1;
-}
-
-.emphasis-groups-card-band .gallery-toggle-slider {
-    width: calc(50% - 1px);
-    top: 1px;
-    left: 1px;
-    height: calc(100% - 2px);
-}
-
-.emphasis-groups-card-band[data-active="0"] .gallery-toggle-slider {
-    transform: translateX(0);
-}
-
-.emphasis-groups-card-band[data-active="1"] .gallery-toggle-slider {
-    transform: translateX(calc(100% + 1px));
-}
+/* ---- track bar row ---- */
 
 .emphasis-groups-card-slider-row {
     display: flex;
     align-items: center;
     gap: 8px;
     min-width: 0;
-    /*
-     * Must match the painted thumb box (global .glass-slider is 22px + border).
-     * Wrong width → zero error at mid-track, growing offset toward the ends.
-     */
-    --emphasis-slider-thumb-w: 22px;
-    --emphasis-slider-thumb-half: 11px;
-    --emphasis-notch-suggested: 255, 228, 196;
-    --emphasis-notch-absmax: 255, 64, 64;
-    --emphasis-notch-arrow-alpha: 0.28;
-}
-
-.emphasis-groups-card-slider-row .slider-container {
-    flex: 1 1 auto;
-    min-width: 0;
-    min-height: 0;
-    margin: 0;
-    padding: 2px 8px;
-    background: var(--glass-layer-dark-4);
-    border: 1px solid var(--glass-border-2);
-    border-radius: var(--border-radius-lg);
-    /* Inset glow lives on ::after so ticks/notches/arrows sit underneath it */
-    box-shadow: none;
-    position: relative;
-    isolation: isolate;
-}
-
-/* Track inner glow — above ticks/notches/arrows, below thumb */
-.emphasis-groups-card-slider-row .slider-container::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    box-shadow: inset 0 0 16px #0000008c;
-    pointer-events: none;
-    z-index: 4;
-}
-
-.emphasis-groups-card-slider-row .slider-value {
-    flex-shrink: 0;
-    min-width: 7.5rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    font-variation-settings: "wght" 600;
-    text-align: right;
-    line-height: 1;
-    color: var(--text-primary);
-    cursor: var(--c-text);
-    border-radius: 3px;
-    border: 1px solid transparent;
-    padding: 1px 4px;
-    box-sizing: border-box;
+    /* Vista's thumb (THUMBBOTTOM, 11 px wide): marks sit on its centre's travel */
+    --emphasis-slider-thumb-w: 11px;
+    --emphasis-slider-thumb-half: 5.5px;
+    --emphasis-notch-suggested: 230, 135, 30;
+    --emphasis-notch-absmax: 220, 30, 30;
 }
 
 .emphasis-groups-card-value-host {
+    position: relative;
     display: flex;
+    flex: 1 1 auto;
     align-items: center;
     min-width: 0;
-    position: relative;
 }
 
-/* Marker colors (shared by in-range notches + off-range arrows) */
+/* 22 px track bar over a 7 px tick strip (TBS_BOTTOM ticks under the pointed thumb) */
+.emphasis-groups-tool .slider-ticks-container {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    height: 29px;
+}
+
+.emphasis-groups-tool .emphasis-groups-card-slider {
+    position: relative;
+    z-index: 2;
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    height: 22px;
+    margin: 0;
+    padding: 0;
+    touch-action: none;
+}
+
+.emphasis-groups-tool .slider-ticks {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.emphasis-groups-tool .slider-tick {
+    position: absolute;
+    bottom: 0;
+    width: 1px;
+    height: 7px;
+    background-color: rgba(0, 0, 0, 0.55);
+    /* --tick-frac 0-1, inline: thumbHalf + frac * (100% - thumbW) is where the thumb centre sits */
+    left: calc(var(--emphasis-slider-thumb-half) + (100% - var(--emphasis-slider-thumb-w)) * var(--tick-frac, 0));
+    transform: translateX(-50%);
+}
+
+/* every 0.5 */
+.emphasis-groups-tool .slider-tick.half-height {
+    height: 3px;
+}
+
+/* every whole number */
+.emphasis-groups-tool .slider-tick.three-quarter-height {
+    height: 5px;
+}
+
+/* landmarks: 0 green, -1 blue, full length */
+.emphasis-groups-tool .slider-tick.green-tick {
+    width: 2px;
+    height: 7px;
+    background-color: rgb(30, 165, 50);
+}
+
+.emphasis-groups-tool .slider-tick.blue-tick {
+    width: 2px;
+    height: 7px;
+    background-color: rgb(40, 130, 215);
+}
+
+/* suggested and abs max: marks from the top edge down across the groove */
 .emphasis-groups-slider-notch {
     position: absolute;
+    top: 0;
     width: 2px;
-    /* Same thumb-center formula as .slider-tick (--tick-frac set inline 0–1) */
     left: calc(var(--emphasis-slider-thumb-half) + (100% - var(--emphasis-slider-thumb-w)) * var(--tick-frac, 0));
     transform: translateX(-50%);
     pointer-events: none;
-    z-index: 1;
-    /* below track ::after glow */
-    border-radius: 1px;
 }
 
-/* Suggested optimal — orangish white, half height from the top */
 .emphasis-groups-slider-notch-optimal {
-    top: 0;
-    bottom: auto;
-    height: 50%;
-    background: rgba(var(--emphasis-notch-suggested), 0.9);
-    opacity: 1;
+    height: 9px;
+    background: rgb(var(--emphasis-notch-suggested));
 }
 
-/* Abs max — red, three-quarter height from the top */
 .emphasis-groups-slider-notch-absmax {
-    top: 0;
-    bottom: auto;
-    height: 75%;
-    width: 2px;
-    background: rgba(var(--emphasis-notch-absmax), 0.9);
-    opacity: 1;
+    height: 13px;
+    background: rgb(var(--emphasis-notch-absmax));
 }
 
-/* Off-range markers — same color as the tick they represent, low opacity */
+/* off the axis: a small triangle at that end of the groove */
 .emphasis-groups-slider-notch-arrow {
     position: absolute;
-    top: 50%;
-    z-index: 1;
-    /* below track ::after glow */
+    top: 3px;
+    width: 5px;
+    height: 7px;
     pointer-events: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 14px;
-    height: 14px;
-    font-size: 1em;
-    line-height: 1;
-    opacity: var(--emphasis-notch-arrow-alpha);
+    opacity: 0.75;
 }
 
-/* Sit under thumb centers at min / max */
 .emphasis-groups-slider-notch-arrow-left {
-    left: var(--emphasis-slider-thumb-half);
-    transform: translate(-50%, -50%);
+    left: 0;
+    clip-path: polygon(100% 0, 0 50%, 100% 100%);
 }
 
 .emphasis-groups-slider-notch-arrow-right {
-    left: calc(100% - var(--emphasis-slider-thumb-half));
-    right: auto;
-    transform: translate(-50%, -50%);
+    right: 0;
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
 }
 
 .emphasis-groups-slider-notch-arrow-optimal {
-    color: rgb(var(--emphasis-notch-suggested));
+    background: rgb(var(--emphasis-notch-suggested));
 }
 
 .emphasis-groups-slider-notch-arrow-absmax {
-    color: rgb(var(--emphasis-notch-absmax));
+    top: 12px;
+    background: rgb(var(--emphasis-notch-absmax));
 }
 
-.emphasis-groups-card-context {
-    opacity: 0.72;
-    pointer-events: none;
-}
+/* ---- the weight chip (and its edit twin): emphasis ramp background / border set inline ---- */
 
-.emphasis-groups-card-context .emphasis-groups-card-slider-row-context .slider-container {
-    visibility: hidden;
-    min-height: 18px;
+.emphasis-groups-card-weight {
+    flex: none;
+    box-sizing: border-box;
+    min-width: 7.5rem;
+    margin-bottom: 7px;
+    padding: 1px 5px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    color: #000;
+    font-variant-numeric: tabular-nums;
+    line-height: 16px;
+    text-align: right;
+    cursor: var(--c-text);
 }
 
 .emphasis-groups-card-value-host .emphasis-groups-card-weight-input {
     flex: 1 1 auto;
     width: 100%;
     min-width: 0;
-    margin: 0;
-    padding: 0.15rem 0.4rem;
-    font-size: 0.8rem;
-    text-align: center;
+    height: 21px;
+    margin: 0 0 7px;
     font-variant-numeric: tabular-nums;
-    border-radius: 3px;
-    border: 1px solid transparent;
-    box-sizing: border-box;
-    position: relative;
-    z-index: 5;
+    text-align: center;
 }
 
-.emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider {
-    flex: 1 1 auto;
-    min-width: 0;
-    width: 100%;
-    margin: 0;
-    height: 18px;
-    min-height: 18px;
-    padding: 0;
-    cursor: var(--c-ew-resize);
-    background: transparent;
-    touch-action: none;
-    position: relative;
-    z-index: 5;
-    /* thumb above inset glow; ticks stay under glow */
+.emphasis-groups-card-context .emphasis-groups-card-slider-row-context .emphasis-groups-card-value-host {
+    min-height: 22px;
 }
 
-.emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-webkit-slider-runnable-track {
-    height: 0;
-    background: transparent;
-    border: none;
-}
-
-.emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-moz-range-track {
-    height: 0;
-    background: transparent;
-    border: none;
-}
-
-/*
- * Thumb: half-height center notch (25%–75%), ~50% opacity, with glow only on
- * the notch (stacked soft gradient beams — thumbs can't use ::before).
- */
-.emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-webkit-slider-thumb,
-.emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-moz-range-thumb,
-.emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-ms-thumb {
-    box-sizing: border-box;
-    width: var(--emphasis-slider-thumb-w);
-    height: 20px;
-    background-color: var(--glass-layer-3);
-    /* Core mark (50% white) + soft outer glow layers, all notch-only */
-    background-image:
-        linear-gradient(to bottom,
-            transparent 0%,
-            transparent 25%,
-            rgba(255, 255, 255, 0.5) 25%,
-            rgba(255, 255, 255, 0.5) 75%,
-            transparent 75%,
-            transparent 100%),
-        linear-gradient(to bottom,
-            transparent 0%,
-            transparent 22%,
-            rgba(255, 255, 255, 0.22) 22%,
-            rgba(255, 255, 255, 0.22) 78%,
-            transparent 78%,
-            transparent 100%),
-        linear-gradient(to bottom,
-            transparent 0%,
-            transparent 18%,
-            rgba(255, 228, 196, 0.18) 18%,
-            rgba(255, 228, 196, 0.18) 82%,
-            transparent 82%,
-            transparent 100%);
-    background-size:
-        1px 100%,
-        2px 100%,
-        3px 100%;
-    background-position: center;
-    background-repeat: no-repeat;
-    box-shadow: var(--glass-shadow-3);
-}
-
-.emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-webkit-slider-thumb {
-    margin-top: -10px;
-}
-
-.emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-moz-range-thumb {
-    border: 1.5px solid var(--glass-border-3);
-}
-
-.emphasis-groups-tool .emphasis-groups-card-slider-row .slider-container .glass-slider::-ms-thumb {
-    margin-top: -10px;
+.emphasis-groups-card-context .emphasis-groups-card-weight {
+    margin-bottom: 0;
 }
 
 .emphasis-groups-empty {
-    padding: var(--spacing-md);
+    padding: 12px;
+    color: #6d6d6d;
     text-align: center;
-    color: var(--text-secondary);
-    font-size: 0.85rem;
 }
 
+/* ---- state lamps: the app's glass lamp (vista-glass-controls.css) in front of the label, lit by the
+   button's data-state (manager _updateNormalizeToolbar) ---- */
 
-.emphasis-groups-tool .emphasis-groups-card-delta-lock,
-.emphasis-groups-tool .emphasis-groups-card-snap-suggest,
-.emphasis-groups-tool .emphasis-groups-card-merge-groups,
-.emphasis-groups-tool .emphasis-groups-card-split-commas {
-    justify-content: center;
+.emphasis-groups-lamp {
+    flex: none;
+    display: inline-block;
+    box-sizing: border-box;
+    width: 7px;
+    height: 7px;
+    margin-right: 6px;
+    border: 1px solid #737373;
+    border-radius: 50%;
+    background-color: #141414e0;
+    background-image:
+        radial-gradient(circle at 35% 30%, hsl(0 0% 100% / 80%) 0 18%, transparent 42%),
+        radial-gradient(circle at 50% 55%, transparent 35%, hsl(0 0% 0% / 38%) 100%);
+    outline: 1px solid hsl(0 0% 0% / 45%);
+    vertical-align: middle;
+}
+
+.emphasis-groups-lamp-btn {
+    display: inline-flex;
     align-items: center;
-    min-width: 2.25rem;
-    font-size: 0.85em;
-    padding: .125em .125em;
-    min-height: 1.6rem;
 }
 
-/* Lit at the low colours; the pulse brightens the lamp toward #c5e0ff with a filter, which runs on
-   the compositor (animating background / border / box-shadow ticked the main thread every frame). */
+.emphasis-groups-lamp-btn[data-state="on"] > .emphasis-groups-lamp {
+    background-color: #7eff7e;
+    border-color: #00cd00;
+    box-shadow: 0 0 6px 1px #00ff22;
+}
+
+/* Auto-normalize hint: the Rescale lamp pulses (filter runs on the compositor) */
 @keyframes emphasis-compensate-flash {
 
     0%,
@@ -504,81 +508,9 @@
     }
 }
 
-.emphasis-groups-tool .indicator.emphasis-groups-compensate-hint:not([data-state="on"])::after {
-    background: #7eb8ff;
+.emphasis-groups-compensate-hint:not([data-state="on"]) > .emphasis-groups-lamp {
+    background-color: #7eb8ff;
     border-color: #4a90e2;
-    box-shadow: 0 0 10px 2px rgba(126, 184, 255, 0.35);
+    box-shadow: 0 0 6px 1px rgba(126, 184, 255, 0.5);
     animation: emphasis-compensate-flash 1.2s ease-in-out infinite;
-}
-
-.slider-ticks-container {
-    position: relative;
-    width: 100%;
-    display: flex;
-    align-items: center;
-    z-index: 1;
-    /* ticks layer under ::after glow */
-}
-
-/*
- * Full-width layer; each mark uses:
- *   left = thumbHalf + pct * (100% - thumbW)
- * matching how the browser places the range thumb center.
- */
-.slider-ticks {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    pointer-events: none;
-    z-index: 1;
-    padding: 0;
-}
-
-.slider-tick {
-    position: absolute;
-    width: 1.5px;
-    height: 100%;
-    background-color: rgba(255, 255, 255, 0.2);
-    /* --tick-frac set inline 0–1; matches browser thumb-center mapping */
-    left: calc(var(--emphasis-slider-thumb-half) + (100% - var(--emphasis-slider-thumb-w)) * var(--tick-frac, 0));
-    transform: translateX(-50%);
-}
-
-/* Half notch — every 0.5 on the weight axis */
-.slider-tick.half-height {
-    height: 50%;
-    bottom: 0;
-    top: auto;
-}
-
-/* Three-quarter notch — every whole number */
-.slider-tick.three-quarter-height {
-    height: 75%;
-    bottom: 0;
-    top: auto;
-}
-
-/* Colored from computeEmphasisWeightColor (inline rgba, muted alpha) */
-.slider-tick.emphasis-tick {
-    width: 1.5px;
-}
-
-.slider-tick.blue-tick {
-    /* Full landmark at -1 — light blue, slightly muted */
-    background-color: rgba(110, 195, 255, 0.7);
-    width: 2px;
-    height: 100%;
-    top: 0;
-    bottom: auto;
-}
-
-.slider-tick.green-tick {
-    /* Full landmark at 0 — emphasis green, slightly muted */
-    background-color: rgba(45, 215, 65, 0.7);
-    width: 2px;
-    height: 100%;
-    top: 0;
-    bottom: auto;
 }
