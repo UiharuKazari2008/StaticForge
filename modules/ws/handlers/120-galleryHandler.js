@@ -375,15 +375,6 @@ function sendGalleryMetaProbeResponse(handlers, ws, requestId, {
     });
 }
 
-async function tryFastGalleryMetaProbe(metadataDb, activeWorkspaceId, viewType) {
-    const probeMeta = await metadataDb.getGalleryWorkspaceProbeMeta(activeWorkspaceId, viewType);
-    if (!probeMeta || probeMeta.totalItems < 0) {
-        return null;
-    }
-
-    return probeMeta;
-}
-
 async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
     metadataDb,
     activeWorkspaceId,
