@@ -98,7 +98,7 @@ class VfsVirtualGrid {
                 }
             };
             const onDrop = (e) => {
-                if (e.target.closest('.explorer-item')) return;
+                // on a file (folders take their own drops): into the folder this window shows
                 const files = [...(e.dataTransfer?.files || [])];
                 if (!files.length) return;
                 e.preventDefault();

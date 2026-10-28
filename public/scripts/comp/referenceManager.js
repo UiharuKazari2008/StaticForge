@@ -3035,6 +3035,15 @@ const unifiedUploadModalManager = {
         this.reset();
     },
 
+    // Open the import wizard on files from the computer: a drop on Studio (explorerApplet.js
+    // wireStudioVfsDrop) or Import in the drop / paste question (dropPasteFallback.js)
+    async handleFiles(files) {
+        const list = Array.from(files || []).filter(Boolean);
+        if (!list.length) return;
+        this.show();
+        await handleUnifiedUploadFileChange({ target: { files: list } });
+    },
+
     // Open import wizard with a remote URL (e.g. NAX.moe vibe download)
   // options: { previewUrl, autoLoad } — naxVibesApplet.js
     async showWithUrl(url, options = {}) {

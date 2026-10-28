@@ -1089,6 +1089,16 @@ class ExplorerApplet {
         return parts.length >= 1;
     }
 
+    /**
+     * Where files from the computer may go: a writable folder, or a workspace's Pictures, Scraps,
+     * References or Notes, which vfsImportRouter.js imports into (prints, scraps, references, notes).
+     */
+    canUploadToPath(vfsPath) {
+        if (this._isWritableFolderPath(vfsPath)) return true;
+        const parts = (vfsPath || '').replace(/\/+$/, '').split('/').filter(Boolean);
+        return parts[0] === 'Workspaces' && parts.length === 3 && ['Pictures', 'Scraps', 'References', 'Notes'].includes(parts[2]);
+    }
+
     _canRenameItem(item) {
         if (!item || item.protected || this._isSystemItem(item)) return false;
         if (item.targetKind === 'vfs-folder' || item.targetKind === 'user-file') return true;
@@ -2904,7 +2914,9 @@ class ExplorerApplet {
         if (ev.ctrlKey || ev.metaKey) {
             if (ev.key === 'c' || ev.key === 'C') { ev.preventDefault(); this.copySelection(); return true; }
             if (ev.key === 'x' || ev.key === 'X') { ev.preventDefault(); this.cutSelection(); return true; }
-            if (ev.key === 'v' || ev.key === 'V') { ev.preventDefault(); this.pasteClipboard(); return true; }
+            // nothing cut or copied here: the paste event goes on, so a picture on the computer's
+            // clipboard lands in this folder (dropPasteFallback.js)
+            if ((ev.key === 'v' || ev.key === 'V') && this.clipboard) { ev.preventDefault(); this.pasteClipboard(); return true; }
         }
         if (ev.key === 'F2') { ev.preventDefault(); this.renameSelection(); return true; }
         if (ev.key === 'Delete') {
@@ -4698,16 +4710,18 @@ class ExplorerApplet {
 
     async uploadFilesToPath(vfsPath, fileList) {
         if (!fileList?.length) return;
-        if (!this._isWritableFolderPath(vfsPath)) {
+        if (!this.canUploadToPath(vfsPath)) {
             showGlassToast('warning', 'Explorer', 'Cannot upload here', false, 4000);
             return;
         }
         const files = [...fileList];
-        const showPlaceholders = vfsPath === this.currentPath;
+        // the window lists the folder (dropPasteFallback.js also uploads with no Explorer open)
+        const listed = !!this.el && !!this.modal && !this.modal.classList.contains('hidden');
+        const showPlaceholders = listed && vfsPath === this.currentPath;
         let placeholderIds = [];
         if (showPlaceholders) {
             placeholderIds = this._addUploadPlaceholders(files);
-        } else {
+        } else if (listed) {
             this._statusHint = `Uploading ${files.length} file(s)…`;
             this.renderStatusText();
         }
@@ -4723,13 +4737,17 @@ class ExplorerApplet {
                 await this.softRefresh();
             }
         } catch (err) {
-            this._statusHint = err.message || 'Upload failed';
-            this.renderStatusText();
+            if (listed) {
+                this._statusHint = err.message || 'Upload failed';
+                this.renderStatusText();
+            } else {
+                showGlassToast('error', 'Explorer', err.message || 'Upload failed', false, 5000);
+            }
         } finally {
             if (progress) progress.finish();
             if (showPlaceholders) {
                 this._removeUploadPlaceholders(placeholderIds);
-            } else {
+            } else if (listed) {
                 this._statusHint = null;
                 this.renderStatusText();
             }
