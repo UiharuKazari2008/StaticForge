@@ -253,6 +253,11 @@
     cursor: var(--c-default, default);
 }
 
+/* the sign is drawn at icon size (16 px box), not as label text */
+.emphasis-groups-tool .emphasis-groups-card-row button.emphasis-groups-card-sign.emphasis-groups-card-tool {
+    font: 700 17px/16px "Segoe UI", "Noto Sans", sans-serif;
+}
+
 .emphasis-groups-tool .emphasis-groups-card-row button.emphasis-groups-card-tool > img {
     width: 16px;
     height: 16px;
