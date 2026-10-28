@@ -178,7 +178,6 @@ Review only. No code was changed. Host `dreamscape`, live tree `~/staticforge` a
 | `scripts/comp/vfsSystemOpenRouter.js` | 8875 | 10.1 KB | Used at boot (DCL/init steps) or by many boot files; defer with order kept. | boot fns run: 0/13; used by 1 files |
 | `scripts/comp/desktopShortcuts.js` | 8876 | 178.8 KB | Desktop icons (step 18). 183 KB; shell-critical after login. Init steps: 18, Loading Desktop Shortcuts | boot fns run: 1/142; used by 2 files |
 | `scripts/comp/fileSearch.js` | 8885 | 50.2 KB | Used at boot (DCL/init steps) or by many boot files; defer with order kept. | boot fns run: 7/57; used by 6 files |
-| `scripts/comp/promptListFold.js` | 8888 | 33.1 KB | appInitSteps calls `bindPromptListTokenizer`. | boot fns run: 0/58; used by 50 files |
 | `scripts/comp/utilities.js` | 8889 | 141.7 KB | Used at boot (DCL/init steps) or by many boot files; defer with order kept. | boot fns run: 19/113; used by 61 files |
 | `scripts/comp/manualDropdownManager.js` | 8891 | 151.6 KB | appInitSteps calls generateModelOptions/... at boot and registers step 486; keep B until Studio split. Init steps: 486, Manual resolution and dropdown listeners | boot fns run: 0/127; used by 32 files |
 | `scripts/comp/novelContextMenu.js` | 8901 | 8.8 KB | appInitSteps calls `setupNovelContextMenu`. | boot fns run: 0/2; used by 2 files |
