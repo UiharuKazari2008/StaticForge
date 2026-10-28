@@ -1174,8 +1174,10 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     margin: 0;
 }
 
+/* no padding on the empty label: the box (::before) sits in the flow while the hot/pressed layer
+   (::after) is pinned at left 0, so a padding split them into two boxes on hover */
 #melatonControlPanelModal .cpl-ss-cell label {
-    padding-left: 13px;
+    padding-left: 0;
 }
 
 /* the pane's Devices block (cp_nav_line, then 7 px above and below the label) */
