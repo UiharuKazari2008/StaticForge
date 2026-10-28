@@ -17,7 +17,8 @@
  * Like the Windows Dreamscape SlideShow it also describes settings of its own (deviceConfig: a schema
  * and values, DS-SlideShow-win64/docs/DEVICE_CONFIG_PROTOCOL.md) and two gadgets, the slideshow and a
  * clock with two faces; it takes set_device_config / set_mode, keeps clock time frames, and reports
- * changes with client_device_config. It also shows Control Panel what it looks like: a bezel drawn on
+ * changes with client_device_config. The clock is also on the device's own home list (OK opens it,
+ * left / right change the face, Back returns to the list and selects the slideshow again). It also shows Control Panel what it looks like: a bezel drawn on
  * a canvas with the screen cut out (client_device_preview) and captures of its LCD redrawn on a canvas
  * (client_device_screen) after each change and every 30 s while the clock shows.
  *
@@ -31,6 +32,9 @@
     const ICON = `${ART}/window-16.png`;
     const APP = 'VirtualSideShow/3.0';
     const GADGET = 'Dreamscape Slideshow';
+    const CLOCK_ICON = '/static_images/vista-cpl/categories/clock-language-and-region-32.png';
+    // the home list: Welcome, then the gadgets
+    const HOME = ['welcome', 'slideshow', 'clock'];
 
     // measured on the VM (client coordinates)
     const MODES = {
@@ -761,6 +765,30 @@
             this.timer = setTimeout(() => this.step(1), this.settings.intervalSec * 1000);
         }
 
+        /** The manual choice of gadget (set_mode's, made on the device); reported like any config change. */
+        selectMode(mode) {
+            if (this.config.mode === mode) return;
+            this.config.mode = mode;
+            this.save();
+            this.sendConfig();
+        }
+
+        /** The Clock gadget from the home list; an active time frame may still show the slideshow. */
+        openClock() {
+            this.selectMode('clock');
+            this.evalFrames(true);
+        }
+
+        /** Left / right on the clock: the other face, kept as the selected face. */
+        stepFace(dir) {
+            const i = FACES.findIndex((f) => f.id === this.config.clockFace);
+            this.config.clockFace = FACES[(Math.max(0, i) + dir + FACES.length) % FACES.length].id;
+            this.save();
+            this.sendConfig();
+            this.render();
+            this.reportState();
+        }
+
         openGadget() {
             if (this.screen === 'gadget') return;
             this.screen = 'gadget';
@@ -771,13 +799,26 @@
         // ---- the buttons ----
 
         press(k) {
-            if (this.screen === 'splash' || this.screen === 'clock') return;
+            if (this.screen === 'splash') return;
+            if (this.screen === 'clock') {
+                // Back leaves the clock for the home list (and selects the slideshow again); a time
+                // frame that shows the clock keeps it on screen
+                if (k === 'left' || k === 'up') this.stepFace(-1);
+                else if (k === 'right' || k === 'down' || k === 'ok') this.stepFace(1);
+                else if (k === 'back') {
+                    this.selectMode('slideshow');
+                    this.screen = 'home';
+                    this.evalFrames(true);
+                }
+                return;
+            }
             if (this.screen === 'home') {
                 if (k === 'up' || k === 'down') {
-                    this.homeIndex = k === 'up' ? 0 : 1;
+                    this.homeIndex = Math.max(0, Math.min(HOME.length - 1, this.homeIndex + (k === 'up' ? -1 : 1)));
                     this.render();
                 } else if (k === 'ok' || k === 'right') {
-                    if (this.homeIndex === 1) { this.openGadget(); this.reportState(); }
+                    if (HOME[this.homeIndex] === 'slideshow') { this.openGadget(); this.reportState(); }
+                    else if (HOME[this.homeIndex] === 'clock') this.openClock();
                 }
                 return;
             }
@@ -875,7 +916,8 @@
                 if (L) {
                     const items = [
                         { title: 'Welcome', text: 'Welcome to Melaton SideShow', icon: `${ART}/fw-logo.png` },
-                        { title: GADGET, text: this.total ? `${this.total.toLocaleString('en-US')} pictures` : 'Pictures from your gallery', icon: '/static_images/vista-sideshow/slideshow-gadget-32.png' }
+                        { title: GADGET, text: this.total ? `${this.total.toLocaleString('en-US')} pictures` : 'Pictures from your gallery', icon: '/static_images/vista-sideshow/slideshow-gadget-32.png' },
+                        { title: 'Clock', text: `${(FACES.find((f) => f.id === this.config.clockFace) || FACES[0]).name} clock`, icon: CLOCK_ICON }
                     ];
                     const sel = items[this.homeIndex];
                     this.lcd.innerHTML = `<div class="sss-home is-landscape" style="background-image:url('${ART}/fw-bg-landscape.jpg')">
@@ -887,6 +929,7 @@
                     this.lcd.innerHTML = `${this.header()}<div class="sss-home is-portrait" style="background-image:url('${ART}/fw-welcome-portrait.jpg')">
                         <div class="sss-welcome${this.homeIndex === 0 ? ' is-selected' : ''}"><b>Welcome</b><span>Welcome to Melaton SideShow</span><img src="/static_images/vista-sideshow/sideshow-48.png" alt=""></div>
                         <div class="sss-item${this.homeIndex === 1 ? ' is-selected' : ''}" style="--sel:url('${ART}/fw-select.png')">${esc(GADGET)}</div>
+                        <div class="sss-item${this.homeIndex === 2 ? ' is-selected' : ''}" style="--sel:url('${ART}/fw-select.png')">Clock</div>
                     </div>`;
                 }
                 return;
