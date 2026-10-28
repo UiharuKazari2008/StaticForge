@@ -397,23 +397,7 @@ function handleMcpGalleryImageDownload(globalResources, req, res) {
     const headerName = filename.replace(/["\r\n]/g, '');
     res.setHeader('Content-Disposition', `inline; filename="${headerName}"`);
     res.setHeader('Cache-Control', 'private, no-store');
-    let bytes = fs.readFileSync(filePath);
-    if (mime === 'image/png') {
-        try {
-            const { patchPngTex } = require('./pktSideStore');
-            const pngMeta = globalResources.getPngMetadata();
-            return patchPngTex(pngMeta, bytes, filename).then((covered) => {
-                bytes = covered || bytes;
-                res.setHeader('Content-Type', mime);
-                res.setHeader('Content-Length', String(bytes.length));
-                res.status(200).send(bytes);
-            }).catch(() => {
-                res.setHeader('Content-Type', mime);
-                res.setHeader('Content-Length', String(bytes.length));
-                res.status(200).send(bytes);
-            });
-        } catch (_) { /* send the file */ }
-    }
+    const bytes = fs.readFileSync(filePath);
     res.setHeader('Content-Type', mime);
     res.setHeader('Content-Length', String(bytes.length));
     res.status(200).send(bytes);

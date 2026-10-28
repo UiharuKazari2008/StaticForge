@@ -2494,3 +2494,26 @@ main().then(() => process.exit(0)).catch((error) => {
     console.error(error);
     process.exit(1);
 });
+
+// read_image_metadata: managed emphasis ids come back as flat n::…:: weights, per field.
+{
+    const ZW = require('../modules/emphasisGroupIdSyntax');
+    const group = (id, inner) => ZW.buildManagedEmphasisGroupText(id, inner);
+    const meta = {
+        prompt: `1girl, ${group(2, 'modern city, skyscrapers')}, outdoors`,
+        uc: 'lowres',
+        input_prompt_negative: `${group(2, 'umbrella')}`,
+        compiled_prompt: '1girl, 1.5::modern city, skyscrapers::, outdoors, -1::umbrella::',
+        compiled_uc: '',
+        emphasis_normalization: {
+            prompt: { groupsById: { 2: 1.5 } },
+            manualPromptNegative: { groupsById: { 2: 0.7 } }
+        }
+    };
+    const out = _test.changeJsonFromImageMeta(meta, 'x.png');
+    assert.strictEqual(out.change.prompt, '1girl, 1.5::modern city, skyscrapers::, outdoors');
+    assert.strictEqual(out.change.promptNegative, '0.7::umbrella::');
+    assert.strictEqual(out.compiled.prompt, meta.compiled_prompt, 'compiled is exactly what NovelAI received');
+    assert.strictEqual(_test.flatEmphasisWeights('plain, 1.2::x::', null, 'prompt'), 'plain, 1.2::x::');
+}
+console.log('test-mcp-agent-facade: flat weights ok');

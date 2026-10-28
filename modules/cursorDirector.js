@@ -4425,14 +4425,8 @@ async function readAttachment(gr, attachment) {
         if (!insideDir(gr.getPath('images'), filePath) || !fs.existsSync(filePath)) {
             throw new Error('Workspace image was not found');
         }
-        let buffer = fs.readFileSync(filePath);
+        const buffer = fs.readFileSync(filePath);
         if (buffer.length > MAX_ATTACHMENT_BYTES) throw new Error('Workspace image is too large');
-        if (path.extname(filename).toLowerCase() === '.png') {
-            try {
-                const { patchPngTex } = require('./pktSideStore');
-                buffer = await patchPngTex(gr.getPngMetadata(), buffer, filename);
-            } catch (_err) { /* keep the stored file if the cover cannot be built */ }
-        }
         return { name: safeName(filename), buffer };
     }
     if (source === 'reference') {
@@ -6078,8 +6072,7 @@ function dynagenTurnPrompt(fresh, job) {
     if (job.attemptN) lines.push(`Attempt: ${job.attemptN}/${job.max || 5}`);
     if (job.previewPath) lines.push(`Preview: ${job.previewPath}`);
     if (job.compiledPrompt) {
-        const { fmtCmp } = require('./pktWire');
-        lines.push(`Compiled prompt:\n${fmtCmp(job.compiledPrompt)}`);
+        lines.push(`Compiled prompt:\n${job.compiledPrompt}`);
     }
     return lines.join('\n');
 }

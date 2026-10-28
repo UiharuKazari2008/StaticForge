@@ -20,7 +20,6 @@ const {
     sealApiPayload,
     assertTokenCompiler
 } = require('../public/scripts/comp/promptListFold');
-const { pullSurface } = require('./pktWire');
 const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 const { resolveMediumLock, applyMediumLocksToOptions, explicitEffortModelKey, mediumUcResidual } = require('./v5MediumLock');
 const { resolveNekoEnumValue } = require('./nekoEnumResolve');
@@ -4182,11 +4181,6 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             if (body.upscale) baseOptions.upscale = baseOptions.localUpscaleScale;
         }
 
-        if (body.__k9 != null) {
-            const n = Number(body.__k9);
-            if (Number.isFinite(n) && n > 0) foldBag.k9 = Math.min(15, Math.floor(n));
-            delete body.__k9;
-        }
         rememberPromptFold(baseOptions, foldBag);
         return baseOptions;
     } catch (error) {
@@ -4924,13 +4918,6 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
 
         if (shouldSave) {
             await fs.promises.writeFile(path.join(__runtimeGr.getPath('images'), name), finalBuffer);
-            try {
-                const { stashRow } = require('./pktSideStore');
-                const snap = pullSurface(opts);
-                if (snap) stashRow(name, snap);
-            } catch (sideErr) {
-                console.error('Side row write failed:', sideErr.message);
-            }
             __runtimeGr.getLogger().normal(`💾 Saved: ${name}`);
 
             // Add file to workspace

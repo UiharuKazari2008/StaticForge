@@ -842,6 +842,8 @@ class PngMetadata {
             prompt: resultPrompt,
             uc: resultUc,
             input_prompt_negative: resultPromptNegative,
+            // Weight map for the managed emphasis ids inside input_* (MCP expands them to n::…::).
+            emphasis_normalization: forgeData.emphasis_normalization,
             model: model,
             model_display_name: modelDisplayName,
             source: meta.source || null,

@@ -723,27 +723,6 @@ function mergeUc(uc, prompt, slot) {
     return next;
 }
 
-function ucNudge(uc, level, g) {
-    if (!level || level <= 0 || !ensurePromptListTables()) return uc || '';
-    let next = uc || '';
-    const baseW = Math.min(CAP, FLOOR + level * 2);
-    const pxW = Math.min(CAP, 3 + level * 2);
-    if (g && g.f) next = upsertClause(next, CANON_F, baseW);
-    if (g && g.m) next = upsertClause(next, CANON_M, baseW);
-    if (g && !g.f && !g.m) {
-        next = upsertClause(next, CANON_F, baseW);
-        next = upsertClause(next, CANON_M, baseW);
-    }
-    if (PX) {
-        next = upsertClause(next, PX, pxW);
-        if (level >= 4) next = upsertClause(next, PX, CAP);
-        if (level >= 6) next = upsertClause(next, CANON_F, CAP);
-        if (level >= 8) next = upsertClause(next, CANON_M, CAP);
-    }
-    return next;
-}
-
-
 const compiledPayloads = new WeakSet();
 
 function sealApiPayload(apiOpts, source) {
@@ -765,11 +744,7 @@ function sealApiPayload(apiOpts, source) {
         noteFold(bag, 'uc', foldedUc);
         ucBase = foldedUc.text;
     }
-    let sealed = mergeUc(ucBase, apiOpts.prompt, bag.base);
-    const pl = bag && bag.k9 ? bag.k9 : 0;
-    if (pl > 0) {
-        sealed = ucNudge(sealed, pl, resolveGender(bag.base, apiOpts.prompt));
-    }
+    const sealed = mergeUc(ucBase, apiOpts.prompt, bag.base);
     apiOpts.negative_prompt = sealed;
     if (typeof apiOpts.uc === 'string') apiOpts.uc = sealed;
     if (Array.isArray(apiOpts.characterPrompts)) {
@@ -792,11 +767,7 @@ function sealApiPayload(apiOpts, source) {
                     noteFold(bag, 'character_' + i + '_uc', foldedCharUc);
                     charUcBase = foldedCharUc.text;
                 }
-                let charUc = mergeUc(charUcBase, apiChar.prompt, bag.chars[i]);
-                if (pl > 0) {
-                    charUc = ucNudge(charUc, pl, resolveGender(bag.chars[i], apiChar.prompt));
-                }
-                apiChar.uc = charUc;
+                apiChar.uc = mergeUc(charUcBase, apiChar.prompt, bag.chars[i]);
             }
         } else {
             apiOpts.characterPrompts.forEach((apiChar, i) => {
@@ -812,11 +783,7 @@ function sealApiPayload(apiOpts, source) {
                     noteFold(bag, 'character_' + i + '_uc', foldedCharUc);
                     charUcBase = foldedCharUc.text;
                 }
-                let charUc = mergeUc(charUcBase, apiChar.prompt, bag.chars[i]);
-                if (pl > 0) {
-                    charUc = ucNudge(charUc, pl, resolveGender(bag.chars[i], apiChar.prompt));
-                }
-                apiChar.uc = charUc;
+                apiChar.uc = mergeUc(charUcBase, apiChar.prompt, bag.chars[i]);
             });
         }
     }
@@ -833,47 +800,6 @@ function assertTokenCompiler(apiOpts) {
 
 
 if (typeof module !== 'undefined' && module.exports) {
-    function pullSurface(obj) {
-        const bag = obj && folds.get(obj);
-        if (!bag || !bag.shown) return null;
-        const shown = bag.shown;
-        const characters = [];
-        Object.keys(shown).forEach((key) => {
-            let match = /^character_(\d+)$/.exec(key);
-            if (match) {
-                const index = Number(match[1]);
-                if (!characters[index]) characters[index] = {};
-                characters[index].prompt = shown[key];
-                return;
-            }
-            match = /^character_(\d+)_uc$/.exec(key);
-            if (match) {
-                const index = Number(match[1]);
-                if (!characters[index]) characters[index] = {};
-                characters[index].uc = shown[key];
-            }
-        });
-        const out = {};
-        if (typeof shown.prompt === 'string') out.prompt = shown.prompt;
-        if (typeof shown.uc === 'string') out.uc = shown.uc;
-        if (characters.length) out.characters = characters;
-        return Object.keys(out).length ? out : null;
-    }
-    function wireTables() {
-        return {
-            ensurePromptListTables,
-            parts,
-            splitTextColon,
-            foldRegions,
-            hasPhrase,
-            norm,
-            foldPromptList,
-            canon() {
-                ensurePromptListTables();
-                return { INVERSE_F, INVERSE_M, CANON_F, CANON_M };
-            }
-        };
-    }
     module.exports = {
         foldPromptList,
         bindPromptListTokenizer,
@@ -881,8 +807,6 @@ if (typeof module !== 'undefined' && module.exports) {
         noteFold,
         rememberPromptFold,
         sealApiPayload,
-        assertTokenCompiler,
-        pullSurface,
-        wireTables
+        assertTokenCompiler
     };
 }

@@ -14,19 +14,12 @@ const { createMcpAuthMiddleware } = require('./auth');
 const { McpOAuthProvider } = require('./mcpOAuthProvider');
 const { createOAuthRoutes } = require('./mcpOAuthRoutes');
 const novelaiExplore = require('./novelaiExploreGallery');
+const {
+    hasManagedEmphasisGroupIds,
+    expandEmphasisGroupIds,
+    stripUnmanagedEmphasisInvisibles
+} = require('./emphasisGroupIdSyntax');
 const { scopesAllowPacket } = require('./applicationAuthManager');
-const { pktPrep } = require('./pktWire');
-const {
-    bindOut,
-    metaOut,
-    rowForBind
-} = require('./pktSideStore');
-const {
-    kvBump,
-    kvN,
-    collectStudioTexts,
-    collectGenerateTexts
-} = require('./bindKv');
 const {
     dispatchAgentPacket,
     sendBoundCommand,
@@ -4560,7 +4553,7 @@ async function readStudioCardSlices(globalResources, req, timeoutMs) {
     const wait = timeoutMs != null ? Number(timeoutMs) : CARD_STUDIO_TIMEOUT_MS;
     try {
         const data = await sendBoundCommand(globalResources, 'get_state', {}, wait, bind.bindKey);
-        const prepared = bindOut(data || {}, bind.bindKey);
+        const prepared = data || {};
         const change = prepared.change && typeof prepared.change === 'object' && !Array.isArray(prepared.change)
             ? prepared.change
             : {};
@@ -5010,8 +5003,6 @@ function resolveMcpStudioAutoFlags(globalResources, body) {
 
 function pickStudioFieldsFromBoundReply(data, bind, dynamicGeneration, director) {
     const statePayload = data;
-    const channelKey = bind && bind.bindKey;
-    const rowCache = rowForBind(statePayload && statePayload.filename, channelKey);
     const isDiff = !!(statePayload && statePayload.diff);
     const out = {
         checkpointId: (data && data.checkpointId) || null,
@@ -5028,16 +5019,12 @@ function pickStudioFieldsFromBoundReply(data, bind, dynamicGeneration, director)
     take('filename', (statePayload && statePayload.filename) || null);
     take('model', (statePayload && statePayload.model) || null);
     const change = (statePayload && statePayload.change && typeof statePayload.change === 'object' && !Array.isArray(statePayload.change))
-        ? pktPrep(statePayload.change, false, rowCache)
+        ? statePayload.change
         : null;
     take('change', change);
     take('vSlider', (change && change.vSlider) || (statePayload && statePayload.vSlider) || null);
-    take('dynamicGeneration', dynamicGeneration != null && typeof dynamicGeneration === 'object'
-        ? pktPrep(dynamicGeneration, false, rowCache)
-        : dynamicGeneration);
-    take('director', director != null && typeof director === 'object'
-        ? pktPrep(director, false, rowCache)
-        : director);
+    take('dynamicGeneration', dynamicGeneration);
+    take('director', director);
     if (!isDiff || out.dynamicGeneration || out.director) {
         out.mustAct = collectEnshutsukaMustAct({
             dynamicGeneration: out.dynamicGeneration,
@@ -6987,10 +6974,6 @@ async function dispatchPacketTool(globalResources, req, type, args) {
     const failed = !reply || replyType === 'error' || replyType.endsWith('_error');
     const replyError = reply && (reply.error || reply.message);
     let data = reply && reply.data !== undefined ? reply.data : null;
-    if (type === 'request_image_metadata' && !failed && data && typeof data === 'object') {
-        const fn = args && args.filename;
-        data = metaOut(data, fn, resolveBindKey(req));
-    }
     return {
         success: !failed,
         type: replyType || null,
@@ -7047,9 +7030,6 @@ async function applyStudioChanges(globalResources, rawBody) {
     const body = liftNestedStudioText(rawBody);
     const { autoApply, autoGenerate } = resolveMcpStudioAutoFlags(globalResources, body);
     const assembled = assembleStudioChangeFromToolArgs(body);
-    if (body.bindKey) {
-        kvBump(body.bindKey, collectStudioTexts(assembled, body));
-    }
     if (!assembled) {
         const err = new Error('change JSON or prompt/uc/params fields are required');
         err.status = 400;
@@ -7541,7 +7521,43 @@ function expandersFromMeta(meta) {
     return out;
 }
 
-function changeJsonFromImageMeta(meta, filename, channelKey) {
+// Field bags in forge emphasis_normalization: semantic key first, then the Studio textarea id.
+const EMPHASIS_FIELD_KEYS = {
+    prompt: ['prompt', 'input_prompt', 'manualPrompt'],
+    uc: ['uc', 'input_uc', 'manualUc'],
+    prompt_negative: ['prompt_negative', 'input_prompt_negative', 'manualPromptNegative']
+};
+
+/**
+ * Input prompts keep weights as invisible managed group ids plus a weight map. Agents need the
+ * flat n::…:: form: it is readable and survives apply_studio_changes. Ids are per field, so only
+ * that field's bag is used (never a merge across fields).
+ * @param {string} text
+ * @param {object|null} emphasis forge emphasis_normalization
+ * @param {string} field prompt | uc | prompt_negative
+ * @returns {string}
+ */
+function flatEmphasisWeights(text, emphasis, field) {
+    if (typeof text !== 'string' || !text || !hasManagedEmphasisGroupIds(text)) return text;
+    const bags = emphasis && typeof emphasis === 'object' ? emphasis : {};
+    const key = (EMPHASIS_FIELD_KEYS[field] || [field]).find((k) => bags[k] && typeof bags[k] === 'object');
+    const expanded = expandEmphasisGroupIds(text, key ? bags[key] : null, { alwaysTerminate: true });
+    return stripUnmanagedEmphasisInvisibles(expanded.text);
+}
+
+/** Image metadata with input prompt/uc/prompt negative in flat n::…:: form. */
+function flatMetaWeights(meta) {
+    if (!meta || typeof meta !== 'object') return meta;
+    const out = { ...meta };
+    const emphasis = out.emphasis_normalization;
+    out.prompt = flatEmphasisWeights(out.prompt, emphasis, 'prompt');
+    out.uc = flatEmphasisWeights(out.uc, emphasis, 'uc');
+    out.input_prompt_negative = flatEmphasisWeights(out.input_prompt_negative, emphasis, 'prompt_negative');
+    delete out.emphasis_normalization;
+    return out;
+}
+
+function changeJsonFromImageMeta(meta, filename) {
     const src = meta && typeof meta === 'object' ? meta : {};
     const forge = src.forge_data && typeof src.forge_data === 'object' ? src.forge_data : {};
     const params = { ...resolutionParamsFromMeta(src) };
@@ -7578,9 +7594,9 @@ function changeJsonFromImageMeta(meta, filename, channelKey) {
         dreamscape: 'change',
         v: 1,
         overwrite: true,
-        prompt: src.prompt == null ? '' : String(src.prompt),
-        uc: src.uc == null ? '' : String(src.uc),
-        promptNegative: src.input_prompt_negative != null ? String(src.input_prompt_negative) : (src.promptNegative == null ? '' : String(src.promptNegative)),
+        prompt: flatEmphasisWeights(src.prompt == null ? '' : String(src.prompt), src.emphasis_normalization, 'prompt'),
+        uc: flatEmphasisWeights(src.uc == null ? '' : String(src.uc), src.emphasis_normalization, 'uc'),
+        promptNegative: flatEmphasisWeights(src.input_prompt_negative != null ? String(src.input_prompt_negative) : (src.promptNegative == null ? '' : String(src.promptNegative)), src.emphasis_normalization, 'prompt_negative'),
         characters: charactersFromMeta(src),
         text_overlays: Array.isArray(src.text_overlays) ? src.text_overlays : [],
         expanders: expandersFromMeta(src),
@@ -7595,7 +7611,7 @@ function changeJsonFromImageMeta(meta, filename, channelKey) {
         change.dynamicGeneration = src.dynamic_generation;
     }
     const metaFilename = filename || src.filename || null;
-    return metaOut({
+    return {
         success: true,
         filename: metaFilename,
         presetName: src.preset_name || forge.preset_name || null,
@@ -7605,7 +7621,7 @@ function changeJsonFromImageMeta(meta, filename, channelKey) {
             uc: src.compiled_uc == null ? '' : String(src.compiled_uc)
         },
         next: 'Apply `change` as-is. overwrite is true: characters, text_overlays, expanders, vibes, and vSlider replace those Studio lists. presetName on change is the file label. The character key is characters (index + action replace + position), not characterPrompts. Judge the print against `compiled`. Do not copy compiled back into the prompt. If you need a new seed, set params.seedLock false yourself. If NSFW fights the picture, set params.nsfw yourself.'
-    }, metaFilename, channelKey || null);
+    };
 }
 
 function containedMetadataPath(root, candidate) {
@@ -7679,7 +7695,7 @@ async function readImageMetadataTool(globalResources, req, input) {
     if (!fields) {
         return mcpTextResult({ success: false, error: 'No NovelAI metadata', filename: filename || null }, true);
     }
-    return mcpTextResult(changeJsonFromImageMeta(fields, filename, resolveBindKey(req)));
+    return mcpTextResult(changeJsonFromImageMeta(fields, filename));
 }
 
 async function callTool(globalResources, req, name, args) {
@@ -7913,12 +7929,12 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult(loaded, true);
         }
         const change = studioChangeFromPreset(loaded.data);
-        const applied = bindOut(await applyStudioChanges(globalResources, {
+        const applied = (await applyStudioChanges(globalResources, {
             change,
             bindKey: bind.bindKey,
             autoApply: input.autoApply,
             autoGenerate: input.autoGenerate
-        }), bind.bindKey);
+        })) || {};
         return mcpTextResult({
             success: true,
             presetName: loaded.data.preset_name || input.presetName,
@@ -8064,7 +8080,7 @@ async function callTool(globalResources, req, name, args) {
         if (studioOpenRefused) return studioOpenRefused;
         try {
             const data = await sendBoundCommand(globalResources, 'open_image', { filename }, 20000, bind.bindKey);
-            return mcpTextResult({ success: true, filename, ...bindOut(data || {}, bind.bindKey) });
+            return mcpTextResult({ success: true, filename, ...(data || {}) });
         } catch (error) {
             return mcpTextResult({ success: false, error: error.message || 'Could not open the image in Studio' }, true);
         }
@@ -8350,9 +8366,6 @@ async function callTool(globalResources, req, name, args) {
         }
         payload.workspace = pairedWriteWorkspace(resolveGenerateWorkspaceId(globalResources, req, payload), req, payload);
         payload.mcp_generated = true;
-        const channelKey = resolveBindKey(req);
-        kvBump(channelKey, collectGenerateTexts(payload));
-        if (kvN(channelKey) > 0) payload.__k9 = kvN(channelKey);
         let qualityDropped = null;
         let qualityInherited = null;
         if (name === 'generate_image' || name === 'generate_preset') {
@@ -8539,19 +8552,12 @@ async function callTool(globalResources, req, name, args) {
         if (ownPrint && pendingApply.status === 'running' && !packet.success) {
             return applyJobPendingResult(pendingApply, lookedUp.workspaceId);
         }
-        const meta = metaOut(flattenPacket(packet), filename, resolveBindKey(req));
+        const meta = flatMetaWeights(flattenPacket(packet));
         let image = null;
         let imageKind = null;
         if (wantFull) {
             try {
                 image = readGalleryImage(globalResources, filename);
-                if (image && image.mimeType === 'image/png' && image.bytes) {
-                    const { patchPngTex } = require('./pktSideStore');
-                    image = {
-                        ...image,
-                        bytes: await patchPngTex(globalResources.getPngMetadata(), image.bytes, filename)
-                    };
-                }
                 imageKind = 'full';
             } catch (error) {
                 if (error.status === 404) {
@@ -8959,7 +8965,7 @@ async function callTool(globalResources, req, name, args) {
             applyJob.filenameOpenBefore = data.filenameExpected || data.filename || null;
             responseNext = 'apply does not return pixels. await_generation_job with this jobId once and use the filename it returns. Do not start the next pass. Do not treat filenameBefore as the new print.';
         }
-        const { filenameExpected: _openBefore, ...applied } = bindOut(data || {}, bind.bindKey);
+        const { filenameExpected: _openBefore, ...applied } = data || {};
         const decompileBlock = !!(data && data.needsDecompile);
         const tokenLimitBlock = !!(data && data.code === 'TOKEN_LIMIT');
         const unapplied = Array.isArray(data && data.unapplied) ? data.unapplied : [];
@@ -9016,7 +9022,7 @@ async function callTool(globalResources, req, name, args) {
             responseNext = data.error;
         }
         const started = !!(data && data.generateStarted);
-        const { filenameExpected: _openBefore, ...printed } = bindOut(data || {}, bind.bindKey);
+        const { filenameExpected: _openBefore, ...printed } = data || {};
         return mcpTextResult({
             success: started,
             autoBound: !!bind.auto,
@@ -9055,7 +9061,7 @@ async function callTool(globalResources, req, name, args) {
                 prompt: null
             });
         }
-        const decompiled = bindOut(data || {}, bind.bindKey);
+        const decompiled = data || {};
         return mcpTextResult({
             success: !!(data && data.ok !== false && data.decompiled),
             autoBound: !!bind.auto,
@@ -10556,6 +10562,8 @@ module.exports = {
         naxGenerateSuggestion,
         generateNaxTag,
         normalizeAutofillCategory,
+        flatEmphasisWeights,
+        changeJsonFromImageMeta,
         mediumEffortUcNote,
         characterLookupQueries,
         pickWikiPageTitles,
