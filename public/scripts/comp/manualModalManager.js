@@ -655,7 +655,7 @@ function createManualPreviewImageContextMenuConfig() {
 function isManualPreviewContextTarget(target) {
     if (!target) return false;
     if (target.id === 'manualPreviewImage') return true;
-    return !!(target.classList && target.classList.contains('manual-preview-image-container'));
+    return !!(target.closest && target.closest('.manual-preview-image-container'));
 }
 
 function applyImageAsVariationBase(image) {
@@ -717,6 +717,13 @@ function applyImageAsVariationBase(image) {
 
 async function handleManualPreviewImageContextMenuAction(event) {
     const { action, target, item } = event.detail;
+
+    // Gallery, Explorer and desktop menus dispatch the same global event. Their image
+    // actions (Properties, delete, copy...) must not also run on the Studio preview image.
+    // studioIsPreviewMenuAction: public/scripts/comp/imageGenerationSettings.js
+    if (!isManualPreviewContextTarget(target) && studioIsPreviewMenuAction(action)) {
+        return;
+    }
 
     // handleImageGenerationSettingsMenuAction: public/scripts/comp/imageGenerationSettings.js
     if (handleImageGenerationSettingsMenuAction(action, target, item)) {
