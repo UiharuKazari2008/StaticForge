@@ -7935,7 +7935,7 @@ class WebSocketClient {
         return this.sendMessage('list_devices', {}, false);
     }
 
-    /** command: next | previous | pause | resume | show | refresh | set_settings | rename */
+    /** command: next | previous | pause | resume | show | refresh | set_settings | rename | set_device_config | set_mode */
     async deviceSendCommand(deviceId, command, extra = {}) {
         return this.sendMessage('device_send_command', { deviceId, command, ...extra }, false);
     }

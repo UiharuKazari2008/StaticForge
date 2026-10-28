@@ -1363,3 +1363,120 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 #melatonControlPanelModal .cpl-ss-source .cpl-ss-poolrow {
     margin-left: 20px;
 }
+
+/* Device-specific settings and the Clock gadget, drawn from each device's own schema: one Vista group
+   box per group, the settings grid inside, hints and errors under their fields */
+#melatonControlPanelModal .cpl-ss-group {
+    margin: 0 0 10px;
+    padding: 4px 10px 6px;
+    border: 1px solid #d5dfe5;
+    border-radius: 3px;
+}
+
+#melatonControlPanelModal .cpl-ss-group legend {
+    padding: 0 3px;
+    color: #1e395b;
+}
+
+#melatonControlPanelModal .cpl-ss-cfg .cpl-ss-settings td:first-child {
+    width: 150px;
+    vertical-align: top;
+    padding-top: 6px;
+}
+
+#melatonControlPanelModal .cpl-ss-cfg .cpl-ss-settings td.cpl-ss-top {
+    padding-top: 6px;
+}
+
+#melatonControlPanelModal .cpl-ss-cfg input.cpl-ss-text {
+    width: 260px;
+}
+
+#melatonControlPanelModal .cpl-ss-cfg input.cpl-ss-num {
+    width: 80px;
+}
+
+#melatonControlPanelModal .cpl-ss-hint {
+    margin-top: 2px;
+}
+
+#melatonControlPanelModal .cpl-ss-error {
+    margin-top: 2px;
+    color: #c00;
+}
+
+#melatonControlPanelModal .cpl-ss-pending {
+    color: #6d6d6d;
+    font-style: italic;
+}
+
+#melatonControlPanelModal .cpl-ss-ro {
+    font-family: Consolas, monospace;
+}
+
+#melatonControlPanelModal .cpl-ss-note {
+    color: #1e395b;
+}
+
+#melatonControlPanelModal .cpl-ss-items {
+    width: auto;
+    margin-bottom: 4px;
+}
+
+#melatonControlPanelModal .cpl-ss-items td {
+    padding: 2px 6px 2px 0;
+    white-space: nowrap;
+}
+
+#melatonControlPanelModal .cpl-ss-items input.cpl-ss-time {
+    width: 84px;
+}
+
+#melatonControlPanelModal .cpl-ss-days {
+    display: inline-flex;
+    gap: 2px;
+}
+
+#melatonControlPanelModal .cpl-ss-day input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+#melatonControlPanelModal .cpl-ss-day span {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    line-height: 16px;
+    text-align: center;
+    border: 1px solid #a5acb5;
+    border-radius: 2px;
+    background: linear-gradient(#f2f2f2, #ebebeb 50%, #dddddd 50%, #cfcfcf);
+    cursor: default;
+}
+
+#melatonControlPanelModal .cpl-ss-day input:checked + span {
+    border-color: #3c7fb1;
+    background: linear-gradient(#e5f4fc, #c4e5f6 50%, #98d1ef 50%, #68b3db);
+    font-weight: bold;
+}
+
+#melatonControlPanelModal .cpl-ss-day input:focus-visible + span {
+    outline: 1px dotted #000;
+}
+
+#melatonControlPanelModal .cpl-ss-faces {
+    display: flex;
+    gap: 40px;
+    margin: 4px 0 8px 20px;
+}
+
+#melatonControlPanelModal .cpl-ss-facegroup b {
+    display: block;
+    margin-bottom: 3px;
+}
+
+#melatonControlPanelModal .cpl-ss-remote.cpl-ss-left {
+    justify-content: flex-start;
+    margin-left: 20px;
+}

@@ -6,6 +6,12 @@
  * (.cache/slideshow_devices.db); a set_settings or rename sent while a device is offline waits in
  * pending_settings / pending_name and goes out in its next identify reply.
  *
+ * Device-specific settings (deviceConfig) and gadgets are self-described by each device
+ * (DS-SlideShow-win64/docs/DEVICE_CONFIG_PROTOCOL.md): the server stores the schema and values a
+ * device reports, validates set_device_config against that schema and never knows the fields itself.
+ * A set_device_config / set_mode for an offline device waits in pending_device_config and goes out
+ * as a set_device_config command right after its next identify reply.
+ *
  * The live half lives on the socket's clientInfo (deviceId, deviceKind, deviceName, deviceState),
  * so the online list is always the open sockets, never a second registry.
  */
@@ -18,9 +24,12 @@ const WebSocket = require('ws');
 
 const DEVICE_KINDS = new Set(['slideshow']);
 const DEVICE_STATES = new Set(['showing', 'paused', 'offline_cache', 'signin_needed', 'stopped']);
-const DEVICE_COMMANDS = new Set(['next', 'previous', 'pause', 'resume', 'show', 'refresh', 'set_settings', 'rename']);
+const DEVICE_COMMANDS = new Set(['next', 'previous', 'pause', 'resume', 'show', 'refresh', 'set_settings', 'rename', 'set_device_config', 'set_mode']);
 // commands an offline device keeps for its next identify
-const OFFLINE_COMMANDS = new Set(['set_settings', 'rename']);
+const OFFLINE_COMMANDS = new Set(['set_settings', 'rename', 'set_device_config', 'set_mode']);
+const GADGET_MODES = new Set(['slideshow', 'clock']);
+const CONFIG_MAX_BYTES = 256 * 1024;
+const CONFIG_MAX_FIELDS = 500;
 const VIEW_TYPES = new Set(['images', 'pinned', 'upscaled']);
 const INFO_OVERLAYS = new Set(['off', 'minimal', 'full']);
 const ACK_TIMEOUT_MS = 6000;
@@ -199,6 +208,133 @@ function clearImageCache() {
     listCache.clear();
 }
 
+// ---- device-specific settings (deviceConfig) and gadgets ----
+
+function isPlainObject(v) {
+    return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+/**
+ * What a device says it can be configured with: { version, schema, values }, or null. Descriptors are
+ * kept as sent (unknown properties included) but need a key and a type; values only for known keys.
+ */
+function sanitizeDeviceConfig(raw) {
+    if (!isPlainObject(raw) || !Array.isArray(raw.schema)) return null;
+    const seen = new Set();
+    const schema = [];
+    for (const f of raw.schema) {
+        if (!isPlainObject(f) || typeof f.key !== 'string' || !f.key || f.key.length > 100 || typeof f.type !== 'string' || seen.has(f.key)) continue;
+        seen.add(f.key);
+        schema.push(f);
+        if (schema.length >= CONFIG_MAX_FIELDS) break;
+    }
+    const values = {};
+    const src = isPlainObject(raw.values) ? raw.values : {};
+    for (const key of Object.keys(src)) if (seen.has(key)) values[key] = src[key];
+    const out = { version: Number.isFinite(Number(raw.version)) ? Number(raw.version) : 1, schema, values };
+    return JSON.stringify(out).length <= CONFIG_MAX_BYTES ? out : null;
+}
+
+/** The gadgets a device advertises and what is on its screen, or null. */
+function sanitizeGadgets(raw) {
+    if (!isPlainObject(raw)) return null;
+    const str = (v, max) => (v == null ? null : clampString(v, max) || null);
+    const available = (Array.isArray(raw.available) ? raw.available : []).filter(isPlainObject).slice(0, 16).map((g) => {
+        const out = { id: clampString(g.id, 40), name: clampString(g.name || g.id, 64) };
+        if (Array.isArray(g.faces)) {
+            out.faces = g.faces.filter(isPlainObject).slice(0, 64).map((f) => ({
+                id: clampString(f.id, 64), name: clampString(f.name || f.id, 64), kind: f.kind === 'digital' ? 'digital' : 'analog'
+            })).filter((f) => f.id);
+        }
+        return out;
+    }).filter((g) => g.id);
+    return {
+        mode: str(raw.mode, 40),
+        face: str(raw.face, 64),
+        selectedMode: str(raw.selectedMode, 40),
+        selectedFace: str(raw.selectedFace, 64),
+        scheduleEntry: raw.scheduleEntry == null ? null : clampInt(raw.scheduleEntry, 0, 1000),
+        available
+    };
+}
+
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Why a value does not fit its descriptor, or null when it does. time and days are item types (lists only). */
+function fieldError(field, value, inItem) {
+    const opts = Array.isArray(field.options) ? field.options : [];
+    switch (field.type) {
+        case 'bool':
+            return typeof value === 'boolean' ? null : 'must be true or false';
+        case 'int':
+        case 'number':
+            if (typeof value !== 'number' || !Number.isFinite(value)) return 'must be a number';
+            if (field.type === 'int' && !Number.isInteger(value)) return 'must be a whole number';
+            if (typeof field.min === 'number' && value < field.min) return `must be at least ${field.min}`;
+            if (typeof field.max === 'number' && value > field.max) return `must be at most ${field.max}`;
+            return null;
+        case 'string':
+            if (typeof value !== 'string') return 'must be text';
+            if (typeof field.maxLength === 'number' && value.length > field.maxLength) return `at most ${field.maxLength} characters`;
+            return null;
+        case 'enum':
+            return opts.some((o) => o && o.value === value) ? null : 'not one of the choices';
+        case 'time':
+            if (!inItem) break;
+            return typeof value === 'string' && TIME_RE.test(value) ? null : 'must be a time (HH:mm)';
+        case 'days':
+            if (!inItem) break;
+            if (!Array.isArray(value) || value.length > 7) return 'must be a list of weekdays';
+            if (!value.every((n) => Number.isInteger(n) && n >= 0 && n <= 6)) return 'weekdays are 0 (Sunday) to 6';
+            if (new Set(value).size !== value.length) return 'a weekday is listed twice';
+            return null;
+        case 'list': {
+            if (inItem) break;
+            if (!Array.isArray(value)) return 'must be a list';
+            if (typeof field.maxItems === 'number' && value.length > field.maxItems) return `at most ${field.maxItems} items`;
+            const item = Array.isArray(field.item) ? field.item.filter(isPlainObject) : [];
+            for (let i = 0; i < value.length; i++) {
+                if (!isPlainObject(value[i])) return `item ${i + 1} must be an object`;
+                for (const sub of item) {
+                    if (!(sub.key in value[i])) continue;
+                    const err = fieldError(sub, value[i][sub.key], true);
+                    if (err) return `item ${i + 1}: ${sub.label || sub.key} ${err}`;
+                }
+            }
+            return null;
+        }
+        default:
+            break;
+    }
+    return 'cannot be changed from here';
+}
+
+/** A list value keeps only its items' known keys (the rest is dropped, not rejected). */
+function cleanValue(field, value) {
+    if (field.type !== 'list' || !Array.isArray(field.item)) return value;
+    const keys = field.item.filter(isPlainObject).map((f) => f.key);
+    return value.map((it) => Object.fromEntries(keys.filter((k) => k in it).map((k) => [k, it[k]])));
+}
+
+/**
+ * A partial config checked against the device's stored schema: { config, rejected }, config holding
+ * the valid keys and rejected each bad key with why.
+ */
+function validateDeviceConfig(deviceConfig, raw) {
+    const schema = deviceConfig && Array.isArray(deviceConfig.schema) ? deviceConfig.schema : [];
+    const byKey = new Map(schema.map((f) => [f.key, f]));
+    const config = {};
+    const rejected = {};
+    for (const [key, value] of Object.entries(isPlainObject(raw) ? raw : {})) {
+        const field = byKey.get(key);
+        if (!field) { rejected[key] = 'unknown setting'; continue; }
+        const err = fieldError(field, value, false);
+        if (err) rejected[key] = err;
+        else config[key] = cleanValue(field, value);
+    }
+    return { config, rejected };
+}
+
 function deviceSettings(globalResources, deviceId) {
     const row = rowOf(globalResources, deviceId);
     return row ? parseJson(row.settings, {}) : null;
@@ -261,7 +397,16 @@ function getDb(globalResources) {
             last_seen INTEGER NOT NULL
         )
     `);
+    // device-specific settings and gadgets (device config protocol v1), added after the first release
+    const cols = new Set(db.prepare('PRAGMA table_info(slideshow_devices)').all().map((c) => c.name));
+    for (const col of ['device_config', 'gadgets', 'pending_device_config']) {
+        if (!cols.has(col)) db.exec(`ALTER TABLE slideshow_devices ADD COLUMN ${col} TEXT`);
+    }
     return db;
+}
+
+function jsonOrNull(v) {
+    return v == null ? null : JSON.stringify(v);
 }
 
 function rowOf(globalResources, deviceId) {
@@ -312,7 +457,10 @@ function describe(row, live) {
         since: state && state.since ? state.since : null,
         settings: parseJson(row.settings, {}),
         pendingSettings: parseJson(row.pending_settings, null),
-        pendingName: row.pending_name || null
+        pendingName: row.pending_name || null,
+        deviceConfig: parseJson(row.device_config, null),
+        gadgets: parseJson(row.gadgets, null),
+        pendingDeviceConfig: parseJson(row.pending_device_config, null)
     };
 }
 
@@ -369,7 +517,9 @@ function identify(globalResources, wsServer, clientInfo, data) {
         model: clampString(src.model, 64),
         os: clampString(src.os, 64),
         display: sanitizeDisplay(src.display),
-        settings: sanitizeSettings(src.settings)
+        settings: sanitizeSettings(src.settings),
+        deviceConfig: sanitizeDeviceConfig(src.deviceConfig),
+        gadgets: sanitizeGadgets(src.gadgets)
     };
     const d = getDb(globalResources);
     const row = rowOf(globalResources, deviceId);
@@ -379,12 +529,14 @@ function identify(globalResources, wsServer, clientInfo, data) {
     const settings = Object.assign({}, row ? parseJson(row.settings, {}) : {}, reported.settings, pending || {});
     if (row) {
         d.prepare(`UPDATE slideshow_devices SET kind = ?, name = ?, app = ?, model = ?, os = ?, display = ?, settings = ?,
-            pending_settings = NULL, pending_name = NULL, last_seen = ? WHERE device_id = ?`)
-            .run(kind, name, reported.app, reported.model, reported.os, JSON.stringify(reported.display), JSON.stringify(settings), now, deviceId);
+            device_config = ?, gadgets = ?, pending_settings = NULL, pending_name = NULL, last_seen = ? WHERE device_id = ?`)
+            .run(kind, name, reported.app, reported.model, reported.os, JSON.stringify(reported.display), JSON.stringify(settings),
+                jsonOrNull(reported.deviceConfig), jsonOrNull(reported.gadgets), now, deviceId);
     } else {
-        d.prepare(`INSERT INTO slideshow_devices (device_id, kind, name, app, model, os, display, settings, first_seen, last_seen)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-            .run(deviceId, kind, name, reported.app, reported.model, reported.os, JSON.stringify(reported.display), JSON.stringify(settings), now, now);
+        d.prepare(`INSERT INTO slideshow_devices (device_id, kind, name, app, model, os, display, settings, device_config, gadgets, first_seen, last_seen)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .run(deviceId, kind, name, reported.app, reported.model, reported.os, JSON.stringify(reported.display), JSON.stringify(settings),
+                jsonOrNull(reported.deviceConfig), jsonOrNull(reported.gadgets), now, now);
     }
     if (clientInfo) {
         clientInfo.deviceId = deviceId;
@@ -407,11 +559,58 @@ function deviceState(globalResources, wsServer, clientInfo, data) {
     if (!DEVICE_STATES.has(state)) return false;
     const since = Number(src.since);
     const rec = { state, showing: sanitizeShowing(src.showing), since: Number.isFinite(since) && since > 0 ? Math.round(since) : Date.now() };
+    // gadget devices also say whether the slideshow or the clock is up, and which time frame chose it
+    if (GADGET_MODES.has(src.mode)) {
+        rec.mode = src.mode;
+        rec.face = src.mode === 'clock' && src.face != null ? clampString(src.face, 64) || null : null;
+        rec.scheduleEntry = src.scheduleEntry == null ? null : clampInt(src.scheduleEntry, 0, 1000);
+    }
     clientInfo.deviceState = rec;
-    getDb(globalResources).prepare('UPDATE slideshow_devices SET last_state = ?, last_seen = ? WHERE device_id = ?')
+    const d = getDb(globalResources);
+    d.prepare('UPDATE slideshow_devices SET last_state = ?, last_seen = ? WHERE device_id = ?')
         .run(JSON.stringify(rec), Date.now(), deviceId);
+    if (rec.mode) {
+        // the stored gadgets follow the screen (a time frame starts or ends with no client_device_config)
+        const row = rowOf(globalResources, deviceId);
+        const gadgets = row ? parseJson(row.gadgets, null) : null;
+        if (gadgets) {
+            Object.assign(gadgets, { mode: rec.mode, scheduleEntry: rec.scheduleEntry });
+            if (rec.face) gadgets.face = rec.face;
+            d.prepare('UPDATE slideshow_devices SET gadgets = ? WHERE device_id = ?').run(JSON.stringify(gadgets), deviceId);
+        }
+    }
     scheduleDevicesUpdated(globalResources, wsServer);
     return true;
+}
+
+/** client_device_config: the device's values changed (a command, its own LAN page, a restart); the stored copy is replaced. */
+function deviceConfigReport(globalResources, wsServer, clientInfo, data) {
+    const src = data && typeof data === 'object' ? data : {};
+    const deviceId = String(src.deviceId || (clientInfo && clientInfo.deviceId) || '').trim().toLowerCase();
+    if (!clientInfo || !clientInfo.deviceId || deviceId !== clientInfo.deviceId) return false;
+    const deviceConfig = sanitizeDeviceConfig(src.deviceConfig);
+    const gadgets = sanitizeGadgets(src.gadgets);
+    if (!deviceConfig && !gadgets) return false;
+    const sets = [];
+    const args = [];
+    if (deviceConfig) { sets.push('device_config = ?'); args.push(JSON.stringify(deviceConfig)); }
+    if (gadgets) { sets.push('gadgets = ?'); args.push(JSON.stringify(gadgets)); }
+    getDb(globalResources).prepare(`UPDATE slideshow_devices SET ${sets.join(', ')}, last_seen = ? WHERE device_id = ?`).run(...args, Date.now(), deviceId);
+    scheduleDevicesUpdated(globalResources, wsServer);
+    return true;
+}
+
+/** An ack's answer: { ok, error? }, and for set_device_config / set_mode { applied, rejected, restarting }. */
+function ackResult(data) {
+    const out = { ok: data.ok !== false };
+    if (data.error) out.error = clampString(data.error, 200);
+    if (Array.isArray(data.applied)) out.applied = data.applied.map((k) => clampString(k, 100)).filter(Boolean).slice(0, CONFIG_MAX_FIELDS);
+    if (isPlainObject(data.rejected)) {
+        out.rejected = {};
+        Object.keys(data.rejected).slice(0, CONFIG_MAX_FIELDS).forEach((k) => { out.rejected[clampString(k, 100)] = clampString(data.rejected[k], 200); });
+    }
+    if (typeof data.restarting === 'boolean') out.restarting = data.restarting;
+    return out;
 }
 
 function commandAck(clientInfo, message) {
@@ -421,8 +620,59 @@ function commandAck(clientInfo, message) {
     pendingAcks.delete(id);
     clearTimeout(entry.timer);
     const data = message.data && typeof message.data === 'object' ? message.data : {};
-    entry.resolve({ ok: data.ok !== false, error: data.error ? clampString(data.error, 200) : undefined });
+    entry.resolve(ackResult(data));
     return true;
+}
+
+/** Send a device_command; `ack` resolves with its answer, or null after ACK_TIMEOUT_MS. */
+function relay(server, live, deviceId, data) {
+    const commandId = `c-${crypto.randomBytes(6).toString('hex')}`;
+    const ack = new Promise((resolve) => {
+        const timer = setTimeout(() => {
+            pendingAcks.delete(commandId);
+            resolve(null);
+        }, ACK_TIMEOUT_MS);
+        if (typeof timer.unref === 'function') timer.unref();
+        pendingAcks.set(commandId, { deviceId, resolve, timer });
+    });
+    server.sendToClient(live.ws, { type: 'device_command', commandId, data, timestamp: new Date().toISOString() });
+    return { commandId, ack };
+}
+
+/**
+ * Right after a client_identify reply: what Control Panel set while the device was offline goes out
+ * as one set_device_config. It is cleared now; should the device not answer, it is queued again
+ * (under anything newer). The commandId, or null when nothing was pending.
+ */
+function deliverPendingDeviceConfig(globalResources, wsServer, clientInfo) {
+    if (!clientInfo || !clientInfo.deviceId) return null;
+    const deviceId = clientInfo.deviceId;
+    const row = rowOf(globalResources, deviceId);
+    const pending = row ? parseJson(row.pending_device_config, null) : null;
+    if (!pending || !Object.keys(pending).length) return null;
+    const server = wsServerOf(globalResources, wsServer);
+    const live = findDeviceSocket(server, deviceId);
+    if (!live) return null;
+    const d = getDb(globalResources);
+    d.prepare('UPDATE slideshow_devices SET pending_device_config = NULL WHERE device_id = ?').run(deviceId);
+    const { commandId, ack } = relay(server, live, deviceId, { command: 'set_device_config', config: pending });
+    ack.then((res) => {
+        if (res) {
+            if (res.rejected && Object.keys(res.rejected).length) console.warn(`[slideshowDevices] ${deviceId} rejected queued settings:`, res.rejected);
+            return;
+        }
+        try {
+            const now = rowOf(globalResources, deviceId);
+            if (!now) return;
+            const merged = Object.assign({}, pending, parseJson(now.pending_device_config, {}) || {});
+            d.prepare('UPDATE slideshow_devices SET pending_device_config = ? WHERE device_id = ?').run(JSON.stringify(merged), deviceId);
+            scheduleDevicesUpdated(globalResources, server);
+        } catch (err) {
+            console.warn('[slideshowDevices] re-queueing device settings failed:', err.message);
+        }
+    });
+    scheduleDevicesUpdated(globalResources, server);
+    return commandId;
 }
 
 /** The socket closed: the device is offline from now, last seen now. */
@@ -468,6 +718,29 @@ async function sendCommand(globalResources, wsServer, req) {
     } else if (command === 'rename') {
         data.name = clampString(src.name, 64);
         if (!data.name) throw badRequest('rename needs a name', 'BAD_NAME');
+    } else if (command === 'set_device_config') {
+        const deviceConfig = parseJson(row.device_config, null);
+        if (!deviceConfig) throw badRequest('This device has no settings of its own', 'NO_DEVICE_CONFIG');
+        const { config, rejected } = validateDeviceConfig(deviceConfig, src.config);
+        if (Object.keys(rejected).length) {
+            const err = badRequest(`Not valid: ${Object.entries(rejected).map(([k, r]) => `${k} (${r})`).join(', ')}`, 'BAD_DEVICE_CONFIG');
+            err.rejected = rejected;
+            throw err;
+        }
+        if (!Object.keys(config).length) throw badRequest('No settings to change', 'BAD_DEVICE_CONFIG');
+        data.config = config;
+    } else if (command === 'set_mode') {
+        const gadgets = parseJson(row.gadgets, null);
+        const available = gadgets && Array.isArray(gadgets.available) ? gadgets.available : [];
+        const mode = String(src.mode || '').trim();
+        if (!GADGET_MODES.has(mode) || !available.some((g) => g.id === mode)) throw badRequest('This device does not have that gadget', 'BAD_MODE');
+        data.mode = mode;
+        if (src.face != null && src.face !== '') {
+            const clock = available.find((g) => g.id === 'clock');
+            const face = String(src.face);
+            if (!clock || !(clock.faces || []).some((f) => f.id === face)) throw badRequest('This device does not have that clock face', 'BAD_FACE');
+            data.face = face;
+        }
     }
 
     // the stored row follows the change either way, so the page shows it at once
@@ -487,6 +760,11 @@ async function sendCommand(globalResources, wsServer, req) {
         if (command === 'set_settings') {
             const pending = Object.assign(parseJson(row.pending_settings, {}) || {}, data.settings);
             d.prepare('UPDATE slideshow_devices SET pending_settings = ? WHERE device_id = ?').run(JSON.stringify(pending), deviceId);
+        } else if (command === 'set_device_config' || command === 'set_mode') {
+            // set_mode is set_device_config's { mode, clockFace } (DEVICE_CONFIG_PROTOCOL.md)
+            const change = command === 'set_mode' ? Object.assign({ mode: data.mode }, data.face ? { clockFace: data.face } : {}) : data.config;
+            const pending = Object.assign(parseJson(row.pending_device_config, {}) || {}, change);
+            d.prepare('UPDATE slideshow_devices SET pending_device_config = ? WHERE device_id = ?').run(JSON.stringify(pending), deviceId);
         } else {
             d.prepare('UPDATE slideshow_devices SET pending_name = ? WHERE device_id = ?').run(data.name, deviceId);
         }
@@ -495,20 +773,12 @@ async function sendCommand(globalResources, wsServer, req) {
     }
 
     if (command === 'rename') live.info.deviceName = data.name;
-    const commandId = `c-${crypto.randomBytes(6).toString('hex')}`;
-    const ack = new Promise((resolve) => {
-        const timer = setTimeout(() => {
-            pendingAcks.delete(commandId);
-            resolve(null);
-        }, ACK_TIMEOUT_MS);
-        if (typeof timer.unref === 'function') timer.unref();
-        pendingAcks.set(commandId, { deviceId, resolve, timer });
-    });
-    server.sendToClient(live.ws, { type: 'device_command', commandId, data, timestamp: new Date().toISOString() });
+    const { commandId, ack } = relay(server, live, deviceId, data);
     scheduleDevicesUpdated(globalResources, server);
     const result = await ack;
     if (!result) return { success: false, deviceId, command, commandId, error: 'The device did not answer', code: 'ACK_TIMEOUT' };
-    return { success: result.ok, deviceId, command, commandId, ...(result.error ? { error: result.error } : {}) };
+    const { ok, ...rest } = result;
+    return { success: ok, deviceId, command, commandId, ...rest };
 }
 
 function forget(globalResources, wsServer, deviceId) {
@@ -548,11 +818,16 @@ module.exports = {
     isDeviceId,
     sanitizeSettings,
     sanitizeShowing,
+    sanitizeDeviceConfig,
+    sanitizeGadgets,
+    validateDeviceConfig,
     resolveImages,
     clearImageCache,
     deviceSettings,
     identify,
     deviceState,
+    deviceConfigReport,
+    deliverPendingDeviceConfig,
     commandAck,
     onSocketClosed,
     sendCommand,

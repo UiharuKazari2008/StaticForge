@@ -15,7 +15,7 @@ const SCOPE_WS_PACKETS = {
         'get_similar_image_groups', 'scrap_similar_images', 'get_nax_vibes_gallery',
         'set_gallery_show_shared',
         // Dreamscape Frame slideshow devices (modules/slideshowDevices.js)
-        'client_identify', 'client_device_state', 'device_command_ack', 'device_slideshow_images'
+        'client_identify', 'client_device_state', 'client_device_config', 'device_command_ack', 'device_slideshow_images'
     ],
     generation: [
         'generate_image', 'generate_preset', 'cancel_generation', 'upscale_image',

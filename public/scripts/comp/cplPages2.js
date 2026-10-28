@@ -658,7 +658,7 @@
 
     function ssOnPage() {
         const page = CP() && CP().currentPage();
-        return page === 'sideshow' || page === 'sideshow-device' || page === 'sideshow-gadget';
+        return page === 'sideshow' || page === 'sideshow-device' || page === 'sideshow-gadget' || page === 'sideshow-clock';
     }
 
     /** Pages with fields keep their edits: only the live parts are redrawn in place. */
@@ -668,6 +668,15 @@
         const m = main();
         if (!m || !ssOnPage()) return;
         const d = ssDevice(ss.deviceId);
+        // the device's own settings changed (its LAN page, a time frame, a queued change): redraw the
+        // form unless it has edits; "applying" ends with the first update after the ack
+        if (d && (page === 'sideshow-device' || page === 'sideshow-clock')) {
+            if (ssCfg.applying) { ssCfg.applying = false; ssCfg.note = ''; }
+            if (!ssCfg.dirty && ssCfgSig(d) !== ssCfg.sig) { rerender(); return; }
+            ssShowCfg();
+        }
+        m.querySelectorAll('[data-ss-live="gadget"]').forEach((el) => { el.textContent = d ? ssGadgetText(d) : ''; });
+        m.querySelectorAll('[data-ss-live="frame"]').forEach((el) => { el.textContent = d ? ssFrameNote(d) : ''; el.hidden = !(d && ssFrameNote(d)); });
         m.querySelectorAll('[data-ss-live="status"]').forEach((el) => { el.textContent = d ? ssStateText(d) : 'Disconnected'; });
         m.querySelectorAll('[data-ss-live="device"]').forEach((el) => { el.innerHTML = d ? ssDeviceHtml(d) : ''; });
         m.querySelectorAll('[data-ss-live="offline"]').forEach((el) => { el.hidden = !!(d && d.online); });
@@ -739,18 +748,33 @@
             ${ss.error ? `<p class="cpl-vtext cpl-vgap">${esc(ss.error)}</p>` : ''}
             <table class="cpl-ss-grid">
                 <tr class="is-head"><td>Gadgets</td>${has ? list.map((d) => `<td class="cpl-ss-col"><button type="button" class="cpl-ss-devhead" data-cpl-vpage="open" data-device="${esc(d.deviceId)}" title="Click to change settings for ${esc(d.name)}"><img src="${SS}/sideshow-32.png" alt=""><span>${esc(d.name)}</span></button></td>`).join('') : '<td class="cpl-ss-none">Devices (none)</td>'}</tr>
-                <tr class="cpl-ss-row"><td class="cpl-ss-gadget"><img src="${SS}/slideshow-gadget-32.png" alt=""><button type="button" class="cpl-ss-gadget-link" data-cpl-vpage="gadget">${esc(SS_GADGET)}</button></td>${has ? list.map((d) => `<td class="cpl-ss-col"><span class="cpl-vcheck cpl-ss-cell"><input type="checkbox" id="cpl-ss-on-${esc(d.deviceId)}" checked disabled><label for="cpl-ss-on-${esc(d.deviceId)}" title="${esc(ssStateText(d))}"></label></span></td>`).join('') : '<td></td>'}</tr>
+                <tr class="cpl-ss-row"><td class="cpl-ss-gadget"><img src="${SS}/slideshow-gadget-32.png" alt=""><button type="button" class="cpl-ss-gadget-link" data-cpl-vpage="gadget">${esc(SS_GADGET)}</button></td>${has ? list.map((d) => (ssGadget(d, 'slideshow') ? ssModeCellHtml(d, 'slideshow') : `<td class="cpl-ss-col"><span class="cpl-vcheck cpl-ss-cell"><input type="checkbox" id="cpl-ss-on-${esc(d.deviceId)}" checked disabled><label for="cpl-ss-on-${esc(d.deviceId)}" title="${esc(ssStateText(d))}"></label></span></td>`)).join('') : '<td></td>'}</tr>
+                ${list.some((d) => ssGadget(d, 'clock')) ? `<tr class="cpl-ss-row"><td class="cpl-ss-gadget"><img src="${SS_CLOCK_ICON}-32.png" alt=""><button type="button" class="cpl-ss-gadget-link" data-cpl-vpage="clock">Clock</button></td>${list.map((d) => (ssGadget(d, 'clock') ? ssModeCellHtml(d, 'clock') : '<td class="cpl-ss-col"></td>')).join('')}</tr>` : ''}
             </table>
+            ${list.some((d) => ssFrameNote(d)) ? `<p class="cpl-vtext cpl-ss-dim cpl-ss-para">${list.filter((d) => ssFrameNote(d)).map((d) => `${esc(d.name)}: ${esc(ssFrameNote(d))}`).join('<br>')}</p>` : ''}
             <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-notify" data-ss-pref="NotifyNewGadgets"${notify ? ' checked' : ''}><label for="cpl-ss-notify">Notify me when new gadgets are installed</label></div>
             <p class="cpl-ss-link"><img src="${SS}/globe-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="more">Get more gadgets online</button></p>
             <p class="cpl-ss-info"><img src="${SS}/info-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="help" data-topic="sideshow">How do I use my mobile phone or another device with Melaton SideShow?</button></p>
         </div>`;
         }
     };
+    /** A gadget cell of a device that advertises gadgets: ticked = on its screen now; ticking one shows it. */
+    function ssModeCellHtml(d, mode) {
+        const id = `cpl-ss-${mode}-${esc(d.deviceId)}`;
+        const on = !!(d.gadgets && d.gadgets.mode === mode);
+        const title = on ? `On the screen of ${d.name}${d.gadgets.scheduleEntry != null ? ` (time frame ${Number(d.gadgets.scheduleEntry) + 1})` : ''}` : `Show on ${d.name}`;
+        return `<td class="cpl-ss-col"><span class="cpl-vcheck cpl-ss-cell"><input type="checkbox" id="${id}" data-ss-mode="${mode}" data-device="${esc(d.deviceId)}"${on ? ' checked' : ''}><label for="${id}" title="${esc(title)}"></label></span></td>`;
+    }
+
     handlers.sideshow = {
         open(t) {
             ss.deviceId = t.dataset.device;
             nav('sideshow-device');
+        },
+        clock() {
+            const list = (ss.devices || []).filter((d) => ssGadget(d, 'clock'));
+            if (!list.some((d) => d.deviceId === ss.deviceId)) ss.deviceId = list.length ? list[0].deviceId : null;
+            nav('sideshow-clock');
         },
         gadget() {
             const list = ss.devices || [];
@@ -762,9 +786,24 @@
             rerender();
         },
         more() { msg('No more gadgets are available for Melaton SideShow.', 'Melaton SideShow'); },
-        change(ev) {
-            const k = ev.target.dataset && ev.target.dataset.ssPref;
-            if (k && R()) void R().set(SS_KEY, { [k]: !!ev.target.checked });
+        async change(ev) {
+            const t = ev.target;
+            const mode = t.dataset && t.dataset.ssMode;
+            if (mode) {
+                // one gadget is on the screen at a time: the ticked one cannot be unticked, only replaced
+                const d = ssDevice(t.dataset.device);
+                if (!d) return;
+                t.checked = !!(d.gadgets && d.gadgets.mode === mode);
+                if (d.gadgets && d.gadgets.mode === mode) return;
+                const face = mode === 'clock' ? (d.gadgets.selectedFace || d.gadgets.face || null) : null;
+                await ssSetMode(d, mode, face);
+                // worth a word only when the screen will not change now: offline (queued) or a time frame is on
+                if (ssCfg.deviceId === d.deviceId && ssCfg.note && (!d.online || d.gadgets.scheduleEntry != null)) msg(`${d.name}: ${ssCfg.note}`, 'Melaton SideShow');
+                ssCfg.page = null;
+                return;
+            }
+            const k = t.dataset && t.dataset.ssPref;
+            if (k && R()) void R().set(SS_KEY, { [k]: !!t.checked });
         }
     };
 
@@ -785,12 +824,21 @@
         body: () => {
             const d = ssDevice(ss.deviceId);
             if (!d) return `<div class="cpl-vpage cpl-ss-page">${help('sideshow')}<p class="cpl-vtext">This device is no longer installed.</p></div>`;
+            ssCfgBegin(d, 'sideshow-device');
+            const own = ssSchema(d).length > 0;
+            if (own) ssCfgAfterDraw(d);
             return `<div class="cpl-vpage cpl-ss-page">${help('sideshow')}
-                <div class="cpl-ss-logo"><img src="${SS}/sideshow-48.png" alt=""><div><b>${esc(d.name)}</b><br><span data-ss-live="status">${esc(ssStateText(d))}</span>${d.model ? `<br><span class="cpl-ss-dim">${esc([d.model, d.os].filter(Boolean).join(', '))}</span>` : ''}</div></div>
-                <p class="cpl-vtext cpl-ss-para" data-ss-live="offline"${d.online ? ' hidden' : ''}>To change settings, first connect the device.</p>
+                <div class="cpl-ss-logo"><img src="${SS}/sideshow-48.png" alt=""><div><b>${esc(d.name)}</b><br><span data-ss-live="status">${esc(ssStateText(d))}</span>${d.model ? `<br><span class="cpl-ss-dim">${esc([d.model, d.os].filter(Boolean).join(', '))}</span>` : ''}${d.gadgets ? `<br><span data-ss-live="gadget">${esc(ssGadgetText(d))}</span>` : ''}</div></div>
+                <p class="cpl-vtext cpl-ss-para" data-ss-live="offline"${d.online ? ' hidden' : ''}>To change settings, first connect the device.${own ? ' Changes to the device-specific settings are sent to it the next time it connects.' : ''}</p>
                 <div class="cpl-vsection"><span>Gadgets</span></div>
                 <p class="cpl-ss-link"><img src="${SS}/gadgets-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="hub">Turn gadgets on or off</button></p>
                 <p class="cpl-ss-link"><img src="${SS}/slideshow-gadget-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="gadget">${esc(SS_GADGET)} settings</button></p>
+                ${ssGadget(d, 'clock') ? `<p class="cpl-ss-link"><img src="${SS_CLOCK_ICON}-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="clock">Clock settings</button></p>` : ''}
+                ${own ? `<div class="cpl-vsection"><span>Device-specific settings</span></div>
+                <p class="cpl-vtext cpl-ss-para">These settings belong to this device alone. Settings marked (pending) are sent to the device the next time it connects.</p>
+                <div class="cpl-ss-cfg" data-ss-scope="device">${ssConfigFormHtml(d)}</div>
+                <p class="cpl-vtext cpl-ss-para cpl-ss-note" data-ss-live="cfgnote"${ssCfg.note ? '' : ' hidden'}>${esc(ssCfg.note)}</p>
+                <div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cfgsave">Apply</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cfgreset">Reset</button></div>` : ''}
                 <div class="cpl-vsection"><span>More options</span></div>
                 <p class="cpl-ss-link"><img src="${SS}/sideshow-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="rename">Additional settings</button></p>
                 <p class="cpl-ss-link"><img src="${SS}/troubleshoot-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="help" data-topic="sideshow">Troubleshoot connection problems for this device</button></p>
@@ -799,12 +847,15 @@
         }
     };
 
-    async function ssSend(command, extra) {
+    /** opts.deviceId: another device than the page's; opts.quiet: the caller reports a failed answer itself. */
+    async function ssSend(command, extra, opts) {
+        const o = opts || {};
         const c = ssClient();
-        if (!c || !ss.deviceId) return null;
+        const deviceId = o.deviceId || ss.deviceId;
+        if (!c || !deviceId) return null;
         try {
-            const res = await c.deviceSendCommand(ss.deviceId, command, extra || {});
-            if (res && res.success === false) {
+            const res = await c.deviceSendCommand(deviceId, command, extra || {});
+            if (res && res.success === false && !o.quiet) {
                 // the CPL's own 907 when the device does not take it
                 msg(res.code === 'BAD_SETTINGS' || res.code === 'BAD_NAME' ? esc(res.error || 'That setting is not valid.') : 'Melaton was unable to save the changes to the device. Make sure the device is connected to the computer, and then try again.', 'Melaton SideShow');
             }
@@ -815,10 +866,347 @@
         }
     }
 
+    // ---- device-specific settings and gadgets (DS-SlideShow-win64/docs/DEVICE_CONFIG_PROTOCOL.md) ----
+    // Each device describes its own fields (deviceConfig.schema) and gadgets (slideshow, clock and its
+    // faces); the forms are built from that alone, so a field the device adds shows up with no change here.
+    const SS_CLOCK_ICON = '/static_images/vista-cpl/categories/clock-language-and-region';
+    const SS_WEEKDAYS = [['S', 'Sunday'], ['M', 'Monday'], ['T', 'Tuesday'], ['W', 'Wednesday'], ['T', 'Thursday'], ['F', 'Friday'], ['S', 'Saturday']];
+    const SS_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+    const SS_UNSAVED = 'Melaton was unable to save the changes to the device. Make sure the device is connected to the computer, and then try again.';
+    // the open form: whose it is, its rejected keys, the line under it, "applying" until the next
+    // devices_updated, whether it has edits, and what it was drawn from (redrawn when that changes)
+    const ssCfg = { deviceId: null, page: null, errors: {}, note: '', applying: false, dirty: false, sig: '' };
+    let ssUid = 0;
+
+    function ssGadget(d, id) {
+        const g = d && d.gadgets;
+        return g && Array.isArray(g.available) ? g.available.find((x) => x && x.id === id) || null : null;
+    }
+
+    function ssSchema(d) {
+        const cfg = d && d.deviceConfig;
+        return cfg && Array.isArray(cfg.schema) ? cfg.schema.filter((f) => f && typeof f === 'object' && f.key) : [];
+    }
+
+    function ssField(d, key) {
+        return ssSchema(d).find((f) => f.key === key) || null;
+    }
+
+    function ssIsPending(d, key) {
+        const p = d.pendingDeviceConfig;
+        return !!(p && Object.prototype.hasOwnProperty.call(p, key));
+    }
+
+    /** What a field starts from: the value queued for the device, else the one it reported. */
+    function ssCfgValue(d, key) {
+        if (ssIsPending(d, key)) return d.pendingDeviceConfig[key];
+        return ((d.deviceConfig || {}).values || {})[key];
+    }
+
+    function ssCfgSig(d) {
+        return d ? JSON.stringify([d.deviceConfig, d.gadgets, d.pendingDeviceConfig]) : '';
+    }
+
+    /** A page with a device form starts drawing: another device or page starts clean, a redraw keeps the note. */
+    function ssCfgBegin(d, page) {
+        if (ssCfg.deviceId !== d.deviceId || ssCfg.page !== page) Object.assign(ssCfg, { deviceId: d.deviceId, page, errors: {}, note: '', applying: false });
+        ssCfg.dirty = false;
+        ssCfg.sig = ssCfgSig(d);
+    }
+
+    function ssFaceName(d, id) {
+        const clock = ssGadget(d, 'clock');
+        const face = clock && (clock.faces || []).find((f) => f.id === id);
+        return face ? face.name : '';
+    }
+
+    /** "Showing: Clock (Swiss railway)" */
+    function ssGadgetText(d) {
+        const g = d.gadgets;
+        if (!g) return '';
+        const face = g.mode === 'clock' ? ssFaceName(d, g.face) : '';
+        return `${d.online ? 'Showing' : 'Last showing'}: ${g.mode === 'clock' ? `Clock${face ? ` (${face})` : ''}` : 'Slideshow'}`;
+    }
+
+    function ssFrameNote(d) {
+        const g = d.gadgets;
+        return g && g.scheduleEntry != null ? `Shown by time frame ${Number(g.scheduleEntry) + 1}. Changes you make here apply outside the time frames.` : '';
+    }
+
+    /** One control for a descriptor (a field, or one field of a list item); attrs go on the element ssControlValue reads. */
+    function ssControlHtml(f, value, attrs) {
+        const opts = (Array.isArray(f.options) ? f.options : []).filter((o) => o && typeof o === 'object');
+        const num = (k) => (typeof f[k] === 'number' ? ` ${k}="${f[k]}"` : '');
+        switch (f.type) {
+            case 'bool':
+                return `<input type="checkbox"${attrs}${value === true ? ' checked' : ''}>`;
+            case 'enum': {
+                // option values may be any JSON value: the <option> carries its index
+                const known = opts.some((o) => o.value === value);
+                return `<select class="cpl-vselect"${attrs}>${known ? '' : '<option value="" selected></option>'}${opts.map((o, i) => `<option value="${i}"${o.value === value ? ' selected' : ''}>${esc(o.label != null ? o.label : o.value)}</option>`).join('')}</select>`;
+            }
+            case 'int':
+            case 'number':
+                return `<input type="number" class="cpl-vedit cpl-ss-num"${attrs}${num('min')}${num('max')}${typeof f.step === 'number' ? num('step') : (f.type === 'int' ? ' step="1"' : ' step="any"')} value="${typeof value === 'number' ? value : ''}">${f.unit ? ` <span class="cpl-ss-dim">${esc(f.unit)}</span>` : ''}`;
+            case 'string':
+                return `<input type="text" class="cpl-vedit cpl-ss-text"${attrs}${num('maxLength').replace('maxLength', 'maxlength')} value="${esc(value == null ? '' : value)}">`;
+            case 'time':
+                return `<input type="time" class="cpl-vedit cpl-ss-time"${attrs} value="${typeof value === 'string' && SS_TIME.test(value) ? value : ''}">`;
+            case 'days': {
+                const on = new Set(Array.isArray(value) ? value : []);
+                return `<span class="cpl-ss-days"${attrs}>${SS_WEEKDAYS.map(([s, name], i) => `<label class="cpl-ss-day" title="${name}"><input type="checkbox" data-ss-day="${i}"${on.has(i) ? ' checked' : ''}><span>${s}</span></label>`).join('')}</span>`;
+            }
+            default:
+                // a type this page does not know yet: shown, not changed
+                return `<span class="cpl-ss-dim cpl-ss-ro">${esc(value === undefined ? '' : JSON.stringify(value))}</span>`;
+        }
+    }
+
+    /** The control's value, or undefined to leave the key as it is. */
+    function ssControlValue(f, el) {
+        if (!el) return undefined;
+        switch (f.type) {
+            case 'bool': return !!el.checked;
+            case 'enum': {
+                const o = (Array.isArray(f.options) ? f.options : []).filter((x) => x && typeof x === 'object')[Number(el.value)];
+                return el.value === '' || !o ? undefined : o.value;
+            }
+            case 'int':
+            case 'number': return String(el.value).trim() === '' ? null : Number(el.value);
+            case 'string': return String(el.value);
+            case 'time': return String(el.value);
+            case 'days': return Array.from(el.querySelectorAll('[data-ss-day]:checked')).map((i) => Number(i.dataset.ssDay));
+            default: return undefined;
+        }
+    }
+
+    function ssItemFields(f) {
+        return (Array.isArray(f.item) ? f.item : []).filter((s) => s && typeof s === 'object' && s.key);
+    }
+
+    /** A list field: one row per item from its `item` descriptor, Remove on each, Add up to maxItems. */
+    function ssListHtml(f, items, opts) {
+        const o = opts || {};
+        const sub = ssItemFields(f);
+        const list = Array.isArray(items) ? items : [];
+        const max = Number(f.maxItems) > 0 ? Number(f.maxItems) : 0;
+        const rows = list.map((it, i) => `<tr data-ss-item="${i}">${sub.map((s) => `<td>${ssControlHtml(s, it ? it[s.key] : undefined, ` data-ss-sub aria-label="${esc(s.label || s.key)}"`)}</td>`).join('')}<td><button type="button" class="cpl-vlink" data-cpl-vpage="listdel" data-ss-index="${i}">Remove</button></td></tr>`).join('');
+        return `<div class="cpl-ss-list" data-ss-list="${esc(f.key)}" data-ss-add="${esc(o.addText || 'Add')}" data-ss-empty="${esc(o.emptyText || 'None')}">
+            <table class="cpl-vtable cpl-ss-items"><tr class="is-head">${sub.map((s) => `<td>${esc(s.label || s.key)}</td>`).join('')}<td></td></tr>${rows || `<tr><td colspan="${sub.length + 1}" class="cpl-ss-dim">${esc(o.emptyText || 'None')}</td></tr>`}</table>
+            <p class="cpl-ss-field"><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="listadd"${max && list.length >= max ? ' disabled' : ''}>${esc(o.addText || 'Add')}</button>${max ? ` <span class="cpl-ss-dim">${list.length} of ${max}</span>` : ''}</p>
+        </div>`;
+    }
+
+    /** The list as the form shows it; an item keeps keys the form has no control for. */
+    function ssListValue(f, box) {
+        const sub = ssItemFields(f);
+        const orig = Array.isArray(box.ssItems) ? box.ssItems : [];
+        return Array.from(box.querySelectorAll('tr[data-ss-item]')).map((tr) => {
+            const out = Object.assign({}, orig[Number(tr.dataset.ssItem)] || {});
+            const cells = tr.children;
+            sub.forEach((s, i) => {
+                const v = ssControlValue(s, cells[i] && cells[i].querySelector('[data-ss-sub]'));
+                if (v !== undefined) out[s.key] = v;
+            });
+            return out;
+        });
+    }
+
+    function ssNewItem(f) {
+        const out = {};
+        ssItemFields(f).forEach((s) => {
+            const opts = (Array.isArray(s.options) ? s.options : []).filter((o) => o && typeof o === 'object');
+            if (s.type === 'time') out[s.key] = '00:00';
+            else if (s.type === 'days') out[s.key] = [];
+            else if (s.type === 'enum' && opts.length) out[s.key] = opts[0].value;
+            else if (s.type === 'bool') out[s.key] = false;
+            else if (s.type === 'int' || s.type === 'number') out[s.key] = typeof s.min === 'number' ? Math.max(0, s.min) : 0;
+            else if (s.type === 'string') out[s.key] = '';
+        });
+        return out;
+    }
+
+    /** Redraw a list box with these items (after Add / Remove), keeping its texts. */
+    function ssListRedraw(f, box, items) {
+        const wrap = doc.createElement('div');
+        wrap.innerHTML = ssListHtml(f, items, { addText: box.dataset.ssAdd, emptyText: box.dataset.ssEmpty });
+        const next = wrap.firstElementChild;
+        next.ssItems = items;
+        box.replaceWith(next);
+    }
+
+    /** One field as a row of the settings grid: label, control, unit, "pending", the hint, its error. */
+    function ssFieldRowHtml(d, f, opts) {
+        const id = `cpl-ss-cfg-${++ssUid}`;
+        const value = ssCfgValue(d, f.key);
+        const label = esc(f.label || f.key);
+        const tail = `${ssIsPending(d, f.key) ? ' <span class="cpl-ss-pending">(pending)</span>' : ''}${f.help ? `<div class="cpl-ss-dim cpl-ss-hint">${esc(f.help)}</div>` : ''}<div class="cpl-ss-error" data-ss-err${ssCfg.errors[f.key] ? '' : ' hidden'}>${esc(ssCfg.errors[f.key] || '')}</div>`;
+        if (f.type === 'bool') {
+            return `<tr data-ss-field="${esc(f.key)}"><td></td><td><div class="cpl-vcheck">${ssControlHtml(f, value, ` id="${id}" data-ss-input`)}<label for="${id}">${label}</label></div>${tail}</td></tr>`;
+        }
+        if (f.type === 'list') {
+            return `<tr data-ss-field="${esc(f.key)}"><td class="cpl-ss-top">${label}:</td><td>${ssListHtml(f, value, opts)}${tail}</td></tr>`;
+        }
+        return `<tr data-ss-field="${esc(f.key)}"><td><label for="${id}">${label}:</label></td><td>${ssControlHtml(f, value, ` id="${id}" data-ss-input`)}${tail}</td></tr>`;
+    }
+
+    /** The whole schema, one group box per `group` in the order the fields came. */
+    function ssConfigFormHtml(d) {
+        const groups = new Map();
+        ssSchema(d).forEach((f) => {
+            const g = String(f.group || 'General');
+            if (!groups.has(g)) groups.set(g, []);
+            groups.get(g).push(f);
+        });
+        return Array.from(groups).map(([g, fields]) => `<fieldset class="cpl-ss-group"><legend>${esc(g)}</legend><table class="cpl-power-grid cpl-ss-settings">${fields.map((f) => ssFieldRowHtml(d, f)).join('')}</table></fieldset>`).join('');
+    }
+
+    /** List boxes remember their items (for keys without a control) once the page is drawn. */
+    function ssCfgAfterDraw(d) {
+        setTimeout(() => {
+            const m = main();
+            if (!m) return;
+            m.querySelectorAll('[data-ss-list]').forEach((box) => { box.ssItems = ssCfgValue(d, box.dataset.ssList); });
+        }, 0);
+    }
+
+    /** The keys the form changed in a scope (one page part); all: every key in it. */
+    function ssCollectConfig(d, scope, all) {
+        const out = {};
+        scope.querySelectorAll('tr[data-ss-field]').forEach((row) => {
+            const f = ssField(d, row.dataset.ssField);
+            if (!f) return;
+            let v;
+            if (f.type === 'list') {
+                const box = row.querySelector('[data-ss-list]');
+                v = box ? ssListValue(f, box) : undefined;
+            } else {
+                v = ssControlValue(f, row.querySelector('[data-ss-input]'));
+            }
+            if (v !== undefined && (all || JSON.stringify(v) !== JSON.stringify(ssCfgValue(d, f.key)))) out[f.key] = v;
+        });
+        return out;
+    }
+
+    /** Rejected keys next to their fields, and the line under the form. */
+    function ssShowCfg(scope) {
+        const m = main();
+        if (!m) return;
+        (scope || m).querySelectorAll('tr[data-ss-field]').forEach((row) => {
+            const err = row.querySelector(':scope > td > [data-ss-err]');
+            if (!err) return;
+            const why = ssCfg.errors[row.dataset.ssField];
+            err.textContent = why || '';
+            err.hidden = !why;
+        });
+        m.querySelectorAll('[data-ss-live="cfgnote"]').forEach((el) => { el.textContent = ssCfg.note; el.hidden = !ssCfg.note; });
+    }
+
+    /** After set_device_config / set_mode: what the answer means for the form. True when everything went through. */
+    function ssCfgResult(res) {
+        ssCfg.errors = {};
+        ssCfg.applying = false;
+        if (!res) {
+            ssCfg.note = '';
+            return false;
+        }
+        if (res.rejected && Object.keys(res.rejected).length) ssCfg.errors = res.rejected;
+        if (res.queued) {
+            ssCfg.note = 'The changes will be sent to the device the next time it connects.';
+        } else if (res.success === false) {
+            const some = Array.isArray(res.applied) && res.applied.length;
+            // BAD_DEVICE_CONFIG: the server's own check against the device's schema, nothing was sent
+            ssCfg.note = !Object.keys(ssCfg.errors).length ? ''
+                : res.code === 'BAD_DEVICE_CONFIG' ? 'Correct the settings marked below, and then try again.'
+                    : `${some ? 'Some changes were saved, but the' : 'The'} device did not accept the settings marked below.`;
+            if (!Object.keys(ssCfg.errors).length) msg(res.code === 'ACK_TIMEOUT' || res.code === 'DEVICE_OFFLINE' ? SS_UNSAVED : esc(res.error || SS_UNSAVED), 'Melaton SideShow');
+        } else if (res.restarting) {
+            ssCfg.applying = true;
+            ssCfg.note = 'The device is applying the changes…';
+        } else {
+            ssCfg.note = 'The changes were saved.';
+        }
+        const ok = res.success !== false && !Object.keys(ssCfg.errors).length;
+        if (ok) ssCfg.dirty = false;
+        if (res.restarting && Object.keys(ssCfg.errors).length) ssCfg.applying = true;
+        return ok;
+    }
+
+    async function ssSaveConfig(d, scope, all) {
+        ssCfg.deviceId = d.deviceId;
+        const config = ssCollectConfig(d, scope, all);
+        if (!Object.keys(config).length) {
+            ssCfg.errors = {};
+            ssCfg.note = 'There are no changes to save.';
+            ssShowCfg(scope);
+            return true;
+        }
+        ssCfg.note = 'Saving…';
+        ssShowCfg(scope);
+        const ok = ssCfgResult(await ssSend('set_device_config', { config }, { quiet: true }));
+        ssShowCfg(scope);
+        return ok;
+    }
+
+    /** set_mode: the gadget on screen; a time frame that is on still wins, which the page says. */
+    async function ssSetMode(d, mode, face) {
+        const res = await ssSend('set_mode', Object.assign({ mode }, face ? { face } : {}), { deviceId: d.deviceId, quiet: true });
+        ssCfg.deviceId = d.deviceId;
+        const ok = ssCfgResult(res);
+        if (ok && !res.queued && d.gadgets && d.gadgets.scheduleEntry != null) ssCfg.note = ssFrameNote(d);
+        if (res && res.success === false && !res.rejected && (res.code === 'BAD_MODE' || res.code === 'BAD_FACE')) msg(esc(res.error), 'Melaton SideShow');
+        ssShowCfg();
+        return ok;
+    }
+
+    /** Add / Remove in a list box, and edits marking the form changed (shared by the device and clock pages). */
+    const ssFormHandlers = {
+        listadd(t) {
+            const box = t.closest('[data-ss-list]');
+            const d = ssDevice(ss.deviceId);
+            const f = d && box && ssField(d, box.dataset.ssList);
+            if (!f) return;
+            const items = ssListValue(f, box);
+            if (Number(f.maxItems) > 0 && items.length >= Number(f.maxItems)) return;
+            items.push(ssNewItem(f));
+            ssCfg.dirty = true;
+            ssListRedraw(f, box, items);
+        },
+        listdel(t) {
+            const box = t.closest('[data-ss-list]');
+            const d = ssDevice(ss.deviceId);
+            const f = d && box && ssField(d, box.dataset.ssList);
+            if (!f) return;
+            const items = ssListValue(f, box);
+            items.splice(Number(t.dataset.ssIndex), 1);
+            ssCfg.dirty = true;
+            ssListRedraw(f, box, items);
+        }
+    };
+    if (doc) {
+        doc.addEventListener('input', (ev) => {
+            if (ev.target && ev.target.closest && ev.target.closest('#melatonControlPanelModal [data-ss-scope]')) ssCfg.dirty = true;
+        });
+    }
+
     handlers['sideshow-device'] = {
+        ...ssFormHandlers,
         hub() { nav('sideshow'); },
         gadget() { nav('sideshow-gadget'); },
+        clock() { nav('sideshow-clock'); },
         open(t) { ss.deviceId = t.dataset.device; rerender(); },
+        change(ev) {
+            if (ev.target.closest && ev.target.closest('[data-ss-scope]')) ssCfg.dirty = true;
+        },
+        async cfgsave() {
+            const d = ssDevice(ss.deviceId);
+            const scope = main() && main().querySelector('[data-ss-scope="device"]');
+            if (d && scope) await ssSaveConfig(d, scope);
+        },
+        cfgreset() {
+            Object.assign(ssCfg, { errors: {}, note: '', applying: false });
+            rerender();
+        },
         sort() { nav('sideshow'); },
         rename() {
             const d = ssDevice(ss.deviceId);
@@ -848,6 +1236,88 @@
                 }
                 nav('sideshow');
             });
+        }
+    };
+
+    // The Clock gadget's settings: which face, "Show on device" (set_mode), and the clock time frames
+    // (schedule.enabled / schedule.entries), drawn from those fields' descriptors like any other setting.
+    pages['sideshow-clock'] = {
+        parent: 'sideshow',
+        title: () => 'Clock settings',
+        tasks: () => ssBackPane(),
+        body: () => {
+            const list = (ss.devices || []).filter((x) => ssGadget(x, 'clock'));
+            let d = ssDevice(ss.deviceId);
+            if (!d || !ssGadget(d, 'clock')) d = list[0] || null;
+            if (!d) return `<div class="cpl-vpage cpl-ss-page">${help('sideshow')}<h1 class="cpl-vtitle">Clock settings</h1><p class="cpl-vtext">None of your Melaton SideShow-compatible devices has a clock.</p></div>`;
+            ss.deviceId = d.deviceId;
+            ssCfgBegin(d, 'sideshow-clock');
+            ssCfgAfterDraw(d);
+            const g = d.gadgets || {};
+            const faces = ssGadget(d, 'clock').faces || [];
+            const face = ssIsPending(d, 'clockFace') ? ssCfgValue(d, 'clockFace') : (g.selectedFace || g.face || (faces[0] && faces[0].id));
+            const kinds = [['analog', 'Analog'], ['digital', 'Digital']].map(([k, t]) => [t, faces.filter((f) => f.kind === k)]).filter(([, l]) => l.length);
+            const pendingMode = ssIsPending(d, 'mode') || ssIsPending(d, 'clockFace');
+            const enabled = ssField(d, 'schedule.enabled');
+            const entries = ssField(d, 'schedule.entries');
+            let n = 0;
+            return `<div class="cpl-vpage cpl-ss-page cpl-ss-clock-page">${help('sideshow')}
+                <h1 class="cpl-vtitle">Clock settings</h1>
+                ${list.length > 1 ? `<p class="cpl-vtext">For which device do you want to change settings?</p><p class="cpl-ss-field"><select class="cpl-vselect" data-ss-device>${list.map((x) => `<option value="${esc(x.deviceId)}"${x.deviceId === d.deviceId ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></p>` : ''}
+                <div class="cpl-ss-logo"><img src="${SS_CLOCK_ICON}-48.png" alt="" onerror="this.src='${SS_CLOCK_ICON}-32.png'"><div><b>${esc(d.name)}</b><br><span data-ss-live="gadget">${esc(ssGadgetText(d))}</span><br><span class="cpl-ss-dim" data-ss-live="frame"${ssFrameNote(d) ? '' : ' hidden'}>${esc(ssFrameNote(d))}</span></div></div>
+                <div class="cpl-vsection"><span>Clock face</span></div>
+                <div class="cpl-ss-faces">${kinds.map(([t, l]) => `<div class="cpl-ss-facegroup"><b>${t}</b>${l.map((f) => {
+                    const id = `cpl-ss-face-${++n}`;
+                    return `<div class="cpl-ss-radio"><input type="radio" name="cpl-ss-face" id="${id}" value="${esc(f.id)}"${f.id === face ? ' checked' : ''}><label for="${id}">${esc(f.name)}</label></div>`;
+                }).join('')}</div>`).join('')}</div>
+                ${pendingMode ? '<p class="cpl-vtext cpl-ss-dim cpl-ss-para">A gadget change will be sent to the device the next time it connects.</p>' : ''}
+                <div class="cpl-ss-remote cpl-ss-left">
+                    <button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="showclock">Show on device</button>
+                    ${ssGadget(d, 'slideshow') ? `<button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="showslides">Show ${esc(ssGadget(d, 'slideshow').name || 'Slideshow')} instead</button>` : ''}
+                </div>
+                ${entries ? `<div class="cpl-vsection"><span>Time frames</span></div>
+                <p class="cpl-vtext cpl-ss-para">During a time frame the device shows what you choose for it, by itself, even when it cannot reach this computer. The first time frame that covers the time wins; one that ends before it starts runs past midnight. With no day ticked it applies every day.</p>
+                <div class="cpl-ss-cfg" data-ss-scope="clock"><table class="cpl-power-grid cpl-ss-settings">${enabled ? ssFieldRowHtml(d, enabled) : ''}${ssFieldRowHtml(d, entries, { addText: 'Add time frame', emptyText: 'No time frames' })}</table></div>` : ''}
+                <p class="cpl-vtext cpl-ss-para cpl-ss-note" data-ss-live="cfgnote"${ssCfg.note ? '' : ' hidden'}>${esc(ssCfg.note)}</p>
+                ${entries ? '<div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="save">OK</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cancel">Cancel</button></div>' : ''}
+            </div>`;
+        }
+    };
+
+    handlers['sideshow-clock'] = {
+        ...ssFormHandlers,
+        open(t) { ss.deviceId = t.dataset.device; nav('sideshow-device'); },
+        sort() { nav('sideshow'); },
+        change(ev) {
+            const t = ev.target;
+            if (t.matches && t.matches('[data-ss-device]')) {
+                ss.deviceId = t.value;
+                rerender();
+                return;
+            }
+            if (t.closest && t.closest('[data-ss-scope]')) ssCfg.dirty = true;
+        },
+        async showclock() {
+            const d = ssDevice(ss.deviceId);
+            const m = main();
+            if (!d || !m) return;
+            const picked = m.querySelector('input[name="cpl-ss-face"]:checked');
+            await ssSetMode(d, 'clock', picked ? picked.value : null);
+        },
+        async showslides() {
+            const d = ssDevice(ss.deviceId);
+            if (d) await ssSetMode(d, 'slideshow', null);
+        },
+        async save() {
+            const d = ssDevice(ss.deviceId);
+            const scope = main() && main().querySelector('[data-ss-scope="clock"]');
+            if (!d || !scope) return;
+            // the time frames go as a whole: schedule.enabled with the full list
+            if (await ssSaveConfig(d, scope, true)) nav('sideshow');
+        },
+        cancel() {
+            Object.assign(ssCfg, { errors: {}, note: '' });
+            nav('sideshow');
         }
     };
 
