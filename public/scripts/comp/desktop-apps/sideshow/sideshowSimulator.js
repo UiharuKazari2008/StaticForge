@@ -14,6 +14,11 @@
  * sends client_identify / client_device_state and takes device_command from Control Panel's
  * Melaton SideShow pages (modules/slideshowDevices.js, Yozora #654).
  *
+ * Like the Windows Dreamscape SlideShow it also describes settings of its own (deviceConfig: a schema
+ * and values, DS-SlideShow-win64/docs/DEVICE_CONFIG_PROTOCOL.md) and two gadgets, the slideshow and a
+ * clock with two faces; it takes set_device_config / set_mode, keeps clock time frames, and reports
+ * changes with client_device_config.
+ *
  *   openSideShowSimulator('portrait' | 'landscape')
  */
 (function (root) {
@@ -46,6 +51,71 @@
     const DEFAULT_SETTINGS = { viewType: 'images', intervalSec: 45, poolSize: 0, shuffle: true, pairPortraits: true, infoOverlay: 'minimal' };
     const VIEW_TYPES = new Set(['images', 'pinned', 'upscaled']);
     const OVERLAYS = new Set(['off', 'minimal', 'full']);
+
+    // the device's own settings, as it describes them to the server (non-live ones restart it)
+    const FACES = [{ id: 'analog', name: 'Analog', kind: 'analog' }, { id: 'digital', name: 'Digital', kind: 'digital' }];
+    const MODE_OPTIONS = [{ value: 'slideshow', label: 'Slideshow' }, { value: 'clock', label: 'Clock' }];
+    const FACE_OPTIONS = FACES.map((f) => ({ value: f.id, label: f.name }));
+    const SCHEMA = [
+        { key: 'mode', label: 'Showing', group: 'Display', type: 'enum', live: true, options: MODE_OPTIONS },
+        { key: 'clockFace', label: 'Clock face', group: 'Display', type: 'enum', live: true, options: FACE_OPTIONS },
+        { key: 'header', label: 'Show the title bar', group: 'Display', type: 'bool', live: true },
+        { key: 'dim', label: 'Dim the screen', group: 'Screen', type: 'int', min: 0, max: 80, step: 5, unit: '%', live: true },
+        { key: 'caption', label: 'Caption', group: 'Screen', type: 'string', maxLength: 24, live: true, help: 'Shown under the clock; empty hides it' },
+        { key: 'background', label: 'Background', group: 'Screen', type: 'enum', options: [{ value: 'firmware', label: 'Firmware art' }, { value: 'black', label: 'Black' }], help: 'Changing it restarts the device' },
+        { key: 'schedule.enabled', label: 'Use time frames', group: 'Clock time frames', type: 'bool', live: true },
+        {
+            key: 'schedule.entries', label: 'Time frames', group: 'Clock time frames', type: 'list', live: true, maxItems: 4,
+            item: [
+                { key: 'start', label: 'From', type: 'time' }, { key: 'end', label: 'Until', type: 'time' }, { key: 'days', label: 'Days', type: 'days' },
+                { key: 'mode', label: 'Show', type: 'enum', options: MODE_OPTIONS.slice().reverse() }, { key: 'face', label: 'Clock face', type: 'enum', options: FACE_OPTIONS }
+            ]
+        }
+    ];
+    const DEFAULT_CONFIG = { mode: 'slideshow', clockFace: 'analog', header: true, dim: 0, caption: '', background: 'firmware', 'schedule.enabled': false, 'schedule.entries': [] };
+    const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+    /** Why a value does not fit its descriptor (the device's own check), or null. */
+    function fieldError(f, v) {
+        switch (f.type) {
+            case 'bool': return typeof v === 'boolean' ? null : 'must be true or false';
+            case 'int': return Number.isInteger(v) && v >= f.min && v <= f.max ? null : `must be a whole number from ${f.min} to ${f.max}`;
+            case 'string': return typeof v === 'string' && v.length <= f.maxLength ? null : `at most ${f.maxLength} characters`;
+            case 'enum': return f.options.some((o) => o.value === v) ? null : 'not one of the choices';
+            case 'time': return typeof v === 'string' && HHMM.test(v) ? null : 'must be HH:mm';
+            case 'days': return Array.isArray(v) && v.every((d) => Number.isInteger(d) && d >= 0 && d <= 6) ? null : 'weekdays are 0 to 6';
+            case 'list':
+                if (!Array.isArray(v) || v.length > f.maxItems) return `at most ${f.maxItems} items`;
+                for (const it of v) {
+                    for (const s of f.item) {
+                        const e = it && typeof it === 'object' ? fieldError(s, it[s.key]) : 'must be an object';
+                        if (e) return `${s.label} ${e}`;
+                    }
+                }
+                return null;
+            default: return 'unknown';
+        }
+    }
+
+    function minutes(hhmm) {
+        const [h, m] = String(hhmm).split(':').map(Number);
+        return h * 60 + m;
+    }
+
+    /** The first time frame covering now (index), or -1; one ending before it starts runs past midnight and belongs to the day it starts on. */
+    function activeFrame(entries, now) {
+        const t = now.getHours() * 60 + now.getMinutes();
+        const today = now.getDay();
+        const yesterday = (today + 6) % 7;
+        return (entries || []).findIndex((e) => {
+            const s = minutes(e.start);
+            const end = minutes(e.end);
+            const on = (day) => !e.days || !e.days.length || e.days.includes(day);
+            if (s === end) return on(today);
+            if (s < end) return on(today) && t >= s && t < end;
+            return (on(today) && t >= s) || (on(yesterday) && t < end);
+        });
+    }
 
     function esc(v) {
         return String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -87,6 +157,8 @@
                 : Array.from(root.crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, '0')).join('');
             this.name = saved.name || `Virtual SideShow - ${this.m.pid}`;
             this.settings = Object.assign({}, DEFAULT_SETTINGS, saved.settings || {});
+            this.config = Object.assign({}, DEFAULT_CONFIG, saved.config || {});
+            this.frame = -1; // the time frame on now
             this.onTop = saved.onTop !== false;
             this.save();
             this.screen = 'splash';
@@ -106,7 +178,87 @@
         }
 
         save() {
-            store(this.key, { deviceId: this.deviceId, name: this.name, settings: this.settings, onTop: this.onTop });
+            store(this.key, { deviceId: this.deviceId, name: this.name, settings: this.settings, config: this.config, onTop: this.onTop });
+        }
+
+        // ---- gadgets and the device's own settings ----
+
+        /** What is on screen: the time frame's choice while one is on, else the selected mode / face. */
+        get shown() {
+            const e = this.frame >= 0 ? this.config['schedule.entries'][this.frame] : null;
+            return e ? { mode: e.mode, face: e.face || this.config.clockFace } : { mode: this.config.mode, face: this.config.clockFace };
+        }
+
+        deviceConfig() {
+            return { version: 1, schema: SCHEMA, values: Object.assign({}, this.config) };
+        }
+
+        gadgets() {
+            const s = this.shown;
+            return {
+                mode: s.mode, face: s.face, selectedMode: this.config.mode, selectedFace: this.config.clockFace,
+                scheduleEntry: this.frame >= 0 ? this.frame : null,
+                available: [{ id: 'slideshow', name: GADGET }, { id: 'clock', name: 'Clock', faces: FACES }]
+            };
+        }
+
+        sendConfig() {
+            this.send({ type: 'client_device_config', data: { deviceId: this.deviceId, deviceConfig: this.deviceConfig(), gadgets: this.gadgets() } });
+        }
+
+        /** Re-check the time frames (every 10 s, and after a change); a switch redraws and reports. */
+        evalFrames(report) {
+            const before = JSON.stringify(this.shown) + this.frame;
+            this.frame = this.config['schedule.enabled'] ? activeFrame(this.config['schedule.entries'], new Date()) : -1;
+            const changed = JSON.stringify(this.shown) + this.frame !== before;
+            if (changed || report) {
+                if (this.screen !== 'splash' && this.screen !== 'stopped') this.render();
+                this.reportState();
+            }
+            return changed;
+        }
+
+        /** set_device_config: the valid keys are applied, the rest rejected; a non-live change restarts the device. */
+        applyConfig(raw) {
+            const applied = [];
+            const rejected = {};
+            let restarting = false;
+            Object.entries(raw && typeof raw === 'object' ? raw : {}).forEach(([key, value]) => {
+                const f = SCHEMA.find((x) => x.key === key);
+                const err = f ? fieldError(f, value) : 'unknown setting';
+                if (err) { rejected[key] = err; return; }
+                if (JSON.stringify(this.config[key]) === JSON.stringify(value)) return;
+                this.config[key] = value;
+                applied.push(key);
+                if (!f.live) restarting = true;
+            });
+            this.save();
+            return { ok: !Object.keys(rejected).length, applied, rejected, restarting };
+        }
+
+        afterConfig(res) {
+            this.sendConfig();
+            if (res.restarting) {
+                // the cabinet restarts its slideshow (~1 s) and identifies again
+                this.restart();
+                return;
+            }
+            this.evalFrames(true);
+        }
+
+        restart() {
+            const ws = this.ws;
+            this.ws = null;
+            this.screen = 'splash';
+            this.render();
+            setTimeout(() => { try { if (ws) ws.close(); } catch (_) { /* gone */ } }, 100);
+            setTimeout(() => {
+                if (this.closing || !this.modal.isConnected) return;
+                this.screen = 'home';
+                this.evalFrames(false);
+                this.render();
+                this.connect();
+            }, 1000);
         }
 
         get landscape() {
@@ -197,6 +349,14 @@
             this.clockTimer = setInterval(() => {
                 this.lcd.querySelectorAll('.sss-clock').forEach((el) => { el.textContent = clockText(this.landscape); });
             }, 15000);
+            // the clock face ticks every second; time frames are re-checked every 10 s
+            clearInterval(this.tickTimer);
+            let n = 0;
+            this.tickTimer = setInterval(() => {
+                if (++n % 10 === 0) this.evalFrames(false);
+                if (this.screen === 'clock') this.drawClock();
+            }, 1000);
+            this.evalFrames(false);
             // the firmware's splash, then the home list once the device is connected
             setTimeout(() => {
                 if (this.screen === 'splash') {
@@ -259,7 +419,8 @@
                 data: {
                     kind: 'slideshow', deviceId: this.deviceId, name: this.name, app: APP,
                     model: 'Device Simulator 3.0', os: 'Melaton SideShow',
-                    display: { width: lw, height: lh, orientation: this.mode }, settings: this.settings
+                    display: { width: lw, height: lh, orientation: this.mode }, settings: this.settings,
+                    deviceConfig: this.deviceConfig(), gadgets: this.gadgets()
                 }
             });
         }
@@ -306,6 +467,15 @@
                     break;
                 }
                 case 'rename': if (d.name) { this.name = String(d.name).slice(0, 64); this.save(); } break;
+                case 'set_device_config':
+                case 'set_mode': {
+                    // set_mode is set_device_config's { mode, clockFace }
+                    const config = d.command === 'set_mode' ? Object.assign({ mode: d.mode }, d.face ? { clockFace: d.face } : {}) : d.config;
+                    const res = this.applyConfig(config);
+                    this.send({ type: 'device_command_ack', commandId: msg.commandId, data: res });
+                    this.afterConfig(res);
+                    return;
+                }
                 default: ok = false;
             }
             this.send({ type: 'device_command_ack', commandId: msg.commandId, data: ok ? { ok: true } : { ok: false, error: 'Unknown command' } });
@@ -315,11 +485,17 @@
             // stopped only when the window closes (close()): the splash and home list are a running device
             let state = 'paused';
             let showing = [];
-            if (this.screen === 'gadget' || this.screen === 'menu') {
+            const s = this.shown;
+            if (s.mode === 'clock') {
+                state = 'showing';
+            } else if (this.screen === 'gadget' || this.screen === 'menu') {
                 state = this.paused ? 'paused' : 'showing';
                 showing = this.current();
             }
-            this.send({ type: 'client_device_state', data: { deviceId: this.deviceId, state, showing, since: Date.now() } });
+            this.send({
+                type: 'client_device_state',
+                data: { deviceId: this.deviceId, state, showing, since: Date.now(), mode: s.mode, face: s.mode === 'clock' ? s.face : null, scheduleEntry: this.frame >= 0 ? this.frame : null }
+            });
         }
 
         // ---- the slideshow ----
@@ -434,7 +610,7 @@
         // ---- the buttons ----
 
         press(k) {
-            if (this.screen === 'splash') return;
+            if (this.screen === 'splash' || this.screen === 'clock') return;
             if (this.screen === 'home') {
                 if (k === 'up' || k === 'down') {
                     this.homeIndex = k === 'up' ? 0 : 1;
@@ -472,7 +648,49 @@
         // ---- the LCD ----
 
         header() {
+            if (this.config.header === false) return '';
             return `<div class="sss-header" style="background-image:url('${ART}/fw-header.png')"><span class="sss-clock">${esc(clockText(this.landscape))}</span></div>`;
+        }
+
+        /** The gadget screens' background (the firmware's art, or black) and the dimming over the LCD. */
+        backdrop() {
+            return this.config.background === 'black' ? 'background:#000' : `background-image:url('${ART}/fw-bg-${this.landscape ? 'landscape' : 'portrait'}.jpg')`;
+        }
+
+        dimmer() {
+            const dim = Number(this.config.dim) || 0;
+            return dim > 0 ? `<div class="sss-dim" style="opacity:${dim / 100}"></div>` : '';
+        }
+
+        renderClock() {
+            const caption = this.config.caption ? `<div class="sss-caption">${esc(this.config.caption)}</div>` : '';
+            this.lcd.innerHTML = `${this.header()}<div class="sss-gadget sss-clockface${this.config.header === false ? ' is-bare' : ''}" style="${this.backdrop()}"><div class="sss-face"></div>${caption}</div>${this.dimmer()}`;
+            this.drawClock();
+        }
+
+        /** The clock: hands on a dial, or the time in digits, redrawn every second. */
+        drawClock() {
+            const el = this.lcd.querySelector('.sss-face');
+            if (!el) return;
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            if (this.shown.face === 'digital') {
+                el.innerHTML = `<div class="sss-digital">${pad(now.getHours())}:${pad(now.getMinutes())}<small>:${pad(now.getSeconds())}</small></div><div class="sss-date">${esc(now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }))}</div>`;
+                return;
+            }
+            const hand = (deg, len, w, color) => {
+                const r = (deg - 90) * Math.PI / 180;
+                return `<line x1="60" y1="60" x2="${(60 + len * Math.cos(r)).toFixed(2)}" y2="${(60 + len * Math.sin(r)).toFixed(2)}" stroke="${color}" stroke-width="${w}" stroke-linecap="round"/>`;
+            };
+            const ticks = Array.from({ length: 60 }, (_, i) => {
+                const r = (i * 6 - 90) * Math.PI / 180;
+                const a = i % 5 ? 52 : 46;
+                return `<line x1="${(60 + a * Math.cos(r)).toFixed(2)}" y1="${(60 + a * Math.sin(r)).toFixed(2)}" x2="${(60 + 55 * Math.cos(r)).toFixed(2)}" y2="${(60 + 55 * Math.sin(r)).toFixed(2)}" stroke="#222" stroke-width="${i % 5 ? 1 : 3}"/>`;
+            }).join('');
+            const s = now.getSeconds();
+            const m = now.getMinutes() + s / 60;
+            const h = (now.getHours() % 12) + m / 60;
+            el.innerHTML = `<svg viewBox="0 0 120 120" class="sss-analog"><circle cx="60" cy="60" r="58" fill="#fff" stroke="#333" stroke-width="2"/>${ticks}${hand(h * 30, 30, 5, '#222')}${hand(m * 6, 44, 3.5, '#222')}${hand(s * 6, 46, 1.2, '#c00')}<circle cx="60" cy="60" r="3" fill="#c00"/></svg>`;
         }
 
         render() {
@@ -480,6 +698,17 @@
             if (this.screen === 'splash') {
                 this.lcd.innerHTML = `<div class="sss-splash" style="background-image:url('${ART}/fw-splash.jpg')"></div>`;
                 return;
+            }
+            // the clock gadget takes the screen while it is selected or a time frame shows it
+            if (this.shown.mode === 'clock') {
+                if (this.screen !== 'clock') { clearTimeout(this.timer); this.screen = 'clock'; }
+                this.renderClock();
+                return;
+            }
+            if (this.screen === 'clock') {
+                this.screen = 'gadget';
+                if (!this.total) { void this.loadImages(); return; }
+                this.arm();
             }
             if (this.screen === 'home') {
                 if (L) {
@@ -509,10 +738,10 @@
             const body = this.loading ? '<div class="sss-msg">Updating...</div>'
                 : !files.length ? '<div class="sss-msg">There are no pictures to show.</div>'
                     : `<div class="sss-pics${files.length > 1 ? ' is-pair' : ''}">${files.map((f) => `<img src="${esc(previewUrl(f))}" alt="" data-file="${esc(f)}">`).join('')}</div>`;
-            this.lcd.innerHTML = `${this.header()}<div class="sss-gadget" style="background-image:url('${ART}/fw-bg-${L ? 'landscape' : 'portrait'}.jpg')">
+            this.lcd.innerHTML = `${this.header()}<div class="sss-gadget${this.config.header === false ? ' is-bare' : ''}" style="${this.backdrop()}">
                 ${body}${info}${this.paused ? '<div class="sss-paused">Paused</div>' : ''}
                 ${this.screen === 'menu' ? `<div class="sss-menu">${this.menuItems().map((it, i) => `<div class="sss-menu-item${i === this.menuIndex ? ' is-selected' : ''}" style="--bar:url('${ART}/fw-menu-item.png')">${esc(it.text)}</div>`).join('')}</div>` : ''}
-            </div>`;
+            </div>${this.dimmer()}`;
             // learn which pictures are tall, for portrait pairs on the landscape screen
             this.lcd.querySelectorAll('.sss-pics img').forEach((img) => {
                 img.addEventListener('load', () => {
@@ -536,6 +765,7 @@
             this.closing = true;
             clearTimeout(this.timer);
             clearInterval(this.clockTimer);
+            clearInterval(this.tickTimer);
             this.screen = 'stopped';
             this.send({ type: 'client_device_state', data: { deviceId: this.deviceId, state: 'stopped', showing: [], since: Date.now() } });
             if (this.ws) {

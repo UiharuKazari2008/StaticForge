@@ -301,3 +301,50 @@
     background: var(--bar) no-repeat 0 0 / 100% 26px;
     color: #000;
 }
+
+/* the device's own settings (deviceConfig): no title bar, dimming, and the Clock gadget's two faces */
+.sss-window .sss-gadget.is-bare {
+    top: 0;
+}
+
+.sss-window .sss-dim {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    pointer-events: none;
+}
+
+.sss-window .sss-clockface {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.sss-window .sss-face {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.sss-window .sss-analog {
+    width: 150px;
+    height: 150px;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+}
+
+.sss-window .sss-digital {
+    font: 300 52px/1 'Segoe UI', Tahoma, sans-serif;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
+}
+
+.sss-window .sss-digital small {
+    font-size: 24px;
+}
+
+.sss-window .sss-date,
+.sss-window .sss-caption {
+    text-align: center;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}

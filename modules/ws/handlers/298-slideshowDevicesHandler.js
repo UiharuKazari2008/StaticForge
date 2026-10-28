@@ -26,6 +26,22 @@ function registerPackets(handlersCtx) {
             reply(ws, 'client_identify_response', message, slideshowDevices.identify(gr(), wsServer, clientInfo, message.data));
         } catch (error) {
             handlersCtx.sendError(ws, 'Failed to identify the device', error.code || error.message, message.requestId);
+            return;
+        }
+        // device settings Control Panel changed while it was offline follow the reply as a set_device_config
+        try {
+            slideshowDevices.deliverPendingDeviceConfig(gr(), wsServer, clientInfo);
+        } catch (error) {
+            console.warn('[slideshowDevices] pending device settings failed:', error.message);
+        }
+    });
+
+    // fire-and-forget: the device's own settings and gadgets changed (DEVICE_CONFIG_PROTOCOL.md)
+    reg('client_device_config', async ({ message, clientInfo, wsServer }) => {
+        try {
+            slideshowDevices.deviceConfigReport(gr(), wsServer, clientInfo, message.data);
+        } catch (error) {
+            console.warn('[slideshowDevices] client_device_config failed:', error.message);
         }
     });
 
@@ -111,7 +127,10 @@ function registerPackets(handlersCtx) {
         try {
             reply(ws, 'device_send_command_response', message, await slideshowDevices.sendCommand(gr(), wsServer, src));
         } catch (error) {
-            reply(ws, 'device_send_command_response', message, { success: false, deviceId: src.deviceId || null, command: src.command || null, error: error.message, code: error.code || 'ERROR' });
+            reply(ws, 'device_send_command_response', message, {
+                success: false, deviceId: src.deviceId || null, command: src.command || null, error: error.message, code: error.code || 'ERROR',
+                ...(error.rejected ? { rejected: error.rejected } : {})
+            });
         }
     });
 
