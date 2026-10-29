@@ -257,9 +257,14 @@ function resolvedTokensForExpanderMatch(matchText, expanders, lockedSeeds, perio
             return baseKey ? `${baseKey}_${clean}` : clean;
         });
         const poolKeys = [];
+        // JULES: perf optimization — Set lookup O(1) instead of Array.includes O(N) inside loop
+        const poolKeySet = new Set();
         expandedKeys.forEach((ek) => {
             matchingExpanderKeys(ek, expanders).forEach((k) => {
-                if (!poolKeys.includes(k)) poolKeys.push(k);
+                if (!poolKeySet.has(k)) {
+                    poolKeySet.add(k);
+                    poolKeys.push(k);
+                }
             });
         });
         let resolved = maxTokensAcrossExpanderKeys(expanders, poolKeys.length ? poolKeys : expandedKeys);
