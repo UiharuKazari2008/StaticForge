@@ -382,22 +382,6 @@ function detectWeightGroupStartGeneric(source, idx) {
     return null;
 }
 
-function findNextWeightStart(source, idx) {
-    let pos = idx;
-    while (pos < source.length) {
-        if (/\s|,/.test(source[pos])) {
-            pos++;
-            continue;
-        }
-        const info = detectWeightGroupStartGeneric(source, pos);
-        if (info) {
-            return pos;
-        }
-        pos++;
-    }
-    return -1;
-}
-
 /**
  * Extract inner items from a segment's text.
  * 
