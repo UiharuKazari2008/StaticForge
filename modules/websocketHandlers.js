@@ -482,6 +482,11 @@ class WebSocketMessageHandlers {
             'revoke_application_key',
             'approve_application_auth_request',
             'deny_application_auth_request',
+            'search_index_rebuild_all', // JULES: Fix privilege leak for read-only clients on search index rebuild
+            'search_index_trigger', // JULES: Fix privilege leak for read-only clients on search index trigger
+            'search_index_toggle_pause', // JULES: Fix privilege leak for read-only clients on search index pause
+            'search_index_clear_cache', // JULES: Fix privilege leak for read-only clients on search index clear cache
+            'director_custom_providers_save', // JULES: Fix privilege leak for read-only clients on director custom providers save
             'clear_search_cache',
             'refresh_server_cache',
             'recompile_runtime_assets',
