@@ -637,15 +637,6 @@ function saveUndesiredIdSet() {
     }
 }
 
-function filterUndesiredResults(results) {
-    const badPosts = loadUndesiredIdSet();
-    const badCreators = loadBlockedCreatorIdSet();
-    if (!badPosts.size && !badCreators.size) {
-        return Array.isArray(results) ? results : [];
-    }
-    return (results || []).filter((r) => r && !isExploreResultHidden(r));
-}
-
 function isExploreResultHidden(r) {
     if (!r || !r.id) return true;
     const badPosts = loadUndesiredIdSet();
