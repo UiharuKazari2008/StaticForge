@@ -386,7 +386,7 @@ class ApiKeyManager {
             return false;
         }
 
-        configCache.selectedApiKeys[service] = index;
+        selectedApiKeys[service] = index;
         return true;
     }
 
