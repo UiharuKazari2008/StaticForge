@@ -596,6 +596,12 @@ class WebSocketMessageHandlers {
             'director_prompt_guide_push',
             'director_reinstall',
             'director_rentan_agent_set_default',
+            // JULES: Security sweep — search index mutation packets and director custom providers save
+            'director_custom_providers_save',
+            'search_index_rebuild_all',
+            'search_index_trigger',
+            'search_index_toggle_pause',
+            'search_index_clear_cache',
         ];
         return destructiveOperations.includes(messageType) || isReplicationDestructivePacket(messageType);
     }

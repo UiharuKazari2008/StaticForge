@@ -45,7 +45,9 @@ const SCOPE_WS_PACKETS = {
         // omegasearch_query — see OMEGASEARCH_QUERY_PACKET_SCHEMA in omegasearchFilters.js
         'omegasearch_query',
         'search_index_status', 'search_index_pause', 'search_index_resume',
-        'search_index_rebuild', 'spellcheck_add_word', 'prompt_index_reconcile'
+        'search_index_rebuild', 'spellcheck_add_word', 'prompt_index_reconcile',
+        // JULES: Search index mutation packets
+        'search_index_rebuild_all', 'search_index_trigger', 'search_index_toggle_pause', 'search_index_clear_cache', 'search_index_prepare_cache'
     ],
     vfs: [
         'vfs_list', 'vfs_read', 'vfs_write', 'vfs_delete', 'vfs_mkdir', 'vfs_move',
@@ -66,7 +68,9 @@ const SCOPE_WS_PACKETS = {
     ],
     chat: [
         'create_chat_session', 'send_chat_message', 'get_chat_history', 'delete_chat_session',
-        'get_persona_settings', 'save_persona_settings', 'update_persona_settings'
+        'get_persona_settings', 'save_persona_settings', 'update_persona_settings',
+        // JULES: Director custom providers save
+        'director_custom_providers_save'
     ],
     references: [
         'get_references', 'upload_reference', 'delete_reference', 'encode_vibe',
