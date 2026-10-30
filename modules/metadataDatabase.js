@@ -1634,12 +1634,16 @@ async function removeImageMetadataBatch(filenames, batchSize = 500, precomputedB
                     // Merge receipts into unattributed receipts in batch
                     if (receipts.length > 0) {
                         const now = Date.now();
+                        // JULES: perf optimization — Batched insertion of receipts to prevent N+1 query loop overhead
+                        const insertValues = receipts.map(() => '(?, ?)').join(',');
+                        const insertParams = [];
                         for (const receipt of receipts) {
-                            await db.run(`
-                                INSERT INTO unattributed_receipts (date, receipt_data)
-                                VALUES (?, ?)
-                            `, [now, receipt.receipt_data]);
+                            insertParams.push(now, receipt.receipt_data);
                         }
+                        await db.run(`
+                            INSERT INTO unattributed_receipts (date, receipt_data)
+                            VALUES ${insertValues}
+                        `, insertParams);
                         receiptCount += receipts.length;
                     }
                     
