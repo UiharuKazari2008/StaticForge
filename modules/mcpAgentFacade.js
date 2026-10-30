@@ -1660,7 +1660,7 @@ const TOOL_DEFS = [
     {
         name: 'get_memory',
         core: true,
-        description: 'MCP read of one Dreamscape knowledge memory (alias retrieveKnowledgeMemory). Not Grok Memory. needsRefinement is true below 60% — verify, then save_memory on the same name. Accepts name or names[]. Read user_vibe and user_interests before a new picture.',
+        description: 'MCP read of one Dreamscape knowledge memory (alias retrieveKnowledgeMemory). Not Grok Memory. needsRefinement is true below 60% — verify, then save_memory on the same name. Accepts name or names[]. linkedImages lists full filenames, revision and link time (paged; total count). Read user_vibe and user_interests before a new picture.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1668,6 +1668,8 @@ const TOOL_DEFS = [
             properties: {
                 name: { type: 'string' },
                 names: { type: 'array', items: { type: 'string' }, description: 'Old retrieveKnowledgeMemory batch. Same as name when length 1.' },
+                imageLimit: { type: 'number', description: 'Linked images per memory, newest first (default 50, max 200). linkedImages.total is the full count.' },
+                imageOffset: { type: 'number', description: 'Skip this many linked images (paging).' },
                 reason: { type: 'string' }
             }
         }
@@ -1715,7 +1717,7 @@ const TOOL_DEFS = [
     {
         name: 'unlink_memory_image',
         core: true,
-        description: 'Remove a wrong image link from a knowledge memory revision. Defaults to the current revision. The image itself is not deleted.',
+        description: 'Remove a wrong image link from a knowledge memory revision. image is the full filename from get_memory linkedImages; the name without .png works when it matches one link. Defaults to the current revision. The image itself is not deleted.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -6413,6 +6415,30 @@ function linkSavedMemoryImages(db, sessionId, memoryName, revision, images) {
     return linked;
 }
 
+// REVIEW: get_memory shows linked images (full filename, revision, link time), paged (Guren 10/30).
+function withLinkedImages(db, memory, input) {
+    if (!memory || typeof db.listMemoryImageLinks !== 'function') return memory;
+    const all = db.listMemoryImageLinks({ memoryName: memory.name });
+    const limit = Math.max(0, Math.min(200, Number.isFinite(Number(input.imageLimit)) ? Math.floor(Number(input.imageLimit)) : 50));
+    const offset = Math.max(0, Number.isFinite(Number(input.imageOffset)) ? Math.floor(Number(input.imageOffset)) : 0);
+    const links = all.slice().reverse().slice(offset, offset + limit).map((row) => ({
+        image: row.imageId,
+        revision: row.revision,
+        linkedAt: row.createdAt != null ? new Date(Number(row.createdAt) * 1000).toISOString() : null,
+        source: row.source
+    }));
+    return {
+        ...memory,
+        linkedImages: {
+            total: all.length,
+            offset,
+            limit,
+            hasMore: offset + links.length < all.length,
+            links
+        }
+    };
+}
+
 const PROTECTED_MEMORY_NAMES = new Set([
     'user_vibe',
     'user_interests',
@@ -6518,7 +6544,7 @@ function runMemoryTool(globalResources, name, input, ctx, storeForced) {
         const notFound = [];
         memoryNames.forEach((memoryName) => {
             const memory = db.getKnowledgeMemory(memoryName, true);
-            if (memory) memories.push(memory);
+            if (memory) memories.push(withLinkedImages(db, memory, input));
             else notFound.push(memoryName);
         });
         if (!memories.length) {
