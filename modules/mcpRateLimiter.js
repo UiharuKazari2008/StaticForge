@@ -111,6 +111,7 @@ const TOOL_RATE_GROUPS = {
     saveKnowledgeMemory: 'write',
     delete_memory: 'write',
     link_memory_image: 'write',
+    unlink_memory_image: 'write',
     get_client_physics: 'studio',
     apply_studio_changes: 'studio',
     print_studio: 'studio',

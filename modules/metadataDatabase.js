@@ -1634,11 +1634,16 @@ async function removeImageMetadataBatch(filenames, batchSize = 500, precomputedB
                     // Merge receipts into unattributed receipts in batch
                     if (receipts.length > 0) {
                         const now = Date.now();
-                        for (const receipt of receipts) {
-                            await db.run(`
-                                INSERT INTO unattributed_receipts (date, receipt_data)
-                                VALUES (?, ?)
-                            `, [now, receipt.receipt_data]);
+                        // REVIEW: multi-row insert, chunked so 2 params/row stays under the SQLite bound-variable cap (Jules GH #406)
+                        const RECEIPT_INSERT_CHUNK = 500;
+                        for (let r = 0; r < receipts.length; r += RECEIPT_INSERT_CHUNK) {
+                            const chunk = receipts.slice(r, r + RECEIPT_INSERT_CHUNK);
+                            const params = [];
+                            for (const receipt of chunk) params.push(now, receipt.receipt_data);
+                            await db.run(
+                                `INSERT INTO unattributed_receipts (date, receipt_data) VALUES ${chunk.map(() => '(?, ?)').join(',')}`,
+                                params
+                            );
                         }
                         receiptCount += receipts.length;
                     }

@@ -1675,7 +1675,7 @@ const TOOL_DEFS = [
     {
         name: 'save_memory',
         core: true,
-        description: 'MCP write — the ONLY way to persist a Dreamscape knowledge memory (the living rules you write after a gen). Alias saveKnowledgeMemory (old paid API). Grok Memory / "I will remember" does not upsert. Same name = UPDATE (refine). SAVE after you try something: what worked, what failed, even when it broke a guide note. (1) Rendering techniques, (2) Character-specific mods, (3) Character traits/patterns, (4) Scenario approaches, (5) Token/tag combos, (6) Tag preferences. The person is user_vibe and user_interests (category taste). get_memory first: observations you send replace the list. Before a replace, the prior observations are snapshotted as a revision so they can be rolled back. The result includes droppedObservations and a warning listing what was dropped. Self-contained snake_case names (e.g. miku_hatsune_hair_rendering) — a later session will not have this chat. New=10%; refinement adds 0–25% (max 100%). Omit unchanged graph fields. Set model (v5 default; existing rows keep their stored model). Images generated in this session since the previous save_memory are linked to the new revision automatically — do not call link_memory_image for those.',
+        description: 'MCP write — the ONLY way to persist a Dreamscape knowledge memory (the living rules you write after a gen). Alias saveKnowledgeMemory (old paid API). Grok Memory / "I will remember" does not upsert. Same name = UPDATE (refine). SAVE after you try something: what worked, what failed, even when it broke a guide note. (1) Rendering techniques, (2) Character-specific mods, (3) Character traits/patterns, (4) Scenario approaches, (5) Token/tag combos, (6) Tag preferences. The person is user_vibe and user_interests (category taste). get_memory first: observations you send replace the list. Before a replace, the prior observations are snapshotted as a revision so they can be rolled back. The result includes droppedObservations and a warning listing what was dropped. Self-contained snake_case names (e.g. miku_hatsune_hair_rendering) — a later session will not have this chat. New=10%; refinement adds 0–25% (max 100%). Omit unchanged graph fields. Set model (v5 default; existing rows keep their stored model). Only the images you pass in images are linked to the new revision; nothing else is linked for you. Use unlink_memory_image to take a wrong link off.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1690,6 +1690,7 @@ const TOOL_DEFS = [
                 observations: { type: 'array', description: 'Evidence notes. Strings are fine (attached to a default memory entity). Or {entity_id, content}. Replaces the stored list. Prior observations are snapshotted as a revision first; dropped lines are listed in the result warning.' },
                 confidence: { type: 'number', description: 'On create ignored (starts 0.1). On refine, added to current confidence, capped at +0.25 per save.' },
                 model: { type: 'string', description: 'Studio forge model this memory applies to (v5, v4_5, v5_cur, …). Default v5.' },
+                images: { type: 'array', items: { type: 'string' }, description: 'Gallery filenames or image ids that show this memory. Only these are linked to the new revision. Omit to link none.' },
                 reason: { type: 'string', description: 'Optional. Old API required this; stored only if you also put evidence in observations.' }
             }
         }
@@ -1697,7 +1698,7 @@ const TOOL_DEFS = [
     {
         name: 'link_memory_image',
         core: true,
-        description: 'Manually link a gallery image to a knowledge memory revision. Images generated in this session since the previous save_memory are already linked when you save_memory — use this only for an older file or a picture from another session. Defaults to the current revision.',
+        description: 'Link a gallery image to a knowledge memory revision (save_memory links only its images list). Defaults to the current revision.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1708,6 +1709,22 @@ const TOOL_DEFS = [
                 image: { type: 'string', description: 'Gallery filename or image id' },
                 note: { type: 'string', description: 'Why this image belongs on the memory' },
                 revision: { type: 'number', description: 'Revision to attach. Omit for the current revision.' }
+            }
+        }
+    },
+    {
+        name: 'unlink_memory_image',
+        core: true,
+        description: 'Remove a wrong image link from a knowledge memory revision. Defaults to the current revision. The image itself is not deleted.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['memory', 'image'],
+            properties: {
+                memory: { type: 'string', description: 'Knowledge memory name' },
+                image: { type: 'string', description: 'Gallery filename or image id' },
+                revision: { type: 'number', description: 'Revision to detach from. Omit for the current revision.' }
             }
         }
     },
@@ -6381,22 +6398,19 @@ function noteMcpSessionImages(globalResources, req, filenames, createdAtMs) {
     return noted;
 }
 
-function autoLinkSessionImages(db, sessionId, memoryName, revision, nowMs) {
-    if (!sessionId || revision == null) return [];
-    if (typeof db.takeSessionImagesSinceLastSave !== 'function' || typeof db.linkMemoryImage !== 'function') {
-        return [];
+// REVIEW: save_memory links only the images the caller names (Guren 10/30: the old
+// session sweep linked every cake meal print since the last save).
+function linkSavedMemoryImages(db, sessionId, memoryName, revision, images) {
+    if (revision == null || typeof db.linkMemoryImage !== 'function') return [];
+    const list = Array.isArray(images) ? images : (images ? [images] : []);
+    const linked = [];
+    for (const raw of list) {
+        const imageId = String(raw || '').trim();
+        if (!imageId || linked.includes(imageId)) continue;
+        const r = db.linkMemoryImage({ memoryName, imageId, revision, sessionId, source: 'manual' });
+        if (!r || r.success !== false) linked.push(imageId);
     }
-    const imageIds = db.takeSessionImagesSinceLastSave(sessionId, nowMs);
-    imageIds.forEach((imageId) => {
-        db.linkMemoryImage({
-            memoryName,
-            imageId,
-            revision,
-            sessionId,
-            source: 'auto'
-        });
-    });
-    return imageIds;
+    return linked;
 }
 
 const PROTECTED_MEMORY_NAMES = new Set([
@@ -6457,6 +6471,16 @@ function runMemoryTool(globalResources, name, input, ctx, storeForced) {
             revision: input.revision,
             sessionId,
             source: 'manual'
+        });
+    }
+    if (name === 'unlink_memory_image') {
+        if (typeof db.unlinkMemoryImage !== 'function') {
+            return { success: false, error: 'Memory image links are not available' };
+        }
+        return db.unlinkMemoryImage({
+            memory: input.memory || input.name,
+            image: input.image || input.imageId || input.filename,
+            revision: input.revision
         });
     }
     if (name === 'list_memories') {
@@ -6561,7 +6585,7 @@ function runMemoryTool(globalResources, name, input, ctx, storeForced) {
         model,
         sessionId ? { sessionId } : null
     );
-    const linkedImages = autoLinkSessionImages(db, sessionId, memoryName, saved && saved.revision, nowMs);
+    const linkedImages = linkSavedMemoryImages(db, sessionId, memoryName, saved && saved.revision, input.images);
     const previousRevision = saved && saved.previousRevision != null
         ? saved.previousRevision
         : (existing ? (Number(existing.revision) || 0) : null);
@@ -6880,7 +6904,7 @@ function listAdvancedToolDefs(scopes, query, globalResources, options) {
 const ADVANCED_CORE_HINTS = [
     {
         test: (q) => /memor/i.test(q) || /saveknowledgememory|searchknowledgememor|retrieveknowledgememory|listknowledgememor/i.test(q.replace(/[\s_]+/g, '')),
-        names: ['list_memories', 'search_memories', 'get_memory', 'save_memory', 'delete_memory', 'link_memory_image', 'listKnowledgeMemories', 'searchKnowledgeMemories', 'retrieveKnowledgeMemory', 'saveKnowledgeMemory']
+        names: ['list_memories', 'search_memories', 'get_memory', 'save_memory', 'delete_memory', 'link_memory_image', 'unlink_memory_image', 'listKnowledgeMemories', 'searchKnowledgeMemories', 'retrieveKnowledgeMemory', 'saveKnowledgeMemory']
     },
     { test: (q) => /agora|explore|novelai explore|explore gallery/i.test(q), names: ['search_explore', 'count_explore', 'get_explore_post', 'get_explore_image'] },
     { test: (q) => /\bnax\b|top votes|artist tag/i.test(q), names: ['search_nax', 'list_nax_galleries', 'generate_nax_tag', 'delete_nax_tag'] },
@@ -7270,7 +7294,8 @@ async function runQueuedMcpGenerate(globalResources, req, name, packetType, payl
                             { content: `UC: ${payload.uc || ''}` },
                             { content: `Model: ${payload.model || ''}` },
                             { content: `Seed: ${flat.seed || payload.seed || ''}` }
-                        ]
+                        ],
+                        images: collectFilenames({ filename: flat.filename, filenames: flat.filenames })
                     }, { sessionId: resolveBindKey(req) });
                     if (memoryResult && memoryResult.success) {
                         flat.saved_memory = memoryResult.memory;
@@ -7903,7 +7928,7 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'list_memories' || name === 'search_memories' || name === 'get_memory' || name === 'save_memory'
-        || name === 'delete_memory' || name === 'link_memory_image' || MEMORY_TOOL_ALIASES[name]) {
+        || name === 'delete_memory' || name === 'link_memory_image' || name === 'unlink_memory_image' || MEMORY_TOOL_ALIASES[name]) {
         const result = runMemoryTool(globalResources, name, input, {
             sessionId: resolveBindKey(req)
         });
@@ -8386,7 +8411,10 @@ async function callTool(globalResources, req, name, args) {
                     };
                     qualityInherited = Object.keys(liveQuality);
                 } else {
-                    qualityDropped = ['high_complexity', 'no_text'];
+                    // REVIEW: no live Studio quality to inherit, so prompt.config sub-toggle defaults
+                    // apply server-side: no_text stays on (default_enabled), complexity stays off.
+                    // Only report what is really off (Guren 10/30).
+                    qualityDropped = ['high_complexity'];
                 }
             }
         }
