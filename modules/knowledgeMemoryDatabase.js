@@ -1763,12 +1763,25 @@ function linkMemoryImage(input = {}) {
     return { success: true, memory: name, revision, image, source, note, sessionId };
 }
 
+// REVIEW: links store the full gallery filename (with .png). Accept the name without its
+// extension when exactly one linked file on that memory matches (Guren 10/30).
+function resolveLinkedImageId(name, image) {
+    const exact = db.prepare('SELECT 1 FROM memory_image_links WHERE memory_name = ? AND image_id = ? LIMIT 1').get(name, image);
+    if (exact || /\.[a-z0-9]{2,5}$/i.test(image)) return image;
+    const hits = db.prepare(`
+        SELECT DISTINCT image_id FROM memory_image_links
+        WHERE memory_name = ? AND substr(image_id, 1, ?) = ?
+    `).all(name, image.length + 1, `${image}.`);
+    return hits.length === 1 ? hits[0].image_id : image;
+}
+
 function unlinkMemoryImage(input = {}) {
     requireDb();
     const name = String(input.memory || input.memoryName || input.name || '').trim();
-    const image = String(input.image || input.imageId || input.filename || '').trim();
+    const rawImage = String(input.image || input.imageId || input.filename || '').trim();
     if (!name) return { success: false, error: 'memory is required' };
-    if (!image) return { success: false, error: 'image is required' };
+    if (!rawImage) return { success: false, error: 'image is required' };
+    const image = resolveLinkedImageId(name, rawImage);
     let result;
     if (input.revision != null && input.revision !== '') {
         const revision = parseInt(input.revision, 10);
@@ -2135,6 +2148,7 @@ module.exports = {
     linkMemoryImage,
     unlinkMemoryImage,
     listMemoryImageLinks,
+    resolveLinkedImageId,
     listMemoryRevisions,
     droppedObservationContents,
     observationContentOf,
