@@ -1510,7 +1510,13 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
     if (body && typeof body === 'object' && isBackgroundOnlyRequest(body, preset)) {
         body = applyBackgroundOnlyToBody(body, preset);
     }
+    const replacementsBeforeRentan = body ? body.text_replacements : undefined;
     await resolveDynagenWithWren(globalResources, body, preset, ws, handler, wsServer);
+    // Rentan rewrites body.text_replacements. A pipeline's base stage builds stageData from the
+    // request before that, so its dg_ rows come from here (later stages copy the resolved body).
+    const rentanRows = body && body.text_replacements !== replacementsBeforeRentan && Array.isArray(body.text_replacements)
+        ? body.text_replacements.filter((row) => row && /^dg_/i.test(String(row.name || '')))
+        : null;
     const referenceMetadataDb = __runtimeGr.getReferenceMetadataDatabase();
     const allowPaid = body.allow_paid ? body.allow_paid : preset?.allow_paid;
 
@@ -1572,6 +1578,11 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             pipelineStageGeneration: Array.isArray(body.pipeline) && body.pipeline.length > 0,
             ...(stageData || {})
         };
+        if (rentanRows) {
+            const kept = (Array.isArray(currentStageData.text_replacements) ? currentStageData.text_replacements : [])
+                .filter((row) => !(row && /^dg_/i.test(String(row.name || ''))));
+            currentStageData.text_replacements = kept.concat(rentanRows);
+        }
 
         let processedPromptResult = __runtimeGr.getTextReplacements().applyTextReplacements(rawPrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
         let processedNegativePromptResult = __runtimeGr.getTextReplacements().applyTextReplacements(rawNegativePrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
