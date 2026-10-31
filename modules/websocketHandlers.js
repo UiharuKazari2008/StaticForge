@@ -596,6 +596,10 @@ class WebSocketMessageHandlers {
             'director_prompt_guide_push',
             'director_reinstall',
             'director_rentan_agent_set_default',
+            'director_repair_session',
+            'director_learned_decide',
+            'director_learned_rule_edit',
+            'director_learned_rule_remove',
         ];
         return destructiveOperations.includes(messageType) || isReplicationDestructivePacket(messageType);
     }

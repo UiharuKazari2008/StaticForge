@@ -912,6 +912,151 @@ html.disable-blur .director-session-overlay {
     display: block;
 }
 
+/* Auto-Repair divider (session-repair card): where one engine session ends and the repaired one starts */
+.director-message.director-repair-divider {
+    align-self: stretch;
+    width: 100%;
+    max-width: none;
+    padding: 6px 4px;
+    gap: 6px;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    backdrop-filter: none;
+}
+
+.director-repair-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 2px 0;
+    background: none;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: var(--c-pointer);
+}
+
+.director-repair-bar::before,
+.director-repair-bar::after {
+    content: '';
+    flex: 1 1 24px;
+    border-top: 2px solid var(--glass-border-4);
+}
+
+.director-repair-title {
+    flex: 0 0 auto;
+    font-weight: 600;
+}
+
+.director-repair-meta {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.director-repair-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    background: hsl(45 100% 60% / 14%);
+    border: 1px solid hsl(45 80% 50% / 55%);
+    border-radius: var(--border-radius-sm, 3px);
+}
+
+.director-repair-banner img {
+    flex: 0 0 16px;
+    margin-top: 1px;
+}
+
+.director-repair-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 2px 4px 4px;
+}
+
+.director-repair-heading {
+    margin-bottom: 2px;
+    font-weight: 600;
+}
+
+.director-repair-section :is(ul, ol) {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.director-repair-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.director-repair-opening {
+    padding: 6px 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--glass-border-4);
+    border-radius: var(--border-radius-md);
+}
+
+.director-repair-proposal {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 0;
+    border-top: 1px solid var(--glass-border-2);
+}
+
+.director-repair-proposal-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.director-repair-proposal-status,
+.director-repair-why {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.director-repair-proposal-text {
+    width: 100%;
+    resize: vertical;
+    font: inherit;
+}
+
+.director-repair-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* while the hidden repair turn runs */
+.director-repair-status {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.director-repair-status-label {
+    font-weight: 600;
+}
+
+.director-repair-status-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* show_chat_image card: the picture sits in the thread, not in the session strip */
 .director-chat-image {
     max-width: 100%;

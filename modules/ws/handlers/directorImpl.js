@@ -70,6 +70,12 @@ module.exports = {
     handleDirectorPromptGuideExtract: cursor.handleDirectorPromptGuideExtract,
     handleDirectorPromptGuideCommit: cursor.handleDirectorPromptGuideCommit,
     handleDirectorPromptGuidePush: cursor.handleDirectorPromptGuidePush,
+    // Auto-Repair Session and its learned-rule proposals (#687). Wren only; the handler refuses Xi.
+    handleDirectorRepairSession: cursor.handleDirectorRepairSession,
+    handleDirectorLearnedList: cursor.handleDirectorLearnedList,
+    handleDirectorLearnedDecide: cursor.handleDirectorLearnedDecide,
+    handleDirectorLearnedRuleEdit: cursor.handleDirectorLearnedRuleEdit,
+    handleDirectorLearnedRuleRemove: cursor.handleDirectorLearnedRuleRemove,
     handleDirectorGetCursorUsage: cursorUsage.handleDirectorGetCursorUsage,
     handleDirectorSaveFeedback: legacy.handleDirectorSaveFeedback,
     handleDirectorLoadRules: legacy.handleDirectorLoadRules,

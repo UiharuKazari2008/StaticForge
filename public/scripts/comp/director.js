@@ -1264,6 +1264,12 @@ class Director {
                             handlerfn: (option, target) => this.moveSessionToWorkspace(option, target)
                         },
                         {
+                            text: 'Auto-Repair Session',
+                            icon: 'fas fa-screwdriver-wrench',
+                            action: 'director-repair-session',
+                            hidden: () => this.persona === 'xi'
+                        },
+                        {
                             text: 'Nuke session',
                             icon: 'fas fa-bomb',
                             action: 'director-nuke-session',
@@ -1358,6 +1364,10 @@ class Director {
         }
         if (action === 'director-nuke-session') {
             this.nukeSessionFromContextMenu(session);
+            return;
+        }
+        if (action === 'director-repair-session') {
+            void this.repairSession(session);
             return;
         }
         if (action === 'director-delete-session') {
@@ -1576,6 +1586,14 @@ class Director {
                         },
                         { separator: true },
                         {
+                            icon: 'fas fa-screwdriver-wrench',
+                            text: 'Auto-Repair Session',
+                            tooltip: 'Summarize this session into a clear request and continue in a new session',
+                            action: 'director-tools-repair-session',
+                            hidden: () => director.persona === 'xi',
+                            disabled: () => director._running || !director.firstUserMessageKey() || director.sessionRepairing(director.currentSession)
+                        },
+                        {
                             icon: 'fas fa-arrows-rotate',
                             text: 'Restart Session',
                             tooltip: 'Restart from the first message',
@@ -1730,6 +1748,9 @@ class Director {
             case 'director-tools-send-enter':
                 this.sendOnEnter = !this.sendOnEnter;
                 this.saveChatPrefs();
+                break;
+            case 'director-tools-repair-session':
+                void this.repairSession(this.currentSession);
                 break;
             case 'director-tools-restart-session': {
                 const firstKey = this.firstUserMessageKey();
@@ -5580,6 +5601,7 @@ class Director {
     createDirectorCardElement(message) {
         const data = (message && message.data) || {};
         const kind = message && message.message_type;
+        if (kind === 'session-repair') return this.createRepairDividerElement(message);
         if (kind !== 'chat-image' && kind !== 'workspace-offer' && kind !== 'workspace-switch') return null;
         const card = document.createElement('div');
         card.className = 'director-message event';
@@ -5799,6 +5821,334 @@ class Director {
         }
         // setActiveWorkspace: public/scripts/comp/workspaceUtils.js
         await setActiveWorkspace(workspaceId);
+    }
+
+    // ---- Auto-Repair Session (director_repair_session, modules/cursorDirector.js) ----
+    sessionRepairing(session) {
+        const id = session && session.id;
+        if (!id) return false;
+        return !!(session.repairing || (this._repairingSessions && this._repairingSessions.has(String(id))));
+    }
+
+    async repairSession(session) {
+        if (!session || !session.id || session.draft || this.persona === 'xi') return;
+        if (this.sessionRepairing(session)) {
+            showGlassToast('info', 'Director', 'This session is already being repaired');
+            return;
+        }
+        if (this._running && this.currentSession && String(this.currentSession.id) === String(session.id)) {
+            showGlassToast('error', 'Director', 'Director is still working on that chat');
+            return;
+        }
+        // showInputDialog: public/scripts/comp/confirmationDialog.js ('' on OK with no note, null on Cancel)
+        const note = await showInputDialog(
+            `Auto-Repair "${session.name || 'Director'}"? Director reads the whole session, restates what you asked as one clear request, and continues in a new session. Optional: tell it what you are working on or what went wrong.`,
+            '',
+            'Here is what I am working on; it is not listening to...',
+            [
+                { text: 'Repair', value: 'ok', className: 'btn-primary', icon: 'fas fa-screwdriver-wrench', primary: true },
+                { text: 'Cancel', value: null, className: 'btn-secondary' }
+            ],
+            null,
+            { title: 'Auto-Repair Session', icon: 'fas fa-screwdriver-wrench', width: 460 }
+        );
+        if (note == null) return;
+        try {
+            await this.directorRequest('director_repair_session', { sessionId: session.id, note: String(note).slice(0, 2000) });
+            this.noteRepairProgress({ sessionId: session.id, stage: 'start', text: 'Reading the session' });
+        } catch (err) {
+            showGlassToast('error', 'Director', err.message || 'Could not start Auto-Repair');
+        }
+    }
+
+    // director_repair_progress: { sessionId, reason, stage start|working|done|error, text, code }
+    noteRepairProgress(payload) {
+        const id = payload && payload.sessionId ? String(payload.sessionId) : '';
+        if (!id) return;
+        if (!this._repairingSessions) this._repairingSessions = new Set();
+        const listed = (this.directorSessions || []).find((item) => String(item.id) === id);
+        const current = this.currentSession && String(this.currentSession.id) === id ? this.currentSession : null;
+        const finished = payload.stage === 'done' || payload.stage === 'error';
+        if (finished) this._repairingSessions.delete(id);
+        else this._repairingSessions.add(id);
+        [listed, current].forEach((session) => {
+            if (session) session.repairing = !finished;
+        });
+        if (current) this.paintRepairStatus(finished ? '' : (payload.text || 'Working'));
+        if (payload.stage === 'done') {
+            [listed, current].forEach((session) => {
+                if (!session) return;
+                session.contextPercent = 0;
+                session.contextTokens = 0;
+            });
+            if (current) this.paintContext(null);
+            showGlassToast('info', null, 'Session repaired', false, 2400, '<i class="fas fa-screwdriver-wrench"></i>');
+        } else if (payload.stage === 'error') {
+            if (payload.code === 'REPAIR_CANCELLED') showGlassToast('info', 'Director', 'Auto-Repair stopped');
+            else showGlassToast('error', 'Director', `Auto-Repair failed: ${payload.text || 'unknown error'}`);
+        }
+    }
+
+    // director_session_repair: keep the divider in the session's messages so the context
+    // estimate starts there, then draw it.
+    noteSessionRepaired(payload) {
+        const id = payload && (payload.sessionId || payload.chatId);
+        const session = this.currentSession;
+        if (session && id && String(session.id) === String(id) && Array.isArray(session.messages)
+            && !session.messages.some((item) => item && item.id === payload.cardId)) {
+            session.messages.push({
+                id: payload.cardId,
+                role: 'event',
+                message_type: 'session-repair',
+                timestamp: payload.at || new Date().toISOString(),
+                data: payload
+            });
+        }
+        this.appendChatCard('session-repair', payload);
+    }
+
+    // One status line under the thread while the hidden repair turn runs.
+    paintRepairStatus(text) {
+        const chat = this.directorChatMessages;
+        if (!chat) return;
+        let row = chat.querySelector('.director-repair-status');
+        if (!text) {
+            if (row) row.remove();
+            return;
+        }
+        if (!row) {
+            row = document.createElement('div');
+            row.className = 'director-repair-status';
+            const label = document.createElement('span');
+            label.className = 'director-repair-status-label';
+            label.textContent = 'Auto-Repair';
+            const line = document.createElement('span');
+            line.className = 'director-repair-status-text';
+            row.append(label, line);
+        }
+        row.querySelector('.director-repair-status-text').textContent = text;
+        const typing = chat.querySelector('.director-typing-indicator');
+        if (typing) chat.insertBefore(row, typing);
+        else if (row.parentNode !== chat || row !== chat.lastElementChild) chat.appendChild(row);
+    }
+
+    repairListSection(title, items, render) {
+        if (!Array.isArray(items) || !items.length) return null;
+        const section = document.createElement('div');
+        section.className = 'director-repair-section';
+        const heading = document.createElement('div');
+        heading.className = 'director-repair-heading';
+        heading.textContent = title;
+        const list = document.createElement(title === 'Timeline' ? 'ol' : 'ul');
+        items.forEach((item) => {
+            const li = document.createElement('li');
+            render(li, item);
+            list.appendChild(li);
+        });
+        section.append(heading, list);
+        return section;
+    }
+
+    repairTextSection(title, text, className) {
+        if (!text) return null;
+        const section = document.createElement('div');
+        section.className = 'director-repair-section';
+        const heading = document.createElement('div');
+        heading.className = 'director-repair-heading';
+        heading.textContent = title;
+        const body = document.createElement('div');
+        body.className = className || 'director-repair-text';
+        body.textContent = text;
+        section.append(heading, body);
+        return section;
+    }
+
+    repairProposalLabel(row) {
+        if (row.kind === 'guide') return `Prompt guide: ${row.op} ${row.path || ''}`.trim();
+        if (row.op === 'edit') return `Learned rule: edit ${row.targetId || ''}`.trim();
+        if (row.op === 'remove') return `Learned rule: remove ${row.targetId || ''}`.trim();
+        return 'Learned rule: add';
+    }
+
+    paintProposalStatus(rowEl, status) {
+        if (!rowEl || !status || status === 'pending') return;
+        rowEl.dataset.status = status;
+        rowEl.querySelectorAll('button, textarea').forEach((el) => { el.disabled = true; });
+        const label = rowEl.querySelector('.director-repair-proposal-status');
+        if (label) label.textContent = status === 'approved' ? 'Approved' : 'Rejected';
+    }
+
+    async decideRepairProposal(rowEl, row, decision) {
+        const input = rowEl.querySelector('textarea');
+        const edited = input && input.value !== row.text ? input.value : undefined;
+        rowEl.querySelectorAll('button').forEach((el) => { el.disabled = true; });
+        try {
+            const body = await this.directorRequest('director_learned_decide', { id: row.id, decision, text: edited });
+            this.paintProposalStatus(rowEl, body.proposal && body.proposal.status);
+            if (decision === 'approve' && row.kind === 'guide') {
+                showGlassToast('info', 'Director', 'Written to the prompt guide clone. Extract, commit, and push it from Prompt Guide.');
+            }
+        } catch (err) {
+            rowEl.querySelectorAll('button').forEach((el) => { el.disabled = false; });
+            showGlassToast('error', 'Director', err.message || 'Could not save that decision');
+        }
+    }
+
+    // Statuses can change after the card was saved; read them when the card opens.
+    async refreshRepairProposals(card) {
+        const rows = card.querySelectorAll('.director-repair-proposal[data-proposal-id]');
+        if (!rows.length) return;
+        try {
+            const body = await this.directorRequest('director_learned_list', {});
+            const byId = new Map((body.proposals || []).map((row) => [row.id, row.status]));
+            rows.forEach((rowEl) => this.paintProposalStatus(rowEl, byId.get(rowEl.dataset.proposalId)));
+        } catch (_) { /* buttons stay; the server refuses a decided proposal */ }
+    }
+
+    // appendSessionCard kind session-repair: full-width divider; the body opens on click.
+    createRepairDividerElement(message) {
+        const data = (message && message.data) || {};
+        const card = document.createElement('div');
+        card.className = 'director-message event director-repair-divider';
+        card.dataset.messageKey = String(message.id || message.timestamp || Date.now());
+        const bar = document.createElement('button');
+        bar.type = 'button';
+        bar.className = 'director-repair-bar';
+        bar.setAttribute('aria-expanded', 'false');
+        const title = document.createElement('span');
+        title.className = 'director-repair-title';
+        title.textContent = 'Session Restarted and Context Repaired';
+        const meta = document.createElement('span');
+        meta.className = 'director-repair-meta';
+        const when = data.at ? new Date(data.at) : null;
+        const whenText = when && !Number.isNaN(when.getTime()) ? when.toLocaleString() : '';
+        const why = data.reason === 'auto'
+            ? `Automatic${data.contextPercent ? ` at ${data.contextPercent}% context` : ''}`
+            : 'Auto-Repair Session';
+        meta.textContent = [why, whenText].filter(Boolean).join(' - ');
+        bar.append(title, meta);
+        card.appendChild(bar);
+        const reports = Array.isArray(data.reportIds) ? data.reportIds : [];
+        if (reports.length) {
+            const banner = document.createElement('div');
+            banner.className = 'director-repair-banner';
+            const icon = document.createElement('img');
+            icon.src = '/static_images/vista-icons/warning-16.png';
+            icon.alt = '';
+            icon.width = 16;
+            icon.height = 16;
+            const text = document.createElement('span');
+            text.textContent = `Reports filed for a developer agent: ${reports.join(', ')}. Ask an agent to review them.`;
+            banner.append(icon, text);
+            card.appendChild(banner);
+        }
+        const body = document.createElement('div');
+        body.className = 'director-repair-body hidden';
+        [
+            this.repairTextSection('Your note', data.note),
+            this.repairTextSection('Summary', data.summary),
+            this.repairListSection('Timeline', data.timeline, (li, item) => { li.textContent = item; }),
+            this.repairListSection('Checklist', data.checklist, (li, item) => { li.textContent = item; }),
+            this.repairListSection('References', data.references, (li, item) => {
+                const ref = document.createElement('code');
+                ref.textContent = item.ref || '';
+                li.append(document.createTextNode(`${item.kind || 'other'}: `), ref);
+                if (item.note) li.append(document.createTextNode(` - ${item.note}`));
+            }),
+            this.repairTextSection('Opening request for the new session', data.openingRequest, 'director-repair-text director-repair-opening')
+        ].forEach((section) => { if (section) body.appendChild(section); });
+        const proposals = Array.isArray(data.proposals) ? data.proposals : [];
+        if (proposals.length) {
+            const section = document.createElement('div');
+            section.className = 'director-repair-section';
+            const heading = document.createElement('div');
+            heading.className = 'director-repair-heading';
+            heading.textContent = `Proposals (${proposals.length}): nothing changes until you approve`;
+            section.appendChild(heading);
+            proposals.forEach((row) => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'director-repair-proposal';
+                rowEl.dataset.proposalId = row.id || '';
+                const head = document.createElement('div');
+                head.className = 'director-repair-proposal-head';
+                const label = document.createElement('span');
+                label.textContent = this.repairProposalLabel(row);
+                const status = document.createElement('span');
+                status.className = 'director-repair-proposal-status';
+                head.append(label, status);
+                rowEl.appendChild(head);
+                if (row.op === 'remove') {
+                    const text = document.createElement('div');
+                    text.className = 'director-repair-text';
+                    text.textContent = row.text || '';
+                    rowEl.appendChild(text);
+                } else {
+                    const input = document.createElement('textarea');
+                    input.className = 'form-input director-repair-proposal-text';
+                    input.rows = row.kind === 'guide' ? 6 : 2;
+                    input.value = row.text || '';
+                    rowEl.appendChild(input);
+                }
+                if (row.why) {
+                    const why = document.createElement('div');
+                    why.className = 'director-repair-why';
+                    why.textContent = row.why;
+                    rowEl.appendChild(why);
+                }
+                const actions = document.createElement('div');
+                actions.className = 'director-repair-actions';
+                const approve = document.createElement('button');
+                approve.type = 'button';
+                approve.className = 'btn-primary btn-small';
+                approve.textContent = 'Approve';
+                const reject = document.createElement('button');
+                reject.type = 'button';
+                reject.className = 'btn-secondary btn-small';
+                reject.textContent = 'Reject';
+                approve.addEventListener('click', () => this.decideRepairProposal(rowEl, row, 'approve'));
+                reject.addEventListener('click', () => this.decideRepairProposal(rowEl, row, 'reject'));
+                actions.append(approve, reject);
+                rowEl.appendChild(actions);
+                section.appendChild(rowEl);
+            });
+            body.appendChild(section);
+        }
+        // Continue sends a normal turn (picker engine and model); the server puts the opening request first.
+        const messages = this.currentSession && Array.isArray(this.currentSession.messages) ? this.currentSession.messages : [];
+        const at = messages.findIndex((item) => item && message.id && item.id === message.id);
+        const answered = at >= 0 && messages.slice(at + 1).some((item) => item && item.role === 'user');
+        // An automatic repair ran in front of a send, which is already continuing.
+        if (!answered && data.reason !== 'auto') {
+            const actions = document.createElement('div');
+            actions.className = 'director-repair-actions';
+            const go = document.createElement('button');
+            go.type = 'button';
+            go.className = 'btn-primary btn-small';
+            go.textContent = 'Continue with the repaired request';
+            go.addEventListener('click', () => {
+                if (this._running) {
+                    showGlassToast('info', 'Director', 'Director is still working');
+                    return;
+                }
+                go.disabled = true;
+                void this.sendMessage('Continue with the repaired request.');
+            });
+            actions.appendChild(go);
+            card.appendChild(actions);
+        }
+        card.appendChild(body);
+        let refreshed = false;
+        bar.addEventListener('click', () => {
+            const open = body.classList.toggle('hidden') === false;
+            bar.setAttribute('aria-expanded', open ? 'true' : 'false');
+            card.classList.toggle('expanded', open);
+            if (open && !refreshed) {
+                refreshed = true;
+                void this.refreshRepairProposals(card);
+            }
+        });
+        this.attachMessageMenu(card);
+        return card;
     }
 
     // director_chat_image / director_workspace_offer arrive mid-turn; the card is already
@@ -6048,7 +6398,14 @@ class Director {
     }
 
     estimateContextTokens(session) {
-        const messages = session && Array.isArray(session.messages) ? session.messages : [];
+        let messages = session && Array.isArray(session.messages) ? session.messages : [];
+        // A repaired session starts at its divider (director_repair_session).
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i] && messages[i].role === 'event' && messages[i].message_type === 'session-repair') {
+                messages = messages.slice(i + 1);
+                break;
+            }
+        }
         let chars = 0;
         messages.forEach((message) => {
             chars += String(message.user_input || message.content || '').length;
@@ -7121,6 +7478,14 @@ class Director {
             if (window.directorInstance) {
                 window.directorInstance.appendChatCard('workspace-switch', data.data || data);
             }
+        });
+
+        // Auto-Repair Session (modules/cursorDirector.js repairDirectorChat): progress, then the divider card.
+        window.wsClient.on('director_repair_progress', (data) => {
+            if (window.directorInstance) window.directorInstance.noteRepairProgress(data.data || data);
+        });
+        window.wsClient.on('director_session_repair', (data) => {
+            if (window.directorInstance) window.directorInstance.noteSessionRepaired(data.data || data);
         });
 
         window.wsClient.on('director_move_session_response', (data) => {

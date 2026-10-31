@@ -96,6 +96,8 @@ const TOOL_RATE_GROUPS = {
     request_form: 'free',
     deliver_rentan: 'free',
     deliver_quips: 'free',
+    read_repair_session: 'free',
+    deliver_repair: 'free',
     await_rentan_attempt: 'free',
     finish_rentan: 'free',
     ledge: 'free',

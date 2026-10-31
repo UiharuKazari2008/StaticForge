@@ -977,6 +977,84 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'read_repair_session',
+        description: 'Hidden Auto-Repair turn only: read one page of the Director chat you are repairing. Each message has role, time, the user text (with files and lookback links), the assistant reply text, a short thinking excerpt, tool labels, and prints. Page 0 also lists the chat prints, the session image, and the inbox attachments. Call again with offset set to next until next is null.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['chatId'],
+            properties: {
+                chatId: { type: 'string', description: 'Id of the chat to repair, from your turn prompt' },
+                offset: { type: 'integer', description: 'First message index (0 first, then next from the last page)' },
+                limit: { type: 'integer', description: 'Messages per page, 1-50 (default 20)' }
+            }
+        }
+    },
+    {
+        name: 'deliver_repair',
+        description: 'Hidden Auto-Repair turn only: hand back the repair. summary, timeline, checklist, and openingRequest are required. openingRequest is the user\'s whole request restated for the new session. references are {kind, ref, note}. ruleProposals {op add|edit|remove, id, text, why} and guideProposals {path, op create|replace|append, text, why} wait for the user to approve. reports {title, body} are filed for a developer agent. An error means fix the payload and call again.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['chatId', 'summary', 'timeline', 'checklist', 'openingRequest'],
+            properties: {
+                chatId: { type: 'string', description: 'Id of the chat to repair, from your turn prompt' },
+                summary: { type: 'string', description: 'What the chat was about and where it went wrong' },
+                timeline: { type: 'array', items: { type: 'string' }, description: 'Steps in order: asked, accepted, rejected, current best' },
+                references: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        required: ['ref'],
+                        properties: {
+                            kind: { type: 'string', enum: ['print', 'attachment', 'lookback', 'image', 'character', 'artist', 'memory', 'other'] },
+                            ref: { type: 'string', description: 'Filename, inbox path, lookback link, or name' },
+                            note: { type: 'string' }
+                        }
+                    }
+                },
+                checklist: { type: 'array', items: { type: 'string' }, description: '4 to 10 visible facts, most important first' },
+                openingRequest: { type: 'string', description: 'The request the new session starts from, in the user\'s voice' },
+                ruleProposals: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        required: ['op'],
+                        properties: {
+                            op: { type: 'string', enum: ['add', 'edit', 'remove'] },
+                            id: { type: 'string', description: 'Learned rule id, for edit and remove' },
+                            text: { type: 'string' },
+                            why: { type: 'string' }
+                        }
+                    }
+                },
+                guideProposals: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        required: ['path', 'op', 'text'],
+                        properties: {
+                            path: { type: 'string', description: 'Relative to knowledge/prompt-guide' },
+                            op: { type: 'string', enum: ['create', 'replace', 'append'] },
+                            text: { type: 'string' },
+                            why: { type: 'string' }
+                        }
+                    }
+                },
+                reports: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        required: ['title', 'body'],
+                        properties: { title: { type: 'string' }, body: { type: 'string' } }
+                    }
+                }
+            }
+        }
+    },
+    {
         name: 'request_form',
         core: true,
         description: 'Ask the user to fill a short form and wait for it. fields is an array of {label, type, sub, data}. type is text, textmulti, prompt (prompt box with syntax and autofill — use for a prompt, a character name, or a description), bool, select, int, or number. data holds placeholder, default, required, min, max, step, and for select an options array of strings or {value, label}. Pass chatId when a Director chat is running so the form sits in that chat; otherwise it opens its own window. Returns values keyed by id (or the label). cancelled true means they closed it — do not invent answers. Each call waits up to 45s. pending true with formId means the form is still open: call request_form again with only {formId} (no fields) until values come back.',
@@ -9026,6 +9104,25 @@ async function callTool(globalResources, req, name, args) {
             });
         } catch (error) {
             return mcpTextResult({ success: false, error: error.message, code: error.code || 'BAD_QUIPS_PAYLOAD' }, true);
+        }
+    }
+
+    // Auto-Repair (#687): both need the repair turn waiting on that chat id (cursorDirector repairDeliveries).
+    if (name === 'read_repair_session') {
+        try {
+            const page = require('./cursorDirector').readRepairSession(input.chatId, input);
+            return mcpTextResult({ success: true, ...page });
+        } catch (error) {
+            return mcpTextResult({ success: false, error: error.message, code: error.code || 'NO_REPAIR_TURN' }, true);
+        }
+    }
+
+    if (name === 'deliver_repair') {
+        try {
+            const delivered = require('./cursorDirector').deliverRepair(input.chatId, input);
+            return mcpTextResult({ success: true, ...delivered, next: 'Delivered. Reply with one summary line only.' });
+        } catch (error) {
+            return mcpTextResult({ success: false, error: error.message, code: error.code || 'BAD_REPAIR_PAYLOAD' }, true);
         }
     }
 

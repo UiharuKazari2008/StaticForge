@@ -24,6 +24,11 @@ const {
     handleDirectorPromptGuideExtract,
     handleDirectorPromptGuideCommit,
     handleDirectorPromptGuidePush,
+    handleDirectorRepairSession,
+    handleDirectorLearnedList,
+    handleDirectorLearnedDecide,
+    handleDirectorLearnedRuleEdit,
+    handleDirectorLearnedRuleRemove,
     handleDirectorGetCursorUsage,
     handleDirectorGetMessages,
     handleDirectorRollbackMessage,
@@ -109,6 +114,14 @@ function registerPackets(handlersCtx) {
     reg('director_prompt_guide_extract', handleDirectorPromptGuideExtract, DIRECTOR_DESTRUCTIVE);
     reg('director_prompt_guide_commit', handleDirectorPromptGuideCommit, DIRECTOR_DESTRUCTIVE);
     reg('director_prompt_guide_push', handleDirectorPromptGuidePush, DIRECTOR_DESTRUCTIVE);
+
+    // Auto-Repair Session (#687): a hidden turn restates the chat into a new session.
+    // Its rule and guide proposals change nothing until approved here.
+    reg('director_repair_session', handleDirectorRepairSession, DIRECTOR_DESTRUCTIVE);
+    reg('director_learned_list', handleDirectorLearnedList);
+    reg('director_learned_decide', handleDirectorLearnedDecide, DIRECTOR_DESTRUCTIVE);
+    reg('director_learned_rule_edit', handleDirectorLearnedRuleEdit, DIRECTOR_DESTRUCTIVE);
+    reg('director_learned_rule_remove', handleDirectorLearnedRuleRemove, DIRECTOR_DESTRUCTIVE);
 }
 
 module.exports = {

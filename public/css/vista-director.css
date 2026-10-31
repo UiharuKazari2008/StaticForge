@@ -136,6 +136,37 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-mes
     color: var(--vista-light-text);
 }
 
+/* Auto-Repair divider: a thin etched rule with the title in Vista's heading blue; the
+   reports line is the yellow information bar */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-repair-bar::before,
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-repair-bar::after {
+    border-top: 1px solid #d5dfe5;
+    border-bottom: 1px solid #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-repair-title {
+    color: #003399;
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-weight: 400;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-repair-banner {
+    background: #ffffe1;
+    border: 1px solid #a0a0a0;
+    border-radius: 0;
+    color: var(--vista-light-text);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-repair-opening {
+    background: #f5f6f8;
+    border-color: #d5d9df;
+    border-radius: 3px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-repair-proposal {
+    border-top-color: #e3e6ea;
+}
+
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-image {
     background: #f0f0f0;
     border-color: #c9c9c9;

@@ -33,6 +33,11 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `director_reinstall` | `director_reinstall_response` | admin/destructive | Deletes and rebuilds `computer/`. Aborts running turns. Chats and prompt-guide work survive. |
 | `director_rollback_message` | `director_rollback_message_response` | admin/destructive | Handler: handleDirectorRollbackMessage |
 | `director_recycle_session` | `director_recycle_session_response` | admin/destructive | Wren only. Next turn starts a fresh Cursor chat with no transcript replay. Refused with `DIRECTOR_BUSY` while a turn runs or a resume is pending. |
+| `director_repair_session` | `director_repair_session_response` | admin/destructive | Wren only. Starts Auto-Repair for `sessionId` with an optional `note`; answers at once (`started: true`), then broadcasts `director_repair_progress` and the `director_session_repair` divider card. See [Auto-Repair Session](#auto-repair-session). |
+| `director_learned_list` | `director_learned_list_response` | session | `{ rules, proposals }`: Wren's learned rules and the Auto-Repair proposals (newest first). |
+| `director_learned_decide` | `director_learned_decide_response` | admin/destructive | `{ id, decision: "approve" or "reject", text? }`. `text` replaces the proposed text. An approved rule joins Wren's rules; an approved guide change is written into the prompt guide work clone (not committed). |
+| `director_learned_rule_edit` | `director_learned_rule_edit_response` | admin/destructive | `{ id, text }` rewrites one learned rule. |
+| `director_learned_rule_remove` | `director_learned_rule_remove_response` | admin/destructive | `{ id }` removes one learned rule. |
 | `director_save_feedback` | `director_save_feedback_response` | admin/destructive | Handler: handleDirectorSaveFeedback |
 | `director_save_rules` | `director_save_rules_response` | admin/destructive | Handler: handleDirectorSaveRules |
 | `director_send_message` | `director_send_message_response` | admin/destructive | Handler: handleDirectorSendMessage. `persona: "xi"` runs the host agent. |
@@ -435,6 +440,37 @@ The visible history, session image, and task list stay. The next turn opens a ne
 Visible Director chats never recycle on their own; only this request does it. The hidden per-workspace Rentan chat rotates by itself (40 turns or 70% context).
 
 **Errors:** `DIRECTOR_BUSY`, `SESSION_NOT_FOUND`, or `type: "error"` via `sendError()`.
+
+### Auto-Repair Session
+
+**Handler:** modules/ws/handlers/40-directorHandler.js -> `handleDirectorRepairSession` (`repairDirectorChat` in modules/cursorDirector.js)
+
+**Request fields:** `sessionId` (Wren chat), `note` (optional, up to 2000 characters: what the user is working on, what went wrong).
+
+A hidden turn (chat `repair: true`, never listed) reads the chat through the hidden MCP tool `read_repair_session`, looks at the references and prints, and hands back `deliver_repair` (summary, timeline, checklist, references, the opening request, rule and guide proposals, reports). Then:
+
+- reports are filed through `report_issue` (modules/mcpReportIssue.js); their ids go on the card
+- proposals are stored as pending in `~/.cache/dreamscape-director/learned-rules.json`; nothing applies until `director_learned_decide`
+- the chat gets a new engine session (new Claude session id, no Cursor chat, context reset), and its next turn starts with the opening request instead of the old transcript, once
+- a `session-repair` event message is saved on the chat (the divider)
+
+Engine: config `director.repair.normal` or `director.repair.obliterated` (`{ engine, model, effort }`, chosen by the chat engine's memory store), else the chat's own engine and model at `high` (`xhigh` on Claude).
+
+Auto: a Wren send whose chat is at `director.autoRepair.threshold` percent context or more (default 85) repairs first, then runs that message on the new session. `director.autoRepair.enabled: false` turns it off. A failed automatic repair sends on the old session; Abort during it stops both.
+
+**Errors:** `NOT_SUPPORTED` (Xi), `SESSION_NOT_FOUND`, `REPAIR_RUNNING`, `DIRECTOR_BUSY` (a turn is running or starting), `NOTHING_TO_REPAIR`. While a repair runs, `director_send_message` for that chat is refused with `REPAIR_RUNNING`.
+
+### Server → client: `director_repair_progress`
+
+`{ sessionId, reason: "manual" or "auto", stage: "start" | "working" | "done" | "error", text, code? }`. `working` carries the repair turn's latest thinking line or tool. `done` has `cardId` and `reportIds`; `error` has `code` (`REPAIR_CANCELLED` after Abort, `REPAIR_NOT_DELIVERED`, or the engine error).
+
+### Server → client: `director_session_repair`
+
+The divider card, also saved as a `role: "event"`, `message_type: "session-repair"` message: `{ sessionId, chatId, cardId, reason, at, note, summary, timeline, checklist, references, openingRequest, proposals, ruleProposalIds, guideProposalIds, reportIds, contextPercent, engine, model }`.
+
+### Server → client: `director_learned_changed`
+
+`{ id, status? }` after a proposal decision or a learned-rule edit or removal.
 
 ## Xi
 

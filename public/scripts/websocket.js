@@ -609,6 +609,11 @@ class BannerManager {
             'director_prompt_guide_extract': 'Extract Prompt Guide',
             'director_prompt_guide_commit': 'Commit Prompt Guide',
             'director_prompt_guide_push': 'Push Prompt Guide',
+            'director_repair_session': 'Auto-Repair Session',
+            'director_learned_list': 'List Learned Rules',
+            'director_learned_decide': 'Decide Learned Proposal',
+            'director_learned_rule_edit': 'Edit Learned Rule',
+            'director_learned_rule_remove': 'Remove Learned Rule',
             'ledge_checks': 'Ledge Checks',
             'request_form_submit': 'Submit Request Form',
 

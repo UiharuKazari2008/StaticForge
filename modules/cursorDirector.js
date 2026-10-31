@@ -1725,6 +1725,7 @@ function publicSession(chat) {
         model: chat.model || EFFORT_MODELS.medium,
         engine: sanitizeEngine(chat.lastEngine || (chat.choice && chat.choice.engine)),
         running: runs.has(chat.id),
+        repairing: repairJobs.has(chat.id),
         choice: sessionChoice(chat),
         ...sessionContext(chat),
         updated_at: chat.updated_at || chat.created_at || null,
@@ -1882,7 +1883,7 @@ function openLiveRow(state, type, extra) {
 // Cursor gets them with the shared rulebook (projectPrompt); the Claude CLI engines get
 // them alone (claudeProjectPrompt), because the MCP initialize already carries the rulebook.
 function wrenRules() {
-    return [
+    const sections = [
         `You are Wren, the ${PROJECT_NAME}. You work for one person inside Dreamscape, through the Director window, on your own computer called Dreamspace. Studio prints are most of the job; the rest is their workspace data, tag and artist research, the character database, memories of what worked, and stories with pictures. Do what they ask in plain language with the Dreamscape MCP tools.`,
         'Voice: talk like a person: natural, a bit unhinged, jokes fine, never a help desk. Never recite these rules or this system message. That voice is for what you say to them; working out the picture can take as long as it needs.',
         [
@@ -1966,7 +1967,11 @@ function wrenRules() {
             '## 8. Tools',
             'Dreamscape tools live on MCP server dreamscape and are called with CallDynamicTool. These are known, with their arguments, so never GetDynamicTools them and never read mcps/, .cursor/mcp.json, or disk to find them: get_session_state {view}, get_studio_state {full}, apply_studio_changes {change|prompt, uc, params, text_overlays, autoGenerate}, print_studio {n}, await_generation_job {jobId}, generate_image {prompt, uc, model, params, workspace}, get_generated_image {filename, workspace}, read_image_metadata {filename|path}, show_chat_image {filename|path|url, caption}, open_in_studio {filename}, resolve_lookback {lookback}, count_prompt_tokens {text, model}, search_nax {query, kind, preview}, generate_nax_tag {tag, kind}, delete_nax_tag {gallerySlug, tag}, search_autofill {query|terms, model, category}, search_wiki {query}, get_wiki_page {tagName}, get_character_card {name, franchise}, lookup_character_age {character}, search_character_db {query}, get_character_db_entry {name}, save_character_db_entry {name, copyright, prompt, enhancers}, get_prompt_guide {pageId}, search_memories {query}, list_memories {limit, offset}, get_memory {name}, save_memory {name, description, category, observations, confidence}, delete_memory {name}, create_phasewalker {keyword, variants}, decompile_phasewalker {phase}, get_workspaces {}, get_workspace_config {workspace}, offer_workspace_switch {workspaceId, reason}, request_workspace_switch {reason}, bind_session {clientId}, offer_director_window {}, set_session_title {title}, set_session_type {type}, set_session_tasks {tasks:[{id,title,done}]}, set_session_task {id, done}, get_session_tasks {}, close_session_tasks {}. Explore stays in the Laboratory workspace: search_explore {search, period, cursor, mode}, count_explore {tags, period}, get_explore_post {postId}, get_explore_image {postId}. Compact search is the default. Do not pull full images unless you call get_explore_image. A tool not in this list: look it up once by exact name, never twice.'
         ].join('\n')
-    ].join('\n\n');
+    ];
+    // Rules the user approved from Auto-Repair proposals (modules/directorLearned.js).
+    const learned = require('./directorLearned').rulesSection();
+    if (learned) sections.push(learned);
+    return sections.join('\n\n');
 }
 
 function projectPrompt() {
@@ -2447,7 +2452,9 @@ function prepareStampKey(gr, paths, mcpUrl, appKey) {
         path.join(paths.workspace, '.claude', 'wren-rules.md'), path.join(paths.workspace, 'CLAUDE.md'),
         path.join(paths.home, '.dreamscape', 'claude-mcp.json'), path.join(paths.home, '.cursor', 'mcp.json'),
         path.join(paths.home, '.dreamscape', 'server.json'), path.join(paths.workspace, '.cursorignore'),
-        path.join(cursorProjectDir(paths.home, JAIL_WORKSPACE), 'mcp-approvals.json')
+        path.join(cursorProjectDir(paths.home, JAIL_WORKSPACE), 'mcp-approvals.json'),
+        // wrenRules() section 9 (modules/directorLearned.js)
+        path.join(paths.root, 'learned-rules.json')
     ];
     // ms-playwright gains a folder per browser build; findPlaywrightChrome reads it.
     let browsers = '';
@@ -4422,14 +4429,34 @@ function turnModeLines(mode) {
     return lines;
 }
 
+// A replayed transcript starts at the last Auto-Repair divider: its opening request, then the turns after it.
+function transcriptSinceRepair(messages) {
+    const list = Array.isArray(messages) ? messages : [];
+    for (let i = list.length - 1; i >= 0; i--) {
+        const row = list[i];
+        if (row && row.role === 'event' && row.message_type === 'session-repair') {
+            return { opening: String((row.data && row.data.openingRequest) || ''), rows: list.slice(i + 1) };
+        }
+    }
+    return { opening: '', rows: list };
+}
+
 function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     const lines = [];
     const handoff = !!(options && options.handoff);
-    if ((chat.replay || handoff) && priorMessages.length) {
+    // Auto-Repair (#687): the new session opens on the repaired request instead of the old transcript.
+    const repaired = chat.repairedOpening && chat.repairedOpening.text ? String(chat.repairedOpening.text) : '';
+    if (repaired) {
+        lines.push(REPAIRED_HEADER);
+        lines.push(repaired);
+        lines.push('');
+    } else if ((chat.replay || handoff) && priorMessages.length) {
+        const since = transcriptSinceRepair(priorMessages);
         lines.push(chat.replay
             ? 'The user discarded later turns. Continue from this kept transcript only:'
             : 'This chat moved to you from another engine. Continue from this transcript:');
-        priorMessages.forEach((message) => {
+        if (since.opening) lines.push(`user (the repaired request this session started from): ${since.opening}`);
+        since.rows.forEach((message) => {
             const body = message.user_input || (message.data && message.data.Description) || message.content || '';
             if (body) lines.push(`${message.role}: ${body}`);
         });
@@ -4437,7 +4464,7 @@ function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     }
     // Standing orders are in the project rule (wrenRules). This is the per-turn state only.
     lines.push('Turn: one get_session_state view live first; Read every new print before you answer (sections 2 and 4).');
-    if (priorMessages.length && !chat.replay && !handoff) lines.push('Follow-up: the next frame (section 3).');
+    if (priorMessages.length && !chat.replay && !handoff && !repaired) lines.push('Follow-up: the next frame (section 3).');
     lines.push(...turnModeLines(turnWorkMode(userText)));
     if (clientId) lines.push(`Bound Studio clientId: ${clientId}`);
     lines.push(`Workspace id: ${chat.workspaceId || 'unknown'}. Chat id: ${chat.id} (folder chats/${chat.id}/); session tools default to it.`);
@@ -4609,7 +4636,7 @@ function traySessions(index, runningSessionId) {
 }
 
 function chatIsListed(chat) {
-    if (!chat || chat.dynagen || chat.quips) return false;
+    if (!chat || chat.dynagen || chat.quips || chat.repair) return false;
     if (chat.cursorId) return true;
     return (chat.messages || []).some((item) => item && item.role === 'user' && item.message_type !== 'Attachment');
 }
@@ -4633,9 +4660,9 @@ function findChatById(index, id) {
     return index.chats.find((chat) => chat.id === id) || null;
 }
 
-// Rentan and Quips chats run in the background; only an explicit open by id shows them.
+// Rentan, Quips, and Auto-Repair chats run in the background; only an explicit open by id shows them.
 function chatIsHidden(chat) {
-    return !!(chat && (chat.dynagen || chat.quips));
+    return !!(chat && (chat.dynagen || chat.quips || chat.repair));
 }
 function findChatByFilename(index, filename) {
     if (!basenameFile(filename)) return null;
@@ -5340,10 +5367,12 @@ async function handleDirectorDeleteSession(handler, ws, message) {
         const marker = message.sessionId ? runs.get(message.sessionId) : null;
         if (marker) marker.deleted = true;
         hardStopSession(message.sessionId);
+        stopRepair(message.sessionId);
         clearInflight(message.sessionId).catch(() => {});
         await enqueue(async () => {
             const index = readIndex(paths.indexPath);
-            index.chats = index.chats.filter((chat) => chat.id !== message.sessionId);
+            // Its hidden Auto-Repair chat goes with it.
+            index.chats = index.chats.filter((chat) => chat.id !== message.sessionId && !(chat.repair && chat.repairFor === message.sessionId));
             writeIndex(paths.indexPath, index);
         });
         sendOk(handler, ws, 'director_delete_session_response', message.requestId, {});
@@ -5404,6 +5433,9 @@ async function handleDirectorRollbackMessage(handler, ws, message) {
             chat.messages = messages.slice(0, cut);
             chat.cursorId = null;
             chat.replay = chat.messages.length > 0;
+            // Rolled back past an unused Auto-Repair divider: that repair is undone with it.
+            const opening = chat.repairedOpening;
+            if (opening && !chat.messages.some((item) => item && item.id === opening.cardId)) delete chat.repairedOpening;
             delete chat.fresh;
             writeIndex(paths.indexPath, index);
             return { changeJson, retryText };
@@ -5657,7 +5689,21 @@ async function resumeInterruptedTurns(gr) {
     });
 }
 
+// sendsStarting covers the stretch before the turn is in runs, so a manual repair cannot start beside it.
 async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsServer) {
+    const id = message && message.sessionId;
+    if (!id) return sendDirectorMessage(handler, ws, message, clientInfo, wsServer);
+    sendsStarting.set(id, (sendsStarting.get(id) || 0) + 1);
+    try {
+        return await sendDirectorMessage(handler, ws, message, clientInfo, wsServer);
+    } finally {
+        const left = (sendsStarting.get(id) || 1) - 1;
+        if (left > 0) sendsStarting.set(id, left);
+        else sendsStarting.delete(id);
+    }
+}
+
+async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
     const sessionId = message.sessionId;
     let draftId = null;
     let marker = null;
@@ -5676,6 +5722,15 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 timestamp: new Date().toISOString()
             });
             handler.sendError(ws, 'Director is still working on the last request', 'DIRECTOR_BUSY', message.requestId);
+            return;
+        }
+        if (repairJobs.has(sessionId)) {
+            handler.sendToClient(ws, {
+                type: 'director_message_error',
+                data: { sessionId, error: 'Director is repairing this session', saved: false },
+                timestamp: new Date().toISOString()
+            });
+            handler.sendError(ws, 'Director is repairing this session', 'REPAIR_RUNNING', message.requestId);
             return;
         }
         const content = String(message.content || '').trim();
@@ -5701,6 +5756,8 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             return;
         }
 
+        // Context nearly full: Auto-Repair first, then this turn runs on the new session (#687).
+        if (!message.resume && !message.steer && !(await autoRepairBeforeSend(handler, ws, paths, sessionId, message, clientInfo))) return;
         // Engine is per turn: Retry can pick another one. Resume keeps the inflight engine.
         const engine = sanitizeEngine(message.engine);
         // Resumed TokenRouter turns skip the key check, so the bridge learns the key source here.
@@ -5782,6 +5839,8 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             };
             // A steer redirects the running request; Undo Last Message skips it.
             if (message.steer) userMessage.steer = true;
+            // Inbox paths, so Auto-Repair can find what this ask attached.
+            if (files.length) userMessage.files = files.slice(0, 20);
             chat.messages = chat.messages || [];
             const priorMessages = chat.messages.slice();
             chat.messages.push(userMessage);
@@ -5833,10 +5892,12 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 : '';
             const ageTool = !customProviders.isEngine(engine) || customProviders.ageToolEnabled(handler.globalResources, engine);
             const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId, { handoff, memoryStore, ageTool });
+            const repairAt = chat.repairedOpening && chat.repairedOpening.text ? String(chat.repairedOpening.at || '') : null;
             chat.replay = false;
             writeIndex(paths.indexPath, index);
             return {
                 prompt,
+                repairAt,
                 cursorId,
                 model: chat.model,
                 name: chat.name,
@@ -5921,6 +5982,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
         broadcastDirectorStatus(gr);
         const assistant = await flushDraft(turned.rows, turned.text || 'Done.');
         await clearInflight(sessionId);
+        if (prepared.repairAt != null) await consumeRepairedOpening(paths, sessionId, prepared.repairAt);
         if (turned.context) await rememberContext(paths, sessionId, turned.context);
         // set_session_title writes index.json during the turn. prepared.name is the
         // name from before that write, so the completion packet must re-read.
@@ -5955,6 +6017,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 } catch (_) { /* the follow-up still sends */ }
             }
             await clearInflight(sessionId);
+            if (prepared && prepared.repairAt != null) await consumeRepairedOpening(layout(), sessionId, prepared.repairAt);
             noteTurnState('idle', sessionId, null);
             broadcastDirectorStatus(handler.globalResources);
             emitDirector(handler, ws, 'director_message_response', {
@@ -6865,7 +6928,7 @@ async function handleDirectorAbort(handler, ws, message) {
     const marker = sessionId ? runs.get(sessionId) : null;
     const steer = message.steer === true;
     if (marker) marker.steer = steer;
-    const stopped = hardStopSession(sessionId);
+    const stopped = hardStopSession(sessionId) || (!steer && stopRepair(sessionId));
     if (!stopped) {
         sendOk(handler, ws, 'director_abort_response', message.requestId, { aborted: false, sessionId: sessionId || null, steer });
         return;
@@ -7279,6 +7342,744 @@ function runQuipsTurn(gr, job) {
 }
 
 
+// ---- Auto-Repair Session (#687) ----
+// A hidden turn reads one Wren chat (read_repair_session), works out what the
+// user wants now, and hands back deliver_repair. The chat then starts a new
+// engine session whose first prompt is the repaired opening request; a divider
+// card marks the cut. Rule and guide proposals wait in modules/directorLearned.js.
+const learned = require('./directorLearned');
+// target chat id -> { payload, repairChatId } while a repair turn waits on deliver_repair.
+const repairDeliveries = new Map();
+// target chat id -> { promise, repairChatId, reason }: one repair per chat at a time.
+const repairJobs = new Map();
+// chat id -> sends in flight, so a manual repair never starts beside a send that is still preparing.
+const sendsStarting = new Map();
+const REPAIR_IDLE_MS = 5 * 60 * 1000;
+const REPAIR_HARD_MS = 25 * 60 * 1000;
+const REPAIR_MAX_MESSAGES = 20;
+const REPAIR_HISTORY = 10;
+const REPAIR_PAGE = 20;
+const REPAIR_PAGE_MAX = 50;
+const REPAIR_NOTE_MAX = 2000;
+const REPAIR_PROGRESS_MS = 1200;
+const AUTO_REPAIR_THRESHOLD = 85;
+const REPAIR_REF_KINDS = ['print', 'attachment', 'lookback', 'image', 'character', 'artist', 'memory', 'other'];
+const REPAIRED_HEADER = 'This chat was repaired: the old session ended and its context was summarized into the request below. This is a new session. Here is what the user wants:';
+const LOOKBACK_RE = /\[([^\]\n]{0,200})\]\((dsap:\/\/lookback\/[^)\s]+)\)/g;
+
+function repairTurnLimits() {
+    return {
+        idleMs: REPAIR_IDLE_MS,
+        hardMs: REPAIR_HARD_MS,
+        idleMessage: 'Auto-Repair stopped because it made no progress for 5 minutes',
+        hardMessage: 'Auto-Repair stopped after 25 minutes'
+    };
+}
+
+function directorConfig(gr) {
+    try {
+        const cfg = gr && gr.getConfig && gr.getConfig();
+        return cfg && cfg.director && typeof cfg.director === 'object' ? cfg.director : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+// config director.autoRepair { enabled, threshold }: on at 85% unless enabled is false.
+function autoRepairSettings(gr) {
+    const raw = directorConfig(gr).autoRepair;
+    const cfg = raw && typeof raw === 'object' ? raw : {};
+    const threshold = Number(cfg.threshold);
+    return {
+        enabled: cfg.enabled !== false,
+        threshold: Number.isFinite(threshold) && threshold >= 30 && threshold <= 100 ? threshold : AUTO_REPAIR_THRESHOLD
+    };
+}
+
+// Pure: does this send repair the chat before the turn runs?
+function autoRepairDue(chat, settings, message) {
+    if (!chat || chatIsHidden(chat) || !settings || settings.enabled === false) return false;
+    if (message && (message.resume || message.steer)) return false;
+    const percent = Number(chat.contextPercent);
+    if (!Number.isFinite(percent) || percent < (Number(settings.threshold) || AUTO_REPAIR_THRESHOLD)) return false;
+    return (chat.messages || []).some((row) => row && row.role === 'user' && row.message_type !== 'Attachment');
+}
+
+// Obliterated providers repair on the obliterated pick, so that chat never leaves its lane.
+function repairLane(gr, engine) {
+    return customProviders.isEngine(engine) && customProviders.memoryStoreForEngine(gr, engine) === 'obliterated'
+        ? 'obliterated'
+        : 'normal';
+}
+
+// config director.repair.{normal|obliterated} = { engine, model, effort } (slice 2 adds the UI),
+// else the chat's own engine and model at high effort (xhigh on Claude).
+function repairAgentFor(gr, chat) {
+    const engine = sanitizeEngine((chat && chat.lastEngine) || (chat && chat.choice && chat.choice.engine));
+    const lane = repairLane(gr, engine);
+    const repair = directorConfig(gr).repair;
+    const set = repair && typeof repair === 'object' ? repair[lane] : null;
+    const picked = set && typeof set === 'object' ? sanitizeRentanAgent({ ...set, effort: set.effort || 'high' }) : null;
+    if (picked) return { ...picked, lane };
+    const choice = chat && chat.choice && sanitizeEngine(chat.choice.engine) === engine ? chat.choice : null;
+    return {
+        engine,
+        model: choice && choice.id ? String(choice.id) : null,
+        effort: engine === 'claude' ? 'xhigh' : 'high',
+        fast: false,
+        lane
+    };
+}
+
+async function resolveHiddenRun(gr, jail, agent) {
+    if (agent.engine === 'cursor') {
+        return { model: resolveRunModel(await listCursorModels(jail), { model: agent.model || undefined, effort: agent.effort, fast: agent.fast }), cliRun: null };
+    }
+    if (agent.engine === 'claude') return { model: null, cliRun: resolveClaudeRun(agent) };
+    if (customProviders.isEngine(agent.engine)) {
+        customProviders.requireReady(gr, agent.engine);
+        return { model: null, cliRun: await customProviders.resolveForTurn(gr, agent.engine, agent) };
+    }
+    tokenRouter.bindGlobalResources(gr);
+    requireTokenRouterKey(gr);
+    return { model: null, cliRun: await resolveTokenRouterRun(agent) };
+}
+
+// Same engine branches as a Rentan turn (executeDynagenTurn).
+async function runHiddenTurn(gr, jail, paths, agent, resolved, probe, onTrace, marker, limits) {
+    if (agent.engine === 'cursor') return runCursorTurn(jail, probe.cursorId, resolved.model, probe.prompt, onTrace, marker, limits);
+    const run = { ...resolved.cliRun, sessionId: probe.claudeSessionId, first: !claudeSessionExists(paths, probe.claudeSessionId) };
+    if (agent.engine === 'claude') return runClaudeTurn(claudeJail(jail), run, probe.prompt, onTrace, marker, limits);
+    const providerId = customProviders.providerId(agent.engine);
+    const routed = {
+        ...run,
+        effort: null,
+        fast: false,
+        label: providerId ? customProviders.displayName(gr, agent.engine) : 'TokenRouter'
+    };
+    return runClaudeTurn(await tokenRouterJail(jail, {
+        ...resolved.cliRun,
+        lane: 'normal',
+        providerId: providerId || undefined
+    }), routed, probe.prompt, onTrace, marker, limits);
+}
+
+function repairRules() {
+    return [
+        'This is a hidden Auto-Repair turn. A Director chat with the user went bad or its context filled. You do not talk to the user and you do not make pictures: no generate_image, apply_studio_changes, print_studio, request_form, open windows, or set_session_* tools. Think hard and take the time this needs.',
+        'Your job: read that whole chat, work out what the user wants right now, and write the opening request for a fresh session, so the next agent gets it right without the user steering again.',
+        '1. Read the session: advanced_tools {"name":"read_repair_session","arguments":{"chatId":"<chat id below>","offset":0}}, then call it again with offset set to next until next is null. Read every page.',
+        '2. Look at the pictures yourself: every reference the user attached (Read the chats/<id>/inbox files; resolve_lookback each lookback link) and the prints that matter, the latest ones and any the user praised or accepted (get_generated_image {filename}; read_image_metadata {filename} for the prompt and settings behind it). Compare them to the references.',
+        '3. Timeline: what was asked, in order; what the user accepted; what they rejected or corrected, and why; which print is the current best, and why; where the session went wrong (looping, ignoring a correction, drifting off the reference, stacking edits).',
+        '4. References: every filename, inbox path, lookback link, character, artist, and memory the work depends on.',
+        '5. Checklist: 4 to 10 visible facts the picture must show, most important first, from the references and the corrections.',
+        '6. openingRequest: the user\'s request restated as if they wrote it fresh, in their voice, directly and completely, in visual terms. Include the references by filename or lookback link, the checklist, the current best print and its settings to start from, what not to do (from the corrections), and the budget style they use (for example "keep going, up to 20 prints"). Not a summary of the chat: an order the next agent can act on alone.',
+        '7. Only with clear evidence from the chat: ruleProposals for Wren\'s learned rules (a general working rule the agent kept breaking; op add, or edit/remove with the id of a learned rule listed below) and guideProposals for the prompt guide (path relative to knowledge/prompt-guide, op create/replace/append). The user approves each one; nothing applies until then. Short and general, not about this one picture.',
+        '8. reports: only when something needs code or a developer agent (a tool that failed or returned wrong data, a server bug, a missing capability). {title, body}: what happened, where in the chat, what you expected. Not for prompt mistakes.',
+        'Deliver once with advanced_tools {"name":"deliver_repair","arguments":{"chatId":"<chat id below>","summary":"...","timeline":["..."],"references":[{"kind":"print|attachment|lookback|character|artist|memory|other","ref":"...","note":"..."}],"checklist":["..."],"openingRequest":"...","ruleProposals":[],"guideProposals":[],"reports":[]}}. If it returns an error, fix the payload and call it again. After it succeeds, reply with one line.'
+    ].join('\n');
+}
+
+function repairTurnPrompt(job) {
+    const lines = [repairRules(), ''];
+    lines.push(`Chat to repair: ${job.targetId} ("${job.name || 'Director'}"), ${job.total} messages.`);
+    lines.push(job.reason === 'auto'
+        ? `Why: its context reached ${job.percent}%. The user just sent a new message, which waits on this repair.`
+        : 'Why: the user asked for Auto-Repair Session.');
+    if (job.note) {
+        lines.push('The user\'s note (weigh it above everything else in the chat):');
+        lines.push(job.note);
+    }
+    if (job.pendingText) {
+        lines.push('Their new message, which the new session receives right after your openingRequest:');
+        lines.push(job.pendingText);
+    }
+    if (job.rules && job.rules.length) {
+        lines.push('Learned rules already in force (ids for ruleProposals edit/remove):');
+        job.rules.forEach((rule) => lines.push(`- ${rule.id}: ${rule.text}`));
+    }
+    return lines.join('\n');
+}
+
+function repairPayloadError(message) {
+    const error = new Error(message);
+    error.code = 'BAD_REPAIR_PAYLOAD';
+    return error;
+}
+
+function repairText(value, max) {
+    return String(value == null ? '' : value).replace(/\r\n/g, '\n').trim().slice(0, max);
+}
+
+function repairLine(value, max) {
+    return repairText(value, max).replace(/\s+/g, ' ');
+}
+
+function repairList(value, name, max, each) {
+    if (value == null) return [];
+    if (!Array.isArray(value)) throw repairPayloadError(`${name} must be an array.`);
+    if (value.length > max) throw repairPayloadError(`${name} has ${value.length} entries; keep it to ${max}.`);
+    return value.map(each).filter(Boolean);
+}
+
+// deliver_repair validation. knownRuleIds: learned rule ids an edit/remove may name.
+function normalizeRepairPayload(data, knownRuleIds) {
+    const input = data && typeof data === 'object' ? data : {};
+    const summary = repairText(input.summary, 4000);
+    if (summary.length < 40) throw repairPayloadError('summary is required: what the chat was about and where it went wrong, a short paragraph.');
+    const rawTimeline = typeof input.timeline === 'string' ? input.timeline.split(/\n+/).slice(0, 40) : input.timeline;
+    const timeline = repairList(rawTimeline, 'timeline', 40, (line) => repairLine(typeof line === 'string' ? line : line && (line.text || line.step), 500));
+    if (!timeline.length) throw repairPayloadError('timeline is required: the steps in order (asked, accepted, rejected, current best).');
+    const references = repairList(input.references, 'references', 40, (row) => {
+        const ref = repairLine(row && (row.ref || row.filename || row.path), 300);
+        if (!ref) throw repairPayloadError('Each reference needs ref: a filename, an inbox path, or a lookback link.');
+        const kind = String((row && row.kind) || 'other').trim().toLowerCase();
+        return { kind: REPAIR_REF_KINDS.includes(kind) ? kind : 'other', ref, note: repairLine(row && row.note, 300) };
+    });
+    const checklist = repairList(input.checklist, 'checklist', 12, (item) => repairLine(typeof item === 'string' ? item : item && (item.text || item.title), 300));
+    if (!checklist.length) throw repairPayloadError('checklist is required: 4 to 10 visible facts, most important first.');
+    const openingRequest = repairText(input.openingRequest, 12000);
+    if (openingRequest.length < 80) {
+        throw repairPayloadError('openingRequest is required: the user\'s whole request restated for the new session (references, checklist, what not to do, budget).');
+    }
+    const ruleProposals = repairList(input.ruleProposals, 'ruleProposals', 8, (row) => learned.normalizeRuleProposal(row, knownRuleIds));
+    const guideProposals = repairList(input.guideProposals, 'guideProposals', 6, (row) => learned.normalizeGuideProposal(row));
+    const reports = repairList(input.reports, 'reports', 4, (row) => {
+        const title = repairLine(row && row.title, 160);
+        const body = repairText(row && row.body, 6000);
+        if (!title || body.length < 20) throw repairPayloadError('Each report needs title and body: what failed, where in the chat, what you expected.');
+        return { title, body };
+    });
+    return { summary, timeline, references, checklist, openingRequest, ruleProposals, guideProposals, reports };
+}
+
+function repairSlot(chatId) {
+    let id = String(chatId || '').trim();
+    if (!id && repairDeliveries.size === 1) id = repairDeliveries.keys().next().value;
+    // The repair chat's own id (what session tools default to) stands for its target.
+    if (id && !repairDeliveries.has(id)) {
+        for (const [target, slot] of repairDeliveries) {
+            if (slot.repairChatId === id) id = target;
+        }
+    }
+    const slot = repairDeliveries.get(id);
+    if (!slot) {
+        const error = new Error('No Auto-Repair turn is waiting on this chat. Pass the chat id from your turn prompt.');
+        error.code = 'NO_REPAIR_TURN';
+        throw error;
+    }
+    return { id, slot };
+}
+
+function deliverRepair(chatId, payload) {
+    const { id, slot } = repairSlot(chatId);
+    const knownIds = new Set(learned.approvedRules().map((rule) => rule.id));
+    slot.payload = normalizeRepairPayload(payload, knownIds);
+    return {
+        chatId: id,
+        checklist: slot.payload.checklist.length,
+        references: slot.payload.references.length,
+        ruleProposals: slot.payload.ruleProposals.length,
+        guideProposals: slot.payload.guideProposals.length,
+        reports: slot.payload.reports.length
+    };
+}
+
+function lookbacksIn(text) {
+    const found = [];
+    String(text || '').replace(LOOKBACK_RE, (_, label, link) => {
+        if (found.length < 20 && !found.some((row) => row.link === link)) found.push({ label: label.trim(), link });
+        return _;
+    });
+    return found;
+}
+
+// Head and tail of long text: the end of a reply is usually the scorecard.
+function clipMiddle(text, max) {
+    const value = String(text || '').trim();
+    if (value.length <= max) return value;
+    const half = Math.floor((max - 5) / 2);
+    return `${value.slice(0, half)} ... ${value.slice(-half)}`;
+}
+
+function repairEventData(data) {
+    const src = data && typeof data === 'object' ? data : {};
+    const out = {};
+    ['filename', 'caption', 'reason', 'workspaceId', 'status'].forEach((key) => {
+        if (src[key] != null && src[key] !== '') out[key] = repairLine(src[key], 300);
+    });
+    if (src.summary) out.summary = clipMiddle(src.summary, 600);
+    if (src.openingRequest) out.openingRequest = clipMiddle(src.openingRequest, 1500);
+    return out;
+}
+
+function repairMessageRow(message, i) {
+    const base = { i, role: message.role, at: message.timestamp || null };
+    if (message.role === 'user') {
+        const text = String(message.user_input || message.content || '');
+        const row = { ...base, text: clipMiddle(text, 4000) };
+        if (message.steer) row.steer = true;
+        if (message.message_type && message.message_type !== 'Ask') row.type = message.message_type;
+        if (Array.isArray(message.files) && message.files.length) row.files = message.files.slice(0, 20);
+        const links = lookbacksIn(text);
+        if (links.length) row.lookbacks = links;
+        return row;
+    }
+    if (message.role === 'assistant') {
+        const trace = Array.isArray(message.trace) ? message.trace : [];
+        const said = trace.filter((row) => row && row.type === 'assistant' && row.text).map((row) => row.text);
+        const text = said.length ? said.join('\n\n') : String((message.data && message.data.Description) || '');
+        const thinking = trace.filter((row) => row && row.type === 'thinking' && row.text);
+        const tools = trace.filter((row) => row && row.type === 'tool')
+            .map((row) => repairLine(row.label || prettyToolLabel(row.name), 80))
+            .filter(Boolean);
+        const row = { ...base, text: clipMiddle(text, 3000) };
+        if (thinking.length) row.thinking = clipMiddle(thinking[thinking.length - 1].text, 400);
+        if (tools.length) row.tools = tools.length > 24 ? tools.slice(0, 12).concat(`... ${tools.length - 24} more ...`, tools.slice(-12)) : tools;
+        if (Array.isArray(message.prints) && message.prints.length) row.prints = message.prints.slice();
+        if (message.model && message.model.id) row.model = message.model.id;
+        return row;
+    }
+    return { ...base, kind: message.message_type || null, data: repairEventData(message.data) };
+}
+
+function repairInbox(chatId) {
+    try {
+        return fs.readdirSync(path.join(layout().chats, safeName(chatId), 'inbox'))
+            .filter((name) => !name.startsWith('.'))
+            .sort()
+            .slice(-60)
+            .map((name) => `chats/${chatId}/inbox/${name}`);
+    } catch (_) {
+        return [];
+    }
+}
+
+// read_repair_session: one page of the chat the waiting repair turn is reading.
+function readRepairSession(chatId, options) {
+    const { id } = repairSlot(chatId);
+    const index = peekIndex(layout().indexPath);
+    const chat = index.chats.find((item) => item.id === id);
+    if (!chat) {
+        const error = new Error('That chat is gone');
+        error.code = 'SESSION_NOT_FOUND';
+        throw error;
+    }
+    const messages = chat.messages || [];
+    const opts = options || {};
+    const offset = Math.max(0, parseInt(opts.offset, 10) || 0);
+    const limit = Math.min(REPAIR_PAGE_MAX, Math.max(1, parseInt(opts.limit, 10) || REPAIR_PAGE));
+    const page = messages.slice(offset, offset + limit).map((message, k) => repairMessageRow(message || {}, offset + k));
+    const next = offset + limit < messages.length ? offset + limit : null;
+    const result = {
+        chatId: id,
+        name: chat.name || 'Director',
+        workspaceId: chat.workspaceId || null,
+        total: messages.length,
+        offset,
+        limit,
+        next,
+        messages: page
+    };
+    if (offset === 0) {
+        const at = new Map(messages.map((message, i) => [message && message.id, i]));
+        result.sessionImage = chat.filename || null;
+        result.prints = (Array.isArray(chat.prints) ? chat.prints : [])
+            .filter((row) => row && row.filename)
+            .map((row) => ({ filename: row.filename, message: at.has(row.messageId) ? at.get(row.messageId) : null }));
+        result.inbox = repairInbox(id);
+        result.earlierRepairs = (Array.isArray(chat.repairs) ? chat.repairs : []).map((row) => ({
+            at: row.at, reason: row.reason, summary: clipMiddle(row.summary, 600)
+        }));
+        result.howToLook = 'Attachments: Read the chats/<id>/inbox paths. Prints: get_generated_image {filename}, read_image_metadata {filename}. Lookback links: resolve_lookback {lookback}.';
+    }
+    result.nextStep = next == null
+        ? 'That was the last page. Look at the pictures, then deliver_repair.'
+        : `Call read_repair_session again with offset ${next}.`;
+    return result;
+}
+
+function repairProgressTracker(onText) {
+    let last = '';
+    let at = 0;
+    const lastLine = (text) => String(text || '').split('\n').map((line) => line.trim()).filter(Boolean).pop() || '';
+    return (trace) => {
+        if (!onText) return;
+        const rows = Array.isArray(trace.rows) ? trace.rows : [];
+        let line = '';
+        if (trace.live && trace.live.type === 'thinking') line = lastLine(trace.live.text);
+        for (let i = rows.length - 1; !line && i >= 0; i--) {
+            const row = rows[i];
+            if (!row) continue;
+            if (row.type === 'tool') line = row.label || prettyToolLabel(row.name);
+            else if (row.type === 'thinking' || row.type === 'assistant') line = lastLine(row.text);
+        }
+        line = line.length > 200 ? `${line.slice(0, 197)}...` : line;
+        const now = Date.now();
+        if (!line || line === last || now - at < REPAIR_PROGRESS_MS) return;
+        last = line;
+        at = now;
+        onText(line);
+    };
+}
+
+// One hidden repair chat per target chat; every repair starts a new engine session in it.
+async function claimRepairChat(gr, jail, paths, targetId, agent, buildText) {
+    const engine = sanitizeEngine(agent.engine);
+    const cursorId = engine === 'cursor' ? await createCursorChat(jail) : null;
+    return enqueue(async () => {
+        const index = readIndex(paths.indexPath);
+        const target = index.chats.find((item) => item.id === targetId);
+        if (!target) return null;
+        let chat = index.chats.find((item) => item.repair === true && item.repairFor === targetId);
+        if (!chat) {
+            chat = await makeChat(gr, jail, paths, { name: 'Auto-Repair', workspaceId: target.workspaceId || null });
+            chat.repair = true;
+            chat.repairFor = targetId;
+            chat.sessionType = 'normal';
+            index.chats.push(chat);
+        }
+        markChatActive(chat);
+        chat.cursorId = cursorId;
+        chat.claudeSessionId = engine === 'cursor' ? null : crypto.randomUUID();
+        chat.contextPercent = 0;
+        chat.contextTokens = 0;
+        chat.lastEngine = engine;
+        const jobText = buildText(target);
+        chat.messages = (chat.messages || []).concat({
+            id: crypto.randomUUID(),
+            role: 'user',
+            content: jobText,
+            user_input: jobText,
+            message_type: 'Ask',
+            timestamp: new Date().toISOString(),
+            data: null
+        }).slice(-REPAIR_MAX_MESSAGES);
+        writeIndex(paths.indexPath, index);
+        return { id: chat.id, cursorId, claudeSessionId: chat.claudeSessionId, prompt: jobText };
+    });
+}
+
+async function executeRepairTurn(gr, targetId, options) {
+    const opts = options || {};
+    const { paths, jail } = await ensureProject(gr);
+    const peeked = peekIndex(paths.indexPath).chats.find((item) => item.id === targetId);
+    if (!peeked || chatIsHidden(peeked)) {
+        const error = new Error('Session not found');
+        error.code = 'SESSION_NOT_FOUND';
+        throw error;
+    }
+    const agent = repairAgentFor(gr, peeked);
+    const resolved = await resolveHiddenRun(gr, jail, agent);
+    const rules = learned.approvedRules();
+    const probe = await claimRepairChat(gr, jail, paths, targetId, agent, (target) => repairTurnPrompt({
+        targetId,
+        name: target.name,
+        total: (target.messages || []).length,
+        reason: opts.reason,
+        percent: Math.round(Number(opts.percent) || Number(target.contextPercent) || 0),
+        note: repairText(opts.note, REPAIR_NOTE_MAX),
+        pendingText: repairText(opts.pendingText, 4000),
+        rules
+    }));
+    if (!probe) {
+        const error = new Error('Session not found');
+        error.code = 'SESSION_NOT_FOUND';
+        throw error;
+    }
+    const marker = { cancelled: false };
+    const slot = { payload: null, repairChatId: probe.id };
+    runs.set(probe.id, marker);
+    repairDeliveries.set(targetId, slot);
+    if (typeof opts.onStart === 'function') opts.onStart(probe.id);
+    try {
+        // Abort can land before the repair chat exists (stopRepair).
+        if (typeof opts.isCancelled === 'function' && opts.isCancelled()) {
+            const error = new Error('Auto-Repair stopped');
+            error.code = 'REPAIR_CANCELLED';
+            throw error;
+        }
+        let turned;
+        try {
+            turned = await runHiddenTurn(gr, jail, paths, agent, resolved, probe, repairProgressTracker(opts.onThought), marker, repairTurnLimits());
+        } catch (error) {
+            if (Array.isArray(error.rows) && error.rows.length) {
+                await saveDirectorTrace(paths, probe.id, error.rows, error.message || 'Auto-Repair failed', null, null).catch(() => {});
+            }
+            // deliver_repair already landed: the repair is in hand even though the turn died after it.
+            if (!slot.payload) {
+                if (marker.cancelled) error.code = 'REPAIR_CANCELLED';
+                throw error;
+            }
+            turned = { rows: error.rows || [], text: error.partialText || '', context: null };
+        }
+        await saveDirectorTrace(paths, probe.id, turned.rows, turned.text, null, null);
+        if (!slot.payload) {
+            const error = new Error('The repair agent finished without calling deliver_repair');
+            error.code = 'REPAIR_NOT_DELIVERED';
+            throw error;
+        }
+        return { payload: slot.payload, agent, repairChatId: probe.id };
+    } finally {
+        runs.delete(probe.id);
+        repairDeliveries.delete(targetId);
+    }
+}
+
+let repairReporter = null;
+
+function fileRepairReports(chatId, reports) {
+    const report = repairReporter || require('./mcpReportIssue').reportIssue;
+    const ids = [];
+    (reports || []).forEach((row) => {
+        try {
+            const filed = report({
+                type: 'error',
+                title: row.title,
+                message: `${row.title}\n\n${row.body}`,
+                tool: 'auto_repair_session',
+                reporter: 'wren-auto-repair',
+                context: { chatId }
+            });
+            if (filed && filed.success && filed.report && filed.report.id) ids.push(filed.report.id);
+        } catch (error) {
+            console.warn(`Auto-Repair ${chatId}: report not filed: ${error.message}`);
+        }
+    });
+    return ids;
+}
+
+function proposalCardRow(row, kind) {
+    return { id: row.id, kind, op: row.op, targetId: row.targetId || null, path: row.path || null, text: row.text, why: row.why || '' };
+}
+
+// Files the reports, stores the proposals, cuts the chat over to a new engine
+// session, and appends the divider card. Returns the card data.
+async function applyRepair(gr, targetId, payload, meta) {
+    const info = meta || {};
+    const at = new Date().toISOString();
+    const reportIds = fileRepairReports(targetId, payload.reports);
+    const ids = learned.addProposals(targetId, payload);
+    const proposals = payload.ruleProposals.map((row, i) => proposalCardRow({ ...row, id: ids.ruleIds[i] }, 'rule'))
+        .concat(payload.guideProposals.map((row, i) => proposalCardRow({ ...row, id: ids.guideIds[i] }, 'guide')));
+    const note = repairText(info.note, REPAIR_NOTE_MAX);
+    const data = {
+        reason: info.reason === 'auto' ? 'auto' : 'manual',
+        at,
+        note,
+        summary: payload.summary,
+        timeline: payload.timeline,
+        checklist: payload.checklist,
+        references: payload.references,
+        openingRequest: payload.openingRequest,
+        ruleProposalIds: ids.ruleIds,
+        guideProposalIds: ids.guideIds,
+        proposals,
+        reportIds,
+        contextPercent: Math.round(Number(info.percent) || 0),
+        engine: info.agent ? info.agent.engine : null,
+        model: info.agent ? info.agent.model || null : null
+    };
+    const card = await appendSessionCard(gr, targetId, { kind: 'session-repair', event: 'director_session_repair', data });
+    await enqueue(async () => {
+        const paths = layout();
+        const index = readIndex(paths.indexPath);
+        const chat = index.chats.find((item) => item.id === targetId);
+        if (!chat) return;
+        // A new engine session, started fresh: no transcript replay, the opening request instead.
+        recycleChat(chat);
+        chat.claudeSessionId = crypto.randomUUID();
+        delete chat.inflight;
+        chat.repairedOpening = { text: payload.openingRequest, at, cardId: card ? card.id : null };
+        chat.repairs = (Array.isArray(chat.repairs) ? chat.repairs : []).concat({
+            at,
+            reason: data.reason,
+            note: note.slice(0, 500),
+            summary: payload.summary.slice(0, 1000),
+            cardId: card ? card.id : null,
+            reportIds,
+            ruleProposalIds: ids.ruleIds,
+            guideProposalIds: ids.guideIds,
+            engine: data.engine,
+            model: data.model
+        }).slice(-REPAIR_HISTORY);
+        writeIndex(paths.indexPath, index);
+    });
+    return { ...data, cardId: card ? card.id : null };
+}
+
+// The repaired opening is consumed by the first turn that reaches the engine (success or steer).
+function takeRepairedOpening(chat, at) {
+    if (!chat || !chat.repairedOpening) return false;
+    if (at != null && (chat.repairedOpening.at || '') !== at) return false;
+    delete chat.repairedOpening;
+    return true;
+}
+
+async function consumeRepairedOpening(paths, sessionId, at) {
+    await enqueue(async () => {
+        const index = readIndex(paths.indexPath);
+        const chat = index.chats.find((item) => item.id === sessionId);
+        if (takeRepairedOpening(chat, at)) writeIndex(paths.indexPath, index);
+    });
+}
+
+// options: { reason: 'manual'|'auto', note, clientId, percent, pendingText }.
+// A second call while one runs gets the running repair.
+function repairDirectorChat(gr, chatId, options) {
+    const id = String(chatId || '').trim();
+    const running = repairJobs.get(id);
+    if (running) return running.promise;
+    const opts = options || {};
+    const reason = opts.reason === 'auto' ? 'auto' : 'manual';
+    const entry = { promise: null, repairChatId: null, reason, cancelled: false };
+    const progress = (stage, text, extra) => broadcastDirectorSession(gr, 'director_repair_progress', {
+        sessionId: id, reason, stage, text: text || '', ...(extra || {})
+    });
+    entry.promise = (async () => {
+        progress('start', reason === 'auto'
+            ? `Context is at ${Math.round(Number(opts.percent) || 0)}%: repairing the session first`
+            : 'Reading the session');
+        try {
+            const turned = await executeRepairTurn(gr, id, {
+                ...opts,
+                reason,
+                onStart: (repairChatId) => { entry.repairChatId = repairChatId; },
+                isCancelled: () => entry.cancelled,
+                onThought: (text) => progress('working', text)
+            });
+            const applied = await applyRepair(gr, id, turned.payload, { ...opts, reason, agent: turned.agent });
+            progress('done', 'Session restarted and context repaired', { cardId: applied.cardId, reportIds: applied.reportIds });
+            return applied;
+        } catch (error) {
+            progress('error', error.message || 'Auto-Repair failed', { code: error.code || 'REPAIR_FAILED' });
+            throw error;
+        }
+    })();
+    repairJobs.set(id, entry);
+    entry.promise.finally(() => {
+        if (repairJobs.get(id) === entry) repairJobs.delete(id);
+    }).catch(() => {});
+    return entry.promise;
+}
+
+function stopRepair(sessionId) {
+    const entry = repairJobs.get(sessionId);
+    if (!entry) return false;
+    entry.cancelled = true;
+    if (entry.repairChatId) hardStopSession(entry.repairChatId);
+    return true;
+}
+
+async function handleDirectorRepairSession(handler, ws, message, clientInfo) {
+    try {
+        if (message.persona === 'xi') {
+            handler.sendError(ws, 'Auto-Repair Session is Wren only for now', 'NOT_SUPPORTED', message.requestId);
+            return;
+        }
+        const gr = handler.globalResources;
+        const paths = await ensureIndexPaths(gr);
+        const sessionId = String(message.sessionId || '').trim();
+        const chat = sessionId ? peekIndex(paths.indexPath).chats.find((item) => item.id === sessionId) : null;
+        if (!chat || chatIsHidden(chat)) {
+            handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
+            return;
+        }
+        if (repairJobs.has(sessionId)) {
+            handler.sendError(ws, 'This session is already being repaired', 'REPAIR_RUNNING', message.requestId);
+            return;
+        }
+        if (runs.has(sessionId) || resumeTimers.has(sessionId) || sendsStarting.has(sessionId)) {
+            handler.sendError(ws, 'Director is still working on that chat. Let the turn finish or abort it, then repair.', 'DIRECTOR_BUSY', message.requestId);
+            return;
+        }
+        if (!(chat.messages || []).some((row) => row && row.role === 'user' && row.message_type !== 'Attachment')) {
+            handler.sendError(ws, 'There is nothing to repair yet', 'NOTHING_TO_REPAIR', message.requestId);
+            return;
+        }
+        repairDirectorChat(gr, sessionId, {
+            reason: 'manual',
+            note: repairText(message.note, REPAIR_NOTE_MAX),
+            clientId: directorClientId(clientInfo, message),
+            percent: chat.contextPercent
+        }).catch((error) => console.warn(`Auto-Repair ${sessionId} failed: ${error.message}`));
+        sendOk(handler, ws, 'director_repair_session_response', message.requestId, { sessionId, started: true });
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to start Auto-Repair', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
+// Auto-repair before a send (handleDirectorSendMessage). true: carry on with the turn;
+// false: the user stopped the repair, so the turn is dropped too.
+async function autoRepairBeforeSend(handler, ws, paths, sessionId, message, clientInfo) {
+    const gr = handler.globalResources;
+    const chat = peekIndex(paths.indexPath).chats.find((item) => item.id === sessionId);
+    if (!autoRepairDue(chat, autoRepairSettings(gr), message)) return true;
+    try {
+        await repairDirectorChat(gr, sessionId, {
+            reason: 'auto',
+            clientId: directorClientId(clientInfo, message),
+            percent: chat.contextPercent,
+            pendingText: String(message.content || '')
+        });
+    } catch (error) {
+        if (error.code === 'REPAIR_CANCELLED') {
+            emitDirector(handler, ws, 'director_message_error', { sessionId, error: 'Stopped', saved: false });
+            return false;
+        }
+        // A failed repair must not eat the message: the turn runs on the old session.
+        console.warn(`Auto-Repair ${sessionId} failed, sending on the old session: ${error.message}`);
+    }
+    return true;
+}
+
+function learnedListPayload() {
+    const store = learned.readStore();
+    return { rules: store.rules, proposals: store.proposals.slice().reverse() };
+}
+
+function handleDirectorLearnedList(handler, ws, message) {
+    try {
+        sendOk(handler, ws, 'director_learned_list_response', message.requestId, learnedListPayload());
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to read the learned rules', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
+// An approved guide change is written into the work clone, in the prompt-guide queue.
+async function handleDirectorLearnedDecide(handler, ws, message) {
+    try {
+        const id = String(message.id || '').trim();
+        const decided = await inPromptGuideQueue(async () => learned.decideProposal(id, message.decision, message.text, {
+            guideRoot: layout().promptGuideWork
+        }));
+        broadcastDirectorSession(handler.globalResources, 'director_learned_changed', { id, status: decided.proposal.status });
+        sendOk(handler, ws, 'director_learned_decide_response', message.requestId, { proposal: decided.proposal, ...learnedListPayload() });
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to decide that proposal', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
+function handleDirectorLearnedRuleEdit(handler, ws, message) {
+    try {
+        const rule = learned.editRule(String(message.id || '').trim(), message.text);
+        broadcastDirectorSession(handler.globalResources, 'director_learned_changed', { id: rule.id });
+        sendOk(handler, ws, 'director_learned_rule_edit_response', message.requestId, { rule, ...learnedListPayload() });
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to edit that rule', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
+function handleDirectorLearnedRuleRemove(handler, ws, message) {
+    try {
+        const removed = learned.removeRule(String(message.id || '').trim());
+        broadcastDirectorSession(handler.globalResources, 'director_learned_changed', { id: removed.removed });
+        sendOk(handler, ws, 'director_learned_rule_remove_response', message.requestId, { ...removed, ...learnedListPayload() });
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to remove that rule', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
 module.exports = {
     PROJECT_NAME,
     MCP_SCOPES,
@@ -7370,6 +8171,14 @@ module.exports = {
     tokenRouterUsageSummary,
     runQuipsTurn,
     deliverQuips,
+    deliverRepair,
+    readRepairSession,
+    repairDirectorChat,
+    handleDirectorRepairSession,
+    handleDirectorLearnedList,
+    handleDirectorLearnedDecide,
+    handleDirectorLearnedRuleEdit,
+    handleDirectorLearnedRuleRemove,
     awaitRentanAttempt,
     finishRentan,
     startRentanReviewTurn,
@@ -7395,6 +8204,10 @@ module.exports = {
         RUN_IDLE_MS, RUN_HARD_MS, DYNAGEN_IDLE_MS, DYNAGEN_HARD_MS, RENTAN_REVIEW_HARD_MS,
         readIdleShutdownMinutes, noteDirectorActivity, tickIdleShutdown, wakeDirectorComputer, shutdownIdleDirector,
         rentanReviewInstructions,
+        buildPrompt, transcriptSinceRepair, takeRepairedOpening, REPAIRED_HEADER,
+        autoRepairDue, autoRepairSettings, repairAgentFor, repairLane, normalizeRepairPayload, repairMessageRow, repairTurnPrompt, repairRules,
+        repairDeliveries, repairJobs, lookbacksIn,
+        setRepairReporter: (fn) => { repairReporter = fn; },
         readIndex, writeIndex, peekIndex, saveDirectorTrace, runAgentTurn, git, dirSize, computerSize,
         invalidateProjectPrepare, prepareState: () => projectPrepare, DRAFT_FLUSH_MS,
         setBrowserChild: (child) => { browserChild = child; },
