@@ -22,7 +22,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `director_custom_providers_save` | `director_custom_providers_save_response` | admin/destructive | `{ provider }` with the same fields as a `providers[]` row, plus `apiKey`, optional `managementKey`, and optional `logo` (a PNG data URL, `""` removes it). A blank `apiKey` keeps the stored key. Answers `{ provider, providers }` in the `director_custom_providers_get` row shape. |
 | `director_custom_providers_balance` | `director_custom_providers_balance_response` | session (admin data) | Balances for the engine pickers and CardSpace. Optional `engine` (`tokenrouter` or `custom:<id>`) asks for one; without it, TokenRouter plus every custom engine. `{ balances: [{ id, engine, name, kind, state, balance, currency, balanceText, title, granted?, toppedUp?, recent?, monthSpend?, limit?, suspended?, freeTier?, rateLimit? }] }`. Restricted users get `balances: []`. See [Provider balances](#provider-balances). |
 | `director_get_session` | `director_get_session_response` | session | Handler: handleDirectorGetSession |
-| `director_get_sessions` | `director_get_sessions_response` | session | Handler: handleDirectorGetSessions |
+| `director_get_sessions` | `director_get_sessions_response` | session | Handler: handleDirectorGetSessions. `persona: "kabuki"` lists the Obliterated Memories chats, `wren` the others. See [Kabuki](#kabuki). |
 | `director_open_workspace` | `director_open_workspace_response` | admin/destructive | Opens the Cursor chat for the current workspace, or creates one. |
 | `director_load_feedback` | `director_load_feedback_response` | session | Handler: handleDirectorLoadFeedback |
 | `director_load_rules` | `director_load_rules_response` | session | Handler: handleDirectorLoadRules |
@@ -38,6 +38,8 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `director_learned_decide` | `director_learned_decide_response` | admin/destructive | `{ id, decision: "approve" or "reject", text? }`. `text` replaces the proposed text. An approved rule joins Wren's rules; an approved guide change is written into the prompt guide work clone (not committed). |
 | `director_learned_rule_edit` | `director_learned_rule_edit_response` | admin/destructive | `{ id, text }` rewrites one learned rule. |
 | `director_learned_rule_remove` | `director_learned_rule_remove_response` | admin/destructive | `{ id }` removes one learned rule. |
+| `director_settings_get` | `director_settings_get_response` | session | `{ settings, engines }`. See [Director Settings](#director-settings). |
+| `director_settings_set` | `director_settings_set_response` | admin/destructive | `{ settings }` with any of `defaults`, `autoRepair`, `repair`; answers `{ settings, engines }` and broadcasts `director_settings_changed`. Bad input: `INVALID_DIRECTOR_SETTINGS`. |
 | `director_save_feedback` | `director_save_feedback_response` | admin/destructive | Handler: handleDirectorSaveFeedback |
 | `director_save_rules` | `director_save_rules_response` | admin/destructive | Handler: handleDirectorSaveRules |
 | `director_send_message` | `director_send_message_response` | admin/destructive | Handler: handleDirectorSendMessage. `persona: "xi"` runs the host agent. |
@@ -218,6 +220,8 @@ The chat's task list renders in `#directorTaskList`, above the messages inside `
 |-------|-------|
 | `requestId` | Optional |
 | `sessionType` | Optional Wren chat type: `utility` (archive 7 days after last activity), `lowvolume` (15 days, the default for a new chat), or `normal` (30 days). A chat with no stored type is `normal`. `lowvolume` becomes `normal` at 5 user messages. MCP `set_session_type` changes it. The Expand Canvas Director toggle creates `utility`. Sessions echo `sessionType` and `expires_at` |
+| `persona` | Optional. `kabuki` makes a Kabuki chat (`memoryStore: "obliterated"`). See [Kabuki](#kabuki) |
+| `description` | Optional first message, sent at once. Without `engine`, `model`, `effort` on this packet the turn uses `director.defaults` for the tab ([Director Settings](#director-settings)) |
 
 **Success response:** `director_create_session_response`
 
@@ -401,6 +405,8 @@ The chat's task list renders in `#directorTaskList`, above the messages inside `
 
 **Success response:** `director_send_message_response`
 
+A send on an engine whose provider has Obliterated Memories marks the chat Kabuki (`memoryStore: "obliterated"`). A Kabuki chat sent on any other engine is refused with `KABUKI_ENGINE`.
+
 ### `director_abort`
 
 **Auth:** Session required. Admin only (destructive — blocked for readonly)
@@ -454,7 +460,7 @@ A hidden turn (chat `repair: true`, never listed) reads the chat through the hid
 - the chat gets a new engine session (new Claude session id, no Cursor chat, context reset), and its next turn starts with the opening request instead of the old transcript, once
 - a `session-repair` event message is saved on the chat (the divider)
 
-Engine: config `director.repair.normal` or `director.repair.obliterated` (`{ engine, model, effort }`, chosen by the chat engine's memory store), else the chat's own engine and model at `high` (`xhigh` on Claude).
+Engine: config `director.repair.normal` or `director.repair.obliterated` (`{ engine, model, effort }`; a Kabuki chat, `memoryStore: "obliterated"`, takes the obliterated one, any other chat the one for its engine's memory store), else the chat's own engine and model at `high` (`xhigh` on Claude). Set them in [Director Settings](#director-settings).
 
 Auto: a Wren send whose chat is at `director.autoRepair.threshold` percent context or more (default 85) repairs first, then runs that message on the new session. `director.autoRepair.enabled: false` turns it off. A failed automatic repair sends on the old session; Abort during it stops both.
 
@@ -471,6 +477,32 @@ The divider card, also saved as a `role: "event"`, `message_type: "session-repai
 ### Server → client: `director_learned_changed`
 
 `{ id, status? }` after a proposal decision or a learned-rule edit or removal.
+
+### Director Settings
+
+**Handlers:** `handleDirectorSettingsGet`, `handleDirectorSettingsSet` (modules/cursorDirector.js). The Director window's tools menu opens them as the Director Settings property sheet (New Sessions, Auto-Repair, Learned Rules).
+
+`settings` is the `director` block of `config.json`:
+
+- `defaults.wren`, `defaults.kabuki`: `{ engine, model, effort }` a new chat in that tab starts on, or null (the client keeps its last-used engine). `model` and `effort` may be null (the engine's default model, medium). Xi keeps its own runtime picker.
+- `autoRepair`: `{ enabled, threshold }`, threshold a whole percent from 30 to 100 (default on at 85).
+- `repair.normal`, `repair.obliterated`: the Auto-Repair engine for chats on normal memories and for Kabuki chats, or null (the chat's own engine).
+
+`engines` is `[{ engine, name, memoryStore }]`: the built-in engines and every custom provider. Kabuki picks (`defaults.kabuki`, `repair.obliterated`) take only engines with `memoryStore: "obliterated"`, the others only engines without it.
+
+On `director_settings_set` only the parts sent change; null clears one. The server writes the `director` block once and keeps its other keys (`idleShutdownMinutes`, `autoUpdateClis`). A saved pick that no longer fits (provider removed, or its Obliterated Memories switch changed) reads as null.
+
+**Errors:** `INVALID_DIRECTOR_SETTINGS` (unknown engine or provider, wrong memory store, a model that is not a model id, a reasoning level that is not a word, a threshold out of range), `CONFIG_READONLY`.
+
+### Server → client: `director_settings_changed`
+
+`{ settings }` after a save, so every tab's next new chat uses the new defaults.
+
+## Kabuki
+
+Kabuki is the middle tab of the Wren | Kabuki | Xi toggle: Wren's chats that use Obliterated Memories. It runs on Wren's server, so `persona: "kabuki"` matters only on `director_get_sessions` (the list), `director_create_session` (the new chat is Kabuki), and `director_open_workspace` (the latest-chat fallback stays in the tab). The tab shows, in the window and in Studio, once a custom provider has Obliterated Memories (`director_get_models_response.providers[].memoryStore`).
+
+A chat is Kabuki when it has `memoryStore: "obliterated"` (in `index.json`, and on every session row), or when the engine it last ran on has that store; listing, opening, and sending stamp the field on such chats. Kabuki's engine picker offers only obliterated engines and Wren's hides them. A chat opened by id from the other tab switches the toggle to its own tab. Forks stay in their tab.
 
 ## Xi
 

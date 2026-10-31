@@ -6,7 +6,7 @@
  *   MS Shell Dlg 8 (Tahoma 11 px)   x * 6/4, y * 13/8      Segoe UI 9 (12 px)   x * 7/4, y * 15/8
  *   an edge rounds; a bottom edge drops its fraction; a push button's face is 1 px inside its rect
  *
- *   vistaDialogTemplate.openSheet({ id, title, pages: [{ key, title? }], start, owner, icon,
+ *   vistaDialogTemplate.openSheet({ id, title, pages: [{ key, title?, tpl? }], start, owner, icon,
  *                                   init(ctx), apply(ctx) -> Promise?, close() })
  *       a property sheet: tabs, the pane, OK / Cancel / Apply. Apply turns on when a control
  *       changes; apply(ctx) runs on Apply and on OK.
@@ -915,7 +915,8 @@
     function openSheet(opts) {
         if (!doc) return null;
         const T = root.vistaDialogTemplates || {};
-        const pages = opts.pages.map((p) => ({ ...p, tpl: T[p.key] })).filter((p) => p.tpl);
+        // p.tpl: a page template of the program's own (Director Settings), as openDialog takes opts.tpl
+        const pages = opts.pages.map((p) => ({ ...p, tpl: p.tpl || T[p.key] })).filter((p) => p.tpl);
         if (!pages.length) {
             console.error('vistaDialogTemplate: no templates for', opts.id);
             return null;

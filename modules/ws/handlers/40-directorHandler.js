@@ -29,6 +29,8 @@ const {
     handleDirectorLearnedDecide,
     handleDirectorLearnedRuleEdit,
     handleDirectorLearnedRuleRemove,
+    handleDirectorSettingsGet,
+    handleDirectorSettingsSet,
     handleDirectorGetCursorUsage,
     handleDirectorGetMessages,
     handleDirectorRollbackMessage,
@@ -122,6 +124,10 @@ function registerPackets(handlersCtx) {
     reg('director_learned_decide', handleDirectorLearnedDecide, DIRECTOR_DESTRUCTIVE);
     reg('director_learned_rule_edit', handleDirectorLearnedRuleEdit, DIRECTOR_DESTRUCTIVE);
     reg('director_learned_rule_remove', handleDirectorLearnedRuleRemove, DIRECTOR_DESTRUCTIVE);
+
+    // Director Settings: new-chat defaults per tab (Wren, Kabuki), Auto-Repair, the repair engines.
+    reg('director_settings_get', handleDirectorSettingsGet);
+    reg('director_settings_set', handleDirectorSettingsSet, DIRECTOR_DESTRUCTIVE);
 }
 
 module.exports = {

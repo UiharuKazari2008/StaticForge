@@ -374,6 +374,15 @@ html.disable-blur .director-session-overlay {
     width: calc(50% - 2px);
 }
 
+/* Wren | Kabuki | Xi (director.js paintPersonaToggle sets data-count and data-index) */
+#directorPersonaGroup[data-count="3"].gallery-toggle-group {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+#directorPersonaGroup[data-count="3"] .gallery-toggle-slider {
+    width: calc(calc(100% / 3) - 2px);
+}
+
 #directorPersonaGroup .gallery-toggle-btn {
     min-height: 30px;
     min-width: 52px;
@@ -381,8 +390,26 @@ html.disable-blur .director-session-overlay {
     font-size: 0.8rem;
 }
 
-#directorPersonaGroup[data-persona="xi"] .gallery-toggle-slider {
+#directorPersonaGroup[data-index="1"] .gallery-toggle-slider {
     transform: translateX(100%);
+}
+
+#directorPersonaGroup[data-count="3"][data-index="1"] .gallery-toggle-slider {
+    transform: translateX(calc(100% + 2px));
+}
+
+#directorPersonaGroup[data-count="3"][data-index="2"] .gallery-toggle-slider {
+    transform: translateX(calc(200% + 4px));
+}
+
+/* Kabuki: the back-room tab, a red lantern tint */
+#directorPersonaGroup[data-persona="kabuki"] .gallery-toggle-slider {
+    background: hsl(350deg 100% 50% / 26%);
+    border-color: hsl(350deg 100% 62% / 48%);
+}
+
+#directorPersonaGroup[data-persona="kabuki"] .gallery-toggle-btn.active {
+    color: #ff9db0;
 }
 
 /* Xi is a coding chat. Wren's print thumbnails and browser stills stay off. Xi quick tasks: DIRECTOR_XI_QUICK_STARTS (director.js) */

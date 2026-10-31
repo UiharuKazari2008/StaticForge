@@ -600,6 +600,7 @@ class WebSocketMessageHandlers {
             'director_learned_decide',
             'director_learned_rule_edit',
             'director_learned_rule_remove',
+            'director_settings_set',
         ];
         return destructiveOperations.includes(messageType) || isReplicationDestructivePacket(messageType);
     }

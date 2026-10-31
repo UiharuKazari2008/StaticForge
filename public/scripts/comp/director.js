@@ -421,7 +421,10 @@ class Director {
         this._reopenAfterReload = this.takeReopenState();
         window.addEventListener('pagehide', () => this.saveReopenState());
         this.persona = 'wren';
-        this._personaSession = { wren: null, xi: null };
+        this._personaSession = { wren: null, kabuki: null, xi: null };
+        // director_settings_get (modules/cursorDirector.js): defaults per tab, Auto-Repair, repair engines
+        this.directorSettings = null;
+        this.directorSettingsEngines = [];
     }
 
     // Cache DOM elements for better performance
@@ -519,6 +522,7 @@ class Director {
         this.setupDirectorWindow();
         initializeDirectorTray();
         this.requestDirectorModels();
+        this.requestDirectorSettings();
         // public/scripts/websocket.js — runs after a dropped socket comes back, not on the first connect
         if (window.wsClient && window.wsClient.registerRefreshCallback) {
             window.wsClient.registerRefreshCallback('director_resume', 40, async () => {
@@ -542,10 +546,52 @@ class Director {
         return id === 'cursor' ? this.PREFS_KEY : `${this.PREFS_KEY}_${id}`;
     }
 
-    // Wren's built-in engines, then custom OpenAI-compatible hosts.
-    engineChoices() {
+    // Wren's built-in engines, then custom OpenAI-compatible hosts. Kabuki offers only the hosts
+    // with Obliterated Memories and Wren the rest; Xi's runtime picker keeps them all.
+    engineChoices(persona) {
+        const tab = persona || this.persona;
         const extra = (this.customProviders || []).map((row) => row && row.engine).filter((id) => this.isCustomEngine(id));
-        return ['cursor', 'claude', 'tokenrouter'].concat(extra);
+        const all = ['cursor', 'claude', 'tokenrouter'].concat(extra);
+        if (tab === 'xi') return all;
+        return all.filter((id) => this.engineObliterated(id) === (tab === 'kabuki'));
+    }
+
+    // director_get_models_response.providers[].memoryStore (customModelProviders.publicList)
+    engineObliterated(engine) {
+        const row = this.isCustomEngine(engine) ? this.customProvider(engine) : null;
+        return !!(row && row.memoryStore === 'obliterated');
+    }
+
+    kabukiAvailable() {
+        return (this.customProviders || []).some((row) => row && row.memoryStore === 'obliterated' && this.isCustomEngine(row.engine));
+    }
+
+    // Wren keeps the original key; Kabuki remembers its own last engine.
+    engineStorageKey(persona) {
+        return (persona || this.persona) === 'kabuki' ? `${this.ENGINE_KEY}_kabuki` : this.ENGINE_KEY;
+    }
+
+    // The engine a tab opens on: its last one if it still fits, else the default from Director Settings, else the first that fits.
+    personaEngine(persona) {
+        const allowed = this.engineChoices(persona);
+        let saved = '';
+        try { saved = localStorage.getItem(this.engineStorageKey(persona)) || ''; } catch (_err) { /* no storage */ }
+        const defaults = this.settingsDefaults(persona);
+        const pick = [saved, defaults && defaults.engine, persona === 'kabuki' ? '' : 'tokenrouter']
+            .filter(Boolean)
+            .map((id) => this.normalizeEngine(id))
+            .find((id) => allowed.includes(id));
+        return pick || allowed[0] || this.normalizeEngine(saved || 'tokenrouter');
+    }
+
+    // Providers arrived (or changed): a Wren engine that turned out to be obliterated, or a Kabuki
+    // engine that is not, moves to one that fits the tab.
+    fitEngineToPersona() {
+        // Before the provider list arrives a custom engine cannot be judged.
+        if (this.persona === 'xi' || !(this.customProviders || []).length) return;
+        if (this.engineChoices().includes(this.normalizeEngine(this.engine))) return;
+        const next = this.personaEngine(this.persona);
+        if (next && next !== this.engine) this.setEngine(next, { skipSave: true });
     }
 
     get ENGINES() {
@@ -661,7 +707,7 @@ class Director {
         const shared = { sendOnEnter: this.sendOnEnter, messageFilter: this.messageFilter };
         if (!(options && options.skipSave)) this.saveChatPrefs();
         this.engine = next;
-        try { localStorage.setItem(this.ENGINE_KEY, next); } catch (_err) { /* storage can be full */ }
+        try { localStorage.setItem(this.engineStorageKey(), next); } catch (_err) { /* storage can be full */ }
         this.loadChatPrefs();
         Object.assign(this, shared);
         this.loadModelCache();
@@ -1584,6 +1630,12 @@ class Director {
                             keepMenuOpen: true,
                             loadfn: (item) => { item.checked = director.sendOnEnter === true; }
                         },
+                        {
+                            icon: 'fas fa-sliders',
+                            text: 'Director Settings...',
+                            tooltip: 'New session models, Auto-Repair, and learned rules',
+                            action: 'director-tools-settings'
+                        },
                         { separator: true },
                         {
                             icon: 'fas fa-screwdriver-wrench',
@@ -1752,6 +1804,9 @@ class Director {
             case 'director-tools-repair-session':
                 void this.repairSession(this.currentSession);
                 break;
+            case 'director-tools-settings':
+                void this.openDirectorSettings();
+                break;
             case 'director-tools-restart-session': {
                 const firstKey = this.firstUserMessageKey();
                 if (firstKey && this.revealMessageKey(firstKey)) this.retryMessage(firstKey);
@@ -1897,6 +1952,8 @@ class Director {
 
     applySessionModel(session) {
         if (!session || session.draft || !session.id) {
+            // Director Settings (config director.defaults): a new chat starts on its tab's default.
+            if (this.applyNewSessionDefaults()) return;
             // A Claude or TokenRouter draft starts from that engine's last config; Cursor drafts start on Auto.
             if (this.activeEngine() !== 'cursor') {
                 this.loadChatPrefs();
@@ -1915,10 +1972,15 @@ class Director {
             this.syncEngineChrome();
             return;
         }
-        const choice = this.readSessionModel(session.id) || session.choice || this.choiceFromMessages(session.messages);
+        let choice = this.readSessionModel(session.id) || session.choice || this.choiceFromMessages(session.messages);
         // A session continues on the engine it last ran on: the local choice for
         // it if one was saved with an engine, otherwise the server's record.
-        const engine = (choice && choice.engine) || this.normalizeEngine(session.engine);
+        let engine = (choice && choice.engine) || this.normalizeEngine(session.engine);
+        // A Kabuki chat that never ran records no engine: it opens on one its tab offers.
+        if (this.persona !== 'xi' && (this.customProviders || []).length && !this.engineChoices().includes(this.normalizeEngine(engine))) {
+            engine = this.personaEngine(this.persona);
+            choice = null;
+        }
         if (this.persona !== 'xi') this.setEngine(engine, { skipSave: true });
         else {
             this.loadModelCache();
@@ -1932,6 +1994,38 @@ class Director {
         if (!this.fastAvailable()) this.fast = false;
         this.paintModelPick();
         this.syncEngineChrome();
+    }
+
+    // director.defaults.{wren|kabuki} from director_settings_get; null when unset or for Xi.
+    settingsDefaults(persona) {
+        const tab = persona || this.persona;
+        if (tab === 'xi') return null;
+        const defaults = this.directorSettings && this.directorSettings.defaults;
+        const pick = defaults && defaults[tab === 'kabuki' ? 'kabuki' : 'wren'];
+        return pick && pick.engine ? pick : null;
+    }
+
+    // The draft takes the default engine, model, and reasoning. False when none is set or the
+    // engine does not fit this tab; the draft then keeps the last-used engine's config.
+    applyNewSessionDefaults() {
+        const pick = this.settingsDefaults();
+        const engine = pick ? this.normalizeEngine(pick.engine) : '';
+        if (!engine || !this.engineChoices().includes(engine)) return false;
+        this.setEngine(engine, { skipSave: true });
+        this.loadModelCache();
+        this.selectedModel = pick.model || (engine === 'cursor' ? 'auto' : this.defaultModel(engine));
+        const efforts = this.effortsForSelected();
+        const wanted = pick.effort || 'medium';
+        if (!efforts.length || efforts.some((level) => level.id === wanted)) this.selectedEffort = wanted;
+        else this.selectedEffort = (efforts.find((level) => level.id === 'medium') || efforts[0]).id;
+        const contexts = this.contextsForSelected();
+        this.selectedContext = contexts.length ? contexts[0].id : '';
+        this.thinking = this.thinkingToggle() ? false : this.selectedEffort !== 'none';
+        this.fast = false;
+        this.requestDirectorModels(engine);
+        this.paintModelPick();
+        this.syncEngineChrome();
+        return true;
     }
 
     takeComposerAttachments() {
@@ -2000,21 +2094,39 @@ class Director {
     }
 
     lastSessionStorageKey() {
-        return this.persona === 'xi' ? 'staticforge_director_last_session_xi' : this.LAST_SESSION_KEY;
+        if (this.persona === 'xi') return 'staticforge_director_last_session_xi';
+        return this.persona === 'kabuki' ? 'staticforge_director_last_session_kabuki' : this.LAST_SESSION_KEY;
     }
 
     packetPersona(body) {
         return (body && body.persona) || 'wren';
     }
 
+    // Kabuki chats are Wren's server (modules/cursorDirector.js); only Xi has its own. Session packets
+    // other than the list carry no tab, so they are matched by server.
+    personaServer(name) {
+        return name === 'xi' ? 'xi' : 'wren';
+    }
+
+    packetFromOtherServer(body) {
+        return this.personaServer(this.packetPersona(body)) !== this.personaServer(this.persona);
+    }
+
+    // Wren | Kabuki | Xi. Xi is the desktop window only and needs xi.enabled; Kabuki shows
+    // wherever Wren does once a provider has Obliterated Memories.
     paintPersonaToggle() {
         const group = this.directorPersonaGroup;
-        const persona = this.persona === 'xi' ? 'xi' : 'wren';
+        const persona = this.persona === 'xi' || this.persona === 'kabuki' ? this.persona : 'wren';
         const showXi = this._xiEnabled === true && this.directorWindowIsOpen();
+        const showKabuki = this.kabukiAvailable() || persona === 'kabuki';
         if (group) {
-            group.classList.toggle('hidden', !showXi);
+            group.classList.toggle('hidden', !showXi && !showKabuki);
+            const shown = ['wren', 'kabuki', 'xi'].filter((id) => id === 'wren' || (id === 'xi' ? showXi : showKabuki));
             group.dataset.persona = persona;
+            group.dataset.count = String(shown.length);
+            group.dataset.index = String(Math.max(0, shown.indexOf(persona)));
             group.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+                btn.classList.toggle('hidden', !shown.includes(btn.dataset.persona));
                 btn.classList.toggle('active', btn.dataset.persona === persona);
             });
         }
@@ -2052,6 +2164,7 @@ class Director {
             this._personaSession.xi = this.currentSession.id;
         }
         this.persona = 'wren';
+        this.engine = this.personaEngine('wren');
         this.loadChatPrefs();
         this.loadModelCache();
         this.paintChatPrefs();
@@ -2063,7 +2176,8 @@ class Director {
 
     async setPersona(name) {
         if (name === 'xi' && (!this._xiEnabled || !this.directorWindowIsOpen())) return;
-        const next = name === 'xi' ? 'xi' : 'wren';
+        if (name === 'kabuki' && !this.kabukiAvailable()) return;
+        const next = name === 'xi' || name === 'kabuki' ? name : 'wren';
         if (next === this.persona) {
             this.paintPersonaToggle();
             return;
@@ -2071,6 +2185,8 @@ class Director {
         this.saveChatPrefs();
         this._personaSession[this.persona] = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
         this.persona = next;
+        // Wren and Kabuki each keep their own engine (engineStorageKey); Xi's runtime is per session.
+        if (next !== 'xi') this.engine = this.personaEngine(next);
         this.loadChatPrefs();
         this.loadModelCache();
         this.paintChatPrefs();
@@ -2719,6 +2835,12 @@ class Director {
             this._personaSession.xi = saved.sessionId || null;
             await this.openDirectorWindow();
             await this.setPersona('xi');
+            return;
+        }
+        if (saved.persona === 'kabuki' && this.kabukiAvailable()) {
+            this._personaSession.kabuki = saved.sessionId || null;
+            await this.openDirectorWindow();
+            await this.setPersona('kabuki');
             return;
         }
         if (saved.persona !== 'xi' && saved.sessionId) this._openPreferredId = saved.sessionId;
@@ -3816,7 +3938,25 @@ class Director {
         this.initializeScrollbars();
     }
     
+    // A chat opened by id (tray, reload, Ask Wren's lookup) shows in its own tab: Kabuki for
+    // Obliterated Memories chats (publicSession memoryStore), Wren for the rest.
+    adoptSessionPersona(session) {
+        if (!session || session.draft || !session.id || this.persona === 'xi' || !('memoryStore' in session)) return;
+        const want = session.memoryStore === 'obliterated' ? 'kabuki' : 'wren';
+        if (want === this.persona) return;
+        this.saveChatPrefs();
+        this._personaSession[this.persona] = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
+        this.persona = want;
+        this.engine = this.personaEngine(want);
+        this.loadChatPrefs();
+        this.loadModelCache();
+        this.paintChatPrefs();
+        this.paintPersonaToggle();
+        this.loadDirectorSessions().catch(() => { /* list refresh is best effort */ });
+    }
+
     async showSessionChat(session, options) {
+        this.adoptSessionPersona(session);
         this._pendingWorkspaceToken = null;
         // Recent Items (public/scripts/comp/recentItems.js): a Director session opened
         if (session && window.recentItems) window.recentItems.noteDirectorSession(session);
@@ -5823,6 +5963,321 @@ class Director {
         await setActiveWorkspace(workspaceId);
     }
 
+    // ---- Director Settings (director_settings_get / _set, modules/cursorDirector.js) ----
+    // A property sheet drawn by vistaDialogTemplate.openSheet (MS Shell Dlg 8 page templates):
+    // New Sessions (director.defaults per tab), Auto-Repair (director.autoRepair, director.repair
+    // per memory store), Learned Rules (director_learned_*, modules/directorLearned.js).
+
+    async requestDirectorSettings() {
+        if (!window.wsClient || !window.wsClient.isConnected()) return null;
+        try {
+            const body = await this.directorRequest('director_settings_get', {});
+            this.directorSettings = body.settings || null;
+            this.directorSettingsEngines = Array.isArray(body.engines) ? body.engines : [];
+        } catch (_) { /* drafts keep the last-used engine */ }
+        return this.directorSettings;
+    }
+
+    // Fresh catalog for one engine; the cached one (catalogFor) fills the picker until it answers.
+    async loadSettingsCatalog(engine) {
+        const id = this.normalizeEngine(engine);
+        try {
+            const body = await this.directorRequest('director_get_models', { engine: id });
+            if (Array.isArray(body.models) && body.models.length) {
+                this.modelCatalogs[id] = body.models;
+                this.saveModelCache(id);
+            }
+        } catch (_) { /* the cached catalog stays */ }
+        return this.catalogFor(id);
+    }
+
+    directorSettingsPages() {
+        const S = 0x50020000;
+        const GROUP = 0x50000007;
+        const COMBO = 0x50210003;
+        const PUSH = 0x50010000;
+        const LIST = 0x50a10101;
+        const picker = (top, ids, labels) => [
+            [-1, 'S', 15, top + 2, 44, 8, S, labels[0], 0], [ids[0], 'C', 62, top, 176, 120, COMBO, '', 0],
+            [-1, 'S', 15, top + 20, 44, 8, S, labels[1], 0], [ids[1], 'C', 62, top + 18, 176, 120, COMBO, '', 0],
+            [-1, 'S', 15, top + 38, 44, 8, S, labels[2], 0], [ids[2], 'C', 62, top + 36, 176, 120, COMBO, '', 0]
+        ];
+        const font = ['MS Shell Dlg', 8];
+        return [
+            {
+                key: 'director:new',
+                title: 'New Sessions',
+                tpl: { t: 'New Sessions', w: 252, h: 218, f: font, c: [
+                    [-1, 'S', 7, 7, 238, 16, S, 'A new chat starts on these. Once it has started, a chat keeps its own engine and model.', 0],
+                    [-1, 'B', 7, 28, 238, 70, GROUP, 'Wren', 0],
+                    ...picker(41, [101, 102, 103], ['&Engine:', '&Model:', '&Reasoning:']),
+                    [-1, 'B', 7, 104, 238, 70, GROUP, 'Kabuki (Obliterated Memories)', 0],
+                    ...picker(117, [111, 112, 113], ['E&ngine:', 'M&odel:', 'Reas&oning:']),
+                    [120, 'S', 7, 182, 238, 26, S, '', 0]
+                ] }
+            },
+            {
+                key: 'director:repair',
+                title: 'Auto-Repair',
+                overrides: { 202: { spin: [30, 100] } },
+                tpl: { t: 'Auto-Repair', w: 252, h: 218, f: font, c: [
+                    [201, 'B', 7, 7, 238, 10, 0x50010003, '&Repair a session on its own when its context is nearly full', 0],
+                    [-1, 'S', 19, 24, 108, 8, S, 'Repair at this much &context:', 0],
+                    [202, 'E', 128, 22, 34, 12, 0x50812082, '85', 0],
+                    [-1, 'S', 166, 24, 12, 8, S, '%', 0],
+                    [-1, 'S', 7, 40, 238, 16, S, 'Auto-Repair reads the whole chat on the engine below, restates what you asked as one clear request, and continues in a new session.', 0],
+                    [-1, 'B', 7, 60, 238, 70, GROUP, 'Wren (normal memories)', 0],
+                    ...picker(73, [211, 212, 213], ['&Engine:', '&Model:', 'R&easoning:']),
+                    [-1, 'B', 7, 136, 238, 70, GROUP, 'Kabuki (Obliterated Memories)', 0],
+                    ...picker(149, [221, 222, 223], ['E&ngine:', 'M&odel:', 'Reas&oning:'])
+                ] }
+            },
+            {
+                key: 'director:learned',
+                title: 'Learned Rules',
+                tpl: { t: 'Learned Rules', w: 252, h: 218, f: font, c: [
+                    [-1, 'S', 7, 7, 238, 8, S, '&Learned rules (Wren and Kabuki follow these):', 0],
+                    [301, 'L', 7, 18, 238, 64, LIST, '', 0x200],
+                    [302, 'B', 139, 86, 50, 14, PUSH, '&Edit...', 0],
+                    [303, 'B', 195, 86, 50, 14, PUSH, 'Re&move', 0],
+                    [-1, 'S', 7, 108, 238, 8, S, '&Proposals from Auto-Repair waiting for you:', 0],
+                    [311, 'L', 7, 119, 238, 48, LIST, '', 0x200],
+                    [312, 'S', 7, 170, 238, 24, S, '', 0],
+                    [313, 'B', 83, 198, 50, 14, PUSH, '&View...', 0],
+                    [314, 'B', 139, 198, 50, 14, PUSH, '&Approve', 0],
+                    [315, 'B', 195, 198, 50, 14, PUSH, 'Re&ject', 0]
+                ] }
+            }
+        ];
+    }
+
+    // One engine / model / reasoning row of the sheet. blank is the engine's "(...)" entry: unset.
+    fillSettingsPicker(ctx, row, pick) {
+        const engines = (this.directorSettingsEngines || []).filter((item) => item && (item.memoryStore === 'obliterated') === row.obliterated);
+        const engine = pick && engines.some((item) => item.engine === pick.engine) ? pick.engine : '';
+        ctx.options(row.ids[0], [{ value: '', text: row.blank }].concat(engines.map((item) => ({ value: item.engine, text: item.name || this.engineName(item.engine) }))), engine);
+        const usable = engines.length > 0;
+        row.ids.forEach((id) => ctx.enable(id, usable));
+        this.fillSettingsModels(ctx, row, pick && pick.model, pick && pick.effort);
+    }
+
+    fillSettingsModels(ctx, row, model, effort) {
+        const engine = ctx.get(row.ids[0]) || '';
+        const catalog = engine ? this.catalogFor(engine) : [];
+        const models = [{ value: '', text: '(Engine default)' }].concat(catalog.map((item) => ({ value: item.id, text: item.name || item.id })));
+        // A saved model the catalog does not list (yet) stays selectable.
+        if (model && !catalog.some((item) => item.id === model)) models.push({ value: model, text: model });
+        ctx.options(row.ids[1], models, engine ? (model || '') : '');
+        ctx.enable(row.ids[1], !!engine);
+        this.fillSettingsEfforts(ctx, row, effort);
+    }
+
+    fillSettingsEfforts(ctx, row, effort) {
+        const engine = ctx.get(row.ids[0]) || '';
+        const model = ctx.get(row.ids[1]) || '';
+        const catalog = engine ? this.catalogFor(engine) : [];
+        const family = catalog.find((item) => item.id === (model || this.defaultModel(engine)))
+            || (!model ? catalog.find((item) => item.default) : null);
+        let levels = family && Array.isArray(family.efforts) ? family.efforts : [];
+        if (engine && !catalog.length) levels = this.effortLevels.map((level) => ({ id: level.value, name: level.name }));
+        const options = [{ value: '', text: '(Default)' }].concat(levels.map((level) => ({ value: level.id, text: level.name || level.id })));
+        if (effort && !levels.some((level) => level.id === effort)) options.push({ value: effort, text: effort });
+        ctx.options(row.ids[2], options, effort || '');
+        ctx.enable(row.ids[2], !!engine && options.length > 1);
+    }
+
+    readSettingsPicker(ctx, row) {
+        const engine = ctx.get(row.ids[0]) || '';
+        if (!engine) return null;
+        return { engine, model: ctx.get(row.ids[1]) || null, effort: ctx.get(row.ids[2]) || null };
+    }
+
+    // Learned Rules page: approved rules (Edit, Remove) and pending proposals (View, Approve, Reject).
+    paintSettingsLearned(ctx, data) {
+        const line = (text) => String(text || '').replace(/\s+/g, ' ').trim();
+        const rules = Array.isArray(data && data.rules) ? data.rules : [];
+        const pending = (Array.isArray(data && data.proposals) ? data.proposals : []).filter((row) => row && row.status === 'pending');
+        ctx.store.learned = { rules, pending };
+        const keep = (id, list) => (list.some((row) => row.id === ctx.get(id)) ? ctx.get(id) : '');
+        ctx.options(301, rules.map((row) => ({ value: row.id, text: line(row.text) })), keep(301, rules));
+        ctx.options(311, pending.map((row) => ({ value: row.id, text: `${this.repairProposalLabel(row)}: ${line(row.text)}` })), keep(311, pending));
+        this.paintSettingsLearnedButtons(ctx);
+    }
+
+    paintSettingsLearnedButtons(ctx) {
+        const learned = ctx.store.learned || { rules: [], pending: [] };
+        const rule = learned.rules.find((row) => row.id === ctx.get(301));
+        const proposal = learned.pending.find((row) => row.id === ctx.get(311));
+        [302, 303].forEach((id) => ctx.enable(id, !!rule));
+        [313, 314, 315].forEach((id) => ctx.enable(id, !!proposal));
+        let detail = learned.pending.length ? 'Select a proposal to see why Auto-Repair made it.' : 'No proposals are waiting.';
+        if (proposal) detail = [proposal.why ? `Why: ${proposal.why}` : '', proposal.kind === 'guide' && proposal.path ? `File: ${proposal.path}` : ''].filter(Boolean).join('  ') || 'Auto-Repair gave no reason.';
+        ctx.text(312, detail);
+    }
+
+    async learnedSettingsAction(ctx, type, payload, done) {
+        try {
+            const body = await this.directorRequest(type, payload);
+            this.paintSettingsLearned(ctx, body);
+            if (done) done(body);
+        } catch (err) {
+            showGlassToast('error', 'Director Settings', err.message || 'Could not save that change');
+        }
+    }
+
+    editLearnedRule(ctx) {
+        const learned = ctx.store.learned || { rules: [] };
+        const rule = learned.rules.find((row) => row.id === ctx.get(301));
+        if (!rule) return;
+        window.vistaDialogTemplate.openDialog({
+            id: 'directorEditLearnedRule',
+            owner: ctx.modal,
+            focusFirst: true,
+            tpl: { t: 'Edit Learned Rule', w: 262, h: 92, f: ['MS Shell Dlg', 8], c: [
+                [-1, 'S', 7, 7, 248, 8, 0x50020000, '&Rule:', 0],
+                [101, 'E', 7, 18, 248, 48, 0x50a11044, '', 0x200],
+                [1, 'B', 151, 72, 50, 14, 0x50010001, 'OK', 0],
+                [2, 'B', 205, 72, 50, 14, 0x50010000, 'Cancel', 0]
+            ] },
+            init: (dlg) => dlg.set(101, rule.text),
+            ok: async (dlg) => {
+                const text = String(dlg.get(101) || '').trim();
+                if (!text) return false;
+                if (text !== rule.text) await this.learnedSettingsAction(ctx, 'director_learned_rule_edit', { id: rule.id, text });
+                return true;
+            }
+        });
+    }
+
+    async removeLearnedRule(ctx) {
+        const learned = ctx.store.learned || { rules: [] };
+        const rule = learned.rules.find((row) => row.id === ctx.get(301));
+        if (!rule) return;
+        const ok = await showConfirmationDialog(
+            `Remove this learned rule?\n\n${rule.text}`,
+            [
+                { text: 'Remove', value: true, className: 'btn-primary' },
+                { text: 'Cancel', value: false, className: 'btn-secondary' }
+            ],
+            null,
+            { title: 'Director Settings' }
+        );
+        if (ok) await this.learnedSettingsAction(ctx, 'director_learned_rule_remove', { id: rule.id });
+    }
+
+    async decideSettingsProposal(ctx, decision) {
+        const learned = ctx.store.learned || { pending: [] };
+        const proposal = learned.pending.find((row) => row.id === ctx.get(311));
+        if (!proposal) return;
+        await this.learnedSettingsAction(ctx, 'director_learned_decide', { id: proposal.id, decision }, () => {
+            if (decision === 'approve' && proposal.kind === 'guide') {
+                showGlassToast('info', 'Director', 'Written to the prompt guide clone. Extract, commit, and push it from Prompt Guide.');
+            }
+        });
+    }
+
+    async openDirectorSettings() {
+        if (!window.vistaDialogTemplate && window.featureLoader) {
+            try { await window.featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* reported below */ }
+        }
+        if (!window.vistaDialogTemplate) {
+            showGlassToast('error', 'Director', 'Director Settings could not load');
+            return;
+        }
+        let learned = { rules: [], proposals: [] };
+        try {
+            await this.requestDirectorSettings();
+            if (!this.directorSettings) throw new Error('Director Settings are not available');
+            learned = await this.directorRequest('director_learned_list', {});
+        } catch (err) {
+            if (!this.directorSettings) {
+                showGlassToast('error', 'Director', err.message || 'Could not read Director Settings');
+                return;
+            }
+        }
+        const settings = this.directorSettings;
+        const rows = [
+            { ids: [101, 102, 103], obliterated: false, blank: '(Last used)', pick: settings.defaults && settings.defaults.wren },
+            { ids: [111, 112, 113], obliterated: true, blank: '(Last used)', pick: settings.defaults && settings.defaults.kabuki },
+            { ids: [211, 212, 213], obliterated: false, blank: '(Same as the chat)', pick: settings.repair && settings.repair.normal },
+            { ids: [221, 222, 223], obliterated: true, blank: '(Same as the chat)', pick: settings.repair && settings.repair.obliterated }
+        ];
+        const kabuki = (this.directorSettingsEngines || []).some((item) => item && item.memoryStore === 'obliterated');
+        const studio = document.getElementById('manualModal');
+        const owner = this.directorWindowIsOpen() ? this.directorWindow : (studio && !studio.classList.contains('hidden') ? studio : null);
+        const director = this;
+        window.vistaDialogTemplate.openSheet({
+            id: 'directorSettingsSheet',
+            title: 'Director Settings',
+            owner,
+            pages: this.directorSettingsPages(),
+            init(ctx) {
+                rows.forEach((row) => {
+                    director.fillSettingsPicker(ctx, row, row.pick);
+                    ctx.on(row.ids[0], 'change', () => {
+                        const engine = ctx.get(row.ids[0]) || '';
+                        director.fillSettingsModels(ctx, row, '', '');
+                        if (!engine) return;
+                        director.loadSettingsCatalog(engine).then(() => {
+                            if (ctx.get(row.ids[0]) === engine) director.fillSettingsModels(ctx, row, ctx.get(row.ids[1]), ctx.get(row.ids[2]));
+                        });
+                    });
+                    ctx.on(row.ids[1], 'change', () => director.fillSettingsEfforts(ctx, row, ctx.get(row.ids[2])));
+                    if (row.pick && row.pick.engine) {
+                        director.loadSettingsCatalog(row.pick.engine).then(() => {
+                            if (ctx.get(row.ids[0]) === row.pick.engine) director.fillSettingsModels(ctx, row, ctx.get(row.ids[1]), ctx.get(row.ids[2]));
+                        });
+                    }
+                });
+                ctx.text(120, kabuki
+                    ? 'Kabuki chats use Obliterated Memories, so only engines with that store are listed for them.'
+                    : 'No model provider uses Obliterated Memories. Turn it on for a custom model provider in Control Panel to use Kabuki.');
+                const auto = settings.autoRepair || { enabled: true, threshold: 85 };
+                ctx.set(201, auto.enabled !== false);
+                ctx.set(202, String(auto.threshold || 85));
+                ctx.enable(202, auto.enabled !== false);
+                ctx.on(201, 'change', () => ctx.enable(202, !!ctx.get(201)));
+                director.paintSettingsLearned(ctx, learned);
+                // Selecting a rule or a proposal is not a setting: it must not turn Apply on.
+                [301, 311].forEach((id) => ctx.on(id, 'change', (ev) => {
+                    ev.stopPropagation();
+                    director.paintSettingsLearnedButtons(ctx);
+                }));
+                ctx.on(302, 'click', () => director.editLearnedRule(ctx));
+                ctx.on(303, 'click', () => void director.removeLearnedRule(ctx));
+                ctx.on(313, 'click', () => {
+                    const proposal = (ctx.store.learned.pending || []).find((row) => row.id === ctx.get(311));
+                    if (!proposal) return;
+                    director.showDirectorText(director.repairProposalLabel(proposal), [proposal.text, proposal.why ? `Why: ${proposal.why}` : ''].filter(Boolean).join('\n\n'), 'Proposal');
+                });
+                ctx.on(314, 'click', () => void director.decideSettingsProposal(ctx, 'approve'));
+                ctx.on(315, 'click', () => void director.decideSettingsProposal(ctx, 'reject'));
+            },
+            async apply(ctx) {
+                let threshold = Math.round(Number(ctx.get(202)));
+                if (!Number.isFinite(threshold)) threshold = 85;
+                threshold = Math.max(30, Math.min(100, threshold));
+                ctx.set(202, String(threshold));
+                const payload = {
+                    defaults: { wren: director.readSettingsPicker(ctx, rows[0]) },
+                    autoRepair: { enabled: !!ctx.get(201), threshold },
+                    repair: { normal: director.readSettingsPicker(ctx, rows[2]) }
+                };
+                // Without an obliterated engine the Kabuki rows are greyed out; leave what config holds.
+                if (kabuki) {
+                    payload.defaults.kabuki = director.readSettingsPicker(ctx, rows[1]);
+                    payload.repair.obliterated = director.readSettingsPicker(ctx, rows[3]);
+                }
+                try {
+                    const body = await director.directorRequest('director_settings_set', { settings: payload });
+                    if (body.settings) director.directorSettings = body.settings;
+                } catch (err) {
+                    showGlassToast('error', 'Director Settings', err.message || 'Could not save Director Settings');
+                }
+            }
+        });
+    }
+
     // ---- Auto-Repair Session (director_repair_session, modules/cursorDirector.js) ----
     sessionRepairing(session) {
         const id = session && session.id;
@@ -7069,7 +7524,12 @@ class Director {
         window.wsClient.on('director_get_models_response', (data) => {
             const director = window.directorInstance;
             if (!director || !data.data) return;
-            if (Array.isArray(data.data.providers)) director.customProviders = data.data.providers;
+            if (Array.isArray(data.data.providers)) {
+                director.customProviders = data.data.providers;
+                // Kabuki shows once a provider has Obliterated Memories; each tab keeps engines that fit it.
+                director.paintPersonaToggle();
+                director.fitEngineToPersona();
+            }
             director._modelCatalogError = data.data.error || '';
             if (Array.isArray(data.data.models) && data.data.models.length) {
                 director._modelCatalogError = '';
@@ -7093,15 +7553,23 @@ class Director {
         // The first ask can go out before the socket is up; ask again on every (re)connect.
         window.wsClient.on('connected', () => {
             const director = window.directorInstance;
-            if (director) director.requestEngineBalances(true);
+            if (!director) return;
+            director.requestEngineBalances(true);
+            director.requestDirectorSettings();
+        });
+
+        // Director Settings saved (this tab or another): new drafts start on the new defaults.
+        window.wsClient.on('director_settings_changed', (data) => {
+            const director = window.directorInstance;
+            const body = data && (data.data || data);
+            if (director && body && body.settings) director.directorSettings = body.settings;
         });
 
         window.wsClient.on('director_get_cursor_usage_response', (data) => {
             const director = window.directorInstance;
             if (!director) return;
             const body = data.data || {};
-            const asked = director.persona || 'wren';
-            if (body.persona && body.persona !== asked) return;
+            if (body.persona && director.packetFromOtherServer(body)) return;
             if ((body.engine || 'cursor') !== director.displayEngine()) return;
             director.paintCursorUsage(body);
         });
@@ -7135,7 +7603,7 @@ class Director {
         window.wsClient.on('director_open_workspace_response', (data) => {
             const director = window.directorInstance;
             if (!director || director._pendingWorkspaceToken == null) return;
-            if (data.data && director.packetPersona(data.data) !== director.persona) {
+            if (data.data && director.packetFromOtherServer(data.data)) {
                 director._pendingWorkspaceToken = null;
                 return;
             }
@@ -7173,7 +7641,7 @@ class Director {
             const director = window.directorInstance;
             if (!director) return;
             const body = data && data.data;
-            if (body && director.packetPersona(body) !== director.persona) {
+            if (body && director.packetFromOtherServer(body)) {
                 director._creatingChat = false;
                 return;
             }
@@ -7422,7 +7890,7 @@ class Director {
                 showGlassToast('error', 'Director', (body && body.message) || 'Could not fork that chat');
                 return;
             }
-            if (director.packetPersona(body) !== director.persona) return;
+            if (director.packetFromOtherServer(body)) return;
             director.directorSessions = [body.session].concat(
                 (director.directorSessions || []).filter((item) => item.id !== body.session.id)
             );
@@ -7495,7 +7963,7 @@ class Director {
                 showGlassToast('error', 'Director', (body && (body.message || body.error)) || 'Could not move that session');
                 return;
             }
-            if (director.packetPersona(body) !== director.persona) return;
+            if (director.packetFromOtherServer(body)) return;
             const session = body.session;
             const listed = (director.directorSessions || []).find((item) => item.id === session.id);
             if (listed) listed.workspaceId = session.workspaceId;

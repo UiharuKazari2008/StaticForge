@@ -382,6 +382,8 @@ function publicList(gr) {
         name: row.name,
         kind: row.kind,
         monitorUsage: row.monitorUsage === true,
+        // Kabuki tab (Director, #687): engines with Obliterated Memories
+        memoryStore: row.obliteratedMemories ? OBLITERATED_STORE : null,
         logo: row.logo || ''
     }));
 }

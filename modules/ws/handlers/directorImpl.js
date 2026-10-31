@@ -76,6 +76,9 @@ module.exports = {
     handleDirectorLearnedDecide: cursor.handleDirectorLearnedDecide,
     handleDirectorLearnedRuleEdit: cursor.handleDirectorLearnedRuleEdit,
     handleDirectorLearnedRuleRemove: cursor.handleDirectorLearnedRuleRemove,
+    // Director Settings (#687): config director.defaults / autoRepair / repair. Xi keeps its own picker.
+    handleDirectorSettingsGet: cursor.handleDirectorSettingsGet,
+    handleDirectorSettingsSet: cursor.handleDirectorSettingsSet,
     handleDirectorGetCursorUsage: cursorUsage.handleDirectorGetCursorUsage,
     handleDirectorSaveFeedback: legacy.handleDirectorSaveFeedback,
     handleDirectorLoadRules: legacy.handleDirectorLoadRules,

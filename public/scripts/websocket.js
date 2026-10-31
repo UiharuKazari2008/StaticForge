@@ -614,6 +614,8 @@ class BannerManager {
             'director_learned_decide': 'Decide Learned Proposal',
             'director_learned_rule_edit': 'Edit Learned Rule',
             'director_learned_rule_remove': 'Remove Learned Rule',
+            'director_settings_get': 'Read Director Settings',
+            'director_settings_set': 'Save Director Settings',
             'ledge_checks': 'Ledge Checks',
             'request_form_submit': 'Submit Request Form',
 

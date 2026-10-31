@@ -1726,6 +1726,8 @@ function publicSession(chat) {
         engine: sanitizeEngine(chat.lastEngine || (chat.choice && chat.choice.engine)),
         running: runs.has(chat.id),
         repairing: repairJobs.has(chat.id),
+        // Kabuki tab (#687): Obliterated Memories chats. Old ones are stamped on the next list.
+        memoryStore: chat.memoryStore === customProviders.OBLITERATED_STORE ? chat.memoryStore : null,
         choice: sessionChoice(chat),
         ...sessionContext(chat),
         updated_at: chat.updated_at || chat.created_at || null,
@@ -4593,8 +4595,8 @@ async function makeChat(gr, jail, paths, fields) {
     return chat;
 }
 
-function latestForWorkspace(index, workspaceId) {
-    const matches = index.chats.filter((chat) => chat.workspaceId === workspaceId && !chat.archived && chatIsListed(chat));
+function latestForWorkspace(index, workspaceId, inTab) {
+    const matches = index.chats.filter((chat) => chat.workspaceId === workspaceId && !chat.archived && chatIsListed(chat) && (!inTab || inTab(chat)));
     return matches.length ? matches[matches.length - 1] : null;
 }
 
@@ -4631,6 +4633,7 @@ function traySessions(index, runningSessionId) {
         updated_at: chat.updated_at || chat.created_at || null,
         engine: sanitizeEngine(chat.lastEngine || (chat.choice && chat.choice.engine)),
         model: chat.model || null,
+        memoryStore: chat.memoryStore === customProviders.OBLITERATED_STORE ? chat.memoryStore : null,
         current: chat.id === runningSessionId
     }));
 }
@@ -4644,7 +4647,7 @@ function chatIsListed(chat) {
 // Opening Director follows the Studio image, but an image a hidden Rentan/Quips
 // turn touched (e.g. Enhance with Director on) must not switch to that chat.
 // Only preferredChatId (the carousel menu) may open a hidden chat.
-function pickOpenWorkspaceChat(index, message, workspaceId) {
+function pickOpenWorkspaceChat(index, message, workspaceId, inTab) {
     const preview = message.previewFilename ? basenameFile(message.previewFilename) : '';
     let found = findChatById(index, message.preferredChatId);
     if (!found && preview) found = findChatByFilename(index, preview);
@@ -4652,7 +4655,7 @@ function pickOpenWorkspaceChat(index, message, workspaceId) {
         const byMeta = findChatById(index, message.directorSessionId);
         if (byMeta && !chatIsHidden(byMeta)) found = byMeta;
     }
-    if (!found && !preview && !message.directorSessionId) found = latestForWorkspace(index, workspaceId);
+    if (!found && !preview && !message.directorSessionId) found = latestForWorkspace(index, workspaceId, inTab);
     return found;
 }
 function findChatById(index, id) {
@@ -5201,9 +5204,14 @@ async function handleDirectorGetSessions(handler, ws, message) {
     try {
         const gr = handler.globalResources;
         const paths = await ensureIndexPaths(gr);
+        // Kabuki lists the Obliterated Memories chats, Wren the rest; old chats get their marker here.
+        const persona = listPersona(message);
+        const readStore = storeReader(gr);
         const index = await enqueue(async () => {
             const current = readIndex(paths.indexPath);
-            if (archiveStaleChats(current)) writeIndex(paths.indexPath, current);
+            const archived = archiveStaleChats(current);
+            const stamped = current.chats.filter((chat) => chatIsListed(chat) && stampMemoryStore(gr, chat, readStore)).length > 0;
+            if (archived || stamped) writeIndex(paths.indexPath, current);
             return current;
         });
         const activeAccId = getActiveAccountId(gr, 'wren');
@@ -5214,8 +5222,8 @@ async function handleDirectorGetSessions(handler, ws, message) {
         ];
         const accounts = rawAccounts.map(cursorAccountAuthStore.publicCursorAccount).filter(Boolean);
         sendOk(handler, ws, 'director_get_sessions_response', message.requestId, {
-            sessions: listedChatsByActivity(index).map(publicSession),
-            persona: 'wren',
+            sessions: listedChatsByActivity(index).filter((chat) => chatPersona(gr, chat, readStore) === persona).map(publicSession),
+            persona,
             activeAccountId: activeAccId,
             accounts,
             xiEnabled: xiConfigEnabled(gr)
@@ -5273,6 +5281,7 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
                 image_type: imageFilename.startsWith('cache:') ? 'cache' : (filename ? 'generated' : null)
             });
             created.sessionType = SESSION_TYPE_TTL[message.sessionType] ? message.sessionType : 'lowvolume';
+            if (listPersona(message) === 'kabuki') created.memoryStore = customProviders.OBLITERATED_STORE;
             const files = await storeAttachments(gr, created, attachmentsFromCreate(message));
             if (files.length) {
                 created.messages.push({
@@ -5294,11 +5303,15 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
         });
         const description = (message.description || '').trim();
         if (description) {
+            // No engine on the packet: the chat starts on config director.defaults for its tab.
+            const start = message.engine ? null : directorDefaultsFor(gr, listPersona(message));
             await handleDirectorSendMessage(handler, ws, {
                 requestId: message.requestId,
                 sessionId: chat.id,
                 content: description,
-                effort: message.effort || (message.highReason ? 'high' : 'medium'),
+                engine: message.engine || (start && start.engine) || undefined,
+                model: message.model || (start && start.model) || undefined,
+                effort: message.effort || (start && start.effort) || (message.highReason ? 'high' : 'medium'),
                 clientId: directorClientId(clientInfo, message)
             }, clientInfo, wsServer);
         }
@@ -5314,10 +5327,9 @@ async function handleDirectorGetSession(handler, ws, message) {
             const index = readIndex(paths.indexPath);
             const found = index.chats.find((item) => item.id === message.sessionId);
             if (!found) return null;
-            if (found.archived) {
-                markChatActive(found);
-                writeIndex(paths.indexPath, index);
-            }
+            const stamped = stampMemoryStore(handler.globalResources, found);
+            if (found.archived) markChatActive(found);
+            if (found.archived || stamped) writeIndex(paths.indexPath, index);
             return found;
         });
         if (!chat) {
@@ -5339,11 +5351,13 @@ async function handleDirectorOpenWorkspace(handler, ws, message) {
         const workspaceId = message.workspaceId || null;
         const chat = await enqueue(async () => {
             const index = readIndex(paths.indexPath);
-            const found = pickOpenWorkspaceChat(index, message, workspaceId);
-            if (found && found.archived) {
-                markChatActive(found);
-                writeIndex(paths.indexPath, index);
-            }
+            // The latest-chat fallback stays in the asking tab (Wren or Kabuki).
+            const persona = listPersona(message);
+            const readStore = storeReader(gr);
+            const found = pickOpenWorkspaceChat(index, message, workspaceId, (item) => chatPersona(gr, item, readStore) === persona);
+            const stamped = !!found && stampMemoryStore(gr, found);
+            if (found && found.archived) markChatActive(found);
+            if (found && (found.archived || stamped)) writeIndex(paths.indexPath, index);
             return found;
         });
         if (!chat) {
@@ -5781,6 +5795,8 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
         if (!message.resume && customProviders.isEngine(engine)) claudeRun = await customProviders.resolveForTurn(gr, engine, message);
         const runModel = message.resume || usesClaudeCli(engine) ? null : resolveRunModel(await listCursorModels(jail), message);
         const freshDraftId = message.resume ? null : crypto.randomUUID();
+        // An Obliterated Memories engine makes the chat Kabuki's; a Kabuki chat runs on no other (#687).
+        const turnStore = engineStore(gr, engine);
         prepared = await enqueue(async () => {
             const index = readIndex(paths.indexPath);
             const chat = index.chats.find((item) => item.id === sessionId);
@@ -5815,6 +5831,11 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
                         : null,
                     round: resumeRound
                 };
+            }
+            if (chat.memoryStore === customProviders.OBLITERATED_STORE && turnStore !== customProviders.OBLITERATED_STORE) {
+                const error = new Error('This is a Kabuki chat (Obliterated Memories). Pick an engine that uses Obliterated Memories.');
+                error.code = 'KABUKI_ENGINE';
+                throw error;
             }
             const files = await storeAttachments(gr, chat, message.attachments || []);
             const spoken = content || (files.length ? 'Use the attached files.' : '');
@@ -5869,6 +5890,7 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
                 if (!chat.replay && !fresh && priorMessages.length) handoff = true;
             }
             chat.lastEngine = engine;
+            if (turnStore === customProviders.OBLITERATED_STORE) chat.memoryStore = turnStore;
             const round = usesClaudeCli(engine)
                 ? roundModelRecord(claudeRun.family || claudeRun.model, claudeRun.effort, claudeRun.fast, chat.model)
                 : roundModelRecord(message.model, message.effort || 'medium', message.fast === true, chat.model);
@@ -5887,9 +5909,7 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
                 userText: userText.slice(0, 2000)
             };
             const clientId = await bindDirectorTab(handler.globalResources, paths, directorClientId(clientInfo, message));
-            const memoryStore = customProviders.isEngine(engine)
-                ? customProviders.memoryStoreForEngine(handler.globalResources, engine)
-                : '';
+            const memoryStore = turnStore;
             const ageTool = !customProviders.isEngine(engine) || customProviders.ageToolEnabled(handler.globalResources, engine);
             const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId, { handoff, memoryStore, ageTool });
             const repairAt = chat.repairedOpening && chat.repairedOpening.text ? String(chat.repairedOpening.at || '') : null;
@@ -6964,6 +6984,8 @@ async function handleDirectorForkSession(handler, ws, message) {
             created.model = chat.model || created.model;
             created.choice = chat.choice || null;
             created.tasks = normalizeSessionTasks(chat.tasks);
+            // A Kabuki chat forks into Kabuki.
+            if (chatMemoryStore(handler.globalResources, chat) === customProviders.OBLITERATED_STORE) created.memoryStore = customProviders.OBLITERATED_STORE;
             index.chats.push(created);
             writeIndex(paths.indexPath, index);
             return created;
@@ -7412,11 +7434,12 @@ function repairLane(gr, engine) {
         : 'normal';
 }
 
-// config director.repair.{normal|obliterated} = { engine, model, effort } (slice 2 adds the UI),
+// config director.repair.{normal|obliterated} = { engine, model, effort } (Director Settings),
 // else the chat's own engine and model at high effort (xhigh on Claude).
 function repairAgentFor(gr, chat) {
     const engine = sanitizeEngine((chat && chat.lastEngine) || (chat && chat.choice && chat.choice.engine));
-    const lane = repairLane(gr, engine);
+    // A Kabuki chat (chat.memoryStore) repairs on the obliterated pick whatever it last ran on.
+    const lane = chat && chat.memoryStore === customProviders.OBLITERATED_STORE ? 'obliterated' : repairLane(gr, engine);
     const repair = directorConfig(gr).repair;
     const set = repair && typeof repair === 'object' ? repair[lane] : null;
     const picked = set && typeof set === 'object' ? sanitizeRentanAgent({ ...set, effort: set.effort || 'high' }) : null;
@@ -8080,6 +8103,197 @@ function handleDirectorLearnedRuleRemove(handler, ws, message) {
     }
 }
 
+// ---- Director Settings and the Kabuki tab (#687 slices 2 and 3) ----
+// config director.defaults.{wren|kabuki}: the { engine, model, effort } a new chat starts on;
+// director.autoRepair and director.repair.{normal|obliterated} are read above (Auto-Repair).
+// Kabuki chats use Obliterated Memories: chat.memoryStore 'obliterated', set when the chat is
+// made from the Kabuki tab or first runs on an engine whose provider uses that store.
+const SETTINGS_PERSONAS = ['wren', 'kabuki'];
+const SETTINGS_LANES = ['normal', 'obliterated'];
+const SETTINGS_MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/;
+
+function engineStore(gr, engine) {
+    return customProviders.isEngine(engine) ? customProviders.memoryStoreForEngine(gr, engine) : '';
+}
+
+// engine -> store with one provider lookup per engine: a list classifies every chat.
+function storeReader(gr) {
+    const seen = new Map();
+    return (engine) => {
+        if (!seen.has(engine)) seen.set(engine, engineStore(gr, engine));
+        return seen.get(engine);
+    };
+}
+
+// 'obliterated' or '': the chat's own marker, else the store of the engine it last ran on.
+function chatMemoryStore(gr, chat, readStore) {
+    if (!chat) return '';
+    if (chat.memoryStore === customProviders.OBLITERATED_STORE) return chat.memoryStore;
+    const engine = chat.lastEngine || (chat.choice && chat.choice.engine);
+    if (!engine) return '';
+    return readStore ? readStore(sanitizeEngine(engine)) : engineStore(gr, sanitizeEngine(engine));
+}
+
+// Backfill: an older chat that ran on an obliterated engine gets the marker. True when it changed.
+function stampMemoryStore(gr, chat, readStore) {
+    if (!chat || chat.memoryStore === customProviders.OBLITERATED_STORE) return false;
+    if (chatMemoryStore(gr, chat, readStore) !== customProviders.OBLITERATED_STORE) return false;
+    chat.memoryStore = customProviders.OBLITERATED_STORE;
+    return true;
+}
+
+function chatPersona(gr, chat, readStore) {
+    return chatMemoryStore(gr, chat, readStore) === customProviders.OBLITERATED_STORE ? 'kabuki' : 'wren';
+}
+
+// Session packets: persona "kabuki" is Wren's server with the Obliterated Memories chats.
+function listPersona(message) {
+    return message && message.persona === 'kabuki' ? 'kabuki' : 'wren';
+}
+
+function settingsError(message) {
+    const error = new Error(message);
+    error.code = 'INVALID_DIRECTOR_SETTINGS';
+    return error;
+}
+
+// { engine, model, effort } or null (unset). store 'obliterated' takes only Obliterated Memories
+// engines, 'normal' none of them; model and effort may be null (the engine's default, medium).
+function normalizeAgentPick(gr, value, store, label) {
+    if (value == null || value === '') return null;
+    if (typeof value !== 'object' || Array.isArray(value)) throw settingsError(`${label} must be { engine, model, effort } or null`);
+    const engine = String(value.engine || '').trim().toLowerCase();
+    if (!engine) return null;
+    if (!DIRECTOR_ENGINES.includes(engine) && !customProviders.isEngine(engine)) throw settingsError(`${label}: unknown engine "${engine.slice(0, 40)}"`);
+    if (customProviders.isEngine(engine) && !customProviders.lookup(gr, engine)) throw settingsError(`${label}: no custom model provider ${engine}`);
+    const obliterated = engineStore(gr, engine) === customProviders.OBLITERATED_STORE;
+    if (store === 'obliterated' && !obliterated) throw settingsError(`${label}: ${engine} does not use Obliterated Memories`);
+    if (store === 'normal' && obliterated) throw settingsError(`${label}: ${engine} uses Obliterated Memories (Kabuki)`);
+    const model = value.model == null ? '' : String(value.model).trim();
+    if (model && !SETTINGS_MODEL_RE.test(model)) throw settingsError(`${label}: "${model.slice(0, 80)}" is not a model id`);
+    const effort = value.effort == null ? '' : String(value.effort).trim().toLowerCase();
+    if (effort && !/^[a-z]{2,12}$/.test(effort)) throw settingsError(`${label}: "${effort.slice(0, 20)}" is not a reasoning level`);
+    return { engine, model: model || null, effort: effort || null };
+}
+
+function normalizeAutoRepairSetting(value) {
+    if (value == null) return null;
+    if (typeof value !== 'object' || Array.isArray(value)) throw settingsError('autoRepair must be { enabled, threshold }');
+    const threshold = value.threshold == null ? AUTO_REPAIR_THRESHOLD : Number(value.threshold);
+    if (!Number.isInteger(threshold) || threshold < 30 || threshold > 100) throw settingsError('autoRepair.threshold must be a whole percent from 30 to 100');
+    return { enabled: value.enabled !== false, threshold };
+}
+
+function ownKey(obj, key) {
+    return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+// Only the parts present change: defaults.wren / .kabuki, autoRepair, repair.normal / .obliterated.
+// null clears one (back to the built-in fallback).
+function normalizeDirectorSettings(gr, input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw settingsError('settings must be an object');
+    const out = {};
+    const part = (name) => {
+        const value = input[name];
+        if (value == null) return {};
+        if (typeof value !== 'object' || Array.isArray(value)) throw settingsError(`${name} must be an object`);
+        return value;
+    };
+    if (ownKey(input, 'defaults')) {
+        const defaults = part('defaults');
+        out.defaults = {};
+        SETTINGS_PERSONAS.forEach((persona) => {
+            if (ownKey(defaults, persona)) out.defaults[persona] = normalizeAgentPick(gr, defaults[persona], persona === 'kabuki' ? 'obliterated' : 'normal', `defaults.${persona}`);
+        });
+    }
+    if (ownKey(input, 'autoRepair')) out.autoRepair = normalizeAutoRepairSetting(input.autoRepair);
+    if (ownKey(input, 'repair')) {
+        const repair = part('repair');
+        out.repair = {};
+        SETTINGS_LANES.forEach((lane) => {
+            if (ownKey(repair, lane)) out.repair[lane] = normalizeAgentPick(gr, repair[lane], lane, `repair.${lane}`);
+        });
+    }
+    return out;
+}
+
+// What the dialog shows. A saved pick that no longer fits (provider gone or its store changed) reads as unset.
+function readDirectorSettings(gr) {
+    const cfg = directorConfig(gr);
+    const pick = (value, store) => {
+        try { return normalizeAgentPick(gr, value, store, ''); } catch (_) { return null; }
+    };
+    const defaults = cfg.defaults && typeof cfg.defaults === 'object' ? cfg.defaults : {};
+    const repair = cfg.repair && typeof cfg.repair === 'object' ? cfg.repair : {};
+    return {
+        defaults: { wren: pick(defaults.wren, 'normal'), kabuki: pick(defaults.kabuki, 'obliterated') },
+        autoRepair: autoRepairSettings(gr),
+        repair: { normal: pick(repair.normal, 'normal'), obliterated: pick(repair.obliterated, 'obliterated') }
+    };
+}
+
+function directorDefaultsFor(gr, persona) {
+    return readDirectorSettings(gr).defaults[persona === 'kabuki' ? 'kabuki' : 'wren'];
+}
+
+// Writes the director block once, keeping its other keys (idleShutdownMinutes, autoUpdateClis).
+async function saveDirectorSettings(gr, input) {
+    const next = normalizeDirectorSettings(gr, input);
+    if (!gr || typeof gr.updateConfigValue !== 'function') {
+        const error = new Error('Config is not writable');
+        error.code = 'CONFIG_READONLY';
+        throw error;
+    }
+    const cfg = { ...directorConfig(gr) };
+    const merge = (key, values) => {
+        const prior = cfg[key] && typeof cfg[key] === 'object' ? { ...cfg[key] } : {};
+        Object.keys(values).forEach((name) => {
+            if (values[name] == null) delete prior[name];
+            else prior[name] = values[name];
+        });
+        if (Object.keys(prior).length) cfg[key] = prior;
+        else delete cfg[key];
+    };
+    if (next.defaults) merge('defaults', next.defaults);
+    if (next.repair) merge('repair', next.repair);
+    if (ownKey(next, 'autoRepair')) {
+        if (next.autoRepair) cfg.autoRepair = next.autoRepair;
+        else delete cfg.autoRepair;
+    }
+    await gr.updateConfigValue('config', ['director'], cfg);
+    return readDirectorSettings(gr);
+}
+
+// Engines the dialog offers, each with its memory store (Kabuki pickers take the obliterated ones).
+function settingsEngines(gr) {
+    const custom = customProviders.publicList(gr).map((row) => ({ engine: row.engine, name: row.name, memoryStore: row.memoryStore || null }));
+    return [
+        { engine: 'cursor', name: 'Cursor', memoryStore: null },
+        { engine: 'claude', name: 'Claude', memoryStore: null },
+        { engine: 'tokenrouter', name: 'TokenRouter', memoryStore: null }
+    ].concat(custom);
+}
+
+function handleDirectorSettingsGet(handler, ws, message) {
+    try {
+        const gr = handler.globalResources;
+        sendOk(handler, ws, 'director_settings_get_response', message.requestId, { settings: readDirectorSettings(gr), engines: settingsEngines(gr) });
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to read Director settings', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
+async function handleDirectorSettingsSet(handler, ws, message) {
+    try {
+        const gr = handler.globalResources;
+        const settings = await saveDirectorSettings(gr, message.settings);
+        sendOk(handler, ws, 'director_settings_set_response', message.requestId, { settings, engines: settingsEngines(gr) });
+        broadcastDirectorSession(gr, 'director_settings_changed', { settings });
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to save Director settings', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
 module.exports = {
     PROJECT_NAME,
     MCP_SCOPES,
@@ -8179,6 +8393,11 @@ module.exports = {
     handleDirectorLearnedDecide,
     handleDirectorLearnedRuleEdit,
     handleDirectorLearnedRuleRemove,
+    handleDirectorSettingsGet,
+    handleDirectorSettingsSet,
+    readDirectorSettings,
+    directorDefaultsFor,
+    chatMemoryStore,
     awaitRentanAttempt,
     finishRentan,
     startRentanReviewTurn,
@@ -8207,6 +8426,8 @@ module.exports = {
         buildPrompt, transcriptSinceRepair, takeRepairedOpening, REPAIRED_HEADER,
         autoRepairDue, autoRepairSettings, repairAgentFor, repairLane, normalizeRepairPayload, repairMessageRow, repairTurnPrompt, repairRules,
         repairDeliveries, repairJobs, lookbacksIn,
+        normalizeDirectorSettings, readDirectorSettings, saveDirectorSettings, directorDefaultsFor, settingsEngines,
+        chatMemoryStore, stampMemoryStore, chatPersona, listPersona, latestForWorkspace,
         setRepairReporter: (fn) => { repairReporter = fn; },
         readIndex, writeIndex, peekIndex, saveDirectorTrace, runAgentTurn, git, dirSize, computerSize,
         invalidateProjectPrepare, prepareState: () => projectPrepare, DRAFT_FLUSH_MS,

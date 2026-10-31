@@ -590,3 +590,9 @@ body:not(.windows-classic-theme) #directorWindow .director-task-list {
     border: 1px solid #a0a0a0;
     border-radius: 3px;
 }
+
+/* Director Settings (director.js openDirectorSettings): a long rule or proposal ends in "..." */
+#directorSettingsSheet .vdt-lb-row > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
