@@ -153,7 +153,13 @@ function endCall(id) {
     inflight.delete(id);
 }
 
-function getInflight() {
+// No single MCP call runs this long (awaits time out within minutes); an older row leaked.
+const INFLIGHT_MAX_AGE_MS = 30 * 60 * 1000;
+
+function getInflight(now = Date.now()) {
+    for (const [id, row] of inflight) {
+        if (now - row.at > INFLIGHT_MAX_AGE_MS) inflight.delete(id);
+    }
     return Array.from(inflight.values());
 }
 

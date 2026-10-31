@@ -10411,17 +10411,19 @@ async function handleJsonRpc(globalResources, req, message) {
             actorName,
             key: actorName || bindKey || 'unknown'
         });
-        if (generating) {
-            recordActivity(globalResources, {
-                tool: name,
-                argsSummary,
-                resultSummary: { started: true },
-                success: true,
-                generating: true,
-                actorName
-            });
-        }
+        // Everything after beginCall sits in the try: a throw before it used to leak the in-flight
+        // row, and director-idle-check then reported the server busy until the next restart.
         try {
+            if (generating) {
+                recordActivity(globalResources, {
+                    tool: name,
+                    argsSummary,
+                    resultSummary: { started: true },
+                    success: true,
+                    generating: true,
+                    actorName
+                });
+            }
             const result = await callTool(globalResources, req, name, args);
             recordActivity(globalResources, {
                 tool: name,
