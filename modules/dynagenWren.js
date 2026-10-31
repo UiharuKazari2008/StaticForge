@@ -249,13 +249,73 @@ function insertPrefixToken(prompt, token) {
     return `${head ? `${head}, ` : ''}${token}${text.slice(textAt)}`;
 }
 
+// One tag as Rentan compares it: no managed ids, weights, or case.
+function plainTag(tag) {
+    return String(tag || '')
+        .replace(/[\u200B-\u200D\u2060-\u2064\uFEFF]/g, '')
+        .replace(/-?\d+(?:\.\d+)?::/g, '')
+        .replace(/::/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// A prompt's tags: plain ones, ones already disabled with !/.../, and its !dg_ tokens.
+function promptTags(text) {
+    const disabled = new Set();
+    const rest = String(text || '').replace(/!\/([^/]*)\//g, (match, inner) => {
+        inner.split(',').map(plainTag).filter(Boolean).forEach((tag) => disabled.add(tag));
+        return ',';
+    });
+    const plain = new Set();
+    const tokens = [];
+    rest.split(',').map(plainTag).filter(Boolean).forEach((tag) => {
+        if (/^!dg_[a-z0-9_]+$/.test(tag)) tokens.push(tag);
+        else plain.add(tag);
+    });
+    return { plain, disabled, tokens };
+}
+
+// Wraps the first plain occurrence of tag in !/.../ where it stands.
+function disableTagInPlace(text, tag) {
+    const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+');
+    const re = new RegExp(`(^|,|::)(\\s*)(${escaped})(\\s*)(?=,|::|$)`, 'i');
+    return String(text).replace(re, (match, lead, gap, found, tail) => `${lead}${gap}!/${found}/${tail}`);
+}
+
+// A character prompt is who the character is. Rentan may disable a tag (!/tag/) and add !dg_
+// tokens; it adds plain tags only when Clothing or Action is on, and it never drops a tag.
+// An edit that drops or invents tags is rebuilt from the user's prompt with only those moves.
+function guardCharacterEdit(original, next, controls) {
+    const before = promptTags(original);
+    const after = promptTags(next);
+    const missing = [...before.plain].filter((tag) => !after.plain.has(tag) && !after.disabled.has(tag));
+    const added = [...after.plain].filter((tag) => !before.plain.has(tag) && !before.disabled.has(tag));
+    const mayAdd = !!(controls && (controls.clothing || controls.action) && !controls.lockSubject);
+    if (!missing.length && (!added.length || mayAdd)) return { prompt: next, restored: [], dropped: [] };
+    let text = String(original || '');
+    after.disabled.forEach((tag) => {
+        if (before.plain.has(tag)) text = disableTagInPlace(text, tag);
+    });
+    const extra = (mayAdd ? added : []).concat(after.tokens.filter((token) => !before.tokens.includes(token)));
+    extra.forEach((tag) => { text = insertPrefixToken(text, tag); });
+    return { prompt: text, restored: missing, dropped: mayAdd ? [] : added };
+}
+
 function applyWrenChange(body, change) {
     if (change.prompt) body.prompt = change.prompt;
     if (change.uc) body.uc = change.uc;
     if (Array.isArray(body.allCharacterPrompts)) {
-        change.characters.forEach((row) => {
+        const controls = rentanControls(body.dynamic_generation || {});
+        change.characters = change.characters.map((row) => {
             const slot = body.allCharacterPrompts[row.index];
-            if (slot) slot.prompt = row.prompt;
+            if (!slot) return row;
+            const kept = guardCharacterEdit(slot.prompt || '', row.prompt, controls);
+            if (kept.restored.length || kept.dropped.length) {
+                console.warn(`Rentan: character ${row.index} edit rebuilt (restored ${kept.restored.length} dropped tags, dropped ${kept.dropped.length} added tags)`);
+            }
+            slot.prompt = kept.prompt;
+            return { ...row, prompt: kept.prompt };
         });
     }
     // A changed Directive can drop an expander it no longer needs (dg_outfit, dg_prop, ...): take its !token out too.
@@ -338,9 +398,39 @@ function inputHashOf(body) {
     ])).digest('hex');
 }
 
+// Prompt, UC, and character prompts as tag sets: Studio's dedupe, reorder, and weight ids do not change it.
+function outputKeyOf(snap) {
+    const field = (text) => [...new Set(normalizeForHash(text).split(',').filter(Boolean))].sort().join(',');
+    return crypto.createHash('md5').update(JSON.stringify([
+        field(snap.prompt),
+        field(snap.uc),
+        (snap.characters || []).map((row) => field(row.prompt))
+    ])).digest('hex');
+}
+
+// Rentan output key -> the user's prompt before Rentan, so back-to-back prints keep the first original
+// even when the Studio snapshot the next print carries is older than the last Rentan answer.
+const LINEAGE_MAX = 200;
+const rentanLineage = new Map();
+function rememberLineage(key, original) {
+    if (!key || !original) return;
+    rentanLineage.delete(key);
+    rentanLineage.set(key, original);
+    while (rentanLineage.size > LINEAGE_MAX) rentanLineage.delete(rentanLineage.keys().next().value);
+}
+
+// The original for an incoming prompt that is still a Rentan answer, or null when the user wrote it.
+function knownOriginal(existing, incomingHash, incomingKey) {
+    if (existing.original_input && (existing.input_hash === incomingHash || existing.output_key === incomingKey)) {
+        return existing.original_input;
+    }
+    return rentanLineage.get(incomingKey) || null;
+}
+
 // The prompt before Wren's edits, for carousel Restore Input Prompt. Missing !dg_ tokens are added so a restore keeps the scene.
-function originalInputFor(before, after, expanders, existing, incomingHash) {
-    if (existing.original_input && existing.input_hash === incomingHash) return existing.original_input;
+function originalInputFor(before, after, expanders, existing, incomingHash, incomingKey) {
+    const known = knownOriginal(existing, incomingHash, incomingKey || outputKeyOf(before));
+    if (known) return known;
     if (JSON.stringify(before) === JSON.stringify(after)) return null;
     const original = { ...before, characters: before.characters.map((row) => ({ ...row })) };
     const haystack = [original.prompt, original.uc, ...original.characters.map((row) => row.prompt)].join('\n');
@@ -356,6 +446,7 @@ function stampCompiled(gr, body, dg, preset, context, fields) {
     const existing = dg.compiled_prompt && typeof dg.compiled_prompt === 'object' ? dg.compiled_prompt : {};
     const promptHash = promptHashOf(body, preset);
     const inputHash = inputHashOf(body);
+    const outputKey = outputKeyOf(inputSnapshot(body));
     dg.compiled_prompt = {
         success: true,
         source: fields.source,
@@ -368,8 +459,9 @@ function stampCompiled(gr, body, dg, preset, context, fields) {
         applied: fields.applied || existing.applied || null,
         original_input: fields.original_input !== undefined
             ? fields.original_input
-            : (existing.input_hash === inputHash ? existing.original_input || null : null),
+            : knownOriginal(existing, inputHash, outputKey),
         input_hash: inputHash,
+        output_key: outputKey,
         // A server resolve (#422) has no Director chat: it passes sessionId null on purpose.
         wren_session_id: Object.prototype.hasOwnProperty.call(fields, 'sessionId') ? fields.sessionId || null : (existing.wren_session_id || null),
         resolved_by: fields.resolvedBy || existing.resolved_by || null,
@@ -384,6 +476,7 @@ function stampCompiled(gr, body, dg, preset, context, fields) {
         cache_locked: !!dg.cache_locked,
         context_locked: !!dg.context_locked
     };
+    rememberLineage(outputKey, dg.compiled_prompt.original_input);
 }
 
 function sendRentanError(handler, ws, message) {
@@ -1020,5 +1113,5 @@ module.exports = {
     emitApprovedRentanChange,
     rentanReviewStatus,
     RENTAN_MAX_ATTEMPTS,
-    _test: { expandManagedWeightsForRentan, normalizeForHash, originalInputFor, inputSnapshot, rentanControls, rentanPromptView, changedControls, rentanContextForWren, wrenInputHash, applyWrenChange, studioChangeFrom, staleReason, contextUnchanged, insertPrefixToken, isLegacyTendai, watchedBlocksReason }
+    _test: { guardCharacterEdit, promptTags, outputKeyOf, knownOriginal, rentanLineage, expandManagedWeightsForRentan, normalizeForHash, originalInputFor, inputSnapshot, rentanControls, rentanPromptView, changedControls, rentanContextForWren, wrenInputHash, applyWrenChange, studioChangeFrom, staleReason, contextUnchanged, insertPrefixToken, isLegacyTendai, watchedBlocksReason }
 };
