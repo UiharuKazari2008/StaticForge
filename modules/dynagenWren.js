@@ -40,9 +40,13 @@ function dynagenRequestHash(dg) {
 }
 
 // Studio re-encodes the managed emphasis invisibles (ZWSP/ZWNJ/ZWJ, word joiner, invisible separator/plus) on every apply.
+// Weights are formatting too: Rentan hands the prompt back as classic 1.2::tags:: (expandManagedWeightsForRentan)
+// and Studio may store it as managed ids again, so both forms hash the same.
 function normalizeForHash(text) {
     return String(text || '')
         .replace(/[\u200B-\u200D\u2060-\u2064\uFEFF]/g, '')
+        .replace(/-?\d+(?:\.\d+)?::/g, '')
+        .replace(/::/g, '')
         .replace(/!dg_[a-z0-9_]+/gi, '')
         .toLowerCase()
         .replace(/\s+/g, ' ')
@@ -118,6 +122,24 @@ function rentanPromptView(body, preset, dg) {
         characters: (Array.isArray(body.allCharacterPrompts) ? body.allCharacterPrompts : [])
             .map((c, index) => ({ index, prompt: (c && c.prompt) || '' }))
     };
+}
+
+// Rentan runs before imageGeneration expands Studio's managed emphasis ids. Those are invisible
+// markers whose weights live in body.emphasis_normalization, so the model never saw a weight and
+// its rewrite dropped the markers. Expand them to classic N::tags:: first (same call as the NAI path).
+function expandManagedWeightsForRentan(body) {
+    const { prepareEmphasisTextForNovelAI, hasManagedEmphasisGroupIds } = require('./emphasisGroupIdSyntax');
+    const norm = body.emphasis_normalization || null;
+    const expand = (text, fieldHint) => (typeof text === 'string' && hasManagedEmphasisGroupIds(text)
+        ? prepareEmphasisTextForNovelAI(text, norm, fieldHint).text
+        : text);
+    body.prompt = expand(body.prompt, 'prompt');
+    body.uc = expand(body.uc, 'uc');
+    (Array.isArray(body.allCharacterPrompts) ? body.allCharacterPrompts : []).forEach((c, index) => {
+        if (!c || typeof c !== 'object') return;
+        c.prompt = expand(c.prompt, `character_${index}`);
+        c.uc = expand(c.uc, `character_${index}_uc`);
+    });
 }
 
 function rentanContextForWren(context) {
@@ -889,6 +911,12 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
     };
     progress({ phase: 'thinking' });
 
+    if (body.prompt === undefined && preset?.prompt) body.prompt = preset.prompt;
+    // Restore Input Prompt gives back the Studio text as it was, managed weights included.
+    const before = inputSnapshot(body);
+    const incomingHash = inputHashOf(body);
+    if (!REDUCED_SETTINGS.includes(dg.reduced_context)) expandManagedWeightsForRentan(body);
+
     const { runDynagenTurn, layout } = require('./cursorDirector');
     const review = reviewWanted ? createRentanReview({
         controls: rentanControls(dg),
@@ -932,9 +960,6 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
         throw new Error(message);
     }
 
-    if (body.prompt === undefined && preset?.prompt) body.prompt = preset.prompt;
-    const incomingHash = inputHashOf(body);
-    const before = inputSnapshot(body);
     applyWrenChange(body, result.change);
     stampCompiled(gr, body, dg, preset, context, {
         original_input: originalInputFor(before, inputSnapshot(body), result.change.expanders, cp || {}, incomingHash),
@@ -985,5 +1010,5 @@ module.exports = {
     emitApprovedRentanChange,
     rentanReviewStatus,
     RENTAN_MAX_ATTEMPTS,
-    _test: { originalInputFor, inputSnapshot, rentanControls, rentanPromptView, changedControls, rentanContextForWren, wrenInputHash, applyWrenChange, studioChangeFrom, staleReason, contextUnchanged, insertPrefixToken, isLegacyTendai, watchedBlocksReason }
+    _test: { expandManagedWeightsForRentan, normalizeForHash, originalInputFor, inputSnapshot, rentanControls, rentanPromptView, changedControls, rentanContextForWren, wrenInputHash, applyWrenChange, studioChangeFrom, staleReason, contextUnchanged, insertPrefixToken, isLegacyTendai, watchedBlocksReason }
 };
