@@ -3707,14 +3707,33 @@ html.disable-blur .director-attach-chip {
     flex-direction: column;
 }
 
-#directorSessionChat.director-mascot-on #directorComposer > .director-chat-input {
-    order: 0;
+/* The welcome title and subline stay on top (and above her); only the quick-start buttons drop below. */
+/* Only while the welcome shows (centred new chat); elsewhere it collapses as one block as before. */
+#directorSessionChat.director-mascot-on.director-composer-center #directorComposerWelcome:not(:empty) {
+    display: contents;
 }
 
-#directorSessionChat.director-mascot-on #directorComposerWelcome,
-#directorSessionChat.director-mascot-on #directorAttachChips {
+#directorSessionChat.director-mascot-on #directorComposerWelcome > .logo-text,
+#directorSessionChat.director-mascot-on #directorComposerWelcome > h3 {
+    order: 0;
+    position: relative;
+    z-index: 4;
+    text-align: center;
+}
+
+#directorSessionChat.director-mascot-on #directorComposer > .director-chat-input {
     order: 1;
+}
+
+#directorSessionChat.director-mascot-on #directorComposerWelcome > .btn-group-compact,
+#directorSessionChat.director-mascot-on #directorComposerWelcome > p,
+#directorSessionChat.director-mascot-on #directorAttachChips {
+    order: 2;
     margin-top: 8px;
+}
+
+#directorSessionChat.director-mascot-on #directorComposerWelcome > .btn-group-compact {
+    justify-content: center;
 }
 
 .director-mascot-stage[data-anchor="right"] .director-mascot {
