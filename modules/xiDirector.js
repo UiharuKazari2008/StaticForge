@@ -1403,7 +1403,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
             const files = await storeAttachments(gr, chat, message.attachments || []);
             const spoken = String(message.content || '').trim() || (files.length ? 'Use the attached files.' : '');
             if (!spoken) throw new Error('Say what you want, or attach a file');
-            const userText = message.steer ? `Stop the previous attempt. Do this instead:\n${spoken}` : spoken;
+            const userText = message.steer ? `${director._test.STEER_PREFIX}${spoken}` : spoken;
             if ((chat.name === 'Xi' || chat.name === 'Director') && spoken) chat.name = spoken.slice(0, 48);
             chat.model = customRun
                 ? customRun.model

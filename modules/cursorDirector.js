@@ -22,6 +22,10 @@ const DEFAULT_IDLE_SHUTDOWN_MINUTES = 15;
 const INFLIGHT_MAX_RESUMES = 3;
 const INFLIGHT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
+// A steer interrupts the running turn to add to it or comment on it, not to reject it.
+const STEER_PREFIX = 'The user interrupted your reply to add this. It builds on what you were doing '
+    + '(a correction, an addition, or a comment), not a new task. Keep what was right, fold this in, '
+    + 'and carry on. Drop the earlier work only if this says to.\n';
 const SESSION_IMAGE_CAP = 60;
 const PRINT_SETTLE_MS = 1500;
 const EFFORT_MODELS = {
@@ -5693,7 +5697,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             const files = await storeAttachments(gr, chat, message.attachments || []);
             const spoken = content || (files.length ? 'Use the attached files.' : '');
             if (!spoken) throw new Error('Say what you want, or attach a file');
-            const userText = message.steer ? `Stop the previous attempt. Do this instead:\n${spoken}` : spoken;
+            const userText = message.steer ? `${STEER_PREFIX}${spoken}` : spoken;
             if (chat.name === 'Director' && spoken) chat.name = spoken.slice(0, 48);
             chat.model = usesClaudeCli(engine) ? claudeRun.model : runModel;
             chat.choice = usesClaudeCli(engine)
@@ -7301,6 +7305,7 @@ module.exports = {
     finishRentan,
     startRentanReviewTurn,
     _test: {
+        STEER_PREFIX,
         projectPrompt, wrenRules, claudeProjectPrompt, WREN_COVERED_SENTENCES,
         insideDir, safeName, effortModel, consumeStreamLine, clipToolPayload, TOOL_PAYLOAD_MAX, SESSION_PAYLOAD_DISK_MAX, parkToolBodies, groupCursorModels, publicModelCatalog, directorModelCost, resolveRunModel,
         parseCursorModelLine, agentJailTarget, claudeJailTarget, buildJail, jailEnv, systemBindArgs,
