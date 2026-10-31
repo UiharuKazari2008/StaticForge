@@ -5,18 +5,18 @@
   "source": "Yozora sprite set (2022-01), by StygianRook",
   "anchor": "left",
   "size": [
-    947,
+    973,
     608
   ],
   "headPivot": [
-    384,
-    184
+    394,
+    189
   ],
   "hipPivot": [
-    474,
+    487,
     608
   ],
-  "peekRatio": 0.34,
+  "peekRatio": 0.35,
   "bodies": {
     "base": {
       "body": "body-base.webp",
@@ -46,6 +46,21 @@
     "kon_bigger": {
       "body": "body-kon_bigger.webp",
       "head": "head-kon_bigger.webp",
+      "faces": "big"
+    },
+    "grow_25": {
+      "body": "body-grow_25.webp",
+      "head": "head-base.webp",
+      "faces": "base"
+    },
+    "grow_50": {
+      "body": "body-grow_50.webp",
+      "head": "head-base.webp",
+      "faces": "base"
+    },
+    "grow_75": {
+      "body": "body-grow_75.webp",
+      "head": "head-bigger.webp",
       "faces": "big"
     }
   },
@@ -80,7 +95,9 @@
         "focused": "face-big-focused.webp",
         "thinking": "face-big-thinking.webp",
         "frustrated": "face-big-frustrated.webp",
-        "smug": "face-big-smug.webp"
+        "smug": "face-big-smug.webp",
+        "surprised": "face-big-surprised.webp",
+        "sleepy": "face-big-sleepy.webp"
       },
       "blink": "blink-big.webp",
       "blinkFor": [
@@ -93,6 +110,17 @@
       "mouth": {
         "talk": "mouth-big.webp"
       }
+    }
+  },
+  "transitions": {
+    "base>bigger": {
+      "via": null,
+      "frames": [
+        "grow_25",
+        "grow_50",
+        "grow_75"
+      ],
+      "frameMs": 420
     }
   },
   "stages": {

@@ -3688,11 +3688,11 @@ html.disable-blur .director-attach-chip {
 }
 
 .director-mascot-stage[data-anchor="right"] .director-mascot {
-    right: 4px;
+    right: var(--dm-right, 10px);
 }
 
 .director-mascot-stage[data-anchor="left"] .director-mascot {
-    left: 4px;
+    left: var(--dm-left, 10px);
 }
 
 .director-mascot-stage.dm-narrow[data-view="messages"] .director-mascot {

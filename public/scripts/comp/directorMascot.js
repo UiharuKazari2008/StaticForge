@@ -20,7 +20,9 @@ function directorMascotRand(range, fallback) {
 }
 
 class DirectorMascot {
-    constructor() {
+    // options.isHosted(): true while she should show (the Director window, not Studio's inline panel).
+    constructor(options = {}) {
+        this.isHosted = typeof options.isHosted === 'function' ? options.isHosted : () => true;
         this.manifests = new Map();      // persona -> normalized manifest (or null when missing)
         this.persona = null;
         this.manifest = null;
@@ -120,7 +122,7 @@ class DirectorMascot {
 
     applyView() {
         if (!this.root) return;
-        const on = this.enabled && !!this.manifest;
+        const on = this.enabled && !!this.manifest && this.isHosted();
         this.root.classList.toggle('hidden', !on);
         this.root.dataset.view = this.view;
         if (this.host) {
@@ -137,8 +139,15 @@ class DirectorMascot {
         const composer = this.host.querySelector('#directorComposer');
         const composerH = composer ? composer.offsetHeight : 0;
         this.root.style.setProperty('--dm-composer-h', `${composerH}px`);
+        // Sit on the input bar: inside its left or right end, never against the window edge.
+        const hostBox = this.host.getBoundingClientRect();
+        const bar = composer && (composer.querySelector('.director-chat-input') || composer);
+        const barBox = bar ? bar.getBoundingClientRect() : hostBox;
+        const inset = 10;
+        this.root.style.setProperty('--dm-left', `${Math.max(inset, Math.round(barBox.left - hostBox.left) + inset)}px`);
+        this.root.style.setProperty('--dm-right', `${Math.max(inset, Math.round(hostBox.right - barBox.right) + inset)}px`);
         const areaH = Math.max(0, this.host.clientHeight - composerH);
-        const areaW = this.host.clientWidth;
+        const areaW = Math.max(0, Math.round(barBox.width) - inset * 2);
         const [w0, h0] = this.manifest.size;
         const share = this.view === 'mascot' ? 0.98 : 0.62;   // messages view: idle drops below the bar edge (--dm-drop)
         let h = areaH * share;

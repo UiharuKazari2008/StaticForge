@@ -518,7 +518,7 @@ class Director {
     setupMascot() {
         const host = document.getElementById('directorSessionChat');
         if (this.mascot || !host || typeof DirectorMascot !== 'function') return;
-        this.mascot = new DirectorMascot();
+        this.mascot = new DirectorMascot({ isHosted: () => this.directorDockedInWindow() });
         this.mascot.mount(host);
         void this.mascot.setPersona(this.persona);
     }
@@ -2833,6 +2833,7 @@ class Director {
         this.updateHeaderForView(this.currentView);
         this.renderSessionImages();
         this.paintWorkspaceBanner();
+        if (this.mascot) this.mascot.applyView();
     }
 
     mountDirectorInStudio() {
@@ -2845,6 +2846,7 @@ class Director {
             this.directorCommonHeader.classList.add('hidden');
         }
         anchor.parentNode.insertBefore(this.directorContainer, anchor);
+        if (this.mascot) this.mascot.applyView();
         // The Studio panel stays closed until the Director button opens it again
         this.directorContainer.classList.remove('director-open');
         this.directorContainer.classList.add('director-closed', 'hidden');

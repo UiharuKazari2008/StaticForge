@@ -92,13 +92,16 @@ assert.strictEqual(x.manifest.anchor, 'left');
 for (let i = 0; i < 25 && !x.stageState.firstKickAt; i++) { now += 1000; x.tick(); }
 assert.strictEqual(x.currentBodyId(), 'kon_kicky', 'gesture plus kick');
 Math.random = () => 0.99;
-for (let i = 0; i < 70 && x.debugState().stage === 'base'; i++) { now += 1000; x.tick(); }
+for (let i = 0; i < 70 && !x.stageState.transition && x.debugState().stage === 'base'; i++) { now += 1000; x.tick(); }
+assert.strictEqual(x.stageState.transition && x.stageState.transition.to, 'bigger', 'Xi plays her in-betweens');
+assert.strictEqual(x.currentBodyId(), 'grow_25');
+run(420 * 4);
 assert.strictEqual(x.debugState().stage, 'bigger');
 
 // Wren: work-driven advance; faces fall back to neutral for a missing expression.
 const w = load('wren');
 assert.strictEqual(w.manifest.anchor, 'left');
-w.setWorking(true); now += 61000; w.tick(); run(1000);
+w.setWorking(true); now += 61000; w.tick(); run(420 * 4);
 assert.strictEqual(w.debugState().stage, 'bigger');
 w.expression = 'nope'; w.expressionUntil = now + 1000;
 assert.ok(w.faceSet().expressions.neutral);
