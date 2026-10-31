@@ -1,15 +1,16 @@
-// Native module (hunspell through nan): a Node upgrade leaves it built for the old ABI, and a
-// throw here took the whole server down at boot (Oct 23: apt moved Node 20 to 24). Without it,
-// every word counts as correct and there are no suggestions until it is rebuilt.
-let spellchecker = null;
-try {
-    spellchecker = require('spellchecker');
-} catch (error) {
-    console.warn(`⚠️ Spell checking is off: the spellchecker module did not load (${String(error.message).split('\n')[0]})`);
-}
+// Prompt spell checker (#689). Pure JS engine in ./spellEngine.js: SCOWL word lists plus
+// words from non-artist Danbooru/e621 tags, prompt-aware tokens (artist: names, <expanders>,
+// !replacements, 1girl-style tokens are skipped). Replaced the native hunspell addon, whose 2007
+// dictionary flagged anime/selfie/emoji and whose suggestions blocked the event loop ~47 ms a word.
 const fs = require('fs');
-const path = require('path');
 const logger = require('./logger');
+const { SpellEngine, foldWord } = require('./spellEngine');
+
+// Tag words load once the tag wiki database is open (it opens after this step at boot).
+const TAG_VOCAB_POLL_MS = 5000;
+const TAG_VOCAB_POLL_LIMIT = 120;
+const TAG_VOCAB_REFRESH_MS = 24 * 60 * 60 * 1000;
+const TAG_VOCAB_MIN_COUNT = 20;
 
 class SpellChecker {
     constructor(globalResources = null) {
@@ -18,7 +19,20 @@ class SpellChecker {
         }
         this.globalResources = globalResources;
         this.customWords = new Set();
+        this.engine = new SpellEngine();
+        this.engineReady = false;
+        this.tagVocabularyLoaded = false;
+        this.tagVocabularyLoading = null;
+        try {
+            const count = this.engine.loadScowl();
+            this.engine.ensureTrie();
+            this.engineReady = true;
+            logger.bootSubStep(`Loaded ${count} dictionary words for spell checking`);
+        } catch (error) {
+            console.warn(`⚠️ Spell checking is off: the word lists did not load (${String(error.message).split('\n')[0]})`);
+        }
         this.loadCustomWords();
+        this.scheduleTagVocabulary();
     }
 
     loadCustomWords() {
@@ -27,7 +41,7 @@ class SpellChecker {
             if (fs.existsSync(customWordsPath)) {
                 const data = fs.readFileSync(customWordsPath, 'utf8');
                 const customWordsData = JSON.parse(data);
-                this.customWords = new Set(customWordsData.words || []);
+                this.customWords = new Set((customWordsData.words || []).map(foldWord).filter(Boolean));
                 logger.bootSubStep(`Loaded ${this.customWords.size} custom words for spell checking`);
             }
         } catch (error) {
@@ -39,26 +53,60 @@ class SpellChecker {
         this.loadCustomWords();
     }
 
+    scheduleTagVocabulary(attempt = 0) {
+        const timer = setTimeout(() => {
+            const db = this.globalResources.tagDatabase && this.globalResources.tagDatabase.db;
+            if (!db) {
+                if (attempt < TAG_VOCAB_POLL_LIMIT) this.scheduleTagVocabulary(attempt + 1);
+                return;
+            }
+            this.loadTagVocabulary().finally(() => {
+                const refresh = setTimeout(() => this.scheduleTagVocabulary(0), TAG_VOCAB_REFRESH_MS);
+                if (refresh.unref) refresh.unref();
+            });
+        }, TAG_VOCAB_POLL_MS);
+        if (timer.unref) timer.unref();
+    }
+
+    /** Read non-artist tags from tag_wiki.db into the engine. Safe to call again to refresh. */
+    async loadTagVocabulary() {
+        if (this.tagVocabularyLoading) return this.tagVocabularyLoading;
+        const db = this.globalResources.tagDatabase && this.globalResources.tagDatabase.db;
+        if (!db || !this.engineReady) return false;
+        this.tagVocabularyLoading = (async () => {
+            try {
+                const started = Date.now();
+                const rows = await db.all(
+                    `SELECT title, category, COALESCE(d_count, 0) + COALESCE(e_count, 0) AS count
+                     FROM tags
+                     WHERE (category IS NULL OR category != 1)
+                       AND COALESCE(d_count, 0) + COALESCE(e_count, 0) >= ?`,
+                    [TAG_VOCAB_MIN_COUNT]
+                );
+                const added = this.engine.addTagVocabulary(rows);
+                this.engine.ensureTrie();
+                this.tagVocabularyLoaded = true;
+                const stats = this.engine.stats();
+                console.log(`✓ Spell checker tag vocabulary: ${added} tag words, ${stats.tagPhrases} tag phrases from ${rows.length} tags (${Date.now() - started} ms)`);
+                return true;
+            } catch (error) {
+                console.warn('⚠️ Spell checker could not load tag vocabulary:', error.message);
+                return false;
+            } finally {
+                this.tagVocabularyLoading = null;
+            }
+        })();
+        return this.tagVocabularyLoading;
+    }
+
     isCorrect(word) {
-        // Check if it's a custom word first
-        if (this.customWords.has(word.toLowerCase())) {
-            return true;
-        }
-        
-        // Check with spellchecker
-        if (!spellchecker) return true;
-        return !spellchecker.isMisspelled(word);
+        if (!this.engineReady) return true;
+        return this.engine.isKnown(word, this.customWords);
     }
 
     getSuggestions(word) {
-        // Don't suggest for custom words
-        if (this.customWords.has(word.toLowerCase())) {
-            return [];
-        }
-
-        // Get suggestions from spellchecker
-        if (!spellchecker) return [];
-        return spellchecker.getCorrectionsForMisspelling(word);
+        if (!this.engineReady || this.isCorrect(word)) return [];
+        return this.engine.suggest(word);
     }
 
     /** Drop suggestions identical to the typed word (case-insensitive) — not actionable corrections. */
@@ -77,47 +125,36 @@ class SpellChecker {
         return out;
     }
 
+    /**
+     * misspelled lists each flagged occurrence in order (the client maps rows to occurrences);
+     * a word with no actionable suggestion is not reported. wordPositions covers every checked word.
+     */
     checkText(text) {
         if (!text || typeof text !== 'string') {
             return { misspelled: [], suggestions: {}, originalText: text };
         }
-
-        // Split text into words, preserving punctuation and spacing
-        const words = text.match(/\b\w+\b/g) || [];
+        const checked = this.engineReady ? this.engine.checkPrompt(text, this.customWords) : [];
         const misspelled = [];
-        const suggestions = {};
+        const byWord = new Map();
         const wordPositions = [];
-
-        // Find positions of each word in the original text
-        let currentPos = 0;
-        for (const word of words) {
-            const wordIndex = text.indexOf(word, currentPos);
-            if (wordIndex !== -1) {
-                wordPositions.push({
-                    word: word,
-                    start: wordIndex,
-                    end: wordIndex + word.length
-                });
-                currentPos = wordIndex + word.length;
+        for (const token of checked) {
+            wordPositions.push({ word: token.word, start: token.start, end: token.end });
+            if (token.known) continue;
+            if (!byWord.has(token.word)) {
+                byWord.set(token.word, this.filterActionableSuggestions(token.word, this.engine.suggest(token.word)));
             }
+            if (byWord.get(token.word).length === 0) continue;
+            misspelled.push(token.word);
         }
-
-        for (const word of words) {
-            if (!this.isCorrect(word)) {
-                const actionable = this.filterActionableSuggestions(word, this.getSuggestions(word));
-                if (actionable.length === 0) {
-                    continue;
-                }
-                misspelled.push(word);
-                suggestions[word] = actionable;
-            }
+        const suggestions = {};
+        for (const [word, list] of byWord) {
+            if (list.length > 0) suggestions[word] = list;
         }
-
-        return { 
-            misspelled, 
-            suggestions, 
+        return {
+            misspelled,
+            suggestions,
             originalText: text,
-            wordPositions: wordPositions,
+            wordPositions,
             hasErrors: misspelled.length > 0
         };
     }
@@ -127,13 +164,29 @@ class SpellChecker {
             return false;
         }
 
-        const normalizedWord = word.toLowerCase().trim();
+        const normalizedWord = foldWord(word.trim());
         if (normalizedWord) {
             this.customWords.add(normalizedWord);
             this.saveCustomWords();
             return true;
         }
         return false;
+    }
+
+    removeCustomWord(word) {
+        const normalizedWord = foldWord(String(word || '').trim());
+        if (!normalizedWord || !this.customWords.delete(normalizedWord)) return false;
+        this.saveCustomWords();
+        return true;
+    }
+
+    getStats() {
+        return {
+            ready: this.engineReady,
+            tagVocabularyLoaded: this.tagVocabularyLoaded,
+            customWords: this.customWords.size,
+            ...this.engine.stats()
+        };
     }
 
     saveCustomWords() {
@@ -155,4 +208,4 @@ class SpellChecker {
     }
 }
 
-module.exports = SpellChecker; 
+module.exports = SpellChecker;

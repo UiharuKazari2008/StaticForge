@@ -47,7 +47,6 @@
     "pm2": "^6.0.10",
     "predictionary": "^1.0.0",
     "sharp": "^0.32.6",
-    "spellchecker": "^3.7.1",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
     "stream-json": "^1.9.1",
@@ -58,6 +57,7 @@
     "tz-lookup": "^6.1.25",
     "uuid": "^9.0.0",
     "winston": "^3.18.3",
+    "wordlist-english": "^1.2.1",
     "wordpos": "^2.1.0",
     "workbox-cacheable-response": "^7.3.0",
     "workbox-core": "^7.3.0",
@@ -78,19 +78,10 @@
       "canvas",
       "geo2city",
       "sharp",
-      "spellchecker",
       "sqlite3"
     ],
     "overrides": {
-      "geo2city>sqlite3": "^5.1.7",
-      "spellchecker>nan": "^2.30.0"
-    },
-    "packageExtensions": {
-      "spellchecker": {
-        "scripts": {
-          "install": "node-gyp rebuild"
-        }
-      }
+      "geo2city>sqlite3": "^5.1.7"
     },
     "patchedDependencies": {
       "geo2city@0.5.0": "patches/geo2city@0.5.0.patch"
