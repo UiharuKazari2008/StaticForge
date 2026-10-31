@@ -48,6 +48,21 @@ async function recordReplicationGalleryJournal(filename, workspaceId, buffer = n
     }
 }
 
+// Preset / session names go into the saved filename verbatim otherwise; a "/" there
+// becomes a missing subdirectory and the write fails with ENOENT. The real name
+// still rides in forgeData.preset_name.
+function filenameSafePresetName(presetName) {
+    let s = String(presetName || '')
+        .replace(/[\/\\:*?"<>|\x00-\x1f\x7f]/g, '-')
+        .replace(/\.{2,}/g, '.')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/^[.\s-]+|[.\s-]+$/g, '');
+    // Keep the whole name under the 255-byte filename limit (timestamp + seed + .png ~ 40).
+    while (Buffer.byteLength(s, 'utf8') > 180) s = s.slice(0, -1);
+    return s.trim();
+}
+
 function sanitizeDynamicGenerationForForge(dg) {
     if (dg === undefined || dg === null) return dg;
     const dgForForge = { ...dg };
@@ -4565,7 +4580,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     }
 
     const timestamp = Date.now().toString();
-    let namePrefix = presetName || 'generated';
+    let namePrefix = filenameSafePresetName(presetName) || 'generated';
 
     // Generate filename based on standard generation
     let name;
