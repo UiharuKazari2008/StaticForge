@@ -336,6 +336,22 @@ let selectedPositionCell = null;
 let lastPromptState = null;
 let savedRandomPromptState = null;
 let forcePaidRequest = false;
+// One-shot: an agent clicked Generate with the user's paid approval (clickManualGenerateForAgent).
+let agentPaidApprovalArmed = false;
+
+/**
+ * Click Studio Generate for an agent. allowPaid relays the user's approval (MCP userApprovedPaidRequest),
+ * so this one print skips the Anlas dialog. The submit handler reads the flag synchronously, so it never
+ * outlives the click and a later human Generate still asks.
+ */
+function clickManualGenerateForAgent(btn, options = {}) {
+    agentPaidApprovalArmed = options.allowPaid === true;
+    try {
+        btn.click();
+    } finally {
+        agentPaidApprovalArmed = false;
+    }
+}
 
 
 // ============================================================================
@@ -5060,6 +5076,8 @@ async function handleManualGeneration(e, options = {}) {
     e.preventDefault();
 
     const { targetStageIndex = null } = options;
+    const agentPaidApproved = agentPaidApprovalArmed;
+    agentPaidApprovalArmed = false;
 
     // assertClientImageGenerationAllowed: public/scripts/comp/novelAiAccountStatus.js
     try {
@@ -5234,7 +5252,10 @@ async function handleManualGeneration(e, options = {}) {
 
     // Check if this requires paid credits and user hasn't already allowed paid
     const cost = calculateCreditCost(requestBody);
-    if ((cost.isFree ? cost.opus : cost.list) > 0 && !forcePaidRequest) {
+    if ((cost.isFree ? cost.opus : cost.list) > 0 && !forcePaidRequest && agentPaidApproved) {
+        // The agent relayed the user's approval: pay for this print only, leave the toggle alone.
+        requestBody.allow_paid = true;
+    } else if ((cost.isFree ? cost.opus : cost.list) > 0 && !forcePaidRequest) {
         const confirmed = await showCreditCostDialog((cost.isFree ? cost.opus : cost.list), e);
 
         if (!confirmed) {

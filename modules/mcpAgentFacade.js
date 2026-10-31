@@ -307,6 +307,11 @@ const STUDIO_PARAM_SCHEMA = {
     auto_clean_uc: { type: 'boolean' }
 };
 
+const STUDIO_PAID_APPROVAL_SCHEMA = {
+    type: 'boolean',
+    description: 'The user agreed to spend Anlas/Opus on this Studio print (large/xlarge/wallpaper, custom >1024², NovelAI upscale). The tab then skips its Anlas confirmation for this one Generate. Omit it and the tab asks the user. Ask the user first. n>1 is not this gate.'
+};
+
 const WORKSPACE_PLACEMENT_SCHEMA = {
     type: 'string',
     description: 'Workspace id. Pass the folder they named, or the folder that already holds the source / this job\'s gens. Do not copy the bound Studio tab just because it is focused. Omit is unsafe: the server may fall back to that tab or default. A paired Director session ignores this and writes to that session workspace.'
@@ -1148,6 +1153,8 @@ const TOOL_DEFS = [
                 autoApply: { type: 'boolean', description: 'Default true. Silent apply on the bound tab.' },
                 autoGenerate: { type: 'boolean', description: 'Omitted uses Remote Access Settings autoGenerate (default off). After apply, click bound-tab Generate. Returns jobId + filenameBefore. Default n=1. Prints review is dismissed or blockedBy printsReview. Blocked with needsDecompile if Phasewalker stages are still compiled, unless walk is true.' },
                 walk: { type: 'boolean', description: 'true runs every compiled Phasewalker phase. Omit it when they picked one phase — decompile_phasewalker that phase first.' },
+                userApprovedPaidRequest: STUDIO_PAID_APPROVAL_SCHEMA,
+                allow_paid: { type: 'boolean', description: 'Same as userApprovedPaidRequest.' },
                 dest_path: DEST_PATH_SCHEMA,
                 ...STUDIO_PARAM_SCHEMA
             }
@@ -1164,6 +1171,8 @@ const TOOL_DEFS = [
             properties: {
                 n: { type: 'number', description: 'Print count 1–8. Default 1.' },
                 walk: { type: 'boolean', description: 'true only to run every compiled Phasewalker phase. Otherwise a compiled Phasewalker must be decompiled first.' },
+                userApprovedPaidRequest: STUDIO_PAID_APPROVAL_SCHEMA,
+                allow_paid: { type: 'boolean', description: 'Same as userApprovedPaidRequest.' },
                 dest_path: DEST_PATH_SCHEMA
             }
         }
@@ -1179,7 +1188,9 @@ const TOOL_DEFS = [
             properties: {
                 phase: { type: 'string', description: 'Phase to keep: name, prompt fragment, or index. Example: "1990s", "yoneyama mai", "2".' },
                 name: { type: 'string', description: 'Alias of phase.' },
-                autoGenerate: { type: 'boolean', description: 'After decompile, click Generate once. Default false.' }
+                autoGenerate: { type: 'boolean', description: 'After decompile, click Generate once. Default false.' },
+                userApprovedPaidRequest: STUDIO_PAID_APPROVAL_SCHEMA,
+                allow_paid: { type: 'boolean', description: 'Same as userApprovedPaidRequest.' }
             },
             required: ['phase']
         }
@@ -7128,7 +7139,8 @@ async function applyStudioChanges(globalResources, rawBody) {
         n: assembled.params && assembled.params.n,
         autoApply,
         autoGenerate,
-        walk: body.walk === true
+        walk: body.walk === true,
+        allowPaid: pickPaidApproval(rawBody)
     }, undefined, body.bindKey);
     if (datasetRemapped.length && applyResult && typeof applyResult === 'object') {
         applyResult.datasetIdsRemapped = datasetRemapped;
@@ -7166,6 +7178,56 @@ function mcpTextResult(obj, isError) {
         content: [{ type: 'text', text: typeof obj === 'string' ? obj : JSON.stringify(obj) }],
         isError: !!isError
     };
+}
+
+const MAX_STAGE_IMAGES = 8;
+
+/**
+ * A multi-stage or n>1 print saves several files. Give the caller every one of them, in save
+ * order, not just the last: meta.filenames lists them and content carries one Grok webp each
+ * (the last one reuses the image already in the result). Capped at MAX_STAGE_IMAGES.
+ */
+async function attachAllPrintImages(globalResources, result, names) {
+    const list = (Array.isArray(names) ? names : []).map((name) => sanitizeGalleryFilename(name)).filter(Boolean);
+    if (list.length < 2 || !result || !Array.isArray(result.content) || !result.content[0]
+        || result.content[0].type !== 'text') {
+        return result;
+    }
+    let meta;
+    try {
+        meta = JSON.parse(result.content[0].text);
+    } catch (_) {
+        return result;
+    }
+    const lastName = sanitizeGalleryFilename(meta.filename) || list[list.length - 1];
+    const lastImage = result.content.find((part) => part && part.type === 'image') || null;
+    const shown = list.slice(-MAX_STAGE_IMAGES);
+    const images = [];
+    const imageFilenames = [];
+    for (const name of shown) {
+        if (name === lastName && lastImage) {
+            images.push(lastImage);
+            imageFilenames.push(name);
+            continue;
+        }
+        try {
+            const resolved = resolveGalleryImagePath(globalResources, name);
+            const image = await resizeImageForGrok(resolved.filePath);
+            if (image) {
+                images.push({ type: 'image', mimeType: image.mimeType, data: image.bytes.toString('base64') });
+                imageFilenames.push(name);
+            }
+        } catch (_) { /* a missing stage file just drops out of the images */ }
+    }
+    if (lastImage && !imageFilenames.includes(lastName)) {
+        images.push(lastImage);
+        imageFilenames.push(lastName);
+    }
+    meta.filenames = list;
+    meta.imageFilenames = imageFilenames;
+    meta.next = 'filenames is every saved stage or copy of this job, in save order. The images are attached in imageFilenames order. Do not list the images folder.';
+    result.content = [{ type: 'text', text: JSON.stringify(meta) }, ...images];
+    return result;
 }
 
 function mcpImageResult(meta, imageOrImages) {
@@ -7268,10 +7330,11 @@ async function mcpResultFromGenerateFlat(globalResources, flat, success, destPat
             const image = await resizeImageForGrok(resolved.filePath);
             if (image) {
                 image.filename = filename;
-                return mcpImageResult(attachDurableGalleryFields(globalResources, attachDestPathMeta(globalResources, {
+                const single = mcpImageResult(attachDurableGalleryFields(globalResources, attachDestPathMeta(globalResources, {
                     ...body,
                     imageKind: 'grok'
                 }, image, destPathHint)), image);
+                return attachAllPrintImages(globalResources, single, collectFilenames({ filenames: flat && flat.filenames }));
             }
         } catch (_) { /* metadata-only fallback */ }
     }
@@ -8355,15 +8418,7 @@ async function callTool(globalResources, req, name, args) {
                     workspace: ready.workspaceId,
                     dest_path: pickDestPathInput(input) || ready.destPath
                 });
-                if (stageNames.length > 1 && imageResult && Array.isArray(imageResult.content) && imageResult.content[0] && imageResult.content[0].text) {
-                    try {
-                        const meta = JSON.parse(imageResult.content[0].text);
-                        meta.filenames = stageNames;
-                        meta.next = 'filenames is every saved stage of this job. Do not list the images folder.';
-                        imageResult.content[0].text = JSON.stringify(meta);
-                    } catch (_) { /* single-image result still stands */ }
-                }
-                return imageResult;
+                return attachAllPrintImages(globalResources, imageResult, stageNames);
             }
             return applyJobPendingResult(ready);
         }
@@ -9055,7 +9110,8 @@ async function callTool(globalResources, req, name, args) {
         if (printRefused) return printRefused;
         const data = await sendBoundCommand(globalResources, 'print_studio', {
             n: clampTurnPrints(readRemoteAccessSettings(globalResources), input.n),
-            walk: input.walk === true
+            walk: input.walk === true,
+            allowPaid: pickPaidApproval(input)
         }, undefined, bind.bindKey);
         let responseNext;
         let applyJob = null;
@@ -9102,7 +9158,8 @@ async function callTool(globalResources, req, name, args) {
         if (decompileRefused) return decompileRefused;
         const data = await sendBoundCommand(globalResources, 'decompile_phasewalker', {
             phase: String(phase),
-            autoGenerate: input.autoGenerate === true
+            autoGenerate: input.autoGenerate === true,
+            allowPaid: pickPaidApproval(input)
         }, undefined, bind.bindKey);
         let applyJob = null;
         if (data && data.generateStarted) {
@@ -10565,6 +10622,7 @@ module.exports = {
     registerRoutes,
     McpOAuthProvider,
     _test: {
+        attachAllPrintImages,
         invalidMemoryLists,
         trimObservationLead,
         droppedMemoryObservations,

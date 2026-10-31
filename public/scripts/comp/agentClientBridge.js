@@ -701,7 +701,13 @@
                 filenameExpected: studioFilename
             };
         }
-        btn.click();
+        // clickManualGenerateForAgent: public/scripts/comp/manualModalManager.js
+        // allowPaid is the user's approval relayed by the agent: skip the Anlas dialog for this click only.
+        if (typeof clickManualGenerateForAgent === 'function') {
+            clickManualGenerateForAgent(btn, { allowPaid: opts.allowPaid === true });
+        } else {
+            btn.click();
+        }
         return {
             generateStarted: true,
             filenameBefore,
@@ -862,7 +868,7 @@
         if (!data || data.autoGenerate !== true) {
             return result;
         }
-        const gen = fireBoundTabGenerate({ n: 1 });
+        const gen = fireBoundTabGenerate({ n: 1, allowPaid: data.allowPaid === true });
         return { ...result, autoGenerate: true, ...gen };
     }
 
@@ -981,7 +987,7 @@
         const nHint = payload && payload.params && payload.params.n != null
             ? payload.params.n
             : (data && data.n);
-        const gen = fireBoundTabGenerate({ n: nHint });
+        const gen = fireBoundTabGenerate({ n: nHint, allowPaid: !!(data && data.allowPaid === true) });
         return {
             ...baseResult,
             autoGenerate: true,
@@ -1247,7 +1253,7 @@
                     replyAgentSessionResult(requestId, blocked);
                     return;
                 }
-                const gen = fireBoundTabGenerate({ n: data && data.n });
+                const gen = fireBoundTabGenerate({ n: data && data.n, allowPaid: !!(data && data.allowPaid === true) });
                 replyAgentSessionResult(requestId, {
                     ok: gen.generateStarted === true,
                     workspaceId: readWorkspaceId(),

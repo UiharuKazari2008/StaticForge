@@ -441,6 +441,10 @@ function assembleStudioChangeFromToolArgs(body) {
         base = stripStudioAutoFlagsDeep(body);
     }
     const out = base && typeof base === 'object' && !Array.isArray(base) ? { ...base } : {};
+    // Paid approval rides beside the change (allowPaid on the command), not inside it.
+    delete out.userApprovedPaidRequest;
+    delete out.user_approved_paid_request;
+    delete out.allow_paid;
     if (base && base.params && typeof base.params === 'object' && !Array.isArray(base.params)) {
         out.params = { ...base.params };
     }
@@ -2144,7 +2148,8 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
                 prompt: body.prompt,
                 uc: body.uc,
                 autoApply,
-                autoGenerate
+                autoGenerate,
+                allowPaid: body.userApprovedPaidRequest === true || body.allow_paid === true
             }, COMMAND_TIMEOUT_MS, bindKey);
             return res.json({ success: true, ...data });
         } catch (error) {
