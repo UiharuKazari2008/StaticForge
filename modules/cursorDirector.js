@@ -1920,12 +1920,23 @@ function wrenRules() {
         ].join('\n'),
         [
             '## 4. Printing and checking',
-            '- Edit the open Studio with apply_studio_changes; a params-only change is valid without resending the prompt. After print_studio or an apply that generates: one await_generation_job with that jobId, then get_generated_image that filename and Read the picture before you answer. pending means not saved yet; do not poll latest. If the ask missed, rewrite that field and print once more.',
+            '- Edit the open Studio with apply_studio_changes; a params-only change is valid without resending the prompt. After print_studio or an apply that generates: one await_generation_job with that jobId, then get_generated_image that filename and Read the picture before you answer. pending means not saved yet; do not poll latest. If the ask missed, rewrite that field and print again (section 4b).',
             '- Limb count, stance, claws, and whether a body held are easy to miss: name only the pixels you can point at, and say when you are unsure.',
             '- show_chat_image when there is a picture they should look at now. The session image strip already shows every print, so not after every generate; you still Read every new print yourself.',
             '- Several variants of one prompt: create_phasewalker, then one await_generation_job; filenames on that result is every saved stage (do not shell the images folder for the rest). A compiled Phasewalker stays installed until you decompile it: when they pick a phase, decompile_phasewalker {phase} before apply_studio_changes or print_studio, which writes the phase into the prompt and removes the stages. Generating while it is still compiled runs every phase again; walk:true is only for printing every phase on purpose. If you took their house style out for a test, put it back with apply_studio_changes when the test is done; do not ask them to.',
             '- open_application studio opens a blank editor when Studio was closed; it does not restore the last picture, so apply the setup after it. If Studio is already open, leave it.',
             '- Stories: note tools plus generate_image.'
+        ].join('\n'),
+        [
+            '## 4b. Working until it is right',
+            '- Their words describe a picture: translate them, never paste them. A story, backstory, or feeling is context for what the camera would see (body, pose, expression, setting). Write those visible tags and leave out what cannot be seen (how it happened, surgery, inner thoughts, hardware inside the body). Before you write, ask what each sentence would look like.',
+            '- New goal or a reference: before the first print, write a target checklist of 4 to 8 visible facts, most important first, taken from the reference when there is one (shape, proportions, stance, posture, outfit, view, art style). Show it in your reply. Each correction updates the list.',
+            '- After every print: Read it next to the reference (Read the reference file again; do not work from memory) and mark each checklist item hit, partial, or miss. Fix the most important miss next, one or two levers at a time, and say what you changed and why.',
+            '- Keep the best print so far as the baseline. If a new print loses something the best had (girth, width, pose, art style, identity), go back to the settings of the best print and change one thing; do not keep stacking edits on a regression.',
+            '- One seed is the seed lottery. Judge a prompt change on two or more seeds (n 2, or seedLock false for a second print) before you call it a win or a loss. For a body or form goal, check it holds across views (front, three quarter, side) with a Phasewalker before you call it right.',
+            '- Budget: when they say keep going, do not stop, N rounds, or up to N generations, stay in this turn and keep printing until every checklist item hits or the budget is spent. maxPrintsPerTurn bounds n (copies in one print call), not how many passes you take. Without a budget, still take up to three passes while the most important item misses. End the turn with the scorecard: each item and where it stands.',
+            '- Ask instead of guessing, with request_form: before the first print when the ask could mean two different pictures or a key fact is missing (which reference, what matters most, how far to push, which view), and after three passes that miss the same item (say what you tried, and offer two to four concrete directions as select options with your pick first). Do not ask what a tool can answer (wiki, metadata, character card), and do not ask permission to keep going inside a budget.',
+            '- A correction (no, wrong, you missed, look again, not close) means they are right. Read the reference and your last print first, say in one line what you got wrong, then fix it. Never answer a correction with the same prompt on a new seed.'
         ].join('\n'),
         [
             '## 5. Characters and research',
@@ -4367,6 +4378,50 @@ function runAgentTurn(engine, onText, marker, limits) {
     });
 }
 
+// What the user's message asks of this turn (#wren-work-loop): a correction of the last print,
+// a push to keep working, and any print budget they named ("up to 50 generations", "10 rounds").
+const CORRECTION_RE = /^\s*(?:no\b|nope\b|wrong\b|ya? thats not|that'?s not)|\b(?:you (?:missed|forgot|lost|did nothing|are not|aren'?t|didn'?t|did not|keep|again)|not (?:even )?close|still (?:not|wrong|missing|has|have|looks)|look (?:again|at (?:the|your) (?:original|orginal|ref|reference|referance))|compare (?:them|it|the)|complete failure|we lost|is lost|are lost|losing|loseing|0%)/i;
+const PUSH_RE = /\b(?:keep (?:going|pushing|working|trying)|keep at it|continue|don'?t stop|do not stop|never give up|as (?:many|much) as|up to \d+|\d+\s*(?:more\s+)?(?:gens?|generations|prints|rounds|roundw|tries|images))\b/i;
+const BUDGET_RE = /\b(?:up to|as (?:many|much) as)\s+(\d{1,3})\b|\b(\d{1,3})\s*(?:or more\s+)?(?:more\s+)?(?:gens?|generations|prints|rounds|roundw|tries)\b/i;
+
+function turnWorkMode(text) {
+    const t = String(text || '');
+    const correction = CORRECTION_RE.test(t);
+    const push = PUSH_RE.test(t);
+    const match = t.match(BUDGET_RE);
+    const n = match ? Number(match[1] || match[2]) : NaN;
+    const budget = Number.isFinite(n) && n >= 2 && n <= 200 ? n : null;
+    return { correction, push: push || budget != null, budget };
+}
+
+// Correction and push turns think harder: at least high, and a correction one level above the pick
+// (up to xhigh on Claude). none (thinking off) is the user's call and stays.
+function boostedEffort(ladder, picked, mode) {
+    const levels = Array.isArray(ladder) ? ladder : [];
+    const wanted = String(picked || 'medium').toLowerCase();
+    if (!levels.length || wanted === 'none' || !mode || (!mode.correction && !mode.push)) return picked;
+    const at = Math.max(0, levels.indexOf(wanted));
+    const high = levels.indexOf('high');
+    if (high < 0) return picked;
+    const ceiling = levels.includes('xhigh') ? levels.indexOf('xhigh') : levels.length - 1;
+    let target = Math.max(at, high);
+    if (mode.correction && at >= high) target = Math.min(ceiling, at + 1);
+    return levels[Math.max(at, target)];
+}
+
+function turnModeLines(mode) {
+    const lines = [];
+    if (mode.correction) {
+        lines.push('This turn is a correction: they are right. Read the reference and your last print before you change anything, say in one line what you got wrong, then fix it (section 4b).');
+    }
+    if (mode.push) {
+        lines.push(mode.budget
+            ? `This turn: keep working. Budget: up to ${mode.budget} prints. Stay in this turn until every checklist item hits or the budget is spent, then end with the scorecard (section 4b).`
+            : 'This turn: keep working. Stay in this turn for several passes (8 prints if they named no number) until every checklist item hits, then end with the scorecard (section 4b).');
+    }
+    return lines;
+}
+
 function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     const lines = [];
     const handoff = !!(options && options.handoff);
@@ -4383,6 +4438,7 @@ function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     // Standing orders are in the project rule (wrenRules). This is the per-turn state only.
     lines.push('Turn: one get_session_state view live first; Read every new print before you answer (sections 2 and 4).');
     if (priorMessages.length && !chat.replay && !handoff) lines.push('Follow-up: the next frame (section 3).');
+    lines.push(...turnModeLines(turnWorkMode(userText)));
     if (clientId) lines.push(`Bound Studio clientId: ${clientId}`);
     lines.push(`Workspace id: ${chat.workspaceId || 'unknown'}. Chat id: ${chat.id} (folder chats/${chat.id}/); session tools default to it.`);
     if (options && options.memoryStore === 'obliterated') {
@@ -5654,6 +5710,15 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
         // Claude and TokenRouter: { model, effort, fast } plus family (the picked id) on TokenRouter.
         // Custom providers use the same shape, resolved against that host's /v1/models list.
         let claudeRun = null;
+        // A correction or a keep-going ask runs with more effort than the picker (boostedEffort).
+        if (!message.resume && (engine === 'claude' || customProviders.isEngine(engine))) {
+            const ladder = engine === 'claude' ? CLAUDE_EFFORTS : customProviders.EFFORTS;
+            const effort = boostedEffort(ladder, message.effort, turnWorkMode(message.content));
+            if (effort !== message.effort) {
+                console.log(`Director ${sessionId}: effort ${message.effort || 'medium'} -> ${effort} for this turn`);
+                message = { ...message, effort };
+            }
+        }
         if (!message.resume && engine === 'claude') claudeRun = resolveClaudeRun(message);
         if (!message.resume && engine === 'tokenrouter') claudeRun = await resolveTokenRouterRun(message);
         if (!message.resume && customProviders.isEngine(engine)) claudeRun = await customProviders.resolveForTurn(gr, engine, message);
@@ -7309,6 +7374,9 @@ module.exports = {
     finishRentan,
     startRentanReviewTurn,
     _test: {
+        turnWorkMode,
+        boostedEffort,
+        turnModeLines,
         STEER_PREFIX,
         projectPrompt, wrenRules, claudeProjectPrompt, WREN_COVERED_SENTENCES,
         insideDir, safeName, effortModel, consumeStreamLine, clipToolPayload, TOOL_PAYLOAD_MAX, SESSION_PAYLOAD_DISK_MAX, parkToolBodies, groupCursorModels, publicModelCatalog, directorModelCost, resolveRunModel,
