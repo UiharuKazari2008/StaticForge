@@ -10488,7 +10488,7 @@ function registerRoutes(app, { globalResources }) {
 
     const resourceMetadataUrl = `${oauthProvider.getMcpBaseUrl()}/.well-known/oauth-protected-resource`;
     const mcpAuth = createMcpAuthMiddleware(globalResources, { resourceMetadataUrl });
-    const mcpLimiter = createMcpRateLimiter();
+    const mcpLimiter = createMcpRateLimiter(globalResources);
 
     function mcpMiddleware(req, res, next) {
         req.mcpOAuthProvider = oauthProvider;

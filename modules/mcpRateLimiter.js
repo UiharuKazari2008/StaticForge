@@ -233,8 +233,55 @@ function rateGroupForCall(name, args) {
     return rateGroupForTool(name);
 }
 
-function consumeRateGroup(keyId, groupId, now = Date.now()) {
-    const spec = MCP_RATE_GROUP_LIMITS[groupId] || MCP_RATE_GROUP_LIMITS.rpc;
+// Yukimi's own agents print far more than an outside key should. Config mcp.rateLimits overrides these.
+const DEFAULT_KEY_RATE_LIMITS = {
+    'claude-code-test': { generate: { max: 120 } },
+    DreamscapeDirector: { generate: { max: 120 } }
+};
+
+function readRateLimitConfig(globalResources) {
+    try {
+        const cfg = globalResources && typeof globalResources.getConfig === 'function' ? globalResources.getConfig() : null;
+        const raw = cfg && cfg.mcp && cfg.mcp.rateLimits;
+        return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function cleanLimit(row) {
+    if (!row || typeof row !== 'object') return null;
+    const out = {};
+    const max = Number(row.max);
+    if (Number.isFinite(max) && max >= 0) out.max = Math.floor(max);
+    const windowMs = Number(row.windowMs);
+    if (Number.isFinite(windowMs) && windowMs >= 1000) out.windowMs = Math.floor(windowMs);
+    return Object.keys(out).length ? out : null;
+}
+
+/**
+ * The limit for one group and caller. Order: built-in group default, config mcp.rateLimits.groups,
+ * then the per-key row (built-in default, then config mcp.rateLimits.keys) matched by app key id or app name.
+ * max 0 means unlimited.
+ */
+function rateLimitSpec(groupId, auth, config) {
+    const base = MCP_RATE_GROUP_LIMITS[groupId] || MCP_RATE_GROUP_LIMITS.rpc;
+    const cfg = config && typeof config === 'object' ? config : {};
+    let spec = { ...base, ...(cleanLimit(cfg.groups && cfg.groups[groupId]) || {}) };
+    const ids = [auth && auth.applicationKeyId, auth && auth.appName].filter(Boolean).map(String);
+    const keys = { ...DEFAULT_KEY_RATE_LIMITS, ...(cfg.keys && typeof cfg.keys === 'object' ? cfg.keys : {}) };
+    for (const id of ids) {
+        const row = keys[id] && cleanLimit(keys[id][groupId]);
+        if (row) {
+            spec = { ...spec, ...row };
+            break;
+        }
+    }
+    return spec;
+}
+
+function consumeRateGroup(keyId, groupId, now = Date.now(), override = null) {
+    const spec = override || MCP_RATE_GROUP_LIMITS[groupId] || MCP_RATE_GROUP_LIMITS.rpc;
     if (!spec.max) {
         return { ok: true, group: groupId, unlimited: true };
     }
@@ -304,7 +351,7 @@ function sendRateLimitResponse(req, res, denied) {
     });
 }
 
-function createMcpRateLimiter() {
+function createMcpRateLimiter(globalResources) {
     return function mcpGroupedRateLimit(req, res, next) {
         if (isCheapMcpRequest(req)) return next();
         const method = mcpMethodFromReq(req);
@@ -315,7 +362,8 @@ function createMcpRateLimiter() {
             const args = params.arguments && typeof params.arguments === 'object' ? params.arguments : {};
             groupId = rateGroupForCall(name, args);
         }
-        const denied = consumeRateGroup(rateLimitPrincipal(req), groupId);
+        const spec = rateLimitSpec(groupId, req.applicationAuth, readRateLimitConfig(globalResources));
+        const denied = consumeRateGroup(rateLimitPrincipal(req), groupId, Date.now(), spec);
         if (denied.ok) return next();
         if (method === 'tools/call') {
             const retryAfterSec = denied.retryAfterSec;
@@ -353,6 +401,8 @@ module.exports = {
     rateGroupForTool,
     rateGroupForCall,
     consumeRateGroup,
+    rateLimitSpec,
+    DEFAULT_KEY_RATE_LIMITS,
     resetRateGroupHits,
     rateLimitPrincipal,
     sendRateLimitResponse,
