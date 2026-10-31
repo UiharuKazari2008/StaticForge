@@ -37,16 +37,6 @@ function lineNumberAt(content, index) {
     return content.slice(0, index).split('\n').length;
 }
 
-function extractQuotedStrings(text) {
-    const results = [];
-    const re = /['"]([a-z][a-z0-9_]{2,})['"]/g;
-    let m;
-    while ((m = re.exec(text)) !== null) {
-        results.push({ value: m[1], index: m.index });
-    }
-    return results;
-}
-
 /**
  * Scan server handler files for registerWsPacket / regFn registrations.
  * @returns {Array<{type, handlerFn, owner, file, line, side: 'server'}>}
