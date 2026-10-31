@@ -26,6 +26,18 @@ const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 const STEER_PREFIX = 'The user interrupted your reply to add this. It builds on what you were doing '
     + '(a correction, an addition, or a comment), not a new task. Keep what was right, fold this in, '
     + 'and carry on. Drop the earlier work only if this says to.\n';
+// The same steer when it lands in a fresh context (new engine, or a model that cannot take over the
+// session): the cut-off work is the last assistant turn of the handed-over transcript.
+const STEER_HANDOFF_PREFIX = 'The previous model was cut off mid-reply when the user added this. Its work so far '
+    + 'is the last assistant turn in the transcript above. This builds on that work (a correction, an addition, '
+    + 'or a comment), not a new task. Keep what was right, fold this in, and carry on from where it stopped. '
+    + 'Drop the earlier work only if this says to.\n';
+// Switching engine, or to a model that needs a fresh context, mid-turn steers onto the new pick.
+const SWITCH_PREFIX = 'The user switched you in while the previous turn was running. Carry on from where it stopped: '
+    + 'do not start over, do not repeat a finished step, and do not ask what to do.\n';
+const SWITCH_HANDOFF_PREFIX = 'The user switched models while the previous one was mid-reply. Its work so far is the '
+    + 'last assistant turn in the transcript above. Carry on from where it stopped: do not start over, do not repeat '
+    + 'a finished step, and do not ask what to do.\n';
 const SESSION_IMAGE_CAP = 60;
 const PRINT_SETTLE_MS = 1500;
 const EFFORT_MODELS = {
@@ -4443,6 +4455,47 @@ function transcriptSinceRepair(messages) {
     return { opening: '', rows: list };
 }
 
+function steerText(message, spoken, handoff) {
+    if (message.switched === true) return `${handoff ? SWITCH_HANDOFF_PREFIX : SWITCH_PREFIX}${spoken}`;
+    if (message.steer === true) return `${handoff ? STEER_HANDOFF_PREFIX : STEER_PREFIX}${spoken}`;
+    return spoken;
+}
+
+// TokenRouter provider of a family ("OpenAI", "DeepSeek"), from the catalog or the id's vendor prefix.
+function tokenRouterProvider(families, id) {
+    const want = String(id || '').trim();
+    if (!want) return '';
+    const row = (Array.isArray(families) ? families : []).find((item) => item && (item.id === want || item.fastId === want));
+    const named = row && row.provider && row.provider !== 'Other' ? String(row.provider) : '';
+    return (named || (want.includes('/') ? want.split('/')[0] : want)).toLowerCase();
+}
+
+// A TokenRouter session carries the old provider's reasoning and tool-call shapes, so a model from
+// another provider starts a fresh context with the transcript. Claude and Cursor keep the session.
+function needsFreshModelContext(prevChoice, engine, nextId, families) {
+    if (engine !== 'tokenrouter' || !prevChoice || sanitizeEngine(prevChoice.engine) !== 'tokenrouter') return false;
+    const before = tokenRouterProvider(families, prevChoice.id);
+    const after = tokenRouterProvider(families, nextId);
+    return !!before && !!after && before !== after;
+}
+
+// The transcript body of one handed-over message. A reply the user cut off with a steer
+// also lists its finished tool steps and prints, so the next model can carry on from them.
+function transcriptBody(message, cutOff) {
+    const body = message.user_input || (message.data && message.data.Description) || message.content || '';
+    if (!cutOff) return body;
+    const steps = (Array.isArray(message.trace) ? message.trace : [])
+        .filter((row) => row && row.type === 'tool' && row.text)
+        .map((row) => `- ${String(row.text).slice(0, 200)}`);
+    const prints = (Array.isArray(message.prints) ? message.prints : [])
+        .map((item) => (item && (item.filename || item.name)) || (typeof item === 'string' ? item : ''))
+        .filter(Boolean);
+    const lines = [body || '(no reply text yet)'];
+    if (steps.length) lines.push(`Steps done before the cut:\n${steps.slice(-12).join('\n')}`);
+    if (prints.length) lines.push(`Prints made: ${prints.slice(-12).join(', ')}`);
+    return lines.join('\n');
+}
+
 function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     const lines = [];
     const handoff = !!(options && options.handoff);
@@ -4456,11 +4509,14 @@ function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
         const since = transcriptSinceRepair(priorMessages);
         lines.push(chat.replay
             ? 'The user discarded later turns. Continue from this kept transcript only:'
-            : 'This chat moved to you from another engine. Continue from this transcript:');
+            : 'This chat moved to you from another engine or model. Continue from this transcript:');
         if (since.opening) lines.push(`user (the repaired request this session started from): ${since.opening}`);
-        since.rows.forEach((message) => {
-            const body = message.user_input || (message.data && message.data.Description) || message.content || '';
-            if (body) lines.push(`${message.role}: ${body}`);
+        since.rows.forEach((message, i) => {
+            const next = since.rows[i + 1];
+            // The last reply before this steer, or before a steer at the end of the transcript, was cut off.
+            const cutOff = message.role === 'assistant' && (next ? next.steer === true : options && options.steer === true);
+            const body = transcriptBody(message, cutOff);
+            if (body) lines.push(`${message.role}${cutOff ? ' (cut off mid-reply)' : ''}: ${body}`);
         });
         lines.push('');
     }
@@ -5797,6 +5853,9 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
         const freshDraftId = message.resume ? null : crypto.randomUUID();
         // An Obliterated Memories engine makes the chat Kabuki's; a Kabuki chat runs on no other (#687).
         const turnStore = engineStore(gr, engine);
+        const routerFamilies = !message.resume && engine === 'tokenrouter'
+            ? await listTokenRouterModels().catch(() => [])
+            : [];
         prepared = await enqueue(async () => {
             const index = readIndex(paths.indexPath);
             const chat = index.chats.find((item) => item.id === sessionId);
@@ -5840,8 +5899,8 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
             const files = await storeAttachments(gr, chat, message.attachments || []);
             const spoken = content || (files.length ? 'Use the attached files.' : '');
             if (!spoken) throw new Error('Say what you want, or attach a file');
-            const userText = message.steer ? `${STEER_PREFIX}${spoken}` : spoken;
             if (chat.name === 'Director' && spoken) chat.name = spoken.slice(0, 48);
+            const prevChoice = chat.choice || null;
             chat.model = usesClaudeCli(engine) ? claudeRun.model : runModel;
             chat.choice = usesClaudeCli(engine)
                 ? { engine, id: claudeRun.family || claudeRun.model, effort: claudeRun.effort || 'medium', fast: claudeRun.fast }
@@ -5871,7 +5930,8 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
             delete chat.fresh;
             const lastEngine = chat.lastEngine || (chat.cursorId ? 'cursor' : null);
             const switched = !!lastEngine && lastEngine !== engine;
-            let handoff = switched && !chat.replay;
+            const newModelContext = !switched && needsFreshModelContext(prevChoice, engine, chat.choice && chat.choice.id, routerFamilies);
+            let handoff = (switched || newModelContext) && !chat.replay;
             let cursorId = chat.cursorId;
             if (engine === 'cursor') {
                 const cursorAccountAuthStore = require('./cursorAccountAuthStore');
@@ -5884,12 +5944,13 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
                     chat.cursorId = cursorId;
                     chat.accountId = activeAccountId;
                 }
-            } else if (switched || chat.replay || !chat.claudeSessionId) {
+            } else if (switched || newModelContext || chat.replay || !chat.claudeSessionId) {
                 // A Claude session only knows its own turns. A new one gets the kept transcript.
                 chat.claudeSessionId = crypto.randomUUID();
                 if (!chat.replay && !fresh && priorMessages.length) handoff = true;
             }
             chat.lastEngine = engine;
+            const userText = steerText(message, spoken, handoff && priorMessages.length > 0 && !fresh);
             if (turnStore === customProviders.OBLITERATED_STORE) chat.memoryStore = turnStore;
             const round = usesClaudeCli(engine)
                 ? roundModelRecord(claudeRun.family || claudeRun.model, claudeRun.effort, claudeRun.fast, chat.model)
@@ -5911,7 +5972,7 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
             const clientId = await bindDirectorTab(handler.globalResources, paths, directorClientId(clientInfo, message));
             const memoryStore = turnStore;
             const ageTool = !customProviders.isEngine(engine) || customProviders.ageToolEnabled(handler.globalResources, engine);
-            const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId, { handoff, memoryStore, ageTool });
+            const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId, { handoff, memoryStore, ageTool, steer: message.steer === true || message.switched === true });
             const repairAt = chat.repairedOpening && chat.repairedOpening.text ? String(chat.repairedOpening.at || '') : null;
             chat.replay = false;
             writeIndex(paths.indexPath, index);
@@ -8405,7 +8466,7 @@ module.exports = {
         turnWorkMode,
         boostedEffort,
         turnModeLines,
-        STEER_PREFIX,
+        STEER_PREFIX, steerText, tokenRouterProvider, needsFreshModelContext,
         projectPrompt, wrenRules, claudeProjectPrompt, WREN_COVERED_SENTENCES,
         insideDir, safeName, effortModel, consumeStreamLine, clipToolPayload, TOOL_PAYLOAD_MAX, SESSION_PAYLOAD_DISK_MAX, parkToolBodies, groupCursorModels, publicModelCatalog, directorModelCost, resolveRunModel,
         parseCursorModelLine, agentJailTarget, claudeJailTarget, buildJail, jailEnv, systemBindArgs,

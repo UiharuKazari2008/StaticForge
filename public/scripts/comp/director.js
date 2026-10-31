@@ -1684,11 +1684,47 @@ class Director {
         };
     }
 
+    // TokenRouter provider of a model id, as the server reads it (cursorDirector tokenRouterProvider).
+    routerProvider(id) {
+        const want = String(id || '').trim();
+        if (!want) return '';
+        const row = this.catalogFor('tokenrouter').find((item) => item && (item.id === want || item.fastId === want));
+        const named = row && row.provider && row.provider !== 'Other' ? String(row.provider) : '';
+        return (named || (want.includes('/') ? want.split('/')[0] : want)).toLowerCase();
+    }
+
+    // True when the running turn's session cannot carry on with the picked engine and model:
+    // another engine, or a TokenRouter model from another provider (the server starts a fresh context).
+    switchNeedsFreshTurn() {
+        if (this.persona === 'xi' || !this._running || !this.currentSession || !this.currentSession.id) return false;
+        if (this._runningSessionId !== this.currentSession.id || !this._turnModel) return false;
+        const engine = this.activeEngine();
+        if (engine !== this._turnModel.engine) return true;
+        if (engine !== 'tokenrouter') return false;
+        const before = this.routerProvider(this._turnModel.id);
+        const after = this.routerProvider(this.selectedModel);
+        return !!before && !!after && before !== after;
+    }
+
+    // A switch like that mid-turn steers: the turn stops and carries on with the new pick.
+    steerOnSwitch() {
+        if (!this.switchNeedsFreshTurn()) return;
+        const sessionId = this.currentSession.id;
+        // A steer already waiting goes out on the new pick by itself.
+        if (this._steer && this._steer.sessionId === sessionId) return;
+        const name = this.selectedModelName() || this.engineName(this.activeEngine());
+        this._steer = { sessionId, content: `Continue on ${name}.`, attachments: [], steer: true, switched: true };
+        this.renderQueueChip();
+        showGlassToast('info', 'Director', `Carrying on with ${name}.`);
+        this.abortTurn(true, { steer: true });
+    }
+
     handleToolsAction(action) {
         if (action.startsWith('director-tools-engine-')) {
             const engine = action.slice('director-tools-engine-'.length);
             if (this.setEngine(engine)) {
                 showGlassToast('info', 'Director', `Engine: ${this.engineName(this.activeEngine())}`, false, 1200, '<i class="fas fa-gears"></i>');
+                this.steerOnSwitch();
             }
             return;
         }
@@ -1716,6 +1752,7 @@ class Director {
             if (!this.fastAvailable()) this.fast = false;
             this.saveChatPrefs();
             this.rememberSessionModel();
+            this.steerOnSwitch();
             return;
         }
         if (action.startsWith('director-tools-effort-')) {
@@ -7320,6 +7357,7 @@ class Director {
                 changeJson: changeJson,
                 workspaceId: stayWorkspace,
                 steer: !!(pending && pending.steer),
+                switched: !!(pending && pending.switched),
                 // WebSocketClient: public/scripts/websocket.js
                 clientId: WebSocketClient.readStoredAgentClientId()
             });
