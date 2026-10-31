@@ -258,6 +258,16 @@ function applyWrenChange(body, change) {
             if (slot) slot.prompt = row.prompt;
         });
     }
+    // A changed Directive can drop an expander it no longer needs (dg_outfit, dg_prop, ...): take its !token out too.
+    const live = new Set(change.expanders.map((e) => e.prefix.toLowerCase()));
+    const dropStale = (text) => (typeof text === 'string'
+        ? text.replace(/\s*,?\s*!(dg_[a-z0-9_]+)(?![a-z0-9_])/gi, (match, prefix) => (live.has(prefix.toLowerCase()) ? match : ''))
+            .replace(/^\s*,\s*/, '')
+        : text);
+    body.prompt = dropStale(body.prompt);
+    (Array.isArray(body.allCharacterPrompts) ? body.allCharacterPrompts : []).forEach((c) => {
+        if (c && typeof c === 'object') c.prompt = dropStale(c.prompt);
+    });
     const kept = (Array.isArray(body.text_replacements) ? body.text_replacements : [])
         .filter((row) => !(row && DG_PREFIX.test(String(row.name || ''))));
     body.text_replacements = kept.concat(change.expanders.map((e) => ({ name: e.prefix, value: e.value })));
