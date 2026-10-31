@@ -184,6 +184,12 @@ class StageResultsReviewManager {
 
     show() {
         if (!this.element) return;
+        if (this.element.classList.contains('closing')) {
+            // closeModal hides it only after the close animation (600 ms at most). openModal now
+            // would see it as still open and return, and the late hide would win. Reopen after.
+            this.showAfterClose();
+            return;
+        }
         if (this.element.classList.contains('minimised')) {
             // restoreMinimizedModal: public/scripts/comp/modalUtils.js
             restoreMinimizedModal(this.element, null);
@@ -191,6 +197,22 @@ class StageResultsReviewManager {
         openModal(this.element);
         bringModalToFront(this.element);
         this.reinitScrollbar();
+    }
+
+    showAfterClose() {
+        if (this._reopenTimer) return;
+        const startedAt = Date.now();
+        const poll = () => {
+            const closing = this.element.classList.contains('closing') && !this.element.classList.contains('hidden');
+            if (closing && Date.now() - startedAt < 1500) {
+                this._reopenTimer = setTimeout(poll, 50);
+                return;
+            }
+            this._reopenTimer = null;
+            this.element.classList.remove('closing');
+            this.show();
+        };
+        this._reopenTimer = setTimeout(poll, 50);
     }
 
     previewChainFilename() {

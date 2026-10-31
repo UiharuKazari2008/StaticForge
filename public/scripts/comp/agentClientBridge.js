@@ -659,16 +659,6 @@
         return !!(el && !el.classList.contains('hidden'));
     }
 
-    function dismissPrintsReview() {
-        const el = document.getElementById('stageResultsReview');
-        if (!el) return;
-        if (typeof closeModal === 'function') {
-            closeModal(el);
-            return;
-        }
-        el.classList.add('hidden');
-    }
-
     function fireBoundTabGenerate(options) {
         const opts = options && typeof options === 'object' ? options : {};
         const nWasSet = opts.n != null && opts.n !== '';
@@ -676,9 +666,8 @@
         if (typeof setManualPrintsCount === 'function' && Number.isFinite(prints)) {
             setManualPrintsCount(Math.max(1, Math.min(8, prints)));
         }
-        if (isPrintsReviewOpen()) {
-            dismissPrintsReview();
-        }
+        // Prints review stays open, same as a human Generate: the new run redraws its slots.
+        // Closing it here raced the reopen (closeModal hides after its animation) and lost every other run.
         const btn = document.getElementById('manualGenerateBtn');
         const filenameBefore = window.lastGeneratedImageName || null;
         const studioFilename = typeof readOpenFilename === 'function' ? readOpenFilename() : null;

@@ -1151,7 +1151,7 @@ const TOOL_DEFS = [
                     }
                 },
                 autoApply: { type: 'boolean', description: 'Default true. Silent apply on the bound tab.' },
-                autoGenerate: { type: 'boolean', description: 'Omitted uses Remote Access Settings autoGenerate (default off). After apply, click bound-tab Generate. Returns jobId + filenameBefore. Default n=1. Prints review is dismissed or blockedBy printsReview. Blocked with needsDecompile if Phasewalker stages are still compiled, unless walk is true.' },
+                autoGenerate: { type: 'boolean', description: 'Omitted uses Remote Access Settings autoGenerate (default off). After apply, click bound-tab Generate. Returns jobId + filenameBefore. Default n=1. An open Prints review stays open and shows the new run. Blocked with needsDecompile if Phasewalker stages are still compiled, unless walk is true.' },
                 walk: { type: 'boolean', description: 'true runs every compiled Phasewalker phase. Omit it when they picked one phase — decompile_phasewalker that phase first.' },
                 userApprovedPaidRequest: STUDIO_PAID_APPROVAL_SCHEMA,
                 allow_paid: { type: 'boolean', description: 'Same as userApprovedPaidRequest.' },
