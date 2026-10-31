@@ -516,3 +516,22 @@ Xi reaches Dreamscape MCP through the repo `.cursor/mcp.json` `dreamscape` entry
 
 `director_streaming_update` rows for an edit, or any tool body over 500 characters, set `hasDiff` and `diffId` and omit `args` / `result`. `director_tool_diff` returns that text for the Diff / Output button.
 
+
+## Persona mascot (#688)
+
+`director_streaming_update.data.mascot` is an optional cue for the persona mascot: `{ expression, action?, holdMs }`.
+`expression` is one of `neutral`, `happy`, `focused`, `thinking`, `surprised`, `frustrated`, `smug`, `sleepy`;
+`action` is one of `nod`, `bounce`, `lean-in`, `tilt`, `slump`, `shake`. `modules/directorMascot.js` derives it from new
+tool rows (tool name, error results) and the live thinking text (keywords), at most one cue per 600 ms per session,
+for Wren, Kabuki, and Xi alike (they share `queueDirectorStream`). Rules only, no model call. A coalesced snapshot keeps
+the newest cue.
+
+The client (`public/scripts/comp/directorMascot.js`) draws the mascot from
+`public/static_images/director-mascots/<wren|kabuki|xi>/manifest.json` (Nonoka, Chiyo, and Yozora sprite sets by
+StygianRook). Manifest v2 fields: `size`, `anchor` (`left` | `right`), `headPivot`, `peekRatio`, `bodies`
+(`{ id: { body, head?, faces } }`), `faceSets` (`{ id: { expressions, blink?, blinkFor?, mouth? } }`), `stages`
+(`{ id: { body, kicky?, rub?, rubKicky?, gesture?, gestureKicky? } }`), `transitions` (`"from>to": { via?, frames,
+frameMs }`), and `behaviour` (`start`, `advance` rules with `afterWorkingSec` or `afterFirstKickSec`, `reset`
+`{ to, idleSec, onChatChange }`, `kicky` `{ stage, everySec, durationMs, jiggle }`, `rub` / `gesture`
+`{ stage(s), chance per minute, durationSec }`). A v1 manifest (`layers`, `expressions`) is one body and one stage.
+Tools menu: Mascot View (hides the log; dialogue box shows the live thinking, then the reply) and Show Mascot.

@@ -1,0 +1,148 @@
+{
+  "persona": "xi",
+  "name": "Xi",
+  "version": 2,
+  "source": "Yozora sprite set (2022-01), by StygianRook",
+  "anchor": "left",
+  "size": [
+    947,
+    608
+  ],
+  "headPivot": [
+    384,
+    184
+  ],
+  "hipPivot": [
+    474,
+    608
+  ],
+  "peekRatio": 0.34,
+  "bodies": {
+    "base": {
+      "body": "body-base.webp",
+      "head": "head-base.webp",
+      "faces": "base"
+    },
+    "kicky": {
+      "body": "body-kicky.webp",
+      "head": "head-kicky.webp",
+      "faces": "base"
+    },
+    "kon": {
+      "body": "body-kon.webp",
+      "head": "head-kon.webp",
+      "faces": "base"
+    },
+    "kon_kicky": {
+      "body": "body-kon_kicky.webp",
+      "head": "head-kon_kicky.webp",
+      "faces": "base"
+    },
+    "bigger": {
+      "body": "body-bigger.webp",
+      "head": "head-bigger.webp",
+      "faces": "big"
+    },
+    "kon_bigger": {
+      "body": "body-kon_bigger.webp",
+      "head": "head-kon_bigger.webp",
+      "faces": "big"
+    }
+  },
+  "faceSets": {
+    "base": {
+      "expressions": {
+        "neutral": "face-base-neutral.webp",
+        "happy": "face-base-happy.webp",
+        "focused": "face-base-focused.webp",
+        "thinking": "face-base-thinking.webp",
+        "surprised": "face-base-surprised.webp",
+        "frustrated": "face-base-frustrated.webp",
+        "smug": "face-base-smug.webp",
+        "sleepy": "face-base-sleepy.webp"
+      },
+      "blink": "blink-base.webp",
+      "blinkFor": [
+        "neutral",
+        "focused",
+        "frustrated",
+        "smug",
+        "surprised"
+      ],
+      "mouth": {
+        "talk": "mouth-base.webp"
+      }
+    },
+    "big": {
+      "expressions": {
+        "neutral": "face-big-neutral.webp",
+        "happy": "face-big-happy.webp",
+        "focused": "face-big-focused.webp",
+        "thinking": "face-big-thinking.webp",
+        "frustrated": "face-big-frustrated.webp",
+        "smug": "face-big-smug.webp"
+      },
+      "blink": "blink-big.webp",
+      "blinkFor": [
+        "neutral",
+        "focused",
+        "frustrated",
+        "smug",
+        "surprised"
+      ],
+      "mouth": {
+        "talk": "mouth-big.webp"
+      }
+    }
+  },
+  "stages": {
+    "base": {
+      "body": "base",
+      "kicky": "kicky",
+      "gesture": "kon",
+      "gestureKicky": "kon_kicky"
+    },
+    "bigger": {
+      "body": "bigger",
+      "gesture": "kon_bigger"
+    }
+  },
+  "behaviour": {
+    "start": "base",
+    "advance": [
+      {
+        "from": "base",
+        "to": "bigger",
+        "afterFirstKickSec": 60
+      }
+    ],
+    "reset": {
+      "to": "base",
+      "idleSec": 600,
+      "onChatChange": true
+    },
+    "kicky": {
+      "stage": "base",
+      "everySec": [
+        20,
+        90
+      ],
+      "durationMs": [
+        2000,
+        3000
+      ],
+      "jiggle": true
+    },
+    "gesture": {
+      "stages": [
+        "base",
+        "bigger"
+      ],
+      "chance": 0.35,
+      "durationSec": [
+        4,
+        10
+      ]
+    }
+  }
+}

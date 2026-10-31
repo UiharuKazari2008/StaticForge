@@ -3658,3 +3658,178 @@ html.disable-blur .director-attach-chip {
     flex-direction: column;
     gap: 5px;
 }
+
+/* ---- Director mascot (#688, public/scripts/comp/directorMascot.js) ----
+   Layered sprites over the chat area. Messages view: at the input bar edge, head and shoulders peek while
+   idle and she rises while a turn runs. Mascot view: the log is hidden and she fills the area with a
+   dialogue box. Never takes clicks except the dialogue box (it scrolls). */
+#directorSessionChat {
+    position: relative;
+}
+
+.director-mascot-stage {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: var(--dm-composer-h, 0px);
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 3;
+}
+
+.director-mascot-stage .director-mascot {
+    position: absolute;
+    bottom: 0;
+    width: var(--dm-w, 300px);
+    height: var(--dm-h, 300px);
+    transform: translateY(var(--dm-drop, 0px));
+    transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.35s ease, height 0.35s ease;
+}
+
+.director-mascot-stage[data-anchor="right"] .director-mascot {
+    right: 4px;
+}
+
+.director-mascot-stage[data-anchor="left"] .director-mascot {
+    left: 4px;
+}
+
+.director-mascot-stage.dm-narrow[data-view="messages"] .director-mascot {
+    display: none;
+}
+
+.director-mascot-rig,
+.director-mascot-stage .dm-head,
+.director-mascot-stage .dm-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.director-mascot-stage .dm-layer {
+    object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.director-mascot-stage .dm-layer:not([src]),
+.director-mascot-stage .dm-layer[src=""] {
+    visibility: hidden;
+}
+
+.director-mascot-stage .dm-blink,
+.director-mascot-stage .dm-mouth {
+    opacity: 0;
+}
+
+.director-mascot-stage .dm-blink.dm-on,
+.director-mascot-stage .dm-mouth.dm-on {
+    opacity: 1;
+}
+
+.director-mascot-rig {
+    transform-origin: 50% 100%;
+    animation: dm-breathe 4.2s ease-in-out infinite;
+}
+
+.director-mascot-stage .dm-head {
+    animation: dm-sway 7s ease-in-out infinite;
+}
+
+.director-mascot-stage .dm-head.dm-no-tilt {
+    animation: none;
+}
+
+@keyframes dm-breathe {
+    0%, 100% { transform: scale(1, 1); }
+    50% { transform: scale(1.003, 1.008); }
+}
+
+@keyframes dm-sway {
+    0%, 100% { transform: rotate(-0.7deg); }
+    50% { transform: rotate(0.7deg); }
+}
+
+/* Actions (server cues): short one-shots on the rig; jiggle is the body layer during a kick. */
+.director-mascot-rig.dm-act-nod { animation: dm-nod 0.7s ease-in-out; }
+.director-mascot-rig.dm-act-bounce { animation: dm-bounce 0.7s cubic-bezier(0.3, 1.6, 0.5, 1); }
+.director-mascot-rig.dm-act-lean-in { animation: dm-lean 1.4s ease-in-out; }
+.director-mascot-rig.dm-act-tilt { animation: dm-tilt 1.4s ease-in-out; }
+.director-mascot-rig.dm-act-slump { animation: dm-slump 1.4s ease-in-out; }
+.director-mascot-rig.dm-act-shake { animation: dm-shake 0.6s ease-in-out; }
+.director-mascot-stage .dm-body.dm-act-jiggle { animation: dm-jiggle 0.9s ease-out; transform-origin: 50% 80%; }
+
+@keyframes dm-nod { 0%, 100% { transform: translateY(0); } 35% { transform: translateY(1.5%); } 70% { transform: translateY(-0.5%); } }
+@keyframes dm-bounce { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-3%); } }
+@keyframes dm-lean { 0%, 100% { transform: scale(1); } 40%, 70% { transform: scale(1.025) translateY(-1%); } }
+@keyframes dm-tilt { 0%, 100% { transform: rotate(0); } 40%, 70% { transform: rotate(1.6deg); } }
+@keyframes dm-slump { 0%, 100% { transform: translateY(0); } 40%, 70% { transform: translateY(2%) scale(0.99); } }
+@keyframes dm-shake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-1.2%); } 40% { transform: translateX(1.2%); } 60% { transform: translateX(-0.8%); } 80% { transform: translateX(0.6%); } }
+@keyframes dm-jiggle { 0%, 100% { transform: scale(1, 1); } 15% { transform: scale(1.012, 0.99); } 35% { transform: scale(0.994, 1.008); } 60% { transform: scale(1.005, 0.997); } }
+
+/* Mascot view: the log steps aside; she fills the chat area and talks through the dialogue box. */
+#directorSessionChat.director-mascot-view .director-chat-messages-container,
+#directorSessionChat.director-mascot-view #directorTaskList {
+    visibility: hidden;
+}
+
+.director-mascot-dialogue {
+    position: absolute;
+    left: 4%;
+    right: 4%;
+    bottom: 10px;
+    max-height: 38%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 8px;
+    background: linear-gradient(180deg, rgba(24, 30, 44, 0.86), rgba(10, 14, 24, 0.9));
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    color: #f4f6fb;
+    pointer-events: auto;
+}
+
+.director-mascot-dialogue.hidden {
+    display: none;
+}
+
+.director-mascot-dialogue .dm-name {
+    align-self: flex-start;
+    padding: 1px 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.14);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.03em;
+}
+
+.director-mascot-dialogue .dm-text {
+    overflow: auto;
+    white-space: pre-wrap;
+    line-height: 1.45;
+    font-size: 13px;
+}
+
+.director-mascot-dialogue[data-kind="thinking"] .dm-text {
+    font-style: italic;
+    opacity: 0.72;
+}
+
+.director-mascot-stage[data-stage] .dm-body {
+    transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .director-mascot-rig,
+    .director-mascot-stage .dm-head,
+    .director-mascot-stage .director-mascot,
+    .director-mascot-rig[class*="dm-act-"],
+    .director-mascot-stage .dm-body.dm-act-jiggle {
+        animation: none !important;
+        transition: none !important;
+    }
+}

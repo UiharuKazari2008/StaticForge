@@ -1,0 +1,80 @@
+{
+  "persona": "wren",
+  "name": "Wren",
+  "version": 2,
+  "source": "Nonoka sprite set (2022-02, purple), by StygianRook",
+  "anchor": "left",
+  "size": [
+    844,
+    608
+  ],
+  "headPivot": [
+    150,
+    154
+  ],
+  "hipPivot": [
+    422,
+    608
+  ],
+  "peekRatio": 0.29,
+  "bodies": {
+    "base": {
+      "body": "body-base.webp",
+      "head": "head-base.webp",
+      "faces": "base"
+    },
+    "bigger": {
+      "body": "body-bigger.webp",
+      "head": "head-bigger.webp",
+      "faces": "base"
+    }
+  },
+  "faceSets": {
+    "base": {
+      "expressions": {
+        "neutral": "face-base-neutral.webp",
+        "happy": "face-base-happy.webp",
+        "focused": "face-base-focused.webp",
+        "thinking": "face-base-thinking.webp",
+        "surprised": "face-base-surprised.webp",
+        "frustrated": "face-base-frustrated.webp",
+        "smug": "face-base-smug.webp",
+        "sleepy": "face-base-sleepy.webp"
+      },
+      "blink": "blink-base.webp",
+      "blinkFor": [
+        "neutral",
+        "focused",
+        "frustrated",
+        "smug",
+        "surprised"
+      ],
+      "mouth": {
+        "talk": "mouth-base.webp"
+      }
+    }
+  },
+  "stages": {
+    "base": {
+      "body": "base"
+    },
+    "bigger": {
+      "body": "bigger"
+    }
+  },
+  "behaviour": {
+    "start": "base",
+    "advance": [
+      {
+        "from": "base",
+        "to": "bigger",
+        "afterWorkingSec": 60
+      }
+    ],
+    "reset": {
+      "to": "base",
+      "idleSec": 600,
+      "onChatChange": true
+    }
+  }
+}

@@ -514,12 +514,22 @@ class Director {
     }
 
     // Initialize Director
+    // Persona mascot over the chat area (public/scripts/comp/directorMascot.js, #688).
+    setupMascot() {
+        const host = document.getElementById('directorSessionChat');
+        if (this.mascot || !host || typeof DirectorMascot !== 'function') return;
+        this.mascot = new DirectorMascot();
+        this.mascot.mount(host);
+        void this.mascot.setPersona(this.persona);
+    }
+
     async init() {
         this.setupDirectorDropdowns();
         this.setupDirectorEventListeners();
         this.setupDirectorContextMenus();
         this.setupDirectorWebSocketHandlers();
         this.setupDirectorWindow();
+        this.setupMascot();
         initializeDirectorTray();
         this.requestDirectorModels();
         this.requestDirectorSettings();
@@ -1631,6 +1641,24 @@ class Director {
                             loadfn: (item) => { item.checked = director.sendOnEnter === true; }
                         },
                         {
+                            icon: 'fas fa-user',
+                            text: 'Mascot View',
+                            tooltip: 'Hide the log: she fills the chat and talks in a dialogue box',
+                            action: 'director-tools-mascot-view',
+                            keepMenuOpen: true,
+                            hidden: () => !director.mascot,
+                            disabled: () => !!director.mascot && !director.mascot.enabled,
+                            loadfn: (item) => { item.checked = !!director.mascot && director.mascot.view === 'mascot'; }
+                        },
+                        {
+                            icon: 'fas fa-eye',
+                            text: 'Show Mascot',
+                            action: 'director-tools-mascot',
+                            keepMenuOpen: true,
+                            hidden: () => !director.mascot,
+                            loadfn: (item) => { item.checked = !!director.mascot && director.mascot.enabled; }
+                        },
+                        {
                             icon: 'fas fa-sliders',
                             text: 'Director Settings...',
                             tooltip: 'New session models, Auto-Repair, and learned rules',
@@ -1833,6 +1861,12 @@ class Director {
                 this.fast = !this.fast;
                 this.saveChatPrefs();
                 this.rememberSessionModel();
+                break;
+            case 'director-tools-mascot-view':
+                if (this.mascot) this.mascot.setView(this.mascot.view === 'mascot' ? 'messages' : 'mascot');
+                break;
+            case 'director-tools-mascot':
+                if (this.mascot) this.mascot.setEnabled(!this.mascot.enabled);
                 break;
             case 'director-tools-send-enter':
                 this.sendOnEnter = !this.sendOnEnter;
@@ -2222,6 +2256,7 @@ class Director {
         this.saveChatPrefs();
         this._personaSession[this.persona] = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
         this.persona = next;
+        if (this.mascot) void this.mascot.setPersona(next);
         // Wren and Kabuki each keep their own engine (engineStorageKey); Xi's runtime is per session.
         if (next !== 'xi') this.engine = this.personaEngine(next);
         this.loadChatPrefs();
@@ -2284,6 +2319,7 @@ class Director {
         this._skipQuickStart = false;
         this.updateTrayChrome();
         this.setImagePending(false);
+        if (this.mascot) this.mascot.onTurnEnd(true);
         this.afterTurn(sessionId);
     }
 
@@ -3994,6 +4030,7 @@ class Director {
 
     async showSessionChat(session, options) {
         this.adoptSessionPersona(session);
+        if (this.mascot && (!this.currentSession || this.currentSession.id !== (session && session.id))) this.mascot.onChatChange();
         this._pendingWorkspaceToken = null;
         // Recent Items (public/scripts/comp/recentItems.js): a Director session opened
         if (session && window.recentItems) window.recentItems.noteDirectorSession(session);
@@ -4777,6 +4814,7 @@ class Director {
 
     _doRenderSessionMessages(messages, options) {
         if (!this.directorChatMessages || !Array.isArray(messages)) return;
+        if (this.mascot) this.mascot.onMessages(messages);
         const keepPlace = options && options.keepPlace;
         const firstPaint = !!this.currentSession && this._windowSessionId !== this.currentSession.id;
         if (firstPaint) this._stickBottom = true;
@@ -5240,6 +5278,7 @@ class Director {
     }
 
     showNewSessionDraft() {
+        if (this.mascot) this.mascot.onChatChange();
         if (!this._welcomeQuip) {
             this._welcomeQuip = DIRECTOR_WELCOME_QUIPS[Math.floor(Math.random() * DIRECTOR_WELCOME_QUIPS.length)];
         }
@@ -7192,6 +7231,7 @@ class Director {
             return;
         }
         if (!content && !this.pendingAttachments.length) return;
+        if (this.mascot) this.mascot.onUserSend();
         if (busyHere && this.currentSession && this.currentSession.id) {
             const choice = await showConfirmationDialog(
                 'Director is still working on this chat.',
@@ -7852,6 +7892,7 @@ class Director {
                     window.directorInstance.paintContext(payload.context, false);
                 }
                 window.directorInstance.queueLivePaint(payload);
+                if (window.directorInstance.mascot) window.directorInstance.mascot.onStream(payload);
             }
         });
         
@@ -7901,6 +7942,7 @@ class Director {
             if (data.data && director) {
                 director.finishTurn(data.data.sessionId);
                 if (steering) return;
+                if (director.mascot && data.data.sessionId === window.currentSession?.id) director.mascot.onTurnEnd(false);
                 if (data.data.context && window.currentSession && data.data.sessionId === window.currentSession.id) {
                     window.currentSession.contextTokens = data.data.context.tokens;
                     window.currentSession.contextPercent = data.data.context.percent;

@@ -1,0 +1,207 @@
+{
+  "persona": "kabuki",
+  "name": "Kabuki",
+  "version": 2,
+  "source": "Chiyo sprite set (2021-11), by StygianRook",
+  "size": [
+    695,
+    608
+  ],
+  "headPivot": [
+    419,
+    189
+  ],
+  "hipPivot": [
+    347,
+    608
+  ],
+  "peekRatio": 0.37,
+  "bodies": {
+    "base": {
+      "body": "body-base.webp",
+      "faces": "fan",
+      "head": "head-base.webp"
+    },
+    "bigger": {
+      "body": "body-bigger.webp",
+      "faces": "fan",
+      "head": "head-bigger.webp"
+    },
+    "bigger_kicky": {
+      "body": "body-bigger_kicky.webp",
+      "faces": "fan",
+      "head": "head-bigger_kicky.webp"
+    },
+    "bigger_rub": {
+      "body": "body-bigger_rub.webp",
+      "faces": "rub",
+      "head": "head-bigger_rub.webp"
+    },
+    "bigger_rub_kicky": {
+      "body": "body-bigger_rub_kicky.webp",
+      "faces": "rub",
+      "head": "head-bigger_rub_kicky.webp"
+    },
+    "bigger2": {
+      "body": "body-bigger2.webp",
+      "faces": "big2"
+    },
+    "grow1_25": {
+      "body": "body-grow1_25.webp",
+      "faces": "fan",
+      "head": "head-base.webp"
+    },
+    "grow1_50": {
+      "body": "body-grow1_50.webp",
+      "faces": "fan",
+      "head": "head-base.webp"
+    },
+    "grow1_75": {
+      "body": "body-grow1_75.webp",
+      "faces": "fan",
+      "head": "head-bigger.webp"
+    },
+    "grow2_25": {
+      "body": "body-grow2_25.webp",
+      "faces": "rub",
+      "head": "head-bigger_rub.webp"
+    },
+    "grow2_50": {
+      "body": "body-grow2_50.webp",
+      "faces": "rub",
+      "head": "head-bigger_rub.webp"
+    },
+    "grow2_75": {
+      "body": "body-grow2_75.webp",
+      "faces": "big2"
+    }
+  },
+  "faceSets": {
+    "fan": {
+      "expressions": {
+        "neutral": "face-fan-neutral.webp",
+        "happy": "face-fan-happy.webp",
+        "focused": "face-fan-focused.webp",
+        "thinking": "face-fan-thinking.webp",
+        "surprised": "face-fan-surprised.webp",
+        "frustrated": "face-fan-frustrated.webp",
+        "smug": "face-fan-smug.webp",
+        "sleepy": "face-fan-sleepy.webp"
+      },
+      "blink": "blink-fan.webp",
+      "blinkFor": [
+        "neutral",
+        "focused",
+        "frustrated",
+        "smug",
+        "surprised"
+      ],
+      "mouth": {
+        "talk": "mouth-fan.webp"
+      }
+    },
+    "rub": {
+      "expressions": {
+        "neutral": "face-rub-neutral.webp",
+        "happy": "face-rub-happy.webp",
+        "thinking": "face-rub-thinking.webp",
+        "surprised": "face-rub-surprised.webp",
+        "frustrated": "face-rub-frustrated.webp",
+        "smug": "face-rub-smug.webp"
+      },
+      "mouth": {
+        "talk": "mouth-rub.webp"
+      }
+    },
+    "big2": {
+      "expressions": {
+        "neutral": "face-big2-neutral.webp",
+        "happy": "face-big2-happy.webp",
+        "focused": "face-big2-focused.webp",
+        "thinking": "face-big2-thinking.webp",
+        "surprised": "face-big2-surprised.webp",
+        "frustrated": "face-big2-frustrated.webp",
+        "smug": "face-big2-smug.webp",
+        "sleepy": "face-big2-sleepy.webp"
+      },
+      "mouth": {
+        "talk": "mouth-big2.webp"
+      }
+    }
+  },
+  "transitions": {
+    "base>bigger": {
+      "via": null,
+      "frames": [
+        "grow1_25",
+        "grow1_50",
+        "grow1_75"
+      ],
+      "frameMs": 420
+    },
+    "bigger>bigger2": {
+      "via": "bigger_rub",
+      "frames": [
+        "grow2_25",
+        "grow2_50",
+        "grow2_75"
+      ],
+      "frameMs": 420
+    }
+  },
+  "stages": {
+    "base": {
+      "body": "base"
+    },
+    "bigger": {
+      "body": "bigger",
+      "rub": "bigger_rub",
+      "kicky": "bigger_kicky",
+      "rubKicky": "bigger_rub_kicky"
+    },
+    "bigger2": {
+      "body": "bigger2"
+    }
+  },
+  "behaviour": {
+    "start": "base",
+    "advance": [
+      {
+        "from": "base",
+        "to": "bigger",
+        "afterWorkingSec": 60
+      },
+      {
+        "from": "bigger",
+        "to": "bigger2",
+        "afterFirstKickSec": 60
+      }
+    ],
+    "reset": {
+      "to": "base",
+      "idleSec": 600,
+      "onChatChange": true
+    },
+    "kicky": {
+      "stage": "bigger",
+      "everySec": [
+        20,
+        90
+      ],
+      "durationMs": [
+        2000,
+        3000
+      ],
+      "jiggle": true
+    },
+    "rub": {
+      "stage": "bigger",
+      "chance": 0.35,
+      "durationSec": [
+        6,
+        15
+      ]
+    }
+  },
+  "anchor": "right"
+}

@@ -4843,6 +4843,12 @@ function queueDirectorStream(gr, data, handler, ws) {
     gate.handler = handler || gate.handler;
     gate.ws = ws || gate.ws;
     gate.rtt = streamRttMs(gate.gr);
+    // Mascot cue (#688): rides on the stream payload; the newest payload wins, like the rest of it.
+    try {
+        const cue = require('./directorMascot').mascotCue(sessionId, data);
+        if (cue) data = { ...data, mascot: cue };
+        else if (gate.pending && gate.pending.mascot && !data.mascot) data = { ...data, mascot: gate.pending.mascot };
+    } catch (_) { /* a cue never blocks the stream */ }
     gate.pending = data;
     const gaps = streamGaps(gate.rtt);
     if (gate.inflight && !gate.inflight.acked) {
