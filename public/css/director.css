@@ -3672,7 +3672,7 @@ html.disable-blur .director-attach-chip {
     top: 0;
     left: 0;
     right: 0;
-    bottom: var(--dm-composer-h, 0px);
+    bottom: var(--dm-bottom, 0px);
     overflow: hidden;
     pointer-events: none;
     z-index: 3;
@@ -3683,8 +3683,38 @@ html.disable-blur .director-attach-chip {
     bottom: 0;
     width: var(--dm-w, 300px);
     height: var(--dm-h, 300px);
+    overflow: hidden;
     transform: translateY(var(--dm-drop, 0px));
-    transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.35s ease, height 0.35s ease;
+    transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.6s ease, height 0.6s ease;
+}
+
+/* The canvas holds every pose; the body's camera picks the part on show (Kabuki zooms out for bigger2). */
+.director-mascot-canvas {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+    transition: transform 0.6s ease, width 0.6s ease, height 0.6s ease;
+}
+
+.director-mascot-stage .dm-body-prev {
+    opacity: 0;
+}
+
+/* Buttons she would cover (quick starts, attachment chips) go under the input bar while she shows. */
+#directorSessionChat.director-mascot-on #directorComposer {
+    display: flex;
+    flex-direction: column;
+}
+
+#directorSessionChat.director-mascot-on #directorComposer > .director-chat-input {
+    order: 0;
+}
+
+#directorSessionChat.director-mascot-on #directorComposerWelcome,
+#directorSessionChat.director-mascot-on #directorAttachChips {
+    order: 1;
+    margin-top: 8px;
 }
 
 .director-mascot-stage[data-anchor="right"] .director-mascot {
@@ -3827,6 +3857,7 @@ html.disable-blur .director-attach-chip {
     .director-mascot-rig,
     .director-mascot-stage .dm-head,
     .director-mascot-stage .director-mascot,
+    .director-mascot-canvas,
     .director-mascot-rig[class*="dm-act-"],
     .director-mascot-stage .dm-body.dm-act-jiggle {
         animation: none !important;

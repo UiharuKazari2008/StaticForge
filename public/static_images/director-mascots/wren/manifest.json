@@ -27,21 +27,6 @@
       "body": "body-bigger.webp",
       "head": "head-bigger.webp",
       "faces": "base"
-    },
-    "grow_25": {
-      "body": "body-grow_25.webp",
-      "head": "head-base.webp",
-      "faces": "base"
-    },
-    "grow_50": {
-      "body": "body-grow_50.webp",
-      "head": "head-base.webp",
-      "faces": "base"
-    },
-    "grow_75": {
-      "body": "body-grow_75.webp",
-      "head": "head-bigger.webp",
-      "faces": "base"
     }
   },
   "faceSets": {
@@ -67,17 +52,6 @@
       "mouth": {
         "talk": "mouth-base.webp"
       }
-    }
-  },
-  "transitions": {
-    "base>bigger": {
-      "via": null,
-      "frames": [
-        "grow_25",
-        "grow_50",
-        "grow_75"
-      ],
-      "frameMs": 420
     }
   },
   "stages": {

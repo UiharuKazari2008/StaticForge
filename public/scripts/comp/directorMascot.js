@@ -70,7 +70,9 @@ class DirectorMascot {
         root.setAttribute('aria-hidden', 'true');
         root.innerHTML = `
             <div class="director-mascot">
+                <div class="director-mascot-canvas">
                 <div class="director-mascot-rig">
+                    <img class="dm-layer dm-body-prev" alt="">
                     <img class="dm-layer dm-body" alt="">
                     <div class="dm-head">
                         <img class="dm-layer dm-head-img" alt="">
@@ -78,6 +80,7 @@ class DirectorMascot {
                         <img class="dm-layer dm-blink" alt="">
                         <img class="dm-layer dm-mouth" alt="">
                     </div>
+                </div>
                 </div>
             </div>
             <div class="director-mascot-dialogue">
@@ -88,7 +91,9 @@ class DirectorMascot {
         this.root = root;
         this.el = {
             mascot: root.querySelector('.director-mascot'),
+            canvas: root.querySelector('.director-mascot-canvas'),
             rig: root.querySelector('.director-mascot-rig'),
+            bodyPrev: root.querySelector('.dm-body-prev'),
             body: root.querySelector('.dm-body'),
             head: root.querySelector('.dm-head'),
             headImg: root.querySelector('.dm-head-img'),
@@ -100,9 +105,12 @@ class DirectorMascot {
             text: root.querySelector('.dm-text')
         };
         this.applyView();
+        // She stands on the input bar wherever it sits (centred on a new chat, at the bottom later):
+        // anything that moves or resizes it re-lays her out.
         if (typeof ResizeObserver === 'function') {
             this._resize = new ResizeObserver(() => this.layout());
-            this._resize.observe(host);
+            [host, host.querySelector('#directorComposer'), host.querySelector('.director-chat-input'), host.querySelector('.director-chat-messages-container')]
+                .filter(Boolean).forEach((el) => this._resize.observe(el));
         }
         this._tick = setInterval(() => this.tick(), DIRECTOR_MASCOT_TICK_MS);
         this.scheduleBlink();
@@ -127,41 +135,57 @@ class DirectorMascot {
         this.root.dataset.view = this.view;
         if (this.host) {
             this.host.classList.toggle('director-mascot-view', on && this.view === 'mascot');
+            // Buttons she would cover (quick starts, attachment chips) move under the input bar.
+            this.host.classList.toggle('director-mascot-on', on);
         }
         this.root.dataset.state = this.working ? 'working' : 'idle';
         this.layout();
         this.paintDialogue();
     }
 
-    // Fit the figure to the chat area: height from the view, width from the art's aspect.
+    // Fit the figure above the input bar: height from the view, width from the camera's aspect.
     layout() {
         if (!this.root || !this.manifest || !this.host) return;
-        const composer = this.host.querySelector('#directorComposer');
-        const composerH = composer ? composer.offsetHeight : 0;
-        this.root.style.setProperty('--dm-composer-h', `${composerH}px`);
-        // Sit on the input bar: inside its left or right end, never against the window edge.
         const hostBox = this.host.getBoundingClientRect();
+        const composer = this.host.querySelector('#directorComposer');
         const bar = composer && (composer.querySelector('.director-chat-input') || composer);
-        const barBox = bar ? bar.getBoundingClientRect() : hostBox;
+        const barBox = bar ? bar.getBoundingClientRect() : { top: hostBox.bottom, left: hostBox.left, right: hostBox.right, width: hostBox.width };
         const inset = 10;
+        this.root.style.setProperty('--dm-bottom', `${Math.max(0, Math.round(hostBox.bottom - barBox.top))}px`);
         this.root.style.setProperty('--dm-left', `${Math.max(inset, Math.round(barBox.left - hostBox.left) + inset)}px`);
         this.root.style.setProperty('--dm-right', `${Math.max(inset, Math.round(hostBox.right - barBox.right) + inset)}px`);
-        const areaH = Math.max(0, this.host.clientHeight - composerH);
+        const areaH = Math.max(0, Math.round(barBox.top - hostBox.top));
         const areaW = Math.max(0, Math.round(barBox.width) - inset * 2);
-        const [w0, h0] = this.manifest.size;
+        const [W, H] = this.manifest.size;
+        const cam = this.camera();
         const share = this.view === 'mascot' ? 0.98 : 0.62;   // messages view: idle drops below the bar edge (--dm-drop)
         let h = areaH * share;
-        let w = h * (w0 / h0);
+        let w = h * (cam[2] / cam[3]);
         const maxW = areaW * (this.view === 'mascot' ? 1 : 0.7);
-        if (w > maxW) { w = maxW; h = w * (h0 / w0); }
-        const peek = this.view === 'messages' && !this.working ? (1 - (this.manifest.peekRatio || 0.4)) * h : 0;
+        if (w > maxW) { w = maxW; h = w * (cam[3] / cam[2]); }
+        const k = h / cam[3];
+        const shoulders = Number.isFinite(this.manifest.shouldersY)
+            ? Math.max(0.15, Math.min(0.9, (this.manifest.shouldersY - cam[1]) / cam[3]))
+            : (this.manifest.peekRatio || 0.4);
+        const peek = this.view === 'messages' && !this.working ? (1 - shoulders) * h : 0;
         this.root.style.setProperty('--dm-w', `${Math.round(w)}px`);
         this.root.style.setProperty('--dm-h', `${Math.round(h)}px`);
         this.root.style.setProperty('--dm-drop', `${Math.round(peek)}px`);
+        this.el.canvas.style.width = `${Math.round(W * k)}px`;
+        this.el.canvas.style.height = `${Math.round(H * k)}px`;
+        this.el.canvas.style.transform = `translate(${-Math.round(cam[0] * k)}px, ${-Math.round(cam[1] * k)}px)`;
         this.root.dataset.anchor = this.manifest.anchor === 'left' ? 'left' : 'right';
         this.root.classList.toggle('dm-narrow', areaW < 360);
-        const [px, py] = this.manifest.headPivot || [w0 / 2, h0 * 0.4];
-        this.el.head.style.transformOrigin = `${(px / w0) * 100}% ${(py / h0) * 100}%`;
+        const [px, py] = this.manifest.headPivot || [W / 2, H * 0.4];
+        this.el.head.style.transformOrigin = `${(px / W) * 100}% ${(py / H) * 100}%`;
+    }
+
+    // The shown body's camera on the canvas [x, y, w, h]; no camera means the whole canvas.
+    camera() {
+        const m = this.manifest;
+        const id = this.currentBodyId();
+        const cam = m && id && m.bodies[id] && m.bodies[id].camera;
+        return Array.isArray(cam) && cam.length === 4 && cam[2] > 0 && cam[3] > 0 ? cam : [0, 0, m.size[0], m.size[1]];
     }
 
     // ---- manifests ----
@@ -261,6 +285,7 @@ class DirectorMascot {
         const t = m.transitions && m.transitions[`${from}>${next}`];
         st.kickUntil = 0;
         st.gestureUntil = 0;
+        this._swapMs = 650;
         if (!t || !Array.isArray(t.frames) || !t.frames.length) {
             st.stage = next;
             st.firstKickAt = 0;
@@ -344,6 +369,7 @@ class DirectorMascot {
         this._lastAssistantLength = 0;
         this.setWorking(false);
         this.render();
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => this.layout());
     }
 
     onUserSend() {
@@ -498,7 +524,26 @@ class DirectorMascot {
         const body = id ? this.manifest.bodies[id] : null;
         if (!body) return;
         const src = this.manifest.base + body.body;
-        if (this.el.body.getAttribute('src') !== src) this.el.body.setAttribute('src', src);
+        const old = this.el.body.getAttribute('src');
+        if (old !== src) {
+            // Crossfade: the old body fades out over the new one (slow on a stage change, quick for kicks and rubs).
+            const ms = this._swapMs || 180;
+            this._swapMs = 0;
+            if (old) {
+                const prev = this.el.bodyPrev;
+                prev.style.transition = 'none';
+                prev.setAttribute('src', old);
+                prev.style.opacity = '1';
+                void prev.offsetWidth;
+                prev.style.transition = `opacity ${ms}ms ease`;
+                prev.style.opacity = '0';
+            }
+            this.el.body.setAttribute('src', src);
+            if (this._camKey !== JSON.stringify(this.camera())) {
+                this._camKey = JSON.stringify(this.camera());
+                this.layout();
+            }
+        }
         const head = body.head ? this.manifest.base + body.head : '';
         if (this.el.headImg.getAttribute('src') !== head) this.el.headImg.setAttribute('src', head);
         this.el.head.classList.toggle('dm-no-tilt', !body.head);

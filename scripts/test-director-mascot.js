@@ -58,13 +58,10 @@ k.setWorking(true);
 for (let i = 0; i < 59; i++) { now += 1000; k.tick(); }
 assert.strictEqual(k.debugState().stage, 'base', 'not before 60 s of work');
 now += 1500; k.tick();
-assert.strictEqual(k.stageState.transition && k.stageState.transition.to, 'bigger', 'transition starts');
-assert.strictEqual(k.currentBodyId(), 'grow1_25');
-run(420); assert.strictEqual(k.currentBodyId(), 'grow1_50');
-run(420); assert.strictEqual(k.currentBodyId(), 'grow1_75');
-run(420); assert.strictEqual(k.debugState().stage, 'bigger');
+assert.strictEqual(k.debugState().stage, 'bigger', 'straight to bigger (crossfade, no in-betweens)');
 assert.strictEqual(k.currentBodyId(), 'bigger');
 Math.random = () => 0;             // kicks as early as possible, no rubs (chance check)
+k.stageState.nextKickAt = 0;
 for (let i = 0; i < 25 && !k.stageState.firstKickAt; i++) { now += 1000; k.tick(); }
 assert.ok(k.stageState.firstKickAt, 'a kick happened');
 assert.ok(['bigger_kicky', 'bigger_rub_kicky'].includes(k.currentBodyId()), 'kicky body during a kick (with or without a rub)');
@@ -72,11 +69,12 @@ Math.random = () => 0.99;          // no further rubs
 k.stageState.gestureUntil = 0;
 now += 4000; k.tick();
 assert.strictEqual(k.currentBodyId(), 'bigger', 'kick ends');
-for (let i = 0; i < 60 && !k.stageState.transition; i++) { now += 1000; k.tick(); }
-assert.strictEqual(k.stageState.transition.to, 'bigger2');
-assert.strictEqual(k.currentBodyId(), 'bigger_rub', 'bigger2 jump starts from the rub pose');
-run(420 * 4);
+for (let i = 0; i < 60 && k.debugState().stage === 'bigger'; i++) { now += 1000; k.tick(); }
 assert.strictEqual(k.debugState().stage, 'bigger2');
+// bigger2 is framed whole: its camera is bigger than the default one and inside the canvas.
+const camB2 = k.camera(); k.stageState.stage = 'bigger'; const camB = k.camera(); k.stageState.stage = 'bigger2';
+assert.ok(camB2[2] > camB[2] && camB2[3] > camB[3], 'bigger2 camera is wider and taller');
+assert.ok(camB2[0] >= 0 && camB2[1] >= 0 && camB2[0] + camB2[2] <= k.manifest.size[0] + 1 && camB2[1] + camB2[3] <= k.manifest.size[1] + 1, 'inside the canvas');
 // Reset after 10 minutes idle.
 k.setWorking(false);
 now += 601000; k.tick();
@@ -92,10 +90,7 @@ assert.strictEqual(x.manifest.anchor, 'left');
 for (let i = 0; i < 25 && !x.stageState.firstKickAt; i++) { now += 1000; x.tick(); }
 assert.strictEqual(x.currentBodyId(), 'kon_kicky', 'gesture plus kick');
 Math.random = () => 0.99;
-for (let i = 0; i < 70 && !x.stageState.transition && x.debugState().stage === 'base'; i++) { now += 1000; x.tick(); }
-assert.strictEqual(x.stageState.transition && x.stageState.transition.to, 'bigger', 'Xi plays her in-betweens');
-assert.strictEqual(x.currentBodyId(), 'grow_25');
-run(420 * 4);
+for (let i = 0; i < 70 && x.debugState().stage === 'base'; i++) { now += 1000; x.tick(); }
 assert.strictEqual(x.debugState().stage, 'bigger');
 
 // Wren: work-driven advance; faces fall back to neutral for a missing expression.
