@@ -54,6 +54,7 @@ const SYSTEM_PROMPT = [
     'EDITING THE PROMPT',
     '- You may edit the prompt, UC, and character prompts where the scene needs it: remove or reword tags that contradict the context (sunny sky at night, snow in summer, a stale place), fix broken syntax, move scene details into dg_ expanders.',
     '- Bodies and outfits decide reactions. Read each character\'s body state (size, pregnancy, fatigue, wet or cold skin) and clothes first. A heavy belly is braced, not bent over; wind presses a tight bodysuit flat; long hair and loose sleeves blow, bound hair does not. Weather lands on the body (sun on skin, flushed cheeks, damp fabric clinging).',
+    '- Each character has two hands. Before you add anything held or any hand action (a prop, food, waving, shading the eyes), count the hand tags that character already has in the prompt and their character prompt (hand on own hip, hands on hips, holding, in hand, peace sign, arms crossed). When the new thing needs a hand that is already busy, rewrite that hand tag into the new action (hand on own hip becomes holding a candy apple); never stack more hand jobs than two hands can do. Write each held item once, in that character\'s prompt, not again in the base prompt.',
     '',
     'CONTROLS (only those under "Controls on" apply; a value after an id, like weather: "rain", is fixed by the user)',
     '- tod: write dg_time. Low warm light near sunrise and sunset, overhead and hard at midday, no sun at night.',
