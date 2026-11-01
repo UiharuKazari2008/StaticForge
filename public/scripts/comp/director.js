@@ -300,6 +300,8 @@ const DIRECTOR_WELCOME_QUIPS = [
 ];
 
 // Persona display names (Yukimi 2026-11-01): the ids stay wren / kabuki / xi in code and stored chats.
+const DIRECTOR_PERSONA_KEY = 'staticforge_director_persona';
+
 // Workspace accent variables the Director copies on the Vista desktop (see workspaceAccentVars).
 const DIRECTOR_WORKSPACE_ACCENT_VARS = [
     '--primary-color', '--primary-color-contrast', '--primary-color-contrast-shadow', '--primary-color-dark',
@@ -2283,6 +2285,7 @@ class Director {
             this._personaSession.xi = this.currentSession.id;
         }
         this.persona = 'wren';
+        if (this.mascot) void this.mascot.setPersona('wren');
         this.engine = this.personaEngine('wren');
         this.loadChatPrefs();
         this.loadModelCache();
@@ -2304,6 +2307,7 @@ class Director {
         this.saveChatPrefs();
         this._personaSession[this.persona] = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
         this.persona = next;
+        this.rememberPersona(next);
         if (this.mascot) void this.mascot.setPersona(next);
         // Wren and Kabuki each keep their own engine (engineStorageKey); Xi's runtime is per session.
         if (next !== 'xi') this.engine = this.personaEngine(next);
@@ -2922,6 +2926,7 @@ class Director {
             return;
         }
         this.resetToWren();
+        this.restoreLastPersona();
         const panelOpen = this.directorContainer && !this.directorContainer.classList.contains('hidden')
             && !this.directorDockedInWindow();
         if (panelOpen) {
@@ -3977,6 +3982,7 @@ class Director {
         }
         // Studio has no Xi. The desktop window is the only place that toggle exists.
         this.resetToWren();
+        this.restoreLastPersona();
         // Window was hidden without its close button (e.g. a close-all sweep): take the chat back first
         this.mountDirectorInStudio();
         if (this.directorContainer) {
@@ -4076,9 +4082,31 @@ class Director {
         if (!session || session.draft || !session.id || this.persona === 'xi' || !('memoryStore' in session)) return;
         const want = session.memoryStore === 'obliterated' ? 'kabuki' : 'wren';
         if (want === this.persona) return;
+        this.takePersona(want);
+    }
+
+    // Last tab used, kept across reloads (Yukimi 2026-11-01: the Director opened as Yumiya after a Chiyo chat).
+    rememberPersona(persona) {
+        try { localStorage.setItem(DIRECTOR_PERSONA_KEY, persona); } catch (_) { /* storage blocked */ }
+    }
+
+    // A fresh open (no chat showing yet) goes back to Chiyo when her tab was the last one used, so the
+    // server picks her last chat instead of Yumiya's. Yozora is not restored: the Studio always opens Yumiya.
+    restoreLastPersona() {
+        if (this.persona !== 'wren' || (this.currentSession && (this.currentSession.draft || this.currentSession.id))) return;
+        let last = '';
+        try { last = localStorage.getItem(DIRECTOR_PERSONA_KEY) || ''; } catch (_) { /* storage blocked */ }
+        if (last === 'kabuki' && this.kabukiAvailable()) this.takePersona('kabuki');
+    }
+
+    // Switch tab without opening a chat: the caller shows one next.
+    takePersona(want) {
         this.saveChatPrefs();
         this._personaSession[this.persona] = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
         this.persona = want;
+        this.rememberPersona(want);
+        // The mascot and her room follow too: a Chiyo chat opened from Yumiya's tab showed Yumiya (Yukimi 2026-11-01).
+        if (this.mascot) void this.mascot.setPersona(want);
         this.engine = this.personaEngine(want);
         this.loadChatPrefs();
         this.loadModelCache();

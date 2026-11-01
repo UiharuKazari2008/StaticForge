@@ -750,3 +750,32 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-wor
     border-bottom: 1px solid color-mix(in srgb, var(--director-bar-dark, #1c2633) 30%, #000);
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 14%);
 }
+
+/* Send: wider, with Windows Mail's own Send icon (msoeres.dll bitmap 40, index 47, as in Dovecote) painted
+   on the button's <i> in place of the Font Awesome paper plane (vista-icons-not-fa). */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorSendBtn {
+    min-width: 92px;
+    padding: 0 16px 0 12px;
+    gap: 7px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorSendBtn > i {
+    display: inline-block;
+    flex: none;
+    width: 16px;
+    height: 16px;
+    font-size: 0;
+    line-height: 0;
+    background: image-set(url('/static_images/vista-mail/toolbar-16.png') 1x, url('/static_images/vista-mail/toolbar-24.png') 1.5x) no-repeat;
+    background-size: 1024px 16px;
+    background-position: calc(47 * -16px) 0;
+    filter: drop-shadow(0 0 1px hsl(0 0% 100% / 55%));
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorSendBtn > i::before {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorSendBtn:disabled > i {
+    filter: grayscale(1) opacity(0.55);
+}
