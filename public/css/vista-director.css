@@ -567,6 +567,17 @@ body:not(.windows-classic-theme) #directorWindow #directorWindowToolbar.director
     text-shadow: none;
 }
 
+/* Tinted with the workspace its chat belongs to (director.js paintWindowCommandBar): the dark glass stays,
+   coloured from the workspace colour on top to its darker background colour below the glass line. */
+body:not(.windows-classic-theme) #directorWindow #directorWindowToolbar.director-window-command-bar.director-bar-tinted {
+    background: linear-gradient(
+        color-mix(in srgb, var(--director-bar-color) 46%, hsl(0 0% 30%)),
+        color-mix(in srgb, var(--director-bar-color) 34%, hsl(0 0% 18%)) calc(50% - 1px),
+        color-mix(in srgb, var(--director-bar-dark) 40%, hsl(0 0% 4%)) 50%,
+        color-mix(in srgb, var(--director-bar-dark) 30%, hsl(0 0% 3%)));
+    border-bottom-color: color-mix(in srgb, var(--director-bar-dark) 30%, #000);
+}
+
 body:not(.windows-classic-theme) #directorWindow #directorWindowToolbar > #directorCommonHeader {
     height: auto;
 }

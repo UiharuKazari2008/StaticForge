@@ -5916,7 +5916,28 @@ class Director {
         if (Array.isArray(this.directorSessions) && this.directorSessions.length) this.renderDirectorSessions();
     }
 
+    // The standalone window's command bar takes the colour of the workspace its chat belongs to (the active
+    // workspace for a new draft): the same dark glass, tinted.
+    paintWindowCommandBar() {
+        const bar = document.getElementById('directorWindowToolbar');
+        if (!bar) return;
+        const id = (this.currentSession && this.currentSession.workspaceId) || this.currentWorkspaceId();
+        const live = id && typeof workspaces !== 'undefined' && workspaces ? workspaces[id] : null;
+        const hex = (value) => (typeof value === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(value) ? value : '');
+        const color = hex(live && live.color);
+        const dark = hex(live && live.backgroundColor) || color;
+        bar.classList.toggle('director-bar-tinted', !!color);
+        if (color) {
+            bar.style.setProperty('--director-bar-color', color);
+            bar.style.setProperty('--director-bar-dark', dark);
+        } else {
+            bar.style.removeProperty('--director-bar-color');
+            bar.style.removeProperty('--director-bar-dark');
+        }
+    }
+
     paintWorkspaceBanner() {
+        this.paintWindowCommandBar();
         const banner = document.getElementById('directorWorkspaceBanner');
         const text = document.getElementById('directorWorkspaceBannerText');
         const chat = this.directorSessionChat;
