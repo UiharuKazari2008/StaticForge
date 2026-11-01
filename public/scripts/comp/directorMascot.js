@@ -1,16 +1,17 @@
 // Director mascot (#688): Wren (Nonoka), Kabuki (Chiyo), and Xi (Yozora), layered sprites cut from
 // Yukimi's sprite sets (public/static_images/director-mascots/<persona>/manifest.json).
 //
-// Two views (Yukimi 2026-10-31): "messages" keeps the chat log and puts her at the input bar edge (head and
-// shoulders peek while idle, she rises while a turn runs); "mascot" hides the log and she fills the chat
-// area with a dialogue box that shows the live thinking, then the reply, until the next ask.
+// Two views (Yukimi 2026-10-31): "mascot" (the default) is a visual novel: her room fills the chat, she
+// stands on her side, and the log (messages, thinking, tool calls) is a glass panel on the other side, top
+// most. "messages" keeps the plain log and puts her at the input bar edge (head and shoulders peek while
+// idle, she rises while a turn runs). A finished print flies in as a polaroid and fades into her belly.
 //
 // Manifest v1: one body + head + expressions. v2: bodies (each names a faceSet), stages (base / bigger /
 // ...), transitions (in-between frames between stages), and behaviour (advance rules, kicks, gestures).
 // Cues (expression + action) come from the server on director_streaming_update (modules/directorMascot.js).
 
 const DIRECTOR_MASCOT_ROOT = '/static_images/director-mascots';
-const DIRECTOR_MASCOT_PREFS_KEY = 'staticforge_director_mascot';
+const DIRECTOR_MASCOT_PREFS_KEY = 'staticforge_director_mascot_v2';   // v2: the visual novel view is the default
 const DIRECTOR_MASCOT_TICK_MS = 1000;
 const DIRECTOR_MASCOT_SLEEPY_MS = 3 * 60 * 1000;
 
@@ -27,7 +28,7 @@ class DirectorMascot {
         this.persona = null;
         this.manifest = null;
         this.working = false;
-        this.view = 'messages';
+        this.view = 'mascot';
         this.enabled = true;
         this.expression = 'neutral';
         this.expressionUntil = 0;
@@ -50,7 +51,7 @@ class DirectorMascot {
             const raw = JSON.parse(localStorage.getItem(DIRECTOR_MASCOT_PREFS_KEY) || '{}');
             if (raw && typeof raw === 'object') {
                 if (raw.enabled === false) this.enabled = false;
-                if (raw.view === 'mascot') this.view = 'mascot';
+                if (raw.view === 'messages') this.view = 'messages';
             }
         } catch (_) { /* storage can be blocked */ }
     }
@@ -143,6 +144,10 @@ class DirectorMascot {
         this.root.dataset.view = this.view;
         if (this.host) {
             this.host.classList.toggle('director-mascot-view', on && this.view === 'mascot');
+            // Her room behind the visual novel view; the log panel takes the side she does not stand on.
+            const room = on && this.manifest.background ? `url("${this.manifest.base}${this.manifest.background}")` : 'none';
+            this.host.style.setProperty('--dm-room', room);
+            this.host.dataset.dmSide = this.manifest && this.manifest.anchor === 'left' ? 'left' : 'right';
             // Buttons she would cover (quick starts, attachment chips) move under the input bar.
             this.host.classList.toggle('director-mascot-on', on);
         }
@@ -169,20 +174,29 @@ class DirectorMascot {
         const areaW = home ? Math.round(hostBox.width * 0.9) : Math.max(0, Math.round(barBox.width) - inset * 2);
         const [W, H] = this.manifest.size;
         const cam = this.camera();
-        const share = home ? 0.9 : (this.view === 'mascot' ? 0.98 : 0.62);   // messages view: idle drops below the bar edge (--dm-drop)
+        const vn = this.view === 'mascot';
+        const share = vn ? 0.97 : (home ? 0.9 : 0.62);   // messages view: idle drops below the bar edge (--dm-drop)
         let h = areaH * share;
         let w = h * (cam[2] / cam[3]);
         // Never wider than the room between her anchor and the far edge of the chat area.
         const anchorLeft = this.manifest.anchor === 'left';
         const fromEdge = anchorLeft ? Math.max(inset, Math.round(barBox.left - hostBox.left) + inset) : Math.max(inset, Math.round(hostBox.right - barBox.right) + inset);
         const room = Math.round(hostBox.width) - fromEdge - inset;
-        const maxW = Math.min(room, areaW * (this.view === 'mascot' || home ? 1 : 0.7));
+        // Visual novel: she keeps the room beside the log panel (measured, so she never slips behind it).
+        let vnRoom = hostBox.width * 0.9;
+        const panel = this.host.querySelector('.director-chat-messages-container');
+        if (vn && !home && panel) {
+            const p = panel.getBoundingClientRect();
+            if (p.width) vnRoom = anchorLeft ? p.left - hostBox.left - fromEdge - 8 : hostBox.right - p.right - fromEdge - 8;
+        }
+        const maxW = Math.min(room, vn ? Math.max(120, vnRoom) : areaW * (home ? 1 : 0.7));
         if (w > maxW) { w = maxW; h = w * (cam[3] / cam[2]); }
         const k = h / cam[3];
         const shoulders = Number.isFinite(this.manifest.shouldersY)
             ? Math.max(0.15, Math.min(0.9, (this.manifest.shouldersY - cam[1]) / cam[3]))
             : (this.manifest.peekRatio || 0.4);
-        const peek = this.view === 'messages' && !this.working && !home ? (1 - shoulders) * h : 0;
+        const peek = !vn && !this.working && !home ? (1 - shoulders) * h : 0;
+        this._k = k;
         this.root.style.setProperty('--dm-w', `${Math.round(w)}px`);
         this.root.style.setProperty('--dm-h', `${Math.round(h)}px`);
         this.root.style.setProperty('--dm-drop', `${Math.round(peek)}px`);
@@ -209,12 +223,20 @@ class DirectorMascot {
         requestAnimationFrame(step);
     }
 
-    // The shown body's camera on the canvas [x, y, w, h]; no camera means the whole canvas.
+    // One camera for every pose of a persona: the union of the bodies' cameras (or the whole canvas), so a
+    // stage change never shrinks or shifts her (Yukimi: the three versions stay aligned).
     camera() {
         const m = this.manifest;
-        const id = this.currentBodyId();
-        const cam = m && id && m.bodies[id] && m.bodies[id].camera;
-        return Array.isArray(cam) && cam.length === 4 && cam[2] > 0 && cam[3] > 0 ? cam : [0, 0, m.size[0], m.size[1]];
+        if (!m) return [0, 0, 1, 1];
+        if (m._unionCamera) return m._unionCamera;
+        let box = null;
+        Object.values(m.bodies).forEach((b) => {
+            const c = b && b.camera;
+            if (!Array.isArray(c) || c.length !== 4) return;
+            box = box ? [Math.min(box[0], c[0]), Math.min(box[1], c[1]), Math.max(box[2], c[0] + c[2]), Math.max(box[3], c[1] + c[3])] : [c[0], c[1], c[0] + c[2], c[1] + c[3]];
+        });
+        m._unionCamera = box ? [box[0], box[1], box[2] - box[0], box[3] - box[1]] : [0, 0, m.size[0], m.size[1]];
+        return m._unionCamera;
     }
 
     // ---- manifests ----
@@ -478,7 +500,7 @@ class DirectorMascot {
 
     act(action) {
         if (!this.el || !/^[a-z-]+$/.test(action)) return;
-        const target = action === 'jiggle' ? this.el.body : this.el.rig;
+        const target = this.el.rig;   // the face moves with the body, kicks included
         const cls = `dm-act-${action}`;
         target.classList.remove(cls);
         void target.offsetWidth;      // restart the keyframes
@@ -584,7 +606,8 @@ class DirectorMascot {
     paintDialogue() {
         if (!this.el) return;
         const d = this.dialogue;
-        const show = this.view === 'mascot' && !!(d.text || d.kind === 'thinking');
+        // The visual novel view shows the log panel instead; the box stays for a log-less layout later.
+        const show = false && !!(d.text || d.kind === 'thinking');
         this.el.dialogue.classList.toggle('hidden', !show);
         this.el.dialogue.dataset.kind = d.kind;
         const text = d.text || (d.kind === 'thinking' ? '…' : '');
@@ -592,6 +615,55 @@ class DirectorMascot {
             this.el.text.textContent = text;
             this.el.text.scrollTop = this.el.text.scrollHeight;
         }
+    }
+
+    // A finished print: a polaroid of it drifts in from the log side and fades into her belly; she is
+    // pleased with herself.
+    onPrint(url) {
+        if (!this.root || !this.manifest || !url || this.root.classList.contains('hidden')) return;
+        const id = this.currentBodyId();
+        const body = id ? this.manifest.bodies[id] : null;
+        const k = this._k || 1;
+        const cam = this.camera();
+        const box = this.el.mascot.getBoundingClientRect();
+        const stage = this.root.getBoundingClientRect();
+        if (!box.width) return;
+        const belly = (body && body.belly) || [cam[0] + cam[2] / 2, cam[1] + cam[3] * 0.62];
+        const tx = box.left - stage.left + (belly[0] - cam[0]) * k;
+        const ty = box.top - stage.top + (belly[1] - cam[1]) * k;
+        const left = this.manifest.anchor === 'left';
+        const sx = left ? stage.width * 0.72 : stage.width * 0.28;
+        const sy = stage.height * 0.42;
+        const card = document.createElement('div');
+        card.className = 'dm-polaroid';
+        const img = document.createElement('img');
+        img.alt = '';
+        img.src = url;
+        card.appendChild(img);
+        this.root.appendChild(card);
+        const w = Math.max(110, Math.min(190, stage.width * 0.16));
+        card.style.width = `${Math.round(w)}px`;
+        const place = (x, y) => `translate(${Math.round(x - w / 2)}px, ${Math.round(y - w * 0.6)}px)`;
+        const tilt = left ? 7 : -7;
+        const done = () => {
+            card.remove();
+            this.cue({ expression: 'happy', action: 'bounce', holdMs: 4000 });
+            this.later(() => this.act('jiggle'), 380);
+        };
+        const reduced = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reduced || typeof card.animate !== 'function') {
+            this.later(done, 600);
+            return;
+        }
+        const anim = card.animate([
+            { transform: `${place(sx, sy + 40)} rotate(${tilt}deg) scale(0.6)`, opacity: 0, filter: 'blur(0px)' },
+            { transform: `${place(sx, sy)} rotate(${tilt}deg) scale(1)`, opacity: 1, offset: 0.18 },
+            { transform: `${place(sx, sy)} rotate(${tilt / 2}deg) scale(1)`, opacity: 1, offset: 0.45 },
+            { transform: `${place(tx, ty)} rotate(0deg) scale(0.35)`, opacity: 0.85, filter: 'blur(0px)', offset: 0.82 },
+            { transform: `${place(tx, ty)} rotate(0deg) scale(0.15)`, opacity: 0, filter: 'blur(3px)' }
+        ], { duration: 2600, easing: 'ease-in-out', fill: 'forwards' });
+        anim.onfinish = done;
+        this.cue({ expression: 'surprised', holdMs: 1200 });
     }
 
     // Test hook: the stage machine state without the DOM.

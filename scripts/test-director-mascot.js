@@ -71,10 +71,14 @@ now += 4000; k.tick();
 assert.strictEqual(k.currentBodyId(), 'bigger', 'kick ends');
 for (let i = 0; i < 60 && k.debugState().stage === 'bigger'; i++) { now += 1000; k.tick(); }
 assert.strictEqual(k.debugState().stage, 'bigger2');
-// bigger2 is framed whole: its camera is bigger than the default one and inside the canvas.
+// One camera for every pose (no shrink or shift between stages), covering bigger2's whole frame.
 const camB2 = k.camera(); k.stageState.stage = 'bigger'; const camB = k.camera(); k.stageState.stage = 'bigger2';
-assert.ok(camB2[2] > camB[2] && camB2[3] > camB[3], 'bigger2 camera is wider and taller');
-assert.ok(camB2[0] >= 0 && camB2[1] >= 0 && camB2[0] + camB2[2] <= k.manifest.size[0] + 1 && camB2[1] + camB2[3] <= k.manifest.size[1] + 1, 'inside the canvas');
+assert.deepStrictEqual(camB2, camB, 'same camera in every stage');
+for (const b of Object.values(k.manifest.bodies)) {
+    const c = b.camera;
+    assert.ok(c[0] >= camB[0] && c[1] >= camB[1] && c[0] + c[2] <= camB[0] + camB[2] && c[1] + c[3] <= camB[1] + camB[3], 'union covers each body camera');
+}
+assert.ok(camB[0] >= 0 && camB[1] >= 0 && camB[0] + camB[2] <= k.manifest.size[0] + 1 && camB[1] + camB[3] <= k.manifest.size[1] + 1, 'inside the canvas');
 // Reset after 10 minutes idle.
 k.setWorking(false);
 now += 601000; k.tick();

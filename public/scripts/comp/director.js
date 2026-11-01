@@ -3580,6 +3580,8 @@ class Director {
         const filename = payload && payload.filename;
         if (!chatId || !filename || !this.currentSession || String(chatId) !== String(this.currentSession.id)) return;
         const images = this.sessionImageFilenames();
+        // A new print in the open chat: the mascot takes it in (polaroid into her belly).
+        if (!images.includes(filename) && this.mascot && typeof localGalleryImageUrl === 'function') this.mascot.onPrint(localGalleryImageUrl(filename));
         if (!images.includes(filename)) images.push(filename);
         this.currentSession.images = images;
         const messageId = payload.messageId || '';

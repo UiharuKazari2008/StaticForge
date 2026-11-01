@@ -21,12 +21,20 @@
     "base": {
       "body": "body-base.webp",
       "head": "head-base.webp",
-      "faces": "base"
+      "faces": "base",
+      "belly": [
+        311,
+        464
+      ]
     },
     "bigger": {
       "body": "body-bigger.webp",
       "head": "head-bigger.webp",
-      "faces": "base"
+      "faces": "base",
+      "belly": [
+        426,
+        470
+      ]
     }
   },
   "faceSets": {
@@ -76,5 +84,6 @@
       "idleSec": 600,
       "onChatChange": true
     }
-  }
+  },
+  "background": "room.webp"
 }

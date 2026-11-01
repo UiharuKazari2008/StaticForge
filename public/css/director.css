@@ -3815,7 +3815,7 @@ html.disable-blur .director-attach-chip {
 .director-mascot-rig.dm-act-tilt { animation: dm-tilt 1.4s ease-in-out; }
 .director-mascot-rig.dm-act-slump { animation: dm-slump 1.4s ease-in-out; }
 .director-mascot-rig.dm-act-shake { animation: dm-shake 0.6s ease-in-out; }
-.director-mascot-stage .dm-body.dm-act-jiggle { animation: dm-jiggle 0.9s ease-out; transform-origin: 50% 80%; }
+.director-mascot-rig.dm-act-jiggle { animation: dm-jiggle 0.9s ease-out; transform-origin: 50% 80%; }
 
 @keyframes dm-nod { 0%, 100% { transform: translateY(0); } 35% { transform: translateY(1.5%); } 70% { transform: translateY(-0.5%); } }
 @keyframes dm-bounce { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-3%); } }
@@ -3825,10 +3825,74 @@ html.disable-blur .director-attach-chip {
 @keyframes dm-shake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-1.2%); } 40% { transform: translateX(1.2%); } 60% { transform: translateX(-0.8%); } 80% { transform: translateX(0.6%); } }
 @keyframes dm-jiggle { 0%, 100% { transform: scale(1, 1); } 15% { transform: scale(1.012, 0.99); } 35% { transform: scale(0.994, 1.008); } 60% { transform: scale(1.005, 0.997); } }
 
-/* Mascot view: the log steps aside; she fills the chat area and talks through the dialogue box. */
-#directorSessionChat.director-mascot-view .director-chat-messages-container,
-#directorSessionChat.director-mascot-view #directorTaskList {
+/* Visual novel view (the default): her room fills the chat, she stands on her side, and the log is a
+   glass panel on the other side, above her, so messages, thinking, and tool calls always read. */
+body #directorSessionChat.director-mascot-on.director-mascot-view {
+    background: var(--dm-room, none) center / cover no-repeat, #141821 !important;
+}
+
+body #directorSessionChat.director-mascot-on.director-mascot-view .director-chat-messages-container,
+body #directorSessionChat.director-mascot-on.director-mascot-view #directorTaskList {
+    position: relative;
+    z-index: 6;
+    width: 38%;
+    min-width: 300px;
+    max-width: 600px;
+    margin: 10px 12px 6px;
+    background: hsl(0 0% 100% / 84%);
+    border: 1px solid hsl(0 0% 100% / 70%);
+    border-radius: 8px;
+    box-shadow: 0 6px 24px hsl(0 0% 0% / 35%), inset 0 1px 0 hsl(0 0% 100% / 60%);
+    backdrop-filter: blur(10px) saturate(1.1);
+}
+
+body #directorSessionChat.director-mascot-on.director-mascot-view #directorTaskList {
+    flex: none;
+    margin-bottom: 0;
+}
+
+body #directorSessionChat.director-mascot-on.director-mascot-view[data-dm-side="left"] :is(.director-chat-messages-container, #directorTaskList) {
+    align-self: flex-end;
+}
+
+body #directorSessionChat.director-mascot-on.director-mascot-view[data-dm-side="right"] :is(.director-chat-messages-container, #directorTaskList) {
+    align-self: flex-start;
+}
+
+/* On the centred home the welcome replaces the log: no empty panel. */
+body #directorSessionChat.director-mascot-on.director-mascot-view.director-composer-center .director-chat-messages-container {
     visibility: hidden;
+}
+
+body #directorSessionChat.director-mascot-on.director-mascot-view #directorComposer {
+    z-index: 6;
+}
+
+body #directorSessionChat.director-mascot-on.director-mascot-view #directorComposerWelcome > :is(.logo-text, h3) {
+    color: #fff;
+    text-shadow: 0 1px 3px hsl(0 0% 0% / 80%), 0 0 12px hsl(0 0% 0% / 60%);
+}
+
+/* A finished print: the polaroid that drifts into her belly (directorMascot.js onPrint). */
+.dm-polaroid {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 5;
+    padding: 7px 7px 24px;
+    background: #fbfaf6;
+    border-radius: 2px;
+    box-shadow: 0 6px 18px hsl(0 0% 0% / 45%);
+    pointer-events: none;
+    will-change: transform, opacity;
+}
+
+.dm-polaroid img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    background: #ddd;
 }
 
 .director-mascot-dialogue {
@@ -3884,8 +3948,7 @@ html.disable-blur .director-attach-chip {
     .director-mascot-stage .dm-head,
     .director-mascot-stage .director-mascot,
     .director-mascot-canvas,
-    .director-mascot-rig[class*="dm-act-"],
-    .director-mascot-stage .dm-body.dm-act-jiggle {
+    .director-mascot-rig[class*="dm-act-"] {
         animation: none !important;
         transition: none !important;
     }

@@ -21,32 +21,56 @@
     "base": {
       "body": "body-base.webp",
       "head": "head-base.webp",
-      "faces": "base"
+      "faces": "base",
+      "belly": [
+        370,
+        475
+      ]
     },
     "kicky": {
       "body": "body-kicky.webp",
       "head": "head-kicky.webp",
-      "faces": "base"
+      "faces": "base",
+      "belly": [
+        371,
+        474
+      ]
     },
     "kon": {
       "body": "body-kon.webp",
       "head": "head-kon.webp",
-      "faces": "base"
+      "faces": "base",
+      "belly": [
+        370,
+        475
+      ]
     },
     "kon_kicky": {
       "body": "body-kon_kicky.webp",
       "head": "head-kon_kicky.webp",
-      "faces": "base"
+      "faces": "base",
+      "belly": [
+        371,
+        474
+      ]
     },
     "bigger": {
       "body": "body-bigger.webp",
       "head": "head-bigger.webp",
-      "faces": "big"
+      "faces": "big",
+      "belly": [
+        484,
+        479
+      ]
     },
     "kon_bigger": {
       "body": "body-kon_bigger.webp",
       "head": "head-kon_bigger.webp",
-      "faces": "big"
+      "faces": "big",
+      "belly": [
+        484,
+        479
+      ]
     }
   },
   "faceSets": {
@@ -146,5 +170,6 @@
         10
       ]
     }
-  }
+  },
+  "background": "room.webp"
 }
