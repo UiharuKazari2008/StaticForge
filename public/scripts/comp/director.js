@@ -6203,7 +6203,7 @@ class Director {
     // server saw, and the live map covers a rename since then.
     workspaceCardName(data) {
         const id = data && data.workspaceId;
-        const live = id && workspaces ? workspaces[id] : null;
+        const live = id && typeof workspaces !== 'undefined' && workspaces ? workspaces[id] : null;
         return (live && live.name) || (data && data.workspaceName) || id || 'workspace';
     }
 
