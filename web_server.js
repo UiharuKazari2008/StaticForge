@@ -2201,6 +2201,8 @@ mountGrimoireBrowserBridge(app, authMiddleware);
 mountGuacRemoteBridge(app, authMiddleware);
 // modules/programFaultReports.js — the desktop's "has stopped working" dialogs, one report per fault
 require('./modules/programFaultReports').mountProgramFaultReports(app, authMiddleware);
+// modules/slideshowDevices.js — Melaton SideShow device previews (frame, mask, live screen), admin only
+require('./modules/slideshowDevices').mountPreviewRoutes(app, authMiddleware, globalResources);
 
 app.use('/images/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;

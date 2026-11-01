@@ -152,6 +152,11 @@
     font-size: 13px;
 }
 
+/* the second gadget (Clock) under the first */
+.sss-window .sss-item + .sss-item {
+    top: 210px;
+}
+
 .sss-window .sss-item.is-selected {
     background: var(--sel) no-repeat 0 0 / 240px 24px;
     color: #000;

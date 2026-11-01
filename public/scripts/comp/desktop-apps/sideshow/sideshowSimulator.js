@@ -17,7 +17,10 @@
  * Like the Windows Dreamscape SlideShow it also describes settings of its own (deviceConfig: a schema
  * and values, DS-SlideShow-win64/docs/DEVICE_CONFIG_PROTOCOL.md) and two gadgets, the slideshow and a
  * clock with two faces; it takes set_device_config / set_mode, keeps clock time frames, and reports
- * changes with client_device_config.
+ * changes with client_device_config. The clock is also on the device's own home list (OK opens it,
+ * left / right change the face, Back returns to the list and selects the slideshow again). It also shows Control Panel what it looks like: a bezel drawn on
+ * a canvas with the screen cut out (client_device_preview) and captures of its LCD redrawn on a canvas
+ * (client_device_screen) after each change and every 30 s while the clock shows.
  *
  *   openSideShowSimulator('portrait' | 'landscape')
  */
@@ -29,6 +32,9 @@
     const ICON = `${ART}/window-16.png`;
     const APP = 'VirtualSideShow/3.0';
     const GADGET = 'Dreamscape Slideshow';
+    const CLOCK_ICON = '/static_images/vista-cpl/categories/clock-language-and-region-32.png';
+    // the home list: Welcome, then the gadgets
+    const HOME = ['welcome', 'slideshow', 'clock'];
 
     // measured on the VM (client coordinates)
     const MODES = {
@@ -355,6 +361,7 @@
             this.tickTimer = setInterval(() => {
                 if (++n % 10 === 0) this.evalFrames(false);
                 if (this.screen === 'clock') this.drawClock();
+                if (this.screen === 'clock' && n % 30 === 0) void this.sendScreen();
             }, 1000);
             this.evalFrames(false);
             // the firmware's splash, then the home list once the device is connected
@@ -429,8 +436,164 @@
             if (data.name) this.name = String(data.name);
             if (data.settings) this.applySettings(data.settings);
             this.save();
+            this.sendPreview();
             this.reportState();
             if (this.screen === 'gadget') void this.loadImages();
+        }
+
+        // ---- the device preview (DEVICE_CONFIG_PROTOCOL.md section 4) ----
+
+        /** The bezel around the LCD: { width, height, pad, chin }, in LCD pixels. */
+        bezel() {
+            const [, , lw, lh] = this.m.lcd;
+            const pad = 16;
+            const chin = this.landscape ? 16 : 34;
+            return { width: lw + pad * 2, height: lh + pad + chin, pad, lw, lh };
+        }
+
+        /**
+         * client_device_preview, once per connection: a glossy black monitor bezel drawn on a canvas,
+         * the screen cut out (transparent), a mask that is opaque only there, and where the capture goes.
+         */
+        sendPreview() {
+            if (!doc) return;
+            const b = this.bezel();
+            const canvas = (w, h) => Object.assign(doc.createElement('canvas'), { width: w, height: h });
+            const frame = canvas(b.width, b.height);
+            const g = frame.getContext('2d');
+            const round = (ctx, x, y, w, h, r) => {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.arcTo(x + w, y, x + w, y + h, r);
+                ctx.arcTo(x + w, y + h, x, y + h, r);
+                ctx.arcTo(x, y + h, x, y, r);
+                ctx.arcTo(x, y, x + w, y, r);
+                ctx.closePath();
+            };
+            const grad = g.createLinearGradient(0, 0, b.width * 0.3, b.height);
+            grad.addColorStop(0, '#5a5a5a');
+            grad.addColorStop(0.38, '#262626');
+            grad.addColorStop(0.39, '#050505');
+            grad.addColorStop(1, '#000');
+            round(g, 0.5, 0.5, b.width - 1, b.height - 1, 12);
+            g.fillStyle = grad;
+            g.fill();
+            g.strokeStyle = '#000';
+            g.stroke();
+            // the LCD's sunken edge, then the opening itself
+            g.strokeStyle = '#3c3c3c';
+            g.strokeRect(b.pad - 1.5, b.pad - 1.5, b.lw + 3, b.lh + 3);
+            g.clearRect(b.pad, b.pad, b.lw, b.lh);
+            // a power light in the chin
+            g.fillStyle = '#4fd34f';
+            g.beginPath();
+            g.arc(b.width / 2, b.pad + b.lh + (b.height - b.pad - b.lh) / 2, 2, 0, Math.PI * 2);
+            g.fill();
+            const mask = canvas(b.width, b.height);
+            const mg = mask.getContext('2d');
+            mg.fillStyle = '#fff';
+            mg.fillRect(b.pad, b.pad, b.lw, b.lh);
+            const b64 = (c) => c.toDataURL('image/png').replace(/^data:[^,]*,/, '');
+            this.send({
+                type: 'client_device_preview',
+                data: {
+                    deviceId: this.deviceId, version: 1, model: 'virtual-sideshow', width: b.width, height: b.height,
+                    frame: b64(frame), mask: b64(mask),
+                    screen: { x: b.pad, y: b.pad, width: b.lw, height: b.lh, sourceWidth: b.lw, sourceHeight: b.lh },
+                    shape: { type: 'rect', x: b.pad, y: b.pad, width: b.lw, height: b.lh }
+                }
+            });
+            this.captureSoon(500);
+        }
+
+        /** A capture ~delay ms from now (a later call moves it); the slideshow settles first. */
+        captureSoon(delay) {
+            clearTimeout(this.captureTimer);
+            this.captureTimer = setTimeout(() => void this.sendScreen(), delay);
+        }
+
+        /**
+         * client_device_screen: the LCD redrawn on a canvas (the picture or pair on screen, the clock,
+         * or the home screen's backdrop), the header bar and the dimming, sent as a small JPEG.
+         */
+        async sendScreen() {
+            if (!doc || !this.ws || this.ws.readyState !== 1 || this.closing || this.screen === 'stopped') return;
+            const [, , lw, lh] = this.m.lcd;
+            const c = Object.assign(doc.createElement('canvas'), { width: lw, height: lh });
+            const g = c.getContext('2d');
+            const load = (src) => new Promise((resolve) => {
+                const im = new Image();
+                im.onload = () => resolve(im);
+                im.onerror = () => resolve(null);
+                im.src = src;
+            });
+            const contain = (im, x, y, w, h) => {
+                const s = Math.min(w / im.naturalWidth, h / im.naturalHeight);
+                const dw = im.naturalWidth * s;
+                const dh = im.naturalHeight * s;
+                g.drawImage(im, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+            };
+            const top = this.config.header === false || this.screen === 'splash' ? 0 : 18;
+            g.fillStyle = '#000';
+            g.fillRect(0, 0, lw, lh);
+            const bgName = this.screen === 'splash' ? 'fw-splash.jpg' : `fw-bg-${this.landscape ? 'landscape' : 'portrait'}.jpg`;
+            if (this.screen !== 'gadget' && this.screen !== 'menu' && !(this.screen === 'clock' && this.config.background === 'black')) {
+                const bg = await load(`${ART}/${bgName}`);
+                if (bg) g.drawImage(bg, 0, 0, lw, lh);
+            }
+            g.textAlign = 'center';
+            g.textBaseline = 'middle';
+            if (this.screen === 'clock') {
+                const face = this.lcd.querySelector('.sss-face svg');
+                const size = Math.min(lw, lh - top) * 0.7;
+                if (face) {
+                    const im = await load(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(face))}`);
+                    if (im) g.drawImage(im, (lw - size) / 2, top + (lh - top - size) / 2, size, size);
+                } else {
+                    const now = new Date();
+                    const pad = (n) => String(n).padStart(2, '0');
+                    g.fillStyle = '#fff';
+                    g.font = `bold ${Math.round(lw / 5)}px "Segoe UI", sans-serif`;
+                    g.fillText(`${pad(now.getHours())}:${pad(now.getMinutes())}`, lw / 2, top + (lh - top) / 2);
+                }
+                if (this.config.caption) {
+                    g.fillStyle = '#fff';
+                    g.font = '13px "Segoe UI", sans-serif';
+                    g.fillText(this.config.caption, lw / 2, lh - 16);
+                }
+            } else if (this.screen === 'gadget' || this.screen === 'menu') {
+                const imgs = Array.from(this.lcd.querySelectorAll('.sss-pics img')).filter((im) => im.complete && im.naturalWidth);
+                const w = (lw) / Math.max(1, imgs.length);
+                imgs.forEach((im, i) => contain(im, i * w, top, w, lh - top));
+                if (this.paused) {
+                    g.fillStyle = 'rgba(0,0,0,.6)';
+                    g.fillRect(lw / 2 - 40, lh - 34, 80, 22);
+                    g.fillStyle = '#fff';
+                    g.font = '13px "Segoe UI", sans-serif';
+                    g.fillText('Paused', lw / 2, lh - 23);
+                }
+            } else if (this.screen === 'home') {
+                g.fillStyle = '#fff';
+                g.font = 'bold 15px "Segoe UI", sans-serif';
+                g.fillText('Melaton SideShow', lw / 2, top + 30);
+                g.font = '13px "Segoe UI", sans-serif';
+                g.fillText(GADGET, lw / 2, top + 54);
+            }
+            if (top) {
+                g.fillStyle = '#1c2a3a';
+                g.fillRect(0, 0, lw, top);
+                g.fillStyle = '#fff';
+                g.font = '11px "Segoe UI", sans-serif';
+                g.textAlign = 'right';
+                g.fillText(clockText(this.landscape), lw - 6, top / 2);
+            }
+            const dim = Number(this.config.dim) || 0;
+            if (dim > 0) {
+                g.fillStyle = `rgba(0,0,0,${dim / 100})`;
+                g.fillRect(0, 0, lw, lh);
+            }
+            const image = c.toDataURL('image/jpeg', 0.8).replace(/^data:[^,]*,/, '');
+            this.send({ type: 'client_device_screen', data: { deviceId: this.deviceId, format: 'jpeg', image, width: lw, height: lh, at: Date.now() } });
         }
 
         applySettings(s) {
@@ -496,6 +659,8 @@
                 type: 'client_device_state',
                 data: { deviceId: this.deviceId, state, showing, since: Date.now(), mode: s.mode, face: s.mode === 'clock' ? s.face : null, scheduleEntry: this.frame >= 0 ? this.frame : null }
             });
+            // the screen as it now looks, once the picture has loaded
+            this.captureSoon(2000);
         }
 
         // ---- the slideshow ----
@@ -600,6 +765,30 @@
             this.timer = setTimeout(() => this.step(1), this.settings.intervalSec * 1000);
         }
 
+        /** The manual choice of gadget (set_mode's, made on the device); reported like any config change. */
+        selectMode(mode) {
+            if (this.config.mode === mode) return;
+            this.config.mode = mode;
+            this.save();
+            this.sendConfig();
+        }
+
+        /** The Clock gadget from the home list; an active time frame may still show the slideshow. */
+        openClock() {
+            this.selectMode('clock');
+            this.evalFrames(true);
+        }
+
+        /** Left / right on the clock: the other face, kept as the selected face. */
+        stepFace(dir) {
+            const i = FACES.findIndex((f) => f.id === this.config.clockFace);
+            this.config.clockFace = FACES[(Math.max(0, i) + dir + FACES.length) % FACES.length].id;
+            this.save();
+            this.sendConfig();
+            this.render();
+            this.reportState();
+        }
+
         openGadget() {
             if (this.screen === 'gadget') return;
             this.screen = 'gadget';
@@ -610,13 +799,26 @@
         // ---- the buttons ----
 
         press(k) {
-            if (this.screen === 'splash' || this.screen === 'clock') return;
+            if (this.screen === 'splash') return;
+            if (this.screen === 'clock') {
+                // Back leaves the clock for the home list (and selects the slideshow again); a time
+                // frame that shows the clock keeps it on screen
+                if (k === 'left' || k === 'up') this.stepFace(-1);
+                else if (k === 'right' || k === 'down' || k === 'ok') this.stepFace(1);
+                else if (k === 'back') {
+                    this.selectMode('slideshow');
+                    this.screen = 'home';
+                    this.evalFrames(true);
+                }
+                return;
+            }
             if (this.screen === 'home') {
                 if (k === 'up' || k === 'down') {
-                    this.homeIndex = k === 'up' ? 0 : 1;
+                    this.homeIndex = Math.max(0, Math.min(HOME.length - 1, this.homeIndex + (k === 'up' ? -1 : 1)));
                     this.render();
                 } else if (k === 'ok' || k === 'right') {
-                    if (this.homeIndex === 1) { this.openGadget(); this.reportState(); }
+                    if (HOME[this.homeIndex] === 'slideshow') { this.openGadget(); this.reportState(); }
+                    else if (HOME[this.homeIndex] === 'clock') this.openClock();
                 }
                 return;
             }
@@ -714,7 +916,8 @@
                 if (L) {
                     const items = [
                         { title: 'Welcome', text: 'Welcome to Melaton SideShow', icon: `${ART}/fw-logo.png` },
-                        { title: GADGET, text: this.total ? `${this.total.toLocaleString('en-US')} pictures` : 'Pictures from your gallery', icon: '/static_images/vista-sideshow/slideshow-gadget-32.png' }
+                        { title: GADGET, text: this.total ? `${this.total.toLocaleString('en-US')} pictures` : 'Pictures from your gallery', icon: '/static_images/vista-sideshow/slideshow-gadget-32.png' },
+                        { title: 'Clock', text: `${(FACES.find((f) => f.id === this.config.clockFace) || FACES[0]).name} clock`, icon: CLOCK_ICON }
                     ];
                     const sel = items[this.homeIndex];
                     this.lcd.innerHTML = `<div class="sss-home is-landscape" style="background-image:url('${ART}/fw-bg-landscape.jpg')">
@@ -726,6 +929,7 @@
                     this.lcd.innerHTML = `${this.header()}<div class="sss-home is-portrait" style="background-image:url('${ART}/fw-welcome-portrait.jpg')">
                         <div class="sss-welcome${this.homeIndex === 0 ? ' is-selected' : ''}"><b>Welcome</b><span>Welcome to Melaton SideShow</span><img src="/static_images/vista-sideshow/sideshow-48.png" alt=""></div>
                         <div class="sss-item${this.homeIndex === 1 ? ' is-selected' : ''}" style="--sel:url('${ART}/fw-select.png')">${esc(GADGET)}</div>
+                        <div class="sss-item${this.homeIndex === 2 ? ' is-selected' : ''}" style="--sel:url('${ART}/fw-select.png')">Clock</div>
                     </div>`;
                 }
                 return;
@@ -764,6 +968,7 @@
         close() {
             this.closing = true;
             clearTimeout(this.timer);
+            clearTimeout(this.captureTimer);
             clearInterval(this.clockTimer);
             clearInterval(this.tickTimer);
             this.screen = 'stopped';
