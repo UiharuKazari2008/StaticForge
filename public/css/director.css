@@ -4171,8 +4171,9 @@ body #directorSessionChat.director-mascot-on.director-mascot-view #directorCompo
     color: #2b7a0b;
 }
 
+/* "No" is often just a setting that is off: grey, not alarm red */
 #directorToolInspector .dti-no {
-    color: #b3261e;
+    color: #666;
 }
 
 #directorToolInspector .dti-chips {
@@ -4262,4 +4263,45 @@ body #directorSessionChat.director-mascot-on.director-mascot-view #directorCompo
 #directorToolInspector .dti-footer button {
     min-width: 75px;
     height: 23px;
+}
+
+#directorToolInspector .dti-note {
+    margin: -2px 0 10px;
+    padding: 5px 8px;
+    border: 1px solid #e6d58e;
+    background: #fffbe3;
+    color: #5c4a00;
+}
+
+#directorToolInspector .dti-attached {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #e3e8ee;
+}
+
+#directorToolInspector .dti-str.dti-mono {
+    font-size: 11.5px;
+}
+
+#directorToolInspector .dti-value .dti-table .dti-key {
+    max-width: 140px;
+}
+
+#directorToolInspector .dti-table.dti-deep {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 1px;
+}
+
+#directorToolInspector .dti-table.dti-deep > .dti-row > .dti-key {
+    max-width: none;
+    font-size: 11px;
+    white-space: normal;
+}
+
+#directorToolInspector .dti-table.dti-deep > .dti-row > .dti-value {
+    margin-bottom: 5px;
+}
+
+#directorToolInspector .dti-value .dti-table.dti-deep {
+    padding: 4px 6px;
 }
