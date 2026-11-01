@@ -176,21 +176,23 @@ class DirectorMascot {
         const cam = this.camera();
         const vn = this.view === 'mascot';
         if (vn) {
-            // Visual novel (Yukimi): she takes most of the window, head 12% below the top of the chat area,
-            // her framing down to the bottom (behind the bar). Bigger poses spill out of frame.
+            // Visual novel (Yukimi): her face rests at one spot for every pose and every persona: 24% in from
+            // her side, 24% down (head top lands about 12 to 15% down), sized so faces match across personas.
+            // The rest of her spills out of frame where it is bigger.
+            const face = Array.isArray(this.manifest.face) ? this.manifest.face : [cam[0] + cam[2] / 2, cam[1] + cam[3] * 0.2, cam[2] * 0.15];
+            const Wh = hostBox.width, Hh = hostBox.height;
+            const kv = (Hh * 0.11) / Math.max(1, face[2]);
+            const px = this.manifest.anchor === 'left' ? Wh * 0.24 : Wh * 0.76;
+            const py = Hh * 0.24;
             this.root.style.setProperty('--dm-bottom', '0px');
-            const hv = Math.round(hostBox.height * 0.88);
-            const wv = Math.round(hv * (cam[2] / cam[3]));
-            const kv = hv / cam[3];
-            const edge = Math.round(hostBox.width * 0.02);
-            this.root.style.setProperty('--dm-left', `${edge}px`);
-            this.root.style.setProperty('--dm-right', `${edge}px`);
-            this.root.style.setProperty('--dm-w', `${wv}px`);
-            this.root.style.setProperty('--dm-h', `${hv}px`);
+            this.root.style.setProperty('--dm-left', '0px');
+            this.root.style.setProperty('--dm-right', '0px');
+            this.root.style.setProperty('--dm-w', `${Math.round(Wh)}px`);
+            this.root.style.setProperty('--dm-h', `${Math.round(Hh)}px`);
             this.root.style.setProperty('--dm-drop', '0px');
             this.el.canvas.style.width = `${Math.round(W * kv)}px`;
             this.el.canvas.style.height = `${Math.round(H * kv)}px`;
-            this.el.canvas.style.transform = `translate(${-Math.round(cam[0] * kv)}px, ${-Math.round(cam[1] * kv)}px)`;
+            this.el.canvas.style.transform = `translate(${Math.round(px - face[0] * kv)}px, ${Math.round(py - face[1] * kv)}px)`;
             this._k = kv;
             this.root.dataset.anchor = this.manifest.anchor === 'left' ? 'left' : 'right';
             this.root.classList.remove('dm-narrow');
@@ -650,12 +652,12 @@ class DirectorMascot {
         const body = id ? this.manifest.bodies[id] : null;
         const k = this._k || 1;
         const cam = this.camera();
-        const box = this.el.mascot.getBoundingClientRect();
+        const canvasBox = this.el.canvas.getBoundingClientRect();
         const stage = this.root.getBoundingClientRect();
-        if (!box.width) return;
+        if (!canvasBox.width) return;
         const belly = (body && body.belly) || [cam[0] + cam[2] / 2, cam[1] + cam[3] * 0.62];
-        const tx = box.left - stage.left + (belly[0] - cam[0]) * k;
-        const ty = box.top - stage.top + (belly[1] - cam[1]) * k;
+        const tx = canvasBox.left - stage.left + belly[0] * k;
+        const ty = canvasBox.top - stage.top + belly[1] * k;
         const left = this.manifest.anchor === 'left';
         const sx = left ? stage.width * 0.72 : stage.width * 0.28;
         const sy = stage.height * 0.42;

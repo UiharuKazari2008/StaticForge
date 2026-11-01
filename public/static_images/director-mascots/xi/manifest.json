@@ -6,7 +6,7 @@
   "anchor": "left",
   "size": [
     973,
-    608
+    1051
   ],
   "headPivot": [
     394,
@@ -14,8 +14,15 @@
   ],
   "hipPivot": [
     487,
+    1051
+  ],
+  "refCamera": [
+    0,
+    0,
+    973,
     608
   ],
+  "shouldersY": 215,
   "peekRatio": 0.35,
   "bodies": {
     "base": {
@@ -24,7 +31,7 @@
       "faces": "base",
       "belly": [
         370,
-        475
+        476
       ]
     },
     "kicky": {
@@ -33,7 +40,7 @@
       "faces": "base",
       "belly": [
         371,
-        474
+        475
       ]
     },
     "kon": {
@@ -42,7 +49,7 @@
       "faces": "base",
       "belly": [
         370,
-        475
+        476
       ]
     },
     "kon_kicky": {
@@ -51,7 +58,7 @@
       "faces": "base",
       "belly": [
         371,
-        474
+        475
       ]
     },
     "bigger": {
@@ -60,7 +67,7 @@
       "faces": "big",
       "belly": [
         484,
-        479
+        480
       ]
     },
     "kon_bigger": {
@@ -69,7 +76,7 @@
       "faces": "big",
       "belly": [
         484,
-        479
+        480
       ]
     }
   },
@@ -172,10 +179,9 @@
     }
   },
   "background": "room.webp",
-  "refCamera": [
-    0,
-    1,
-    723,
-    607
+  "face": [
+    393,
+    150,
+    83
   ]
 }

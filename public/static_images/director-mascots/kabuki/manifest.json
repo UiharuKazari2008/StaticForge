@@ -29,8 +29,8 @@
       ],
       "head": "head-base.webp",
       "belly": [
-        787,
-        788
+        786,
+        511
       ]
     },
     "bigger": {
@@ -44,8 +44,8 @@
       ],
       "head": "head-bigger.webp",
       "belly": [
-        751,
-        776
+        745,
+        514
       ]
     },
     "bigger_kicky": {
@@ -59,8 +59,8 @@
       ],
       "head": "head-bigger_kicky.webp",
       "belly": [
-        751,
-        776
+        742,
+        513
       ]
     },
     "bigger_rub": {
@@ -74,8 +74,8 @@
       ],
       "head": "head-bigger_rub.webp",
       "belly": [
-        751,
-        776
+        745,
+        514
       ]
     },
     "bigger_rub_kicky": {
@@ -89,8 +89,8 @@
       ],
       "head": "head-bigger_rub_kicky.webp",
       "belly": [
-        751,
-        776
+        742,
+        513
       ]
     },
     "bigger2": {
@@ -103,8 +103,8 @@
         1171
       ],
       "belly": [
-        544,
-        848
+        605,
+        515
       ]
     }
   },
@@ -221,5 +221,10 @@
     24,
     695,
     608
+  ],
+  "face": [
+    798,
+    152,
+    90
   ]
 }

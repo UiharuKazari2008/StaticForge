@@ -6,7 +6,7 @@
   "anchor": "left",
   "size": [
     851,
-    608
+    943
   ],
   "headPivot": [
     151,
@@ -14,8 +14,15 @@
   ],
   "hipPivot": [
     426,
+    943
+  ],
+  "refCamera": [
+    0,
+    0,
+    851,
     608
   ],
+  "shouldersY": 175,
   "peekRatio": 0.29,
   "bodies": {
     "base": {
@@ -86,10 +93,9 @@
     }
   },
   "background": "room.webp",
-  "refCamera": [
-    19,
-    13,
-    557,
-    595
+  "face": [
+    154,
+    111,
+    85
   ]
 }
