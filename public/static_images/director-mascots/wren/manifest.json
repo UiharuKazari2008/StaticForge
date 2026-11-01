@@ -1,28 +1,28 @@
 {
   "persona": "wren",
-  "name": "Wren",
+  "name": "Yumiya",
   "version": 2,
   "source": "Yumiya sprite set (2021-12), by StygianRook",
   "anchor": "left",
   "size": [
-    1363,
-    1206
+    2726,
+    2413
   ],
   "headPivot": [
-    576,
-    246
+    1152,
+    493
   ],
   "hipPivot": [
-    682,
-    1206
+    1363,
+    2413
   ],
   "refCamera": [
     0,
     0,
-    1363,
-    608
+    2726,
+    1216
   ],
-  "shouldersY": 275,
+  "shouldersY": 550,
   "peekRatio": 0.45,
   "bodies": {
     "base": {
@@ -30,8 +30,8 @@
       "head": "head-base.webp",
       "faces": "base",
       "belly": [
-        547,
-        506
+        1094,
+        1012
       ]
     },
     "bigger": {
@@ -39,8 +39,8 @@
       "head": "head-bigger.webp",
       "faces": "base",
       "belly": [
-        735,
-        507
+        1469,
+        1014
       ]
     },
     "bigger_vore": {
@@ -48,8 +48,8 @@
       "head": "head-bigger_vore.webp",
       "faces": "base",
       "belly": [
-        735,
-        507
+        1469,
+        1014
       ]
     },
     "mask": {
@@ -57,8 +57,8 @@
       "head": "head-mask.webp",
       "faces": "mask",
       "belly": [
-        547,
-        506
+        1094,
+        1012
       ]
     },
     "mask_bigger": {
@@ -66,8 +66,8 @@
       "head": "head-mask_bigger.webp",
       "faces": "mask",
       "belly": [
-        735,
-        507
+        1469,
+        1014
       ]
     },
     "mask_wings": {
@@ -75,8 +75,8 @@
       "head": "head-mask_wings.webp",
       "faces": "mask",
       "belly": [
-        547,
-        506
+        1094,
+        1012
       ]
     },
     "mask_wings_bigger": {
@@ -84,8 +84,8 @@
       "head": "head-mask_wings_bigger.webp",
       "faces": "mask",
       "belly": [
-        735,
-        507
+        1469,
+        1014
       ]
     }
   },
@@ -166,7 +166,8 @@
       "durationSec": [
         4,
         9
-      ]
+      ],
+      "whenWorking": true
     },
     "printed": {
       "durationSec": 6
@@ -177,8 +178,8 @@
   },
   "background": "room.webp",
   "face": [
-    576,
-    184,
-    105
+    1151,
+    368,
+    210
   ]
 }

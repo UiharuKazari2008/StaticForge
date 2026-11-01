@@ -507,7 +507,7 @@ function rentanReviewApplies(body) {
 }
 
 function rentanReviewStatus(n, max) {
-    return `Wren is reviewing attempt ${n}/${max}`;
+    return `Yumiya is reviewing attempt ${n}/${max}`;
 }
 
 function createRentanReview(options) {
@@ -532,7 +532,7 @@ function createRentanReview(options) {
         requestBody: opts.requestBody || null,
         preset: opts.preset || null,
         gr: opts.gr || null,
-        statusLine: 'Wren is thinking...',
+        statusLine: 'Yumiya is thinking...',
         writePreview: opts.writePreview || null,
         openTurn: opts.openTurn || null,
         log: opts.log || ((message) => console.warn(message)),
@@ -758,7 +758,7 @@ function waitForRentanDecision(review, timeoutMs) {
 function forceSaveLastAttempt(review, reason) {
     const attempt = review.attempts[review.attempts.length - 1];
     if (!attempt) return null;
-    const message = `Rentan review ${review.chatId || ''}: ${reason || 'Wren did not finish'}. Saving attempt ${attempt.n}.`;
+    const message = `Rentan review ${review.chatId || ''}: ${reason || 'Yumiya did not finish'}. Saving attempt ${attempt.n}.`;
     review.log(message);
     const decision = { action: 'save', attempt, forced: true, reason: message };
     review.settled = true;
@@ -863,7 +863,7 @@ async function holdRentanPrint(args) {
     const decision = await waitForRentanDecision(review, review.atCap ? review.capWaitMs : null);
     if (!decision || (decision.action === 'rebuild' && review.atCap)) {
         const forced = forceSaveLastAttempt(review, !decision
-            ? `Wren did not pick within the cap on attempt ${attempt.n}`
+            ? `Yumiya did not pick within the cap on attempt ${attempt.n}`
             : 'rebuild requested at the attempt cap');
         if (forced && review.requestBody && review.requestBody.dynamic_generation) {
             review.requestBody.dynamic_generation._rentanReviewDone = true;
@@ -948,7 +948,7 @@ function attachDeferredRentanReview(gr, body, preset, ws, handler, context) {
             phase: 'streaming',
             reasoning: text,
             reasoningId,
-            status: review.statusLine || 'Wren is thinking...'
+            status: review.statusLine || 'Yumiya is thinking...'
         })
     });
     body._rentanReview = review;
@@ -989,7 +989,7 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
     const reason = dg.cache_locked && cp && cp.wren_input_hash
         ? null
         : staleReason(cp, dg, body, context, now);
-    console.log(`Rentan ${body.workspace || ''}: ${reason ? `Wren turn (${reason})` : 'cached scene reused'}`);
+    console.log(`Rentan ${body.workspace || ''}: ${reason ? `Yumiya turn (${reason})` : 'cached scene reused'}`);
     // Server-side resolves (#422, TokenRouter) cannot look at the print, so the image review is agent-only.
     const { rentanRoute } = require('./cursorDirector');
     const route = rentanRoute(gr, { agent: dg.agent || null });
@@ -1047,7 +1047,7 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
                 phase: 'streaming',
                 reasoning: text,
                 reasoningId,
-                status: (review && review.statusLine) || 'Wren is thinking...'
+                status: (review && review.statusLine) || 'Yumiya is thinking...'
             })
         });
     } catch (error) {
@@ -1058,7 +1058,7 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
             reuseCachedScene();
             return;
         }
-        const message = `Rentan: Wren could not resolve the scene (${error.message || 'unknown error'}). Turn Rentan off or try again.`;
+        const message = `Rentan: Yumiya could not resolve the scene (${error.message || 'unknown error'}). Turn Rentan off or try again.`;
         sendRentanError(handler, ws, message);
         throw new Error(message);
     }

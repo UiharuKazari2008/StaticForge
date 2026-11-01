@@ -1,110 +1,110 @@
 {
   "persona": "kabuki",
-  "name": "Kabuki",
+  "name": "Chiyo",
   "version": 2,
   "source": "Chiyo sprite set (2021-11), by StygianRook",
   "size": [
-    1101,
-    1216
+    2201,
+    2432
   ],
   "headPivot": [
-    808,
-    213
+    1616,
+    426
   ],
   "hipPivot": [
-    550,
-    1216
+    1101,
+    2432
   ],
-  "shouldersY": 252,
+  "shouldersY": 504,
   "peekRatio": 0.37,
   "bodies": {
     "base": {
       "body": "body-base.webp",
       "faces": "fan",
       "camera": [
-        389,
-        24,
-        695,
-        608
+        779,
+        48,
+        1389,
+        1216
       ],
       "head": "head-base.webp",
       "belly": [
-        787,
-        788
+        1573,
+        1576
       ]
     },
     "bigger": {
       "body": "body-bigger.webp",
       "faces": "fan",
       "camera": [
-        389,
-        24,
-        695,
-        608
+        779,
+        48,
+        1389,
+        1216
       ],
       "head": "head-bigger.webp",
       "belly": [
-        751,
-        776
+        1501,
+        1553
       ]
     },
     "bigger_kicky": {
       "body": "body-bigger_kicky.webp",
       "faces": "fan",
       "camera": [
-        389,
-        24,
-        695,
-        608
+        779,
+        48,
+        1389,
+        1216
       ],
       "head": "head-bigger_kicky.webp",
       "belly": [
-        751,
-        776
+        1501,
+        1553
       ]
     },
     "bigger_rub": {
       "body": "body-bigger_rub.webp",
       "faces": "rub",
       "camera": [
-        389,
-        24,
-        695,
-        608
+        779,
+        48,
+        1389,
+        1216
       ],
       "head": "head-bigger_rub.webp",
       "belly": [
-        751,
-        776
+        1501,
+        1553
       ]
     },
     "bigger_rub_kicky": {
       "body": "body-bigger_rub_kicky.webp",
       "faces": "rub",
       "camera": [
-        389,
-        24,
-        695,
-        608
+        779,
+        48,
+        1389,
+        1216
       ],
       "head": "head-bigger_rub_kicky.webp",
       "belly": [
-        751,
-        776
+        1501,
+        1553
       ]
     },
     "bigger2": {
       "body": "body-bigger2.webp",
       "faces": "big2",
       "camera": [
-        36,
-        15,
-        1034,
-        1171
+        71,
+        30,
+        2069,
+        2342
       ],
       "belly": [
-        544,
-        848
+        1087,
+        1696
       ]
     }
   },
@@ -219,14 +219,14 @@
   },
   "background": "room.webp",
   "face": [
-    798,
-    152,
-    90
+    1597,
+    305,
+    181
   ],
   "refCamera": [
-    389,
-    24,
-    695,
-    608
+    779,
+    48,
+    1389,
+    1216
   ]
 }

@@ -1,28 +1,28 @@
 {
   "persona": "xi",
-  "name": "Xi",
+  "name": "Yozora",
   "version": 2,
   "source": "Yozora sprite set (2022-01), by StygianRook",
   "anchor": "left",
   "size": [
-    973,
-    1051
+    1946,
+    2103
   ],
   "headPivot": [
-    394,
-    189
+    788,
+    379
   ],
   "hipPivot": [
-    487,
-    1051
+    973,
+    2103
   ],
   "refCamera": [
     0,
     0,
-    973,
-    608
+    1946,
+    1216
   ],
-  "shouldersY": 215,
+  "shouldersY": 430,
   "peekRatio": 0.35,
   "bodies": {
     "base": {
@@ -30,8 +30,8 @@
       "head": "head-base.webp",
       "faces": "base",
       "belly": [
-        370,
-        476
+        740,
+        951
       ]
     },
     "kicky": {
@@ -39,8 +39,8 @@
       "head": "head-kicky.webp",
       "faces": "base",
       "belly": [
-        371,
-        475
+        742,
+        951
       ]
     },
     "kon": {
@@ -48,8 +48,8 @@
       "head": "head-kon.webp",
       "faces": "base",
       "belly": [
-        370,
-        476
+        740,
+        951
       ]
     },
     "kon_kicky": {
@@ -57,8 +57,8 @@
       "head": "head-kon_kicky.webp",
       "faces": "base",
       "belly": [
-        371,
-        475
+        742,
+        951
       ]
     },
     "bigger": {
@@ -66,8 +66,8 @@
       "head": "head-bigger.webp",
       "faces": "big",
       "belly": [
-        484,
-        480
+        968,
+        960
       ]
     },
     "kon_bigger": {
@@ -75,8 +75,8 @@
       "head": "head-kon_bigger.webp",
       "faces": "big",
       "belly": [
-        484,
-        480
+        968,
+        960
       ]
     }
   },
@@ -182,8 +182,8 @@
   },
   "background": "room.webp",
   "face": [
-    393,
-    150,
-    83
+    786,
+    301,
+    168
   ]
 }

@@ -235,7 +235,7 @@ function listActiveRuns() {
     return Array.from(runs.values()).map((run) => ({
         sessionId: run.sessionId,
         pid: run.pid || null,
-        name: run.name || 'Xi',
+        name: run.name || 'Yozora',
         startedAt: run.startedAt || null,
         settled: run.settled === true
     }));
@@ -265,7 +265,7 @@ function runtimeStatus() {
     let sessionName = null;
     if (sessionId) {
         const chat = peekIndex().chats.find((item) => item.id === sessionId);
-        sessionName = chat ? (chat.name || 'Xi') : null;
+        sessionName = chat ? (chat.name || 'Yozora') : null;
     }
     return {
         enabled: isEnabled(boundGr),
@@ -520,7 +520,7 @@ function sendOk(handler, ws, type, requestId, data) {
 
 function assertEnabled(handler, ws, requestId) {
     if (isEnabled(handler && handler.globalResources)) return true;
-    if (handler && ws) handler.sendError(ws, 'Xi is not enabled on this server', 'XI_DISABLED', requestId);
+    if (handler && ws) handler.sendError(ws, 'Yozora is not enabled on this server', 'XI_DISABLED', requestId);
     return false;
 }
 
@@ -534,15 +534,15 @@ function directorClientId(clientInfo, message) {
 function xiIdentityLine(runtime) {
     if (customProviders.isEngine(runtime)) {
         const name = customProviders.displayName(boundGr, runtime);
-        return `You are Xi, the host Claude Code agent for this repo, running through ${name}. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.`;
+        return `You are Yozora, the host Claude Code agent for this repo, running through ${name}. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail.`;
     }
     if (runtime === 'tokenrouter') {
-        return 'You are Xi, the host Claude Code agent for this repo, running through TokenRouter. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.';
+        return 'You are Yozora, the host Claude Code agent for this repo, running through TokenRouter. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail.';
     }
     if (runtime === 'claude') {
-        return 'You are Xi, the host Claude Code agent for this repo. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.';
+        return 'You are Yozora, the host Claude Code agent for this repo. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail.';
     }
-    return 'You are Xi, the host Cursor agent for this repo. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.';
+    return 'You are Yozora, the host Cursor agent for this repo. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail.';
 }
 
 function buildPrompt(chat, userText, files, clientId, options) {
@@ -726,11 +726,14 @@ function publish(run) {
     director.parkToolBodies(run.sessionId, run.stream.rows);
     if (run.stream.live) director.parkToolBodies(run.sessionId, [run.stream.live]);
     const wire = director._test.publicTraceRow;
+    const privateRows = run.stream.rows || [];
+    const privateLive = run.stream.live || null;
     director.queueDirectorStream(boundGr, {
         sessionId: run.sessionId,
         persona: 'xi',
-        rows: (run.stream.rows || []).map(wire),
-        live: run.stream.live ? wire(run.stream.live) : null,
+        rows: privateRows.map(wire),
+        live: privateLive ? wire(privateLive) : null,
+        cueFrom: { rows: privateRows, live: privateLive, persona: 'xi' },
         fullContent: (run.stream.live && run.stream.live.text) || run.stream.text || '',
         context: run.stream.context || null,
         model: run.round || null
@@ -795,7 +798,7 @@ function finishRun(run, why) {
     if (run.stream && !run.cancelled && !run.stream.error && why === 'exit') {
         const text = run.stream.text || '';
         const rows = run.stream.rows || [];
-        if (!text && !rows.length) run.stream.error = 'Xi stopped before it replied';
+        if (!text && !rows.length) run.stream.error = 'Yozora stopped before it replied';
     }
     run.settled = true;
     removeRunHome(run.runHome);
@@ -811,12 +814,12 @@ function finishRun(run, why) {
     const failed = !steered && !!(run.cancelled || (run.stream && run.stream.error) || why === 'timeout');
     const errorText = run.cancelled
         ? 'Stopped'
-        : (why === 'timeout' ? 'Xi stopped because it sent nothing for 10 minutes' : ((run.stream && run.stream.error) || 'Xi stopped'));
+        : (why === 'timeout' ? 'Yozora stopped because it sent nothing for 10 minutes' : ((run.stream && run.stream.error) || 'Yozora stopped'));
     saveTrace(run)
         .then(() => clearInflight(run.sessionId))
         .then(async () => {
             if (!boundGr) return;
-            let name = run.name || 'Xi';
+            let name = run.name || 'Yozora';
             try {
                 const chat = peekIndex().chats.find((item) => item.id === run.sessionId);
                 if (chat && chat.name) name = chat.name;
@@ -1008,7 +1011,7 @@ function startTail(meta) {
         metaPath: meta.metaPath,
         draftId: meta.draftId,
         round: meta.round || null,
-        name: meta.name || 'Xi',
+        name: meta.name || 'Yozora',
         runtime: sanitizeRuntime(meta.runtime),
         requestId: meta.requestId || null,
         offset: 0,
@@ -1131,7 +1134,7 @@ function spawnDetached(args, logPath, workspace, options) {
     const pid = parseInt(String(out).trim(), 10);
     if (!Number.isFinite(pid) || pid <= 0) {
         removeRunHome(plan.runHome);
-        throw new Error('Xi agent did not start');
+        throw new Error('Yozora agent did not start');
     }
     return { pid, runHome: plan.runHome };
 }
@@ -1165,7 +1168,7 @@ async function handleDirectorGetSessions(handler, ws, message) {
             accounts
         });
     } catch (error) {
-        handler.sendError(ws, error.message || 'Failed to fetch Xi sessions', error.code || 'DIRECTOR_ERROR', message.requestId);
+        handler.sendError(ws, error.message || 'Failed to fetch Yozora sessions', error.code || 'DIRECTOR_ERROR', message.requestId);
     }
 }
 
@@ -1187,7 +1190,7 @@ async function handleDirectorCreateSession(handler, ws, message) {
                 // Chosen once, at creation. See assertRuntimeUnchanged — nothing
                 // after this point may write chat.runtime for an existing chat.
                 runtime: sanitizeRuntime(message.runtime),
-                name: (message.description || '').trim().slice(0, 48) || 'Xi',
+                name: (message.description || '').trim().slice(0, 48) || 'Yozora',
                 workspaceId,
                 filename: null,
                 image_type: null,
@@ -1211,7 +1214,7 @@ async function handleDirectorCreateSession(handler, ws, message) {
             session: Object.assign(publicXiSession(chat), { messages: [] })
         });
     } catch (error) {
-        handler.sendError(ws, error.message || 'Failed to create Xi session', error.code || 'DIRECTOR_ERROR', message.requestId);
+        handler.sendError(ws, error.message || 'Failed to create Yozora session', error.code || 'DIRECTOR_ERROR', message.requestId);
     }
 }
 
@@ -1281,7 +1284,7 @@ async function handleDirectorGetMessages(handler, ws, message) {
     const messages = (chat.messages || []).filter((item) => !live || item.id !== live.draftId);
     sendOk(handler, ws, 'director_get_messages_response', message.requestId, {
         sessionId: chat.id,
-        name: chat.name || 'Xi',
+        name: chat.name || 'Yozora',
         images: Array.isArray(chat.images) ? chat.images : [],
         prints: Array.isArray(chat.prints) ? chat.prints : [],
         tasks: director._test.normalizeSessionTasks(chat.tasks),
@@ -1294,7 +1297,7 @@ async function handleDirectorGetMessages(handler, ws, message) {
 async function handleDirectorRollbackMessage(handler, ws, message) {
     if (!assertEnabled(handler, ws, message.requestId)) return;
     if (runs.has(message.sessionId)) {
-        handler.sendError(ws, 'Xi is still working on that chat', 'DIRECTOR_BUSY', message.requestId);
+        handler.sendError(ws, 'Yozora is still working on that chat', 'DIRECTOR_BUSY', message.requestId);
         return;
     }
     const removed = await enqueue(async () => {
@@ -1348,7 +1351,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
             return;
         }
         if (runs.has(sessionId)) {
-            handler.sendError(ws, 'Xi is still working on the last request', 'DIRECTOR_BUSY', message.requestId);
+            handler.sendError(ws, 'Yozora is still working on the last request', 'DIRECTOR_BUSY', message.requestId);
             return;
         }
 
@@ -1367,7 +1370,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 type: 'director_message_response',
                 data: {
                     sessionId,
-                    reply: `🔒 **Logged out of Cursor account for Xi.**\n\nThe active account profile (\`${activeAccountId}\`) and live authentication state have been logged out and cleared. Perform a fresh login in Cursor or click **Capture Credentials** in Security Center after logging in.`,
+                    reply: `🔒 **Logged out of Cursor account for Yozora.**\n\nThe active account profile (\`${activeAccountId}\`) and live authentication state have been logged out and cleared. Perform a fresh login in Cursor or click **Capture Credentials** in Security Center after logging in.`,
                     done: true
                 },
                 timestamp: new Date().toISOString()
@@ -1404,7 +1407,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
             const spoken = String(message.content || '').trim() || (files.length ? 'Use the attached files.' : '');
             if (!spoken) throw new Error('Say what you want, or attach a file');
             const userText = director._test.steerText(message, spoken, false);
-            if ((chat.name === 'Xi' || chat.name === 'Director') && spoken) chat.name = spoken.slice(0, 48);
+            if ((chat.name === 'Yozora' || chat.name === 'Xi' || chat.name === 'Director') && spoken) chat.name = spoken.slice(0, 48);
             chat.model = customRun
                 ? customRun.model
                 : (runtime === 'tokenrouter'
@@ -1536,7 +1539,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
         startTail(meta);
         try { director.broadcastDirectorStatus(gr); } catch (_) { /* status is best effort */ }
     } catch (error) {
-        handler.sendError(ws, error.message || 'Failed to send Xi message', error.code || 'DIRECTOR_ERROR', message.requestId);
+        handler.sendError(ws, error.message || 'Failed to send Yozora message', error.code || 'DIRECTOR_ERROR', message.requestId);
     }
 }
 
@@ -1587,7 +1590,7 @@ async function handleDirectorForkSession(handler, ws, message) {
             claudeSessionId: null,
             runtime: sanitizeRuntime(chat.runtime),
             accountId: chat.accountId || activeAccId,
-            name: `${chat.name || 'Xi'} fork`.slice(0, 48),
+            name: `${chat.name || 'Yozora'} fork`.slice(0, 48),
             workspaceId: chat.workspaceId || null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),

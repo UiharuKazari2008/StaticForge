@@ -596,7 +596,7 @@ function logoutCursorAccount(persona, activeAccountId) {
         cursorUsage.invalidateCursorUsage();
     }
 
-    return { success: true, message: `Logged out Cursor account for ${persona === 'wren' ? 'Wren' : 'Xi'}` };
+    return { success: true, message: `Logged out Cursor account for ${persona === 'wren' ? 'Yumiya' : 'Yozora'}` };
 }
 
 // "github|user_01..." -> "GitHub user_01..."; emails pass through.

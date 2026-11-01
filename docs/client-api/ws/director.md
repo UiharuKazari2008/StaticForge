@@ -4,6 +4,8 @@ Server handler: `modules/ws/handlers/40-directorHandler.js`
 
 See [WebSocket protocol](../websocket.md) for envelope format, auth, and error handling.
 
+Persona names: the protocol keeps the ids `wren`, `kabuki`, and `xi` (and this page uses them). The client and the agents' own prompts call them **Yumiya** (`wren`), **Chiyo** (`kabuki`, Obliterated Memories), and **Yozora** (`xi`). New Xi chats are named `Yozora` by default; an old `Xi` default name is still replaced by the first reply.
+
 ## Packet index
 
 | Request type | Typical response | Auth | Notes |

@@ -161,6 +161,11 @@ class DirectorMascot {
         if (!this.root || !this.manifest || !this.host) return;
         const hostBox = this.host.getBoundingClientRect();
         const composer = this.host.querySelector('#directorComposer');
+        // The composer floats over the bottom of the chat: the visual novel log panel stops above it.
+        if (composer) {
+            const cb = composer.getBoundingClientRect();
+            if (cb.height) this.host.style.setProperty('--dm-composer-space', `${Math.max(0, Math.round(hostBox.bottom - cb.top + 8))}px`);
+        }
         const bar = composer && (composer.querySelector('.director-chat-input') || composer);
         const barBox = bar ? bar.getBoundingClientRect() : { top: hostBox.bottom, left: hostBox.left, right: hostBox.right, width: hostBox.width };
         const inset = 10;
@@ -423,14 +428,20 @@ class DirectorMascot {
                 if (!st.firstKickAt) st.firstKickAt = now;
                 st.nextKickAt = now + directorMascotRand(kicky.everySec, 45) * 1000;
                 if (kicky.jiggle) this.act('jiggle');
+                // Half the kicks catch her off guard (Yukimi: sometimes surprised / "oh").
+                if (Math.random() < 0.5) this.cue({ expression: 'surprised', holdMs: 1400 });
+                // The kick fades in and back out instead of popping.
+                this._swapMs = 450;
                 this.render();
-                this.later(() => this.render(), st.kickUntil - now + 20);
+                this.later(() => { this._swapMs = 450; this.render(); }, st.kickUntil - now + 20);
             }
         }
         // Random rubs / gestures (chance per minute).
         const gesture = b.rub || b.gesture;
         const stages = gesture && (gesture.stages || [gesture.stage]);
-        if (gesture && stages.includes(st.stage) && now >= st.gestureUntil && Math.random() < (gesture.chance || 0) / 60) {
+        // whenWorking: Yumiya's mask is for focus, never for idling.
+        const gestureOk = gesture && (!gesture.whenWorking || this.working);
+        if (gestureOk && stages.includes(st.stage) && now >= st.gestureUntil && Math.random() < (gesture.chance || 0) / 60) {
             st.gestureUntil = now + directorMascotRand(gesture.durationSec, 8) * 1000;
             this.render();
             this.later(() => this.render(), st.gestureUntil - now + 20);
@@ -517,7 +528,11 @@ class DirectorMascot {
             this.idleSince = 0;
         } else if (!on && this.working) {
             this.working = false;
-            if (this.stageState) this.stageState.workingSince = 0;
+            if (this.stageState) {
+                this.stageState.workingSince = 0;
+                const g = this.manifest && this.manifest.behaviour && (this.manifest.behaviour.gesture || this.manifest.behaviour.rub);
+                if (g && g.whenWorking) this.stageState.gestureUntil = 0;   // mask down when she stops
+            }
             this.idleSince = now;
         }
         if (this.root) this.root.dataset.state = this.working ? 'working' : 'idle';

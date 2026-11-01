@@ -297,14 +297,14 @@ ${dsapSmfBuildHeader({
   <div id="secCursorAccountsLoading" class="sec-dsap-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading Director accounts…</div>
   <div id="secCursorAccountsError" class="sec-dsap-error hidden"><i class="fas fa-exclamation-triangle"></i> <span id="secCursorAccountsErrorText">Failed to load</span></div>
   <div id="secCursorAccountsContent" class="sec-pins-content hidden">
-    <p class="sec-dsap-settings-intro">Cursor profiles for Wren and Xi. Activate a profile in its column. Highlighted rows need a fresh login.</p>
+    <p class="sec-dsap-settings-intro">Cursor profiles for Yumiya and Yozora. Activate a profile in its column. Highlighted rows need a fresh login.</p>
     <div id="secCursorAccountsTableWrap" class="sec-table-wrap hidden">
       <table class="sec-data-table" cellspacing="0" cellpadding="4" width="100%" border="1">
         <thead>
           <tr>
             <th align="left">Profile Name</th>
-            <th align="center" width="90">Wren</th>
-            <th align="center" width="90">Xi</th>
+            <th align="center" width="90">Yumiya</th>
+            <th align="center" width="90">Yozora</th>
             <th align="center" width="70">Plan</th>
             <th align="center" width="70">Usage</th>
             <th align="center" width="80">Cost</th>
@@ -2511,8 +2511,8 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         if (tbody) {
             const captureOn = state.captureEnabled === true;
             const captureTitle = captureOn
-                ? 'Capture and pair the live Xi login that is not a saved profile'
-                : 'Xi is already using a saved profile';
+                ? 'Capture and pair the live Yozora login that is not a saved profile'
+                : 'Yozora is already using a saved profile';
             tbody.innerHTML = accounts.map((acc) => {
                 const isWrenActive = (state.wren?.activeAccountId || 'default') === acc.id;
                 const isXiActive = (state.xi?.activeAccountId || 'default') === acc.id;
@@ -2559,7 +2559,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
 
         if (!(await this._ensureWs())) return;
 
-        const who = persona === 'both' ? 'Wren and Xi' : (persona === 'wren' ? 'Wren' : 'Xi');
+        const who = persona === 'both' ? 'Yumiya and Yozora' : (persona === 'wren' ? 'Yumiya' : 'Yozora');
         try {
             const response = await wsClient.switchCursorAccount(persona, accountId);
             const data = response?.data || response;
@@ -2658,7 +2658,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             const data = response?.data || response;
             if (data?.success) {
                 if (typeof showGlassToast === 'function') {
-                    showGlassToast('success', 'Logged Out', `Logged out Cursor account for ${persona === 'wren' ? 'Wren' : 'Xi'}`, false, 5000, '<i class="fas fa-sign-out-alt"></i>');
+                    showGlassToast('success', 'Logged Out', `Logged out Cursor account for ${persona === 'wren' ? 'Yumiya' : 'Yozora'}`, false, 5000, '<i class="fas fa-sign-out-alt"></i>');
                 }
                 void this._loadCursorAccounts(root);
             } else {

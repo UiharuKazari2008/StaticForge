@@ -3839,7 +3839,7 @@ body #directorSessionChat.director-mascot-on.director-mascot-view #directorTaskL
     width: 38%;
     min-width: 300px;
     max-width: 600px;
-    margin: 10px 12px 6px;
+    margin: 10px 12px var(--dm-composer-space, 84px);
     background: hsl(0 0% 100% / 84%);
     border: 1px solid hsl(0 0% 100% / 70%);
     border-radius: 8px;
@@ -3850,6 +3850,17 @@ body #directorSessionChat.director-mascot-on.director-mascot-view #directorTaskL
 body #directorSessionChat.director-mascot-on.director-mascot-view #directorTaskList {
     flex: none;
     margin-bottom: 0;
+    padding: 8px 12px;
+    gap: 4px;
+}
+
+body #directorSessionChat.director-mascot-on.director-mascot-view #directorTaskList .director-task-row {
+    color: #1f2a37;
+    font-size: 12.5px;
+}
+
+body #directorSessionChat.director-mascot-on.director-mascot-view #directorTaskList .director-task-row > i {
+    color: #3a7bd5;
 }
 
 body #directorSessionChat.director-mascot-on.director-mascot-view[data-dm-side="left"] :is(.director-chat-messages-container, #directorTaskList) {

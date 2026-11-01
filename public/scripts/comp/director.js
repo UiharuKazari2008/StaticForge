@@ -269,9 +269,9 @@ const DIRECTOR_XI_QUICK_STARTS = [
     },
     {
         id: 'xi-review-wren',
-        label: 'Review Wren',
-        title: 'Fix what went wrong in Wren sessions and update the prompt guide',
-        prompt: 'Review Wren\'s recent Director sessions. Find bugs, tool failures, and errors, trace each one in the code, fix it, and file or update a Yozora issue. Then update the prompt guide drafts from what worked and what failed in those sessions.'
+        label: 'Review Yumiya',
+        title: 'Fix what went wrong in Yumiya sessions and update the prompt guide',
+        prompt: 'Review Yumiya\'s recent Director sessions. Find bugs, tool failures, and errors, trace each one in the code, fix it, and file or update a Yozora issue. Then update the prompt guide drafts from what worked and what failed in those sessions.'
     }
 ];
 
@@ -298,6 +298,43 @@ const DIRECTOR_WELCOME_QUIPS = [
     'A look, a change, or a new idea.',
     'Show me what to try next.'
 ];
+
+// Persona display names (Yukimi 2026-11-01): the ids stay wren / kabuki / xi in code and stored chats.
+const DIRECTOR_PERSONA_NAMES = { wren: 'Yumiya', kabuki: 'Chiyo', xi: 'Yozora' };
+
+function directorPersonaName(persona) {
+    return DIRECTOR_PERSONA_NAMES[persona] || DIRECTOR_PERSONA_NAMES.wren;
+}
+
+// The new-session greeting: her name and one of her lines.
+const DIRECTOR_PERSONA_TAGLINES = {
+    wren: [
+        'Name the picture. I will bring it back.',
+        'What shall I hunt for you tonight?',
+        'The crows say you have a look in mind.',
+        'Point me at an idea.',
+        'Tell me what to capture.'
+    ],
+    kabuki: [
+        'Come in, the lanterns are lit.',
+        'Whisper it. Nobody listens back here.',
+        'What are you craving tonight?',
+        'Close the door behind you.',
+        'Your secrets are safe in this alley.'
+    ],
+    xi: [
+        'Foxfire is lit and the logs are open.',
+        'Kon. What are we building?',
+        'Point me at the code.',
+        'Show me what broke.',
+        'The shrine servers are humming. What needs fixing?'
+    ]
+};
+
+function directorPersonaTagline(persona) {
+    const lines = DIRECTOR_PERSONA_TAGLINES[persona] || DIRECTOR_WELCOME_QUIPS;
+    return lines[Math.floor(Math.random() * lines.length)];
+}
 
 function directorModelIsV45() {
     const selected = typeof getCurrentSelectedModel === 'function' ? getCurrentSelectedModel() : '';
@@ -3156,7 +3193,7 @@ class Director {
                 if (this.persona === 'xi' && xiRunning) {
                     this.showSessionChat({
                         id: status.xi.sessionId,
-                        name: status.xi.sessionName || 'Xi',
+                        name: status.xi.sessionName || 'Yozora',
                         messages: [],
                         tasks: []
                     });
@@ -3216,7 +3253,7 @@ class Director {
                 if (openId !== runningId) {
                     this.showSessionChat({
                         id: runningId,
-                        name: runningName || (useXi ? 'Xi' : 'Director'),
+                        name: runningName || (useXi ? 'Yozora' : 'Director'),
                         messages: [],
                         tasks: []
                     }, { skipLoad: true });
@@ -5284,7 +5321,8 @@ class Director {
     showNewSessionDraft() {
         if (this.mascot) this.mascot.onChatChange();
         if (!this._welcomeQuip) {
-            this._welcomeQuip = DIRECTOR_WELCOME_QUIPS[Math.floor(Math.random() * DIRECTOR_WELCOME_QUIPS.length)];
+            this._welcomeQuip = directorPersonaTagline(this.persona);
+            this._welcomeQuipPersona = this.persona;
         }
         // A workspace open already in flight must not replace this draft with a server chat.
         this._pendingWorkspaceToken = null;
@@ -6110,9 +6148,9 @@ class Director {
                 title: 'New Sessions',
                 tpl: { t: 'New Sessions', w: 252, h: 218, f: font, c: [
                     [-1, 'S', 7, 7, 238, 16, S, 'A new chat starts on these. Once it has started, a chat keeps its own engine and model.', 0],
-                    [-1, 'B', 7, 28, 238, 70, GROUP, 'Wren', 0],
+                    [-1, 'B', 7, 28, 238, 70, GROUP, 'Yumiya', 0],
                     ...picker(41, [101, 102, 103], ['&Engine:', '&Model:', '&Reasoning:']),
-                    [-1, 'B', 7, 104, 238, 70, GROUP, 'Kabuki (Obliterated Memories)', 0],
+                    [-1, 'B', 7, 104, 238, 70, GROUP, 'Chiyo (Obliterated Memories)', 0],
                     ...picker(117, [111, 112, 113], ['E&ngine:', 'M&odel:', 'Reas&oning:']),
                     [120, 'S', 7, 182, 238, 26, S, '', 0]
                 ] }
@@ -6127,9 +6165,9 @@ class Director {
                     [202, 'E', 128, 22, 34, 12, 0x50812082, '85', 0],
                     [-1, 'S', 166, 24, 12, 8, S, '%', 0],
                     [-1, 'S', 7, 40, 238, 16, S, 'Auto-Repair reads the whole chat on the engine below, restates what you asked as one clear request, and continues in a new session.', 0],
-                    [-1, 'B', 7, 60, 238, 70, GROUP, 'Wren (normal memories)', 0],
+                    [-1, 'B', 7, 60, 238, 70, GROUP, 'Yumiya (normal memories)', 0],
                     ...picker(73, [211, 212, 213], ['&Engine:', '&Model:', 'R&easoning:']),
-                    [-1, 'B', 7, 136, 238, 70, GROUP, 'Kabuki (Obliterated Memories)', 0],
+                    [-1, 'B', 7, 136, 238, 70, GROUP, 'Chiyo (Obliterated Memories)', 0],
                     ...picker(149, [221, 222, 223], ['E&ngine:', 'M&odel:', 'Reas&oning:'])
                 ] }
             },
@@ -6137,7 +6175,7 @@ class Director {
                 key: 'director:learned',
                 title: 'Learned Rules',
                 tpl: { t: 'Learned Rules', w: 252, h: 218, f: font, c: [
-                    [-1, 'S', 7, 7, 238, 8, S, '&Learned rules (Wren and Kabuki follow these):', 0],
+                    [-1, 'S', 7, 7, 238, 8, S, '&Learned rules (Yumiya and Chiyo follow these):', 0],
                     [301, 'L', 7, 18, 238, 64, LIST, '', 0x200],
                     [302, 'B', 139, 86, 50, 14, PUSH, '&Edit...', 0],
                     [303, 'B', 195, 86, 50, 14, PUSH, 'Re&move', 0],
@@ -6331,8 +6369,8 @@ class Director {
                     }
                 });
                 ctx.text(120, kabuki
-                    ? 'Kabuki chats use Obliterated Memories, so only engines with that store are listed for them.'
-                    : 'No model provider uses Obliterated Memories. Turn it on for a custom model provider in Control Panel to use Kabuki.');
+                    ? 'Chiyo chats use Obliterated Memories, so only engines with that store are listed for them.'
+                    : 'No model provider uses Obliterated Memories. Turn it on for a custom model provider in Control Panel to use Chiyo.');
                 const auto = settings.autoRepair || { enabled: true, threshold: 85 };
                 ctx.set(201, auto.enabled !== false);
                 ctx.set(202, String(auto.threshold || 85));
@@ -7181,9 +7219,14 @@ class Director {
         host.replaceChildren();
         const logo = document.createElement('div');
         logo.className = 'logo-text';
-        logo.textContent = 'Director';
+        logo.textContent = directorPersonaName(this.persona);
+        // Her line, re-picked when the persona changes.
+        if (!this._welcomeQuip || this._welcomeQuipPersona !== this.persona) {
+            this._welcomeQuip = directorPersonaTagline(this.persona);
+            this._welcomeQuipPersona = this.persona;
+        }
         const quip = document.createElement('h3');
-        quip.textContent = this._welcomeQuip || DIRECTOR_WELCOME_QUIPS[0];
+        quip.textContent = this._welcomeQuip;
         const group = document.createElement('div');
         group.className = 'btn-group-compact';
         tasks.forEach((task) => {
@@ -7200,8 +7243,8 @@ class Director {
         note.dataset.quickNote = '1';
         const selected = tasks.find((task) => task.id === this._selectedQuickTaskId);
         note.textContent = selected ? selected.title : '';
-        if (xi) host.append(group, note);
-        else host.append(logo, quip, group, note);
+        // Every persona greets with her name and a line (Yozora's home had none).
+        host.append(logo, quip, group, note);
     }
 
     quickStarts() {
