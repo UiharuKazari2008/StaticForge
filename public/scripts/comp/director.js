@@ -5740,7 +5740,7 @@ class Director {
         if (messageDiv.dataset.traceExtras.includes('g')) {
             const glasses = document.createElement('button');
             glasses.type = 'button';
-            glasses.className = 'btn-secondary btn-small';
+            glasses.className = 'btn-secondary btn-small director-trace-inspect';
             glasses.title = 'Parameters and result';
             glasses.innerHTML = '<i class="fas fa-glasses"></i>';
             glasses.addEventListener('click', (event) => {

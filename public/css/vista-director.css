@@ -642,11 +642,42 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-mes
         linear-gradient(90deg, transparent, var(--dm-glow, #39a9f0) 20%, var(--dm-glow-hot, #9fe2ff) 50%, var(--dm-glow, #39a9f0) 80%, transparent) top / 100% 2px no-repeat,
         radial-gradient(ellipse 64% 24px at 50% 0, color-mix(in srgb, var(--dm-glow, #39a9f0) 42%, transparent), transparent) top / 100% 24px no-repeat,
         linear-gradient(hsl(0 0% 100% / 80%), hsl(210 30% 97% / 80%));
-    background-clip: padding-box;
-    background-origin: padding-box;
-    border: 1px solid hsl(212 22% 82%);
+    border: 0;
     border-radius: 4px;
-    box-shadow: 0 1px 2px hsl(0 0% 0% / 8%);
+    box-shadow: 0 1px 3px hsl(0 0% 0% / 12%);
+}
+
+/* The inspect glasses: a bare icon at the right end of the row header, before the chevron. */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-message.thinking, .director-message.tool) .director-user-message-header button.btn-small.director-trace-inspect {
+    order: 98;
+    margin-left: auto;
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    padding: 0 4px;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    color: #4a6c94;
+    opacity: 0.75;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-message.thinking, .director-message.tool) .director-user-message-header button.btn-small.director-trace-inspect:hover:not(:disabled) {
+    background: none;
+    border: 0;
+    box-shadow: none;
+    color: #1f5fa8;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-message.thinking, .director-message.tool) .director-user-message-header button.btn-small.director-trace-inspect i {
+    color: inherit;
+}
+
+/* The chevron stays last, right after the glasses (both had margin-left: auto and split the space). */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-message.thinking, .director-message.tool) .director-user-message-header button.btn-small.director-trace-inspect ~ .director-expand-button {
+    order: 99;
+    margin-left: 0;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message.thinking {
