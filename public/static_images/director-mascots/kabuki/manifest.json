@@ -29,8 +29,8 @@
       ],
       "head": "head-base.webp",
       "belly": [
-        786,
-        511
+        787,
+        788
       ]
     },
     "bigger": {
@@ -44,8 +44,8 @@
       ],
       "head": "head-bigger.webp",
       "belly": [
-        745,
-        514
+        751,
+        776
       ]
     },
     "bigger_kicky": {
@@ -59,8 +59,8 @@
       ],
       "head": "head-bigger_kicky.webp",
       "belly": [
-        742,
-        513
+        751,
+        776
       ]
     },
     "bigger_rub": {
@@ -74,8 +74,8 @@
       ],
       "head": "head-bigger_rub.webp",
       "belly": [
-        745,
-        514
+        751,
+        776
       ]
     },
     "bigger_rub_kicky": {
@@ -89,8 +89,8 @@
       ],
       "head": "head-bigger_rub_kicky.webp",
       "belly": [
-        742,
-        513
+        751,
+        776
       ]
     },
     "bigger2": {
@@ -103,8 +103,8 @@
         1171
       ],
       "belly": [
-        605,
-        515
+        544,
+        848
       ]
     }
   },
@@ -118,7 +118,8 @@
         "surprised": "face-fan-surprised.webp",
         "frustrated": "face-fan-frustrated.webp",
         "smug": "face-fan-smug.webp",
-        "sleepy": "face-fan-sleepy.webp"
+        "sleepy": "face-fan-sleepy.webp",
+        "satisfied": "face-fan-satisfied.webp"
       },
       "blink": "blink-fan.webp",
       "blinkFor": [
@@ -154,7 +155,8 @@
         "surprised": "face-big2-surprised.webp",
         "frustrated": "face-big2-frustrated.webp",
         "smug": "face-big2-smug.webp",
-        "sleepy": "face-big2-sleepy.webp"
+        "sleepy": "face-big2-sleepy.webp",
+        "satisfied": "face-big2-satisfied.webp"
       },
       "mouth": {
         "talk": "mouth-big2.webp"
@@ -216,15 +218,15 @@
     }
   },
   "background": "room.webp",
+  "face": [
+    798,
+    152,
+    90
+  ],
   "refCamera": [
     389,
     24,
     695,
     608
-  ],
-  "face": [
-    798,
-    152,
-    90
   ]
 }

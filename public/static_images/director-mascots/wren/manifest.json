@@ -2,36 +2,36 @@
   "persona": "wren",
   "name": "Wren",
   "version": 2,
-  "source": "Nonoka sprite set (2022-02, purple), by StygianRook",
+  "source": "Yumiya sprite set (2021-12), by StygianRook",
   "anchor": "left",
   "size": [
-    851,
-    943
+    1363,
+    1206
   ],
   "headPivot": [
-    151,
-    156
+    576,
+    246
   ],
   "hipPivot": [
-    426,
-    943
+    682,
+    1206
   ],
   "refCamera": [
     0,
     0,
-    851,
+    1363,
     608
   ],
-  "shouldersY": 175,
-  "peekRatio": 0.29,
+  "shouldersY": 275,
+  "peekRatio": 0.45,
   "bodies": {
     "base": {
       "body": "body-base.webp",
       "head": "head-base.webp",
       "faces": "base",
       "belly": [
-        311,
-        464
+        547,
+        506
       ]
     },
     "bigger": {
@@ -39,8 +39,53 @@
       "head": "head-bigger.webp",
       "faces": "base",
       "belly": [
-        426,
-        470
+        735,
+        507
+      ]
+    },
+    "bigger_vore": {
+      "body": "body-bigger_vore.webp",
+      "head": "head-bigger_vore.webp",
+      "faces": "base",
+      "belly": [
+        735,
+        507
+      ]
+    },
+    "mask": {
+      "body": "body-mask.webp",
+      "head": "head-mask.webp",
+      "faces": "mask",
+      "belly": [
+        547,
+        506
+      ]
+    },
+    "mask_bigger": {
+      "body": "body-mask_bigger.webp",
+      "head": "head-mask_bigger.webp",
+      "faces": "mask",
+      "belly": [
+        735,
+        507
+      ]
+    },
+    "mask_wings": {
+      "body": "body-mask_wings.webp",
+      "head": "head-mask_wings.webp",
+      "faces": "mask",
+      "belly": [
+        547,
+        506
+      ]
+    },
+    "mask_wings_bigger": {
+      "body": "body-mask_wings_bigger.webp",
+      "head": "head-mask_wings_bigger.webp",
+      "faces": "mask",
+      "belly": [
+        735,
+        507
       ]
     }
   },
@@ -54,7 +99,8 @@
         "surprised": "face-base-surprised.webp",
         "frustrated": "face-base-frustrated.webp",
         "smug": "face-base-smug.webp",
-        "sleepy": "face-base-sleepy.webp"
+        "sleepy": "face-base-sleepy.webp",
+        "satisfied": "face-base-satisfied.webp"
       },
       "blink": "blink-base.webp",
       "blinkFor": [
@@ -67,14 +113,34 @@
       "mouth": {
         "talk": "mouth-base.webp"
       }
+    },
+    "mask": {
+      "expressions": {
+        "neutral": "face-mask-neutral.webp",
+        "thinking": "face-mask-thinking.webp",
+        "happy": "face-mask-happy.webp"
+      },
+      "blink": "blink-mask.webp",
+      "blinkFor": [
+        "neutral",
+        "focused",
+        "frustrated",
+        "smug",
+        "surprised"
+      ]
     }
   },
   "stages": {
     "base": {
-      "body": "base"
+      "body": "base",
+      "gesture": "mask",
+      "celebrate": "mask_wings"
     },
     "bigger": {
-      "body": "bigger"
+      "body": "bigger",
+      "gesture": "mask_bigger",
+      "printed": "bigger_vore",
+      "celebrate": "mask_wings_bigger"
     }
   },
   "behaviour": {
@@ -90,12 +156,29 @@
       "to": "base",
       "idleSec": 600,
       "onChatChange": true
+    },
+    "gesture": {
+      "stages": [
+        "base",
+        "bigger"
+      ],
+      "chance": 0.3,
+      "durationSec": [
+        4,
+        9
+      ]
+    },
+    "printed": {
+      "durationSec": 6
+    },
+    "celebrate": {
+      "durationSec": 3
     }
   },
   "background": "room.webp",
   "face": [
-    154,
-    111,
-    85
+    576,
+    184,
+    105
   ]
 }

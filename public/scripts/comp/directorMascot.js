@@ -332,6 +332,8 @@ class DirectorMascot {
             nextKickAt: 0,
             kickUntil: 0,
             gestureUntil: 0,
+            printedUntil: 0,     // stage.printed: the body after a print sinks in (Yumiya's vore belly)
+            celebrateUntil: 0,   // stage.celebrate: the body when a turn lands (Yumiya's wings)
             transition: null
         };
     }
@@ -347,6 +349,8 @@ class DirectorMascot {
         if (st.transition) return st.transition.frames[st.transition.index] || st.transition.via || null;
         const def = this.stageDef();
         if (!def) return null;
+        if (def.celebrate && now < st.celebrateUntil) return def.celebrate;
+        if (def.printed && now < st.printedUntil) return def.printed;
         const alt = def.rub || def.gesture;
         const altKicky = def.rubKicky || def.gestureKicky;
         const kicking = now < st.kickUntil;
@@ -472,7 +476,20 @@ class DirectorMascot {
         }
     }
 
+    // A timed body override for this stage (celebrate / printed), then back.
+    showFor(key, fallbackSec) {
+        const def = this.stageDef(); const st = this.stageState;
+        if (!def || !st || !def[key]) return;
+        const cfg = (this.manifest.behaviour || {})[key] || {};
+        const until = Date.now() + (Number(cfg.durationSec) || fallbackSec) * 1000;
+        st[`${key}Until`] = until;
+        this._swapMs = 260;
+        this.render();
+        this.later(() => { this._swapMs = 260; this.render(); }, until - Date.now() + 20);
+    }
+
     onTurnEnd(ok) {
+        if (ok !== false) this.showFor('celebrate', 3);
         this.setWorking(false);
         this.turnDoneAt = Date.now();
         this.cue(ok === false ? { expression: 'frustrated', action: 'slump', holdMs: 4000 } : { expression: 'happy', action: 'bounce', holdMs: 3500 });
@@ -674,7 +691,9 @@ class DirectorMascot {
         const tilt = left ? 7 : -7;
         const done = () => {
             card.remove();
-            this.cue({ expression: 'happy', action: 'bounce', holdMs: 4000 });
+            this.showFor('printed', 6);
+            const set = this.faceSet();
+            this.cue({ expression: set && set.expressions && set.expressions.satisfied ? 'satisfied' : 'happy', action: 'bounce', holdMs: 4000 });
             this.later(() => this.act('jiggle'), 380);
         };
         const reduced = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;

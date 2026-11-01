@@ -90,7 +90,8 @@
         "surprised": "face-base-surprised.webp",
         "frustrated": "face-base-frustrated.webp",
         "smug": "face-base-smug.webp",
-        "sleepy": "face-base-sleepy.webp"
+        "sleepy": "face-base-sleepy.webp",
+        "satisfied": "face-base-satisfied.webp"
       },
       "blink": "blink-base.webp",
       "blinkFor": [
@@ -112,6 +113,7 @@
         "thinking": "face-big-thinking.webp",
         "frustrated": "face-big-frustrated.webp",
         "smug": "face-big-smug.webp",
+        "satisfied": "face-big-satisfied.webp",
         "surprised": "face-big-surprised.webp",
         "sleepy": "face-big-sleepy.webp"
       },

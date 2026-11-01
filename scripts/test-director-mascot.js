@@ -102,6 +102,20 @@ assert.strictEqual(w.debugState().stage, 'bigger');
 w.expression = 'nope'; w.expressionUntil = now + 1000;
 assert.ok(w.faceSet().expressions.neutral);
 
+// Wren (Yumiya): the vore belly after a print sinks in (bigger), wings when a turn lands; both time out.
+const y = load('wren'); y.stageState.stage = 'bigger';
+y.showFor('printed', 6);
+assert.strictEqual(y.currentBodyId(), 'bigger_vore');
+run(6100);
+assert.strictEqual(y.currentBodyId(), 'bigger');
+y.onTurnEnd(true);
+assert.strictEqual(y.currentBodyId(), 'mask_wings_bigger');
+run(3100);
+assert.strictEqual(y.currentBodyId(), 'bigger');
+y.onTurnEnd(false);
+assert.strictEqual(y.currentBodyId(), 'bigger', 'no wings on a failed turn');
+assert.ok(y.manifest.faceSets.base.expressions.satisfied, 'satisfied face for after a print');
+
 // v1 manifest still works.
 const v1 = DirectorMascot.normalize({ size: [100, 200], layers: { body: 'b.webp', head: 'h.webp' }, expressions: { neutral: 'n.webp' } }, 'wren');
 assert.deepStrictEqual(Object.keys(v1.bodies), ['main']);
