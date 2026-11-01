@@ -632,28 +632,21 @@ body:not(.windows-classic-theme) #directorWindow .director-task-list {
 
 /* ---- Yukimi 2026-11-01: thinking and tool rows, replies, the task list, and a larger input bar ---- */
 
-/* Thinking and tool calls: a card with Vista's gradient glow along the top edge (violet thinking, blue tools). */
+/* Thinking and tool calls: a card with Vista's gradient glow along the top edge (violet thinking, blue tools).
+   The glow is part of the card's own background, so it stays inside the border and fades down into the box. */
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message:is(.thinking, .tool) {
     position: relative;
     margin-top: 6px;
     padding: 6px 10px;
-    background: linear-gradient(hsl(0 0% 100% / 80%), hsl(210 30% 97% / 80%));
+    background:
+        linear-gradient(90deg, transparent, var(--dm-glow, #39a9f0) 20%, var(--dm-glow-hot, #9fe2ff) 50%, var(--dm-glow, #39a9f0) 80%, transparent) top / 100% 2px no-repeat,
+        radial-gradient(ellipse 64% 24px at 50% 0, color-mix(in srgb, var(--dm-glow, #39a9f0) 42%, transparent), transparent) top / 100% 24px no-repeat,
+        linear-gradient(hsl(0 0% 100% / 80%), hsl(210 30% 97% / 80%));
+    background-clip: padding-box;
+    background-origin: padding-box;
     border: 1px solid hsl(212 22% 82%);
     border-radius: 4px;
     box-shadow: 0 1px 2px hsl(0 0% 0% / 8%);
-}
-
-body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message:is(.thinking, .tool)::before {
-    content: "";
-    position: absolute;
-    left: 8px;
-    right: 8px;
-    top: -1px;
-    height: 2px;
-    border-radius: 2px;
-    background: linear-gradient(90deg, transparent, var(--dm-glow, #39a9f0) 22%, var(--dm-glow-hot, #9fe2ff) 50%, var(--dm-glow, #39a9f0) 78%, transparent);
-    box-shadow: 0 0 6px var(--dm-glow, #39a9f0), 0 0 2px var(--dm-glow-hot, #9fe2ff);
-    pointer-events: none;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message.thinking {
