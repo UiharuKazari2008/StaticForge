@@ -112,6 +112,14 @@ class DirectorMascot {
             [host, host.querySelector('#directorComposer'), host.querySelector('.director-chat-input'), host.querySelector('.director-chat-messages-container')]
                 .filter(Boolean).forEach((el) => this._resize.observe(el));
         }
+        // The bar slides between the centred home and the bottom without resizing anything watched above:
+        // follow the chat view's class (director-composer-center) and the composer's own transitions.
+        if (typeof MutationObserver === 'function') {
+            this._mutation = new MutationObserver(() => this.settleLayout());
+            this._mutation.observe(host, { attributes: true, attributeFilter: ['class'] });
+        }
+        const composer = host.querySelector('#directorComposer');
+        if (composer) composer.addEventListener('transitionend', () => this.layout());
         this._tick = setInterval(() => this.tick(), DIRECTOR_MASCOT_TICK_MS);
         this.scheduleBlink();
     }
@@ -151,23 +159,30 @@ class DirectorMascot {
         const bar = composer && (composer.querySelector('.director-chat-input') || composer);
         const barBox = bar ? bar.getBoundingClientRect() : { top: hostBox.bottom, left: hostBox.left, right: hostBox.right, width: hostBox.width };
         const inset = 10;
-        this.root.style.setProperty('--dm-bottom', `${Math.max(0, Math.round(hostBox.bottom - barBox.top))}px`);
+        // Home (centred bar): she stands at the bottom of the chat area behind the bar and shows more of herself.
+        const home = this.host.classList.contains('director-composer-center');
+        this.root.classList.toggle('dm-home', home);
+        this.root.style.setProperty('--dm-bottom', home ? '0px' : `${Math.max(0, Math.round(hostBox.bottom - barBox.top))}px`);
         this.root.style.setProperty('--dm-left', `${Math.max(inset, Math.round(barBox.left - hostBox.left) + inset)}px`);
         this.root.style.setProperty('--dm-right', `${Math.max(inset, Math.round(hostBox.right - barBox.right) + inset)}px`);
-        const areaH = Math.max(0, Math.round(barBox.top - hostBox.top));
-        const areaW = Math.max(0, Math.round(barBox.width) - inset * 2);
+        const areaH = home ? Math.round(hostBox.height) : Math.max(0, Math.round(barBox.top - hostBox.top));
+        const areaW = home ? Math.round(hostBox.width * 0.9) : Math.max(0, Math.round(barBox.width) - inset * 2);
         const [W, H] = this.manifest.size;
         const cam = this.camera();
-        const share = this.view === 'mascot' ? 0.98 : 0.62;   // messages view: idle drops below the bar edge (--dm-drop)
+        const share = home ? 0.9 : (this.view === 'mascot' ? 0.98 : 0.62);   // messages view: idle drops below the bar edge (--dm-drop)
         let h = areaH * share;
         let w = h * (cam[2] / cam[3]);
-        const maxW = areaW * (this.view === 'mascot' ? 1 : 0.7);
+        // Never wider than the room between her anchor and the far edge of the chat area.
+        const anchorLeft = this.manifest.anchor === 'left';
+        const fromEdge = anchorLeft ? Math.max(inset, Math.round(barBox.left - hostBox.left) + inset) : Math.max(inset, Math.round(hostBox.right - barBox.right) + inset);
+        const room = Math.round(hostBox.width) - fromEdge - inset;
+        const maxW = Math.min(room, areaW * (this.view === 'mascot' || home ? 1 : 0.7));
         if (w > maxW) { w = maxW; h = w * (cam[3] / cam[2]); }
         const k = h / cam[3];
         const shoulders = Number.isFinite(this.manifest.shouldersY)
             ? Math.max(0.15, Math.min(0.9, (this.manifest.shouldersY - cam[1]) / cam[3]))
             : (this.manifest.peekRatio || 0.4);
-        const peek = this.view === 'messages' && !this.working ? (1 - shoulders) * h : 0;
+        const peek = this.view === 'messages' && !this.working && !home ? (1 - shoulders) * h : 0;
         this.root.style.setProperty('--dm-w', `${Math.round(w)}px`);
         this.root.style.setProperty('--dm-h', `${Math.round(h)}px`);
         this.root.style.setProperty('--dm-drop', `${Math.round(peek)}px`);
@@ -178,6 +193,20 @@ class DirectorMascot {
         this.root.classList.toggle('dm-narrow', areaW < 360);
         const [px, py] = this.manifest.headPivot || [W / 2, H * 0.4];
         this.el.head.style.transformOrigin = `${(px / W) * 100}% ${(py / H) * 100}%`;
+    }
+
+    // Re-measure every frame for a moment (the bar slides between the centred home and the bottom).
+    settleLayout(ms = 800) {
+        if (typeof requestAnimationFrame !== 'function') { this.layout(); return; }
+        this._settleUntil = Date.now() + ms;
+        if (this._settling) return;
+        this._settling = true;
+        const step = () => {
+            this.layout();
+            if (Date.now() < this._settleUntil) requestAnimationFrame(step);
+            else this._settling = false;
+        };
+        requestAnimationFrame(step);
     }
 
     // The shown body's camera on the canvas [x, y, w, h]; no camera means the whole canvas.
@@ -240,6 +269,7 @@ class DirectorMascot {
         if (this.el) this.el.name.textContent = manifest ? manifest.name : '';
         this.applyView();
         this.render();
+        this.settleLayout();
     }
 
     // ---- stage machine ----
@@ -369,7 +399,7 @@ class DirectorMascot {
         this._lastAssistantLength = 0;
         this.setWorking(false);
         this.render();
-        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => this.layout());
+        this.settleLayout();
     }
 
     onUserSend() {

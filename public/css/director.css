@@ -3685,7 +3685,9 @@ html.disable-blur .director-attach-chip {
     height: var(--dm-h, 300px);
     overflow: hidden;
     transform: translateY(var(--dm-drop, 0px));
-    transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.6s ease, height 0.6s ease;
+    /* Only the rise animates: the box and its canvas resize together at once (animating both on separate
+       clocks showed the wrong slice of the canvas mid-way); body swaps crossfade instead. */
+    transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* The canvas holds every pose; the body's camera picks the part on show (Kabuki zooms out for bigger2). */
@@ -3694,11 +3696,16 @@ html.disable-blur .director-attach-chip {
     left: 0;
     top: 0;
     transform-origin: 0 0;
-    transition: transform 0.6s ease, width 0.6s ease, height 0.6s ease;
 }
 
 .director-mascot-stage .dm-body-prev {
     opacity: 0;
+}
+
+/* Home (centred bar): she stands at the bottom behind the composer, which stays on top of her. */
+#directorSessionChat.director-mascot-on #directorComposer {
+    position: relative;
+    z-index: 4;
 }
 
 /* Buttons she would cover (quick starts, attachment chips) go under the input bar while she shows. */
