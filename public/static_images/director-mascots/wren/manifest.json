@@ -85,5 +85,11 @@
       "onChatChange": true
     }
   },
-  "background": "room.webp"
+  "background": "room.webp",
+  "refCamera": [
+    19,
+    13,
+    557,
+    595
+  ]
 }

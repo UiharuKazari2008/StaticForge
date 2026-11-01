@@ -171,5 +171,11 @@
       ]
     }
   },
-  "background": "room.webp"
+  "background": "room.webp",
+  "refCamera": [
+    0,
+    1,
+    723,
+    607
+  ]
 }

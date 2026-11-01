@@ -175,7 +175,30 @@ class DirectorMascot {
         const [W, H] = this.manifest.size;
         const cam = this.camera();
         const vn = this.view === 'mascot';
-        const share = vn ? 0.97 : (home ? 0.9 : 0.62);   // messages view: idle drops below the bar edge (--dm-drop)
+        if (vn) {
+            // Visual novel (Yukimi): she takes most of the window, head 12% below the top of the chat area,
+            // her framing down to the bottom (behind the bar). Bigger poses spill out of frame.
+            this.root.style.setProperty('--dm-bottom', '0px');
+            const hv = Math.round(hostBox.height * 0.88);
+            const wv = Math.round(hv * (cam[2] / cam[3]));
+            const kv = hv / cam[3];
+            const edge = Math.round(hostBox.width * 0.02);
+            this.root.style.setProperty('--dm-left', `${edge}px`);
+            this.root.style.setProperty('--dm-right', `${edge}px`);
+            this.root.style.setProperty('--dm-w', `${wv}px`);
+            this.root.style.setProperty('--dm-h', `${hv}px`);
+            this.root.style.setProperty('--dm-drop', '0px');
+            this.el.canvas.style.width = `${Math.round(W * kv)}px`;
+            this.el.canvas.style.height = `${Math.round(H * kv)}px`;
+            this.el.canvas.style.transform = `translate(${-Math.round(cam[0] * kv)}px, ${-Math.round(cam[1] * kv)}px)`;
+            this._k = kv;
+            this.root.dataset.anchor = this.manifest.anchor === 'left' ? 'left' : 'right';
+            this.root.classList.remove('dm-narrow');
+            const [vx, vy] = this.manifest.headPivot || [W / 2, H * 0.4];
+            this.el.head.style.transformOrigin = `${(vx / W) * 100}% ${(vy / H) * 100}%`;
+            return;
+        }
+        const share = home ? 0.9 : 0.62;   // messages view: idle drops below the bar edge (--dm-drop)
         let h = areaH * share;
         let w = h * (cam[2] / cam[3]);
         // Never wider than the room between her anchor and the far edge of the chat area.
@@ -228,6 +251,8 @@ class DirectorMascot {
     camera() {
         const m = this.manifest;
         if (!m) return [0, 0, 1, 1];
+        // refCamera: her starting pose's framing; bigger poses keep its scale and grow past it.
+        if (Array.isArray(m.refCamera) && m.refCamera.length === 4 && m.refCamera[2] > 0 && m.refCamera[3] > 0) return m.refCamera;
         if (m._unionCamera) return m._unionCamera;
         let box = null;
         Object.values(m.bodies).forEach((b) => {

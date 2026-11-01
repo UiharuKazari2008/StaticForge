@@ -3683,7 +3683,8 @@ html.disable-blur .director-attach-chip {
     bottom: 0;
     width: var(--dm-w, 300px);
     height: var(--dm-h, 300px);
-    overflow: hidden;
+    /* No clip here: a bigger pose grows past her framing and the stage (the chat area) cuts it off. */
+    overflow: visible;
     transform: translateY(var(--dm-drop, 0px));
     /* Only the rise animates: the box and its canvas resize together at once (animating both on separate
        clocks showed the wrong slice of the canvas mid-way); body swaps crossfade instead. */
