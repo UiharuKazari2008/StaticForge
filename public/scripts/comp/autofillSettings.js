@@ -20,6 +20,7 @@ const AUTOFILL_MAX_RESULTS_PRESETS = [
 const DEFAULT_AUTOFILL_SEARCH_SETTINGS = {
     enabled: true,
     spellcheck: true,
+    spellcheckSoundAlike: true,
     thesaurus: true,
     naiAnimeTags: true,
     naiFurryTags: true,
@@ -46,6 +47,7 @@ function normalizeAutofillSearchSettingsClient(raw) {
     return {
         enabled: base.enabled !== false,
         spellcheck: base.spellcheck !== false,
+        spellcheckSoundAlike: base.spellcheckSoundAlike !== false,
         thesaurus: base.thesaurus !== false,
         naiAnimeTags: base.naiAnimeTags !== false,
         naiFurryTags: base.naiFurryTags !== false,
@@ -208,6 +210,7 @@ function buildAutofillSettingsMenuSections() {
             },
             { separator: true },
             buildAutofillSettingsToggleItem('spellcheck', 'Spellcheck', 'fas fa-spell-check'),
+            buildAutofillSettingsToggleItem('spellcheckSoundAlike', 'Sound-alike Suggestions', 'fas fa-volume-high'),
             buildAutofillSettingsToggleItem('thesaurus', 'Thesaurus', 'fas fa-book'),
             { separator: true },
             buildAutofillSettingsToggleItem('naiAnimeTags', 'NAI Anime Tags', 'nai-sakura'),

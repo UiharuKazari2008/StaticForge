@@ -8,6 +8,7 @@ const AUTOFILL_SEARCH_MAX_RESULTS_PRESETS = [15, 25, 35, 50, 75];
 const DEFAULT_AUTOFILL_SEARCH_SETTINGS = {
     enabled: true,
     spellcheck: true,
+    spellcheckSoundAlike: true,
     thesaurus: true,
     naiAnimeTags: true,
     naiFurryTags: true,
@@ -51,6 +52,7 @@ function normalizeAutofillSearchSettings(raw) {
     return {
         enabled: base.enabled !== false,
         spellcheck: base.spellcheck !== false,
+        spellcheckSoundAlike: base.spellcheckSoundAlike !== false,
         thesaurus: base.thesaurus !== false,
         naiAnimeTags: base.naiAnimeTags !== false,
         naiFurryTags: base.naiFurryTags !== false,
@@ -72,7 +74,7 @@ function mergeAutofillSearchSettingsPatch(existing, patch) {
     if (!patch || typeof patch !== 'object') return out;
 
     const boolKeys = [
-        'enabled', 'spellcheck', 'thesaurus',
+        'enabled', 'spellcheck', 'spellcheckSoundAlike', 'thesaurus',
         'naiAnimeTags', 'naiFurryTags', 'dbAnimeTags', 'dbFurryTags', 'wikiPreviews'
     ];
     for (const key of boolKeys) {

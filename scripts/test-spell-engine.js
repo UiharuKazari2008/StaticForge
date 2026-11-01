@@ -72,6 +72,19 @@ check('typos rank the intended word first', () => {
     }
 });
 
+check('sound-alike spellings find the word (#693)', () => {
+    const cases = {
+        fone: 'phone', kute: 'cute', sizzors: 'scissors', nolij: 'knowledge', kwik: 'quick', skool: 'school',
+        pepul: 'people', bewtiful: 'beautiful', eksplosion: 'explosion', jiraf: 'giraffe', choklit: 'chocolate',
+        wisper: 'whisper', gost: 'ghost', sertain: 'certain', smyle: 'smile'
+    };
+    for (const [typed, want] of Object.entries(cases)) {
+        const got = engine.suggest(typed);
+        assert.strictEqual(got[0], want, `${typed}: got ${JSON.stringify(got)}`);
+    }
+    assert.notStrictEqual(engine.suggest('fone', 6, { soundAlike: false })[0], 'phone', 'soundAlike:false still matched by sound');
+});
+
 check('suggestions keep capitalisation', () => {
     assert.strictEqual(engine.suggest('Beautful')[0], 'Beautiful');
     assert.strictEqual(engine.suggest('LOKING')[0], 'LOOKING');

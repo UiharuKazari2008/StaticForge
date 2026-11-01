@@ -11,6 +11,10 @@
  * Suggestions walk a typed-array trie with a weighted Damerau distance (doubled letters,
  * neighbouring keys and swapped letters cost less), then rank by distance and word
  * frequency. A lookup takes about a millisecond, so it runs inline without an event-loop stall.
+ *
+ * Sound-alike suggestions (#693, optional per request): every word is also indexed under an
+ * English sound key (soundKeys), so "fone" finds phone and "nolij" finds knowledge even when
+ * the spelling is far off.
  */
 
 const SCOWL_LEVELS = [10, 20, 35, 40, 50, 55, 60, 70];
@@ -97,6 +101,101 @@ function buildKeyNeighbours() {
 const KEY_NEIGHBOURS = buildKeyNeighbours();
 
 const WORD_KEY_RE = /^[a-z][a-z'-]*$/;
+
+// Sound-alike matching (#693): a word whose sound key matches the input's costs this much,
+// plus SOUND_KEY_COST_WEIGHT per unit of distance between the keys (and FIRST_LETTER_PENALTY
+// when the keys start differently: kawaee is kawaii, not away). Inputs shorter than
+// SOUND_MIN_LENGTH skip it ("teh" is a typo, not a sound spelling).
+const SOUND_EXACT_COST = 0.35;
+const SOUND_KEY_COST_WEIGHT = 1.2;
+const SOUND_MIN_LENGTH = 4;
+const SOUND_VARIANT_LIMIT = 4;
+
+/**
+ * English sound keys for a word, used to find words that sound like what was typed.
+ * Spelling rules fold to one sound (ph/f, kn/n, wr/r, c/k/s, qu/kw, tion/shon, dge/j, syllabic
+ * -le). The first vowel is kept, with '+' when it is long (magic e, ee/ea, ai/ay, oo/ew, igh),
+ * so cute and cut stay apart; later vowel runs become '*'. Ambiguous spellings (gh as f or
+ * silent, g before e/i/y as g or j) yield more than one key.
+ * @returns {string[]}
+ */
+function soundKeys(word) {
+    let w = foldWord(word).replace(/[^a-z]/g, '');
+    if (w.length < 2) return [];
+    w = w
+        .replace(/^y(?=[aeiou])/, '\u0001')
+        .replace(/y/g, 'i')
+        .replace(/\u0001/, 'y')
+        .replace(/igh/g, 'i+')
+        .replace(/eau/g, 'u+')
+        .replace(/ew(?![aeiou])/g, 'u+')
+        .replace(/oo/g, 'u+')
+        .replace(/e[ea]/g, 'e+')
+        .replace(/ai/g, 'a+')
+        .replace(/oa/g, 'o+')
+        .replace(/ue$/, 'u+')
+        .replace(/ie$/, 'i+')
+        .replace(/^(kn|gn|pn|mn)/, 'n')
+        .replace(/^wr/, 'r')
+        .replace(/^ps/, 's')
+        .replace(/^wh/, 'w')
+        .replace(/^rh/, 'r')
+        .replace(/^chr/, 'kr')
+        .replace(/^x/, 's')
+        .replace(/^gh/, 'g')
+        .replace(/mb$/, 'm')
+        .replace(/gn$/, 'n')
+        .replace(/que$/, 'k')
+        .replace(/gue$/, 'g')
+        .replace(/([^aeiouy])le$/, '$1el')
+        .replace(/tch/g, 'ch')
+        .replace(/dg(?=[eiy])/g, 'j')
+        .replace(/sch/g, 'sk')
+        .replace(/ph/g, 'f')
+        .replace(/s?sion|tion|cian/g, 'shon')
+        .replace(/[ct]ious/g, 'shus')
+        .replace(/ture/g, 'chur')
+        .replace(/ck/g, 'k')
+        .replace(/qu/g, 'kw')
+        .replace(/q/g, 'k')
+        .replace(/c(?=[eiy])/g, 's')
+        .replace(/c(?!h)/g, 'k')
+        .replace(/x/g, 'ks')
+        .replace(/z/g, 's')
+        .replace(/wr/g, 'r')
+        .replace(/gh(?=t)/g, '');
+    let variants = [w];
+    const branch = (re, a, b) => {
+        if (!re.test(variants[0])) return;
+        const next = [];
+        for (const v of variants) {
+            next.push(v.replace(re, a));
+            next.push(v.replace(re, b));
+        }
+        variants = Array.from(new Set(next)).slice(0, SOUND_VARIANT_LIMIT);
+    };
+    branch(/gh/g, 'f', '');
+    branch(/g(?=[eiy])/g, 'g', 'j');
+    const out = new Set();
+    for (let v of variants) {
+        v = v
+            .replace(/([aeiou+])[wh](?![aeiou])/g, '$1')
+            .replace(/([^cstpgaeiouy+])h/g, '$1');
+        if (v.length > 3) {
+            // Magic e: a lone vowel, one consonant, final e (cute, smile, face) is long.
+            v = v.replace(/(^|[^aeiou])([aeiou])([^aeiouy+])e$/, '$1$2+$3').replace(/([^aeiou+])e$/, '$1');
+        }
+        v = v.replace(/(.)\1+/g, '$1');
+        let seenVowel = false;
+        v = v.replace(/[aeiou]+\+?/g, (run) => {
+            if (seenVowel) return '*';
+            seenVowel = true;
+            return run.endsWith('+') ? run[0] + '+' : run[0];
+        }).replace(/\+/g, (m, i, str) => (i > 0 && /[aeiou]/.test(str[i - 1]) ? '+' : '')).replace(/\*+/g, '*');
+        if (v.length >= 2) out.add(v);
+    }
+    return Array.from(out);
+}
 
 /** Lowercase, fold accents (cafe with an accent -> cafe) and curly apostrophes. */
 function foldWord(word) {
@@ -241,6 +340,8 @@ class SpellEngine {
         this.trie = null;
         this.suggestCache = new Map();
         this.dirty = true;
+        this.soundIndex = null; // sound key -> words
+        this.soundTrie = null;  // trie over sound keys
     }
 
     /** Load SCOWL lists from wordlist-english. Throws if the package is missing. */
@@ -326,8 +427,28 @@ class SpellEngine {
         if (!this.dirty && this.trie) return this.trie;
         const words = Array.from(this.freq.keys()).sort();
         this.trie = new WordTrie(words);
+        this.soundIndex = null;
+        this.soundTrie = null;
         this.dirty = false;
         return this.trie;
+    }
+
+    /** Sound key index, built on first sound-alike lookup after a vocabulary change. */
+    ensureSoundIndex() {
+        this.ensureTrie();
+        if (this.soundIndex) return this.soundIndex;
+        const index = new Map();
+        for (const word of this.freq.keys()) {
+            if (word.length < 3) continue;
+            for (const key of soundKeys(word)) {
+                const list = index.get(key);
+                if (list) list.push(word);
+                else index.set(key, [word]);
+            }
+        }
+        this.soundIndex = index;
+        this.soundTrie = new WordTrie(Array.from(index.keys()).sort());
+        return index;
     }
 
     hasWord(key) {
@@ -418,17 +539,24 @@ class SpellEngine {
      * Ranked corrections for a misspelled word, matching the input's capitalisation.
      * @returns {string[]}
      */
-    suggest(word, limit = MAX_SUGGESTIONS) {
+    /**
+     * @param {string} word
+     * @param {number} [limit]
+     * @param {{soundAlike?: boolean}} [options] soundAlike (default true) adds sound-alike matches
+     */
+    suggest(word, limit = MAX_SUGGESTIONS, options = null) {
         const k = foldWord(word);
         if (!k || k.length > MAX_WORD_LENGTH || !WORD_KEY_RE.test(k)) return [];
-        let ranked = this.suggestCache.get(k);
+        const soundAlike = !options || options.soundAlike !== false;
+        const cacheKey = (soundAlike ? 's:' : 'o:') + k;
+        let ranked = this.suggestCache.get(cacheKey);
         if (ranked) {
             // Refresh LRU position.
-            this.suggestCache.delete(k);
-            this.suggestCache.set(k, ranked);
+            this.suggestCache.delete(cacheKey);
+            this.suggestCache.set(cacheKey, ranked);
         } else {
-            ranked = this._rank(k);
-            this.suggestCache.set(k, ranked);
+            ranked = this._rank(k, soundAlike);
+            this.suggestCache.set(cacheKey, ranked);
             if (this.suggestCache.size > SUGGEST_CACHE_LIMIT) {
                 this.suggestCache.delete(this.suggestCache.keys().next().value);
             }
@@ -436,17 +564,34 @@ class SpellEngine {
         return ranked.slice(0, limit).map((s) => matchCase(word, s));
     }
 
-    _rank(k) {
+    _rank(k, soundAlike = true) {
         const trie = this.ensureTrie();
         const maxCost = k.length <= 3 ? 1 : (k.length <= 5 ? 1.5 : 2);
         const scored = new Map();
-        for (const { word, cost } of trie.search(k, maxCost)) {
-            if (word === k) continue;
-            let c = cost;
-            if (word[0] !== k[0]) c += FIRST_LETTER_PENALTY;
-            const score = c * DIST_WEIGHT - Math.log(this.frequency(word));
+        const offer = (word, cost) => {
+            const score = cost * DIST_WEIGHT - Math.log(this.frequency(word));
             const prev = scored.get(word);
             if (prev === undefined || score < prev) scored.set(word, score);
+        };
+        for (const { word, cost } of trie.search(k, maxCost)) {
+            if (word === k) continue;
+            offer(word, word[0] !== k[0] ? cost + FIRST_LETTER_PENALTY : cost);
+        }
+        // Sound-alike: no first-letter penalty, sound spellings often change it (fone, nolij).
+        if (soundAlike && k.length >= SOUND_MIN_LENGTH) {
+            const index = this.ensureSoundIndex();
+            for (const key of soundKeys(k)) {
+                const matches = key.length <= 3
+                    ? (index.has(key) ? [{ word: key, cost: 0 }] : [])
+                    : this.soundTrie.search(key, 1);
+                for (const { word: soundKey, cost: keyCost } of matches) {
+                    let cost = SOUND_EXACT_COST + keyCost * SOUND_KEY_COST_WEIGHT;
+                    if (soundKey[0] !== key[0]) cost += FIRST_LETTER_PENALTY;
+                    for (const word of index.get(soundKey)) {
+                        if (word !== k) offer(word, cost);
+                    }
+                }
+            }
         }
         // Run-together words: "blondehair" -> "blonde hair".
         if (k.length >= 5) {
@@ -476,7 +621,8 @@ class SpellEngine {
             dictionaryWords: this.dictionaryWordCount,
             tagWords: this.tagWordCount,
             tagPhrases: this.tagPhrases.size,
-            trieNodes: this.trie ? this.trie.size : 0
+            trieNodes: this.trie ? this.trie.size : 0,
+            soundKeys: this.soundIndex ? this.soundIndex.size : 0
         };
     }
 }
@@ -633,6 +779,7 @@ module.exports = {
     foldWord,
     tagTitleWords,
     normalizeTagPhrase,
+    soundKeys,
     tokenizePrompt,
     findSkipRanges,
     matchCase,

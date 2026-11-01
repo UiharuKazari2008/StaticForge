@@ -736,7 +736,7 @@ class SearchService {
                     : Promise.resolve([]));
 
                 const runSpellcheck = wantSpellSide && settings.spellcheck
-                    ? this.performSpellCheckAsync(spellCheckInput, ws, requestId).catch(error => {
+                    ? this.performSpellCheckAsync(spellCheckInput, ws, requestId, settings).catch(error => {
                         console.error('Spellcheck error:', error);
                         return null;
                     })
@@ -817,7 +817,7 @@ class SearchService {
                 // Only perform spell checking for "Text:" searches
                 try {
                     if (this.spellChecker && typeof this.spellChecker.checkText === 'function') {
-                        spellCheckData = this.performSpellCheck(textAfterPrefix);
+                        spellCheckData = this.performSpellCheck(textAfterPrefix, settings);
 
                         // Send spell check results separately if WebSocket is available
                         if (ws && spellCheckData) {
@@ -1877,7 +1877,7 @@ class SearchService {
         return 0;
     }
 
-    performSpellCheck(query) {
+    performSpellCheck(query, settings = null) {
         if (!this.spellChecker) {
             return null;
         }
@@ -1890,7 +1890,9 @@ class SearchService {
 
         try {
             // Use the spell checker's checkText method which returns the format we need
-            const spellCheckResult = this.spellChecker.checkText(query);
+            const spellCheckResult = this.spellChecker.checkText(query, {
+                soundAlike: !settings || settings.spellcheckSoundAlike !== false
+            });
 
             return {
                 hasErrors: spellCheckResult.hasErrors,
@@ -2422,7 +2424,7 @@ class SearchService {
     }
 
     // New helper method for independent spellcheck
-    async performSpellCheckAsync(query, ws = null, requestId = null) {
+    async performSpellCheckAsync(query, ws = null, requestId = null, settings = null) {
         try {
             if (!this.spellChecker || typeof this.spellChecker.checkText !== 'function') {
                 return null;
@@ -2437,7 +2439,7 @@ class SearchService {
                 });
             }
 
-            const spellCheckData = this.performSpellCheck(query);
+            const spellCheckData = this.performSpellCheck(query, settings);
 
             if (ws) {
                 if (spellCheckData && spellCheckData.hasErrors) {

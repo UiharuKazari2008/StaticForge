@@ -85,9 +85,11 @@ class SpellChecker {
                 );
                 const added = this.engine.addTagVocabulary(rows);
                 this.engine.ensureTrie();
+                // Sound-alike index (#693, ~1 s): build here, not on someone's first keystroke.
+                this.engine.ensureSoundIndex();
                 this.tagVocabularyLoaded = true;
                 const stats = this.engine.stats();
-                console.log(`✓ Spell checker tag vocabulary: ${added} tag words, ${stats.tagPhrases} tag phrases from ${rows.length} tags (${Date.now() - started} ms)`);
+                console.log(`✓ Spell checker tag vocabulary: ${added} tag words, ${stats.tagPhrases} tag phrases, ${stats.soundKeys} sound keys from ${rows.length} tags (${Date.now() - started} ms)`);
                 return true;
             } catch (error) {
                 console.warn('⚠️ Spell checker could not load tag vocabulary:', error.message);
@@ -128,12 +130,14 @@ class SpellChecker {
     /**
      * misspelled lists each flagged occurrence in order (the client maps rows to occurrences);
      * a word with no actionable suggestion is not reported. wordPositions covers every checked word.
+     * options.soundAlike (default true) adds sound-alike suggestions (SmartText setting, #693).
      */
-    checkText(text) {
+    checkText(text, options = null) {
         if (!text || typeof text !== 'string') {
             return { misspelled: [], suggestions: {}, originalText: text };
         }
         const checked = this.engineReady ? this.engine.checkPrompt(text, this.customWords) : [];
+        const suggestOptions = { soundAlike: !options || options.soundAlike !== false };
         const misspelled = [];
         const byWord = new Map();
         const wordPositions = [];
@@ -141,7 +145,7 @@ class SpellChecker {
             wordPositions.push({ word: token.word, start: token.start, end: token.end });
             if (token.known) continue;
             if (!byWord.has(token.word)) {
-                byWord.set(token.word, this.filterActionableSuggestions(token.word, this.engine.suggest(token.word)));
+                byWord.set(token.word, this.filterActionableSuggestions(token.word, this.engine.suggest(token.word, undefined, suggestOptions)));
             }
             if (byWord.get(token.word).length === 0) continue;
             misspelled.push(token.word);
