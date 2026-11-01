@@ -10,13 +10,51 @@ cues.resetMascotCues();
 let c = cues.mascotCue('s', { rows: [{ type: 'tool', name: 'apply_studio_changes', result: '' }] }, 1000);
 assert.deepStrictEqual([c.expression, c.action], ['smug', 'nod']);
 assert.strictEqual(cues.mascotCue('s', { rows: [{ type: 'tool', name: 'apply_studio_changes', result: '' }] }, 1300), null, 'same rows, inside the gap: no cue');
-c = cues.mascotCue('s', { rows: [{ type: 'tool', name: 'apply_studio_changes', result: '' }, { type: 'tool', name: 'get_generated_image', result: 'Error: failed to read' }] }, 2500);
+c = cues.mascotCue('s', { rows: [{ type: 'tool', name: 'apply_studio_changes', result: '' }, { type: 'tool', name: 'get_generated_image', result: 'Error: failed to read' }] }, 5000);
 assert.strictEqual(c.expression, 'frustrated');
-c = cues.mascotCue('s', { rows: [{ type: 'tool', name: 'apply_studio_changes', result: '' }, { type: 'tool', name: 'get_generated_image', result: 'Error: failed to read' }], live: { type: 'thinking', text: 'Perfect, that nailed the hips.' } }, 4000);
+c = cues.mascotCue('s', { rows: [{ type: 'tool', name: 'apply_studio_changes', result: '' }, { type: 'tool', name: 'get_generated_image', result: 'Error: failed to read' }], live: { type: 'thinking', text: 'Perfect, that nailed the hips.' } }, 9000);
 assert.strictEqual(c.expression, 'happy');
 assert.strictEqual(cues._test.toolCue({ name: 'await_generation_job', result: '' }).expression, 'thinking');
+assert.ok(cues._test.toolCue({ name: 'await_generation_job', result: '' }).holdMs >= 7000, 'a generation wait holds the thinking face');
 assert.strictEqual(cues._test.wordCue('hmm, let me think about the pose').expression, 'thinking');
 assert.strictEqual(cues._test.toolCue({ name: 'unknown_tool', result: '' }), null);
+
+// Real thinking lines (Yukimi's Director / Xi sessions). See docs/research/director-mascot-cues.md.
+assert.strictEqual(cues._test.wordCue('Hmm, I should be careful not to churn. The user\'s directive is posture and anatomy.').expression, 'thinking');
+assert.deepStrictEqual(
+    [cues._test.wordCue('Good, the GPU screencast works, so I\'ll leave that window as is.').expression,
+        cues._test.wordCue('Good, the GPU screencast works, so I\'ll leave that window as is.').action],
+    ['happy', 'bounce']
+);
+assert.strictEqual(cues._test.wordCue('But something\'s off: maybe the job is queued on the server and slow.').expression, 'frustrated', 'something\'s off beats maybe');
+assert.strictEqual(cues._test.wordCue('I realize restarting the server now would kill my current turn').expression, 'surprised');
+assert.strictEqual(cues._test.wordCue('Ah, the displayed view is scaled down. My earlier click missed because of that.').expression, 'surprised', 'ah / click missed is surprise, not the frustrated "missed"');
+assert.strictEqual(cues._test.wordCue('she looks... actually similarly scaled?'), null, 'actually is not surprise');
+assert.strictEqual(cues._test.wordCue('not perfect'), null, 'not perfect is not happy');
+assert.strictEqual(cues._test.wordCue('wasteful but not broken'), null, 'not broken is not frustrated');
+assert.strictEqual(cues._test.wordCue('not bad').expression, 'happy');
+assert.strictEqual(cues._test.wordCue('Let me check the pose details').expression, 'focused');
+assert.strictEqual(cues._test.wordCue('So target: a bit bigger than that, e.g. belly reaching just past her knees', 'kabuki').expression, 'smug');
+assert.strictEqual(cues._test.wordCue('So target: a bit bigger than that', 'xi'), null, 'Xi does not take the size swagger');
+// A look tool and a judgment in the same update: the judgment wins. A tool error still wins over praise.
+c = cues.mascotCue('look', {
+    persona: 'kabuki',
+    rows: [{ type: 'tool', name: 'get_generated_image', result: 'a saved print' }],
+    live: { type: 'thinking', text: 'But something\'s off: maybe the job is queued on the server and slow.' }
+}, 1000);
+assert.strictEqual(c.expression, 'frustrated');
+c = cues.mascotCue('errface', {
+    rows: [{ type: 'tool', name: 'Read', result: 'Error: failed to read' }],
+    live: { type: 'thinking', text: 'Good, the GPU screencast works.' }
+}, 1000);
+assert.strictEqual(c.expression, 'frustrated');
+// Same mood refreshes on SAME_KEY_MS, not on the shorter gap.
+assert.ok(cues.mascotCue('steady', { live: { type: 'thinking', text: 'Hmm, careful.' } }, 1000));
+assert.strictEqual(cues.mascotCue('steady', { live: { type: 'thinking', text: 'Hmm, still careful.' } }, 5000), null);
+assert.strictEqual(cues.mascotCue('steady', { live: { type: 'thinking', text: 'Hmm, still careful.' } }, 9000).expression, 'thinking');
+c = cues.mascotCue('swap', { live: { type: 'thinking', text: 'Hmm, careful.' } }, 1000);
+c = cues.mascotCue('swap', { live: { type: 'thinking', text: 'Good, that landed.' } }, 5000);
+assert.strictEqual(c.expression, 'happy', 'a different expression can land once the gap has passed');
 
 // ---- client stage machine ----
 const { DirectorMascot } = require('../public/scripts/comp/directorMascot.js');
