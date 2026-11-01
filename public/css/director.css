@@ -402,6 +402,18 @@ html.disable-blur .director-session-overlay {
     transform: translateX(calc(200% + 4px));
 }
 
+/* Inactive names: light text on the dark track (the Vista light-face blue vanished there). */
+body #directorSessionList #directorPersonaGroup .gallery-toggle-btn:not(.active) {
+    color: hsl(210 35% 90%);
+    opacity: 0.8;
+    text-shadow: 0 1px 2px hsl(0 0% 0% / 65%);
+}
+
+body #directorSessionList #directorPersonaGroup .gallery-toggle-btn:not(.active):hover {
+    color: #fff;
+    opacity: 1;
+}
+
 /* Kabuki: the back-room tab, a red lantern tint */
 #directorPersonaGroup[data-persona="kabuki"] .gallery-toggle-slider {
     background: hsl(350deg 100% 50% / 26%);
