@@ -667,7 +667,7 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-mes
 }
 
 /* Replies: a warm ivory card, apart from your pale blue messages. */
-body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message.assistant:not([data-trace-kind]) {
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-message.assistant {
     padding: 6px 10px;
     background: linear-gradient(#fffdf7, #f6efdf);
     border: 1px solid #e0d1ae;

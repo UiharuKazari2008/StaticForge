@@ -2372,7 +2372,7 @@ class Director {
             if (Array.isArray(message.trace) && message.trace.length) {
                 message.trace.forEach((row) => {
                     if (!row) return;
-                    const kind = row.type === 'thinking' ? 'Thinking' : (row.type === 'tool' ? (row.label || row.name || 'Tool') : 'Director');
+                    const kind = row.type === 'thinking' ? 'Thinking' : (row.type === 'tool' ? (row.label || row.name || 'Tool') : directorPersonaName(this.persona));
                     const text = row.type === 'tool'
                         ? [row.label || row.name, row.detail || row.text].filter(Boolean).join('\n')
                         : String(row.text || '');
@@ -2382,7 +2382,7 @@ class Director {
             }
             const description = message.data && message.data.Description;
             const text = description || message.content || '';
-            if (text) entries.push({ kind: 'Director', text: String(text) });
+            if (text) entries.push({ kind: directorPersonaName(this.persona), text: String(text) });
         });
         const live = this.directorChatMessages && this.directorChatMessages.querySelector('.director-live-turn');
         if (live) {
@@ -5735,7 +5735,7 @@ class Director {
         const label = document.createElement('span');
         label.className = 'director-request-type-badge';
         const toolLabel = this.prettyToolLabel(row);
-        label.textContent = kind === 'thinking' ? 'Thinking' : (kind === 'tool' ? toolLabel : 'Director');
+        label.textContent = kind === 'thinking' ? 'Thinking' : (kind === 'tool' ? toolLabel : directorPersonaName(this.persona));
         header.appendChild(label);
         if (messageDiv.dataset.traceExtras.includes('g')) {
             const glasses = document.createElement('button');

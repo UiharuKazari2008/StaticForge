@@ -157,15 +157,27 @@ class DirectorMascot {
     }
 
     // Fit the figure above the input bar: height from the view, width from the camera's aspect.
+    // Visual novel log panel: the gap above the input bar matches the gap at its top (Yukimi 2026-11-01).
+    // The composer floats in the docked view and sits in flow in the window, so measure rather than assume.
+    fitLogPanel(composer) {
+        const panel = this.host.querySelector('.director-chat-messages-container');
+        if (!composer || !panel || this.view !== 'mascot' || this.host.classList.contains('director-composer-center')) return;
+        const pb = panel.getBoundingClientRect();
+        const cb = composer.getBoundingClientRect();
+        if (!pb.height || !cb.height) return;
+        const cs = getComputedStyle(panel);
+        const top = parseFloat(cs.marginTop) || 0;
+        const current = parseFloat(cs.marginBottom) || 0;
+        // A larger bottom margin widens the gap one for one, whether the composer floats or sits in flow.
+        const want = Math.max(0, Math.round(current + top - (cb.top - pb.bottom)));
+        if (Math.abs(want - current) > 1) this.host.style.setProperty('--dm-composer-space', `${want}px`);
+    }
+
     layout() {
         if (!this.root || !this.manifest || !this.host) return;
         const hostBox = this.host.getBoundingClientRect();
         const composer = this.host.querySelector('#directorComposer');
-        // The composer floats over the bottom of the chat: the visual novel log panel stops above it.
-        if (composer) {
-            const cb = composer.getBoundingClientRect();
-            if (cb.height) this.host.style.setProperty('--dm-composer-space', `${Math.max(0, Math.round(hostBox.bottom - cb.top + 8))}px`);
-        }
+        this.fitLogPanel(composer);
         const bar = composer && (composer.querySelector('.director-chat-input') || composer);
         const barBox = bar ? bar.getBoundingClientRect() : { top: hostBox.bottom, left: hostBox.left, right: hostBox.right, width: hostBox.width };
         const inset = 10;

@@ -3882,7 +3882,10 @@ body #directorSessionChat.director-mascot-on.director-mascot-view #directorCompo
 
 body #directorSessionChat.director-mascot-on.director-mascot-view #directorComposerWelcome > :is(.logo-text, h3) {
     color: #fff;
-    text-shadow: 0 1px 3px hsl(0 0% 0% / 80%), 0 0 12px hsl(0 0% 0% / 60%);
+    text-shadow: 0 0 1px hsl(0 0% 0% / 90%), 0 1px 3px hsl(0 0% 0% / 85%), 0 0 10px hsl(0 0% 0% / 70%);
+    /* A soft dark plate: the title also has to read over Yozora's white kimono. */
+    padding: 0 36px;
+    background: radial-gradient(closest-side, hsl(222 30% 8% / 72%), hsl(222 30% 8% / 42%) 65%, transparent);
 }
 
 /* A finished print: the polaroid that drifts into her belly (directorMascot.js onPrint). */
