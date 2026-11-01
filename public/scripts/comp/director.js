@@ -580,6 +580,7 @@ class Director {
         this.setupDirectorWebSocketHandlers();
         this.setupDirectorWindow();
         this.setupMascot();
+        this.syncMessagesScrollbar();
         initializeDirectorTray();
         this.requestDirectorModels();
         this.requestDirectorSettings();
@@ -2933,6 +2934,7 @@ class Director {
             this.hideDirector();
         }
         this.mountDirectorInWindow();
+        this.syncMessagesScrollbar();
         this._windowOpenedOnce = true;
         this.fadeInComposer();
         // openModal: public/scripts/comp/modalUtils.js
@@ -3985,6 +3987,7 @@ class Director {
         this.restoreLastPersona();
         // Window was hidden without its close button (e.g. a close-all sweep): take the chat back first
         this.mountDirectorInStudio();
+        this.syncMessagesScrollbar();
         if (this.directorContainer) {
             if (!this.directorContainer.classList.contains('director-open')) this.fadeInComposer();
             // First remove hidden class to make element visible
@@ -4781,6 +4784,30 @@ class Director {
         this._renderMessagesTimeout = setTimeout(() => {
             this._doRenderSessionMessages(messages);
         }, 16); // ~60fps
+    }
+
+    // The Vista desktop scrolls the message list natively so vista-scrollbars.css paints Vista's own bar
+    // (Yukimi 2026-11-01); elsewhere (mobile, the classic theme) it keeps the customScrollbar overlay.
+    syncMessagesScrollbar() {
+        const box = this.directorChatMessages && this.directorChatMessages.closest('.director-chat-messages-container');
+        if (!box) return;
+        const vista = document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme');
+        if (vista === box.classList.contains('director-native-scroll')) return;
+        const el = this.directorScrollEl();
+        const fromBottom = el ? el.scrollHeight - el.clientHeight - el.scrollTop : 0;
+        // customScrollbar: public/scripts/comp/customScrollbar.js
+        const bars = window.customScrollbar;
+        if (vista) {
+            if (bars && bars.scrollbars && bars.scrollbars.has(box)) bars.destroy(box);
+            box.classList.remove('form-section-scroll');
+            box.classList.add('director-native-scroll');
+        } else {
+            box.classList.remove('director-native-scroll');
+            box.classList.add('form-section-scroll');
+            if (bars && typeof bars.createScrollbar === 'function') bars.createScrollbar(box);
+        }
+        const next = this.directorScrollEl();
+        if (next) next.scrollTop = Math.max(0, next.scrollHeight - next.clientHeight - fromBottom);
     }
 
     directorScrollEl() {

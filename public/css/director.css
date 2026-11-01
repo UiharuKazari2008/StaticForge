@@ -4305,3 +4305,11 @@ body #directorSessionChat.director-mascot-on.director-mascot-view #directorCompo
 #directorToolInspector .dti-value .dti-table.dti-deep {
     padding: 4px 6px;
 }
+
+/* Vista desktop: the message list scrolls natively and vista-scrollbars.css paints Vista's bar
+   (director.js syncMessagesScrollbar). */
+.director-chat-messages-container.director-native-scroll {
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
