@@ -300,6 +300,17 @@ const DIRECTOR_WELCOME_QUIPS = [
 ];
 
 // Persona display names (Yukimi 2026-11-01): the ids stay wren / kabuki / xi in code and stored chats.
+// Workspace accent variables the Director copies on the Vista desktop (see workspaceAccentVars).
+const DIRECTOR_WORKSPACE_ACCENT_VARS = [
+    '--primary-color', '--primary-color-contrast', '--primary-color-contrast-shadow', '--primary-color-dark',
+    '--primary-color-light', '--primary-gradient', '--primary-glass-color', '--primary-glass-border',
+    '--text-accent', '--text-accent-tinted', '--active-tab-bg', '--active-tab-border', '--active-tab-text',
+    '--badge-bg', '--badge-shadow', '--badge-text', '--toggle-on-bg', '--toggle-on-hover-bg',
+    '--btn-hover-bg-primary', '--btn-hover-border-primary', '--btn-hover-text-primary', '--btn-shadow-primary',
+    '--btn-shadow-primary-glow', '--hover-show-active-bg', '--hover-show-active-border', '--hover-show-active-shadow',
+    '--hover-show-colored-text', '--dropdown-selected-bg', '--dropdown-keyboard-selected-bg',
+    '--dropdown-keyboard-selected-border', '--custom-dropdown-badge-bg', '--custom-dropdown-badge-text'
+];
 const DIRECTOR_PERSONA_NAMES = { wren: 'Yumiya', kabuki: 'Chiyo', xi: 'Yozora' };
 
 function directorPersonaName(persona) {
@@ -2312,28 +2323,35 @@ class Director {
 
     async openToolPayload(row) {
         const title = (row && (row.label || row.name)) || 'Tool';
-        const local = [];
-        if (row && row.args) local.push(`Parameters\n${row.args}`);
-        if (row && row.result) local.push(`Result\n${row.result}`);
+        const label = this.prettyToolLabel(row);
+        const local = { name: (row && row.name) || title, label, args: (row && row.args) || '', result: (row && row.result) || '' };
+        // DirectorToolInspector: public/scripts/comp/directorToolInspector.js (a Vista window with the call broken down)
+        const show = (payload, detail) => {
+            if (window.DirectorToolInspector) {
+                window.DirectorToolInspector.open(Object.assign({}, payload, { detail }));
+                return;
+            }
+            const parts = [];
+            if (payload.args) parts.push(`Parameters\n${payload.args}`);
+            if (payload.result) parts.push(`Result\n${payload.result}`);
+            if (!parts.length && payload.text) parts.push(payload.text);
+            this.showDirectorText(payload.label || title, parts.join('\n\n') || '(empty)', detail);
+        };
         const id = row && (row.payloadId || row.diffId);
         const sessionId = this.currentSession && this.currentSession.id;
         if (id && sessionId) {
             try {
                 const result = await this.directorRequest('director_tool_payload', { sessionId, payloadId: id, diffId: row.diffId || '' });
-                const parts = [];
-                if (result.args) parts.push(`Parameters\n${result.args}`);
-                if (result.result) parts.push(`Result\n${result.result}`);
-                if (!parts.length && result.text) parts.push(result.text);
-                this.showDirectorText(result.name || title, parts.join('\n\n') || '(empty)', result.detail || 'Read-only');
+                show({ name: result.name || local.name, label, args: result.args || '', result: result.result || '', text: result.text || '' }, result.detail || 'Read-only');
                 return;
             } catch (err) {
-                if (!local.length) {
+                if (!local.args && !local.result) {
                     showGlassToast('error', 'Director', err.message || 'Could not open that tool');
                     return;
                 }
             }
         }
-        this.showDirectorText(title, local.join('\n\n') || '(empty)', 'Read-only');
+        show(local, 'Read-only');
     }
 
     async openToolDiff(sessionId, diffId, title) {
@@ -5958,20 +5976,57 @@ class Director {
     // workspace for a new draft): the same dark glass, tinted.
     paintWindowCommandBar() {
         const bar = document.getElementById('directorWindowToolbar');
-        if (!bar) return;
         const id = (this.currentSession && this.currentSession.workspaceId) || this.currentWorkspaceId();
         const live = id && typeof workspaces !== 'undefined' && workspaces ? workspaces[id] : null;
         const hex = (value) => (typeof value === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(value) ? value : '');
         const color = hex(live && live.color);
         const dark = hex(live && live.backgroundColor) || color;
-        bar.classList.toggle('director-bar-tinted', !!color);
-        if (color) {
-            bar.style.setProperty('--director-bar-color', color);
-            bar.style.setProperty('--director-bar-dark', dark);
-        } else {
-            bar.style.removeProperty('--director-bar-color');
-            bar.style.removeProperty('--director-bar-dark');
-        }
+        // The workspace banner in the chat wears the same tint, so the variables go on both.
+        [bar, this.directorSessionChat].forEach((el) => {
+            if (!el) return;
+            if (color) {
+                el.style.setProperty('--director-bar-color', color);
+                el.style.setProperty('--director-bar-dark', dark);
+            } else {
+                el.style.removeProperty('--director-bar-color');
+                el.style.removeProperty('--director-bar-dark');
+            }
+        });
+        if (bar) bar.classList.toggle('director-bar-tinted', !!color);
+    }
+
+    // Accent variables of a workspace, read from its compiled [data-workspace] rule through a hidden probe.
+    // On the Vista desktop the full workspace scope fights the light chrome (glass layers, text), so the
+    // Director takes only these: buttons, chips, toggles, links, and tints follow the chat's workspace.
+    workspaceAccentVars(id) {
+        if (!id) return null;
+        const live = typeof workspaces !== 'undefined' && workspaces ? workspaces[id] : null;
+        const key = `${id}|${live ? `${live.color}|${live.backgroundColor}` : ''}|${document.documentElement.classList.contains('disable-blur')}`;
+        if (!this._accentVarCache) this._accentVarCache = new Map();
+        if (this._accentVarCache.has(key)) return this._accentVarCache.get(key);
+        const probe = document.createElement('div');
+        probe.setAttribute('data-workspace', id);
+        probe.style.display = 'none';
+        document.body.appendChild(probe);
+        const cs = getComputedStyle(probe);
+        const vars = {};
+        DIRECTOR_WORKSPACE_ACCENT_VARS.forEach((name) => {
+            const value = cs.getPropertyValue(name).trim();
+            if (value) vars[name] = value;
+        });
+        probe.remove();
+        const out = Object.keys(vars).length ? vars : null;
+        if (out) this._accentVarCache.set(key, out);
+        return out;
+    }
+
+    paintWorkspaceAccent(el, id) {
+        if (!el) return;
+        const previous = el._directorAccentVars || [];
+        const vars = id ? this.workspaceAccentVars(id) : null;
+        previous.forEach((name) => { if (!vars || !(name in vars)) el.style.removeProperty(name); });
+        if (vars) Object.entries(vars).forEach(([name, value]) => el.style.setProperty(name, value));
+        el._directorAccentVars = vars ? Object.keys(vars) : [];
     }
 
     paintWorkspaceBanner() {
@@ -5998,6 +6053,11 @@ class Director {
             if (!inWindow && scoped) chat.setAttribute('data-workspace', meta.id);
             else chat.removeAttribute('data-workspace');
         }
+        // Vista desktop: no full scope, but the accents still follow the chat's workspace, so the window
+        // is not half one workspace and half another (Yukimi 2026-11-01).
+        const accentId = meta && meta.id && !scoped ? meta.id : '';
+        this.paintWorkspaceAccent(this.directorWindow, inWindow ? accentId : '');
+        this.paintWorkspaceAccent(chat, inWindow ? '' : accentId);
         if (!banner || !text) return;
         if (!meta || meta.id === this.currentWorkspaceId()) {
             banner.classList.add('hidden');
