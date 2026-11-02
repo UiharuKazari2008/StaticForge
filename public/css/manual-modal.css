@@ -2271,7 +2271,9 @@ body.desktop-mode .form-section.model-control .control-holder .form-row.control-
         max-height: calc(100vh - var(--taskbar-height, 35px));
     }
 
-    html:not(.titlebar-android) .editor-open:not(.desktop-mode) #titlebar-grab-area-container #menu-bar-left-gutter {
+    /* Studio's top row sits in the caption band; the gutter keeps the title bar's drag handle off it.
+       Android makes those controls clickable via data-caption-interactive (windowControlsOverlay.js). */
+    .editor-open:not(.desktop-mode) #titlebar-grab-area-container #menu-bar-left-gutter {
         width: calc(650px - var(--titlebar-area-x));
     }
 

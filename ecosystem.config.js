@@ -27,6 +27,11 @@ module.exports = {
         cwd: __dirname,
         autorestart: true,
         watch: false,
+        // No PM2 io agent. PM2 injects @pm2/io unless pmx:false, and its 5.0.2 config
+        // merge calls util._extend, which Node 24 deprecates: DEP0060 pairs in pm2:err
+        // at every boot (newest 2026-11-01T12:32:47, pid 1883172). Nothing in this
+        // repo uses pmx metrics, so turning the agent off removes the call itself.
+        pmx: false,
         // Timestamp every log line (SQLITE_IOERR on 2026-10-15 could not be dated).
         time: true,
         // Cap glibc arenas (Oct 4 mem investigation: ~1.46GB across ~103 arenas).

@@ -1594,16 +1594,16 @@
 
                             <!-- Preset Manager -->
                             <div id="manualPresetGroup" class="form-row hidden">
-                                <button type="button" id="manualRequestSaveBtn" class="btn-secondary"
+                                <button type="button" data-caption-interactive id="manualRequestSaveBtn" class="btn-secondary"
                                     title="Save as Desktop Shortcut">
                                     <i class="fas fa-arrow-down-left"></i>
                                 </button>
-                                <input type="text" id="manualPresetName" class="form-control hover-show colored"
+                                <input type="text" id="manualPresetName" data-caption-interactive class="form-control hover-show colored"
                                     placeholder="Preset or Shortcut Name" autocorrect="false" autocapitalize="false">
-                                <button type="button" id="manualLoadBtn" class="btn-secondary" disabled>
+                                <button type="button" data-caption-interactive id="manualLoadBtn" class="btn-secondary" disabled>
                                     <i class="fas fa-arrow-up-from-square"></i>
                                 </button>
-                                <button type="button" id="manualSaveBtn" class="btn-secondary">
+                                <button type="button" data-caption-interactive id="manualSaveBtn" class="btn-secondary">
                                     <i class="fas fa-floppy-disk"></i>
                                 </button>
                             </div>
@@ -1613,15 +1613,15 @@
                                 <div class="prompt-tabs">
                                     <div class="tab-header">
                                         <div id="tab-buttons" class="gallery-toggle-group" data-active="prompt">
-                                            <button type="button" class="gallery-toggle-btn active" data-tab="prompt"
+                                            <button type="button" data-caption-interactive class="gallery-toggle-btn active" data-tab="prompt"
                                                 title="Base Prompt">
                                                 <i class="ri-code-block"></i>
                                             </button>
-                                            <button type="button" class="gallery-toggle-btn hidden" data-tab="creative"
+                                            <button type="button" data-caption-interactive class="gallery-toggle-btn hidden" data-tab="creative"
                                                 title="Creative Directive">
                                                 <i class="ri-text-block"></i>
                                             </button>
-                                            <button type="button" class="gallery-toggle-btn" data-tab="uc"
+                                            <button type="button" data-caption-interactive class="gallery-toggle-btn" data-tab="uc"
                                                 title="Undesired Content">
                                                 <i class="ri-eraser-fill"></i>
                                             </button>
@@ -1632,26 +1632,26 @@
                                         </div>
                                         <div class="extra-buttons">
 
-                                            <button type="button" id="directorBtn" class="btn-secondary indicator"
+                                            <button type="button" data-caption-interactive id="directorBtn" class="btn-secondary indicator"
                                                 data-state="off" title="Director (SI powered image prompt assistant)">
                                                 <i class="xai-icon"></i>
                                             </button>
-                                            <button type="button" id="manualPresetToggleBtn"
+                                            <button type="button" data-caption-interactive id="manualPresetToggleBtn"
                                                 class="btn-secondary indicator hidden" data-state="off"
                                                 title="Preset Settings">
                                                 <i class="fa-regular fa-bookmark"></i>
                                             </button>
-                                            <button type="button" id="studioImageGenSettingsBtn"
+                                            <button type="button" data-caption-interactive id="studioImageGenSettingsBtn"
                                                 class="btn-secondary indicator" data-state="off" title="Studio">
                                                 <i class="fa-solid fa-bars"></i>
                                             </button>
-                                            <button type="button" id="windowListEditorBtn" class="btn-secondary"
+                                            <button type="button" data-caption-interactive id="windowListEditorBtn" class="btn-secondary"
                                                 title="Windows & Applications">
                                                 <i class="fa-light fa-atom-alt"></i>
                                             </button>
                                             <!-- Add Item Dropdown -->
                                             <div id="addItemDropdown" class="custom-dropdown dropright dark">
-                                                <button type="button" id="addItemDropdownBtn" class="btn-primary">
+                                                <button type="button" data-caption-interactive id="addItemDropdownBtn" class="btn-primary">
                                                     <i class="fas fa-grid-round-2-plus"></i>
                                                 </button>
                                                 <div id="addItemDropdownMenu" class="custom-dropdown-menu hidden">

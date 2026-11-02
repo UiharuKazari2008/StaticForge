@@ -1304,6 +1304,21 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     max-width: calc(50% - 1px);
 }
 
+/* three or four pictures on one slide: two across and two down */
+#melatonControlPanelModal .cpl-ss-screen-pics:has(img:nth-child(3)) {
+    flex-wrap: wrap;
+    align-content: center;
+}
+
+#melatonControlPanelModal .cpl-ss-screen-pics:has(img:nth-child(3)) img {
+    max-width: calc(50% - 1px);
+    max-height: calc(50% - 1px);
+}
+
+#melatonControlPanelModal #cpl-ss-mix {
+    width: 180px;
+}
+
 #melatonControlPanelModal .cpl-ss-screen-msg {
     position: absolute;
     inset: 0;

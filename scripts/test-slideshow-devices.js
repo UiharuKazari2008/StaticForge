@@ -78,7 +78,7 @@ async function main() {
     assert.strictEqual(devices.deviceState(gr, server, tabInfo, { deviceId: ID, state: 'showing', showing: ['../a.png', 'b.png', 'c.png'], since: 1761400000000 }), true);
     assert.strictEqual(devices.deviceState(gr, server, tabInfo, { deviceId: ID, state: 'dancing' }), false);
     list = devices.listDevices(gr, server);
-    assert.deepStrictEqual(list[0].showing, ['a.png', 'b.png']);
+    assert.deepStrictEqual(list[0].showing, ['a.png', 'b.png', 'c.png']);
     assert.strictEqual(list[0].state, 'showing');
 
     // command + ack
@@ -172,6 +172,8 @@ async function main() {
 
     await deviceConfigCases();
     await previewCases();
+    await previewV2Cases();
+    await orientationCases();
 
     console.log('slideshow devices: ok');
 }
@@ -500,6 +502,224 @@ async function previewCases() {
     assert.ok(!fs.existsSync(path.join(tmpDir, 'slideshow_previews', ID)));
     assert.strictEqual(get(ID, 'frame.png', 'admin').status, 404);
     server.clients.delete(ws);
+}
+
+// preview v2: profile, rotation, posture, screen.quad. A v1 preview still stores.
+async function previewV2Cases() {
+    const ID = 'c0ffee00a11e';
+    const ws = socket();
+    const info = { authenticated: true, userType: 'readonly', clientId: ID, connectedAt: new Date(), deviceApp: 'DreamscapeFrame/1.4' };
+    server.clients.set(ws, info);
+    devices.identify(gr, server, info, { kind: 'slideshow', deviceId: ID, name: 'Xperia', app: 'DreamscapeFrame/1.4' });
+    const frame = png(20, 40);
+    const mask = png(20, 40);
+    const screen = { x: 4, y: 8, width: 12, height: 24, sourceWidth: 480, sourceHeight: 960 };
+    const base = { deviceId: ID, version: 1, model: 'phone', width: 40, height: 80, screen, frame: frame.toString('base64'), mask: mask.toString('base64') };
+    const find = () => devices.listDevices(gr, server).find((x) => x.deviceId === ID);
+
+    assert.strictEqual(devices.devicePreview(gr, server, info, base), true);
+    let p = find().preview;
+    assert.strictEqual(p.version, 1);
+    assert.strictEqual(p.rotation, 0, 'a v1 preview is upright');
+    assert.strictEqual(p.posture, null);
+    assert.strictEqual(p.profile, '');
+    assert.strictEqual(p.screen.quad, undefined);
+    assert.deepStrictEqual(p.screen, screen);
+    assert.strictEqual(find().rotation, 0);
+
+    const quad = [[4, 8], [16.5, 8.25], [16.2, 32], [3.8, 31.5]];
+    const v2 = Object.assign({}, base, {
+        version: 2, profile: '  inner-fold  ', rotation: 90, posture: 'open',
+        screen: Object.assign({}, screen, { quad })
+    });
+    assert.strictEqual(devices.devicePreview(gr, server, info, v2), true);
+    p = find().preview;
+    assert.strictEqual(p.version, 2);
+    assert.strictEqual(p.profile, 'inner-fold');
+    assert.strictEqual(p.rotation, 90);
+    assert.strictEqual(p.posture, 'open');
+    assert.deepStrictEqual(p.screen.quad, quad);
+    assert.strictEqual(p.screen.width, 12, 'the upright rectangle stays');
+    assert.strictEqual(find().rotation, 90, 'listed from the preview until a state reports it');
+    assert.strictEqual(find().posture, 'open');
+    assert.strictEqual(find().profile, 'inner-fold');
+
+    assert.strictEqual(devices.devicePreview(gr, server, info, Object.assign({}, v2, { rotation: 45, posture: 'ajar' })), true);
+    p = find().preview;
+    assert.strictEqual(p.rotation, 0, 'a rotation that is not 0/90/180/270 becomes 0');
+    assert.strictEqual(p.posture, null);
+    assert.deepStrictEqual(p.screen.quad, quad, 'a bad rotation does not drop the quad');
+
+    for (const bad of [
+        [[0, 0], [1, 1], [2, 2]],
+        [[0, 0], [1, 1], [2, 2], [Number.POSITIVE_INFINITY, 4]],
+        [[0, 0], [1, 1], [2, 2], { x: 1, y: 2 }],
+        'quad'
+    ]) {
+        assert.strictEqual(devices.devicePreview(gr, server, info, Object.assign({}, v2, { rotation: 180, screen: Object.assign({}, screen, { quad: bad }) })), true);
+        p = find().preview;
+        assert.strictEqual(p.screen.quad, undefined, 'a malformed quad is dropped');
+        assert.strictEqual(p.rotation, 180);
+        assert.strictEqual(p.screen.x, 4);
+    }
+
+    assert.strictEqual(devices.deviceState(gr, server, info, {
+        deviceId: ID, state: 'showing', showing: ['a.png', 'b.png', 'c.png', 'd.png'], since: Date.now(),
+        rotation: 270, posture: 'closed', profile: 'cover'
+    }), true);
+    let d = find();
+    assert.strictEqual(d.rotation, 270);
+    assert.strictEqual(d.posture, 'closed');
+    assert.strictEqual(d.profile, 'cover');
+    assert.deepStrictEqual(d.showing, ['a.png', 'b.png', 'c.png', 'd.png']);
+    await sleep(300);
+    const upd = server.broadcasts.filter((b) => b.msg.type === 'devices_updated').pop();
+    const listed = upd.msg.data.devices.find((x) => x.deviceId === ID);
+    assert.strictEqual(listed.rotation, 270);
+    assert.strictEqual(listed.posture, 'closed');
+    assert.strictEqual(listed.profile, 'cover');
+    assert.strictEqual(listed.preview.rotation, 180, 'the preview keeps the pose it was sent with');
+
+    assert.strictEqual(devices.deviceState(gr, server, info, { deviceId: ID, state: 'showing', showing: ['a.png'], since: Date.now() }), true);
+    assert.strictEqual(find().rotation, 270, 'a later slide that omits the pose keeps it');
+    assert.strictEqual(find().posture, 'closed');
+    assert.strictEqual(devices.deviceState(gr, server, info, { deviceId: ID, state: 'showing', showing: ['a.png'], since: Date.now(), rotation: 12 }), true);
+    assert.strictEqual(find().rotation, 0);
+
+    assert.strictEqual(devices.forget(gr, server, ID), true);
+    server.clients.delete(ws);
+}
+
+// four pictures on a slide, and orientationMix (portrait share of the rotation)
+async function orientationCases() {
+    assert.deepStrictEqual(
+        devices.sanitizeShowing(['../a.png', 'b.png', 'c.png', 'd.png', 'e.png']),
+        ['a.png', 'b.png', 'c.png', 'd.png'],
+        'showing keeps four names'
+    );
+    assert.strictEqual(devices.sanitizeSettings({ orientationMix: 70 }).orientationMix, 70);
+    assert.strictEqual(devices.sanitizeSettings({ orientationMix: 70.2 }).orientationMix, 70);
+    assert.strictEqual(devices.sanitizeSettings({ orientationMix: -4 }).orientationMix, 0);
+    assert.strictEqual(devices.sanitizeSettings({ orientationMix: 140 }).orientationMix, 100);
+    assert.strictEqual(devices.sanitizeSettings({ orientationMix: 49.4 }).orientationMix, 49);
+    assert.strictEqual(devices.sanitizeSettings({ orientationMix: 'no' }).orientationMix, undefined);
+    assert.strictEqual(devices.sanitizeSettings({}).orientationMix, undefined);
+
+    const ID = '0a1b2c3d4e5f';
+    const ws = socket();
+    const info = { authenticated: true, userType: 'readonly', clientId: ID, connectedAt: new Date(), deviceApp: 'DreamscapeFrame/1.4' };
+    server.clients.set(ws, info);
+    devices.identify(gr, server, info, { kind: 'slideshow', deviceId: ID, name: 'Frame', settings: { orientationMix: 70.2 } });
+    assert.strictEqual(devices.listDevices(gr, server).find((d) => d.deviceId === ID).settings.orientationMix, 70);
+    devices.deviceState(gr, server, info, { deviceId: ID, state: 'stopped', showing: ['a.png', 'b.png', 'c.png', 'd.png', 'e.png'] });
+    assert.deepStrictEqual(devices.listDevices(gr, server).find((d) => d.deviceId === ID).showing, ['a.png', 'b.png', 'c.png', 'd.png']);
+    server.clients.delete(ws);
+    devices.onSocketClosed(gr, server, info);
+    const queued = await devices.sendCommand(gr, server, { deviceId: ID, command: 'set_settings', settings: { orientationMix: 101 } });
+    assert.strictEqual(queued.queued, true);
+    assert.strictEqual(devices.listDevices(gr, server).find((d) => d.deviceId === ID).settings.orientationMix, 100);
+
+    const now = Date.now();
+    const gallery = [];
+    for (let i = 0; i < 24; i++) {
+        const n = String(i).padStart(2, '0');
+        gallery.push({ original: `L${n}.png`, width: 1600, height: 1000, mtime: now - i * 2 * 1000 });
+        gallery.push({ original: `P${n}.png`, width: 1000, height: 1600, mtime: now - (i * 2 + 1) * 1000 });
+    }
+    gallery.push({ original: 'square.png', width: 1000, height: 1000, mtime: now - 100000 });
+    gallery.push({ original: 'near.png', width: 1000, height: 1049, mtime: now - 101000 });
+    gallery.push({ original: 'edge.png', width: 1000, height: 1050, mtime: now - 102000 });
+    gallery.push({ original: 'bare.png', width: 1000, height: 1051, mtime: now - 103000 });
+    const fakeDb = {
+        async listWorkspaceGalleryItemsPaginated() {
+            return { items: gallery, totalItems: gallery.length };
+        },
+        async getLightweightMetadata() { return {}; }
+    };
+    const ctx = {
+        metadataDb: fakeDb,
+        workspaceManager: { getWorkspaces: () => ({ mix: {} }), getActiveWorkspace: () => 'mix' },
+        sessionId: 's',
+        runSearch: async () => []
+    };
+    const names = (res) => res.items.map((i) => i.filename);
+    const isP = (n) => n.startsWith('P') || n === 'bare.png';
+    const page = (mix, opts) => devices.resolveImages(ctx, { workspaces: ['*'], orientationMix: mix }, opts);
+    devices.clearImageCache();
+
+    const asTheyCome = await page(50, { limit: 200 });
+    const omitted = await devices.resolveImages(ctx, { workspaces: ['*'] }, { limit: 200 });
+    assert.deepStrictEqual(names(asTheyCome), names(omitted), '50 leaves the newest-first order');
+    assert.strictEqual(names(asTheyCome)[0], 'L00.png');
+    assert.strictEqual(asTheyCome.total, gallery.length);
+
+    const onlyL = await page(0, { limit: 200 });
+    const onlyP = await page(100, { limit: 200 });
+    assert.deepStrictEqual(names(onlyL), names(asTheyCome).filter((n) => !isP(n)), '0 drops portraits');
+    assert.deepStrictEqual(names(onlyP), names(asTheyCome).filter(isP), '100 drops landscapes and squares');
+    assert.ok(names(onlyL).includes('square.png') && names(onlyL).includes('near.png') && names(onlyL).includes('edge.png'));
+    assert.ok(!names(onlyL).includes('bare.png'));
+    assert.strictEqual(onlyP.total, 25);
+    assert.strictEqual(onlyL.total, gallery.length - 25);
+
+    const mixed = await page(70, { limit: 200 });
+    assert.strictEqual(mixed.total, gallery.length, '70 keeps every picture');
+    assert.deepStrictEqual(names(mixed).filter(isP), names(asTheyCome).filter(isP), 'portraits keep their order');
+    assert.deepStrictEqual(names(mixed).filter((n) => !isP(n)), names(asTheyCome).filter((n) => !isP(n)), 'landscapes keep their order');
+    assert.strictEqual(names(mixed).slice(0, 20).filter(isP).length, 14, 'first window of 20 is 70% portraits');
+    const again = await page(70, { limit: 200 });
+    assert.deepStrictEqual(names(again), names(mixed), 'no seed: the mix is stable');
+
+    const seededBase = await page(50, { seed: 42, limit: 200 });
+    const seededMix = await page(70, { seed: 42, limit: 200 });
+    assert.deepStrictEqual(names(seededMix).filter(isP), names(seededBase).filter(isP));
+    assert.deepStrictEqual(names(seededMix).filter((n) => !isP(n)), names(seededBase).filter((n) => !isP(n)));
+    assert.strictEqual(names(seededMix).slice(0, 20).filter(isP).length, 14);
+    const p0 = await page(70, { seed: 42, offset: 0, limit: 10 });
+    const p1 = await page(70, { seed: 42, offset: 10, limit: 10 });
+    const both = await page(70, { seed: 42, offset: 0, limit: 20 });
+    assert.deepStrictEqual(names(p0).concat(names(p1)), names(both), 'same seed: pages line up');
+    const p0b = await page(70, { seed: 42, offset: 0, limit: 10 });
+    assert.deepStrictEqual(names(p0b), names(p0));
+    const otherSeed = await page(70, { seed: 99, limit: 20 });
+    assert.notDeepStrictEqual(names(otherSeed), names(both));
+    const seeded0 = await page(0, { seed: 7, limit: 200 });
+    const seeded100 = await page(100, { seed: 7, limit: 200 });
+    const seeded7 = await page(50, { seed: 7, limit: 200 });
+    assert.deepStrictEqual(names(seeded0), names(seeded7).filter((n) => !isP(n)));
+    assert.deepStrictEqual(names(seeded100), names(seeded7).filter(isP));
+
+    devices.clearImageCache();
+    const pooled = await devices.resolveImages(ctx, { workspaces: ['*'], poolSize: 2, orientationMix: 100 }, { limit: 10 });
+    assert.deepStrictEqual(names(pooled), ['P00.png'], 'pool runs before the mix');
+    assert.strictEqual(pooled.total, 1);
+
+    // Image Search has no sizes until lookup; unknown sizes count as landscape
+    const t = now;
+    const files = [`${t}_land.png`, `${t - 1000}_port.png`, `${t - 2000}_sq.png`, `${t - 3000}_unk.png`];
+    const dims = {
+        [`${t}_land.png`]: { width: 1800, height: 1000 },
+        [`${t - 1000}_port.png`]: { width: 800, height: 1400 },
+        [`${t - 2000}_sq.png`]: { width: 500, height: 500 }
+    };
+    const sctx = {
+        metadataDb: {
+            async listWorkspaceGalleryItemsPaginated() { return { items: [], totalItems: 0 }; },
+            async getLightweightMetadata(ns) {
+                return Object.fromEntries(ns.filter((n) => dims[n]).map((n) => [n, dims[n]]));
+            }
+        },
+        workspaceManager: { getWorkspaces: () => ({}), getActiveWorkspace: () => 'default' },
+        sessionId: 's',
+        runSearch: async () => files
+    };
+    devices.clearImageCache();
+    const search = devices.sanitizeSettings({ search: { blocks: [{ terms: ['x'] }] } });
+    const s100 = await devices.resolveImages(sctx, Object.assign({}, search, { orientationMix: 100 }), { limit: 10 });
+    const s0 = await devices.resolveImages(sctx, Object.assign({}, search, { orientationMix: 0 }), { limit: 10 });
+    assert.deepStrictEqual(names(s100), [`${t - 1000}_port.png`]);
+    assert.deepStrictEqual(names(s0), [`${t}_land.png`, `${t - 2000}_sq.png`, `${t - 3000}_unk.png`]);
+    devices.forget(gr, server, ID);
 }
 
 main().then(() => {

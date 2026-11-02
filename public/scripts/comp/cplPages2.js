@@ -663,6 +663,21 @@
         }[d.state] || 'Connected';
     }
 
+    /** Model, OS and posture (open / closed), the line under the connection status. */
+    function ssDetailText(d) {
+        const pose = d.posture === 'open' ? 'Open' : d.posture === 'closed' ? 'Closed' : '';
+        return [d.model, d.os, pose].filter(Boolean).join(', ');
+    }
+
+    /** 0 / 90 / 180 / 270 from the live state, or from the preview until a state arrives. */
+    function ssRotation(d) {
+        const n = d && d.rotation;
+        if (n === 0 || n === 90 || n === 180 || n === 270) return n;
+        const p = d && d.preview && d.preview.rotation;
+        if (p === 0 || p === 90 || p === 180 || p === 270) return p;
+        return 0;
+    }
+
     function ssOnPage() {
         const page = CP() && CP().currentPage();
         return page === 'sideshow' || page === 'sideshow-device' || page === 'sideshow-gadget' || page === 'sideshow-clock';
@@ -685,6 +700,12 @@
         m.querySelectorAll('[data-ss-live="gadget"]').forEach((el) => { el.textContent = d ? ssGadgetText(d) : ''; });
         m.querySelectorAll('[data-ss-live="frame"]').forEach((el) => { el.textContent = d ? ssFrameNote(d) : ''; el.hidden = !(d && ssFrameNote(d)); });
         m.querySelectorAll('[data-ss-live="status"]').forEach((el) => { el.textContent = d ? ssStateText(d) : 'Disconnected'; });
+        m.querySelectorAll('[data-ss-live="detail"]').forEach((el) => {
+            const text = d ? ssDetailText(d) : '';
+            const dim = el.querySelector('.cpl-ss-dim');
+            if (dim) dim.textContent = text;
+            el.hidden = !text;
+        });
         m.querySelectorAll('[data-ss-live="device"]').forEach((el) => { el.innerHTML = d ? ssDeviceHtml(d) : ''; });
         // the device photo: online / offline, and the picture on screen until a capture arrives
         m.querySelectorAll('[data-ss-live="phys"]').forEach((el) => { el.innerHTML = d ? ssPhysicalHtml(d, 200) : ''; });
@@ -841,7 +862,7 @@
             const own = ssSchema(d).length > 0;
             if (own) ssCfgAfterDraw(d);
             return `<div class="cpl-vpage cpl-ss-page">${help('sideshow')}
-                <div class="cpl-ss-logo">${d.preview ? `<span data-ss-live="phys">${ssPhysicalHtml(d, 200)}</span>` : `<img src="${SS}/sideshow-48.png" alt="">`}<div><b>${esc(d.name)}</b><br><span data-ss-live="status">${esc(ssStateText(d))}</span>${d.model ? `<br><span class="cpl-ss-dim">${esc([d.model, d.os].filter(Boolean).join(', '))}</span>` : ''}${d.gadgets ? `<br><span data-ss-live="gadget">${esc(ssGadgetText(d))}</span>` : ''}</div></div>
+                <div class="cpl-ss-logo">${d.preview ? `<span data-ss-live="phys">${ssPhysicalHtml(d, 200)}</span>` : `<img src="${SS}/sideshow-48.png" alt="">`}<div><b>${esc(d.name)}</b><br><span data-ss-live="status">${esc(ssStateText(d))}</span><span data-ss-live="detail"${ssDetailText(d) ? '' : ' hidden'}><br><span class="cpl-ss-dim">${esc(ssDetailText(d))}</span></span>${d.gadgets ? `<br><span data-ss-live="gadget">${esc(ssGadgetText(d))}</span>` : ''}</div></div>
                 <p class="cpl-vtext cpl-ss-para" data-ss-live="offline"${d.online ? ' hidden' : ''}>To change settings, first connect the device.${own ? ' Changes to the device-specific settings are sent to it the next time it connects.' : ''}</p>
                 <div class="cpl-vsection"><span>Gadgets</span></div>
                 <p class="cpl-ss-link"><img src="${SS}/gadgets-16.png" alt=""><button type="button" class="cpl-vlink" data-cpl-vpage="hub">Turn gadgets on or off</button></p>
@@ -1347,16 +1368,22 @@
         return portrait ? { w: Math.round(short * 0.9), h: Math.round(long * 0.9), portrait } : { w: long, h: short, portrait };
     }
 
-    /** What the device's screen shows: the picture (or a tall pair side by side), its overlay, Paused. */
+    /** A thumbnail for every picture on this slide, in the order the device laid them out (up to four). */
+    function ssShowingHtml(files) {
+        const list = files || [];
+        if (!list.length) return '';
+        return `<div class="cpl-ss-screen-pics${list.length > 1 ? ' is-pair' : ''}">${list.map((f) => `<img src="${esc(ssPreview(f))}" alt="" title="${esc(f)}" onerror="this.style.visibility='hidden'">`).join('')}</div>`;
+    }
+
+    /** What the device's screen shows: the pictures on this slide, its overlay, Paused. */
     function ssScreenHtml(d) {
         const st = d.settings || {};
         if (!d.online) return '<div class="cpl-ss-screen-msg">Disconnected</div>';
         const files = d.showing || [];
         if (!files.length) return `<div class="cpl-ss-screen-msg">${d.state === 'signin_needed' ? 'Sign-in needed' : 'Nothing is on the screen'}</div>`;
-        const pics = `<div class="cpl-ss-screen-pics${files.length > 1 ? ' is-pair' : ''}">${files.map((f) => `<img src="${esc(ssPreview(f))}" alt="" title="${esc(f)}" onerror="this.style.visibility='hidden'">`).join('')}</div>`;
         // the device's own "3 of 60" counter is not reported; Full also names the file
         const info = st.infoOverlay === 'full' ? `<div class="cpl-ss-screen-info">${esc(files.join('  '))}</div>` : '';
-        return pics + info + (d.state === 'paused' ? '<div class="cpl-ss-screen-badge">Paused</div>' : '') + (d.state === 'offline_cache' ? '<div class="cpl-ss-screen-badge">Saved pictures</div>' : '');
+        return ssShowingHtml(files) + info + (d.state === 'paused' ? '<div class="cpl-ss-screen-badge">Paused</div>' : '') + (d.state === 'offline_cache' ? '<div class="cpl-ss-screen-badge">Saved pictures</div>' : '');
     }
 
     // ---- the device as it looks (DEVICE_CONFIG_PROTOCOL.md section 4) ----
@@ -1377,21 +1404,91 @@
         return d.online && d.showing && d.showing.length ? ssPreview(d.showing[0]) : '';
     }
 
-    /** The device drawn from its preview, `height` px tall; '' when it sent none. */
+    /**
+     * matrix3d that maps the screen box (0,0)-(sw,sh) onto dest (eight numbers: TL, TR, BR, BL,
+     * relative to that box). Empty when the quad does not define a projection.
+     */
+    function ssQuadMatrix(sw, sh, dest) {
+        const adj = (m) => [
+            m[4] * m[8] - m[5] * m[7], m[2] * m[7] - m[1] * m[8], m[1] * m[5] - m[2] * m[4],
+            m[5] * m[6] - m[3] * m[8], m[0] * m[8] - m[2] * m[6], m[2] * m[3] - m[0] * m[5],
+            m[3] * m[7] - m[4] * m[6], m[1] * m[6] - m[0] * m[7], m[0] * m[4] - m[1] * m[3]
+        ];
+        const multmm = (a, b) => {
+            const c = new Array(9);
+            for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+                let s = 0;
+                for (let k = 0; k < 3; k++) s += a[3 * i + k] * b[3 * k + j];
+                c[3 * i + j] = s;
+            }
+            return c;
+        };
+        const multmv = (m, v) => [
+            m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
+            m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+            m[6] * v[0] + m[7] * v[1] + m[8] * v[2]
+        ];
+        const basis = (x1, y1, x2, y2, x3, y3, x4, y4) => {
+            const m = [x1, x2, x3, y1, y2, y3, 1, 1, 1];
+            const v = multmv(adj(m), [x4, y4, 1]);
+            return multmm(m, [v[0], 0, 0, 0, v[1], 0, 0, 0, v[2]]);
+        };
+        // source TL, TR, BR, BL, then the same four of the quad
+        const t = multmm(
+            basis(dest[0], dest[1], dest[2], dest[3], dest[4], dest[5], dest[6], dest[7]),
+            adj(basis(0, 0, sw, 0, sw, sh, 0, sh))
+        );
+        if (!Number.isFinite(t[8]) || Math.abs(t[8]) < 1e-8) return '';
+        for (let i = 0; i < 9; i++) t[i] /= t[8];
+        const m = [t[0], t[3], 0, t[6], t[1], t[4], 0, t[7], 0, 0, 1, 0, t[2], t[5], 0, t[8]];
+        if (m.some((n) => !Number.isFinite(n))) return '';
+        return `matrix3d(${m.map((n) => Number(n.toFixed(5))).join(',')})`;
+    }
+
+    /**
+     * The device drawn from its preview, `height` px tall while upright; '' when it sent none.
+     * Frame, mask and screen geometry are the upright device. The capture (or the current thumbnail)
+     * is mapped onto screen.quad and rotated +rotation inside that screen; the whole device is
+     * rotated -rotation and the slot is the rotated bounding box.
+     */
     function ssPhysicalHtml(d, height) {
         const p = d.preview;
         if (!p || !(p.width > 0) || !(p.height > 0) || !p.screen) return '';
-        const pct = (v, of) => `${((Number(v) || 0) / of * 100).toFixed(3)}%`;
         const s = p.screen;
+        const uh = height;
+        const scale = uh / p.height;
+        const uw = Math.round(p.width * scale);
+        const sx = s.x * scale;
+        const sy = s.y * scale;
+        const sw = s.width * scale;
+        const sh = s.height * scale;
+        const rot = ssRotation(d);
+        const turned = rot === 90 || rot === 270;
+        const slotW = turned ? uh : uw;
+        const slotH = turned ? uw : uh;
+        const left = (slotW - uw) / 2;
+        const top = (slotH - uh) / 2;
+        let warp = '';
+        if (Array.isArray(s.quad) && s.quad.length === 4) {
+            const dest = [];
+            s.quad.forEach((pt) => { dest.push(pt[0] * scale - sx, pt[1] * scale - sy); });
+            const matrix = ssQuadMatrix(sw, sh, dest);
+            if (matrix) warp = `;transform:${matrix}`;
+        }
         const mask = `url('${ssPreviewUrl(d, 'mask.png')}')`;
         const src = ssShotSrc(d);
-        // a still picture fills the screen like the device's own slideshow does; a capture is exact
+        // a still picture fills the quad the way the slideshow does; a capture is exact
         const fit = p.hasScreen ? 'fill' : 'cover';
-        return `<div class="cpl-ss-phys${d.online ? '' : ' is-off'}" style="height:${height}px;width:${Math.round(height * p.width / p.height)}px" title="${esc(d.name)}">
+        const spin = rot ? `transform:rotate(${rot}deg);transform-origin:center center;` : '';
+        return `<div class="cpl-ss-phys${d.online ? '' : ' is-off'}" style="width:${slotW}px;height:${slotH}px" title="${esc(d.name)}">
+            <div style="position:absolute;left:${left}px;top:${top}px;width:${uw}px;height:${uh}px;transform-origin:center center${rot ? `;transform:rotate(${-rot}deg)` : ''}">
             <div class="cpl-ss-phys-screen" style="-webkit-mask-image:${mask};mask-image:${mask}">
-                <img class="cpl-ss-phys-shot" data-ss-shot="${esc(d.deviceId)}" alt="" draggable="false"${src ? ` src="${esc(src)}"` : ' hidden'} style="left:${pct(s.x, p.width)};top:${pct(s.y, p.height)};width:${pct(s.width, p.width)};height:${pct(s.height, p.height)};object-fit:${fit}" onerror="this.hidden=true">
+                <div style="position:absolute;left:${sx}px;top:${sy}px;width:${sw}px;height:${sh}px;transform-origin:0 0${warp}">
+                <img class="cpl-ss-phys-shot" data-ss-shot="${esc(d.deviceId)}" alt="" draggable="false"${src ? ` src="${esc(src)}"` : ' hidden'} style="left:0;top:0;width:100%;height:100%;object-fit:${fit};${spin}" onerror="this.hidden=true">
+                </div>
             </div>
             <img class="cpl-ss-phys-frame" src="${esc(ssPreviewUrl(d, 'frame.png'))}" alt="" draggable="false">
+            </div>
         </div>`;
     }
 
@@ -1468,6 +1565,7 @@
             const search = ssDraftSearch(d);
             const ws = Array.isArray(st.workspaces) ? st.workspaces : [];
             const age = Number(st.maxAgeDays) || 0;
+            const mix = st.orientationMix != null ? st.orientationMix : 50;
             const queued = d.pendingSettings || d.pendingName ? '<p class="cpl-vtext cpl-ss-dim cpl-ss-para">Some changes will be sent to the device the next time it connects.</p>' : '';
             setTimeout(() => ssPreviewSoon(0), 0);
             return `<div class="cpl-vpage cpl-ss-page cpl-ss-gadget-page">${help('sideshow')}
@@ -1507,6 +1605,7 @@
                 </table>
                 <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-shuffle"${st.shuffle !== false ? ' checked' : ''}><label for="cpl-ss-shuffle">Shuffle pictures</label></div>
                 <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-pair"${st.pairPortraits !== false ? ' checked' : ''}><label for="cpl-ss-pair">Show tall pictures side by side</label></div>
+                <div class="cpl-vcheck cpl-ss-check"><label for="cpl-ss-mix">More landscape &lt;-&gt; More portrait</label><input type="range" id="cpl-ss-mix" min="0" max="100" step="1" value="${mix}" title="The middle leaves pictures in the order they come"></div>
                 ${queued}
                 <div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="save">OK</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cancel">Cancel</button></div>
             </div>`;
@@ -1536,7 +1635,8 @@
             intervalSec: Math.min(86400, Math.max(5, num('cpl-ss-interval', 1, 86400, 45) * (Number(val('cpl-ss-interval-unit')) || 1))),
             infoOverlay: val('cpl-ss-overlay') || st.infoOverlay || 'minimal',
             shuffle: !!(q('#cpl-ss-shuffle') || {}).checked,
-            pairPortraits: !!(q('#cpl-ss-pair') || {}).checked
+            pairPortraits: !!(q('#cpl-ss-pair') || {}).checked,
+            orientationMix: num('cpl-ss-mix', 0, 100, 50)
         };
     }
 
@@ -1606,7 +1706,10 @@
             const st = d.settings || {};
             const next = ssCollect(d);
             const changed = {};
-            Object.keys(next).forEach((k) => { if (JSON.stringify(next[k]) !== JSON.stringify(st[k] === undefined ? (k === 'search' ? null : st[k]) : st[k])) changed[k] = next[k]; });
+            Object.keys(next).forEach((k) => {
+                const prev = st[k] === undefined ? (k === 'search' ? null : k === 'orientationMix' ? 50 : st[k]) : st[k];
+                if (JSON.stringify(next[k]) !== JSON.stringify(prev)) changed[k] = next[k];
+            });
             if (Object.keys(changed).length) await ssSend('set_settings', { settings: changed });
             ssDraft.search = undefined;
             nav('sideshow');
@@ -1616,7 +1719,7 @@
     // the form's text and number fields refresh the preview as you type
     if (doc) {
         doc.addEventListener('input', (ev) => {
-            if (ev.target && ev.target.closest && ev.target.closest('#melatonControlPanelModal .cpl-ss-gadget-page') && /^cpl-ss-(age|pool)$/.test(ev.target.id)) ssPreviewSoon();
+            if (ev.target && ev.target.closest && ev.target.closest('#melatonControlPanelModal .cpl-ss-gadget-page') && /^cpl-ss-(age|pool|mix)$/.test(ev.target.id)) ssPreviewSoon();
         });
     }
 

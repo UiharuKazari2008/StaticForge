@@ -72,6 +72,9 @@ function sanitizeSettings(raw) {
     if (typeof src.shuffle === 'boolean') out.shuffle = src.shuffle;
     if (typeof src.pairPortraits === 'boolean') out.pairPortraits = src.pairPortraits;
     if (INFO_OVERLAYS.has(src.infoOverlay)) out.infoOverlay = src.infoOverlay;
+    // share of portrait pictures in the rotation (0 landscape and square only, 100 portrait only, 50 unchanged)
+    const mix = clampInt(src.orientationMix, 0, 100);
+    if (src.orientationMix != null && mix != null) out.orientationMix = mix;
     // where the pictures come from (served by device_slideshow_images): workspace ids (empty = the
     // session's active one, "*" = every workspace), an age limit in days (0 = any), or an Image Search
     // (the Sidebar Slide Show's omegasearch query; null clears it)
@@ -109,18 +112,101 @@ const LIST_TTL_MS = 2 * 60 * 1000;
 const MAX_LISTS = 20;
 const PAGE_DEFAULT = 500;
 const PAGE_MAX = 2000;
-const listCache = new Map(); // key -> { rows, expiresAt }
+const listCache = new Map(); // picture-source key -> { rows, expiresAt }
+const orderCache = new Map(); // source key + orientationMix + seed -> { rows, expiresAt }
 
-/** Every picture these settings match, newest first, capped by poolSize (0 = no cap); cached 2 minutes. */
-async function resolveAll(ctx, settings) {
-    const db = ctx.metadataDb;
-    if (!db) return [];
+/** The picture-source identity (not orientation or seed): workspaces, search, view, age, pool. */
+function sourceParts(ctx, settings) {
     let ids = Array.isArray(settings.workspaces) ? settings.workspaces : [];
     if (!settings.search) {
         if (ids.includes('*')) ids = Object.keys((ctx.workspaceManager && ctx.workspaceManager.getWorkspaces()) || {});
         if (!ids.length) ids = [(ctx.workspaceManager && ctx.sessionId && ctx.workspaceManager.getActiveWorkspace(ctx.sessionId)) || 'default'];
     }
     const key = JSON.stringify([settings.search || null, settings.search ? null : ids, settings.viewType, settings.maxAgeDays, settings.poolSize]);
+    return { ids, key };
+}
+
+function cachePut(map, key, rows) {
+    const now = Date.now();
+    map.delete(key);
+    map.set(key, { rows, expiresAt: now + LIST_TTL_MS });
+    while (map.size > MAX_LISTS) map.delete(map.keys().next().value);
+}
+
+/** 0-100, missing or unusable counts as 50 (the order the pictures already come in). */
+function orientationShare(settings) {
+    if (settings.orientationMix == null || settings.orientationMix === '') return 50;
+    const n = clampInt(settings.orientationMix, 0, 100);
+    return n == null ? 50 : n;
+}
+
+/** Portrait when height is more than 1.05 times width (21/20). Squares and unknown sizes are not. */
+function isPortraitSize(width, height) {
+    const w = Number(width);
+    const h = Number(height);
+    if (!(w > 0) || !(h > 0)) return false;
+    return h * 20 > w * 21;
+}
+
+/**
+ * Merge portrait and landscape (squares count as landscape) by deficit so each window of about 20
+ * holds about `share` percent portraits. Each class keeps the order it arrived in. 0 and 100 drop
+ * the other class.
+ */
+function applyOrientationMix(rows, share) {
+    const portraits = [];
+    const landscapes = [];
+    for (const row of rows) (isPortraitSize(row.width, row.height) ? portraits : landscapes).push(row);
+    if (share <= 0) return landscapes;
+    if (share >= 100) return portraits;
+    const out = new Array(portraits.length + landscapes.length);
+    let pi = 0;
+    let li = 0;
+    let placedP = 0;
+    let placedL = 0;
+    let n = 0;
+    const wantL = 100 - share;
+    while (pi < portraits.length && li < landscapes.length) {
+        const next = n + 1;
+        const defP = share * next - placedP * 100;
+        const defL = wantL * next - placedL * 100;
+        if (defP >= defL) {
+            out[n++] = portraits[pi++];
+            placedP++;
+        } else {
+            out[n++] = landscapes[li++];
+            placedL++;
+        }
+    }
+    while (pi < portraits.length) out[n++] = portraits[pi++];
+    while (li < landscapes.length) out[n++] = landscapes[li++];
+    return out;
+}
+
+/** Width and height for rows that do not have them yet (Image Search). Writes onto the cached rows. */
+async function fillSizes(ctx, rows) {
+    const pending = rows.filter((row) => !(Number(row.width) > 0) || !(Number(row.height) > 0));
+    if (!pending.length || !ctx.metadataDb) return;
+    const light = {};
+    const names = pending.map((row) => row.filename);
+    for (let i = 0; i < names.length; i += 500) {
+        // getLightweightMetadata: modules/metadataDatabase.js
+        Object.assign(light, await ctx.metadataDb.getLightweightMetadata(names.slice(i, i + 500)) || {});
+    }
+    for (const row of pending) {
+        const meta = light[row.filename];
+        if (!meta) continue;
+        if (!(Number(row.width) > 0)) row.width = meta.width || null;
+        if (!(Number(row.height) > 0)) row.height = meta.height || null;
+        if (!row.mtime) row.mtime = mtimeMs(meta.mtime);
+    }
+}
+
+/** Every picture these settings match, newest first, capped by poolSize (0 = no cap); cached 2 minutes. */
+async function resolveAll(ctx, settings) {
+    const db = ctx.metadataDb;
+    if (!db) return [];
+    const { ids, key } = sourceParts(ctx, settings);
     const now = Date.now();
     const hit = listCache.get(key);
     if (hit && hit.expiresAt > now) return hit.rows;
@@ -129,8 +215,8 @@ async function resolveAll(ctx, settings) {
     const pickName = (row) => (settings.viewType === 'upscaled' ? (row.upscaled || row.original) : (row.original || row.upscaled));
     let rows = [];
     if (settings.search) {
-        // search results come unordered and without dates: the filename's leading timestamp dates them;
-        // sizes are looked up per page (pageOf)
+        // search results come unordered and without dates: the filename's leading timestamp dates them.
+        // sizes stay empty until a mix needs them (fillSizes) or the page asks (resolveImages)
         rows = (await ctx.runSearch(settings.search)).map((f) => ({ filename: f, width: null, height: null, mtime: filenameMs(f) }));
     } else {
         const seen = new Set();
@@ -151,9 +237,29 @@ async function resolveAll(ctx, settings) {
     rows.sort((a, b) => b.mtime - a.mtime);
     if (cutoff) rows = rows.filter((r) => r.mtime >= cutoff);
     if (settings.poolSize > 0) rows = rows.slice(0, settings.poolSize);
-    listCache.delete(key);
-    listCache.set(key, { rows, expiresAt: now + LIST_TTL_MS });
-    while (listCache.size > MAX_LISTS) listCache.delete(listCache.keys().next().value);
+    cachePut(listCache, key, rows);
+    return rows;
+}
+
+/**
+ * The rotation after orientationMix, cached 2 minutes per picture source, mix and seed.
+ * 50 with no seed is the newest-first list itself. Otherwise shuffle with the seed first
+ * (so pages stay stable), then mix.
+ */
+async function orderedRotation(ctx, settings, seed) {
+    const share = orientationShare(settings);
+    const base = await resolveAll(ctx, settings);
+    const seeded = seed != null && seed !== '';
+    if (share === 50 && !seeded) return base;
+    const key = `${sourceParts(ctx, settings).key}\n${share}\n${seeded ? String(Number(seed) >>> 0) : ''}`;
+    const hit = orderCache.get(key);
+    if (hit && hit.expiresAt > Date.now()) return hit.rows;
+    let rows = seeded ? seededOrder(base.length, seed).map((i) => base[i]) : base.slice();
+    if (share !== 50) {
+        await fillSizes(ctx, base);
+        rows = applyOrientationMix(rows, share);
+    }
+    cachePut(orderCache, key, rows);
     return rows;
 }
 
@@ -178,23 +284,18 @@ function seededOrder(length, seed) {
 /**
  * One page of the pictures a device shows for these settings: { total, offset, items }, each item
  * { filename, width, height, mtime }. Newest first, or a seeded shuffle with `seed` (a device keeps
- * its seed and pages through; there is no pool limit unless poolSize is set). ctx: { metadataDb,
- * workspaceManager, sessionId, runSearch(search) }.
+ * its seed and pages through; there is no pool limit unless poolSize is set). orientationMix runs
+ * after the picture source and pool, before this page. ctx: { metadataDb, workspaceManager,
+ * sessionId, runSearch(search) }.
  */
 async function resolveImages(ctx, rawSettings, page) {
-    const settings = Object.assign({ viewType: 'images', poolSize: 0, maxAgeDays: 0, workspaces: [] }, rawSettings || {});
+    const settings = Object.assign({ viewType: 'images', poolSize: 0, maxAgeDays: 0, workspaces: [], orientationMix: 50 }, rawSettings || {});
     const opts = page || {};
-    const rows = await resolveAll(ctx, settings);
+    const rows = await orderedRotation(ctx, settings, opts.seed);
     const total = rows.length;
     const offset = Math.max(0, Math.min(total, Math.round(Number(opts.offset)) || 0));
     const limit = Math.max(1, Math.min(PAGE_MAX, Math.round(Number(opts.limit)) || PAGE_DEFAULT));
-    let items;
-    if (opts.seed != null && opts.seed !== '') {
-        const order = seededOrder(total, opts.seed);
-        items = order.slice(offset, offset + limit).map((i) => Object.assign({}, rows[i]));
-    } else {
-        items = rows.slice(offset, offset + limit).map((r) => Object.assign({}, r));
-    }
+    const items = rows.slice(offset, offset + limit).map((r) => Object.assign({}, r));
     const unsized = items.filter((r) => !r.width).map((r) => r.filename);
     if (unsized.length && ctx.metadataDb) {
         const light = await ctx.metadataDb.getLightweightMetadata(unsized);
@@ -210,6 +311,7 @@ async function resolveImages(ctx, rawSettings, page) {
 
 function clearImageCache() {
     listCache.clear();
+    orderCache.clear();
 }
 
 // ---- device-specific settings (deviceConfig) and gadgets ----
@@ -355,13 +457,13 @@ function sanitizeDisplay(raw) {
     return out;
 }
 
-/** Gallery filenames only: a basename, at most two (a portrait pair). */
+/** Gallery filenames only: a basename, at most four, in the order the device laid them out. */
 function sanitizeShowing(raw) {
     const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
     return list
         .map((f) => path.basename(clampString(f, 200)))
         .filter((f) => f && f !== '.' && f !== '..')
-        .slice(0, 2);
+        .slice(0, 4);
 }
 
 function parseJson(text, fallback) {
@@ -445,6 +547,8 @@ function describe(row, live) {
     const liveState = live ? live.info.deviceState : null;
     const state = liveState || parseJson(row.last_state, null);
     const online = !!live && !(liveState && liveState.state === 'stopped');
+    const preview = describePreview(row);
+    const has = (obj, key) => !!(obj && Object.prototype.hasOwnProperty.call(obj, key));
     return {
         deviceId: row.device_id,
         kind: row.kind,
@@ -459,13 +563,17 @@ function describe(row, live) {
         state: state ? state.state : null,
         showing: state && Array.isArray(state.showing) ? state.showing : [],
         since: state && state.since ? state.since : null,
+        // live pose wins; the preview's copy covers a device that has not reported state yet
+        rotation: has(state, 'rotation') ? sanitizeRotation(state.rotation) : (preview && preview.rotation) || 0,
+        posture: has(state, 'posture') ? sanitizePosture(state.posture) : (preview ? sanitizePosture(preview.posture) : null),
+        profile: has(state, 'profile') ? sanitizeProfile(state.profile) : (preview && preview.profile) || '',
         settings: parseJson(row.settings, {}),
         pendingSettings: parseJson(row.pending_settings, null),
         pendingName: row.pending_name || null,
         deviceConfig: parseJson(row.device_config, null),
         gadgets: parseJson(row.gadgets, null),
         pendingDeviceConfig: parseJson(row.pending_device_config, null),
-        preview: describePreview(row)
+        preview
     };
 }
 
@@ -564,7 +672,17 @@ function deviceState(globalResources, wsServer, clientInfo, data) {
     const state = String(src.state || '').trim();
     if (!DEVICE_STATES.has(state)) return false;
     const since = Number(src.since);
+    const row = rowOf(globalResources, deviceId);
+    const prev = clientInfo.deviceState || (row ? parseJson(row.last_state, null) : null) || {};
     const rec = { state, showing: sanitizeShowing(src.showing), since: Number.isFinite(since) && since > 0 ? Math.round(since) : Date.now() };
+    // kept across slides: a packet that omits one leaves the last value. The device re-sends the
+    // preview when rotation, posture or profile changes; the state carries the same three.
+    if (Object.prototype.hasOwnProperty.call(src, 'rotation')) rec.rotation = sanitizeRotation(src.rotation);
+    else if (prev.rotation != null) rec.rotation = sanitizeRotation(prev.rotation);
+    if (Object.prototype.hasOwnProperty.call(src, 'posture')) rec.posture = sanitizePosture(src.posture);
+    else if (prev.posture != null) rec.posture = sanitizePosture(prev.posture);
+    if (Object.prototype.hasOwnProperty.call(src, 'profile')) rec.profile = sanitizeProfile(src.profile);
+    else if (prev.profile) rec.profile = sanitizeProfile(prev.profile);
     // gadget devices also say whether the slideshow or the clock is up, and which time frame chose it
     if (GADGET_MODES.has(src.mode)) {
         rec.mode = src.mode;
@@ -577,7 +695,6 @@ function deviceState(globalResources, wsServer, clientInfo, data) {
         .run(JSON.stringify(rec), Date.now(), deviceId);
     if (rec.mode) {
         // the stored gadgets follow the screen (a time frame starts or ends with no client_device_config)
-        const row = rowOf(globalResources, deviceId);
         const gadgets = row ? parseJson(row.gadgets, null) : null;
         if (gadgets) {
             Object.assign(gadgets, { mode: rec.mode, scheduleEntry: rec.scheduleEntry });
@@ -646,6 +763,37 @@ function finiteNum(value, min, max) {
     return Number.isFinite(n) && n >= min && n <= max ? Math.round(n * 100) / 100 : null;
 }
 
+/** 0, 90, 180 or 270. Anything else, including a missing value, is upright. */
+function sanitizeRotation(value) {
+    const n = Number(value);
+    return n === 0 || n === 90 || n === 180 || n === 270 ? n : 0;
+}
+
+/** "open" or "closed"; anything else is no posture. */
+function sanitizePosture(value) {
+    return value === 'open' || value === 'closed' ? value : null;
+}
+
+/** A short name for which physical setup this preview is (a fold, a case). */
+function sanitizeProfile(value) {
+    return value == null ? '' : clampString(value, 64);
+}
+
+/**
+ * Four finite [x, y] corners of the upright screen: top-left, top-right, bottom-right, bottom-left.
+ * null when the quad is missing or malformed (the rectangle still stands).
+ */
+function sanitizeQuad(raw) {
+    if (!Array.isArray(raw) || raw.length !== 4) return null;
+    const quad = [];
+    for (const pt of raw) {
+        if (!Array.isArray(pt) || pt.length < 2 || typeof pt[0] !== 'number' || typeof pt[1] !== 'number') return null;
+        if (!Number.isFinite(pt[0]) || !Number.isFinite(pt[1])) return null;
+        quad.push([Math.round(pt[0] * 100) / 100, Math.round(pt[1] * 100) / 100]);
+    }
+    return quad;
+}
+
 /** The preview's geometry: { version, model, width, height, screen, shape }, or null when it does not add up. */
 function sanitizePreviewGeometry(src) {
     const width = clampInt(src.width, 1, 8192);
@@ -662,6 +810,8 @@ function sanitizePreviewGeometry(src) {
         sourceHeight: clampInt(s.sourceHeight, 1, 100000)
     };
     if (Object.values(screen).some((v) => v == null)) return null;
+    const quad = sanitizeQuad(s.quad);
+    if (quad) screen.quad = quad;
     let shape = null;
     const sh = isPlainObject(src.shape) ? src.shape : null;
     if (sh && sh.type === 'circle') {
@@ -674,6 +824,9 @@ function sanitizePreviewGeometry(src) {
     return {
         version: Number.isFinite(Number(src.version)) ? Number(src.version) : 1,
         model: clampString(src.model, 64),
+        profile: sanitizeProfile(src.profile),
+        rotation: sanitizeRotation(src.rotation),
+        posture: sanitizePosture(src.posture),
         width,
         height,
         screen,
@@ -775,6 +928,9 @@ function describePreview(row) {
     return {
         version: p.version,
         model: p.model,
+        profile: p.profile || '',
+        rotation: sanitizeRotation(p.rotation),
+        posture: sanitizePosture(p.posture),
         width: p.width,
         height: p.height,
         screen: p.screen,
@@ -1065,6 +1221,7 @@ function resetForTests(databasesPath) {
     screens.clear();
     for (const entry of screenBroadcasts.values()) clearTimeout(entry.timer);
     screenBroadcasts.clear();
+    clearImageCache();
     return getDb({ getPath: () => databasesPath });
 }
 

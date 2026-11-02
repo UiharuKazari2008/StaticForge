@@ -183,10 +183,6 @@ body:not(.desktop-mode) #manualModal #unmaximizeManualBtn,
 /* Window Controls Overlay API - ManualModal Full Page View Adjustments */
 
 @media (min-width: 1101px) {
-    .titlebar-android body:not(.desktop-mode) #manualModal .form-section-scroll .scrollable-content {
-        padding-top: calc(var(--spacing-md) + var(--titlebar-area-height, 0px));
-    }
-
     .titlebar-mac #manualModal:not(.hidden):not(.windowed) .manual-modal-preview-section,
     .titlebar-windows #manualModal:not(.hidden):not(.windowed) .manual-modal-preview-section,
     .titlebar-android #manualModal:not(.hidden):not(.windowed) .manual-modal-preview-section {
@@ -229,12 +225,14 @@ body:not(.desktop-mode) #manualModal #unmaximizeManualBtn,
     }
 
     /* Priority-based margin-left: manualPresetGroup when directorContainer is hidden but manualPresetGroup is visible */
-    .titlebar-mac #manualModal:not(.hidden):not(.windowed):not(:has(#directorContainer:not(.hidden))):has(#manualPresetGroup:not(.hidden)) #manualPresetGroup {
+    .titlebar-mac #manualModal:not(.hidden):not(.windowed):not(:has(#directorContainer:not(.hidden))):has(#manualPresetGroup:not(.hidden)) #manualPresetGroup,
+    .titlebar-android #manualModal:not(.hidden):not(.windowed):not(:has(#directorContainer:not(.hidden))):has(#manualPresetGroup:not(.hidden)) #manualPresetGroup {
         margin-left: var(--titlebar-area-x);
     }
 
     /* Priority-based margin-left: prompt-tabs when neither directorContainer nor manualPresetGroup are visible */
-    .titlebar-mac #manualModal:not(.hidden):not(.windowed):not(:has(#directorContainer:not(.hidden))):not(:has(#manualPresetGroup:not(.hidden))) .scrollable-content .prompt-tabs .tab-header {
+    .titlebar-mac #manualModal:not(.hidden):not(.windowed):not(:has(#directorContainer:not(.hidden))):not(:has(#manualPresetGroup:not(.hidden))) .scrollable-content .prompt-tabs .tab-header,
+    .titlebar-android #manualModal:not(.hidden):not(.windowed):not(:has(#directorContainer:not(.hidden))):not(:has(#manualPresetGroup:not(.hidden))) .scrollable-content .prompt-tabs .tab-header {
         margin-left: var(--titlebar-area-x);
     }
 

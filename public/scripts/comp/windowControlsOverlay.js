@@ -101,6 +101,67 @@ function updateAndroidCaptionDragRegion() {
     }
 }
 
+// Android caption bar: touches there drag the window unless they land in an interactive rect.
+// Every visible [data-caption-interactive] control whose box reaches into the band is sent as one
+// rect (CSS px, viewport-relative), clipped to the band. Only controls are marked, so the gaps
+// between them stay draggable. A control is skipped when something else is on top of it, since
+// a touch there would not reach it anyway. "[]" clears the rects.
+let lastCaptionInteractiveJson = null;
+let captionRegionsFrame = 0;
+
+function collectCaptionInteractiveRects() {
+    const root = document.documentElement;
+    if (!root.classList.contains('titlebar-android')) return [];
+    const band = parseFloat(getComputedStyle(root).getPropertyValue('--caption-bar-height')) || 0;
+    if (band <= 0) return [];
+
+    const vw = window.innerWidth;
+    const rects = [];
+    for (const el of document.querySelectorAll('[data-caption-interactive]')) {
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) continue;
+        const top = Math.max(0, r.top);
+        const bottom = Math.min(band, r.bottom);
+        const left = Math.max(0, r.left);
+        const right = Math.min(vw, r.right);
+        if (bottom <= top || right <= left) continue;
+        if (typeof el.checkVisibility === 'function'
+            && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+        const hit = document.elementFromPoint((left + right) / 2, (top + bottom) / 2);
+        if (!hit || (hit !== el && !el.contains(hit))) continue;
+        rects.push({
+            x: Math.floor(left),
+            y: Math.floor(top),
+            width: Math.ceil(right) - Math.floor(left),
+            height: Math.ceil(bottom) - Math.floor(top)
+        });
+    }
+    return rects;
+}
+
+function syncCaptionRegions() {
+    if (!window.AndroidCaption?.setInteractiveRegion) return;
+    const json = JSON.stringify(collectCaptionInteractiveRects());
+    if (json === lastCaptionInteractiveJson) return;
+    try {
+        window.AndroidCaption.setInteractiveRegion(json);
+        lastCaptionInteractiveJson = json;
+    } catch (e) {
+        console.warn('📱 AndroidCaption.setInteractiveRegion failed:', e);
+    }
+}
+
+// Coalesce bursts (scroll, mutations, transitions) into one measure per frame.
+function scheduleCaptionRegionsSync() {
+    if (!window.AndroidCaption?.setInteractiveRegion || captionRegionsFrame) return;
+    captionRegionsFrame = requestAnimationFrame(() => {
+        captionRegionsFrame = 0;
+        syncCaptionRegions();
+    });
+}
+
+window.syncCaptionRegions = syncCaptionRegions;
+
 // Native Android caption button chrome (not in-app .modal-window-controls).
 // Maximized caption/gutter blackout: public/css/app.css (html.has-maximized-* flags from rootStateFlags.js on #titlebar-grab-area-container).
 // Rules:
@@ -234,6 +295,8 @@ function applyWindowControlsOverlayClasses() {
 
     // Update the Android drag region whenever overlay state changes
     updateAndroidCaptionDragRegion();
+    // --caption-bar-* changed or the overlay toggled: interactive rects move with it
+    scheduleCaptionRegionsSync();
 }
 
 // Caption-bar-driven layout often receives --caption-bar-* from the host one frame after resize;
@@ -377,6 +440,46 @@ if (handleEl) {
     new ResizeObserver(() => {
         updateAndroidCaptionDragRegion();
     }).observe(handleEl);
+}
+
+// Interactive caption rects: re-measure whenever the band, the toolbar or the controls in it move.
+// Only wired when the host has the bridge, so browsers and older app builds pay nothing.
+if (window.AndroidCaption?.setInteractiveRegion) {
+    const toolbar = document.getElementById('titlebar-grab-area-container');
+
+    const resizeObserver = new ResizeObserver(scheduleCaptionRegionsSync);
+    resizeObserver.observe(document.documentElement);
+    if (toolbar) resizeObserver.observe(toolbar);
+
+    // Items added, removed, shown or hidden in the toolbar, and around each marked control
+    // (e.g. #manualPresetGroup toggling .hidden). html/body/#manualModal class flips cover the
+    // Studio opening, closing, maximizing and going windowed.
+    const visibilityAttrs = ['class', 'style', 'hidden'];
+    const mutationObserver = new MutationObserver(scheduleCaptionRegionsSync);
+    if (toolbar) {
+        mutationObserver.observe(toolbar, { childList: true, subtree: true, attributes: true, attributeFilter: visibilityAttrs });
+    }
+    const hosts = new Set();
+    document.querySelectorAll('[data-caption-interactive]').forEach((el) => {
+        if (el.parentElement) hosts.add(el.parentElement);
+    });
+    hosts.forEach((host) => {
+        mutationObserver.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: visibilityAttrs });
+    });
+    [document.documentElement, document.body, document.getElementById('manualModal')].forEach((el) => {
+        if (el) mutationObserver.observe(el, { attributes: true, attributeFilter: visibilityAttrs });
+    });
+
+    // Scrolled content and finished slide/fade transitions change rects without a resize.
+    document.addEventListener('scroll', scheduleCaptionRegionsSync, { capture: true, passive: true });
+    document.addEventListener('transitionend', scheduleCaptionRegionsSync, true);
+    document.addEventListener('animationend', scheduleCaptionRegionsSync, true);
+    // The host rewrites --caption-bar-* after a window resize; the :root style observer above
+    // catches that, and this catches resizes where only the viewport changed.
+    window.addEventListener('resize', scheduleCaptionRegionsSync);
+    window.addEventListener('load', scheduleCaptionRegionsSync);
+
+    syncCaptionRegions();
 }
 
 // Expose utility function for external access (always available)

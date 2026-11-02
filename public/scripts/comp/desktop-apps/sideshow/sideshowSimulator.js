@@ -603,6 +603,7 @@
             if (Number.isFinite(Number(src.poolSize))) this.settings.poolSize = Math.min(1000000, Math.max(0, Math.round(Number(src.poolSize))));
             if (typeof src.shuffle === 'boolean') this.settings.shuffle = src.shuffle;
             if (typeof src.pairPortraits === 'boolean') this.settings.pairPortraits = src.pairPortraits;
+            if (Number.isFinite(Number(src.orientationMix))) this.settings.orientationMix = Math.min(100, Math.max(0, Math.round(Number(src.orientationMix))));
             if (OVERLAYS.has(src.infoOverlay)) this.settings.infoOverlay = src.infoOverlay;
             this.save();
         }
@@ -623,7 +624,15 @@
                     const src = d.settings || {};
                     const sourceChanged = JSON.stringify([this.settings.viewType, this.settings.poolSize]) !== before
                         || 'workspaces' in src || 'maxAgeDays' in src || 'search' in src;
-                    if (this.screen === 'gadget') {
+                    // a new portrait/landscape mix: back to the first picture, and a new seed so the shuffle restarts
+                    if ('orientationMix' in src) {
+                        this.seed = String(Math.floor(Math.random() * 2147483647) + 1);
+                        this.total = 0;
+                        this.images = [];
+                        this.pages.clear();
+                        this.pos = 0;
+                        if (this.screen === 'gadget') void this.loadImages({ keepSeed: true });
+                    } else if (this.screen === 'gadget') {
                         if (sourceChanged) void this.loadImages();
                         else { this.render(); this.arm(); }
                     }
@@ -670,14 +679,14 @@
          * the simulator holds a window of it: 50 names a page, the next page asked for a few pictures
          * ahead, each picture loaded only when it is shown (and the next two prefetched).
          */
-        async loadImages() {
+        async loadImages(opts) {
             this.loading = true;
             this.render();
             this.images = [];
             this.pages.clear();
             this.total = 0;
             this.pos = 0;
-            this.seed = this.settings.shuffle ? String(Math.floor(Math.random() * 2147483647) + 1) : '';
+            if (!(opts && opts.keepSeed)) this.seed = this.settings.shuffle ? String(Math.floor(Math.random() * 2147483647) + 1) : '';
             await this.fetchPage(0);
             this.loading = false;
             this.render();
