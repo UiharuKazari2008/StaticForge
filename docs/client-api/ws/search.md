@@ -276,7 +276,7 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `autofillSessionId` | Optional |
 | `spellCheckText` | Optional |
 | `isContinuation` | Optional |
-| `autofillSettings` | Optional |
+| `autofillSettings` | Optional. Includes `spellcheckSoundAlike` (default true): when false, spellcheck skips sound-alike suggestions (#693) |
 | `modelMode` | Optional |
 | `includes` | Optional |
 
