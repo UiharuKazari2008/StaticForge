@@ -2696,14 +2696,6 @@ function initializeWorkspaceSystem() {
     });
 
     // Modal close events
-    document.getElementById('closeWorkspaceEditBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        hideWorkspaceEditModal();
-    });
-    document.getElementById('closeWorkspaceDumpBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        hideWorkspaceDumpModal();
-    });
     document.getElementById('workspaceCancelBtn')?.addEventListener('click', (e) => {
         e.preventDefault();
         hideWorkspaceEditModal();
@@ -2713,13 +2705,7 @@ function initializeWorkspaceSystem() {
         hideWorkspaceDumpModal();
     });
 
-
-
     // Bulk change preset modal events
-    document.getElementById('closeBulkChangePresetBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        closeModal(document.getElementById('bulkChangePresetModal'));
-    });
     document.getElementById('bulkChangePresetCancelBtn')?.addEventListener('click', (e) => {
         e.preventDefault();
         closeModal(document.getElementById('bulkChangePresetModal'));
