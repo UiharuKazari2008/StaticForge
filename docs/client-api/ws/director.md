@@ -25,6 +25,7 @@ Persona names: the protocol keeps the ids `wren`, `kabuki`, and `xi` (and this p
 | `director_custom_providers_balance` | `director_custom_providers_balance_response` | session (admin data) | Balances for the engine pickers and CardSpace. Optional `engine` (`tokenrouter` or `custom:<id>`) asks for one; without it, TokenRouter plus every custom engine. `{ balances: [{ id, engine, name, kind, state, balance, currency, balanceText, title, granted?, toppedUp?, recent?, monthSpend?, limit?, suspended?, freeTier?, rateLimit? }] }`. Restricted users get `balances: []`. See [Provider balances](#provider-balances). |
 | `director_get_session` | `director_get_session_response` | session | Handler: handleDirectorGetSession |
 | `director_get_sessions` | `director_get_sessions_response` | session | Handler: handleDirectorGetSessions. `persona: "kabuki"` lists the Obliterated Memories chats, `wren` the others. See [Kabuki](#kabuki). |
+| `director_move_session` | `director_move_session_response` | admin/destructive | `{ sessionId, workspaceId }` re-pairs one chat to a known workspace and returns `{ session }`. Unknown ids fail with `WORKSPACE_NOT_FOUND` or `SESSION_NOT_FOUND`. See [Workspace ownership and handoffs](#workspace-ownership-and-handoffs). |
 | `director_open_workspace` | `director_open_workspace_response` | admin/destructive | Opens the Cursor chat for the current workspace, or creates one. |
 | `director_load_feedback` | `director_load_feedback_response` | session | Handler: handleDirectorLoadFeedback |
 | `director_load_rules` | `director_load_rules_response` | session | Handler: handleDirectorLoadRules |
@@ -35,6 +36,7 @@ Persona names: the protocol keeps the ids `wren`, `kabuki`, and `xi` (and this p
 | `director_reinstall` | `director_reinstall_response` | admin/destructive | Deletes and rebuilds `computer/`. Aborts running turns. Chats and prompt-guide work survive. |
 | `director_rollback_message` | `director_rollback_message_response` | admin/destructive | Handler: handleDirectorRollbackMessage |
 | `director_recycle_session` | `director_recycle_session_response` | admin/destructive | Wren only. Next turn starts a fresh Cursor chat with no transcript replay. Refused with `DIRECTOR_BUSY` while a turn runs or a resume is pending. |
+| `director_nuke_session` | `director_nuke_session_response` | admin/destructive | Keeps the visible chat, recycles its engine chat and deletes the old Cursor chat store, so the next turn starts blank. Refused with `DIRECTOR_BUSY` while a turn runs or a resume is pending; unknown ids fail with `SESSION_NOT_FOUND`. |
 | `director_repair_session` | `director_repair_session_response` | admin/destructive | Wren only. Starts Auto-Repair for `sessionId` with an optional `note`; answers at once (`started: true`), then broadcasts `director_repair_progress` and the `director_session_repair` divider card. See [Auto-Repair Session](#auto-repair-session). |
 | `director_learned_list` | `director_learned_list_response` | session | `{ rules, proposals }`: Wren's learned rules and the Auto-Repair proposals (newest first). |
 | `director_learned_decide` | `director_learned_decide_response` | admin/destructive | `{ id, decision: "approve" or "reject", text? }`. `text` replaces the proposed text. An approved rule joins Wren's rules; an approved guide change is written into the prompt guide work clone (not committed). |
@@ -48,6 +50,9 @@ Persona names: the protocol keeps the ids `wren`, `kabuki`, and `xi` (and this p
 | `director_streaming_ack` | — | session | Client ack of `director_streaming_update.data.seq`. The server holds the next snapshot until this ack or a deadline scaled from client RTT. |
 | `ledge_checks` | — | session | `{ sessionId, checked: [itemId] }` from the Ledge desk. Server broadcasts `ledge_state`. |
 | `director_tool_diff` | `director_tool_diff_response` | session | `{ sessionId, diffId, persona: "xi" }` → `{ text, name, detail }`. The live trace does not include that body. |
+| `director_tool_payload` | `director_tool_payload_response` | session | `{ sessionId, payloadId }` (or `diffId`) returns a parked tool body: `{ args, result, text, name, detail }`. The public trace omits `args` / `result`; the inspector requests them on demand. |
+| `request_form_submit` | — | session | Client reply to an MCP `request_form` broadcast: `{ id | formId, values, cancelled }`. It settles the pending form waiter; no response packet is sent. |
+| `director_workspace_switch_result` | — | session | Client reply to a `request_workspace_switch` card: `{ id | switchId, status }` where `status` is `accepted`, `declined`, or `timeout`. No response packet is sent. |
 | `director_rentan_agent_get` | `director_rentan_agent_get_response` | session | Rentan's saved default engine and model: `{ default, fallback }`. `default` is `{ engine, model, effort, fast }` or null (then `fallback`, Cursor at medium, applies). See [Rentan engine and model](#rentan-engine-and-model). |
 | `director_rentan_agent_set_default` | `director_rentan_agent_set_default_response` | admin/destructive | `{ agent: { engine, model, effort, fast } }` saves the default for every Rentan turn; `{ clear: true }` removes it. Broadcasts `director_rentan_agent_default_changed` with the same `data`. |
 
@@ -180,6 +185,31 @@ Broadcast when the agent names the chat with `set_session_title`.
 ```json
 { "type": "director_session_renamed", "data": { "sessionId": "<chat id>", "name": "Convert the Rapi set to V5" }, "timestamp": "<ISO-8601>" }
 ```
+
+## Workspace ownership and handoffs
+
+Director sessions carry a `workspaceId` so chat history, image search, and Studio work stay scoped to the workspace the chat belongs to instead of whichever workspace the user happens to have open later.
+
+- `director_open_workspace` sends the active `workspaceId`, optional `previewFilename`, optional `directorSessionId`, and optional `preferredChatId`. The server returns the best matching chat in the requested persona tab, or `{ session: null, draft: true }` when the client should show a new unsaved draft.
+- `director_create_session` also accepts `workspaceId`. A blank draft becomes paired to the active workspace on first send; an existing session does **not** move just because the user switches workspaces before sending again.
+- `director_move_session` is the explicit move path from the session-list context menu. The server validates the target through the workspace manager, writes `chat.workspaceId`, and returns the updated public session.
+- Session rows show a workspace dot when a chat has `workspaceId`. If the open chat belongs to a different workspace than the active one, `#directorWorkspaceBanner` says which workspace owns it and the banner button calls the normal workspace switcher.
+- The desktop window follows the chat's workspace visually. In regular scoped UI the Director sets `data-workspace` on the window or chat root. On the Vista desktop, full workspace scoping would fight the light window chrome, so `director.js` copies only the compiled workspace accent variables (buttons, chips, toggles, links, and bar tint) and caches that small variable set by workspace/color/theme state.
+
+Agents have two user-facing workspace tools through `modules/mcpAgentFacade.js`:
+
+- `offer_workspace_switch { workspaceId, reason }` appends a persistent `workspace-offer` card and broadcasts `director_workspace_offer`. Clicking the card opens that workspace, but the tool response warns the agent to keep passing `workspace` explicitly on later calls.
+- `request_workspace_switch { reason }` uses the chat's paired workspace, appends a `workspace-switch` card, and waits up to 90 seconds. The client sends `director_workspace_switch_result`; timeout is treated as declined. Accepted switches let the agent use Studio tools, while declined/timeout means it must avoid Studio and keep to workspace-safe tools such as Glancewell, Lumen, and `show_chat_image`.
+
+## Tool payloads, forms, and the inspector
+
+Trace rows intentionally keep large or sensitive tool bodies off the public message payload. `publicTraceRow()` removes `args` / `result` from tool rows and rows with parked diffs, leaving ids and short details for the UI.
+
+- Wren rows with parameters or results receive `payloadId` / `hasPayload`. `parkToolBodies()` keeps bodies in memory (evicting past 400 rows or 25 MiB) and, when the session has a folder, persists them under `chats/<session>/payloads/` until that folder reaches 64 MiB. Individual args/results are clipped by `TOOL_PAYLOAD_MAX` (512 KiB) before parking.
+- `director_tool_payload` reads `{ sessionId, payloadId }` from memory or disk and returns `{ args, result, text, name, detail }`. Passing `diffId` also works, and the handler falls back to Xi's parked diff reader.
+- Xi edit tools and any Xi tool body over 500 characters use `diffId` / `hasDiff`; `director_tool_diff` returns the parked text for the Diff / Output button. Use `director_tool_payload` when the UI needs the structured inspector shape, and `director_tool_diff` when it only needs the raw text.
+- `public/scripts/comp/directorToolInspector.js` is loaded before `director.js`. `openToolPayload()` requests the parked body when a row has `payloadId` or `diffId`, then opens a light Vista window with Input, Output, and Raw tabs. The inspector unwraps MCP `{ content: [...] }` results, repairs truncated JSON where possible, shows gallery/image data as images, marks error results, and keeps the Raw tab copyable.
+- MCP `request_form` broadcasts a `request_form` packet with normalized fields (`text`, `textmulti`, `prompt`, `bool`, `select`, `int`, `number`). When `chatId` matches the open Director chat, `requestForm.js` mounts it inline; otherwise it opens `#requestFormWindow`. The client answers with `request_form_submit`; one MCP wait lasts 45 seconds, the form stays pending for up to 30 minutes, and `pending: true` tells the agent to call `request_form { formId }` again without resending fields.
 
 ### Prompt guide draft flow
 
