@@ -86,7 +86,7 @@ Documented in [docs/ANDROID_BRIDGE.md](../ANDROID_BRIDGE.md):
 | `AndroidPersistentNotification` | Foreground service notification |
 | `AndroidBlobSave` | Save blob URLs to storage |
 | `AndroidBackgroundRefresh` | Poll `GET /android/background-notification` |
-| `AndroidPhoneStorage` | Phone storage as a drive in Cartograph (Explorer): browse, thumbnails, upload in chunks, folder watches. Wrapped by `public/scripts/comp/phoneStorageBridge.js` (`phoneStorage`, a no-op in a browser), UI in `explorerPhoneDrive.js`. Tests `scripts/test-phone-storage-bridge.js`, `scripts/test-explorer-phone-drive.js`. Yozora #698. |
+| `AndroidPhoneStorage` | Phone storage as a drive in Cartograph (Explorer): browse, thumbnails, upload in chunks, folder watches. Phone files open in Dreamscape's own apps by Default Programs (Lumen with the folder's pictures, Media Player, Notepad saving back through the bridge, a pdf.js Document Viewer from `public/dist/pdfjs`); the bridge's `open` (Android's app) is only the explicit "Open in Android app" item. Recent Items keeps `{ root, path }`, never the per-launch file URL. Wrapped by `public/scripts/comp/phoneStorageBridge.js` (`phoneStorage`, a no-op in a browser), UI in `explorerPhoneDrive.js`. Tests `scripts/test-phone-storage-bridge.js`, `scripts/test-explorer-phone-drive.js`. Yozora #698. |
 
 Only relevant when embedding the PWA in DreamScape Android WebView.
 
