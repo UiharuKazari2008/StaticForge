@@ -18,10 +18,12 @@
  * them in HKCU\Software\Microsoft\Notepad).
  *
  * Documents: a note (Melaton's notes, as before), a text file in the VFS (this.file: { id, name,
- * path }), or Untitled. Save on Untitled asks for a file with the Save As dialog
+ * path }), a text file on the phone (this.file.phone, explorerPhoneDrive.js: read from its file URL,
+ * saved back through the bridge), or Untitled. Save on Untitled asks for a file with the Save As dialog
  * (studioSession.js studioOpenFolderDialog); a note window made with New Note still saves a note.
  *
  *   notepadVista.openFile(item, folderPath)   a VFS user file (Cartograph's Open, Default Programs)
+ *   notepadVista.openPhoneFile(src, label)    a phone file source { kind: 'phone', root, path, name, ... }
  *   notepadVista.openBlank()                  Accessories > Notepad
  */
 (function (root) {
@@ -340,6 +342,12 @@
 
     proto.writeFile = async function (text) {
         try {
+            if (this.file.phone) {
+                // writeBegin (Replace) / chunks / writeEnd: explorerPhoneDrive.js writeText
+                await root.explorerPhoneDrive.writeText(this.file.phone, text, 'text/plain');
+                this.markAsSaved();
+                return true;
+            }
             const res = await vfs().replaceFile(this.file.id, utf8ToBase64(text), 'text/plain');
             if (res && res.success === false) throw new Error(res.error || 'Could not save');
             this.markAsSaved();
@@ -770,6 +778,64 @@
         return np;
     }
 
+    /** A text file on the phone: its text from the file URL; Save writes it back to the phone. A
+        change made on the phone reloads the window, or warns when it has unsaved edits. */
+    async function openPhoneFile(src, label) {
+        const mgr = root.notepadManager;
+        const drive = root.explorerPhoneDrive;
+        if (!mgr || !src || !drive) return null;
+        const already = Array.from(mgr.notepads.values()).find((n) => n.file && n.file.phone && n.file.phone.root === src.root && n.file.phone.path === src.path);
+        if (already) {
+            if (typeof root.bringModalToFront === 'function') root.bringModalToFront(already.element);
+            return already;
+        }
+        const read = async () => {
+            const r = await fetch(drive.sourceUrl(src), { cache: 'no-store' });
+            if (r.status === 423) throw new Error('The phone app is locked');
+            if (!r.ok) throw new Error(r.status === 404 ? 'The file is no longer on the phone' : `HTTP ${r.status}`);
+            return r.text();
+        };
+        let text = '';
+        try {
+            text = await read();
+        } catch (err) {
+            await message(`Cannot open ${src.name}.\n${(err && err.message) || ''}`, 'error');
+            return null;
+        }
+        const np = mgr.createBlankNotepad();
+        np.kind = 'file';
+        // no VFS id or folder: Save goes back to the phone, Save As offers a VFS folder
+        np.file = { id: null, name: src.name, path: '', phone: src, label: label || src.name };
+        np.note = null;
+        const box = np.textarea();
+        box.value = text;
+        box.setSelectionRange(0, 0);
+        np.hasUnsavedChanges = false;
+        np.updateTitle();
+        np.updateStatus();
+        if (np.element) np.element.title = label || src.name;
+        const stop = drive.trackDocument(src, async (kind) => {
+            if (!np.file || np.file.phone !== src) { stop(); return; }
+            if (kind === 'deleted') {
+                await message(`${src.name} was deleted on the phone.\nSave keeps your text by writing the file again.`, 'warning');
+                return;
+            }
+            if (np.hasUnsavedChanges) {
+                await message(`${src.name} was changed on the phone.\nYour unsaved changes are kept; saving replaces the phone's copy.`, 'warning');
+                return;
+            }
+            try {
+                const fresh = await read();
+                const at = box.selectionStart;
+                box.value = fresh;
+                box.setSelectionRange(Math.min(at, fresh.length), Math.min(at, fresh.length));
+                np.hasUnsavedChanges = false;
+                np.updateStatus();
+            } catch (_err) { /* the next change tries again */ }
+        }, () => !!(np.element && np.element.isConnected && np.file && np.file.phone === src));
+        return np;
+    }
+
     // Notion's New Note still makes a note (it saves to Melaton's notes, as before)
     const MgrProto = root.notepadManager && Object.getPrototypeOf(root.notepadManager);
     if (MgrProto && !MgrProto.__vistaNewNote) {
@@ -784,7 +850,7 @@
     }
 
     root.notepadVista = {
-        openBlank, openFile, isTextItem, askSave, message,
+        openBlank, openFile, openPhoneFile, isTextItem, askSave, message,
         findState: { what: '', with: '', word: false, matchCase: false, down: true }
     };
 })(typeof window !== 'undefined' ? window : globalThis);

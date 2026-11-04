@@ -73,3 +73,50 @@
     color: #5a6779;
     word-break: break-word;
 }
+
+/* the Document Viewer (a phone PDF or text in Dreamscape, explorerPhoneDrive.js openDocumentViewer) */
+.explorer-phone-doc-client {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    background: #fff;
+}
+
+.explorer-phone-doc-frame {
+    flex: 1 1 auto;
+    width: 100%;
+    border: 0;
+    background: #fff;
+}
+
+/* pdf.js pages on Vista's grey, as Photo Gallery and IE show a document */
+.explorer-phone-pdf {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 12px;
+    background: #ababab;
+    -webkit-overflow-scrolling: touch;
+}
+
+.explorer-phone-pdf-page {
+    position: relative;
+    width: 100%;
+    margin: 0 0 12px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    contain: layout paint;
+}
+
+.explorer-phone-pdf-page canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.explorer-phone-pdf-status {
+    padding: 24px;
+    color: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}

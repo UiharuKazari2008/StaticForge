@@ -43,6 +43,12 @@
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    /** showConfirmationDialog renders a message with tags as HTML: always escaped, lines kept. */
+    function confirmDialog(text, options) {
+        if (typeof root.showConfirmationDialog !== 'function') return Promise.resolve(null);
+        return root.showConfirmationDialog(`<p>${esc(text).replace(/\n/g, '<br>')}</p>`, options);
+    }
+
     function toast(type, message) {
         if (typeof root.showGlassToast === 'function') root.showGlassToast(type, 'Phone', message, false, type === 'error' ? 6000 : 4000);
     }
@@ -250,6 +256,7 @@
         if (bound || !available()) return;
         bound = true;
         PS().on('changed', (m) => {
+            if (documents.size) void checkDocuments(m.root, m.path || '/');
             apps.forEach((app) => {
                 if (!isPath(app.currentPath)) return;
                 const here = parse(app.currentPath);
@@ -407,11 +414,372 @@
             await restore(app, [item]);
             return;
         }
-        try {
-            await PS().call('open', { root: item.phone.root, path: item.phone.path, chooser: !!chooser });
-        } catch (err) {
-            toast('error', errText(err));
+        if (chooser === 'android') {
+            try {
+                await PS().call('open', { root: item.phone.root, path: item.phone.path, chooser: true });
+            } catch (err) {
+                toast('error', errText(err));
+            }
+            return;
         }
+        if (chooser) {
+            await openWith(app, item);
+            return;
+        }
+        await openInApp(app, item, programFor(item.name, item.mimeType));
+    }
+
+    // ---- phone files in Dreamscape's own apps ----------------------------------------------------
+
+    // Default Programs (cplPages.js PROGRAMS, HKCU\...\Explorer\FileExts): the same associations
+    // a VFS file follows. A phone file is a source, never copied into the VFS first:
+    //   { kind: 'phone', root, path, name, size, mime, mtime }
+    // read from its file URL (rebuilt from hello() each launch, never stored), saved back with
+    // writeBegin / chunks / writeEnd (phoneStorage.write).
+    const ASSOC = 'HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\Explorer\\FileExts';
+    const PROGRAMS = {
+        lumen: { name: 'Lumen', icon: '/static_images/app_icons/32/vista-photo-viewer.webp' },
+        'media-player': { name: 'Melaton Media Player', icon: '/static_images/app_icons/32/media_player.webp' },
+        notepad: { name: 'Notepad', icon: '/static_images/app_icons/32/vista-notepad.webp' },
+        paint: { name: 'Paint', icon: '/static_images/app_icons/32/vista-paint.webp' },
+        viewer: { name: 'Document Viewer', icon: '/static_images/app_icons/32/vista-explorer.webp' }
+    };
+    const TEXT_EXT = /\.(txt|log|ini|inf|cfg|conf|json|md|csv|tsv|xml|html?|css|js|ts|py|sh|bat|cmd|yml|yaml|srt|nfo)$/i;
+
+    function extOf(name) {
+        const m = String(name || '').match(/\.[a-z0-9]+$/i);
+        return m ? m[0].toLowerCase() : '';
+    }
+
+    /** What a file is, for the default program: image | media | text | pdf | other. */
+    function kindOf(name, mime) {
+        const type = String(mime || '').toLowerCase();
+        if (type.startsWith('image/')) return 'image';
+        if (type.startsWith('audio/') || type.startsWith('video/')) return 'media';
+        if (type === 'application/pdf' || extOf(name) === '.pdf') return 'pdf';
+        if (type.startsWith('text/') || /json|xml|javascript/.test(type) || TEXT_EXT.test(name || '')) return 'text';
+        if (/^\.(jpe?g|png|gif|webp|bmp|heic|avif)$/.test(extOf(name))) return 'image';
+        if (/^\.(mp4|webm|mkv|mov|3gp|mp3|m4a|aac|ogg|opus|wav|flac)$/.test(extOf(name))) return 'media';
+        return 'other';
+    }
+
+    /** The program for a file: the user's association (Default Programs) or the type's default. */
+    function programFor(name, mime) {
+        const reg = root.melatonRegistry;
+        const assoc = reg ? reg.get(ASSOC, extOf(name), '') : '';
+        if (assoc && PROGRAMS[assoc]) return assoc;
+        return { image: 'lumen', media: 'media-player', text: 'notepad', pdf: 'viewer' }[kindOf(name, mime)] || null;
+    }
+
+    function sourceOf(item) {
+        return { kind: 'phone', root: item.phone.root, path: item.phone.path, name: item.name, size: item.size || 0, mime: item.mimeType || item.phone.mime || '', mtime: item.modifiedAt || 0 };
+    }
+
+    /** "Phone › Internal storage/DCIM/Camera/a.jpg" for titles and Recent Items. */
+    function sourceLabel(src) {
+        return `${phoneName()} \u203a ${rootName(src.root)}${src.path}`;
+    }
+
+    function sourceUrl(src) {
+        return PS().fileUrl(src.root, src.path);
+    }
+
+    /** Recent Items keeps { root, path } only (the file URL's token changes every launch). */
+    function noteRecent(src) {
+        const ri = root.recentItems;
+        if (!ri || typeof ri.add !== 'function') return;
+        ri.add({
+            kind: 'phone',
+            key: `${src.root}:${src.path}`,
+            title: src.name,
+            sub: `${phoneName()} \u203a ${rootName(src.root)}${PS().parentPath(src.path) === '/' ? '' : PS().parentPath(src.path)}`,
+            data: { root: src.root, path: src.path, name: src.name, mime: src.mime }
+        });
+    }
+
+    /** A Recent Items entry again: stat it (the drive may be gone or sharing off), then its program. */
+    async function openRecent(data) {
+        const st = await ensureState();
+        if (!data || !data.root || blocker(st) || !rootInfo(data.root)) {
+            toast('error', "Phone storage isn't available");
+            return false;
+        }
+        let entry;
+        try {
+            entry = await PS().call('stat', { root: data.root, path: data.path });
+        } catch (err) {
+            toast('error', err && err.code === 'not_found' ? `${data.name || 'The file'} is no longer on the phone` : "Phone storage isn't available");
+            return false;
+        }
+        const item = entryToItem(data.root, entry);
+        await openInApp(null, item, programFor(item.name, item.mimeType));
+        return true;
+    }
+
+    /** The folder's pictures for Lumen's Previous / Next (the window's list when it shows that folder). */
+    async function siblingPictures(app, src) {
+        const dir = PS().parentPath(src.path);
+        let items = app && isPath(app.currentPath) && parse(app.currentPath).root === src.root && parse(app.currentPath).path === dir
+            ? (app.items || [])
+            : null;
+        if (!items) {
+            try {
+                const res = await PS().call('list', { root: src.root, path: dir });
+                items = (res.entries || []).filter((e) => shownHidden() || !e.hidden).map((e) => entryToItem(src.root, e));
+                items = sortItems(items, app ? app.sortField : 'name', app ? app.sortDirection : 'asc');
+            } catch (_err) {
+                items = [];
+            }
+        }
+        const rows = [];
+        items.filter((i) => i.phone && !i.phone.dir && kindOf(i.name, i.mimeType) === 'image').forEach((i) => {
+            const s = sourceOf(i);
+            rows.push({ url: sourceUrl(s), base: sourceLabel(s), title: i.name, phoneSource: s, siblings: rows });
+        });
+        return rows;
+    }
+
+    async function openInApp(app, item, program) {
+        const src = sourceOf(item);
+        const url = sourceUrl(src);
+        const label = sourceLabel(src);
+        try {
+            switch (program) {
+                case 'lumen': {
+                    const rows = await siblingPictures(app, src);
+                    let row = rows.find((r) => r.phoneSource.path === src.path);
+                    if (!row) {
+                        row = { url, base: label, title: item.name, phoneSource: src, siblings: rows };
+                        rows.push(row);
+                    }
+                    // openImageInViewer: public/scripts/comp/imageViewer.js (Lumen); the row carries
+                    // the folder's pictures for Previous / Next (metadata.siblings)
+                    root.openImageInViewer(url, label, row);
+                    break;
+                }
+                case 'media-player':
+                    await root.featureLoader.loadFeature('media_player');
+                    // openDesktopMediaPlayerUrl: public/scripts/comp/desktop-apps/mediaPlayer.js
+                    root.openDesktopMediaPlayerUrl(url, item.name);
+                    break;
+                case 'notepad':
+                    if (typeof root.loadNotepadManager === 'function') await root.loadNotepadManager();
+                    else if (root.featureLoader) await root.featureLoader.loadFeature('notepad');
+                    if (!root.notepadVista || typeof root.notepadVista.openPhoneFile !== 'function') throw { code: 'no_app', message: 'Notepad is not available' };
+                    await root.notepadVista.openPhoneFile(src, label);
+                    break;
+                case 'paint':
+                    await root.featureLoader.loadFeature('paint');
+                    if (root.openMelatonPaint) root.openMelatonPaint({ image: url, name: item.name });
+                    break;
+                case 'viewer':
+                    openDocumentViewer(src, label);
+                    break;
+                default:
+                    await openWith(app, item);
+                    return;
+            }
+            noteRecent(src);
+        } catch (err) {
+            showError(err);
+        }
+    }
+
+    /** Open With: Dreamscape's programs, the type's own first; Android's app is the last choice. */
+    async function openWith(app, item) {
+        if (typeof root.showConfirmationDialog !== 'function') return;
+        const kind = kindOf(item.name, item.mimeType);
+        const fits = { image: ['lumen', 'paint'], media: ['media-player'], text: ['notepad'], pdf: ['viewer'], other: ['notepad', 'viewer'] }[kind];
+        const order = [...new Set([programFor(item.name, item.mimeType), ...fits].filter(Boolean))];
+        const options = order.map((id, i) => ({ text: PROGRAMS[id].name, value: id, className: i === 0 ? 'btn-primary' : 'btn-secondary' }));
+        options.push({ text: 'Android app…', value: 'android', className: 'btn-secondary' });
+        options.push({ text: 'Cancel', value: null, className: 'btn-secondary' });
+        const intro = programFor(item.name, item.mimeType) ? 'Choose the program you want to use to open this file:' : 'Dreamscape has no program set for this type of file. Choose one to open it with:';
+        const choice = await confirmDialog(`${intro}\n\n${item.name}`, options);
+        if (!choice) return;
+        if (choice === 'android') await open(app, item, 'android');
+        else await openInApp(app, item, choice);
+    }
+
+    /** PDFs (and anything a frame shows) in a Vista window of their own, read from the file URL. */
+    function openDocumentViewer(src, label) {
+        const key = `${src.root}:${src.path}`;
+        const id = `phoneDocViewer_${key.replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 120);
+        const existing = document.getElementById(id);
+        if (existing) {
+            if (typeof root.bringModalToFront === 'function') root.bringModalToFront(existing);
+            return;
+        }
+        const modal = document.createElement('div');
+        modal.id = id;
+        modal.className = 'modal resizeable-window explorer-phone-doc-window hidden';
+        modal.dataset.windowClient = 'light';
+        modal.dataset.windowIdentifier = 'phoneDocViewer';
+        modal.dataset.windowDefaultWidth = '720';
+        modal.dataset.windowDefaultHeight = '640';
+        modal.dataset.windowMinWidth = '320';
+        modal.dataset.windowMinHeight = '240';
+        // a child of Cartograph: its icon (window icon policy) and Dovecote's caption / controls markup
+        modal.dataset.iconOwnerId = 'explorerModal';
+        const isPdf = kindOf(src.name, src.mime) === 'pdf';
+        modal.innerHTML = `<div class="modal-window-title"><div class="modal-window-title-main"><i class="${isPdf ? 'fas fa-file-pdf' : 'fas fa-file-lines'} icon-fa" aria-hidden="true"></i><span>${esc(`${src.name} - Document Viewer`)}</span></div></div>
+            <div class="modal-focus-overlay"></div>
+            <div class="modal-window-controls">
+                <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize" aria-label="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
+                <button type="button" class="btn-danger close-btn btn-small" title="Close" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            </div>
+            <div class="modal-content win7 explorer-phone-doc-client" title="${esc(label)}">${isPdf
+                ? '<div class="explorer-phone-pdf" tabindex="0"><div class="explorer-phone-pdf-status">Opening…</div></div>'
+                : `<iframe class="explorer-phone-doc-frame" src="${esc(sourceUrl(src))}" title="${esc(label)}"></iframe>`}
+            </div>`;
+        document.body.appendChild(modal);
+        const close = modal.querySelector('.close-btn');
+        if (close) {
+            close.addEventListener('click', () => {
+                // closeModal: public/scripts/comp/modalUtils.js
+                const closing = typeof root.closeModal === 'function' ? root.closeModal(modal) : null;
+                Promise.resolve(closing).then(() => modal.remove());
+            });
+        }
+        if (typeof root.openModal === 'function') root.openModal(modal);
+        else modal.classList.remove('hidden');
+        const pdfHost = modal.querySelector('.explorer-phone-pdf');
+        if (pdfHost) void renderPdf(pdfHost, sourceUrl(src), modal);
+    }
+
+    // pdf.js (public/dist/pdfjs, pdfjs-dist 5.7.284): Android WebView has no PDF viewer of its own,
+    // so pages are drawn into canvases, each when it scrolls into view. The file URL serves byte
+    // ranges, so a large PDF is read as its pages are needed.
+    const PDFJS = '/dist/pdfjs';
+    let pdfjsPromise = null;
+
+    function loadPdfJs() {
+        if (!pdfjsPromise) {
+            pdfjsPromise = import(`${PDFJS}/pdf.min.mjs`).then((lib) => {
+                lib.GlobalWorkerOptions.workerSrc = `${PDFJS}/pdf.worker.min.mjs`;
+                return lib;
+            }, (err) => {
+                pdfjsPromise = null;
+                throw err;
+            });
+        }
+        return pdfjsPromise;
+    }
+
+    async function renderPdf(host, url, modal) {
+        const status = host.querySelector('.explorer-phone-pdf-status');
+        let pdf;
+        try {
+            const lib = await loadPdfJs();
+            pdf = await lib.getDocument({
+                url,
+                cMapUrl: `${PDFJS}/cmaps/`,
+                cMapPacked: true,
+                standardFontDataUrl: `${PDFJS}/standard_fonts/`
+            }).promise;
+        } catch (err) {
+            if (status) status.textContent = `This PDF could not be opened. ${(err && err.message) || ''}`;
+            return;
+        }
+        if (status) status.remove();
+        const dpr = Math.min(2, root.devicePixelRatio || 1);
+        const pages = [];
+        for (let n = 1; n <= pdf.numPages; n += 1) {
+            const box = document.createElement('div');
+            box.className = 'explorer-phone-pdf-page';
+            box.dataset.page = String(n);
+            host.appendChild(box);
+            pages.push(box);
+        }
+        const width = () => Math.max(200, host.clientWidth - 24);
+        // every page sized from the first one until it is drawn (most PDFs keep one page size)
+        try {
+            const first = await pdf.getPage(1);
+            const vp = first.getViewport({ scale: 1 });
+            pages.forEach((box) => { box.style.aspectRatio = `${vp.width} / ${vp.height}`; });
+        } catch (_err) { /* sized when drawn */ }
+        const draw = async (box) => {
+            if (box.dataset.drawn) return;
+            box.dataset.drawn = '1';
+            try {
+                const page = await pdf.getPage(Number(box.dataset.page));
+                const base = page.getViewport({ scale: 1 });
+                const vp = page.getViewport({ scale: (width() / base.width) * dpr });
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.floor(vp.width);
+                canvas.height = Math.floor(vp.height);
+                box.style.aspectRatio = `${base.width} / ${base.height}`;
+                box.appendChild(canvas);
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+            } catch (_err) {
+                box.dataset.drawn = '';
+            }
+        };
+        if (typeof IntersectionObserver === 'function') {
+            const io = new IntersectionObserver((entries) => {
+                entries.forEach((e) => { if (e.isIntersecting) void draw(e.target); });
+            }, { root: host, rootMargin: '400px 0px' });
+            pages.forEach((box) => io.observe(box));
+            // closed: let pdf.js and the observer go
+            const gone = new MutationObserver(() => {
+                if (modal.isConnected) return;
+                gone.disconnect();
+                io.disconnect();
+                void pdf.destroy();
+            });
+            gone.observe(document.body, { childList: true });
+        } else {
+            for (const box of pages) await draw(box);
+        }
+    }
+
+    // ---- open documents follow the phone (an editor's file changed or deleted there) -----------
+
+    const documents = new Set(); // { src, onChange(kind, entry) , alive() }
+
+    /** An app showing a phone file (Notepad): told when it changes ('changed') or goes ('deleted'). */
+    function trackDocument(src, onChange, alive) {
+        const doc = { src, onChange, alive: alive || (() => true) };
+        documents.add(doc);
+        void PS().watch(src.root, PS().parentPath(src.path));
+        bind();
+        return () => {
+            if (!documents.delete(doc)) return;
+            void PS().unwatch(src.root, PS().parentPath(src.path));
+        };
+    }
+
+    async function checkDocuments(rootId, dir) {
+        for (const doc of [...documents]) {
+            if (!doc.alive()) {
+                documents.delete(doc);
+                void PS().unwatch(doc.src.root, PS().parentPath(doc.src.path));
+                continue;
+            }
+            if (doc.src.root !== rootId || PS().parentPath(doc.src.path) !== (dir || '/')) continue;
+            try {
+                const entry = await PS().call('stat', { root: doc.src.root, path: doc.src.path });
+                const mtime = seconds(entry.mtime);
+                if (mtime && doc.src.mtime && mtime !== doc.src.mtime) {
+                    doc.src.mtime = mtime;
+                    doc.src.size = entry.size;
+                    doc.onChange('changed', entry);
+                }
+            } catch (err) {
+                if (err && err.code === 'not_found') doc.onChange('deleted', null);
+            }
+        }
+    }
+
+    /** An editor's Save: the text back into the same file (Replace), the source's mtime updated. */
+    async function writeText(src, text, mime) {
+        const blob = new Blob([text], { type: mime || 'text/plain' });
+        const entry = await PS().write(src.root, PS().parentPath(src.path), blob, { name: src.name, conflict: 'replace' });
+        if (entry) {
+            src.mtime = seconds(entry.mtime) || src.mtime;
+            src.size = entry.size != null ? entry.size : blob.size;
+        }
+        return entry;
     }
 
     function fileUrl(item, opts) {
@@ -500,6 +868,7 @@
         const items = [{ icon: 'fas fa-folder-open', text: 'Open', action: 'explorer-open' }];
         if (file) {
             items.push({ icon: 'fas fa-up-right-from-square', text: 'Open with…', action: `${ACTION}open-with` });
+            items.push({ icon: 'fab fa-android', text: 'Open in Android app', action: `${ACTION}open-android` });
             items.push({ icon: 'fas fa-share-nodes', text: 'Share', action: `${ACTION}share` });
             items.push({ icon: 'fas fa-download', text: 'Download', action: `${ACTION}download` });
         }
@@ -541,6 +910,7 @@
         try {
             switch (what) {
                 case 'open-with': if (item) await open(app, item, true); break;
+                case 'open-android': if (item) await open(app, item, 'android'); break;
                 case 'share': {
                     const files = many.filter((i) => i.phone && !i.phone.dir);
                     if (files.length) await PS().call('share', { root: files[0].phone.root, paths: files.filter((f) => f.phone.root === files[0].phone.root).map((f) => f.phone.path) });
@@ -589,7 +959,7 @@
         const code = err && err.code;
         if (code === 'no_space') {
             if (typeof root.showConfirmationDialog === 'function') {
-                void root.showConfirmationDialog('There is not enough free space on the phone for this. Free up some space and try again.', [{ text: 'OK', value: true, className: 'btn-primary' }]);
+                void confirmDialog('There is not enough free space on the phone for this. Free up some space and try again.', [{ text: 'OK', value: true, className: 'btn-primary' }]);
             } else toast('error', errText(err));
             return;
         }
@@ -652,7 +1022,7 @@
                 ? `Permanently delete ${names.length === 1 ? `"${names[0]}"` : `these ${names.length} items`}? This cannot be undone.`
                 : `${names.length === 1 ? 'This item' : 'These items'} can't go to the Phone trash (folders and files Android does not index):\n${list}\n\nDelete ${names.length === 1 ? 'it' : 'them'} permanently? This cannot be undone.`;
             const ok = typeof root.showConfirmationDialog === 'function'
-                ? await root.showConfirmationDialog(message, [
+                ? await confirmDialog(message, [
                     { text: 'Delete Permanently', value: true, className: 'btn-danger' },
                     { text: 'Cancel', value: false, className: 'btn-secondary' }
                 ])
@@ -692,7 +1062,7 @@
         options.push({ text: 'Keep both', value: 'rename', className: isDir ? 'btn-primary' : 'btn-secondary' });
         options.push({ text: 'Skip', value: 'skip', className: 'btn-secondary' });
         options.push({ text: 'Cancel', value: 'cancel', className: 'btn-secondary' });
-        const choice = await root.showConfirmationDialog(`There is already ${isDir ? 'a folder' : 'a file'} named "${name}" in ${where}.`, options);
+        const choice = await confirmDialog(`There is already ${isDir ? 'a folder' : 'a file'} named "${name}" in ${where}.`, options);
         return choice || 'cancel';
     }
 
@@ -1072,6 +1442,16 @@
         resolveInput,
         isWritable,
         open,
+        openInApp,
+        openWith,
+        openRecent,
+        programFor,
+        kindOf,
+        sourceOf,
+        sourceLabel,
+        sourceUrl,
+        trackDocument,
+        writeText,
         syncPreview,
         entryMenuSections,
         emptyMenuSections,

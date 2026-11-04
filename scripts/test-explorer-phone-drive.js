@@ -34,7 +34,7 @@ function fakePhone() {
     const kids = (r, dir) => [...fsys[r].keys()].filter((p) => p !== dir && p.startsWith(dir === '/' ? '/' : dir + '/') && !p.slice(dir === '/' ? 1 : dir.length + 1).includes('/'));
     const entry = (r, p) => {
         const v = fsys[r].get(p);
-        return { name: p.split('/').pop(), path: p, dir: !!v.dir, size: v.data ? v.data.length : 0, mtime: v.mtime, mime: /\.jpg$/.test(p) ? 'image/jpeg' : /\.pdf$/.test(p) ? 'application/pdf' : 'text/plain', hidden: v.hidden, writable: true, count: v.dir ? kids(r, p).length : undefined, thumb: /\.jpg$/.test(p) };
+        return { name: p.split('/').pop(), path: p, dir: !!v.dir, size: v.data ? v.data.length : 0, mtime: v.mtime, mime: /\.jpg$/.test(p) ? 'image/jpeg' : /\.pdf$/.test(p) ? 'application/pdf' : /\.mp4$/.test(p) ? 'video/mp4' : /\.apk$/.test(p) ? 'application/vnd.android.package-archive' : 'text/plain', hidden: v.hidden, writable: true, count: v.dir ? kids(r, p).length : undefined, thumb: /\.jpg$/.test(p) };
     };
     const copyTree = (r, from, tr, to, move) => {
         [...fsys[r].keys()].filter((p) => p === from || p.startsWith(from + '/')).forEach((p) => {
@@ -103,6 +103,7 @@ function fakePhone() {
                     return { id: tid, restored: true };
                 }));
                 case 'delete': args.paths.forEach((p) => copyTree(args.root, p, args.root, '/__gone', true)); [...fsys[args.root].keys()].filter((p) => p.startsWith('/__gone')).forEach((p) => fsys[args.root].delete(p)); return ok(args.paths.map((p) => ({ path: p, deleted: true })));
+                case 'stat': return fsys[args.root].has(args.path) ? ok(entry(args.root, args.path)) : fail('not_found');
                 case 'watch': case 'unwatch': case 'open': case 'share': return ok(null);
                 case 'writeBegin': {
                     const dst = (args.dir === '/' ? '' : args.dir) + '/' + args.name;
@@ -144,7 +145,15 @@ function setup() {
             moveToTrash: async () => ({})
         },
         vfsImportRouter: { routeFilesToPath: async (p, files) => { for (const f of files) vfs.uploads.push({ p, name: f.name, data: Buffer.from(await f.arrayBuffer()), lastModified: f.lastModified }); } },
-        fileOperationProgress: null
+        fileOperationProgress: null,
+        opened: [],
+        recents: [],
+        recentItems: { add: (e) => win.recents.push(e) },
+        openImageInViewer: (url, title, md) => win.opened.push({ app: 'lumen', url, title, md }),
+        openDesktopMediaPlayerUrl: (url, name) => win.opened.push({ app: 'media', url, name }),
+        featureLoader: { loadFeature: async () => {} },
+        melatonRegistry: { _v: {}, get(key, name, def) { return this._v[name] || def; } },
+        notepadVista: { openPhoneFile: async (src, label) => win.opened.push({ app: 'notepad', src, label }) }
     };
     // fetch: phone URLs stream from the fake phone, vfs:// from the fake VFS
     win.fetch = async (url) => {
@@ -328,6 +337,81 @@ function setup() {
     // errors toast their message
     await drive.handleAction('explorer-phone-open-with', { targetKind: 'phone-entry', name: 'z', phone: { root: 'nope', path: '/z', dir: false } }, app);
     assert.ok(toasts.length === 0 || toasts.every((t) => typeof t[1] === 'string'));
+
+    // ---- Dreamscape's own apps (follow-up to #698) ----
+    assert.strictEqual(drive.programFor('a.jpg', 'image/jpeg'), 'lumen');
+    assert.strictEqual(drive.programFor('clip.mp4', 'video/mp4'), 'media-player');
+    assert.strictEqual(drive.programFor('song.mp3', ''), 'media-player');
+    assert.strictEqual(drive.programFor('notes.txt', 'text/plain'), 'notepad');
+    assert.strictEqual(drive.programFor('doc.pdf', 'application/pdf'), 'viewer');
+    assert.strictEqual(drive.programFor('app.apk', 'application/vnd.android.package-archive'), null);
+    win.melatonRegistry._v['.jpg'] = 'paint';
+    assert.strictEqual(drive.programFor('a.jpg', 'image/jpeg'), 'paint', 'Default Programs wins');
+    delete win.melatonRegistry._v['.jpg'];
+
+    // a photo: Lumen with the folder's pictures, no bridge open, recents by { root, path }
+    phone.fsys.internal.set('/DCIM/c.jpg', { data: Buffer.from('cc'), mtime: 1700000000000 });
+    app.currentPath = 'phone://internal/DCIM';
+    res = await drive.list(app, app.currentPath);
+    app.items = res.items;
+    const opensBefore = phone.calls.filter((c) => c.op === 'open').length;
+    await drive.open(app, res.items.find((i) => i.name === 'b.jpg'));
+    const lum = win.opened.pop();
+    assert.strictEqual(lum.app, 'lumen');
+    assert.ok(lum.url.endsWith('/internal/DCIM/b.jpg') && /Phone › Internal storage\/DCIM\/b\.jpg/.test(lum.title));
+    assert.deepStrictEqual(lum.md.siblings.map((r) => r.title), ['a.jpg', 'b.jpg', 'c.jpg'], 'Previous / Next walk the folder');
+    assert.strictEqual(lum.md.siblings.indexOf(lum.md), 1);
+    assert.strictEqual(phone.calls.filter((c) => c.op === 'open').length, opensBefore, 'Android is not asked');
+    const rec = win.recents.pop();
+    assert.deepStrictEqual([rec.kind, rec.data.root, rec.data.path], ['phone', 'internal', '/DCIM/b.jpg']);
+    assert.ok(!JSON.stringify(rec).includes('tok'), 'no tokenized URL in Recent Items');
+    // video / audio -> Media Player, text -> Notepad, PDF -> the document viewer window (no DOM here: skipped)
+    phone.fsys.internal.set('/DCIM/v.mp4', { data: Buffer.from('mp4'), mtime: 1 });
+    phone.fsys.internal.set('/DCIM/n.txt', { data: Buffer.from('hello phone'), mtime: 1700000001000 });
+    res = await drive.list(app, app.currentPath);
+    await drive.open(app, res.items.find((i) => i.name === 'v.mp4'));
+    assert.strictEqual(win.opened.pop().app, 'media');
+    await drive.open(app, res.items.find((i) => i.name === 'n.txt'));
+    const np = win.opened.pop();
+    assert.deepStrictEqual([np.app, np.src.root, np.src.path, np.src.kind], ['notepad', 'internal', '/DCIM/n.txt', 'phone']);
+    // Open in Android app: the bridge with the chooser
+    await drive.handleAction('explorer-phone-open-android', res.items.find((i) => i.name === 'n.txt'), app);
+    const andr = phone.calls.filter((c) => c.op === 'open').pop();
+    assert.deepStrictEqual([andr.args.path, andr.args.chooser], ['/DCIM/n.txt', true]);
+    // a file with no program: Open With lists Dreamscape's programs, then Android's
+    phone.fsys.internal.set('/DCIM/x.apk', { data: Buffer.from('apk'), mtime: 1 });
+    res = await drive.list(app, app.currentPath);
+    win._answer.push(null);
+    await drive.open(app, res.items.find((i) => i.name === 'x.apk'));
+    const ow = dialogs[dialogs.length - 1];
+    assert.ok(/no program set/.test(ow.message) && ow.options.includes('android') && ow.options.includes('notepad'));
+
+    // Save from an editor: writeText replaces the phone's file, mtime follows
+    const src = np.src;
+    await drive.writeText(src, 'edited on Dreamscape');
+    assert.strictEqual(phone.fsys.internal.get('/DCIM/n.txt').data.toString(), 'edited on Dreamscape');
+    assert.ok(phone.calls.filter((c) => c.op === 'writeBegin').pop().args.conflict === 'replace');
+    // changed on the phone, then deleted there: the document is told
+    const seen = [];
+    const stop = drive.trackDocument(src, (kind) => seen.push(kind));
+    phone.fsys.internal.get('/DCIM/n.txt').mtime = 1800000000000;
+    phone.bridge.onmessage({ data: JSON.stringify({ event: 'changed', root: 'internal', path: '/DCIM' }) });
+    await new Promise((r) => setTimeout(r, 20));
+    phone.fsys.internal.delete('/DCIM/n.txt');
+    phone.bridge.onmessage({ data: JSON.stringify({ event: 'changed', root: 'internal', path: '/DCIM' }) });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepStrictEqual(seen, ['changed', 'deleted']);
+    stop();
+
+    // Recent Items reopen: a file there opens again; with sharing off it says so
+    assert.strictEqual(await drive.openRecent({ root: 'internal', path: '/DCIM/a.jpg', name: 'a.jpg' }), true);
+    assert.strictEqual(win.opened.pop().app, 'lumen');
+    phone.st.enabled = false;
+    phone.bridge.onmessage({ data: JSON.stringify({ event: 'config' }) });
+    await new Promise((r) => setTimeout(r, 10));
+    assert.strictEqual(await drive.openRecent({ root: 'internal', path: '/DCIM/a.jpg', name: 'a.jpg' }), false);
+    assert.ok(toasts.some((t) => /Phone storage isn't available/.test(t[1])));
+    phone.st.enabled = true;
 
     console.log('test-explorer-phone-drive: ok');
 })().catch((err) => { console.error(err); process.exit(1); });

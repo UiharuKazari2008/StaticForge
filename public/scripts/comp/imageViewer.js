@@ -18,8 +18,10 @@ class ImageViewerManager {
 
     // Create a new image viewer instance
     createViewer(imageSrc, title = 'Image', metadata = {}) {
-        // Recent Items (public/scripts/comp/recentItems.js): a picture opened in Lumen
-        if (window.recentItems) window.recentItems.notePicture(imageSrc, title, metadata);
+        // Recent Items (public/scripts/comp/recentItems.js): a picture opened in Lumen. A phone
+        // picture (explorerPhoneDrive.js) is recorded there by { root, path }, never by its URL,
+        // whose token changes every launch
+        if (window.recentItems && !(metadata && metadata.phoneSource)) window.recentItems.notePicture(imageSrc, title, metadata);
         const viewerId = `imageViewer_${this.nextId++}`;
         const viewerElement = this.template.cloneNode(true);
         viewerElement.id = viewerId;
@@ -930,6 +932,13 @@ class ImageViewer {
      * workspace's list (lumenGalleryList, loaded by loadGalleryRows).
      */
     galleryPlace(name = this.getImageFilename()) {
+        // a list the opener gave (a phone folder's pictures, explorerPhoneDrive.js): rows that all
+        // share it as metadata.siblings
+        const siblings = this.metadata && this.metadata.siblings;
+        if (Array.isArray(siblings)) {
+            const index = siblings.indexOf(this.metadata);
+            return index >= 0 ? { list: siblings, index } : null;
+        }
         if (!name) return null;
         const find = (list) => (Array.isArray(list)
             ? list.findIndex((img) => img && (img.filename === name || img.original === name || img.upscaled === name))
@@ -975,6 +984,8 @@ class ImageViewer {
 
     /** Photo Viewer's Delete: the picture goes to Scraps and the next one shows (the window closes after the last). */
     async deleteAndAdvance() {
+        // a phone picture is deleted from Cartograph (the phone's trash), not moved to Scraps
+        if (this.metadata && this.metadata.phoneSource) return;
         const next = this.galleryNeighbor(1) || this.galleryNeighbor(-1);
         // moveToScraps: public/scripts/comp/galleryView.js (true once scrapped)
         if (typeof moveToScraps !== 'function' || !(await moveToScraps(this.metadata))) return;

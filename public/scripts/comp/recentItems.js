@@ -290,6 +290,20 @@
         return undefined;
     });
 
+    // a phone file (explorerPhoneDrive.js): { root, path } only; its URL is rebuilt from the bridge's
+    // hello() of this launch, and an unavailable phone says so instead of a broken viewer
+    registerOpener('phone', async (entry) => {
+        const d = entry.data || {};
+        if (!root.explorerPhoneDrive && root.featureLoader) {
+            try { await root.featureLoader.loadFeature('explorer'); } catch (_) { /* no Cartograph */ }
+        }
+        if (!root.explorerPhoneDrive || !root.explorerPhoneDrive.available()) {
+            callGlobal('showGlassToast', 'error', 'Phone', "Phone storage isn't available", false, 5000);
+            return false;
+        }
+        return root.explorerPhoneDrive.openRecent(d);
+    });
+
     root.addEventListener?.('taskbarsettingschange', (ev) => {
         if (ev && ev.detail && ev.detail.recentFiles === false) clearAll();
     });
