@@ -120,3 +120,35 @@
     color: #fff;
     font: 12px "Segoe UI", Tahoma, sans-serif;
 }
+
+/* a NovelAI image in the preview pane: its prompt, Open in Studio, Properties */
+#explorerModal .explorer-phone-nai {
+    border-top: 1px solid #dde4e8;
+    padding-top: 6px;
+}
+
+#explorerModal .explorer-phone-nai-prompt {
+    margin: 4px 0;
+    color: #333;
+    font-size: 11px;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+#explorerModal .explorer-phone-nai-actions {
+    display: flex;
+    gap: 12px;
+}
+
+#explorerModal .explorer-phone-nai-actions .explorer-preview-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #0066cc;
+    font: inherit;
+    cursor: var(--c-pointer, pointer);
+}
+
+#explorerModal .explorer-phone-nai-actions .explorer-preview-link:hover {
+    text-decoration: underline;
+}

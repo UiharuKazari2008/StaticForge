@@ -3781,6 +3781,11 @@ class ExplorerApplet {
     }
 
     async navigateTo(path) {
+        // a phone drive letter (D:, E:\DCIM ...): explorerPhoneDrive.js
+        if (typeof explorerPhoneDrive !== 'undefined' && /^[d-z]:/i.test(String(path || ''))) {
+            const phonePath = explorerPhoneDrive.resolveInput(path);
+            if (phonePath) path = phonePath;
+        }
         if (this.computer && (ExplorerComputerView.isPath(path) || ExplorerComputerView.matchesInput(path))) {
             path = ExplorerComputerView.PATH;
         }

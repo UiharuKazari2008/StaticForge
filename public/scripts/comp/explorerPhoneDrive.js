@@ -189,11 +189,13 @@
     function driveItem(r) {
         return {
             id: `phone-drive:${r.id}`,
-            name: r.name || r.id,
+            name: rootName(r.id),
             kind: 'folder',
             targetKind: 'phone-drive',
             navPath: pathFor(r.id, '/'),
-            icon: r.kind === 'removable' ? 'fas fa-sd-card' : 'fas fa-mobile-screen',
+            // Vista's removable disk (imageres.dll 29) as the item's picture in every view
+            icon: 'fas fa-hard-drive',
+            previewUrl: `${ART}/drive-removable-48.png`,
             size: undefined,
             phone: { root: r.id, path: '/', dir: true, drive: r }
         };
@@ -328,9 +330,18 @@
         return 'Phone';
     }
 
+    /** Drive letters after Cartograph's C:, in the phone's root order: D: internal storage, E: a USB drive... */
+    function driveLetter(rootId) {
+        const i = rootsOf(state()).findIndex((r) => r.id === rootId);
+        return i < 0 ? '' : String.fromCharCode(Math.min(90, 68 + i));
+    }
+
+    /** "Internal storage (D:)", as Vista names a removable disk. */
     function rootName(rootId) {
         const r = rootInfo(rootId);
-        return r ? (r.name || r.id) : rootId;
+        const name = r ? (r.name || r.id) : rootId;
+        const letter = driveLetter(rootId);
+        return letter ? `${name} (${letter}:)` : name;
     }
 
     function displayName(path) {
@@ -341,22 +352,25 @@
         return p.path.split('/').filter(Boolean).pop();
     }
 
+    /** The address box, as Vista shows a removable disk: D:\DCIM\Camera */
     function displayPath(path) {
         if (path === TRASH) return `${phoneName()}/Phone trash`;
         const p = parse(path);
         if (!p.root) return phoneName();
-        return `${phoneName()}/${rootName(p.root)}${p.path === '/' ? '' : p.path}`;
+        const letter = driveLetter(p.root);
+        if (!letter) return `${phoneName()}/${rootName(p.root)}${p.path === '/' ? '' : p.path}`;
+        return `${letter}:\\${p.path.split('/').filter(Boolean).join('\\')}`;
     }
 
-    /** Computer ▸ Phone ▸ Internal storage ▸ DCIM ▸ Camera */
+    /** Computer ▸ Internal storage (D:) ▸ DCIM ▸ Camera: a drive sits right under Computer. */
     function crumbs(path) {
-        const list = [{ label: phoneName(), path: PREFIX }];
-        if (path === TRASH) {
-            list.push({ label: 'Phone trash', path: TRASH });
+        if (path === TRASH || !parse(path).root) {
+            const list = [{ label: phoneName(), path: PREFIX }];
+            if (path === TRASH) list.push({ label: 'Phone trash', path: TRASH });
             return list;
         }
+        const list = [];
         const p = parse(path);
-        if (!p.root) return list;
         list.push({ label: rootName(p.root), path: pathFor(p.root, '/') });
         const parts = p.path.split('/').filter(Boolean);
         parts.forEach((part, i) => list.push({ label: part, path: pathFor(p.root, '/' + parts.slice(0, i + 1).join('/')) }));
@@ -366,8 +380,7 @@
     function crumbIcon(path) {
         const p = parse(path);
         if (path === TRASH) return 'fav-recycle.png';
-        if (!p.root) return 'phone-16.png';
-        if (p.path === '/') return (rootInfo(p.root) || {}).kind === 'removable' ? 'removable-16.png' : 'phone-16.png';
+        if (!p.root || p.path === '/') return 'drive-removable-16.png';
         return 'crumb-folder.png';
     }
 
@@ -376,11 +389,17 @@
         if (!available()) return null;
         const input = String(text || '').trim();
         if (input.startsWith(PREFIX) || input === TRASH) return normalize(input);
+        const drive = /^([d-z]):(?:[\\/](.*))?$/i.exec(input);
+        if (drive) {
+            const r = rootsOf(state()).find((x) => driveLetter(x.id) === drive[1].toUpperCase());
+            return r ? pathFor(r.id, '/' + String(drive[2] || '').split(/[\\/]+/).filter(Boolean).join('/')) : null;
+        }
         const parts = input.split('/').filter(Boolean);
         if (!parts.length || parts[0].toLowerCase() !== phoneName().toLowerCase()) return null;
         if (parts.length === 1) return PREFIX;
         if (parts[1].toLowerCase() === 'phone trash') return TRASH;
-        const r = rootsOf(state()).find((x) => (x.name || x.id).toLowerCase() === parts[1].toLowerCase() || x.id === parts[1]);
+        const want = parts[1].toLowerCase();
+        const r = rootsOf(state()).find((x) => rootName(x.id).toLowerCase() === want || (x.name || x.id).toLowerCase() === want || x.id === parts[1]);
         if (!r) return null;
         return pathFor(r.id, '/' + parts.slice(2).join('/'));
     }
@@ -388,8 +407,8 @@
     function parentOf(path) {
         if (path === TRASH) return PREFIX;
         const p = parse(path);
-        if (!p.root) return null;
-        if (p.path === '/') return PREFIX;
+        // up from a drive (or the drive list) is Computer
+        if (!p.root || p.path === '/') return null;
         return pathFor(p.root, PS().parentPath(p.path));
     }
 
@@ -733,6 +752,71 @@
         }
     }
 
+    // ---- NovelAI images: their blueprint into Studio, Properties --------------------------------
+
+    // A PNG off the phone may carry NovelAI's metadata (tEXt / iTXt Comment, zTXt, or stealth alpha):
+    // reference/pngMetadata.js extractPNGMetadata reads all three, as an upload's blueprint check does.
+    const naiCache = new Map(); // "<id>|<mtime>|<size>" -> Promise of the metadata or null
+    const naiKnown = new Map(); // same key -> true / false once read
+
+    function naiKey(item) {
+        return `${item.id}|${item.modifiedAt || 0}|${item.size || 0}`;
+    }
+
+    function naiCandidate(item) {
+        return !!(item && item.phone && !item.phone.dir && item.targetKind === 'phone-entry'
+            && (/\.png$/i.test(item.name || '') || String(item.mimeType || '').toLowerCase() === 'image/png'));
+    }
+
+    /** The image's NovelAI metadata, or null (not a NovelAI image, or unreadable). */
+    function readNai(item) {
+        if (!naiCandidate(item) || typeof root.extractPNGMetadata !== 'function') return Promise.resolve(null);
+        const key = naiKey(item);
+        if (naiCache.has(key)) return naiCache.get(key);
+        const job = (async () => {
+            const res = await fetch(fileUrl(item));
+            if (!res.ok) return null;
+            const blob = await res.blob();
+            const md = await root.extractPNGMetadata(new File([blob], item.name, { type: 'image/png' }));
+            const nai = md && ((md.source && String(md.source).includes('NovelAI')) || (md.prompt !== undefined && (md.steps !== undefined || md.forge_data)));
+            return nai ? md : null;
+        })().catch(() => null).then((md) => {
+            naiKnown.set(key, !!md);
+            return md;
+        });
+        naiCache.set(key, job);
+        return job;
+    }
+
+    function naiKnownFor(item) {
+        return naiKnown.get(naiKey(item));
+    }
+
+    /** Studio with the image's settings, as the upload dialog's Open in Studio loads a blueprint. */
+    async function openInStudio(item) {
+        const md = await readNai(item);
+        if (!md) {
+            toast('info', `${item.name} has no NovelAI settings to load`);
+            return;
+        }
+        // transformMetadataForEditor: public/scripts/comp/referenceManager.js
+        const data = typeof root.transformMetadataForEditor === 'function' ? root.transformMetadataForEditor(md) : md;
+        // openManualModalWithContent: public/scripts/comp/manualModalManager.js
+        await root.openManualModalWithContent({ type: 'metadata', data, title: item.name });
+    }
+
+    /** The image's Properties (imagePromptInspector.js) from the metadata read here: no gallery lookup. */
+    async function openProperties(item) {
+        const md = await readNai(item);
+        if (!md) {
+            toast('info', `${item.name} has no NovelAI settings to show`);
+            return;
+        }
+        await root.featureLoader.loadFeature('image_prompt_inspector');
+        // keyed by the phone file (an id, never a gallery filename, so nothing asks the server)
+        root.openImagePromptInspector({ ...md, id: item.id, title: item.name, image_url: fileUrl(item) });
+    }
+
     // ---- open documents follow the phone (an editor's file changed or deleted there) -----------
 
     const documents = new Set(); // { src, onChange(kind, entry) , alive() }
@@ -852,6 +936,24 @@
             <div class="explorer-phone-preview-name">${esc(one.name)}</div>${facts}</div>`;
         const box = pane.querySelector('.explorer-phone-preview-icon');
         if (box && typeof app._populateIconBox === 'function') app._populateIconBox(box, one);
+        if (naiCandidate(one)) {
+            void readNai(one).then((md) => {
+                if (!md || pane.dataset.phone !== key) return;
+                const prompt = String(md.prompt || (md.v4_prompt && md.v4_prompt.caption && md.v4_prompt.caption.base_caption) || '');
+                const host = pane.querySelector('.explorer-phone-preview');
+                if (!host) return;
+                host.insertAdjacentHTML('beforeend', `<div class="explorer-phone-nai">
+                    <div class="explorer-phone-fact"><span>NovelAI image</span></div>
+                    ${prompt ? `<div class="explorer-phone-nai-prompt">${esc(prompt.length > 240 ? `${prompt.slice(0, 240)}…` : prompt)}</div>` : ''}
+                    <div class="explorer-phone-nai-actions">
+                        <button type="button" class="explorer-preview-link" data-phone-nai="studio">Open in Studio</button>
+                        <button type="button" class="explorer-preview-link" data-phone-nai="properties">Properties</button>
+                    </div></div>`);
+                host.querySelectorAll('[data-phone-nai]').forEach((btn) => btn.addEventListener('click', () => {
+                    void (btn.dataset.phoneNai === 'studio' ? openInStudio(one) : openProperties(one));
+                }));
+            });
+        }
     }
 
     // ---- context menus ---------------------------------------------------------------------
@@ -869,6 +971,12 @@
         if (file) {
             items.push({ icon: 'fas fa-up-right-from-square', text: 'Open with…', action: `${ACTION}open-with` });
             items.push({ icon: 'fab fa-android', text: 'Open in Android app', action: `${ACTION}open-android` });
+            // a NovelAI image (read once, cached; unread PNGs offer it and say so if there is none)
+            if (naiCandidate(item) && naiKnownFor(item) !== false) {
+                items.push({ separator: true });
+                items.push({ icon: 'fas fa-compass-drafting', text: 'Open in Studio', action: `${ACTION}studio` });
+                items.push({ icon: 'fas fa-circle-info', text: 'Properties', action: `${ACTION}properties` });
+            }
             items.push({ icon: 'fas fa-share-nodes', text: 'Share', action: `${ACTION}share` });
             items.push({ icon: 'fas fa-download', text: 'Download', action: `${ACTION}download` });
         }
@@ -911,6 +1019,8 @@
             switch (what) {
                 case 'open-with': if (item) await open(app, item, true); break;
                 case 'open-android': if (item) await open(app, item, 'android'); break;
+                case 'studio': if (item) await openInStudio(item); break;
+                case 'properties': if (item) await openProperties(item); break;
                 case 'share': {
                     const files = many.filter((i) => i.phone && !i.phone.dir);
                     if (files.length) await PS().call('share', { root: files[0].phone.root, paths: files.filter((f) => f.phone.root === files[0].phone.root).map((f) => f.phone.path) });
@@ -1372,18 +1482,19 @@
         const block = blocker(st);
         const current = app.currentPath;
         // the device icons fall back to the hard disk's until the Vista ones are in place
-        const img = (icon) => `<img src="${ART}/${icon}" alt="" onerror="this.onerror=null;this.src='${ART}/drive-system-16.png'">`;
+        // imageres.dll 29, Vista's removable disk (every phone root is one to Cartograph)
+        const img = (icon) => `<img src="${ART}/${icon}" alt="">`;
         const link = (attrs, icon, label, cls = '') => `<li><button type="button" class="explorer-favorite-link ${cls}" ${attrs} title="${esc(label)}">${img(icon)}<span>${esc(label)}</span></button></li>`;
         let rows = '';
         if (block) {
-            rows = link(block.action ? `data-phone-action="${block.action === 'settings' ? 'settings' : 'access'}"` : 'disabled', 'phone-16.png', block.text, 'explorer-phone-state');
+            rows = link(block.action ? `data-phone-action="${block.action === 'settings' ? 'settings' : 'access'}"` : 'disabled', 'drive-removable-16.png', block.text, 'explorer-phone-state');
         } else {
             rows = rootsOf(st).map((r) => {
                 const path = pathFor(r.id, '/');
                 const on = current === path || (isPath(current) && parse(current).root === r.id);
                 const free = r.total ? ` (${Math.round((r.free || 0) / 1e9)} GB free)` : '';
-                return `<li><button type="button" class="explorer-favorite-link explorer-phone-drive${on ? ' is-current' : ''}" data-path="${esc(path)}" data-drop-path="${esc(path)}" title="${esc((r.name || r.id) + free)}">`
-                    + `${img(r.kind === 'removable' ? 'removable-16.png' : 'phone-16.png')}<span>${esc(r.name || r.id)}</span>`
+                return `<li><button type="button" class="explorer-favorite-link explorer-phone-drive${on ? ' is-current' : ''}" data-path="${esc(path)}" data-drop-path="${esc(path)}" title="${esc(rootName(r.id) + free)}">`
+                    + `${img('drive-removable-16.png')}<span>${esc(rootName(r.id))}</span>`
                     + '</button></li>';
             }).join('') + link(`data-path="${TRASH}"`, 'fav-recycle.png', 'Phone trash', current === TRASH ? 'is-current' : '');
         }
@@ -1398,11 +1509,11 @@
         const st = state();
         if (!st) { void ensureState().then(() => apps.forEach((a) => a.computer && a._isComputerPath && a._isComputerPath() && a.computer.render())); }
         const block = blocker(st);
-        if (block) return [{ key: 'phone:', name: phoneName(), icon: 'phone', block }];
+        if (block) return [{ key: 'phone:', name: phoneName(), icon: 'drive-removable', block }];
         return rootsOf(st).map((r) => ({
             key: `phone:${r.id}`,
-            name: r.name || r.id,
-            icon: r.kind === 'removable' ? 'removable' : 'phone',
+            name: rootName(r.id),
+            icon: 'drive-removable',
             total: Number(r.total) || 0,
             free: Number(r.free) || 0,
             kind: r.kind,
@@ -1423,6 +1534,8 @@
     root.explorerPhoneDrive = {
         PREFIX,
         TRASH,
+        driveLetter,
+        rootName,
         available,
         isPath,
         isTrashPath,
@@ -1443,6 +1556,9 @@
         isWritable,
         open,
         openInApp,
+        readNai,
+        openInStudio,
+        openProperties,
         openWith,
         openRecent,
         programFor,

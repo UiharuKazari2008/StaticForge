@@ -187,10 +187,9 @@
             return String(key || '').startsWith('phone:') ? (this.phoneDrives().find((d) => d.key === key) || null) : null;
         }
 
-        /** A device icon with the hard disk's art until the Vista one is in place. */
+        /** A phone root's icon: Vista's removable disk (imageres.dll 29), never the system drive's. */
         deviceIcon(d, size) {
-            const src = `${ART}/${d.icon || 'phone'}-${size}.png`;
-            return `<img class="explorer-computer-tile-icon" src="${src}" alt="" draggable="false" onerror="this.onerror=null;this.src='${ART}/drive-system-${size}.png'">`;
+            return `<img class="explorer-computer-tile-icon" src="${ART}/${d.icon || 'drive-removable'}-${size}.png" alt="" draggable="false">`;
         }
 
         driveName(d) {
@@ -275,10 +274,10 @@
                         </div>
                     </div>`;
             }).join('');
-            // Vista lists a phone under Portable Devices (WPD), below the hard disks
+            // removable disks are Vista's own group below the hard disks
             const phoneGroup = phones.length ? `
                 <section class="explorer-computer-group explorer-computer-group-devices">
-                    <h3 class="explorer-computer-group-head"><span>Portable Devices (${phones.length})</span></h3>
+                    <h3 class="explorer-computer-group-head"><span>Devices with Removable Storage (${phones.length})</span></h3>
                     <div class="explorer-computer-tiles">${phoneTiles}</div>
                 </section>` : '';
             this.el.innerHTML = `

@@ -346,7 +346,7 @@
             const crumb = (c) => `<button type="button" class="explorer-crumb" data-crumb-path="${esc(c.path)}">${esc(c.label)}</button>`;
             const draw = (folded, trailing) => {
                 const shown = crumbs.slice(folded);
-                host.innerHTML = `<img class="explorer-crumb-icon" src="${ART}/${this.crumbIcon || 'crumb-folder.png'}" alt="" onerror="this.onerror=null;this.src='${ART}/drive-system-16.png'">`
+                host.innerHTML = `<img class="explorer-crumb-icon" src="${ART}/${this.crumbIcon || 'crumb-folder.png'}" alt="">`
                     + (folded ? '<button type="button" class="explorer-crumb-overflow" title="Previous locations" aria-label="Previous locations"></button>' : '')
                     + shown.map((c, i) => (folded && i === 0 ? '' : sep) + crumb(c)).join('')
                     + (trailing ? sep : '');

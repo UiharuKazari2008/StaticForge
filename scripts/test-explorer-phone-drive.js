@@ -153,7 +153,12 @@ function setup() {
         openDesktopMediaPlayerUrl: (url, name) => win.opened.push({ app: 'media', url, name }),
         featureLoader: { loadFeature: async () => {} },
         melatonRegistry: { _v: {}, get(key, name, def) { return this._v[name] || def; } },
-        notepadVista: { openPhoneFile: async (src, label) => win.opened.push({ app: 'notepad', src, label }) }
+        notepadVista: { openPhoneFile: async (src, label) => win.opened.push({ app: 'notepad', src, label }) },
+        // reference/pngMetadata.js stand-in: nai*.png carry NovelAI's Comment JSON
+        extractPNGMetadata: async (file) => (/^nai/.test(file.name) ? { prompt: '1girl, phone drive', uc: 'lowres', steps: 28, source: 'NovelAI Diffusion V4.5 4BDE2A90' } : { source: undefined }),
+        transformMetadataForEditor: (md) => ({ ...md, transformed: true }),
+        openManualModalWithContent: async (content) => win.opened.push({ app: 'studio', content }),
+        openImagePromptInspector: (md) => win.opened.push({ app: 'properties', md })
     };
     // fetch: phone URLs stream from the fake phone, vfs:// from the fake VFS
     win.fetch = async (url) => {
@@ -209,16 +214,22 @@ function setup() {
 
     // the drive list
     let res = await drive.list(app, 'phone://');
-    assert.deepStrictEqual(res.items.map((i) => i.name), ['Internal storage', 'USB drive']);
+    assert.deepStrictEqual(res.items.map((i) => i.name), ['Internal storage (D:)', 'USB drive (E:)']);
+    assert.ok(res.items.every((i) => i.previewUrl.endsWith('/drive-removable-48.png')), 'the removable disk icon');
     assert.strictEqual(res.items[0].navPath, 'phone://internal');
-    assert.deepStrictEqual(drive.computerDrives().map((d) => [d.key, d.icon]), [['phone:internal', 'phone'], ['phone:usb1', 'removable']]);
+    assert.deepStrictEqual(drive.computerDrives().map((d) => [d.key, d.name, d.icon]), [['phone:internal', 'Internal storage (D:)', 'drive-removable'], ['phone:usb1', 'USB drive (E:)', 'drive-removable']]);
+    assert.strictEqual(drive.resolveInput('E:'), 'phone://usb1');
+    assert.strictEqual(drive.resolveInput('d:\\DCIM\\Camera'), 'phone://internal/DCIM/Camera');
+    assert.strictEqual(drive.resolveInput('Phone/Internal storage (D:)/DCIM'), 'phone://internal/DCIM');
+    assert.strictEqual(drive.resolveInput('F:'), null);
     assert.strictEqual(drive.resolveInput('Phone/Internal storage/DCIM'), 'phone://internal/DCIM');
     assert.strictEqual(drive.resolveInput('phone'), 'phone://');
     assert.strictEqual(drive.resolveInput('/Workspaces'), null);
-    assert.deepStrictEqual(drive.crumbs('phone://internal/DCIM').map((c) => c.label), ['Phone', 'Internal storage', 'DCIM']);
-    assert.strictEqual(drive.displayPath('phone://internal/DCIM'), 'Phone/Internal storage/DCIM');
+    assert.deepStrictEqual(drive.crumbs('phone://internal/DCIM').map((c) => c.label), ['Internal storage (D:)', 'DCIM']);
+    assert.strictEqual(drive.displayPath('phone://internal/DCIM'), 'D:\\DCIM');
+    assert.strictEqual(drive.resolveInput(drive.displayPath('phone://internal/DCIM')), 'phone://internal/DCIM', 'the address box reads back');
     assert.strictEqual(drive.parentOf('phone://internal/DCIM'), 'phone://internal');
-    assert.strictEqual(drive.parentOf('phone://internal'), 'phone://');
+    assert.strictEqual(drive.parentOf('phone://internal'), null, 'up from a drive is Computer');
     assert.strictEqual(drive.parentOf('phone://'), null);
 
     // a folder: hidden files out, folders first, name order (numeric), thumbs, watch
@@ -358,7 +369,7 @@ function setup() {
     await drive.open(app, res.items.find((i) => i.name === 'b.jpg'));
     const lum = win.opened.pop();
     assert.strictEqual(lum.app, 'lumen');
-    assert.ok(lum.url.endsWith('/internal/DCIM/b.jpg') && /Phone › Internal storage\/DCIM\/b\.jpg/.test(lum.title));
+    assert.ok(lum.url.endsWith('/internal/DCIM/b.jpg') && /Phone › Internal storage \(D:\)\/DCIM\/b\.jpg/.test(lum.title));
     assert.deepStrictEqual(lum.md.siblings.map((r) => r.title), ['a.jpg', 'b.jpg', 'c.jpg'], 'Previous / Next walk the folder');
     assert.strictEqual(lum.md.siblings.indexOf(lum.md), 1);
     assert.strictEqual(phone.calls.filter((c) => c.op === 'open').length, opensBefore, 'Android is not asked');
@@ -412,6 +423,29 @@ function setup() {
     assert.strictEqual(await drive.openRecent({ root: 'internal', path: '/DCIM/a.jpg', name: 'a.jpg' }), false);
     assert.ok(toasts.some((t) => /Phone storage isn't available/.test(t[1])));
     phone.st.enabled = true;
+    phone.bridge.onmessage({ data: JSON.stringify({ event: 'config' }) });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // NovelAI images: Open in Studio / Properties from the metadata read off the phone
+    phone.fsys.internal.set('/DCIM/nai_print.png', { data: Buffer.from('png'), mtime: 1 });
+    phone.fsys.internal.set('/DCIM/plain.png', { data: Buffer.from('png'), mtime: 1 });
+    res = await drive.list(app, 'phone://internal/DCIM');
+    const naiItem = res.items.find((i) => i.name === 'nai_print.png');
+    const plainItem = res.items.find((i) => i.name === 'plain.png');
+    naiItem.mimeType = plainItem.mimeType = 'image/png';
+    const menuOf = (it) => drive.entryMenuSections(app, it)[0].items.map((x) => x.text).filter(Boolean);
+    assert.ok(menuOf(naiItem).includes('Open in Studio'), 'an unread PNG offers Studio');
+    assert.ok((await drive.readNai(naiItem)).prompt === '1girl, phone drive');
+    assert.strictEqual(await drive.readNai(plainItem), null);
+    assert.ok(menuOf(naiItem).includes('Properties') && !menuOf(plainItem).includes('Open in Studio'), 'only a NovelAI image keeps them');
+    await drive.handleAction('explorer-phone-studio', naiItem, app);
+    const st = win.opened.pop();
+    assert.deepStrictEqual([st.app, st.content.type, st.content.data.transformed, st.content.data.prompt], ['studio', 'metadata', true, '1girl, phone drive']);
+    await drive.handleAction('explorer-phone-properties', naiItem, app);
+    const pr = win.opened.pop();
+    assert.ok(pr.app === 'properties' && pr.md.id === naiItem.id && pr.md.filename === undefined && pr.md.image_url.endsWith('/DCIM/nai_print.png') && pr.md.uc === 'lowres');
+    await drive.handleAction('explorer-phone-studio', plainItem, app);
+    assert.ok(toasts.some((t) => /no NovelAI settings/.test(t[1])));
 
     console.log('test-explorer-phone-drive: ok');
 })().catch((err) => { console.error(err); process.exit(1); });
