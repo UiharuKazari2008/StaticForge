@@ -140,8 +140,9 @@ const vsbLoadImage = function (url) {
  * system parts: cpu, memory, uptime, disks, network, processes. Only what a shown gadget reads is
  * subscribed, and the server sends only that: `isActive()` (optional) drops a user while its
  * gadget is off screen (another page, Sidebar closed); vsbRender / vsbPaginate resync.
- * A hidden tab or an unfocused window (another app in DeX, Yozora perf pass 2026-11-04) subscribes
- * nothing, so the dials and hosted gadgets stop repainting until the window is back.
+ * A hidden tab subscribes nothing. An unfocused window (another app in DeX, idle perf pass
+ * 2026-11-04) drops the per-tick topics (host, system), so the dials and hosted gadgets stop
+ * repainting until the window is back; weather, quotes, currency and feeds still arrive.
  */
 const VSB_LIVE_WATCH_MS = 5000;
 
@@ -207,15 +208,21 @@ const vsbLiveTopics = function () {
     return t;
 };
 
-/** Hidden tab, or focus in another window (a gadget iframe still counts as this document). */
+/** Focus in another window (a gadget iframe still counts as this document). */
+const vsbLiveUnfocused = function () {
+    return typeof document.hasFocus === 'function' && !document.hasFocus();
+};
+
+/** Hidden tab, or an unfocused window: no per-tick repaints. */
 const vsbLivePaused = function () {
-    return document.hidden || (typeof document.hasFocus === 'function' && !document.hasFocus());
+    return document.hidden || vsbLiveUnfocused();
 };
 
 const vsbLiveSend = function (force) {
     vsbLive.syncTimer = null;
     if (typeof wsClient === 'undefined' || !wsClient || !wsClient.ws || wsClient.ws.readyState !== 1) return;
-    const topics = vsbLivePaused() ? { host: false, system: [], weather: false, fx: [], quotes: [], feeds: [] } : vsbLiveTopics();
+    let topics = document.hidden ? { host: false, system: [], weather: false, fx: [], quotes: [], feeds: [] } : vsbLiveTopics();
+    if (!document.hidden && vsbLiveUnfocused()) topics = { ...topics, host: false, system: [] };
     const key = JSON.stringify(topics);
     if (!force && key === vsbLive.sentKey && vsbLive.socket === wsClient.ws) return;
     vsbLive.sentKey = key;
@@ -257,10 +264,11 @@ const vsbLiveOnPush = function (msg) {
 
 /** A reconnect (new socket) or a server restart (no pushes) loses the subscription: send it again. */
 const vsbLiveWatch = function () {
-    if (!vsbLive.users.size || vsbLivePaused()) return;
+    if (!vsbLive.users.size || document.hidden) return;
     if (typeof wsClient === 'undefined' || !wsClient || !wsClient.ws || wsClient.ws.readyState !== 1) return;
     const quiet = Date.now() - vsbLive.lastPushAt > VSB_LIVE_WATCH_MS;
-    if (vsbLive.socket !== wsClient.ws || (quiet && vsbLiveTopicsTick())) vsbLiveSync(true);
+    // unfocused, the per-tick topics are off on purpose: quiet proves nothing then
+    if (vsbLive.socket !== wsClient.ws || (quiet && !vsbLiveUnfocused() && vsbLiveTopicsTick())) vsbLiveSync(true);
 };
 
 /** Only host/system arrive every tick (2 s), so only they prove a dead feed by being quiet. */
