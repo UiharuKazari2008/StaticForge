@@ -1110,7 +1110,7 @@
             <div id="photoSwipeMount"></div>
             <aside class="wpg-info hidden" aria-label="Info">
                 <button type="button" class="wpg-info-close" data-gw="info-close" title="Close the Info pane"></button>
-                <div class="wpg-info-thumb"><img loading="lazy" decoding="async" class="wpg-info-thumb-img" alt=""></div>
+                <div class="wpg-info-thumb"><img class="wpg-info-thumb-img" alt=""></div>
                 <div class="wpg-info-name"></div>
                 <div class="wpg-info-line wpg-info-date"></div>
                 <div class="wpg-info-line wpg-info-size"></div>
@@ -1438,12 +1438,12 @@
                                     <div id="directorSessionPreviewContainer"
                                         class="director-session-preview-container director-header-element hidden"
                                         data-view="sessionChat">
-                                        <img loading="lazy" decoding="async" id="directorSessionPreview" class="director-session-preview-small"
+                                        <img id="directorSessionPreview" class="director-session-preview-small"
                                             src="/static_images/background.jpg" alt="Session preview"
                                             onclick="window.directorInstance.toggleSessionPreview()">
                                         <div id="directorSessionPreviewExpanded"
                                             class="director-session-preview-expanded hidden">
-                                            <img loading="lazy" decoding="async" id="directorSessionPreviewLarge" class="director-session-preview-large"
+                                            <img id="directorSessionPreviewLarge" class="director-session-preview-large"
                                                 src="/static_images/background.jpg" alt="Large session preview">
                                         </div>
                                     </div>
@@ -2259,7 +2259,7 @@
                                                 <i class="fa-regular fa-xmark-large"></i>
                                             </button>
                                         </div>
-                                        <img loading="lazy" decoding="async" id="manualVariationImage" src="" alt="Source Image"
+                                        <img id="manualVariationImage" src="" alt="Source Image"
                                             class="variation-image">
                                         <canvas id="maskPreviewCanvas" class="mask-preview-canvas"
                                             style="pointer-events: none;"></canvas>
@@ -2328,7 +2328,7 @@
                                                 <i class="fa-regular fa-xmark-large"></i>
                                             </button>
                                         </div>
-                                        <img loading="lazy" decoding="async" id="directorReferenceImage" src="" alt="Director Reference"
+                                        <img id="directorReferenceImage" src="" alt="Director Reference"
                                             class="variation-image">
                                         <div class="overlay-icon-container">
                                             <i class="nai-precise-reference"></i>
@@ -2477,15 +2477,15 @@
                             <!-- Navigation buttons -->
                             <div class="manual-preview-image-container">
                                 <div class="manual-preview-image-container-inner" id="manualPreviewImageContainerInner">
-                                    <img loading="lazy" decoding="async" id="manualPreviewImage" src="" alt="Generated Image" class="hidden">
-                                    <img loading="lazy" decoding="async" id="manualPreviewCompareSourceImage" src="" alt="Compare Source Image"
+                                    <img id="manualPreviewImage" src="" alt="Generated Image" class="hidden">
+                                    <img id="manualPreviewCompareSourceImage" src="" alt="Compare Source Image"
                                         class="manual-preview-compare-source hidden">
                                     <div class="manual-preview-compare-labels" aria-hidden="true">
                                         <span class="manual-preview-compare-label compare-label-source">Source</span>
                                         <span class="manual-preview-compare-label compare-label-result">Result</span>
                                     </div>
                                 </div>
-                                <img loading="lazy" decoding="async" id="manualPreviewOriginalImage" src="" alt="Original Image"
+                                <img id="manualPreviewOriginalImage" src="" alt="Original Image"
                                     class="manual-preview-original-image hidden">
                                 <div id="manualPreviewPlaceholder" class="manual-preview-placeholder">
                                     <div id="manualQuickstartFallback" class="manual-quickstart-fallback">
@@ -2733,7 +2733,7 @@
                                 <div class="cache-browser-loading hidden" id="cacheBrowserLoadingContainer">
                                     <picture>
                                         <source srcset="/static_images/workin.webp" type="image/webp">
-                                        <img loading="lazy" decoding="async" class="loading" src="/static_images/workin.gif" alt=""></img>
+                                        <img class="loading" src="/static_images/workin.gif" alt=""></img>
                                     </picture>
                                     <p class="loading">Loading references...</p>
                                 </div>
@@ -3076,7 +3076,7 @@
         <div class="modal-content dark character-position-tool-content">
             <div class="character-position-stage-shell">
                 <div id="characterPositionStage" class="character-position-stage">
-                    <img loading="lazy" decoding="async" id="characterPositionImage" class="character-position-image hidden" alt="Last generated image">
+                    <img id="characterPositionImage" class="character-position-image hidden" alt="Last generated image">
                     <div id="characterPositionEmpty" class="character-position-empty">
                         <i class="fas fa-image"></i>
                         <span>No generated image yet. Using the current resolution shape.</span>
@@ -3470,7 +3470,7 @@
                         <span class="expansion-canvas-preview-edge" data-edge="left"></span>
                         <div class="expansion-canvas-preview-target">
                             <div class="expansion-canvas-preview-source">
-                                <img loading="lazy" decoding="async" class="expansion-canvas-preview-image" alt="" draggable="false">
+                                <img class="expansion-canvas-preview-image" alt="" draggable="false">
                             </div>
                         </div>
                         <span class="expansion-canvas-preview-edge" data-edge="right"></span>
@@ -4139,9 +4139,9 @@
                             <div class="target-area-border"></div>
                         </div>
                         <div id="biasAdjustmentImageWrapper" class="bias-adjustment-image-wrapper">
-                            <img loading="lazy" decoding="async" id="biasAdjustmentImage" src="" alt="Base Image" class="bias-adjustment-image">
+                            <img id="biasAdjustmentImage" src="" alt="Base Image" class="bias-adjustment-image">
                         </div>
-                        <img loading="lazy" decoding="async" id="clientPreviewImage" src="" alt="Client Preview" class="client-preview-image hidden">
+                        <img id="clientPreviewImage" src="" alt="Client Preview" class="client-preview-image hidden">
                     </div>
                 </div>
             </div>
@@ -4170,13 +4170,13 @@
                     <div class="preview-section">
                         <h4>Client Preview</h4>
                         <div class="preview-image-container">
-                            <img loading="lazy" decoding="async" id="confirmClientPreview" src="" alt="Client Preview">
+                            <img id="confirmClientPreview" src="" alt="Client Preview">
                         </div>
                     </div>
                     <div class="preview-section">
                         <h4>Server Preview</h4>
                         <div class="preview-image-container">
-                            <img loading="lazy" decoding="async" id="confirmServerPreview" src="" alt="Server Preview">
+                            <img id="confirmServerPreview" src="" alt="Server Preview">
                         </div>
                     </div>
                 </div>
@@ -4460,7 +4460,7 @@
                     <div id="directorSessionImages" class="director-session-images form-section-scroll" data-custom-scrollbar></div>
                 </div>
                 <div id="directorBrowserPane" class="director-browser-pane hidden">
-                    <img loading="lazy" decoding="async" id="directorBrowserPreview" class="director-browser-preview" alt="Director browser">
+                    <img id="directorBrowserPreview" class="director-browser-preview" alt="Director browser">
                 </div>
             </div>
         </div>
@@ -5167,7 +5167,7 @@ Examples:
                             <!-- Reference images will be loaded here -->
                         </div>
                         <div class="cache-manager-loading hidden" id="cacheManagerLoading">
-                            <img loading="lazy" decoding="async" class="loading" src="/static_images/azuspin.gif"></img>
+                            <img class="loading" src="/static_images/azuspin.gif"></img>
                             <p class="loading">Loading cache images...</p>
                         </div>
                     </div>
@@ -5237,7 +5237,7 @@ Examples:
         </div>
         <div class="modal-content gallery-move-modal-content dark">
             <div class="gallery-move-left-panel">
-                <img loading="lazy" decoding="async" id="unifiedUploadBackgroundImage" src="/static_images/background.jpg" alt="Upload image"
+                <img id="unifiedUploadBackgroundImage" src="/static_images/background.jpg" alt="Upload image"
                     class="gallery-move-background-image">
                 <h3 id="unifiedUploadModalTitle" class="gallery-move-left-header"><i class="nai-import"></i> Import File
                 </h3>
@@ -5891,7 +5891,7 @@ Examples:
         </div>
         <div class="modal-content gallery-move-modal-content dark">
             <div class="gallery-move-left-panel">
-                <img loading="lazy" decoding="async" id="vibeEncodingBackgroundImage" src="/static_images/background.jpg" alt="Vibe encoding image"
+                <img id="vibeEncodingBackgroundImage" src="/static_images/background.jpg" alt="Vibe encoding image"
                     class="gallery-move-background-image">
                 <div class="gallery-move-left-header">
                     <h3 id="vibeEncodingModalTitle"><i class="mdi mdi-data-matrix-scan"></i> Vibe Encoding</h3>
@@ -6468,7 +6468,7 @@ Examples:
                                 </div>
                             </div>
 
-                            <img loading="lazy" decoding="async" id="spellbookPreviewImage" src="" alt="Preview" class="spellbook-preview-image hidden">
+                            <img id="spellbookPreviewImage" src="" alt="Preview" class="spellbook-preview-image hidden">
                             <!-- Confetti container for spellbook modal -->
                             <div id="spellbookConfettiContainer" class="confetti-container"></div>
 
@@ -6693,7 +6693,7 @@ Examples:
                                 </div>
                             </div>
                         </div>
-                        <img loading="lazy" decoding="async" id="imageViewerImage" src="" alt="Image" class="viewer-image hidden">
+                        <img id="imageViewerImage" src="" alt="Image" class="viewer-image hidden">
                     </div>
                 </div>
             </div>
@@ -6801,7 +6801,7 @@ Examples:
                 </div>
             </div>
             <div class="image-prompt-inspector-summary">
-                <img loading="lazy" decoding="async" id="imagePromptInspectorThumb" class="image-prompt-inspector-thumb hidden" src="" alt="">
+                <img id="imagePromptInspectorThumb" class="image-prompt-inspector-thumb hidden" src="" alt="">
                 <div class="image-prompt-inspector-file selectable">
                     <span id="imagePromptInspectorFilename" class="image-prompt-inspector-filename selectable">Image</span>
                     <span id="imagePromptInspectorSubtitle" class="image-prompt-inspector-subtitle selectable"></span>
@@ -7354,11 +7354,11 @@ Examples:
                                 <span>Enter a tag and generate a preview</span>
                             </div>
                             <div id="naxtCustomTagPreviewLoading" class="naxt-custom-tag-preview-loading hidden">
-                                <img loading="lazy" decoding="async" class="loading" src="/static_images/azuspin.gif" alt="">
+                                <img class="loading" src="/static_images/azuspin.gif" alt="">
                                 <span>Generating preview…</span>
                             </div>
                             <div id="naxtCustomTagPreviewError" class="naxt-custom-tag-preview-error hidden"></div>
-                            <img loading="lazy" decoding="async" id="naxtCustomTagPreviewImg" class="spellbook-preview-image hidden" alt="">
+                            <img id="naxtCustomTagPreviewImg" class="spellbook-preview-image hidden" alt="">
                             <div id="naxtCustomTagPreviewCaption" class="naxt-custom-tag-preview-caption hidden"></div>
                             <div class="spellbook-overlay-buttons">
                                 <div class="spellbook-bottom-left-buttons naxt-custom-tag-overlay-buttons hidden"
