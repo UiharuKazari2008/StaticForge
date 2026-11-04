@@ -491,19 +491,37 @@ const vsbClockApply = function (inst) {
     vsbClockTick(inst);
 };
 
+// The hands turn as CSS animations on the compositor (vsb-clock-turn, vista-sidebar.css): the second
+// hand steps once a second as Vista's does, minute and hour sweep. A negative delay puts each at the
+// zone's time; JS only re-syncs on minute rollover (title, drift), focus and visibility changes, and
+// pauses the hands while the clock is not shown (idle perf pass 2026-11-04: the per-second inline
+// transform was 12 restyles in 6 s on the Fold7).
 const vsbClockTick = function (inst) {
     clearTimeout(inst.timer);
+    inst.timer = null;
+    if (inst.destroyed || !inst.parts) return;
     const set = inst.g.settings;
     const { h, m, s } = vsbZoneTime(set.timeZone);
     const p = inst.parts;
-    p.h.style.transform = `rotate(${(h % 12) * 30 + m / 2}deg)`;
-    p.m.style.transform = `rotate(${m * 6 + s / 10}deg)`;
-    p.s.style.transform = `rotate(${s * 6}deg)`;
-    // Changes once a minute; an identical write every second still wakes every MutationObserver
+    const sec = s + (Date.now() % 1000) / 1000;
+    const shown = !vsbLivePaused() && vsbIsShown(inst);
+    const run = (hand, period, at, timing) => {
+        hand.style.animation = `vsb-clock-turn ${period}s ${timing} ${-at}s infinite ${shown ? 'running' : 'paused'}`;
+    };
+    run(p.h, 43200, (h % 12) * 3600 + m * 60 + sec, 'linear');
+    run(p.m, 3600, m * 60 + sec, 'linear');
+    run(p.s, 60, sec, 'steps(60, end)');
     const title = `${set.name ? set.name + ' - ' : ''}${vsbPad2(h % 12 || 12)}:${vsbPad2(m)} ${h < 12 ? 'AM' : 'PM'}`;
     if (p.face.title !== title) p.face.title = title;
-    const wait = set.seconds ? 1000 - (Date.now() % 1000) : (60 - s) * 1000;
-    inst.timer = setTimeout(() => vsbClockTick(inst), wait);
+    if (shown) inst.timer = setTimeout(() => vsbClockTick(inst), (60 - sec) * 1000 + 20);
+};
+
+/** Every clock: after a visibility / focus change, the Sidebar opening or closing, a page flip. */
+const vsbClockSyncAll = function () {
+    if (!vsb.instances) return;
+    vsb.instances.forEach((inst) => {
+        if (inst.g && (inst.g.type === 'clock' || inst.g.type === 'hero') && inst.parts && inst.parts.s) vsbClockTick(inst);
+    });
 };
 
 const vsbClockOptions = {
@@ -693,6 +711,17 @@ const vsbCpuApply = function (inst) {
     vsbCpuPaint(inst);
 };
 
+/** Text that changes in place: the existing Text node's data, never a new node (a textContent write
+ *  removes and re-adds the node even when the text is the same). */
+const vsbSetText = function (el, text) {
+    const node = el.firstChild;
+    if (node && node.nodeType === 3 && !node.nextSibling) {
+        if (node.data !== text) node.data = text;
+    } else if (el.textContent !== text) {
+        el.textContent = text;
+    }
+};
+
 const vsbCpuPaint = function (inst) {
     const p = inst.parts;
     const { cpu, ram } = inst.metrics;
@@ -702,8 +731,8 @@ const vsbCpuPaint = function (inst) {
     inst.painted = painted;
     p.cpuDial.style.transform = `rotate(${cpu * 2.5 - 125}deg)`;
     p.ramDial.style.transform = `rotate(${ram * 2.5 - 125}deg)`;
-    p.cpuText.textContent = vsbPad2(Math.round(cpu)) + '%';
-    p.ramText.textContent = vsbPad2(Math.round(ram)) + '%';
+    vsbSetText(p.cpuText, vsbPad2(Math.round(cpu)) + '%');
+    vsbSetText(p.ramText, vsbPad2(Math.round(ram)) + '%');
     p.cpuText.classList.toggle('is-full', Math.round(cpu) >= 100);
     p.ramText.classList.toggle('is-full', Math.round(ram) >= 100);
     p.cpu.title = `CPU usage: ${Math.round(cpu)}%\nMemory usage: ${Math.round(ram)}%`;
@@ -3108,6 +3137,7 @@ const vsbPaginate = function () {
     vsb.nextBtn.disabled = vsb.page >= vsb.pages - 1;
     // gadgets on another page stop asking the live feed; the ones now shown start
     vsbLiveSync(false);
+    vsbClockSyncAll();
 };
 
 const vsbClampDesktopGadgets = function () {
@@ -3756,7 +3786,11 @@ const vsbStart = function () {
     });
     document.addEventListener('visibilitychange', () => {
         if (document.hidden && vsb.saveTimer) vsbFlushSave();
+        vsbClockSyncAll();
     });
+    // blur also fires when focus moves into a gadget iframe; hasFocus settles a task later
+    window.addEventListener('blur', () => setTimeout(vsbClockSyncAll, 0));
+    window.addEventListener('focus', vsbClockSyncAll);
     window.addEventListener('pagehide', () => { if (vsb.saveTimer) vsbFlushSave(); });
     vsb.firstLoad = vsbLoad(activeWorkspace);
 };

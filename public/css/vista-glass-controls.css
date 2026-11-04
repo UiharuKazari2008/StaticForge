@@ -684,10 +684,11 @@ body.desktop-mode:not(.windows-classic-theme) :is(#taskbarWebsocketIndicator, #p
 }
 
 /* Traffic / limited globe. Flags from scripts/comp/rootStateFlags.js (a .desktop-taskbar:has() cost
-   ~4 ms per taskbar DOM change). Limited first: sending / receiving won over it by specificity before. */
+   ~4 ms per taskbar DOM change); traffic is data-net on the glyph, limited a .desktop-taskbar class.
+   Limited first: sending / receiving win over it by source order at the same specificity. */
 body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar.net-limited #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-limited-16.png") 1x, url("/static_images/vista-icons/net-limited-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar.net-send #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-send-16.png") 1x, url("/static_images/vista-icons/net-internet-send-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar.net-recv #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-recv-16.png") 1x, url("/static_images/vista-icons/net-internet-recv-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar #modemTrayIconGlyph.fa-globe[data-net="send"] { background-image: image-set(url("/static_images/vista-icons/net-internet-send-16.png") 1x, url("/static_images/vista-icons/net-internet-send-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar #modemTrayIconGlyph.fa-globe[data-net="recv"] { background-image: image-set(url("/static_images/vista-icons/net-internet-recv-16.png") 1x, url("/static_images/vista-icons/net-internet-recv-32.png") 2x); }
 
 /* ---------- Studio: Vista text fields, status insets, badges, prompt glass (#445) ----------
    Hover inputs (steps, guidance, seed, size, prints, … .hover-show) stay bare text at rest;

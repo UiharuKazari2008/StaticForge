@@ -552,7 +552,6 @@ body.desktop-mode:not(.windows-classic-theme) #logViewerModal.modal .modal-windo
     font-size: 0.65rem;
     opacity: 0.45;
     transition: opacity var(--transition-slow), color 0.25s ease;
-    will-change: color, opacity;
     color: var(--text-color, #ffffff);
 }
 

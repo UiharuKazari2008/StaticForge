@@ -154,7 +154,7 @@ for (const f of ['public/css/gallery-move.css', 'public/css/manual-modal-generat
 assert.ok(aeroCss.includes('body.desktop-mode.has-active-maximized-window .desktop-taskbar::after'), 'the taskbar follows the active maximized window');
 
 const glass = read('public/css/vista-glass-controls.css');
-const globe = ['.net-limited #modemTrayIconGlyph', '.net-send #modemTrayIconGlyph', '.net-recv #modemTrayIconGlyph'].map((s) => glass.indexOf(s));
+const globe = ['.net-limited #modemTrayIconGlyph', '#modemTrayIconGlyph.fa-globe[data-net="send"]', '#modemTrayIconGlyph.fa-globe[data-net="recv"]'].map((s) => glass.indexOf(s));
 assert.ok(globe.every((i) => i > 0) && globe[0] < globe[1] && globe[1] < globe[2], 'globe: limited, then send, then receive (receive wins, limited loses, as with the old specificities)');
 for (const f of ['public/css/app.css', 'public/css/gallery-core.css', 'public/css/gallery-move.css', 'public/css/manual-modal-generate.css', 'public/css/aero-glass.css', 'public/css/vista-glass-controls.css']) {
     const css = read(f).replace(/\/\*[\s\S]*?\*\//g, '');
@@ -212,6 +212,14 @@ const otherModal = el('modal', bodyEl);
 const previewContent = el('manual-preview-content', modalEl);
 let observerCallback = null;
 let observeOptions = null;
+// #modemTrayIconGlyph: traffic is its data-net attribute
+const glyphAttrs = new Map();
+const globeGlyph = {
+    isConnected: true,
+    getAttribute: (name) => (glyphAttrs.has(name) ? glyphAttrs.get(name) : null),
+    setAttribute: (name, value) => { glyphAttrs.set(name, String(value)); },
+    removeAttribute: (name) => { glyphAttrs.delete(name); }
+};
 
 const doc = {
     documentElement: htmlEl,
@@ -222,6 +230,7 @@ const doc = {
         return registry.find((n) => n.matches(sel)) || null;
     },
     querySelectorAll: (sel) => registry.filter((n) => n.matches(sel)),
+    getElementById: (id) => (id === 'modemTrayIconGlyph' ? globeGlyph : null),
     addEventListener: () => {}
 };
 const win = {};
@@ -289,15 +298,18 @@ assert.ok(!galleryEl.classList.contains('has-context-open-item'), 'closing the m
 
 // taskbar globe: traffic arrows are set from websocket.js; ping wait stays observed
 win.setDesktopTaskbarNetFlags({ send: true, recv: false });
-assert.ok(taskbarEl.classList.contains('net-send') && !taskbarEl.classList.contains('net-recv'), 'setDesktopTaskbarNetFlags sets .net-send');
-const LIMITED = '#taskbarWsStatus.ping-response-wait';
+assert.strictEqual(globeGlyph.getAttribute('data-net'), 'send', 'setDesktopTaskbarNetFlags lights sending on the glyph');
+assert.ok(!taskbarEl.classList.contains('net-send') && !taskbarEl.classList.contains('net-recv'), 'traffic never touches .desktop-taskbar');
+win.setDesktopTaskbarNetFlags({ send: true, recv: true });
+assert.strictEqual(globeGlyph.getAttribute('data-net'), 'recv', 'both ways shows receiving');
+const LIMITED = '#taskbarWsStatus:is(.ping-response-wait, .ping-warning)';
 taskbarEl.inside.add(LIMITED);
 observerCallback(attr(wsStatus, setCls(wsStatus, 'ping-response-wait')));
 assert.ok(taskbarEl.classList.contains('net-limited'), 'ping wait sets .net-limited');
 taskbarEl.inside.clear();
 observerCallback(attr(wsStatus, clearCls(wsStatus, 'ping-response-wait')));
 win.setDesktopTaskbarNetFlags({ send: false, recv: false, limited: false });
-assert.ok(!taskbarEl.classList.contains('net-send') && !taskbarEl.classList.contains('net-limited'), 'flags clear when the arrows rest');
+assert.ok(globeGlyph.getAttribute('data-net') === null && !taskbarEl.classList.contains('net-limited'), 'flags clear when the arrows rest');
 
 // window caption: only the window that changed is re-checked
 const CAPTION = ':scope > .modal-window-title';

@@ -20,7 +20,7 @@
  * body.taskbar-luna                      | body:has(#desktopTaskbar .taskbar-start-button.luna)
  * .gallery.has-context-open-item,
  * .gallery-container-wrapper.has-context-open-item | :has(.gallery-item.context-open)
- * .desktop-taskbar.net-send / net-recv   | set from websocket.js _syncTaskbarNetFlags (not observed)
+ * #modemTrayIconGlyph[data-net=send|recv] | set from websocket.js _syncTaskbarNetFlags (not observed)
  * .desktop-taskbar.net-limited           | .desktop-taskbar:has(#taskbarWsStatus:is(.ping-response-wait, .ping-warning))
  * .modal.window-has-caption              | .modal:has(> .modal-window-title)   (CSS uses it inside :where(), same specificity)
  * .manual-preview-container.has-workspace-overlay | :has(.manual-preview-workspace-overlay:not(.hidden))
@@ -189,12 +189,23 @@
         });
     }
 
+    // Traffic lights the tray globe several times a second: the flag sits on the glyph itself
+    // (data-net), not on .desktop-taskbar, whose class flips restyled every taskbar icon
+    // (idle perf pass 2026-11-04). Both ways at once shows receiving, as the old class rules did.
+    let netGlyph = null;
     function setDesktopTaskbarNetFlags(flags) {
-        const bar = document.querySelector('.desktop-taskbar');
-        if (!bar) return;
-        setClass(bar, 'net-send', !!flags.send);
-        setClass(bar, 'net-recv', !!flags.recv);
-        if (flags.limited !== undefined) setClass(bar, 'net-limited', !!flags.limited);
+        if (!netGlyph || !netGlyph.isConnected) netGlyph = document.getElementById('modemTrayIconGlyph');
+        if (netGlyph) {
+            const net = flags.recv ? 'recv' : (flags.send ? 'send' : '');
+            if ((netGlyph.getAttribute('data-net') || '') !== net) {
+                if (net) netGlyph.setAttribute('data-net', net);
+                else netGlyph.removeAttribute('data-net');
+            }
+        }
+        if (flags.limited !== undefined) {
+            const bar = document.querySelector('.desktop-taskbar');
+            if (bar) setClass(bar, 'net-limited', !!flags.limited);
+        }
     }
 
     // .modal.push-button-focused: every .modal around a focused non-default push button (Vista moves the

@@ -6915,10 +6915,8 @@ const shellIconFontSpecs = [
     '900 16px "Font Awesome 6 Pro"',
     '400 16px "Font Awesome 6 Pro"',
     '300 16px "Font Awesome 6 Pro"',
-    '100 16px "Font Awesome 6 Pro"',
     '900 16px "Font Awesome 6 Duotone"',
     '400 16px "Font Awesome 6 Brands"',
-    '900 16px "Font Awesome 6 Sharp"',
     '16px "remixicon"',
     '16px "Material Design Icons"'
 ];

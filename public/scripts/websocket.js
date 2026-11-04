@@ -9324,8 +9324,15 @@ class WebSocketClient {
         const text = displayCount > 0 ? String(displayCount) : '';
         const count = String(displayCount);
         badges.forEach(badge => {
-            // an identical write still invalidates style and wakes MutationObservers
-            if (badge.textContent !== text) badge.textContent = text;
+            // an identical write still invalidates style and wakes MutationObservers; a changed
+            // count edits the Text node in place instead of replacing it
+            const node = badge.firstChild;
+            if (node && node.nodeType === 3 && !node.nextSibling) {
+                if (node.data !== text) node.data = text;
+            } else if (badge.textContent !== text || !node) {
+                // an empty badge keeps an empty Text node for the next count
+                badge.replaceChildren(document.createTextNode(text));
+            }
             if (badge.getAttribute('data-count') !== count) badge.setAttribute('data-count', count);
         });
     }

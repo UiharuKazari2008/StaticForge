@@ -1036,6 +1036,8 @@ body.desktop-mode.use-app-image-icons .modal-window-title-main:has(.icon-image) 
 }
 
 .taskbar-tray {
+    /* traffic, clock and icon updates repaint the tray only */
+    contain: layout paint;
     display: flex;
     align-items: center;
     gap: 8px;

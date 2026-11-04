@@ -343,12 +343,17 @@ function trayWatchIcons() {
     const ids = new Set(TRAY_ICON_CATALOG.map((row) => row.id));
     // every icon starts active: Vista shows a new icon before it can go inactive
     ids.forEach((id) => trayNoteActivity(id));
+    // Only catalogued icons can tuck away: the WebSocket arrows (a flash per message) and the system
+    // icons change here all the time and never move the overflow (idle perf pass 2026-11-04)
     const obs = new MutationObserver((mutations) => {
+        let relevant = false;
         mutations.forEach((m) => {
             const icon = m.target.closest && m.target.closest('.taskbar-tray-icon');
-            if (icon && ids.has(icon.id) && (icon !== m.target || trayMutationIsActivity(m))) trayNoteActivity(icon.id);
+            if (!icon || !ids.has(icon.id) || TRAY_SYSTEM_ICON_IDS.includes(icon.id)) return;
+            relevant = true;
+            if (icon !== m.target || trayMutationIsActivity(m)) trayNoteActivity(icon.id);
         });
-        traySyncOverflow();
+        if (relevant) traySyncOverflow();
     });
     obs.observe(root, { subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['class', 'title'] });
     root.addEventListener('pointerdown', (ev) => {

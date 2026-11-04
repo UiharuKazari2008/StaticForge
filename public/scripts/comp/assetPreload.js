@@ -63,10 +63,8 @@ var assetPreload = (function () {
         '900 16px "Font Awesome 6 Pro"',
         '400 16px "Font Awesome 6 Pro"',
         '300 16px "Font Awesome 6 Pro"',
-        '100 16px "Font Awesome 6 Pro"',
         '900 16px "Font Awesome 6 Duotone"',
         '400 16px "Font Awesome 6 Brands"',
-        '900 16px "Font Awesome 6 Sharp"',
         '16px "remixicon"',
         '16px "Material Design Icons"'
     ];
@@ -74,11 +72,11 @@ var assetPreload = (function () {
         'fas fa-house',
         'fa-regular fa-house',
         'fa-light fa-house',
-        'fa-thin fa-house',
         'fa-duotone fa-house',
-        'fa-brands fa-font-awesome',
-        'fa-sharp fa-solid fa-house'
+        'fa-brands fa-font-awesome'
     ];
+    // No thin or sharp: nothing in the app draws them, and their faces are left out of
+    // dist/fontawesome/css/all.subset.css (scripts/build-icon-font-subsets.js)
 
     // Pictures on the taskbar when it is revealed. Not every stylesheet.
     var TASKBAR_URLS = [

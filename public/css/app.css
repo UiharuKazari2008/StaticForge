@@ -866,7 +866,6 @@ body.editor-open #titlebar-grab-area-container {
     font-size: 0.85em;
     opacity: 0.45;
     transition: opacity var(--transition-slow), color 0.25s ease;
-    will-change: color, opacity;
     color: var(--text-color, #ffffff);
 }
 
@@ -923,7 +922,6 @@ body.editor-open #titlebar-grab-area-container {
     font-size: 0.5em;
     color: #ff6b6b;
     transition: color 0.3s ease, opacity 0.125s ease;
-    will-change: color, opacity;
 }
 
 .websocket-indicator .websocket-status.connected i {

@@ -326,7 +326,9 @@
     new MutationObserver(function (records) {
         for (var r = 0; r < records.length; r++) {
             for (var n = 0; n < records[r].addedNodes.length; n++) {
-                if (records[r].addedNodes[n].nodeType === 1) webFrames(records[r].addedNodes[n]);
+                var added = records[r].addedNodes[n];
+                // a gadget's own repaints add text and leaf elements: only an iframe or a subtree can hold one
+                if (added.nodeType === 1 && (added.tagName === 'IFRAME' || added.firstElementChild)) webFrames(added);
             }
         }
     }).observe(document.documentElement, { childList: true, subtree: true });

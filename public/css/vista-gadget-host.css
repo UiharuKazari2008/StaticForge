@@ -2,6 +2,8 @@
    page in a transparent iframe sized to its body, like the Sidebar drew it. */
 
 .vgh-box {
+    /* hosted gadget repaints stay inside its box */
+    contain: layout paint;
     position: relative;
     line-height: 0;
 }

@@ -2221,3 +2221,14 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
 }
 
 .vsb-people-pos { font-size: 11px; }
+
+/* Clock hands: one turn per period, timing and phase set inline by vsbClockTick (vistaSidebar.js) */
+@keyframes vsb-clock-turn {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* The docked pane repaints its gadgets every live tick: keep that layout and paint inside it. Not on
+   #vistaSidebar itself, a 0-height wrapper whose children are fixed. Dragged gadgets leave the pane
+   for the root first (vsbDragMove), flyouts live outside it. */
+.vsb-pane { contain: layout paint; }

@@ -186,7 +186,8 @@ class DirectorMascot {
     }
 
     layout() {
-        if (!this.root || !this.manifest || !this.host) return;
+        // not shown: nothing to measure (applyView lays her out again when she shows)
+        if (!this.root || !this.manifest || !this.host || !this._shown) return;
         const hostBox = this.host.getBoundingClientRect();
         const composer = this.host.querySelector('#directorComposer');
         this.fitLogPanel(composer);
@@ -265,6 +266,7 @@ class DirectorMascot {
 
     // Re-measure every frame for a moment (the bar slides between the centred home and the bottom).
     settleLayout(ms = 800) {
+        if (!this._shown) return;
         if (typeof requestAnimationFrame !== 'function') { this.layout(); return; }
         this._settleUntil = Date.now() + ms;
         if (this._settling) return;
@@ -585,6 +587,8 @@ class DirectorMascot {
 
     act(action) {
         if (!this.el || !/^[a-z-]+$/.test(action)) return;
+        // hidden: no keyframe restart (its offsetWidth read forces a layout of the page)
+        if (this._shown === false) return;
         const target = this.el.rig;   // the face moves with the body, kicks included
         const cls = `dm-act-${action}`;
         target.classList.remove(cls);
