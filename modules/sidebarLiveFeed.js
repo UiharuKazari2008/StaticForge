@@ -1,7 +1,8 @@
 /**
- * Sidebar live feed (Yozora #653): one `sidebar_live` push per subscribed tab, at most once a
- * second, instead of every gadget polling on its own request (CPU Meter every 2 s per instance,
- * hosted gadgets' system info every 1 s, weather / quotes / currency / feeds on their own timers).
+ * Sidebar live feed (Yozora #653): one `sidebar_live` push per subscribed tab, at most once every
+ * 2 s (1 s until the 2026-11-04 idle perf pass), instead of every gadget polling on its own request
+ * (CPU Meter every 2 s per instance, hosted gadgets' system info every 1 s, weather / quotes /
+ * currency / feeds on their own timers).
  *
  * A tab sends `sidebar_live_subscribe` with the union of what its gadgets show
  * (modules/ws/handlers/290-sidebarHandler.js); an empty topic set unsubscribes. Each tick sends
@@ -18,7 +19,7 @@
 const sidebarGadgets = require('./sidebarGadgets');
 const sidebarSystemInfo = require('./sidebarSystemInfo');
 
-const TICK_MS = 1000;
+const TICK_MS = 2000;
 const REFRESH_MS = {
     weather: 15 * 60 * 1000,
     quotes: 3 * 60 * 1000,

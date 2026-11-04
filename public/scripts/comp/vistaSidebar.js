@@ -131,7 +131,7 @@ const vsbLoadImage = function (url) {
 // ---------------------------------------------------------------- live feed (Yozora #653)
 
 /*
- * One `sidebar_live` push per second for the whole tab instead of a request per gadget per
+ * One `sidebar_live` push every 2 s for the whole tab instead of a request per gadget per
  * interval. Gadgets register what they show with vsbLiveUse(owner, spec, onData) and get back a
  * release function; the hub sends the union as one `sidebar_live_subscribe`
  * (modules/sidebarLiveFeed.js) and hands each push to the gadgets that asked for it.
@@ -140,6 +140,8 @@ const vsbLoadImage = function (url) {
  * system parts: cpu, memory, uptime, disks, network, processes. Only what a shown gadget reads is
  * subscribed, and the server sends only that: `isActive()` (optional) drops a user while its
  * gadget is off screen (another page, Sidebar closed); vsbRender / vsbPaginate resync.
+ * A hidden tab or an unfocused window (another app in DeX, Yozora perf pass 2026-11-04) subscribes
+ * nothing, so the dials and hosted gadgets stop repainting until the window is back.
  */
 const VSB_LIVE_WATCH_MS = 5000;
 
@@ -149,6 +151,7 @@ const vsbLive = {
     sentKey: null,
     socket: null,
     lastPushAt: 0,
+    lastJson: new Map(),
     syncTimer: null,
     watchTimer: null,
     bound: false
@@ -204,10 +207,15 @@ const vsbLiveTopics = function () {
     return t;
 };
 
+/** Hidden tab, or focus in another window (a gadget iframe still counts as this document). */
+const vsbLivePaused = function () {
+    return document.hidden || (typeof document.hasFocus === 'function' && !document.hasFocus());
+};
+
 const vsbLiveSend = function (force) {
     vsbLive.syncTimer = null;
     if (typeof wsClient === 'undefined' || !wsClient || !wsClient.ws || wsClient.ws.readyState !== 1) return;
-    const topics = document.hidden ? { host: false, system: [], weather: false, fx: [], quotes: [], feeds: [] } : vsbLiveTopics();
+    const topics = vsbLivePaused() ? { host: false, system: [], weather: false, fx: [], quotes: [], feeds: [] } : vsbLiveTopics();
     const key = JSON.stringify(topics);
     if (!force && key === vsbLive.sentKey && vsbLive.socket === wsClient.ws) return;
     vsbLive.sentKey = key;
@@ -231,26 +239,31 @@ const vsbLiveOnPush = function (msg) {
     const data = msg && (msg.data || msg);
     if (!data) return;
     vsbLive.lastPushAt = Date.now();
-    vsbLive.users.forEach(({ key, onData, isActive }) => {
+    vsbLive.users.forEach(({ key, onData, isActive }, owner) => {
         if (isActive) {
             try { if (!isActive()) return; } catch (_) { return; }
         }
         const part = vsbLivePart(data, key);
         if (part === undefined) return;
         vsbLive.last.set(key, part);
+        // an unchanged figure repaints nothing
+        let json = null;
+        try { json = JSON.stringify(part); } catch (_) { json = null; }
+        if (json !== null && vsbLive.lastJson.get(owner) === json) return;
+        vsbLive.lastJson.set(owner, json);
         try { onData(part); } catch (err) { console.warn('Sidebar live update failed:', err); }
     });
 };
 
 /** A reconnect (new socket) or a server restart (no pushes) loses the subscription: send it again. */
 const vsbLiveWatch = function () {
-    if (!vsbLive.users.size || document.hidden) return;
+    if (!vsbLive.users.size || vsbLivePaused()) return;
     if (typeof wsClient === 'undefined' || !wsClient || !wsClient.ws || wsClient.ws.readyState !== 1) return;
     const quiet = Date.now() - vsbLive.lastPushAt > VSB_LIVE_WATCH_MS;
     if (vsbLive.socket !== wsClient.ws || (quiet && vsbLiveTopicsTick())) vsbLiveSync(true);
 };
 
-/** Only host/system arrive every second, so only they prove a dead feed by being quiet. */
+/** Only host/system arrive every tick (2 s), so only they prove a dead feed by being quiet. */
 const vsbLiveTopicsTick = function () {
     const t = vsbLiveTopics();
     return t.host || t.system.length > 0;
@@ -262,6 +275,9 @@ const vsbLiveBind = function () {
     // wsClient.on: public/scripts/websocket.js
     wsClient.on('sidebar_live', vsbLiveOnPush);
     document.addEventListener('visibilitychange', () => vsbLiveSync(true));
+    // blur also fires when focus moves into a gadget iframe; vsbLivePaused reads hasFocus once it settles
+    window.addEventListener('blur', () => setTimeout(() => vsbLiveSync(false), 0));
+    window.addEventListener('focus', () => vsbLiveSync(false));
     vsbLive.watchTimer = setInterval(vsbLiveWatch, VSB_LIVE_WATCH_MS);
 };
 
@@ -269,6 +285,7 @@ const vsbLiveUse = function (owner, spec, onData, isActive = null) {
     vsbLiveBind();
     const key = vsbLiveSpecKey(spec || {});
     vsbLive.users.set(owner, { spec: spec || {}, key, onData, isActive });
+    vsbLive.lastJson.delete(owner);
     vsbLiveSync(false);
     // the server sends a slow topic once per refresh period per tab: a second gadget on the same
     // key starts from the value the first one already got
@@ -282,6 +299,7 @@ const vsbLiveUse = function (owner, spec, onData, isActive = null) {
     return () => {
         if (vsbLive.users.get(owner) && vsbLive.users.get(owner).onData === onData) {
             vsbLive.users.delete(owner);
+            vsbLive.lastJson.delete(owner);
             vsbLiveSync(false);
         }
     };
@@ -648,7 +666,7 @@ const vsbCpuMount = function (inst) {
     };
     inst.metrics = { cpu: 0, ram: 0 };
     vsbCpuApply(inst);
-    // host figures arrive on the tab's live feed every second (Yozora #653)
+    // host figures arrive on the tab's live feed every 2 s (Yozora #653)
     inst.liveRelease = vsbLiveUse(inst, { host: true }, (data) => {
         if (inst.destroyed || !data) return;
         inst.metrics = { cpu: Math.min(100, Math.max(0, Number(data.cpu) || 0)), ram: Math.min(100, Math.max(0, Number(data.ram) || 0)) };
@@ -670,6 +688,10 @@ const vsbCpuApply = function (inst) {
 const vsbCpuPaint = function (inst) {
     const p = inst.parts;
     const { cpu, ram } = inst.metrics;
+    // whole percents: a dial that would move less than a tick mark keeps its style untouched
+    const painted = `${Math.round(cpu)}:${Math.round(ram)}:${p.cpuDial.src}`;
+    if (inst.painted === painted) return;
+    inst.painted = painted;
     p.cpuDial.style.transform = `rotate(${cpu * 2.5 - 125}deg)`;
     p.ramDial.style.transform = `rotate(${ram * 2.5 - 125}deg)`;
     p.cpuText.textContent = vsbPad2(Math.round(cpu)) + '%';
@@ -1264,7 +1286,7 @@ const vsbSlideSchedule = function (inst) {
     clearTimeout(inst.timer);
     if (inst.paused || inst.destroyed) return;
     inst.timer = setTimeout(() => {
-        if (document.hidden || !vsbIsShown(inst)) vsbSlideSchedule(inst);
+        if (vsbLivePaused() || !vsbIsShown(inst)) vsbSlideSchedule(inst);
         else vsbSlideStep(inst, 1);
     }, inst.g.settings.seconds * 1000);
 };

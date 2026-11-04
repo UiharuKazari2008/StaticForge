@@ -1097,6 +1097,7 @@ class WebSocketClient {
         this._httpFlashPendingUp = null;
         this._httpFlashPendingDown = null;
         this._wsFlashRafId = null;
+        this._wsFlashWaitId = null;
         this._wsFlashLastApply = 0;
         this._wsFlashMinInterval = 80;
         this._wsFlashDuration = 500;
@@ -4283,6 +4284,8 @@ class WebSocketClient {
                 this._clearHttpStreamState();
                 if (this._wsFlashRafId) {
                     cancelAnimationFrame(this._wsFlashRafId);
+                    clearTimeout(this._wsFlashWaitId);
+                    this._wsFlashWaitId = null;
                     this._wsFlashRafId = null;
                 }
             }
@@ -9318,9 +9321,12 @@ class WebSocketClient {
         }
 
         const badges = document.querySelectorAll('.websocket-ticker-badge');
+        const text = displayCount > 0 ? String(displayCount) : '';
+        const count = String(displayCount);
         badges.forEach(badge => {
-            badge.textContent = displayCount > 0 ? String(displayCount) : '';
-            badge.setAttribute('data-count', displayCount);
+            // an identical write still invalidates style and wakes MutationObservers
+            if (badge.textContent !== text) badge.textContent = text;
+            if (badge.getAttribute('data-count') !== count) badge.setAttribute('data-count', count);
         });
     }
 
@@ -9501,23 +9507,32 @@ class WebSocketClient {
     }
 
     // Class-only visibility (no getComputedStyle / checkVisibility — those force layout).
+    // Rendered on screen (display, content-visibility, visibility). The desktop taskbar's arrows are
+    // display: none but drive the tray globe (_syncTaskbarNetFlags), so they count while the globe shows.
     _isWsFlashElementVisible(el) {
         if (!el || document.hidden) return false;
-
-        let node = el;
-        while (node && node !== document.documentElement) {
-            if (node.classList?.contains('hidden')
-                || node.classList?.contains('hidden-alt')
-                || node.classList?.contains('minimised')) {
-                return false;
+        const shown = (node) => {
+            if (typeof node.checkVisibility === 'function') {
+                return node.checkVisibility({ visibilityProperty: true });
             }
-            node = node.parentElement;
+            for (let n = node; n && n !== document.documentElement; n = n.parentElement) {
+                if (n.classList?.contains('hidden') || n.classList?.contains('hidden-alt') || n.classList?.contains('minimised')) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        if (el.closest?.('#taskbarWebsocketIndicator')) {
+            const globe = document.getElementById('modemTrayIcon');
+            if (globe && shown(globe)) return true;
         }
-        return true;
+        return shown(el);
     }
 
     _isWsFlashVisibilityMutationTarget(node) {
         if (!node || node.nodeType !== 1) return false;
+        // the arrows' own flash classes never change which arrows are shown
+        if (node.matches?.('.websocket-arrow-up, .websocket-arrow-down, #connectionTrafficUp, #connectionTrafficDown')) return false;
         if (node === document.body) return true;
         if (node.classList?.contains('modal')) return true;
         if (node.classList?.contains('websocket-indicator')) return true;
@@ -9613,6 +9628,8 @@ class WebSocketClient {
         }
         if (this._wsFlashRafId) {
             cancelAnimationFrame(this._wsFlashRafId);
+            clearTimeout(this._wsFlashWaitId);
+            this._wsFlashWaitId = null;
             this._wsFlashRafId = null;
         }
         this._wsFlashPendingUp = null;
@@ -9875,8 +9892,15 @@ class WebSocketClient {
             }
 
             const now = performance.now();
-            if (now - this._wsFlashLastApply < this._wsFlashMinInterval) {
-                this._queueWsFlashApply();
+            const wait = this._wsFlashMinInterval - (now - this._wsFlashLastApply);
+            if (wait > 0) {
+                // wait out the gap without asking for a frame on every vsync meanwhile
+                this._wsFlashRafId = -1;
+                this._wsFlashWaitId = setTimeout(() => {
+                    this._wsFlashWaitId = null;
+                    this._wsFlashRafId = null;
+                    this._queueWsFlashApply();
+                }, wait);
                 return;
             }
 
@@ -9894,7 +9918,7 @@ class WebSocketClient {
             this._httpFlashPendingUp = null;
             this._httpFlashPendingDown = null;
             this._wsFlashLastApply = now;
-            this._refreshWsFlashTargets();
+            // targets follow layout changes (_startWsFlashVisibilityWatcher), not every message
 
             if (upWsDuration != null) {
                 this._applyTrafficArrowFlash('up', upWsDuration, 'ws');

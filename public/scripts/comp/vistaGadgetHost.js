@@ -284,7 +284,7 @@ const vghSysOnData = function (data) {
 /**
  * The latest sample for the parts this gadget reads (cpu, memory, uptime, disks, network,
  * processes). The first user follows the Sidebar's live feed (vistaSidebar.js vsbLiveUse, one
- * sidebar_live push per second for the tab) and vghDestroy lets go after the last. A part read for
+ * sidebar_live push every 2 s for the tab) and vghDestroy lets go after the last. A part read for
  * the first time is remembered per gadget, so the next start subscribes it up front.
  */
 const vghSysUse = function (ctx, parts) {
@@ -305,7 +305,9 @@ const vghSysUse = function (ctx, parts) {
         added = true;
     }
     if (!VGH_SYS.release && typeof window.vsbLiveUse === 'function') {
-        VGH_SYS.release = window.vsbLiveUse('vgh-system', VGH_SYS_SPEC, vghSysOnData);
+        // only while one of its gadgets is on screen (vistaSidebar.js vsbIsShown)
+        VGH_SYS.release = window.vsbLiveUse('vgh-system', VGH_SYS_SPEC, vghSysOnData,
+            () => [...VGH_SYS.users].some((user) => !user.inst || typeof vsbIsShown !== 'function' || vsbIsShown(user.inst)));
     } else if (added && typeof vsbLiveSync === 'function') {
         vsbLiveSync(false);
     }

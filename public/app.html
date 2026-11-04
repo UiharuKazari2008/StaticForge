@@ -1110,7 +1110,7 @@
             <div id="photoSwipeMount"></div>
             <aside class="wpg-info hidden" aria-label="Info">
                 <button type="button" class="wpg-info-close" data-gw="info-close" title="Close the Info pane"></button>
-                <div class="wpg-info-thumb"><img class="wpg-info-thumb-img" alt=""></div>
+                <div class="wpg-info-thumb"><img loading="lazy" decoding="async" class="wpg-info-thumb-img" alt=""></div>
                 <div class="wpg-info-name"></div>
                 <div class="wpg-info-line wpg-info-date"></div>
                 <div class="wpg-info-line wpg-info-size"></div>
@@ -1313,14 +1313,14 @@
         </div>
         <div class="modal-content run-applet-content">
             <div class="run-applet-panel">
-                <img class="run-applet-icon" src="/static_images/vista-icons/run-32.png" alt="" width="32" height="32" />
+                <img loading="lazy" decoding="async" class="run-applet-icon" src="/static_images/vista-icons/run-32.png" alt="" width="32" height="32" />
                 <div class="run-applet-text">Type the name of a program, note, preset, or tag, and Melaton will open it for you.</div>
                 <label class="run-applet-open-label" for="runAppletInput"><u>O</u>pen:</label>
                 <div class="run-applet-combo">
                     <input type="text" id="runAppletInput" class="run-applet-input" autocomplete="off" spellcheck="false" />
                     <span class="run-applet-drop" aria-hidden="true"></span>
                 </div>
-                <img class="run-applet-hint-icon" src="/static_images/vista-icons/info-16.png" alt="" width="16" height="16" />
+                <img loading="lazy" decoding="async" class="run-applet-hint-icon" src="/static_images/vista-icons/info-16.png" alt="" width="16" height="16" />
                 <div id="runAppletPrefixHint" class="run-applet-prefix-hint"></div>
             </div>
             <div class="run-applet-footer">
@@ -1438,12 +1438,12 @@
                                     <div id="directorSessionPreviewContainer"
                                         class="director-session-preview-container director-header-element hidden"
                                         data-view="sessionChat">
-                                        <img id="directorSessionPreview" class="director-session-preview-small"
+                                        <img loading="lazy" decoding="async" id="directorSessionPreview" class="director-session-preview-small"
                                             src="/static_images/background.jpg" alt="Session preview"
                                             onclick="window.directorInstance.toggleSessionPreview()">
                                         <div id="directorSessionPreviewExpanded"
                                             class="director-session-preview-expanded hidden">
-                                            <img id="directorSessionPreviewLarge" class="director-session-preview-large"
+                                            <img loading="lazy" decoding="async" id="directorSessionPreviewLarge" class="director-session-preview-large"
                                                 src="/static_images/background.jpg" alt="Large session preview">
                                         </div>
                                     </div>
@@ -2259,7 +2259,7 @@
                                                 <i class="fa-regular fa-xmark-large"></i>
                                             </button>
                                         </div>
-                                        <img id="manualVariationImage" src="" alt="Source Image"
+                                        <img loading="lazy" decoding="async" id="manualVariationImage" src="" alt="Source Image"
                                             class="variation-image">
                                         <canvas id="maskPreviewCanvas" class="mask-preview-canvas"
                                             style="pointer-events: none;"></canvas>
@@ -2328,7 +2328,7 @@
                                                 <i class="fa-regular fa-xmark-large"></i>
                                             </button>
                                         </div>
-                                        <img id="directorReferenceImage" src="" alt="Director Reference"
+                                        <img loading="lazy" decoding="async" id="directorReferenceImage" src="" alt="Director Reference"
                                             class="variation-image">
                                         <div class="overlay-icon-container">
                                             <i class="nai-precise-reference"></i>
@@ -2477,15 +2477,15 @@
                             <!-- Navigation buttons -->
                             <div class="manual-preview-image-container">
                                 <div class="manual-preview-image-container-inner" id="manualPreviewImageContainerInner">
-                                    <img id="manualPreviewImage" src="" alt="Generated Image" class="hidden">
-                                    <img id="manualPreviewCompareSourceImage" src="" alt="Compare Source Image"
+                                    <img loading="lazy" decoding="async" id="manualPreviewImage" src="" alt="Generated Image" class="hidden">
+                                    <img loading="lazy" decoding="async" id="manualPreviewCompareSourceImage" src="" alt="Compare Source Image"
                                         class="manual-preview-compare-source hidden">
                                     <div class="manual-preview-compare-labels" aria-hidden="true">
                                         <span class="manual-preview-compare-label compare-label-source">Source</span>
                                         <span class="manual-preview-compare-label compare-label-result">Result</span>
                                     </div>
                                 </div>
-                                <img id="manualPreviewOriginalImage" src="" alt="Original Image"
+                                <img loading="lazy" decoding="async" id="manualPreviewOriginalImage" src="" alt="Original Image"
                                     class="manual-preview-original-image hidden">
                                 <div id="manualPreviewPlaceholder" class="manual-preview-placeholder">
                                     <div id="manualQuickstartFallback" class="manual-quickstart-fallback">
@@ -2733,7 +2733,7 @@
                                 <div class="cache-browser-loading hidden" id="cacheBrowserLoadingContainer">
                                     <picture>
                                         <source srcset="/static_images/workin.webp" type="image/webp">
-                                        <img class="loading" src="/static_images/workin.gif" alt=""></img>
+                                        <img loading="lazy" decoding="async" class="loading" src="/static_images/workin.gif" alt=""></img>
                                     </picture>
                                     <p class="loading">Loading references...</p>
                                 </div>
@@ -3076,7 +3076,7 @@
         <div class="modal-content dark character-position-tool-content">
             <div class="character-position-stage-shell">
                 <div id="characterPositionStage" class="character-position-stage">
-                    <img id="characterPositionImage" class="character-position-image hidden" alt="Last generated image">
+                    <img loading="lazy" decoding="async" id="characterPositionImage" class="character-position-image hidden" alt="Last generated image">
                     <div id="characterPositionEmpty" class="character-position-empty">
                         <i class="fas fa-image"></i>
                         <span>No generated image yet. Using the current resolution shape.</span>
@@ -3373,7 +3373,7 @@
             <div class="explorer-actions-header" role="toolbar">
                 <div class="explorer-command-set">
                     <button type="button" id="textReplacementActionsDropdownBtn"
-                        class="btn-secondary btn-small explorer-command-btn has-menu" title="Actions"><img
+                        class="btn-secondary btn-small explorer-command-btn has-menu" title="Actions"><img loading="lazy" decoding="async"
                             class="explorer-command-icon" src="/static_images/vista-explorer/organize.png" alt="">Actions<span
                             class="explorer-command-glyph" aria-hidden="true"></span></button>
                     <button type="button" id="toggleCompiledPromptsSectionBtn"
@@ -3470,7 +3470,7 @@
                         <span class="expansion-canvas-preview-edge" data-edge="left"></span>
                         <div class="expansion-canvas-preview-target">
                             <div class="expansion-canvas-preview-source">
-                                <img class="expansion-canvas-preview-image" alt="" draggable="false">
+                                <img loading="lazy" decoding="async" class="expansion-canvas-preview-image" alt="" draggable="false">
                             </div>
                         </div>
                         <span class="expansion-canvas-preview-edge" data-edge="right"></span>
@@ -4028,13 +4028,13 @@
             <div class="explorer-actions-header" role="toolbar">
                 <div class="explorer-command-set">
                     <button type="button" id="saveMaskBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Save Mask (Ctrl+S)"><img class="explorer-command-icon"
+                        title="Save Mask (Ctrl+S)"><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-cmdbar/save.png" alt=""><span>Save</span></button>
                     <button type="button" id="maskBrushBtn" class="btn-secondary btn-small explorer-command-btn"
-                        data-state="on" title="Brush Tool (F1)"><img class="explorer-command-icon"
+                        data-state="on" title="Brush Tool (F1)"><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-cmdbar/paint-brush.png" alt=""><span>Brush</span></button>
                     <button type="button" id="maskEraserBtn" class="btn-secondary btn-small explorer-command-btn"
-                        data-state="off" title="Eraser Tool (F2)"><img class="explorer-command-icon"
+                        data-state="off" title="Eraser Tool (F2)"><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-cmdbar/paint-eraser.png" alt=""><span>Eraser</span></button>
                     <!-- inpaint.js toggleBrushShape swaps the i's fa-square / fa-circle class; mask-editor.css
                          paints Paint's Rectangle / Ellipse tool on it -->
@@ -4047,19 +4047,19 @@
                 </div>
                 <div class="explorer-command-set">
                     <button type="button" id="maskNegativeBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Negative (Invert Mask) (F5)"><img class="explorer-command-icon"
+                        title="Negative (Invert Mask) (F5)"><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-cmdbar/contrast.png" alt=""><span>Invert</span></button>
                     <button type="button" id="clearMaskBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Clear Mask (F4)"><img class="explorer-command-icon"
+                        title="Clear Mask (F4)"><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-cmdbar/clear.png" alt=""><span>Clear</span></button>
                     <button type="button" id="deleteMaskBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Delete Mask (F6)"><img class="explorer-command-icon"
+                        title="Delete Mask (F6)"><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-cmdbar/delete.png" alt=""><span>Delete</span></button>
                 </div>
             </div>
             <div class="modal-body">
                 <div class="mask-editor-hint">
-                    <img src="/static_images/vista-icons/info-16.png" width="16" height="16" alt=""> Use one connected region. Don't pepper nearby micro-masks.
+                    <img loading="lazy" decoding="async" src="/static_images/vista-icons/info-16.png" width="16" height="16" alt=""> Use one connected region. Don't pepper nearby micro-masks.
                     (ght901 sparse-inpaint)
                 </div>
                 <div class="mask-editor-canvas-container">
@@ -4095,7 +4095,7 @@
             <div class="explorer-actions-header" role="toolbar">
                 <div class="explorer-command-set">
                     <button type="button" id="saveBiasAdjustmentBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Save (Enter)"><img class="explorer-command-icon"
+                        title="Save (Enter)"><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-cmdbar/save.png" alt=""><span>Save</span></button>
                     <label class="command-bar-field" for="biasX" title="X Position">
                         <span>X:</span>
@@ -4124,10 +4124,10 @@
                 </div>
                 <div class="explorer-command-set">
                     <button type="button" id="previewToggleBtn" class="btn-secondary btn-small explorer-command-btn"
-                        data-state="on" title="Client Preview"><img class="explorer-command-icon"
+                        data-state="on" title="Client Preview"><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-cmdbar/photo-gallery.png" alt=""><span>Preview</span></button>
                     <button type="button" id="biasResetBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Reset Bias (Ctrl+R)"><img class="explorer-command-icon"
+                        title="Reset Bias (Ctrl+R)"><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-cmdbar/refresh.png" alt=""><span>Reset</span></button>
                 </div>
             </div>
@@ -4139,9 +4139,9 @@
                             <div class="target-area-border"></div>
                         </div>
                         <div id="biasAdjustmentImageWrapper" class="bias-adjustment-image-wrapper">
-                            <img id="biasAdjustmentImage" src="" alt="Base Image" class="bias-adjustment-image">
+                            <img loading="lazy" decoding="async" id="biasAdjustmentImage" src="" alt="Base Image" class="bias-adjustment-image">
                         </div>
-                        <img id="clientPreviewImage" src="" alt="Client Preview" class="client-preview-image hidden">
+                        <img loading="lazy" decoding="async" id="clientPreviewImage" src="" alt="Client Preview" class="client-preview-image hidden">
                     </div>
                 </div>
             </div>
@@ -4170,13 +4170,13 @@
                     <div class="preview-section">
                         <h4>Client Preview</h4>
                         <div class="preview-image-container">
-                            <img id="confirmClientPreview" src="" alt="Client Preview">
+                            <img loading="lazy" decoding="async" id="confirmClientPreview" src="" alt="Client Preview">
                         </div>
                     </div>
                     <div class="preview-section">
                         <h4>Server Preview</h4>
                         <div class="preview-image-container">
-                            <img id="confirmServerPreview" src="" alt="Server Preview">
+                            <img loading="lazy" decoding="async" id="confirmServerPreview" src="" alt="Server Preview">
                         </div>
                     </div>
                 </div>
@@ -4460,7 +4460,7 @@
                     <div id="directorSessionImages" class="director-session-images form-section-scroll" data-custom-scrollbar></div>
                 </div>
                 <div id="directorBrowserPane" class="director-browser-pane hidden">
-                    <img id="directorBrowserPreview" class="director-browser-preview" alt="Director browser">
+                    <img loading="lazy" decoding="async" id="directorBrowserPreview" class="director-browser-preview" alt="Director browser">
                 </div>
             </div>
         </div>
@@ -5167,7 +5167,7 @@ Examples:
                             <!-- Reference images will be loaded here -->
                         </div>
                         <div class="cache-manager-loading hidden" id="cacheManagerLoading">
-                            <img class="loading" src="/static_images/azuspin.gif"></img>
+                            <img loading="lazy" decoding="async" class="loading" src="/static_images/azuspin.gif"></img>
                             <p class="loading">Loading cache images...</p>
                         </div>
                     </div>
@@ -5237,7 +5237,7 @@ Examples:
         </div>
         <div class="modal-content gallery-move-modal-content dark">
             <div class="gallery-move-left-panel">
-                <img id="unifiedUploadBackgroundImage" src="/static_images/background.jpg" alt="Upload image"
+                <img loading="lazy" decoding="async" id="unifiedUploadBackgroundImage" src="/static_images/background.jpg" alt="Upload image"
                     class="gallery-move-background-image">
                 <h3 id="unifiedUploadModalTitle" class="gallery-move-left-header"><i class="nai-import"></i> Import File
                 </h3>
@@ -5544,39 +5544,39 @@ Examples:
                     <!-- Vista command bar (explorerVistaChrome.js): Organize menu, Views, contextual commands -->
                     <div class="explorer-command-set">
                         <button type="button" id="explorerOrganizeBtn" class="explorer-command-btn has-menu"
-                            title="Organize this folder's contents."><img class="explorer-command-icon"
+                            title="Organize this folder's contents."><img loading="lazy" decoding="async" class="explorer-command-icon"
                                 src="/static_images/vista-explorer/organize.png" alt="">Organize<span
                                 class="explorer-command-glyph" aria-hidden="true"></span></button>
                         <button type="button" id="explorerViewsDropdownBtn" class="btn-secondary btn-small explorer-command-btn has-menu"
                             title="Change your view.">
-                            <img class="explorer-command-icon" src="/static_images/vista-explorer/views-icons-lg.png" srcset="/static_images/vista-explorer/views-icons-lg.png 1x, /static_images/vista-explorer/views-icons-lg@2x.png 2x" alt="">Views<span
+                            <img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-explorer/views-icons-lg.png" srcset="/static_images/vista-explorer/views-icons-lg.png 1x, /static_images/vista-explorer/views-icons-lg@2x.png 2x" alt="">Views<span
                                 class="explorer-command-glyph" aria-hidden="true"></span>
                         </button>
                         <!-- icons: Upload shell32.dll 146, Download imageres.dll 158, Replace shell32.dll 68 -->
                         <button type="button" id="explorerUploadCmd" class="explorer-command-btn"
-                            title="Upload files to this folder."><img class="explorer-command-icon"
+                            title="Upload files to this folder."><img loading="lazy" decoding="async" class="explorer-command-icon"
                                 src="/static_images/vista-cmdbar/upload.png" alt="">Upload</button>
                         <button type="button" id="explorerDownloadCmd" class="explorer-command-btn hidden"
-                            title="Download the selected file."><img class="explorer-command-icon"
+                            title="Download the selected file."><img loading="lazy" decoding="async" class="explorer-command-icon"
                                 src="/static_images/vista-cmdbar/download.png" alt="">Download</button>
                         <button type="button" id="explorerReplaceCmd" class="explorer-command-btn hidden"
-                            title="Replace the selected file."><img class="explorer-command-icon"
+                            title="Replace the selected file."><img loading="lazy" decoding="async" class="explorer-command-icon"
                                 src="/static_images/vista-cmdbar/replace.png" alt="">Replace</button>
                         <!-- a picture selected: Vista's Preview, its menu the programs that open it (explorerVistaChrome.js) -->
                         <button type="button" id="explorerPreviewCmd" class="explorer-command-btn has-menu hidden"
-                            title="Preview the selected picture."><img class="explorer-command-icon"
+                            title="Preview the selected picture."><img loading="lazy" decoding="async" class="explorer-command-icon"
                                 src="/static_images/vista-cmdbar/photo-gallery.png" alt="">Preview<span
                                 class="explorer-command-glyph" aria-hidden="true"></span></button>
                         <!-- inside an archive, as Vista's compressed folder has it (explorerArchive.js); zipfldr.dll's icon -->
                         <button type="button" id="explorerExtractAllCmd" class="explorer-command-btn hidden"
-                            title="Extract all files from this archive."><img class="explorer-command-icon"
+                            title="Extract all files from this archive."><img loading="lazy" decoding="async" class="explorer-command-icon"
                                 src="/static_images/vista-cmdbar/extract-all.png" alt="">Extract all files</button>
                         <!-- Computer's own commands (explorerComputerView.js): shell32.dll 272 and 21 -->
                         <button type="button" id="explorerSystemPropertiesCmd" class="explorer-command-btn hidden"
-                            title="View basic information about your computer."><img class="explorer-command-icon"
+                            title="View basic information about your computer."><img loading="lazy" decoding="async" class="explorer-command-icon"
                                 src="/static_images/vista-cmdbar/system-properties.png" alt="">System properties</button>
                         <button type="button" id="explorerControlPanelCmd" class="explorer-command-btn hidden"
-                            title="Open Control Panel."><img class="explorer-command-icon"
+                            title="Open Control Panel."><img loading="lazy" decoding="async" class="explorer-command-icon"
                                 src="/static_images/vista-cmdbar/control-panel.png" alt="">Open Control Panel</button>
                     </div>
                     <div class="button-group explorer-legacy-commands">
@@ -5608,7 +5608,7 @@ Examples:
                             <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
                         </button>
                         <button type="button" id="explorerHelpBtn" class="explorer-help-btn" title="Get help">
-                            <img src="/static_images/vista-explorer/help-16.png" srcset="/static_images/vista-explorer/help-16.png 1x, /static_images/vista-explorer/help-16@2x.png 2x" alt="">
+                            <img loading="lazy" decoding="async" src="/static_images/vista-explorer/help-16.png" srcset="/static_images/vista-explorer/help-16.png 1x, /static_images/vista-explorer/help-16@2x.png 2x" alt="">
                         </button>
                     </div>
                 </div>
@@ -5745,20 +5745,20 @@ Examples:
                 <div class="naxt-search-controls">
                 <div class="explorer-command-set">
                     <button type="button" id="studioSaveFolderOrganizeBtn" class="explorer-command-btn has-menu"
-                        title="Organize this folder's contents."><img class="explorer-command-icon"
+                        title="Organize this folder's contents."><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-explorer/organize.png" alt="">Organize<span
                             class="explorer-command-glyph" aria-hidden="true"></span></button>
                     <button type="button" id="studioSaveFolderViewsBtn" class="explorer-command-btn has-menu"
-                        title="Change your view."><img class="explorer-command-icon"
+                        title="Change your view."><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-explorer/views-icons-lg.png" srcset="/static_images/vista-explorer/views-icons-lg.png 1x, /static_images/vista-explorer/views-icons-lg@2x.png 2x" alt="">Views<span
                             class="explorer-command-glyph" aria-hidden="true"></span></button>
                     <button type="button" id="studioSaveFolderNewFolderBtn" class="explorer-command-btn"
-                        title="Create a new, empty folder."><img class="explorer-command-icon"
+                        title="Create a new, empty folder."><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-file-dialog/new-folder.png" alt="">New Folder</button>
                 </div>
                 <div class="explorer-toolbar-right">
                     <button type="button" id="studioSaveFolderHelpBtn" class="explorer-help-btn" title="Get help">
-                        <img src="/static_images/vista-explorer/help-16.png" srcset="/static_images/vista-explorer/help-16.png 1x, /static_images/vista-explorer/help-16@2x.png 2x" alt="">
+                        <img loading="lazy" decoding="async" src="/static_images/vista-explorer/help-16.png" srcset="/static_images/vista-explorer/help-16.png 1x, /static_images/vista-explorer/help-16@2x.png 2x" alt="">
                     </button>
                 </div>
                 </div>
@@ -5891,7 +5891,7 @@ Examples:
         </div>
         <div class="modal-content gallery-move-modal-content dark">
             <div class="gallery-move-left-panel">
-                <img id="vibeEncodingBackgroundImage" src="/static_images/background.jpg" alt="Vibe encoding image"
+                <img loading="lazy" decoding="async" id="vibeEncodingBackgroundImage" src="/static_images/background.jpg" alt="Vibe encoding image"
                     class="gallery-move-background-image">
                 <div class="gallery-move-left-header">
                     <h3 id="vibeEncodingModalTitle"><i class="mdi mdi-data-matrix-scan"></i> Vibe Encoding</h3>
@@ -6313,21 +6313,21 @@ Examples:
             <div class="explorer-actions-header spellbook-command-bar" role="toolbar">
                 <div class="explorer-command-set">
                     <button type="button" id="spellbookDownloadBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Save a copy of the picture" disabled><img class="explorer-command-icon"
+                        title="Save a copy of the picture" disabled><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-cmdbar/save.png" alt="">Save a Copy</button>
                     <button type="button" id="spellbookCopyBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Copy the picture" disabled><img class="explorer-command-icon"
+                        title="Copy the picture" disabled><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-cmdbar/copy.png" alt="">Copy</button>
                     <button type="button" id="spellbookExpandBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Expand Canvas" disabled><img class="explorer-command-icon"
+                        title="Expand Canvas" disabled><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-cmdbar/expand-canvas.png" alt="">Expand Canvas</button>
                     <button type="button" id="spellbookUpscaleBtn" class="btn-secondary btn-small explorer-command-btn hidden"
-                        title="Upscale the picture" disabled><img class="explorer-command-icon"
+                        title="Upscale the picture" disabled><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/vista-cmdbar/upscale.png" alt=""><span>Upscale</span></button>
                 </div>
                 <div class="explorer-command-set">
                     <button type="button" id="spellbookGoToWorkspaceBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Teleport to the planet the picture was cast on" disabled><img class="explorer-command-icon"
+                        title="Teleport to the planet the picture was cast on" disabled><img loading="lazy" decoding="async" class="explorer-command-icon"
                             src="/static_images/app_icons/24/planet.webp" alt="">Teleport</button>
                 </div>
             </div>
@@ -6468,7 +6468,7 @@ Examples:
                                 </div>
                             </div>
 
-                            <img id="spellbookPreviewImage" src="" alt="Preview" class="spellbook-preview-image hidden">
+                            <img loading="lazy" decoding="async" id="spellbookPreviewImage" src="" alt="Preview" class="spellbook-preview-image hidden">
                             <!-- Confetti container for spellbook modal -->
                             <div id="spellbookConfettiContainer" class="confetti-container"></div>
 
@@ -6693,7 +6693,7 @@ Examples:
                                 </div>
                             </div>
                         </div>
-                        <img id="imageViewerImage" src="" alt="Image" class="viewer-image hidden">
+                        <img loading="lazy" decoding="async" id="imageViewerImage" src="" alt="Image" class="viewer-image hidden">
                     </div>
                 </div>
             </div>
@@ -6801,7 +6801,7 @@ Examples:
                 </div>
             </div>
             <div class="image-prompt-inspector-summary">
-                <img id="imagePromptInspectorThumb" class="image-prompt-inspector-thumb hidden" src="" alt="">
+                <img loading="lazy" decoding="async" id="imagePromptInspectorThumb" class="image-prompt-inspector-thumb hidden" src="" alt="">
                 <div class="image-prompt-inspector-file selectable">
                     <span id="imagePromptInspectorFilename" class="image-prompt-inspector-filename selectable">Image</span>
                     <span id="imagePromptInspectorSubtitle" class="image-prompt-inspector-subtitle selectable"></span>
@@ -6936,15 +6936,15 @@ Examples:
             <div class="explorer-actions-header wiki-window-command-bar" role="toolbar">
                 <div class="explorer-command-set">
                     <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-back-btn"
-                        title="Back"><img class="explorer-command-icon" src="/static_images/vista-cmdbar/back.png" alt="">Back</button>
+                        title="Back"><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-cmdbar/back.png" alt="">Back</button>
                     <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-forward-btn"
-                        title="Forward"><img class="explorer-command-icon" src="/static_images/vista-cmdbar/forward.png" alt="">Forward</button>
+                        title="Forward"><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-cmdbar/forward.png" alt="">Forward</button>
                     <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-home-btn"
-                        title="Home"><img class="explorer-command-icon" src="/static_images/vista-ie/home.png" alt="">Home</button>
+                        title="Home"><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-ie/home.png" alt="">Home</button>
                 </div>
                 <div class="explorer-command-set">
                     <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-maximize-btn"
-                        title="Open in Grimoire"><img class="explorer-command-icon" src="/static_images/vista-ie/page-ie.png" alt="">Open in Grimoire</button>
+                        title="Open in Grimoire"><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-ie/page-ie.png" alt="">Open in Grimoire</button>
                 </div>
             </div>
             <div class="tag-wiki-search-body">
@@ -7354,11 +7354,11 @@ Examples:
                                 <span>Enter a tag and generate a preview</span>
                             </div>
                             <div id="naxtCustomTagPreviewLoading" class="naxt-custom-tag-preview-loading hidden">
-                                <img class="loading" src="/static_images/azuspin.gif" alt="">
+                                <img loading="lazy" decoding="async" class="loading" src="/static_images/azuspin.gif" alt="">
                                 <span>Generating preview…</span>
                             </div>
                             <div id="naxtCustomTagPreviewError" class="naxt-custom-tag-preview-error hidden"></div>
-                            <img id="naxtCustomTagPreviewImg" class="spellbook-preview-image hidden" alt="">
+                            <img loading="lazy" decoding="async" id="naxtCustomTagPreviewImg" class="spellbook-preview-image hidden" alt="">
                             <div id="naxtCustomTagPreviewCaption" class="naxt-custom-tag-preview-caption hidden"></div>
                             <div class="spellbook-overlay-buttons">
                                 <div class="spellbook-bottom-left-buttons naxt-custom-tag-overlay-buttons hidden"
@@ -7560,9 +7560,9 @@ Examples:
             </button>
         </div>
         <div class="modal-content win7 about-windows-client">
-            <img class="about-windows-banner" src="/static_images/vista-about/banner.png" width="413" height="72"
+            <img loading="lazy" decoding="async" class="about-windows-banner" src="/static_images/vista-about/banner.png" width="413" height="72"
                 alt="Melaton 2026 R7" draggable="false">
-            <img class="about-windows-rule" src="/static_images/vista-about/banner-rule.png" width="413" height="5"
+            <img loading="lazy" decoding="async" class="about-windows-rule" src="/static_images/vista-about/banner-rule.png" width="413" height="5"
                 alt="" draggable="false">
             <div class="about-windows-text about-windows-product" id="aboutWindowsProduct">Dreamscape&reg; Melaton&reg;</div>
             <div class="about-windows-text about-windows-version" id="aboutMelatoninVersion">Version 2026 R7</div>
@@ -7874,17 +7874,17 @@ Examples:
             <div class="explorer-actions-header config-editor-checkpoints-command-bar" role="toolbar">
                 <div class="explorer-command-set">
                     <button type="button" id="configEditorCheckpointsCreateBtn"
-                        class="btn-secondary btn-small explorer-command-btn" title="Create checkpoint"><img
+                        class="btn-secondary btn-small explorer-command-btn" title="Create checkpoint"><img loading="lazy" decoding="async"
                             class="explorer-command-icon" src="/static_images/vista-cmdbar/restore-point.png" alt="">Create Checkpoint</button>
                     <button type="button" id="configEditorCheckpointsRestoreBtn"
                         class="btn-secondary btn-small explorer-command-btn" title="Restore the selected checkpoint"
-                        disabled><img class="explorer-command-icon" src="/static_images/vista-cmdbar/restore.png" alt="">Restore</button>
+                        disabled><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-cmdbar/restore.png" alt="">Restore</button>
                     <button type="button" id="configEditorCheckpointsDetailBtn"
                         class="btn-secondary btn-small explorer-command-btn" title="Properties of the selected checkpoint"
-                        disabled><img class="explorer-command-icon" src="/static_images/vista-cmdbar/properties.png" alt="">Properties</button>
+                        disabled><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-cmdbar/properties.png" alt="">Properties</button>
                     <button type="button" id="configEditorCheckpointsDeleteBtn"
                         class="btn-secondary btn-small explorer-command-btn" title="Delete the selected checkpoint"
-                        disabled><img class="explorer-command-icon" src="/static_images/vista-cmdbar/delete.png" alt="">Delete</button>
+                        disabled><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-cmdbar/delete.png" alt="">Delete</button>
                 </div>
             </div>
             <div class="modal-body config-editor-checkpoints-modal-body">

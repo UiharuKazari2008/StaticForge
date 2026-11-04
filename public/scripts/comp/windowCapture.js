@@ -544,7 +544,7 @@
         }
         // a hole the size of the canvas / video keeps the layout; an iframe's is white
         holes.forEach(({ b, tag, w, h }) => {
-            const hole = doc.createElement('div');
+            const hole = b.ownerDocument.createElement('div');
             if (b.getAttribute('class')) hole.setAttribute('class', b.getAttribute('class'));
             hole.setAttribute('style', `${b.getAttribute('style') || ''};display:inline-block;width:${w}px;height:${h}px;${tag === 'iframe' ? 'background:#fff;' : ''}`);
             b.replaceWith(hole);
@@ -614,7 +614,11 @@
         resume();
         const faces = await Promise.all(usedFontFaces(win, idx.faces).map(faceSource));
         lap('fonts');
-        const clone = win.cloneNode(true);
+        // copied into an inert document of its own: a copy in the page's document starts its images
+        // loading, and an <img> there registers a viewport listener with the page's media query
+        // matcher that keeps the never-attached copy alive (three detached #manualModal trees of
+        // ~1,300 nodes each in a DeX heap snapshot, 2026-11-04). The inert one dies with the copy.
+        const clone = doc.implementation.createHTMLDocument('').importNode(win, true);
         // flip3d-hidden: Flip 3D hides the windows while their cards fly
         clone.classList.remove('minimised', 'minimising', 'entering', 'leaving', 'flip3d-hidden');
         clone.setAttribute('aria-hidden', 'true');
