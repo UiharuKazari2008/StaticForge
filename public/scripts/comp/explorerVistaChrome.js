@@ -309,7 +309,11 @@
             const computer = typeof root.ExplorerComputerView === 'function' && !!this.app.computer;
             const atComputer = computer && root.ExplorerComputerView.isPath(this.app.currentPath);
             const crumbs = computer ? [{ label: 'Computer', path: root.ExplorerComputerView.PATH }] : [];
-            if (!atComputer) {
+            const phone = root.explorerPhoneDrive && root.explorerPhoneDrive.isPath(this.app.currentPath);
+            if (phone) {
+                // Computer ▸ Phone ▸ Internal storage ▸ DCIM (explorerPhoneDrive.js)
+                root.explorerPhoneDrive.crumbs(this.app.currentPath).forEach((c) => crumbs.push(c));
+            } else if (!atComputer) {
                 const parts = String(this.app.currentPath || '/').split('/').filter(Boolean);
                 const labels = String(displayPath || '/').split('/').filter(Boolean);
                 crumbs.push({ label: rootLabel(), path: '/' });
@@ -324,6 +328,7 @@
             this.crumbIcon = atComputer ? 'computer-16.png' : (current === '/' && computer ? 'drive-system-16.png' : 'crumb-folder.png');
             // the Contacts folder's own icon (wab32res IDI_ICON_FOLDER, explorerContacts.js)
             if (root.explorerContacts && root.explorerContacts.isPath(current)) this.crumbIcon = '../vista-contacts/folder-16.png';
+            if (phone) this.crumbIcon = root.explorerPhoneDrive.crumbIcon(current);
             this.layoutBreadcrumb();
             this.watchBreadcrumbWidth();
             this.highlightFavorite();
@@ -341,7 +346,7 @@
             const crumb = (c) => `<button type="button" class="explorer-crumb" data-crumb-path="${esc(c.path)}">${esc(c.label)}</button>`;
             const draw = (folded, trailing) => {
                 const shown = crumbs.slice(folded);
-                host.innerHTML = `<img class="explorer-crumb-icon" src="${ART}/${this.crumbIcon || 'crumb-folder.png'}" alt="">`
+                host.innerHTML = `<img class="explorer-crumb-icon" src="${ART}/${this.crumbIcon || 'crumb-folder.png'}" alt="" onerror="this.onerror=null;this.src='${ART}/drive-system-16.png'">`
                     + (folded ? '<button type="button" class="explorer-crumb-overflow" title="Previous locations" aria-label="Previous locations"></button>' : '')
                     + shown.map((c, i) => (folded && i === 0 ? '' : sep) + crumb(c)).join('')
                     + (trailing ? sep : '');
@@ -511,6 +516,8 @@
         }
 
         highlightFavorite() {
+            // the Phone group under Favorite Links follows the place too (explorerPhoneDrive.js)
+            if (root.explorerPhoneDrive && root.explorerPhoneDrive.available()) root.explorerPhoneDrive.attach(this.app);
             const host = this.el.favorites;
             if (!host) return;
             const current = this.app.currentPath;

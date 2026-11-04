@@ -1,0 +1,75 @@
+/* The phone as a drive in Cartograph (explorerPhoneDrive.js, Yozora #698): the Phone group in the
+   navigation pane, the preview pane's media, drop targets on the drives. */
+
+/* navigation pane: the Phone group under Favorite Links (free space is in each drive's tooltip) */
+#explorerModal .explorer-phone-nav {
+    margin-top: 8px;
+}
+
+#explorerModal .explorer-phone-state span {
+    font-style: italic;
+}
+
+#explorerModal .explorer-phone-links .explorer-favorite-link.explorer-item-drop-target,
+#explorerModal .explorer-phone-links .explorer-favorite-link.is-drop-target {
+    background: rgba(51, 153, 255, 0.18);
+    outline: 1px solid rgba(51, 153, 255, 0.55);
+}
+
+/* Computer: a device that is off or waiting reads quieter */
+#explorerModal .explorer-computer-tile.is-blocked .explorer-computer-tile-free {
+    font-style: italic;
+}
+
+/* the preview pane (the same 225 px pane as Contacts', explorer-contacts.css) */
+#explorerModal .explorer-phone-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 10px;
+    overflow: auto;
+}
+
+#explorerModal .explorer-phone-preview-media {
+    display: block;
+    width: 100%;
+    max-height: 60%;
+    object-fit: contain;
+    background: #000;
+}
+
+#explorerModal .explorer-phone-preview[data-kind="image"] .explorer-phone-preview-media {
+    background: transparent;
+}
+
+#explorerModal .explorer-phone-preview-audio {
+    width: 100%;
+}
+
+#explorerModal .explorer-phone-preview-frame {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 200px;
+    border: 1px solid #dde4e8;
+    background: #fff;
+}
+
+#explorerModal .explorer-phone-preview-icon {
+    align-self: center;
+    width: 64px;
+    height: 64px;
+    margin: 16px 0 4px;
+}
+
+#explorerModal .explorer-phone-preview-name {
+    font-weight: 600;
+    word-break: break-word;
+}
+
+#explorerModal .explorer-phone-fact {
+    color: #5a6779;
+    word-break: break-word;
+}

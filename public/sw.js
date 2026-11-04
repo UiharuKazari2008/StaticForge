@@ -1,5 +1,16 @@
 importScripts('/dist/workbox/workbox-sw.js');
 
+// The Android app's phone storage (window.AndroidPhoneStorage, explorerPhoneDrive.js) serves files
+// from https://appassets.androidplatform.net/phone-storage/... inside the WebView. The worker must
+// never touch those: no route, no respondWith, or video and byte-range requests fail ("no-response").
+// Registered before any Workbox route, so this listener runs first and keeps the event from it.
+const SW_BYPASS_HOSTS = new Set(['appassets.androidplatform.net']);
+self.addEventListener('fetch', (event) => {
+  let host = '';
+  try { host = new URL(event.request.url).hostname; } catch (_err) { return; }
+  if (SW_BYPASS_HOSTS.has(host)) event.stopImmediatePropagation();
+});
+
 // Compile-time: auto-apply CSS-only / apply-safe static cache updates without restart prompt
 const CSS_ONLY_AUTO_APPLY = true;
 const SW_SCRIPT_EPOCH = 13; // bump on breaking SW changes

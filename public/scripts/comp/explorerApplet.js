@@ -409,6 +409,7 @@ class ExplorerApplet {
     }
 
     buildEmptyContextMenuSections() {
+        if (this._isPhonePath()) return explorerPhoneDrive.emptyMenuSections(this);
         if (typeof explorerArchive !== 'undefined' && explorerArchive.isArchivePath(this.currentPath)) {
             return explorerArchive.emptyMenuSections();
         }
@@ -1064,6 +1065,8 @@ class ExplorerApplet {
     }
 
     _canCutCopyItem(item) {
+        if (item?.targetKind === 'phone-entry') return true;
+        if (item?.targetKind === 'phone-drive' || item?.targetKind === 'phone-trash') return false;
         if (!item || item.protected || this._isSystemItem(item)) return false;
         // Native gallery/reference/vibe/note entries cannot relocate between VFS folders — vfsManager.js
         if (this._isVirtualSurfaceItem(item) && !this._isVfsVirtualEntry(item)) return false;
@@ -1073,6 +1076,7 @@ class ExplorerApplet {
     _isWritableFolderPath(vfsPath) {
         const WORKSPACE_SYSTEM = ['Desktop', 'Pictures', 'References', 'Notes', 'Scraps', 'Trash'];
         if (this._isComputerPath(vfsPath)) return false;
+        if (this._isPhonePath(vfsPath)) return explorerPhoneDrive.isWritable(vfsPath);
         const normalized = (vfsPath || '/').replace(/\/+$/, '') || '/';
         if (this._isTrashPath(normalized)) return false;
         // inside an archive (vfsArchive.js): read-only
@@ -1100,6 +1104,7 @@ class ExplorerApplet {
     }
 
     _canRenameItem(item) {
+        if (item?.targetKind === 'phone-entry') return true;
         if (!item || item.protected || this._isSystemItem(item)) return false;
         if (item.targetKind === 'vfs-folder' || item.targetKind === 'user-file') return true;
         if (item.shortcutType || this._isStoredShortcutItem(item) || this._isLiveDesktopShortcutItem(item)) return true;
@@ -2111,6 +2116,10 @@ class ExplorerApplet {
 
     buildContextMenuSections(item) {
         if (!item) return this.buildEmptyContextMenuSections();
+        // on the phone: Open, Open with..., Share, Download, Copy path, Cut / Copy, Delete, Rename
+        if (typeof explorerPhoneDrive !== 'undefined' && explorerPhoneDrive.isEntry(item)) {
+            return explorerPhoneDrive.entryMenuSections(this, item);
+        }
         // inside an archive: Open, Extract files..., Download, Copy (explorerArchive.js)
         if (typeof explorerArchive !== 'undefined' && explorerArchive.isEntry(item)) {
             return explorerArchive.entryMenuSections(this, item);
@@ -2376,6 +2385,10 @@ class ExplorerApplet {
         }
         if (action.startsWith('explorer-contact-') && typeof explorerContacts !== 'undefined') {
             await explorerContacts.handleAction(action, item, this);
+            return;
+        }
+        if (action.startsWith('explorer-phone-') && typeof explorerPhoneDrive !== 'undefined') {
+            await explorerPhoneDrive.handleAction(action, item, this);
             return;
         }
 
@@ -2836,6 +2849,11 @@ class ExplorerApplet {
             }
             if (this.computer && ExplorerComputerView.matchesInput(input)) {
                 this.navigateTo(ExplorerComputerView.PATH);
+                return;
+            }
+            const phonePath = typeof explorerPhoneDrive !== 'undefined' ? explorerPhoneDrive.resolveInput(input) : null;
+            if (phonePath) {
+                this.navigateTo(phonePath);
                 return;
             }
             try {
@@ -3593,18 +3611,30 @@ class ExplorerApplet {
         if (this.grid) this.grid.replaceItems(this.items);
     }
 
+    /** The phone (explorerPhoneDrive.js, Yozora #698): only inside the Android app. */
+    _isPhonePath(path) {
+        return typeof explorerPhoneDrive !== 'undefined' && explorerPhoneDrive.isPath(path ?? this.currentPath);
+    }
+
+    /** One listing for every place: the phone's from its bridge, the rest from the VFS. */
+    async _listPath(path, opts) {
+        if (this._isPhonePath(path)) return explorerPhoneDrive.list(this, path);
+        if (typeof explorerPhoneDrive !== 'undefined') explorerPhoneDrive.leave(this);
+        return vfsClient.listDirectory(path, opts);
+    }
+
     async softRefresh() {
         if (this._loading) return;
         if (this._syncComputerView()) {
             await this.computer.show({ reload: true });
             return;
         }
-        if (!wsClient?.isConnected()) return;
+        if (!this._isPhonePath() && !wsClient?.isConnected()) return;
         const pathForRequest = this.currentPath;
         const token = this._navToken;
         const placeholders = this._getUploadPlaceholders();
         try {
-            const result = await vfsClient.listDirectory(pathForRequest, {
+            const result = await this._listPath(pathForRequest, {
                 offset: 0,
                 limit: this.pageLimit,
                 sortField: this.sortField,
@@ -3756,7 +3786,9 @@ class ExplorerApplet {
         }
         const normalized = this._isComputerPath(path)
             ? path
-            : (path.startsWith('/') ? path : `/${path}`).replace(/\/+$/, '') || '/';
+            : this._isPhonePath(path)
+                ? explorerPhoneDrive.normalize(path)
+                : (path.startsWith('/') ? path : `/${path}`).replace(/\/+$/, '') || '/';
         if (this._loading) return;
         if (normalized === this.currentPath) {
             await this.softRefresh();
@@ -3815,6 +3847,13 @@ class ExplorerApplet {
 
     goUp() {
         if (this._loading || this._isComputerPath()) return;
+        if (this._isPhonePath()) {
+            // up from the phone's drive list is Computer
+            const up = explorerPhoneDrive.parentOf(this.currentPath);
+            if (up) this.navigateTo(up);
+            else if (this.computer) this.navigateTo(ExplorerComputerView.PATH);
+            return;
+        }
         const parts = this.currentPath.split('/').filter(Boolean);
         if (parts.length === 0) {
             // Vista: up from a drive is Computer
@@ -3832,11 +3871,11 @@ class ExplorerApplet {
             await this.computer.show();
             return;
         }
-        if (!wsClient?.isConnected()) return;
+        if (!this._isPhonePath() && !wsClient?.isConnected()) return;
         const pathForRequest = this.currentPath;
         const token = navToken != null ? navToken : this._navToken;
         try {
-            const result = await vfsClient.listDirectory(pathForRequest, {
+            const result = await this._listPath(pathForRequest, {
                 offset: 0,
                 limit: this.pageLimit,
                 sortField: this.sortField,
@@ -3897,7 +3936,7 @@ class ExplorerApplet {
         const placeholders = this._getUploadPlaceholders();
         const offset = this._serverItemCount();
         try {
-            const result = await vfsClient.listDirectory(pathForRequest, {
+            const result = await this._listPath(pathForRequest, {
                 offset,
                 limit: this.pageLimit,
                 sortField: this.sortField,
@@ -4065,6 +4104,7 @@ class ExplorerApplet {
 
     _fallbackDisplayName(path) {
         if (this._isComputerPath(path)) return 'Computer';
+        if (this._isPhonePath(path)) return explorerPhoneDrive.displayName(path);
         if (!path || path === '/') return 'Root';
         const parts = path.split('/').filter(Boolean);
         if (parts[0] === 'Workspaces' && parts.length >= 3) {
@@ -4087,6 +4127,7 @@ class ExplorerApplet {
 
     _fallbackDisplayPath(path) {
         if (this._isComputerPath(path)) return 'Computer';
+        if (this._isPhonePath(path)) return explorerPhoneDrive.displayPath(path);
         if (!path || path === '/') return '/';
         const parts = path.split('/').filter(Boolean);
         if (parts[0] === 'System') {
@@ -4115,7 +4156,8 @@ class ExplorerApplet {
     }
 
     async updateStatusBar() {
-        if (this._isComputerPath()) {
+        if (this._isComputerPath() || this._isPhonePath()) {
+            this._pathStats = null;
             this.updateLocationLabels(null);
             this.renderStatusText();
             return;
@@ -4409,6 +4451,7 @@ class ExplorerApplet {
         fresh.className = 'explorer-item-preview-img';
         fresh.alt = '';
         fresh.loading = 'lazy';
+        fresh.decoding = 'async';
         fresh.addEventListener('load', () => box.classList.add('has-preview'));
         fresh.addEventListener('error', () => {
             fresh.remove();
@@ -4469,6 +4512,12 @@ class ExplorerApplet {
         if (navPath) {
             if (navPath === this.currentPath) return;
             this.navigateTo(navPath);
+            return;
+        }
+
+        // a file on the phone opens in the phone's own app (explorerPhoneDrive.js)
+        if (typeof explorerPhoneDrive !== 'undefined' && explorerPhoneDrive.isEntry(item)) {
+            await explorerPhoneDrive.open(this, item);
             return;
         }
 
@@ -4593,7 +4642,8 @@ class ExplorerApplet {
             }
         }
         if (uploadBtn) {
-            uploadBtn.classList.toggle('hidden', isWsList || this._isComputerPath());
+            uploadBtn.classList.toggle('hidden', isWsList || this._isComputerPath()
+                || (this._isPhonePath() && !this._isWritableFolderPath(this.currentPath)));
         }
     }
 
@@ -4622,10 +4672,18 @@ class ExplorerApplet {
         set(this.el.replaceBtn, canFile);
         set(this.el.deleteBtn, hasSel && !archiveEntries);
         set(this.el.newFolderBtn, isWsList || canWrite);
+        if (this._isPhonePath()) {
+            // phone files download (?download=1); entries delete through the phone's trash
+            const entries = hasSel && sel.every(i => i.targetKind === 'phone-entry');
+            set(this.el.downloadBtn, entries && sel.every(i => !i.phone.dir));
+            set(this.el.replaceBtn, false);
+            set(this.el.deleteBtn, entries);
+        }
         this.updateWorkspacesListToolbar();
         if (this.vista) this.vista.syncCommands();
         if (typeof explorerArchive !== 'undefined') explorerArchive.syncCommands(this);
         if (typeof explorerContacts !== 'undefined') explorerContacts.syncCommands(this, sel);
+        if (typeof explorerPhoneDrive !== 'undefined' && explorerPhoneDrive.available()) explorerPhoneDrive.syncPreview(this, sel);
         // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
         notifyKeyboardOverlayContextChanged();
     }
@@ -4645,7 +4703,12 @@ class ExplorerApplet {
             workspaceId: i.workspaceId,
             shortcutId: i.isDesktopShortcut ? i.id : undefined,
             shortcutType: i.shortcutType || undefined,
-            shortcutData: i.shortcutData || undefined
+            shortcutData: i.shortcutData || undefined,
+            navPath: i.navPath || undefined,
+            size: i.size,
+            modifiedAt: i.modifiedAt,
+            mimeType: i.mimeType || undefined,
+            phone: i.phone || undefined
         }));
     }
 
@@ -4695,6 +4758,10 @@ class ExplorerApplet {
     }
 
     async createFolder() {
+        if (this._isPhonePath() && this._isWritableFolderPath(this.currentPath)) {
+            await explorerPhoneDrive.createFolder(this);
+            return;
+        }
         if (!this._isWritableFolderPath(this.currentPath)) {
             showGlassToast('warning', 'Explorer', 'Cannot create a folder here', false, 4000);
             return;
@@ -4710,6 +4777,12 @@ class ExplorerApplet {
 
     async uploadFilesToPath(vfsPath, fileList) {
         if (!fileList?.length) return;
+        // files from the computer onto the phone go through its bridge (explorerPhoneDrive.js)
+        if (this._isPhonePath(vfsPath)) {
+            await explorerPhoneDrive.uploadFiles(this, vfsPath, [...fileList]);
+            if (this.el?.fileInput) this.el.fileInput.value = '';
+            return;
+        }
         if (!this.canUploadToPath(vfsPath)) {
             showGlassToast('warning', 'Explorer', 'Cannot upload here', false, 4000);
             return;
@@ -4763,7 +4836,12 @@ class ExplorerApplet {
         if (!dragItems?.length || !target) return;
         if (target.type === 'folder') {
             const navPath = target.item.navPath || this.resolveNavigationPath(target.item);
-            if (navPath) await this.deliverItemsToPath(dragItems, navPath, 'cut');
+            if (navPath) await this.deliverItemsToPath(dragItems, navPath, 'cut', { drag: true, sourcePath: this.currentPath });
+            return;
+        }
+        // a drive or link in the navigation pane (the phone's drives, data-drop-path)
+        if (target.type === 'path' && target.path) {
+            await this.deliverItemsToPath(dragItems, target.path, 'cut', { drag: true, sourcePath: this.currentPath });
             return;
         }
         if (target.type === 'desktop') {
@@ -4785,6 +4863,11 @@ class ExplorerApplet {
         if (this._isReadOnlyUser()) {
             showGlassToast('warning', 'Explorer', 'Not available in read-only mode', false, 4000);
             return false;
+        }
+        // to, from or within the phone (explorerPhoneDrive.js): its own copy / move / transfer
+        if (typeof explorerPhoneDrive !== 'undefined'
+            && await explorerPhoneDrive.deliver(this, dragItems, navPath, operation, { ...options, sourcePath: options.sourcePath ?? this.clipboard?.sourcePath ?? this.currentPath })) {
+            return true;
         }
         const sourcePath = options.sourcePath ?? this.clipboard?.sourcePath ?? this.currentPath;
         if (this._isSamePasteDestination(sourcePath, navPath)) {
@@ -5003,6 +5086,10 @@ class ExplorerApplet {
         const sel = this.grid?.getSelectedItems() || [];
         if (sel.length !== 1) return;
         const item = sel[0];
+        if (typeof explorerPhoneDrive !== 'undefined' && explorerPhoneDrive.isEntry(item)) {
+            await explorerPhoneDrive.rename(this, item);
+            return;
+        }
         const newName = prompt('Rename to:', item.name);
         if (!newName || newName === item.name) return;
         if (item.targetKind === 'vfs-folder') {
@@ -5056,6 +5143,10 @@ class ExplorerApplet {
 
     async downloadSelection() {
         const sel = this.grid?.getSelectedItems() || [];
+        if (sel.length && typeof explorerPhoneDrive !== 'undefined' && sel.every(i => explorerPhoneDrive.isEntry(i))) {
+            explorerPhoneDrive.download(sel);
+            return;
+        }
         if (sel.length && typeof explorerArchive !== 'undefined' && sel.every(i => explorerArchive.isEntry(i))) {
             await explorerArchive.downloadEntries(this, sel);
             return;
@@ -5247,6 +5338,11 @@ class ExplorerApplet {
         const permanent = options.permanent === true;
         const sel = this.grid?.getSelectedItems() || [];
         if (!sel.length) return;
+        // on the phone: to Android's trash, a confirmed permanent delete for what cannot go there
+        if (typeof explorerPhoneDrive !== 'undefined' && sel.every(i => explorerPhoneDrive.isEntry(i))) {
+            await explorerPhoneDrive.remove(this, sel, permanent);
+            return;
+        }
         // an archive's contents are read-only here (vfsArchive.js)
         if (sel.some(i => i.targetKind === 'archive-entry')) return;
 

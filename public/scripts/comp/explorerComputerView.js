@@ -178,17 +178,36 @@
             return DRIVES.find((d) => d.letter === letter) || null;
         }
 
+        /** The phone's drives (Portable Devices, explorerPhoneDrive.js): only inside the Android app. */
+        phoneDrives() {
+            return root.explorerPhoneDrive && root.explorerPhoneDrive.available() ? root.explorerPhoneDrive.computerDrives() : [];
+        }
+
+        phoneDrive(key) {
+            return String(key || '').startsWith('phone:') ? (this.phoneDrives().find((d) => d.key === key) || null) : null;
+        }
+
+        /** A device icon with the hard disk's art until the Vista one is in place. */
+        deviceIcon(d, size) {
+            const src = `${ART}/${d.icon || 'phone'}-${size}.png`;
+            return `<img class="explorer-computer-tile-icon" src="${src}" alt="" draggable="false" onerror="this.onerror=null;this.src='${ART}/drive-system-${size}.png'">`;
+        }
+
         driveName(d) {
             return `${d.label} (${d.letter}:)`;
         }
 
         openDrive(letter) {
+            if (this.phoneDrive(letter)) {
+                root.explorerPhoneDrive.openComputerDrive(this.app, letter);
+                return;
+            }
             const d = this.drive(letter);
             if (d) this.app.navigateTo(d.path);
         }
 
         select(letter) {
-            this.selected = letter && this.drive(letter) ? letter : null;
+            this.selected = letter && (this.drive(letter) || this.phoneDrive(letter)) ? letter : null;
             if (this.el) {
                 this.el.querySelectorAll('[data-drive]').forEach((t) => {
                     const on = t.dataset.drive === this.selected;
@@ -239,20 +258,46 @@
                         </div>
                     </div>`;
             }).join('');
+            const phones = this.phoneDrives();
+            const phoneTiles = phones.map((d) => {
+                const used = d.total ? Math.max(0, Math.min(1, 1 - d.free / d.total)) : 0;
+                const full = d.total && d.free / d.total < 0.1;
+                const bar = d.total
+                    ? `<div class="explorer-drive-bar${full ? ' is-full' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(used * 100)}"><div class="explorer-drive-bar-fill" style="--used:${used.toFixed(4)}"></div></div>`
+                    : '';
+                const line = d.block ? d.block.text : (d.total ? `${formatSize(d.free)} free of ${formatSize(d.total)}` : '');
+                return `<div class="explorer-computer-tile${d.key === this.selected ? ' is-selected' : ''}${d.block ? ' is-blocked' : ''}" data-drive="${esc(d.key)}" role="option" aria-selected="${d.key === this.selected}" title="${esc(line)}">
+                        ${this.deviceIcon(d, 48)}
+                        <div class="explorer-computer-tile-text">
+                            <div class="explorer-computer-tile-name">${esc(d.name)}</div>
+                            ${bar}
+                            <div class="explorer-computer-tile-free">${esc(line)}</div>
+                        </div>
+                    </div>`;
+            }).join('');
+            // Vista lists a phone under Portable Devices (WPD), below the hard disks
+            const phoneGroup = phones.length ? `
+                <section class="explorer-computer-group explorer-computer-group-devices">
+                    <h3 class="explorer-computer-group-head"><span>Portable Devices (${phones.length})</span></h3>
+                    <div class="explorer-computer-tiles">${phoneTiles}</div>
+                </section>` : '';
             this.el.innerHTML = `
                 <section class="explorer-computer-group${this.collapsed ? ' is-collapsed' : ''}">
                     <h3 class="explorer-computer-group-head"><span>Hard Disk Drives (${DRIVES.length})</span><button type="button" class="explorer-computer-group-toggle" tabindex="-1" aria-expanded="${!this.collapsed}" aria-label="${this.collapsed ? 'Expand' : 'Collapse'} the group"></button></h3>
                     <div class="explorer-computer-tiles">${tiles}</div>
-                </section>`;
+                </section>${phoneGroup}`;
         }
 
         /** Vista's status words for the old status line (classic theme). */
         statusText() {
+            const phone = this.phoneDrive(this.selected);
+            if (phone) return phone.block ? phone.block.text : (phone.total ? `${formatSize(phone.free)} free of ${formatSize(phone.total)}` : '1 item selected');
+            const count = DRIVES.length + this.phoneDrives().length;
             if (this.selected) {
                 const disk = diskFacts(this.sys);
                 return disk ? `${formatSize(disk.free)} free of ${formatSize(disk.total)}` : '1 item selected';
             }
-            return `${DRIVES.length} item${DRIVES.length === 1 ? '' : 's'}`;
+            return `${count} item${count === 1 ? '' : 's'}`;
         }
 
         /** The details pane (explorerVistaChrome.js renderDetails layout and classes). */
@@ -271,6 +316,24 @@
                 + `<div class="explorer-details-name">${esc(name)}</div>${pair(...(rows[0] || ['', '']))}${extra ? pair(...extra) : empty}`
                 + rows.slice(1).map((r) => `<span></span>${pair(...r)}${empty}`).join('')
                 + '</div>';
+            const phone = this.phoneDrive(this.selected);
+            if (phone) {
+                const pkey = `computer:${phone.key}`;
+                if (icon.dataset.detailsKey !== pkey) {
+                    icon.dataset.detailsKey = pkey;
+                    icon.className = 'explorer-details-icon explorer-item-icon-box explorer-item-icon-box-md';
+                    icon.innerHTML = this.deviceIcon(phone, 64).replace('explorer-computer-tile-icon', 'explorer-details-shell-icon');
+                }
+                const used = phone.total ? Math.max(0, Math.min(1, 1 - phone.free / phone.total)) : 0;
+                info.innerHTML = phone.block
+                    ? grid(phone.name, [['Status', esc(phone.block.text)]])
+                    : grid(phone.name, [
+                        ['Space used', phone.total ? `<span class="explorer-drive-bar"><span class="explorer-drive-bar-fill" style="--used:${used.toFixed(4)}"></span></span>` : ''],
+                        ['Space free', phone.total ? esc(formatSize(phone.free)) : ''],
+                        ['Total size', phone.total ? esc(formatSize(phone.total)) : '']
+                    ]);
+                return;
+            }
             const d = this.selected ? this.drive(this.selected) : null;
             const key = d ? `computer:${d.letter}` : 'computer';
             if (icon.dataset.detailsKey !== key) {

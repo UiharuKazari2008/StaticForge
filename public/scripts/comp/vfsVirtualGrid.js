@@ -295,11 +295,19 @@ class VfsVirtualGrid {
                 shortcutId: i.isDesktopShortcut ? i.id : undefined,
                 shortcutData: i.shortcutData,
                 workspaceId: i.workspaceId,
-                navPath: i.navPath
+                navPath: i.navPath,
+                // a phone entry (explorerPhoneDrive.js) and what a cross-drive copy needs
+                phone: i.phone,
+                size: i.size,
+                modifiedAt: i.modifiedAt,
+                mimeType: i.mimeType
             }));
     }
 
     _clearDropHighlight() {
+        document.querySelectorAll('#explorerModal [data-drop-path].explorer-item-drop-target').forEach((el) => {
+            el.classList.remove('explorer-item-drop-target');
+        });
         this.contentEl?.querySelectorAll('.explorer-item-drop-target').forEach((el) => {
             el.classList.remove('explorer-item-drop-target');
         });
@@ -319,6 +327,9 @@ class VfsVirtualGrid {
                 folderEl.classList.add('explorer-item-drop-target');
             }
         }
+        // a drive in the navigation pane (the phone's, explorerPhoneDrive.js)
+        const pathEl = hit.closest('#explorerModal [data-drop-path]');
+        if (pathEl) pathEl.classList.add('explorer-item-drop-target');
 
         const explorerModal = document.getElementById('explorerModal');
         const overExplorer = explorerModal && !explorerModal.classList.contains('hidden') && explorerModal.contains(hit);
@@ -349,6 +360,8 @@ class VfsVirtualGrid {
                 return { type: 'folder', item };
             }
         }
+        const pathEl = hit.closest('#explorerModal [data-drop-path]');
+        if (pathEl) return { type: 'path', path: pathEl.dataset.dropPath };
         return null;
     }
 
