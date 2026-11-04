@@ -1259,19 +1259,25 @@ function deregisterManualPreviewEventListeners() {
 // frames. (The DOM petals were 160 composited layers, each starting its own animation, which kept the page
 // drawing ~40 frames/s at ~5 ms of layerization each for ~15 s per print; Yukimi's trace, 2026-10-16.)
 // Motion copies the old keyframes: sakuraPetalFall / confettiFall in public/css/autocomplete.css.
+// Nothing stays allocated between celebrations: the worker and canvas exist only while pieces fall. Android
+// WebView cannot allocate the GPU buffer for a transferred canvas (SharedImageStub "Unable to create shared
+// image" every ~0.55 s for as long as the worker lives: whole-app flicker, 5 s GPU frames, +240 MB graphics
+// memory; Galaxy Z Fold7 DeX, 2026-11-04), so there the same engine draws on the main thread instead.
 let celebrationWorker = null;
+let celebrationWorkerUrl = null;
 let celebrationCanvas = null;
+let celebrationBurstsSent = 0;
+let celebrationMainEngine = null;
 
-// Runs inside the worker (serialised into a blob URL), so it may use only its own scope
-function celebrationWorkerMain() {
+// The particle engine. Serialised into the worker's blob URL too, so it may use only its own scope and env:
+// env.nextFrame(fn), env.makeCanvas(w, h) for sprites, env.onIdle() once the last piece has fallen.
+function celebrationEngine(env) {
     let canvas = null;
     let ctx = null;
     let pieces = [];
     let running = false;
     let scale = 1;
-    const nextFrame = typeof self.requestAnimationFrame === 'function'
-        ? (fn) => self.requestAnimationFrame(fn)
-        : (fn) => setTimeout(() => fn(performance.now()), 16);
+    const nextFrame = env.nextFrame;
     // CSS ease-in-out, close enough for a falling petal
     const easeInOut = (t) => t * t * (3 - 2 * t);
     const rand = (min, max) => min + Math.random() * (max - min);
@@ -1292,7 +1298,7 @@ function celebrationWorkerMain() {
 
     function sprite(w, h, paint) {
         const pad = 4;
-        const c = new OffscreenCanvas(Math.ceil((w + pad * 2) * scale), Math.ceil((h + pad * 2) * scale));
+        const c = env.makeCanvas(Math.ceil((w + pad * 2) * scale), Math.ceil((h + pad * 2) * scale));
         const g = c.getContext('2d');
         g.scale(scale, scale);
         g.translate(pad, pad);
@@ -1401,22 +1407,22 @@ function celebrationWorkerMain() {
             if (alive < pieces.length) pieces = pieces.filter((piece) => now - piece.start <= piece.duration);
             nextFrame(frame);
         } else {
+            // No frame requested past this point; drop the backing store before reporting idle
             pieces = [];
             running = false;
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            self.postMessage('idle');
+            canvas.width = 0;
+            canvas.height = 0;
+            env.onIdle();
         }
     }
 
-    self.onmessage = (event) => {
-        const msg = event.data || {};
-        if (msg.type === 'init') {
-            canvas = msg.canvas;
-            ctx = canvas.getContext('2d');
-            return;
-        }
-        if (msg.type !== 'burst' || !ctx) return;
+    function setCanvas(target) {
+        canvas = target;
+        ctx = canvas.getContext('2d');
+    }
+
+    function burst(msg) {
+        if (!ctx) return;
         scale = msg.scale;
         const width = Math.round(msg.width * scale);
         const height = Math.round(msg.height * scale);
@@ -1432,41 +1438,121 @@ function celebrationWorkerMain() {
             running = true;
             nextFrame(frame);
         }
+    }
+
+    return { setCanvas, burst };
+}
+
+// Runs inside the worker after celebrationEngine is defined in the same blob
+function celebrationWorkerMain() {
+    let bursts = 0;
+    const engine = celebrationEngine({
+        nextFrame: typeof self.requestAnimationFrame === 'function'
+            ? (fn) => self.requestAnimationFrame(fn)
+            : (fn) => setTimeout(() => fn(performance.now()), 16),
+        makeCanvas: (w, h) => new OffscreenCanvas(w, h),
+        // bursts lets the page tell a stale idle from one sent after its latest burst
+        onIdle: () => self.postMessage({ type: 'idle', bursts })
+    });
+    self.onmessage = (event) => {
+        const msg = event.data || {};
+        if (msg.type === 'init') engine.setCanvas(msg.canvas);
+        else if (msg.type === 'burst') {
+            bursts++;
+            engine.burst(msg);
+        }
     };
 }
 
-function ensureCelebrationCanvas() {
-    if (celebrationWorker) return true;
-    if (!confettiContainer || typeof OffscreenCanvas !== 'function' || typeof Worker !== 'function'
+// Android WebView app: UA carries "; wv)", or the app's AndroidPointer bridge is present
+function celebrationNeedsMainThread() {
+    return /; wv\)/.test(navigator.userAgent) || !!window.AndroidPointer;
+}
+
+function removeCelebrationCanvas() {
+    if (celebrationCanvas) celebrationCanvas.remove();
+    celebrationCanvas = null;
+}
+
+function teardownCelebrationWorker() {
+    if (celebrationWorker) celebrationWorker.terminate();
+    if (celebrationWorkerUrl) URL.revokeObjectURL(celebrationWorkerUrl);
+    celebrationWorker = null;
+    celebrationWorkerUrl = null;
+    celebrationBurstsSent = 0;
+    removeCelebrationCanvas();
+}
+
+function appendCelebrationCanvas() {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'celebration-canvas';
+    confettiContainer.appendChild(canvas);
+    celebrationCanvas = canvas;
+    return canvas;
+}
+
+function startCelebrationWorker() {
+    if (typeof OffscreenCanvas !== 'function' || typeof Worker !== 'function'
         || typeof HTMLCanvasElement.prototype.transferControlToOffscreen !== 'function') {
         return false;
     }
-    const canvas = document.createElement('canvas');
-    canvas.className = 'celebration-canvas';
-    canvas.hidden = true;
-    confettiContainer.appendChild(canvas);
-    const offscreen = canvas.transferControlToOffscreen();
-    const url = URL.createObjectURL(new Blob(['(' + celebrationWorkerMain.toString() + ')();'], { type: 'text/javascript' }));
-    celebrationWorker = new Worker(url);
-    celebrationWorker.postMessage({ type: 'init', canvas: offscreen }, [offscreen]);
-    celebrationWorker.onmessage = (event) => {
-        if (event.data === 'idle') canvas.hidden = true;
+    const offscreen = appendCelebrationCanvas().transferControlToOffscreen();
+    celebrationWorkerUrl = URL.createObjectURL(new Blob(['const celebrationEngine = ' + celebrationEngine.toString() + ';\n('
+        + celebrationWorkerMain.toString() + ')();'], { type: 'text/javascript' }));
+    const worker = new Worker(celebrationWorkerUrl);
+    worker.postMessage({ type: 'init', canvas: offscreen }, [offscreen]);
+    worker.onmessage = (event) => {
+        const msg = event.data || {};
+        // A burst posted while this idle was in flight restarted the worker; keep it until the next idle
+        if (worker === celebrationWorker && msg.type === 'idle' && msg.bursts >= celebrationBurstsSent) {
+            teardownCelebrationWorker();
+        }
     };
-    celebrationCanvas = canvas;
+    worker.onerror = () => {
+        if (worker === celebrationWorker) teardownCelebrationWorker();
+    };
+    celebrationWorker = worker;
     return true;
+}
+
+function startCelebrationMainThread() {
+    const engine = celebrationEngine({
+        nextFrame: (fn) => window.requestAnimationFrame(fn),
+        makeCanvas: (w, h) => {
+            const c = document.createElement('canvas');
+            c.width = w;
+            c.height = h;
+            return c;
+        },
+        onIdle: () => {
+            if (celebrationMainEngine !== engine) return;
+            celebrationMainEngine = null;
+            removeCelebrationCanvas();
+        }
+    });
+    engine.setCanvas(appendCelebrationCanvas());
+    celebrationMainEngine = engine;
 }
 
 // effect: 'sakura' | 'confetti'. The canvas fills #confettiContainer (the viewport plus 25 px above it).
 function launchCelebration(effect) {
-    if (!ensureCelebrationCanvas()) return;
-    celebrationCanvas.hidden = false;
-    celebrationWorker.postMessage({
+    if (!confettiContainer) return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const msg = {
         type: 'burst',
         effect,
         width: window.innerWidth,
         height: window.innerHeight + 25,
         scale: Math.min(window.devicePixelRatio || 1, 1.5)
-    });
+    };
+    if (celebrationNeedsMainThread()) {
+        if (!celebrationMainEngine) startCelebrationMainThread();
+        celebrationMainEngine.burst(msg);
+        return;
+    }
+    if (!celebrationWorker && !startCelebrationWorker()) return;
+    celebrationBurstsSent++;
+    celebrationWorker.postMessage(msg);
 }
 
 function createConfettiClassic() {

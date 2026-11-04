@@ -310,7 +310,7 @@
     overflow: hidden;
 }
 
-/* Generation celebration: one canvas drawn by a worker (launchCelebration, manualModalManager.js) */
+/* Generation celebration: one canvas per celebration, drawn by a worker (main thread in Android WebView); launchCelebration, manualModalManager.js */
 .celebration-canvas {
     position: absolute;
     inset: 0;
