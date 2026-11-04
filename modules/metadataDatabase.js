@@ -6069,22 +6069,16 @@ async function backfillGalleryOwnershipFromWorkspaces(workspaces, options = {}) 
         }
     }
 
-    let upserted = 0;
-    for (let i = 0; i < rows.length; i += batchSize) {
-        const batch = rows.slice(i, i + batchSize);
-        for (const [filename, workspaceId, bucket] of batch) {
-            await db.run(`
-                INSERT OR REPLACE INTO gallery_workspace_ownership (filename, workspace_id, bucket, created_at)
-                VALUES (?, ?, ?, COALESCE(
-                    (SELECT created_at FROM gallery_workspace_ownership WHERE filename = ? AND workspace_id = ? AND bucket = ?),
-                    strftime('%s', 'now')
-                ))
-            `, [filename, workspaceId, bucket, filename, workspaceId, bucket]);
-            upserted += 1;
-        }
-    }
+    await insertRowsChunked(
+        'INSERT INTO gallery_workspace_ownership (filename, workspace_id, bucket, created_at)',
+        "(?, ?, ?, strftime('%s', 'now'))",
+        3,
+        rows,
+        // REVIEW: the conflict clause goes once after all VALUES rows, not inside each row (Jules 17552)
+        'ON CONFLICT(filename, workspace_id, bucket) DO NOTHING'
+    );
 
-    return { upserted, totalRows: rows.length };
+    return { upserted: rows.length, totalRows: rows.length };
 }
 
 /**
@@ -6124,13 +6118,14 @@ function withDbTransactionLock(fn) {
 // so multi-row INSERTs stay at or under 32 bound values.
 const MULTI_ROW_INSERT_MAX_PARAMS = 32;
 
-async function insertRowsChunked(sqlPrefix, rowPlaceholder, columnCount, rows) {
+async function insertRowsChunked(sqlPrefix, rowPlaceholder, columnCount, rows, sqlSuffix = '') {
     const perStatement = Math.max(1, Math.floor(MULTI_ROW_INSERT_MAX_PARAMS / columnCount));
+    const tail = sqlSuffix ? ` ${sqlSuffix}` : '';
     for (let i = 0; i < rows.length; i += perStatement) {
         const chunk = rows.slice(i, i + perStatement);
         const params = [];
         for (const row of chunk) params.push(...row);
-        await db.run(`${sqlPrefix} VALUES ${chunk.map(() => rowPlaceholder).join(', ')}`, params);
+        await db.run(`${sqlPrefix} VALUES ${chunk.map(() => rowPlaceholder).join(', ')}${tail}`, params);
     }
 }
 

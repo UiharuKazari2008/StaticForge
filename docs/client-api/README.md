@@ -74,7 +74,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Search & tags | [ws/search.md](./ws/search.md) | 20 |
 | Grimoire / Wiki | [ws/wiki.md](./ws/wiki.md) | 14 |
 | Chat | [ws/chat.md](./ws/chat.md) | 9 |
-| Director | [ws/director.md](./ws/director.md) | 12 |
+| Director | [ws/director.md](./ws/director.md) | 46 |
 | Notes (+ novels) | [ws/notes.md](./ws/notes.md) | 14 |
 | Windows Sidebar | [ws/sidebar.md](./ws/sidebar.md) | 5 (+ `sidebar_updated` push) |
 | Slideshow devices (Melaton SideShow) | [ws/slideshowDevices.md](./ws/slideshowDevices.md) | 8 (+ `device_command`, `devices_updated` push) |
