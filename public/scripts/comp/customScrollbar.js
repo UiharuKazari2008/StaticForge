@@ -41,6 +41,45 @@ class CustomScrollbar {
         }, this._wheelLock.settleMs + 20);
     }
 
+    /**
+     * Put a natively scrolled element (no custom bar, e.g. the Vista Director list) under the
+     * wheel gesture lock, so an outer custom scroller does not take its wheel events.
+     * options.claim: keep the gesture at its edge instead of passing it to the parent.
+     */
+    registerNativeScroller(el, options = {}) {
+        if (!el || el._nativeWheelLock) return;
+        const claim = !!options.claim;
+        const onWheel = (e) => {
+            if ('ontouchstart' in window || !this._wheelLock || e.ctrlKey || !e.deltaY) return;
+            const delta = e.deltaY;
+            const max = Math.max(0, el.scrollHeight - el.clientHeight);
+            const canScrollInDirection = delta < 0 ? el.scrollTop > 0 : el.scrollTop < max - 1;
+            const verdict = this._wheelLock.decide(el, performance.now(), {
+                canScroll: max > 1,
+                canScrollInDirection,
+                claim
+            });
+            if (verdict.action === 'pass') return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (verdict.action === 'forward') {
+                if (verdict.owner && verdict.owner.isConnected) verdict.owner.scrollTop += delta;
+            } else if (verdict.action === 'scroll') {
+                el.scrollTop += delta;
+            }
+            this._armWheelSettle();
+        };
+        el._nativeWheelLock = onWheel;
+        el.addEventListener('wheel', onWheel, { passive: false });
+    }
+
+    unregisterNativeScroller(el) {
+        if (!el || !el._nativeWheelLock) return;
+        el.removeEventListener('wheel', el._nativeWheelLock, { passive: false });
+        if (this._wheelLock && this._wheelLock.owner(performance.now()) === el) this._wheelLock.release();
+        delete el._nativeWheelLock;
+    }
+
     beginLayoutBatch() {
         this._layoutBatchDepth++;
         this._layoutSettling = true;
@@ -296,7 +335,8 @@ class CustomScrollbar {
                     const verdict = lock.decide(scrollableContent, performance.now(), {
                         canScroll: canScrollVertically,
                         canScrollInDirection,
-                        innermost: isInnermostScrollable
+                        innermost: isInnermostScrollable,
+                        claim: element.hasAttribute('data-wheel-claim')
                     });
                     if (verdict.action === 'forward') {
                         e.preventDefault();

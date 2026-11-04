@@ -13,7 +13,9 @@
  * the owner's scrollbar visible while it owns the gesture (`wheel-owner` on the host element).
  *
  *   const lock = createWheelLock({ settleMs: 180 });
- *   lock.decide(scroller, now, { canScroll, canScrollInDirection, innermost })
+ *   lock.decide(scroller, now, { canScroll, canScrollInDirection, innermost, claim })
+ *     claim: take a new gesture whenever the scroller can move at all, even at its edge
+ *     (the Director list in Studio keeps the wheel while the pointer is over it)
  *     -> { action: 'scroll' | 'swallow' | 'forward' | 'pass', owner }
  *        scroll   this scroller takes the event (and now owns the gesture)
  *        swallow  this scroller owns the gesture but is at its edge: eat the event, move nothing
@@ -48,6 +50,7 @@
             const canScroll = !!state.canScroll;
             const canScrollInDirection = !!state.canScrollInDirection;
             const innermost = state.innermost !== false;
+            const claim = !!state.claim;
             if (owner !== null && !live(now)) emit(null);
             if (owner !== null && owner !== scroller) {
                 last = now;
@@ -58,10 +61,10 @@
                 return { action: canScrollInDirection ? 'scroll' : 'swallow', owner };
             }
             // no live gesture: the innermost scroller that can move takes it
-            if (innermost && canScroll && canScrollInDirection) {
+            if (innermost && canScroll && (canScrollInDirection || claim)) {
                 last = now;
                 emit(scroller);
-                return { action: 'scroll', owner };
+                return { action: canScrollInDirection ? 'scroll' : 'swallow', owner };
             }
             return { action: 'pass', owner: null };
         }

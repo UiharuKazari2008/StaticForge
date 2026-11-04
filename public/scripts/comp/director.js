@@ -3404,7 +3404,7 @@ class Director {
                     const node = director.directorChatMessages
                         && director.directorChatMessages.querySelector(`[data-message-key="${CSS.escape(String(messageId))}"]`);
                     if (node) {
-                        node.scrollIntoView({ block: 'nearest' });
+                        director.revealDirectorRow(node);
                         director.markPrintMessage(messageId, true);
                     }
                 }
@@ -4010,6 +4010,7 @@ class Director {
 
             // Then add open class to start animation
             this.directorContainer.classList.add('director-open');
+            this.revealDirectorInStudio();
         }
         this.currentView = 'sessionChat';
         this.updateHeaderForView('sessionChat');
@@ -4196,7 +4197,7 @@ class Director {
         this.paintWorkspaceBanner();
         this.applySessionModel(session);
         if (this._focusComposer && this.directorChatInput) {
-            this.directorChatInput.focus();
+            this.directorChatInput.focus({ preventScroll: true });
             this._focusComposer = false;
             this._askWrenOpening = false;
         }
@@ -4801,7 +4802,10 @@ class Director {
             if (bars && bars.scrollbars && bars.scrollbars.has(box)) bars.destroy(box);
             box.classList.remove('form-section-scroll');
             box.classList.add('director-native-scroll');
+            // The wheel stays in the list while the pointer is over it, even at its ends
+            if (bars && typeof bars.registerNativeScroller === 'function') bars.registerNativeScroller(box, { claim: true });
         } else {
+            if (bars && typeof bars.unregisterNativeScroller === 'function') bars.unregisterNativeScroller(box);
             box.classList.remove('director-native-scroll');
             box.classList.add('form-section-scroll');
             if (bars && typeof bars.createScrollbar === 'function') bars.createScrollbar(box);
@@ -4810,9 +4814,42 @@ class Director {
         if (next) next.scrollTop = Math.max(0, next.scrollHeight - next.clientHeight - fromBottom);
     }
 
+    // The message list's own scroller, never an outer one: in Studio the nearest .scrollable-content
+    // above a native (Vista) list is the Studio form column, which scrolled the whole panel.
     directorScrollEl() {
         if (!this.directorChatMessages) return null;
-        return this.directorChatMessages.closest('.scrollable-content') || this.directorChatMessages.parentElement;
+        const box = this.directorChatMessages.closest('.director-chat-messages-container');
+        if (!box) return this.directorChatMessages.parentElement;
+        if (box.classList.contains('director-native-scroll')) return box;
+        const wrap = this.directorChatMessages.parentElement;
+        return wrap && wrap !== box && wrap.classList.contains('scrollable-content') ? wrap : box;
+    }
+
+    // Bring a row into view inside the message list only (scrollIntoView also moves Studio).
+    revealDirectorRow(node) {
+        const el = this.directorScrollEl();
+        if (!el || !node) return;
+        const view = el.getBoundingClientRect();
+        const row = node.getBoundingClientRect();
+        if (row.top < view.top) el.scrollTop += row.top - view.top;
+        else if (row.bottom > view.bottom) el.scrollTop += Math.min(row.bottom - view.bottom, row.top - view.top);
+    }
+
+    // Studio panel open: the Studio column shows the Director from its top, the list keeps its own place.
+    revealDirectorInStudio() {
+        if (this.directorDockedInWindow() || !this.directorContainer) return;
+        const top = (this.directorCommonHeader && !this.directorCommonHeader.classList.contains('hidden')
+            && this.directorCommonHeader.parentNode === this.directorContainer.parentNode)
+            ? this.directorCommonHeader
+            : this.directorContainer;
+        let column = top.parentElement;
+        while (column && column !== document.body) {
+            const overflow = getComputedStyle(column).overflowY;
+            if ((overflow === 'auto' || overflow === 'scroll') && column.scrollHeight > column.clientHeight) break;
+            column = column.parentElement;
+        }
+        if (!column || column === document.body) return;
+        column.scrollTop += top.getBoundingClientRect().top - column.getBoundingClientRect().top;
     }
 
     wireDirectorRowScroll() {
