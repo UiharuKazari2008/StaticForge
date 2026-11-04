@@ -4558,8 +4558,9 @@ class WebSocketClient {
                 }
                 try {
                     this._recordWsMessage('in', message);
-                    // Flash down arrow to indicate inbound traffic
-                    this.flashWebSocketArrow('down');
+                    // Flash down arrow to indicate inbound traffic. Not for the Sidebar's live feed: a
+                    // push every 2 s kept the tray globe (and the frames behind it) busy while idle
+                    if (!message || message.type !== 'sidebar_live') this.flashWebSocketArrow('down');
                     this.handleMessage(message);
                 } catch (error) {
                     console.error('❌ Failed to handle WebSocket message:', message && message.type, error);
