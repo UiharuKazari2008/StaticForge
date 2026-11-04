@@ -590,6 +590,8 @@ class DirectorMascot {
     blink() {
         const set = this.faceSet();
         if (!this.el || !set || !set.blink || (typeof document !== 'undefined' && document.hidden)) return;
+        // not rendered (Studio's chat pane folded, window closed): no class flips to restyle
+        if (typeof this.el.blink.checkVisibility === 'function' && !this.el.blink.checkVisibility()) return;
         const expr = this.shownExpression();
         if (Array.isArray(set.blinkFor) && !set.blinkFor.includes(expr)) return;
         this.el.blink.classList.add('dm-on');

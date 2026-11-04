@@ -97,6 +97,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "configure-nekoai": "node scripts/configure-nekoai.js",
     "install:deps": "node scripts/configure-nekoai.js && pnpm install",
+    "build:icon-subsets": "node scripts/build-icon-font-subsets.js",
+    "test:icon-subsets": "node scripts/build-icon-font-subsets.js --check",
     "nekoai:registry": "NEKOAI_JS_SOURCE=registry node scripts/configure-nekoai.js",
     "nekoai:local": "NEKOAI_JS_SOURCE=local node scripts/configure-nekoai.js",
     "pack-server": "bash scripts/pack-server-transfer.sh",

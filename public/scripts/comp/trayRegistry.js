@@ -243,6 +243,13 @@ function trayClassToggle(el, token, on) {
     el.classList.toggle(token, on);
 }
 
+// an identical setAttribute still records a mutation (and the traffic arrows' flashes run
+// traySyncOverflow -> trayCloseOverflow every message)
+function traySetExpanded(btn, on) {
+    const value = on ? 'true' : 'false';
+    if (btn.getAttribute('aria-expanded') !== value) btn.setAttribute('aria-expanded', value);
+}
+
 function trayExpanded() {
     const tray = trayTray();
     return !!(tray && tray.classList.contains('tray-expanded'));
@@ -269,7 +276,7 @@ function trayCloseOverflow() {
     if (btn) {
         trayClassRemove(btn, 'is-open');
         if (btn.title !== 'Show hidden icons') btn.title = 'Show hidden icons';
-        btn.setAttribute('aria-expanded', 'false');
+        traySetExpanded(btn, false);
     }
 }
 
@@ -280,7 +287,7 @@ function trayOpenOverflow() {
     trayClassToggle(tray, 'tray-expanded', true);
     trayClassToggle(btn, 'is-open', true);
     if (btn.title !== 'Hide') btn.title = 'Hide';
-    btn.setAttribute('aria-expanded', 'true');
+    traySetExpanded(btn, true);
     // folds again once the pointer has left the notification area
     if (!tray.matches(':hover')) trayScheduleCollapse();
 }
@@ -350,7 +357,7 @@ function trayWatchIcons() {
     }, true);
     const btn = trayOverflowButton();
     if (btn) {
-        btn.setAttribute('aria-expanded', 'false');
+        traySetExpanded(btn, false);
         btn.addEventListener('click', (ev) => {
             ev.preventDefault();
             ev.stopPropagation();
