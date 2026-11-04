@@ -491,8 +491,8 @@ const vsbClockApply = function (inst) {
     vsbClockTick(inst);
 };
 
-// The hands turn as CSS animations on the compositor (vsb-clock-turn, vista-sidebar.css): the second
-// hand steps once a second as Vista's does, minute and hour sweep. A negative delay puts each at the
+// The hands turn as CSS animations on the compositor (vsb-clock-turn, vista-sidebar.css), each stepping
+// once a second as the old JS tick moved them. A negative delay puts each at the
 // zone's time; JS only re-syncs on minute rollover (title, drift), focus and visibility changes, and
 // pauses the hands while the clock is not shown (idle perf pass 2026-11-04: the per-second inline
 // transform was 12 restyles in 6 s on the Fold7).
@@ -508,8 +508,10 @@ const vsbClockTick = function (inst) {
     const run = (hand, period, at, timing) => {
         hand.style.animation = `vsb-clock-turn ${period}s ${timing} ${-at}s infinite ${shown ? 'running' : 'paused'}`;
     };
-    run(p.h, 43200, (h % 12) * 3600 + m * 60 + sec, 'linear');
-    run(p.m, 3600, m * 60 + sec, 'linear');
+    // every hand steps on the same second boundary, as the old per-second tick moved them: a linear
+    // sweep redrew the minute and hour hands on every vsync (~58 frames/s on the compositor)
+    run(p.h, 43200, (h % 12) * 3600 + m * 60 + sec, 'steps(43200, end)');
+    run(p.m, 3600, m * 60 + sec, 'steps(3600, end)');
     run(p.s, 60, sec, 'steps(60, end)');
     const title = `${set.name ? set.name + ' - ' : ''}${vsbPad2(h % 12 || 12)}:${vsbPad2(m)} ${h < 12 ? 'AM' : 'PM'}`;
     if (p.face.title !== title) p.face.title = title;

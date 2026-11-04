@@ -420,7 +420,9 @@ body:not(.desktop-mode) #vistaSidebar {
     position: absolute;
     z-index: 1;
     transform-origin: 50% 50%;
-    transition: transform 0.8s ease-out;
+    /* four steps, not a smooth ease: a smooth 0.8 s ease at every 2 s update kept the compositor
+       drawing ~20 frames/s while idle (Fold7 idle pass 2026-11-04); steps draw 4 frames per move */
+    transition: transform 0.8s steps(4, end);
 }
 
 .vsb-cpu-dial-cpu { top: 22px; left: 38px; width: 8px; height: 72px; }
