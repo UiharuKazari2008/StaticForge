@@ -140,7 +140,19 @@ class DirectorMascot {
     applyView() {
         if (!this.root) return;
         const on = this.enabled && !!this.manifest && this.isHosted();
+        const was = this._shown;
+        this._shown = on;
         this.root.classList.toggle('hidden', !on);
+        // Her layers are full-canvas sheets (5 x 2726 x 2413 at once, ~130 MB decoded): she holds
+        // none while she is not shown (Director docked in Studio, mascot off), idle perf pass 2026-11-04
+        if (!on && was !== false) this.releaseLayers();
+        if (on && !was) {
+            if (this.manifest && !this.manifest._preloaded) {
+                this.manifest._preloaded = true;
+                this.preload(this.manifest);
+            }
+            this.render();
+        }
         this.root.dataset.view = this.view;
         if (this.host) {
             this.host.classList.toggle('director-mascot-view', on && this.view === 'mascot');
@@ -309,7 +321,7 @@ class DirectorMascot {
             if (res.ok) manifest = DirectorMascot.normalize(await res.json(), persona);
         } catch (_) { manifest = null; }
         this.manifests.set(persona, manifest);
-        if (manifest) this.preload(manifest);
+        // preloaded on her first showing (applyView), not with the manifest
         return manifest;
     }
 
@@ -328,6 +340,8 @@ class DirectorMascot {
         const key = persona === 'xi' || persona === 'kabuki' ? persona : 'wren';
         if (key === this.persona && this.manifest) return;
         this.persona = key;
+        // another persona's sheets: the shown check below loads hers instead
+        if (this._shown) this._shown = null;
         const manifest = await this.loadManifest(key);
         if (this.persona !== key) return;      // switched again while loading
         this.manifest = manifest;
@@ -629,8 +643,16 @@ class DirectorMascot {
         return 'neutral';
     }
 
+    /** Drops every layer's picture; render() sets them again when she shows. */
+    releaseLayers() {
+        if (!this.el) return;
+        [this.el.bodyPrev, this.el.body, this.el.headImg, this.el.face, this.el.blink, this.el.mouth].forEach((img) => {
+            if (img && img.hasAttribute('src')) img.removeAttribute('src');
+        });
+    }
+
     renderFace(expr) {
-        if (!this.el || !this.manifest) return;
+        if (!this.el || !this.manifest || !this._shown) return;
         const set = this.faceSet();
         if (!set) return;
         const want = expr || this.shownExpression();
@@ -644,7 +666,7 @@ class DirectorMascot {
     }
 
     render() {
-        if (!this.el || !this.manifest) return;
+        if (!this.el || !this.manifest || !this._shown) return;
         const id = this.currentBodyId();
         const body = id ? this.manifest.bodies[id] : null;
         if (!body) return;
