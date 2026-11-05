@@ -920,7 +920,6 @@ function setWorkspaceDropdownValue(workspaceId, workspaceName) {
 // Initialize update preset modal
 function initializeUpdatePresetModal() {
     const modal = document.getElementById('updatePresetModal');
-    const closeBtn = document.getElementById('closeUpdatePresetBtn');
     const cancelBtn = document.getElementById('updatePresetCancelBtn');
     const saveBtn = document.getElementById('updatePresetSaveBtn');
     
@@ -932,10 +931,6 @@ function initializeUpdatePresetModal() {
                 hideUpdatePresetModal();
             }
         });
-    }
-    
-    if (closeBtn) {
-        closeBtn.addEventListener('click', hideUpdatePresetModal);
     }
     
     if (cancelBtn) {
