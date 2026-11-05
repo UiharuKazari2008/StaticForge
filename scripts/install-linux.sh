@@ -103,7 +103,7 @@ if [[ -z "$db" || $(stat -c%s "$db" 2>/dev/null || echo 0) -lt 1000000 ]]; then
   log "geo2city db missing — pnpm rebuild geo2city"; pnpm rebuild geo2city
 fi
 bad=()
-for m in better-sqlite3 sqlite3 canvas sharp spellchecker geo2city; do
+for m in better-sqlite3 sqlite3 canvas sharp geo2city; do
   node -e "require('$m')" >/dev/null 2>&1 || bad+=("$m")
 done
 [[ ${#bad[@]} -eq 0 ]] || die "native modules failed to load: ${bad[*]} (check apt build deps)"
@@ -117,20 +117,25 @@ mkdir -p "$DATA_DIR/apocrypha/archive"
 log "runtime data dir: $DATA_DIR"
 rand() { node -e "process.stdout.write(require('crypto').randomBytes($1).toString('hex'))"; }
 if [[ ! -f config.json ]]; then
-  log "creating config.json (random loginKey / PINs — change them)"
-  LK=$(rand 16) PORT="$PORT" node -e '
-    const pin=()=>String(require("crypto").randomInt(100000,999999));
-    require("fs").writeFileSync("config.json", JSON.stringify({port:+process.env.PORT,loginKey:process.env.LK,loginPin:pin(),readOnlyPin:pin()},null,2)+"\n",{mode:0o600});'
+  log "creating config.json"
+  PORT="$PORT" node -e '
+    require("fs").writeFileSync("config.json", JSON.stringify({port:+process.env.PORT},null,2)+"\n",{mode:0o600});'
 fi
 if [[ ! -f secure.config.json ]]; then
   log "creating secure.config.json from template"
   cp scripts/templates/bootstrap-secure.json secure.config.json; chmod 600 secure.config.json
 fi
 # web_server.js refuses to start without sessionSecret; the template never had one.
+# loginKey / loginPin / readOnlyPin are read from secure.config.json only (modules/auth.js, web_server.js login).
 node -e '
-  const f="./secure.config.json",fs=require("fs"),s=JSON.parse(fs.readFileSync(f));
-  if(!s.sessionSecret){s.sessionSecret=require("crypto").randomBytes(32).toString("hex");
-    fs.writeFileSync(f,JSON.stringify(s,null,2)+"\n");console.log("[install] added sessionSecret");}'
+  const f="./secure.config.json",fs=require("fs"),c=require("crypto"),s=JSON.parse(fs.readFileSync(f));
+  const pin=()=>String(c.randomInt(100000,999999));let added=[];
+  if(!s.sessionSecret){s.sessionSecret=c.randomBytes(32).toString("hex");added.push("sessionSecret");}
+  if(!s.loginKey){s.loginKey=c.randomBytes(16).toString("hex");added.push("loginKey");}
+  if(!s.loginPin){s.loginPin=pin();added.push("loginPin");}
+  if(!s.readOnlyPin){s.readOnlyPin=pin();added.push("readOnlyPin");}
+  if(added.length){fs.writeFileSync(f,JSON.stringify(s,null,2)+"\n",{mode:0o600});
+    console.log("[install] added "+added.join(", ")+" to secure.config.json (change the PINs)");}'
 for pair in characters.json:bootstrap-characters.json .cache/workspace.json:bootstrap-workspace.json \
             .cache/workspace-desktop.json:bootstrap-workspace-desktop.json .cache/favorites.json:bootstrap-favorites.json; do
   d=${pair%%:*}; t=scripts/templates/${pair#*:}

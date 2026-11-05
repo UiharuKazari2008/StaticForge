@@ -132,8 +132,9 @@ sudo bash scripts/install-linux.sh            # add --with-service for pm2 + boo
 ```
 
 #### 2. Configuration
-The installer creates `config.json` (random login key/PINs) and `secure.config.json` (with a
-`sessionSecret`, which the server requires) if missing. Edit them, e.g.:
+The installer creates `config.json` (port) and `secure.config.json` (`sessionSecret`, which the server
+requires, plus a random `loginKey`, `loginPin` and `readOnlyPin`) if missing. The login key and PINs are
+read from `secure.config.json` only. Edit them, e.g.:
 
 ```json
 {
