@@ -745,8 +745,10 @@ function rebalanceEmphasisWeightsByDelta(weights, changedIndex, newWeight, activ
     } else {
         let remainingGain = -delta;
         let eligiblePeers = adjustable.slice();
+        let gainPasses = 0;
 
-        while (remainingGain > 0.00001 && eligiblePeers.length > 0) {
+        // No weight ceiling, so a pass only stalls on rounding residue: bound the passes.
+        while (remainingGain > 0.00001 && eligiblePeers.length > 0 && gainPasses++ < 32) {
             const othersInfluenceSum = eligiblePeers.reduce((sum, i) => sum + influenceAt(i, result[i]), 0);
             if (othersInfluenceSum <= 0) {
                 const per = remainingGain / eligiblePeers.length;
@@ -755,11 +757,11 @@ function rebalanceEmphasisWeightsByDelta(weights, changedIndex, newWeight, activ
                     const len = lengthAt(i);
                     const oldWeightVal = result[i] || 0;
                     const oldInfluenceVal = oldWeightVal * len;
-                    const newInfluenceVal = Math.min(EMPHASIS_WEIGHT_MAX * len, oldInfluenceVal + per);
+                    const newInfluenceVal = oldInfluenceVal + per;
                     const newWeightVal = clampEmphasisWeightNormalize(newInfluenceVal / len);
                     result[i] = newWeightVal;
                     remainingGain -= ((newWeightVal * len) - oldInfluenceVal);
-                    if (newWeightVal < EMPHASIS_WEIGHT_MAX) nextPeers.push(i);
+                    nextPeers.push(i);
                 });
                 eligiblePeers = nextPeers;
             } else {
@@ -770,11 +772,11 @@ function rebalanceEmphasisWeightsByDelta(weights, changedIndex, newWeight, activ
                     const oldWeightVal = result[i] || 0;
                     const oldInfluenceVal = oldWeightVal * len;
                     const addition = currentGain * (oldInfluenceVal / othersInfluenceSum);
-                    const newInfluenceVal = Math.min(EMPHASIS_WEIGHT_MAX * len, oldInfluenceVal + addition);
+                    const newInfluenceVal = oldInfluenceVal + addition;
                     const newWeightVal = clampEmphasisWeightNormalize(newInfluenceVal / len);
                     result[i] = newWeightVal;
                     remainingGain -= ((newWeightVal * len) - oldInfluenceVal);
-                    if (newWeightVal < EMPHASIS_WEIGHT_MAX) nextPeers.push(i);
+                    nextPeers.push(i);
                 });
                 eligiblePeers = nextPeers;
             }
@@ -783,7 +785,7 @@ function rebalanceEmphasisWeightsByDelta(weights, changedIndex, newWeight, activ
         if (remainingGain > 0.00001) {
             const len = lengthAt(changedIndex);
             const currentInfluence = result[changedIndex] * len;
-            const newInfluenceVal = Math.min(EMPHASIS_WEIGHT_MAX * len, currentInfluence + remainingGain);
+            const newInfluenceVal = currentInfluence + remainingGain;
             result[changedIndex] = clampEmphasisWeightNormalize(newInfluenceVal / len);
         }
     }

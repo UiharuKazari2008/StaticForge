@@ -1,5 +1,6 @@
 // Emphasis weight/share constants and math
 
+// Colour scale ends only: weights themselves have no limit.
 const EMPHASIS_WEIGHT_MIN = -6;
 const EMPHASIS_WEIGHT_MAX = 9;
 const EMPHASIS_WEIGHT_STEP = 0.1;
@@ -17,9 +18,8 @@ const NSFW_TAG_HIGHLIGHT = {
 
 function clampEmphasisWeight(value) {
     const n = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(n)) return 1.0;
-    const clamped = Math.max(EMPHASIS_WEIGHT_MIN, Math.min(EMPHASIS_WEIGHT_MAX, n));
-    return Math.round(clamped * 100) / 100;
+    if (!Number.isFinite(n)) return 1.0;
+    return Math.round(n * 100) / 100;
 }
 
 function formatEmphasisWeight(value) {
@@ -46,9 +46,8 @@ function formatEmphasisWeightDisplay(value) {
 
 function clampEmphasisWeightNormalize(value) {
     const n = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(n)) return 1.0;
-    const clamped = Math.max(EMPHASIS_WEIGHT_MIN, Math.min(EMPHASIS_WEIGHT_MAX, n));
-    return Math.round(clamped * 10000) / 10000;
+    if (!Number.isFinite(n)) return 1.0;
+    return Math.round(n * 10000) / 10000;
 }
 
 function formatEmphasisWeightNormalize(value) {
