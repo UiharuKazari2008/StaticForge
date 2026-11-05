@@ -1397,9 +1397,9 @@ function registerPackets(handlersCtx) {
     regFn('omegasearch_query', handleOmegasearchQuery);
     regFn('search_index_prepare_cache', handlePrepareSearchCache);
     regFn('search_index_clear_cache', handleClearSearchIndexCache);
-    regFn('search_index_toggle_pause', handleToggleIndexingPause);
-    regFn('search_index_trigger', handleTriggerIndexing);
-    regFn('search_index_rebuild_all', handleRebuildAllIndexes);
+    regFn('search_index_toggle_pause', handleToggleIndexingPause, SEARCH_DESTRUCTIVE);
+    regFn('search_index_trigger', handleTriggerIndexing, SEARCH_DESTRUCTIVE);
+    regFn('search_index_rebuild_all', handleRebuildAllIndexes, SEARCH_DESTRUCTIVE);
     regFn('get_prompt_index_status', handleGetPromptIndexStatus);
     regFn('prompt_index_start', handlePromptIndexStart);
     regFn('prompt_index_pause', handlePromptIndexPause);
