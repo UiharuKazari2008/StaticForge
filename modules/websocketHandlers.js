@@ -438,6 +438,11 @@ class WebSocketMessageHandlers {
             'apply_tendai_preview',
             'resolve_text_replacements',
             'spellcheck_add_word',
+            // Search index control and Director provider config: global writes, not for read-only clients
+            'search_index_rebuild_all',
+            'search_index_trigger',
+            'search_index_toggle_pause',
+            'director_custom_providers_save',
             'generate_image',
             'upscale_image',
             'enhance_image',
