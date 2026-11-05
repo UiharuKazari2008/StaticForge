@@ -14,7 +14,7 @@ node web_server.js                                  # or let pm2 run it
 
 The script is non-interactive and idempotent: re-running skips apt/Node/pnpm when present and
 never overwrites `config.json` / `secure.config.json` (it only adds a missing `sessionSecret`).
-A new `config.json` gets a random `loginKey` and PINs — change them, then add a NovelAI key in
+A new `secure.config.json` gets a random `loginKey`, `loginPin` and `readOnlyPin` (change them); `config.json` only gets the port. Then add a NovelAI key in
 `secure.config.json` (`novelai.keys[].apiKey`).
 
 After dependencies, the installer runs `node scripts/precompile-runtime-assets.js`. A fresh tree
