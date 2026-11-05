@@ -29,6 +29,7 @@
 
 ## Recently done
 
+- Emphasis weights have no limit: `clampEmphasisWeight` / normalize twin only round and fall back to 1 for non-numbers; `-6`/`9` stay colour-scale ends only (`emphasisWeightMath.js`, `emphasisParse.js` rebalance). Yozora landing 35d179ad.
 - Cross-field text drag (main ↔ character): expand on dragstart + migrate sibling `groupsById` on drop
 - Clipboard copy/cut expand managed → classic `N::` + paste import into target field (main ↔ character)
 - Managed end marker: Delete on/inside close removes it (auto-terminate); typed `::` adds or moves the close

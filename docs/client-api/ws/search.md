@@ -21,11 +21,11 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `search_characters` | `search_characters_response` | session | Handler: handleCharacterSearch |
 | `search_dataset_tags` | `search_dataset_tags_response` | session | Handler: handleDatasetTagSearch |
 | `search_files` | `search_files_response` | session | Handler: handleFileSearch |
-| `search_index_clear_cache` | `search_index_clear_cache_response` | session | Handler: handleClearSearchIndexCache |
+| `search_index_clear_cache` | `search_index_clear_cache_response` | session | Drops the caller's own per-session search cache only; open to readonly |
 | `search_index_prepare_cache` | `search_index_prepare_cache_response` | session | Handler: handlePrepareSearchCache |
-| `search_index_rebuild_all` | `search_index_rebuild_all_response` | session | Handler: handleRebuildAllIndexes |
-| `search_index_toggle_pause` | `search_index_toggle_pause_response` | session | Handler: handleToggleIndexingPause |
-| `search_index_trigger` | `search_index_trigger_response` | session | Handler: handleTriggerIndexing |
+| `search_index_rebuild_all` | `search_index_rebuild_all_response` | admin/destructive | Full index rebuild; blocked for readonly (Yozora #700) |
+| `search_index_toggle_pause` | `search_index_toggle_pause_response` | admin/destructive | Host-wide pause/resume; blocked for readonly (Yozora #700) |
+| `search_index_trigger` | `search_index_trigger_response` | admin/destructive | Starts an indexing sync; blocked for readonly (Yozora #700) |
 | `search_tags` | `search_tags_response` | session | Handler: handleSearchTags |
 | `spellcheck_add_word` | `spellcheck_add_word_response` | admin/destructive | Handler: handleAddWordToDictionary |
 
@@ -47,6 +47,8 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 ## Read-only restrictions
 
 Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveOperation()` return `READONLY_RESTRICTED` for `userType: "readonly"` sessions.
+
+`search_index_rebuild_all`, `search_index_trigger` and `search_index_toggle_pause` are on that list (and tagged `SEARCH_DESTRUCTIVE`). `search_index_clear_cache` is not: it only drops the caller's own per-session search cache.
 
 ---
 
@@ -370,7 +372,7 @@ Additional response/push types from handler:
 
 ### `search_index_rebuild_all`
 
-**Auth:** Session required
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
 
 **Handler:** modules/ws/handlers/70-searchHandler.js → `handleRebuildAllIndexes`
 
@@ -392,7 +394,7 @@ Additional response/push types from handler:
 
 ### `search_index_toggle_pause`
 
-**Auth:** Session required
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
 
 **Handler:** modules/ws/handlers/70-searchHandler.js → `handleToggleIndexingPause`
 
@@ -408,7 +410,7 @@ Additional response/push types from handler:
 
 ### `search_index_trigger`
 
-**Auth:** Session required
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
 
 **Handler:** modules/ws/handlers/70-searchHandler.js → `handleTriggerIndexing`
 

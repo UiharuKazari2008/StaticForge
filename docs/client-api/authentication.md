@@ -1,6 +1,6 @@
 # Authentication
 
-StaticForge supports **session-based authentication** (express-session + cookie store) and **application keys** for third-party clients (Discord-style client-to-account access). There is **no passkey/WebAuthn** flow. PIN codes are compared server-side against values in `config.json`.
+StaticForge supports **session-based authentication** (express-session + cookie store) and **application keys** for third-party clients (Discord-style client-to-account access). There is **no passkey/WebAuthn** flow. PIN codes and the login key are compared server-side against values in gitignored `secure.config.json` (not `config.json`).
 
 ## Session cookie
 
@@ -234,7 +234,7 @@ These work on an unauthenticated WebSocket connection:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `action` | Yes | Must be `"login"` |
-| `data.pin` | Yes | Admin PIN (`config.loginPin`) or read-only PIN (`config.readOnlyPin`) |
+| `data.pin` | Yes | Admin PIN (`secure.config.json` `loginPin`) or read-only PIN (`readOnlyPin`) |
 
 **Success (200):**
 
@@ -367,7 +367,7 @@ Server clears `connect.sid` cookie. Client should disconnect WebSocket and clear
 
 ## Legacy Bearer / query token (loginKey)
 
-When `config.loginKey` is set (non-null), `authMiddleware` accepts the login key from headers and compares it in constant time:
+When `secure.config.json` `loginKey` is set (non-null), `authMiddleware` accepts the login key from headers and compares it in constant time:
 
 - Header: `X-Dreamscape-Login-Key: <loginKey>`
 - Header: `Authorization: Bearer <loginKey>`
