@@ -284,3 +284,7 @@ What changed:
 - Prints fly from their thumbnail in the prints strip (fixed layer, the strip is outside her clipped stage) into the belly point. Belly points now sit on each stomach's centre.
 
 Still open: Xi's Claude parser (`modules/xiDirector.js`) has no `stream_event` branch, so Xi on Claude stays without live thinking.
+
+### Growth rework (Nov 6, later)
+
+Per-item points let one long all-hit card (9 items = 9 points) jump straight to the top stage. Now each report card is one result: its hit ratio (hit 1, partial 0.5, miss 0; the user's rescore wins) earns +2 (90% or better), +1 (70% or better), 0 (50% or better), or costs -1 (25% or better) or -2. The total never drops below 0. Thresholds: Yumiya and Yozora grow at 6; Chiyo at 6 and 14. That takes at least three excellent turns per stage, and missed goals shrink her back. The Yunotaur chat went from 17 points (max size) to 3.

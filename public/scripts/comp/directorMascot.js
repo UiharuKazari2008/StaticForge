@@ -20,10 +20,19 @@ function directorMascotRand(range, fallback) {
     return range[0] + Math.random() * (range[1] - range[0]);
 }
 
-// Growth (#704): her stage follows the chat's report cards, not time spent working. Each card adds
-// hit 1, partial 0.5, miss -0.5 (the user's rescore wins over the agent's marks); the total, never below
-// zero, picks the stage from behaviour.growth (order + points). The stage moves after a turn completes.
-const DIRECTOR_MASCOT_SCORE_POINTS = { hit: 1, partial: 0.5, miss: -0.5 };
+// Growth (#704; reworked 2026-11-06): her stage follows the chat's report cards, not time spent working.
+// Each card is one result: its hit ratio (hit 1, partial 0.5, miss 0; the user's rescore wins over the
+// agent's marks) earns or costs points, so a long all-hit card no longer jumps her to the top at once and
+// a missed goal takes points away. The total, never below zero, picks the stage from behaviour.growth.
+const DIRECTOR_MASCOT_ITEM_VALUE = { hit: 1, partial: 0.5, miss: 0 };
+
+function directorMascotCardPoints(ratio) {
+    if (ratio >= 0.9) return 2;
+    if (ratio >= 0.7) return 1;
+    if (ratio >= 0.5) return 0;
+    if (ratio >= 0.25) return -1;
+    return -2;
+}
 
 function directorMascotGrowthPoints(messages) {
     let total = 0;
@@ -32,10 +41,11 @@ function directorMascotGrowthPoints(messages) {
         const items = report && report.card && Array.isArray(report.card.items) ? report.card.items : [];
         if (!items.length) return;
         const reviewed = report.review && Array.isArray(report.review.scores) ? report.review.scores : [];
-        items.forEach((item, at) => {
-            const score = reviewed[at] in DIRECTOR_MASCOT_SCORE_POINTS ? reviewed[at] : item && item.score;
-            total = Math.max(0, total + (DIRECTOR_MASCOT_SCORE_POINTS[score] || 0));
-        });
+        const sum = items.reduce((acc, item, at) => {
+            const score = reviewed[at] in DIRECTOR_MASCOT_ITEM_VALUE ? reviewed[at] : item && item.score;
+            return acc + (DIRECTOR_MASCOT_ITEM_VALUE[score] || 0);
+        }, 0);
+        total = Math.max(0, total + directorMascotCardPoints(sum / items.length));
     });
     return total;
 }
@@ -1353,4 +1363,4 @@ class DirectorMascot {
 }
 
 if (typeof window !== 'undefined') window.DirectorMascot = DirectorMascot;
-if (typeof module !== 'undefined' && module.exports) module.exports = { DirectorMascot, directorMascotGrowthPoints, directorMascotStageFor, directorMascotGrowth };
+if (typeof module !== 'undefined' && module.exports) module.exports = { DirectorMascot, directorMascotGrowthPoints, directorMascotCardPoints, directorMascotStageFor, directorMascotGrowth };

@@ -112,12 +112,17 @@ const load = (persona) => {
     return m;
 };
 
-// Growth (#704): report cards, not working time. hit 1, partial 0.5, miss -0.5; rescores win.
-const { directorMascotGrowthPoints, directorMascotStageFor } = require('../public/scripts/comp/directorMascot.js');
+// Growth (#704, per-card since 2026-11-06): each report card is one result; its hit ratio (hit 1,
+// partial 0.5, miss 0; rescores win) earns +2 / +1 / 0 or costs -1 / -2. Never below zero.
+const { directorMascotGrowthPoints, directorMascotStageFor, directorMascotCardPoints } = require('../public/scripts/comp/directorMascot.js');
 const card = (scores, review) => ({ role: 'assistant', data: { report: { summary: 's', card: { items: scores.map((score, i) => ({ item: `i${i}`, score })) }, review } } });
-assert.strictEqual(directorMascotGrowthPoints([card(['hit', 'partial', 'miss'])]), 1);
-assert.strictEqual(directorMascotGrowthPoints([card(['miss', 'miss']), card(['hit'])]), 1, 'never below zero');
-assert.strictEqual(directorMascotGrowthPoints([card(['hit', 'hit'], { scores: ['miss', 'hit'] })]), 1, 'the user rescore counts');
+const hits = (n) => card(Array(n).fill('hit'));
+assert.deepStrictEqual([1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.25, 0.2, 0].map(directorMascotCardPoints), [2, 2, 1, 1, 0, 0, -1, -1, -2, -2]);
+assert.strictEqual(directorMascotGrowthPoints([hits(9)]), 2, 'a long all-hit card is one result, not nine points');
+assert.strictEqual(directorMascotGrowthPoints([card(['hit', 'partial', 'miss'])]), 0, 'half the goal earns nothing');
+assert.strictEqual(directorMascotGrowthPoints([card(['miss', 'miss']), hits(1)]), 2, 'never below zero');
+assert.strictEqual(directorMascotGrowthPoints([hits(3), hits(3), card(['miss', 'miss', 'partial'])]), 2, 'a missed goal costs points');
+assert.strictEqual(directorMascotGrowthPoints([card(['hit', 'hit'], { scores: ['miss', 'hit'] })]), 0, 'the user rescore counts');
 assert.strictEqual(directorMascotGrowthPoints([{ role: 'assistant', data: {} }, { role: 'user' }]), 0);
 
 const k = load('kabuki');
@@ -126,25 +131,27 @@ assert.strictEqual(k.currentBodyId(), 'base');
 k.setWorking(true);
 for (let i = 0; i < 300; i++) { now += 1000; k.tick(); }
 assert.strictEqual(k.debugState().stage, 'base', 'working time alone no longer grows her');
-assert.strictEqual(directorMascotStageFor(k.manifest, 2.5), 'base');
-assert.strictEqual(directorMascotStageFor(k.manifest, 3), 'bigger');
-assert.strictEqual(directorMascotStageFor(k.manifest, 8), 'bigger2');
-// Opening a chat with earned points: quiet, no transition.
+assert.strictEqual(directorMascotStageFor(k.manifest, 5), 'base');
+assert.strictEqual(directorMascotStageFor(k.manifest, 6), 'bigger');
+assert.strictEqual(directorMascotStageFor(k.manifest, 14), 'bigger2');
+assert.strictEqual(directorMascotGrowthPoints([hits(9)]) < 6, true, 'one perfect card does not grow her');
+// Opening a chat with earned points: quiet, no transition. Three perfect turns reach the second stage.
 k.setWorking(false);
-k.onMessages([card(['hit', 'hit', 'hit'])]);
+const three = [hits(4), hits(4), hits(4)];
+k.onMessages(three);
 assert.strictEqual(k.debugState().stage, 'bigger', 'reopen sets the earned stage');
 // A completed turn whose card pushes past the next threshold grows her after the celebrate pose.
 k.onTurnEnd(true);
-const turn = [card(['hit', 'hit', 'hit']), card(['hit', 'hit', 'hit', 'hit', 'hit'])];
-k.onMessages(turn);
+const seven = three.concat([hits(4), hits(4), hits(4), hits(4)]);
+k.onMessages(seven);
 assert.strictEqual(k.debugState().stage, 'bigger', 'not before the turn has landed');
 run(3300);
 assert.strictEqual(k.debugState().stage, 'bigger2', 'stage up after the complete event');
-// A harsh rescore on the next completed turn takes her back down.
+// Failed goals take points away: she shrinks back on the next completed turn.
 k.onTurnEnd(true);
-k.onMessages([card(['hit', 'hit', 'hit']), card(['hit', 'hit', 'hit', 'hit', 'hit'], { scores: ['miss', 'miss', 'miss', 'miss', 'miss'] })]);
+k.onMessages(seven.concat([card(['miss', 'miss', 'miss']), card(['miss', 'miss', 'miss'])]));
 run(3300);
-assert.strictEqual(k.debugState().stage, 'base');
+assert.strictEqual(k.debugState().stage, 'bigger', 'two failed goals (-4) drop her a stage');
 // Kicks still play in bigger.
 k.stageState.stage = 'bigger';
 Math.random = () => 0;
@@ -178,7 +185,7 @@ assert.strictEqual(x.currentBodyId(), 'kon_kicky', 'gesture plus kick');
 Math.random = () => 0.99;
 for (let i = 0; i < 70; i++) { now += 1000; x.tick(); }
 assert.strictEqual(x.debugState().stage, 'base', 'kicks alone do not grow her');
-x.onMessages([card(['hit', 'hit', 'hit'])]);
+x.onMessages([hits(3), hits(3), hits(3)]);
 assert.strictEqual(x.debugState().stage, 'bigger');
 
 // Wren: faces fall back to the nearest one the set has (the mask set has only happy, neutral, thinking).
