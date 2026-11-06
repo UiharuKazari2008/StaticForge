@@ -5231,3 +5231,30 @@ body #directorContainer.dm-vn-on #directorSendBtn { --dm-cut: 8px; }
 body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn),
 body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn { --dm-cut: 6px; }
 body #directorSessionChat .dm-vn-layer .dm-hud-chip { --dm-cut: 8px; }
+
+/* Thinking aloud (click the thought cloud): the text box streams her live thinking, italic and softer;
+   the cloud shows it is on and drops its hover pop-up (the box already shows the thought). */
+.dm-vn-layer .dm-dialog.dm-think-aloud .dm-dialog-live {
+    font-style: italic;
+    color: #4b5563;
+    white-space: pre-wrap;
+}
+
+.dm-vn-layer .dm-dialog.dm-think-aloud .dm-dialog-body { scrollbar-width: thin; }
+.dm-vn-layer .dm-dialog.dm-think-aloud .dm-dialog-body::-webkit-scrollbar { display: initial; }
+
+.dm-vn-layer .dm-think { cursor: pointer; }
+
+.dm-vn-layer .dm-think.dm-think-on {
+    box-shadow: 0 0 0 2px var(--dm-teal), 0 10px 34px hsl(222 60% 8% / 38%), inset 0 1px 0 hsl(0 0% 100% / 90%);
+}
+
+.dm-vn-layer .dm-think.dm-think-on .dm-think-dots i { background: var(--dm-teal); }
+
+.dm-vn-layer .dm-think.dm-think-on.dm-has-thought:hover .dm-think-full { display: none; }
+.dm-vn-layer .dm-think.dm-think-on.dm-has-thought:hover {
+    width: auto;
+    max-width: min(52%, 640px);
+    padding: 10px 18px;
+    border-radius: 30px;
+}

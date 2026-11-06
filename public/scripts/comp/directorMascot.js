@@ -161,7 +161,7 @@ class DirectorMascot {
         const layer = document.createElement('div');
         layer.className = 'dm-vn-layer';
         layer.innerHTML = `
-            <div class="dm-bubble dm-think hidden" title="What she is thinking"><span class="dm-think-dots"><i></i><i></i><i></i></span><div class="dm-think-full"></div></div>
+            <div class="dm-bubble dm-think hidden" title="Her thinking: hover to peek, click to have her think aloud in the text box"><span class="dm-think-dots"><i></i><i></i><i></i></span><div class="dm-think-full"></div></div>
             <div class="dm-bubble dm-say hidden"><div class="dm-bubble-text"></div></div>
             <div class="dm-tool-pops"></div>
             <div class="dm-banner hidden"><b class="dm-banner-title"></b><span class="dm-banner-sub"></span></div>
@@ -227,6 +227,8 @@ class DirectorMascot {
             peekClose: layer.querySelector('.dm-peek-close')
         };
         this.el.peekClose.addEventListener('click', () => this.togglePeek(false));
+        // Click the thought cloud: her live thinking streams into the text box, as if she thinks aloud.
+        this.el.think.addEventListener('click', () => this.toggleThinkAloud());
         this.el.banner = layer.querySelector('.dm-banner');
         this.el.hud = layer.querySelector('.dm-hud');
         this.el.quick = layer.querySelector('.dm-quick');
@@ -788,7 +790,8 @@ class DirectorMascot {
         const box = this.el.result;
         box.dataset.mode = 'live';
         box.dataset.tab = 'reply';
-        this.el.dialogName.textContent = (this.manifest && this.manifest.name) || '';
+        const name = (this.manifest && this.manifest.name) || '';
+        this.el.dialogName.textContent = this._thinkAloud ? `${name} (thinking)` : name;
         this.el.dialogSuggest.replaceChildren();
         const line = document.createElement('div');
         line.className = 'director-message-content dm-dialog-reply dm-dialog-live';
@@ -798,6 +801,16 @@ class DirectorMascot {
         box.classList.remove('hidden');
         this.placeResult();
         this.paintChrome();
+    }
+
+    toggleThinkAloud(on) {
+        this._thinkAloud = typeof on === 'boolean' ? on : !this._thinkAloud;
+        this._sayKey = '';
+        if (this.el && this.el.dialogName) {
+            const name = (this.manifest && this.manifest.name) || '';
+            this.el.dialogName.textContent = this._thinkAloud && this.working ? `${name} (thinking)` : name;
+        }
+        this.paintBubbles();
     }
 
     endLive() {
@@ -814,7 +827,19 @@ class DirectorMascot {
         this.el.say.classList.add('hidden');
         if (on && this.el.result.dataset.mode !== 'live') this.startLive();
         if (!on) this.endLive();
-        if (on && this.el.liveLine) {
+        const aloud = on && this._thinkAloud && !!this.el.liveLine;
+        this.el.result.classList.toggle('dm-think-aloud', aloud);
+        this.el.think.classList.toggle('dm-think-on', on && !!this._thinkAloud);
+        if (aloud) {
+            // Thinking aloud: the newest thinking, live, kept scrolled to its end.
+            const text = this._thinking ? this._thinking.text : '';
+            const key = `a:${text.length}`;
+            if (this._sayKey !== key) {
+                this._sayKey = key;
+                this.el.liveLine.textContent = text;
+                this.el.dialogBody.scrollTop = this.el.dialogBody.scrollHeight;
+            }
+        } else if (on && this.el.liveLine) {
             const r = this._reader;
             const item = r && r.current ? r.current : null;
             let say = item ? item.text.slice(0, Math.floor(r.shown)) : '';
