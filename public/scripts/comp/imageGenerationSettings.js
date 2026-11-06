@@ -358,6 +358,100 @@ function studioLiftFieldNegativeEmphasis(text, into) {
     };
 }
 
+// ---- Complexity (same rules as modules/promptComplexity.js) ----
+// "high complexity" typed into a prompt becomes the Quality preset's Complexity choice instead, so
+// the compiled prompt does not carry it twice and the dropdown shows what will be used.
+
+function studioComplexityToggles(model) {
+    // findDatasetConfig: public/scripts/comp/manualDropdownManager.js
+    const quality = typeof findDatasetConfig === 'function'
+        ? findDatasetConfig('__quality__')
+        : ((window.optionsData && window.optionsData.datasets) || []).find((row) => row && row.isQualityPreset);
+    const key = String(model || '').toLowerCase();
+    return ((quality && quality.sub_toggles) || []).filter((st) => {
+        if (!st || st.group !== 'complexity' || !st.value) return false;
+        const models = Array.isArray(st.models) ? st.models.map((m) => String(m).toLowerCase()) : null;
+        return !models || models.includes(key);
+    });
+}
+
+function studioSplitTopLevelPieces(text) {
+    const out = [];
+    const source = String(text || '');
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < source.length; i++) {
+        if (source.startsWith('::', i)) {
+            const before = source.slice(start, i).trim();
+            if (depth === 0 && /^-?\d*\.?\d+$/.test(before.split(/[,\s]/).pop() || '')) depth = 1;
+            else if (depth === 1) depth = 0;
+            i += 1;
+            continue;
+        }
+        if (source[i] === ',' && depth === 0) {
+            out.push(source.slice(start, i));
+            start = i + 1;
+        }
+    }
+    out.push(source.slice(start));
+    return out;
+}
+
+// { text, pick: { id, bias } | null }: the last complexity tag wins; a weight becomes the bias.
+function studioLiftComplexity(text, toggles) {
+    const source = String(text || '');
+    if (!source || !toggles || !toggles.length || !/complexity/i.test(source)) return { text: source, pick: null };
+    const byValue = new Map(toggles.map((st) => [studioNormalizePromptTag(st.value), st]));
+    let pick = null;
+    const kept = [];
+    studioSplitTopLevelPieces(source).forEach((piece) => {
+        const trimmed = piece.trim();
+        const weighted = /^(-?\d*\.?\d+)::\s*([^:]+?)\s*::$/.exec(trimmed);
+        const st = byValue.get(studioNormalizePromptTag(weighted ? weighted[2] : trimmed));
+        const bias = weighted ? Number(weighted[1]) : 1;
+        if (st && bias > 0) {
+            pick = { id: st.id, bias: Number.isFinite(bias) ? bias : 1 };
+            return;
+        }
+        kept.push(piece);
+    });
+    if (!pick) return { text: source, pick: null };
+    return { text: kept.map((piece) => piece.trim()).filter(Boolean).join(', '), pick };
+}
+
+// The picked level on, the rest of the group off, in a { id: {enabled, bias, value} } settings map.
+function studioApplyComplexityPick(quality, pick, toggles) {
+    const out = quality && typeof quality === 'object' ? quality : {};
+    toggles.forEach((st) => {
+        const current = out[st.id] && typeof out[st.id] === 'object' ? out[st.id] : {};
+        out[st.id] = st.id === pick.id
+            ? { ...current, enabled: true, bias: pick.bias, value: current.value || st.value }
+            : { ...current, enabled: false };
+    });
+    return out;
+}
+
+// Studio form: before Generate and after an agent change. Only while the Quality preset is on.
+function studioLiftComplexityFromForm() {
+    // appendQuality / renderDatasetDropdown / updateSubTogglesButtonState: public/scripts/comp/manualDropdownManager.js
+    if (typeof appendQuality === 'undefined' || !appendQuality) return null;
+    const field = document.getElementById('manualPrompt');
+    const modelSelect = document.getElementById('manualModel');
+    if (!field || !modelSelect) return null;
+    const toggles = studioComplexityToggles(modelSelect.value);
+    const lifted = studioLiftComplexity(field.value, toggles);
+    if (!lifted.pick) return null;
+    field.value = lifted.text;
+    field.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+    if (!window.datasetSettings) window.datasetSettings = {};
+    window.datasetSettings.__quality__ = studioApplyComplexityPick(window.datasetSettings.__quality__ || {}, lifted.pick, toggles);
+    if (typeof renderDatasetDropdown === 'function') renderDatasetDropdown();
+    if (typeof updateSubTogglesButtonState === 'function') updateSubTogglesButtonState();
+    const st = toggles.find((row) => row.id === lifted.pick.id);
+    showGlassToast('info', 'Quality', `Complexity set to ${st ? st.name : lifted.pick.id} from the prompt`, false, 2500, '<i class="fas fa-layer-group"></i>');
+    return lifted.pick;
+}
+
 /**
  * Drop quality / UC preset tags so generate can compile them again, and move
  * negative N:: groups onto the negative prompt with the weight flipped positive.
@@ -385,6 +479,17 @@ function studioPrepareImportedPrompt(metadata) {
     metadata.prompt_negative = base.negative;
     metadata.append_quality = !!base.qualityHit;
     studioSetNoTextToggle(metadata, base.hadNoText);
+    // With the Quality preset on, a complexity tag becomes its Complexity choice (not a second copy).
+    const complexityToggles = metadata.append_quality ? studioComplexityToggles(model) : [];
+    const complexity = studioLiftComplexity(metadata.prompt, complexityToggles);
+    if (complexity.pick) {
+        metadata.prompt = complexity.text;
+        const dataset = metadata.dataset_config && typeof metadata.dataset_config === 'object' ? { ...metadata.dataset_config } : {};
+        const settings = { ...(dataset.settings || {}) };
+        settings.__quality__ = studioApplyComplexityPick({ ...(settings.__quality__ || {}) }, complexity.pick, complexityToggles);
+        dataset.settings = settings;
+        metadata.dataset_config = dataset;
+    }
 
     let uc = String(metadata.uc || '');
     const ucLift = studioLiftFieldNegativeEmphasis(uc, metadata.input_prompt_negative);

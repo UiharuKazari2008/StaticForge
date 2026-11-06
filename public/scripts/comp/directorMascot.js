@@ -88,6 +88,12 @@ class DirectorMascot {
         this._talkUntil = 0;
         this._talkTimer = null;
         this._lastAssistantLength = 0;
+        // Visual novel view (#706): the message log stays hidden unless switched on; she thinks, talks,
+        // and pops tool calls in bubbles, and the turn's result is its own panel beside her.
+        this.showLog = false;
+        this.renderResult = typeof options.renderResult === 'function' ? options.renderResult : null;
+        this._toolSeen = 0;
+        this._bubble = { think: '', say: '' };
         this.loadPrefs();
     }
 
@@ -98,13 +104,14 @@ class DirectorMascot {
             if (raw && typeof raw === 'object') {
                 if (raw.enabled === false) this.enabled = false;
                 if (raw.view === 'messages') this.view = 'messages';
+                if (raw.showLog === true) this.showLog = true;
             }
         } catch (_) { /* storage can be blocked */ }
     }
 
     savePrefs() {
         try {
-            localStorage.setItem(DIRECTOR_MASCOT_PREFS_KEY, JSON.stringify({ enabled: this.enabled, view: this.view }));
+            localStorage.setItem(DIRECTOR_MASCOT_PREFS_KEY, JSON.stringify({ enabled: this.enabled, view: this.view, showLog: this.showLog }));
         } catch (_) { /* storage can be blocked */ }
     }
 
@@ -136,6 +143,16 @@ class DirectorMascot {
             </div>`;
         host.appendChild(root);
         this.root = root;
+        // Bubbles, tool popups, and the result panel: outside her clipped stage, so the panel takes clicks.
+        const layer = document.createElement('div');
+        layer.className = 'dm-vn-layer';
+        layer.innerHTML = `
+            <div class="dm-bubble dm-think hidden"><div class="dm-bubble-text"></div></div>
+            <div class="dm-bubble dm-say hidden"><div class="dm-bubble-text"></div></div>
+            <div class="dm-tool-pops"></div>
+            <div class="dm-result hidden"></div>`;
+        host.appendChild(layer);
+        this.layer = layer;
         this.el = {
             mascot: root.querySelector('.director-mascot'),
             canvas: root.querySelector('.director-mascot-canvas'),
@@ -149,7 +166,13 @@ class DirectorMascot {
             mouth: root.querySelector('.dm-mouth'),
             dialogue: root.querySelector('.director-mascot-dialogue'),
             name: root.querySelector('.dm-name'),
-            text: root.querySelector('.dm-text')
+            text: root.querySelector('.dm-text'),
+            think: layer.querySelector('.dm-think'),
+            thinkText: layer.querySelector('.dm-think .dm-bubble-text'),
+            say: layer.querySelector('.dm-say'),
+            sayText: layer.querySelector('.dm-say .dm-bubble-text'),
+            pops: layer.querySelector('.dm-tool-pops'),
+            result: layer.querySelector('.dm-result')
         };
         this.applyView();
         // She stands on the input bar wherever it sits (centred on a new chat, at the bottom later):
@@ -175,6 +198,17 @@ class DirectorMascot {
         this.enabled = on !== false;
         this.savePrefs();
         this.applyView();
+    }
+
+    setShowLog(on) {
+        this.showLog = on === true;
+        this.savePrefs();
+        this.applyView();
+    }
+
+    // Bubbles and the result panel only in the visual novel view with the log hidden.
+    vnBubbles() {
+        return !!this._shown && this.view === 'mascot' && !this.showLog;
     }
 
     setView(view) {
@@ -208,6 +242,11 @@ class DirectorMascot {
             this.host.dataset.dmSide = this.manifest && this.manifest.anchor === 'left' ? 'left' : 'right';
             // Buttons she would cover (quick starts, attachment chips) move under the input bar.
             this.host.classList.toggle('director-mascot-on', on);
+            this.host.classList.toggle('dm-log-hidden', on && this.view === 'mascot' && !this.showLog);
+        }
+        if (this.layer) {
+            this.layer.classList.toggle('hidden', !(on && this.view === 'mascot' && !this.showLog));
+            this.layer.dataset.side = this.manifest && this.manifest.anchor === 'left' ? 'left' : 'right';
         }
         this.root.dataset.state = this.working ? 'working' : 'idle';
         this.layout();
@@ -534,6 +573,8 @@ class DirectorMascot {
         const reset = this.manifest && this.manifest.behaviour && this.manifest.behaviour.reset;
         if (reset && reset.onChatChange) this.resetStage();
         this._growthArmed = false;   // the next chat's stage is set quietly from its own cards
+        this._bubble = { think: '', say: '' };
+        this.hideResult();
         this.dialogue = { kind: 'idle', text: '' };
         this._lastAssistantLength = 0;
         this.setWorking(false);
@@ -544,8 +585,12 @@ class DirectorMascot {
     onUserSend() {
         this.dialogue = { kind: 'thinking', text: '' };
         this._lastAssistantLength = 0;
+        this._toolSeen = -1;     // the first stream update sets the baseline (a reload mid-turn pops nothing old)
+        this._bubble = { think: '', say: '' };
+        this.hideResult();
         this.setWorking(true);
         this.paintDialogue();
+        this.paintBubbles();
     }
 
     onStream(payload) {
@@ -560,6 +605,97 @@ class DirectorMascot {
             this._lastAssistantLength = live.type === 'assistant' ? text.length : this._lastAssistantLength;
             this.paintDialogue();
         }
+        this.streamBubbles(payload);
+    }
+
+    // ---- visual novel bubbles ----
+    streamBubbles(payload) {
+        const rows = Array.isArray(payload.rows) ? payload.rows : [];
+        const tools = rows.filter((row) => row && row.type === 'tool');
+        if (this._toolSeen < 0 || this._toolSeen > tools.length) this._toolSeen = tools.length;
+        tools.slice(this._toolSeen).slice(-3).forEach((row) => this.popTool(row));
+        this._toolSeen = tools.length;
+        // The bubble is her newest thought or line: the live row, else the newest finished thinking or
+        // reply row. It stays up while tools run (they pop beside it) until she thinks or talks again.
+        const live = payload.live && payload.live.text && (payload.live.type === 'thinking' || payload.live.type === 'assistant') ? payload.live : null;
+        let latest = live;
+        for (let i = rows.length - 1; i >= 0 && !latest; i--) {
+            const row = rows[i];
+            if (row && (row.type === 'thinking' || row.type === 'assistant') && row.text) latest = row;
+        }
+        const lastOf = (type) => (latest && latest.type === type && latest.text ? String(latest.text) : '');
+        this._bubble = { think: lastOf('thinking'), say: lastOf('assistant') };
+        this.paintBubbles();
+    }
+
+    paintBubbles() {
+        if (!this.el || !this.el.think) return;
+        const on = this.vnBubbles() && this.working;
+        const clip = (text, max) => {
+            const t = String(text || '').replace(/\s+/g, ' ').trim();
+            return t.length > max ? `\u2026${t.slice(-max)}` : t;
+        };
+        const think = on ? clip(this._bubble.think, 240) : '';
+        const say = on ? clip(this._bubble.say, 420) : '';
+        // One bubble at a time: talking wins over thinking.
+        this.el.think.classList.toggle('hidden', !think || !!say);
+        this.el.say.classList.toggle('hidden', !say);
+        if (this.el.thinkText.textContent !== think) this.el.thinkText.textContent = think;
+        if (this.el.sayText.textContent !== say) this.el.sayText.textContent = say;
+    }
+
+    popTool(row) {
+        if (!this.el || !this.el.pops || !this.vnBubbles()) return;
+        const label = String((row && (row.label || row.name)) || '').replace(/_/g, ' ').trim();
+        if (!label) return;
+        const pop = document.createElement('div');
+        pop.className = 'dm-tool-pop';
+        const name = document.createElement('span');
+        name.className = 'dm-tool-pop-name';
+        name.textContent = label;
+        pop.appendChild(name);
+        const detail = String((row && row.detail) || '').replace(/\s+/g, ' ').trim();
+        if (detail) {
+            const more = document.createElement('span');
+            more.className = 'dm-tool-pop-detail';
+            more.textContent = detail.length > 70 ? `${detail.slice(0, 70)}\u2026` : detail;
+            pop.appendChild(more);
+        }
+        this.el.pops.appendChild(pop);
+        while (this.el.pops.children.length > 3) this.el.pops.firstElementChild.remove();
+        this.later(() => pop.classList.add('dm-out'), 2600);
+        this.later(() => pop.remove(), 3100);
+    }
+
+    hideResult() {
+        if (!this.el || !this.el.result) return;
+        this.el.result.classList.add('hidden');
+        this.el.result.replaceChildren();
+        this._resultFor = '';
+    }
+
+    // The settled turn: its report (summary, card, suggestions) as its own panel beside her; a reply
+    // without a report shows as her speech bubble.
+    showResult(messages) {
+        if (!this.el || !this.el.result) return;
+        if (!this.vnBubbles()) { this.hideResult(); return; }
+        let last = null;
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (!m || m.role === 'event') continue;
+            last = m;
+            break;
+        }
+        if (!last || last.role !== 'assistant') { this.hideResult(); return; }
+        const report = last.data && last.data.report;
+        const key = `${last.id || last.timestamp}|${report ? (report.review ? 'r' : 'n') : 'x'}`;
+        if (this._resultFor === key && !this.el.result.classList.contains('hidden')) return;
+        this._resultFor = key;
+        const el = this.renderResult ? this.renderResult(last) : null;
+        if (!el) { this.hideResult(); return; }
+        this.el.result.replaceChildren(el);
+        this.el.result.classList.remove('hidden');
+        this.el.result.scrollTop = 0;
     }
 
     // A timed body override for this stage (celebrate / printed), then back.
@@ -587,6 +723,8 @@ class DirectorMascot {
     onMessages(messages) {
         if (this.working || !Array.isArray(messages)) return;
         this.applyGrowth(messages);
+        this.paintBubbles();
+        this.showResult(messages);
         for (let i = messages.length - 1; i >= 0; i--) {
             const m = messages[i];
             if (!m || m.role !== 'assistant') continue;
@@ -645,6 +783,7 @@ class DirectorMascot {
         if (this.root) this.root.dataset.state = this.working ? 'working' : 'idle';
         this.layout();
         this.renderFace();
+        this.paintBubbles();
     }
 
     cue(cue) {

@@ -174,7 +174,7 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-cha
 
 /* ---- buttons on the light page and in the reply box: Vista's standard button (7.css) ---- */
 
-body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .director-chat-input) button:is(.btn-secondary, .btn-primary):not(.director-expand-button),
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .director-chat-input, .dm-result) button:is(.btn-secondary, .btn-primary):not(.director-expand-button),
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorAttachDropdownBtn {
     background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
     border: 1px solid #8e8f8f;
@@ -186,7 +186,7 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-cha
 }
 
 @media (hover: hover) {
-    body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .director-chat-input) button:is(.btn-secondary, .btn-primary):not(.director-expand-button):hover:not(:disabled),
+    body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .director-chat-input, .dm-result) button:is(.btn-secondary, .btn-primary):not(.director-expand-button):hover:not(:disabled),
     body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorAttachDropdownBtn:hover:not(:disabled) {
         background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
         border-color: #3c7fb1;
@@ -194,14 +194,14 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-cha
     }
 }
 
-body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .director-chat-input) button:is(.btn-secondary, .btn-primary):not(.director-expand-button):active:not(:disabled),
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .director-chat-input, .dm-result) button:is(.btn-secondary, .btn-primary):not(.director-expand-button):active:not(:disabled),
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorAttachDropdownBtn:active:not(:disabled) {
     background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
     border-color: #6d91ab;
     box-shadow: inset 1px 1px 0 #0003, inset -1px 1px 0 #0001;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .director-chat-input) button:is(.btn-secondary, .btn-primary) i {
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .director-chat-input, .dm-result) button:is(.btn-secondary, .btn-primary) i {
     color: #2b5797;
 }
 
@@ -810,7 +810,7 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-rep
 }
 
 /* The chosen score: Vista's pressed button, tinted by the score (the skin's button rule would hide it) */
-body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-messages-container .director-report-scores button.btn-secondary[aria-pressed="true"] {
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .dm-result) .director-report-scores button.btn-secondary[aria-pressed="true"] {
     opacity: 1;
     font-weight: 600;
     border-color: #2c628b;
@@ -819,24 +819,24 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-cha
     color: #0b2741;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-messages-container .director-report-row[data-score="hit"] .director-report-scores button[data-score="hit"][aria-pressed="true"] {
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .dm-result) .director-report-row[data-score="hit"] .director-report-scores button[data-score="hit"][aria-pressed="true"] {
     border-color: #2f7a3e;
     background: linear-gradient(#eefaef, #cdeecf 50%, #a6dca9 50%, #7cc581);
     color: #133d1b;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-messages-container .director-report-row[data-score="partial"] .director-report-scores button[data-score="partial"][aria-pressed="true"] {
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .dm-result) .director-report-row[data-score="partial"] .director-report-scores button[data-score="partial"][aria-pressed="true"] {
     border-color: #9a6c12;
     background: linear-gradient(#fdf6e3, #f6e2b0 50%, #edcc7c 50%, #e0b654);
     color: #4a3205;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-messages-container .director-report-row[data-score="miss"] .director-report-scores button[data-score="miss"][aria-pressed="true"] {
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .dm-result) .director-report-row[data-score="miss"] .director-report-scores button[data-score="miss"][aria-pressed="true"] {
     border-color: #9a2b2b;
     background: linear-gradient(#fdeeee, #f6c9c9 50%, #eba3a3 50%, #dd7b7b);
     color: #4d0f0f;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-messages-container .director-report-scores button.btn-secondary[aria-pressed="false"] {
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .dm-result) .director-report-scores button.btn-secondary[aria-pressed="false"] {
     color: #7a7a7a;
 }

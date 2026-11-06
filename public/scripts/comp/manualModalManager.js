@@ -5192,6 +5192,9 @@ async function handleManualGeneration(e, options = {}) {
         flushPendingEmphasisDirectModeBeforeGeneration();
     }
 
+    // studioLiftComplexityFromForm: public/scripts/comp/imageGenerationSettings.js
+    if (typeof studioLiftComplexityFromForm === 'function') studioLiftComplexityFromForm();
+
     const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
     const values = collectManualFormValues();
 

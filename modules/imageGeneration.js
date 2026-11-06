@@ -1522,7 +1522,20 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
 
     const currentPromptConfig = __runtimeGr.getPromptConfig({ clone: true });
     const presetName = preset ? Object.keys(currentPromptConfig.presets).find(key => currentPromptConfig.presets[key] === preset) : null;
-    const rawPrompt = (body.prompt !== undefined && body.prompt !== null) ? body.prompt : preset?.prompt;
+    let rawPrompt = (body.prompt !== undefined && body.prompt !== null) ? body.prompt : preset?.prompt;
+    // Complexity typed into the prompt becomes the Quality preset's Complexity choice, so it is not
+    // compiled twice (modules/promptComplexity.js). Only while that preset compiles; off, the tag stays.
+    const promptComplexity = require('./promptComplexity');
+    const complexityToggles = body.append_quality ? promptComplexity.complexityToggles(currentPromptConfig, body.model) : [];
+    if (complexityToggles.length && typeof rawPrompt === 'string') {
+        const lifted = promptComplexity.liftComplexity(rawPrompt, complexityToggles);
+        if (lifted.pick) {
+            rawPrompt = lifted.text;
+            if (body.prompt !== undefined && body.prompt !== null) body.prompt = lifted.text;
+            promptComplexity.applyComplexityPick(body, lifted.pick, complexityToggles);
+            console.log(`🧩 Complexity from the prompt -> Quality preset ${lifted.pick.id} (bias ${lifted.pick.bias})`);
+        }
+    }
     const rawNegativePrompt = (body.uc !== undefined && body.uc !== null) ? body.uc : preset?.uc;
     const rawInputPromptNegative = (body.input_prompt_negative !== undefined && body.input_prompt_negative !== null)
         ? body.input_prompt_negative
@@ -1904,6 +1917,15 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 if (text && String(text).trim()) target.push(text);
             });
         };
+
+        // Expanders and text replacements can bring complexity in after the input was cleaned.
+        if (complexityToggles.length) {
+            const lifted = promptComplexity.liftComplexity(processedPrompt, complexityToggles);
+            if (lifted.pick) {
+                processedPrompt = lifted.text;
+                promptComplexity.applyComplexityPick(body, lifted.pick, complexityToggles);
+            }
+        }
 
         if (!isV3Model) {
             const hasInclude = body.dataset_config && Array.isArray(body.dataset_config.include) && body.dataset_config.include.length > 0;

@@ -2479,6 +2479,12 @@ async function applyStudioChangeOps(ops) {
     // applyModelLocks: public/scripts/comp/utilities.js — after params, including steps written before effort
     if (typeof applyModelLocks === 'function') applyModelLocks();
 
+    // An agent that writes "high complexity" into the prompt gets the Quality preset's Complexity instead.
+    // studioLiftComplexityFromForm: public/scripts/comp/imageGenerationSettings.js
+    if (typeof studioLiftComplexityFromForm === 'function' && enabled.some((op) => op.kind === 'chunk' && op.fieldId === 'prompt')) {
+        studioLiftComplexityFromForm();
+    }
+
     return { count: enabled.length, unapplied: [...new Set(unapplied)] };
 }
 

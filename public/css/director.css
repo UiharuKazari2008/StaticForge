@@ -4415,3 +4415,153 @@ body #directorSessionChat.director-mascot-on.director-mascot-view #directorCompo
     position: fixed;
     z-index: 2147483000;
 }
+
+/* Mascot view with the log hidden (#706, directorMascot.js .dm-vn-layer): the log keeps its space so
+   the composer stays put; bubbles, tool popups, and the result panel sit on the side she does not stand on. */
+body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden .director-chat-messages-container {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.dm-vn-layer {
+    position: absolute;
+    inset: 0 0 var(--dm-composer-space, 84px) 0;
+    z-index: 6;
+    pointer-events: none;
+}
+
+#directorSessionChat.director-composer-center .dm-vn-layer {
+    display: none;
+}
+
+.dm-vn-layer .dm-bubble,
+.dm-vn-layer .dm-tool-pops {
+    position: absolute;
+    max-width: min(40%, 460px);
+}
+
+.dm-vn-layer[data-side="left"] :is(.dm-bubble, .dm-tool-pops) { left: 33%; }
+.dm-vn-layer[data-side="right"] :is(.dm-bubble, .dm-tool-pops) { right: 33%; }
+
+.dm-vn-layer .dm-bubble {
+    top: 6%;
+    padding: 10px 14px;
+    background: hsl(0 0% 100% / 94%);
+    color: #1f2a37;
+    font-size: 13.5px;
+    line-height: 1.45;
+    box-shadow: 0 4px 16px hsl(0 0% 0% / 35%);
+    animation: dm-bubble-in 0.22s ease-out;
+}
+
+.dm-vn-layer .dm-bubble-text {
+    max-height: 9.5em;
+    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* Thought: a cloud, grey italic, trailing puffs toward her head. */
+.dm-vn-layer .dm-think {
+    border-radius: 24px;
+    color: #4b5563;
+    font-style: italic;
+}
+
+.dm-vn-layer .dm-think::before,
+.dm-vn-layer .dm-think::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    background: hsl(0 0% 100% / 94%);
+    box-shadow: 0 2px 6px hsl(0 0% 0% / 25%);
+}
+
+.dm-vn-layer .dm-think::before { width: 16px; height: 16px; bottom: -14px; }
+.dm-vn-layer .dm-think::after { width: 9px; height: 9px; bottom: -28px; }
+.dm-vn-layer[data-side="left"] .dm-think::before { left: 6px; }
+.dm-vn-layer[data-side="left"] .dm-think::after { left: -6px; }
+.dm-vn-layer[data-side="right"] .dm-think::before { right: 6px; }
+.dm-vn-layer[data-side="right"] .dm-think::after { right: -6px; }
+
+/* Speech: a rounded box with a tail toward her. */
+.dm-vn-layer .dm-say {
+    border-radius: 12px;
+    border: 1px solid hsl(0 0% 0% / 12%);
+}
+
+.dm-vn-layer .dm-say::before {
+    content: '';
+    position: absolute;
+    top: 22px;
+    width: 0;
+    height: 0;
+    border: 9px solid transparent;
+}
+
+.dm-vn-layer[data-side="left"] .dm-say::before { left: -17px; border-right-color: hsl(0 0% 100% / 94%); }
+.dm-vn-layer[data-side="right"] .dm-say::before { right: -17px; border-left-color: hsl(0 0% 100% / 94%); }
+
+/* Tool calls: small popups under the bubble, three at most, each gone after about 3 s. */
+.dm-vn-layer .dm-tool-pops {
+    top: 42%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.dm-vn-layer[data-side="right"] .dm-tool-pops { align-items: flex-end; }
+
+.dm-tool-pop {
+    display: flex;
+    flex-direction: column;
+    max-width: 320px;
+    padding: 5px 10px;
+    border: 1px solid #9db4d3;
+    border-radius: 3px;
+    background: linear-gradient(#ffffff, #eaf1fa);
+    box-shadow: 0 3px 10px hsl(0 0% 0% / 35%);
+    color: #1e395b;
+    font-size: 12px;
+    animation: dm-pop-in 0.25s ease-out;
+    transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+.dm-tool-pop.dm-out {
+    opacity: 0;
+    transform: translateY(-6px);
+}
+
+.dm-tool-pop-name { font-weight: 600; }
+.dm-tool-pop-detail { color: #4a5a70; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@keyframes dm-bubble-in { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+@keyframes dm-pop-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* The finished turn: summary, report card, and suggestions as one panel beside her. */
+.dm-vn-layer .dm-result {
+    position: absolute;
+    top: 10px;
+    bottom: 0;
+    width: 38%;
+    min-width: 300px;
+    max-width: 600px;
+    overflow-y: auto;
+    pointer-events: auto;
+    padding: 8px;
+    background: hsl(0 0% 100% / 84%);
+    border: 1px solid hsl(0 0% 100% / 70%);
+    border-radius: 8px;
+    box-shadow: 0 6px 24px hsl(0 0% 0% / 35%), inset 0 1px 0 hsl(0 0% 100% / 60%);
+    backdrop-filter: blur(10px) saturate(1.1);
+    animation: dm-bubble-in 0.25s ease-out;
+}
+
+.dm-vn-layer[data-side="left"] .dm-result { right: 12px; }
+.dm-vn-layer[data-side="right"] .dm-result { left: 12px; }
+
+.dm-vn-layer .dm-result .dm-result-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}

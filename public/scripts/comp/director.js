@@ -612,7 +612,10 @@ class Director {
     setupMascot() {
         const host = document.getElementById('directorSessionChat');
         if (this.mascot || !host || typeof DirectorMascot !== 'function') return;
-        this.mascot = new DirectorMascot({ isHosted: () => this.directorDockedInWindow() });
+        this.mascot = new DirectorMascot({
+            isHosted: () => this.directorDockedInWindow(),
+            renderResult: (message) => this.createMascotResult(message)
+        });
         this.mascot.mount(host);
         void this.mascot.setPersona(this.persona);
     }
@@ -1738,12 +1741,22 @@ class Director {
                         {
                             icon: 'fas fa-user',
                             text: 'Mascot View',
-                            tooltip: 'Hide the log: she fills the chat and talks in a dialogue box',
+                            tooltip: 'She fills the chat: thinking and speech bubbles, tool popups, and the result beside her',
                             action: 'director-tools-mascot-view',
                             keepMenuOpen: true,
                             hidden: () => !director.mascot,
                             disabled: () => !!director.mascot && !director.mascot.enabled,
                             loadfn: (item) => { item.checked = !!director.mascot && director.mascot.view === 'mascot'; }
+                        },
+                        {
+                            icon: 'fas fa-list',
+                            text: 'Show Message Log',
+                            tooltip: 'Mascot view: the full log beside her instead of bubbles and the result panel',
+                            action: 'director-tools-mascot-log',
+                            keepMenuOpen: true,
+                            hidden: () => !director.mascot || director.mascot.view !== 'mascot',
+                            disabled: () => !!director.mascot && !director.mascot.enabled,
+                            loadfn: (item) => { item.checked = !!director.mascot && director.mascot.showLog === true; }
                         },
                         {
                             icon: 'fas fa-eye',
@@ -1958,10 +1971,20 @@ class Director {
                 this.rememberSessionModel();
                 break;
             case 'director-tools-mascot-view':
-                if (this.mascot) this.mascot.setView(this.mascot.view === 'mascot' ? 'messages' : 'mascot');
+                if (this.mascot) {
+                    this.mascot.setView(this.mascot.view === 'mascot' ? 'messages' : 'mascot');
+                    if (this.currentSession) this.mascot.onMessages(this.currentSession.messages || []);
+                }
                 break;
             case 'director-tools-mascot':
                 if (this.mascot) this.mascot.setEnabled(!this.mascot.enabled);
+                break;
+            case 'director-tools-mascot-log':
+                if (this.mascot) {
+                    this.mascot.setShowLog(!this.mascot.showLog);
+                    if (!this.mascot.showLog && this.currentSession) this.mascot.onMessages(this.currentSession.messages || []);
+                    if (this.mascot.showLog) this.scrollToBottom();
+                }
                 break;
             case 'director-tools-send-enter':
                 this.sendOnEnter = !this.sendOnEnter;
@@ -3541,10 +3564,15 @@ class Director {
             break;
         }
         if (!host) return;
+        host.appendChild(this.createReplyChoicesBar(options, !!last));
+    }
+
+    // Next-reply buttons: clicking one sends it (the log under the reply, and the mascot's result panel).
+    createReplyChoicesBar(options, fromReport) {
         const bar = document.createElement('div');
         bar.className = 'director-message-actions';
         bar.dataset.replyChoices = '1';
-        if (last) bar.classList.add('director-report-suggestions');
+        if (fromReport) bar.classList.add('director-report-suggestions');
         options.forEach((label) => {
             const button = document.createElement('button');
             button.type = 'button';
@@ -3556,7 +3584,36 @@ class Director {
             });
             bar.appendChild(button);
         });
-        host.appendChild(bar);
+        return bar;
+    }
+
+    // Mascot view with the log hidden: the finished turn as its own panel (directorMascot.js showResult).
+    // A report is the summary, card, and suggestions; an older reply without one is its last text.
+    createMascotResult(message) {
+        const report = message && message.data && message.data.report;
+        const wrap = document.createElement('div');
+        wrap.className = 'director-chat-messages dm-result-body';
+        if (report) {
+            const el = this.createReportElement(message);
+            if (!el) return null;
+            const suggestions = Array.isArray(report.suggestions) ? report.suggestions.filter(Boolean) : [];
+            if (suggestions.length) el.appendChild(this.createReplyChoicesBar(suggestions, true));
+            wrap.appendChild(el);
+            return wrap;
+        }
+        const rows = Array.isArray(message && message.trace) ? message.trace : [];
+        let text = '';
+        for (let i = rows.length - 1; i >= 0 && !text; i--) {
+            if (rows[i] && rows[i].type === 'assistant' && rows[i].text) text = rows[i].text;
+        }
+        if (!text) text = String((message && message.data && message.data.Description) || '').trim();
+        if (!text) return null;
+        const el = this.createTraceRow({ type: 'assistant', text }, `result:${message.id || message.timestamp}`, message.model || null);
+        if (!el) return null;
+        wrap.appendChild(el);
+        const options = directorReplyOptions(text);
+        if (options.length >= 2) el.appendChild(this.createReplyChoicesBar(options, false));
+        return wrap;
     }
 
     mountInlineForm(spec) {
