@@ -4567,6 +4567,8 @@ function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     }
     // Standing orders are in the project rule (wrenRules). This is the per-turn state only.
     lines.push('Turn: one get_session_state view live first; Read every new print before you answer (sections 2 and 4).');
+    // In the turn prompt too: models skip the rulebook line (a DeepSeek turn on Nov 6 never called it).
+    lines.push('End the turn with one finish_turn {summary, reportCard, suggestions} call as your last tool call: the summary is your reply; reportCard (hit, partial, miss per item) whenever you edited a prompt or printed; 2 to 4 suggestions. No reply text after it (section 4c).');
     if (priorMessages.length && !chat.replay && !handoff && !repaired) lines.push('Follow-up: the next frame (section 3).');
     lines.push(...turnModeLines(turnWorkMode(userText)));
     if (clientId) lines.push(`Bound Studio clientId: ${clientId}`);
