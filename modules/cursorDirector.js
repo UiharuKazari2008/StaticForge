@@ -3783,6 +3783,7 @@ function publicTraceRow(row) {
     if (!row || typeof row !== 'object') return row;
     const copy = { ...row };
     delete copy._closed;
+    delete copy._partial;
     delete copy._diffHash;
     // Parameters stay on the server. The client gets a glasses button, not the body.
     if (copy.type === 'tool' || copy.hasDiff) {
@@ -4147,14 +4148,45 @@ function consumeClaudeStreamLine(line, state) {
         noteClaudeUsage(evt.rate_limit_info);
         return;
     }
+    // --include-partial-messages: thinking and text deltas grow the live row; the whole block that
+    // follows (type assistant) replaces it, so the row is saved once.
+    if (evt.type === 'stream_event') {
+        const se = evt.event || {};
+        if (se.type === 'content_block_start') {
+            const kind = se.content_block && se.content_block.type;
+            if (kind === 'thinking' || kind === 'text') {
+                closeLiveRow(state);
+                state.live = { type: kind === 'text' ? 'assistant' : 'thinking', text: '', _partial: true };
+            }
+        } else if (se.type === 'content_block_delta' && se.delta && state.live && state.live._partial) {
+            if (se.delta.type === 'thinking_delta' && state.live.type === 'thinking') state.live.text += se.delta.thinking || '';
+            else if (se.delta.type === 'text_delta' && state.live.type === 'assistant') {
+                state.live.text += se.delta.text || '';
+                state.text = state.live.text;
+            }
+        }
+        return;
+    }
     if (evt.type === 'assistant') {
         noteContext({ usage: evt.message && evt.message.usage }, state);
         const blocks = evt.message && Array.isArray(evt.message.content) ? evt.message.content : [];
+        // The streamed copy of this block becomes the saved row; another open partial stays live.
+        // The longer of the two wins: a snapshot can come back empty after deltas that had text.
+        const settle = (type, text) => {
+            let keep = text || '';
+            if (state.live && state.live._partial && state.live.type === type) {
+                if ((state.live.text || '').length > keep.length) keep = state.live.text;
+                state.live = null;
+            } else if (state.live && !state.live._partial) {
+                closeLiveRow(state);
+            }
+            if (keep) state.rows.push({ type, text: keep });
+            return keep;
+        };
         blocks.forEach((block) => {
             if (!block) return;
-            if (block.type === 'thinking' && block.thinking) {
-                closeLiveRow(state);
-                state.rows.push({ type: 'thinking', text: block.thinking });
+            if (block.type === 'thinking') {
+                settle('thinking', block.thinking || '');
             } else if (block.type === 'tool_use' && block.name) {
                 closeLiveRow(state);
                 const described = describeToolEvent({ name: claudeToolName(block.name), input: block.input || {} }, toolCap);
@@ -4172,10 +4204,9 @@ function consumeClaudeStreamLine(line, state) {
                 state.rows.push(row);
                 if (block.id) state.openTools.set(block.id, row);
                 state.tool = described.name;
-            } else if (block.type === 'text' && block.text) {
-                closeLiveRow(state);
-                state.rows.push({ type: 'assistant', text: block.text });
-                state.text = block.text;
+            } else if (block.type === 'text') {
+                const text = settle('assistant', block.text || '');
+                if (text) state.text = text;
             }
         });
         return;
@@ -4261,6 +4292,11 @@ function runClaudeTurn(cjail, run, prompt, onText, marker, limits) {
         '-p',
         '--output-format', 'stream-json',
         '--verbose',
+        // Thinking and reply text stream as deltas into state.live (the log and the mascot cues read it live).
+        // Without summarized display the flag streams one empty thinking delta and an empty snapshot
+        // (docs/research/director-mascot-cues.md, Streaming).
+        '--include-partial-messages',
+        '--thinking-display', 'summarized',
         '--permission-mode', 'bypassPermissions',
         '--strict-mcp-config',
         '--mcp-config', JAIL_CLAUDE_MCP,

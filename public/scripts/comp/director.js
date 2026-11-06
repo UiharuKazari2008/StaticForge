@@ -3690,9 +3690,8 @@ class Director {
         const filename = payload && payload.filename;
         if (!chatId || !filename || !this.currentSession || String(chatId) !== String(this.currentSession.id)) return;
         const images = this.sessionImageFilenames();
-        // A new print in the open chat: the mascot takes it in (polaroid into her belly).
-        if (!images.includes(filename) && this.mascot && typeof localGalleryImageUrl === 'function') this.mascot.onPrint(localGalleryImageUrl(filename));
-        if (!images.includes(filename)) images.push(filename);
+        const fresh = !images.includes(filename);
+        if (fresh) images.push(filename);
         this.currentSession.images = images;
         const messageId = payload.messageId || '';
         const prints = Array.isArray(this.currentSession.prints) ? this.currentSession.prints : [];
@@ -3721,6 +3720,14 @@ class Director {
         this.setImagePending(false);
         this.renderSessionImages();
         this.mountPrintBubble(payload.messageId || '', filename);
+        // A new print in the open chat: the mascot takes it in. It drops from its thumbnail in the
+        // prints strip (newest on top) into her belly; with the strip folded it comes from the log side.
+        if (fresh && this.mascot && typeof localGalleryImageUrl === 'function') {
+            const thumb = this.directorSessionImages
+                ? [...this.directorSessionImages.querySelectorAll('img.director-session-preview')].find((img) => img.alt === filename)
+                : null;
+            this.mascot.onPrint(localGalleryImageUrl(filename), { from: thumb || null });
+        }
         // syncDirectorGlancewell: public/scripts/comp/mcpActivityClient.js
         if (typeof syncDirectorGlancewell === 'function') syncDirectorGlancewell(this.sessionImageFilenames());
     }

@@ -251,7 +251,7 @@ Test plan, no server restart:
 - `scripts/test-director-mascot.js`: the new cases are lines from these sessions (GPU screencast, something's off, click missed, a bit bigger, not perfect, not broken, actually similarly scaled).
 - `docs/research/director-mascot-cues-labels.jsonl`: 520 windows, expression plus reason.
 
-Not done: the streaming flags, scanning assistant replies, mapping Good, onto the new `satisfied` face.
+Not done (Oct 31): the streaming flags, scanning assistant replies, mapping Good, onto the new `satisfied` face. Done Nov 6 (#705), below.
 
 ## Decisions for Yukimi
 
@@ -261,3 +261,26 @@ Not done: the streaming flags, scanning assistant replies, mapping Good, onto th
 4. Xi stays focused while she works. Sleepy stays the 3-minute idle face. Say if a long Xi turn should look tired anyway.
 5. All three manifests now have a `satisfied` face. The cue table still sends `happy` for a landed print. Say if that face should be `satisfied`.
 6. Ship `--include-partial-messages` together with `--thinking-display summarized`, using the patch above. The flag alone emptied thinking text on this CLI.
+
+## Review, Nov 6 2026 (#705)
+
+Corpus: 558 Wren turns from the last three weeks. 557 ran on Claude CLI engines (sloproxy 269, deepinfra 144, tokenrouter 96, claude 47), 1 on Cursor. So the word reader, which only read `live` thinking, never fired: no Claude CLI turn had a live row. Her face came from tool names alone (focused, thinking, smug), and frustrated only from a tool error.
+
+Replay (`/tmp` script: one row every 4 s, blocks whole, the same 558 turns through the old and new reader):
+
+| | cues/min | happy | frustrated | surprised | smug | thinking | focused |
+|---|---|---|---|---|---|---|---|
+| before | 7.0 | 211 | 0 | 0 | 1303 | 1585 | 1238 |
+| after | 10.7 | 872 | 363 | 57 | 1305 | 2497 | 1501 |
+
+That is before live streaming: with deltas the live row adds more.
+
+What changed:
+
+- `runClaudeTurn` passes `--include-partial-messages --thinking-display summarized`. `consumeClaudeStreamLine` grows a `_partial` live row from `thinking_delta` / `text_delta`; the whole block replaces it (the longer text wins, so an empty snapshot keeps the deltas). Probed on CLI 2.1.319: Opus high effort streamed 12 thinking deltas, parser saved one thinking row and one reply row.
+- `mascotCue` reads every unseen row: tools as before, finished thinking and reply rows through `textCue` (latest strong mood in the block wins), live thinking and live reply, and `finish_turn` through `reportCue` (hit ratio >= 0.85 happy, >= 0.6 satisfied, >= 0.35 thinking, else frustrated). The report skips the cue gap.
+- Client: a mood the current face set lacks ends Yumiya's mask gesture; otherwise a nearest-face fallback (satisfied -> happy, frustrated -> thinking, ...).
+- Growth from report cards (`behaviour.growth`), not working time: hit 1, partial 0.5, miss -0.5, rescores win, total never below 0. Yumiya and Yozora: bigger at 3. Chiyo: bigger at 3, bigger2 at 8. The stage moves after a completed turn, once the celebrate pose ends; opening a chat sets it quietly. Timed `advance` rules and the idle reset are gone from the manifests.
+- Prints fly from their thumbnail in the prints strip (fixed layer, the strip is outside her clipped stage) into the belly point. Belly points now sit on each stomach's centre.
+
+Still open: Xi's Claude parser (`modules/xiDirector.js`) has no `stream_event` branch, so Xi on Claude stays without live thinking.

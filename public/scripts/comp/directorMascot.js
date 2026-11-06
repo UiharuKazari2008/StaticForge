@@ -20,6 +20,52 @@ function directorMascotRand(range, fallback) {
     return range[0] + Math.random() * (range[1] - range[0]);
 }
 
+// Growth (#704): her stage follows the chat's report cards, not time spent working. Each card adds
+// hit 1, partial 0.5, miss -0.5 (the user's rescore wins over the agent's marks); the total, never below
+// zero, picks the stage from behaviour.growth (order + points). The stage moves after a turn completes.
+const DIRECTOR_MASCOT_SCORE_POINTS = { hit: 1, partial: 0.5, miss: -0.5 };
+
+function directorMascotGrowthPoints(messages) {
+    let total = 0;
+    (Array.isArray(messages) ? messages : []).forEach((message) => {
+        const report = message && message.role === 'assistant' && message.data && message.data.report;
+        const items = report && report.card && Array.isArray(report.card.items) ? report.card.items : [];
+        if (!items.length) return;
+        const reviewed = report.review && Array.isArray(report.review.scores) ? report.review.scores : [];
+        items.forEach((item, at) => {
+            const score = reviewed[at] in DIRECTOR_MASCOT_SCORE_POINTS ? reviewed[at] : item && item.score;
+            total = Math.max(0, total + (DIRECTOR_MASCOT_SCORE_POINTS[score] || 0));
+        });
+    });
+    return total;
+}
+
+// behaviour.growth or, without one, the stages in manifest order 3 points apart.
+function directorMascotGrowth(manifest) {
+    const g = manifest && manifest.behaviour && manifest.behaviour.growth;
+    const order = g && Array.isArray(g.order) ? g.order.filter((key) => manifest.stages[key]) : Object.keys((manifest && manifest.stages) || {});
+    const points = order.map((_, i) => (g && Array.isArray(g.points) && Number.isFinite(g.points[i]) ? g.points[i] : i * 3));
+    return { order, points };
+}
+
+function directorMascotStageFor(manifest, total) {
+    const { order, points } = directorMascotGrowth(manifest);
+    let stage = order[0] || null;
+    order.forEach((key, i) => { if (total >= points[i]) stage = key; });
+    return stage;
+}
+
+// A face set without the asked expression shows the nearest one it has, not a blank neutral.
+const DIRECTOR_MASCOT_FACE_FALLBACK = {
+    satisfied: ['happy', 'smug'],
+    smug: ['satisfied', 'happy'],
+    happy: ['satisfied', 'smug'],
+    focused: ['thinking'],
+    frustrated: ['thinking'],
+    surprised: ['thinking'],
+    sleepy: ['neutral']
+};
+
 class DirectorMascot {
     // options.isHosted(): true while she should show (the Director window, not Studio's inline panel).
     constructor(options = {}) {
@@ -433,8 +479,8 @@ class DirectorMascot {
         if (!this.manifest || !this.stageState || (typeof document !== 'undefined' && document.hidden)) return;
         const st = this.stageState; const b = this.manifest.behaviour || {};
         if (st.transition) return;
-        // Advance rules (Yukimi: base -> bigger -> bigger2; kicks lead the way).
-        (b.advance || []).forEach((rule) => {
+        // Advance rules (old timed growth). A manifest with behaviour.growth grows from report cards instead.
+        (b.growth ? [] : (b.advance || [])).forEach((rule) => {
             if (rule.from !== st.stage || st.transition) return;
             if (rule.afterWorkingSec && this.working && st.workingSince && now - st.workingSince >= rule.afterWorkingSec * 1000) this.advanceTo(rule.to);
             else if (rule.afterFirstKickSec && st.firstKickAt && now - st.firstKickAt >= rule.afterFirstKickSec * 1000) this.advanceTo(rule.to);
@@ -442,7 +488,7 @@ class DirectorMascot {
         if (st.transition) return;
         // Back to the start after a long idle.
         const reset = b.reset;
-        if (reset && reset.idleSec && !this.working && now - this.idleSince >= reset.idleSec * 1000 && st.stage !== reset.to) {
+        if (reset && reset.idleSec && !b.growth && !this.working && now - this.idleSince >= reset.idleSec * 1000 && st.stage !== reset.to) {
             this.resetStage();
             this.render();
             return;
@@ -487,6 +533,7 @@ class DirectorMascot {
     onChatChange() {
         const reset = this.manifest && this.manifest.behaviour && this.manifest.behaviour.reset;
         if (reset && reset.onChatChange) this.resetStage();
+        this._growthArmed = false;   // the next chat's stage is set quietly from its own cards
         this.dialogue = { kind: 'idle', text: '' };
         this._lastAssistantLength = 0;
         this.setWorking(false);
@@ -528,6 +575,8 @@ class DirectorMascot {
     }
 
     onTurnEnd(ok) {
+        // The settled messages (onMessages) carry the new report card; the stage moves then.
+        if (ok !== false) this._growthArmed = true;
         if (ok !== false) this.showFor('celebrate', 3);
         this.setWorking(false);
         this.turnDoneAt = Date.now();
@@ -537,6 +586,7 @@ class DirectorMascot {
     // The settled chat: the last assistant reply stays in the dialogue box until the next ask.
     onMessages(messages) {
         if (this.working || !Array.isArray(messages)) return;
+        this.applyGrowth(messages);
         for (let i = messages.length - 1; i >= 0; i--) {
             const m = messages[i];
             if (!m || m.role !== 'assistant') continue;
@@ -546,6 +596,35 @@ class DirectorMascot {
             this.paintDialogue();
             return;
         }
+    }
+
+    // Stage from the chat's report cards. After a completed turn she grows (or shrinks after a harsh
+    // rescore) with the transition; opening a chat sets the stage quietly.
+    applyGrowth(messages) {
+        const m = this.manifest; const st = this.stageState;
+        if (!m || !st || !m.behaviour || !m.behaviour.growth) return;
+        const total = directorMascotGrowthPoints(messages);
+        this.growthPoints = total;
+        const target = directorMascotStageFor(m, total);
+        const armed = this._growthArmed === true;
+        this._growthArmed = false;
+        if (!target || target === st.stage || st.transition) return;
+        if (!armed) {
+            st.stage = target;
+            st.firstKickAt = 0;
+            st.nextKickAt = 0;
+            this.render();
+            return;
+        }
+        const { order } = directorMascotGrowth(m);
+        const up = order.indexOf(target) > order.indexOf(st.stage);
+        // after the celebrate pose, so the turn lands first and the growth reads as its reward
+        const cfg = m.behaviour.celebrate || {};
+        this.later(() => {
+            if (this.stageState !== st || st.stage === target) return;
+            this.advanceTo(target);
+            this.cue(up ? { expression: 'surprised', action: 'bounce', holdMs: 1800 } : { expression: 'frustrated', action: 'slump', holdMs: 3000 });
+        }, ((Number(cfg.durationSec) || 3) * 1000) + 200);
     }
 
     setWorking(on) {
@@ -571,6 +650,13 @@ class DirectorMascot {
     cue(cue) {
         if (!cue || typeof cue !== 'object') return;
         if (cue.expression) {
+            // Yumiya's mask pose only has three faces: a mood it cannot show ends the gesture early.
+            const st = this.stageState; const set = this.faceSet();
+            if (st && set && set.expressions && !set.expressions[cue.expression] && Date.now() < st.gestureUntil) {
+                st.gestureUntil = 0;
+                this._swapMs = 260;
+                this.render();
+            }
             this.expression = String(cue.expression);
             this.expressionUntil = Date.now() + (Number(cue.holdMs) || 2500);
             this.renderFace(this.expression);
@@ -660,7 +746,8 @@ class DirectorMascot {
         const set = this.faceSet();
         if (!set) return;
         const want = expr || this.shownExpression();
-        const file = set.expressions[want] || set.expressions.neutral || Object.values(set.expressions)[0];
+        const near = (DIRECTOR_MASCOT_FACE_FALLBACK[want] || []).find((key) => set.expressions[key]);
+        const file = set.expressions[want] || (near && set.expressions[near]) || set.expressions.neutral || Object.values(set.expressions)[0];
         const url = file ? this.manifest.base + file : '';
         if (this.el.face.getAttribute('src') !== url) this.el.face.setAttribute('src', url);
         const blink = set.blink ? this.manifest.base + set.blink : '';
@@ -718,7 +805,7 @@ class DirectorMascot {
 
     // A finished print: a polaroid of it drifts in from the log side and fades into her belly; she is
     // pleased with herself.
-    onPrint(url) {
+    onPrint(url, options = {}) {
         if (!this.root || !this.manifest || !url || this.root.classList.contains('hidden')) return;
         const id = this.currentBodyId();
         const body = id ? this.manifest.bodies[id] : null;
@@ -728,19 +815,35 @@ class DirectorMascot {
         const stage = this.root.getBoundingClientRect();
         if (!canvasBox.width) return;
         const belly = (body && body.belly) || [cam[0] + cam[2] / 2, cam[1] + cam[3] * 0.62];
-        const tx = canvasBox.left - stage.left + belly[0] * k;
-        const ty = canvasBox.top - stage.top + belly[1] * k;
+        const bx = canvasBox.left - stage.left + belly[0] * k;
+        const by = canvasBox.top - stage.top + belly[1] * k;
         const left = this.manifest.anchor === 'left';
-        const sx = left ? stage.width * 0.72 : stage.width * 0.28;
-        const sy = stage.height * 0.42;
+        let sx = left ? stage.width * 0.72 : stage.width * 0.28;
+        let sy = stage.height * 0.42;
+        // From its thumbnail in the prints strip when that is on screen (Yukimi: the images drop in from there).
+        const from = options.from;
+        const fromBox = from && (typeof from.checkVisibility !== 'function' || from.checkVisibility()) ? from.getBoundingClientRect() : null;
+        const fromStrip = !!(fromBox && fromBox.width > 4 && fromBox.height > 4);
         const card = document.createElement('div');
         card.className = 'dm-polaroid';
         const img = document.createElement('img');
         img.alt = '';
-        img.src = url;
+        img.src = (fromStrip && from.currentSrc) || url;
         card.appendChild(img);
-        this.root.appendChild(card);
         const w = Math.max(110, Math.min(190, stage.width * 0.16));
+        let tx = bx;
+        let ty = by;
+        if (fromStrip) {
+            // The strip sits outside her clipped stage: fly on a fixed layer in viewport coordinates.
+            card.classList.add('dm-polaroid-fixed');
+            document.body.appendChild(card);
+            sx = fromBox.left + fromBox.width / 2;
+            sy = fromBox.top + fromBox.height / 2;
+            tx += stage.left;
+            ty += stage.top;
+        } else {
+            this.root.appendChild(card);
+        }
         card.style.width = `${Math.round(w)}px`;
         const place = (x, y) => `translate(${Math.round(x - w / 2)}px, ${Math.round(y - w * 0.6)}px)`;
         const tilt = left ? 7 : -7;
@@ -756,10 +859,14 @@ class DirectorMascot {
             this.later(done, 600);
             return;
         }
+        // From the strip: it starts at the thumbnail's size, lifts out, then arcs down into her belly.
+        const startScale = fromStrip ? Math.max(0.2, Math.min(1, fromBox.width / w)) : 0.6;
+        const arcX = fromStrip ? sx + (tx - sx) * 0.45 : sx;
+        const arcY = fromStrip ? Math.min(sy, ty) - stage.height * 0.06 : sy;
         const anim = card.animate([
-            { transform: `${place(sx, sy + 40)} rotate(${tilt}deg) scale(0.6)`, opacity: 0, filter: 'blur(0px)' },
-            { transform: `${place(sx, sy)} rotate(${tilt}deg) scale(1)`, opacity: 1, offset: 0.18 },
-            { transform: `${place(sx, sy)} rotate(${tilt / 2}deg) scale(1)`, opacity: 1, offset: 0.45 },
+            { transform: `${place(sx, fromStrip ? sy : sy + 40)} rotate(0deg) scale(${startScale})`, opacity: fromStrip ? 1 : 0, filter: 'blur(0px)' },
+            { transform: `${place(fromStrip ? sx + (left ? -12 : 12) : sx, sy)} rotate(${tilt}deg) scale(1)`, opacity: 1, offset: 0.18 },
+            { transform: `${place(arcX, arcY)} rotate(${tilt / 2}deg) scale(0.9)`, opacity: 1, offset: 0.45 },
             { transform: `${place(tx, ty)} rotate(0deg) scale(0.35)`, opacity: 0.85, filter: 'blur(0px)', offset: 0.82 },
             { transform: `${place(tx, ty)} rotate(0deg) scale(0.15)`, opacity: 0, filter: 'blur(3px)' }
         ], { duration: 2600, easing: 'ease-in-out', fill: 'forwards' });
@@ -775,4 +882,4 @@ class DirectorMascot {
 }
 
 if (typeof window !== 'undefined') window.DirectorMascot = DirectorMascot;
-if (typeof module !== 'undefined' && module.exports) module.exports = { DirectorMascot };
+if (typeof module !== 'undefined' && module.exports) module.exports = { DirectorMascot, directorMascotGrowthPoints, directorMascotStageFor, directorMascotGrowth };

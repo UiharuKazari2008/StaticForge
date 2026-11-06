@@ -79,3 +79,39 @@ if (require('../modules/cursorDirector').findClaude()) {
     }
 }
 console.log('wren claude engine: ok');
+
+// --include-partial-messages (#704): deltas grow the live row (log + mascot cues read it live);
+// the whole block that follows replaces it, so each row is saved once.
+{
+    const { _test: t } = require('../modules/cursorDirector');
+    const feed = (state, evt) => t.consumeClaudeStreamLine(JSON.stringify(evt), state);
+    const st = { rows: [], live: null, text: '' };
+    feed(st, { type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } } });
+    feed(st, { type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Hmm, the tail ' } } });
+    feed(st, { type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'missed.' } } });
+    assert.deepStrictEqual([st.live.type, st.live.text, st.rows.length], ['thinking', 'Hmm, the tail missed.', 0]);
+    feed(st, { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'Hmm, the tail missed.' }] } });
+    assert.strictEqual(st.live, null);
+    assert.deepStrictEqual(st.rows.map((r) => [r.type, r.text]), [['thinking', 'Hmm, the tail missed.']]);
+    feed(st, { type: 'stream_event', event: { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } } });
+    feed(st, { type: 'stream_event', event: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Fixed it.' } } });
+    assert.deepStrictEqual([st.live.type, st.text], ['assistant', 'Fixed it.']);
+    feed(st, { type: 'assistant', message: { content: [{ type: 'text', text: 'Fixed it.' }] } });
+    feed(st, { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tu1', name: 'mcp__dreamscape__print_studio', input: {} }] } });
+    feed(st, { type: 'result', result: 'Fixed it.' });
+    assert.deepStrictEqual(st.rows.map((r) => r.type), ['thinking', 'assistant', 'tool'], 'no duplicated rows');
+    assert.ok(!('_partial' in t.publicTraceRow({ type: 'thinking', text: 'x', _partial: true })));
+    // An empty thinking snapshot after deltas keeps the streamed text; signature deltas add nothing.
+    const s2 = { rows: [], live: null, text: '' };
+    feed(s2, { type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'thinking' } } });
+    feed(s2, { type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Looks right.' } } });
+    feed(s2, { type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'abc' } } });
+    feed(s2, { type: 'assistant', message: { content: [{ type: 'thinking', thinking: '' }] } });
+    assert.deepStrictEqual(s2.rows.map((r) => r.text), ['Looks right.']);
+    // No deltas (flag off or a proxy that does not stream): the whole block is one row, as before.
+    const s3 = { rows: [], live: null, text: '' };
+    feed(s3, { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'Whole.' }, { type: 'text', text: 'Reply.' }] } });
+    assert.deepStrictEqual(s3.rows.map((r) => [r.type, r.text]), [['thinking', 'Whole.'], ['assistant', 'Reply.']]);
+    assert.strictEqual(s3.text, 'Reply.');
+    console.log('partial-message stream ok');
+}

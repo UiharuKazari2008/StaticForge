@@ -2,7 +2,8 @@
 
 // Director mascot cues (#688, research in docs/research/director-mascot-cues.md).
 // The server reads each Director stream update (Wren, Kabuki, and Xi share queueDirectorStream) and turns
-// new tool rows and the live thinking text into one expression/action cue. Rules only, no model call.
+// new tool rows, new finished thinking and reply rows, the live thinking or reply text, and the finish_turn
+// report card into one expression/action cue. Rules only, no model call.
 //
 // A new expression can land every CUE_GAP_MS. The same expression+action is not re-fired inside
 // SAME_KEY_MS, and holdMs is longer than that, so a steady mood stays up and the action pulses
@@ -76,6 +77,48 @@ function wordCue(text, persona) {
     return null;
 }
 
+// A whole thinking block or reply (Claude engines hand them over complete): the latest strong mood in it
+// wins, otherwise the latest cue of any kind. Read sentence by sentence so one early "hmm" does not
+// outvote "nailed it" at the end.
+function textCue(text, persona) {
+    const parts = String(text || '').split(/(?<=[.!?\n])\s+/).filter(Boolean).slice(-40);
+    let soft = null;
+    for (let i = parts.length - 1; i >= 0; i--) {
+        const cue = wordCue(parts[i], persona);
+        if (!cue) continue;
+        if (strongWord(cue)) return cue;
+        if (!soft) soft = cue;
+    }
+    return soft;
+}
+
+// finish_turn (#704): the report card is the clearest read on how the turn went.
+function reportCue(row) {
+    let args = row && row.args;
+    if (typeof args === 'string') {
+        try { args = JSON.parse(args); } catch (_) { args = null; }
+    }
+    const card = args && (args.reportCard || args.scorecard);
+    const items = card && Array.isArray(card.items) ? card.items : [];
+    if (!items.length) return { expression: 'happy', action: 'nod', holdMs: 5000 };
+    const points = items.reduce((sum, item) => {
+        const score = String(item && item.score || '').toLowerCase();
+        return sum + (score === 'hit' ? 1 : score === 'partial' ? 0.5 : 0);
+    }, 0);
+    const ratio = points / items.length;
+    if (ratio >= 0.85) return { expression: 'happy', action: 'bounce', holdMs: 7000 };
+    if (ratio >= 0.6) return { expression: 'satisfied', action: 'nod', holdMs: 6500 };
+    if (ratio >= 0.35) return { expression: 'thinking', action: 'tilt', holdMs: 6000 };
+    return { expression: 'frustrated', action: 'slump', holdMs: 7000 };
+}
+
+function rowSig(row) {
+    if (!row) return '';
+    if (row.type === 'tool') return `t|${row.name}|${String(row.result || '').length}`;
+    if (row.type === 'thinking' || row.type === 'assistant') return `${row.type}|${String(row.text || '').length}`;
+    return '';
+}
+
 function strongWord(cue) {
     if (!cue) return false;
     return cue.expression === 'frustrated' || cue.expression === 'surprised' || cue.expression === 'happy' || cue.expression === 'smug';
@@ -102,23 +145,34 @@ function mascotCue(sessionId, data, now = Date.now()) {
     sessions.set(id, state);
     const rows = Array.isArray(data.rows) ? data.rows : [];
     let tool = null;
-    for (let i = rows.length - 1; i >= 0 && !tool; i--) {
+    let report = null;
+    let word = null;
+    // Newest unseen rows first. Claude engines finish thinking and reply blocks whole, so those rows are
+    // read here too; before #704 only the live row was, and on those engines it never existed.
+    for (let i = rows.length - 1; i >= 0; i--) {
         const row = rows[i];
-        if (!row || row.type !== 'tool') continue;
-        const sig = `${row.name}|${String(row.result || '').length}`;
-        if (state.rows[i] === sig) break;    // older rows were already seen
-        tool = toolCue(row);
+        if (!row) continue;
+        if (state.rows[i] === rowSig(row)) break;    // older rows were already seen
+        if (row.type === 'tool') {
+            if (row.name === 'finish_turn') { if (!report) report = reportCue(row); }
+            else if (!tool) tool = toolCue(row);
+        } else if ((row.type === 'thinking' || row.type === 'assistant') && !word) {
+            word = textCue(row.text, data.persona);
+        }
     }
-    state.rows = rows.map((row) => (row && row.type === 'tool' ? `${row.name}|${String(row.result || '').length}` : ''));
+    state.rows = rows.map(rowSig);
     const live = data.live || null;
-    const word = live && live.type === 'thinking' ? wordCue(live.text, data.persona) : null;
+    const liveWord = live && (live.type === 'thinking' || live.type === 'assistant') ? wordCue(live.text, data.persona) : null;
+    if (liveWord && (!word || strongWord(liveWord) || !strongWord(word))) word = liveWord;
     let cue = null;
-    if (tool && tool.action === 'shake') cue = tool;
+    if (report) cue = report;
+    else if (tool && tool.action === 'shake') cue = tool;
     else if (strongWord(word) && (!tool || tool.expression === 'focused' || tool.expression === 'thinking' || tool.expression === 'smug')) cue = word;
     else cue = tool || word;
     if (!cue) return null;
     const key = `${cue.expression}|${cue.action || ''}`;
-    if (state.lastCueAt) {
+    // The report is the turn's verdict: it skips the gap so it is never swallowed by the cue before it.
+    if (state.lastCueAt && !report) {
         if (key === state.lastKey && now - state.lastCueAt < SAME_KEY_MS) return null;
         if (now - state.lastCueAt < CUE_GAP_MS) return null;
     }
@@ -139,5 +193,5 @@ module.exports = {
     mascotCue,
     forgetSession,
     resetMascotCues,
-    _test: { toolCue, wordCue, CUE_GAP_MS, SAME_KEY_MS }
+    _test: { toolCue, wordCue, textCue, reportCue, CUE_GAP_MS, SAME_KEY_MS }
 };

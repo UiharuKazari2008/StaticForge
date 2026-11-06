@@ -30,8 +30,8 @@
       "head": "head-base.webp",
       "faces": "base",
       "belly": [
-        1094,
-        1012
+        1340,
+        1030
       ]
     },
     "bigger": {
@@ -39,8 +39,8 @@
       "head": "head-bigger.webp",
       "faces": "base",
       "belly": [
-        1469,
-        1014
+        1600,
+        1185
       ]
     },
     "bigger_vore": {
@@ -48,8 +48,8 @@
       "head": "head-bigger_vore.webp",
       "faces": "base",
       "belly": [
-        1469,
-        1014
+        1600,
+        1185
       ]
     },
     "mask": {
@@ -57,8 +57,8 @@
       "head": "head-mask.webp",
       "faces": "mask",
       "belly": [
-        1094,
-        1012
+        1340,
+        1030
       ]
     },
     "mask_bigger": {
@@ -66,8 +66,8 @@
       "head": "head-mask_bigger.webp",
       "faces": "mask",
       "belly": [
-        1469,
-        1014
+        1600,
+        1185
       ]
     },
     "mask_wings": {
@@ -75,8 +75,8 @@
       "head": "head-mask_wings.webp",
       "faces": "mask",
       "belly": [
-        1094,
-        1012
+        1340,
+        1030
       ]
     },
     "mask_wings_bigger": {
@@ -84,8 +84,8 @@
       "head": "head-mask_wings_bigger.webp",
       "faces": "mask",
       "belly": [
-        1469,
-        1014
+        1600,
+        1185
       ]
     }
   },
@@ -145,16 +145,18 @@
   },
   "behaviour": {
     "start": "base",
-    "advance": [
-      {
-        "from": "base",
-        "to": "bigger",
-        "afterWorkingSec": 60
-      }
-    ],
+    "growth": {
+      "order": [
+        "base",
+        "bigger"
+      ],
+      "points": [
+        0,
+        3
+      ]
+    },
     "reset": {
       "to": "base",
-      "idleSec": 600,
       "onChatChange": true
     },
     "gesture": {

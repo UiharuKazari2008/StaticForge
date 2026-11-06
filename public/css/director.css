@@ -4409,3 +4409,9 @@ body #directorSessionChat.director-mascot-on.director-mascot-view #directorCompo
 .director-report-card.is-rescored .director-report-status {
     color: inherit;
 }
+
+/* From the prints strip (outside the clipped stage): the same card on a fixed layer over the window. */
+.dm-polaroid.dm-polaroid-fixed {
+    position: fixed;
+    z-index: 2147483000;
+}

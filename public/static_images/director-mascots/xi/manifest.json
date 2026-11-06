@@ -30,8 +30,8 @@
       "head": "head-base.webp",
       "faces": "base",
       "belly": [
-        740,
-        951
+        812,
+        1213
       ]
     },
     "kicky": {
@@ -39,8 +39,8 @@
       "head": "head-kicky.webp",
       "faces": "base",
       "belly": [
-        742,
-        951
+        812,
+        1213
       ]
     },
     "kon": {
@@ -48,8 +48,8 @@
       "head": "head-kon.webp",
       "faces": "base",
       "belly": [
-        740,
-        951
+        812,
+        1213
       ]
     },
     "kon_kicky": {
@@ -57,8 +57,8 @@
       "head": "head-kon_kicky.webp",
       "faces": "base",
       "belly": [
-        742,
-        951
+        812,
+        1213
       ]
     },
     "bigger": {
@@ -66,8 +66,8 @@
       "head": "head-bigger.webp",
       "faces": "big",
       "belly": [
-        968,
-        960
+        962,
+        1254
       ]
     },
     "kon_bigger": {
@@ -75,8 +75,8 @@
       "head": "head-kon_bigger.webp",
       "faces": "big",
       "belly": [
-        968,
-        960
+        962,
+        1254
       ]
     }
   },
@@ -144,16 +144,18 @@
   },
   "behaviour": {
     "start": "base",
-    "advance": [
-      {
-        "from": "base",
-        "to": "bigger",
-        "afterFirstKickSec": 60
-      }
-    ],
+    "growth": {
+      "order": [
+        "base",
+        "bigger"
+      ],
+      "points": [
+        0,
+        3
+      ]
+    },
     "reset": {
       "to": "base",
-      "idleSec": 600,
       "onChatChange": true
     },
     "kicky": {

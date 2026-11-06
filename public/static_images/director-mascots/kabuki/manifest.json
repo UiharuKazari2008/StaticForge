@@ -29,8 +29,8 @@
       ],
       "head": "head-base.webp",
       "belly": [
-        1573,
-        1576
+        1385,
+        1066
       ]
     },
     "bigger": {
@@ -44,8 +44,8 @@
       ],
       "head": "head-bigger.webp",
       "belly": [
-        1501,
-        1553
+        1317,
+        1113
       ]
     },
     "bigger_kicky": {
@@ -59,8 +59,8 @@
       ],
       "head": "head-bigger_kicky.webp",
       "belly": [
-        1501,
-        1553
+        1317,
+        1113
       ]
     },
     "bigger_rub": {
@@ -74,8 +74,8 @@
       ],
       "head": "head-bigger_rub.webp",
       "belly": [
-        1501,
-        1553
+        1317,
+        1113
       ]
     },
     "bigger_rub_kicky": {
@@ -89,8 +89,8 @@
       ],
       "head": "head-bigger_rub_kicky.webp",
       "belly": [
-        1501,
-        1553
+        1317,
+        1113
       ]
     },
     "bigger2": {
@@ -103,8 +103,8 @@
         2342
       ],
       "belly": [
-        1087,
-        1696
+        1057,
+        1356
       ]
     }
   },
@@ -179,21 +179,20 @@
   },
   "behaviour": {
     "start": "base",
-    "advance": [
-      {
-        "from": "base",
-        "to": "bigger",
-        "afterWorkingSec": 60
-      },
-      {
-        "from": "bigger",
-        "to": "bigger2",
-        "afterFirstKickSec": 60
-      }
-    ],
+    "growth": {
+      "order": [
+        "base",
+        "bigger",
+        "bigger2"
+      ],
+      "points": [
+        0,
+        3,
+        8
+      ]
+    },
     "reset": {
       "to": "base",
-      "idleSec": 600,
       "onChatChange": true
     },
     "kicky": {

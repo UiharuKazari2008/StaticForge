@@ -57,6 +57,30 @@ c = cues.mascotCue('swap', { live: { type: 'thinking', text: 'Good, that landed.
 assert.strictEqual(c.expression, 'happy', 'a different expression can land once the gap has passed');
 
 // ---- client stage machine ----
+// #704 reader: whole thinking / reply rows (Claude engines never send a live thinking row) and the
+// finish_turn report card.
+{
+    const cues = require('../modules/directorMascot');
+    cues.resetMascotCues();
+    const t0 = 5_000_000;
+    const thought = { type: 'thinking', text: 'Hmm, let me look at the print. The tail is wrong again, it missed the curl.' };
+    const c1 = cues.mascotCue('r1', { rows: [thought], live: null, persona: 'wren' }, t0);
+    assert.strictEqual(c1 && c1.expression, 'frustrated', 'a finished thinking row is read; the latest strong mood wins');
+    assert.strictEqual(cues.mascotCue('r1', { rows: [thought], live: null, persona: 'wren' }, t0 + 10000), null, 'a seen row is not read twice');
+    const reply = { type: 'assistant', text: 'Nailed it this time.' };
+    const c2 = cues.mascotCue('r1', { rows: [thought, reply], live: null, persona: 'wren' }, t0 + 20000);
+    assert.strictEqual(c2 && c2.expression, 'happy', 'reply rows are read too');
+    const finish = (scores) => ({ type: 'tool', name: 'finish_turn', args: JSON.stringify({ summary: 's', reportCard: { items: scores.map((score) => ({ item: 'x', score })) } }), result: '{"success":true}' });
+    const c3 = cues.mascotCue('r1', { rows: [thought, reply, finish(['miss', 'miss', 'partial'])], live: null, persona: 'wren' }, t0 + 20500);
+    assert.deepStrictEqual([c3.expression, c3.action], ['frustrated', 'slump'], 'the report verdict skips the cue gap');
+    assert.strictEqual(cues._test.reportCue(finish(['hit', 'hit', 'hit'])).expression, 'happy');
+    assert.strictEqual(cues._test.reportCue(finish(['hit', 'hit', 'partial'])).expression, 'satisfied');
+    assert.strictEqual(cues._test.textCue('Good, the pose holds. Maybe push the light.', 'wren').expression, 'happy', 'strong beats a later soft cue');
+    const live = cues.mascotCue('r2', { rows: [], live: { type: 'assistant', text: 'Oh no, the hands broke' }, persona: 'wren' }, t0);
+    assert.strictEqual(live && live.expression, 'surprised', 'a live reply row is read');
+    cues.resetMascotCues();
+}
+
 const { DirectorMascot } = require('../public/scripts/comp/directorMascot.js');
 let now = 1_000_000;
 const realNow = Date.now;
@@ -88,57 +112,87 @@ const load = (persona) => {
     return m;
 };
 
-// Kabuki: base -> (60 s of work) -> bigger with kicks -> (60 s after the first kick) -> bigger2, with in-betweens.
+// Growth (#704): report cards, not working time. hit 1, partial 0.5, miss -0.5; rescores win.
+const { directorMascotGrowthPoints, directorMascotStageFor } = require('../public/scripts/comp/directorMascot.js');
+const card = (scores, review) => ({ role: 'assistant', data: { report: { summary: 's', card: { items: scores.map((score, i) => ({ item: `i${i}`, score })) }, review } } });
+assert.strictEqual(directorMascotGrowthPoints([card(['hit', 'partial', 'miss'])]), 1);
+assert.strictEqual(directorMascotGrowthPoints([card(['miss', 'miss']), card(['hit'])]), 1, 'never below zero');
+assert.strictEqual(directorMascotGrowthPoints([card(['hit', 'hit'], { scores: ['miss', 'hit'] })]), 1, 'the user rescore counts');
+assert.strictEqual(directorMascotGrowthPoints([{ role: 'assistant', data: {} }, { role: 'user' }]), 0);
+
 const k = load('kabuki');
 assert.strictEqual(k.debugState().stage, 'base');
 assert.strictEqual(k.currentBodyId(), 'base');
 k.setWorking(true);
-for (let i = 0; i < 59; i++) { now += 1000; k.tick(); }
-assert.strictEqual(k.debugState().stage, 'base', 'not before 60 s of work');
-now += 1500; k.tick();
-assert.strictEqual(k.debugState().stage, 'bigger', 'straight to bigger (crossfade, no in-betweens)');
-assert.strictEqual(k.currentBodyId(), 'bigger');
-Math.random = () => 0;             // kicks as early as possible, no rubs (chance check)
+for (let i = 0; i < 300; i++) { now += 1000; k.tick(); }
+assert.strictEqual(k.debugState().stage, 'base', 'working time alone no longer grows her');
+assert.strictEqual(directorMascotStageFor(k.manifest, 2.5), 'base');
+assert.strictEqual(directorMascotStageFor(k.manifest, 3), 'bigger');
+assert.strictEqual(directorMascotStageFor(k.manifest, 8), 'bigger2');
+// Opening a chat with earned points: quiet, no transition.
+k.setWorking(false);
+k.onMessages([card(['hit', 'hit', 'hit'])]);
+assert.strictEqual(k.debugState().stage, 'bigger', 'reopen sets the earned stage');
+// A completed turn whose card pushes past the next threshold grows her after the celebrate pose.
+k.onTurnEnd(true);
+const turn = [card(['hit', 'hit', 'hit']), card(['hit', 'hit', 'hit', 'hit', 'hit'])];
+k.onMessages(turn);
+assert.strictEqual(k.debugState().stage, 'bigger', 'not before the turn has landed');
+run(3300);
+assert.strictEqual(k.debugState().stage, 'bigger2', 'stage up after the complete event');
+// A harsh rescore on the next completed turn takes her back down.
+k.onTurnEnd(true);
+k.onMessages([card(['hit', 'hit', 'hit']), card(['hit', 'hit', 'hit', 'hit', 'hit'], { scores: ['miss', 'miss', 'miss', 'miss', 'miss'] })]);
+run(3300);
+assert.strictEqual(k.debugState().stage, 'base');
+// Kicks still play in bigger.
+k.stageState.stage = 'bigger';
+Math.random = () => 0;
 k.stageState.nextKickAt = 0;
 for (let i = 0; i < 25 && !k.stageState.firstKickAt; i++) { now += 1000; k.tick(); }
-assert.ok(k.stageState.firstKickAt, 'a kick happened');
 assert.ok(['bigger_kicky', 'bigger_rub_kicky'].includes(k.currentBodyId()), 'kicky body during a kick (with or without a rub)');
-Math.random = () => 0.99;          // no further rubs
+Math.random = () => 0.99;
 k.stageState.gestureUntil = 0;
 now += 4000; k.tick();
 assert.strictEqual(k.currentBodyId(), 'bigger', 'kick ends');
-for (let i = 0; i < 60 && k.debugState().stage === 'bigger'; i++) { now += 1000; k.tick(); }
-assert.strictEqual(k.debugState().stage, 'bigger2');
+for (let i = 0; i < 120; i++) { now += 1000; k.tick(); }
+assert.strictEqual(k.debugState().stage, 'bigger', 'kicks no longer lead to bigger2');
 // One framing for every pose (no shrink or shift between stages): her starting pose's refCamera.
-const camB2 = k.camera(); k.stageState.stage = 'bigger'; const camB = k.camera(); k.stageState.stage = 'bigger2';
+k.stageState.stage = 'bigger2'; const camB2 = k.camera(); k.stageState.stage = 'bigger'; const camB = k.camera();
 assert.deepStrictEqual(camB2, camB, 'same camera in every stage');
 assert.deepStrictEqual(camB, k.manifest.refCamera, 'the reference framing');
 assert.ok(camB[0] >= 0 && camB[1] >= 0 && camB[0] + camB[2] <= k.manifest.size[0] + 1 && camB[1] + camB[3] <= k.manifest.size[1] + 1, 'inside the canvas');
-// Reset after 10 minutes idle.
-k.setWorking(false);
+// No idle reset any more: the stage is the chat's score.
 now += 601000; k.tick();
-assert.strictEqual(k.debugState().stage, 'base');
+assert.strictEqual(k.debugState().stage, 'bigger');
 // Rub: gesture body while active.
 const k2 = load('kabuki'); k2.stageState.stage = 'bigger'; Math.random = () => 0.001;
 k2.tick();
 assert.strictEqual(k2.currentBodyId(), 'bigger_rub');
 
-// Xi: kicks in base lead to bigger 60 s after the first kick; kon gestures.
+// Xi: kon gestures with kicks; growth from cards.
 const x = load('xi'); Math.random = () => 0;
 assert.strictEqual(x.manifest.anchor, 'left');
 for (let i = 0; i < 25 && !x.stageState.firstKickAt; i++) { now += 1000; x.tick(); }
 assert.strictEqual(x.currentBodyId(), 'kon_kicky', 'gesture plus kick');
 Math.random = () => 0.99;
-for (let i = 0; i < 70 && x.debugState().stage === 'base'; i++) { now += 1000; x.tick(); }
+for (let i = 0; i < 70; i++) { now += 1000; x.tick(); }
+assert.strictEqual(x.debugState().stage, 'base', 'kicks alone do not grow her');
+x.onMessages([card(['hit', 'hit', 'hit'])]);
 assert.strictEqual(x.debugState().stage, 'bigger');
 
-// Wren: work-driven advance; faces fall back to neutral for a missing expression.
+// Wren: faces fall back to the nearest one the set has (the mask set has only happy, neutral, thinking).
 const w = load('wren');
 assert.strictEqual(w.manifest.anchor, 'left');
-w.setWorking(true); now += 61000; w.tick(); run(420 * 4);
-assert.strictEqual(w.debugState().stage, 'bigger');
-w.expression = 'nope'; w.expressionUntil = now + 1000;
-assert.ok(w.faceSet().expressions.neutral);
+w.setWorking(true); now += 61000; w.tick();
+assert.strictEqual(w.debugState().stage, 'base');
+w.stageState.gestureUntil = now + 5000;
+assert.strictEqual(w.currentBodyId(), 'mask');
+w.cue({ expression: 'frustrated', holdMs: 3000 });
+assert.strictEqual(w.currentBodyId(), 'base', 'a mood the mask cannot show ends the gesture');
+w.stageState.gestureUntil = now + 5000;
+w.cue({ expression: 'happy', holdMs: 3000 });
+assert.strictEqual(w.currentBodyId(), 'mask', 'one it can show keeps the gesture');
 
 // Wren (Yumiya): the vore belly after a print sinks in (bigger), wings when a turn lands; both time out.
 const y = load('wren'); y.stageState.stage = 'bigger';
