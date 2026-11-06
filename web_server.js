@@ -52,7 +52,7 @@ const { runCacheDirExpiry, CLEANUP_INTERVAL_MS, FIRST_RUN_DELAY_MS } = require('
 const { handleGeneration, buildOptions, handleRerollGeneration, handleStagedGeneration } = require('./modules/imageGeneration');
 const UnixSocketCommunication = require('./modules/unixSocketCommunication');
 const { handleNaxImageRequest } = require('./modules/naxImageServer');
-const { isAdminUser, applyHeaderLoginKey } = require('./modules/auth');
+const { isAdminUser, applyHeaderLoginKey, isLoopbackAddress } = require('./modules/auth');
 const { streamLogFile } = require('./modules/logStreamService');
 const pm2Service = require('./modules/pm2Service');
 const runtimeAssetService = require('./modules/runtimeAssetService');
@@ -789,7 +789,13 @@ function securityMiddleware(req, res, next) {
                 code: 'INVALID_LOGIN_KEY_HEADER'
             });
         }
-        if (headerAuth.rejected) {
+        // Loopback /agent routes check their own Bearer (devAuthMiddleware: devLoginKey, enable_dev,
+        // loopback peer). Rejecting every Bearer that is not loginKey here (#392) left the dev login
+        // unusable, so on those routes a non-matching Bearer is passed on, not accepted: it then
+        // carries no more access than a request without the header.
+        const agentDevRoute = (req.path === '/agent' || req.path.startsWith('/agent/'))
+            && isLoopbackAddress(req.socket?.remoteAddress);
+        if (headerAuth.rejected && !agentDevRoute) {
             return res.status(403).json({
                 success: false,
                 error: 'Invalid authentication token'
