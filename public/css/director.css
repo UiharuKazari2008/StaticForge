@@ -4820,6 +4820,7 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
 }
 
 .dm-vn-layer .dm-quick button {
+    white-space: nowrap;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -4858,7 +4859,7 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
 .dm-vn-layer .dm-banner {
     position: absolute;
     left: 0;
-    top: 12px;
+    top: var(--dm-top, 12px);
     max-width: calc(100% - 370px);
     min-width: 160px;
     padding: 8px 40px 8px 18px;
@@ -4880,6 +4881,9 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
 
 .dm-vn-layer .dm-banner-sub {
     display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--dm-teal-deep);
     font: 600 10.5px 'Segoe UI', sans-serif;
     letter-spacing: 0.12em;
@@ -4888,7 +4892,7 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
 .dm-vn-layer .dm-hud {
     position: absolute;
     right: 12px;
-    top: 12px;
+    top: var(--dm-top, 12px);
     display: flex;
     gap: 5px;
     pointer-events: auto;
@@ -4931,8 +4935,8 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
 .dm-vn-layer .dm-grow-next { font-size: 10px; }
 
 /* Bubbles start under the banner row. */
-.dm-vn-layer .dm-think { top: 84px; }
-.dm-vn-layer .dm-say { top: 140px; }
+.dm-vn-layer .dm-think { top: calc(var(--dm-top, 12px) + 72px); }
+.dm-vn-layer .dm-say { top: calc(var(--dm-top, 12px) + 128px); }
 
 /* The task list (log side, top) moves under the banner row while the log is hidden. */
 body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden #directorTaskList {

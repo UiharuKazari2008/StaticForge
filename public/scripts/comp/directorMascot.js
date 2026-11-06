@@ -333,7 +333,7 @@ class DirectorMascot {
     layout() {
         // not shown: nothing to measure (applyView lays her out again when she shows)
         if (!this.root || !this.manifest || !this.host || !this._shown) return;
-        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => this.placeResult());
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => { this.placeResult(); this.placeChrome(); });
         const hostBox = this.host.getBoundingClientRect();
         const composer = this.host.querySelector('#directorComposer');
         this.fitLogPanel(composer);
@@ -960,6 +960,11 @@ class DirectorMascot {
         const c = composer ? composer.getBoundingClientRect() : null;
         const base = c && c.height && l.height ? Math.max(0, Math.round(l.bottom - c.top + 6)) : 10;
         this.el.quick.style.bottom = `${base}px`;
+        // The banner row starts under the "This session belongs to ..." strip when it shows.
+        const strip = document.getElementById('directorWorkspaceBanner');
+        const sb = strip && !strip.classList.contains('hidden') && this.host.contains(strip) ? strip.getBoundingClientRect() : null;
+        const top = sb && sb.height && sb.bottom > l.top ? Math.round(sb.bottom - l.top + 8) : 12;
+        this.layer.style.setProperty('--dm-top', `${top}px`);
     }
 
     // Log peek: the full log over the dialogue for a moment; Log again, Escape, or the next send closes it.
