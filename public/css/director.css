@@ -5150,7 +5150,7 @@ body #directorSessionChat .dm-vn-layer .dm-hud-chip,
 body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary,
 body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle,
 body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn, #directorSendBtn),
-body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn {
+body #directorContainer.dm-vn-on #directorPersonaGroup {
     --dm-cut: 7px;
     --dm-edge: var(--dm-line, #8fcfdc);
     --dm-face: linear-gradient(180deg, #ffffff, var(--dm-tint, #eef7fa));
@@ -5167,13 +5167,13 @@ body #directorSessionChat .dm-vn-layer .dm-hud-chip::before,
 body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary::before,
 body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle::before,
 body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn, #directorSendBtn)::before,
-body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn::before,
+body #directorContainer.dm-vn-on #directorPersonaGroup::before,
 body #directorSessionChat .dm-vn-layer .dm-quick button::after,
 body #directorSessionChat .dm-vn-layer .dm-hud-chip::after,
 body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary::after,
 body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle::after,
 body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn, #directorSendBtn)::after,
-body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn::after {
+body #directorContainer.dm-vn-on #directorPersonaGroup::after {
     content: '';
     display: block;
     position: absolute;
@@ -5194,7 +5194,7 @@ body #directorSessionChat .dm-vn-layer .dm-hud-chip::before,
 body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary::before,
 body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle::before,
 body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn, #directorSendBtn)::before,
-body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn::before {
+body #directorContainer.dm-vn-on #directorPersonaGroup::before {
     inset: 0;
     z-index: -2;
     background: var(--dm-edge);
@@ -5206,7 +5206,7 @@ body #directorSessionChat .dm-vn-layer .dm-hud-chip::after,
 body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary::after,
 body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle::after,
 body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn, #directorSendBtn)::after,
-body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn::after {
+body #directorContainer.dm-vn-on #directorPersonaGroup::after {
     inset: 1.5px;
     z-index: -1;
     background: var(--dm-face);
@@ -5218,8 +5218,7 @@ body #directorSessionChat .dm-vn-layer .dm-quick button[aria-pressed="true"],
 body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary:hover:not(:disabled),
 body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle:is(:hover, [data-state="on"]),
 body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn):hover:not(:disabled),
-body #directorContainer.dm-vn-on #directorSendBtn,
-body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn.active {
+body #directorContainer.dm-vn-on #directorSendBtn {
     --dm-edge: var(--dm-teal-deep, #167f99);
     --dm-face: linear-gradient(180deg, var(--dm-hi, #47c9dc), var(--dm-teal, #22a7bf) 60%, var(--dm-teal-deep, #167f99));
     background: none;
@@ -5229,7 +5228,7 @@ body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn.activ
 body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary { --dm-cut: 8px; }
 body #directorContainer.dm-vn-on #directorSendBtn { --dm-cut: 8px; }
 body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn),
-body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn { --dm-cut: 6px; }
+body #directorContainer.dm-vn-on #directorPersonaGroup { --dm-cut: 6px; }
 body #directorSessionChat .dm-vn-layer .dm-hud-chip { --dm-cut: 8px; }
 
 /* Thinking aloud (click the thought cloud): the text box streams her live thinking, italic and softer;
@@ -5258,3 +5257,40 @@ body #directorSessionChat .dm-vn-layer .dm-hud-chip { --dm-cut: 8px; }
     padding: 10px 18px;
     border-radius: 30px;
 }
+
+/* Persona switch (a sliding segmented control): one cut-corner frame for the group (the shared
+   ::before / ::after layers above); the buttons are plain labels and the slider is the filled accent
+   piece behind the active one (Yukimi 2026-11-06: per-button faces fought the slider). */
+body #directorContainer.dm-vn-on #directorPersonaGroup {
+    padding: 2px;
+    gap: 0;
+}
+
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn,
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn.active {
+    position: relative;
+    z-index: 1;
+    clip-path: none;
+    background: none;
+    box-shadow: none;
+    border: 0;
+    color: var(--dm-ink, #1c2b3a);
+    font-weight: 600;
+}
+
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn.active { color: #fff; }
+
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn::before,
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn::after { content: none; }
+
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-slider {
+    z-index: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: linear-gradient(180deg, var(--dm-hi, #47c9dc), var(--dm-teal, #22a7bf) 60%, var(--dm-teal-deep, #167f99));
+    clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+}
+
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-slider::before,
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-slider::after { content: none; }
