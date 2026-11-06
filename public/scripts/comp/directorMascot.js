@@ -606,6 +606,7 @@ class DirectorMascot {
         if (reset && reset.onChatChange) this.resetStage();
         this._growthArmed = false;   // the next chat's stage is set quietly from its own cards
         this._bubble = { think: '', say: '' };
+        this.resetReader();
         this.hideResult();
         this.togglePeek(false);
         this.dialogue = { kind: 'idle', text: '' };
@@ -620,6 +621,7 @@ class DirectorMascot {
         this._lastAssistantLength = 0;
         this._toolSeen = -1;     // the first stream update sets the baseline (a reload mid-turn pops nothing old)
         this._bubble = { think: '', say: '' };
+        this.resetReader();
         this.hideResult();
         this.togglePeek(false);
         this.setWorking(true);
@@ -659,21 +661,88 @@ class DirectorMascot {
         }
         const lastOf = (type) => (latest && latest.type === type && latest.text ? String(latest.text) : '');
         this._bubble = { think: lastOf('thinking'), say: lastOf('assistant') };
-        this.paintBubbles();
+        if (latest) this.feedReader(latest.type, latest.text);
+        else this.paintBubbles();
+    }
+
+    // ---- paced bubble reader (Yukimi 2026-11-06: human reading speed, and slow enough to fill the time
+    // tools take). Thoughts and lines queue; the bubble types the current one at READ_CPS and holds it a
+    // moment when done. A row that keeps growing (live text) extends the current item. A long backlog
+    // skips ahead to the newest so she never lags a whole turn behind.
+    feedReader(kind, text) {
+        const clean = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!clean) return;
+        const r = this._reader || (this._reader = { queue: [], current: null, shown: 0, holdUntil: 0 });
+        const last = r.queue.length ? r.queue[r.queue.length - 1] : r.current;
+        if (last && last.kind === kind && (clean === last.text || clean.startsWith(last.text) || last.text.startsWith(clean))) {
+            if (clean.length > last.text.length) last.text = clean;
+            this.startReader();
+            return;
+        }
+        r.queue.push({ kind, text: clean });
+        // Over three behind: keep only the newest waiting item.
+        if (r.queue.length > 3) r.queue.splice(0, r.queue.length - 1);
+        this.startReader();
+    }
+
+    startReader() {
+        if (this._readerTimer) return;
+        const READ_CPS = 20;
+        const STEP_MS = 50;
+        const tick = () => {
+            this._readerTimer = null;
+            const r = this._reader;
+            if (!r || !this.working) return;
+            const now = Date.now();
+            if (!r.current || (r.shown >= r.current.text.length && now >= r.holdUntil && r.queue.length)) {
+                if (!r.queue.length) { this.paintBubbles(); return; }
+                r.current = r.queue.shift();
+                r.shown = 0;
+            }
+            // A very long thought with newer ones waiting: jump to its last few sentences.
+            if (r.queue.length && r.current.text.length - r.shown > 500) r.shown = r.current.text.length - 300;
+            if (r.shown < r.current.text.length) {
+                // Behind on a backlog: read a little faster rather than drop words.
+                const speed = READ_CPS * (r.queue.length ? 1.6 : 1);
+                r.shown = Math.min(r.current.text.length, r.shown + (speed * STEP_MS) / 1000);
+                if (r.shown >= r.current.text.length) {
+                    const words = r.current.text.split(' ').length;
+                    r.holdUntil = Date.now() + Math.min(4000, 1200 + words * 40);
+                }
+            }
+            this.paintBubbles();
+            const waiting = r.shown < r.current.text.length || r.queue.length;
+            if (waiting) this._readerTimer = setTimeout(tick, STEP_MS);
+        };
+        this._readerTimer = setTimeout(tick, 0);
+    }
+
+    resetReader() {
+        if (this._readerTimer) clearTimeout(this._readerTimer);
+        this._readerTimer = null;
+        this._reader = { queue: [], current: null, shown: 0, holdUntil: 0 };
     }
 
     paintBubbles() {
         if (!this.el || !this.el.think) return;
         const on = this.vnBubbles() && this.working;
-        const clip = (text, max) => {
-            const t = String(text || '').replace(/\s+/g, ' ').trim();
-            return t.length > max ? `\u2026${t.slice(-max)}` : t;
-        };
-        const think = on ? clip(this._bubble.think, 240) : '';
-        const say = on ? clip(this._bubble.say, 420) : '';
-        // One bubble at a time: talking wins over thinking.
-        this.el.think.classList.toggle('hidden', !think || !!say);
+        const r = this._reader;
+        const item = on && r && r.current ? r.current : null;
+        let text = item ? item.text.slice(0, Math.floor(r.shown)) : '';
+        // The bubble holds about three lines of the current sentence run: the newest words stay in view.
+        const MAX = item && item.kind === 'assistant' ? 360 : 300;
+        if (text.length > MAX) {
+            const cut = text.slice(-MAX);
+            const space = cut.indexOf(' ');
+            text = `…${space > 0 ? cut.slice(space + 1) : cut}`;
+        }
+        const typing = !!item && r.shown < item.text.length;
+        const think = item && item.kind === 'thinking' ? text : '';
+        const say = item && item.kind === 'assistant' ? text : '';
+        this.el.think.classList.toggle('hidden', !think);
         this.el.say.classList.toggle('hidden', !say);
+        this.el.think.classList.toggle('dm-typing', typing && !!think);
+        this.el.say.classList.toggle('dm-typing', typing && !!say);
         if (this.el.thinkText.textContent !== think) this.el.thinkText.textContent = think;
         if (this.el.sayText.textContent !== say) this.el.sayText.textContent = say;
     }

@@ -4437,7 +4437,12 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 .dm-vn-layer .dm-bubble,
 .dm-vn-layer .dm-tool-pops {
     position: absolute;
-    max-width: min(40%, 460px);
+}
+
+/* Bubbles: wide enough for three easy lines, frosted glass with a sheen (#706). */
+.dm-vn-layer .dm-bubble {
+    max-width: min(52%, 640px);
+    min-width: 280px;
 }
 
 .dm-vn-layer[data-side="left"] :is(.dm-bubble, .dm-tool-pops) { left: 33%; }
@@ -4445,13 +4450,23 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 
 .dm-vn-layer .dm-bubble {
     top: 6%;
-    padding: 10px 14px;
-    background: hsl(0 0% 100% / 94%);
-    color: #1f2a37;
-    font-size: 13.5px;
-    line-height: 1.45;
-    box-shadow: 0 4px 16px hsl(0 0% 0% / 35%);
-    animation: dm-bubble-in 0.22s ease-out;
+    padding: 14px 20px;
+    color: #10233d;
+    font-size: 15px;
+    line-height: 1.5;
+    background:
+        linear-gradient(180deg, hsl(0 0% 100% / 55%) 0%, hsl(0 0% 100% / 18%) 48%, hsl(0 0% 100% / 8%) 52%, hsl(195 80% 92% / 22%) 100%),
+        hsl(205 60% 96% / 38%);
+    border: 1px solid hsl(0 0% 100% / 75%);
+    box-shadow:
+        0 10px 34px hsl(222 60% 8% / 38%),
+        0 0 0 1px hsl(200 60% 40% / 12%),
+        inset 0 1px 0 hsl(0 0% 100% / 90%),
+        inset 0 -10px 24px hsl(195 90% 80% / 18%);
+    backdrop-filter: blur(16px) saturate(1.5);
+    -webkit-backdrop-filter: blur(16px) saturate(1.5);
+    text-shadow: 0 1px 0 hsl(0 0% 100% / 60%);
+    animation: dm-bubble-in 0.25s ease-out;
 }
 
 .dm-vn-layer .dm-bubble-text {
@@ -4461,11 +4476,29 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
     overflow-wrap: anywhere;
 }
 
-/* Thought: a cloud, grey italic, trailing puffs toward her head. */
+/* The reader's caret while the line is still being typed. */
+.dm-vn-layer .dm-bubble.dm-typing .dm-bubble-text::after {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 1em;
+    margin-left: 3px;
+    vertical-align: -2px;
+    border-radius: 2px;
+    background: hsl(190 80% 45% / 80%);
+    animation: dm-caret 0.9s steps(2) infinite;
+}
+
+@keyframes dm-caret { 50% { opacity: 0; } }
+
+/* Thought: a soft frosted cloud, italic, with glass puffs toward her head. */
 .dm-vn-layer .dm-think {
-    border-radius: 24px;
-    color: #4b5563;
+    border-radius: 30px;
+    color: #2d3b52;
     font-style: italic;
+    background:
+        linear-gradient(180deg, hsl(0 0% 100% / 50%) 0%, hsl(0 0% 100% / 14%) 50%, hsl(260 70% 92% / 20%) 100%),
+        hsl(230 50% 96% / 34%);
 }
 
 .dm-vn-layer .dm-think::before,
@@ -4473,21 +4506,24 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
     content: '';
     position: absolute;
     border-radius: 50%;
-    background: hsl(0 0% 100% / 94%);
-    box-shadow: 0 2px 6px hsl(0 0% 0% / 25%);
+    background: hsl(0 0% 100% / 45%);
+    border: 1px solid hsl(0 0% 100% / 75%);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 3px 10px hsl(222 60% 8% / 30%), inset 0 1px 0 hsl(0 0% 100% / 90%);
 }
 
-.dm-vn-layer .dm-think::before { width: 16px; height: 16px; bottom: -14px; }
-.dm-vn-layer .dm-think::after { width: 9px; height: 9px; bottom: -28px; }
-.dm-vn-layer[data-side="left"] .dm-think::before { left: 6px; }
-.dm-vn-layer[data-side="left"] .dm-think::after { left: -6px; }
-.dm-vn-layer[data-side="right"] .dm-think::before { right: 6px; }
-.dm-vn-layer[data-side="right"] .dm-think::after { right: -6px; }
+.dm-vn-layer .dm-think::before { width: 20px; height: 20px; bottom: -16px; }
+.dm-vn-layer .dm-think::after { width: 11px; height: 11px; bottom: -32px; }
+.dm-vn-layer[data-side="left"] .dm-think::before { left: 8px; }
+.dm-vn-layer[data-side="left"] .dm-think::after { left: -8px; }
+.dm-vn-layer[data-side="right"] .dm-think::before { right: 8px; }
+.dm-vn-layer[data-side="right"] .dm-think::after { right: -8px; }
 
-/* Speech: a rounded box with a tail toward her. */
+/* Speech: glass with a teal edge and a tail toward her. */
 .dm-vn-layer .dm-say {
-    border-radius: 12px;
-    border: 1px solid hsl(0 0% 0% / 12%);
+    border-radius: 14px;
+    border-left: 4px solid hsl(188 70% 48% / 85%);
 }
 
 .dm-vn-layer .dm-say::before {
@@ -4496,18 +4532,19 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
     top: 22px;
     width: 0;
     height: 0;
-    border: 9px solid transparent;
+    border: 10px solid transparent;
 }
 
-.dm-vn-layer[data-side="left"] .dm-say::before { left: -17px; border-right-color: hsl(0 0% 100% / 94%); }
-.dm-vn-layer[data-side="right"] .dm-say::before { right: -17px; border-left-color: hsl(0 0% 100% / 94%); }
+.dm-vn-layer[data-side="left"] .dm-say::before { left: -22px; border-right-color: hsl(188 70% 48% / 85%); }
+.dm-vn-layer[data-side="right"] .dm-say::before { right: -22px; border-left-color: hsl(188 70% 48% / 85%); }
 
-/* Tool calls: small popups under the bubble, three at most, each gone after about 3 s. */
+/* Tool calls: small glass chips under the bubble, three at most, each gone after about 3 s. */
 .dm-vn-layer .dm-tool-pops {
-    top: 42%;
+    top: 44%;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 7px;
+    max-width: min(40%, 420px);
 }
 
 .dm-vn-layer[data-side="right"] .dm-tool-pops { align-items: flex-end; }
@@ -4515,16 +4552,33 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 .dm-tool-pop {
     display: flex;
     flex-direction: column;
-    max-width: 320px;
-    padding: 5px 10px;
-    border: 1px solid #9db4d3;
-    border-radius: 3px;
-    background: linear-gradient(#ffffff, #eaf1fa);
-    box-shadow: 0 3px 10px hsl(0 0% 0% / 35%);
-    color: #1e395b;
-    font-size: 12px;
-    animation: dm-pop-in 0.25s ease-out;
+    max-width: 360px;
+    padding: 6px 12px 6px 26px;
+    position: relative;
+    border-radius: 10px;
+    border: 1px solid hsl(0 0% 100% / 70%);
+    background: linear-gradient(180deg, hsl(0 0% 100% / 50%), hsl(200 70% 94% / 22%)), hsl(210 50% 96% / 30%);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    box-shadow: 0 6px 18px hsl(222 60% 8% / 35%), inset 0 1px 0 hsl(0 0% 100% / 85%);
+    color: #10233d;
+    font-size: 12.5px;
+    text-shadow: 0 1px 0 hsl(0 0% 100% / 55%);
+    animation: dm-pop-in 0.28s ease-out;
     transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+.dm-tool-pop::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    margin-top: -4px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #bff4fb, #1fa3b8);
+    box-shadow: 0 0 8px hsl(188 80% 55% / 80%);
 }
 
 .dm-tool-pop.dm-out {
@@ -4533,7 +4587,7 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 }
 
 .dm-tool-pop-name { font-weight: 600; }
-.dm-tool-pop-detail { color: #4a5a70; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dm-tool-pop-detail { color: #3d4f69; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 @keyframes dm-bubble-in { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
 @keyframes dm-pop-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
