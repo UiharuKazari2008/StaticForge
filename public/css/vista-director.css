@@ -779,3 +779,32 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-cha
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorSendBtn:disabled > i {
     filter: grayscale(1) opacity(0.55);
 }
+
+/* Report card (#704): a white list box inside the ivory reply, like a Vista details pane */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-report-card {
+    margin-top: 6px;
+    background: #fff;
+    border: 1px solid #c9c0a6;
+    border-radius: 3px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-report-head,
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-report-foot {
+    background: linear-gradient(#fbfaf6, #f1ede2);
+    border-color: #e0d8c3;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-report-title {
+    color: #1e395b;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-report-row + .director-report-row {
+    border-top-color: #efeadd;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-report-tally,
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-report-status,
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-report-request,
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-report-note {
+    color: #6d6d6d;
+}

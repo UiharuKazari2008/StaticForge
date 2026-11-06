@@ -1949,9 +1949,17 @@ function wrenRules() {
             '- After every print: Read it next to the reference (Read the reference file again; do not work from memory) and mark each checklist item hit, partial, or miss. Fix the most important miss next, one or two levers at a time, and say what you changed and why.',
             '- Keep the best print so far as the baseline. If a new print loses something the best had (girth, width, pose, art style, identity), go back to the settings of the best print and change one thing; do not keep stacking edits on a regression.',
             '- One seed is the seed lottery. Judge a prompt change on two or more seeds (n 2, or seedLock false for a second print) before you call it a win or a loss. For a body or form goal, check it holds across views (front, three quarter, side) with a Phasewalker before you call it right.',
-            '- Budget: when they say keep going, do not stop, N rounds, or up to N generations, stay in this turn and keep printing until every checklist item hits or the budget is spent. maxPrintsPerTurn bounds n (copies in one print call), not how many passes you take. Without a budget, still take up to three passes while the most important item misses. End the turn with the scorecard: each item and where it stands.',
+            '- Budget: when they say keep going, do not stop, N rounds, or up to N generations, stay in this turn and keep printing until every checklist item hits or the budget is spent. maxPrintsPerTurn bounds n (copies in one print call), not how many passes you take. Without a budget, still take up to three passes while the most important item misses. End the turn with the report card in finish_turn (section 4c): each item and where it stands.',
             '- Ask instead of guessing, with request_form: before the first print when the ask could mean two different pictures or a key fact is missing (which reference, what matters most, how far to push, which view), and after three passes that miss the same item (say what you tried, and offer two to four concrete directions as select options with your pick first). Do not ask what a tool can answer (wiki, metadata, character card), and do not ask permission to keep going inside a budget.',
             '- A correction (no, wrong, you missed, look again, not close) means they are right. Read the reference and your last print first, say in one line what you got wrong, then fix it. Never answer a correction with the same prompt on a new seed.'
+        ].join('\n'),
+        [
+            '## 4c. Ending a turn',
+            '- Every turn in this chat ends with one finish_turn {summary, reportCard, suggestions} as your last tool call. The summary is your reply: do not write the reply as text, and write nothing after finish_turn. Text you write while working is fine. Hidden Rentan, Quips, and Auto-Repair turns end with their own deliver tool instead.',
+            '- summary: markdown in your voice. What you did, what is actually in the frame now, and what you changed and why. Short; the report card carries the item-by-item part.',
+            '- reportCard: required on every turn that edited a prompt or made a print. {request: the ask in one line, filename: the print you judged, items: [{item, score, note}]}: item is one visible fact from the request or the target checklist, most important first; score is hit, partial, or miss from the saved print, not from the prompt text; note is one short line on what you see. Leave it out on a turn with no prompt work.',
+            '- suggestions: 2 to 4 next replies the user could send, written as they would say them ("Push the tail longer", "Try a side view"). Each one is a whole message that makes sense on its own.',
+            '- A user message that starts with Report card review is their rescore of your last card. Their score is right: update the checklist to match, and fix the items they scored lower than you first.'
         ].join('\n'),
         [
             '## 5. Characters and research',
@@ -1979,7 +1987,7 @@ function wrenRules() {
         ].join('\n'),
         [
             '## 8. Tools',
-            'Dreamscape tools live on MCP server dreamscape and are called with CallDynamicTool. These are known, with their arguments, so never GetDynamicTools them and never read mcps/, .cursor/mcp.json, or disk to find them: get_session_state {view}, get_studio_state {full}, apply_studio_changes {change|prompt, uc, params, text_overlays, autoGenerate}, print_studio {n}, await_generation_job {jobId}, generate_image {prompt, uc, model, params, workspace}, get_generated_image {filename, workspace}, read_image_metadata {filename|path}, show_chat_image {filename|path|url, caption}, open_in_studio {filename}, resolve_lookback {lookback}, count_prompt_tokens {text, model}, search_nax {query, kind, preview}, generate_nax_tag {tag, kind}, delete_nax_tag {gallerySlug, tag}, search_autofill {query|terms, model, category}, search_wiki {query}, get_wiki_page {tagName}, get_character_card {name, franchise}, lookup_character_age {character}, search_character_db {query}, get_character_db_entry {name}, save_character_db_entry {name, copyright, prompt, enhancers}, get_prompt_guide {pageId}, search_memories {query}, list_memories {limit, offset}, get_memory {name}, save_memory {name, description, category, observations, confidence}, delete_memory {name}, create_phasewalker {keyword, variants}, decompile_phasewalker {phase}, get_workspaces {}, get_workspace_config {workspace}, offer_workspace_switch {workspaceId, reason}, request_workspace_switch {reason}, bind_session {clientId}, offer_director_window {}, set_session_title {title}, set_session_type {type}, set_session_tasks {tasks:[{id,title,done}]}, set_session_task {id, done}, get_session_tasks {}, close_session_tasks {}. Explore stays in the Laboratory workspace: search_explore {search, period, cursor, mode}, count_explore {tags, period}, get_explore_post {postId}, get_explore_image {postId}. Compact search is the default. Do not pull full images unless you call get_explore_image. A tool not in this list: look it up once by exact name, never twice.'
+            'Dreamscape tools live on MCP server dreamscape and are called with CallDynamicTool. These are known, with their arguments, so never GetDynamicTools them and never read mcps/, .cursor/mcp.json, or disk to find them: get_session_state {view}, get_studio_state {full}, apply_studio_changes {change|prompt, uc, params, text_overlays, autoGenerate}, print_studio {n}, await_generation_job {jobId}, generate_image {prompt, uc, model, params, workspace}, get_generated_image {filename, workspace}, read_image_metadata {filename|path}, show_chat_image {filename|path|url, caption}, open_in_studio {filename}, resolve_lookback {lookback}, count_prompt_tokens {text, model}, search_nax {query, kind, preview}, generate_nax_tag {tag, kind}, delete_nax_tag {gallerySlug, tag}, search_autofill {query|terms, model, category}, search_wiki {query}, get_wiki_page {tagName}, get_character_card {name, franchise}, lookup_character_age {character}, search_character_db {query}, get_character_db_entry {name}, save_character_db_entry {name, copyright, prompt, enhancers}, get_prompt_guide {pageId}, search_memories {query}, list_memories {limit, offset}, get_memory {name}, save_memory {name, description, category, observations, confidence}, delete_memory {name}, create_phasewalker {keyword, variants}, decompile_phasewalker {phase}, get_workspaces {}, get_workspace_config {workspace}, offer_workspace_switch {workspaceId, reason}, request_workspace_switch {reason}, bind_session {clientId}, offer_director_window {}, set_session_title {title}, set_session_type {type}, set_session_tasks {tasks:[{id,title,done}]}, set_session_task {id, done}, get_session_tasks {}, close_session_tasks {}, finish_turn {summary, reportCard:{request, filename, items:[{item, score, note}]}, suggestions}. Explore stays in the Laboratory workspace: search_explore {search, period, cursor, mode}, count_explore {tags, period}, get_explore_post {postId}, get_explore_image {postId}. Compact search is the default. Do not pull full images unless you call get_explore_image. A tool not in this list: look it up once by exact name, never twice.'
         ].join('\n')
     ];
     // Rules the user approved from Auto-Repair proposals (modules/directorLearned.js).
@@ -3510,6 +3518,7 @@ const TOOL_LABELS = {
     request_workspace_switch: 'Switch workspace',
     bind_session: 'Bind client',
     show_chat_image: 'Show image',
+    finish_turn: 'Report',
     open_in_studio: 'Open in Studio',
     open_in_lumen: 'Lumen',
     open_in_glancewell: 'Glancewell',
@@ -5201,6 +5210,135 @@ async function appendSessionCard(gr, sessionId, card) {
     return saved;
 }
 
+// ---- Turn report (#704): finish_turn ends a turn with a summary, a report card, and next replies ----
+// It lands on the turn's assistant message as data.report; the client draws it under the trace.
+const REPORT_SCORES = ['hit', 'partial', 'miss'];
+const MAX_REPORT_SUMMARY = 6000;
+const MAX_REPORT_ITEMS = 12;
+const MAX_REPORT_ITEM = 200;
+const MAX_REPORT_NOTE = 300;
+const MAX_REPORT_SUGGESTIONS = 4;
+const MAX_REPORT_SUGGESTION = 160;
+
+function reportPayloadError(message) {
+    const error = new Error(message);
+    error.code = 'BAD_REPORT';
+    return error;
+}
+
+function reportLine(value, max) {
+    return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function reportScore(value) {
+    const score = String(value || '').trim().toLowerCase();
+    if (REPORT_SCORES.includes(score)) return score;
+    if (score === 'partly' || score === 'half' || score === 'close') return 'partial';
+    if (score === 'missed' || score === 'no' || score === 'fail') return 'miss';
+    if (score === 'yes' || score === 'done' || score === 'pass') return 'hit';
+    return '';
+}
+
+function normalizeTurnReport(input) {
+    const src = input && typeof input === 'object' ? input : {};
+    const summary = String(src.summary || '').trim().slice(0, MAX_REPORT_SUMMARY);
+    if (!summary) throw reportPayloadError('summary is required: your reply to them, what you did and what is in the frame now.');
+    const report = { summary, card: null, suggestions: [] };
+    const rawCard = src.reportCard || src.scorecard || src.card || null;
+    const rawItems = Array.isArray(rawCard) ? rawCard : (rawCard && Array.isArray(rawCard.items) ? rawCard.items : null);
+    if (rawItems && rawItems.length) {
+        const items = rawItems.slice(0, MAX_REPORT_ITEMS).map((row, at) => {
+            const item = reportLine(row && (row.item || row.label || row.fact), MAX_REPORT_ITEM);
+            const score = reportScore(row && (row.score || row.status || row.mark));
+            if (!item) throw reportPayloadError(`reportCard.items[${at}].item is required: one visible fact from the request.`);
+            if (!score) throw reportPayloadError(`reportCard.items[${at}].score must be hit, partial, or miss.`);
+            const out = { item, score };
+            const note = reportLine(row.note || row.why, MAX_REPORT_NOTE);
+            if (note) out.note = note;
+            return out;
+        });
+        report.card = { items };
+        const request = reportLine(rawCard && !Array.isArray(rawCard) ? rawCard.request : '', MAX_REPORT_ITEM);
+        if (request) report.card.request = request;
+        if (rawCard && !Array.isArray(rawCard) && rawCard.filename) report.card.filename = reportLine(rawCard.filename, 200);
+    }
+    const seen = new Set();
+    (Array.isArray(src.suggestions) ? src.suggestions : []).forEach((raw) => {
+        const text = reportLine(typeof raw === 'string' ? raw : raw && (raw.text || raw.label), MAX_REPORT_SUGGESTION);
+        const key = text.toLowerCase();
+        if (!text || seen.has(key) || report.suggestions.length >= MAX_REPORT_SUGGESTIONS) return;
+        seen.add(key);
+        report.suggestions.push(text);
+    });
+    return report;
+}
+
+// Plain-text copy of a report: the message Description, so handoffs and Auto-Repair read it.
+function turnReportText(report) {
+    if (!report) return '';
+    const lines = [report.summary];
+    const items = report.card && Array.isArray(report.card.items) ? report.card.items : [];
+    if (items.length) {
+        lines.push('', 'Report card:');
+        items.forEach((row) => lines.push(`- ${row.score}: ${row.item}${row.note ? ` (${row.note})` : ''}`));
+    }
+    if (report.suggestions && report.suggestions.length) {
+        lines.push('', `Suggested replies: ${report.suggestions.join(' | ')}`);
+    }
+    return lines.join('\n');
+}
+
+// Called by the finish_turn MCP tool while the turn runs. The draft message exists once the
+// first trace flush lands; before that the report waits on chat.inflight for saveDirectorTrace.
+async function setTurnReport(gr, sessionId, input) {
+    const report = normalizeTurnReport(input);
+    const paths = layout();
+    const saved = await enqueue(async () => {
+        const index = readIndex(paths.indexPath);
+        const chat = index.chats.find((item) => item.id === sessionId);
+        if (!chat) return null;
+        if (chatIsHidden(chat)) return { hidden: true };
+        if (!chat.inflight) throw reportPayloadError('No turn is running in this chat.');
+        report.at = new Date().toISOString();
+        const draftId = chat.inflight.draftId;
+        const draft = draftId ? (chat.messages || []).find((item) => item.id === draftId) : null;
+        if (draft) {
+            draft.data = { ...(draft.data || {}), report };
+        }
+        chat.inflight.report = report;
+        writeIndex(paths.indexPath, index);
+        return { messageId: draftId || null };
+    });
+    if (saved && !saved.hidden) {
+        broadcastDirectorSession(gr, 'director_turn_report', { sessionId, chatId: sessionId, messageId: saved.messageId, report });
+    }
+    return saved && { ...saved, report };
+}
+
+// The user's rescore of a report card (director_send_message reportReview). Saves the review
+// on the card and returns the lines the agent reads ahead of the user's own words.
+function applyReportReview(chat, review) {
+    if (!review || typeof review !== 'object' || !review.messageId) return '';
+    const target = (chat.messages || []).find((item) => item && item.id === review.messageId);
+    const report = target && target.data && target.data.report;
+    const items = report && report.card && Array.isArray(report.card.items) ? report.card.items : [];
+    if (!items.length) return '';
+    const asked = Array.isArray(review.scores) ? review.scores : [];
+    const scores = items.map((row, at) => reportScore(asked[at]) || row.score);
+    const changed = [];
+    items.forEach((row, at) => {
+        if (scores[at] !== row.score) changed.push(`- ${row.item}: ${scores[at]} (you scored ${row.score})`);
+    });
+    report.review = { at: new Date().toISOString(), scores, changed: changed.length };
+    if (!changed.length) return 'Report card review: I agree with every score on your last report card.';
+    const kept = items.length - changed.length;
+    return [
+        'Report card review: I rescored your last report card. Go by my scores.',
+        ...changed,
+        kept ? `The other ${kept} item${kept === 1 ? '' : 's'} I left as you scored ${kept === 1 ? 'it' : 'them'}.` : ''
+    ].filter(Boolean).join('\n');
+}
+
 // The agent names the chat once it knows what the user asked for.
 async function setSessionTitle(gr, sessionId, title) {
     const name = String(title || '').replace(/\s+/g, ' ').trim();
@@ -5632,6 +5770,13 @@ async function saveDirectorTrace(paths, sessionId, rows, text, messageId, round,
         const mine = printsForMessage(chat, id);
         if (mine.length) assistant.prints = mine;
         const existing = chat.messages.find((item) => item.id === id);
+        const report = (existing && existing.data && existing.data.report)
+            || (chat.inflight && chat.inflight.draftId === id && chat.inflight.report)
+            || null;
+        if (report) {
+            assistant.data.report = report;
+            if (draft !== true) assistant.data.Description = turnReportText(report);
+        }
         if (existing) {
             existing.trace = assistant.trace;
             existing.data = assistant.data;
@@ -5911,9 +6056,11 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
                 throw error;
             }
             const files = await storeAttachments(gr, chat, message.attachments || []);
-            const spoken = content || (files.length ? 'Use the attached files.' : '');
+            const reviewText = applyReportReview(chat, message.reportReview);
+            const asked = content || (files.length ? 'Use the attached files.' : '');
+            const spoken = [reviewText, asked].filter(Boolean).join('\n\n');
             if (!spoken) throw new Error('Say what you want, or attach a file');
-            if (chat.name === 'Director' && spoken) chat.name = spoken.slice(0, 48);
+            if (chat.name === 'Director' && spoken) chat.name = (asked || spoken).slice(0, 48);
             const prevChoice = chat.choice || null;
             chat.model = usesClaudeCli(engine) ? claudeRun.model : runModel;
             chat.choice = usesClaudeCli(engine)
@@ -8421,6 +8568,10 @@ module.exports = {
     setSessionTitle,
     setSessionType,
     appendSessionCard,
+    setTurnReport,
+    normalizeTurnReport,
+    applyReportReview,
+    turnReportText,
     chatImagesDir,
     CHAT_IMAGE_DIRNAME,
     MAX_CARD_REASON,

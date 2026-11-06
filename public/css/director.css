@@ -4313,3 +4313,99 @@ body #directorSessionChat.director-mascot-on.director-mascot-view #directorCompo
     overflow-y: auto;
     overscroll-behavior: contain;
 }
+
+/* finish_turn report card (#704): createReportCard in public/scripts/comp/director.js */
+.director-report-card {
+    margin-top: var(--spacing-sm);
+    border: 1px solid var(--glass-border-2);
+    border-radius: 10px;
+    background: var(--glass-layer-1);
+    overflow: hidden;
+}
+
+.director-report-head,
+.director-report-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+}
+
+.director-report-head {
+    justify-content: space-between;
+    border-bottom: 1px solid var(--glass-border-2);
+}
+
+.director-report-title {
+    font-weight: 600;
+}
+
+.director-report-tally,
+.director-report-status,
+.director-report-request,
+.director-report-note {
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+.director-report-request {
+    padding: 4px 8px 0;
+}
+
+.director-report-items {
+    display: flex;
+    flex-direction: column;
+}
+
+.director-report-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px 4px 10px;
+    border-left: 3px solid transparent;
+}
+
+.director-report-row + .director-report-row {
+    border-top: 1px solid var(--glass-border-1, rgba(255, 255, 255, 0.06));
+}
+
+.director-report-row[data-score="hit"] { border-left-color: #3fae5a; }
+.director-report-row[data-score="partial"] { border-left-color: #d9a227; }
+.director-report-row[data-score="miss"] { border-left-color: #d64545; }
+
+.director-report-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.director-report-scores {
+    flex: none;
+    display: flex;
+    gap: 2px;
+}
+
+.director-report-scores .btn-small {
+    min-width: 0;
+    padding: 1px 7px;
+    opacity: 0.55;
+}
+
+.director-report-scores .btn-small[aria-pressed="true"] {
+    opacity: 1;
+    font-weight: 600;
+}
+
+.director-report-row.is-changed .director-report-item {
+    font-style: italic;
+}
+
+.director-report-foot {
+    justify-content: space-between;
+    border-top: 1px solid var(--glass-border-2);
+}
+
+.director-report-card.is-rescored .director-report-status {
+    color: inherit;
+}

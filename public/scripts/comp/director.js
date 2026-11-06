@@ -153,6 +153,50 @@ function directorReplyOptions(text) {
     return items;
 }
 
+// finish_turn report (#704): data.report on an assistant message (modules/cursorDirector.js setTurnReport).
+const DIRECTOR_REPORT_SCORES = ['hit', 'partial', 'miss'];
+
+function directorReportItems(report) {
+    return report && report.card && Array.isArray(report.card.items) ? report.card.items : [];
+}
+
+// Scores the card shows: the user's last submitted review wins over the agent's marks.
+function directorReportBaseline(report) {
+    const items = directorReportItems(report);
+    const reviewed = report && report.review && Array.isArray(report.review.scores) ? report.review.scores : [];
+    return items.map((row, at) => (DIRECTOR_REPORT_SCORES.includes(reviewed[at]) ? reviewed[at] : row.score));
+}
+
+// Same lines the server writes into the user turn (applyReportReview), for the optimistic bubble.
+function directorReportReviewText(report, scores) {
+    const items = directorReportItems(report);
+    if (!items.length) return '';
+    const changed = [];
+    items.forEach((row, at) => {
+        const score = DIRECTOR_REPORT_SCORES.includes(scores[at]) ? scores[at] : row.score;
+        if (score !== row.score) changed.push(`- ${row.item}: ${score} (you scored ${row.score})`);
+    });
+    if (!changed.length) return 'Report card review: I agree with every score on your last report card.';
+    const kept = items.length - changed.length;
+    return [
+        'Report card review: I rescored your last report card. Go by my scores.',
+        ...changed,
+        kept ? `The other ${kept} item${kept === 1 ? '' : 's'} I left as you scored ${kept === 1 ? 'it' : 'them'}.` : ''
+    ].filter(Boolean).join('\n');
+}
+
+// Latest reply's report, when it is the last thing in the chat (suggestions only offer the next reply).
+function directorLastReport(messages) {
+    if (!Array.isArray(messages)) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const message = messages[i];
+        if (!message || message.role === 'event') continue;
+        if (message.role !== 'assistant') return null;
+        return message.data && message.data.report ? { message, report: message.data.report } : null;
+    }
+    return null;
+}
+
 function directorLastOfferText(messages) {
     if (!Array.isArray(messages) || !messages.length) return '';
     let lastRole = '';
@@ -3484,10 +3528,13 @@ class Director {
         root.querySelectorAll('[data-reply-choices]').forEach((node) => node.remove());
         const runningHere = this._running && this.currentSession && this._runningSessionId === this.currentSession.id;
         if (runningHere) return;
-        const options = directorReplyOptions(directorLastOfferText(messages));
-        if (options.length < 2) return;
-        const rows = root.querySelectorAll('.director-message.assistant');
-        let host = null;
+        const last = directorLastReport(messages);
+        const suggested = last && Array.isArray(last.report.suggestions) ? last.report.suggestions.filter(Boolean) : [];
+        // A report without suggestions offers none; parsing its summary would invent some.
+        const options = last ? suggested : directorReplyOptions(directorLastOfferText(messages));
+        if (options.length < (last ? 1 : 2)) return;
+        let host = last ? root.querySelector(`.director-turn-report[data-report-id="${CSS.escape(String(last.message.id || ''))}"]`) : null;
+        const rows = host ? [] : root.querySelectorAll('.director-message.assistant');
         for (let i = rows.length - 1; i >= 0; i--) {
             if (rows[i].closest('.director-live-turn')) continue;
             host = rows[i];
@@ -3497,6 +3544,7 @@ class Director {
         const bar = document.createElement('div');
         bar.className = 'director-message-actions';
         bar.dataset.replyChoices = '1';
+        if (last) bar.classList.add('director-report-suggestions');
         options.forEach((label) => {
             const button = document.createElement('button');
             button.type = 'button';
@@ -4895,8 +4943,13 @@ class Director {
             const structuredData = message.data || null;
             const captions = structuredData && Array.isArray(structuredData.Caption) ? structuredData.Caption : [];
             captions.forEach((caption) => units.push({ type: 'caption', caption }));
+            const report = message.role === 'assistant' && structuredData && structuredData.report ? structuredData.report : null;
             if (Array.isArray(message.trace) && message.trace.length) {
+                // The report summary is the reply; text written after finish_turn would repeat it.
+                let finishAt = -1;
+                if (report) message.trace.forEach((row, index) => { if (row && row.type === 'tool' && row.name === 'finish_turn') finishAt = index; });
                 message.trace.forEach((row, index) => {
+                    if (report && finishAt >= 0 && index >= finishAt) return;
                     units.push({
                         type: 'trace',
                         row,
@@ -4904,9 +4957,10 @@ class Director {
                         model: message.model || null
                     });
                 });
-            } else {
+            } else if (!report) {
                 units.push({ type: 'message', message });
             }
+            if (report) units.push({ type: 'report', message });
         });
         return units;
     }
@@ -4949,6 +5003,7 @@ class Director {
             if (seen) carry++;
             this._animateRows = !seen;
             if (unit.type === 'caption') el = this.createQuoteMessageElement(unit.caption);
+            else if (unit.type === 'report') el = this.createReportElement(unit.message);
             else if (unit.type === 'card') el = this.createDirectorCardElement(unit.message);
             else if (unit.type === 'trace') el = this.createTraceRow(unit.row, unit.expandKey, unit.model);
             else el = this.createMessageElement(unit.message);
@@ -5026,6 +5081,7 @@ class Director {
         visible.forEach((unit) => {
             let el = null;
             if (unit.type === 'caption') el = this.createQuoteMessageElement(unit.caption);
+            else if (unit.type === 'report') el = this.createReportElement(unit.message);
             else if (unit.type === 'card') el = this.createDirectorCardElement(unit.message);
             else if (unit.type === 'trace') el = this.createTraceRow(unit.row, unit.expandKey, unit.model);
             else el = this.createMessageElement(unit.message);
@@ -5966,6 +6022,185 @@ class Director {
 
     // show_chat_image / offer_workspace_switch cards, live and replayed. Same markup as
     // a trace row so the message filter and the compact styling already cover them.
+    // finish_turn report: the summary reply, the hit/miss card the user can rescore, and
+    // (paintReplyChoices) the suggested next replies.
+    createReportElement(message) {
+        const report = message && message.data && message.data.report;
+        if (!report) return null;
+        const id = String(message.id || message.timestamp || '');
+        const el = document.createElement('div');
+        el.className = 'director-message assistant director-turn-report';
+        el.dataset.traceKind = 'assistant';
+        el.dataset.messageKey = id;
+        el.dataset.reportId = id;
+        if (this._animateRows) el.classList.add('director-row-arrive');
+        const header = document.createElement('div');
+        header.className = 'director-user-message-header';
+        const badge = document.createElement('span');
+        badge.className = 'director-request-type-badge';
+        badge.textContent = directorPersonaName(this.persona);
+        header.appendChild(badge);
+        el.appendChild(header);
+        const body = document.createElement('div');
+        body.className = 'director-message-content';
+        body.dataset.raw = report.summary || '';
+        body.innerHTML = this.processMarkdown(report.summary || '');
+        body.dataset.md = '1';
+        el.appendChild(body);
+        const items = directorReportItems(report);
+        if (items.length) el.appendChild(this.createReportCard(message, report, items));
+        this.attachMessageMenu(el);
+        return el;
+    }
+
+    createReportCard(message, report, items) {
+        const id = String(message.id || '');
+        this._reportScores = this._reportScores || new Map();
+        const baseline = directorReportBaseline(report);
+        const scores = (this._reportScores.get(id) || baseline).slice();
+        const card = document.createElement('div');
+        card.className = 'director-report-card';
+        const head = document.createElement('div');
+        head.className = 'director-report-head';
+        const title = document.createElement('span');
+        title.className = 'director-report-title';
+        title.textContent = 'Report card';
+        const tally = document.createElement('span');
+        tally.className = 'director-report-tally';
+        head.appendChild(title);
+        head.appendChild(tally);
+        card.appendChild(head);
+        if (report.card.request) {
+            const request = document.createElement('div');
+            request.className = 'director-report-request';
+            request.textContent = report.card.request;
+            card.appendChild(request);
+        }
+        const list = document.createElement('div');
+        list.className = 'director-report-items';
+        list.setAttribute('role', 'list');
+        const foot = document.createElement('div');
+        foot.className = 'director-report-foot';
+        const status = document.createElement('span');
+        status.className = 'director-report-status';
+        const submit = document.createElement('button');
+        submit.type = 'button';
+        submit.className = 'btn-primary btn-small';
+        submit.textContent = 'Submit';
+        submit.title = 'Send your scores to Director now';
+        const paint = () => {
+            const counts = { hit: 0, partial: 0, miss: 0 };
+            scores.forEach((score) => { counts[score] = (counts[score] || 0) + 1; });
+            tally.textContent = `${counts.hit} hit · ${counts.partial} partial · ${counts.miss} miss`;
+            const changed = scores.some((score, at) => score !== baseline[at]);
+            card.classList.toggle('is-rescored', changed);
+            if (changed) status.textContent = 'Rescored. Sends with your next message, or Submit now.';
+            else if (report.review) status.textContent = 'Reviewed.';
+            else status.textContent = 'Click a score to change it.';
+            list.querySelectorAll('[data-report-row]').forEach((row) => {
+                const at = Number(row.dataset.reportRow);
+                row.dataset.score = scores[at];
+                row.classList.toggle('is-changed', scores[at] !== items[at].score);
+                row.querySelectorAll('button[data-score]').forEach((btn) => {
+                    btn.setAttribute('aria-pressed', btn.dataset.score === scores[at] ? 'true' : 'false');
+                });
+            });
+        };
+        items.forEach((row, at) => {
+            const line = document.createElement('div');
+            line.className = 'director-report-row';
+            line.setAttribute('role', 'listitem');
+            line.dataset.reportRow = String(at);
+            const text = document.createElement('div');
+            text.className = 'director-report-text';
+            const item = document.createElement('span');
+            item.className = 'director-report-item';
+            item.textContent = row.item;
+            text.appendChild(item);
+            if (row.note) {
+                const note = document.createElement('span');
+                note.className = 'director-report-note';
+                note.textContent = row.note;
+                text.appendChild(note);
+            }
+            const picks = document.createElement('div');
+            picks.className = 'director-report-scores';
+            picks.setAttribute('role', 'group');
+            picks.setAttribute('aria-label', `Score for ${row.item}`);
+            DIRECTOR_REPORT_SCORES.forEach((score) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn-secondary btn-small';
+                btn.dataset.score = score;
+                btn.textContent = score === 'hit' ? 'Hit' : (score === 'partial' ? 'Partial' : 'Miss');
+                btn.title = score === items[at].score ? `${btn.textContent} (Director's score)` : btn.textContent;
+                btn.addEventListener('click', () => {
+                    scores[at] = score;
+                    if (scores.every((value, i) => value === baseline[i])) this._reportScores.delete(id);
+                    else this._reportScores.set(id, scores.slice());
+                    paint();
+                });
+                picks.appendChild(btn);
+            });
+            line.appendChild(text);
+            line.appendChild(picks);
+            list.appendChild(line);
+        });
+        card.appendChild(list);
+        submit.addEventListener('click', () => this.submitReportReview(message, scores.slice()));
+        foot.appendChild(status);
+        foot.appendChild(submit);
+        card.appendChild(foot);
+        paint();
+        return card;
+    }
+
+    // Submit: the review goes as its own message. Busy chat: it waits for the next send.
+    submitReportReview(message, scores) {
+        const id = String(message && message.id || '');
+        if (!id) return;
+        const busyHere = this._running && this.currentSession && this._runningSessionId === this.currentSession.id;
+        if (busyHere) {
+            this._reportScores = this._reportScores || new Map();
+            this._reportScores.set(id, scores);
+            showGlassToast('info', 'Director', 'Director is working. Your scores go with your next message.');
+            return;
+        }
+        this.dispatchOutgoing({ content: '', attachments: [], reportReview: { messageId: id, scores } });
+    }
+
+    // Unsent rescore on this chat's cards rides along with the next message (latest card only).
+    takeReportReview() {
+        const pending = this._reportScores;
+        const messages = this.currentSession && Array.isArray(this.currentSession.messages) ? this.currentSession.messages : [];
+        if (!pending || !pending.size || !messages.length) return null;
+        let review = null;
+        for (let i = messages.length - 1; i >= 0 && !review; i--) {
+            const message = messages[i];
+            const report = message && message.data && message.data.report;
+            const scores = report && message.id ? pending.get(String(message.id)) : null;
+            if (!scores) continue;
+            const baseline = directorReportBaseline(report);
+            if (scores.some((score, at) => score !== baseline[at])) review = { messageId: String(message.id), scores };
+        }
+        messages.forEach((message) => { if (message && message.id) pending.delete(String(message.id)); });
+        return review;
+    }
+
+    // The card shows "Reviewed" right away; the server copy says the same after the next load.
+    markReportReviewed(review) {
+        const messages = this.currentSession && Array.isArray(this.currentSession.messages) ? this.currentSession.messages : [];
+        const message = messages.find((item) => item && String(item.id) === review.messageId);
+        const report = message && message.data && message.data.report;
+        if (!report) return '';
+        report.review = { at: new Date().toISOString(), scores: review.scores.slice() };
+        const old = this.directorChatMessages
+            ? this.directorChatMessages.querySelector(`.director-turn-report[data-report-id="${CSS.escape(review.messageId)}"] .director-report-card`)
+            : null;
+        if (old) old.replaceWith(this.createReportCard(message, report, directorReportItems(report)));
+        return directorReportReviewText(report, review.scores);
+    }
+
     createDirectorCardElement(message) {
         const data = (message && message.data) || {};
         const kind = message && message.message_type;
@@ -7537,7 +7772,11 @@ class Director {
     }
 
     dispatchOutgoing(pending) {
-        const content = (pending && pending.content ? pending.content : '').trim();
+        const typedContent = (pending && pending.content ? pending.content : '').trim();
+        const reportReview = (pending && pending.reportReview) || this.takeReportReview();
+        if (reportReview && this._reportScores) this._reportScores.delete(reportReview.messageId);
+        const reviewText = reportReview ? this.markReportReviewed(reportReview) : '';
+        const content = [reviewText, typedContent].filter(Boolean).join('\n\n');
         const attachments = pending && pending.attachments
             ? pending.attachments
             : this.pendingAttachments.map((item) => {
@@ -7606,7 +7845,8 @@ class Director {
                 requestId: Date.now().toString(),
                 persona: this.persona || 'wren',
                 sessionId: this.currentSession.id,
-                content: content,
+                content: typedContent,
+                reportReview: reportReview || undefined,
                 engine: this.activeEngine(),
                 effort: this.selectedEffort || 'medium',
                 fast: this.fast === true,

@@ -884,6 +884,51 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'finish_turn',
+        core: true,
+        description: 'Director chat only: end the turn. summary is your reply (markdown) and replaces a written reply; write nothing after this call. reportCard is required on any turn that edited a prompt or made a print: items are the visible facts from the request, most important first, each scored hit, partial, or miss from the saved print. The user sees it as a card and can rescore it. suggestions are 2 to 4 next replies they can click, written as they would say them. Call once, as your last tool call; a second call replaces the first.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['summary'],
+            properties: {
+                summary: { type: 'string', description: 'Your reply: what you did, what is in the frame now, what you changed and why. Markdown.' },
+                reportCard: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['items'],
+                    description: 'Hit and miss against the request. Required when this turn edited a prompt or printed.',
+                    properties: {
+                        request: { type: 'string', description: 'The ask in one line' },
+                        filename: { type: 'string', description: 'The print you judged' },
+                        items: {
+                            type: 'array',
+                            maxItems: 12,
+                            items: {
+                                type: 'object',
+                                additionalProperties: false,
+                                required: ['item', 'score'],
+                                properties: {
+                                    item: { type: 'string', description: 'One visible fact from the request or target checklist' },
+                                    score: { type: 'string', enum: ['hit', 'partial', 'miss'] },
+                                    note: { type: 'string', description: 'One short line on what you see in the print' }
+                                }
+                            }
+                        }
+                    }
+                },
+                suggestions: {
+                    type: 'array',
+                    maxItems: 4,
+                    items: { type: 'string' },
+                    description: '2 to 4 next replies the user can click, each a whole message in their words'
+                },
+                chatId: { type: 'string', description: 'Director chat id. Only needed if the server cannot tell which chat is running.' }
+            }
+        }
+    },
+    {
         name: 'deliver_rentan',
         description: 'Hidden Rentan turn only: hand the resolved scene back to the Studio generate that is waiting. expanders are dg_ prefixes (dg_time, dg_weather, dg_season, dg_holiday, dg_scene, dg_action) with short tag values, every one you want kept. prompt, uc, and characters only when they changed. applied needs one line per control in your Controls list or the delivery is rejected. An error means fix the payload and call again.',
         scope: 'generation',
@@ -5345,7 +5390,7 @@ function queueDirectorLongJobNotice(globalResources, req) {
 // index.json (modules/cursorDirector.js), so the user sees them after a reopen.
 const DIRECTOR_SESSION_TOOLS = new Set([
     'set_session_title', 'set_session_type', 'set_session_tasks', 'set_session_task', 'get_session_tasks', 'close_session_tasks',
-    'offer_workspace_switch', 'request_workspace_switch', 'show_chat_image'
+    'offer_workspace_switch', 'request_workspace_switch', 'show_chat_image', 'finish_turn'
 ]);
 
 // show_chat_image sources. A gallery print, a file in the Director's own home, or a
@@ -5619,6 +5664,29 @@ async function runDirectorSessionTool(globalResources, name, input, req) {
             offered: true,
             next: 'The card only offers the jump. Keep passing workspace on your own calls.'
         });
+    }
+    if (name === 'finish_turn') {
+        if (typeof director.setTurnReport !== 'function') {
+            return mcpTextResult({ success: false, error: 'Xi chats end with a written reply', code: 'NOT_SUPPORTED', chatId }, true);
+        }
+        try {
+            const saved = await director.setTurnReport(globalResources, chatId, input);
+            if (!saved) {
+                return mcpTextResult({ success: false, error: 'Director chat not found', code: 'SESSION_NOT_FOUND', chatId }, true);
+            }
+            if (saved.hidden) {
+                return mcpTextResult({ success: true, chatId, ignored: true, next: 'Hidden turns end with their own deliver tool.' });
+            }
+            return mcpTextResult({
+                success: true,
+                chatId,
+                items: saved.report.card ? saved.report.card.items.length : 0,
+                suggestions: saved.report.suggestions.length,
+                next: 'The user sees your summary, report card, and suggestions. End the turn now with no more text.'
+            });
+        } catch (error) {
+            return mcpTextResult({ success: false, error: error.message, code: error.code || 'BAD_REPORT', chatId }, true);
+        }
     }
     if (name === 'show_chat_image') {
         const source = await resolveChatImageSource(globalResources, director, chatId, input);

@@ -186,6 +186,14 @@ Broadcast when the agent names the chat with `set_session_title`.
 { "type": "director_session_renamed", "data": { "sessionId": "<chat id>", "name": "Convert the Rapi set to V5" }, "timestamp": "<ISO-8601>" }
 ```
 
+### Server → client: `director_turn_report`
+
+Wren turns end with the MCP tool `finish_turn { summary, reportCard: { request, filename, items: [{ item, score, note }] }, suggestions }` instead of a written reply (#704). `score` is `hit`, `partial`, or `miss`; up to 12 items and 4 suggestions. The report is stored on the turn's assistant message as `data.report` (`{ summary, card, suggestions, at, review? }`) and its plain text becomes `data.Description`. The client draws the summary under the turn's trace, the card with per-item rescore buttons and Submit, and the suggestions as reply buttons on the latest reply. Hidden Rentan, Quips, and Auto-Repair chats ignore the tool; Xi refuses it.
+
+```json
+{ "type": "director_turn_report", "data": { "sessionId": "<chat id>", "messageId": "<assistant message id>", "report": { "summary": "...", "card": { "items": [{ "item": "Long tail", "score": "hit" }] }, "suggestions": ["Try a side view"] } }, "timestamp": "<ISO-8601>" }
+```
+
 ## Workspace ownership and handoffs
 
 Director sessions carry a `workspaceId` so chat history, image search, and Studio work stay scoped to the workspace the chat belongs to instead of whichever workspace the user happens to have open later.
@@ -434,6 +442,7 @@ The chat's task list renders in `#directorTaskList`, above the messages inside `
 | `effort` | `low`, `medium`, `high`, or `xhigh` (TokenRouter: `low`, `medium`, `high`) |
 | `fast` | Optional. When true and the model has a fast variant, the turn uses it |
 | `model` | Model family id from `director_get_models` for that engine, such as `grok-4.7` or `moonshotai/kimi-k3` |
+| `reportReview` | Optional. `{ messageId, scores: ["hit"\|"partial"\|"miss", ...] }`: the user's rescore of that assistant message's report card, one score per item. The server saves it as `data.report.review` and puts the changed items ahead of `content` in the turn (`content` may be empty). The client sends it from the card's Submit, or with the next message when the card was rescored but not submitted. See [Turn report](#server--client-director_turn_report). |
 
 **Success response:** `director_send_message_response`
 
