@@ -19,11 +19,14 @@ function galleryViewFolder(view) {
  * failure throws. Resolves { done, cancelled, shown, values } (values: each worker's result).
  */
 async function galleryTransfer(op, filenames, from, to, worker) {
-    if (typeof fileOperationProgress === 'undefined') {
-        const value = await worker(filenames);
-        return { done: filenames.length, cancelled: false, shown: false, values: [value] };
-    }
-    return fileOperationProgress.batches({ op, from, to, items: filenames.map(name => ({ name })) }, filenames, worker);
+    // desktopSounds.coalesce: public/scripts/comp/desktopSounds.js — one Recycle at the end, not per batch
+    return desktopSounds.coalesce(async () => {
+        if (typeof fileOperationProgress === 'undefined') {
+            const value = await worker(filenames);
+            return { done: filenames.length, cancelled: false, shown: false, values: [value] };
+        }
+        return fileOperationProgress.batches({ op, from, to, items: filenames.map(name => ({ name })) }, filenames, worker);
+    });
 }
 /**
  * Gallery images saved to this computer: one browser download each under Vista's progress dialog

@@ -278,13 +278,40 @@
         });
     }
 
+    // Events a multi-item operation plays once at its end instead of per batch (coalesce)
+    const COALESCED_EVENTS = ['recycle'];
+    let coalesceDepth = 0;
+    const coalescedPending = new Set();
+
     function play(eventId, options) {
         const id = normalizeEvent(eventId);
+        if (coalesceDepth > 0 && COALESCED_EVENTS.indexOf(id) !== -1) {
+            coalescedPending.add(id);
+            return Promise.resolve(false);
+        }
         if (!id || !state.enabled || !isDesktopNow()) return Promise.resolve(false);
         const file = resolveFile(id, options && options.startup);
         if (!file) return Promise.resolve(false);
         unlock();
         return loadBuffer(file).then((buffer) => playBuffer(buffer));
+    }
+
+    /**
+     * await fn() with Recycle held: a multi-delete / scrap move in batches plays it once when the
+     * whole operation ends, not once per batch or item. Nested calls play at the outermost end.
+     */
+    async function coalesce(fn) {
+        coalesceDepth++;
+        try {
+            return await fn();
+        } finally {
+            coalesceDepth--;
+            if (coalesceDepth === 0 && coalescedPending.size) {
+                const ids = [...coalescedPending];
+                coalescedPending.clear();
+                ids.forEach((id) => play(id));
+            }
+        }
     }
 
     /** The Sound dialog's Test: one file, even while the scheme or the event is silent. */
@@ -371,6 +398,7 @@
         isEnabled,
         setEnabled,
         play,
+        coalesce,
         playFile,
         resolveFile,
         outputLevel,

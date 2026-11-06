@@ -4989,6 +4989,11 @@ class ExplorerApplet {
      * failText (or rethrows when there is none). Resolves the items done.
      */
     async _eachWithProgress(progress, items, fn, failText) {
+        // desktopSounds.coalesce: public/scripts/comp/desktopSounds.js — one Recycle at the end, not per item
+        return desktopSounds.coalesce(() => this._eachWithProgressRun(progress, items, fn, failText));
+    }
+
+    async _eachWithProgressRun(progress, items, fn, failText) {
         const done = [];
         for (const item of items) {
             if (progress && !progress.next()) break;
@@ -5020,6 +5025,11 @@ class ExplorerApplet {
      * return how many it acted on. Failures as _eachWithProgress. Resolves the count acted on.
      */
     async _eachImageBatch(progress, items, fn, failText) {
+        // desktopSounds.coalesce: public/scripts/comp/desktopSounds.js — one Recycle at the end, not per batch
+        return desktopSounds.coalesce(() => this._eachImageBatchRun(progress, items, fn, failText));
+    }
+
+    async _eachImageBatchRun(progress, items, fn, failText) {
         const batches = new Map();
         for (const entry of items || []) {
             const filename = this._explorerResolvedFilename(entry);
