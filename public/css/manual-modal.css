@@ -4298,3 +4298,63 @@ body:not(.desktop-mode) div#manualModal {
 #pipelineStagesContainer input[id$="_steps"].hidden {
     display: none !important;
 }
+
+/* ---- Studio menu bar (imageGenerationSettings.js wireStudioMenuBar): File Edit Add Model Image Tools
+   View Help under the title, in place of the Studio hamburger on the desktop (Yukimi 2026-11-06).
+   Aero / Vista Basic draw it with Vista's Win32 menu bar (vista-menus.css); Classic gets a flat one. */
+#manualModalMenuBar {
+    display: none;
+}
+
+body.desktop-mode #manualModal.has-studio-menubar #manualModalMenuBar {
+    display: block;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 27px;
+    z-index: 4;
+}
+
+body.desktop-mode #manualModal.has-studio-menubar:not(.windowed) #manualModalMenuBar {
+    top: 0;
+}
+
+body.desktop-mode #manualModal.windowed.has-studio-menubar {
+    padding-top: 46px;
+}
+
+body.desktop-mode #manualModal.has-studio-menubar:not(.windowed) {
+    padding-top: 19px;
+}
+
+/* The menu bar replaces the hamburger on the desktop; the mobile layout keeps the hamburger. */
+body.desktop-mode #manualModal.has-studio-menubar #studioImageGenSettingsBtn {
+    display: none !important;
+}
+
+body.desktop-mode.windows-classic-theme #manualModal .studio-menubar {
+    display: flex;
+    height: 20px;
+    padding: 0 2px;
+    background: #d4d0c8;
+    border-bottom: 1px solid #808080;
+}
+
+body.desktop-mode.windows-classic-theme #manualModal .studio-menubar .naxt-menu-title {
+    height: 20px;
+    padding: 0 7px;
+    border: 1px solid transparent;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 11px Tahoma, "Segoe UI", sans-serif;
+}
+
+body.desktop-mode.windows-classic-theme #manualModal .studio-menubar .naxt-menu-title:hover {
+    border-color: #fff #808080 #808080 #fff;
+}
+
+body.desktop-mode.windows-classic-theme #manualModal .studio-menubar .naxt-menu-title.context-open {
+    border-color: #808080 #fff #fff #808080;
+}

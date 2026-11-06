@@ -2629,6 +2629,102 @@ function handleImageGenerationSettingsMenuAction(action, target, item) {
     return false;
 }
 
+// ---- Studio menu bar (Yukimi 2026-11-06): File Edit Add Model Image Tools View Help under the title,
+// in place of the Studio hamburger on the desktop. Every menu reuses the hamburger's own item builders,
+// so both stay in step; the hamburger remains for the mobile layout. Vista's Win32 menu bar look and
+// dropdowns (contextMenu data-win32-menus, public/css/vista-menus.css).
+const STUDIO_MENUBAR_MENUS = ['File', 'Edit', 'Add', 'Model', 'Image', 'Tools', 'View', 'Help'];
+
+// The hamburger's toggle icons as checkable rows for the Model menu.
+function studioToggleRowsFromIcons() {
+    return getStudioGenerationToggleIcons().map((icon) => {
+        const row = { ...icon, text: icon.tooltip || icon.text || '' };
+        delete row.tooltip;
+        if (icon.keepMenuOpen) {
+            row.showIndicator = true;
+            row.indicatorMark = 'check';
+        }
+        return row;
+    });
+}
+
+function studioMenuBarItems(menu) {
+    const sep = { separator: true };
+    if (menu === 'File') {
+        return [
+            ...getStudioFileMenuItems(),
+            sep,
+            { icon: 'fa-regular fa-xmark-large', text: 'Close', action: 'studio-menubar-close' }
+        ];
+    }
+    if (menu === 'Edit') return getStudioEditMenuItems();
+    if (menu === 'Add') return getStudioAddComponentMenuItems();
+    if (menu === 'Model') {
+        // The hamburger's generation section, in its order, then the toggles.
+        const section = getStudioImageGenerationSettingsMenuConfig().sections[2].items;
+        const at = section.findIndex((row) => row && row.text === 'Add Component');
+        const params = section.slice(at + 1);
+        const presets = section.slice(0, Math.max(0, at - 1));
+        return [...params, sep, ...presets, sep, ...studioToggleRowsFromIcons()];
+    }
+    if (menu === 'Image') {
+        const compare = getStudioImageGenerationSettingsMenuConfig().sections[0].items.find((row) => row && row.text === 'Comparison');
+        return [...getStudioImageMenuItems(), sep, compare].filter(Boolean);
+    }
+    if (menu === 'Tools') {
+        const tools = getStudioImageGenerationSettingsMenuConfig().sections[1].items;
+        return [
+            ...tools,
+            sep,
+            { icon: 'fas fa-wrench', text: 'Preferences', optionsfn: getStudioPreferencesMenuItems }
+        ];
+    }
+    if (menu === 'View') return getStudioViewMenuItems();
+    if (menu === 'Help') return [{ icon: 'fas fa-circle-info', text: 'About DreamStudio', action: 'studio-about' }];
+    return [];
+}
+
+function handleStudioMenuBarAction(action, target, item) {
+    if (action === 'studio-menubar-close') {
+        const close = document.getElementById('closeManualModalBtn');
+        if (close) close.click();
+        return;
+    }
+    return handleImageGenerationSettingsMenuAction(action, target, item);
+}
+
+function wireStudioMenuBar() {
+    const host = document.getElementById('manualModalMenuBar');
+    const modal = document.getElementById('manualModal');
+    if (!host || !modal || !contextMenu || host.dataset.menubarWired === 'true') return;
+    host.dataset.menubarWired = 'true';
+    const bar = document.createElement('div');
+    bar.className = 'naxt-menubar studio-menubar';
+    bar.setAttribute('role', 'menubar');
+    bar.setAttribute('data-win32-menus', '');
+    STUDIO_MENUBAR_MENUS.forEach((menu) => {
+        const title = document.createElement('button');
+        title.type = 'button';
+        title.className = 'naxt-menu-title';
+        title.setAttribute('role', 'menuitem');
+        title.dataset.menu = menu;
+        title.textContent = menu;
+        bar.appendChild(title);
+        // attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        contextMenu.attachClickMenuToElement(title, {
+            openSubmenusOnHover: true,
+            onAction: handleStudioMenuBarAction,
+            onHide: function () {
+                // flushAutofillSettingsDraftIfDirty: public/scripts/comp/autofillSettings.js
+                void flushAutofillSettingsDraftIfDirty();
+            },
+            sections: [{ type: 'list', initfn: (section) => { section.items = studioMenuBarItems(menu); } }]
+        });
+    });
+    host.replaceChildren(bar);
+    modal.classList.add('has-studio-menubar');
+}
+
 function wireStudioImageGenerationSettingsMenu() {
     const btn = document.getElementById('studioImageGenSettingsBtn');
     if (!btn || !contextMenu) return;
@@ -2689,6 +2785,7 @@ function wireImageGenerationSettingsControls() {
     }
 
     wireStudioImageGenerationSettingsMenu();
+    wireStudioMenuBar();
 }
 
 function initImageGenerationSettings() {
