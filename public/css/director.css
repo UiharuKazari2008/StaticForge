@@ -4749,10 +4749,22 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 .dm-vn-layer .dm-dialog[data-tab="card"] .dm-dialog-body { scrollbar-width: thin; text-shadow: none; font-size: 14px; }
 .dm-vn-layer .dm-dialog[data-tab="card"] .dm-dialog-body::-webkit-scrollbar { display: initial; }
 .dm-vn-layer .dm-dialog-body .director-report-card { margin-top: 0; }
-.dm-vn-layer .dm-dialog-reply { color: #fff; }
-/* Sound effects and stress, as in her VN lines: bold italic. */
-.dm-vn-layer .dm-dialog-reply strong,
-.dm-vn-layer .dm-say strong { font-weight: 700; font-style: italic; }
+/* The reply carries director-message-content (a flex column in the log): back to text flow here. */
+body #directorSessionChat .dm-vn-layer .dm-dialog-reply { display: block; color: #fff; }
+/* Sound effects and stress, as in her VN lines: bold italic, inline, in the line's own colour
+   (the log's markdown styles make strong/em chips). */
+body #directorSessionChat .dm-vn-layer :is(.dm-dialog-reply, .dm-say) :is(strong, em) {
+    display: inline;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: inherit;
+}
+
+body #directorSessionChat .dm-vn-layer :is(.dm-dialog-reply, .dm-say) strong { font-weight: 700; font-style: italic; }
+body #directorSessionChat .dm-vn-layer :is(.dm-dialog-reply, .dm-say) em { font-style: italic; }
 
 .dm-vn-layer .dm-dialog-pager {
     align-self: flex-end;
