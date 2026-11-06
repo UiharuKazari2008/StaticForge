@@ -893,7 +893,8 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['summary'],
             properties: {
-                summary: { type: 'string', description: 'Your reply: what you did, what is in the frame now, what you changed and why. Markdown.' },
+                summary: { type: 'string', description: 'Your reply: what you did, what is in the frame now, what you changed and why. Markdown. Shown in the message log.' },
+                spoken: { type: 'string', description: 'One to three short sentences you would say out loud (mascot dialogue, may be read by a voice). Plain words: no markdown, tags, weights, or filenames.' },
                 reportCard: {
                     type: 'object',
                     additionalProperties: false,

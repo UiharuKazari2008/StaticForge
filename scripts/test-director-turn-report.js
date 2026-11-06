@@ -78,4 +78,17 @@ assert.strictEqual(sandbox.directorLastReport(messages).message.id, 'a1');
 assert.strictEqual(sandbox.directorLastReport(messages.concat({ id: 'u2', role: 'user' })), null);
 assert.strictEqual(sandbox.directorLastReport([{ id: 'a0', role: 'assistant', data: {} }]), null);
 
+// spoken: the mascot dialogue's short line, plain text; fallback cut from the summary.
+const spokenReport = director.normalizeTurnReport({ summary: 'Long markdown reply.', spoken: '  **Hands** are back on her `hips`.\n Looks right. ' });
+assert.strictEqual(spokenReport.spoken, 'Hands are back on her hips. Looks right.');
+assert.ok(!('spoken' in director.normalizeTurnReport({ summary: 'x' })));
+assert.strictEqual(sandbox.directorSpokenLine({ spoken: 'Short line.' }, 'Long reply.'), 'Short line.');
+assert.strictEqual(
+    sandbox.directorSpokenLine(null, '**Done.** Moved to v4.5 with `1.2::wide hips::`. Want a side view, or a 3/4 angle?'),
+    'Done. Moved to v4.5 with wide hips. Want a side view, or a 3/4 angle?'
+);
+const longLine = sandbox.directorSpokenLine(null, `${'Word '.repeat(30).trim()}. ${'More '.repeat(60).trim()}.`);
+assert.ok(longLine.length <= 240 && longLine.endsWith('Word.'), 'stops at a sentence under the cap');
+assert.strictEqual(sandbox.directorSpokenLine(null, '```\ncode only\n```'), '');
+
 console.log('test-director-turn-report: ok');

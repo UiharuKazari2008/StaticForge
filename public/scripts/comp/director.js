@@ -185,6 +185,35 @@ function directorReportReviewText(report, scores) {
     ].filter(Boolean).join('\n');
 }
 
+// The mascot dialogue's short line: report.spoken, else the opening sentences of the full reply with
+// the markdown, code, and weights taken out (the whole reply stays in the message log).
+function directorSpokenLine(report, text, max = 240) {
+    const given = report && typeof report.spoken === 'string' ? report.spoken.trim() : '';
+    if (given) return given;
+    const plain = String(text || '')
+        .replace(/```[\s\S]*?```/g, ' ')
+        .replace(/`([^`]*)`/g, '$1')
+        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/-?\d*\.?\d+::|::/g, ' ')
+        .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, '')
+        .replace(/[*_#>|]+/g, '')
+        .replace(/\s+/g, ' ')
+        .replace(/\s+([,.;:!?])/g, '$1')
+        .replace(/(?:,\s*){2,}/g, ', ')
+        .trim();
+    if (!plain) return '';
+    // A sentence ends at . ! ? followed by a space, so 1.8 and v4.5 stay whole.
+    const sentences = plain.split(/(?<=[.!?]["')\]]?)\s+/).filter(Boolean);
+    let out = '';
+    for (const sentence of sentences) {
+        const next = `${out} ${sentence.trim()}`.trim();
+        if (out && next.length > max) break;
+        out = next;
+        if (out.length >= max * 0.6) break;
+    }
+    return out.length > max + 60 ? `${out.slice(0, max).replace(/\s+\S*$/, '')}…` : out;
+}
+
 // Latest reply's report, when it is the last thing in the chat (suggestions only offer the next reply).
 function directorLastReport(messages) {
     if (!Array.isArray(messages)) return null;
@@ -3601,11 +3630,13 @@ class Director {
             if (!text) text = String((message && message.data && message.data.Description) || '').trim();
         }
         if (!text) return null;
+        // The dialogue speaks the short line; the full reply is the message log's (Log peek shows it).
+        const line = directorSpokenLine(report, text);
+        if (!line) return null;
         const reply = document.createElement('div');
         reply.className = 'director-message-content dm-dialog-reply';
-        reply.dataset.raw = text;
-        reply.innerHTML = this.processMarkdown(text);
-        reply.dataset.md = '1';
+        reply.dataset.raw = line;
+        reply.textContent = line;
         const items = report ? directorReportItems(report) : [];
         const card = items.length ? this.createReportCard(message, report, items) : null;
         const options = report
