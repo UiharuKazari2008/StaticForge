@@ -4559,6 +4559,8 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 
 .dm-vn-layer .dm-think.dm-has-thought:hover {
     z-index: 2;
+    /* Opened, it reads over the speech bubble: frosted but nearly solid. */
+    background: linear-gradient(180deg, hsl(0 0% 100% / 96%), hsl(230 40% 96% / 92%));
     width: min(56vw, 640px);
     max-width: min(60%, 680px);
     padding: 12px 18px 14px;
