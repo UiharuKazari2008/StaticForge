@@ -80,7 +80,7 @@ assert.strictEqual(sandbox.directorLastReport([{ id: 'a0', role: 'assistant', da
 
 // spoken: the mascot dialogue's short line, plain text; fallback cut from the summary.
 const spokenReport = director.normalizeTurnReport({ summary: 'Long markdown reply.', spoken: '  **Hands** are back on her `hips`.\n Looks right. ' });
-assert.strictEqual(spokenReport.spoken, 'Hands are back on her hips. Looks right.');
+assert.strictEqual(spokenReport.spoken, '**Hands** are back on her hips. Looks right.', 'emphasis stays, code marks go');
 assert.ok(!('spoken' in director.normalizeTurnReport({ summary: 'x' })));
 assert.strictEqual(sandbox.directorSpokenLine({ spoken: 'Short line.' }, 'Long reply.'), 'Short line.');
 assert.strictEqual(

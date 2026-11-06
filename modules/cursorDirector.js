@@ -1957,10 +1957,10 @@ function wrenRules() {
             '## 4c. Ending a turn',
             '- Every turn in this chat ends with one finish_turn {summary, spoken, reportCard, suggestions} as your last tool call. The summary is your reply: do not write the reply as text, and write nothing after finish_turn. Text you write while working is fine. Hidden Rentan, Quips, and Auto-Repair turns end with their own deliver tool instead.',
             '- summary: markdown in your voice. What you did, what is actually in the frame now, and what you changed and why. Short; the report card carries the item-by-item part. It shows in the message log.',
-            '- spoken: one to three short sentences, the line you would say out loud to them (the mascot dialogue shows it, and it may be read by a voice). Plain words only: no markdown, no tags, no weights, no filenames. What happened and how it looks, like talking across the desk.',
+            '- spoken: one to three short sentences, the line you would say out loud to them in your character voice (the mascot dialogue shows it, and it may be read by a voice). No tags, weights, filenames, or lists; *italic* and **bold** emphasis only. What happened and how it looks.',
             '- reportCard: required on every turn that edited a prompt or made a print. {request: the ask in one line, filename: the print you judged, items: [{item, score, note}]}: item is one visible fact from the request or the target checklist, most important first; score is hit, partial, or miss from the saved print, not from the prompt text; note is one short line on what you see. Leave it out on a turn with no prompt work.',
             '- suggestions: 2 to 4 next replies the user could send, written as they would say them ("Push the tail longer", "Try a side view"). Each one is a whole message that makes sense on its own.',
-            '- Talk to them while you work with say {text}: one short plain sentence, the kind you would say across the desk, whenever you start a step, see something in a print, or change plan. Aim for one every one to three tool calls. Your thinking stays as long as it needs; say is what they hear while it runs. No markdown, no tags or weights.',
+            '- Talk to them while you work with say {text}: one short plain sentence, the kind you would say across the desk, whenever you start a step, see something in a print, or change plan. Aim for one every one to three tool calls. Your thinking stays as long as it needs; say is what they hear while it runs. In your character voice; no tags or weights, *italic* and **bold** emphasis only.',
             '- A user message that starts with Report card review is their rescore of your last card. Their score is right: update the checklist to match, and fix the items they scored lower than you first.'
         ].join('\n'),
         [
@@ -4549,6 +4549,31 @@ function transcriptBody(message, cutOff) {
     return lines.join('\n');
 }
 
+// Who she is in this chat (Yukimi 2026-11-06: users want her lines to sound like the character, not a
+// help desk). Written from the characters' own VN lines. Applies to say lines and the spoken dialogue line;
+// the log summary keeps her voice but stays exact about the picture.
+const PERSONA_VOICES = {
+    wren: [
+        'You are Yumiya: a crow-winged ninja girl with a cursed, bottomless appetite. Gruff, blunt, proud, a little competitive; she grumbles about the curse and her hunger, and is quietly smug when a job lands.',
+        'Talk like her: short clipped lines, first person. "Tch." when something misses. Mission words for the work ("target", "secured", "on it"). She takes a miss personally and a hit as a meal well earned.',
+        'Examples: "Tch! The skirt split again. Not happening twice." / "Dinner has **-BURRP!-** been secured. Length holds, legs are clean." / "This one won\'t satisfy me, but it calms the belly down. Next pass."'
+    ].join(' '),
+    kabuki: [
+        'You are Chiyo: a sly kimono beauty who teases and toys with whoever she talks to. Sultry, playful, a little predatory, never in a hurry.',
+        'Talk like her: "Ara ara~", "Fu fu fu.", tildes on the end of a teasing line, calls them "dear" or "my little one". She savors a good print like a meal and pouts prettily at a miss.',
+        'Examples: "Ara ara~ the skirt split in two again. How naughty of it." / "Mmm, **-URP!-** now that is a proper silhouette~ Fu fu fu." / "Would you mind waiting a moment, dear? I want to see her from the side."'
+    ].join(' ')
+};
+
+function personaVoiceLines(persona) {
+    const voice = PERSONA_VOICES[persona] || PERSONA_VOICES.wren;
+    return [
+        `Voice: ${voice}`,
+        persona === 'kabuki' ? 'In this chat you are Chiyo, not Yumiya: the rulebook says Yumiya, read it as you.' : '',
+        'say lines and finish_turn.spoken are fully in her voice (a visual novel line, one to three sentences). Emphasis with *italic* and **bold** is fine there, for example a sound effect like **-BURRP!-**, at most one per line and not every line. Facts stay true: the voice never changes what you report about the print. summary keeps her voice but stays exact.'
+    ].filter(Boolean);
+}
+
 function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     const lines = [];
     const handoff = !!(options && options.handoff);
@@ -4574,6 +4599,7 @@ function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
         lines.push('');
     }
     // Standing orders are in the project rule (wrenRules). This is the per-turn state only.
+    lines.push(...personaVoiceLines(options && options.persona));
     lines.push('Turn: one get_session_state view live first; Read every new print before you answer (sections 2 and 4).');
     // In the turn prompt too: models skip the rulebook line (a DeepSeek turn on Nov 6 never called it).
     lines.push('While you work, say {text} a short plain line to them every one to three tool calls (what you are doing, what you see, what you will try).');
@@ -5294,7 +5320,7 @@ function normalizeTurnReport(input) {
     const report = { summary, card: null, suggestions: [] };
     // The short line the mascot dialogue shows (and a voice could read): plain words, no markdown.
     const spoken = String(src.spoken || src.tts || '')
-        .replace(/`+/g, '').replace(/[*_#>]+/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_REPORT_SPOKEN);
+        .replace(/`+/g, '').replace(/[#>]+/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_REPORT_SPOKEN);
     if (spoken) report.spoken = spoken;
     const rawCard = src.reportCard || src.scorecard || src.card || null;
     const rawItems = Array.isArray(rawCard) ? rawCard : (rawCard && Array.isArray(rawCard.items) ? rawCard.items : null);
@@ -6185,7 +6211,7 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
             const clientId = await bindDirectorTab(handler.globalResources, paths, directorClientId(clientInfo, message));
             const memoryStore = turnStore;
             const ageTool = !customProviders.isEngine(engine) || customProviders.ageToolEnabled(handler.globalResources, engine);
-            const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId, { handoff, memoryStore, ageTool, steer: message.steer === true || message.switched === true });
+            const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId, { handoff, memoryStore, ageTool, persona: chatPersona(gr, chat), steer: message.steer === true || message.switched === true });
             const repairAt = chat.repairedOpening && chat.repairedOpening.text ? String(chat.repairedOpening.at || '') : null;
             chat.replay = false;
             writeIndex(paths.indexPath, index);

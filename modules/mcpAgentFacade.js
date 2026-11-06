@@ -886,7 +886,7 @@ const TOOL_DEFS = [
     {
         name: 'say',
         core: true,
-        description: 'Director chat only: say one short plain sentence to the user while you work (what you are doing, what you see in a print, what you will try next). It shows at once in their chat and the mascot speech bubble. Call it often, about every one to three tool calls. No markdown, tags, or weights. It does not end the turn.',
+        description: 'Director chat only: say one short line to the user while you work, in your character voice (what you are doing, what you see in a print, what you will try next). It shows at once in their chat and the mascot speech bubble. Call it often, about every one to three tool calls. No tags, weights, or lists; *italic* and **bold** emphasis are fine. It does not end the turn.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -909,7 +909,7 @@ const TOOL_DEFS = [
             required: ['summary'],
             properties: {
                 summary: { type: 'string', description: 'Your reply: what you did, what is in the frame now, what you changed and why. Markdown. Shown in the message log.' },
-                spoken: { type: 'string', description: 'One to three short sentences you would say out loud (mascot dialogue, may be read by a voice). Plain words: no markdown, tags, weights, or filenames.' },
+                spoken: { type: 'string', description: 'One to three short sentences you would say out loud, in your character voice (mascot dialogue, may be read by a voice). No tags, weights, filenames, or lists; *italic* and **bold** emphasis are fine.' },
                 reportCard: {
                     type: 'object',
                     additionalProperties: false,

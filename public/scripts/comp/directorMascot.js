@@ -687,12 +687,13 @@ class DirectorMascot {
         if (!clean) return;
         const r = this._reader || (this._reader = { queue: [], current: null, shown: 0, holdUntil: 0 });
         const last = r.queue.length ? r.queue[r.queue.length - 1] : r.current;
-        if (last && last.kind === kind && (clean === last.text || clean.startsWith(last.text) || last.text.startsWith(clean))) {
-            if (clean.length > last.text.length) last.text = clean;
+        const plain = clean.replace(/\*+/g, '');
+        if (last && last.kind === kind && (plain === last.text || plain.startsWith(last.text) || last.text.startsWith(plain))) {
+            if (plain.length > last.text.length) { last.text = plain; last.raw = clean; }
             this.startReader();
             return;
         }
-        r.queue.push({ kind, text: clean });
+        r.queue.push({ kind, text: clean.replace(/\*+/g, ''), raw: clean });
         // Over three behind: keep only the newest waiting item.
         if (r.queue.length > 3) r.queue.splice(0, r.queue.length - 1);
         this.startReader();
@@ -750,7 +751,14 @@ class DirectorMascot {
         const typing = !!item && r.shown < item.text.length;
         this.el.say.classList.toggle('hidden', !say);
         this.el.say.classList.toggle('dm-typing', typing && !!say);
-        if (this.el.sayText.textContent !== say) this.el.sayText.textContent = say;
+        // Typed as plain text; once the line is whole its *italic* / **bold** emphasis shows.
+        const whole = !!say && !typing && item.raw && item.raw.length <= 360;
+        const key = whole ? `h:${item.raw}` : `t:${say}`;
+        if (this._sayKey !== key) {
+            this._sayKey = key;
+            if (whole && typeof directorLineHtml === 'function') this.el.sayText.innerHTML = directorLineHtml(item.raw);
+            else this.el.sayText.textContent = say;
+        }
         // The thought cloud shows ". . ." while she works; its full text only on hover.
         const thinking = on && this._thinking ? this._thinking.text : '';
         this.el.think.classList.toggle('hidden', !on);

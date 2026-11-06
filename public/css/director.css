@@ -4647,113 +4647,153 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 @keyframes dm-bubble-in { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
 @keyframes dm-pop-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-/* The finished turn: a visual novel dialogue box above the input bar (directorMascot.js showResult;
-   placeResult sets bottom and max-height). Name plate, Reply / Report card tabs, Log peek, paged reply,
-   suggestions under it. Ivory like her reply cards, so the reply markdown reads the same. */
+/* The finished turn: a visual novel text box above the input bar (directorMascot.js showResult;
+   placeResult sets bottom and max-height). Yukimi's VN reference: a dark translucent slanted box with a
+   thin light edge, a slanted name tab on top, big white text, choices in the same shape (#706). */
 .dm-vn-layer .dm-dialog {
+    --dm-frame: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 200' preserveAspectRatio='none'><polygon points='1,1 975,1 999,199 25,199' fill='rgba(22,22,27,0.64)' stroke='%23d9d9de' stroke-width='2' vector-effect='non-scaling-stroke'/></svg>");
     position: absolute;
     left: 12px;
     right: 12px;
     display: flex;
     flex-direction: column;
     min-height: 120px;
+    margin-top: 34px;
     pointer-events: auto;
-    padding: 0 12px 10px;
-    background: linear-gradient(hsl(45 100% 99% / 96%), hsl(42 50% 93% / 96%));
-    border: 1px solid #d8c7a0;
-    border-radius: 6px;
-    box-shadow: 0 8px 28px hsl(0 0% 0% / 45%), inset 0 1px 0 hsl(0 0% 100% / 70%);
-    color: #1f2a37;
+    padding: 18px 5% 14px 5.5%;
+    isolation: isolate;
+    color: #fff;
     animation: dm-dialog-in 0.25s ease-out;
 }
 
+.dm-vn-layer .dm-dialog::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--dm-frame) center / 100% 100% no-repeat;
+    clip-path: polygon(0 0, 97.5% 0, 100% 100%, 2.5% 100%);
+    backdrop-filter: blur(6px) saturate(1.1);
+    -webkit-backdrop-filter: blur(6px) saturate(1.1);
+}
+
 .dm-vn-layer .dm-dialog-head {
+    position: absolute;
+    left: 4%;
+    right: 2.5%;
+    bottom: 100%;
     display: flex;
     align-items: flex-end;
     gap: 8px;
-    margin: -14px 0 6px;
 }
 
+/* The name tab: the same slant, darker, sitting on the box's top edge. */
 .dm-vn-layer .dm-dialog-name {
-    padding: 4px 14px;
-    border-radius: 4px;
-    background: linear-gradient(#2c4f7c, #1e395b);
-    border: 1px solid #13263f;
-    box-shadow: 0 2px 6px hsl(0 0% 0% / 35%);
+    position: relative;
+    padding: 6px 34px 4px 26px;
+    min-width: 120px;
     color: #fff;
-    font-weight: 700;
-    font-size: 13px;
+    font: 500 17px 'Segoe UI', 'Noto Sans', sans-serif;
     letter-spacing: 0.02em;
+    text-shadow: 0 1px 2px hsl(0 0% 0% / 70%);
+    isolation: isolate;
+}
+
+.dm-vn-layer .dm-dialog-name::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 -1px;
+    z-index: -1;
+    background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 100' preserveAspectRatio='none'><polygon points='1,1 380,1 399,100 9,100' fill='rgba(36,36,42,0.82)' stroke='%23d9d9de' stroke-width='2' vector-effect='non-scaling-stroke'/></svg>") center / 100% 100% no-repeat;
 }
 
 .dm-vn-layer .dm-dialog-tabs {
     display: flex;
-    gap: 2px;
-    margin-left: 4px;
+    gap: 3px;
+    margin-left: auto;
+    margin-bottom: 4px;
 }
 
 .dm-vn-layer :is(.dm-dialog-tab, .dm-dialog-peek) {
-    padding: 2px 10px;
-    border: 1px solid #c9b88f;
-    border-radius: 3px 3px 0 0;
-    background: linear-gradient(#fbf7ec, #ece2c8);
-    color: #4a3f2a;
-    font-size: 12px;
+    padding: 3px 11px;
+    border: 1px solid hsl(240 5% 85% / 55%);
+    border-radius: 2px;
+    background: hsl(240 8% 12% / 66%);
+    color: hsl(0 0% 100% / 78%);
+    font: 12px 'Segoe UI', sans-serif;
     cursor: pointer;
+    transform: skewX(-12deg);
 }
 
-.dm-vn-layer .dm-dialog-tab[aria-selected="true"] {
-    background: #fffdf7;
-    border-bottom-color: #fffdf7;
-    color: #1e395b;
+.dm-vn-layer .dm-dialog-tab[aria-selected="true"],
+.dm-vn-layer .dm-dialog-peek[aria-pressed="true"] {
+    background: hsl(0 0% 100% / 88%);
+    border-color: #fff;
+    color: #16161b;
     font-weight: 600;
 }
 
-.dm-vn-layer .dm-dialog-peek {
-    margin-left: auto;
-    border-radius: 3px;
-}
-
-.dm-vn-layer .dm-dialog-peek[aria-pressed="true"] {
-    background: linear-gradient(#e5f4fc, #98d1ef);
-    border-color: #2c628b;
-    color: #0b2741;
-}
+.dm-vn-layer .dm-dialog-peek { margin-bottom: 4px; }
 
 .dm-vn-layer .dm-dialog-body {
     flex: 1 1 auto;
-    min-height: 3em;
+    min-height: 2.6em;
     overflow-y: auto;
     scrollbar-width: none;
-    font-size: 14px;
-    line-height: 1.5;
+    font: 18px/1.55 'Segoe UI', 'Noto Sans', sans-serif;
+    text-shadow: 0 1px 2px hsl(0 0% 0% / 65%);
 }
 
 .dm-vn-layer .dm-dialog-body::-webkit-scrollbar { display: none; }
 .dm-vn-layer .dm-dialog[data-tab="reply"] .dm-dialog-body { cursor: pointer; }
-.dm-vn-layer .dm-dialog[data-tab="card"] .dm-dialog-body { scrollbar-width: thin; }
+.dm-vn-layer .dm-dialog[data-tab="card"] .dm-dialog-body { scrollbar-width: thin; text-shadow: none; font-size: 14px; }
 .dm-vn-layer .dm-dialog[data-tab="card"] .dm-dialog-body::-webkit-scrollbar { display: initial; }
 .dm-vn-layer .dm-dialog-body .director-report-card { margin-top: 0; }
+.dm-vn-layer .dm-dialog-reply { color: #fff; }
+/* Sound effects and stress, as in her VN lines: bold italic. */
+.dm-vn-layer .dm-dialog-reply strong,
+.dm-vn-layer .dm-say strong { font-weight: 700; font-style: italic; }
 
 .dm-vn-layer .dm-dialog-pager {
     align-self: flex-end;
     margin-top: 2px;
-    color: #1e395b;
-    font-size: 11.5px;
+    color: hsl(0 0% 100% / 85%);
+    font-size: 12px;
     cursor: pointer;
     animation: dm-pager-blink 1.2s ease-in-out infinite;
 }
 
+/* Suggestions: VN choices in the box's slant. */
 .dm-vn-layer .dm-dialog-suggest:not(:empty) {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid #e6dcc3;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid hsl(0 0% 100% / 18%);
 }
 
 .dm-vn-layer .dm-dialog-suggest .director-message-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 8px;
+}
+
+body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary {
+    padding: 6px 22px;
+    height: auto;
+    border: 0;
+    border-radius: 0;
+    background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 100' preserveAspectRatio='none'><polygon points='1,1 388,1 399,99 12,99' fill='rgba(255,255,255,0.10)' stroke='%23d9d9de' stroke-width='1.5' vector-effect='non-scaling-stroke'/></svg>") center / 100% 100% no-repeat;
+    box-shadow: none;
+    color: #fff;
+    font: 14px 'Segoe UI', sans-serif;
+    text-shadow: 0 1px 2px hsl(0 0% 0% / 70%);
+    white-space: normal;
+    text-align: left;
+}
+
+body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary:hover:not(:disabled) {
+    background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 100' preserveAspectRatio='none'><polygon points='1,1 388,1 399,99 12,99' fill='rgba(255,255,255,0.88)' stroke='%23ffffff' stroke-width='1.5' vector-effect='non-scaling-stroke'/></svg>") center / 100% 100% no-repeat;
+    color: #16161b;
+    text-shadow: none;
 }
 
 @keyframes dm-dialog-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }

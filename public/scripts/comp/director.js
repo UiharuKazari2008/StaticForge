@@ -185,6 +185,14 @@ function directorReportReviewText(report, scores) {
     ].filter(Boolean).join('\n');
 }
 
+// A VN line's emphasis: **bold** and *italic* only (a sound effect like **-BURRP!-**), the rest as text.
+function directorLineHtml(text) {
+    const esc = String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return esc
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+}
+
 // The mascot dialogue's short line: report.spoken, else the opening sentences of the full reply with
 // the markdown, code, and weights taken out (the whole reply stays in the message log).
 function directorSpokenLine(report, text, max = 240) {
@@ -3636,7 +3644,8 @@ class Director {
         const reply = document.createElement('div');
         reply.className = 'director-message-content dm-dialog-reply';
         reply.dataset.raw = line;
-        reply.textContent = line;
+        // VN style: her line in quotes, emphasis kept (directorLineHtml).
+        reply.innerHTML = `“${directorLineHtml(line)}”`;
         const items = report ? directorReportItems(report) : [];
         const card = items.length ? this.createReportCard(message, report, items) : null;
         const options = report
