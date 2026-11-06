@@ -171,12 +171,14 @@ class DirectorMascot {
                 <div class="dm-hud-chip dm-hud-ring" title="Hit ratio of the last report card"><div class="dm-ring"><span data-hud="ratio">-</span></div></div>
                 <div class="dm-hud-chip dm-hud-grow" title="Growth from report cards"><span data-hud="stage"></span><div class="dm-grow-bar"><i data-hud="grow"></i></div><span class="dm-grow-next" data-hud="next"></span></div>
             </div>
+            <!-- Font Awesome on purpose (Yukimi 2026-11-06): the VN quick bar is game UI drawn over her
+                 scene, not Vista chrome, and the white glyph sits in an accent-coloured disc. -->
             <div class="dm-quick hidden" role="toolbar" aria-label="Director quick menu">
-                <button type="button" data-act="reply"><i>&#9993;</i>Reply</button>
-                <button type="button" data-act="card"><i>&#10003;</i>Report card</button>
-                <button type="button" data-act="log"><i>&#9776;</i>Log</button>
-                <button type="button" data-act="prints"><i>&#9635;</i>Prints</button>
-                <button type="button" data-act="settings"><i>&#9881;</i>Settings</button>
+                <button type="button" data-act="reply"><i class="fas fa-comment-dots" aria-hidden="true"></i>Reply</button>
+                <button type="button" data-act="card"><i class="fas fa-clipboard-check" aria-hidden="true"></i>Report card</button>
+                <button type="button" data-act="log"><i class="fas fa-list" aria-hidden="true"></i>Log</button>
+                <button type="button" data-act="prints"><i class="fas fa-images" aria-hidden="true"></i>Prints</button>
+                <button type="button" data-act="settings"><i class="fas fa-gear" aria-hidden="true"></i>Settings</button>
             </div>
             <button type="button" class="dm-peek-close hidden" title="Close the log (Esc)">Back to her</button>
             <div class="dm-result dm-dialog hidden" data-tab="reply">

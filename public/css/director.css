@@ -4853,7 +4853,8 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
     background: var(--dm-teal);
     color: #fff;
     font-style: normal;
-    font-size: 10px;
+    font-size: 9.5px;
+    line-height: 1;
 }
 
 .dm-vn-layer .dm-quick button[aria-pressed="true"] {
