@@ -3587,33 +3587,32 @@ class Director {
         return bar;
     }
 
-    // Mascot view with the log hidden: the finished turn as its own panel (directorMascot.js showResult).
-    // A report is the summary, card, and suggestions; an older reply without one is its last text.
+    // Mascot view with the log hidden: the parts of the finished turn's dialogue box
+    // (directorMascot.js showResult). A report gives the summary, its card, and suggestions; an older
+    // reply without one gives its last text and the "A, or B" choices parsed from it.
     createMascotResult(message) {
         const report = message && message.data && message.data.report;
-        const wrap = document.createElement('div');
-        wrap.className = 'director-chat-messages dm-result-body';
-        if (report) {
-            const el = this.createReportElement(message);
-            if (!el) return null;
-            const suggestions = Array.isArray(report.suggestions) ? report.suggestions.filter(Boolean) : [];
-            if (suggestions.length) el.appendChild(this.createReplyChoicesBar(suggestions, true));
-            wrap.appendChild(el);
-            return wrap;
+        let text = report ? String(report.summary || '') : '';
+        if (!report) {
+            const rows = Array.isArray(message && message.trace) ? message.trace : [];
+            for (let i = rows.length - 1; i >= 0 && !text; i--) {
+                if (rows[i] && rows[i].type === 'assistant' && rows[i].text) text = rows[i].text;
+            }
+            if (!text) text = String((message && message.data && message.data.Description) || '').trim();
         }
-        const rows = Array.isArray(message && message.trace) ? message.trace : [];
-        let text = '';
-        for (let i = rows.length - 1; i >= 0 && !text; i--) {
-            if (rows[i] && rows[i].type === 'assistant' && rows[i].text) text = rows[i].text;
-        }
-        if (!text) text = String((message && message.data && message.data.Description) || '').trim();
         if (!text) return null;
-        const el = this.createTraceRow({ type: 'assistant', text }, `result:${message.id || message.timestamp}`, message.model || null);
-        if (!el) return null;
-        wrap.appendChild(el);
-        const options = directorReplyOptions(text);
-        if (options.length >= 2) el.appendChild(this.createReplyChoicesBar(options, false));
-        return wrap;
+        const reply = document.createElement('div');
+        reply.className = 'director-message-content dm-dialog-reply';
+        reply.dataset.raw = text;
+        reply.innerHTML = this.processMarkdown(text);
+        reply.dataset.md = '1';
+        const items = report ? directorReportItems(report) : [];
+        const card = items.length ? this.createReportCard(message, report, items) : null;
+        const options = report
+            ? (Array.isArray(report.suggestions) ? report.suggestions.filter(Boolean) : [])
+            : directorReplyOptions(text);
+        const suggestions = options.length >= (report ? 1 : 2) ? this.createReplyChoicesBar(options, !!report) : null;
+        return { name: directorPersonaName(this.persona), reply, card, suggestions };
     }
 
     mountInlineForm(spec) {

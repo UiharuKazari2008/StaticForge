@@ -150,7 +150,19 @@ class DirectorMascot {
             <div class="dm-bubble dm-think hidden"><div class="dm-bubble-text"></div></div>
             <div class="dm-bubble dm-say hidden"><div class="dm-bubble-text"></div></div>
             <div class="dm-tool-pops"></div>
-            <div class="dm-result hidden"></div>`;
+            <div class="dm-result dm-dialog hidden" data-tab="reply">
+                <div class="dm-dialog-head">
+                    <span class="dm-dialog-name"></span>
+                    <div class="dm-dialog-tabs" role="tablist">
+                        <button type="button" class="dm-dialog-tab" role="tab" data-tab="reply" aria-selected="true">Reply</button>
+                        <button type="button" class="dm-dialog-tab" role="tab" data-tab="card" aria-selected="false">Report card</button>
+                    </div>
+                    <button type="button" class="dm-dialog-peek" aria-pressed="false" title="Show the message log for a moment">Log</button>
+                </div>
+                <div class="dm-dialog-body"></div>
+                <span class="dm-dialog-pager hidden"></span>
+                <div class="dm-dialog-suggest"></div>
+            </div>`;
         host.appendChild(layer);
         this.layer = layer;
         this.el = {
@@ -172,8 +184,26 @@ class DirectorMascot {
             say: layer.querySelector('.dm-say'),
             sayText: layer.querySelector('.dm-say .dm-bubble-text'),
             pops: layer.querySelector('.dm-tool-pops'),
-            result: layer.querySelector('.dm-result')
+            result: layer.querySelector('.dm-result'),
+            dialogName: layer.querySelector('.dm-dialog-name'),
+            dialogBody: layer.querySelector('.dm-dialog-body'),
+            dialogSuggest: layer.querySelector('.dm-dialog-suggest'),
+            tabReply: layer.querySelector('.dm-dialog-tab[data-tab="reply"]'),
+            tabCard: layer.querySelector('.dm-dialog-tab[data-tab="card"]'),
+            peekBtn: layer.querySelector('.dm-dialog-peek'),
+            pager: layer.querySelector('.dm-dialog-pager')
         };
+        this.el.tabReply.addEventListener('click', () => this.showTab('reply'));
+        this.el.tabCard.addEventListener('click', () => this.showTab('card'));
+        this.el.peekBtn.addEventListener('click', () => this.togglePeek());
+        this.el.pager.addEventListener('click', () => this.pageReply());
+        // A click on the reply text pages it; links and buttons inside keep their own clicks.
+        this.el.dialogBody.addEventListener('click', (event) => {
+            if (event.target.closest('a, button, input, select, textarea')) return;
+            this.pageReply();
+        });
+        this.el.dialogBody.addEventListener('scroll', () => this.paintPager(), { passive: true });
+        host.addEventListener('keydown', (event) => { if (event.key === 'Escape' && this.peek) this.togglePeek(false); });
         this.applyView();
         // She stands on the input bar wherever it sits (centred on a new chat, at the bottom later):
         // anything that moves or resizes it re-lays her out.
@@ -243,6 +273,7 @@ class DirectorMascot {
             // Buttons she would cover (quick starts, attachment chips) move under the input bar.
             this.host.classList.toggle('director-mascot-on', on);
             this.host.classList.toggle('dm-log-hidden', on && this.view === 'mascot' && !this.showLog);
+            if (!(on && this.view === 'mascot' && !this.showLog)) this.host.classList.remove('dm-log-peek');
         }
         if (this.layer) {
             this.layer.classList.toggle('hidden', !(on && this.view === 'mascot' && !this.showLog));
@@ -576,6 +607,7 @@ class DirectorMascot {
         this._growthArmed = false;   // the next chat's stage is set quietly from its own cards
         this._bubble = { think: '', say: '' };
         this.hideResult();
+        this.togglePeek(false);
         this.dialogue = { kind: 'idle', text: '' };
         this._lastAssistantLength = 0;
         this.setWorking(false);
@@ -589,6 +621,7 @@ class DirectorMascot {
         this._toolSeen = -1;     // the first stream update sets the baseline (a reload mid-turn pops nothing old)
         this._bubble = { think: '', say: '' };
         this.hideResult();
+        this.togglePeek(false);
         this.setWorking(true);
         this.paintDialogue();
         this.paintBubbles();
@@ -671,12 +704,15 @@ class DirectorMascot {
     hideResult() {
         if (!this.el || !this.el.result) return;
         this.el.result.classList.add('hidden');
-        this.el.result.replaceChildren();
+        this.el.dialogBody.replaceChildren();
+        this.el.dialogSuggest.replaceChildren();
         this._resultFor = '';
+        this._result = null;
     }
 
-    // The settled turn: its report (summary, card, suggestions) as its own panel beside her; a reply
-    // without a report shows as her speech bubble.
+    // The settled turn as a visual novel dialogue box above the input bar (Yukimi 2026-11-06): her name
+    // plate, two tabs (Reply, Report card), the reply paged by click, suggestions under it as buttons, and a
+    // Log button that slides the full log in for a moment. renderResult (director.js) builds the parts.
     showResult(messages) {
         if (!this.el || !this.el.result) return;
         if (!this.vnBubbles()) { this.hideResult(); return; }
@@ -691,29 +727,75 @@ class DirectorMascot {
         const report = last.data && last.data.report;
         const key = `${last.id || last.timestamp}|${report ? (report.review ? 'r' : 'n') : 'x'}`;
         if (this._resultFor === key && !this.el.result.classList.contains('hidden')) return;
+        const parts = this.renderResult ? this.renderResult(last) : null;
+        if (!parts || !parts.reply) { this.hideResult(); return; }
         this._resultFor = key;
-        const el = this.renderResult ? this.renderResult(last) : null;
-        if (!el) { this.hideResult(); return; }
-        this.el.result.replaceChildren(el);
+        this._result = parts;
+        this.el.dialogName.textContent = (this.manifest && this.manifest.name) || parts.name || '';
+        this.el.tabCard.classList.toggle('hidden', !parts.card);
+        this.el.dialogSuggest.replaceChildren(...(parts.suggestions ? [parts.suggestions] : []));
         this.el.result.classList.remove('hidden');
+        this.showTab('reply');
         this.placeResult();
-        this.el.result.scrollTop = 0;
     }
 
-    // The result panel takes the log panel's own slot (the hidden log keeps its layout), so it sits
-    // where the messages did in every window size instead of floating over her and the input bar.
+    showTab(tab) {
+        const parts = this._result;
+        if (!parts || !this.el) return;
+        const want = tab === 'card' && parts.card ? 'card' : 'reply';
+        this._tab = want;
+        this.el.tabReply.setAttribute('aria-selected', want === 'reply' ? 'true' : 'false');
+        this.el.tabCard.setAttribute('aria-selected', want === 'card' ? 'true' : 'false');
+        this.el.result.dataset.tab = want;
+        this.el.dialogBody.replaceChildren(want === 'card' ? parts.card : parts.reply);
+        this.el.dialogBody.scrollTop = 0;
+        this.paintPager();
+    }
+
+    // Reply paging: a click shows the next page (the box height), the last page goes back to the top.
+    pageReply() {
+        const body = this.el && this.el.dialogBody;
+        if (!body || this._tab !== 'reply') return;
+        const page = Math.max(40, body.clientHeight - 24);
+        const atEnd = body.scrollTop + body.clientHeight >= body.scrollHeight - 4;
+        body.scrollTo({ top: atEnd ? 0 : body.scrollTop + page, behavior: 'smooth' });
+        this.later(() => this.paintPager(), 380);
+    }
+
+    paintPager() {
+        const body = this.el && this.el.dialogBody;
+        if (!body) return;
+        const pages = Math.max(1, Math.ceil(body.scrollHeight / Math.max(1, body.clientHeight - 24) - 0.05));
+        const at = Math.min(pages, Math.floor(body.scrollTop / Math.max(1, body.clientHeight - 24)) + 1);
+        const more = this._tab === 'reply' && pages > 1;
+        this.el.pager.classList.toggle('hidden', !more);
+        this.el.pager.textContent = more ? `${at}/${pages} ▼` : '';
+    }
+
+    // Log peek: the full log over the dialogue for a moment; Log again, Escape, or the next send closes it.
+    togglePeek(on) {
+        this.peek = typeof on === 'boolean' ? on : !this.peek;
+        if (this.host) this.host.classList.toggle('dm-log-peek', this.peek && this.vnBubbles());
+        if (this.el && this.el.peekBtn) this.el.peekBtn.setAttribute('aria-pressed', this.peek ? 'true' : 'false');
+        if (this.peek && this.host) {
+            const list = this.host.querySelector('.director-chat-messages');
+            const scroller = list && list.closest('.director-chat-messages-container');
+            if (scroller) scroller.scrollTop = scroller.scrollHeight;
+        }
+    }
+
+    // The box spans the chat above the input bar, a third of the height at most.
     placeResult() {
         const box = this.el && this.el.result;
         if (!box || box.classList.contains('hidden') || !this.host || !this.layer) return;
-        const slot = this.host.querySelector('.director-chat-messages-container');
-        if (!slot) return;
-        const s = slot.getBoundingClientRect();
+        const composer = this.host.querySelector('#directorComposer');
         const l = this.layer.getBoundingClientRect();
-        if (!s.width || !s.height) return;
-        box.style.left = `${Math.round(s.left - l.left)}px`;
-        box.style.top = `${Math.round(s.top - l.top)}px`;
-        box.style.width = `${Math.round(s.width)}px`;
-        box.style.height = `${Math.round(s.height)}px`;
+        if (!l.height) return;
+        const c = composer ? composer.getBoundingClientRect() : null;
+        const bottom = c && c.height ? Math.max(0, Math.round(l.bottom - c.top + 8)) : 12;
+        box.style.bottom = `${bottom}px`;
+        box.style.maxHeight = `${Math.round(Math.max(160, Math.min(l.height * 0.42, 380)))}px`;
+        this.paintPager();
     }
 
     // A timed body override for this stage (celebrate / printed), then back.
