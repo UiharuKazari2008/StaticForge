@@ -8,7 +8,8 @@
 const crypto = require('crypto');
 const { prepareEmphasisTextForNovelAI } = require('./emphasisGroupIdSyntax');
 
-const APPLY_GENERATE_TTL_MS = 3 * 60 * 1000;
+// Long enough that an agent awaiting a slow Studio print does not get "Unknown generation jobId".
+const APPLY_GENERATE_TTL_MS = 15 * 60 * 1000;
 const applyGenerateJobs = new Map();
 
 const FRANCHISE_ALIASES = {
@@ -115,6 +116,24 @@ function completeApplyGenerateFromWorkspace(workspaceId, filenames) {
     });
     if (!owned.length) return null;
     return completeApplyGenerateJob(job.jobId, owned[owned.length - 1], owned);
+}
+
+// A Studio print that never saves (server generation error, or Studio refused it before sending:
+// missing data, a validation dialog). The agent's await returns this error instead of waiting it out.
+function failApplyGenerateJob(jobId, error, code) {
+    const row = getApplyGenerateJob(jobId);
+    if (!row || row.status !== 'running') return null;
+    row.status = 'failed';
+    row.error = String(error || 'The print failed in Studio').slice(0, 600);
+    row.code = code ? String(code).slice(0, 80) : 'STUDIO_PRINT_FAILED';
+    row.failedAt = Date.now();
+    return row;
+}
+
+function failApplyGenerateFromWorkspace(workspaceId, error, code) {
+    const job = findPendingApplyGenerate('', workspaceId);
+    if (!job) return null;
+    return failApplyGenerateJob(job.jobId, error, code);
 }
 
 function resetApplyGenerateJobs() {
@@ -336,6 +355,8 @@ module.exports = {
     findPendingApplyGenerate,
     completeApplyGenerateJob,
     completeApplyGenerateFromWorkspace,
+    failApplyGenerateJob,
+    failApplyGenerateFromWorkspace,
     resetApplyGenerateJobs,
     canonicalizeFranchise,
     qualifyCharacterQuery,

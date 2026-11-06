@@ -42,6 +42,16 @@ function registerPackets(handlersCtx) {
     reg('agent_priority_client', 'agentSession', (handlers, ws, message, clientInfo) => {
         agentClientBridge.handleAgentPriorityClient(handlers, ws, message, clientInfo);
     });
+    // An agent-started print that Studio refused before sending (missing data, a validation dialog):
+    // fail the waiting job so await_generation_job returns the message (public/scripts/comp/agentClientBridge.js).
+    reg('agent_print_failed', 'agentSession', (handlers, ws, message) => {
+        const data = (message && message.data) || {};
+        const { failApplyGenerateFromWorkspace } = require('../../mcpReliability');
+        const error = String(data.error || '').trim();
+        if (!error) return;
+        const row = failApplyGenerateFromWorkspace(data.workspaceId || '', `Studio: ${error}`, 'STUDIO_PRINT_REFUSED');
+        if (row) console.log(`Agent print ${row.jobId} failed in Studio: ${error.slice(0, 160)}`);
+    });
     // Desktop readiness (#475): the tab reports logon / booting / locked / desktop / ready
     reg('client_desktop_state', 'agentSession', (handlers, ws, message, clientInfo) => {
         agentClientBridge.handleClientDesktopState(handlers, ws, message, clientInfo);

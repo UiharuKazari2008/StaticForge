@@ -659,6 +659,47 @@
         return !!(el && !el.classList.contains('hidden'));
     }
 
+    // An agent-started print that Studio refuses (missing data, a validation toast) never reaches the
+    // server, so the agent's await_generation_job used to wait it out. The first error toast within 90 s of
+    // the agent's click goes back as agent_print_failed (modules/ws/handlers/168-agentClientHandler.js),
+    // unless a new print already saved by then.
+    let agentPrintWatch = null;
+
+    function plainToastText(value) {
+        if (value == null) return '';
+        const box = document.createElement('div');
+        box.innerHTML = String(value);
+        return (box.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function reportAgentPrintError(type, title, message) {
+        const watch = agentPrintWatch;
+        if (!watch || type !== 'error') return;
+        if (Date.now() > watch.until || (window.lastGeneratedImageName || null) !== watch.filenameBefore) {
+            agentPrintWatch = null;
+            return;
+        }
+        const error = [plainToastText(title), plainToastText(message)].filter(Boolean).join(': ');
+        if (!error) return;
+        agentPrintWatch = null;
+        try {
+            if (window.wsClient && window.wsClient.isConnected()) {
+                window.wsClient.send({ type: 'agent_print_failed', data: { error: error.slice(0, 600), workspaceId: watch.workspaceId } });
+            }
+        } catch (_err) { /* best effort: the agent falls back to the wait */ }
+    }
+
+    function armAgentPrintWatch(filenameBefore) {
+        agentPrintWatch = { until: Date.now() + 90 * 1000, filenameBefore: filenameBefore || null, workspaceId: readWorkspaceId() };
+        if (window.__agentPrintToastHooked || typeof window.showGlassToast !== 'function') return;
+        window.__agentPrintToastHooked = true;
+        const original = window.showGlassToast;
+        window.showGlassToast = function hookedGlassToast(type, title, message) {
+            try { reportAgentPrintError(type, title, message); } catch (_err) { /* never block a toast */ }
+            return original.apply(this, arguments);
+        };
+    }
+
     function fireBoundTabGenerate(options) {
         const opts = options && typeof options === 'object' ? options : {};
         const nWasSet = opts.n != null && opts.n !== '';
@@ -692,6 +733,7 @@
         }
         // clickManualGenerateForAgent: public/scripts/comp/manualModalManager.js
         // allowPaid is the user's approval relayed by the agent: skip the Anlas dialog for this click only.
+        armAgentPrintWatch(filenameBefore);
         if (typeof clickManualGenerateForAgent === 'function') {
             clickManualGenerateForAgent(btn, { allowPaid: opts.allowPaid === true });
         } else {

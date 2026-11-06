@@ -8556,6 +8556,18 @@ async function callTool(globalResources, req, name, args) {
                 await waitForSavedStudioPrint(globalResources, req, applyJob, Date.now() + applyPrintWait.timeoutMs);
             }
             const ready = getApplyGenerateJob(jobId) || applyJob;
+            if (ready.status === 'failed') {
+                return mcpTextResult({
+                    success: false,
+                    failed: true,
+                    jobId: ready.jobId,
+                    status: 'failed',
+                    code: ready.code,
+                    error: ready.error,
+                    workspaceId: ready.workspaceId || null,
+                    next: 'The print did not happen: Studio or the server refused it with the error above. Nothing was saved. Fix the cause (get_studio_state to see what is missing or wrong), then print again. Do not await this jobId again, and do not judge the previous print as if it were new.'
+                }, true);
+            }
             if (ready.status === 'completed' && ready.filename
                 && isApplyJobOwnPrint(globalResources, ready, ready.filename)) {
                 const stageNames = Array.isArray(ready.filenames) ? ready.filenames.filter(Boolean) : [];

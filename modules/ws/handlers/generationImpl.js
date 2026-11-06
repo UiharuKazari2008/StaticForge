@@ -14,7 +14,7 @@ const {
 const { resolveDynamicContext } = require('../../dynamicGenerationHandlers');
 const { broadcastGalleryMutation } = require('./120-galleryHandler');
 const { notifyGenerationQueued } = require('../../generationJobQueue');
-const { completeApplyGenerateFromWorkspace } = require('../../mcpReliability');
+const { completeApplyGenerateFromWorkspace, failApplyGenerateFromWorkspace } = require('../../mcpReliability');
 const {
     rememberGenerationRequest,
     patchGenerationRequest,
@@ -344,6 +344,10 @@ async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsSe
             timestamp: new Date().toISOString()
         });
         outcome = { success: false, error: exactMessage };
+        // An agent waiting on this Studio print gets the error now (await_generation_job), not a timeout.
+        try {
+            failApplyGenerateFromWorkspace(message && message.workspace, errorText, errorCode || 'GENERATION_FAILED');
+        } catch (_err) { /* the error reply above is what matters */ }
     } finally {
         handlers.unregisterActiveGeneration(ws, requestId);
         handlers.clearGenerationCancelled(requestId);
