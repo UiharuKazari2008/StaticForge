@@ -559,9 +559,13 @@ class ServiceWorkerManager {
         }
     }
 
-    _askBootGateRetry(detail) {
-        const message = 'Melaton could not confirm the offline cache.';
-        const text = detail || 'The update check did not finish.';
+    // install: the fix is the /launch installer (Restart), so Restart is the default button.
+    // Otherwise the check itself failed and Retry is.
+    _askBootGateRetry(detail, { install = false } = {}) {
+        const message = install
+            ? 'Melaton needs to restart to install an update.'
+            : 'Melaton could not confirm the offline cache.';
+        const text = detail || 'The update check did not finish. Click Retry to check again.';
         if (window.bootMessageBox && typeof window.bootMessageBox.show === 'function') {
             return window.bootMessageBox.show({
                 title: 'Melaton',
@@ -569,8 +573,8 @@ class ServiceWorkerManager {
                 message: message,
                 detail: 'DETAIL - ' + text,
                 buttons: [
-                    { label: 'Retry', value: 'retry', default: true },
-                    { label: 'Restart', value: 'restart' }
+                    { label: 'Retry', value: 'retry', default: !install },
+                    { label: 'Restart', value: 'restart', default: install }
                 ]
             });
         }
@@ -3786,7 +3790,7 @@ class ServiceWorkerManager {
                 if (this._rebootIntoInstaller(count)) {
                     return { rebooted: true };
                 }
-                return { ask: 'A large update needs Install Melaton.' };
+                return { ask: 'A large update must be installed before Melaton can start. Click Restart to install it.', install: true };
             }
 
             const fresh = this._filesCountingTowardInstaller(filesToUpdate);
@@ -4313,9 +4317,9 @@ class ServiceWorkerManager {
      * The cache is not proven. /launch's installer is what makes it valid.
      * A reboot already tried in the last few minutes falls through to the retry dialog.
      */
-    _enterUpdater(detail, count) {
+    _enterUpdater(detail, count, extra) {
         if (this._rebootIntoInstaller(count || 0, detail)) return { rebooted: true };
-        return { ask: detail };
+        return Object.assign({ ask: detail }, extra);
     }
 
     async runBootSequence() {
@@ -4349,7 +4353,7 @@ class ServiceWorkerManager {
             this._bootOrchestrating = false;
         }
         if (outcome && outcome.ask) {
-            const choice = await this._askBootGateRetry(outcome.ask);
+            const choice = await this._askBootGateRetry(outcome.ask, { install: outcome.install === true });
             if (choice === 'restart') {
                 // restartClientNavigate: public/scripts/comp/modalUtils.js
                 if (typeof restartClientNavigate === 'function') restartClientNavigate();
@@ -4388,7 +4392,7 @@ class ServiceWorkerManager {
                 if (this._manifestOutcome === 'failed') {
                     manifestMisses += 1;
                     if (manifestMisses >= 3) {
-                        const sent = this._enterUpdater('The update check did not get a file list back.');
+                        const sent = this._enterUpdater('The update check did not get a file list back from the server. Check the connection, then click Retry.');
                         if (sent.rebooted) return sent;
                         // /launch was just tried. Keep fetching. The retry dialog does not install the cache.
                         manifestMisses = 0;
@@ -4405,7 +4409,7 @@ class ServiceWorkerManager {
                     if (this._manifestOutcome !== 'list') {
                         manifestMisses += 1;
                         if (manifestMisses >= 3) {
-                            const sent = this._enterUpdater('The offline cache is not a complete copy and the file list did not load.');
+                            const sent = this._enterUpdater('The offline cache is not a complete copy and the file list did not load. Check the connection, then click Retry.');
                             if (sent.rebooted) return sent;
                             manifestMisses = 0;
                         }
@@ -4436,12 +4440,10 @@ class ServiceWorkerManager {
                     lastPendingFingerprint = pendingFingerprint;
                 }
                 if (verifyPass > MAX_VERIFY_PASSES) {
-                    const sent = this._enterUpdater(
-                        'The offline cache still does not match after the update check.',
-                        this._installerFileCount(pendingSource)
-                    );
+                    const mismatch = 'The offline cache still does not match the server after the update check. Click Restart to reinstall the changed files.';
+                    const sent = this._enterUpdater(mismatch, this._installerFileCount(pendingSource), { install: true });
                     if (sent.rebooted) return sent;
-                    return { ask: 'The offline cache still does not match after the update check.' };
+                    return { ask: mismatch, install: true };
                 }
 
                 // More than the cutoff, or an install /launch already started: leave before any dialog.
@@ -4449,7 +4451,7 @@ class ServiceWorkerManager {
                     if (this._rebootIntoInstaller(this._installerFileCount(filesToUpdate))) {
                         return { rebooted: true };
                     }
-                    return { ask: 'A large update needs Install Melaton.' };
+                    return { ask: 'A large update must be installed before Melaton can start. Click Restart to install it.', install: true };
                 }
 
                 const outcome = await this.checkAndDownloadUpdatesForInit(fresh);
