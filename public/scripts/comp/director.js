@@ -651,7 +651,11 @@ class Director {
         if (this.mascot || !host || typeof DirectorMascot !== 'function') return;
         this.mascot = new DirectorMascot({
             isHosted: () => this.directorDockedInWindow(),
-            renderResult: (message) => this.createMascotResult(message)
+            renderResult: (message) => this.createMascotResult(message),
+            actions: {
+                prints: () => this.togglePrintsPane(),
+                settings: () => { void this.openDirectorSettings(); }
+            }
         });
         this.mascot.mount(host);
         void this.mascot.setPersona(this.persona);
@@ -3624,6 +3628,27 @@ class Director {
         return bar;
     }
 
+    // Mascot view: the title banner and session HUD (directorMascot.js updateHud).
+    paintMascotHud() {
+        if (!this.mascot || typeof this.mascot.updateHud !== 'function') return;
+        const session = this.currentSession;
+        if (!session || !session.id || session.draft) { this.mascot.updateHud(null); return; }
+        const messages = Array.isArray(session.messages) ? session.messages : [];
+        const turns = messages.filter((m) => m && m.role === 'user' && m.message_type !== 'Attachment').length;
+        const prints = typeof this.sessionPrints === 'function' ? this.sessionPrints().length : 0;
+        let ratio = null;
+        for (let i = messages.length - 1; i >= 0 && ratio == null; i--) {
+            const report = messages[i] && messages[i].data && messages[i].data.report;
+            const items = report ? directorReportItems(report) : [];
+            if (!items.length) continue;
+            const scores = directorReportBaseline(report);
+            ratio = scores.reduce((sum, score) => sum + (score === 'hit' ? 1 : score === 'partial' ? 0.5 : 0), 0) / scores.length;
+        }
+        const meta = this.sessionWorkspaceMeta(session);
+        const sub = [meta && meta.name, `Turn ${turns}`, prints ? `${prints} prints` : ''].filter(Boolean).join(' \u00b7 ').toUpperCase();
+        this.mascot.updateHud({ title: session.name || 'Director', sub, turns, prints, ratio });
+    }
+
     // Mascot view with the log hidden: the parts of the finished turn's dialogue box
     // (directorMascot.js showResult). A report gives the summary, its card, and suggestions; an older
     // reply without one gives its last text and the "A, or B" choices parsed from it.
@@ -3816,6 +3841,7 @@ class Director {
         this.setImagePending(false);
         this.renderSessionImages();
         this.mountPrintBubble(payload.messageId || '', filename);
+        this.paintMascotHud();
         // A new print in the open chat: the mascot takes it in. It drops from its thumbnail in the
         // prints strip (newest on top) into her belly; with the strip folded it comes from the log side.
         if (fresh && this.mascot && typeof localGalleryImageUrl === 'function') {
@@ -5124,6 +5150,7 @@ class Director {
     _doRenderSessionMessages(messages, options) {
         if (!this.directorChatMessages || !Array.isArray(messages)) return;
         if (this.mascot) this.mascot.onMessages(messages);
+        this.paintMascotHud();
         const keepPlace = options && options.keepPlace;
         const firstPaint = !!this.currentSession && this._windowSessionId !== this.currentSession.id;
         if (firstPaint) this._stickBottom = true;

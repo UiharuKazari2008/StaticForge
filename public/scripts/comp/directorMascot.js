@@ -92,6 +92,9 @@ class DirectorMascot {
         // and pops tool calls in bubbles, and the turn's result is its own panel beside her.
         this.showLog = false;
         this.renderResult = typeof options.renderResult === 'function' ? options.renderResult : null;
+        // Quick-menu actions owned by the Director (prints pane, settings).
+        this.actions = options.actions && typeof options.actions === 'object' ? options.actions : {};
+        this._hud = null;
         this._toolSeen = 0;
         this._rowSeen = -1;
         this._bubble = { think: '', say: '' };
@@ -151,6 +154,20 @@ class DirectorMascot {
             <div class="dm-bubble dm-think hidden" title="What she is thinking"><span class="dm-think-dots"><i></i><i></i><i></i></span><div class="dm-think-full"></div></div>
             <div class="dm-bubble dm-say hidden"><div class="dm-bubble-text"></div></div>
             <div class="dm-tool-pops"></div>
+            <div class="dm-banner hidden"><b class="dm-banner-title"></b><span class="dm-banner-sub"></span></div>
+            <div class="dm-hud hidden">
+                <div class="dm-hud-chip"><b data-hud="turns">0</b><span>turns</span></div>
+                <div class="dm-hud-chip"><b data-hud="prints">0</b><span>prints</span></div>
+                <div class="dm-hud-chip dm-hud-ring" title="Hit ratio of the last report card"><div class="dm-ring"><span data-hud="ratio">-</span></div></div>
+                <div class="dm-hud-chip dm-hud-grow" title="Growth from report cards"><span data-hud="stage"></span><div class="dm-grow-bar"><i data-hud="grow"></i></div><span class="dm-grow-next" data-hud="next"></span></div>
+            </div>
+            <div class="dm-quick hidden" role="toolbar" aria-label="Director quick menu">
+                <button type="button" data-act="reply"><i>&#9993;</i>Reply</button>
+                <button type="button" data-act="card"><i>&#10003;</i>Report card</button>
+                <button type="button" data-act="log"><i>&#9776;</i>Log</button>
+                <button type="button" data-act="prints"><i>&#9635;</i>Prints</button>
+                <button type="button" data-act="settings"><i>&#9881;</i>Settings</button>
+            </div>
             <button type="button" class="dm-peek-close hidden" title="Close the log (Esc)">Back to her</button>
             <div class="dm-result dm-dialog hidden" data-tab="reply">
                 <div class="dm-dialog-head">
@@ -197,6 +214,13 @@ class DirectorMascot {
             peekClose: layer.querySelector('.dm-peek-close')
         };
         this.el.peekClose.addEventListener('click', () => this.togglePeek(false));
+        this.el.banner = layer.querySelector('.dm-banner');
+        this.el.hud = layer.querySelector('.dm-hud');
+        this.el.quick = layer.querySelector('.dm-quick');
+        this.el.quick.addEventListener('click', (event) => {
+            const btn = event.target.closest('button[data-act]');
+            if (btn) this.quickAction(btn.dataset.act);
+        });
         this.el.tabReply.addEventListener('click', () => this.showTab('reply'));
         this.el.tabCard.addEventListener('click', () => this.showTab('card'));
         this.el.peekBtn.addEventListener('click', () => this.togglePeek());
@@ -286,6 +310,7 @@ class DirectorMascot {
         this.root.dataset.state = this.working ? 'working' : 'idle';
         this.layout();
         this.paintDialogue();
+        this.paintChrome();
     }
 
     // Fit the figure above the input bar: height from the view, width from the camera's aspect.
@@ -802,6 +827,7 @@ class DirectorMascot {
         this.el.dialogSuggest.replaceChildren();
         this._resultFor = '';
         this._result = null;
+        this.paintChrome();
     }
 
     // The settled turn as a visual novel dialogue box above the input bar (Yukimi 2026-11-06): her name
@@ -831,6 +857,7 @@ class DirectorMascot {
         this.el.result.classList.remove('hidden');
         this.showTab('reply');
         this.placeResult();
+        this.paintChrome();
     }
 
     showTab(tab) {
@@ -844,6 +871,7 @@ class DirectorMascot {
         this.el.dialogBody.replaceChildren(want === 'card' ? parts.card : parts.reply);
         this.el.dialogBody.scrollTop = 0;
         this.paintPager();
+        this.paintChrome();
     }
 
     // Reply paging: a click shows the next page (the box height), the last page goes back to the top.
@@ -866,6 +894,74 @@ class DirectorMascot {
         this.el.pager.textContent = more ? `${at}/${pages} ▼` : '';
     }
 
+    // ---- VN chrome: quick-menu bar, title banner, session HUD (Yukimi 2026-11-06) ----
+    quickAction(act) {
+        if (act === 'reply' || act === 'card') {
+            if (this.peek) this.togglePeek(false);
+            if (this._result) this.showTab(act);
+        } else if (act === 'log') {
+            this.togglePeek();
+        } else if (typeof this.actions[act] === 'function') {
+            this.actions[act]();
+        }
+        this.paintChrome();
+    }
+
+    // info: { title, sub, turns, prints, ratio (0..1 or null) } from director.js paintMascotHud.
+    updateHud(info) {
+        this._hud = info || null;
+        this.paintChrome();
+    }
+
+    paintChrome() {
+        if (!this.el || !this.el.quick) return;
+        const on = this.vnBubbles() && !(this.host && this.host.classList.contains('director-composer-center'));
+        const hud = on ? this._hud : null;
+        this.el.banner.classList.toggle('hidden', !hud);
+        this.el.hud.classList.toggle('hidden', !hud);
+        this.el.quick.classList.toggle('hidden', !on);
+        if (hud) {
+            this.el.banner.querySelector('.dm-banner-title').textContent = hud.title || '';
+            this.el.banner.querySelector('.dm-banner-sub').textContent = this.working ? `${hud.sub || ''} · WORKING`.replace(/^ · /, '') : (hud.sub || '');
+            const set = (key, value) => { const node = this.el.hud.querySelector(`[data-hud="${key}"]`); if (node && node.textContent !== String(value)) node.textContent = String(value); };
+            set('turns', hud.turns || 0);
+            set('prints', hud.prints || 0);
+            const pct = hud.ratio == null ? null : Math.round(hud.ratio * 100);
+            set('ratio', pct == null ? '-' : `${pct}%`);
+            this.el.hud.querySelector('.dm-ring').style.setProperty('--p', pct == null ? 0 : pct);
+            // Growth: points toward the next stage (behaviour.growth).
+            const g = this.manifest ? directorMascotGrowth(this.manifest) : { order: [], points: [] };
+            const pts = Number(this.growthPoints) || 0;
+            let at = 0;
+            g.points.forEach((need, i) => { if (pts >= need) at = i; });
+            const next = g.points[at + 1];
+            const from = g.points[at] || 0;
+            set('stage', g.order.length ? `Stage ${at + 1}/${g.order.length}` : 'Stage');
+            set('next', next != null ? `${pts} / ${next} pts` : `${pts} pts · max`);
+            const fill = next != null ? Math.max(0, Math.min(1, (pts - from) / Math.max(0.01, next - from))) : 1;
+            this.el.hud.querySelector('[data-hud="grow"]').style.width = `${Math.round(fill * 100)}%`;
+        }
+        const tab = this._result && !this.el.result.classList.contains('hidden') ? this._tab : '';
+        this.el.quick.querySelectorAll('button[data-act]').forEach((btn) => {
+            const act = btn.dataset.act;
+            const pressed = act === 'log' ? !!this.peek : (!this.peek && act === tab);
+            btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+            if (act === 'card') btn.disabled = !(this._result && this._result.card);
+            if (act === 'reply') btn.disabled = !this._result;
+        });
+        this.placeChrome();
+    }
+
+    // The quick bar rides the dialogue's bottom edge, or sits above the input bar when there is no box.
+    placeChrome() {
+        if (!this.el || !this.el.quick || !this.layer || !this.host) return;
+        const composer = this.host.querySelector('#directorComposer');
+        const l = this.layer.getBoundingClientRect();
+        const c = composer ? composer.getBoundingClientRect() : null;
+        const base = c && c.height && l.height ? Math.max(0, Math.round(l.bottom - c.top + 6)) : 10;
+        this.el.quick.style.bottom = `${base}px`;
+    }
+
     // Log peek: the full log over the dialogue for a moment; Log again, Escape, or the next send closes it.
     togglePeek(on) {
         this.peek = typeof on === 'boolean' ? on : !this.peek;
@@ -873,11 +969,9 @@ class DirectorMascot {
         if (this.el && this.el.peekBtn) this.el.peekBtn.setAttribute('aria-pressed', this.peek ? 'true' : 'false');
         // While the log is open the dialogue box steps aside (Yukimi: hide, do not overlap); a small
         // Back to her button takes its place.
-        if (this.el && this.el.peekClose) {
-            this.el.peekClose.classList.toggle('hidden', !(this.peek && this.vnBubbles()));
-            const box = this.el.result;
-            if (box && box.style.bottom) this.el.peekClose.style.bottom = box.style.bottom;
-        }
+        // The quick bar's Log button closes it again (the old Back to her button stays hidden).
+        if (this.el && this.el.peekClose) this.el.peekClose.classList.add('hidden');
+        this.paintChrome();
         if (this.peek && this.host) {
             const list = this.host.querySelector('.director-chat-messages');
             const scroller = list && list.closest('.director-chat-messages-container');
@@ -894,7 +988,8 @@ class DirectorMascot {
         if (!l.height) return;
         const c = composer ? composer.getBoundingClientRect() : null;
         const bottom = c && c.height ? Math.max(0, Math.round(l.bottom - c.top + 8)) : 12;
-        box.style.bottom = `${bottom}px`;
+        // The quick bar sits on the box's bottom edge: lift the box by half the bar.
+        box.style.bottom = `${bottom + 16}px`;
         box.style.maxHeight = `${Math.round(Math.max(160, Math.min(l.height * 0.42, 380)))}px`;
         this.paintPager();
     }
@@ -985,6 +1080,7 @@ class DirectorMascot {
         this.layout();
         this.renderFace();
         this.paintBubbles();
+        this.paintChrome();
     }
 
     cue(cue) {
