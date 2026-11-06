@@ -437,6 +437,23 @@ function build() {
         w(`    background-image: url("${url}");`);
         w('}');
         w('');
+        // Outside the command bars above (the Director docked in Studio) the glyph rule does not reach
+        // the button: size the picture and drop the glyph here too, or both draw (Yukimi 2026-11-06).
+        w(`body.desktop-mode:not(.windows-classic-theme) ${sel} > i {`);
+        w('    display: inline-block;');
+        w('    width: 16px;');
+        w('    height: 16px;');
+        w('    background-repeat: no-repeat;');
+        w('    background-position: center;');
+        w('    background-size: 16px 16px;');
+        w('    font-size: 0;');
+        w('    vertical-align: middle;');
+        w('}');
+        w('');
+        w(`body.desktop-mode:not(.windows-classic-theme) ${sel} > i::before {`);
+        w('    content: none;');
+        w('}');
+        w('');
     }
     w('/* ---- items that share a glyph ---- */');
     w('');

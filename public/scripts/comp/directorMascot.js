@@ -313,6 +313,9 @@ class DirectorMascot {
             // Buttons she would cover (quick starts, attachment chips) move under the input bar.
             this.host.classList.toggle('director-mascot-on', on);
             this.host.classList.toggle('dm-log-hidden', on && this.view === 'mascot' && !this.showLog);
+            // The Director around the chat (list, composer) wears the VN buttons while her view is on.
+            const container = this.host.closest('#directorContainer');
+            if (container) container.classList.toggle('dm-vn-on', on && this.view === 'mascot');
             if (!(on && this.view === 'mascot' && !this.showLog)) this.host.classList.remove('dm-log-peek');
         }
         if (this.layer) {
@@ -913,8 +916,9 @@ class DirectorMascot {
         if (!this.layer) return;
         const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex || '').trim());
         const props = ['--dm-teal', '--dm-teal-deep', '--dm-hi', '--dm-line', '--dm-track', '--dm-tint'];
-        // On the chat host too, so the welcome quick starts and anything else in the chat can use them.
-        const targets = [this.layer, this.host].filter(Boolean);
+        // On the chat host and the whole Director (chat list, composer) too, so their VN buttons use them.
+        const container = this.host ? this.host.closest('#directorContainer') : null;
+        const targets = [this.layer, this.host, container].filter(Boolean);
         if (!m) { targets.forEach((t) => props.forEach((p) => t.style.removeProperty(p))); this._accent = ''; return; }
         let h = m[1];
         if (h.length === 3) h = h.split('').map((c) => c + c).join('');

@@ -4849,10 +4849,13 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
 }
 
 .dm-vn-layer .dm-quick button i {
-    display: inline-grid;
-    place-items: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
     width: 18px;
     height: 18px;
+    text-align: center;
     border-radius: 50%;
     background: var(--dm-teal);
     color: #fff;
@@ -5021,6 +5024,68 @@ body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn
 
 body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle:hover,
 body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle[data-state="on"] {
+    background: linear-gradient(180deg, var(--dm-hi, #47c9dc), var(--dm-teal, #22a7bf) 60%, var(--dm-teal-deep, #167f99));
+    box-shadow: none;
+    color: #fff;
+}
+
+/* Font Awesome glyphs sit dead centre in the quick bar discs (their own line box rides high). */
+.dm-vn-layer .dm-quick button i::before { display: block; line-height: 1; }
+
+/* The Director around the VN view: composer, persona switch, New session in the same button design and
+   workspace colour (setAccent puts the vars on #directorContainer; dm-vn-on comes from applyView). */
+body #directorContainer.dm-vn-on #directorSendBtn {
+    border: 0;
+    border-radius: 0;
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+    background: linear-gradient(180deg, var(--dm-hi, #47c9dc), var(--dm-teal, #22a7bf) 60%, var(--dm-teal-deep, #167f99));
+    box-shadow: none;
+    color: #fff;
+    font-weight: 600;
+    text-shadow: 0 1px 1px hsl(0 0% 0% / 25%);
+}
+
+body #directorContainer.dm-vn-on #directorSendBtn:hover:not(:disabled) {
+    filter: brightness(1.08);
+}
+
+body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn) {
+    border: 0;
+    border-radius: 0;
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+    background: linear-gradient(180deg, #ffffff, var(--dm-tint, #eef7fa));
+    box-shadow: inset 0 0 0 1.5px var(--dm-line, #8fcfdc);
+    color: var(--dm-teal-deep, #167f99);
+}
+
+body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn):hover:not(:disabled) {
+    background: linear-gradient(180deg, var(--dm-hi, #47c9dc), var(--dm-teal, #22a7bf) 60%, var(--dm-teal-deep, #167f99));
+    box-shadow: none;
+    color: #fff;
+}
+
+body #directorContainer.dm-vn-on #directorSessionChat .director-chat-input {
+    box-shadow: inset 0 0 0 1.5px var(--dm-line, #8fcfdc), 0 4px 14px hsl(0 0% 0% / 25%);
+}
+
+body #directorContainer.dm-vn-on #directorPersonaGroup {
+    gap: 3px;
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn {
+    border: 0;
+    border-radius: 0;
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+    background: linear-gradient(180deg, #ffffff, var(--dm-tint, #eef7fa));
+    box-shadow: inset 0 0 0 1.5px var(--dm-line, #8fcfdc);
+    color: var(--dm-ink, #1c2b3a);
+    font-weight: 600;
+}
+
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn.active {
     background: linear-gradient(180deg, var(--dm-hi, #47c9dc), var(--dm-teal, #22a7bf) 60%, var(--dm-teal-deep, #167f99));
     box-shadow: none;
     color: #fff;

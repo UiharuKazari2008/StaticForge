@@ -996,6 +996,21 @@ body.desktop-mode:not(.windows-classic-theme) #directorToolsBtn > i {
     background-image: url("/static_images/vista-cmdbar/action-pane.png");
 }
 
+body.desktop-mode:not(.windows-classic-theme) #directorToolsBtn > i {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 16px 16px;
+    font-size: 0;
+    vertical-align: middle;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorToolsBtn > i::before {
+    content: none;
+}
+
 /* ---- items that share a glyph ---- */
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text^="Large ("] > i.fa-expand {
