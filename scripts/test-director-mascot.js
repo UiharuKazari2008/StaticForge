@@ -131,18 +131,19 @@ assert.strictEqual(k.currentBodyId(), 'base');
 k.setWorking(true);
 for (let i = 0; i < 300; i++) { now += 1000; k.tick(); }
 assert.strictEqual(k.debugState().stage, 'base', 'working time alone no longer grows her');
-assert.strictEqual(directorMascotStageFor(k.manifest, 5), 'base');
-assert.strictEqual(directorMascotStageFor(k.manifest, 6), 'bigger');
-assert.strictEqual(directorMascotStageFor(k.manifest, 14), 'bigger2');
-assert.strictEqual(directorMascotGrowthPoints([hits(9)]) < 6, true, 'one perfect card does not grow her');
-// Opening a chat with earned points: quiet, no transition. Three perfect turns reach the second stage.
+assert.strictEqual(directorMascotStageFor(k.manifest, 19), 'base');
+assert.strictEqual(directorMascotStageFor(k.manifest, 20), 'bigger');
+assert.strictEqual(directorMascotStageFor(k.manifest, 50), 'bigger2');
+assert.strictEqual(directorMascotGrowthPoints([hits(9)]) < 20, true, 'one perfect card does not grow her');
+const perfect = (n) => Array.from({ length: n }, () => hits(4));
+// Opening a chat with earned points: quiet, no transition. Ten perfect turns reach the second stage.
 k.setWorking(false);
-const three = [hits(4), hits(4), hits(4)];
+const three = perfect(10);
 k.onMessages(three);
 assert.strictEqual(k.debugState().stage, 'bigger', 'reopen sets the earned stage');
 // A completed turn whose card pushes past the next threshold grows her after the celebrate pose.
 k.onTurnEnd(true);
-const seven = three.concat([hits(4), hits(4), hits(4), hits(4)]);
+const seven = perfect(25);
 k.onMessages(seven);
 assert.strictEqual(k.debugState().stage, 'bigger', 'not before the turn has landed');
 run(3300);
@@ -185,7 +186,7 @@ assert.strictEqual(x.currentBodyId(), 'kon_kicky', 'gesture plus kick');
 Math.random = () => 0.99;
 for (let i = 0; i < 70; i++) { now += 1000; x.tick(); }
 assert.strictEqual(x.debugState().stage, 'base', 'kicks alone do not grow her');
-x.onMessages([hits(3), hits(3), hits(3)]);
+x.onMessages(perfect(10));
 assert.strictEqual(x.debugState().stage, 'bigger');
 
 // Wren: faces fall back to the nearest one the set has (the mask set has only happy, neutral, thinking).
