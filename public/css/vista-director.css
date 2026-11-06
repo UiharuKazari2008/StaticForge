@@ -808,3 +808,35 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-rep
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-report-note {
     color: #6d6d6d;
 }
+
+/* The chosen score: Vista's pressed button, tinted by the score (the skin's button rule would hide it) */
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-messages-container .director-report-scores button.btn-secondary[aria-pressed="true"] {
+    opacity: 1;
+    font-weight: 600;
+    border-color: #2c628b;
+    background: linear-gradient(#e5f4fc, #c4e5f6 50%, #98d1ef 50%, #68b3db);
+    box-shadow: inset 1px 1px 2px hsl(205 60% 25% / 35%);
+    color: #0b2741;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-messages-container .director-report-row[data-score="hit"] .director-report-scores button[data-score="hit"][aria-pressed="true"] {
+    border-color: #2f7a3e;
+    background: linear-gradient(#eefaef, #cdeecf 50%, #a6dca9 50%, #7cc581);
+    color: #133d1b;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-messages-container .director-report-row[data-score="partial"] .director-report-scores button[data-score="partial"][aria-pressed="true"] {
+    border-color: #9a6c12;
+    background: linear-gradient(#fdf6e3, #f6e2b0 50%, #edcc7c 50%, #e0b654);
+    color: #4a3205;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-messages-container .director-report-row[data-score="miss"] .director-report-scores button[data-score="miss"][aria-pressed="true"] {
+    border-color: #9a2b2b;
+    background: linear-gradient(#fdeeee, #f6c9c9 50%, #eba3a3 50%, #dd7b7b);
+    color: #4d0f0f;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-messages-container .director-report-scores button.btn-secondary[aria-pressed="false"] {
+    color: #7a7a7a;
+}
