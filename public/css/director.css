@@ -4788,6 +4788,10 @@ body #directorSessionChat .dm-vn-layer :is(.dm-dialog-reply, .dm-say) em { font-
     border-top: 1px dashed var(--dm-line);
 }
 
+/* The box never spills: the line keeps its first lines, the choices scroll inside the box. */
+.dm-vn-layer .dm-dialog-body { min-height: 2.6em; flex: 1 1 auto; }
+.dm-vn-layer .dm-dialog-suggest { flex: 0 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+
 .dm-vn-layer .dm-dialog-suggest .director-message-actions {
     display: flex;
     flex-wrap: wrap;

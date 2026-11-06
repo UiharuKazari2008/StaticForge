@@ -1047,7 +1047,9 @@ class DirectorMascot {
             box.style.maxHeight = 'none';
         } else {
             box.style.top = 'auto';
-            box.style.maxHeight = `${Math.round(Math.max(160, Math.min(l.height * 0.42, 380)))}px`;
+            // Small hosts (the Studio-docked Director) give the box a larger share of the height.
+            const share = l.height < 640 ? 0.55 : 0.42;
+            box.style.maxHeight = `${Math.round(Math.max(160, Math.min(l.height * share, 380)))}px`;
         }
         this.paintPager();
     }
