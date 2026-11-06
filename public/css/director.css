@@ -4746,6 +4746,12 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 .dm-vn-layer .dm-dialog-body::-webkit-scrollbar { display: none; }
 .dm-vn-layer .dm-dialog[data-tab="reply"] .dm-dialog-body { cursor: pointer; }
 .dm-vn-layer .dm-dialog[data-tab="card"] .dm-dialog-body { scrollbar-width: thin; font-size: 14px; }
+/* Full report card view: the card gets the whole box; its rows, notes and score buttons read at size. */
+.dm-vn-layer .dm-dialog[data-tab="card"] .dm-dialog-suggest { display: none; }
+.dm-vn-layer .dm-dialog[data-tab="card"] .director-report-card { font-size: 15px; }
+.dm-vn-layer .dm-dialog[data-tab="card"] .director-report-item { font-size: 15px; }
+.dm-vn-layer .dm-dialog[data-tab="card"] .director-report-note { font-size: 12.5px; }
+.dm-vn-layer .dm-dialog[data-tab="card"] .director-report-row { padding: 8px 12px 8px 14px; }
 .dm-vn-layer .dm-dialog[data-tab="card"] .dm-dialog-body::-webkit-scrollbar { display: initial; }
 .dm-vn-layer .dm-dialog-body .director-report-card { margin-top: 0; }
 /* The reply carries director-message-content (a flex column in the log): back to text flow here. */

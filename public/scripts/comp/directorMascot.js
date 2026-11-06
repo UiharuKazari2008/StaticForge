@@ -880,8 +880,9 @@ class DirectorMascot {
         this.el.result.dataset.tab = want;
         this.el.dialogBody.replaceChildren(want === 'card' ? parts.card : parts.reply);
         this.el.dialogBody.scrollTop = 0;
-        this.paintPager();
         this.paintChrome();
+        this.placeResult();
+        this.paintPager();
     }
 
     // Reply paging: a click shows the next page (the box height), the last page goes back to the top.
@@ -1035,7 +1036,15 @@ class DirectorMascot {
         const bottom = c && c.height ? Math.max(0, Math.round(l.bottom - c.top + 8)) : 12;
         // The quick bar sits on the box's bottom edge: lift the box by half the bar.
         box.style.bottom = `${bottom + 16}px`;
-        box.style.maxHeight = `${Math.round(Math.max(160, Math.min(l.height * 0.42, 380)))}px`;
+        if (this._tab === 'card') {
+            // Report card: a full view from under the banner row down to the quick bar (Yukimi 2026-11-06).
+            const top = (parseInt(this.layer.style.getPropertyValue('--dm-top'), 10) || 12) + 70;
+            box.style.top = `${top}px`;
+            box.style.maxHeight = 'none';
+        } else {
+            box.style.top = 'auto';
+            box.style.maxHeight = `${Math.round(Math.max(160, Math.min(l.height * 0.42, 380)))}px`;
+        }
         this.paintPager();
     }
 
