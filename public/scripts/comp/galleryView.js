@@ -7657,6 +7657,9 @@ function displayGalleryFromStartIndex(startIndex, highlightTargetItem = false) {
         if (allImages.length === 0 || effectiveLength === 0) {
             clearTimeout(safetyTimer);
             ensureGalleryVisible();
+            // No reenable listeners are attached on this path: a flag left set kept virtual scroll
+            // off for good once the images arrived (Android gallery stuck on placeholders)
+            suppressGalleryPositionHintUntilInteraction = false;
             finish();
             return;
         }

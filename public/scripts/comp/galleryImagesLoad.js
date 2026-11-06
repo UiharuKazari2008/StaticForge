@@ -285,11 +285,7 @@ async function prepareGalleryWindowContent() {
         return;
     }
 
-    const savedPosition = savedGalleryPosition || 0;
-    if (savedPosition && typeof displayGalleryFromStartIndex === 'function') {
-        displayGalleryFromStartIndex(savedPosition);
-        return;
-    }
+    // No saved-position jump here: data is not ready, so it hit the empty-gallery exit and nothing loaded
 
     // beginStartupGalleryLoad: public/scripts/appInitSteps.js — loadGallery runs right after openModal
     if (document.body.classList.contains('initializing')) {
