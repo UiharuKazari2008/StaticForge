@@ -4993,3 +4993,31 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden.
 .dm-vn-layer[data-side="right"] .dm-peek-close { left: auto; right: 16px; }
 
 @keyframes dm-peek-in { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
+
+/* New chat quick starts: VN choice buttons in the workspace colour, readable in the window and in the
+   Studio-docked Director (its theme drew dark text on dark green there). Vars come from setAccent. */
+body #directorSessionChat #directorComposerWelcome .btn-group-compact {
+    gap: 7px;
+}
+
+body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle {
+    padding: 6px 16px;
+    height: auto;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+    background: linear-gradient(180deg, #ffffff, var(--dm-tint, #eef7fa));
+    box-shadow: inset 0 0 0 1.5px var(--dm-line, #8fcfdc);
+    color: var(--dm-teal-deep, #167f99);
+    font: 600 13px 'Segoe UI', sans-serif;
+    text-shadow: none;
+    filter: drop-shadow(0 2px 4px hsl(0 0% 0% / 25%));
+}
+
+body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle:hover,
+body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle[data-state="on"] {
+    background: linear-gradient(180deg, var(--dm-hi, #47c9dc), var(--dm-teal, #22a7bf) 60%, var(--dm-teal-deep, #167f99));
+    box-shadow: none;
+    color: #fff;
+}

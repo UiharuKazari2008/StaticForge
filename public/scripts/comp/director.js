@@ -650,7 +650,9 @@ class Director {
         const host = document.getElementById('directorSessionChat');
         if (this.mascot || !host || typeof DirectorMascot !== 'function') return;
         this.mascot = new DirectorMascot({
-            isHosted: () => this.directorDockedInWindow(),
+            // The Studio-docked Director shows her too (Yukimi 2026-11-06); Show Mascot still turns her off,
+            // and her layers are released whenever she is hidden (applyView).
+            isHosted: () => true,
             renderResult: (message) => this.createMascotResult(message),
             actions: {
                 prints: () => this.togglePrintsPane(),
@@ -3632,7 +3634,13 @@ class Director {
     paintMascotHud() {
         if (!this.mascot || typeof this.mascot.updateHud !== 'function') return;
         const session = this.currentSession;
-        if (!session || !session.id || session.draft) { this.mascot.updateHud(null); return; }
+        if (!session || !session.id || session.draft) {
+            this.mascot.updateHud(null);
+            // A new chat still wears the workspace it will start in.
+            const live = typeof workspaces !== 'undefined' && workspaces ? workspaces[this.currentWorkspaceId()] : null;
+            this.mascot.setAccent(live && live.color);
+            return;
+        }
         const messages = Array.isArray(session.messages) ? session.messages : [];
         const turns = messages.filter((m) => m && m.role === 'user' && m.message_type !== 'Attachment').length;
         const prints = typeof this.sessionPrints === 'function' ? this.sessionPrints().length : 0;
@@ -7764,6 +7772,7 @@ class Director {
         note.textContent = selected ? selected.title : '';
         // Every persona greets with her name and a line (Yozora's home had none).
         host.append(logo, quip, group, note);
+        this.paintMascotHud();
     }
 
     quickStarts() {

@@ -913,7 +913,9 @@ class DirectorMascot {
         if (!this.layer) return;
         const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex || '').trim());
         const props = ['--dm-teal', '--dm-teal-deep', '--dm-hi', '--dm-line', '--dm-track', '--dm-tint'];
-        if (!m) { props.forEach((p) => this.layer.style.removeProperty(p)); this._accent = ''; return; }
+        // On the chat host too, so the welcome quick starts and anything else in the chat can use them.
+        const targets = [this.layer, this.host].filter(Boolean);
+        if (!m) { targets.forEach((t) => props.forEach((p) => t.style.removeProperty(p))); this._accent = ''; return; }
         let h = m[1];
         if (h.length === 3) h = h.split('').map((c) => c + c).join('');
         if (this._accent === h) return;
@@ -933,7 +935,7 @@ class DirectorMascot {
             '--dm-track': css(mix(rgb, white, 0.82)),
             '--dm-tint': css(mix(rgb, white, 0.93))
         };
-        Object.entries(set).forEach(([k, v]) => this.layer.style.setProperty(k, v));
+        targets.forEach((t) => Object.entries(set).forEach(([k, v]) => t.style.setProperty(k, v)));
     }
 
     // ---- VN chrome: quick-menu bar, title banner, session HUD (Yukimi 2026-11-06) ----
