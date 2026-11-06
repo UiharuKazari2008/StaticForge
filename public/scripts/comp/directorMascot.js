@@ -273,6 +273,7 @@ class DirectorMascot {
     layout() {
         // not shown: nothing to measure (applyView lays her out again when she shows)
         if (!this.root || !this.manifest || !this.host || !this._shown) return;
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => this.placeResult());
         const hostBox = this.host.getBoundingClientRect();
         const composer = this.host.querySelector('#directorComposer');
         this.fitLogPanel(composer);
@@ -695,7 +696,24 @@ class DirectorMascot {
         if (!el) { this.hideResult(); return; }
         this.el.result.replaceChildren(el);
         this.el.result.classList.remove('hidden');
+        this.placeResult();
         this.el.result.scrollTop = 0;
+    }
+
+    // The result panel takes the log panel's own slot (the hidden log keeps its layout), so it sits
+    // where the messages did in every window size instead of floating over her and the input bar.
+    placeResult() {
+        const box = this.el && this.el.result;
+        if (!box || box.classList.contains('hidden') || !this.host || !this.layer) return;
+        const slot = this.host.querySelector('.director-chat-messages-container');
+        if (!slot) return;
+        const s = slot.getBoundingClientRect();
+        const l = this.layer.getBoundingClientRect();
+        if (!s.width || !s.height) return;
+        box.style.left = `${Math.round(s.left - l.left)}px`;
+        box.style.top = `${Math.round(s.top - l.top)}px`;
+        box.style.width = `${Math.round(s.width)}px`;
+        box.style.height = `${Math.round(s.height)}px`;
     }
 
     // A timed body override for this stage (celebrate / printed), then back.

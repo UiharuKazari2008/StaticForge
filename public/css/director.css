@@ -4425,7 +4425,7 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 
 .dm-vn-layer {
     position: absolute;
-    inset: 0 0 var(--dm-composer-space, 84px) 0;
+    inset: 0;
     z-index: 6;
     pointer-events: none;
 }
@@ -4538,14 +4538,11 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 @keyframes dm-bubble-in { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
 @keyframes dm-pop-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-/* The finished turn: summary, report card, and suggestions as one panel beside her. */
+/* The finished turn: summary, report card, and suggestions as one panel beside her, placed over the
+   hidden log panel's slot (directorMascot.js placeResult sets left/top/width/height). */
 .dm-vn-layer .dm-result {
     position: absolute;
-    top: 10px;
-    bottom: 0;
-    width: 38%;
-    min-width: 300px;
-    max-width: 600px;
+    box-sizing: border-box;
     overflow-y: auto;
     pointer-events: auto;
     padding: 8px;
@@ -4557,8 +4554,6 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
     animation: dm-bubble-in 0.25s ease-out;
 }
 
-.dm-vn-layer[data-side="left"] .dm-result { right: 12px; }
-.dm-vn-layer[data-side="right"] .dm-result { left: 12px; }
 
 .dm-vn-layer .dm-result .dm-result-body {
     display: flex;
