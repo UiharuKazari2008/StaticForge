@@ -884,6 +884,21 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'say',
+        core: true,
+        description: 'Director chat only: say one short plain sentence to the user while you work (what you are doing, what you see in a print, what you will try next). It shows at once in their chat and the mascot speech bubble. Call it often, about every one to three tool calls. No markdown, tags, or weights. It does not end the turn.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['text'],
+            properties: {
+                text: { type: 'string', description: 'One short sentence, plain words, at most about 200 characters' },
+                chatId: { type: 'string', description: 'Director chat id. Only needed if the server cannot tell which chat is running.' }
+            }
+        }
+    },
+    {
         name: 'finish_turn',
         core: true,
         description: 'Director chat only: end the turn. summary is your reply (markdown) and replaces a written reply; write nothing after this call. reportCard is required on any turn that edited a prompt or made a print: items are the visible facts from the request, most important first, each scored hit, partial, or miss from the saved print. The user sees it as a card and can rescore it. suggestions are 2 to 4 next replies they can click, written as they would say them. Call once, as your last tool call; a second call replaces the first.',
@@ -5391,7 +5406,7 @@ function queueDirectorLongJobNotice(globalResources, req) {
 // index.json (modules/cursorDirector.js), so the user sees them after a reopen.
 const DIRECTOR_SESSION_TOOLS = new Set([
     'set_session_title', 'set_session_type', 'set_session_tasks', 'set_session_task', 'get_session_tasks', 'close_session_tasks',
-    'offer_workspace_switch', 'request_workspace_switch', 'show_chat_image', 'finish_turn'
+    'offer_workspace_switch', 'request_workspace_switch', 'show_chat_image', 'finish_turn', 'say'
 ]);
 
 // show_chat_image sources. A gallery print, a file in the Director's own home, or a
@@ -5664,6 +5679,16 @@ async function runDirectorSessionTool(globalResources, name, input, req) {
             workspaceName,
             offered: true,
             next: 'The card only offers the jump. Keep passing workspace on your own calls.'
+        });
+    }
+    if (name === 'say') {
+        // The line itself travels in the trace row (cursorDirector summarizeToolArgs); nothing to store.
+        const text = String(input.text || '').replace(/\s+/g, ' ').trim();
+        if (!text) return mcpTextResult({ success: false, error: 'text is required: one short sentence', code: 'MISSING_PARAMETERS' }, true);
+        return mcpTextResult({
+            success: true,
+            said: text.length > 300 ? `${text.slice(0, 297)}…` : text,
+            next: text.length > 300 ? 'Shown, cut at 300 characters. Keep say lines to one short sentence. Keep working.' : 'Shown. Keep working.'
         });
     }
     if (name === 'finish_turn') {

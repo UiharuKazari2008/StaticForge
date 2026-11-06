@@ -93,6 +93,7 @@ class DirectorMascot {
         this.showLog = false;
         this.renderResult = typeof options.renderResult === 'function' ? options.renderResult : null;
         this._toolSeen = 0;
+        this._rowSeen = -1;
         this._bubble = { think: '', say: '' };
         this.loadPrefs();
     }
@@ -147,7 +148,7 @@ class DirectorMascot {
         const layer = document.createElement('div');
         layer.className = 'dm-vn-layer';
         layer.innerHTML = `
-            <div class="dm-bubble dm-think hidden"><div class="dm-bubble-text"></div></div>
+            <div class="dm-bubble dm-think hidden" title="What she is thinking"><span class="dm-think-dots"><i></i><i></i><i></i></span><div class="dm-think-full"></div></div>
             <div class="dm-bubble dm-say hidden"><div class="dm-bubble-text"></div></div>
             <div class="dm-tool-pops"></div>
             <div class="dm-result dm-dialog hidden" data-tab="reply">
@@ -180,7 +181,7 @@ class DirectorMascot {
             name: root.querySelector('.dm-name'),
             text: root.querySelector('.dm-text'),
             think: layer.querySelector('.dm-think'),
-            thinkText: layer.querySelector('.dm-think .dm-bubble-text'),
+            thinkFull: layer.querySelector('.dm-think-full'),
             say: layer.querySelector('.dm-say'),
             sayText: layer.querySelector('.dm-say .dm-bubble-text'),
             pops: layer.querySelector('.dm-tool-pops'),
@@ -606,6 +607,8 @@ class DirectorMascot {
         if (reset && reset.onChatChange) this.resetStage();
         this._growthArmed = false;   // the next chat's stage is set quietly from its own cards
         this._bubble = { think: '', say: '' };
+        this._rowSeen = -1;
+        this._thinking = null;
         this.resetReader();
         this.hideResult();
         this.togglePeek(false);
@@ -620,6 +623,7 @@ class DirectorMascot {
         this.dialogue = { kind: 'thinking', text: '' };
         this._lastAssistantLength = 0;
         this._toolSeen = -1;     // the first stream update sets the baseline (a reload mid-turn pops nothing old)
+        this._rowSeen = 0;       // a turn this tab started reads every line of it
         this._bubble = { think: '', say: '' };
         this.resetReader();
         this.hideResult();
@@ -647,22 +651,28 @@ class DirectorMascot {
     // ---- visual novel bubbles ----
     streamBubbles(payload) {
         const rows = Array.isArray(payload.rows) ? payload.rows : [];
-        const tools = rows.filter((row) => row && row.type === 'tool');
+        const tools = rows.filter((row) => row && row.type === 'tool' && row.name !== 'say');
         if (this._toolSeen < 0 || this._toolSeen > tools.length) this._toolSeen = tools.length;
         tools.slice(this._toolSeen).slice(-3).forEach((row) => this.popTool(row));
         this._toolSeen = tools.length;
-        // The bubble is her newest thought or line: the live row, else the newest finished thinking or
-        // reply row. It stays up while tools run (they pop beside it) until she thinks or talks again.
-        const live = payload.live && payload.live.text && (payload.live.type === 'thinking' || payload.live.type === 'assistant') ? payload.live : null;
-        let latest = live;
-        for (let i = rows.length - 1; i >= 0 && !latest; i--) {
-            const row = rows[i];
-            if (row && (row.type === 'thinking' || row.type === 'assistant') && row.text) latest = row;
+        // What she says: say lines and reply text, in order, read at human pace. A reload mid-turn
+        // starts from now (the first update sets the baseline), so old lines are not read again.
+        if (this._rowSeen < 0 || this._rowSeen > rows.length) this._rowSeen = rows.length;
+        rows.slice(this._rowSeen).forEach((row) => {
+            if (!row) return;
+            if (row.type === 'tool' && row.name === 'say' && row.detail) this.feedReader('assistant', row.detail);
+            else if (row.type === 'assistant' && row.text) this.feedReader('assistant', row.text);
+        });
+        this._rowSeen = rows.length;
+        const live = payload.live && payload.live.text ? payload.live : null;
+        if (live && live.type === 'assistant') this.feedReader('assistant', live.text);
+        // What she thinks: the ". . ." cloud; hovering it shows the newest thinking, live.
+        let thinking = live && live.type === 'thinking' ? live.text : '';
+        for (let i = rows.length - 1; i >= 0 && !thinking; i--) {
+            if (rows[i] && rows[i].type === 'thinking' && rows[i].text) thinking = rows[i].text;
         }
-        const lastOf = (type) => (latest && latest.type === type && latest.text ? String(latest.text) : '');
-        this._bubble = { think: lastOf('thinking'), say: lastOf('assistant') };
-        if (latest) this.feedReader(latest.type, latest.text);
-        else this.paintBubbles();
+        this._thinking = { text: String(thinking || ''), live: !!(live && live.type === 'thinking') };
+        this.paintBubbles();
     }
 
     // ---- paced bubble reader (Yukimi 2026-11-06: human reading speed, and slow enough to fill the time
@@ -728,23 +738,27 @@ class DirectorMascot {
         const on = this.vnBubbles() && this.working;
         const r = this._reader;
         const item = on && r && r.current ? r.current : null;
-        let text = item ? item.text.slice(0, Math.floor(r.shown)) : '';
-        // The bubble holds about three lines of the current sentence run: the newest words stay in view.
-        const MAX = item && item.kind === 'assistant' ? 360 : 300;
-        if (text.length > MAX) {
-            const cut = text.slice(-MAX);
+        let say = item ? item.text.slice(0, Math.floor(r.shown)) : '';
+        if (say.length > 360) {
+            const cut = say.slice(-360);
             const space = cut.indexOf(' ');
-            text = `…${space > 0 ? cut.slice(space + 1) : cut}`;
+            say = `…${space > 0 ? cut.slice(space + 1) : cut}`;
         }
         const typing = !!item && r.shown < item.text.length;
-        const think = item && item.kind === 'thinking' ? text : '';
-        const say = item && item.kind === 'assistant' ? text : '';
-        this.el.think.classList.toggle('hidden', !think);
         this.el.say.classList.toggle('hidden', !say);
-        this.el.think.classList.toggle('dm-typing', typing && !!think);
         this.el.say.classList.toggle('dm-typing', typing && !!say);
-        if (this.el.thinkText.textContent !== think) this.el.thinkText.textContent = think;
         if (this.el.sayText.textContent !== say) this.el.sayText.textContent = say;
+        // The thought cloud shows ". . ." while she works; its full text only on hover.
+        const thinking = on && this._thinking ? this._thinking.text : '';
+        this.el.think.classList.toggle('hidden', !on);
+        this.el.think.classList.toggle('dm-thinking-live', on && !!(this._thinking && this._thinking.live));
+        this.el.think.classList.toggle('dm-has-thought', !!thinking);
+        const full = this.el.thinkFull;
+        if (full && full.textContent !== thinking) {
+            const pinned = full.scrollHeight - full.scrollTop - full.clientHeight < 24;
+            full.textContent = thinking;
+            if (pinned) full.scrollTop = full.scrollHeight;
+        }
     }
 
     popTool(row) {

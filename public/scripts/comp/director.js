@@ -5976,6 +5976,8 @@ class Director {
 
     createTraceRow(row, expandKey, model) {
         if (!row) return null;
+        // say {text}: her line while she works reads as a reply line, not a tool call.
+        if (row.type === 'tool' && row.name === 'say' && row.detail) row = { type: 'assistant', text: row.detail, say: true };
         const messageDiv = document.createElement('div');
         const kind = row.type === 'thinking' || row.type === 'tool' || row.type === 'assistant' ? row.type : 'assistant';
         messageDiv.className = `director-message ${kind}`;

@@ -112,6 +112,14 @@ function reportCue(row) {
     return { expression: 'frustrated', action: 'slump', holdMs: 7000 };
 }
 
+function sayText(row) {
+    let args = row && row.args;
+    if (typeof args === 'string') {
+        try { args = JSON.parse(args); } catch (_) { args = null; }
+    }
+    return (args && args.text) || '';
+}
+
 function rowSig(row) {
     if (!row) return '';
     if (row.type === 'tool') return `t|${row.name}|${String(row.result || '').length}`;
@@ -153,7 +161,10 @@ function mascotCue(sessionId, data, now = Date.now()) {
         const row = rows[i];
         if (!row) continue;
         if (state.rows[i] === rowSig(row)) break;    // older rows were already seen
-        if (row.type === 'tool') {
+        if (row.type === 'tool' && row.name === 'say') {
+            // Her spoken line reads like a reply.
+            if (!word) word = textCue(row.detail || sayText(row), data.persona);
+        } else if (row.type === 'tool') {
             if (row.name === 'finish_turn') { if (!report) report = reportCue(row); }
             else if (!tool) tool = toolCue(row);
         } else if ((row.type === 'thinking' || row.type === 'assistant') && !word) {

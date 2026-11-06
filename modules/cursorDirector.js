@@ -1960,6 +1960,7 @@ function wrenRules() {
             '- spoken: one to three short sentences, the line you would say out loud to them (the mascot dialogue shows it, and it may be read by a voice). Plain words only: no markdown, no tags, no weights, no filenames. What happened and how it looks, like talking across the desk.',
             '- reportCard: required on every turn that edited a prompt or made a print. {request: the ask in one line, filename: the print you judged, items: [{item, score, note}]}: item is one visible fact from the request or the target checklist, most important first; score is hit, partial, or miss from the saved print, not from the prompt text; note is one short line on what you see. Leave it out on a turn with no prompt work.',
             '- suggestions: 2 to 4 next replies the user could send, written as they would say them ("Push the tail longer", "Try a side view"). Each one is a whole message that makes sense on its own.',
+            '- Talk to them while you work with say {text}: one short plain sentence, the kind you would say across the desk, whenever you start a step, see something in a print, or change plan. Aim for one every one to three tool calls. Your thinking stays as long as it needs; say is what they hear while it runs. No markdown, no tags or weights.',
             '- A user message that starts with Report card review is their rescore of your last card. Their score is right: update the checklist to match, and fix the items they scored lower than you first.'
         ].join('\n'),
         [
@@ -1988,7 +1989,7 @@ function wrenRules() {
         ].join('\n'),
         [
             '## 8. Tools',
-            'Dreamscape tools live on MCP server dreamscape and are called with CallDynamicTool. These are known, with their arguments, so never GetDynamicTools them and never read mcps/, .cursor/mcp.json, or disk to find them: get_session_state {view}, get_studio_state {full}, apply_studio_changes {change|prompt, uc, params, text_overlays, autoGenerate}, print_studio {n}, await_generation_job {jobId}, generate_image {prompt, uc, model, params, workspace}, get_generated_image {filename, workspace}, read_image_metadata {filename|path}, show_chat_image {filename|path|url, caption}, open_in_studio {filename}, resolve_lookback {lookback}, count_prompt_tokens {text, model}, search_nax {query, kind, preview}, generate_nax_tag {tag, kind}, delete_nax_tag {gallerySlug, tag}, search_autofill {query|terms, model, category}, search_wiki {query}, get_wiki_page {tagName}, get_character_card {name, franchise}, lookup_character_age {character}, search_character_db {query}, get_character_db_entry {name}, save_character_db_entry {name, copyright, prompt, enhancers}, get_prompt_guide {pageId}, search_memories {query}, list_memories {limit, offset}, get_memory {name}, save_memory {name, description, category, observations, confidence}, delete_memory {name}, create_phasewalker {keyword, variants}, decompile_phasewalker {phase}, get_workspaces {}, get_workspace_config {workspace}, offer_workspace_switch {workspaceId, reason}, request_workspace_switch {reason}, bind_session {clientId}, offer_director_window {}, set_session_title {title}, set_session_type {type}, set_session_tasks {tasks:[{id,title,done}]}, set_session_task {id, done}, get_session_tasks {}, close_session_tasks {}, finish_turn {summary, spoken, reportCard:{request, filename, items:[{item, score, note}]}, suggestions}. Explore stays in the Laboratory workspace: search_explore {search, period, cursor, mode}, count_explore {tags, period}, get_explore_post {postId}, get_explore_image {postId}. Compact search is the default. Do not pull full images unless you call get_explore_image. A tool not in this list: look it up once by exact name, never twice.'
+            'Dreamscape tools live on MCP server dreamscape and are called with CallDynamicTool. These are known, with their arguments, so never GetDynamicTools them and never read mcps/, .cursor/mcp.json, or disk to find them: get_session_state {view}, get_studio_state {full}, apply_studio_changes {change|prompt, uc, params, text_overlays, autoGenerate}, print_studio {n}, await_generation_job {jobId}, generate_image {prompt, uc, model, params, workspace}, get_generated_image {filename, workspace}, read_image_metadata {filename|path}, show_chat_image {filename|path|url, caption}, open_in_studio {filename}, resolve_lookback {lookback}, count_prompt_tokens {text, model}, search_nax {query, kind, preview}, generate_nax_tag {tag, kind}, delete_nax_tag {gallerySlug, tag}, search_autofill {query|terms, model, category}, search_wiki {query}, get_wiki_page {tagName}, get_character_card {name, franchise}, lookup_character_age {character}, search_character_db {query}, get_character_db_entry {name}, save_character_db_entry {name, copyright, prompt, enhancers}, get_prompt_guide {pageId}, search_memories {query}, list_memories {limit, offset}, get_memory {name}, save_memory {name, description, category, observations, confidence}, delete_memory {name}, create_phasewalker {keyword, variants}, decompile_phasewalker {phase}, get_workspaces {}, get_workspace_config {workspace}, offer_workspace_switch {workspaceId, reason}, request_workspace_switch {reason}, bind_session {clientId}, offer_director_window {}, set_session_title {title}, set_session_type {type}, set_session_tasks {tasks:[{id,title,done}]}, set_session_task {id, done}, get_session_tasks {}, close_session_tasks {}, say {text}, finish_turn {summary, spoken, reportCard:{request, filename, items:[{item, score, note}]}, suggestions}. Explore stays in the Laboratory workspace: search_explore {search, period, cursor, mode}, count_explore {tags, period}, get_explore_post {postId}, get_explore_image {postId}. Compact search is the default. Do not pull full images unless you call get_explore_image. A tool not in this list: look it up once by exact name, never twice.'
         ].join('\n')
     ];
     // Rules the user approved from Auto-Repair proposals (modules/directorLearned.js).
@@ -3520,6 +3521,7 @@ const TOOL_LABELS = {
     bind_session: 'Bind client',
     show_chat_image: 'Show image',
     finish_turn: 'Report',
+    say: 'Says',
     open_in_studio: 'Open in Studio',
     open_in_lumen: 'Lumen',
     open_in_glancewell: 'Glancewell',
@@ -3944,6 +3946,11 @@ function summarizeToolArgs(name, args) {
         }
         return '';
     };
+    // say: her line to the user, shown whole in the log and the mascot's speech bubble.
+    if (name === 'say') {
+        const text = redactToolText(String(args.text || args.message || '')).replace(/\s+/g, ' ').trim();
+        return text.length > 300 ? `${text.slice(0, 297)}…` : text;
+    }
     if (name === 'Shell') return pick('description', 'command');
     if (name === 'Read' || name === 'Glob' || name === 'Grep') {
         return pick('description', 'path', 'glob_pattern', 'pattern', 'query');
@@ -4569,6 +4576,7 @@ function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     // Standing orders are in the project rule (wrenRules). This is the per-turn state only.
     lines.push('Turn: one get_session_state view live first; Read every new print before you answer (sections 2 and 4).');
     // In the turn prompt too: models skip the rulebook line (a DeepSeek turn on Nov 6 never called it).
+    lines.push('While you work, say {text} a short plain line to them every one to three tool calls (what you are doing, what you see, what you will try).');
     lines.push('End the turn with one finish_turn {summary, spoken, reportCard, suggestions} call as your last tool call: the summary is your reply; spoken is one to three plain sentences you would say out loud; reportCard (hit, partial, miss per item) whenever you edited a prompt or printed; 2 to 4 suggestions. No reply text after it (section 4c).');
     if (priorMessages.length && !chat.replay && !handoff && !repaired) lines.push('Follow-up: the next frame (section 3).');
     lines.push(...turnModeLines(turnWorkMode(userText)));

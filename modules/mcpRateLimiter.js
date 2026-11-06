@@ -94,6 +94,7 @@ const TOOL_RATE_GROUPS = {
     request_workspace_switch: 'free',
     show_chat_image: 'write',
     finish_turn: 'free',
+    say: 'free',
     request_form: 'free',
     deliver_rentan: 'free',
     deliver_quips: 'free',

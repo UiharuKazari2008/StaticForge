@@ -4491,8 +4491,13 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 
 @keyframes dm-caret { 50% { opacity: 0; } }
 
-/* Thought: a soft frosted cloud, italic, with glass puffs toward her head. */
+/* Thought: a small frosted cloud with ". . ." while she works; hover opens her live thinking. */
 .dm-vn-layer .dm-think {
+    top: 3%;
+    min-width: 0;
+    padding: 10px 18px;
+    pointer-events: auto;
+    cursor: help;
     border-radius: 30px;
     color: #2d3b52;
     font-style: italic;
@@ -4520,8 +4525,56 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 .dm-vn-layer[data-side="right"] .dm-think::before { right: 8px; }
 .dm-vn-layer[data-side="right"] .dm-think::after { right: -8px; }
 
-/* Speech: glass with a teal edge and a tail toward her. */
+.dm-vn-layer .dm-think-dots {
+    display: inline-flex;
+    gap: 7px;
+    align-items: center;
+    height: 14px;
+}
+
+.dm-vn-layer .dm-think-dots i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: hsl(222 40% 30% / 70%);
+    animation: dm-dot 1.4s ease-in-out infinite;
+}
+
+.dm-vn-layer .dm-think-dots i:nth-child(2) { animation-delay: 0.2s; }
+.dm-vn-layer .dm-think-dots i:nth-child(3) { animation-delay: 0.4s; }
+.dm-vn-layer .dm-think:not(.dm-thinking-live) .dm-think-dots i { animation-duration: 2.4s; }
+
+@keyframes dm-dot { 0%, 60%, 100% { opacity: 0.35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-4px); } }
+
+.dm-vn-layer .dm-think-full {
+    display: none;
+    max-height: 0;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 13.5px;
+    line-height: 1.5;
+    scrollbar-width: thin;
+}
+
+.dm-vn-layer .dm-think.dm-has-thought:hover {
+    z-index: 2;
+    width: min(56vw, 640px);
+    max-width: min(60%, 680px);
+    padding: 12px 18px 14px;
+    border-radius: 18px;
+}
+
+.dm-vn-layer .dm-think.dm-has-thought:hover .dm-think-dots { margin-bottom: 6px; }
+
+.dm-vn-layer .dm-think.dm-has-thought:hover .dm-think-full {
+    display: block;
+    max-height: min(46vh, 360px);
+}
+
+/* Speech: glass with a teal edge and a tail toward her; under the thought cloud. */
 .dm-vn-layer .dm-say {
+    top: calc(3% + 56px);
     border-radius: 14px;
     border-left: 4px solid hsl(188 70% 48% / 85%);
 }
