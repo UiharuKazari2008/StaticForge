@@ -1546,7 +1546,7 @@ function studioParamScrubRow(param, label) {
         tooltip: () => (locked() ? STUDIO_MEDIUM_LOCKED_TIP : ''),
         content: function () {
             const wrap = document.createElement('div');
-            wrap.className = 'dataset-option-content';
+            wrap.className = 'dataset-option-content studio-scrub-row';
             const left = document.createElement('div');
             left.className = 'dataset-option-left';
             // no glyph: the label sits in the menu's text column like the other rows

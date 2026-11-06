@@ -4358,3 +4358,9 @@ body.desktop-mode.windows-classic-theme #manualModal .studio-menubar .naxt-menu-
 body.desktop-mode.windows-classic-theme #manualModal .studio-menubar .naxt-menu-title.context-open {
     border-color: #808080 #fff #fff #808080;
 }
+
+/* Steps / Guidance / Rescale rows are custom content: in a Win32 menu (the Model menu) their label
+   starts at the text column like every other row, past the 28 px icon / check column. */
+.context-menu.context-menu-win32 .studio-scrub-row > .dataset-option-left {
+    padding-left: 28px;
+}
