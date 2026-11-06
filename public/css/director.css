@@ -5090,3 +5090,144 @@ body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn.activ
     box-shadow: none;
     color: #fff;
 }
+
+/* ---- VN text box in live mode (directorMascot.js startLive): her lines while she works, a working
+   marker in the corner and a soft pulse on the edge so it reads as not done yet. */
+.dm-vn-layer .dm-dialog-working {
+    display: none;
+    align-self: flex-end;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    color: var(--dm-teal-deep);
+    font: 600 11.5px 'Segoe UI', sans-serif;
+    letter-spacing: 0.04em;
+}
+
+.dm-vn-layer .dm-dialog[data-mode="live"] .dm-dialog-working { display: inline-flex; }
+.dm-vn-layer .dm-dialog[data-mode="live"] .dm-dialog-pager { display: none; }
+
+.dm-vn-layer .dm-dialog-working i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--dm-teal);
+    animation: dm-dot 1.4s ease-in-out infinite;
+}
+
+.dm-vn-layer .dm-dialog-working i:nth-child(2) { animation-delay: 0.2s; }
+.dm-vn-layer .dm-dialog-working i:nth-child(3) { animation-delay: 0.4s; margin-right: 3px; }
+
+.dm-vn-layer .dm-dialog[data-mode="live"]::before {
+    animation: dm-live-edge 2.2s ease-in-out infinite;
+}
+
+@keyframes dm-live-edge { 50% { filter: drop-shadow(0 8px 20px hsl(205 50% 15% / 35%)) brightness(1.25); } }
+
+.dm-vn-layer .dm-dialog-live:empty::before {
+    content: '\2026';
+    color: var(--dm-line);
+}
+
+/* Typing caret at the end of the live line. */
+.dm-vn-layer .dm-dialog.dm-typing .dm-dialog-live::after {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 1em;
+    margin-left: 3px;
+    vertical-align: -2px;
+    border-radius: 2px;
+    background: var(--dm-teal);
+    animation: dm-caret 0.9s steps(2) infinite;
+}
+
+/* ---- Cut-corner buttons with a whole outline (Yukimi 2026-11-06: the border vanished on the cuts).
+   The edge is a ::before cut to the shape, the face an ::after cut 1.5px inside it, so the outline
+   follows the diagonals. --dm-cut sets the corner, --dm-edge / --dm-face the colours. */
+body #directorSessionChat .dm-vn-layer .dm-quick button,
+body #directorSessionChat .dm-vn-layer .dm-hud-chip,
+body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary,
+body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle,
+body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn, #directorSendBtn),
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn {
+    --dm-cut: 7px;
+    --dm-edge: var(--dm-line, #8fcfdc);
+    --dm-face: linear-gradient(180deg, #ffffff, var(--dm-tint, #eef7fa));
+    position: relative;
+    isolation: isolate;
+    clip-path: none;
+    background: none;
+    box-shadow: none;
+    border: 0;
+}
+
+body #directorSessionChat .dm-vn-layer .dm-quick button::before,
+body #directorSessionChat .dm-vn-layer .dm-hud-chip::before,
+body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary::before,
+body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle::before,
+body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn, #directorSendBtn)::before,
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn::before,
+body #directorSessionChat .dm-vn-layer .dm-quick button::after,
+body #directorSessionChat .dm-vn-layer .dm-hud-chip::after,
+body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary::after,
+body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle::after,
+body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn, #directorSendBtn)::after,
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn::after {
+    content: '';
+    display: block;
+    position: absolute;
+    width: auto;
+    height: auto;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    opacity: 1;
+    transform: none;
+    filter: none;
+    pointer-events: none;
+}
+
+body #directorSessionChat .dm-vn-layer .dm-quick button::before,
+body #directorSessionChat .dm-vn-layer .dm-hud-chip::before,
+body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary::before,
+body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle::before,
+body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn, #directorSendBtn)::before,
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn::before {
+    inset: 0;
+    z-index: -2;
+    background: var(--dm-edge);
+    clip-path: polygon(var(--dm-cut) 0, 100% 0, 100% calc(100% - var(--dm-cut)), calc(100% - var(--dm-cut)) 100%, 0 100%, 0 var(--dm-cut));
+}
+
+body #directorSessionChat .dm-vn-layer .dm-quick button::after,
+body #directorSessionChat .dm-vn-layer .dm-hud-chip::after,
+body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary::after,
+body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle::after,
+body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn, #directorSendBtn)::after,
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn::after {
+    inset: 1.5px;
+    z-index: -1;
+    background: var(--dm-face);
+    clip-path: polygon(calc(var(--dm-cut) - 0.6px) 0, 100% 0, 100% calc(100% - var(--dm-cut) + 0.6px), calc(100% - var(--dm-cut) + 0.6px) 100%, 0 100%, 0 calc(var(--dm-cut) - 0.6px));
+}
+
+/* Filled states: the accent face with a deeper edge. */
+body #directorSessionChat .dm-vn-layer .dm-quick button[aria-pressed="true"],
+body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary:hover:not(:disabled),
+body #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle:is(:hover, [data-state="on"]),
+body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn):hover:not(:disabled),
+body #directorContainer.dm-vn-on #directorSendBtn,
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn.active {
+    --dm-edge: var(--dm-teal-deep, #167f99);
+    --dm-face: linear-gradient(180deg, var(--dm-hi, #47c9dc), var(--dm-teal, #22a7bf) 60%, var(--dm-teal-deep, #167f99));
+    background: none;
+    color: #fff;
+}
+
+body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary { --dm-cut: 8px; }
+body #directorContainer.dm-vn-on #directorSendBtn { --dm-cut: 8px; }
+body #directorContainer.dm-vn-on :is(#directorAttachDropdownBtn, #directorNewSessionBtn),
+body #directorContainer.dm-vn-on #directorPersonaGroup .gallery-toggle-btn { --dm-cut: 6px; }
+body #directorSessionChat .dm-vn-layer .dm-hud-chip { --dm-cut: 8px; }

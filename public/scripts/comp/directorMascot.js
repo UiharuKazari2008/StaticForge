@@ -191,6 +191,7 @@ class DirectorMascot {
                     <button type="button" class="dm-dialog-peek" aria-pressed="false" title="Show the message log for a moment">Log</button>
                 </div>
                 <div class="dm-dialog-body"></div>
+                <span class="dm-dialog-working" aria-label="Still working"><i></i><i></i><i></i>working</span>
                 <span class="dm-dialog-pager hidden"></span>
                 <div class="dm-dialog-suggest"></div>
             </div>`;
@@ -777,27 +778,62 @@ class DirectorMascot {
         this._reader = { queue: [], current: null, shown: 0, holdUntil: 0 };
     }
 
+    // While she works, her lines (say, reply text) type into the same VN text box the summary uses, in
+    // live mode with a working marker (Yukimi 2026-11-06); the turn's result replaces it when she is done.
+    startLive() {
+        if (!this.el || !this.el.result) return;
+        this._result = null;
+        this._resultFor = '';
+        this._tab = 'reply';
+        const box = this.el.result;
+        box.dataset.mode = 'live';
+        box.dataset.tab = 'reply';
+        this.el.dialogName.textContent = (this.manifest && this.manifest.name) || '';
+        this.el.dialogSuggest.replaceChildren();
+        const line = document.createElement('div');
+        line.className = 'director-message-content dm-dialog-reply dm-dialog-live';
+        this.el.dialogBody.replaceChildren(line);
+        this.el.liveLine = line;
+        this._sayKey = '';
+        box.classList.remove('hidden');
+        this.placeResult();
+        this.paintChrome();
+    }
+
+    endLive() {
+        if (!this.el || !this.el.result || this.el.result.dataset.mode !== 'live') return;
+        this.el.result.dataset.mode = '';
+        this.el.liveLine = null;
+        this.hideResult();
+    }
+
     paintBubbles() {
         if (!this.el || !this.el.think) return;
         const on = this.vnBubbles() && this.working;
-        const r = this._reader;
-        const item = on && r && r.current ? r.current : null;
-        let say = item ? item.text.slice(0, Math.floor(r.shown)) : '';
-        if (say.length > 360) {
-            const cut = say.slice(-360);
-            const space = cut.indexOf(' ');
-            say = `…${space > 0 ? cut.slice(space + 1) : cut}`;
-        }
-        const typing = !!item && r.shown < item.text.length;
-        this.el.say.classList.toggle('hidden', !say);
-        this.el.say.classList.toggle('dm-typing', typing && !!say);
-        // Typed as plain text; once the line is whole its *italic* / **bold** emphasis shows.
-        const whole = !!say && !typing && item.raw && item.raw.length <= 360;
-        const key = whole ? `h:${item.raw}` : `t:${say}`;
-        if (this._sayKey !== key) {
-            this._sayKey = key;
-            if (whole && typeof directorLineHtml === 'function') this.el.sayText.innerHTML = directorLineHtml(item.raw);
-            else this.el.sayText.textContent = say;
+        // The old speech bubble stays hidden: her lines are in the text box now.
+        this.el.say.classList.add('hidden');
+        if (on && this.el.result.dataset.mode !== 'live') this.startLive();
+        if (!on) this.endLive();
+        if (on && this.el.liveLine) {
+            const r = this._reader;
+            const item = r && r.current ? r.current : null;
+            let say = item ? item.text.slice(0, Math.floor(r.shown)) : '';
+            if (say.length > 480) {
+                const cut = say.slice(-480);
+                const space = cut.indexOf(' ');
+                say = `…${space > 0 ? cut.slice(space + 1) : cut}`;
+            }
+            const typing = !!item && r.shown < item.text.length;
+            this.el.result.classList.toggle('dm-typing', typing);
+            // Typed as plain text; once the line is whole its *italic* / **bold** emphasis shows.
+            const whole = !!say && !typing && item.raw && item.raw.length <= 480;
+            const key = whole ? `h:${item.raw}` : `t:${say}`;
+            if (this._sayKey !== key) {
+                this._sayKey = key;
+                if (whole && typeof directorLineHtml === 'function') this.el.liveLine.innerHTML = `“${directorLineHtml(item.raw)}”`;
+                else this.el.liveLine.textContent = say ? `“${say}` : '';
+                this.el.dialogBody.scrollTop = this.el.dialogBody.scrollHeight;
+            }
         }
         // The thought cloud shows ". . ." while she works; its full text only on hover.
         const thinking = on && this._thinking ? this._thinking.text : '';
@@ -864,6 +900,9 @@ class DirectorMascot {
         if (this._resultFor === key && !this.el.result.classList.contains('hidden')) return;
         const parts = this.renderResult ? this.renderResult(last) : null;
         if (!parts || !parts.reply) { this.hideResult(); return; }
+        this.el.result.dataset.mode = 'result';
+        this.el.result.classList.remove('dm-typing');
+        this.el.liveLine = null;
         this._resultFor = key;
         this._result = parts;
         this.el.dialogName.textContent = (this.manifest && this.manifest.name) || parts.name || '';
