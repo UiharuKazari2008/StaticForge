@@ -1603,9 +1603,14 @@ textarea {
     max-height: 400px;
 }
 
-/* Ensure the character detail content takes full height of the autocomplete overlay */
+/* Inside the autofill window the detail view fills the list and only its body scrolls: the list
+   scrolled the whole view too, so two scrollbars showed (the outer one over the header). The view
+   shrinks to the list's height (min-height: 0) so the list itself never overflows. */
 .character-autocomplete-overlay .character-detail-content {
-    height: 100%;
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+    max-height: none;
 }
 
 .character-detail-content {
@@ -1674,8 +1679,8 @@ textarea {
 
 /* When inside autocomplete overlay, take full available height */
 .character-autocomplete-overlay .character-detail-body {
-    max-height: calc(400px - 60px);
-    /* Account for header height */
+    max-height: none;
+    min-height: 0;
     overflow-y: auto;
 }
 
@@ -1775,11 +1780,11 @@ textarea {
     margin-bottom: 8px;
 }
 
-.enhancer-group[data-enhancer-group="null"] .enhancer-group-header {
+.enhancer-group-none .enhancer-group-header {
     margin-bottom: 0px;
 }
 
-.enhancer-group[data-enhancer-group="null"] .enhancer-group-count {
+.enhancer-group-hint {
     display: none;
 }
 

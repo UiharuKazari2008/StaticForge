@@ -9467,30 +9467,27 @@ function selectCharacterWithoutEnhancers(character) {
     }
 }
 
+// Rows of the open character detail view, by data-detail-index. Kept in JS, not in HTML attributes:
+// a quote in a copyright ("Frieren: Beyond Journey's End") cut the old single-quoted JSON attributes
+// short, so JSON.parse threw and neither Enter nor a click could pick a group.
+let characterDetailRows = [];
+
 function applyCharacterDetailGroupAction(group) {
     if (!group) return;
-    if (group.getAttribute('data-action') === 'tag-only') {
-        const tagName = JSON.parse(group.getAttribute('data-tag-name'));
-        const tagCategory = JSON.parse(group.getAttribute('data-tag-category') || '""');
-        selectTagOnlyFromDetail(tagName, tagCategory);
+    const row = characterDetailRows[Number(group.getAttribute('data-detail-index'))];
+    if (!row) return;
+    if (row.tagOnly) {
+        selectTagOnlyFromDetail(row.tagName, row.tagCategory);
         return;
     }
-    const enhancerGroupData = group.getAttribute('data-enhancer-group');
-    const characterData = group.getAttribute('data-character');
-    if (!enhancerGroupData || !characterData) return;
-    try {
-        const enhancerGroup = enhancerGroupData === 'null' ? null : JSON.parse(enhancerGroupData);
-        const char = JSON.parse(characterData);
-        selectEnhancerGroupFromDetail(enhancerGroup, char);
-    } catch (err) {
-        console.error('Error parsing enhancer group data:', err);
-    }
+    selectEnhancerGroupFromDetail(row.enhancerGroup, row.character);
 }
 
 function showCharacterDetail(character, detailOptions = {}) {
     try {
         // Reset selected enhancer group index
         selectedEnhancerGroupIndex = -1;
+        characterDetailRows = [];
 
         // Instead of using a separate overlay, replace the content inside the existing autocomplete overlay
         const autocompleteList = document.querySelector('.character-autocomplete-list');
@@ -9500,17 +9497,17 @@ function showCharacterDetail(character, detailOptions = {}) {
             return;
         }
 
+        const addRow = (row) => characterDetailRows.push(row) - 1;
+
         // Create enhancers HTML
         let enhancersHTML = '';
 
         // Add "None" option first
         enhancersHTML += `
-            <div class="enhancer-group" 
-                 data-enhancer-group="null" 
-                 data-character='${JSON.stringify(character)}'>
+            <div class="enhancer-group enhancer-group-none" data-detail-index="${addRow({ enhancerGroup: null, character })}">
                 <div class="enhancer-group-header">
                     <span class="enhancer-group-name">None</span>
-                    <span class="enhancer-group-count">0</span>
+                    <span class="enhancer-group-hint">Prompt only</span>
                 </div>
             </div>
         `;
@@ -9522,34 +9519,25 @@ function showCharacterDetail(character, detailOptions = {}) {
                 // Handle mixed structure: convert strings to single-item arrays
                 let processedGroup;
                 if (typeof enhancerGroup === 'string') {
-                    // Convert string to single-item array
                     processedGroup = [enhancerGroup];
                 } else if (Array.isArray(enhancerGroup)) {
-                    // Already an array, use as-is
-                    processedGroup = enhancerGroup;
+                    processedGroup = enhancerGroup.filter(item => typeof item === 'string');
                 } else {
                     console.warn(`Enhancer group ${groupIndex} is neither string nor array:`, enhancerGroup);
                     return; // Skip this group
                 }
 
                 enhancersHTML += `
-                    <div class="enhancer-group" 
-                         data-enhancer-group='${JSON.stringify(processedGroup)}'
-                         data-character='${JSON.stringify(character)}'>
+                    <div class="enhancer-group" data-detail-index="${addRow({ enhancerGroup: processedGroup, character })}">
                         <div class="enhancer-group-header">
                             <span class="enhancer-group-name">Group ${groupIndex + 1}</span>
                             <span class="enhancer-group-count">${processedGroup.length}</span>
                         </div>
                         <div class="enhancer-items">
                             ${processedGroup.map(item => {
-                    // Ensure item is a string
-                    if (typeof item !== 'string') {
-                        console.warn(`Enhancer item is not a string:`, item);
-                        return '';
-                    }
                     const isNegative = item.startsWith('--');
                     const displayItem = isNegative ? item.substring(2) : item;
-                    return `<span class="enhancer-item ${isNegative ? 'negative' : ''}">${displayItem}</span>`;
+                    return `<span class="enhancer-item ${isNegative ? 'negative' : ''}">${escapeHtml(displayItem)}</span>`;
                 }).join('')}
                         </div>
                     </div>
@@ -9563,15 +9551,12 @@ function showCharacterDetail(character, detailOptions = {}) {
             const tagInsertName = detailOptions.tagInsertName;
             const tagCategory = detailOptions.tagCategory || '';
             enhancersHTML += `
-                <div class="enhancer-group tag-only-option" 
-                     data-action="tag-only"
-                     data-tag-name='${JSON.stringify(tagInsertName)}'
-                     data-tag-category='${JSON.stringify(tagCategory)}'>
+                <div class="enhancer-group tag-only-option" data-detail-index="${addRow({ tagOnly: true, tagName: tagInsertName, tagCategory })}">
                     <div class="enhancer-group-header">
                         <span class="enhancer-group-name">Tag only</span>
                     </div>
                     <div class="enhancer-items">
-                        <span class="enhancer-item">${tagInsertName}</span>
+                        <span class="enhancer-item">${escapeHtml(tagInsertName)}</span>
                     </div>
                 </div>
             `;
@@ -9582,17 +9567,17 @@ function showCharacterDetail(character, detailOptions = {}) {
             <div class="character-detail-content">
                 <div class="character-detail-header">
                     <div class="character-name-copyright">
-                        <span class="character-name">${character.name || 'Unknown Character'}</span>
-                        <span class="character-copyright">${character.copyright || ''}</span>
+                        <span class="character-name">${escapeHtml(character.name || 'Unknown Character')}</span>
+                        <span class="character-copyright">${escapeHtml(character.copyright || '')}</span>
                     </div>
-                    <button type="button" class="close-character-detail">&times;</button>
+                    <button type="button" class="close-character-detail" title="Back" aria-label="Back">&times;</button>
                 </div>
                 <div class="character-detail-body">
                     <div class="character-prompt">
-                        <strong>Prompt:</strong> <span>${character.prompt || 'No prompt available'}</span>
+                        <strong>Prompt</strong> <span>${escapeHtml(character.prompt || 'No prompt available')}</span>
                     </div>
                     <div class="character-enhancers">
-                        <strong>Enhancers:</strong>
+                        <strong>Enhancers</strong>
                         <div class="enhancers-list">
                             ${enhancersHTML}
                         </div>
@@ -9610,7 +9595,7 @@ function showCharacterDetail(character, detailOptions = {}) {
         // Select the "None" enhancer group by default
         setTimeout(() => {
             const enhancerGroups = document.querySelectorAll('.character-detail-content .enhancer-group');
-            const noneGroup = document.querySelector('.character-detail-content .enhancer-group[data-enhancer-group="null"]');
+            const noneGroup = document.querySelector('.character-detail-content .enhancer-group-none');
             if (noneGroup) {
                 selectedEnhancerGroupIndex = Array.from(enhancerGroups).indexOf(noneGroup);
                 noneGroup.classList.add('selected');
@@ -10042,38 +10027,7 @@ function handleCharacterDetailArrowKeys(key) {
 function handleCharacterDetailEnter() {
     const enhancerGroups = document.querySelectorAll('.character-detail-content .enhancer-group');
     if (selectedEnhancerGroupIndex >= 0 && selectedEnhancerGroupIndex < enhancerGroups.length) {
-        const selectedGroup = enhancerGroups[selectedEnhancerGroupIndex];
-
-        if (selectedGroup.getAttribute('data-action') === 'tag-only') {
-            const tagName = JSON.parse(selectedGroup.getAttribute('data-tag-name'));
-            const tagCategory = JSON.parse(selectedGroup.getAttribute('data-tag-category') || '""');
-            selectTagOnlyFromDetail(tagName, tagCategory);
-            return;
-        }
-
-        // Get the data from data attributes (much more reliable than parsing onclick)
-        const enhancerGroupData = selectedGroup.getAttribute('data-enhancer-group');
-        const characterData = selectedGroup.getAttribute('data-character');
-
-        if (enhancerGroupData && characterData) {
-            try {
-                // Parse the data attributes
-                const enhancerGroup = enhancerGroupData === 'null' ? null : JSON.parse(enhancerGroupData);
-                const character = JSON.parse(characterData);
-
-                selectEnhancerGroupFromDetail(enhancerGroup, character);
-            } catch (error) {
-                console.error('Error parsing data attributes:', error);
-                console.error('enhancerGroupData:', enhancerGroupData);
-                console.error('characterData:', characterData);
-
-                // Fallback: try to trigger the click event instead
-                selectedGroup.click();
-            }
-        } else {
-            // Fallback: try to trigger the click event instead
-            selectedGroup.click();
-        }
+        applyCharacterDetailGroupAction(enhancerGroups[selectedEnhancerGroupIndex]);
     }
 }
 
