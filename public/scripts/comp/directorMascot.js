@@ -151,6 +151,7 @@ class DirectorMascot {
             <div class="dm-bubble dm-think hidden" title="What she is thinking"><span class="dm-think-dots"><i></i><i></i><i></i></span><div class="dm-think-full"></div></div>
             <div class="dm-bubble dm-say hidden"><div class="dm-bubble-text"></div></div>
             <div class="dm-tool-pops"></div>
+            <button type="button" class="dm-peek-close hidden" title="Close the log (Esc)">Back to her</button>
             <div class="dm-result dm-dialog hidden" data-tab="reply">
                 <div class="dm-dialog-head">
                     <span class="dm-dialog-name"></span>
@@ -192,8 +193,10 @@ class DirectorMascot {
             tabReply: layer.querySelector('.dm-dialog-tab[data-tab="reply"]'),
             tabCard: layer.querySelector('.dm-dialog-tab[data-tab="card"]'),
             peekBtn: layer.querySelector('.dm-dialog-peek'),
-            pager: layer.querySelector('.dm-dialog-pager')
+            pager: layer.querySelector('.dm-dialog-pager'),
+            peekClose: layer.querySelector('.dm-peek-close')
         };
+        this.el.peekClose.addEventListener('click', () => this.togglePeek(false));
         this.el.tabReply.addEventListener('click', () => this.showTab('reply'));
         this.el.tabCard.addEventListener('click', () => this.showTab('card'));
         this.el.peekBtn.addEventListener('click', () => this.togglePeek());
@@ -860,6 +863,13 @@ class DirectorMascot {
         this.peek = typeof on === 'boolean' ? on : !this.peek;
         if (this.host) this.host.classList.toggle('dm-log-peek', this.peek && this.vnBubbles());
         if (this.el && this.el.peekBtn) this.el.peekBtn.setAttribute('aria-pressed', this.peek ? 'true' : 'false');
+        // While the log is open the dialogue box steps aside (Yukimi: hide, do not overlap); a small
+        // Back to her button takes its place.
+        if (this.el && this.el.peekClose) {
+            this.el.peekClose.classList.toggle('hidden', !(this.peek && this.vnBubbles()));
+            const box = this.el.result;
+            if (box && box.style.bottom) this.el.peekClose.style.bottom = box.style.bottom;
+        }
         if (this.peek && this.host) {
             const list = this.host.querySelector('.director-chat-messages');
             const scroller = list && list.closest('.director-chat-messages-container');

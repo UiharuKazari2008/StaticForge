@@ -4767,4 +4767,29 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden.
     animation: dm-peek-in 0.22s ease-out;
 }
 
+/* The dialogue box hides while the log is open; Back to her closes the log. */
+#directorSessionChat.dm-log-peek .dm-vn-layer .dm-dialog {
+    display: none;
+}
+
+.dm-vn-layer .dm-peek-close {
+    position: absolute;
+    left: 16px;
+    bottom: 12px;
+    pointer-events: auto;
+    padding: 6px 14px;
+    border-radius: 14px;
+    border: 1px solid hsl(0 0% 100% / 75%);
+    background: linear-gradient(180deg, hsl(0 0% 100% / 70%), hsl(200 70% 94% / 45%));
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    box-shadow: 0 6px 18px hsl(222 60% 8% / 35%), inset 0 1px 0 hsl(0 0% 100% / 85%);
+    color: #1e395b;
+    font: 600 12.5px 'Segoe UI', sans-serif;
+    cursor: pointer;
+    animation: dm-pop-in 0.22s ease-out;
+}
+
+.dm-vn-layer[data-side="right"] .dm-peek-close { left: auto; right: 16px; }
+
 @keyframes dm-peek-in { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
