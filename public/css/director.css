@@ -4485,7 +4485,7 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
     margin-left: 3px;
     vertical-align: -2px;
     border-radius: 2px;
-    background: hsl(190 80% 45% / 80%);
+    background: var(--dm-teal);
     animation: dm-caret 0.9s steps(2) infinite;
 }
 
@@ -4578,7 +4578,7 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 .dm-vn-layer .dm-say {
     top: calc(3% + 56px);
     border-radius: 14px;
-    border-left: 4px solid hsl(188 70% 48% / 85%);
+    border-left: 4px solid var(--dm-teal);
 }
 
 .dm-vn-layer .dm-say::before {
@@ -4590,8 +4590,8 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
     border: 10px solid transparent;
 }
 
-.dm-vn-layer[data-side="left"] .dm-say::before { left: -22px; border-right-color: hsl(188 70% 48% / 85%); }
-.dm-vn-layer[data-side="right"] .dm-say::before { right: -22px; border-left-color: hsl(188 70% 48% / 85%); }
+.dm-vn-layer[data-side="left"] .dm-say::before { left: -22px; border-right-color: var(--dm-teal); }
+.dm-vn-layer[data-side="right"] .dm-say::before { right: -22px; border-left-color: var(--dm-teal); }
 
 /* Tool calls: small glass chips under the bubble, three at most, each gone after about 3 s. */
 .dm-vn-layer .dm-tool-pops {
@@ -4632,8 +4632,8 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
     height: 8px;
     margin-top: -4px;
     border-radius: 50%;
-    background: radial-gradient(circle at 35% 35%, #bff4fb, #1fa3b8);
-    box-shadow: 0 0 8px hsl(188 80% 55% / 80%);
+    background: radial-gradient(circle at 35% 35%, var(--dm-hi), var(--dm-teal-deep));
+    box-shadow: 0 0 8px var(--dm-teal);
 }
 
 .dm-tool-pop.dm-out {
@@ -4650,11 +4650,15 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 /* The finished turn: a visual novel text box above the input bar (directorMascot.js showResult;
    placeResult sets bottom and max-height). Our own take on a clean VN GUI kit (Yukimi 2026-11-06): white
    panels with cut corners, a teal edge and name plate, diamond accents. No kit art is used (#706). */
+/* Defaults (teal); directorMascot.js setAccent replaces them from the chat's workspace colour. */
 .dm-vn-layer {
     --dm-teal: #22a7bf;
     --dm-teal-deep: #167f99;
-    --dm-ink: #1c2b3a;
+    --dm-hi: #47c9dc;
     --dm-line: #8fcfdc;
+    --dm-track: #d9edf2;
+    --dm-tint: #eef7fa;
+    --dm-ink: #1c2b3a;
 }
 
 .dm-vn-layer .dm-dialog {
@@ -4682,7 +4686,7 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
 
 .dm-vn-layer .dm-dialog::before {
     inset: 0;
-    background: linear-gradient(90deg, var(--dm-teal), var(--dm-line) 40%, #cfe9ef);
+    background: linear-gradient(90deg, var(--dm-teal), var(--dm-line) 40%, var(--dm-track));
     filter: drop-shadow(0 8px 20px hsl(205 50% 15% / 35%));
 }
 
@@ -4690,7 +4694,7 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
     inset: 2px;
     clip-path: polygon(21px 0, 100% 0, 100% calc(100% - 21px), calc(100% - 21px) 100%, 0 100%, 0 21px);
     background:
-        linear-gradient(180deg, hsl(0 0% 100% / 97%), hsl(195 40% 97% / 95%)),
+        linear-gradient(180deg, hsl(0 0% 100% / 97%), var(--dm-tint)),
         repeating-linear-gradient(135deg, transparent 0 14px, hsl(190 60% 80% / 10%) 14px 15px);
 }
 
@@ -4711,7 +4715,7 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden 
     font: 600 15px 'Segoe UI', sans-serif;
     letter-spacing: 0.06em;
     text-shadow: 0 1px 1px hsl(195 80% 20% / 50%);
-    background: linear-gradient(180deg, #47c9dc, var(--dm-teal) 55%, var(--dm-teal-deep));
+    background: linear-gradient(180deg, var(--dm-hi), var(--dm-teal) 55%, var(--dm-teal-deep));
     clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 45%);
 }
@@ -4791,7 +4795,7 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
     border-radius: 0;
     clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
     background:
-        linear-gradient(180deg, #ffffff, #e8f4f7) padding-box,
+        linear-gradient(180deg, #ffffff, var(--dm-tint)) padding-box,
         var(--dm-teal);
     box-shadow: inset 0 0 0 1.5px var(--dm-line);
     color: var(--dm-ink);
@@ -4802,7 +4806,7 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
 }
 
 body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .director-message-actions button.btn-small.btn-secondary:hover:not(:disabled) {
-    background: linear-gradient(180deg, #47c9dc, var(--dm-teal) 60%, var(--dm-teal-deep));
+    background: linear-gradient(180deg, var(--dm-hi), var(--dm-teal) 60%, var(--dm-teal-deep));
     box-shadow: none;
     color: #fff;
 }
@@ -4827,7 +4831,7 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
     padding: 5px 13px 5px 8px;
     border: 0;
     clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
-    background: linear-gradient(180deg, #ffffff, #e3f1f5);
+    background: linear-gradient(180deg, #ffffff, var(--dm-tint));
     box-shadow: inset 0 0 0 1.5px var(--dm-line);
     color: var(--dm-ink);
     font: 600 12px 'Segoe UI', sans-serif;
@@ -4847,7 +4851,7 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
 }
 
 .dm-vn-layer .dm-quick button[aria-pressed="true"] {
-    background: linear-gradient(180deg, #47c9dc, var(--dm-teal) 60%, var(--dm-teal-deep));
+    background: linear-gradient(180deg, var(--dm-hi), var(--dm-teal) 60%, var(--dm-teal-deep));
     box-shadow: none;
     color: #fff;
 }
@@ -4864,7 +4868,7 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
     min-width: 160px;
     padding: 8px 40px 8px 18px;
     border-left: 5px solid var(--dm-teal);
-    background: linear-gradient(90deg, hsl(0 0% 100% / 96%), hsl(195 45% 96% / 92%));
+    background: linear-gradient(90deg, hsl(0 0% 100% / 96%), var(--dm-tint));
     clip-path: polygon(0 0, 100% 0, calc(100% - 18px) 100%, 0 100%);
     filter: drop-shadow(0 4px 10px hsl(205 50% 15% / 30%));
     pointer-events: auto;
@@ -4906,7 +4910,7 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
     min-width: 54px;
     padding: 5px 9px;
     clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-    background: linear-gradient(180deg, hsl(0 0% 100% / 96%), hsl(195 45% 95% / 92%));
+    background: linear-gradient(180deg, hsl(0 0% 100% / 96%), var(--dm-tint));
     box-shadow: inset 0 0 0 1.5px var(--dm-line);
     color: #5d7183;
     font: 10.5px 'Segoe UI', sans-serif;
@@ -4921,7 +4925,7 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: conic-gradient(var(--dm-teal) calc(var(--p) * 1%), #d9edf2 0);
+    background: conic-gradient(var(--dm-teal) calc(var(--p) * 1%), var(--dm-track) 0);
     position: relative;
 }
 
@@ -4930,8 +4934,8 @@ body #directorSessionChat .dm-vn-layer .dm-result.dm-dialog .dm-dialog-suggest .
 
 .dm-vn-layer .dm-hud-grow { align-items: stretch; min-width: 130px; gap: 3px; }
 .dm-vn-layer .dm-hud-grow [data-hud="stage"] { color: var(--dm-ink); font-weight: 600; }
-.dm-vn-layer .dm-grow-bar { height: 6px; background: #d9edf2; border-radius: 3px; overflow: hidden; }
-.dm-vn-layer .dm-grow-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--dm-teal-deep), #6fd3e3); transition: width 0.6s ease; }
+.dm-vn-layer .dm-grow-bar { height: 6px; background: var(--dm-track); border-radius: 3px; overflow: hidden; }
+.dm-vn-layer .dm-grow-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--dm-teal-deep), var(--dm-hi)); transition: width 0.6s ease; }
 .dm-vn-layer .dm-grow-next { font-size: 10px; }
 
 /* Bubbles start under the banner row. */

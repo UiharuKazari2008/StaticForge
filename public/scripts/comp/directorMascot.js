@@ -894,6 +894,35 @@ class DirectorMascot {
         this.el.pager.textContent = more ? `${at}/${pages} ▼` : '';
     }
 
+    // The VN GUI takes the chat's workspace colour (Yukimi 2026-11-06): one hex in, the palette out.
+    // A very light colour is darkened first so white text on the name plate and buttons still reads.
+    setAccent(hex) {
+        if (!this.layer) return;
+        const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex || '').trim());
+        const props = ['--dm-teal', '--dm-teal-deep', '--dm-hi', '--dm-line', '--dm-track', '--dm-tint'];
+        if (!m) { props.forEach((p) => this.layer.style.removeProperty(p)); this._accent = ''; return; }
+        let h = m[1];
+        if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+        if (this._accent === h) return;
+        this._accent = h;
+        let rgb = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+        const lum = (c) => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+        const mix = (c, to, t) => c.map((v, i) => Math.round(v + (to[i] - v) * t));
+        const css = (c) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+        while (lum(rgb) > 0.58) rgb = mix(rgb, [0, 0, 0], 0.15);
+        const white = [255, 255, 255];
+        const black = [0, 0, 0];
+        const set = {
+            '--dm-teal': css(rgb),
+            '--dm-teal-deep': css(mix(rgb, black, 0.3)),
+            '--dm-hi': css(mix(rgb, white, 0.28)),
+            '--dm-line': css(mix(rgb, white, 0.55)),
+            '--dm-track': css(mix(rgb, white, 0.82)),
+            '--dm-tint': css(mix(rgb, white, 0.93))
+        };
+        Object.entries(set).forEach(([k, v]) => this.layer.style.setProperty(k, v));
+    }
+
     // ---- VN chrome: quick-menu bar, title banner, session HUD (Yukimi 2026-11-06) ----
     quickAction(act) {
         if (act === 'reply' || act === 'card') {
@@ -910,6 +939,7 @@ class DirectorMascot {
     // info: { title, sub, turns, prints, ratio (0..1 or null) } from director.js paintMascotHud.
     updateHud(info) {
         this._hud = info || null;
+        this.setAccent(info && info.color);
         this.paintChrome();
     }
 

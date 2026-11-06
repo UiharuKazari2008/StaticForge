@@ -3646,7 +3646,7 @@ class Director {
         }
         const meta = this.sessionWorkspaceMeta(session);
         const sub = [meta && meta.name, `Turn ${turns}`, prints ? `${prints} prints` : ''].filter(Boolean).join(' \u00b7 ').toUpperCase();
-        this.mascot.updateHud({ title: session.name || 'Director', sub, turns, prints, ratio });
+        this.mascot.updateHud({ title: session.name || 'Director', sub, turns, prints, ratio, color: meta && meta.color });
     }
 
     // Mascot view with the log hidden: the parts of the finished turn's dialogue box
