@@ -1,0 +1,626 @@
+/*
+ * Melaton Mobile: Programs and Settings (WM 6.1 Professional), Yozora #709. wmPrograms.js.
+ * Measured on the Device Emulator (VGA, 2x halved); lengths are N * --wm-px like wm-shell.css.
+ *
+ * Icon grids (Programs, Settings): 80 px columns (3 on 240 px), cells 68 px tall; the 32 px icon
+ * 2 px from the cell top, centred; bold 12 px labels from y 37, up to two lines of 12.5 px, centred;
+ * the selected label sits in a highlight box (3 px padding), its icon blended 50 % with the
+ * highlight (ImageList ILD_BLEND50). Settings pages: green section header (23 px + 1 px black
+ * rule), WM controls, tabs at the bottom (22 px strip: 1 px rule, white current tab, tint rest).
+ */
+
+.wm-pg,
+.wm-set {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: #fff;
+    color: #000;
+}
+
+.wm-pg-scroll,
+.wm-set-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ---- icon grid ---- */
+.wm-icongrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(80 * var(--wm-px)), 1fr));
+    align-content: start;
+}
+
+.wm-icongrid-cell {
+    position: relative;
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    height: calc(68 * var(--wm-px));
+    min-width: 0;
+    padding: calc(2 * var(--wm-px)) 0 0 !important;
+    box-sizing: border-box;
+    font-weight: bold;
+    text-align: center;
+    -webkit-touch-callout: none;
+}
+
+.wm-icongrid-icon {
+    position: relative;
+    flex: 0 0 auto;
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
+.wm-icongrid-icon img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+.wm-icongrid-cell.is-selected .wm-icongrid-icon::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-conic-gradient(var(--wm-highlight) 0 25%, transparent 0 50%) 0 0 / 2px 2px;
+    -webkit-mask: var(--wm-icon-mask) center / contain no-repeat;
+    mask: var(--wm-icon-mask) center / contain no-repeat;
+}
+
+.wm-icongrid-label {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    max-width: calc(100% + 4 * var(--wm-px));
+    overflow: hidden;
+    margin: calc(3 * var(--wm-px)) calc(-2 * var(--wm-px)) 0;
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(12.5 * var(--wm-px));
+    overflow-wrap: break-word;
+}
+
+.wm-icongrid-label span {
+    padding: calc(1 * var(--wm-px)) calc(3 * var(--wm-px));
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+}
+
+.wm-icongrid-cell.is-selected .wm-icongrid-label span {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+/* ---- tabs at the bottom (Settings, every settings page) ---- */
+.wm-tabs {
+    flex: 0 0 auto;
+    display: flex;
+    height: calc(22 * var(--wm-px));
+    box-sizing: border-box;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+    overflow: hidden;
+}
+
+.wm-tab {
+    flex: 0 0 auto;
+    margin-top: calc(-1 * var(--wm-px)) !important;
+    padding: 0 calc(5 * var(--wm-px)) !important;
+    border-right: calc(1 * var(--wm-px)) solid #000 !important;
+    border-top: calc(1 * var(--wm-px)) solid #000 !important;
+    font-weight: normal;
+    white-space: nowrap;
+    color: #000 !important;
+}
+
+.wm-tab[aria-selected="true"] {
+    background: #fff !important;
+    border-top-color: #fff !important;
+}
+
+/* ---- settings page ---- */
+.wm-form-hdr {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    height: calc(23 * var(--wm-px));
+    padding: 0 calc(8 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    color: var(--wm-highlight);
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-form {
+    padding: calc(7 * var(--wm-px)) calc(5 * var(--wm-px)) calc(8 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+}
+
+.wm-form p {
+    margin: 0 0 calc(8 * var(--wm-px));
+}
+
+.wm-form .wm-form-gap {
+    height: calc(10 * var(--wm-px));
+}
+
+.wm-form b,
+.wm-form .wm-form-sub {
+    font-weight: bold;
+}
+
+.wm-form .wm-form-sub {
+    margin: calc(6 * var(--wm-px)) 0 calc(3 * var(--wm-px));
+}
+
+/* label: edit rows (Owner Information): labels right-aligned to x 66, boxes from x 72, 20 tall,
+ * one 1 px gap between boxes */
+.wm-form-row {
+    display: grid;
+    grid-template-columns: calc(62 * var(--wm-px)) minmax(0, 1fr);
+    align-items: center;
+    column-gap: calc(5 * var(--wm-px));
+    min-height: calc(20 * var(--wm-px));
+    margin-bottom: calc(1 * var(--wm-px));
+}
+
+.wm-form-row > label,
+.wm-form-row > .wm-form-label {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.wm-form-row.is-wide {
+    grid-template-columns: calc(96 * var(--wm-px)) minmax(0, 1fr);
+}
+
+.wm-form-value {
+    font-size: calc(12 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-edit {
+    box-sizing: border-box;
+    width: 100%;
+    height: calc(20 * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    outline: none;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.wm-edit:focus {
+    background: #fff;
+}
+
+.wm-edit[readonly] {
+    color: #000;
+}
+
+/* check box / radio: 13 px, 1 px black, as drawn by WM's button class */
+.wm-check {
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    min-height: calc(18 * var(--wm-px));
+    cursor: default;
+}
+
+.wm-check input {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+    margin: 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff center / 100% 100% no-repeat;
+    outline: none;
+}
+
+/* the tick: 7 x 7 at 1x, 2 px strokes (WM's check box glyph) */
+.wm-check input[type="checkbox"]:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11'%3E%3Cpath d='M2 5.2 4.3 7.5 9 2.8' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E");
+}
+
+.wm-check input[type="radio"] {
+    border-radius: 50%;
+}
+
+.wm-check input[type="radio"]:checked {
+    background-image: radial-gradient(circle, #000 0 calc(2.5 * var(--wm-px)), transparent calc(2.5 * var(--wm-px) + 0.5px));
+}
+
+.wm-check input:disabled + span {
+    color: #8c8e8c;
+}
+
+/* push button (Align Screen, Beam): 1 px black frame, tint face, bold */
+.wm-button {
+    min-width: calc(76 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    background: var(--wm-tint) !important;
+    color: #000 !important;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.wm-button:active:not(:disabled) {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text) !important;
+}
+
+.wm-button:disabled {
+    border-color: #a5a6a5 !important;
+    color: #a5a6a5 !important;
+}
+
+.wm-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(4 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) 0;
+}
+
+.wm-buttons.is-right {
+    justify-content: flex-end;
+}
+
+/* list box (Today themes / items, Menus): 1 px black frame, 15 px rows, selected row highlighted */
+.wm-listbox {
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.wm-listbox-row {
+    display: flex !important;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    width: 100%;
+    min-height: calc(17 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px)) !important;
+    box-sizing: border-box;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-listbox-row.is-selected {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text);
+}
+
+.wm-listbox-row img {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    object-fit: contain;
+}
+
+.wm-listbox-row .wm-check {
+    min-height: 0;
+}
+
+.wm-listbox-row.is-indent {
+    padding-left: calc(20 * var(--wm-px)) !important;
+}
+
+.wm-listbox-side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: calc(6 * var(--wm-px));
+    align-items: start;
+}
+
+.wm-listbox-side .wm-buttons {
+    flex-direction: column;
+    margin: 0;
+}
+
+/* combo box: edit-like box with WM's drop arrow (black triangle 7 x 4) */
+.wm-combo {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: calc(20 * var(--wm-px));
+    padding: 0 0 0 calc(3 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    background: #fff !important;
+    box-sizing: border-box;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-combo > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-combo::after {
+    content: '';
+    flex: 0 0 auto;
+    width: calc(17 * var(--wm-px));
+    height: 100%;
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    background: linear-gradient(to bottom right, transparent 50%, #000 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to bottom left, transparent 50%, #000 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
+    transform: scaleY(-1);
+}
+
+/* editable combo (Start text): an edit box with the drop button at its right */
+.wm-combo-edit {
+    display: flex;
+    min-width: 0;
+}
+
+.wm-combo-edit .wm-edit {
+    flex: 1 1 auto;
+    min-width: 0;
+    border-right: 0;
+}
+
+.wm-combo-edit .wm-combo {
+    flex: 0 0 auto;
+    width: calc(18 * var(--wm-px));
+    padding: 0 !important;
+}
+
+.wm-combo-edit .wm-combo::after {
+    width: 100%;
+    border-left: 0;
+}
+
+/* Screen > Text Size: Smallest / Largest over a track in a highlight focus frame, five ticks */
+.wm-slider-scale {
+    display: flex;
+    justify-content: space-between;
+    font-weight: bold;
+    margin-top: calc(6 * var(--wm-px));
+}
+
+.wm-slider {
+    position: relative;
+    height: calc(32 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) 0 calc(6 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid var(--wm-highlight);
+    touch-action: none;
+}
+
+.wm-slider-track {
+    position: absolute;
+    left: calc(4 * var(--wm-px));
+    right: calc(4 * var(--wm-px));
+    top: calc(6 * var(--wm-px));
+    height: calc(2 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-slider-tick {
+    position: absolute;
+    top: calc(21 * var(--wm-px));
+    width: calc(1 * var(--wm-px));
+    height: calc(2 * var(--wm-px));
+    background: #000;
+    transform: translateX(-50%);
+}
+
+.wm-slider-thumb {
+    position: absolute;
+    top: calc(2 * var(--wm-px));
+    width: calc(11 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    transform: translateX(-50%);
+    background: #fff;
+    clip-path: polygon(0 0, 100% 0, 100% 65%, 50% 100%, 0 65%);
+}
+
+.wm-slider-thumb::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: #000;
+    clip-path: polygon(0 0, 100% 0, 100% 65%, 50% 100%, 0 65%, 0 0, 9% 6%, 9% 62%, 50% 90%, 91% 62%, 91% 6%, 9% 6%);
+}
+
+/* Memory: Storage / Program columns of label: value */
+.wm-mem {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(calc(112 * var(--wm-px)), 1fr));
+    column-gap: calc(8 * var(--wm-px));
+    row-gap: calc(10 * var(--wm-px));
+}
+
+.wm-mem-col {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: calc(4 * var(--wm-px));
+    row-gap: calc(2 * var(--wm-px));
+    align-content: start;
+}
+
+.wm-mem-col > b:first-child {
+    grid-column: 1 / -1;
+    margin-bottom: calc(4 * var(--wm-px));
+}
+
+.wm-mem-col > span:nth-child(even) {
+    text-align: right;
+    white-space: nowrap;
+    padding-left: calc(6 * var(--wm-px));
+}
+
+.wm-mem-col > span:nth-child(odd) {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.wm-mem-col > .is-free {
+    font-weight: bold;
+}
+
+/* About: label: value rows under the text */
+.wm-facts {
+    display: grid;
+    grid-template-columns: calc(82 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(5 * var(--wm-px));
+    row-gap: calc(1 * var(--wm-px));
+}
+
+.wm-facts > :nth-child(odd) {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.wm-facts > :nth-child(even) {
+    font-size: calc(13 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Today > Browse / Menus > Start icon: a picker of pictures or icons */
+.wm-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(56 * var(--wm-px)), 1fr));
+    gap: calc(2 * var(--wm-px));
+    max-height: calc(170 * var(--wm-px));
+    padding: calc(2 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.wm-picker[hidden] {
+    display: none;
+}
+
+.wm-combo:disabled {
+    color: #8c8e8c !important;
+}
+
+.wm-picker-cell {
+    position: relative;
+    aspect-ratio: 1;
+    padding: calc(2 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid transparent !important;
+    box-sizing: border-box;
+}
+
+.wm-picker-cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+}
+
+.wm-picker.is-icons .wm-picker-cell img {
+    object-fit: contain;
+}
+
+.wm-picker-cell.is-selected {
+    border-color: #000 !important;
+    background: var(--wm-highlight) !important;
+}
+
+.wm-preview-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(56 * var(--wm-px));
+    height: calc(56 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #8c8e8c center / cover no-repeat;
+}
+
+.wm-preview-box img {
+    max-width: 70%;
+    max-height: 70%;
+}
+
+.wm-form-note {
+    color: #4a4d4a;
+}
+
+/* the shell's WM scroll bar for these panes too */
+.wm-pg-scroll::-webkit-scrollbar,
+.wm-set-scroll::-webkit-scrollbar,
+.wm-listbox::-webkit-scrollbar,
+.wm-picker::-webkit-scrollbar {
+    width: calc(13 * var(--wm-px));
+}
+
+.wm-pg-scroll::-webkit-scrollbar-track,
+.wm-set-scroll::-webkit-scrollbar-track,
+.wm-listbox::-webkit-scrollbar-track,
+.wm-picker::-webkit-scrollbar-track {
+    background: #fff;
+    border-left: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-pg-scroll::-webkit-scrollbar-thumb,
+.wm-set-scroll::-webkit-scrollbar-thumb,
+.wm-listbox::-webkit-scrollbar-thumb,
+.wm-picker::-webkit-scrollbar-thumb {
+    background: var(--wm-tab-strip);
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-right: 0;
+    border-radius: 0;
+}
+
+.wm-pg-scroll::-webkit-scrollbar-button:single-button,
+.wm-set-scroll::-webkit-scrollbar-button:single-button,
+.wm-listbox::-webkit-scrollbar-button:single-button,
+.wm-picker::-webkit-scrollbar-button:single-button {
+    display: block;
+    height: calc(19 * var(--wm-px));
+    background: var(--wm-tab-strip) center / calc(8 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
+    border-left: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-pg-scroll::-webkit-scrollbar-button:single-button:vertical:decrement,
+.wm-set-scroll::-webkit-scrollbar-button:single-button:vertical:decrement,
+.wm-listbox::-webkit-scrollbar-button:single-button:vertical:decrement,
+.wm-picker::-webkit-scrollbar-button:single-button:vertical:decrement {
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background-image: linear-gradient(to bottom right, transparent 50%, #000 50%), linear-gradient(to bottom left, transparent 50%, #000 50%);
+    background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
+}
+
+.wm-pg-scroll::-webkit-scrollbar-button:single-button:vertical:increment,
+.wm-set-scroll::-webkit-scrollbar-button:single-button:vertical:increment,
+.wm-listbox::-webkit-scrollbar-button:single-button:vertical:increment,
+.wm-picker::-webkit-scrollbar-button:single-button:vertical:increment {
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background-image: linear-gradient(to top right, transparent 50%, #000 50%), linear-gradient(to top left, transparent 50%, #000 50%);
+    background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
+}
+
+.wm-edit:disabled {
+    color: #8c8e8c;
+    background: #fff;
+}

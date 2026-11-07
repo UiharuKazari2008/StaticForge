@@ -2064,6 +2064,266 @@
         "1x-downscaled-from-2x"
       ],
       "notes": "File Explorer folder bar: My Device (image list 19712 cell 0; cells 1-3 are Storage Card, network, pictures)."
+    },
+    "set-today": {
+      "1x": {
+        "source": "shellres.192.dll ico_13952_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13952_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Today (Settings grid, Melaton Mobile Settings app)."
+    },
+    "set-owner": {
+      "1x": {
+        "source": "shellres.192.dll ico_13841_1_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13841_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Owner Information (Settings grid, Melaton Mobile Settings app)."
+    },
+    "set-sounds": {
+      "1x": {
+        "source": "shellres.192.dll ico_13924_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13924_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Sounds & Notifications (Settings grid, Melaton Mobile Settings app)."
+    },
+    "set-menus": {
+      "1x": {
+        "source": "shellres.192.dll ico_13937_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13937_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Menus (Settings grid, Melaton Mobile Settings app)."
+    },
+    "set-about": {
+      "1x": {
+        "source": "shellres.192.dll ico_13899_1_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13899_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: About (Settings grid, Melaton Mobile Settings app). The phone screen shows the ROM's flag art (applet icon as shipped)."
+    },
+    "set-clock": {
+      "1x": {
+        "source": "shellres.192.dll ico_13840_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13840_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Clock & Alarms (Settings grid, Melaton Mobile Settings app)."
+    },
+    "set-memory": {
+      "1x": {
+        "source": "shellres.192.dll ico_13900_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13900_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Memory (Settings grid, Melaton Mobile Settings app)."
+    },
+    "set-screen": {
+      "1x": {
+        "source": "shellres.192.dll ico_13906_1_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13906_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Screen (Settings grid, Melaton Mobile Settings app)."
+    },
+    "set-regional": {
+      "1x": {
+        "source": "shellres.192.dll ico_13901_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13901_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Regional Settings (Settings grid, Melaton Mobile Settings app)."
+    },
+    "set-power": {
+      "1x": {
+        "source": "shellres.192.dll ico_13895_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13895_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Power (Settings grid, Melaton Mobile Settings app)."
+    },
+    "set-connections": {
+      "1x": {
+        "source": "shellres.192.dll ico_13961_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13961_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Connections (Settings grid, Melaton Mobile Settings app)."
+    },
+    "set-usb": {
+      "1x": {
+        "source": "shellres.192.dll ico_13911_1_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13911_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: USB to PC (Settings grid, Melaton Mobile Settings app)."
+    },
+    "set-wireless": {
+      "1x": {
+        "source": "shellres.192.dll ico_13999_1_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13999_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Wireless Manager (Settings grid, Melaton Mobile Settings app)."
     }
   },
   "notDelivered": {
