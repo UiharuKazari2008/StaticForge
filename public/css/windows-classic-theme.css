@@ -345,14 +345,21 @@ body.windows-classic-theme .modal .modal-footer-padded {
     padding: 8px;
 }
 
-body.windows-classic-theme .modal.active-window .modal-window-title,
-body.windows-classic-theme .modal.active-window .modal-window-title * {
-    color: var(--TitleText);
+/* The window state sets a variable on the title bar and the descendant rule reads it, so the
+   `*` rule does not hang off .active-window: a universal selector under a class that changes on
+   every window focus makes Chrome restyle the whole window. `.modal.modal` keeps the old
+   (0,4,1) specificity. */
+body.windows-classic-theme .modal.active-window .modal-window-title {
+    --classic-caption-text: var(--TitleText);
 }
 
-body.windows-classic-theme .modal:not(.active-window) .modal-window-title,
-body.windows-classic-theme .modal:not(.active-window) .modal-window-title * {
-    color: var(--InactiveTitleText);
+body.windows-classic-theme .modal:not(.active-window) .modal-window-title {
+    --classic-caption-text: var(--InactiveTitleText);
+}
+
+body.windows-classic-theme .modal.modal .modal-window-title,
+body.windows-classic-theme .modal.modal .modal-window-title * {
+    color: var(--classic-caption-text);
 }
 
 /* Buttons in modal content (OK, Cancel, etc.) */

@@ -3645,7 +3645,7 @@ html.disable-blur .director-attach-chip {
         drop-shadow(0 0 5px rgba(0, 0, 0, 0.4));
 }
 
-.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader [class^="btn-"]:not(.btn-primary):not(.btn-danger) {
+.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger) {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     box-shadow: inset var(--glass-shadow-2);
@@ -3659,9 +3659,15 @@ html.disable-blur .director-attach-chip {
     box-shadow: inset var(--glass-shadow-2);
 }
 
-.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader .inset-badge,
-.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader .inset-badge * {
-    color: var(--text-secondary);
+/* Inactive text colour goes through a variable on the badge: a `*` rule under .active-window
+   restyles the whole Director window on every focus change. */
+.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader .inset-badge {
+    --director-inset-badge-inactive-text: var(--text-secondary);
+}
+
+.modal #directorWindowToolbar #directorCommonHeader .inset-badge:is(.inset-badge, .inset-badge),
+.modal #directorWindowToolbar #directorCommonHeader .inset-badge:is(.inset-badge, .inset-badge) * {
+    color: var(--director-inset-badge-inactive-text, var(--text-accent-tinted));
 }
 
 /* Session row: room between the title line and the date line. */

@@ -2587,9 +2587,13 @@ function setActiveWindow(modalId) {
             currentActiveWindowId = modal.id;
             // Don't update mainActiveWindowId - preserve the main window's active state
         } else {
-            // Regular window - remove active-window class from all modals (including tool windows)
-            // But preserve active-window class on on-top modals
-            document.querySelectorAll('.modal').forEach(m => {
+            // Regular window - remove active-window class from all other modals (including tool windows)
+            // But preserve active-window class on on-top modals.
+            // Windows that stay active are skipped: a remove + add on the same window still makes
+            // Chrome restyle its whole subtree (~50 ms for Director on Yukimi's PC per click).
+            const linkedToolWindows = getLinkedToolWindows(modal);
+            document.querySelectorAll('.modal.active-window').forEach(m => {
+                if (m === modal || linkedToolWindows.includes(m)) return;
                 if (m.id === 'windowsStartupModal' || m.id === 'connectionDialModal') return;
                 // Don't remove active-window from on-top modals
                 if (!m.classList.contains('on-top')) {
@@ -2603,7 +2607,7 @@ function setActiveWindow(modalId) {
             mainActiveWindowId = modal.id; // Update main active window
 
             // Linked tool windows (e.g. Jump Index) share focus with the parent so overlays stay pass-through and both stay scrollable.
-            getLinkedToolWindows(modal).forEach((tw) => {
+            linkedToolWindows.forEach((tw) => {
                 tw.classList.add('active-window');
             });
 

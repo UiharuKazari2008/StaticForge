@@ -139,6 +139,55 @@ assert.deepStrictEqual(notHasOffenders, [], `:has() inside :not(... *) (use a ro
 assert.ok(hasUnderNotDescendant('button.primary:not(.modal:has(button:focus) *)'), 'guard catches :not(.x:has() *)');
 assert.ok(!hasUnderNotDescendant('button:not(.modal-window-title *):not(:has(+ label))'), 'plain :not(.x *) and :not(:has()) are not this guard');
 
+// .active-window changes on every window focus. Below it, a class attribute selector or a last
+// compound with no class / id / tag (`*`, `:is(:first-child, ...)`) makes Chrome restyle every
+// element of the window on each focus change (Director: 1,443 elements, ~50 ms per click on
+// Yukimi's PC, 2026-11-07). List the classes (`:is(.btn-primary, ...)`) or tags (`:where(button)`).
+function hasNamedTarget(list) {
+    return splitTop(list, ',').every((part) => {
+        const last = splitTop(part.trim().replace(/\s*([>+~])\s*/g, ' '), ' ').filter(Boolean).pop() || '';
+        return /^[.#a-zA-Z[]/.test(last.trim()) && !/^\[class/.test(last.trim());
+    });
+}
+function activeWindowBroadTarget(selector) {
+    const norm = selector.trim().replace(/\s*([>+~])\s*/g, ' ').replace(/\s+/g, ' ');
+    const compounds = splitTop(norm, ' ').filter(Boolean);
+    let at = -1;
+    compounds.forEach((c, i) => { if (c.includes('active-window')) at = i; });
+    if (at < 0 || at === compounds.length - 1) return false;
+    if (/\[class[\^*$~|]?=/.test(compounds.slice(at + 1).join(' '))) return true;
+    const last = compounds[compounds.length - 1].replace(/::[\w-]+$/, '');
+    const bare = compoundOutsideParens(last).replace(/:{1,2}[\w-]+/g, '');
+    if (bare === '*') return true;
+    if (bare !== '') return false;
+    const lists = [...last.matchAll(/:(?:is|where)\(/g)].map((m) => {
+        let depth = 0;
+        let i = m.index + m[0].length - 1;
+        for (; i < last.length; i++) {
+            if (last[i] === '(') depth++;
+            else if (last[i] === ')' && --depth === 0) break;
+        }
+        return last.slice(m.index + m[0].length, i);
+    });
+    return !lists.some(hasNamedTarget);
+}
+const activeWindowOffenders = [];
+for (const [file, css] of sheets) {
+    for (const prelude of css.match(/[^{}]+(?=\{)/g) || []) {
+        if (!prelude.includes('active-window') || prelude.trim().startsWith('@')) continue;
+        for (const sel of splitTop(prelude, ',')) {
+            if (activeWindowBroadTarget(sel)) activeWindowOffenders.push(`${path.relative(root, file)}: ${sel.trim().slice(0, 200)}`);
+        }
+    }
+}
+assert.deepStrictEqual(activeWindowOffenders, [], `broad target under .active-window (restyles the whole window per focus):\n${activeWindowOffenders.join('\n')}`);
+assert.ok(activeWindowBroadTarget('.modal:not(.active-window) .toolbar > [class^="btn-"]:not(.btn-primary)'), 'guard catches [class^=] under .active-window');
+assert.ok(activeWindowBroadTarget('body.x .modal.active-window .modal-window-title *'), 'guard catches * under .active-window');
+assert.ok(activeWindowBroadTarget('.modal.active-window .c > :is(:first-child, .i + :not(.i)):not(:last-child)'), 'guard catches a bare :is(:first-child) target');
+assert.ok(!activeWindowBroadTarget('.modal.active-window .c > :where(button, .custom-dropdown):is(:first-child, .i + :not(.i)):not(:last-child)'), 'a :where(tag, .class) target is fine');
+assert.ok(!activeWindowBroadTarget('.modal:not(.active-window) .toolbar > :is(.btn-primary, .btn-secondary):hover'), 'a class list target is fine');
+assert.ok(!activeWindowBroadTarget('body.desktop-mode .modal:not(.active-window)'), 'the window itself as subject is fine');
+
 const appCss = read('public/css/app.css');
 const shellCss = read('public/css/desktop-shell.css');
 const aeroCss = read('public/css/aero-glass.css');
