@@ -549,14 +549,20 @@
                 el.querySelector('[data-act="browse"]').addEventListener('click', () => { d.browsing = true; api.rerender(); });
             },
             async commit(d) {
-                if (!(await commitWall(d.wall))) return false;
+                // the Appearance and Items choices are local: they are kept even when the
+                // workspace wallpaper save fails (the page then stays open to retry)
                 const useDesktop = d.useDesktop || !sameSite(d.picture);
                 lsSet(K.todayUseDesktop, useDesktop ? '1' : '0');
                 if (sameSite(d.picture)) lsSet(K.todayBackground, d.picture);
                 lsSet(K.todayItems, JSON.stringify(d.items.map((r) => ({ id: r.id, on: r.on }))));
                 lsSet(K.titleBar, d.titleBar);
                 applyTitleBar();
-                return [K.todayUseDesktop, K.todayBackground, K.todayItems, K.titleBar];
+                const keys = [K.todayUseDesktop, K.todayBackground, K.todayItems, K.titleBar];
+                if (!(await commitWall(d.wall))) {
+                    changed(keys);
+                    return false;
+                }
+                return keys;
             }
         },
         {

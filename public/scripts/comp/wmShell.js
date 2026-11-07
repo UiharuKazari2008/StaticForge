@@ -1375,11 +1375,21 @@
         const next = normalizeMobileWallpaper(value);
         const w = activeWorkspaceRecord();
         const id = typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
+        const before = w ? w.mobileWallpaper : undefined;
         if (w) w.mobileWallpaper = next;
         applyTodayBackground(true);
         const client = window.wsClient;
         if (!id || !client || typeof client.updateWorkspaceSettings !== 'function') return next;
-        await client.updateWorkspaceSettings(id, { mobileWallpaper: next });
+        try {
+            await client.updateWorkspaceSettings(id, { mobileWallpaper: next });
+        } catch (err) {
+            // not saved: Today and the record go back to the saved placement
+            if (w && w.mobileWallpaper === next) {
+                w.mobileWallpaper = before;
+                applyTodayBackground(true);
+            }
+            throw err;
+        }
         return next;
     }
 
@@ -1420,6 +1430,9 @@
             today.page.style.backgroundSize = css.size;
             today.page.style.backgroundPosition = css.position;
             today.page.style.backgroundRepeat = css.repeat;
+            // Fit and Center leave margins: WM painted a solid colour there, not the workspace
+            // theme behind the shell (black, like the Settings preview)
+            today.page.style.backgroundColor = u ? '#000' : '';
             today.page.classList.toggle('has-picture', !!u);
         };
         set(url);

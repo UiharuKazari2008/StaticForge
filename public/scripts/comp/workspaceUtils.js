@@ -3244,6 +3244,13 @@ function initializeWebSocketWorkspaceEvents() {
                     break;
                 }
                 
+                // phone-only fields (Melaton Mobile's mobileWallpaper, wmShell.js) change nothing
+                // here: the record already took them (30-workspaceInbound.js), so no gallery reload
+                if (data.settings && Object.keys(data.settings).length
+                    && Object.keys(data.settings).every((k) => k === 'mobileWallpaper')) {
+                    break;
+                }
+
                 const workspace = workspaces[data.workspaceId];
                 let styleUpdateNeeded = false;
                 
