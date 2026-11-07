@@ -229,6 +229,32 @@ function fakeTab(options) {
     await connTab.connect();
     assert.strictEqual(connTab.target.id, 'N', 'opens a new owned tab instead of adopting example.com');
     assert.strictEqual(states[0].targetId, 'N');
+    // The owned tab lives in Yukimi's Alchemy browser: default loopback port 9335, opened at discord.com
+    // with the owned marker (so Alchemy shows it as its own window), never by reusing her Discord tab.
+    const asked = [];
+    const alchTab = new alchemy.AlchemyOwnedTab({
+        requestJson: async (url, opts) => {
+            asked.push([url, opts && opts.method]);
+            if (url.endsWith('/json/list')) {
+                return [{ id: 'Y', type: 'page', url: 'https://discord.com/channels/@me', webSocketDebuggerUrl: 'ws://x/Y' }];
+            }
+            return { id: 'D', type: 'page', url: alchemy.ALCHEMY_START_URL, webSocketDebuggerUrl: 'ws://x/D' };
+        },
+        CdpConnection: fakeConn,
+        readState: () => ({}),
+        writeState: () => {}
+    });
+    alchTab.info = async () => ({ url: alchemy.ALCHEMY_START_URL, title: '', owned: true });
+    await alchTab.connect();
+    assert.strictEqual(alchTab.target.id, 'D', "Yukimi's own Discord tab is never taken over");
+    assert.strictEqual(asked[0][0], 'http://127.0.0.1:9335/json/list');
+    const created = new URL(asked[1][0]);
+    assert.strictEqual(asked[1][1], 'PUT');
+    assert.strictEqual(created.pathname, '/json/new');
+    assert.strictEqual(decodeURIComponent(created.search.slice(1)), 'https://discord.com/app#alchemy-owned');
+    assert.ok(alchemy.isAlchemyOwnedUrl(alchemy.ALCHEMY_START_URL));
+    const offline = new alchemy.AlchemyOwnedTab({ port: 9335, requestJson: async () => { throw new Error('ECONNREFUSED'); } });
+    await assert.rejects(() => offline.connect(), (err) => err.code === 'ALCHEMY_CDP_OFFLINE' && /Alchemy browser/.test(err.message) && /9335/.test(err.message));
 
     // The real CDP connection must construct the ws client (regression: `new loadWebSocket()(url)`
     // and a bare WebSocket.OPEN reference both threw before any socket was opened).
@@ -354,8 +380,6 @@ function fakeTab(options) {
     const client = read('scripts/dedicated-agent-client.js');
     assert.ok(client.includes("require('../modules/alchemyOwnedTab')"));
     assert.ok(client.includes('pickDreamscapeAgentTarget'));
-    assert.ok(client.includes('ensureAlchemyOwnedTab'));
-    assert.ok(client.includes('ALCHEMY_BLANK_URL'));
 
     assert.ok(registry.toolInModule('alchemy_browser', 'alchemy_browser'));
     assert.ok(registry.toolInModule('read_discord_channel_history', 'alchemy_browser'));
