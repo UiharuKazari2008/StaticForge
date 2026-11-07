@@ -9,6 +9,8 @@
  *
  * Settings: Personal / System / Connections grids and WM settings pages (section header, controls,
  * tabs at the bottom, ok in the title bar). Pages are real where Dreamscape has the data.
+ * More pages come from wmSettings<Group>.js through window.wmSettings.registerPage / extendPage,
+ * drawn with window.wmSettings.ui (the page registry, below PAGES).
  *
  * Settings stored in localStorage (the shell reads them; wmSettingsChange { detail: { keys } } on
  * document after each ok):
@@ -939,13 +941,242 @@
 
     const SET_TABS = [['personal', 'Personal'], ['system', 'System'], ['connections', 'Connections']];
 
+    // ---------------------------------------------------------------- page registry
+    // Other files add Settings pages without editing this one (wmSettings<Group>.js, loaded after
+    // this file in app.html):
+    //   wmSettings.registerPage(page)   same shape as PAGES; tab 'personal' | 'system' | 'connections';
+    //                                   an id already registered is replaced (late wins), so a group
+    //                                   file can take over one of the pages above
+    //   wmSettings.extendPage(pageId, ext)
+    //                                   more tabs on a page that exists: ext = { id, tabs [[id, label]],
+    //                                   after? (the tab they follow; default the end), available()?,
+    //                                   init() -> its own draft, render(el, tabId, draft, api),
+    //                                   commit(draft) -> keys | false | Promise }; tab ids must not
+    //                                   clash with the page's own (prefix them with the ext id)
+    //   wmSettings.open(pageId, tabId?) opens Settings on that page
+    //   wmSettings.ui                   the form helpers every page uses (below)
+    // The grid sorts by label, as WM does; a page registered while the grid shows redraws it.
+
+    const PAGE_GRIDS = new Set(SET_TABS.map(([id]) => id));
+    const EXTS = new Map(); // page id -> [ext]
+    let settingsHost = null; // registerSettings(): { refresh(), openPage(id, tab) }
+
+    const safeAvailable = (x) => {
+        if (!x || typeof x.available !== 'function') return true;
+        try { return !!x.available(); } catch (err) { console.warn('Settings: available() failed', x.id, err); return false; }
+    };
+
+    function registerPage(page) {
+        if (!page || typeof page.id !== 'string' || !page.id || !PAGE_GRIDS.has(page.tab) || !page.label || typeof page.render !== 'function') {
+            console.warn('wmSettings.registerPage: not a page', page && page.id);
+            return false;
+        }
+        const def = { tabs: [], init: () => ({}), ...page };
+        const at = PAGES.findIndex((p) => p.id === def.id);
+        if (at >= 0) PAGES[at] = def;
+        else PAGES.push(def);
+        if (settingsHost) settingsHost.refresh();
+        return true;
+    }
+
+    function extendPage(pageId, ext) {
+        if (!pageId || !ext || !ext.id || !Array.isArray(ext.tabs) || !ext.tabs.length || typeof ext.render !== 'function') {
+            console.warn('wmSettings.extendPage: not an extension', pageId, ext && ext.id);
+            return false;
+        }
+        const list = EXTS.get(pageId) || [];
+        const at = list.findIndex((x) => x.id === ext.id);
+        if (at >= 0) list[at] = ext;
+        else list.push(ext);
+        EXTS.set(pageId, list);
+        if (settingsHost) settingsHost.refresh();
+        return true;
+    }
+
+    function extsFor(def) {
+        return (EXTS.get(def.id) || []).filter(safeAvailable);
+    }
+
+    /** The page's tabs with its extensions' tabs placed in. */
+    function tabsWith(def, exts) {
+        const tabs = (def.tabs || []).slice();
+        for (const x of exts) {
+            const own = x.tabs.filter((t) => !tabs.some(([id]) => id === t[0]));
+            const i = x.after ? tabs.findIndex(([id]) => id === x.after) : -1;
+            if (i >= 0) tabs.splice(i + 1, 0, ...own);
+            else tabs.push(...own);
+        }
+        return tabs;
+    }
+
+    // ---- wmSettings.ui: WM 6.1 form idioms (wm-programs.css), so every page looks the same.
+    // The *Html helpers return markup; the bind* helpers wire it after el.innerHTML is set.
+
+    const escUi = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    let uiSeq = 0;
+
+    const ui = {
+        esc: escUi,
+        /** A unique id for a label's for= (pages render more than once). */
+        uid: (p = 'wmSet') => `${p}${++uiSeq}`,
+        /** Check box: name, label, checked, extra attributes (e.g. 'data-k="x" disabled'). */
+        check: (name, label, checked, attrs = '') => `<label class="wm-check"><input type="checkbox" name="${escUi(name)}"${checked ? ' checked' : ''} ${attrs}><span>${escUi(label)}</span></label>`,
+        /** Radio button of the group `name`. */
+        radio: (name, value, label, checked, attrs = '') => `<label class="wm-check"><input type="radio" name="${escUi(name)}" value="${escUi(value)}"${checked ? ' checked' : ''} ${attrs}><span>${escUi(label)}</span></label>`,
+        /** Label + control on one line (WM's "Name: [____]"); opts.wide = the long-label layout, opts.for = the control's id. */
+        row: (label, controlHtml, opts = {}) => `<div class="wm-form-row${opts.wide ? ' is-wide' : ''}">${opts.for ? `<label for="${escUi(opts.for)}">${escUi(label)}</label>` : `<span class="wm-form-label">${escUi(label)}</span>`}${controlHtml}</div>`,
+        /** Read-only "Label: value" row. */
+        value: (label, text, opts = {}) => `<div class="wm-form-row${opts.wide ? ' is-wide' : ''}"><span class="wm-form-label">${escUi(label)}</span><span class="wm-form-value">${escUi(text)}</span></div>`,
+        /** Single-line edit box (attrs: maxlength, readonly, disabled, data-*). */
+        edit: (id, value, attrs = '') => `<input${id ? ` id="${escUi(id)}"` : ''} class="wm-edit" type="text" autocomplete="off" value="${escUi(value)}" ${attrs}>`,
+        /** Combo box button showing `label`; open it with bindCombo. */
+        comboHtml: (act, label, disabled = false) => `<button type="button" class="wm-combo" data-act="${escUi(act)}"${disabled ? ' disabled' : ''}><span>${escUi(label)}</span></button>`,
+        /**
+         * Open the WM drop-down list under a combo: options [[value, label]], the current value,
+         * onPick(value). The button's text follows the pick.
+         */
+        bindCombo(btn, options, current, onPick, align = 'left') {
+            if (!btn) return;
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (btn.disabled || !sh) return;
+                sh.dropdown(btn.closest('.wm-combo-edit') || btn, options.map(([v, l]) => ({
+                    label: l,
+                    radio: v === current,
+                    action: () => {
+                        current = v;
+                        const span = btn.querySelector('span');
+                        if (span) span.textContent = l;
+                        onPick(v);
+                    }
+                })), align);
+            });
+        },
+        /** Section heading inside a page (WM's bold sub-header). */
+        sub: (text) => `<div class="wm-form-sub">${escUi(text)}</div>`,
+        /** Grey explanatory note. */
+        note: (text) => `<p class="wm-form-note">${escUi(text)}</p>`,
+        /** Paragraph of body text. */
+        text: (text) => `<p>${escUi(text)}</p>`,
+        gap: () => '<div class="wm-form-gap"></div>',
+        /** Push buttons: [[act, label, disabled?]]; right = WM's right-aligned row. */
+        buttons: (list, right = true) => `<div class="wm-buttons${right ? ' is-right' : ''}">${list.map(([act, label, off]) => `<button type="button" class="wm-button" data-act="${escUi(act)}"${off ? ' disabled' : ''}>${escUi(label)}</button>`).join('')}</div>`,
+        /** "Label: value" pairs in two columns (About's facts): [[label, value]]. */
+        facts: (pairs) => `<div class="wm-facts">${pairs.map(([l, v]) => `<span>${escUi(l)}</span><span>${escUi(v)}</span>`).join('')}</div>`,
+        /**
+         * List box: rows [{ key, label, selected?, checked? (a check box row), img?, indent? }],
+         * opts.maxHeight in WM px (scrolls past it).
+         */
+        listbox: (rows, opts = {}) => `<div class="wm-listbox"${opts.maxHeight ? ` style="max-height:calc(${Number(opts.maxHeight)} * var(--wm-px))"` : ''}>${rows.map((r) => {
+            const cls = `wm-listbox-row${r.selected ? ' is-selected' : ''}${r.indent ? ' is-indent' : ''}`;
+            const img = r.img ? `<img src="${escUi(r.img)}" alt="" draggable="false">` : '';
+            if (r.checked !== undefined) return `<div class="${cls}" data-key="${escUi(r.key)}">${ui.check(`lb-${r.key}`, r.label, r.checked, `data-key="${escUi(r.key)}"`)}</div>`;
+            return `<button type="button" class="${cls}" data-key="${escUi(r.key)}">${img}<span>${escUi(r.label)}</span></button>`;
+        }).join('')}</div>`,
+        /** Row taps select (onSelect(key)); check box rows also report onCheck(key, checked). */
+        bindListbox(box, onSelect, onCheck) {
+            if (!box) return;
+            box.querySelectorAll('.wm-listbox-row').forEach((row) => {
+                const key = row.dataset.key;
+                row.addEventListener('click', (e) => {
+                    if (e.target.closest('input')) return;
+                    box.querySelectorAll('.wm-listbox-row.is-selected').forEach((r) => r.classList.remove('is-selected'));
+                    row.classList.add('is-selected');
+                    if (onSelect) onSelect(key);
+                });
+                const input = row.querySelector('input[type="checkbox"]');
+                if (input && onCheck) input.addEventListener('change', () => onCheck(key, input.checked));
+            });
+        },
+        /**
+         * Horizontal trackbar (Screen's Text Size look) rendered into `host`: steps = the values,
+         * value = the current one, lo / hi = the scale's end labels, label = its accessible name,
+         * onChange(value). Returns { set(value) }.
+         */
+        trackbar(host, { steps, value, lo = '', hi = '', label = '', onChange, disabled = false }) {
+            const n = steps.length;
+            const pos = (i) => `calc(4 * var(--wm-px) + (100% - 8 * var(--wm-px)) * ${n > 1 ? i / (n - 1) : 0})`;
+            host.insertAdjacentHTML('beforeend', `<div class="wm-slider-scale"><span>${escUi(lo)}</span><span>${escUi(hi)}</span></div>
+                <div class="wm-slider${disabled ? ' is-disabled' : ''}" role="slider"${disabled ? ' aria-disabled="true"' : ' tabindex="0"'} aria-label="${escUi(label)}" aria-valuemin="0" aria-valuemax="${n - 1}">
+                    <div class="wm-slider-track"></div>
+                    ${steps.map((_, i) => `<div class="wm-slider-tick" style="left:${pos(i)}"></div>`).join('')}
+                    <div class="wm-slider-thumb"></div>
+                </div>`);
+            const sliders = host.querySelectorAll('.wm-slider');
+            const slider = sliders[sliders.length - 1];
+            const thumb = slider.querySelector('.wm-slider-thumb');
+            let idx = Math.max(0, steps.indexOf(value));
+            const show = () => {
+                thumb.style.left = pos(idx);
+                slider.setAttribute('aria-valuenow', String(idx));
+                slider.setAttribute('aria-valuetext', String(steps[idx]));
+            };
+            const setIdx = (i, fire) => {
+                i = Math.max(0, Math.min(n - 1, i));
+                if (i === idx && !fire) return;
+                const was = idx;
+                idx = i;
+                show();
+                if (fire && was !== idx && onChange) onChange(steps[idx]);
+            };
+            show();
+            if (!disabled) {
+                const fromX = (x) => {
+                    const r = slider.querySelector('.wm-slider-track').getBoundingClientRect();
+                    return Math.round(((x - r.left) / Math.max(1, r.width)) * (n - 1));
+                };
+                slider.addEventListener('pointerdown', (e) => {
+                    if (e.button > 0) return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    slider.focus({ preventScroll: true });
+                    slider.setPointerCapture(e.pointerId);
+                    setIdx(fromX(e.clientX), true);
+                    const move = (ev) => { ev.stopPropagation(); setIdx(fromX(ev.clientX), true); };
+                    const up = () => { slider.removeEventListener('pointermove', move); slider.removeEventListener('pointerup', up); slider.removeEventListener('pointercancel', up); };
+                    slider.addEventListener('pointermove', move);
+                    slider.addEventListener('pointerup', up);
+                    slider.addEventListener('pointercancel', up);
+                });
+                ['touchstart', 'touchmove'].forEach((t) => slider.addEventListener(t, (e) => e.stopPropagation(), { passive: true }));
+                slider.addEventListener('keydown', (e) => {
+                    const step = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+                    if (step !== undefined) setIdx(idx + step, true);
+                    else if (e.key === 'Home') setIdx(0, true);
+                    else if (e.key === 'End') setIdx(n - 1, true);
+                    else return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
+            }
+            return { set: (v) => setIdx(Math.max(0, steps.indexOf(v)), false) };
+        },
+        /** The shell's message box (Promise of the pressed button's value). */
+        messageBox: (opts) => (sh ? sh.messageBox(opts) : Promise.resolve(false)),
+        /** Tell the shell which settings keys changed (wmSettingsChange). */
+        changed: (keys) => changed(keys),
+        /** Shell art for an icon name: { src, srcset }. */
+        art: (name) => (sh ? { src: sh.art.url(name), srcset: sh.art.srcset(name) } : { src: '', srcset: '' })
+    };
+
+    Object.assign(window.wmSettings, {
+        registerPage,
+        extendPage,
+        open: (id, tab) => {
+            if (!sh || !settingsHost) return false;
+            sh.open('settings');
+            return settingsHost.openPage(id, tab);
+        },
+        ui
+    });
+
     function registerSettings() {
         let page = null;
         let gridTab = 'personal';
-        let open = null; // { def, tab, draft, el }
+        let open = null; // { def, exts, tabs, tab, draft, extDrafts }
 
         function pagesFor(tab) {
-            return PAGES.filter((p) => p.tab === tab && (!p.available || p.available()));
+            return PAGES.filter((p) => p.tab === tab && safeAvailable(p));
         }
 
         function renderGrid() {
@@ -959,21 +1190,36 @@
         }
 
         function renderPage() {
-            const { def, tab, draft } = open;
-            page.innerHTML = `<div class="wm-form-hdr">${esc(def.label)}</div><div class="wm-set-scroll"><div class="wm-form"></div></div>${def.tabs.length ? tabsHtml(def.tabs, tab) : ''}`;
+            const { def, tab, draft, tabs } = open;
+            page.innerHTML = `<div class="wm-form-hdr">${esc(def.label)}</div><div class="wm-set-scroll"><div class="wm-form"></div></div>${tabs.length ? tabsHtml(tabs, tab) : ''}`;
             const el = page.querySelector('.wm-form');
-            const api = { rerender: () => { if (open && open.draft === draft) renderPage(); } };
-            def.render(el, tab, draft, api);
+            const api = { rerender: () => { if (open && open.draft === draft) renderPage(); }, tab };
+            // a tab of an extension (extendPage) draws with that extension's own draft
+            const ext = open.exts.find((x) => x.tabs.some(([id]) => id === tab));
+            try {
+                if (ext) ext.render(el, tab, open.extDrafts.get(ext.id), api);
+                else def.render(el, tab, draft, api);
+            } catch (err) {
+                console.warn('Settings: could not draw', def.id, tab, err);
+            }
             page.querySelectorAll('.wm-tab').forEach((t) => t.addEventListener('click', () => { open.tab = t.dataset.tab; renderPage(); }));
             setTitleKind('ok');
         }
 
-        function openPage(id) {
+        function openPage(id, tab) {
             const def = PAGES.find((p) => p.id === id);
-            if (!def) return;
-            open = { def, tab: def.tabs[0] ? def.tabs[0][0] : '', draft: def.init() };
+            if (!def || !safeAvailable(def)) return false;
+            const exts = extsFor(def);
+            const tabs = tabsWith(def, exts);
+            const extDrafts = new Map();
+            for (const x of exts) {
+                try { extDrafts.set(x.id, typeof x.init === 'function' ? x.init() : {}); } catch (err) { console.warn('Settings: init failed', x.id, err); extDrafts.set(x.id, {}); }
+            }
+            const first = tabs[0] ? tabs[0][0] : '';
+            open = { def, exts, tabs, tab: tab && tabs.some(([t]) => t === tab) ? tab : first, draft: def.init(), extDrafts };
             renderPage();
             sh.syncHistory();
+            return true;
         }
 
         function closePage() {
@@ -981,20 +1227,41 @@
             renderGrid();
         }
 
+        /** The page's commit, then each extension's: their keys, or false (keep the page open). */
+        async function commitAll(cur) {
+            const keys = [];
+            const steps = [() => (typeof cur.def.commit === 'function' ? cur.def.commit(cur.draft) : [])]
+                .concat(cur.exts.map((x) => () => (typeof x.commit === 'function' ? x.commit(cur.extDrafts.get(x.id)) : [])));
+            for (const step of steps) {
+                let k = [];
+                try {
+                    k = await step();
+                } catch (err) {
+                    console.warn('Settings: could not save', cur.def.id, err);
+                }
+                if (k === false) {
+                    if (keys.length) changed(keys);
+                    return false;
+                }
+                if (Array.isArray(k)) keys.push(...k);
+            }
+            return keys;
+        }
+
         /** ok (and the back key): save the page, then back to the grid; false keeps it open. */
         async function commitPage() {
             if (!open) return;
             const cur = open;
-            let keys = [];
-            try {
-                keys = typeof cur.def.commit === 'function' ? await cur.def.commit(cur.draft) : [];
-            } catch (err) {
-                console.warn('Settings: could not save', cur.def.id, err);
-            }
+            const keys = await commitAll(cur);
             if (keys === false) return;
-            if (Array.isArray(keys) && keys.length) changed(keys);
+            if (keys.length) changed(keys);
             if (open === cur) { closePage(); sh.syncHistory(); }
         }
+
+        settingsHost = {
+            refresh() { if (page && !open && sh.current === 'settings') renderGrid(); },
+            openPage: (id, tab) => openPage(id, tab)
+        };
 
         sh.registerApp({
             id: 'settings',
@@ -1022,7 +1289,7 @@
                 if (!open) return false;
                 // the back key leaves a page as ok does on the device; the entry is already gone
                 const cur = open;
-                Promise.resolve(typeof cur.def.commit === 'function' ? cur.def.commit(cur.draft) : [])
+                commitAll(cur)
                     .then((keys) => { if (Array.isArray(keys) && keys.length) changed(keys); })
                     .catch(() => {});
                 open = null;

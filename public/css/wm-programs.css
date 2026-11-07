@@ -445,6 +445,20 @@
     clip-path: polygon(0 0, 100% 0, 100% 65%, 50% 100%, 0 65%, 0 0, 9% 6%, 9% 62%, 50% 90%, 91% 62%, 91% 6%, 9% 6%);
 }
 
+/* a greyed trackbar (wmSettings.ui.trackbar disabled) */
+.wm-slider.is-disabled {
+    touch-action: pan-y;
+}
+
+.wm-slider.is-disabled .wm-slider-track {
+    border-color: #8c8e8c;
+}
+
+.wm-slider.is-disabled .wm-slider-tick,
+.wm-slider.is-disabled .wm-slider-thumb::before {
+    background: #8c8e8c;
+}
+
 /* Memory: Storage / Program columns of label: value */
 .wm-mem {
     display: grid;
