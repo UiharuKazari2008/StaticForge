@@ -194,6 +194,8 @@
     async function loadFolder(opts = {}) {
         const token = ++listToken;
         loading = true;
+        // a page of older mail in flight belongs to the old list: drop it and let loadMore run again
+        loadingMore = false;
         listError = '';
         if (!opts.keep) { mail = []; hasMore = false; nextCursor = null; selectedId = null; renderList(); }
         const request = { folder, limit: Math.max(PAGE_LIMIT, opts.keep ? mail.length : 0) };
@@ -222,17 +224,21 @@
         loadingMore = true;
         const request = { folder, cursor: nextCursor, limit: PAGE_LIMIT };
         if (!isMine()) request.viewAsOwner = owner;
+        let stale = false;
         try {
             const r = await send('dovecote_list_mail', request);
-            if (token !== listToken) return;
+            if (token !== listToken) { stale = true; return; }
             const seen = new Set(mail.map((m) => String(m.id)));
             ((r && r.mail) || []).forEach((m) => { if (!seen.has(String(m.id))) mail.push(m); });
             nextCursor = (r && r.nextCursor) || null;
             hasMore = !!(r && r.hasMore);
         } catch (_) {
+            if (token !== listToken) { stale = true; return; }
             hasMore = false;
+        } finally {
+            // a newer list owns the flag once it reset it; only clear our own
+            if (!stale) loadingMore = false;
         }
-        loadingMore = false;
         renderList();
     }
 
@@ -592,7 +598,10 @@
         const body = view.querySelector('.msg-body');
         if (m.loadError) { body.textContent = m.loadError; return; }
         if (pending || m.body == null) { body.textContent = m.format === 'html' ? bodyText({ format: 'html', body: m.snippet }) : (m.snippet || ''); return; }
-        if (m.format === 'html') renderHtmlBody(body, m);
+        // Agent mail: dovecote_render_body marks the message read for its owner (the server reads it without
+        // markRead:false), which would eat an agent's unread mail. Show it as plain text instead.
+        if (m.format === 'html' && isMine()) renderHtmlBody(body, m);
+        else if (m.format === 'html') body.textContent = bodyText(m);
         else body.textContent = String(m.body || '');
         view.querySelector('.msg-read').scrollTop = 0;
     }
@@ -615,16 +624,31 @@
         frame.setAttribute('sandbox', 'allow-same-origin allow-popups allow-popups-to-escape-sandbox');
         frame.className = 'msg-frame';
         const fs = 12 * px();
-        frame.srcdoc = `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'"><style>html,body{margin:0;padding:0;overflow:hidden;font:${fs}px Tahoma,'Segoe UI',Verdana,sans-serif;color:#000;background:#fff;word-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}a{color:#00f}</style></head><body>${(r && r.html) || ''}</body></html>`;
+        frame.srcdoc = `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'"><style>html{margin:0;padding:0;overflow-y:hidden;overflow-x:auto}body{margin:0;padding:0;overflow:visible;font:${fs}px Tahoma,'Segoe UI',Verdana,sans-serif;color:#000;background:#fff;word-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}a{color:#00f}</style></head><body>${(r && r.html) || ''}</body></html>`;
         const fit = () => {
             try {
                 const d = frame.contentDocument;
-                if (d && d.documentElement) frame.style.height = `${d.documentElement.scrollHeight}px`;
+                const de = d && d.documentElement;
+                if (!de) return;
+                // a wide layout scrolls sideways inside the frame: leave room for that scroll bar
+                const bar = Math.max(0, (frame.contentWindow.innerHeight || 0) - de.clientHeight);
+                frame.style.height = `${de.scrollHeight + bar}px`;
             } catch (_) { /* cross-origin: keep the default height */ }
         };
         frame.addEventListener('load', () => {
             fit();
             setTimeout(fit, 300);
+            try {
+                // late images (cid/inline via 'self') and reflows grow the body after load: refit on each
+                const d = frame.contentDocument;
+                d.querySelectorAll('img').forEach((im) => { im.addEventListener('load', fit); im.addEventListener('error', fit); });
+                // the frame's own ResizeObserver: one from this page does not watch another document's layout
+                const RO = frame.contentWindow && frame.contentWindow.ResizeObserver;
+                if (typeof RO === 'function' && d.body) {
+                    const ro = new RO(() => { if (!frame.isConnected) ro.disconnect(); else fit(); });
+                    ro.observe(d.body);
+                }
+            } catch (_) { /* no access */ }
             try {
                 frame.contentDocument.addEventListener('click', (ev) => {
                     const a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
@@ -635,8 +659,8 @@
                     if (url.protocol === 'mailto:') { newMessage({ to: decodeURIComponent(url.pathname) }); return; }
                     if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
                     // Internet Explorer Mobile when the phone has it, else a new tab
-                    if (ws && ws.listApps().some((x) => x.id === 'browser') && typeof window.wmBrowserOpen === 'function') window.wmBrowserOpen(url.href);
-                    else window.open(url.href, '_blank', 'noopener');
+                    if (window.wmBrowser && typeof window.wmBrowser.open === 'function' && window.wmBrowser.open(url.href)) return;
+                    window.open(url.href, '_blank', 'noopener');
                 });
             } catch (_) { /* no access */ }
         });
@@ -1103,6 +1127,8 @@
         if (!page) return;
         const owners = data && Array.isArray(data.owners) ? data.owners : null;
         if (owners && owner && !owners.includes(owner)) return;
+        // hidden: show() reloads the list anyway (loadFolder keep), so skip background round trips
+        if (!isCurrent()) return;
         // several pushes in a row (a batch mark) reload the list once
         clearTimeout(pushTimer);
         pushTimer = setTimeout(() => {
