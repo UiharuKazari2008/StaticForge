@@ -294,7 +294,7 @@
     right: calc(4 * var(--wm-px));
     width: calc(22 * var(--wm-px));
     height: calc(22 * var(--wm-px));
-    background-image: image-set(url('/static_images/wm61/ie-busy.png') 1x, url('/static_images/wm61/ie-busy@2x.png') 2x);
+    background-image: image-set(url('/static_images/wm61/ie-busy.png') 1x, url('/static_images/wm61/ie-busy@2x.png') 2x, url('/static_images/wm61/ie-busy@4x.png') 4x);
     background-size: calc(396 * var(--wm-px)) 100%;
     background-repeat: no-repeat;
     border-radius: 50%;

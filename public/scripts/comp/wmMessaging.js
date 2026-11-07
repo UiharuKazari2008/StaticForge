@@ -82,7 +82,8 @@
     } catch (_) { /* storage off */ }
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const img = (name) => `<img src="${ART}${name}.png" srcset="${ART}${name}.png 1x, ${ART}${name}@2x.png 2x" alt="" draggable="false">`;
+    const srcsetOf = (name) => (window.wmShell ? window.wmShell.art.srcset(name) : `${ART}${name}.png 1x, ${ART}${name}@2x.png 2x`);
+    const img = (name) => `<img src="${ART}${name}.png" srcset="${srcsetOf(name)}" alt="" draggable="false">`;
     const human = () => (typeof DESKTOP_DOVECOTE_HUMAN_OWNER !== 'undefined' ? DESKTOP_DOVECOTE_HUMAN_OWNER : 'yukimi');
     const wsc = () => window.wsClient || (typeof wsClient !== 'undefined' ? wsClient : null); // eslint-disable-line no-undef
     const isCurrent = () => !!(ws && ws.current === APP_ID);
@@ -704,8 +705,11 @@
     };
 
     function newMessage(init = {}) {
-        compose = { mode: init.mode || 'new', replyTo: init.replyTo || null };
+        compose = { mode: init.mode || 'new', replyTo: init.replyTo || null, attachments: Array.isArray(init.attachments) ? init.attachments : [] };
         const view = page.querySelector('.msg-view[data-view="compose"]');
+        const atts = view.querySelector('.msg-compose-atts');
+        atts.innerHTML = compose.attachments.map((a) => `<div class="msg-att">${img('msg-attachment')}<span>${esc(a.name || 'attachment')}</span></div>`).join('');
+        atts.hidden = !compose.attachments.length;
         view.querySelector('.msg-from-addr').textContent = address(human());
         view.querySelector('[name="to"]').value = init.to || '';
         view.querySelector('[name="cc"]').value = init.cc || '';
@@ -802,6 +806,7 @@
         };
         if (to.length && cc.length) request.cc = cc.join(', ');
         if (compose.replyTo) request.replyTo = compose.replyTo;
+        if (compose.attachments.length) request.attachments = compose.attachments.map((a) => ({ name: a.name, mimeType: a.mimeType, base64: a.base64 }));
         sending = true;
         if (isCurrent()) ws.refreshSoftKeys();
         try {
@@ -1036,6 +1041,7 @@
                     <label class="msg-field"><span>To:</span><input name="to" type="text" inputmode="email" autocapitalize="off" spellcheck="false"></label>
                     <label class="msg-field"><span>Cc:</span><input name="cc" type="text" inputmode="email" autocapitalize="off" spellcheck="false"></label>
                     <label class="msg-field"><span>Subject:</span><input name="subject" type="text"></label>
+                    <div class="msg-atts msg-compose-atts" hidden></div>
                     <textarea name="body" class="msg-text" aria-label="Message" spellcheck="false"></textarea>
                 </form>
             </div>`;
@@ -1136,6 +1142,23 @@
             loadFolder({ keep: true });
         }, 250);
     }
+
+    /**
+     * Other apps hand a new message to Messaging (Contacts' Send e-mail / Send Text Message,
+     * Send Contact > E-mail...): { to: [addresses], subject, body, attachments: [{ name, mimeType, base64 }] }.
+     * Back from the form returns to the app that asked.
+     */
+    function composeFromApp(init = {}) {
+        if (!ws) return;
+        ws.open(APP_ID);
+        if (!page) return;
+        const to = (Array.isArray(init.to) ? init.to : (init.to ? [init.to] : [])).map((t) => String(t).trim()).filter(Boolean);
+        layers = [];
+        if (reading) { reading = null; readToken++; }
+        compose = null;
+        newMessage({ to: to.join('; '), subject: init.subject || '', body: init.body || '', attachments: init.attachments });
+    }
+    window.wmMessagingCompose = composeFromApp;
 
     // ---------------------------------------------------------------- registration
 

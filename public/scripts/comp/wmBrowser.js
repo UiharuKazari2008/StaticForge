@@ -105,7 +105,8 @@
     const isCurrent = () => !!(ws && ws.current === APP_ID);
     const entry = () => entries[idx] || { home: true };
     const onHome = () => !!entry().home;
-    const img = (name, cls) => `<img class="${cls || ''}" src="/static_images/wm61/${name}.png" srcset="/static_images/wm61/${name}@2x.png 2x" alt="" draggable="false">`;
+    const srcsetOf = (name) => (window.wmShell ? window.wmShell.art.srcset(name) : `/static_images/wm61/${name}@2x.png 2x`);
+    const img = (name, cls) => `<img class="${cls || ''}" src="/static_images/wm61/${name}.png" srcset="${srcsetOf(name)}" alt="" draggable="false">`;
 
     function readList(key) {
         try { const v = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(v) ? v : []; } catch (_) { return []; }

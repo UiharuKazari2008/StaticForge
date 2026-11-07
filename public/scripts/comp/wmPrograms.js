@@ -135,7 +135,7 @@
     /** 32 px art for a shell icon name: its -lg pair when the ROM has one. */
     function wmLargeIcon(name) {
         const n = manifest && manifest[`${name}-lg`] ? `${name}-lg` : name;
-        return { src: sh.art.url(n), srcset: `${sh.art.url(n)} 1x, ${sh.art.url2x(n)} 2x` };
+        return { src: sh.art.url(n), srcset: sh.art.srcset(n) };
     }
 
     /** A Dreamscape app icon at 32 px (compiled sizes, modules/appIconRuntimeAssets.js). */
@@ -752,7 +752,7 @@
 
         function renderGrid() {
             if (!page) return;
-            const items = pagesFor(gridTab).map((p) => ({ key: p.id, label: p.label, img: { src: sh.art.url(p.icon), srcset: `${sh.art.url(p.icon)} 1x, ${sh.art.url2x(p.icon)} 2x` } }))
+            const items = pagesFor(gridTab).map((p) => ({ key: p.id, label: p.label, img: { src: sh.art.url(p.icon), srcset: sh.art.srcset(p.icon) } }))
                 .sort((a, b) => a.label.localeCompare(b.label));
             page.innerHTML = `<div class="wm-set-scroll"><div class="wm-icongrid" role="list">${items.map((i) => iconCell(i)).join('')}</div></div>${tabsHtml(SET_TABS, gridTab)}`;
             bindGrid(page.querySelector('.wm-icongrid'), openPage);

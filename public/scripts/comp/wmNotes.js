@@ -48,7 +48,8 @@
 
     const ART = '/static_images/wm61/';
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const icon = (name, cls = '') => `<img class="${cls}" src="${ART}${name}.png" srcset="${ART}${name}.png 1x, ${ART}${name}@2x.png 2x" alt="" draggable="false">`;
+    const srcsetOf = (name) => (window.wmShell ? window.wmShell.art.srcset(name) : `${ART}${name}.png 1x, ${ART}${name}@2x.png 2x`);
+    const icon = (name, cls = '') => `<img class="${cls}" src="${ART}${name}.png" srcset="${srcsetOf(name)}" alt="" draggable="false">`;
     const vfs = () => (typeof vfsClient !== 'undefined' ? vfsClient : window.vfsClient) || null; // eslint-disable-line no-undef
     const wsc = () => window.wsClient || null;
     const VC = () => window.melatonVCard || null;
@@ -999,13 +1000,14 @@
             if (!r || r.kind === 'info') return;
             if (r.kind === 'call') { await noPhone(r.value); return; }
             if (r.kind === 'web') {
-                if (typeof window.wmBrowserOpen === 'function' && ws.listApps().some((a) => a.id === 'browser')) { window.wmBrowserOpen(r.value); return; }
-                window.open(/^https?:/i.test(r.value) ? r.value : `http://${r.value}`, '_blank', 'noopener');
+                const site = /^https?:/i.test(r.value) ? r.value : `http://${r.value}`;
+                if (window.wmBrowser && window.wmBrowser.open(site)) return;
+                window.open(site, '_blank', 'noopener');
                 return;
             }
             // Messaging writes the message when it offers a compose entry point
-            if (typeof window.wmMessagingCompose === 'function') {
-                window.wmMessagingCompose(r.kind === 'mail' ? { to: [r.value] } : { to: [r.value], sms: true });
+            if (r.kind === 'mail' && typeof window.wmMessagingCompose === 'function') {
+                window.wmMessagingCompose({ to: [r.value] });
                 return;
             }
             await ws.messageBox({ title: 'Contacts', icon: 'info', text: r.kind === 'mail' ? `Messaging cannot write to ${r.value} yet.` : 'Text messages need a phone line.' });

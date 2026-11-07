@@ -893,7 +893,7 @@
         p.classList.add('wm-fe');
         p.innerHTML = `
             <div class="wm-pv-bar fe-bar">
-                <button type="button" class="wm-pv-folder fe-folder" aria-haspopup="menu" aria-expanded="false"><img src="${ART}fe-device.png" srcset="${ART}fe-device.png 1x, ${ART}fe-device@2x.png 2x" alt="" draggable="false"><span class="fe-folder-name">My Device</span><i class="wm-pv-arrow"></i></button>
+                <button type="button" class="wm-pv-folder fe-folder" aria-haspopup="menu" aria-expanded="false"><img src="${ART}fe-device.png" srcset="${ws.art.srcset('fe-device')}" alt="" draggable="false"><span class="fe-folder-name">My Device</span><i class="wm-pv-arrow"></i></button>
                 <button type="button" class="wm-pv-sort" aria-haspopup="menu" aria-expanded="false"><span>Name</span><i class="wm-pv-arrow"></i></button>
             </div>
             <div class="fe-scroll"><div class="fe-list" role="listbox" aria-label="Files"></div><p class="fe-empty" hidden></p></div>`;
