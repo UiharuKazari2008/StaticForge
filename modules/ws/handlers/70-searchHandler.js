@@ -1401,11 +1401,11 @@ function registerPackets(handlersCtx) {
     regFn('search_index_trigger', handleTriggerIndexing, SEARCH_DESTRUCTIVE);
     regFn('search_index_rebuild_all', handleRebuildAllIndexes, SEARCH_DESTRUCTIVE);
     regFn('get_prompt_index_status', handleGetPromptIndexStatus);
-    regFn('prompt_index_start', handlePromptIndexStart);
-    regFn('prompt_index_pause', handlePromptIndexPause);
-    regFn('prompt_index_resume', handlePromptIndexResume);
-    regFn('prompt_index_cancel', handlePromptIndexCancel);
-    regFn('prompt_index_reconcile', handlePromptIndexReconcile);
+    regFn('prompt_index_start', handlePromptIndexStart, SEARCH_DESTRUCTIVE);
+    regFn('prompt_index_pause', handlePromptIndexPause, SEARCH_DESTRUCTIVE);
+    regFn('prompt_index_resume', handlePromptIndexResume, SEARCH_DESTRUCTIVE);
+    regFn('prompt_index_cancel', handlePromptIndexCancel, SEARCH_DESTRUCTIVE);
+    regFn('prompt_index_reconcile', handlePromptIndexReconcile, SEARCH_DESTRUCTIVE);
     regFn('spellcheck_add_word', handleAddWordToDictionary, SEARCH_DESTRUCTIVE);
     regFn('search_dataset_tags', handleDatasetTagSearch);
     regFn('get_dataset_tags_for_path', handleGetDatasetTagsForPath);
