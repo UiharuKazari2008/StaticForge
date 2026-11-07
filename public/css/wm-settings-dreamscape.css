@@ -1,1 +1,114 @@
 /* Melaton Mobile Settings: Dreamscape pages (Image Generation, Director, Dovecote, Search Indexing, Error Reporting) (wmSettingsDreamscape.js, Yozora #709); html.ui-mobile only. */
+
+/* Image Generation > Background: the preview box (1 px black frame, as WM's Today preview) */
+html.ui-mobile .wm-ds-swatch {
+    width: calc(96 * var(--wm-px));
+    height: calc(48 * var(--wm-px));
+    margin: 0 0 calc(6 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    box-sizing: border-box;
+    background: #fff;
+}
+
+html.ui-mobile .wm-ds-swatch.is-checker-dark {
+    background: repeating-conic-gradient(#2a2a2a 0 25%, #1c1c1c 0 50%) 0 0 / calc(12 * var(--wm-px)) calc(12 * var(--wm-px));
+}
+
+html.ui-mobile .wm-ds-swatch.is-checker-light {
+    background: repeating-conic-gradient(#ffffff 0 25%, #c8c8c8 0 50%) 0 0 / calc(12 * var(--wm-px)) calc(12 * var(--wm-px));
+}
+
+/* Director: one Engine / Model / Reasoning group per persona, the % edit box narrow */
+html.ui-mobile .wm-ds-group {
+    margin-top: calc(4 * var(--wm-px));
+}
+
+html.ui-mobile .wm-ds-group .wm-form-row {
+    grid-template-columns: calc(66 * var(--wm-px)) minmax(0, 1fr);
+}
+
+html.ui-mobile .wm-ds-pct > span {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+}
+
+html.ui-mobile .wm-ds-pct .wm-edit {
+    width: calc(40 * var(--wm-px));
+}
+
+html.ui-mobile .wm-ds-pct .wm-edit:disabled {
+    color: #8c8e8c;
+    border-color: #8c8e8c;
+}
+
+/* list boxes of text rows: one line each, cut with an ellipsis */
+html.ui-mobile .wm-ds-list .wm-listbox-row > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+
+html.ui-mobile .wm-ds-list.is-empty {
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    min-height: calc(17 * var(--wm-px));
+    color: #8c8e8c;
+}
+
+/* Dovecote > Signatures: a multi-line WM edit box */
+html.ui-mobile .wm-ds-textarea {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    height: calc(120 * var(--wm-px));
+    margin: 0;
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: calc(12 * var(--wm-px)) / calc(14 * var(--wm-px)) var(--wm-font);
+    resize: none;
+    outline: none;
+    user-select: text;
+}
+
+/* Search Indexing: WM's progress bar (whole 7 px blocks, 2 px gaps; 18 fill the bar) */
+html.ui-mobile .wm-ds-idx-count {
+    margin-bottom: calc(4 * var(--wm-px)) !important;
+}
+
+html.ui-mobile .wm-ds-progress {
+    position: relative;
+    width: calc(164 * var(--wm-px));
+    max-width: 100%;
+    height: calc(15 * var(--wm-px));
+    margin: 0 0 calc(8 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    box-sizing: border-box;
+    background: #fff;
+    overflow: hidden;
+}
+
+html.ui-mobile .wm-ds-progress > span {
+    position: absolute;
+    left: calc(1 * var(--wm-px));
+    top: calc(1 * var(--wm-px));
+    bottom: calc(1 * var(--wm-px));
+    width: calc(var(--wm-ds-blocks, 0) * 9 * var(--wm-px));
+    max-width: calc(100% - 2 * var(--wm-px));
+    background: repeating-linear-gradient(to right, var(--wm-highlight) 0, var(--wm-highlight) calc(7 * var(--wm-px)), transparent calc(7 * var(--wm-px)), transparent calc(9 * var(--wm-px)));
+}
+
+/* no percentage: five blocks walk across, as WM's busy bars do */
+html.ui-mobile .wm-ds-progress.is-marquee > span {
+    width: calc(45 * var(--wm-px));
+    animation: wm-ds-marquee 2s steps(18) infinite;
+}
+
+@keyframes wm-ds-marquee {
+    from { left: calc(-45 * var(--wm-px)); }
+    to { left: calc(162 * var(--wm-px)); }
+}

@@ -2694,6 +2694,57 @@
       ],
       "notes": "Settings applet icon: Wireless Manager (Settings grid, Melaton Mobile Settings app)."
     },
+    "set-error-reporting": {
+      "1x": {
+        "source": "shellres.192.dll ico_13996_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13996_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "~/.cache/wm61/up4/run.js (4x-UltraSharp from @2x)",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Error Reporting (Settings grid, Melaton Mobile Settings app, wmSettingsDreamscape.js)."
+    },
+    "set-search-indexing": {
+      "1x": {
+        "source": "shellres.192.dll ico_14000_1_32x32 + ico_8213_1_64x64 Lanczos 21px at +11+11",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_14000_0_64x64 + ico_8213_1_64x64 Lanczos 42px at +22+22",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "~/.cache/wm61/up4/run.js (4x-UltraSharp from @2x)",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "notes": "Melaton extension in the WM style: Search Indexing (Settings grid, wmSettingsDreamscape.js), the ROM task list page with the ROM Search magnifier."
+    },
     "set-netcards": {
       "1x": {
         "source": "shellres.192.dll ico_13888_1_32x32",
