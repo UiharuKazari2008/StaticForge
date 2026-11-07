@@ -1,0 +1,282 @@
+/*
+ * Melaton Mobile: WM 6.1 Open and Save As dialogs (Yozora #709). wmFileDialogs.js.
+ * Measured on the Device Emulator (VGA, 2x halved; ~/.cache/wm61/ref-fd); lengths are N * --wm-px
+ * like wm-shell.css. The header, edit, combo and push button are wm-programs.css's
+ * (.wm-form-hdr, .wm-edit, .wm-combo, .wm-button).
+ */
+
+.wm-fd {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: #fff;
+    color: #000;
+}
+
+.wm-fd .wfd {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+}
+
+/* ---- Save As (Word Mobile): label at x 6, boxes x 66 - 229, 20 tall, rows 30 apart from y 12 ---- */
+.wm-fd .wfd-form {
+    padding: calc(12 * var(--wm-px)) calc(10 * var(--wm-px)) calc(8 * var(--wm-px)) calc(6 * var(--wm-px));
+    overflow-y: auto;
+}
+
+.wm-fd .wfd-save .wfd-row {
+    display: grid;
+    grid-template-columns: calc(60 * var(--wm-px)) minmax(0, 1fr);
+    align-items: center;
+    height: calc(20 * var(--wm-px));
+    margin-bottom: calc(10 * var(--wm-px));
+}
+
+.wm-fd .wm-edit {
+    border-radius: 0 !important;
+}
+
+.wm-fd .wfd-row > label,
+.wm-fd .wfd-row > .wfd-label {
+    white-space: nowrap;
+}
+
+.wm-fd .wfd-row .wm-combo:disabled {
+    color: #000 !important;
+}
+
+/* Save | Cancel: 66 x 23 at the right, 7 apart */
+.wm-fd .wfd-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: calc(7 * var(--wm-px));
+}
+
+.wm-fd .wfd-buttons .wm-button {
+    min-width: calc(66 * var(--wm-px));
+    height: calc(23 * var(--wm-px));
+}
+
+.wm-fd .wfd-note {
+    margin: calc(8 * var(--wm-px)) calc(4 * var(--wm-px));
+    font-weight: normal;
+}
+
+/* ---- Open (commdlg): black bold header 24 tall over a 1 px rule; Folder [combo] [Cancel] at
+ * y 9 (combo x 51 - 170, Cancel 174 - 230, 19 tall); Type below it (x 51 - 230) ---- */
+.wm-fd .wfd-hdr {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    height: calc(23 * var(--wm-px));
+    padding: 0 calc(9 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-fd .wfd-top {
+    flex: 0 0 auto;
+    padding: calc(9 * var(--wm-px)) calc(10 * var(--wm-px)) calc(9 * var(--wm-px)) calc(10 * var(--wm-px));
+}
+
+.wm-fd .wfd-open .wfd-row {
+    display: grid;
+    grid-template-columns: calc(41 * var(--wm-px)) minmax(0, 1fr);
+    align-items: center;
+    height: calc(19 * var(--wm-px));
+}
+
+.wm-fd .wfd-open .wfd-row + .wfd-row {
+    margin-top: calc(5 * var(--wm-px));
+}
+
+.wm-fd .wfd-open .wfd-top.has-loc .wfd-row {
+    grid-template-columns: calc(52 * var(--wm-px)) minmax(0, 1fr);
+}
+
+.wm-fd .wfd-open .wfd-row.has-btn {
+    grid-template-columns: calc(41 * var(--wm-px)) minmax(0, 1fr) auto;
+    column-gap: calc(4 * var(--wm-px));
+}
+
+.wm-fd .wfd-open .wfd-top.has-loc .wfd-row.has-btn {
+    grid-template-columns: calc(52 * var(--wm-px)) minmax(0, 1fr) auto;
+}
+
+.wm-fd .wfd-open .wfd-row .wm-combo {
+    height: calc(19 * var(--wm-px));
+}
+
+.wm-fd .wfd-open .wfd-row .wm-button {
+    min-width: calc(56 * var(--wm-px));
+    height: calc(19 * var(--wm-px));
+}
+
+/* the list: a column header (Name 100 or what is left, Folder 69, Date 70 for "10/28 12:59", Size 46) and 18 px rows, normal weight;
+ * wider than the screen it scrolls sideways, as the dialog's own list does */
+.wm-fd .wfd-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-fd .wfd-table {
+    min-width: calc(285 * var(--wm-px));
+}
+
+.wm-fd .wfd-head,
+.wm-fd .wfd-item {
+    display: grid;
+    grid-template-columns: minmax(calc(100 * var(--wm-px)), 1fr) calc(69 * var(--wm-px)) calc(70 * var(--wm-px)) calc(46 * var(--wm-px));
+}
+
+.wm-fd .wfd-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    height: calc(19 * var(--wm-px));
+    background: var(--wm-tint);
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-fd .wfd-col {
+    display: flex !important;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    min-width: 0;
+    height: 100%;
+    padding: 0 calc(6 * var(--wm-px)) !important;
+    border: 0 !important;
+    border-right: calc(1 * var(--wm-px)) solid #a5a6a5 !important;
+    background: transparent !important;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-fd .wfd-col:active {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text) !important;
+}
+
+/* the sort mark: a black triangle 7 x 4, up for ascending */
+.wm-fd .wfd-sort {
+    flex: 0 0 auto;
+    width: 0;
+    height: 0;
+    border-left: calc(4 * var(--wm-px)) solid transparent;
+    border-right: calc(4 * var(--wm-px)) solid transparent;
+    border-bottom: calc(5 * var(--wm-px)) solid currentColor;
+}
+
+.wm-fd .wfd-sort.is-desc {
+    border-bottom: 0;
+    border-top: calc(5 * var(--wm-px)) solid currentColor;
+}
+
+.wm-fd .wfd-item {
+    align-items: center;
+    height: calc(18 * var(--wm-px));
+    white-space: nowrap;
+    cursor: default;
+    -webkit-touch-callout: none;
+}
+
+.wm-fd .wfd-item.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-fd .wfd-item > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: calc(4 * var(--wm-px));
+}
+
+/* the icon sits in the Name column: 16 px at x 2, the name at x 21 */
+.wm-fd .wfd-item .wfd-name {
+    display: flex;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    padding-left: calc(2 * var(--wm-px));
+}
+
+.wm-fd .wfd-item .wfd-name > img {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wm-fd .wfd-item .wfd-name > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-fd .wfd-combo-list::-webkit-scrollbar,
+.wm-fd .wfd-scroll::-webkit-scrollbar {
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+}
+
+.wm-fd .wfd-combo-list::-webkit-scrollbar-track,
+.wm-fd .wfd-scroll::-webkit-scrollbar-track {
+    background: #fff;
+}
+
+.wm-fd .wfd-combo-list::-webkit-scrollbar-thumb,
+.wm-fd .wfd-scroll::-webkit-scrollbar-thumb {
+    background: var(--wm-tab-strip, var(--wm-tint));
+    border: calc(1 * var(--wm-px)) solid #000;
+}
+
+/* a combo box's list: the box's width, 1 px black frame, plain 14 px rows (Tahoma 12), the current
+ * one highlighted */
+.wm-fd {
+    position: relative;
+}
+
+.wm-fd .wfd-combo-list {
+    position: absolute;
+    z-index: 5;
+    box-sizing: border-box;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    color: #000;
+    font: calc(12 * var(--wm-px)) / calc(14 * var(--wm-px)) var(--wm-font);
+}
+
+.wm-fd .wfd-combo-row {
+    height: calc(14 * var(--wm-px));
+    padding: 0 calc(1 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+.wm-fd .wfd-combo-row.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-fd .wfd-combo-sep {
+    height: calc(1 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) 0;
+    background: #a5a6a5;
+}

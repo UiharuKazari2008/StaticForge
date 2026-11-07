@@ -564,8 +564,7 @@
                 showDialog(data);
                 break;
             case 'grimoire-browser-file-chooser':
-                post({ type: 'grimoire-browser-file-chooser-reply', id: data.id, cancel: true });
-                ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: 'Uploading files from this phone is not supported. Use the desktop to choose files for this page.' });
+                chooseFile(data);
                 break;
             case 'grimoire-browser-popup':
                 onPopup(data);
@@ -601,6 +600,87 @@
         if (data.sessionId) fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(data.sessionId), { method: 'DELETE', credentials: 'same-origin', keepalive: true }).catch(() => {});
         const url = webUrl(data.url);
         if (url) navigate(url);
+    }
+
+    /**
+     * An upload field on the page: WM's Open dialog over the VFS (wmFileDialogs.js), as the desktop's
+     * IE answers it with its file dialog (grimoireRemoteBrowser.js grimoireShowFileChooser); Menu >
+     * Browse device... takes the phone's own files (the browser's picker). The files go to the
+     * remote browser's file-chooser routes and the page's input gets them; Cancel leaves it empty.
+     */
+    function chooseFile(data) {
+        const s = session;
+        const reply = (cancel) => post({ type: 'grimoire-browser-file-chooser-reply', id: data.id, cancel: !!cancel });
+        if (!s || !window.wmFileDialogs) {
+            reply(true);
+            ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: 'Uploading files from this phone is not supported. Use the desktop to choose files for this page.' });
+            return;
+        }
+        const base = '/api/grimoire-browser/sessions/' + encodeURIComponent(s.id) + '/file-chooser/' + encodeURIComponent(data.id);
+        const failed = (err) => {
+            reply(true);
+            ws.messageBox({ title: 'Internet Explorer', icon: 'error', text: (err && err.message) || 'The file could not be uploaded.' });
+        };
+        const refOf = (item) => {
+            if (!item || item.kind === 'folder') return null;
+            if (item.targetKind === 'user-file' && !item.isUserFileLink) return { kind: 'file', id: item.targetId };
+            if (item.targetKind === 'image' || item.targetKind === 'scrap') return { kind: 'image', filename: item.previewImageFilename || item.targetId };
+            if (item.shortcutType === 'image' && item.shortcutData && item.shortcutData.filename) return { kind: 'image', filename: item.shortcutData.filename };
+            return null;
+        };
+        let answered = false;
+        const browse = () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = !!data.multiple;
+            if (data.accept) input.accept = data.accept;
+            input.addEventListener('change', async () => {
+                const files = [...(input.files || [])];
+                if (!files.length) { reply(true); return; }
+                try {
+                    for (const file of (data.multiple ? files : files.slice(0, 1))) {
+                        const res = await fetch(base + '/upload?' + s.query + '&name=' + encodeURIComponent(file.name), {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/octet-stream' },
+                            body: file
+                        });
+                        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not upload ' + file.name);
+                    }
+                    reply(false);
+                } catch (err) { failed(err); }
+            }, { once: true });
+            input.addEventListener('cancel', () => reply(true), { once: true });
+            input.click();
+        };
+        window.wmFileDialogs.open({
+            title: 'Choose File to Upload',
+            appTitle: 'Internet Explorer',
+            typeLabel: data.accept ? `Files (${data.accept})` : 'All Files (*.*)',
+            accept: (item) => !!refOf(item),
+            extra: [{ label: 'Browse device...', action: () => { answered = true; window.wmFileDialogs.close(); browse(); } }],
+            async onPick(item) {
+                answered = true;
+                const ref = refOf(item);
+                const res = await fetch(base + '/vfs?' + s.query, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items: [ref] })
+                });
+                if (!res.ok) { failed(new Error((await res.json().catch(() => ({}))).error || 'Could not upload the file')); return true; }
+                reply(false);
+                return true;
+            },
+            onCancel() {
+                if (!answered) reply(true);
+                // left for another app from the dialog: the hidden page is let go after a while again
+                if (!visible && session) scheduleIdleClose();
+            }
+        });
+        // the dialog hid IE: the page waits for the answer, not let go meanwhile
+        clearTimeout(idleTimer);
+        idleTimer = 0;
     }
 
     async function showDialog(data) {
