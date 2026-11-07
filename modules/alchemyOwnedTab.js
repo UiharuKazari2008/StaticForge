@@ -3,7 +3,7 @@
 /**
  * Alchemy-owned tab in Yukimi's Alchemy browser (services/grimoire-browser, profile
  * ~/.local/share/dreamscape/alchemy-profile), driven over its loopback CDP port
- * (ALCHEMY_CDP_PORT, default 127.0.0.1:9335). Does not launch another Chrome.
+ * (ALCHEMY_CDP_PORT, default 127.0.0.1:9339). Does not launch another Chrome.
  * Scoped to one owned tab (opened at discord.com, so Yukimi can see it in Alchemy and sign in)
  * — never one of her own tabs and never the Dreamscape /app?agent=1 priority tab.
  */
@@ -25,7 +25,7 @@ function loadWebSocket() {
 }
 
 const CDP_HOST = '127.0.0.1';
-const CDP_PORT = Number(process.env.ALCHEMY_CDP_PORT || 9335);
+const CDP_PORT = Number(process.env.ALCHEMY_CDP_PORT || 9339);
 const ALCHEMY_OWNED_HASH = 'alchemy-owned';
 const ALCHEMY_BLANK_URL = `about:blank#${ALCHEMY_OWNED_HASH}`;
 // New owned tabs open here: Alchemy adopts the page as a window Yukimi can see and sign in to.
