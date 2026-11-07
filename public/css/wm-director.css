@@ -1,1 +1,443 @@
-/* Melaton Mobile Director app (#709) */
+/*
+ * Melaton Mobile: the Director as a mobile visual novel (Yozora #709). wmDirector.js.
+ * The desktop Director window (#directorWindow) is hosted in this page between the WM title bar and
+ * the soft keys: its frame, caption, command bar and side panes go, her visual novel fills the page
+ * (portrait), the composer sits at the bottom while composing. WM parts (sessions list, status) use
+ * the shell's metrics: N * --wm-px, var(--wm-font).
+ */
+
+.wm-director {
+    overflow: hidden !important;
+    background: #000;
+    color: #000;
+}
+
+.wm-director .wmd-host {
+    position: absolute;
+    inset: 0;
+}
+
+/* ---- the desktop window, frameless and full page ---- */
+.wm-director #directorWindow {
+    position: absolute !important;
+    inset: 0 !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    translate: none !important;
+    scale: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    animation: none !important;
+    transition: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    z-index: auto !important;
+    display: flex !important;
+    flex-direction: column;
+    background: #000 !important;
+    contain: layout paint;
+}
+
+.wm-director #directorWindow::before,
+.wm-director #directorWindow::after,
+.wm-director #directorWindow > .modal-window-title,
+.wm-director #directorWindow > .modal-window-controls,
+.wm-director #directorWindow .modal-focus-overlay,
+.wm-director #directorWindow .resize-handle,
+.wm-director #directorWindowToolbar,
+.wm-director #directorCommonHeader,
+.wm-director #directorSessionImagesPane,
+.wm-director #directorBrowserPane,
+.wm-director #directorSessionList {
+    display: none !important;
+}
+
+.wm-director #directorWindow > .modal-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex !important;
+    flex-direction: column;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #000 !important;
+    box-shadow: none !important;
+    overflow: hidden;
+}
+
+.wm-director #directorWindow .director-window-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.wm-director #directorWindowChat {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: #000 !important;
+}
+
+.wm-director #directorContainer {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+}
+
+.wm-director #directorContainer > .director-content {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.wm-director #directorSessionChat {
+    position: relative;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    overflow: hidden;
+}
+
+/* ---- her scene: the room fills the page (cover), she stands at the middle ---- */
+.wm-director #directorSessionChat.director-mascot-view {
+    background-position: center !important;
+    background-size: cover !important;
+}
+
+/* the quick bar is the desktop's game toolbar: its buttons are the soft keys and Menu here */
+.wm-director .dm-vn-layer .dm-quick {
+    display: none !important;
+}
+
+/* title banner and HUD: one compact row under the title bar */
+.wm-director .dm-vn-layer .dm-banner {
+    max-width: 58%;
+    min-width: 0;
+    padding: 4px 22px 4px 10px;
+    border-left-width: 3px;
+}
+
+.wm-director .dm-vn-layer .dm-banner-title {
+    font-size: 12px;
+}
+
+.wm-director .dm-vn-layer .dm-banner-sub {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+}
+
+.wm-director .dm-vn-layer .dm-hud {
+    right: 4px;
+    gap: 3px;
+    transform: scale(0.72);
+    transform-origin: top right;
+}
+
+.wm-director .dm-vn-layer .dm-hud-grow {
+    display: none;
+}
+
+/* thought cloud and tool pops: centred over her head, narrower than a phone */
+.wm-director .dm-vn-layer .dm-bubble {
+    min-width: 0;
+    max-width: 78%;
+    font-size: 13px;
+    padding: 8px 14px;
+}
+
+.wm-director .dm-vn-layer[data-side] :is(.dm-bubble, .dm-tool-pops) {
+    left: auto;
+    right: 6%;
+}
+
+.wm-director .dm-vn-layer .dm-think {
+    top: calc(var(--dm-top, 12px) + 44px);
+}
+
+.wm-director .dm-vn-layer .dm-think-full {
+    max-width: 70vw;
+    max-height: 40vh;
+}
+
+.wm-director .dm-vn-layer .dm-tool-pops {
+    top: calc(var(--dm-top, 12px) + 96px);
+    max-width: 70%;
+}
+
+/* the VN text box: full width at the bottom, cut corners kept, smaller insets */
+.wm-director .dm-vn-layer .dm-dialog {
+    left: 6px;
+    right: 6px;
+    min-height: 92px;
+    padding: 18px 16px 18px 18px;
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.wm-director .dm-vn-layer .dm-dialog[data-tab="reply"] .dm-dialog-body {
+    min-height: 4.35em;
+}
+
+.wm-director .dm-vn-layer .dm-dialog-head {
+    left: 14px;
+    top: -14px;
+}
+
+.wm-director .dm-vn-layer .dm-dialog-name {
+    font-size: 13px;
+    padding: 3px 14px;
+}
+
+.wm-director .dm-vn-layer .dm-dialog-tabs,
+.wm-director .dm-vn-layer .dm-dialog-peek {
+    display: none !important;
+}
+
+.wm-director .dm-vn-layer .dm-dialog[data-tab="card"] .dm-dialog-body,
+.wm-director .dm-vn-layer .dm-dialog[data-tab="card"] .director-report-card,
+.wm-director .dm-vn-layer .dm-dialog[data-tab="card"] .director-report-item {
+    font-size: 13px;
+}
+
+/* ---- composer: hidden while she talks, a WM edit row at the bottom while composing ---- */
+.wm-director:not(.wmd-composing) #directorComposer {
+    display: none !important;
+}
+
+.wm-director #directorComposer {
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    transform: none !important;
+    margin: 0 !important;
+    padding: calc(2 * var(--wm-px)) !important;
+    background: var(--wm-tint) !important;
+    border-top: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    z-index: 8;
+    opacity: 1 !important;
+    animation: none !important;
+}
+
+.wm-director #directorComposer .director-chat-input {
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+}
+
+.wm-director #directorComposer .director-input-row {
+    display: flex;
+    align-items: flex-end;
+    gap: calc(2 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+}
+
+.wm-director #directorChatInput {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: calc(19 * var(--wm-px)) !important;
+    max-height: 30vh !important;
+    margin: 0 !important;
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
+    font: calc(12 * var(--wm-px)) / 1.3 var(--wm-font) !important;
+    color: #000 !important;
+    background: #fff !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    outline: none !important;
+    resize: none !important;
+    user-select: text;
+}
+
+/* Send is the left soft key; the paper clip is Menu > Attach File... */
+.wm-director #directorSendBtn,
+.wm-director #directorAttachDropdown {
+    display: none !important;
+}
+
+.wm-director #directorComposerWelcome,
+.wm-director #directorAttachChips {
+    margin: 0 0 calc(2 * var(--wm-px)) !important;
+    font: calc(11 * var(--wm-px)) var(--wm-font);
+    color: #000;
+}
+
+/* a new chat: her welcome over the scene, the composer at the bottom (not centred) */
+.wm-director #directorSessionChat.director-composer-center .dm-vn-layer {
+    display: block;
+}
+
+/* the log (Menu > Log, or the Messages view): the chat rows over the scene, the page's width */
+.wm-director #directorSessionChat .director-chat-messages-container,
+.wm-director #directorSessionChat #directorTaskList {
+    align-self: stretch !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 6px !important;
+}
+
+.wm-director #directorSessionChat .director-chat-messages-container {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.wm-director.wmd-composing #directorSessionChat .director-chat-messages-container {
+    padding-bottom: calc(30 * var(--wm-px)) !important;
+}
+
+/* ---- status (Director not loaded yet) ---- */
+.wm-director .wmd-status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(8 * var(--wm-px));
+    background: #fff;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    z-index: 20;
+}
+
+.wm-director .wmd-status[hidden] {
+    display: none;
+}
+
+.wm-director .wmd-status img {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
+/* ---- Sessions: a WM list over the scene ---- */
+.wm-director .wmd-sessions {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    background: #fff;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.wm-director .wmd-sessions[hidden] {
+    display: none;
+}
+
+.wm-director .wmd-session {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    width: 100%;
+    min-height: calc(36 * var(--wm-px));
+    margin: 0;
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    border: 0;
+    border-bottom: calc(1 * var(--wm-px)) solid var(--wm-rule, #c0c0c0);
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    text-align: left;
+    box-sizing: border-box;
+}
+
+.wm-director .wmd-session:active,
+.wm-director .wmd-session.is-current {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text, #fff);
+}
+
+.wm-director .wmd-session-thumb {
+    flex: 0 0 auto;
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    object-fit: cover;
+    background: #eee;
+}
+
+.wm-director .wmd-session-thumb.is-icon {
+    object-fit: contain;
+    background: transparent;
+}
+
+.wm-director .wmd-session-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.wm-director .wmd-session-name {
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-director .wmd-session-date {
+    font-size: calc(11 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-director .wmd-empty {
+    margin: calc(8 * var(--wm-px));
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    color: #000;
+    text-align: center;
+}
+
+/* ---- Messages view (Menu > Options > Messages): the plain log as a white WM page ---- */
+.wm-director #directorSessionChat:not(.director-mascot-view) {
+    background: #fff !important;
+}
+
+.wm-director #directorSessionChat:not(.director-mascot-view) .director-chat-messages-container {
+    margin: 0 !important;
+    background: #fff !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    color: #000;
+}

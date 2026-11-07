@@ -1371,6 +1371,40 @@
       },
       "notes": "shellresapps icon 20228 (20229 is a darker variant; 20228 matches ref/programs.png)."
     },
+    "app-director": {
+      "1x": {
+        "source": "public/static_images/app_icons/director.png (Dreamscape app icon, Lanczos-downscaled)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "public/static_images/app_icons/director.png (Dreamscape app icon, Lanczos-downscaled)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Not ROM art: the Director is a Dreamscape app with its own icon (no WM stock counterpart). @4x is 64 px. Start menu (wmDirector.js)."
+    },
+    "app-director-lg": {
+      "1x": {
+        "source": "public/static_images/app_icons/director.png (Dreamscape app icon, Lanczos-downscaled)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "public/static_images/app_icons/director.png (Dreamscape app icon, Lanczos-downscaled)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "notes": "Large Director icon (Programs-style 32 px); @4x is 128 px. Not ROM art."
+    },
     "today-clock": {
       "1x": {
         "source": "box-downscaled from @2x",
