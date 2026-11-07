@@ -3736,6 +3736,46 @@
         "melaton-drawn"
       ],
       "notes": "5G+: Melaton extension (WM 6.1 had no such network). Drawn in the ROM pixel style: digit as holes in the ico_4945 (3G) box, 2 px strokes, white 6 x 6 plus beside the box. With the data arrows of ico_4776 = connected."
+    },
+    "fe-storage-card": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_8214_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "File Explorer list: Storage Card (a folder with a black SD card, ref-fe/fe-mydevice.png). Melaton: each phone storage root from the Android bridge."
+    },
+    "fe-card": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_19712 crop 32x32+32+0, rgb(192,192,192) key to alpha",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "File Explorer folder bar and folder drop-down: Storage Card (image list 19712 cell 1, ref-fe/dd-storagecard.png, fe-sc-mypics.png)."
     }
   },
   "notDelivered": {

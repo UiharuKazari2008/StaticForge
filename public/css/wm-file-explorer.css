@@ -238,3 +238,19 @@
     width: 100%;
     font-size: calc(11 * var(--wm-px));
 }
+
+/* folder drop-down: a volume under the rule (Storage Card, My Device) has its 16 px icon at x 3 and
+ * its name at x 20 (ref-fe/dd-storagecard.png, dd-mydocs.png); the shell's popup draws text only */
+.wm-popup-item.fe-dd-volume {
+    padding-left: calc(20 * var(--wm-px)) !important;
+}
+
+.wm-popup-item.fe-dd-volume .fe-dd-icon {
+    position: absolute;
+    left: calc(3 * var(--wm-px));
+    top: 50%;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    transform: translateY(-50%);
+    pointer-events: none;
+}

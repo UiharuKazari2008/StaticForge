@@ -100,6 +100,187 @@
         return t;
     }
 
+    // ---------------------------------------------------------------- the phone's storage (Android app only)
+    //
+    // WM lists a storage card inside My Device as its own folder ("Storage Card", shellres icon
+    // 8214: a folder with a black SD card); in it the folder bar shows the card (image list 19712
+    // cell 1), the drop-down lists it as a level under My Device and the other volumes under the
+    // rule. Here each root the Android bridge reports (phoneStorageBridge.js: internal storage,
+    // SD cards, USB drives) is such a volume, browsed through explorerPhoneDrive.js
+    // (phone://<root>/<path>). No bridge (a browser): nothing loads and nothing shows.
+
+    const PHONE_LOAD_MS = 1500;
+    let phonePromise = null;
+    const PD = () => (window.explorerPhoneDrive && window.explorerPhoneDrive.available() ? window.explorerPhoneDrive : null);
+    const PS = () => window.phoneStorage || null;
+
+    /** Load the bridge client and the phone drive (explorer feature scripts) once; true when usable. */
+    function ensurePhone() {
+        if (!window.AndroidPhoneStorage) return Promise.resolve(false);
+        if (!phonePromise) {
+            phonePromise = (async () => {
+                if (!window.explorerPhoneDrive) {
+                    const fl = window.featureLoader;
+                    // _loadScript skips a script already on the page (the explorer feature loads the same two)
+                    if (!fl || typeof fl._loadScript !== 'function') return false;
+                    await fl._loadScript('scripts/comp/phoneStorageBridge.js');
+                    await fl._loadScript('scripts/comp/explorerPhoneDrive.js');
+                }
+                if (!PD()) return false;
+                PS().on('config', onPhoneConfig);
+                return true;
+            })().catch(() => { phonePromise = null; return false; });
+        }
+        return phonePromise;
+    }
+
+    /** The bridge state, asked once (cached by phoneStorage); a late answer redraws My Device. */
+    async function phoneState() {
+        if (!(await ensurePhone())) return null;
+        const ps = PS();
+        if (ps.state()) return ps.state();
+        let late = false;
+        const asked = ps.hello().then((st) => {
+            if (late && isCurrent() && pathNow() === '/') load({ keep: true });
+            return st;
+        }, () => null);
+        const st = await Promise.race([asked, new Promise((r) => setTimeout(() => r(undefined), PHONE_LOAD_MS))]);
+        if (st === undefined) { late = true; return null; }
+        return st;
+    }
+
+    function phoneRoots() {
+        const st = PD() && PS().state();
+        return st && Array.isArray(st.roots) ? st.roots : [];
+    }
+
+    const isRemovable = (r) => !!r && (r.removable === true || /^(removable|sd|sdcard|usb)$/i.test(String(r.kind || '')));
+
+    /**
+     * The volume's name: Android's own (its "Internal storage", the card's label). A removable
+     * root the bridge gives no name gets WM's "Storage Card" (Storage Card2 for a second, as WM
+     * numbers them); anything else nameless keeps its id.
+     */
+    function rootLabel(r) {
+        const name = String((r && r.name) || '').trim();
+        if (name) return name;
+        if (isRemovable(r)) {
+            const nth = phoneRoots().filter((x) => isRemovable(x) && !String(x.name || '').trim()).indexOf(r);
+            return nth > 0 ? `Storage Card${nth + 1}` : 'Storage Card';
+        }
+        return String((r && r.id) || 'Storage Card');
+    }
+
+    const phoneRootById = (id) => phoneRoots().find((r) => r.id === id) || null;
+    const isPhonePath = (p) => !!PD() && PD().isPath(p) && p !== PD().TRASH;
+    const isPhoneItem = (i) => !!i && !!i.phone && i.targetKind === 'phone-entry';
+    const isPhoneRoot = (i) => !!i && i.targetKind === 'phone-drive' && !!i.phone && !!i.phone.root;
+    const inPhone = () => isPhonePath(pathNow());
+
+    /** Why the phone cannot be browsed now (sharing off, no access, app locked), or null. */
+    function phoneBlock() {
+        const st = PD() && PS().state();
+        if (!st) return null;
+        if (!st.enabled) return 'disabled';
+        if (!st.access) return 'no_access';
+        if (st.locked) return 'locked';
+        return null;
+    }
+
+    /** The bridge's op list, when it sends one (features.ops); without it every op is assumed. */
+    function phoneCan(op) {
+        const st = PD() && PS().state();
+        const ops = st && st.features && Array.isArray(st.features.ops) ? st.features.ops : null;
+        return !!st && (!ops || ops.includes(op));
+    }
+
+    /** My Device's items for the roots: folders with the storage-card icon. */
+    function rootItems() {
+        if (!PD()) return [];
+        return phoneRoots().map((r) => ({
+            id: `phone-drive:${r.id}`,
+            name: rootLabel(r),
+            kind: 'folder',
+            targetKind: 'phone-drive',
+            navPath: PD().pathFor(r.id, '/'),
+            phone: { root: r.id, path: '/', dir: true, drive: r, writable: r.writable !== false }
+        }));
+    }
+
+    function phoneTrail(rootId, inner) {
+        const r = phoneRootById(rootId);
+        const t = [{ path: '/', name: 'My Device' }, { path: PD().pathFor(rootId, '/'), name: r ? rootLabel(r) : rootId }];
+        const parts = String(inner || '/').split('/').filter(Boolean);
+        parts.forEach((part, n) => t.push({ path: PD().pathFor(rootId, '/' + parts.slice(0, n + 1).join('/')), name: part }));
+        return t;
+    }
+
+    /** The phone folder on screen can take new items (its volume is not read-only; the bridge refuses the rest). */
+    function phoneFolderWritable() {
+        if (!inPhone() || phoneBlock()) return false;
+        const p = PD().parse(pathNow());
+        const r = phoneRootById(p.root);
+        return !!r && r.writable !== false;
+    }
+
+    /** Opening a root the phone will not show: WM's message, and the fix the bridge offers. */
+    async function blockedRoot(name) {
+        const block = phoneBlock();
+        if (block === 'no_access') {
+            const yes = await ws.messageBox({
+                title: 'File Explorer',
+                icon: 'warning',
+                text: `Cannot open '${name}': Access is denied.\n\nAllow Dreamscape to access the phone's storage?`,
+                buttons: [{ text: 'Yes', value: true, default: true }, { text: 'No', value: false }],
+                cancelValue: false
+            });
+            if (yes && phoneCan('requestAccess')) { try { await PS().call('requestAccess'); } catch (_) { /* refused */ } }
+        } else if (block === 'disabled') {
+            const yes = await ws.messageBox({
+                title: 'File Explorer',
+                icon: 'warning',
+                text: `Cannot open '${name}': Phone storage is turned off in the app's settings.\n\nOpen the settings now?`,
+                buttons: [{ text: 'Yes', value: true, default: true }, { text: 'No', value: false }],
+                cancelValue: false
+            });
+            if (yes && phoneCan('openSettings')) { try { await PS().call('openSettings'); } catch (_) { /* no settings screen */ } }
+        } else {
+            await ws.messageBox({ title: 'File Explorer', icon: 'warning', text: `Cannot open '${name}': Unlock the app first, then try again.` });
+        }
+    }
+
+    function onPhoneConfig() {
+        if (!page) return;
+        const here = pathNow();
+        if (isPhonePath(here)) {
+            // the root went away (card out, sharing off): back to My Device, as WM does when a card is pulled
+            const p = PD().parse(here);
+            if (!phoneRootById(p.root) || phoneBlock()) { navigate('/', 'My Device', { record: false }); return; }
+            load({ keep: true });
+        } else if (here === '/') {
+            load({ keep: true });
+        }
+    }
+
+    /** What explorerPhoneDrive.js needs of an Explorer (its desktop applet's members). */
+    const phoneApp = {
+        get currentPath() { return pathNow(); },
+        get sortField() { return sortField; },
+        get sortDirection() { return sortDirection(); },
+        get showHidden() { return showAll; },
+        get items() { return items; },
+        clipboard: null,
+        grid: { getSelectedItems: () => selectedItems() },
+        softRefresh: () => load({ keep: true }),
+        navigateTo: (p) => {
+            if (isPhonePath(p)) { const x = PD().parse(p); navigate(p, null, { trail: phoneTrail(x.root, x.path) }); } else navigate(p, null);
+        },
+        isFolderItem: (i) => isFolder(i),
+        resolveNavigationPath: (i) => navPathOf(i),
+        pasteToPath: () => paste(false),
+        _progressPlace: (p) => ({ name: placeName(p, String(p).split('/').filter(Boolean).pop() || 'My Device'), path: p })
+    };
+
     // ---------------------------------------------------------------- item kinds (explorerApplet.js rules)
 
     const isStoredShortcut = (i) => !!(i && (i.isVfsShortcutEntry || (i.isShortcut && i.shortcutType && !i.isDesktopShortcut)));
@@ -111,7 +292,12 @@
     const isFolderShortcut = (i) => !!i && (i.shortcutType === 'folder' || (i.targetKind === 'vfs-folder' && isLiveDesktopShortcut(i)));
     const isFolder = (i) => !!i && i.kind === 'folder';
 
+    /** A phone entry the bridge lets us change (its writable flag; the phone not locked or shut). */
+    const phoneEditable = (i) => isPhoneItem(i) && i.phone.writable !== false && !phoneBlock();
+
     function canCutCopy(i) {
+        if (isPhoneRoot(i)) return false;
+        if (isPhoneItem(i)) return !phoneBlock();
         if (!i || i.protected || isSystemItem(i) || i.isTrashItem) return false;
         if (isLiveDesktopShortcut(i)) return false; // the desktop surface needs Explorer's own delivery
         if (isVirtualSurface(i) && !isVfsVirtualEntry(i)) return false;
@@ -119,6 +305,8 @@
     }
 
     function canRename(i) {
+        if (isPhoneRoot(i)) return false;
+        if (isPhoneItem(i)) return phoneEditable(i) && phoneCan('rename');
         if (!i || i.protected || isSystemItem(i) || i.isTrashItem) return false;
         if (i.targetKind === 'vfs-folder' || i.targetKind === 'user-file') return true;
         if (i.shortcutType || isStoredShortcut(i) || isLiveDesktopShortcut(i)) return true;
@@ -139,12 +327,15 @@
     }
 
     function canDelete(i) {
+        if (isPhoneRoot(i)) return false;
+        if (isPhoneItem(i)) return phoneEditable(i) && (phoneCan('trash') || phoneCan('delete'));
         if (!i || i.protected || i.system) return false;
         return !!i.isTrashItem || canTrash(i) || shortcutOnly(i) || isLiveDesktopShortcut(i);
     }
 
     /** explorerApplet _isWritableFolderPath, minus the phone and Computer; the desktop surface is left to Explorer. */
     function writable(path) {
+        if (isPhonePath(path)) return path === pathNow() ? phoneFolderWritable() : !phoneBlock();
         const p = (path || '/').replace(/\/+$/, '') || '/';
         if (/\/Trash(\/|$)/.test(p) || p.includes('/~archive.')) return false;
         if (p === '/') return true;
@@ -224,6 +415,7 @@
     }
 
     function iconOf(i) {
+        if (isPhoneRoot(i)) return 'fe-storage-card';
         if (isFolder(i)) return 'fe-folder';
         if (i.targetKind === 'image' || i.targetKind === 'scrap' || /^image\//.test(i.mimeType || '')) return 'app-pictures';
         if (i.targetKind === 'note') return 'app-notes';
@@ -246,11 +438,32 @@
         loading = true;
         listError = '';
         if (!opts.keep) { items = []; hasMore = false; render(); }
+        if (!isPhonePath(path) && PD()) PD().leave(phoneApp); // stop watching the phone folder left
         try {
-            if (typeof vfsClient === 'undefined') throw new Error('The file system is not available.');
-            const res = await vfsClient.listDirectory(path, { offset: 0, limit: PAGE_LIMIT, sortField, sortDirection: sortDirection(), search: '' });
-            if (token !== listToken) return;
+            let res;
+            if (isPhonePath(path)) {
+                res = await PD().list(phoneApp, path);
+                if (token !== listToken) return;
+                // the phone shut while we were in it: PD lists one "state" row instead of the folder
+                const state = (res.items || []).find((i) => i.targetKind === 'phone-drive' && !(i.phone && i.phone.root));
+                if (state) throw new Error(res.emptyMessage || state.name);
+            } else {
+                if (typeof vfsClient === 'undefined') throw new Error('The file system is not available.');
+                const phoneP = path === '/' ? phoneState() : null;
+                res = await vfsClient.listDirectory(path, { offset: 0, limit: PAGE_LIMIT, sortField, sortDirection: sortDirection(), search: '' });
+                if (phoneP) await phoneP;
+                if (token !== listToken) return;
+            }
             items = visible((res && res.items) || []);
+            if (path === '/') {
+                // the phone's volumes after My Device's folders, before its files
+                const roots = rootItems();
+                if (roots.length) {
+                    let at = 0;
+                    items.forEach((i, n) => { if (isFolder(i)) at = n + 1; });
+                    items.splice(at, 0, ...roots);
+                }
+            }
             hasMore = !!(res && res.hasMore);
             for (const id of [...selected]) if (!items.some((i) => i.id === id)) selected.delete(id);
             if (opts.select) {
@@ -264,7 +477,7 @@
             if (token !== listToken) return;
             items = [];
             hasMore = false;
-            listError = (err && err.message) || 'Cannot open this folder.';
+            listError = err && /^(denied|permission|no_access)$/.test(err.code || '') ? 'Access is denied.' : ((err && err.message) || 'Cannot open this folder.');
         } finally {
             if (token === listToken) loading = false;
         }
@@ -275,7 +488,7 @@
     }
 
     async function loadMore() {
-        if (!hasMore || loadingMore || loading) return;
+        if (!hasMore || loadingMore || loading || inPhone()) return;
         loadingMore = true;
         const token = listToken;
         try {
@@ -338,6 +551,14 @@
         if (!page) return;
         const cur = trail[trail.length - 1] || { path: '/', name: 'My Device' };
         page.querySelector('.fe-folder-name').textContent = placeName(cur.path, cur.name);
+        // the location icon: My Device, or the storage card anywhere inside a phone volume
+        const icon = isPhonePath(cur.path) ? 'fe-card' : 'fe-device';
+        const img = page.querySelector('.fe-folder img');
+        if (img && img.dataset.icon !== icon) {
+            img.dataset.icon = icon;
+            img.srcset = ws.art.srcset(icon);
+            img.src = `${ART}${icon}.png`;
+        }
         const sortBtn = page.querySelector('.wm-pv-sort');
         if (!(sortBtn.getAttribute('aria-expanded') === 'true')) {
             sortBtn.querySelector('span').textContent = (SORTS.find(([k]) => k === sortField) || SORTS[0])[1];
@@ -360,6 +581,8 @@
     /** A preview for pictures (same-site path only), else the item's icon. */
     function previewOf(i) {
         if (isFolder(i)) return null;
+        // the phone's thumbnails come from the bridge's own file URL (phoneStorage.fileUrl ?thumb=)
+        if (isPhoneItem(i)) return /^(image|video)\//.test(i.mimeType || '') && typeof i.previewUrl === 'string' && i.previewUrl ? i.previewUrl : null;
         const url = typeof i.previewUrl === 'string' && /^\/[^/\\]/.test(i.previewUrl) ? i.previewUrl : null;
         const picture = i.targetKind === 'image' || i.targetKind === 'scrap' || /^image\//.test(i.mimeType || '');
         return picture ? url : null;
@@ -454,6 +677,12 @@
 
     async function openItem(i) {
         if (!i) return;
+        if (isPhoneRoot(i)) {
+            if (phoneBlock()) { await blockedRoot(i.name); return; }
+            navigate(i.navPath, i.name, { trail: phoneTrail(i.phone.root, '/') });
+            return;
+        }
+        if (isPhoneItem(i)) { await openPhoneItem(i); return; }
         const nav = navPathOf(i);
         if (nav) {
             navigate(nav, i.name, { child: true });
@@ -487,6 +716,75 @@
         await noApp(i);
     }
 
+    /**
+     * A phone folder lists; a file goes where explorerPhoneDrive.programFor sends it, as far as the
+     * phone has that program: pictures to the Pictures viewer (lightbox), the rest (Media Player,
+     * Notepad, the Document Viewer are desktop windows) to Android's own app through the bridge.
+     */
+    async function openPhoneItem(i) {
+        if (i.phone.dir) {
+            navigate(i.navPath, i.name, { child: true });
+            return;
+        }
+        if (phoneBlock()) { await blockedRoot(i.name); return; }
+        const program = PD().programFor(i.name, i.mimeType);
+        if ((program === 'lumen' || PD().kindOf(i.name, i.mimeType) === 'image') && typeof showLightbox === 'function') {
+            const url = PS().fileUrl(i.phone.root, i.phone.path);
+            try {
+                if (url) { await showLightbox({ url, title: i.name }); return; }
+            } catch (_) { /* the viewer could not open it: Android's app below */ }
+        }
+        await openInAndroid(i);
+    }
+
+    async function openInAndroid(i) {
+        if (!phoneCan('open')) { await noApp(i); return; }
+        try {
+            await PS().call('open', { root: i.phone.root, path: i.phone.path, chooser: true });
+        } catch (err) {
+            if (err && err.code === 'no_app') await noApp(i);
+            else await errorBox('File Explorer', 'open', i, err);
+        }
+    }
+
+    /** WM-style Properties for a phone file, folder or volume (the bridge's facts). */
+    function phoneProperties(i) {
+        const root = phoneRootById(i.phone.root);
+        const vol = root ? rootLabel(root) : i.phone.root;
+        const lines = [];
+        if (isPhoneRoot(i)) {
+            lines.push(`Name: ${vol}`, `Type: ${isRemovable(root) ? 'Storage Card' : 'Phone storage'}`);
+            if (root && root.total) {
+                lines.push(`Capacity: ${fmtSize(root.total)}`, `Free: ${fmtSize(root.free || 0)}`);
+            }
+            if (root && root.writable === false) lines.push('Read-only');
+        } else {
+            const parent = PS().parentPath(i.phone.path);
+            lines.push(`Name: ${i.name}`, `Location: \\${vol}${parent === '/' ? '' : parent.replace(/\//g, '\\')}`);
+            if (i.phone.dir) {
+                lines.push('Type: Folder');
+                if (i.phone.count != null) lines.push(`Contains: ${i.phone.count} item${i.phone.count === 1 ? '' : 's'}`);
+            } else {
+                lines.push(`Type: ${i.mimeType || 'File'}`, `Size: ${fmtSize(i.size || 0)}`);
+            }
+            if (i.modifiedAt) lines.push(`Modified: ${fmtDate(i.modifiedAt)} ${new Date(i.modifiedAt * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+            if (i.phone.writable === false) lines.push('Read-only');
+        }
+        return ws.messageBox({ title: 'Properties', icon: 'info', text: lines.join('\n') });
+    }
+
+    /** Send... on the phone: Android's share sheet for the selected files. */
+    async function sharePhone(list) {
+        const files = list.filter((i) => isPhoneItem(i) && !i.phone.dir);
+        if (!files.length) return;
+        const rootId = files[0].phone.root;
+        try {
+            await PS().call('share', { root: rootId, paths: files.filter((f) => f.phone.root === rootId).map((f) => f.phone.path) });
+        } catch (err) {
+            await errorBox('File Explorer', 'send', files[0], err);
+        }
+    }
+
     // ---------------------------------------------------------------- operations
 
     function errorBox(title, verb, i, err) {
@@ -510,7 +808,16 @@
         }
         const before = new Set(items.map((i) => i.id));
         try {
-            await vfsClient.createFolder(pathNow(), 'New Folder');
+            if (inPhone()) {
+                // the phone keeps names unique: WM's next free "New Folder" name, then rename
+                const p = PD().parse(pathNow());
+                const taken = new Set(items.map((i) => String(i.name).toLowerCase()));
+                let name = 'New Folder';
+                for (let n = 2; taken.has(name.toLowerCase()); n++) name = `New Folder${n}`;
+                await PS().call('mkdir', { root: p.root, path: PS().joinPath(p.path, name) });
+            } else {
+                await vfsClient.createFolder(pathNow(), 'New Folder');
+            }
         } catch (err) {
             await errorBox('Error Creating Folder', 'create', { name: 'New Folder' }, err);
             return;
@@ -569,7 +876,8 @@
     let committing = false;
     /** Rename one listed item through the call its kind needs. */
     async function renameTo(i, name) {
-        if (i.targetKind === 'vfs-folder' && !isLiveDesktopShortcut(i)) await vfsClient.renameFolder(i.targetId, name);
+        if (isPhoneItem(i)) await PS().call('rename', { root: i.phone.root, path: i.phone.path, name });
+        else if (i.targetKind === 'vfs-folder' && !isLiveDesktopShortcut(i)) await vfsClient.renameFolder(i.targetId, name);
         else if (i.targetKind === 'user-file' && !isUserFileLink(i)) await vfsClient.renameFile(i.targetId, name);
         else if (isUserFileLink(i) || isVfsVirtualEntry(i)) await vfsClient.renameEntry(i.id, name);
         else if (isStoredShortcut(i)) await vfsClient.renameShortcutEntry(i.id, name);
@@ -623,7 +931,8 @@
             return;
         }
         committing = false;
-        await load({ keep: true, select: i.id });
+        // a phone item's id is its path: the renamed one has a new id
+        await load({ keep: true, select: isPhoneItem(i) ? `phone:${i.phone.root}:${PS().joinPath(PS().parentPath(i.phone.path), name)}` : i.id });
     }
 
     async function deleteSelection() {
@@ -647,6 +956,12 @@
         });
         if (!yes) return;
         const path = pathNow();
+        if (ok.every(isPhoneItem)) {
+            await deletePhone(ok);
+            selected.clear();
+            await load({ keep: true });
+            return;
+        }
         for (const i of ok) {
             try {
                 if (i.isTrashItem) {
@@ -669,16 +984,47 @@
         await load({ keep: true });
     }
 
+    /**
+     * Delete on the phone, after WM's confirm: into Android's trash where it takes them (as the
+     * desktop's Delete does), the rest (folders, files Android does not index) deleted outright,
+     * as WM deletes. The bridge's per-path results report what stayed.
+     */
+    async function deletePhone(list) {
+        const rootId = list[0].phone.root;
+        let left = list.filter((i) => i.phone.root === rootId).map((i) => i.phone.path);
+        try {
+            if (phoneCan('trash')) {
+                const res = await PS().call('trash', { root: rootId, paths: left });
+                left = (res || []).filter((r) => !r.trashed).map((r) => r.path);
+            }
+            if (left.length) {
+                if (!phoneCan('delete')) throw { code: 'denied', message: 'The phone cannot delete this item.' };
+                const res = await PS().call('delete', { root: rootId, paths: left });
+                const failed = (Array.isArray(res) ? res : []).filter((r) => r && r.deleted === false);
+                if (failed.length) throw { code: 'io', message: 'Access is denied.', path: failed[0].path };
+            }
+        } catch (err) {
+            const bad = list.find((i) => err && i.phone.path === err.path) || list[0];
+            await errorBox('Error Deleting File', 'delete', bad, err);
+        }
+    }
+
     function copySel(op) {
-        const sel = selectedItems().filter(canCutCopy);
+        // folders keep where they lead (the paste may run from a phone folder, where pathNow() differs)
+        const sel = selectedItems().filter(canCutCopy).filter((i) => op !== 'cut' || !isPhoneItem(i) || phoneEditable(i))
+            .map((i) => (isFolder(i) && !i.navPath && navPathOf(i) ? Object.assign({}, i, { navPath: navPathOf(i) }) : i));
         if (!sel.length) return;
         clipboard = { op, items: sel, ids: new Set(sel.map((i) => i.id)), sourcePath: pathNow() };
         render();
         if (isCurrent()) ws.refreshSoftKeys();
     }
 
-    const canPaste = () => !!clipboard && writable(pathNow()) && !readOnly();
-    const canPasteShortcut = () => canPaste() && clipboard.op === 'copy' && clipboard.items.some((i) => (i.targetKind === 'user-file' && !isUserFileLink(i)) || i.targetKind === 'vfs-folder');
+    /** What the phone takes from the VFS: real files and folders (explorerPhoneDrive vfsToPhone). */
+    const phoneTakes = (i) => isPhoneItem(i) || (i.targetKind === 'user-file' && !isUserFileLink(i) && !i.isShortcut) || (i.targetKind === 'vfs-folder' && !isLiveDesktopShortcut(i) && !i.shortcutType);
+    const canPaste = () => !!clipboard && writable(pathNow()) && !readOnly()
+        && (!inPhone() || clipboard.items.every(phoneTakes))
+        && (!clipboard.items.some(isPhoneItem) || (!phoneBlock() && (inPhone() ? phoneCan(clipboard.op === 'cut' ? 'move' : 'copy') : phoneCan('list'))));
+    const canPasteShortcut = () => canPaste() && !inPhone() && !clipboard.items.some(isPhoneItem) && clipboard.op === 'copy' && clipboard.items.some((i) => (i.targetKind === 'user-file' && !isUserFileLink(i)) || i.targetKind === 'vfs-folder');
 
     async function paste(asShortcut) {
         if (!canPaste()) return;
@@ -686,10 +1032,24 @@
         const path = pathNow();
         if (op === 'cut' && sourcePath === path) return; // already here
         for (const i of list) {
-            if (op === 'cut' && i.targetKind === 'vfs-folder' && (path === i.navPath || path.startsWith(`${i.navPath}/`))) {
-                await ws.messageBox({ title: 'Error Moving File', icon: 'error', text: `Cannot move '${i.name}': The destination folder is a subfolder of the source folder.` });
+            if ((op === 'cut' || isPhoneItem(i)) && (i.targetKind === 'vfs-folder' || (isPhoneItem(i) && i.phone.dir)) && i.navPath && (path === i.navPath || path.startsWith(`${i.navPath}/`))) {
+                await ws.messageBox({ title: op === 'cut' ? 'Error Moving File' : 'Error Copying File', icon: 'error', text: `Cannot ${op === 'cut' ? 'move' : 'copy'} '${i.name}': The destination folder is a subfolder of the source folder.` });
                 return;
             }
+        }
+        // to, from or within the phone: explorerPhoneDrive.deliver (its transfers, conflict prompt,
+        // cut = copy then the source to its trash across volumes)
+        if (inPhone() || list.some(isPhoneItem)) {
+            phoneApp.clipboard = clipboard;
+            try {
+                await PD().deliver(phoneApp, refsOf(list).map((r, n) => (isPhoneItem(list[n]) ? Object.assign(r, { phone: list[n].phone, navPath: list[n].navPath }) : r)), path, op, { sourcePath });
+            } catch (err) {
+                await errorBox(op === 'cut' ? 'Error Moving File' : 'Error Copying File', op === 'cut' ? 'move' : 'copy', list[0], err);
+            }
+            phoneApp.clipboard = null;
+            if (op === 'cut') { touchGallery(list); clipboard = null; }
+            await load({ keep: true });
+            return;
         }
         for (const i of list) {
             try {
@@ -738,6 +1098,13 @@
 
     // ---------------------------------------------------------------- menus
 
+    /** The phone's volumes as places (Go To, the folder drop-down), each with the storage card icon. */
+    function volumeItems() {
+        const cur = pathNow();
+        const here = isPhonePath(cur) ? PD().parse(cur).root : null;
+        return rootItems().map((r) => ({ label: r.name, feIcon: 'fe-card', radio: here === r.phone.root, action: () => openItem(r) }));
+    }
+
     function goToItems() {
         const cur = pathNow();
         return [
@@ -745,26 +1112,41 @@
             { label: 'My Documents', radio: cur === myDocumentsPath(), action: () => navigate(myDocumentsPath(), 'My Documents') },
             { label: 'My Pictures', radio: cur === `${myDocumentsPath()}/Pictures`, action: () => navigate(`${myDocumentsPath()}/Pictures`, 'My Pictures') },
             { label: 'Workspaces', radio: cur === '/Workspaces', action: () => navigate('/Workspaces', 'Workspaces') }
-        ];
+        ].concat(volumeItems());
     }
 
     function sortItems() {
         return SORTS.map(([k, label]) => ({ label, radio: sortField === k, action: () => setSort(k) }));
     }
 
+    /** Cut needs a source we may change (a phone entry the bridge marks writable); Copy only a readable one. */
+    function clipState(sel) {
+        const copy = sel.length > 0 && sel.every(canCutCopy);
+        return { copy, cut: copy && !readOnly() && sel.every((i) => !isPhoneItem(i) || phoneEditable(i)) };
+    }
+
+    const phoneFiles = (sel) => sel.filter((i) => isPhoneItem(i) && !i.phone.dir);
+
     function editItems() {
         const sel = selectedItems();
-        const cutCopy = sel.length > 0 && sel.every(canCutCopy);
+        const cc = clipState(sel);
         return [
             { label: 'Undo', disabled: true },
             '-',
-            { label: 'Cut', disabled: !cutCopy, action: () => copySel('cut') },
-            { label: 'Copy', disabled: !cutCopy, action: () => copySel('copy') },
+            { label: 'Cut', disabled: !cc.cut, action: () => copySel('cut') },
+            { label: 'Copy', disabled: !cc.copy, action: () => copySel('copy') },
             { label: 'Paste', disabled: !canPaste(), action: () => paste(false) },
             { label: 'Paste Shortcut', disabled: !canPasteShortcut(), action: () => paste(true) },
             '-',
             { label: 'Select All', disabled: !items.length, action: selectAll }
         ];
+    }
+
+    /** Send... is Android's share sheet for phone files; WM's own Send / Beam stay off elsewhere. */
+    function sendItem(sel) {
+        const files = phoneFiles(sel);
+        const ok = files.length > 0 && files.length === sel.length && phoneCan('share') && !phoneBlock();
+        return { label: 'Send...', disabled: !ok, action: () => sharePhone(files) };
     }
 
     function mainMenu() {
@@ -776,9 +1158,9 @@
             { label: 'Sort By', submenu: sortItems },
             { label: 'View', submenu: viewItems },
             '-',
-            { label: 'Send...', disabled: true },
+            sendItem(sel),
             { label: 'Beam File...', disabled: true },
-            { label: 'New Folder', disabled: !writable(pathNow()) || readOnly(), action: newFolder },
+            { label: 'New Folder', disabled: !writable(pathNow()) || readOnly() || (inPhone() && !phoneCan('mkdir')), action: newFolder },
             { label: 'Rename', disabled: sel.length !== 1 || !canRename(sel[0]) || readOnly(), action: () => startRename(sel[0].id) },
             { label: 'Delete', disabled: !sel.length || !sel.some(canDelete) || readOnly(), action: deleteSelection },
             '-',
@@ -795,22 +1177,30 @@
                 '-',
                 { label: 'Paste', disabled: !canPaste(), action: () => paste(false) },
                 { label: 'Paste Shortcut', disabled: !canPasteShortcut(), action: () => paste(true) },
-                { label: 'New Folder', disabled: !writable(pathNow()) || readOnly(), action: newFolder }
+                { label: 'New Folder', disabled: !writable(pathNow()) || readOnly() || (inPhone() && !phoneCan('mkdir')), action: newFolder }
             ];
         }
         const sel = selectedItems();
-        const cutCopy = sel.length > 0 && sel.every(canCutCopy);
-        return [
+        const cc = clipState(sel);
+        const list = [
             // device (hold on a file or folder): Cut, Copy | Rename, Delete | Send..., Beam File...
-            { label: 'Cut', disabled: !cutCopy, action: () => copySel('cut') },
-            { label: 'Copy', disabled: !cutCopy, action: () => copySel('copy') },
+            { label: 'Cut', disabled: !cc.cut, action: () => copySel('cut') },
+            { label: 'Copy', disabled: !cc.copy, action: () => copySel('copy') },
             '-',
             { label: 'Rename', disabled: sel.length !== 1 || !canRename(sel[0]) || readOnly(), action: () => startRename(sel[0].id) },
             { label: 'Delete', disabled: !sel.length || !sel.some(canDelete) || readOnly(), action: deleteSelection },
             '-',
-            { label: 'Send...', disabled: true },
+            sendItem(sel),
             { label: 'Beam File...', disabled: true }
         ];
+        // the phone's own items: Android's app for a file, and the bridge's facts
+        const one = sel.length === 1 ? sel[0] : null;
+        if (one && (isPhoneItem(one) || isPhoneRoot(one))) {
+            list.push('-');
+            if (isPhoneItem(one) && !one.phone.dir) list.push({ label: 'Open in Android app', disabled: !phoneCan('open') || !!phoneBlock(), action: () => openInAndroid(one) });
+            list.push({ label: 'Properties', action: () => phoneProperties(one) });
+        }
+        return list;
     }
 
     function px() { return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1; }
@@ -888,6 +1278,22 @@
         });
     }
 
+    /**
+     * The shell's menus draw text only: a volume row (feIcon) gets its 16 px icon, as WM's folder
+     * drop-down shows the storage card and My Device under the rule.
+     */
+    function volumeIcons(list) {
+        const pop = shellEl() && shellEl().querySelector(':scope > .wm-popup:not([hidden])');
+        if (!pop) return;
+        const rows = pop.querySelectorAll(':scope > .wm-popup-item');
+        list.filter((it) => it !== '-' && !it.separator).forEach((it, n) => {
+            const row = rows[n];
+            if (!row || !it.feIcon) return;
+            row.classList.add('fe-dd-volume');
+            row.insertAdjacentHTML('afterbegin', `<img class="fe-dd-icon" src="${ART}${it.feIcon}.png" srcset="${ws.art.srcset(it.feIcon)}" alt="" draggable="false">`);
+        });
+    }
+
     function mount(p) {
         page = p;
         p.classList.add('wm-fe');
@@ -912,8 +1318,12 @@
             folderBtn.querySelector('.fe-folder-name').textContent = 'Show';
             const levels = trail.map((t, n) => ({ label: placeName(t.path, t.name), indent: n, radio: n === trail.length - 1, action: () => { if (t.path !== cur) navigate(t.path, null, { trail: trail.slice(0, n + 1), select: trail[n + 1] && trail[n + 1].path }); } }));
             const places = goToItems().filter((g) => !trail.some((t) => placeName(t.path, t.name) === g.label));
+            // inside a phone volume WM lists My Device (its icon) with the other volumes under the rule
+            if (isPhonePath(cur)) places.push({ label: 'My Device', feIcon: 'fe-device', action: () => navigate('/', 'My Device') });
+            const list = places.length ? levels.concat(['-'], places.map((g) => Object.assign(g, { radio: null }))) : levels;
             folderBtn.setAttribute('aria-expanded', 'true');
-            ws.dropdown(folderBtn, places.length ? levels.concat(['-'], places.map((g) => Object.assign(g, { radio: null }))) : levels, 'left', () => { folderBtn.setAttribute('aria-expanded', 'false'); renderBar(); });
+            ws.dropdown(folderBtn, list, 'left', () => { folderBtn.setAttribute('aria-expanded', 'false'); renderBar(); });
+            volumeIcons(list);
         });
         const sortBtn = p.querySelector('.wm-pv-sort');
         sortBtn.addEventListener('click', (e) => {
@@ -928,6 +1338,8 @@
 
         trail = trailFor(myDocumentsPath());
         renderBar();
+        // the phone's volumes for Go To and the drop-down before My Device is first listed
+        if (window.AndroidPhoneStorage) phoneState();
     }
 
     function onKey(e) {
@@ -973,6 +1385,7 @@
             },
             hide() {
                 if (renamingId) cancelRename();
+                if (PD()) PD().leave(phoneApp); // the phone stops watching the folder (show() lists it again)
             },
             /**
              * For a shell that keeps one history entry per layer: the folders visited here are

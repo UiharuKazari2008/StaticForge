@@ -319,7 +319,8 @@
         }
         const result = await PS().call('list', { root: p.root, path: p.path });
         watchFor(app, p.root, p.path);
-        const hidden = shownHidden();
+        // a caller with its own hidden-files switch (Melaton Mobile's Show All Files) passes it as app.showHidden
+        const hidden = typeof app.showHidden === 'boolean' ? app.showHidden : shownHidden();
         const items = (result.entries || []).filter((e) => hidden || !e.hidden).map((e) => entryToItem(p.root, e));
         return out(sortItems(items, app.sortField, app.sortDirection), 'This folder is empty.');
     }
