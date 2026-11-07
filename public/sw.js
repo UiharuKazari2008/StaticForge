@@ -113,6 +113,12 @@ const IMAGE_CACHE_POLICY = {
 // Saved shell and preview hits. The boot-loop fix refused unhashed writes;
 // stamping no-store and a new ETag on every hit made saved files look one-shot.
 const SAVED_ASSET_CACHE_CONTROL = 'public, max-age=604800';
+// App shell hits (static_images, css, fonts, ...) keep one URL when their bytes change (an art
+// update). A max-age let the renderer's memory cache reuse the old copy in the next document
+// without asking: Android WebView keeps one renderer, so a phone showed old art after every
+// restart until the app was killed (#709, the WM signal icons). no-cache makes the next
+// document ask; the row's ETag is its hash, so an unchanged file is a 304 from this worker.
+const SHELL_ASSET_CACHE_CONTROL = 'no-cache';
 
 // Enforcing cache policy on every image hit can thrash the cache.
 // Debounce and rate-limit enforcement to keep the cache warm.
@@ -260,12 +266,12 @@ function freshDownloadState() {
 // Download state tracking
 let downloadState = freshDownloadState();
 
-function headersForSavedAsset(response) {
+function headersForSavedAsset(response, cacheControl = SAVED_ASSET_CACHE_CONTROL) {
   const headers = new Headers(response.headers);
   headers.delete('pragma');
   headers.delete('expires');
   headers.delete('surrogate-control');
-  headers.set('Cache-Control', SAVED_ASSET_CACHE_CONTROL);
+  headers.set('Cache-Control', cacheControl);
   const hash = headers.get('x-file-hash');
   if (hash) {
     headers.set('ETag', `"${hash}"`);
@@ -273,7 +279,7 @@ function headersForSavedAsset(response) {
   return headers;
 }
 
-function savedAssetNotModified(request, response) {
+function savedAssetNotModified(request, response, cacheControl) {
   const hash = response && response.headers.get('x-file-hash');
   const inm = request && request.headers.get('if-none-match');
   if (!hash || !inm) {
@@ -290,12 +296,12 @@ function savedAssetNotModified(request, response) {
   return new Response(null, {
     status: 304,
     statusText: 'Not Modified',
-    headers: headersForSavedAsset(response)
+    headers: headersForSavedAsset(response, cacheControl)
   });
 }
 
 // Return a saved Cache API body without the one-shot stamp.
-function reusableCachedResponse(response) {
+function reusableCachedResponse(response, cacheControl) {
   if (!response || response.status < 200 || response.status > 599 || response.status === 304) {
     return response;
   }
@@ -303,15 +309,15 @@ function reusableCachedResponse(response) {
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
-      headers: headersForSavedAsset(response)
+      headers: headersForSavedAsset(response, cacheControl)
     });
   } catch (error) {
     return response;
   }
 }
 
-function respondWithSavedAsset(request, response) {
-  return savedAssetNotModified(request, response) || reusableCachedResponse(response);
+function respondWithSavedAsset(request, response, cacheControl) {
+  return savedAssetNotModified(request, response, cacheControl) || reusableCachedResponse(response, cacheControl);
 }
 
 // Helper function to add cache-busting headers to responses
@@ -1428,7 +1434,7 @@ workbox.routing.registerRoute(
         const shellHit = await matchStaticShell(url.pathname);
         perfMark(event, shellHit ? 'hit' : 'miss');
         if (shellHit) {
-          response = respondWithSavedAsset(request, shellHit);
+          response = respondWithSavedAsset(request, shellHit, SHELL_ASSET_CACHE_CONTROL);
           if (url.pathname.startsWith(GAME_ASSET_PREFIX) && event.event) {
             event.event.waitUntil(revalidateGameAsset(url.pathname, shellHit));
           }
