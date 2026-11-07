@@ -4309,8 +4309,9 @@ body:not(.desktop-mode) div#manualModal {
 body.desktop-mode #manualModal.has-studio-menubar #manualModalMenuBar {
     display: block;
     position: absolute;
-    left: 0;
-    right: 0;
+    /* inside the frame, over the client area like #manualForm (0 when maximized or fullscreen) */
+    left: var(--window-frame-inset, 0px);
+    right: var(--window-frame-inset, 0px);
     top: 27px;
     z-index: 4;
 }
