@@ -191,7 +191,7 @@
             if (!openPopup || openPopup.contains(e.target)) return;
             // Start and the soft keys toggle their own menus: closing here first would let
             // their click handler open the menu again
-            if (e.target.closest && e.target.closest('#wmShell .wm-start, #wmShell .wm-softkey')) return;
+            if (e.target.closest && e.target.closest('#wmShell .wm-start, #wmShell .wm-softkey, #wmShell [aria-haspopup="menu"]')) return;
             closeMenus();
         }, true);
         document.addEventListener('keydown', (e) => {
@@ -279,10 +279,13 @@
         if (typeof key.action === 'function') key.action();
     }
 
+    let popupOnClose = null;
+
     function showPopup(side, items, btn) {
         closeMenus();
         const pop = shell.querySelector('.wm-popup');
         pop.dataset.side = side;
+        pop.style.top = pop.style.left = pop.style.right = pop.style.bottom = '';
         pop.innerHTML = '';
         for (const item of items) {
             if (item === '-' || item.separator) {
@@ -292,8 +295,15 @@
             const b = document.createElement('button');
             b.type = 'button';
             b.className = 'wm-popup-item';
-            b.setAttribute('role', item.checked != null ? 'menuitemcheckbox' : 'menuitem');
-            if (item.checked != null) b.setAttribute('aria-checked', item.checked ? 'true' : 'false');
+            if (item.radio != null) {
+                // WM marks the current choice of a drop-down with a dot
+                b.setAttribute('role', 'menuitemradio');
+                b.setAttribute('aria-checked', item.radio ? 'true' : 'false');
+                b.classList.add('is-radio');
+            } else {
+                b.setAttribute('role', item.checked != null ? 'menuitemcheckbox' : 'menuitem');
+                if (item.checked != null) b.setAttribute('aria-checked', item.checked ? 'true' : 'false');
+            }
             b.textContent = item.label;
             b.disabled = !!item.disabled;
             b.addEventListener('click', (e) => {
@@ -308,8 +318,27 @@
         if (btn) btn.setAttribute('aria-expanded', 'true');
     }
 
+    /** A WM drop-down: the popup hangs under its control (folder bar, combo). */
+    let dropdownAnchor = null;
+
+    function showDropdown(anchor, items, align = 'left', onClose = null) {
+        // a second tap on the same control closes its drop-down
+        if (openPopup && openPopup.dataset.side === 'dropdown' && dropdownAnchor === anchor) { closeMenus(); return; }
+        showPopup('dropdown', items, anchor);
+        dropdownAnchor = anchor;
+        const pop = shell.querySelector('.wm-popup');
+        const r = anchor.getBoundingClientRect();
+        const sr = shell.getBoundingClientRect();
+        pop.style.bottom = 'auto';
+        pop.style.top = `${r.bottom - sr.top}px`;
+        if (align === 'right') { pop.style.left = 'auto'; pop.style.right = `${sr.right - r.right}px`; } else { pop.style.right = 'auto'; pop.style.left = `${r.left - sr.left}px`; }
+        popupOnClose = onClose;
+    }
+
     function closeMenus() {
         shell.querySelector('.wm-popup').hidden = true;
+        dropdownAnchor = null;
+        if (popupOnClose) { const fn = popupOnClose; popupOnClose = null; fn(); }
         shell.querySelector('.wm-startmenu').hidden = true;
         shell.querySelector('.wm-start').setAttribute('aria-expanded', 'false');
         shell.querySelectorAll('.wm-softkey').forEach((b) => b.setAttribute('aria-expanded', 'false'));
@@ -487,6 +516,33 @@
             const first = field || layer.querySelector('button');
             if (first) first.focus();
         });
+    }
+
+    const TODAY_BG_KEY = 'wmTodayBackground';
+
+    /** Today's picture (Pictures > Menu > Set as Today Background), over the workspace background. */
+    function applyTodayBackground() {
+        const today = apps.get('today');
+        if (!today || !today.page) return;
+        let url = null;
+        try { url = localStorage.getItem(TODAY_BG_KEY); } catch (_) { /* storage off */ }
+        // only a same-site path is used
+        if (url && !/^\/[^/]/.test(url)) url = null;
+        const set = (u) => {
+            today.page.style.backgroundImage = u ? `url("${u.replace(/["\\\n]/g, encodeURIComponent)}")` : '';
+            today.page.classList.toggle('has-picture', !!u);
+        };
+        set(url);
+        if (url) {
+            // a picture that no longer loads falls back to the workspace background
+            const probe = new Image();
+            probe.onerror = () => set(null);
+            probe.src = url;
+        }
+    }
+
+    function hasTodayBackground() {
+        try { return !!localStorage.getItem(TODAY_BG_KEY); } catch (_) { return false; }
     }
 
     /** The viewer's zoom origin: the tapped print's tile on screen, else nothing (fade). */
@@ -815,14 +871,20 @@
             }
             renderSoftKeys();
         };
-        // ---- the Windows Phone Photos grid (WP7.5-8.1 camera roll, measured on device shots):
-        // 4 square centre-cropped tiles in 480 view pixels: 24 margin + 4 x 99 + 3 x 12 gaps + 24,
-        // month headers in the accent colour. Landscape keeps the portrait cell size (short side).
+        // ---- Pictures & Videos (WM 6.1, measured on the emulator, 2x halved): folder bar 22 px
+        // (tint, 1 px black rule) with the folder ("My Pictures") and sort ("Date") drop-downs; a
+        // grid of 3 equal columns (80 px at 240 px wide), cells 60 px tall, 1 px #BDBEBD rules on
+        // the right and bottom, over the theme's white-to-green field; each picture fitted (not
+        // cropped) into about 68 x 53 and centred, no label; the selected cell is filled with the
+        // highlight colour. Wider screens get more 80 px columns. Soft keys View / Menu.
         let gridTimer = null;
         let gridSig = '';
         let gridView = null;
         let viewSwitchedAt = 0;
-        const fmtMonth = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' });
+        let sortBy = 'date';
+        let selectedName = null;
+        const SORTS = [['name', 'Name'], ['date', 'Date'], ['size', 'Size']];
+        const CHUNK = 60; // cells per content-visibility block
 
         // Gallery search never filters allImages: fileSearch hands its results (relevance order)
         // to applyFilteredImages(images, indices); ([], []) = nothing found, (all, null) = cleared.
@@ -849,10 +911,10 @@
             return [];
         }
 
-        /** The first tile on screen and its offset, to put the view back after a rebuild. */
+        /** The first cell on screen and its offset, to put the view back after a rebuild. */
         function gridAnchor(page) {
-            const top = page.getBoundingClientRect().top;
-            for (const el of page.querySelectorAll('.wm-photo')) {
+            const top = page.querySelector('.wm-pv-scroll').getBoundingClientRect().top;
+            for (const el of page.querySelectorAll('.wm-pv-cell')) {
                 const r = el.getBoundingClientRect();
                 if (r.bottom > top) return { name: el.dataset.filename, offset: r.top - top };
             }
@@ -866,65 +928,121 @@
             return m ? Number(m[1]) : 0;
         }
 
+        function sortedList(list) {
+            if (searchResults || sortBy === 'date') return list; // the gallery's order: newest first; search: relevance
+            const out = list.slice();
+            if (sortBy === 'name') out.sort((x, y) => String(x.filename || x.original || '').localeCompare(String(y.filename || y.original || '')));
+            else out.sort((x, y) => (Number(y.size) || 0) - (Number(x.size) || 0));
+            return out;
+        }
+
+        /** Columns of 80 px (3 at least); true when the count changed. A hidden page keeps its own. */
         function layoutGrid(page) {
-            const w = page.clientWidth || window.innerWidth;
-            const h = page.clientHeight || window.innerHeight;
-            const v = Math.min(w, Math.max(h, 1)) / 480; // one WP view pixel
-            const cols = w <= h ? 4 : Math.max(4, Math.floor((w - 48 * v + 12 * v) / (111 * v)));
-            page.style.setProperty('--wp-v', `${v}px`);
-            page.style.setProperty('--wp-cols', String(cols));
+            const scroller = page.querySelector('.wm-pv-scroll');
+            const w = (scroller && scroller.clientWidth) || page.clientWidth;
+            if (!w) return false;
+            const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+            const cols = Math.max(3, Math.floor(w / (80 * px)));
+            const prev = page.style.getPropertyValue('--wm-pv-cols');
+            page.style.setProperty('--wm-pv-cols', String(cols));
+            return prev !== String(cols);
+        }
+
+        function renderFolderBar(page) {
+            const view = VIEWS.find(([v]) => v === activeView());
+            page.querySelector('.wm-pv-folder span').textContent = searchResults ? 'Search results' : (view ? view[1] : 'Pictures');
+            const sortBtn = page.querySelector('.wm-pv-sort');
+            // while its drop-down is open the control reads "Sort By", as on the device
+            if (dropdownAnchor !== sortBtn) sortBtn.querySelector('span').textContent = searchResults ? 'Relevance' : (SORTS.find(([k]) => k === sortBy) || SORTS[1])[1];
+            sortBtn.disabled = !!searchResults;
         }
 
         function renderGrid(page, force) {
             const view = activeView();
             if (view !== gridView) {
                 // another view (Images / Scraps / ...) starts at its top; a search belongs to its view
-                if (gridView !== null) { page.scrollTop = 0; viewSwitchedAt = Date.now(); searchResults = null; }
+                if (gridView !== null) { page.querySelector('.wm-pv-scroll').scrollTop = 0; viewSwitchedAt = Date.now(); searchResults = null; selectedName = null; if (current === 'gallery') renderSoftKeys(); }
                 gridView = view;
             }
-            const list = galleryList();
+            renderFolderBar(page);
+            const list = sortedList(galleryList());
             const nameOf = (it) => (it && (it.filename || it.original)) || '';
-            const sig = `${list.length}|${nameOf(list[0])}|${nameOf(list[list.length - 1])}|${view}|${filterSeq}|${searchResults ? 's' : 'a'}`;
+            const sig = `${list.length}|${nameOf(list[0])}|${nameOf(list[list.length - 1])}|${view}|${filterSeq}|${searchResults ? 's' : 'a'}|${sortBy}`;
             if (!force && sig === gridSig) return;
             gridSig = sig;
+            const scroller = page.querySelector('.wm-pv-scroll');
             const anchor = gridAnchor(page);
-            const box = page.querySelector('.wm-photos-list');
-            const cols = Number(page.style.getPropertyValue('--wp-cols')) || 4;
-            const v = parseFloat(page.style.getPropertyValue('--wp-v')) || 0.8;
-            const groups = [];
-            if (searchResults) {
-                // relevance order: one group, not months
-                groups.push({ key: 'search results', items: list });
-            } else {
-                for (const item of list) {
-                    const t = itemTime(item);
-                    const key = t ? fmtMonth.format(new Date(t)).toLowerCase() : 'older';
-                    const last = groups[groups.length - 1];
-                    if (last && last.key === key) last.items.push(item);
-                    else groups.push({ key, items: [item] });
-                }
-            }
+            const box = page.querySelector('.wm-pv-grid');
+            const cols = Number(page.style.getPropertyValue('--wm-pv-cols')) || 3;
+            const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
             let html = '';
-            for (const g of groups) {
-                // the group's real height before it renders (content-visibility), so a rebuild
-                // above the viewport keeps scroll positions: header ~82 vp + rows of 111 vp
-                const est = Math.round((82 + Math.ceil(g.items.length / cols) * 111) * v);
-                html += `<section class="wm-photos-group" style="contain-intrinsic-size:auto ${est}px"><h2 class="wm-photos-month">${escapeHtml(g.key)}</h2><div class="wm-photos-grid">`;
-                for (const item of g.items) {
+            for (let i = 0; i < list.length; i += CHUNK) {
+                const part = list.slice(i, i + CHUNK);
+                // the block's real height before it renders (content-visibility): rows of 61 px
+                const est = Math.round(Math.ceil(part.length / cols) * 61 * px);
+                html += `<div class="wm-pv-chunk" style="contain-intrinsic-size:auto ${est}px">`;
+                for (const item of part) {
                     const name = nameOf(item);
-                    html += `<button type="button" class="wm-photo" data-filename="${escapeHtml(name)}" aria-label="${escapeHtml(name)}"><img src="${escapeHtml(previewUrl(item))}" alt="" loading="lazy" decoding="async" draggable="false"></button>`;
+                    const sel = name === selectedName ? ' is-selected' : '';
+                    html += `<button type="button" class="wm-pv-cell wm-photo${sel}" data-filename="${escapeHtml(name)}" aria-label="${escapeHtml(name)}"><img src="${escapeHtml(previewUrl(item))}" alt="" loading="lazy" decoding="async" draggable="false"></button>`;
                 }
-                html += '</div></section>';
+                html += '</div>';
             }
             box.innerHTML = html;
-            if (anchor && !(Date.now() - viewSwitchedAt < 50)) {
-                const el = box.querySelector(`.wm-photo[data-filename="${CSS.escape(anchor.name)}"]`);
-                if (el) page.scrollTop += el.getBoundingClientRect().top - page.getBoundingClientRect().top - anchor.offset;
+            // a selection that left the list (view switch, search, delete) is dropped
+            if (selectedName && !list.some((it) => nameOf(it) === selectedName)) {
+                selectedName = null;
+                if (current === 'gallery') renderSoftKeys();
+            }
+            if (anchor && Date.now() - viewSwitchedAt > 50) {
+                const el = box.querySelector(`.wm-pv-cell[data-filename="${CSS.escape(anchor.name)}"]`);
+                if (el) scroller.scrollTop += el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - anchor.offset;
             }
             const empty = page.querySelector('.wm-photos-empty');
             const loading = !list.length && !searchResults && Date.now() - viewSwitchedAt < 4000;
             empty.textContent = loading ? 'Loading...' : (searchResults ? 'No matches' : 'No pictures');
             empty.hidden = list.length > 0;
+        }
+
+        function selectCell(page, name) {
+            selectedName = name;
+            page.querySelectorAll('.wm-pv-cell.is-selected').forEach((c) => c.classList.remove('is-selected'));
+            const el = name && page.querySelector(`.wm-pv-cell[data-filename="${CSS.escape(name)}"]`);
+            if (el) el.classList.add('is-selected');
+            if (current === 'gallery') renderSoftKeys();
+        }
+
+        /** Menu > Set as Today Background: this phone's Today shows the picture (WM 6.1 does the same). */
+        function setTodayBackground(name) {
+            try {
+                if (!name) { localStorage.removeItem(TODAY_BG_KEY); applyTodayBackground(); return; }
+                const item = galleryList().find((it) => (it.filename || it.original) === name);
+                if (!item || !item.preview) return;
+                // the screen-sized preview by its path (no full-size PNG, no read token kept)
+                const p = typeof getGalleryPreviewUrl === 'function' ? getGalleryPreviewUrl(item.preview) : item.preview;
+                localStorage.setItem(TODAY_BG_KEY, `/previews/${encodeURIComponent(p)}`);
+            } catch (_) { /* storage off */ }
+            applyTodayBackground();
+        }
+
+        function viewPicture(name) {
+            if (!name || typeof showLightbox !== 'function') return;
+            try { showLightbox({ filename: name }); } catch (_) { /* viewer not ready */ }
+        }
+
+        /** WM's folder drop-down: the gallery views, the current one with a dot. */
+        function folderMenu() {
+            const view = activeView();
+            return VIEWS.map(([v, label]) => ({ label, radio: view === v, action: () => switchView(v) }));
+        }
+
+        function sortMenu(page) {
+            return SORTS.map(([k, label]) => ({ label, radio: sortBy === k, action: () => { sortBy = k; renderGrid(page, true); } }));
+        }
+
+        function switchView(v) {
+            const b = document.querySelector(`#galleryWindow .gallery-toggle-group .gallery-toggle-btn[data-view="${v}"]`);
+            if (b) b.click();
         }
 
         registerApp({
@@ -937,19 +1055,40 @@
                 input.dispatchEvent(new Event('input', { bubbles: true }));
                 input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
             },
-            title: 'Pictures',
-            startLabel: 'Pictures & Videos',
+            title: 'Pictures & Videos',
             icon: 'app-pictures',
             inStart: 'top',
             mount(page) {
-                page.classList.add('wm-photos');
-                page.innerHTML = '<div class="wm-photos-list"></div><p class="wm-photos-empty" hidden>No pictures</p>';
-                page.addEventListener('click', (e) => {
-                    const tile = e.target.closest('.wm-photo');
-                    if (!tile || typeof showLightbox !== 'function') return;
-                    try { showLightbox({ filename: tile.dataset.filename }); } catch (_) { /* viewer not ready */ }
+                page.classList.add('wm-pv');
+                page.innerHTML = `
+                    <div class="wm-pv-bar">
+                        <button type="button" class="wm-pv-folder" aria-haspopup="menu">${imgTag('app-pictures')}<span></span><i class="wm-pv-arrow"></i></button>
+                        <button type="button" class="wm-pv-sort" aria-haspopup="menu"><span></span><i class="wm-pv-arrow"></i></button>
+                    </div>
+                    <div class="wm-pv-scroll"><div class="wm-pv-grid"></div><p class="wm-photos-empty" hidden>No pictures</p></div>`;
+                page.querySelector('.wm-pv-grid').addEventListener('click', (e) => {
+                    const cell = e.target.closest('.wm-pv-cell');
+                    if (!cell) return;
+                    // WM: a tap selects the picture and opens it
+                    selectCell(page, cell.dataset.filename);
+                    viewPicture(cell.dataset.filename);
                 });
-                new ResizeObserver(() => layoutGrid(page)).observe(page);
+                page.querySelector('.wm-pv-folder').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showDropdown(e.currentTarget, folderMenu());
+                });
+                page.querySelector('.wm-pv-sort').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    // the drop-down's label reads "Sort By" while it is open
+                    const btn = e.currentTarget;
+                    if (searchResults) return; // search results keep their relevance order
+                    const opening = !(openPopup && dropdownAnchor === btn);
+                    if (opening) btn.querySelector('span').textContent = 'Sort By';
+                    showDropdown(btn, sortMenu(page), 'right', () => renderFolderBar(page));
+                });
+                // only a new column count needs a rebuild (the chunks' height estimates); 1fr columns
+                // reflow by themselves, and show / hide / keyboard resizes leave the cells alone
+                new ResizeObserver(() => { if (layoutGrid(page)) renderGrid(page, true); }).observe(page);
             },
             show(page) {
                 layoutGrid(page);
@@ -970,21 +1109,24 @@
             },
             softKeys() {
                 const searching = !!(searchBar && !searchBar.hidden);
+                if (searching) return { left: { label: 'Cancel', action: () => setSearch(false) }, right: null };
+                const page = this.page;
                 return {
-                    left: searching ? { label: 'Cancel', action: () => setSearch(false) } : { label: 'Search', action: () => setSearch(true) },
+                    left: { label: 'View', disabled: !selectedName, action: () => viewPicture(selectedName) },
                     right: {
                         label: 'Menu',
-                        menu: () => {
-                            const view = activeView();
-                            return VIEWS.map(([v, label]) => ({
-                                label,
-                                checked: view === v,
-                                action: () => {
-                                    const b = document.querySelector(`#galleryWindow .gallery-toggle-group .gallery-toggle-btn[data-view="${v}"]`);
-                                    if (b) b.click();
-                                }
-                            }));
-                        }
+                        // WM: Camera, Send..., Beam..., Save to Contact... | Delete, Edit, Play Slide
+                        // Show, Set as Today Background..., Go To, Tools; here what Dreamscape has
+                        menu: () => [
+                            { label: 'Search...', action: () => setSearch(true) },
+                            '-',
+                            { label: 'Set as Today Background', disabled: !selectedName, action: () => setTodayBackground(selectedName) },
+                            '-',
+                            ...(hasTodayBackground() ? [{ label: 'Clear Today Background', action: () => setTodayBackground(null) }] : []),
+                            '-',
+                            ...folderMenu(),
+                            ...(searchResults ? [] : ['-', ...sortMenu(page).map((it) => Object.assign(it, { label: `Sort by ${it.label}` }))])
+                        ]
                     }
                 };
             }
@@ -1230,6 +1372,7 @@
         useMobileWording();
         stack.push('today');
         activate('today');
+        applyTodayBackground();
         startBoot();
         refreshStatus();
         setInterval(refreshStatus, 2000);

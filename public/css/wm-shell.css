@@ -1296,90 +1296,6 @@ html.ui-mobile body > #galleryWindow {
     display: none !important;
 }
 
-/* WP view pixel (--wp-v) = screen short side / 480, set by wmShell.js layoutGrid */
-.wm-photos {
-    /* WP draws no scroll bar on the grid */
-    scrollbar-width: none;
-    --wp-v: 0.8125px;
-    --wp-cols: 4;
-    background: #000;
-    color: #fff;
-    font-family: 'Segoe UI', var(--wm-font);
-    overscroll-behavior: contain;
-}
-
-.wm-photos-group {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 600px;
-}
-
-/* month header: accent colour, 32 vp regular, 24 vp from the left; ~42 vp from its baseline to
- * the first row, ~56 vp from the last row of the group before */
-.wm-photos-month {
-    margin: 0;
-    padding: calc(44 * var(--wp-v)) calc(24 * var(--wp-v)) calc(20 * var(--wp-v));
-    font-size: calc(32 * var(--wp-v));
-    font-weight: 400;
-    line-height: 1;
-    color: var(--wm-highlight);
-    text-transform: lowercase;
-}
-
-.wm-photos-group:first-child .wm-photos-month {
-    padding-top: calc(18 * var(--wp-v));
-}
-
-.wm-photos-grid {
-    display: grid;
-    grid-template-columns: repeat(var(--wp-cols), calc(99 * var(--wp-v)));
-    gap: calc(12 * var(--wp-v));
-    padding: 0 calc(24 * var(--wp-v));
-}
-
-.wm-photos-list > .wm-photos-group:last-child .wm-photos-grid {
-    padding-bottom: calc(24 * var(--wp-v));
-}
-
-.wm-photo {
-    display: block;
-    border: 0 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    width: calc(99 * var(--wp-v));
-    height: calc(99 * var(--wp-v));
-    padding: 0 !important;
-    overflow: hidden;
-    background: #1f1f1f !important;
-    transition: transform 0.1s ease-out;
-}
-
-.wm-photo img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    pointer-events: none;
-}
-
-/* WP tilt feedback, simplified: the pressed tile sinks a little */
-.wm-photo:active {
-    transform: scale(0.95);
-}
-
-.wm-photos-empty {
-    margin: calc(24 * var(--wp-v));
-    font-size: calc(24 * var(--wp-v));
-    color: rgba(255, 255, 255, 0.6);
-}
-
-.wm-photos-empty[hidden] {
-    display: none;
-}
-
-.wm-photos::-webkit-scrollbar {
-    display: none;
-}
-
 /* ---- startup: splash, installer (wceload), Today fill-in (slice 2) ---- */
 
 /* Splash: full screen over the bars, as the device's boot logo. WM 6.1's is a green field
@@ -1561,4 +1477,178 @@ html.ui-mobile[data-wm-boot="reveal"] .wm-titlebar,
 html.ui-mobile[data-wm-boot="reveal"] .wm-softkeys {
     background: transparent;
     border-color: transparent;
+}
+
+/* ---- Pictures & Videos (WM 6.1, emulator 2x halved) ---- */
+.wm-pv {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+    color: #000;
+}
+
+/* folder bar: 22 px tint + 1 px black rule; bold folder name and sort with drop arrows */
+.wm-pv-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    height: calc(22 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+}
+
+html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
+    visibility: hidden;
+}
+
+.wm-pv-folder,
+.wm-pv-sort {
+    display: flex !important;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px)) !important;
+    font-weight: bold;
+    color: #000 !important;
+    white-space: nowrap;
+}
+
+.wm-pv-folder img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+/* the small black drop arrow (device: 13 x 7 at 2x) */
+.wm-pv-arrow {
+    width: 0;
+    height: 0;
+    margin-top: calc(2 * var(--wm-px));
+    border-left: calc(3.5 * var(--wm-px)) solid transparent;
+    border-right: calc(3.5 * var(--wm-px)) solid transparent;
+    border-top: calc(3.5 * var(--wm-px)) solid #000;
+}
+
+.wm-pv-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.wm-pv-chunk {
+    display: grid;
+    grid-template-columns: repeat(var(--wm-pv-cols, 3), 1fr);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 600px;
+}
+
+/* cell: 60 px tall + 1 px #BDBEBD rule right and bottom; picture fitted into 68 x 53, centred */
+.wm-pv-cell {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    height: calc(61 * var(--wm-px));
+    padding: 0 !important;
+    border: 0 !important;
+    border-right: calc(1 * var(--wm-px)) solid #bdbebd !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #bdbebd !important;
+    border-radius: 0 !important;
+    box-sizing: border-box;
+    background: transparent !important;
+    min-width: 0;
+}
+
+.wm-pv-cell img {
+    display: block;
+    max-width: calc(68 * var(--wm-px));
+    max-height: calc(53 * var(--wm-px));
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+.wm-pv-cell.is-selected {
+    background: var(--wm-highlight) !important;
+}
+
+.wm-pv .wm-photos-empty {
+    margin: calc(8 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+    color: #000;
+}
+
+.wm-photos-empty[hidden] {
+    display: none;
+}
+
+/* drop-downs hang under their control (wmShell.js sets top / left / right) */
+.wm-popup[data-side="dropdown"] {
+    bottom: auto;
+}
+
+/* WM's mark for the current choice in a drop-down */
+.wm-popup-item.is-radio[aria-checked="true"]::before {
+    content: '';
+    position: absolute;
+    left: calc(6 * var(--wm-px));
+    width: calc(5 * var(--wm-px));
+    height: calc(5 * var(--wm-px));
+    border-radius: 50%;
+    background: currentColor;
+    -webkit-mask: none;
+    mask: none;
+}
+
+/* Today with a picture set from Pictures & Videos */
+.wm-today.has-picture {
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+}
+
+/* WM scroll bar (device: 26 px at 2x): white track with a black left edge, tint thumb framed in
+ * black, arrow buttons; browsers with overlay scroll bars (Android) keep their own */
+.wm-pv-scroll::-webkit-scrollbar,
+#wmShell .wm-page::-webkit-scrollbar {
+    width: calc(13 * var(--wm-px));
+}
+
+.wm-pv-scroll::-webkit-scrollbar-track,
+#wmShell .wm-page::-webkit-scrollbar-track {
+    background: #fff;
+    border-left: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-pv-scroll::-webkit-scrollbar-thumb,
+#wmShell .wm-page::-webkit-scrollbar-thumb {
+    background: var(--wm-tab-strip);
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-right: 0;
+    border-radius: 0;
+}
+
+.wm-pv-scroll::-webkit-scrollbar-button:single-button,
+#wmShell .wm-page::-webkit-scrollbar-button:single-button {
+    display: block;
+    height: calc(19 * var(--wm-px));
+    background: var(--wm-tab-strip) center / calc(8 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
+    border-left: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-pv-scroll::-webkit-scrollbar-button:single-button:vertical:decrement,
+#wmShell .wm-page::-webkit-scrollbar-button:single-button:vertical:decrement {
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background-image: linear-gradient(to bottom right, transparent 50%, #000 50%), linear-gradient(to bottom left, transparent 50%, #000 50%);
+    background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
+}
+
+.wm-pv-scroll::-webkit-scrollbar-button:single-button:vertical:increment,
+#wmShell .wm-page::-webkit-scrollbar-button:single-button:vertical:increment {
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background-image: linear-gradient(to top right, transparent 50%, #000 50%), linear-gradient(to top left, transparent 50%, #000 50%);
+    background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
 }
