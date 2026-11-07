@@ -4251,6 +4251,78 @@
         "melaton-extension"
       ],
       "notes": "Melaton extension: the Director (busy pulses). A clapperboard drawn 1-bit in the strokes of outres 32507 (striped clapper y 6..11, slate y 14..29, 4 px sides); the ROM has no matching glyph."
+    },
+    "set-input": {
+      "1x": {
+        "source": "shellres.192.dll ico_13936_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13936_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "@2x upscaled by ~/.cache/wm61/up4/run.js (4x-UltraSharp, halved)",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "notes": "Settings applet icon: Input (keyboard) (Settings grid, Melaton Mobile Settings app, wmSettingsPersonal.js)."
+    },
+    "set-lock": {
+      "1x": {
+        "source": "shellres.192.dll ico_13942_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13942_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "@2x upscaled by ~/.cache/wm61/up4/run.js (4x-UltraSharp, halved)",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "notes": "Settings applet icon: Lock (key) (Settings grid, Melaton Mobile Settings app, wmSettingsPersonal.js)."
+    },
+    "set-workspace": {
+      "1x": {
+        "source": "shellres.192.dll ico_13927_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13927_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "@2x upscaled by ~/.cache/wm61/up4/run.js (4x-UltraSharp, halved)",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "notes": "Settings applet icon: Workspace (Melaton extension; WM window icon) (Settings grid, Melaton Mobile Settings app, wmSettingsPersonal.js)."
     }
   },
   "notDelivered": {

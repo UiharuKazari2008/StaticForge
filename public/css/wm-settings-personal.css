@@ -1,1 +1,124 @@
 /* Melaton Mobile Settings: Personal pages (Sounds & Notifications, Input, Lock, Owner Information, Screen accessibility, Workspace) (wmSettingsPersonal.js, Yozora #709); html.ui-mobile only. */
+
+/* a dependent option sits under its parent's text (WM: 19 px in, Notifications under Programs) */
+html.ui-mobile .wm-form .wmsp-indent {
+    padding-left: calc(18 * var(--wm-px));
+}
+
+/* Notifications: the sound combo with WM's play button beside it */
+html.ui-mobile .wm-form .wmsp-sound-row {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+}
+
+html.ui-mobile .wm-form .wmsp-sound-row .wm-combo {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+html.ui-mobile .wm-form .wmsp-play {
+    flex: 0 0 auto;
+    position: relative;
+    min-width: 0;
+    width: calc(22 * var(--wm-px));
+    padding: 0 !important;
+}
+
+/* the play glyph: a black triangle 5 x 9 (WM's media button) */
+html.ui-mobile .wm-form .wmsp-play::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    margin: calc(-4.5 * var(--wm-px)) 0 0 calc(-2 * var(--wm-px));
+    border-style: solid;
+    border-width: calc(4.5 * var(--wm-px)) 0 calc(4.5 * var(--wm-px)) calc(5 * var(--wm-px));
+    border-color: transparent transparent transparent currentColor;
+}
+
+html.ui-mobile .wm-form .wmsp-event {
+    margin-top: calc(6 * var(--wm-px));
+    min-height: calc(60 * var(--wm-px));
+}
+
+/* Lock: "Prompt if device unused for [combo]" on one line, as WM's Password tab */
+html.ui-mobile .wm-form .wmsp-checkcombo {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: calc(5 * var(--wm-px));
+    margin-bottom: calc(2 * var(--wm-px));
+}
+
+/* Owner Information > Picture: the account tile, then the default pictures */
+html.ui-mobile .wm-form .wmsp-owner {
+    display: flex;
+    align-items: center;
+    gap: calc(8 * var(--wm-px));
+    margin-bottom: calc(8 * var(--wm-px));
+}
+
+html.ui-mobile .wm-form .wmsp-owner-pic {
+    width: calc(48 * var(--wm-px));
+    height: calc(48 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    object-fit: cover;
+}
+
+html.ui-mobile .wm-form .wmsp-owner-name {
+    font-weight: bold;
+}
+
+html.ui-mobile .wm-form .wmsp-pics {
+    grid-template-columns: repeat(auto-fill, minmax(calc(44 * var(--wm-px)), 1fr));
+    max-height: calc(140 * var(--wm-px));
+}
+
+html.ui-mobile .wm-form .wm-picker-cell:disabled {
+    opacity: 1;
+}
+
+/* Workspace > Color: the accent colour as a WM box with its swatch, the window colour swatches */
+html.ui-mobile .wm-form .wmsp-color {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+}
+
+html.ui-mobile .wm-form .wmsp-color input {
+    width: calc(34 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    margin: 0;
+    padding: calc(2 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff;
+}
+
+html.ui-mobile .wm-form .wmsp-color input::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+html.ui-mobile .wm-form .wmsp-color input::-webkit-color-swatch {
+    border: 0;
+}
+
+html.ui-mobile .wm-form .wmsp-swatches {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    max-height: none;
+    margin-bottom: calc(4 * var(--wm-px));
+}
+
+html.ui-mobile .wm-form .wmsp-swatch-ws {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: calc(1 * var(--wm-px)) solid #4a4d4a;
+    box-sizing: border-box;
+}
