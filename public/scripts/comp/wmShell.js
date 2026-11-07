@@ -171,7 +171,10 @@
                     <button type="button" class="wm-status-icon wm-status-glyph" data-role="prints" hidden aria-label="Prints"></button>
                     <button type="button" class="wm-status-icon wm-status-glyph" data-role="director" hidden aria-label="Director"></button>
                     <button type="button" class="wm-status-icon" data-role="data" data-icon="data-off" aria-label="Connectivity"></button>
+                    <button type="button" class="wm-status-icon" data-role="roaming" data-icon="roaming" hidden aria-label="Roaming"></button>
+                    <button type="button" class="wm-status-icon" data-role="signal" hidden aria-label="Phone signal"></button>
                     <button type="button" class="wm-status-icon" data-role="volume" data-icon="volume" aria-label="Volume"></button>
+                    <button type="button" class="wm-status-icon" data-role="battery" hidden aria-label="Battery"></button>
                 </div>
                 <button type="button" class="wm-title-action" data-kind="close" aria-label="Close" hidden></button>
             </header>
@@ -652,8 +655,17 @@
         const ws = window.wsClient;
         const connected = !!(ws && typeof ws.isConnected === 'function' && ws.isConnected());
         const data = shell.querySelector('[data-role="data"]');
-        data.dataset.icon = connected ? 'data-on' : 'data-off';
-        data.title = connected ? 'Connected' : 'Not connected';
+        const dev = deviceView();
+        // the phone's own link when the Android app or the browser says what it is; else Dreamscape's
+        data.dataset.icon = dev.link ? dev.link.icon : connected ? 'data-on' : 'data-off';
+        data.title = dev.link ? dev.link.text : connected ? 'Connected' : 'Not connected';
+        const sig = shell.querySelector('[data-role="signal"]');
+        sig.hidden = !dev.signal;
+        if (dev.signal) { sig.dataset.icon = dev.signal.icon; sig.title = dev.signal.text; }
+        shell.querySelector('[data-role="roaming"]').hidden = !(dev.cell && dev.cell.roaming === true && dev.signal && dev.signal.icon !== 'signal-off');
+        const bat = shell.querySelector('[data-role="battery"]');
+        bat.hidden = !dev.battery;
+        if (dev.battery) { bat.dataset.icon = dev.battery.icon; bat.title = dev.battery.text; }
         const vol = shell.querySelector('[data-role="volume"]');
         let muted = false;
         try { muted = !!(window.tabVolume && typeof window.tabVolume.isMuted === 'function' && window.tabVolume.isMuted()); } catch (_) { /* volume unknown */ }
@@ -672,6 +684,111 @@
         if (today && typeof today.refresh === 'function' && current === 'today') today.refresh();
         // notifications held back during startup or a takeover come up once it ends
         if (notes.length && !noteShown && notesMayPop()) refreshNotes();
+    }
+
+    // ---------------------------------------------------------------- status: device (battery, signal, data, Wi-Fi)
+
+    /*
+     * The Android app (DSApp-Kotlin) exposes window.AndroidDeviceStatus.getState() -> JSON and fires
+     * 'androiddevicestatus' (detail = the same object) on every change. Contract v1:
+     * { v, battery { level, charging, plugged, saver }, cellular { present, radioOn, airplane, simState,
+     * operator, level 0-4, searching, dataType, dataEnabled, dataActive, roaming },
+     * wifi { enabled, connected, level 0-4, ssid }, active: wifi|cellular|ethernet|vpn|none }.
+     * Every field is optional (null = unknown, never guessed); a later "v" only adds fields.
+     * Without the app: navigator.getBattery() and navigator.connection, showing only what they know.
+     */
+    let deviceStatus = null;
+    let webBattery = null;
+    // WM 6.1 letters; LTE and 5G are Melaton's own (drawn in the same style, see manifest.json)
+    const DATA_ICON = { GPRS: 'g', EDGE: 'e', '3G': '3g', HSPA: 'h', 'HSPA+': 'h-plus', LTE: '4g', 'LTE+': '4g-plus', '5G': '5g', '5G+': '5g-plus' };
+    const DATA_NAME = { GPRS: 'GPRS', EDGE: 'EDGE', '3G': '3G', HSPA: 'HSPA', 'HSPA+': 'HSPA+', LTE: 'LTE', 'LTE+': 'LTE+', '5G': '5G', '5G+': '5G+' };
+
+    function takeDeviceStatus(s) {
+        if (typeof s === 'string') { try { s = JSON.parse(s); } catch (_) { return; } }
+        if (!s || typeof s !== 'object') return;
+        deviceStatus = s;
+        refreshStatus();
+    }
+
+    function pollDeviceBridge() {
+        const b = window.AndroidDeviceStatus;
+        if (!b || typeof b.getState !== 'function') return false;
+        try { takeDeviceStatus(b.getState()); } catch (_) { /* bridge not ready */ }
+        return true;
+    }
+
+    function watchDevice() {
+        window.addEventListener('androiddevicestatus', (e) => takeDeviceStatus(e && e.detail));
+        pollDeviceBridge();
+        if (typeof navigator.getBattery === 'function') {
+            navigator.getBattery().then((b) => {
+                const upd = () => {
+                    // a machine without a battery reports a full one on charge that never ends
+                    const none = b.charging && b.level >= 1 && (b.chargingTime === 0 || b.chargingTime === Infinity) && b.dischargingTime === Infinity;
+                    webBattery = none ? null : { level: Math.round(b.level * 100), charging: !!b.charging };
+                    refreshStatus();
+                };
+                upd();
+                ['levelchange', 'chargingchange'].forEach((t) => b.addEventListener(t, upd));
+            }).catch(() => { /* no Battery Status API */ });
+        }
+        const c = navigator.connection;
+        if (c && typeof c.addEventListener === 'function') c.addEventListener('change', () => refreshStatus());
+    }
+
+    const objOr = (o) => (o && typeof o === 'object' ? o : null);
+    const bars = (n) => `${n} of 4 ${n === 1 ? 'bar' : 'bars'}`;
+
+    /** What the title bar shows for the phone: { cell, wifi, active, link, signal, battery }. */
+    function deviceView() {
+        if (!deviceStatus && window.AndroidDeviceStatus) pollDeviceBridge();
+        const d = deviceStatus || {};
+        const cell = objOr(d.cellular);
+        const wifi = objOr(d.wifi);
+        const bat = objOr(d.battery);
+        let active = typeof d.active === 'string' ? d.active : null;
+        if (!active && !deviceStatus) {
+            const c = navigator.connection;
+            const t = c && typeof c.type === 'string' ? c.type : '';
+            active = { wifi: 'wifi', cellular: 'cellular', wimax: 'cellular', ethernet: 'ethernet', none: 'none' }[t] || null;
+        }
+        if (!active && cell && cell.dataActive === true) active = 'cellular';
+        if (!active && wifi && wifi.connected === true) active = 'wifi';
+        const airplane = !!(cell && cell.airplane === true);
+        const type = cell && typeof cell.dataType === 'string' && DATA_ICON[cell.dataType] ? cell.dataType : null;
+        const wifiName = wifi && typeof wifi.ssid === 'string' && wifi.ssid ? wifi.ssid : null;
+        // connectivity: the link in use, else what could be used
+        let link = null;
+        if (active === 'wifi') link = { icon: 'wifi-connected', text: wifiName ? `Wi-Fi: ${wifiName}` : 'Wi-Fi: connected' };
+        else if (active === 'cellular') link = { icon: type ? `data-${DATA_ICON[type]}-active` : 'data-on', text: type ? `${DATA_NAME[type]}: connected` : 'Cellular data: connected' };
+        else if (active === 'ethernet') link = { icon: 'data-on', text: 'Wired network: connected' };
+        else if (active === 'vpn') link = { icon: 'data-on', text: 'VPN: connected' };
+        else if (active === 'none' || cell || wifi) {
+            if (type && !airplane && cell.dataEnabled !== false) link = { icon: `data-${DATA_ICON[type]}`, text: `${DATA_NAME[type]} available` };
+            else if (wifi && wifi.enabled === true) link = { icon: 'wifi-available', text: 'Wi-Fi on, not connected' };
+            else if (active === 'none') link = { icon: 'data-off', text: 'No network connection' };
+        }
+        // signal: only for a phone with a modem
+        let signal = null;
+        if (cell && cell.present !== false) {
+            const lvl = Number.isFinite(cell.level) ? Math.max(0, Math.min(4, Math.round(cell.level))) : null;
+            if (airplane || cell.radioOn === false) signal = { icon: 'signal-off', text: airplane ? 'Flight mode' : 'Phone off' };
+            else if (cell.simState === 'absent') signal = { icon: 'signal-alert', text: 'No SIM card' };
+            else if (cell.simState === 'locked') signal = { icon: 'signal-alert', text: 'SIM locked' };
+            else if (cell.searching === true) signal = { icon: 'signal-search', text: 'Searching for service' };
+            else if (lvl === 0) signal = { icon: 'signal-none', text: 'No service' };
+            else if (lvl != null) signal = { icon: `signal-${lvl}`, text: `Signal: ${bars(lvl)}` };
+        }
+        // battery: the app's numbers, else the browser's
+        let level = null; let charging = null;
+        if (bat && Number.isFinite(bat.level)) { level = Math.max(0, Math.min(100, Math.round(bat.level))); charging = bat.charging === true || (bat.charging == null && !!bat.plugged); }
+        else if (webBattery) { level = webBattery.level; charging = webBattery.charging; }
+        let battery = null;
+        if (level != null) {
+            const icon = charging ? 'battery-charging' : level > 75 ? 'battery-full' : level > 50 ? 'battery-3' : level > 25 ? 'battery-2' : level > 10 ? 'battery-1' : 'battery-empty';
+            battery = { icon, level, charging, plugged: bat && typeof bat.plugged === 'string' ? bat.plugged : null, saver: !!(bat && bat.saver === true), text: `Main battery: ${level}%${charging ? ', charging' : ''}` };
+        }
+        return { cell, wifi, active, airplane, type, wifiName, link, signal, battery };
     }
 
     // ---------------------------------------------------------------- status: shared state
@@ -1026,13 +1143,57 @@
             const connected = !!(ws && ws.isConnected && ws.isConnected());
             const rtt = ws && Array.isArray(ws.rttMeasurements) && ws.rttMeasurements.length ? Math.round(ws.rttMeasurements[ws.rttMeasurements.length - 1]) : null;
             const host = location.host;
-            const sections = connected
-                ? [`Connected to Dreamscape at ${host}.${rtt != null ? ` Round trip ${rtt} ms.` : ''}`]
-                : [(ws && ws.connectionUi && ws.connectionUi.message) || `Not connected to Dreamscape at ${host}.`];
+            const dev = deviceView();
+            const sections = [];
+            if (dev.link) {
+                const w = dev.wifi;
+                const wl = w && Number.isFinite(w.level) ? ` Signal: ${bars(Math.max(0, Math.min(4, Math.round(w.level))))}.` : '';
+                if (dev.active === 'wifi') sections.push(`Wi-Fi: ${dev.wifiName || 'Connected'}.${wl}`);
+                else sections.push(`${dev.link.text}.`);
+            }
+            sections.push(connected
+                ? `Connected to Dreamscape at ${host}.${rtt != null ? ` Round trip ${rtt} ms.` : ''}`
+                : (ws && ws.connectionUi && ws.connectionUi.message) || `Not connected to Dreamscape at ${host}.`);
             const links = [{ label: 'Settings', action: () => { if (apps.has('settings')) open('settings'); } }];
             if (!connected) links.unshift({ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() });
             sections.push({ links });
             bubble({ title: 'Connectivity', role, anchor, sections, buttons: [{ text: 'Hide' }] });
+        } else if (role === 'signal' || role === 'roaming') {
+            // WM's Phone bubble: operator, then the radio's state
+            const dev = deviceView();
+            const c = dev.cell || {};
+            const lines = [];
+            const op = typeof c.operator === 'string' && c.operator ? c.operator : null;
+            if (dev.airplane) lines.push('Flight mode is on. The phone radio is off.');
+            else if (c.radioOn === false) lines.push('The phone radio is off.');
+            else if (c.simState === 'absent') lines.push('No SIM card.');
+            else if (c.simState === 'locked') lines.push('The SIM card is locked.');
+            else {
+                lines.push(op || (c.searching === true ? 'Searching for service...' : 'No operator'));
+                const lv = Number.isFinite(c.level) ? Math.max(0, Math.min(4, Math.round(c.level))) : null;
+                if (c.searching === true) { if (op) lines.push('Searching for service...'); }
+                else if (lv != null) lines.push(lv === 0 ? 'Signal: no service' : `Signal: ${bars(lv)}`);
+                if (c.roaming === true) lines.push('Roaming');
+            }
+            if (!dev.airplane && c.radioOn !== false) {
+                const dn = dev.type ? DATA_NAME[dev.type] : null;
+                if (c.dataEnabled === false) lines.push('Cellular data: off');
+                else if (dn) lines.push(`Data: ${dn}${dev.active === 'cellular' ? ', in use' : ''}`);
+            }
+            bubble({ title: 'Phone', role: 'signal', anchor: shell.querySelector('[data-role="signal"]:not([hidden])') || anchor, sections: lines, buttons: [{ text: 'Hide' }] });
+        } else if (role === 'battery') {
+            const b = deviceView().battery;
+            const lines = [];
+            if (!b) lines.push('Main battery: unknown');
+            else {
+                lines.push(b.level != null ? `Main battery: ${b.level}%` : 'Main battery: unknown');
+                const via = { ac: 'external power', usb: 'USB', wireless: 'wireless charger', dock: 'dock' }[b.plugged];
+                if (b.charging) lines.push(`Charging${via ? ` from ${via}` : ''}.`);
+                else if (via) lines.push(`On ${via}, not charging.`);
+                else if (b.charging === false) lines.push('On battery.');
+                if (b.saver) lines.push('Battery saver is on.');
+            }
+            bubble({ title: 'Power', role, anchor, sections: lines, buttons: [{ text: 'Hide' }] });
         } else if (role === 'volume') {
             const tv = window.tabVolume;
             const node = document.createElement('div');
@@ -2267,6 +2428,7 @@
             if (today && today.page) today.refresh();
         });
         watchDirector();
+        watchDevice();
         watchToasts();
         startBoot();
         refreshStatus();

@@ -3022,6 +3022,720 @@
         "1x-downscaled-from-2x"
       ],
       "notes": "Speech bubble: several notifications pending (title bar), as on the emulator with two SHNotificationAdd bubbles."
+    },
+    "status-signal-1": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4675_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "Signal, 1 of 4 bars. Melaton extension: the ROM has no signal-bar icons, so the antenna (4675) gets 1 ascending 2 px bars (x 18,22,26,30; 4/8/12/16 px tall, bottom on the antenna row 22). Level 0 uses status-signal-none."
+    },
+    "status-signal-2": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4675_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "Signal, 2 of 4 bars. Melaton extension: the ROM has no signal-bar icons, so the antenna (4675) gets 2 ascending 2 px bars (x 18,22,26,30; 4/8/12/16 px tall, bottom on the antenna row 22). Level 0 uses status-signal-none."
+    },
+    "status-signal-3": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4675_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "Signal, 3 of 4 bars. Melaton extension: the ROM has no signal-bar icons, so the antenna (4675) gets 3 ascending 2 px bars (x 18,22,26,30; 4/8/12/16 px tall, bottom on the antenna row 22). Level 0 uses status-signal-none."
+    },
+    "status-signal-4": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4675_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "Signal, 4 of 4 bars. Melaton extension: the ROM has no signal-bar icons, so the antenna (4675) gets 4 ascending 2 px bars (x 18,22,26,30; 4/8/12/16 px tall, bottom on the antenna row 22). Level 0 uses status-signal-none."
+    },
+    "status-roaming": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4690_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
+      ],
+      "notes": "Roaming triangle, a separate title-bar icon left of the signal."
+    },
+    "status-wifi-available": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4697_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
+      ],
+      "notes": "Wi-Fi on, not connected (antenna with waves)."
+    },
+    "status-wifi-connected": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4677_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
+      ],
+      "notes": "Wi-Fi connected (antenna with data arrows)."
+    },
+    "status-data-g": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4938_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
+      ],
+      "notes": "GPRS available, not the active link (letter only)."
+    },
+    "status-data-g-active": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4776_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
+      ],
+      "notes": "GPRS connected (letter + data arrows)."
+    },
+    "status-data-e": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4939_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
+      ],
+      "notes": "EDGE available, not the active link (letter only)."
+    },
+    "status-data-e-active": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4801_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
+      ],
+      "notes": "EDGE connected (letter + data arrows)."
+    },
+    "status-data-3g": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4945_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
+      ],
+      "notes": "3G available, not the active link (letter only)."
+    },
+    "status-data-3g-active": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4852_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
+      ],
+      "notes": "3G connected (letter + data arrows)."
+    },
+    "status-data-h": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4944_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
+      ],
+      "notes": "HSPA available, not the active link (letter only)."
+    },
+    "status-data-h-active": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4927_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
+      ],
+      "notes": "HSPA connected (letter + data arrows)."
+    },
+    "status-data-h-plus": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4944 (H)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "HSPA+: Melaton extension (WM 6.1 had no such network). Drawn in the ROM pixel style: digit as holes in the ico_4944 (H) box, 2 px strokes, white 6 x 6 plus beside the box. Letter only = available, not the active link."
+    },
+    "status-data-h-plus-active": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4944 (H) + ico_4776 arrows",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "HSPA+: Melaton extension (WM 6.1 had no such network). Drawn in the ROM pixel style: digit as holes in the ico_4944 (H) box, 2 px strokes, white 6 x 6 plus beside the box. With the data arrows of ico_4776 = connected."
+    },
+    "status-data-4g": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "LTE: Melaton extension (WM 6.1 had no such network). Drawn in the ROM pixel style: digit as holes in the ico_4945 (3G) box, 2 px strokes. Letter only = available, not the active link."
+    },
+    "status-data-4g-active": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G) + ico_4776 arrows",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "LTE: Melaton extension (WM 6.1 had no such network). Drawn in the ROM pixel style: digit as holes in the ico_4945 (3G) box, 2 px strokes. With the data arrows of ico_4776 = connected."
+    },
+    "status-data-4g-plus": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "LTE+: Melaton extension (WM 6.1 had no such network). Drawn in the ROM pixel style: digit as holes in the ico_4945 (3G) box, 2 px strokes, white 6 x 6 plus beside the box. Letter only = available, not the active link."
+    },
+    "status-data-4g-plus-active": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G) + ico_4776 arrows",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "LTE+: Melaton extension (WM 6.1 had no such network). Drawn in the ROM pixel style: digit as holes in the ico_4945 (3G) box, 2 px strokes, white 6 x 6 plus beside the box. With the data arrows of ico_4776 = connected."
+    },
+    "status-data-5g": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "5G: Melaton extension (WM 6.1 had no such network). Drawn in the ROM pixel style: digit as holes in the ico_4945 (3G) box, 2 px strokes. Letter only = available, not the active link."
+    },
+    "status-data-5g-active": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G) + ico_4776 arrows",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "5G: Melaton extension (WM 6.1 had no such network). Drawn in the ROM pixel style: digit as holes in the ico_4945 (3G) box, 2 px strokes. With the data arrows of ico_4776 = connected."
+    },
+    "status-data-5g-plus": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "5G+: Melaton extension (WM 6.1 had no such network). Drawn in the ROM pixel style: digit as holes in the ico_4945 (3G) box, 2 px strokes, white 6 x 6 plus beside the box. Letter only = available, not the active link."
+    },
+    "status-data-5g-plus-active": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G) + ico_4776 arrows",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "5G+: Melaton extension (WM 6.1 had no such network). Drawn in the ROM pixel style: digit as holes in the ico_4945 (3G) box, 2 px strokes, white 6 x 6 plus beside the box. With the data arrows of ico_4776 = connected."
     }
   },
   "notDelivered": {
@@ -3030,6 +3744,7 @@
     "sip-arrow": "Drawn, not a resource: white filled triangle 13x7 at 2x (rows 1,3,...,13 px), at x=266..278, y=606..612 in ref/sip.png.",
     "scroll-up/scroll-down": "Drawn by gwes (see README).",
     "dropdown-arrow": "Drawn: black filled triangle 13x7 at 2x (13,11,...,1 px rows). shellresapps icon 13332 is a different, taller arrow.",
-    "windows-flag": "Not exported (copyright rule; use the Melaton emblem). shellres.192 icon 4609 is 41x36 at 2x, drawn at x=4, y=8 of the 50 px title bar; no 1x flag in this ROM. A 2 px vertical separator follows at x=50..51 (2x), y=7..45, gradient #004918 at the ends to #84C35A at y=26."
+    "windows-flag": "Not exported (copyright rule; use the Melaton emblem). shellres.192 icon 4609 is 41x36 at 2x, drawn at x=4, y=8 of the 50 px title bar; no 1x flag in this ROM. A 2 px vertical separator follows at x=50..51 (2x), y=7..45, gradient #004918 at the ends to #84C35A at y=26.",
+    "status-signal-1..4": "Drawn (Melaton extension), see items: the ROM has only antenna + 1-3 dots (status-signal-search-*)."
   }
 }

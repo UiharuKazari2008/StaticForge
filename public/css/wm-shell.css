@@ -176,6 +176,55 @@ html.ui-mobile[data-wm-app="today"] #wmShell {
 .wm-status-icon[data-icon="volume"] { background-image: image-set(url('/static_images/wm61/status-volume.png') 1x, url('/static_images/wm61/status-volume@2x.png') 2x, url('/static_images/wm61/status-volume@4x.png') 4x); }
 .wm-status-icon[data-icon="volume-off"] { background-image: image-set(url('/static_images/wm61/status-volume-off.png') 1x, url('/static_images/wm61/status-volume-off@2x.png') 2x, url('/static_images/wm61/status-volume-off@4x.png') 4x); }
 .wm-status-icon[data-icon="notify-many"] { background-image: image-set(url('/static_images/wm61/status-notify-many.png') 1x, url('/static_images/wm61/status-notify-many@2x.png') 2x); }
+/* device status (#709): battery, signal, roaming, data type and Wi-Fi from the Android app or the
+ * browser. ROM art; signal bars, H+, LTE (4G) and 5G are Melaton-drawn in the same style. */
+.wm-status-icon[data-icon="signal-1"] { background-image: image-set(url('/static_images/wm61/status-signal-1.png') 1x, url('/static_images/wm61/status-signal-1@2x.png') 2x, url('/static_images/wm61/status-signal-1@4x.png') 4x); }
+.wm-status-icon[data-icon="signal-2"] { background-image: image-set(url('/static_images/wm61/status-signal-2.png') 1x, url('/static_images/wm61/status-signal-2@2x.png') 2x, url('/static_images/wm61/status-signal-2@4x.png') 4x); }
+.wm-status-icon[data-icon="signal-3"] { background-image: image-set(url('/static_images/wm61/status-signal-3.png') 1x, url('/static_images/wm61/status-signal-3@2x.png') 2x, url('/static_images/wm61/status-signal-3@4x.png') 4x); }
+.wm-status-icon[data-icon="signal-4"] { background-image: image-set(url('/static_images/wm61/status-signal-4.png') 1x, url('/static_images/wm61/status-signal-4@2x.png') 2x, url('/static_images/wm61/status-signal-4@4x.png') 4x); }
+.wm-status-icon[data-icon="signal-none"] { background-image: image-set(url('/static_images/wm61/status-signal-none.png') 1x, url('/static_images/wm61/status-signal-none@2x.png') 2x, url('/static_images/wm61/status-signal-none@4x.png') 4x); }
+.wm-status-icon[data-icon="signal-off"] { background-image: image-set(url('/static_images/wm61/status-signal-off.png') 1x, url('/static_images/wm61/status-signal-off@2x.png') 2x, url('/static_images/wm61/status-signal-off@4x.png') 4x); }
+.wm-status-icon[data-icon="signal-alert"] { background-image: image-set(url('/static_images/wm61/status-signal-alert.png') 1x, url('/static_images/wm61/status-signal-alert@2x.png') 2x, url('/static_images/wm61/status-signal-alert@4x.png') 4x); }
+.wm-status-icon[data-icon="roaming"] { background-image: image-set(url('/static_images/wm61/status-roaming.png') 1x, url('/static_images/wm61/status-roaming@2x.png') 2x, url('/static_images/wm61/status-roaming@4x.png') 4x); }
+.wm-status-icon[data-icon="wifi-available"] { background-image: image-set(url('/static_images/wm61/status-wifi-available.png') 1x, url('/static_images/wm61/status-wifi-available@2x.png') 2x, url('/static_images/wm61/status-wifi-available@4x.png') 4x); }
+.wm-status-icon[data-icon="wifi-connected"] { background-image: image-set(url('/static_images/wm61/status-wifi-connected.png') 1x, url('/static_images/wm61/status-wifi-connected@2x.png') 2x, url('/static_images/wm61/status-wifi-connected@4x.png') 4x); }
+.wm-status-icon[data-icon="battery-full"] { background-image: image-set(url('/static_images/wm61/status-battery-full.png') 1x, url('/static_images/wm61/status-battery-full@2x.png') 2x, url('/static_images/wm61/status-battery-full@4x.png') 4x); }
+.wm-status-icon[data-icon="battery-3"] { background-image: image-set(url('/static_images/wm61/status-battery-3.png') 1x, url('/static_images/wm61/status-battery-3@2x.png') 2x, url('/static_images/wm61/status-battery-3@4x.png') 4x); }
+.wm-status-icon[data-icon="battery-2"] { background-image: image-set(url('/static_images/wm61/status-battery-2.png') 1x, url('/static_images/wm61/status-battery-2@2x.png') 2x, url('/static_images/wm61/status-battery-2@4x.png') 4x); }
+.wm-status-icon[data-icon="battery-1"] { background-image: image-set(url('/static_images/wm61/status-battery-1.png') 1x, url('/static_images/wm61/status-battery-1@2x.png') 2x, url('/static_images/wm61/status-battery-1@4x.png') 4x); }
+.wm-status-icon[data-icon="battery-empty"] { background-image: image-set(url('/static_images/wm61/status-battery-empty.png') 1x, url('/static_images/wm61/status-battery-empty@2x.png') 2x, url('/static_images/wm61/status-battery-empty@4x.png') 4x); }
+.wm-status-icon[data-icon="battery-charging"] { background-image: image-set(url('/static_images/wm61/status-battery-charging.png') 1x, url('/static_images/wm61/status-battery-charging@2x.png') 2x, url('/static_images/wm61/status-battery-charging@4x.png') 4x); }
+.wm-status-icon[data-icon="battery-unknown"] { background-image: image-set(url('/static_images/wm61/status-battery-unknown.png') 1x, url('/static_images/wm61/status-battery-unknown@2x.png') 2x, url('/static_images/wm61/status-battery-unknown@4x.png') 4x); }
+.wm-status-icon[data-icon="data-g"] { background-image: image-set(url('/static_images/wm61/status-data-g.png') 1x, url('/static_images/wm61/status-data-g@2x.png') 2x, url('/static_images/wm61/status-data-g@4x.png') 4x); }
+.wm-status-icon[data-icon="data-g-active"] { background-image: image-set(url('/static_images/wm61/status-data-g-active.png') 1x, url('/static_images/wm61/status-data-g-active@2x.png') 2x, url('/static_images/wm61/status-data-g-active@4x.png') 4x); }
+.wm-status-icon[data-icon="data-e"] { background-image: image-set(url('/static_images/wm61/status-data-e.png') 1x, url('/static_images/wm61/status-data-e@2x.png') 2x, url('/static_images/wm61/status-data-e@4x.png') 4x); }
+.wm-status-icon[data-icon="data-e-active"] { background-image: image-set(url('/static_images/wm61/status-data-e-active.png') 1x, url('/static_images/wm61/status-data-e-active@2x.png') 2x, url('/static_images/wm61/status-data-e-active@4x.png') 4x); }
+.wm-status-icon[data-icon="data-3g"] { background-image: image-set(url('/static_images/wm61/status-data-3g.png') 1x, url('/static_images/wm61/status-data-3g@2x.png') 2x, url('/static_images/wm61/status-data-3g@4x.png') 4x); }
+.wm-status-icon[data-icon="data-3g-active"] { background-image: image-set(url('/static_images/wm61/status-data-3g-active.png') 1x, url('/static_images/wm61/status-data-3g-active@2x.png') 2x, url('/static_images/wm61/status-data-3g-active@4x.png') 4x); }
+.wm-status-icon[data-icon="data-h"] { background-image: image-set(url('/static_images/wm61/status-data-h.png') 1x, url('/static_images/wm61/status-data-h@2x.png') 2x, url('/static_images/wm61/status-data-h@4x.png') 4x); }
+.wm-status-icon[data-icon="data-h-active"] { background-image: image-set(url('/static_images/wm61/status-data-h-active.png') 1x, url('/static_images/wm61/status-data-h-active@2x.png') 2x, url('/static_images/wm61/status-data-h-active@4x.png') 4x); }
+.wm-status-icon[data-icon="data-h-plus"] { background-image: image-set(url('/static_images/wm61/status-data-h-plus.png') 1x, url('/static_images/wm61/status-data-h-plus@2x.png') 2x, url('/static_images/wm61/status-data-h-plus@4x.png') 4x); }
+.wm-status-icon[data-icon="data-h-plus-active"] { background-image: image-set(url('/static_images/wm61/status-data-h-plus-active.png') 1x, url('/static_images/wm61/status-data-h-plus-active@2x.png') 2x, url('/static_images/wm61/status-data-h-plus-active@4x.png') 4x); }
+.wm-status-icon[data-icon="data-4g"] { background-image: image-set(url('/static_images/wm61/status-data-4g.png') 1x, url('/static_images/wm61/status-data-4g@2x.png') 2x, url('/static_images/wm61/status-data-4g@4x.png') 4x); }
+.wm-status-icon[data-icon="data-4g-active"] { background-image: image-set(url('/static_images/wm61/status-data-4g-active.png') 1x, url('/static_images/wm61/status-data-4g-active@2x.png') 2x, url('/static_images/wm61/status-data-4g-active@4x.png') 4x); }
+.wm-status-icon[data-icon="data-4g-plus"] { background-image: image-set(url('/static_images/wm61/status-data-4g-plus.png') 1x, url('/static_images/wm61/status-data-4g-plus@2x.png') 2x, url('/static_images/wm61/status-data-4g-plus@4x.png') 4x); }
+.wm-status-icon[data-icon="data-4g-plus-active"] { background-image: image-set(url('/static_images/wm61/status-data-4g-plus-active.png') 1x, url('/static_images/wm61/status-data-4g-plus-active@2x.png') 2x, url('/static_images/wm61/status-data-4g-plus-active@4x.png') 4x); }
+.wm-status-icon[data-icon="data-5g"] { background-image: image-set(url('/static_images/wm61/status-data-5g.png') 1x, url('/static_images/wm61/status-data-5g@2x.png') 2x, url('/static_images/wm61/status-data-5g@4x.png') 4x); }
+.wm-status-icon[data-icon="data-5g-active"] { background-image: image-set(url('/static_images/wm61/status-data-5g-active.png') 1x, url('/static_images/wm61/status-data-5g-active@2x.png') 2x, url('/static_images/wm61/status-data-5g-active@4x.png') 4x); }
+.wm-status-icon[data-icon="data-5g-plus"] { background-image: image-set(url('/static_images/wm61/status-data-5g-plus.png') 1x, url('/static_images/wm61/status-data-5g-plus@2x.png') 2x, url('/static_images/wm61/status-data-5g-plus@4x.png') 4x); }
+.wm-status-icon[data-icon="data-5g-plus-active"] { background-image: image-set(url('/static_images/wm61/status-data-5g-plus-active.png') 1x, url('/static_images/wm61/status-data-5g-plus-active@2x.png') 2x, url('/static_images/wm61/status-data-5g-plus-active@4x.png') 4x); }
+.wm-status-icon[data-icon="signal-search"] {
+    background-image: image-set(url('/static_images/wm61/status-signal-search-1.png') 1x, url('/static_images/wm61/status-signal-search-1@2x.png') 2x, url('/static_images/wm61/status-signal-search-1@4x.png') 4x);
+    animation: wm-signal-search 1.5s step-end infinite;
+}
+@keyframes wm-signal-search {
+    0% { background-image: image-set(url('/static_images/wm61/status-signal-search-1.png') 1x, url('/static_images/wm61/status-signal-search-1@2x.png') 2x, url('/static_images/wm61/status-signal-search-1@4x.png') 4x); }
+    33.333% { background-image: image-set(url('/static_images/wm61/status-signal-search-2.png') 1x, url('/static_images/wm61/status-signal-search-2@2x.png') 2x, url('/static_images/wm61/status-signal-search-2@4x.png') 4x); }
+    66.667% { background-image: image-set(url('/static_images/wm61/status-signal-search-3.png') 1x, url('/static_images/wm61/status-signal-search-3@2x.png') 2x, url('/static_images/wm61/status-signal-search-3@4x.png') 4x); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .wm-status-icon[data-icon="signal-search"] { animation: none; }
+}
 
 /* ok / X: 19 x 17 px box 4 px from the top and 3 px from the right (device: 38 x 34 at 2x).
  * 1 px dark border, 1 px light top edge, gradient fill, and the ROM's white glyph (gwes 8300-8303,
