@@ -4561,6 +4561,11 @@ class WebSocketClient {
                     // Flash down arrow to indicate inbound traffic. Not for the Sidebar's live feed: a
                     // push every 2 s kept the tray globe (and the frames behind it) busy while idle
                     if (!message || message.type !== 'sidebar_live') this.flashWebSocketArrow('down');
+                    // a coalesced step frame must draw before any later message (results, errors)
+                    // flushCoalescedImageProgress: public/scripts/ws/handlers/50-generationInbound.js
+                    if (message && message.type !== 'image_generation_progress' && typeof flushCoalescedImageProgress === 'function') {
+                        flushCoalescedImageProgress();
+                    }
                     this.handleMessage(message);
                 } catch (error) {
                     console.error('❌ Failed to handle WebSocket message:', message && message.type, error);

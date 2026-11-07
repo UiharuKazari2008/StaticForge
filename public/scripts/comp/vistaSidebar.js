@@ -26,6 +26,31 @@ const VSB_ASSETS = '/static_images/vista-sidebar/';
 const VSB_SAVE_DELAY_MS = 600;
 const VSB_DOCK_GAP = 10;
 const VSB_DRAG_THRESHOLD = 4;
+const VSB_RESIZE_DEBOUNCE_MS = 150;
+
+/**
+ * Pointer moves fire up to the display rate or more; run the handler once per frame with the
+ * latest event. flush() runs a pending move at once (call it before the drag ends).
+ */
+const vsbRafCoalesce = function (fn) {
+    let pending = null;
+    let frame = 0;
+    const run = () => {
+        frame = 0;
+        const ev = pending;
+        pending = null;
+        if (ev) fn(ev);
+    };
+    const wrapped = (ev) => {
+        pending = ev;
+        if (!frame) frame = requestAnimationFrame(run);
+    };
+    wrapped.flush = () => {
+        if (frame) cancelAnimationFrame(frame);
+        run();
+    };
+    return wrapped;
+};
 const VSB_DEFAULT_GADGETS = ['clock', 'slideshow', 'mail'];
 const VSB_IMAGE_SOURCES = [['images', 'All images'], ['pinned', 'Favorites only']];
 const VSB_WEATHER_PLACE_ALTS = [['none', 'Nothing'], ['hilo', 'High / Low'], ['rain', 'Chance of rain'], ['condition', 'Condition name'], ['uv', 'UV index (today\'s peak)']];
@@ -1206,13 +1231,15 @@ const vsbSlideResizeStart = function (e, inst) {
         inst.g.settings.scale = Math.round(Math.min(max, Math.max(VSB_SLIDE_SCALE_MIN, start + grow)) * 100) / 100;
         frame.style.zoom = String(inst.g.settings.scale);
     };
+    const moveRaf = vsbRafCoalesce(move);
     const end = () => {
-        grip.removeEventListener('pointermove', move);
+        moveRaf.flush();
+        grip.removeEventListener('pointermove', moveRaf);
         grip.removeEventListener('pointerup', end);
         grip.removeEventListener('pointercancel', end);
         if (inst.g.settings.scale !== start) vsbQueueSave();
     };
-    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointermove', moveRaf);
     grip.addEventListener('pointerup', end);
     grip.addEventListener('pointercancel', end);
 };
@@ -2256,8 +2283,10 @@ const vsbTimerWind = function (inst, band, event) {
         vsbTimerPaint(inst);
         vsbTimerSound(inst, band === 'mins' ? 'windMins' : 'windSecs');
     };
+    const moveRaf = vsbRafCoalesce(move);
     const up = () => {
-        document.removeEventListener('pointermove', move);
+        moveRaf.flush();
+        document.removeEventListener('pointermove', moveRaf);
         document.removeEventListener('pointerup', up);
         const total = s.mins * 60 + s.secs;
         s.endAt = total > 0 ? Date.now() + total * 1000 : 0;
@@ -2266,7 +2295,7 @@ const vsbTimerWind = function (inst, band, event) {
         vsbTimerArm(inst);
         vsbQueueSave();
     };
-    document.addEventListener('pointermove', move);
+    document.addEventListener('pointermove', moveRaf);
     document.addEventListener('pointerup', up);
 };
 
@@ -3045,7 +3074,11 @@ const vsbBuildRoot = function () {
     else document.body.appendChild(root);
     Object.assign(vsb, { root, pane, dock, prevBtn: prev, nextBtn: next });
     new ResizeObserver(() => vsbPaginate()).observe(pane);
-    window.addEventListener('resize', () => vsbClampDesktopGadgets());
+    let resizeTimer = 0;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(vsbClampDesktopGadgets, VSB_RESIZE_DEBOUNCE_MS);
+    });
     document.addEventListener('copy', vsbClipOnCopy);
     document.addEventListener('pointerdown', (e) => {
         if (vsb.flyout && !e.target.closest('.vsb-flyout, .vsb-slide-view')) vsbCloseFlyout();
@@ -3357,13 +3390,15 @@ const vsbDragStart = function (e, inst) {
     if (!onGrip && e.target.closest('button, input, textarea, select, a, .vsb-puzzle-pad, .vsb-timer-hit')) return;
     vsb.drag = { inst, startX: e.clientX, startY: e.clientY, pointerId: e.pointerId, moving: false };
     const move = (ev) => vsbDragMove(ev);
+    const moveRaf = vsbRafCoalesce(move);
     const up = (ev) => {
-        document.removeEventListener('pointermove', move);
+        moveRaf.flush();
+        document.removeEventListener('pointermove', moveRaf);
         document.removeEventListener('pointerup', up);
         document.removeEventListener('pointercancel', up);
         vsbDragEnd(ev);
     };
-    document.addEventListener('pointermove', move);
+    document.addEventListener('pointermove', moveRaf);
     document.addEventListener('pointerup', up);
     document.addEventListener('pointercancel', up);
 };
@@ -3754,8 +3789,10 @@ const vsbGalleryDragStart = function (e) {
         ghost.style.left = (ev.clientX - 32) + 'px';
         ghost.style.top = (ev.clientY - 32) + 'px';
     };
+    const moveRaf = vsbRafCoalesce(move);
     const up = (ev) => {
-        document.removeEventListener('pointermove', move);
+        moveRaf.flush();
+        document.removeEventListener('pointermove', moveRaf);
         document.removeEventListener('pointerup', up);
         if (!ghost) return;
         ghost.remove();
@@ -3765,7 +3802,7 @@ const vsbGalleryDragStart = function (e) {
         const onPane = vsb.state.enabled && !vsb.state.closed && ev.clientX >= pane.left && ev.clientX <= pane.right;
         vsbAddGadget(type, onPane ? {} : { docked: false, x: ev.clientX - 65, y: ev.clientY - 40 });
     };
-    document.addEventListener('pointermove', move);
+    document.addEventListener('pointermove', moveRaf);
     document.addEventListener('pointerup', up);
 };
 

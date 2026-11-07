@@ -1235,7 +1235,9 @@ function updateComparePointerDrag(e) {
 
     if (movedEnough && heldLongEnough) {
         compareDragMoved = true;
-        updateCompareSplitFromPointer(e.clientX);
+        // the element and document both deliver this move: draw the split once per frame
+        compareSplitPendingX = e.clientX;
+        if (!compareSplitFrame) compareSplitFrame = requestAnimationFrame(flushCompareSplit);
         e.preventDefault();
     }
 }
@@ -1244,6 +1246,8 @@ function endComparePointerDrag(e) {
     if (e.pointerId !== compareDragPointerId) {
         return;
     }
+
+    flushCompareSplit();
 
     if (compareDragMoved) {
         suppressNextPreviewClick = true;
@@ -1256,6 +1260,17 @@ function endComparePointerDrag(e) {
     compareDragPointerId = null;
     compareDragMoved = false;
     updateCompareDisplayState();
+}
+
+let compareSplitPendingX = null;
+let compareSplitFrame = 0;
+
+function flushCompareSplit() {
+    if (compareSplitFrame) cancelAnimationFrame(compareSplitFrame);
+    compareSplitFrame = 0;
+    const x = compareSplitPendingX;
+    compareSplitPendingX = null;
+    if (x !== null) updateCompareSplitFromPointer(x);
 }
 
 function updateCompareSplitFromPointer(clientX) {
