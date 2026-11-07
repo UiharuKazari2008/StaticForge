@@ -76,6 +76,43 @@ const DIRECTOR_MASCOT_FACE_FALLBACK = {
     sleepy: ['neutral']
 };
 
+// The typed part of a VN line with its emphasis already applied: **bold** and *italic* markers are
+// read as they come, the first `count` visible characters are emitted (from `start`), and open tags are
+// closed at the cut. Typing never switches between plain text and HTML, so italics do not flicker.
+function directorMascotTypedHtml(raw, count, start = 0) {
+    const text = String(raw || '');
+    const esc = (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c);
+    const open = [];
+    let out = '';
+    let seen = 0;
+    let started = start <= 0;
+    for (let i = 0; i < text.length && seen < count; i++) {
+        const tag = text.startsWith('**', i) ? 'strong' : (text[i] === '*' ? 'em' : '');
+        if (tag) {
+            if (tag === 'strong') i += 1;
+            const at = open.lastIndexOf(tag);
+            if (at >= 0) {
+                // close back to it, then reopen what was inside
+                const inner = open.splice(at);
+                inner.slice().reverse().forEach((t) => { if (started) out += `</${t}>`; });
+                inner.slice(1).forEach((t) => { open.push(t); if (started) out += `<${t}>`; });
+            } else {
+                open.push(tag);
+                if (started) out += `<${tag}>`;
+            }
+            continue;
+        }
+        seen += 1;
+        if (!started && seen > start) {
+            started = true;
+            out += '…' + open.map((t) => `<${t}>`).join('');
+        }
+        if (started) out += esc(text[i]);
+    }
+    if (started) out += open.slice().reverse().map((t) => `</${t}>`).join('');
+    return out;
+}
+
 class DirectorMascot {
     // options.isHosted(): true while she should show (the Director window, not Studio's inline panel).
     constructor(options = {}) {
@@ -842,21 +879,16 @@ class DirectorMascot {
         } else if (on && this.el.liveLine) {
             const r = this._reader;
             const item = r && r.current ? r.current : null;
-            let say = item ? item.text.slice(0, Math.floor(r.shown)) : '';
-            if (say.length > 480) {
-                const cut = say.slice(-480);
-                const space = cut.indexOf(' ');
-                say = `…${space > 0 ? cut.slice(space + 1) : cut}`;
-            }
+            const shown = item ? Math.floor(r.shown) : 0;
             const typing = !!item && r.shown < item.text.length;
             this.el.result.classList.toggle('dm-typing', typing);
-            // Typed as plain text; once the line is whole its *italic* / **bold** emphasis shows.
-            const whole = !!say && !typing && item.raw && item.raw.length <= 480;
-            const key = whole ? `h:${item.raw}` : `t:${say}`;
+            const key = item ? `${item.raw.length}:${shown}:${typing ? 1 : 0}` : '';
             if (this._sayKey !== key) {
                 this._sayKey = key;
-                if (whole && typeof directorLineHtml === 'function') this.el.liveLine.innerHTML = `“${directorLineHtml(item.raw)}”`;
-                else this.el.liveLine.textContent = say ? `“${say}` : '';
+                // Long lines keep their last 480 characters in view.
+                const from = Math.max(0, shown - 480);
+                const html = item ? directorMascotTypedHtml(item.raw, shown, from) : '';
+                this.el.liveLine.innerHTML = html ? `\u201c${html}${typing ? '' : '\u201d'}` : '';
                 this.el.dialogBody.scrollTop = this.el.dialogBody.scrollHeight;
             }
         }
@@ -1446,4 +1478,4 @@ class DirectorMascot {
 }
 
 if (typeof window !== 'undefined') window.DirectorMascot = DirectorMascot;
-if (typeof module !== 'undefined' && module.exports) module.exports = { DirectorMascot, directorMascotGrowthPoints, directorMascotCardPoints, directorMascotStageFor, directorMascotGrowth };
+if (typeof module !== 'undefined' && module.exports) module.exports = { DirectorMascot, directorMascotTypedHtml, directorMascotGrowthPoints, directorMascotCardPoints, directorMascotStageFor, directorMascotGrowth };
