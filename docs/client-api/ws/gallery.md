@@ -185,7 +185,8 @@ Additional response/push types from handler:
 | `viewType` | Optional |
 | `includePinnedStatus` | Optional |
 | `offset` | Optional |
-| `workspaceId` | Optional |
+| `workspaceId` | Optional. With `peek: true`, reads that workspace without calling `setActiveWorkspace` (home-screen widgets). Without `peek`, a different `workspaceId` still switches the session. |
+| `peek` | Optional boolean. When `true` with a `workspaceId`, list that workspace and leave the session active workspace alone. |
 | `light` | Optional |
 | `limit` | Optional |
 | `galleryBlockFetch` | Optional |
@@ -193,7 +194,7 @@ Additional response/push types from handler:
 
 **Success response:** `request_gallery_response`
 
-Probe (`limit: 0`) and pages also include `lastGalleryUpdatedAt` (gallery index `updated_at`, ms) and, on offset 0 pages, `latestFilename`. On connect the server also pushes `gallery_hint` with the same fields so a reconnecting client can append without a full reload.
+Probe (`limit: 0`) and pages also include `lastGalleryUpdatedAt` (gallery index `updated_at`, ms) and, on offset 0 pages, `latestFilename`. Meta probes also send `peekSupported: true` so clients know peek is available. On connect the server also pushes `gallery_hint` with the same fields so a reconnecting client can append without a full reload.
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
