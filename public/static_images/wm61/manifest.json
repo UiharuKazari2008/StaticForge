@@ -3367,119 +3367,111 @@
     },
     "status-signal-1": {
       "1x": {
-        "source": "box-downscaled from @2x",
+        "source": "\\Windows\\signal.bmp (WM 6.1 Help art of the title-bar signal glyph, 16x16), black -> white glyph; bars above level 1 removed",
         "size": [
           16,
           16
         ]
       },
       "2x": {
-        "source": "Melaton drawn on shellres.192.dll ico_4675_0_32x32",
+        "source": "1x point-upscaled (1-bit art)",
         "size": [
           32,
           32
         ]
       },
       "4x": {
-        "source": "point-upscaled from @2x (1-bit art)",
+        "source": "1x point-upscaled (1-bit art)",
         "size": [
           64,
           64
         ]
       },
       "flags": [
-        "1x-downscaled-from-2x",
-        "4x-point-upscaled",
-        "melaton-drawn"
+        "4x-point-upscaled"
       ],
-      "notes": "Signal, 1 of 4 bars. Melaton extension: the ROM has no signal-bar icons, so the antenna (4675) gets 1 ascending 2 px bars (x 18,22,26,30; 4/8/12/16 px tall, bottom on the antenna row 22). Level 0 uses status-signal-none."
+      "notes": "Signal, 1 of 4 bars: the antenna and WM's stepped bars (the lowest under the stem), as signal.bmp shows full signal and a WM 6.1 device draws it."
     },
     "status-signal-2": {
       "1x": {
-        "source": "box-downscaled from @2x",
+        "source": "\\Windows\\signal.bmp (WM 6.1 Help art of the title-bar signal glyph, 16x16), black -> white glyph; bars above level 2 removed",
         "size": [
           16,
           16
         ]
       },
       "2x": {
-        "source": "Melaton drawn on shellres.192.dll ico_4675_0_32x32",
+        "source": "1x point-upscaled (1-bit art)",
         "size": [
           32,
           32
         ]
       },
       "4x": {
-        "source": "point-upscaled from @2x (1-bit art)",
+        "source": "1x point-upscaled (1-bit art)",
         "size": [
           64,
           64
         ]
       },
       "flags": [
-        "1x-downscaled-from-2x",
-        "4x-point-upscaled",
-        "melaton-drawn"
+        "4x-point-upscaled"
       ],
-      "notes": "Signal, 2 of 4 bars. Melaton extension: the ROM has no signal-bar icons, so the antenna (4675) gets 2 ascending 2 px bars (x 18,22,26,30; 4/8/12/16 px tall, bottom on the antenna row 22). Level 0 uses status-signal-none."
+      "notes": "Signal, 2 of 4 bars: the antenna and WM's stepped bars (the lowest under the stem), as signal.bmp shows full signal and a WM 6.1 device draws it."
     },
     "status-signal-3": {
       "1x": {
-        "source": "box-downscaled from @2x",
+        "source": "\\Windows\\signal.bmp (WM 6.1 Help art of the title-bar signal glyph, 16x16), black -> white glyph; bars above level 3 removed",
         "size": [
           16,
           16
         ]
       },
       "2x": {
-        "source": "Melaton drawn on shellres.192.dll ico_4675_0_32x32",
+        "source": "1x point-upscaled (1-bit art)",
         "size": [
           32,
           32
         ]
       },
       "4x": {
-        "source": "point-upscaled from @2x (1-bit art)",
+        "source": "1x point-upscaled (1-bit art)",
         "size": [
           64,
           64
         ]
       },
       "flags": [
-        "1x-downscaled-from-2x",
-        "4x-point-upscaled",
-        "melaton-drawn"
+        "4x-point-upscaled"
       ],
-      "notes": "Signal, 3 of 4 bars. Melaton extension: the ROM has no signal-bar icons, so the antenna (4675) gets 3 ascending 2 px bars (x 18,22,26,30; 4/8/12/16 px tall, bottom on the antenna row 22). Level 0 uses status-signal-none."
+      "notes": "Signal, 3 of 4 bars: the antenna and WM's stepped bars (the lowest under the stem), as signal.bmp shows full signal and a WM 6.1 device draws it."
     },
     "status-signal-4": {
       "1x": {
-        "source": "box-downscaled from @2x",
+        "source": "\\Windows\\signal.bmp (WM 6.1 Help art of the title-bar signal glyph, 16x16), black -> white glyph; bars above level 4 removed",
         "size": [
           16,
           16
         ]
       },
       "2x": {
-        "source": "Melaton drawn on shellres.192.dll ico_4675_0_32x32",
+        "source": "1x point-upscaled (1-bit art)",
         "size": [
           32,
           32
         ]
       },
       "4x": {
-        "source": "point-upscaled from @2x (1-bit art)",
+        "source": "1x point-upscaled (1-bit art)",
         "size": [
           64,
           64
         ]
       },
       "flags": [
-        "1x-downscaled-from-2x",
-        "4x-point-upscaled",
-        "melaton-drawn"
+        "4x-point-upscaled"
       ],
-      "notes": "Signal, 4 of 4 bars. Melaton extension: the ROM has no signal-bar icons, so the antenna (4675) gets 4 ascending 2 px bars (x 18,22,26,30; 4/8/12/16 px tall, bottom on the antenna row 22). Level 0 uses status-signal-none."
+      "notes": "Signal, 4 of 4 bars: the antenna and WM's stepped bars (the lowest under the stem), as signal.bmp shows full signal and a WM 6.1 device draws it."
     },
     "status-roaming": {
       "1x": {
