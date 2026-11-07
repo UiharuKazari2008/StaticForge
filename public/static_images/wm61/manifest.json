@@ -21,8 +21,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Connectivity, not connected (arrows with x), as in ref/today.png."
     },
@@ -41,8 +49,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Connectivity, connected (two arrows)."
     },
@@ -61,8 +77,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Radio off (antenna with x)."
     },
@@ -81,8 +105,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Antenna without bars or dots."
     },
@@ -101,8 +133,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Antenna + 1 dot; with -2/-3 probably the searching-for-service sequence. No ascending signal-bar icons exist in this ROM dump."
     },
@@ -121,8 +161,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Antenna + 2 dots."
     },
@@ -141,8 +189,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Antenna + 3 dots."
     },
@@ -161,8 +217,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Antenna with \"!\" (radio/SIM problem)."
     },
@@ -181,8 +245,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Speaker on, as in ref/today.png."
     },
@@ -201,8 +273,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Speaker muted (x)."
     },
@@ -221,8 +301,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Vibrate."
     },
@@ -241,8 +329,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "4 bars, as in ref/today.png."
     },
@@ -261,8 +357,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "3 bars."
     },
@@ -281,8 +385,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "2 bars."
     },
@@ -301,8 +413,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "1 bar."
     },
@@ -321,8 +441,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Empty with \"!\" (critical)."
     },
@@ -341,8 +469,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Charging plug."
     },
@@ -361,8 +497,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Upright battery with \"!\" (no battery / unknown)."
     },
@@ -381,8 +525,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Data arrows sequence 4744-4761 (frames in id order); probably the connecting/transfer animation. Frame 00 = both arrows, no tails."
     },
@@ -401,8 +553,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-02": {
@@ -420,8 +580,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-03": {
@@ -439,8 +607,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-04": {
@@ -458,8 +634,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-05": {
@@ -477,8 +661,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-06": {
@@ -496,8 +688,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-07": {
@@ -515,8 +715,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-08": {
@@ -534,8 +742,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-09": {
@@ -553,8 +769,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-10": {
@@ -572,8 +796,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-11": {
@@ -591,8 +823,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-12": {
@@ -610,8 +850,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-13": {
@@ -629,8 +877,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-14": {
@@ -648,8 +904,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-15": {
@@ -667,8 +931,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-16": {
@@ -686,8 +958,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "status-data-anim-17": {
@@ -705,8 +985,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ]
     },
     "title-close": {
@@ -724,7 +1012,17 @@
           52
         ]
       },
-      "notes": "Glyph only (white, alpha from mask). Canvas is the whole title-bar cell: at 2x x=433..478, y=0..51 on a 480-wide screen. The green button behind it is drawn (see README/report)."
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          92,
+          104
+        ]
+      },
+      "notes": "Glyph only (white, alpha from mask). Canvas is the whole title-bar cell: at 2x x=433..478, y=0..51 on a 480-wide screen. The green button behind it is drawn (see README/report).",
+      "flags": [
+        "4x-point-upscaled"
+      ]
     },
     "title-ok": {
       "1x": {
@@ -741,7 +1039,17 @@
           52
         ]
       },
-      "notes": "Glyph only, same cell as title-close."
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          92,
+          104
+        ]
+      },
+      "notes": "Glyph only, same cell as title-close.",
+      "flags": [
+        "4x-point-upscaled"
+      ]
     },
     "sip-keyboard": {
       "1x": {
@@ -758,8 +1066,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "White keyboard glyph (identical to shellres.192 icon 5081). msim.dll 1x icon 15376 is the older grey 2-bpp keyboard art (different design), so 1x is downscaled."
     },
@@ -1628,7 +1944,17 @@
           14
         ]
       },
-      "notes": "Mask glyph (black, recolour at runtime: menus draw it in the item text colour, e.g. #087D10 in ref/menu-submenu.png). 2x matches the ref exactly."
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          28,
+          28
+        ]
+      },
+      "notes": "Mask glyph (black, recolour at runtime: menus draw it in the item text colour, e.g. #087D10 in ref/menu-submenu.png). 2x matches the ref exactly.",
+      "flags": [
+        "4x-point-upscaled"
+      ]
     },
     "menu-submenu-arrow": {
       "1x": {
@@ -1645,8 +1971,16 @@
           16
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          16,
+          32
+        ]
+      },
       "flags": [
-        "canvas-padded"
+        "canvas-padded",
+        "4x-point-upscaled"
       ],
       "notes": "Mask glyph; glyph 4x7 (1x) / 8x15 (2x), padded with one transparent row at the bottom to keep 2:1. Ref shows 14 rows at 2x (last 1px row clipped by the menu)."
     },
@@ -3018,8 +3352,16 @@
           32
         ]
       },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
       "flags": [
-        "1x-downscaled-from-2x"
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
       ],
       "notes": "Speech bubble: several notifications pending (title bar), as on the emulator with two SHNotificationAdd bubbles."
     },

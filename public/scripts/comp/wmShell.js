@@ -28,7 +28,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-clock", "set-connections", "set-memory", "set-menus", "set-owner", "set-power", "set-regional", "set-screen", "set-sounds", "set-today", "set-usb", "set-wireless", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-off", "status-data-on", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
+    const HD_ART = new Set(["app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-clock", "set-connections", "set-memory", "set-menus", "set-owner", "set-power", "set-regional", "set-screen", "set-sounds", "set-today", "set-usb", "set-wireless", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-off", "status-data-on", "status-notify-many", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
     const srcset = (name) => `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -145,14 +145,10 @@
         }).observe(document.head, { childList: true });
     }
 
-    // White title-bar glyphs drawn like WM's own (16 x 16 masks; the colour comes from CSS):
-    // an envelope for unread mail, a picture for prints in progress, a clapperboard for the Director
-    const svgUrl = (body) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>${body}</svg>`)}")`;
-    const GLYPHS = {
-        mail: svgUrl("<path d='M1 3.5h14v9H1z M2.6 4.7 8 8.8l5.4-4.1v-.01H2.6z' fill-rule='evenodd'/>"),
-        prints: svgUrl("<path d='M1.5 2.5h13v11h-13z M3 4v6.6l3.2-3.2 2.4 2.4 1.6-1.6L13 11V4z' fill-rule='evenodd'/><circle cx='10.6' cy='6' r='1.2'/>"),
-        director: svgUrl("<path d='M1.5 7h13v6.5h-13z'/><path d='M1.2 3.1 13.8 1.3l.5 3.2L1.7 6.3z M4.2 2.7l2.2 2.9 1.7-.2-2.2-2.9z M8.4 2.1l2.2 2.9 1.7-.2-2.2-2.9z' fill-rule='evenodd'/>")
-    };
+    // Title-bar notification icons are the notifying program's own small icon in colour, as WM 6.1
+    // draws them (SHNotificationAdd on the emulator, ~/.cache/wm61 wn1.png: Messaging's envelope)
+    const STATUS_APP_ICONS = { mail: 'app-messaging', prints: 'app-studio', director: 'app-director' };
+    const artImageSet = (name) => `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x${HD_ART.has(name) ? `, url("${ART}${name}@4x.png") 4x` : ''})`;
 
     // ---------------------------------------------------------------- frame
 
@@ -167,9 +163,9 @@
                 <div class="wm-title" role="heading" aria-level="1">Start</div>
                 <div class="wm-status">
                     <button type="button" class="wm-status-icon" data-role="notify" hidden aria-label="Notifications"></button>
-                    <button type="button" class="wm-status-icon wm-status-glyph" data-role="mail" hidden aria-label="Messages"></button>
-                    <button type="button" class="wm-status-icon wm-status-glyph" data-role="prints" hidden aria-label="Prints"></button>
-                    <button type="button" class="wm-status-icon wm-status-glyph" data-role="director" hidden aria-label="Director"></button>
+                    <button type="button" class="wm-status-icon wm-status-app" data-role="mail" hidden aria-label="Messages"></button>
+                    <button type="button" class="wm-status-icon wm-status-app" data-role="prints" hidden aria-label="Prints"></button>
+                    <button type="button" class="wm-status-icon wm-status-app" data-role="director" hidden aria-label="Director"></button>
                     <button type="button" class="wm-status-icon" data-role="data" data-icon="data-off" aria-label="Connectivity"></button>
                     <button type="button" class="wm-status-icon" data-role="roaming" data-icon="roaming" hidden aria-label="Roaming"></button>
                     <button type="button" class="wm-status-icon" data-role="signal" hidden aria-label="Phone signal"></button>
@@ -208,7 +204,7 @@
                 pressSoftKey(btn.dataset.side, btn);
             });
         });
-        shell.querySelectorAll('.wm-status-glyph').forEach((b) => b.style.setProperty('--wm-glyph', GLYPHS[b.dataset.role]));
+        shell.querySelectorAll('.wm-status-app').forEach((b) => { b.style.backgroundImage = artImageSet(STATUS_APP_ICONS[b.dataset.role]); });
         shell.querySelectorAll('.wm-status-icon').forEach((b) => {
             b.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -1006,8 +1002,7 @@
     function noteIcon(n) {
         const img = n.toast && n.toast.querySelector('.toast-icon img[src]');
         if (img) return `url("${img.src.replace(/"/g, '%22')}")`;
-        const name = n.type === 'error' ? 'msgbox-error' : n.type === 'warning' ? 'msgbox-warning' : 'msgbox-info';
-        return `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x${HD_ART.has(name) ? `, url("${ART}${name}@4x.png") 4x` : ''})`;
+        return artImageSet(n.type === 'error' ? 'msgbox-error' : n.type === 'warning' ? 'msgbox-warning' : 'msgbox-info');
     }
 
     function renderNotes() {

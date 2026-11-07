@@ -207,12 +207,23 @@ html.ui-mobile[data-wm-app="today"][data-wm-boot="reveal"] #wmShell {
     text-overflow: ellipsis;
 }
 
+/* Icons on a 21 px pitch (16 px + 5 px), ending 6 px before the ok / X button. WM keeps the
+ * button's place when an app has none, so the icons do not move; on Today they end at x 209
+ * (emulator 2x: cells 262 / 304 / 346 / 386 on Today, 308 / 350 / 392 + button at 436 in apps). */
 .wm-status {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: calc(4 * var(--wm-px));
-    padding-right: calc(4 * var(--wm-px));
+    gap: calc(5 * var(--wm-px));
+    padding-right: calc(6 * var(--wm-px));
+}
+
+.wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status {
+    padding-right: calc(28 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status {
+    padding-right: calc(31 * var(--wm-px));
 }
 
 .wm-status-icon {
@@ -226,7 +237,7 @@ html.ui-mobile[data-wm-app="today"][data-wm-boot="reveal"] #wmShell {
 .wm-status-icon[data-icon="data-active"] { background-image: image-set(url('/static_images/wm61/status-data-active.png') 1x, url('/static_images/wm61/status-data-active@2x.png') 2x); }
 .wm-status-icon[data-icon="volume"] { background-image: image-set(url('/static_images/wm61/status-volume.png') 1x, url('/static_images/wm61/status-volume@2x.png') 2x, url('/static_images/wm61/status-volume@4x.png') 4x); }
 .wm-status-icon[data-icon="volume-off"] { background-image: image-set(url('/static_images/wm61/status-volume-off.png') 1x, url('/static_images/wm61/status-volume-off@2x.png') 2x, url('/static_images/wm61/status-volume-off@4x.png') 4x); }
-.wm-status-icon[data-icon="notify-many"] { background-image: image-set(url('/static_images/wm61/status-notify-many.png') 1x, url('/static_images/wm61/status-notify-many@2x.png') 2x); }
+.wm-status-icon[data-icon="notify-many"] { background-image: image-set(url('/static_images/wm61/status-notify-many.png') 1x, url('/static_images/wm61/status-notify-many@2x.png') 2x, url('/static_images/wm61/status-notify-many@4x.png') 4x); }
 /* device status (#709): battery, signal, roaming, data type and Wi-Fi from the Android app or the
  * browser. ROM art; signal bars, H+, LTE (4G) and 5G are Melaton-drawn in the same style. */
 .wm-status-icon[data-icon="signal-1"] { background-image: image-set(url('/static_images/wm61/status-signal-1.png') 1x, url('/static_images/wm61/status-signal-1@2x.png') 2x, url('/static_images/wm61/status-signal-1@4x.png') 4x); }
@@ -1977,8 +1988,8 @@ html.ui-mobile body > .pswp .pswp__preloader {
     outline: none;
 }
 
-/* ---- title-bar status icons as buttons; extra glyphs (Director, prints, mail) are white
- * silhouettes of their app icons, like WM's own glyphs ---- */
+/* ---- title-bar status icons as buttons; the notification icons (Director, prints, mail) are
+ * their programs' own colour icons, as WM 6.1 draws a notifying program's icon ---- */
 .wm-status-icon {
     padding: 0 !important;
 }
@@ -1988,13 +1999,7 @@ html.ui-mobile body > .pswp .pswp__preloader {
     display: none !important;
 }
 
-.wm-status-glyph {
-    background: #fff !important;
-    -webkit-mask: center / contain no-repeat var(--wm-glyph);
-    mask: center / contain no-repeat var(--wm-glyph);
-}
-
-.wm-status-glyph.is-busy {
+.wm-status-app.is-busy {
     animation: wm-status-pulse 1.2s steps(2, jump-none) infinite;
 }
 

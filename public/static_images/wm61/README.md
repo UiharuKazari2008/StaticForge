@@ -4,6 +4,10 @@ Source: Windows Mobile 6.1 Professional ROM (VGA build), dumped from the Device
 Emulator. Yozora #709.
 
 - `<name>.png` = 1x (96 dpi), `<name>@2x.png` = 2x (192 dpi). Sizes are exactly 2:1.
+- `<name>@4x.png` (dense phones) comes from the @2x art: 1-bit glyphs (status,
+  title-bar, menu and SIP icons) are point-upscaled so their pixel steps stay
+  as the ROM draws them; colour icons go through 4x-UltraSharp
+  (`~/.cache/wm61/up4/run.js`).
 - Straight-alpha PNG32. Magenta keys and icon AND masks are converted to alpha.
 - `manifest.json` lists the source module and resource id of every file, its pixel
   sizes and flags. This ROM ships mostly 192-dpi DLLs, so many 1x files are
