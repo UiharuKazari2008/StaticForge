@@ -166,6 +166,7 @@
                 </button>
                 <div class="wm-title" role="heading" aria-level="1">Start</div>
                 <div class="wm-status">
+                    <button type="button" class="wm-status-icon" data-role="notify" hidden aria-label="Notifications"></button>
                     <button type="button" class="wm-status-icon wm-status-glyph" data-role="mail" hidden aria-label="Messages"></button>
                     <button type="button" class="wm-status-icon wm-status-glyph" data-role="prints" hidden aria-label="Prints"></button>
                     <button type="button" class="wm-status-icon wm-status-glyph" data-role="director" hidden aria-label="Director"></button>
@@ -183,7 +184,9 @@
             <nav class="wm-startmenu" role="menu" hidden></nav>
             <div class="wm-popup" role="menu" hidden></div>
             <div class="wm-msgbox-layer" hidden></div>
-            <div class="wm-bubble" role="dialog" hidden></div>`;
+            <div class="wm-bubble" role="dialog" hidden></div>
+            <div class="wm-notify-tray" role="listbox" aria-label="Notifications" hidden></div>
+            <div class="wm-notify" role="alertdialog" hidden></div>`;
         document.body.appendChild(shell);
 
         shell.querySelector('.wm-start').addEventListener('click', (e) => {
@@ -206,7 +209,8 @@
         shell.querySelectorAll('.wm-status-icon').forEach((b) => {
             b.addEventListener('click', (e) => {
                 e.stopPropagation();
-                statusBubble(b.dataset.role, b);
+                if (b.dataset.role === 'notify') noteIconTap();
+                else statusBubble(b.dataset.role, b);
             });
         });
         shell.querySelector('.wm-sip').addEventListener('click', () => {
@@ -217,6 +221,8 @@
             // a tap outside an open bubble hides it (its own buttons and links close it too)
             const bub = shell.querySelector('.wm-bubble');
             if (!bub.hidden && !bub.contains(e.target) && !(e.target.closest && e.target.closest('#wmShell .wm-status-icon'))) closeBubble();
+            // the notification tray closes on a tap elsewhere (the bubble itself stays, as on the device)
+            if (noteTrayOpen && !(e.target.closest && e.target.closest('#wmShell .wm-notify-tray, #wmShell [data-role="notify"]'))) { noteTrayOpen = false; renderNotes(); }
             if (!openPopup || openPopup.contains(e.target)) return;
             // Start and the soft keys toggle their own menus: closing here first would let
             // their click handler open the menu again
@@ -260,6 +266,10 @@
             closed = true;
         } else if (openPopup) {
             closeMenus(true);
+            closed = true;
+        } else if (noteTrayOpen || noteShownNote()) {
+            // a notification bubble or the tray: back hides it (the notification stays in the title bar)
+            if (noteTrayOpen) { noteTrayOpen = false; renderNotes(); } else hideNote();
             closed = true;
         } else if (viewerActive && !viewerClosing) {
             viewerClosing = true;
@@ -316,7 +326,8 @@
 
     function renderSoftKeys() {
         const app = current && apps.get(current);
-        softKeys = viewerActive ? viewerSoftKeys()
+        softKeys = noteShownNote() ? noteSoftKeys()
+            : viewerActive ? viewerSoftKeys()
             : ((app && typeof app.softKeys === 'function' ? app.softKeys() : null) || { left: null, right: null });
         for (const side of ['left', 'right']) {
             const btn = shell.querySelector(`.wm-softkey[data-side="${side}"]`);
@@ -659,6 +670,8 @@
         if (!bubble.hidden && bubble.dataset.role) statusBubble(bubble.dataset.role, shell.querySelector(`.wm-status-icon[data-role="${bubble.dataset.role}"]`), true);
         const today = apps.get('today');
         if (today && typeof today.refresh === 'function' && current === 'today') today.refresh();
+        // notifications held back during startup or a takeover come up once it ends
+        if (notes.length && !noteShown && notesMayPop()) refreshNotes();
     }
 
     // ---------------------------------------------------------------- status: shared state
@@ -762,6 +775,245 @@
     function closeBubble() {
         const el = shell && shell.querySelector('.wm-bubble');
         if (el) { el.hidden = true; el.dataset.role = ''; }
+    }
+
+    // ---------------------------------------------------------------- notifications
+
+    /**
+     * Desktop toasts (toastManager.js, #toastContainer) as WM 6.1 notifications (SHNotificationAdd,
+     * captured on the emulator with ~/.cache/wm61/tools/wmnotify.exe): one bubble at a time, docked on
+     * the soft key bar, title on a band in the highlight colour, a "◀ 1 of N ▶" pager when several are
+     * waiting; soft keys Hide | Dismiss. The title bar shows the notification's icon (several: the
+     * speech-bubble icon); a tap on it brings the bubble back (several: a strip of icons under the title
+     * bar to pick from). Hide keeps it there and shows the next one nobody has seen. Identical toasts
+     * (the same title and text, e.g. one "Updates Complete" per update batch) are one notification.
+     * toastManager keeps the data: #toastContainer stays in the page, hidden, and the bubble's buttons
+     * click the toast's own.
+     */
+    let notes = []; // [{ id (the newest toast), ids, type, title, toast }]
+    let noteShown = null; // a toast id while its bubble is up
+    let noteTrayOpen = false;
+    const noteSeen = new Set(); // toast ids that have had their bubble
+    let noteSnapshot = '';
+    let noteQueued = false;
+    let noteKeysFor = ''; // the soft keys on screen were made for this (bubble id + Dismiss or not)
+
+    function readToasts() {
+        const box = document.getElementById('toastContainer');
+        if (!box) return [];
+        const byKey = new Map();
+        // toastManager prepends: walk oldest first so the list keeps arrival order
+        for (const t of [...box.children].reverse()) {
+            if (!t.id || t.classList.contains('removing')) continue;
+            const titleEl = t.querySelector('.toast-title');
+            const msgEl = t.querySelector('.toast-message');
+            const title = titleEl ? titleEl.textContent.trim() : '';
+            const text = msgEl ? msgEl.textContent.replace(/\s+/g, ' ').trim() : '';
+            const type = (t.className.match(/glass-toast-(\w+)/) || [])[1] || 'info';
+            const key = `${type}\u0001${title}\u0001${text}`;
+            let n = byKey.get(key);
+            if (!n) { n = { ids: [], type, title }; byKey.set(key, n); }
+            n.ids.push(t.id);
+            n.id = t.id;
+            n.toast = t;
+        }
+        return [...byKey.values()];
+    }
+
+    const noteOf = (id) => (id ? notes.find((n) => n.ids.includes(id)) || null : null);
+    const noteShownNote = () => noteOf(noteShown);
+
+    /** Bubbles wait for startup and for full-screen takeovers (logon, errors). */
+    function notesMayPop() {
+        return (!root.dataset.wmBoot || root.dataset.wmBoot === 'done') && !root.dataset.wmTakeover;
+    }
+
+    function queueNotes() {
+        if (noteQueued) return;
+        noteQueued = true;
+        // a timer, not a frame: a tab in the background still keeps its notifications
+        setTimeout(() => { noteQueued = false; refreshNotes(); }, 30);
+    }
+
+    function refreshNotes() {
+        if (!shell) return;
+        notes = readToasts();
+        const live = new Set(notes.flatMap((n) => n.ids));
+        for (const id of [...noteSeen]) if (!live.has(id)) noteSeen.delete(id);
+        if (!noteOf(noteShown)) noteShown = null;
+        if (!notes.length) noteTrayOpen = false;
+        if (!noteShown && !noteTrayOpen && notesMayPop()) {
+            const next = notes.find((n) => !n.ids.some((id) => noteSeen.has(id)));
+            if (next) noteShown = next.id;
+        }
+        const shown = noteShownNote();
+        if (shown) shown.ids.forEach((id) => noteSeen.add(id));
+        renderNotes();
+        const keysFor = shown ? `${shown.id}:${!!shown.toast.querySelector('.toast-close')}` : '';
+        if (keysFor !== noteKeysFor) { noteKeysFor = keysFor; renderSoftKeys(); }
+    }
+
+    function noteTitle(n) {
+        return n.title || 'Dreamscape';
+    }
+
+    /** The title bar / tray icon: the toast's own picture, else a message box icon for its kind. */
+    function noteIcon(n) {
+        const img = n.toast && n.toast.querySelector('.toast-icon img[src]');
+        if (img) return `url("${img.src.replace(/"/g, '%22')}")`;
+        const name = n.type === 'error' ? 'msgbox-error' : n.type === 'warning' ? 'msgbox-warning' : 'msgbox-info';
+        return `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x${HD_ART.has(name) ? `, url("${ART}${name}@4x.png") 4x` : ''})`;
+    }
+
+    function renderNotes() {
+        const icon = shell.querySelector('[data-role="notify"]');
+        icon.hidden = !notes.length;
+        if (notes.length > 1) {
+            icon.dataset.icon = 'notify-many';
+            icon.style.backgroundImage = '';
+            icon.setAttribute('aria-label', `${notes.length} notifications`);
+        } else if (notes.length) {
+            delete icon.dataset.icon;
+            icon.style.backgroundImage = noteIcon(notes[0]);
+            icon.setAttribute('aria-label', `Notification: ${noteTitle(notes[0])}`);
+        }
+        const tray = shell.querySelector('.wm-notify-tray');
+        tray.hidden = !noteTrayOpen;
+        if (noteTrayOpen) {
+            tray.textContent = '';
+            for (const n of notes) {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'wm-notify-tray-icon';
+                b.style.backgroundImage = noteIcon(n);
+                b.setAttribute('aria-label', noteTitle(n));
+                b.addEventListener('click', (e) => { e.stopPropagation(); showNote(n.id); });
+                tray.appendChild(b);
+            }
+        }
+        renderNoteBubble();
+    }
+
+    function renderNoteBubble() {
+        const el = shell.querySelector('.wm-notify');
+        const n = noteShownNote();
+        if (!n) {
+            el.hidden = true;
+            noteSnapshot = '';
+            return;
+        }
+        const at = notes.indexOf(n);
+        const snap = `${n.id}\u0001${at}/${notes.length}\u0001${n.toast.innerHTML}`;
+        el.hidden = false;
+        if (snap === noteSnapshot) return;
+        noteSnapshot = snap;
+        el.textContent = '';
+        const head = document.createElement('div');
+        head.className = 'wm-notify-title';
+        const name = document.createElement('span');
+        name.className = 'wm-notify-name';
+        name.textContent = noteTitle(n);
+        head.appendChild(name);
+        if (notes.length > 1) {
+            const pager = document.createElement('span');
+            pager.className = 'wm-notify-pager';
+            const step = (d, label) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = `wm-notify-step is-${d < 0 ? 'prev' : 'next'}`;
+                b.setAttribute('aria-label', label);
+                b.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const to = notes[(at + d + notes.length) % notes.length];
+                    if (to) showNote(to.id);
+                });
+                return b;
+            };
+            pager.append(step(-1, 'Previous notification'), document.createTextNode(` ${at + 1} of ${notes.length} `), step(1, 'Next notification'));
+            head.appendChild(pager);
+        }
+        el.appendChild(head);
+        const body = document.createElement('div');
+        body.className = 'wm-notify-body';
+        const content = n.toast.querySelector('.toast-content');
+        if (content) {
+            // toastManager's own markup (its message HTML, progress, image preview, buttons) minus the title
+            const copy = content.cloneNode(true);
+            copy.querySelectorAll('.toast-title').forEach((x) => x.remove());
+            copy.querySelectorAll('[id]').forEach((x) => x.removeAttribute('id'));
+            const own = [...content.querySelectorAll('button')];
+            copy.querySelectorAll('button').forEach((b, i) => {
+                b.removeAttribute('onclick');
+                b.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const src = own[i];
+                    const dupes = n.ids.filter((id) => id !== n.id);
+                    if (src && src.isConnected) src.click();
+                    // the same notice twice: one answer settles every copy
+                    dupes.forEach((id) => { if (typeof window.removeGlassToast === 'function') window.removeGlassToast(id); });
+                    queueNotes();
+                });
+            });
+            body.appendChild(copy);
+        }
+        el.appendChild(body);
+    }
+
+    function showNote(id) {
+        noteTrayOpen = false;
+        noteShown = id;
+        closeBubble();
+        refreshNotes();
+    }
+
+    /** Hide: the bubble goes, the icon stays, and a notification nobody has seen yet comes up. */
+    function hideNote() {
+        noteShown = null;
+        refreshNotes();
+    }
+
+    function dismissNote(n) {
+        if (!n) return;
+        n.ids.forEach((id) => { if (typeof window.removeGlassToast === 'function') window.removeGlassToast(id); });
+        noteShown = null;
+        refreshNotes();
+    }
+
+    function noteSoftKeys() {
+        const n = noteShownNote();
+        // progress toasts have no close button: they end on their own
+        const closable = !!(n && n.toast.querySelector('.toast-close'));
+        return {
+            left: { label: 'Hide', action: hideNote },
+            right: closable ? { label: 'Dismiss', action: () => dismissNote(n) } : null
+        };
+    }
+
+    /** The title bar icon: hides an open bubble; one notification comes back, several open the tray. */
+    function noteIconTap() {
+        closeMenus(true);
+        closeBubble();
+        if (noteShownNote()) {
+            notes.forEach((n) => n.ids.forEach((id) => noteSeen.add(id)));
+            hideNote();
+            return;
+        }
+        if (notes.length === 1) { showNote(notes[0].id); return; }
+        noteTrayOpen = !noteTrayOpen;
+        renderNotes();
+    }
+
+    function watchToasts() {
+        const attach = () => {
+            const box = document.getElementById('toastContainer');
+            if (!box || box.dataset.wmWatched) return !!box;
+            box.dataset.wmWatched = '1';
+            new MutationObserver(queueNotes).observe(box, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'aria-valuenow', 'src'] });
+            queueNotes();
+            return true;
+        };
+        // toastManager makes the container with the first toast
+        if (!attach()) new MutationObserver((_, mo) => { if (attach()) mo.disconnect(); }).observe(document.body, { childList: true });
     }
 
     /** The bubble for a title-bar status icon; update=true repaints an open one in place. */
@@ -2015,6 +2267,7 @@
             if (today && today.page) today.refresh();
         });
         watchDirector();
+        watchToasts();
         startBoot();
         refreshStatus();
         setInterval(refreshStatus, 2000);

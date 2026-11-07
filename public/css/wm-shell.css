@@ -175,6 +175,7 @@ html.ui-mobile[data-wm-app="today"] #wmShell {
 .wm-status-icon[data-icon="data-active"] { background-image: image-set(url('/static_images/wm61/status-data-active.png') 1x, url('/static_images/wm61/status-data-active@2x.png') 2x); }
 .wm-status-icon[data-icon="volume"] { background-image: image-set(url('/static_images/wm61/status-volume.png') 1x, url('/static_images/wm61/status-volume@2x.png') 2x, url('/static_images/wm61/status-volume@4x.png') 4x); }
 .wm-status-icon[data-icon="volume-off"] { background-image: image-set(url('/static_images/wm61/status-volume-off.png') 1x, url('/static_images/wm61/status-volume-off@2x.png') 2x, url('/static_images/wm61/status-volume-off@4x.png') 4x); }
+.wm-status-icon[data-icon="notify-many"] { background-image: image-set(url('/static_images/wm61/status-notify-many.png') 1x, url('/static_images/wm61/status-notify-many@2x.png') 2x); }
 
 /* ok / X: 19 x 17 px box 4 px from the top and 3 px from the right (device: 38 x 34 at 2x).
  * 1 px dark border, 1 px light top edge, gradient fill, and the ROM's white glyph (gwes 8300-8303,
@@ -921,123 +922,180 @@ html.ui-mobile #bootMessageBox .boot-message-box-buttons button {
     box-shadow: none !important;
 }
 
-/* ---- toasts: WM notification bubbles under the title bar ---- */
+/* ---- toasts: WM notifications (wmShell.js reads #toastContainer and draws .wm-notify) ---- */
 html.ui-mobile body > #toastContainer {
-    position: fixed !important;
-    left: calc(env(safe-area-inset-left) + 4 * var(--wm-px)) !important;
-    right: calc(env(safe-area-inset-right) + 4 * var(--wm-px)) !important;
-    top: calc(env(safe-area-inset-top) + 28 * var(--wm-px)) !important;
-    bottom: auto !important;
-    width: auto !important;
-    max-width: none !important;
-    z-index: 2050 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    gap: calc(3 * var(--wm-px)) !important;
-    align-items: stretch !important;
-    pointer-events: none !important;
-    padding: 0 !important;
-    transform: none !important;
-}
-
-html.ui-mobile #toastContainer > * {
-    pointer-events: auto !important;
-    position: relative !important;
-    display: flex !important;
-    align-items: flex-start !important;
-    gap: calc(6 * var(--wm-px)) !important;
-    width: auto !important;
-    min-width: 0 !important;
-    max-width: none !important;
-    margin: 0 !important;
-    padding: calc(5 * var(--wm-px)) calc(22 * var(--wm-px)) calc(5 * var(--wm-px)) calc(5 * var(--wm-px)) !important;
-    background: #fff !important;
-    border: calc(1 * var(--wm-px)) solid #000 !important;
-    border-top: calc(3 * var(--wm-px)) solid var(--wm-highlight) !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
-    transform: none !important;
-}
-
-html.ui-mobile #toastContainer > *::before,
-html.ui-mobile #toastContainer > *::after {
     display: none !important;
 }
 
-html.ui-mobile #toastContainer .toast-icon {
-    flex: 0 0 auto !important;
-    width: calc(16 * var(--wm-px)) !important;
-    font-size: calc(13 * var(--wm-px)) !important;
-    color: var(--wm-menu-text) !important;
-    text-shadow: none !important;
+/* emulator (wmnotify.exe, 2x halved): docked on the soft key bar, 4 px in from the sides, 2 px black
+ * frame with rounded top corners, a 21 px title band in the highlight colour, body at least 59 px */
+.wm-notify {
+    position: absolute;
+    left: calc(env(safe-area-inset-left) + 4 * var(--wm-px));
+    right: calc(env(safe-area-inset-right) + 4 * var(--wm-px));
+    bottom: calc(env(safe-area-inset-bottom) + 26 * var(--wm-px));
+    z-index: 9;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(70% - 26 * var(--wm-px));
+    background: #fff;
+    color: #000;
+    border: calc(2 * var(--wm-px)) solid #000;
+    border-bottom: 0;
+    border-radius: calc(8 * var(--wm-px)) calc(8 * var(--wm-px)) 0 0;
+    box-sizing: border-box;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
 }
 
-html.ui-mobile #toastContainer .toast-icon img {
-    width: calc(16 * var(--wm-px)) !important;
-    height: calc(16 * var(--wm-px)) !important;
+.wm-notify[hidden] {
+    display: none;
 }
 
-html.ui-mobile #toastContainer .toast-content {
-    flex: 1 1 auto !important;
-    min-width: 0 !important;
+.wm-notify-title {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    height: calc(19 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px)) 0 calc(8 * var(--wm-px));
+    border-radius: calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) 0 0;
+    background: linear-gradient(to bottom, var(--wm-highlight), color-mix(in srgb, var(--wm-highlight) 82%, #000));
+    color: #fff;
+    font-weight: bold;
 }
 
-html.ui-mobile #toastContainer .toast-title {
-    font: bold calc(12 * var(--wm-px)) var(--wm-font) !important;
-    color: #000 !important;
-    text-shadow: none !important;
+.wm-notify-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
-html.ui-mobile #toastContainer .toast-message,
-html.ui-mobile #toastContainer .toast-message * {
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
-    color: #000 !important;
-    text-shadow: none !important;
+.wm-notify-pager {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    white-space: pre;
+}
+
+/* ◀ ▶: white triangles with a tap area around them */
+.wm-notify-step {
+    width: calc(16 * var(--wm-px));
+    height: calc(19 * var(--wm-px));
+    padding: 0;
+    border: 0;
+    background: none;
+    position: relative;
+}
+
+.wm-notify-step::before {
+    content: '';
+    position: absolute;
+    top: calc(5 * var(--wm-px));
+    left: calc(4 * var(--wm-px));
+    width: calc(6 * var(--wm-px));
+    height: calc(9 * var(--wm-px));
+    background: #fff;
+    clip-path: polygon(100% 0, 0 50%, 100% 100%);
+}
+
+.wm-notify-step.is-next::before {
+    left: calc(6 * var(--wm-px));
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+.wm-notify-body {
+    flex: 1 1 auto;
+    min-height: calc(59 * var(--wm-px));
+    overflow-y: auto;
+    padding: calc(8 * var(--wm-px)) calc(5 * var(--wm-px)) calc(6 * var(--wm-px));
+    box-sizing: border-box;
     overflow-wrap: anywhere;
+    user-select: text;
 }
 
-html.ui-mobile #toastContainer .toast-progress {
-    height: calc(6 * var(--wm-px)) !important;
-    margin-top: calc(4 * var(--wm-px)) !important;
-    background: #fff !important;
-    border: calc(1 * var(--wm-px)) solid #000 !important;
-    border-radius: 0 !important;
+.wm-notify-body .toast-message,
+.wm-notify-body .toast-message * {
+    font-family: inherit;
+    font-size: inherit;
+    color: #000;
+    text-shadow: none;
 }
 
-html.ui-mobile #toastContainer .toast-progress-bar {
-    background: var(--wm-highlight) !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
+.wm-notify-body a {
+    color: #00f;
+    text-decoration: underline;
 }
 
-html.ui-mobile #toastContainer .toast-close {
-    position: absolute !important;
-    top: calc(3 * var(--wm-px)) !important;
-    right: calc(3 * var(--wm-px)) !important;
-    width: calc(15 * var(--wm-px)) !important;
-    height: calc(15 * var(--wm-px)) !important;
-    padding: 0 !important;
-    font-size: calc(10 * var(--wm-px)) !important;
-    color: #000 !important;
-    background: none !important;
-    border: 0 !important;
-    box-shadow: none !important;
+.wm-notify-body img {
+    max-width: 100%;
+    height: auto;
 }
 
-html.ui-mobile #toastContainer button:not(.toast-close) {
-    height: calc(20 * var(--wm-px)) !important;
-    min-height: 0 !important;
-    padding: 0 calc(6 * var(--wm-px)) !important;
-    margin: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) 0 0 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
-    color: #000 !important;
-    background: var(--wm-tint) !important;
-    border: calc(1 * var(--wm-px)) solid #000 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
+.wm-notify-body .toast-progress {
+    height: calc(8 * var(--wm-px));
+    margin-top: calc(5 * var(--wm-px));
+    background: #fff;
+    border: calc(1 * var(--wm-px)) solid #000;
+    overflow: hidden;
+}
+
+.wm-notify-body .toast-progress-bar {
+    height: 100%;
+    max-width: 100%;
+    background: var(--wm-highlight);
+}
+
+/* HTML push buttons, right-aligned as in the device bubble */
+.wm-notify-body .toast-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: calc(4 * var(--wm-px));
+    margin-top: calc(8 * var(--wm-px));
+}
+
+.wm-notify-body .toast-buttons button {
+    height: calc(19 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px));
+    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+    color: #000;
+    background: #fff;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #fff, inset 0 0 0 calc(2 * var(--wm-px)) #848284;
+}
+
+.wm-notify-body .toast-buttons button:active {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text, #fff);
+}
+
+/* the strip under the title bar with one icon per notification (tap on the speech-bubble icon) */
+.wm-notify-tray {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(env(safe-area-inset-top) + 26 * var(--wm-px));
+    z-index: 9;
+    display: flex;
+    justify-content: center;
+    gap: calc(8 * var(--wm-px));
+    height: calc(22 * var(--wm-px));
+    background: var(--wm-highlight);
+}
+
+.wm-notify-tray[hidden] {
+    display: none;
+}
+
+.wm-notify-tray-icon {
+    width: calc(16 * var(--wm-px));
+    height: calc(22 * var(--wm-px));
+    padding: 0;
+    border: 0;
+    background: center / calc(16 * var(--wm-px)) no-repeat;
 }
 
 /* ---- takeover: a surface that must own the screen (PIN logon, fatal / connectivity errors,
@@ -1938,49 +1996,6 @@ html.ui-mobile body > .pswp .pswp__preloader {
 .wm-bubble-volume input[type="range"] {
     flex: 1 1 100%;
     accent-color: var(--wm-highlight);
-}
-
-/* ---- toasts drawn as WM notification bubbles (no tail: they are not tied to an icon) ---- */
-html.ui-mobile #toastContainer > * {
-    flex-direction: column !important;
-    gap: 0 !important;
-    padding: 0 0 calc(5 * var(--wm-px)) !important;
-    border: calc(2 * var(--wm-px)) solid #000 !important;
-    border-radius: calc(8 * var(--wm-px)) !important;
-    overflow: hidden;
-}
-
-html.ui-mobile #toastContainer .toast-icon {
-    display: none !important;
-}
-
-html.ui-mobile #toastContainer .toast-content {
-    width: 100%;
-}
-
-html.ui-mobile #toastContainer .toast-title {
-    display: block;
-    padding: calc(4 * var(--wm-px)) calc(24 * var(--wm-px)) calc(4 * var(--wm-px)) calc(6 * var(--wm-px)) !important;
-    background: linear-gradient(to bottom, var(--wm-highlight), color-mix(in srgb, var(--wm-highlight) 82%, #000)) !important;
-    color: #fff !important;
-}
-
-html.ui-mobile #toastContainer .toast-message {
-    display: block;
-    padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px)) 0 !important;
-}
-
-html.ui-mobile #toastContainer .toast-progress {
-    margin: calc(4 * var(--wm-px)) calc(6 * var(--wm-px)) 0 !important;
-}
-
-html.ui-mobile #toastContainer .toast-close {
-    top: calc(3 * var(--wm-px)) !important;
-    color: #fff !important;
-}
-
-html.ui-mobile #toastContainer button:not(.toast-close) {
-    margin-left: calc(6 * var(--wm-px)) !important;
 }
 
 /* the volume bubble's controls are plain WM controls, not the desktop's styled inputs */

@@ -3002,6 +3002,26 @@
         "screen-crop"
       ],
       "notes": "Internet Explorer start page expander double chevron."
+    },
+    "status-notify-many": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4673_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Speech bubble: several notifications pending (title bar), as on the emulator with two SHNotificationAdd bubbles."
     }
   },
   "notDelivered": {
