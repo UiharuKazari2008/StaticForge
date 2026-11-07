@@ -62,7 +62,9 @@
     /** Menu > Log: the log over her scene (the desktop's peek). */
     function peeking() {
         const d = dir();
-        return !!(d && d.mascot && d.mascot.peek && d.mascot.vnBubbles());
+        const m = d && d.mascot;
+        // only a log that is on screen counts (a view switch can leave peek set with no log showing)
+        return !!(m && m.peek && m.vnBubbles() && m.host && m.host.classList.contains('dm-log-peek'));
     }
 
     function running(d) {
@@ -77,9 +79,9 @@
         const m = d && d.mascot;
         if (!m || patchedMascot === m) return;
         patchedMascot = m;
-        const hosted = m.isHosted;
-        // she holds no layers while the app is in the background (applyView releases them)
-        m.isHosted = () => (page && page.contains(m.host) ? shown : hosted.call(m));
+        // she holds no layers while the app is in the background (applyView releases them). A phone never
+        // shows the desktop window, so outside the app's page (after a reload reopened it under BODY) she is hidden too.
+        m.isHosted = () => !!(shown && page && page.contains(m.host));
         const layout = m.layout.bind(m);
         m.layout = function () {
             layout();
@@ -112,6 +114,41 @@
             }
         };
         m.applyView();
+        syncBlink(m);
+    }
+
+    /** Her blink timer (started once at mount by the desktop) runs only while the app is on screen. */
+    function syncBlink(m) {
+        if (!m || typeof m.scheduleBlink !== 'function') return;
+        if (shown && !m._blinkTimer) m.scheduleBlink();
+        else if (!shown && m._blinkTimer) { clearTimeout(m._blinkTimer); m._blinkTimer = null; }
+    }
+
+    /**
+     * Patch the Director as soon as it exists, not on the first open of the app: a reload can reopen its window
+     * (hidden) while the phone is on Today, and she must not hold her layers then. Also keep the desktop's
+     * reload-reopen flag from being saved unless this app is on screen (the phone always starts on Today).
+     */
+    let patchedDirector = null;
+    function patchDirector() {
+        const d = dir();
+        if (!d) return false;
+        if (patchedDirector !== d && typeof d.saveReopenState === 'function') {
+            patchedDirector = d;
+            const save = d.saveReopenState.bind(d);
+            d.saveReopenState = function () {
+                if (shown && isCurrent()) { save(); return; }
+                try { sessionStorage.removeItem('staticforge_director_reopen'); } catch (_) { /* storage blocked */ }
+            };
+        }
+        if (!d.mascot) return false;
+        patchMascot(d);
+        return true;
+    }
+
+    function waitForDirector() {
+        if (patchDirector()) return;
+        const timer = setInterval(() => { if (patchDirector()) clearInterval(timer); }, 1000);
     }
 
     function hostWindow(d) {
@@ -142,6 +179,7 @@
             d.paintPersonaToggle();
         }
         if (!shown) return;
+        syncBlink(d.mascot);
         syncComposer();
         refreshTitle();
         if (d.mascot) d.mascot.settleLayout(600);
@@ -159,9 +197,12 @@
             const now = chat.classList.contains('director-composer-center');
             if (now === was) return;
             was = now;
+            // left the draft some other way than send() (a quick-start button, a chat the server made): the
+            // composer opened on the draft would now count as a back step with no history entry
+            if (!now && composing && !(d.directorChatInput && document.activeElement === d.directorChatInput)) composing = false;
             if (!shown) return;
             syncComposer();
-            if (isCurrent()) ws.refreshSoftKeys();
+            if (isCurrent()) { ws.refreshSoftKeys(); ws.syncHistory(); }
         }).observe(chat, { attributes: true, attributeFilter: ['class'] });
     }
 
@@ -345,17 +386,23 @@
         const m = d && d.mascot;
         if (!m) return [{ label: 'No options', disabled: true }];
         return [
-            { label: 'Visual Novel', radio: m.view === 'mascot', action: () => { m.setView('mascot'); after(); } },
-            { label: 'Messages', radio: m.view !== 'mascot', action: () => { m.setView('messages'); after(); } },
+            { label: 'Visual Novel', radio: m.view === 'mascot', action: () => { unpeek(m); m.setView('mascot'); after(); } },
+            { label: 'Messages', radio: m.view !== 'mascot', action: () => { unpeek(m); m.setView('messages'); after(); } },
             '-',
-            { label: 'Show Mascot', checked: !!m.enabled, action: () => { m.setEnabled(!m.enabled); after(); } }
+            { label: 'Show Mascot', checked: !!m.enabled, action: () => { unpeek(m); m.setEnabled(!m.enabled); after(); } }
         ];
+    }
+
+    /** A view switch closes the log first, so no hidden peek is left behind (it would eat a Back press). */
+    function unpeek(m) {
+        if (m.peek) m.togglePeek(false);
     }
 
     function after() {
         const d = dir();
         if (d && d.mascot) d.mascot.settleLayout(500);
-        if (ws && isCurrent()) ws.refreshSoftKeys();
+        // a closed log (or any layer) takes its history entry with it
+        if (ws && isCurrent()) { ws.refreshSoftKeys(); ws.syncHistory(); }
     }
 
     function mainMenu() {
@@ -423,7 +470,11 @@
             openComposer();
         }, true);
         page.addEventListener('focusin', (e) => {
-            if (e.target && e.target.id === 'directorChatInput' && !composing) { composing = true; syncComposer(); ws.refreshSoftKeys(); }
+            if (e.target && e.target.id === 'directorChatInput' && !composing) {
+                composing = true;
+                syncComposer();
+                if (isCurrent()) { ws.refreshSoftKeys(); ws.syncHistory(); }
+            }
         });
     }
 
@@ -464,7 +515,7 @@
                 const d = dir();
                 if (d && d.directorChatInput) d.directorChatInput.blur();
                 // she lets go of her sprite layers while the app is in the background
-                if (d && d.mascot && patchedMascot === d.mascot) d.mascot.applyView();
+                if (d && d.mascot && patchedMascot === d.mascot) { d.mascot.applyView(); syncBlink(d.mascot); }
             },
             softKeys,
             historyDepth() {
@@ -477,6 +528,7 @@
                 return false;
             }
         });
+        waitForDirector();
         // the soft keys follow the Director (a turn starts or ends, a chat opens)
         const refresh = () => { if (isCurrent()) { syncComposer(); ws.refreshSoftKeys(); if (sub === 'sessions') renderSessions(); } };
         if (window.wsClient && typeof window.wsClient.on === 'function') {
