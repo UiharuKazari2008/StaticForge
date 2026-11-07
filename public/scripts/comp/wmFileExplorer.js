@@ -43,6 +43,7 @@
     let page = null;
     let trail = []; // [{ path, name }] from My Device down to the folder on screen
     let visits = []; // earlier trails, for the back gesture
+    const volumeTrails = new Map(); // volume key ('device' or a phone root id) -> the last trail seen in it
     let items = [];
     let hasMore = false;
     let loadingMore = false;
@@ -249,17 +250,34 @@
         }
     }
 
+    /** The volume a path is in: 'device' (the VFS) or the phone root's id. */
+    function volumeOf(path) {
+        return isPhonePath(path) ? `phone:${PD().parse(path).root}` : 'device';
+    }
+
+    /** A trail still leads somewhere: not into a phone root that is gone or blocked. */
+    function trailUsable(t) {
+        const last = t[t.length - 1];
+        if (!last || !String(last.path).startsWith('phone://')) return true;
+        return !!PD() && !phoneBlock() && !!phoneRootById(PD().parse(last.path).root);
+    }
+
     function onPhoneConfig() {
         if (!page) return;
+        const before = visits.length;
         const here = pathNow();
-        if (isPhonePath(here)) {
+        if (isPhonePath(here) && (!phoneRootById(PD().parse(here).root) || phoneBlock())) {
             // the root went away (card out, sharing off): back to My Device, as WM does when a card is pulled
-            const p = PD().parse(here);
-            if (!phoneRootById(p.root) || phoneBlock()) { navigate('/', 'My Device', { record: false }); return; }
-            load({ keep: true });
-        } else if (here === '/') {
+            navigate('/', 'My Device', { record: false });
+        } else if (isPhonePath(here) || here === '/') {
             load({ keep: true });
         }
+        // the history and the drop-down's remembered folders forget volumes that went away (and
+        // the steps that now lead to the folder already on screen)
+        visits = visits.filter(trailUsable);
+        while (visits.length && visits[visits.length - 1][visits[visits.length - 1].length - 1].path === pathNow()) visits.pop();
+        for (const [k, t] of [...volumeTrails]) if (!trailUsable(t)) volumeTrails.delete(k);
+        if (visits.length !== before && ws && typeof ws.syncHistory === 'function') ws.syncHistory({ noPush: true });
     }
 
     /** What explorerPhoneDrive.js needs of an Explorer (its desktop applet's members). */
@@ -432,6 +450,19 @@
 
     function sortDirection() { return sortField === 'date' || sortField === 'size' ? 'desc' : 'asc'; }
 
+    /** a goes before b in the current sort (for merging the phone's volumes into a server-sorted page). */
+    function sortBefore(a, b) {
+        const name = (i) => String(i.name || '').toLowerCase();
+        const key = (i) => (sortField === 'date' ? (Date.parse(i.modifiedAt || i.updatedAt || '') || Number(i.modifiedAt) || 0)
+            : sortField === 'size' ? (Number(i.size) || 0)
+                : sortField === 'type' ? '' : name(i));
+        const ka = key(a);
+        const kb = key(b);
+        if (ka === kb) return name(a).localeCompare(name(b), undefined, { numeric: true }) < 0;
+        const c = typeof ka === 'string' ? ka.localeCompare(kb, undefined, { numeric: true }) : ka - kb;
+        return sortDirection() === 'desc' ? c > 0 : c < 0;
+    }
+
     async function load(opts = {}) {
         const token = ++listToken;
         const path = pathNow();
@@ -456,12 +487,12 @@
             }
             items = visible((res && res.items) || []);
             if (path === '/') {
-                // the phone's volumes after My Device's folders, before its files
-                const roots = rootItems();
-                if (roots.length) {
-                    let at = 0;
-                    items.forEach((i, n) => { if (isFolder(i)) at = n + 1; });
-                    items.splice(at, 0, ...roots);
+                // the phone's volumes are folders of My Device: placed among them by the current
+                // sort (Name: Program Files, Storage Card, Temp, Windows), before the files
+                for (const r of rootItems()) {
+                    let at = items.findIndex((i) => !isFolder(i) || sortBefore(r, i));
+                    if (at < 0) at = items.length;
+                    items.splice(at, 0, r);
                 }
             }
             hasMore = !!(res && res.hasMore);
@@ -518,6 +549,7 @@
         if (opts.trail) trail = opts.trail;
         else if (opts.child) trail = trail.concat([{ path, name }]);
         else trail = trailFor(path);
+        volumeTrails.set(volumeOf(path), trail.slice());
         selected.clear();
         anchorId = null;
         renamingId = null;
@@ -537,6 +569,8 @@
 
     /** Back gesture: the folder seen before this one; false when there is none (the app closes). */
     function goBack() {
+        // steps into a volume that went away (card out, phone storage off) are gone, as on WM
+        visits = visits.filter(trailUsable);
         if (!visits.length) return false;
         if (renamingId) cancelRename();
         const prev = visits.pop();
@@ -999,6 +1033,19 @@
             }
             if (left.length) {
                 if (!phoneCan('delete')) throw { code: 'denied', message: 'The phone cannot delete this item.' };
+                // what Android's trash refused would be gone for good: say which, ask again (No the default)
+                if (phoneCan('trash')) {
+                    const names = left.map((x) => PS().baseName(x));
+                    const shown = names.slice(0, 6).map((n) => `'${n}'`).join('\n') + (names.length > 6 ? `\n...and ${names.length - 6} more` : '');
+                    const yes = await ws.messageBox({
+                        title: 'File Explorer',
+                        icon: 'warning',
+                        text: `${names.length === 1 ? 'This item cannot' : 'These items cannot'} go to the phone's trash:\n${shown}\n\nDelete ${names.length === 1 ? 'it' : 'them'} permanently? This cannot be undone.`,
+                        buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }],
+                        cancelValue: false
+                    });
+                    if (!yes) return;
+                }
                 const res = await PS().call('delete', { root: rootId, paths: left });
                 const failed = (Array.isArray(res) ? res : []).filter((r) => r && r.deleted === false);
                 if (failed.length) throw { code: 'io', message: 'Access is denied.', path: failed[0].path };
@@ -1098,11 +1145,33 @@
 
     // ---------------------------------------------------------------- menus
 
-    /** The phone's volumes as places (Go To, the folder drop-down), each with the storage card icon. */
+    /**
+     * The folder drop-down's rows under the rule: the volumes other than the one on screen, My
+     * Device first (its icon), then the phone's (the storage card). As on WM each row names the
+     * last folder visited in that volume and returns to it.
+     */
     function volumeItems() {
-        const cur = pathNow();
-        const here = isPhonePath(cur) ? PD().parse(cur).root : null;
-        return rootItems().map((r) => ({ label: r.name, feIcon: 'fe-card', radio: here === r.phone.root, action: () => openItem(r) }));
+        const here = volumeOf(pathNow());
+        const row = (key, icon, top, topName) => {
+            const saved = volumeTrails.get(key);
+            const t = saved && saved.length && trailUsable(saved) ? saved : null;
+            const last = t ? t[t.length - 1] : { path: top, name: topName };
+            return {
+                label: placeName(last.path, last.name),
+                feIcon: icon,
+                action: async () => {
+                    if (key !== 'device' && phoneBlock()) { await blockedRoot(topName); return; }
+                    navigate(last.path, null, { trail: t || (key === 'device' ? trailFor('/') : phoneTrail(key.slice(6), '/')) });
+                }
+            };
+        };
+        const out = [];
+        if (here !== 'device') out.push(row('device', 'fe-device', '/', 'My Device'));
+        for (const r of rootItems()) {
+            const key = `phone:${r.phone.root}`;
+            if (key !== here) out.push(row(key, 'fe-card', r.navPath, r.name));
+        }
+        return out;
     }
 
     function goToItems() {
@@ -1112,7 +1181,7 @@
             { label: 'My Documents', radio: cur === myDocumentsPath(), action: () => navigate(myDocumentsPath(), 'My Documents') },
             { label: 'My Pictures', radio: cur === `${myDocumentsPath()}/Pictures`, action: () => navigate(`${myDocumentsPath()}/Pictures`, 'My Pictures') },
             { label: 'Workspaces', radio: cur === '/Workspaces', action: () => navigate('/Workspaces', 'Workspaces') }
-        ].concat(volumeItems());
+        ];
     }
 
     function sortItems() {
@@ -1317,10 +1386,9 @@
             // the device indents each level 12 px; the bar reads "Show" while the list is open
             folderBtn.querySelector('.fe-folder-name').textContent = 'Show';
             const levels = trail.map((t, n) => ({ label: placeName(t.path, t.name), indent: n, radio: n === trail.length - 1, action: () => { if (t.path !== cur) navigate(t.path, null, { trail: trail.slice(0, n + 1), select: trail[n + 1] && trail[n + 1].path }); } }));
-            const places = goToItems().filter((g) => !trail.some((t) => placeName(t.path, t.name) === g.label));
-            // inside a phone volume WM lists My Device (its icon) with the other volumes under the rule
-            if (isPhonePath(cur)) places.push({ label: 'My Device', feIcon: 'fe-device', action: () => navigate('/', 'My Device') });
-            const list = places.length ? levels.concat(['-'], places.map((g) => Object.assign(g, { radio: null }))) : levels;
+            // under the rule WM lists only the other volumes (Go To keeps the places)
+            const places = volumeItems();
+            const list = places.length ? levels.concat(['-'], places) : levels;
             folderBtn.setAttribute('aria-expanded', 'true');
             ws.dropdown(folderBtn, list, 'left', () => { folderBtn.setAttribute('aria-expanded', 'false'); renderBar(); });
             volumeIcons(list);
@@ -1337,8 +1405,9 @@
         document.addEventListener('keydown', onKey);
 
         trail = trailFor(myDocumentsPath());
+        volumeTrails.set('device', trail.slice());
         renderBar();
-        // the phone's volumes for Go To and the drop-down before My Device is first listed
+        // the phone's volumes for the drop-down before My Device is first listed
         if (window.AndroidPhoneStorage) phoneState();
     }
 

@@ -1242,6 +1242,9 @@
         return new File([blob], ref.name, { type: blob.type, lastModified: ref.modifiedAt ? ref.modifiedAt * 1000 : Date.now() });
     }
 
+    /** What a transfer step returns when the user chose Skip (nothing written; a cut keeps the source). */
+    const SKIPPED = Object.freeze({ skipped: true });
+
     async function writeToPhone(j, rootId, dir, file, mtimeMs) {
         let conflict = j.conflict || 'fail';
         for (;;) {
@@ -1259,7 +1262,7 @@
                 if (err && err.code === 'exists' && conflict === 'fail') {
                     const choice = await askConflict(file.name, false, 'this phone folder');
                     if (choice === 'cancel') { j.cancel(); throw { code: 'aborted' }; }
-                    if (choice === 'skip') return null;
+                    if (choice === 'skip') return SKIPPED;
                     conflict = choice;
                     continue;
                 }
@@ -1286,12 +1289,14 @@
             const sub = await mkdirOnPhone(rootId, dir, ref.name);
             const navPath = ref.navPath || app.resolveNavigationPath(ref);
             const listing = await VFS().listDirectory(navPath, { limit: 10000 });
-            for (const child of listing.items || []) await vfsToPhone(j, child, rootId, sub);
-            return;
+            // one skipped child keeps the whole source folder (a cut must not trash it)
+            let skipped = false;
+            for (const child of listing.items || []) if ((await vfsToPhone(j, child, rootId, sub)) === SKIPPED) skipped = true;
+            return skipped ? SKIPPED : undefined;
         }
         if (ref.targetKind !== 'user-file') throw { code: 'denied', message: `"${ref.name}" can't be copied to the phone` };
         const file = await fetchVfsFile(j, ref);
-        await writeToPhone(j, rootId, dir, file, ref.modifiedAt ? ref.modifiedAt * 1000 : undefined);
+        return (await writeToPhone(j, rootId, dir, file, ref.modifiedAt ? ref.modifiedAt * 1000 : undefined)) === SKIPPED ? SKIPPED : undefined;
     }
 
     /** A phone entry (file or folder) into a VFS folder. */
@@ -1314,7 +1319,10 @@
 
     /** Phone -> phone (copy / move, across roots too) with the conflict prompt. */
     async function phoneToPhone(j, ref, dst, op) {
-        let conflict = j.conflict || 'fail';
+        // a copy into its own folder never offers Replace (source and target are one file):
+        // the bridge picks a free name straight away
+        const ownFolder = ref.phone.root === dst.root && PS().parentPath(ref.phone.path) === dst.path;
+        let conflict = ownFolder && op !== 'cut' ? 'rename' : (j.conflict || 'fail');
         for (;;) {
             j.check();
             try {
@@ -1324,7 +1332,7 @@
                 if (err && err.code === 'exists' && conflict === 'fail') {
                     const choice = await askConflict(ref.name, !!ref.phone.dir, 'this phone folder');
                     if (choice === 'cancel') { j.cancel(); throw { code: 'aborted' }; }
-                    if (choice === 'skip') return;
+                    if (choice === 'skip') return SKIPPED;
                     conflict = choice;
                     continue;
                 }
@@ -1348,8 +1356,8 @@
         // here instead of reaching the dialog's Try Again / Skip prompt
         const step = async (ref) => {
             try {
-                await each(j, ref);
-                return !j.cancelled;
+                // a skipped item (name clash, Skip) is not done: a cut leaves its source alone
+                return (await each(j, ref)) !== SKIPPED && !j.cancelled;
             } catch (err) {
                 if (err && err.code === 'aborted') { j.cancel(); return false; }
                 if (err && err.code === 'no_space') { j.cancel(); showError(err); return false; }
