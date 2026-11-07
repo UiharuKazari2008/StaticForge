@@ -886,7 +886,8 @@ function stillScale(session) {
     const cssW = Number(meta.deviceWidth) || 0;
     const cssH = Number(meta.deviceHeight) || 0;
     if (!cssW || !cssH) return 0;
-    let scale = Math.max(session.zoom || 1, session.clientScale || 0);
+    // only the phone asks for stills (still-scale); a zoomed desktop session keeps plain frames
+    let scale = session.clientScale || 0;
     scale = Math.min(scale, STILL_MAX_SCALE, Math.sqrt(STILL_MAX_PIXELS / (cssW * cssH)));
     return scale >= 1.1 ? scale : 0;
 }
