@@ -6,12 +6,13 @@
  *
  *   Sounds & Notifications  desktopPersonalization (soundScheme, sounds, startupSound; the Sound
  *                           dialog's Sounds tab), desktopSounds.playFile (Test), Dovecote's mail
- *                           options (window.dovecoteMailSettings), the notification area's
- *                           Customize Notifications (trayRegistry.js: hidden popups, minimum time)
+ *                           options (window.dovecoteMailSettings, kept per browser by Dovecote)
  *                           and the Android Notification Bridge (persistUserGlobalSettingsPatch,
- *                           as taskbarProperties.js saves it)
- *   Input                   the Keyboard page's virtual keyboard (setDesktopVirtualKeyboardEnabled)
- *                           and SmartText + the spell checker (autofillSettings.js,
+ *                           as taskbarProperties.js saves it). Customize Notifications' hidden
+ *                           popups and minimum time are left out: trayRegistry.js keeps them per
+ *                           browser and the phone shows no tray popups.
+ *   Input                   the Keyboard page's virtual keyboard (setDesktopVirtualKeyboardEnabled,
+ *                           this browser's desktop mode only: localStorage) and SmartText + the spell checker (autofillSettings.js,
  *                           saveAutofillSearchSettingsToServer: one server write on ok)
  *   Lock                    the workspace's screen saver { id, wait, resumeLogon }
  *                           (desktopPersonalization.update) and the account PIN state (read only)
@@ -21,6 +22,10 @@
  *                           (melatonRegistry, melatonAccessibility.apply)
  *   Workspace               Theme Settings' Themes tab (another workspace's look, copied whole) and
  *                           the accent colour + Window Color and Appearance's swatches
+ *
+ * WM 6.1's other Personal items have no Dreamscape analogue and are left out: Buttons (it maps
+ * the device's hardware program buttons; a phone browser gets none of them, only Back, which the
+ * shell's history handles) and Phone (calls, ring tones, network and SIM services).
  *
  * Styles: public/css/wm-settings-personal.css. Runs only on Melaton Mobile (uiShell 'mobile').
  */
@@ -34,8 +39,7 @@
     const esc = ui.esc;
 
     // Monolith helpers are classic-script globals (not window properties): reached by name with typeof.
-    /* global trayPopupCatalog, trayPopupHidden, traySetPopupHidden, trayMinPopupMs, traySetMinPopupMs,
-       trayPopupTimeChoices, isAndroidNotificationBridgeDetected, readDesktopSettingsNotificationBridgeEnabledPreference,
+    /* global isAndroidNotificationBridgeDetected, readDesktopSettingsNotificationBridgeEnabledPreference,
        readDesktopSettingsBypassNotificationBridgeDesktopPreference, desktopSettingsGlobalState,
        persistUserGlobalSettingsPatch, readDesktopSettingsVirtualKeyboardPreference, setDesktopVirtualKeyboardEnabled,
        getAutofillSearchSettings, saveAutofillSearchSettingsToServer, AUTOFILL_DELAY_PRESETS,
@@ -75,13 +79,17 @@
         return pd && Array.isArray(pd.EVENT_GROUPS) && pd.EVENT_GROUPS.length ? pd.EVENT_GROUPS : EVENT_GROUPS;
     };
 
-    // WM's "Enable sounds for" groups, over the same per-event sounds: a group off gives each of its
-    // events (None); on again takes the (None) back to the scheme's sound (a chosen file stays)
+    // WM's "Enable sounds for" groups, over the same per-event sounds. Notifications sits under
+    // Programs as its child (WM 6.1), so the Programs group covers the notification events too:
+    // Programs off silences both, and Notifications shows unticked until Programs is on again.
+    // A group off gives each of its events (None) and remembers what each had; on again puts those
+    // back exactly (a chosen file, a scheme sound or an event's own (None)). A group that comes
+    // back with no sound at all takes the scheme's sounds instead.
     const NOTIFY_EVENTS = ['notify', 'balloon', 'print-complete'];
     const groupEvents = (group) => {
         const groups = eventGroups();
         if (group === 'notifications') return NOTIFY_EVENTS.slice();
-        if (group === 'programs') return groups.filter((g) => g.name !== 'Melaton').flatMap((g) => g.events.map(([id]) => id));
+        if (group === 'programs') return groups.filter((g) => g.name !== 'Melaton').flatMap((g) => g.events.map(([id]) => id)).concat(NOTIFY_EVENTS);
         const sys = groups.find((g) => g.name === 'Melaton');
         return (sys ? sys.events.map(([id]) => id) : []).filter((id) => !NOTIFY_EVENTS.includes(id));
     };
@@ -101,46 +109,55 @@
 
     const groupOn = (d, group) => d.scheme !== 'none' && groupEvents(group).some((id) => eventFile(d, id) !== '');
 
+    const UNSET = {};
     function setGroup(d, group, on) {
-        for (const id of groupEvents(group)) {
-            if (on) { if (d.sounds[id] === '') delete d.sounds[id]; } else d.sounds[id] = '';
+        const ids = groupEvents(group);
+        const has = (id) => Object.prototype.hasOwnProperty.call(d.sounds, id);
+        if (!on) {
+            for (const id of ids) {
+                // the first group to silence an event keeps its sound (Programs off, then Notifications)
+                if (!d.stash.has(id)) d.stash.set(id, has(id) ? d.sounds[id] : UNSET);
+                d.sounds[id] = '';
+            }
+            return;
         }
+        for (const id of ids) {
+            if (!d.stash.has(id)) continue;
+            const was = d.stash.get(id);
+            d.stash.delete(id);
+            if (was === UNSET) delete d.sounds[id]; else d.sounds[id] = was;
+        }
+        if (!ids.some((id) => eventFile(d, id) !== '')) ids.forEach((id) => { if (d.sounds[id] === '') delete d.sounds[id]; });
     }
 
     function eventList(d) {
         const rows = [];
         for (const g of eventGroups()) for (const [id, label] of g.events) rows.push({ key: `s:${id}`, label: `${g.name}: ${label}` });
         if (d.mail) rows.push({ key: 'mail', label: 'Dovecote: New mail' });
-        for (const p of d.popups) rows.push({ key: `n:${p.id}`, label: `Notification: ${p.label}` });
         return rows;
     }
 
     function readSounds() {
         const p = P().get();
-        const s = S();
-        // the browser-wide switch (desktopSounds.setEnabled) off reads as No Sounds, as on the desktop
-        const masterOff = !!(s && typeof s.isEnabled === 'function' && !s.isEnabled());
+        // the workspace's own scheme: desktopSounds' browser-wide switch is this browser's desktop
+        // mode only (a phone may hold 'off' from an earlier desktop session) and must not read as,
+        // or be saved as, No Sounds for the workspace
         const mailApi = window.dovecoteMailSettings;
-        const popups = fn('trayPopupCatalog') ? call('trayPopupCatalog') : [];
-        const hidden = {};
-        popups.forEach((r) => { hidden[r.id] = call('trayPopupHidden', r.id) === true; });
         const detected = call('isAndroidNotificationBridgeDetected') === true;
         const d = {
-            scheme: masterOff ? 'none' : p.soundScheme,
+            scheme: p.soundScheme === 'none' ? 'none' : 'default',
             sounds: { ...p.sounds },
             startupSound: p.startupSound !== false,
             mail: mailApi && typeof mailApi.soundOn === 'function' ? { sound: !!mailApi.soundOn(), notify: !!mailApi.notifyOn() } : null,
-            popups,
-            hidden,
-            minMs: fn('trayMinPopupMs') ? Number(call('trayMinPopupMs')) : 8000,
             bridge: detected ? {
                 on: call('readDesktopSettingsNotificationBridgeEnabledPreference') !== false,
                 bypass: call('readDesktopSettingsBypassNotificationBridgeDesktopPreference') === true
             } : null,
-            sel: ''
+            sel: '',
+            stash: new Map()
         };
         d.sel = eventList(d)[0] ? eventList(d)[0].key : '';
-        d.saved = JSON.parse(JSON.stringify({ scheme: d.scheme, sounds: d.sounds, startupSound: d.startupSound, mail: d.mail, hidden: d.hidden, minMs: d.minMs, bridge: d.bridge }));
+        d.saved = JSON.parse(JSON.stringify({ scheme: d.scheme, sounds: d.sounds, startupSound: d.startupSound, mail: d.mail, bridge: d.bridge }));
         return d;
     }
 
@@ -154,7 +171,7 @@
         el.innerHTML = `${ui.sub('Enable sounds for')}
             ${ui.check('grp-system', 'Events (warnings, system events)', groupOn(d, 'system'), `data-grp="system"${none ? ' disabled' : ''}`)}
             ${ui.check('grp-programs', 'Programs', programs, `data-grp="programs"${none ? ' disabled' : ''}`)}
-            ${checkIn('grp-notifications', 'Notifications (mail, prints, balloons)', groupOn(d, 'notifications'), `data-grp="notifications"${none || !programs ? ' disabled' : ''}`)}
+            ${checkIn('grp-notifications', 'Notifications (mail, prints, balloons)', programs && groupOn(d, 'notifications'), `data-grp="notifications"${none || !programs ? ' disabled' : ''}`)}
             ${ui.gap()}
             ${ui.row('Sound scheme:', ui.comboHtml('scheme', (schemes.find(([v]) => v === cur) || schemes[0])[1]), { wide: true })}
             ${ui.check('startup', 'Play Melaton Startup sound', d.startupSound, none ? 'disabled' : '')}
@@ -196,23 +213,20 @@
         } else if (sel.key === 'mail') {
             // Dovecote's own options (Control Panel Mail): its sound is the New Mail Notification event
             body = soundRow('notify', d.mail.sound && !none && eventFile(d, 'notify') !== '', 'play-on', 'Play sound', none)
-                + ui.check('msg-on', 'Display message on screen', d.mail.notify);
-        } else if (sel.key.startsWith('n:')) {
-            const id = sel.key.slice(2);
-            body = ui.check('msg-on', 'Display message on screen', !d.hidden[id])
-                + ui.note('This notification has no sound of its own.');
+                + ui.check('msg-on', 'Display message on screen', d.mail.notify)
+                // Dovecote keeps these two per browser (dovecote.js): a Mail Options choice of this one
+                + ui.note('Play sound and Display message are kept by each browser, as in Dovecote\'s Mail Options: this changes this browser only, not your other computers.');
         }
-        const times = fn('trayPopupTimeChoices') ? call('trayPopupTimeChoices').map((c) => [Number(c.value), c.text]) : [[8000, '8 seconds']];
-        if (!times.some(([v]) => v === d.minMs)) times.push([d.minMs, `${Math.round(d.minMs / 1000)} seconds`]);
+        // Customize Notifications' hidden popups and minimum time are not here: the desktop keeps them
+        // per browser (trayRegistry.js, localStorage) and the phone never shows those tray popups, so
+        // a change here would reach neither the phone nor another computer
         el.innerHTML = `${ui.row('Event:', ui.comboHtml('event', sel.label))}
             <div class="wmsp-event">${body}</div>
-            ${ui.gap()}
-            ${ui.sub('All notifications')}
-            ${ui.row('Show for at least:', ui.comboHtml('mintime', (times.find(([v]) => v === d.minMs) || times[0])[1]), { wide: true })}
-            ${d.bridge ? `${ui.check('bridge-on', 'Send notifications to the Android Notification Bridge', d.bridge.on)}
+            ${d.bridge ? `${ui.gap()}
+                ${ui.sub('All notifications')}
+                ${ui.check('bridge-on', 'Send notifications to the Android Notification Bridge', d.bridge.on)}
                 ${checkIn('bridge-bypass', 'On the desktop, show them here instead', d.bridge.bypass, d.bridge.on ? '' : 'disabled')}` : ''}`;
         ui.bindCombo(el.querySelector('[data-act="event"]'), rows.map((r) => [r.key, r.label]), d.sel, (v) => { d.sel = v; api.rerender(); });
-        ui.bindCombo(el.querySelector('[data-act="mintime"]'), times, d.minMs, (v) => { d.minMs = v; });
         const evId = sel.key === 'mail' ? 'notify' : (sel.key.startsWith('s:') ? sel.key.slice(2) : '');
         const playOn = el.querySelector('input[name="play-on"]');
         if (playOn) {
@@ -242,10 +256,7 @@
         if (play) play.addEventListener('click', () => { const f = eventFile(d, evId); if (f && S()) S().playFile(f); });
         const msg = el.querySelector('input[name="msg-on"]');
         if (msg) {
-            msg.addEventListener('change', () => {
-                if (sel.key === 'mail') d.mail.notify = msg.checked;
-                else d.hidden[sel.key.slice(2)] = !msg.checked;
-            });
+            msg.addEventListener('change', () => { d.mail.notify = msg.checked; });
         }
         const bOn = el.querySelector('input[name="bridge-on"]');
         if (bOn) bOn.addEventListener('change', () => { d.bridge.on = bOn.checked; api.rerender(); });
@@ -255,20 +266,17 @@
 
     async function commitSounds(d) {
         const v = d.saved;
-        const p = P();
-        const s = S();
-        if (d.scheme !== v.scheme || !same(d.sounds, v.sounds) || d.startupSound !== v.startupSound) {
-            p.update({ soundScheme: d.scheme, sounds: { ...d.sounds }, startupSound: d.startupSound });
-            // choosing a scheme turns the browser-wide switch back on (the Sound dialog's Apply)
-            if (d.scheme !== 'none' && s && typeof s.isEnabled === 'function' && !s.isEnabled()) s.setEnabled(true);
-        }
+        // only what changed (the scheme only when one was picked): the Sound dialog's own fields
+        const patch = {};
+        if (d.scheme !== v.scheme) patch.soundScheme = d.scheme;
+        if (!same(d.sounds, v.sounds)) patch.sounds = { ...d.sounds };
+        if (d.startupSound !== v.startupSound) patch.startupSound = d.startupSound;
+        if (Object.keys(patch).length) P().update(patch);
         const mailApi = window.dovecoteMailSettings;
         if (d.mail && mailApi) {
             if (d.mail.sound !== v.mail.sound) mailApi.setSound(d.mail.sound);
             if (d.mail.notify !== v.mail.notify) mailApi.setNotify(d.mail.notify);
         }
-        if (fn('traySetPopupHidden')) Object.keys(d.hidden).forEach((id) => { if (d.hidden[id] !== v.hidden[id]) call('traySetPopupHidden', id, d.hidden[id]); });
-        if (d.minMs !== v.minMs) call('traySetMinPopupMs', d.minMs);
         if (d.bridge && v.bridge && (d.bridge.on !== v.bridge.on || d.bridge.bypass !== v.bridge.bypass)) {
             // as Taskbar and Start Menu Properties' Customize Notifications: the server-held pair
             const desktop = { notificationBridgeEnabled: d.bridge.on, bypassNotificationBridgeInDesktopMode: d.bridge.bypass };
@@ -353,7 +361,7 @@
             const methods = [['system', 'Phone keyboard'], ['melaton', 'Melaton Keyboard']];
             el.innerHTML = `${ui.row('Input method:', ui.comboHtml('method', methods[d.vk ? 1 : 0][1]), { wide: true })}
                 ${ui.gap()}
-                ${ui.note('Melaton Keyboard replaces the system keyboard on the desktop (Control Panel > Keyboard). Melaton Mobile always uses the phone\'s own keyboard.')}`;
+                ${ui.note('Saved in this browser only, as Control Panel > Keyboard does: Melaton Keyboard replaces the system keyboard when this browser shows the desktop. Your other computers keep their own choice, and Melaton Mobile always uses the phone\'s own keyboard.')}`;
             ui.bindCombo(el.querySelector('[data-act="method"]'), methods, d.vk ? 'melaton' : 'system', (v) => { d.vk = v === 'melaton'; });
         },
         async commit(d) {
@@ -639,7 +647,7 @@
                     <div class="wm-preview-box" data-f="preview"></div>
                 </div>
                 ${ui.gap()}
-                ${ui.note('Another workspace\'s theme copies its colors, fonts, desktop background, window color, sounds and screen saver to this workspace.')}`;
+                ${ui.note('Another workspace\'s theme copies its colors, fonts, desktop background, window color, sounds and screen saver to this workspace. Changes on the Color tab are kept on top of it.')}`;
             const prev = el.querySelector('[data-f="preview"]');
             const url = wallpaperUrlFor(list[d.theme || d.id]);
             if (url) prev.style.backgroundImage = cssUrl(url);
@@ -657,13 +665,18 @@
             const pp = P();
             const settings = {};
             let look = null;
+            const win = { windowColor: d.windowColor, intensity: d.intensity, transparency: d.transparency };
+            const winEdited = !same(win, { windowColor: d.saved.windowColor, intensity: d.saved.intensity, transparency: d.saved.transparency });
             if (d.theme && list[d.theme]) {
                 // Theme Settings' Apply (personalizationDialogs.js applyTheme): another workspace's look, copied whole
                 const src = list[d.theme];
                 ['color', 'backgroundColor', 'primaryFont', 'textareaFont', 'wallpaper', 'wallpaperPosition'].forEach((k) => {
                     settings[k] = src[k] === undefined ? null : src[k];
                 });
-                look = pp.read(d.theme);
+                look = { ...pp.read(d.theme) };
+                // Color tab edits of the same visit go on top of the copied theme
+                if (d.color !== d.saved.color) settings.color = d.color;
+                if (winEdited) Object.assign(look, win);
                 settings.personalization = look;
             } else if (d.color !== d.saved.color) {
                 settings.color = d.color;
@@ -678,8 +691,7 @@
                 }
                 if (look) { pp.update(look, { id: d.id }); return []; }
             }
-            const win = { windowColor: d.windowColor, intensity: d.intensity, transparency: d.transparency };
-            if (!same(win, { windowColor: d.saved.windowColor, intensity: d.saved.intensity, transparency: d.saved.transparency })) {
+            if (winEdited) {
                 // Window Color and Appearance's OK: the page's own fields only
                 pp.update(win, { save: true });
             }
