@@ -218,7 +218,8 @@
         explorer: ['fileexplorer', 'file-explorer'],
         dovecote: ['messaging'],
         notebook: ['notes'],
-        director: ['director']
+        director: ['director'],
+        studio: ['studio']
     };
     const SHELL_ONLY = new Set(['today', 'programs', 'settings', 'help']);
 
