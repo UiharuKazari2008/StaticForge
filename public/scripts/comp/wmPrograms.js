@@ -205,6 +205,13 @@
         } catch (_) { return ''; }
     }
 
+    /** Today's picture for a gallery item: the whole picture (wmShell.js), not the square preview. */
+    function todayPictureFor(item) {
+        try {
+            return sh && sh.wallpaper && typeof sh.wallpaper.pictureFor === 'function' ? sh.wallpaper.pictureFor(item) : '';
+        } catch (_) { return ''; }
+    }
+
     function galleryItems(n) {
         let list = [];
         try {
@@ -616,7 +623,7 @@
                 if (d.browsing) {
                     const pics = galleryItems(60);
                     el.innerHTML = `<p>Select a picture for the Today screen.</p>
-                        ${pics.length ? `<div class="wm-picker">${pics.map((it) => { const p = previewPath(it); return `<button type="button" class="wm-picker-cell${p === d.picture ? ' is-selected' : ''}" data-path="${esc(p)}" aria-label="${esc(it.filename || '')}"><img src="${esc(p)}" alt="" loading="lazy" draggable="false"></button>`; }).join('')}</div>` : '<p class="wm-form-note">No pictures.</p>'}
+                        ${pics.length ? `<div class="wm-picker">${pics.map((it) => { const p = previewPath(it); const full = todayPictureFor(it) || p; return `<button type="button" class="wm-picker-cell${full === d.picture || p === d.picture ? ' is-selected' : ''}" data-path="${esc(full)}" aria-label="${esc(it.filename || '')}"><img src="${esc(p)}" alt="" loading="lazy" draggable="false"></button>`; }).join('')}</div>` : '<p class="wm-form-note">No pictures.</p>'}
                         <div class="wm-buttons is-right"><button type="button" class="wm-button" data-act="done">Done</button></div>`;
                     el.querySelectorAll('.wm-picker-cell').forEach((c) => c.addEventListener('click', () => { d.picture = c.dataset.path; d.useDesktop = false; d.browsing = false; api.rerender(); }));
                     el.querySelector('[data-act="done"]').addEventListener('click', () => { d.browsing = false; api.rerender(); });

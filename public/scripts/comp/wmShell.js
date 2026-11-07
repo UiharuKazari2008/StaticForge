@@ -193,6 +193,15 @@
             e.stopPropagation();
             toggleStartMenu();
         });
+        // WM opens Start from the title too: a tap on the title bar's left part (the title, up to
+        // the status icons) does what the Start button does, the menu, focus and history alike
+        shell.querySelector('.wm-title').addEventListener('click', (e) => {
+            const start = shell.querySelector('.wm-start');
+            if (start.disabled || !start.getClientRects().length) return;
+            e.stopPropagation();
+            try { start.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
+            start.click();
+        });
         shell.querySelector('.wm-title-action').addEventListener('click', () => {
             if (viewerActive) { closeViewer(); return; }
             const app = current && apps.get(current);
@@ -226,7 +235,7 @@
             if (!openPopup || openPopup.contains(e.target)) return;
             // Start and the soft keys toggle their own menus: closing here first would let
             // their click handler open the menu again
-            if (e.target.closest && e.target.closest('#wmShell .wm-start, #wmShell .wm-softkey, #wmShell [aria-haspopup="menu"]')) return;
+            if (e.target.closest && e.target.closest('#wmShell .wm-start, #wmShell .wm-title, #wmShell .wm-softkey, #wmShell [aria-haspopup="menu"]')) return;
             closeMenus();
         }, true);
         window.addEventListener('keydown', (e) => {
@@ -326,8 +335,20 @@
         if (closeTopLayer()) syncHistory({ noPush: true });
     }
 
+    let titleText = 'Start';
+
+    /** The app's title; while the Start menu is open the bar shows the Start button's text (WM). */
     function setTitle(text) {
-        shell.querySelector('.wm-title').textContent = text;
+        titleText = text;
+        if (!shell.querySelector('.wm-titlebar').classList.contains('is-start-open')) shell.querySelector('.wm-title').textContent = text;
+    }
+
+    /** WM 6.1's open-Start title bar: glow, the Start text in the menu's rule colour (wm-shell.css). */
+    function markStartOpen(on) {
+        const bar = shell.querySelector('.wm-titlebar');
+        if (bar.classList.contains('is-start-open') === on) return;
+        bar.classList.toggle('is-start-open', on);
+        shell.querySelector('.wm-title').textContent = on ? startButtonPrefs().text : titleText;
     }
 
     /** Settings > Menus > Start button (wmPrograms.js): text and icon, live; WM's by default. */
@@ -515,6 +536,7 @@
         if (popupOnClose) { const fn = popupOnClose; popupOnClose = null; fn(); }
         shell.querySelector('.wm-startmenu').hidden = true;
         shell.querySelector('.wm-start').setAttribute('aria-expanded', 'false');
+        markStartOpen(false);
         shell.querySelectorAll('.wm-softkey').forEach((b) => b.setAttribute('aria-expanded', 'false'));
         openPopup = null;
         if (had && !silent) syncHistory();
@@ -567,6 +589,7 @@
         menu.hidden = false;
         openPopup = menu;
         shell.querySelector('.wm-start').setAttribute('aria-expanded', 'true');
+        markStartOpen(true);
         syncHistory();
     }
 
@@ -1389,6 +1412,7 @@
     }
 
     const TODAY_BG_KEY = 'wmTodayBackground';
+    let setTodayBackgroundFn = null; // Pictures & Videos' Set as Today Background (registerGalleryApp)
 
     /** The active workspace's record (workspaceUtils.js), or null. */
     function activeWorkspaceRecord() {
@@ -1586,6 +1610,23 @@
             };
             probe.src = url;
         }
+    }
+
+    /**
+     * The picture Today shows for a gallery item: the whole picture as the server's full-size WebP
+     * (/previews/<stem>@studio.webp, same-site, no read token), not the 512 px square preview that
+     * crops tall and wide pictures. A remote item without a local file keeps its preview.
+     */
+    function todayPictureUrl(item) {
+        if (!item) return '';
+        const file = item.filename || item.original;
+        if (item.storage !== 'remote' && typeof localStudioPreviewUrl === 'function') {
+            const full = localStudioPreviewUrl(file);
+            if (full) return full;
+        }
+        if (!item.preview) return '';
+        const p = typeof getGalleryPreviewUrl === 'function' ? getGalleryPreviewUrl(item.preview) : item.preview;
+        return `/previews/${encodeURIComponent(p)}`;
     }
 
     function hasTodayBackground() {
@@ -2117,18 +2158,35 @@
             if (current === 'gallery') renderSoftKeys();
         }
 
-        /** Menu > Set as Today Background: this phone's Today shows the picture (WM 6.1 does the same). */
+        /**
+         * Menu > Set as Today Background: this phone's Today shows the picture (WM 6.1 does the same)
+         * and Settings > Today's "Use desktop wallpaper" goes off, else the stored picture would
+         * never show; Clear Today Background turns it back on. An open Settings page and Today
+         * follow through wmSettingsChange.
+         */
         function setTodayBackground(name) {
+            const useKey = (window.wmSettings && window.wmSettings.keys && window.wmSettings.keys.todayUseDesktop) || 'wmTodayUseDesktop';
             try {
-                if (!name) { localStorage.removeItem(TODAY_BG_KEY); applyTodayBackground(); return; }
-                const item = galleryList().find((it) => (it.filename || it.original) === name);
-                if (!item || !item.preview) return;
-                // the screen-sized preview by its path (no full-size PNG, no read token kept)
-                const p = typeof getGalleryPreviewUrl === 'function' ? getGalleryPreviewUrl(item.preview) : item.preview;
-                localStorage.setItem(TODAY_BG_KEY, `/previews/${encodeURIComponent(p)}`);
-            } catch (_) { /* storage off */ }
-            applyTodayBackground();
+                if (!name) {
+                    localStorage.removeItem(TODAY_BG_KEY);
+                    localStorage.setItem(useKey, '1');
+                } else {
+                    const item = galleryList().find((it) => (it.filename || it.original) === name);
+                    const url = item && todayPictureUrl(item);
+                    if (!url) {
+                        messageBox({ title: 'Pictures & Videos', icon: 'error', text: 'This picture cannot be set as the Today background.' });
+                        return;
+                    }
+                    localStorage.setItem(TODAY_BG_KEY, url);
+                    localStorage.setItem(useKey, '0');
+                }
+            } catch (_) {
+                messageBox({ title: 'Pictures & Videos', icon: 'error', text: 'The Today background could not be saved on this device.' });
+                return;
+            }
+            document.dispatchEvent(new CustomEvent('wmSettingsChange', { detail: { keys: [useKey, TODAY_BG_KEY] } }));
         }
+        setTodayBackgroundFn = setTodayBackground;
 
         function viewPicture(name) {
             if (!name || typeof showLightbox !== 'function') return;
@@ -2437,8 +2495,11 @@
                         items.push({ label: 'Previous', action: () => viewerPress('Previous') });
                         items.push({ label: 'Next', action: () => viewerPress('Next') });
                     }
-                    items.push('-');
                     const item = viewerItem();
+                    // WM 6.1's viewer Menu: Zoom, Play Slide Show, Set as Today Background...
+                    const shown = item && (item.filename || item.original);
+                    if (shown && setTodayBackgroundFn) items.push({ label: 'Set as Today Background', action: () => setTodayBackgroundFn(shown) });
+                    items.push('-');
                     let sep = false;
                     for (const a of VIEWER_ACTIONS) {
                         if (a === '-') { sep = true; continue; }
@@ -2784,6 +2845,8 @@
         /** Today's wallpaper placement (Settings > Today > Wallpaper). */
         wallpaper: {
             picture: () => todayPicture(),
+            /** The URL Today uses for a gallery item (its full picture, not the square preview). */
+            pictureFor: (item) => todayPictureUrl(item),
             desktop: () => { const w = desktopWallpaper(); return w ? w.url : null; },
             desktopPosition: () => { const w = activeWorkspaceRecord(); return (w && w.wallpaperPosition) || 'center center'; },
             mobile: () => mobileWallpaper(),

@@ -192,8 +192,58 @@ html.ui-mobile[data-wm-app="today"][data-wm-boot="reveal"] #wmShell {
     background: linear-gradient(to bottom, var(--wm-title), var(--wm-button-light) 50%, var(--wm-title));
 }
 
-.wm-start[aria-expanded="true"] {
-    background: var(--wm-highlight);
+/* Start menu open (emulator 2x halved, stock green): a white glow over the 25 px bar (not the rule)
+ * from the left edge, opacity falling linearly from 1 at x 0 to 0 at x 90; the title text takes
+ * the Start menu's rule colour (#397D08 on green) and the rule after the Start cell goes. The same
+ * on the flat and glossy bars and for every Start button picture. */
+.wm-titlebar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(to right, #fff 0, rgba(255, 255, 255, 0) calc(90 * var(--wm-px)));
+    opacity: 0;
+}
+
+.wm-titlebar.is-start-open::before {
+    opacity: 1;
+}
+
+.wm-titlebar.is-start-open > .wm-start {
+    border-right-color: transparent;
+}
+
+.wm-titlebar.is-start-open > .wm-start.is-flag::after {
+    display: none;
+}
+
+.wm-titlebar.is-start-open > .wm-title {
+    color: var(--wm-start-rule);
+}
+
+/* WM's flag is in colour and stays readable on the glow; the white Melaton emblem would vanish
+ * into it, so it takes the title text's colour (a mask of the same picture) while Start is open */
+.wm-titlebar.is-start-open > .wm-start:not(.is-flag):has(> img[src="/static_images/melaton/melaton-white-256.png"]) {
+    position: relative;
+}
+
+.wm-titlebar.is-start-open > .wm-start:not(.is-flag) > img[src="/static_images/melaton/melaton-white-256.png"] {
+    visibility: hidden;
+}
+
+.wm-titlebar.is-start-open > .wm-start:not(.is-flag):has(> img[src="/static_images/melaton/melaton-white-256.png"])::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(18 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    transform: translate(-50%, -50%);
+    background: var(--wm-start-rule);
+    -webkit-mask: url('/static_images/melaton/melaton-white-256.png') center / contain no-repeat;
+    mask: url('/static_images/melaton/melaton-white-256.png') center / contain no-repeat;
+    pointer-events: none;
 }
 
 .wm-title {
