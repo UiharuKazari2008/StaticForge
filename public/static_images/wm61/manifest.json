@@ -2778,6 +2778,229 @@
         "1x-downscaled-from-2x"
       ],
       "notes": "Contact card: Send text message."
+    },
+    "ie-stop": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "browsres.192.dll bmp_4594 frame 0 (32x32, magenta key)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Internet Explorer: Stop (red X), in the address bar while a page loads."
+    },
+    "ie-go": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "browsres.192.dll bmp_4594 frame 1",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Internet Explorer: Go (green arrow) at the right of the address bar, as in ref-ie/ie-home.png."
+    },
+    "ie-lock": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "browsres.192.dll bmp_4594 frame 2",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Internet Explorer: secure page lock (closed)."
+    },
+    "ie-unlock": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "browsres.192.dll bmp_4594 frame 3",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Internet Explorer: not-secure page lock (open), as in ref-ie/ie-home.png."
+    },
+    "ie-folder": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "browsres.192.dll bmp_4595 frame 0",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Internet Explorer: Favorites folder."
+    },
+    "ie-favorite": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "browsres.192.dll bmp_4595 frame 1",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Internet Explorer: favorite (star)."
+    },
+    "ie-page": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "browsres.192.dll bmp_4595 frame 4",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Internet Explorer: web page (History rows)."
+    },
+    "ie-busy": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          396,
+          22
+        ]
+      },
+      "2x": {
+        "source": "browsres.192.dll bmp_4597 (18 frames of 44x44, white background)",
+        "size": [
+          792,
+          44
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Internet Explorer: busy ring sprite strip."
+    },
+    "ie-logo": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          42,
+          40
+        ]
+      },
+      "2x": {
+        "source": "screen crop of the ROM start page default_0409.htm (ref-ie/ie-home.png 84x80+14+104), globe only",
+        "size": [
+          84,
+          80
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "screen-crop"
+      ],
+      "notes": "Internet Explorer start page logo; the maker wordmark is not copied (copyrights rule)."
+    },
+    "ie-search": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          23,
+          26
+        ]
+      },
+      "2x": {
+        "source": "screen crop of the ROM start page (46x52+379+210)",
+        "size": [
+          46,
+          52
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "screen-crop"
+      ],
+      "notes": "Internet Explorer start page search button (magnifier)."
+    },
+    "ie-chevron": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          15
+        ]
+      },
+      "2x": {
+        "source": "screen crop of the ROM start page (32x30+414+298), dark pixels kept",
+        "size": [
+          32,
+          30
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "screen-crop"
+      ],
+      "notes": "Internet Explorer start page expander double chevron."
     }
   },
   "notDelivered": {

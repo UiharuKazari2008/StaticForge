@@ -1,1 +1,409 @@
-/* Melaton Mobile Browser app (#709) */
+/*
+ * Melaton Mobile: Internet Explorer (WM 6.1 Professional Internet Explorer Mobile), Yozora #709.
+ * wmBrowser.js. Measured on the Device Emulator (VGA, 2x halved; ~/.cache/wm61/ref-ie/ie-home.png);
+ * lengths are N * --wm-px like wm-shell.css.
+ */
+
+.wm-page.wm-browser {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: #fff;
+    color: #000;
+}
+
+/* address bar: 22 px tab-strip tint and a 1 px black rule (as .wm-pv-bar) */
+.wm-browser .wmb-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    height: calc(22 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+}
+
+.wm-browser.is-full .wmb-bar,
+.wm-browser.has-sub .wmb-bar {
+    display: none;
+}
+
+.wm-browser .wmb-lock {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin: 0 calc(2 * var(--wm-px));
+}
+
+.wm-browser .wmb-lock img,
+.wm-browser .wmb-go img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* edit box: 1 px black frame, 20 px tall, the drop-down triangle inside at the right */
+.wm-browser .wmb-addr-box {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: stretch;
+    height: calc(20 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-browser .wmb-addr {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    padding: 0 calc(2 * var(--wm-px));
+    border: 0;
+    outline: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #000;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.wm-browser .wmb-addr::placeholder {
+    color: #808080;
+}
+
+.wm-browser .wmb-addr-drop {
+    flex: 0 0 auto;
+    position: relative;
+    width: calc(13 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+/* the drawn triangle: 7 x 4 (13 x 7 at 2x), black */
+.wm-browser .wmb-addr-drop::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    border-left: calc(3.5 * var(--wm-px)) solid transparent;
+    border-right: calc(3.5 * var(--wm-px)) solid transparent;
+    border-top: calc(4 * var(--wm-px)) solid #000;
+    transform: translate(-60%, -50%);
+}
+
+.wm-browser .wmb-go {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin: 0 calc(1 * var(--wm-px)) 0 calc(2 * var(--wm-px));
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.wm-browser .wmb-view {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ---------------------------------------------------------------- start page */
+
+.wm-browser .wmb-home {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) calc(8 * var(--wm-px));
+    box-sizing: border-box;
+}
+
+.wm-browser .wmb-home[hidden] {
+    display: none;
+}
+
+.wm-browser .wmb-logo {
+    display: flex;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    padding-left: calc(3 * var(--wm-px));
+    height: calc(40 * var(--wm-px));
+}
+
+.wm-browser .wmb-logo-img {
+    width: calc(42 * var(--wm-px));
+    height: calc(40 * var(--wm-px));
+}
+
+.wm-browser .wmb-logo-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1;
+    color: #000;
+}
+
+.wm-browser .wmb-logo-text small {
+    font: calc(7 * var(--wm-px)) Arial, sans-serif;
+    margin-bottom: calc(1 * var(--wm-px));
+}
+
+.wm-browser .wmb-logo-text b {
+    font: bold calc(15 * var(--wm-px)) 'Segoe UI', Arial, sans-serif;
+    letter-spacing: calc(-0.6 * var(--wm-px));
+    white-space: nowrap;
+}
+
+/* search box x 20..188 (1 px black, 1 px white, 1 px grey), the 23 x 26 magnifier button after it */
+.wm-browser .wmb-search {
+    display: flex;
+    align-items: center;
+    gap: calc(1 * var(--wm-px));
+    margin: calc(14 * var(--wm-px)) 0 calc(9 * var(--wm-px)) calc(16 * var(--wm-px));
+}
+
+.wm-browser .wmb-search-input {
+    flex: 0 1 calc(168 * var(--wm-px));
+    min-width: 0;
+    height: calc(26 * var(--wm-px));
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0 calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #fff, inset 0 0 0 calc(2 * var(--wm-px)) #adaaad;
+    border-radius: 0;
+    outline: 0;
+    background: #fff;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.wm-browser .wmb-search-go {
+    flex: 0 0 auto;
+    width: calc(23 * var(--wm-px));
+    height: calc(26 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.wm-browser .wmb-search-go img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* expanders: 33 px, silver gradient, bold label at x 10, the double chevron 7 px from the right */
+.wm-browser .wmb-exp {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: calc(33 * var(--wm-px));
+    margin: 0 0 calc(9 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px)) 0 calc(9 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid;
+    border-color: #bdcbd6 #9c9e9c #8c8a8c #bdcbd6;
+    background: linear-gradient(#fff 0%, #f7fbff 15%, #e7ebef 35%, #d6dfe7 48%, #bdcbd6 52%, #bdcbd6 80%, #dee7ef 100%);
+    color: #424542;
+    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+    text-align: left;
+}
+
+.wm-browser .wmb-chev {
+    width: calc(16 * var(--wm-px));
+    height: calc(15 * var(--wm-px));
+}
+
+.wm-browser .wmb-exp[aria-expanded="true"] .wmb-chev {
+    transform: scaleY(-1);
+}
+
+.wm-browser .wmb-exp[aria-expanded="true"] {
+    margin-bottom: calc(2 * var(--wm-px));
+}
+
+.wm-browser .wmb-home-list {
+    margin: 0 calc(4 * var(--wm-px)) calc(9 * var(--wm-px));
+}
+
+.wm-browser .wmb-home-list[hidden] {
+    display: none;
+}
+
+.wm-browser .wmb-home-link {
+    display: block;
+    padding: calc(3 * var(--wm-px)) calc(2 * var(--wm-px));
+    color: #00f;
+    text-decoration: underline;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-browser .wmb-home-none {
+    padding: calc(3 * var(--wm-px)) calc(2 * var(--wm-px));
+    color: #808080;
+}
+
+/* ---------------------------------------------------------------- the web page */
+
+.wm-browser .wmb-frame-wrap {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #fff;
+}
+
+.wm-browser .wmb-frame-wrap[hidden] {
+    display: none;
+}
+
+/* laid out at up to 2x the page area and scaled down (wmBrowser.js layoutFrame) */
+.wm-browser .wmb-frame {
+    position: absolute;
+    left: 0;
+    top: 0;
+    border: 0;
+    transform-origin: 0 0;
+    background: #fff;
+}
+
+.wm-browser .wmb-touch {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* busy ring: browsres bitmap 4597, 18 frames of 22 px (44 at 2x), top right of the page */
+.wm-browser .wmb-busy {
+    display: none;
+    position: absolute;
+    z-index: 2;
+    top: calc(4 * var(--wm-px));
+    right: calc(4 * var(--wm-px));
+    width: calc(22 * var(--wm-px));
+    height: calc(22 * var(--wm-px));
+    background-image: image-set(url('/static_images/wm61/ie-busy.png') 1x, url('/static_images/wm61/ie-busy@2x.png') 2x);
+    background-size: calc(396 * var(--wm-px)) 100%;
+    background-repeat: no-repeat;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: wmb-busy 0.9s steps(18) infinite;
+}
+
+.wm-browser.is-loading .wmb-busy {
+    display: block;
+}
+
+@keyframes wmb-busy {
+    from { background-position: 0 0; }
+    to { background-position: calc(-396 * var(--wm-px)) 0; }
+}
+
+/* the phone keyboard's target while typing into the page: on screen (some keyboards ignore
+ * off-screen fields) but invisible */
+.wm-browser .wmb-ime {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    resize: none;
+    font-size: 16px;
+    z-index: 0;
+    pointer-events: none;
+}
+
+/* ---------------------------------------------------------------- Favorites / History */
+
+.wm-browser .wmb-sub {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+}
+
+.wm-browser .wmb-sub[hidden] {
+    display: none;
+}
+
+/* the blue bold heading with a rule, as WM's form pages */
+.wm-browser .wmb-sub-head {
+    flex: 0 0 auto;
+    padding: calc(2 * var(--wm-px)) calc(5 * var(--wm-px)) calc(3 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid var(--wm-rule, #000);
+    color: #00008b;
+    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+}
+
+.wm-browser .wmb-sub-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.wm-browser .wmb-sub-row {
+    display: grid;
+    grid-template-columns: calc(21 * var(--wm-px)) minmax(0, 1fr) auto;
+    align-items: center;
+    height: calc(18 * var(--wm-px));
+    padding-right: calc(4 * var(--wm-px));
+    white-space: nowrap;
+    cursor: default;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.wm-browser .wmb-sub-row.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-browser .wmb-sub-ico {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin-left: calc(2 * var(--wm-px));
+}
+
+.wm-browser .wmb-sub-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: bold;
+}
+
+.wm-browser .wmb-sub-meta {
+    max-width: calc(90 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: calc(6 * var(--wm-px));
+    color: #808080;
+}
+
+.wm-browser .wmb-sub-row.is-selected .wmb-sub-meta {
+    color: inherit;
+}
+
+.wm-browser .wmb-sub-empty {
+    padding: calc(8 * var(--wm-px)) calc(5 * var(--wm-px));
+    color: #808080;
+    text-align: center;
+}
