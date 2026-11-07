@@ -188,6 +188,8 @@ Broadcast when the agent names the chat with `set_session_title`.
 
 ### Server → client: `director_turn_report`
 
+While a Wren turn is running, the MCP tool `say { text }` puts one short plain sentence (about 200 characters, no markdown) into the chat and the mascot speech bubble mid-turn. It does not end the turn; the rules ask for about one `say` every one to three tool calls. The log draws `say` rows as her lines. Thinking stays a frosted `...` cloud; hover or click opens the live thinking in the VN text box (#706).
+
 Wren turns end with the MCP tool `finish_turn { summary, spoken, reportCard: { request, filename, items: [{ item, score, note }] }, suggestions }` instead of a written reply (#704). `summary` is the full markdown reply for the message log; `spoken` is one to three plain sentences for the mascot dialogue box (and a voice later), stored as `data.report.spoken`. Without it the client cuts a short line from the summary (`directorSpokenLine`). `score` is `hit`, `partial`, or `miss`; up to 12 items and 4 suggestions. The report is stored on the turn's assistant message as `data.report` (`{ summary, card, suggestions, at, review? }`) and its plain text becomes `data.Description`. The client draws the summary under the turn's trace, the card with per-item rescore buttons and Submit, and the suggestions as reply buttons on the latest reply. Hidden Rentan, Quips, and Auto-Repair chats ignore the tool; Xi refuses it.
 
 ```json
