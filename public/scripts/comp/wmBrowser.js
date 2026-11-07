@@ -59,6 +59,8 @@
     // Zoom: IE Mobile's text sizes
     const ZOOMS = [['largest', 'Largest', 1.5], ['larger', 'Larger', 1.25], ['medium', 'Medium', 1], ['smaller', 'Smaller', 0.85], ['smallest', 'Smallest', 0.7]];
 
+    const GRIMOIRE_ONLY = 'Grimoire wiki pages open in Grimoire on the desktop. Internet Explorer on this phone shows web pages.';
+
     let ws = null; // window.wmShell
     let page = null;
     let els = {};
@@ -71,6 +73,7 @@
     let pendingDir = 0;
     let session = null; // { id, viewUrl, query }
     let creating = null;
+    let wantUrl = ''; // the address the newest openSession asked for (a session being made loads this one)
     let frame = null;
     let ready = false;
     let loading = false;
@@ -80,9 +83,13 @@
     let favoritesLoaded = false;
     let settings = null;
     let addrEditing = false;
-    let inspectQueue = [];
+    // the newest inspect request: 'tap' | { x, y } (tap-and-hold at a point). The viewer keeps one too and
+    // answers only the newest, so a single slot (with a time limit) stays in step with it.
+    let pendingInspect = null;
+    const INSPECT_MS = 1500;
+    let pendingInspectAt = 0;
     let lastPushAt = 0; // a page link added an entry
-    let lastInputAt = 0; // the last tap or key sent to the page // 'tap' | { x, y } (tap-and-hold at a point)
+    let lastInputAt = 0; // the last tap or key sent to the page
     let viewMode = 'column';
     let zoomKey = 'medium';
     let fullScreen = false;
@@ -219,7 +226,7 @@
         session = null;
         ready = false;
         chromeAt = -1;
-        inspectQueue = [];
+        pendingInspect = null;
         if (frame) { frame.remove(); frame = null; }
         setLoading(false);
         if (!s) return Promise.resolve();
@@ -237,25 +244,35 @@
 
     /** A new Alchemy session showing url (the entry at idx). */
     async function openSession(url) {
+        // a later request (a link from another app, a favorite tapped while the first page is still
+        // being made) wins: the session is made for the newest address
+        wantUrl = url;
         if (creating) return creating;
         creating = (async () => {
             await closeSession();
-            const g = geometry();
-            setLoading(true);
             let res;
-            try {
-                res = await fetch('/api/grimoire-browser/sessions', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url, width: g.L, height: g.Lh, popup: false })
-                });
-            } catch (_) {
-                await cannotConnect();
-                return false;
-            }
             let payload = {};
-            try { payload = await res.json(); } catch (_) { /* empty */ }
+            for (;;) {
+                const g = geometry();
+                const asked = wantUrl;
+                setLoading(true);
+                try {
+                    res = await fetch('/api/grimoire-browser/sessions', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: asked, width: g.L, height: g.Lh, popup: false })
+                    });
+                } catch (_) {
+                    await cannotConnect();
+                    return false;
+                }
+                payload = {};
+                try { payload = await res.json(); } catch (_) { /* empty */ }
+                if (wantUrl === asked || !res.ok || !payload.viewUrl) break;
+                // another address was asked for while this one was made: let it go and make the newest
+                if (payload.sessionId) fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(payload.sessionId), { method: 'DELETE', credentials: 'same-origin', keepalive: true }).catch(() => {});
+            }
             if (res.status === 429) {
                 await cannotConnect('Alchemy already has as many pages open as it can (4). Close a web page on the desktop, then try again.');
                 return false;
@@ -283,7 +300,7 @@
                 } catch (_) { /* not ours */ }
             });
             frame.src = payload.viewUrl;
-            if (!visible) scheduleIdleClose();
+            if (pageAway()) scheduleIdleClose();
             return true;
         })();
         try { return await creating; } finally { creating = null; }
@@ -291,12 +308,26 @@
 
     function scheduleIdleClose() {
         clearTimeout(idleTimer);
-        idleTimer = setTimeout(() => { if (!visible) closeSession(); }, IDLE_CLOSE_MS);
+        idleTimer = setTimeout(() => { idleTimer = 0; if (pageAway()) closeSession(); }, IDLE_CLOSE_MS);
+    }
+
+    /** The web page is not on screen: IE is hidden, or the start page, Favorites or History shows. */
+    function pageAway() {
+        return !visible || onHome() || !!sub;
+    }
+
+    /** The page left the screen (start page, Favorites, History): it falls silent and Alchemy lets it go
+     *  after a while; it came back: the timer stops (a page let go reopens from its address). */
+    function syncPageShown() {
+        syncAudio();
+        if (!visible) return;
+        if (pageAway()) { if (session && !idleTimer) scheduleIdleClose(); }
+        else if (idleTimer) { clearTimeout(idleTimer); idleTimer = 0; }
     }
 
     function syncAudio() {
         if (!ready) return;
-        const on = visible && !document.hidden && !(settings && settings.audioEnabled === false);
+        const on = visible && !pageAway() && !document.hidden && !(settings && settings.audioEnabled === false);
         const vol = settings && settings.audioVolume !== undefined ? settings.audioVolume / 100 : 1;
         let master = 1;
         try { if (window.tabVolume && typeof window.tabVolume.masterGain === 'function') master = window.tabVolume.masterGain(); } catch (_) { /* none */ }
@@ -316,8 +347,15 @@
     }
 
     /** Go to a web address (typed, a favorite, a link from elsewhere). */
-    function navigate(url, title) {
-        if (!url) return;
+    function navigate(raw, title) {
+        if (!raw) return;
+        const url = webUrl(raw);
+        if (!url) {
+            // Grimoire's own pages (and chrome:) are saved in the shared favorites; Alchemy cannot open them
+            if (ws) ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: GRIMOIRE_ONLY });
+            return;
+        }
+        pendingInspect = null;
         closeSub();
         noteHistory(url, title);
         entries = entries.slice(0, idx + 1);
@@ -358,6 +396,7 @@
         if (target < 0 || target >= entries.length || target === idx) return false;
         idx = target;
         pendingDir = 0;
+        pendingInspect = null;
         const e = entries[target];
         render();
         step();
@@ -744,12 +783,17 @@
         if (!fire('pointerdown', p)) return;
         fire('pointerup', p);
         // is it an edit field? the viewer's inspect answers (grimoire-browser-menu); a tap there raises the keyboard
-        inspectQueue.push('tap');
+        askInspect('tap');
         fire('contextmenu', p, { buttons: 0, button: 2 });
     }
 
+    function askInspect(purpose) {
+        pendingInspect = purpose;
+        pendingInspectAt = Date.now();
+    }
+
     function longPress(x, y, cx, cy) {
-        inspectQueue.push({ x: cx, y: cy });
+        askInspect({ x: cx, y: cy });
         fire('contextmenu', { x, y }, { buttons: 0, button: 2 });
     }
 
@@ -763,8 +807,10 @@
     }
 
     function onInspect(data) {
-        const purpose = inspectQueue.shift();
-        if (!purpose) return;
+        const purpose = pendingInspect;
+        pendingInspect = null;
+        // an answer that comes too late (the page was busy, or it moved on) is not the newest tap's
+        if (!purpose || Date.now() - pendingInspectAt > INSPECT_MS) return;
         if (purpose === 'tap') {
             if (data.editable) focusIme();
             else if (document.activeElement === els.ime) els.ime.blur();
@@ -925,6 +971,7 @@
         sub = kind;
         subSel = -1;
         renderSub();
+        syncPageShown();
         if (kind === 'favorites' && !favoritesLoaded) loadSettings().then(() => { if (sub === 'favorites') renderSub(); });
         step();
     }
@@ -934,11 +981,14 @@
         sub = null;
         if (els.sub) els.sub.hidden = true;
         page.classList.remove('has-sub');
+        // back on a web page whose session was let go while the list showed: it reopens from its address
+        if (visible && !onHome() && !session && !creating) { entry().pending = true; openSession(entry().url); }
+        syncPageShown();
         step();
     }
 
     function subRows() {
-        if (sub === 'favorites') return favorites.map((f) => ({ url: f.url, title: f.title || f.url, sub: hostOf(f.url), icon: 'ie-favorite' }));
+        if (sub === 'favorites') return favorites.map((f) => ({ url: f.url, title: f.title || f.url, sub: webUrl(f.url) ? hostOf(f.url) : 'Desktop only', icon: 'ie-favorite' }));
         return readList(HISTORY_KEY).map((h) => ({ url: h.url, title: h.title || h.url, sub: h.at ? new Date(h.at).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric', year: '2-digit' }) : '', icon: 'ie-page' }));
     }
 
@@ -1084,6 +1134,7 @@
         if (home) renderHomeLists();
         renderAddress();
         if (!home) requestAnimationFrame(layoutFrame);
+        syncPageShown();
     }
 
     function renderHomeLists() {
@@ -1106,7 +1157,7 @@
         if (!text) return;
         const url = webUrl(text) || searchUrl(text);
         if (/^(edtx|rdf|dsap):/i.test(text)) {
-            ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: 'Grimoire wiki pages open in Grimoire on the desktop. Internet Explorer on this phone shows web pages.' });
+            ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: GRIMOIRE_ONLY });
             return;
         }
         if (webUrl(text)) noteTyped(url);
@@ -1276,7 +1327,7 @@
                 idleTimer = 0;
                 if (!settings) loadSettings().then(() => { if (onHome()) renderHomeLists(); syncAudio(); });
                 // the session was let go while away: the page comes back from its address
-                if (!onHome() && !session && !creating) { entry().pending = true; openSession(entry().url); }
+                if (!onHome() && !sub && !session && !creating) { entry().pending = true; openSession(entry().url); }
                 render();
                 if (sub) renderSub();
                 syncAudio();
@@ -1325,7 +1376,7 @@
             },
             closeSession,
             // tests: the pages seen here and where Chromium is
-            _state: () => ({ entries: entries.map((e) => (e.home ? 'home' : e.url)), idx, chromeAt, chromeBase, session: session && session.id, loading, frame: !!frame, ready, viewMode, zoomKey, geometry: els.view ? geometry() : null })
+            _state: () => ({ entries: entries.map((e) => (e.home ? 'home' : e.url)), idx, idle: !!idleTimer, inspect: pendingInspect, chromeAt, chromeBase, session: session && session.id, loading, frame: !!frame, ready, viewMode, zoomKey, geometry: els.view ? geometry() : null })
         };
         try {
             // featureLoader.js's global function: on the phone it opens this app
