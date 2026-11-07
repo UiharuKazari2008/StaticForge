@@ -168,6 +168,16 @@
         return settings;
     }
 
+    // Settings > Grimoire (wmSettingsConnections.js) saved new settings: one copy for the session
+    window.addEventListener('wm-alchemy-settings', (e) => {
+        const next = e && e.detail && e.detail.settings;
+        if (!next || typeof next !== 'object') return;
+        settings = Object.assign({}, settings || {}, next);
+        if (Array.isArray(settings.bookmarks)) { favorites = settings.bookmarks.slice(); favoritesLoaded = true; }
+        if (ready) post({ type: 'grimoire-browser-settings', settings });
+        syncAudio();
+    });
+
     async function saveFavorites(next) {
         const data = await window.wsClient.updateUserGlobalSettings({ alchemy: { bookmarks: next } });
         if (data && data.settings && data.settings.alchemy) settings = data.settings.alchemy;

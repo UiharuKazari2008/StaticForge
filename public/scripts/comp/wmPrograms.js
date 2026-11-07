@@ -1178,6 +1178,7 @@
         let page = null;
         let gridTab = 'personal';
         let open = null; // { def, exts, tabs, tab, draft, extDrafts }
+        let backPending = null; // the page whose back-key commit is still running
 
         function pagesFor(tab) {
             return PAGES.filter((p) => p.tab === tab && safeAvailable(p));
@@ -1293,13 +1294,22 @@
             historyDepth: () => (open ? 1 : 0),
             onBack() {
                 if (!open) return false;
-                // the back key leaves a page as ok does on the device; the entry is already gone
+                // the back key leaves a page as ok does on the device; the entry is already gone.
+                // A commit that says false (a message box, a sub-view going back) keeps the page
+                // open with its entry pushed again, as with ok.
                 const cur = open;
+                if (backPending === cur) return true;
+                backPending = cur;
                 commitAll(cur)
-                    .then((keys) => { if (Array.isArray(keys) && keys.length) changed(keys); })
-                    .catch(() => {});
-                open = null;
-                renderGrid();
+                    .catch(() => [])
+                    .then((keys) => {
+                        if (backPending === cur) backPending = null;
+                        if (open !== cur) return;
+                        if (keys === false) { sh.syncHistory(); return; }
+                        if (Array.isArray(keys) && keys.length) changed(keys);
+                        closePage();
+                        sh.syncHistory({ noPush: true });
+                    });
                 return true;
             }
         });

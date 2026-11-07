@@ -627,6 +627,8 @@
                 await ui.messageBox({ title: 'Grimoire', icon: 'error', text: 'The Grimoire settings could not be saved.' });
                 return false;
             }
+            // the phone's Internet Explorer (wmBrowser.js) keeps its own copy: hand it the saved settings
+            try { window.dispatchEvent(new CustomEvent('wm-alchemy-settings', { detail: { settings: saved } })); } catch (_) { /* no listener */ }
             return [];
         }
     });
