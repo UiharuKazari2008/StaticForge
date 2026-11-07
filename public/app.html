@@ -55,8 +55,17 @@
             ? 'windowed'
             : localStorage.getItem('galleryWindowMode');
         const isWideScreen = agentBrowserSession || innerWidth >= 1200;
-        if (!galleryWindowPreference) {
-            galleryWindowPreference = isWideScreen ? 'windowed' : 'maximized';
+        // The shell is chosen once per page load and never changes while the page lives: the
+        // desktop and Melaton Mobile (wm-shell.css, wmShell.js, #709) never share the screen.
+        // Under 1200 px a page that is not an agent tab is a phone.
+        // An installed desktop PWA window (window-controls-overlay) stays a desktop at any width.
+        const desktopPwaWindow = !!(window.matchMedia && matchMedia('(display-mode: window-controls-overlay)').matches);
+        globalThis.uiShell = (isWideScreen || desktopPwaWindow) ? 'desktop' : 'mobile';
+        if (globalThis.uiShell === 'mobile') document.documentElement.classList.add('ui-mobile');
+        if (!galleryWindowPreference && isWideScreen) {
+            // only a wide first load stores a choice: a phone's load used to store 'maximized'
+            // and kept a later wide load of the same browser out of the desktop
+            galleryWindowPreference = 'windowed';
             try {
                 localStorage.setItem('galleryWindowMode', galleryWindowPreference);
             } catch (e) { /* ignore */ }
@@ -295,6 +304,7 @@
     <link rel="stylesheet" href="/css/fonts.css">
     <link rel="stylesheet" href="/dist/fontawesome/css/all.subset.css">
     <link rel="stylesheet" href="/css/app.css">
+    <link rel="stylesheet" href="/css/wm-shell.css">
     <link rel="stylesheet" id="workspace-styles"
         href="/css/workspaces.css">
     <link rel="stylesheet"
@@ -8275,6 +8285,7 @@ Examples:
     <script src="scripts/appInitSteps.js"></script>
     <script src="scripts/comp/telemetryClient.js"></script>
     <script src="scripts/app.js"></script>
+    <script src="scripts/comp/wmShell.js"></script>
 </body>
 
 </html>

@@ -1,0 +1,1214 @@
+/*
+ * Melaton Mobile shell (Windows Mobile 6.1 Professional look), Yozora #709.
+ *
+ * html.ui-mobile is decided once in app.html's first script (narrow viewport, not an agent tab)
+ * and never changes while the page lives: the desktop and the mobile shell never share the screen.
+ * Under ui-mobile only the shell and the few surfaces it hosts render; every other top-level
+ * element of <body> is display:none. Outside ui-mobile the shell itself is display:none.
+ *
+ * Metrics are WM 6.1 at 96 dpi (1x), measured on the device (Device Emulator, VGA image halved);
+ * every length is N * --wm-px so the layout reflows at any width and grows for touch. Art comes in
+ * 1x / @2x pairs from the ROM (public/static_images/wm61, image-set picks by device pixel ratio).
+ * Colours are roles derived from the workspace colour by wmShell.js (applyTheme).
+ */
+
+html:not(.ui-mobile) #wmShell {
+    display: none !important;
+}
+
+html.ui-mobile {
+    --wm-px: 1px;
+    /* defaults = WM 6.1 green, replaced at boot from the workspace colour */
+    --wm-title: #004a19;
+    --wm-highlight: #31d339;
+    --wm-highlight-text: #ffffff;
+    --wm-menu-text: #087d10;
+    --wm-tint: #ceebce;
+    --wm-tab-strip: #d6ebce;
+    --wm-gloss-top: #c6e7ad;
+    --wm-gloss-bottom: #73ae42;
+    --wm-softkey-base: #4a9a10;
+    --wm-today-rule: #52be10;
+    --wm-start-rule: #397d08;
+    --wm-rule: #292c29;
+    --wm-button-border: #214d08;
+    --wm-button-light: #84d34a;
+    --wm-font: Tahoma, 'Segoe UI', Verdana, sans-serif;
+    background: #000;
+}
+
+/* Finger input: WM 6.1 was drawn for a stylus; a coarse pointer gets the same layout 1.5x larger */
+@media (pointer: coarse) {
+    html.ui-mobile {
+        --wm-px: 1.5px;
+    }
+}
+
+/* ---- no crossover: only the shell and its hosted surfaces render ---- */
+html.ui-mobile body > *:not(#wmShell):not(script):not(style):not(link):not(template):not(.page-background):not(#galleryWindow):not(.pswp):not(#confirmationDialog):not(#bootMessageBox):not(#toastContainer):not(#pinModal):not(#dreamscapeFatalErrorRoot):not(#dreamscapeConnectivityErrorOverlay):not(#dreamscapeConnectivityErrorWindow):not(.dreamscape-app-error-window):not(#agentClientUpdateDialog) {
+    display: none !important;
+}
+
+/* the gallery renders only while the Gallery app is the current app */
+html.ui-mobile:not([data-wm-app="gallery"]) body > #galleryWindow {
+    display: none !important;
+}
+
+/* the workspace background shows only behind Today, like the Today theme image */
+html.ui-mobile:not([data-wm-app="today"]) body > .page-background {
+    display: none !important;
+}
+
+/* the body stays see-through: .page-background (z-index -2) paints under it, html is black */
+/* the desktop's body::after vignette (and its darker editor-open state, set by windows that stay
+ * hidden on a phone) never paints into the shell */
+html.ui-mobile body::before,
+html.ui-mobile body::after {
+    display: none !important;
+}
+
+html.ui-mobile body {
+    overflow: hidden !important;
+    background: transparent !important;
+}
+
+/* ---- shell frame ---- */
+#wmShell {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--wm-font);
+    font-size: calc(12 * var(--wm-px));
+    line-height: 1.2;
+    color: #000;
+    pointer-events: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    background: #000;
+}
+
+/* Today shows the workspace background (.page-background) through the shell */
+html.ui-mobile[data-wm-app="today"] #wmShell {
+    background: transparent;
+}
+
+#wmShell > * {
+    pointer-events: auto;
+}
+
+:where(#wmShell) button {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+}
+
+/* ---- title bar: 25 px flat colour + 1 px rule ---- */
+.wm-titlebar {
+    flex: 0 0 auto;
+    height: calc(25 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid var(--wm-rule);
+    background: var(--wm-title);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    position: relative;
+    z-index: 3;
+}
+
+.wm-start {
+    flex: 0 0 auto;
+    width: calc(22 * var(--wm-px));
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: calc(1 * var(--wm-px)) solid var(--wm-gloss-bottom);
+}
+
+.wm-start img {
+    width: calc(18 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-start[aria-expanded="true"] {
+    background: var(--wm-highlight);
+}
+
+.wm-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-left: calc(5 * var(--wm-px));
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-status {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    padding-right: calc(4 * var(--wm-px));
+}
+
+.wm-status-icon {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    background: center / contain no-repeat;
+}
+
+.wm-status-icon[data-icon="data-off"] { background-image: image-set(url('/static_images/wm61/status-data-off.png') 1x, url('/static_images/wm61/status-data-off@2x.png') 2x); }
+.wm-status-icon[data-icon="data-on"] { background-image: image-set(url('/static_images/wm61/status-data-on.png') 1x, url('/static_images/wm61/status-data-on@2x.png') 2x); }
+.wm-status-icon[data-icon="data-active"] { background-image: image-set(url('/static_images/wm61/status-data-active.png') 1x, url('/static_images/wm61/status-data-active@2x.png') 2x); }
+.wm-status-icon[data-icon="volume"] { background-image: image-set(url('/static_images/wm61/status-volume.png') 1x, url('/static_images/wm61/status-volume@2x.png') 2x); }
+.wm-status-icon[data-icon="volume-off"] { background-image: image-set(url('/static_images/wm61/status-volume-off.png') 1x, url('/static_images/wm61/status-volume-off@2x.png') 2x); }
+
+/* ok / X: 19 x 17 px box 4 px from the top and 3 px from the right (device: 38 x 34 at 2x).
+ * 1 px dark border, 1 px light top edge, gradient fill, and the ROM's white glyph (gwes 8300-8303,
+ * drawn on a whole 23 x 26 title-bar cell, so it is placed relative to that cell). */
+.wm-title-action {
+    flex: 0 0 auto;
+    width: calc(19 * var(--wm-px));
+    height: calc(17 * var(--wm-px));
+    margin: 0 calc(3 * var(--wm-px)) 0 0;
+    padding: 0 !important;
+    border: calc(1 * var(--wm-px)) solid var(--wm-button-border) !important;
+    box-sizing: border-box;
+    box-shadow:
+        inset 0 calc(1 * var(--wm-px)) 0 var(--wm-button-light),
+        inset calc(1 * var(--wm-px)) 0 0 var(--wm-highlight),
+        inset calc(-1 * var(--wm-px)) 0 0 var(--wm-highlight),
+        inset 0 calc(-1 * var(--wm-px)) 0 var(--wm-gloss-bottom);
+    background-origin: border-box !important;
+    background-repeat: no-repeat !important;
+    background-size: calc(23 * var(--wm-px)) calc(26 * var(--wm-px)), 100% 100% !important;
+    background-position: calc(-1.5 * var(--wm-px)) calc(-4 * var(--wm-px)), 0 0 !important;
+    color: transparent;
+    font-size: 0;
+}
+
+.wm-title-action[data-kind="close"] {
+    background-image: image-set(url('/static_images/wm61/title-close.png') 1x, url('/static_images/wm61/title-close@2x.png') 2x), linear-gradient(to bottom, var(--wm-gloss-bottom), var(--wm-softkey-base)) !important;
+}
+
+.wm-title-action[data-kind="ok"] {
+    background-image: image-set(url('/static_images/wm61/title-ok.png') 1x, url('/static_images/wm61/title-ok@2x.png') 2x), linear-gradient(to bottom, var(--wm-gloss-bottom), var(--wm-softkey-base)) !important;
+}
+
+.wm-title-action:active {
+    filter: brightness(1.2);
+}
+
+.wm-title-action[hidden] {
+    display: none;
+}
+
+/* ---- content ---- */
+.wm-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+    background: #fff;
+    overflow: hidden;
+}
+
+/* the Gallery app hosts #galleryWindow under the bars: the content pane is see-through */
+html.ui-mobile[data-wm-app="gallery"] #wmShell > .wm-content,
+html.ui-mobile[data-wm-app="today"] #wmShell > .wm-content {
+    background: transparent;
+}
+
+/* the Gallery's pane is empty: taps go through it to #galleryWindow under the shell */
+html.ui-mobile[data-wm-app="gallery"] #wmShell > .wm-content,
+html.ui-mobile[data-wm-app="gallery"] #wmShell > .wm-content > .wm-page {
+    pointer-events: none !important;
+}
+
+html.ui-mobile[data-wm-app="gallery"] #wmShell {
+    background: transparent;
+}
+
+.wm-page {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.wm-page[hidden] {
+    display: none;
+}
+
+/* ---- soft-key bar: 1 px rule, 11 px gloss, 14 px base ---- */
+.wm-softkeys {
+    flex: 0 0 auto;
+    height: calc(25 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid var(--wm-rule);
+    background: linear-gradient(to bottom, var(--wm-gloss-top) 0, var(--wm-gloss-bottom) calc(11 * var(--wm-px)), var(--wm-softkey-base) calc(11 * var(--wm-px)), var(--wm-softkey-base) 100%);
+    color: #fff;
+    display: grid;
+    grid-template-columns: 1fr calc(34 * var(--wm-px)) 1fr;
+    align-items: stretch;
+    position: relative;
+    z-index: 3;
+}
+
+.wm-softkey {
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 0 calc(1 * var(--wm-px)) rgba(0, 0, 0, 0.35);
+}
+
+.wm-softkey:disabled {
+    color: rgba(255, 255, 255, 0.45) !important;
+    cursor: default;
+}
+
+.wm-softkey.is-pressed,
+.wm-softkey[aria-expanded="true"] {
+    background: rgba(0, 0, 0, 0.18) !important;
+}
+
+.wm-sip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wm-sip img {
+    width: calc(17 * var(--wm-px));
+    height: calc(10 * var(--wm-px));
+    object-fit: contain;
+    pointer-events: none;
+}
+
+.wm-sip[hidden] {
+    visibility: hidden;
+    display: flex;
+}
+
+/* ---- Start menu: drops from the flag, title colour, 18 px rows ---- */
+.wm-startmenu {
+    position: absolute;
+    left: env(safe-area-inset-left);
+    top: calc(env(safe-area-inset-top) + 26 * var(--wm-px));
+    z-index: 10;
+    min-width: calc(129 * var(--wm-px));
+    max-height: calc(100% - 52 * var(--wm-px) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    background: var(--wm-title);
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-top: 0;
+    color: #fff;
+    padding: calc(1 * var(--wm-px)) 0;
+    box-sizing: border-box;
+}
+
+.wm-startmenu[hidden],
+.wm-popup[hidden] {
+    display: none;
+}
+
+.wm-startmenu-item {
+    display: flex !important;
+    align-items: center;
+    width: 100%;
+    height: calc(18 * var(--wm-px));
+    padding: 0 calc(8 * var(--wm-px)) 0 calc(3 * var(--wm-px)) !important;
+    gap: calc(5 * var(--wm-px));
+    font-weight: bold;
+    text-align: left;
+    white-space: nowrap;
+    box-sizing: border-box;
+}
+
+.wm-startmenu-item img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    flex: 0 0 auto;
+    pointer-events: none;
+}
+
+.wm-startmenu-item:hover,
+.wm-startmenu-item:focus-visible,
+.wm-startmenu-item.is-selected {
+    background: var(--wm-highlight) !important;
+    outline: none;
+}
+
+.wm-startmenu-sep {
+    height: calc(1 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+    background: var(--wm-start-rule);
+}
+
+/* ---- soft-key popup menus: white, 1 px black border, 17 px rows ---- */
+.wm-popup {
+    position: absolute;
+    z-index: 11;
+    bottom: calc(env(safe-area-inset-bottom) + 26 * var(--wm-px));
+    min-width: calc(92 * var(--wm-px));
+    max-width: calc(100% - 8 * var(--wm-px));
+    background: #fff;
+    border: calc(1 * var(--wm-px)) solid #000;
+    padding: calc(1 * var(--wm-px)) 0;
+    box-sizing: border-box;
+    color: var(--wm-menu-text);
+}
+
+.wm-popup[data-side="right"] {
+    right: env(safe-area-inset-right);
+}
+
+.wm-popup[data-side="left"] {
+    left: env(safe-area-inset-left);
+}
+
+.wm-popup-item {
+    display: flex !important;
+    align-items: center;
+    width: 100%;
+    height: calc(17 * var(--wm-px));
+    padding: 0 calc(14 * var(--wm-px)) 0 calc(16 * var(--wm-px)) !important;
+    font-weight: bold;
+    text-align: left;
+    white-space: nowrap;
+    box-sizing: border-box;
+    position: relative;
+}
+
+.wm-popup-item[aria-checked="true"]::before {
+    content: '';
+    position: absolute;
+    left: calc(5 * var(--wm-px));
+    width: calc(7 * var(--wm-px));
+    height: calc(7 * var(--wm-px));
+    /* gwes glyph mask: black art, the menu paints it in its own text colour */
+    background: currentColor;
+    -webkit-mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-check.png') 1x, url('/static_images/wm61/menu-check@2x.png') 2x);
+    mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-check.png') 1x, url('/static_images/wm61/menu-check@2x.png') 2x);
+}
+
+.wm-popup-item:hover:not(:disabled),
+.wm-popup-item:focus-visible {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text);
+    outline: none;
+}
+
+.wm-popup-item:disabled {
+    color: #bdbebd;
+    cursor: default;
+}
+
+.wm-popup-sep {
+    height: calc(1 * var(--wm-px));
+    margin: calc(3 * var(--wm-px)) calc(8 * var(--wm-px));
+    background: var(--wm-menu-text);
+}
+
+/* ---- Today ---- */
+.wm-today {
+    color: #fff;
+    text-shadow: none;
+}
+
+.wm-today-row {
+    display: flex !important;
+    align-items: center;
+    width: 100%;
+    min-height: calc(21 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px)) 0 calc(3 * var(--wm-px)) !important;
+    gap: calc(7 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid var(--wm-today-rule) !important;
+    text-align: left;
+    box-sizing: border-box;
+    font-weight: bold;
+}
+
+.wm-today-row.is-plain {
+    font-weight: normal;
+}
+
+.wm-today-row img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    flex: 0 0 auto;
+}
+
+.wm-today-row:active,
+.wm-today-row.is-selected {
+    background: var(--wm-highlight) !important;
+}
+
+.wm-today-date {
+    min-height: calc(33 * var(--wm-px));
+    align-items: flex-start;
+    padding-top: calc(3 * var(--wm-px)) !important;
+}
+
+.wm-today-date .wm-today-text {
+    flex: 1 1 auto;
+}
+
+.wm-today-time {
+    flex: 0 0 auto;
+}
+
+.wm-today-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-today-date .wm-today-text {
+    white-space: normal;
+}
+
+/* ---- connecting / signed-out state ---- */
+.wm-status-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(8 * var(--wm-px));
+    background: #fff;
+    color: #000;
+    text-align: center;
+    padding: calc(16 * var(--wm-px));
+}
+
+.wm-status-page img {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
+/* ---- Gallery host: #galleryWindow sits between the bars ---- */
+html.ui-mobile[data-wm-app="gallery"] body > #galleryWindow {
+    position: fixed !important;
+    left: env(safe-area-inset-left) !important;
+    right: env(safe-area-inset-right) !important;
+    top: calc(env(safe-area-inset-top) + 26 * var(--wm-px)) !important;
+    bottom: calc(env(safe-area-inset-bottom) + 26 * var(--wm-px)) !important;
+    width: auto !important;
+    height: auto !important;
+    /* under the shell (2000): its pane is see-through and passes taps, and the Start menu,
+     * soft-key popups, search bar and message boxes stay on top of the gallery */
+    z-index: 1999 !important;
+    background: #fff !important;
+}
+
+/* the gallery's own pill bar and title are replaced by the soft keys and the WM title bar */
+html.ui-mobile #galleryWindow #main-menu-bar,
+html.ui-mobile #galleryWindow #galleryPageJumps,
+html.ui-mobile #galleryWindow > .modal-window-title,
+html.ui-mobile #galleryWindow > .modal-window-controls {
+    display: none !important;
+}
+
+.wm-searchbar {
+    position: fixed;
+    left: env(safe-area-inset-left);
+    right: env(safe-area-inset-right);
+    top: calc(env(safe-area-inset-top) + 26 * var(--wm-px));
+    z-index: 2002;
+    display: flex;
+    gap: calc(2 * var(--wm-px));
+    padding: calc(2 * var(--wm-px));
+    background: var(--wm-tint);
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    box-sizing: border-box;
+    pointer-events: auto;
+}
+
+.wm-searchbar[hidden] {
+    display: none;
+}
+
+.wm-searchbar input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: calc(19 * var(--wm-px));
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    padding: 0 calc(3 * var(--wm-px));
+    background: #fff;
+    color: #000;
+    box-sizing: border-box;
+    outline: none;
+    user-select: text;
+}
+
+html.ui-mobile[data-wm-search="1"] body > #galleryWindow {
+    top: calc(env(safe-area-inset-top) + 50 * var(--wm-px)) !important;
+}
+
+/* ---- message box (replaces the desktop's dialogs while the shell is up) ---- */
+.wm-msgbox-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(26 * var(--wm-px)) calc(8 * var(--wm-px));
+    box-sizing: border-box;
+}
+
+.wm-msgbox-layer[hidden] {
+    display: none;
+}
+
+.wm-msgbox {
+    width: 100%;
+    max-width: calc(224 * var(--wm-px));
+    background: #fff;
+    border: calc(1 * var(--wm-px)) solid #000;
+    box-sizing: border-box;
+}
+
+.wm-msgbox-title {
+    display: flex;
+    align-items: center;
+    height: calc(21 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+    background: var(--wm-highlight);
+    color: #fff;
+    font-weight: bold;
+}
+
+.wm-msgbox-title span {
+    flex: 1 1 auto;
+}
+
+.wm-msgbox-body {
+    display: flex;
+    gap: calc(10 * var(--wm-px));
+    padding: calc(10 * var(--wm-px)) calc(8 * var(--wm-px)) calc(12 * var(--wm-px));
+    user-select: text;
+}
+
+.wm-msgbox-body img {
+    width: calc(24 * var(--wm-px));
+    height: calc(24 * var(--wm-px));
+    flex: 0 0 auto;
+}
+
+.wm-msgbox-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.wm-msgbox-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: calc(4 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px)) calc(6 * var(--wm-px));
+}
+
+.wm-msgbox-buttons button {
+    min-width: calc(54 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    background: var(--wm-tint) !important;
+    color: #000;
+}
+
+.wm-msgbox-buttons button:focus-visible {
+    outline: calc(1 * var(--wm-px)) dotted #000;
+    outline-offset: calc(-3 * var(--wm-px));
+}
+
+/* .workspace-name carries the desktop's own weight; Today rows set theirs */
+.wm-today-row .wm-today-text {
+    font-weight: inherit;
+}
+
+.wm-msgbox-input {
+    display: block;
+    width: 100%;
+    margin-top: calc(6 * var(--wm-px));
+    height: calc(19 * var(--wm-px));
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    padding: 0 calc(3 * var(--wm-px));
+    box-sizing: border-box;
+    background: #fff;
+    color: #000;
+    outline: none;
+    user-select: text;
+}
+
+/* ---- the desktop's confirmation / input dialog, drawn as a WM message box ----
+ * confirmationDialog.js keeps every behaviour (timeouts, awaited closes, notice ids); only its
+ * look changes. It stays hidden while .hidden is set, like on the desktop. */
+html.ui-mobile body > #confirmationDialog {
+    position: fixed !important;
+    left: calc(env(safe-area-inset-left) + 8 * var(--wm-px)) !important;
+    right: calc(env(safe-area-inset-right) + 8 * var(--wm-px)) !important;
+    top: 50% !important;
+    bottom: auto !important;
+    transform: translateY(-50%) !important;
+    width: auto !important;
+    max-width: calc(224 * var(--wm-px)) !important;
+    min-width: 0 !important;
+    height: auto !important;
+    margin: 0 auto !important;
+    z-index: 2100 !important;
+    background: #fff !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    font-family: var(--wm-font) !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    color: #000 !important;
+    padding: 0 !important;
+    opacity: 1 !important;
+    animation: none !important;
+    transition: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+}
+
+html.ui-mobile body > #confirmationDialog.hidden {
+    display: none !important;
+}
+
+html.ui-mobile body > #confirmationDialog::before,
+html.ui-mobile body > #confirmationDialog::after,
+html.ui-mobile #confirmationDialog .modal-focus-overlay,
+html.ui-mobile #confirmationDialog .modal-window-controls,
+html.ui-mobile #confirmationDialog .modal-window-title i {
+    display: none !important;
+}
+
+html.ui-mobile #confirmationDialog .modal-window-title {
+    position: static !important;
+    display: flex !important;
+    align-items: center !important;
+    height: calc(21 * var(--wm-px)) !important;
+    min-height: 0 !important;
+    padding: 0 calc(4 * var(--wm-px)) !important;
+    margin: 0 !important;
+    background: var(--wm-highlight) !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    color: #fff !important;
+    justify-content: flex-start !important;
+    flex-direction: row !important;
+    width: auto !important;
+    flex: 0 0 auto !important;
+}
+
+html.ui-mobile #confirmationDialog .modal-window-title-main,
+html.ui-mobile #confirmationDialog #confirmationDialogTitle {
+    font: bold calc(12 * var(--wm-px)) var(--wm-font) !important;
+    color: #fff !important;
+    text-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+    flex: 1 1 auto !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+}
+
+html.ui-mobile #confirmationDialog .modal-content {
+    position: static !important;
+    padding: calc(10 * var(--wm-px)) calc(8 * var(--wm-px)) calc(6 * var(--wm-px)) !important;
+    margin: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    max-height: calc(100vh - 80 * var(--wm-px));
+    overflow: auto !important;
+}
+
+html.ui-mobile #confirmationDialog .confirmation-message,
+html.ui-mobile #confirmationDialog .confirmation-message * {
+    font-family: var(--wm-font) !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    color: #000 !important;
+    text-shadow: none !important;
+    text-align: left !important;
+    overflow-wrap: anywhere;
+}
+
+html.ui-mobile #confirmationDialog input,
+html.ui-mobile #confirmationDialog textarea {
+    display: block;
+    width: 100% !important;
+    height: calc(19 * var(--wm-px)) !important;
+    margin: calc(6 * var(--wm-px)) 0 0 !important;
+    padding: 0 calc(3 * var(--wm-px)) !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    color: #000 !important;
+    background: #fff !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    box-sizing: border-box !important;
+    user-select: text;
+}
+
+html.ui-mobile #confirmationDialog .confirmation-controls {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    justify-content: flex-end !important;
+    gap: calc(4 * var(--wm-px)) !important;
+    margin: calc(10 * var(--wm-px)) 0 0 !important;
+    padding: 0 !important;
+    background: none !important;
+    border: 0 !important;
+}
+
+html.ui-mobile #confirmationDialog .confirmation-controls button {
+    min-width: calc(54 * var(--wm-px)) !important;
+    height: calc(20 * var(--wm-px)) !important;
+    min-height: 0 !important;
+    padding: 0 calc(6 * var(--wm-px)) !important;
+    margin: 0 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    color: #000 !important;
+    background: var(--wm-tint) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+
+html.ui-mobile #confirmationDialog .confirmation-controls button i,
+html.ui-mobile #confirmationDialog .confirmation-controls button img {
+    display: none !important;
+}
+
+html.ui-mobile #confirmationDialog .confirmation-controls button:active {
+    background: var(--wm-highlight) !important;
+    color: #fff !important;
+}
+
+/* ---- boot message box (bootMessageBox.js, Retry / Restart while booting): same WM message box ---- */
+html.ui-mobile body > #bootMessageBox {
+    position: fixed !important;
+    left: calc(env(safe-area-inset-left) + 8 * var(--wm-px)) !important;
+    right: calc(env(safe-area-inset-right) + 8 * var(--wm-px)) !important;
+    top: 50% !important;
+    bottom: auto !important;
+    transform: translateY(-50%) !important;
+    width: auto !important;
+    max-width: calc(224 * var(--wm-px)) !important;
+    min-width: 0 !important;
+    height: auto !important;
+    margin: 0 auto !important;
+    z-index: 2100 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    background: #fff !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    color: #000 !important;
+    animation: none !important;
+    transition: none !important;
+}
+
+html.ui-mobile body > #bootMessageBox.hidden {
+    display: none !important;
+}
+
+html.ui-mobile #bootMessageBox::before,
+html.ui-mobile #bootMessageBox::after,
+html.ui-mobile #bootMessageBox .modal-window-controls,
+html.ui-mobile #bootMessageBox .modal-focus-overlay {
+    display: none !important;
+}
+
+html.ui-mobile #bootMessageBox .modal-window-title {
+    position: static !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    height: calc(21 * var(--wm-px)) !important;
+    min-height: 0 !important;
+    padding: 0 calc(4 * var(--wm-px)) !important;
+    margin: 0 !important;
+    background: var(--wm-highlight) !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+html.ui-mobile #bootMessageBox .modal-window-title-main,
+html.ui-mobile #bootMessageBox .boot-message-box-title {
+    font: bold calc(12 * var(--wm-px)) var(--wm-font) !important;
+    color: #fff !important;
+    text-shadow: none !important;
+    text-align: left !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+html.ui-mobile #bootMessageBox .modal-content {
+    position: static !important;
+    padding: calc(10 * var(--wm-px)) calc(8 * var(--wm-px)) calc(6 * var(--wm-px)) !important;
+    margin: 0 !important;
+    background: #fff !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+html.ui-mobile #bootMessageBox .boot-message-box-body {
+    display: flex !important;
+    gap: calc(10 * var(--wm-px)) !important;
+}
+
+html.ui-mobile #bootMessageBox .boot-message-box-icon,
+html.ui-mobile #bootMessageBox .boot-message-box-icon svg {
+    width: calc(24 * var(--wm-px)) !important;
+    height: calc(24 * var(--wm-px)) !important;
+    flex: 0 0 auto !important;
+}
+
+html.ui-mobile #bootMessageBox p {
+    margin: 0 0 calc(4 * var(--wm-px)) !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    color: #000 !important;
+    text-shadow: none !important;
+    overflow-wrap: anywhere;
+}
+
+html.ui-mobile #bootMessageBox .boot-message-box-buttons {
+    display: flex !important;
+    justify-content: flex-end !important;
+    gap: calc(4 * var(--wm-px)) !important;
+    margin: calc(10 * var(--wm-px)) 0 0 !important;
+}
+
+html.ui-mobile #bootMessageBox .boot-message-box-buttons button {
+    min-width: calc(54 * var(--wm-px)) !important;
+    width: auto !important;
+    height: calc(20 * var(--wm-px)) !important;
+    padding: 0 calc(6 * var(--wm-px)) !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    color: #000 !important;
+    background: var(--wm-tint) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+/* ---- toasts: WM notification bubbles under the title bar ---- */
+html.ui-mobile body > #toastContainer {
+    position: fixed !important;
+    left: calc(env(safe-area-inset-left) + 4 * var(--wm-px)) !important;
+    right: calc(env(safe-area-inset-right) + 4 * var(--wm-px)) !important;
+    top: calc(env(safe-area-inset-top) + 28 * var(--wm-px)) !important;
+    bottom: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    z-index: 2050 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: calc(3 * var(--wm-px)) !important;
+    align-items: stretch !important;
+    pointer-events: none !important;
+    padding: 0 !important;
+    transform: none !important;
+}
+
+html.ui-mobile #toastContainer > * {
+    pointer-events: auto !important;
+    position: relative !important;
+    display: flex !important;
+    align-items: flex-start !important;
+    gap: calc(6 * var(--wm-px)) !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: calc(5 * var(--wm-px)) calc(22 * var(--wm-px)) calc(5 * var(--wm-px)) calc(5 * var(--wm-px)) !important;
+    background: #fff !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-top: calc(3 * var(--wm-px)) solid var(--wm-highlight) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    transform: none !important;
+}
+
+html.ui-mobile #toastContainer > *::before,
+html.ui-mobile #toastContainer > *::after {
+    display: none !important;
+}
+
+html.ui-mobile #toastContainer .toast-icon {
+    flex: 0 0 auto !important;
+    width: calc(16 * var(--wm-px)) !important;
+    font-size: calc(13 * var(--wm-px)) !important;
+    color: var(--wm-menu-text) !important;
+    text-shadow: none !important;
+}
+
+html.ui-mobile #toastContainer .toast-icon img {
+    width: calc(16 * var(--wm-px)) !important;
+    height: calc(16 * var(--wm-px)) !important;
+}
+
+html.ui-mobile #toastContainer .toast-content {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+}
+
+html.ui-mobile #toastContainer .toast-title {
+    font: bold calc(12 * var(--wm-px)) var(--wm-font) !important;
+    color: #000 !important;
+    text-shadow: none !important;
+}
+
+html.ui-mobile #toastContainer .toast-message,
+html.ui-mobile #toastContainer .toast-message * {
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    color: #000 !important;
+    text-shadow: none !important;
+    overflow-wrap: anywhere;
+}
+
+html.ui-mobile #toastContainer .toast-progress {
+    height: calc(6 * var(--wm-px)) !important;
+    margin-top: calc(4 * var(--wm-px)) !important;
+    background: #fff !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+}
+
+html.ui-mobile #toastContainer .toast-progress-bar {
+    background: var(--wm-highlight) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+html.ui-mobile #toastContainer .toast-close {
+    position: absolute !important;
+    top: calc(3 * var(--wm-px)) !important;
+    right: calc(3 * var(--wm-px)) !important;
+    width: calc(15 * var(--wm-px)) !important;
+    height: calc(15 * var(--wm-px)) !important;
+    padding: 0 !important;
+    font-size: calc(10 * var(--wm-px)) !important;
+    color: #000 !important;
+    background: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+html.ui-mobile #toastContainer button:not(.toast-close) {
+    height: calc(20 * var(--wm-px)) !important;
+    min-height: 0 !important;
+    padding: 0 calc(6 * var(--wm-px)) !important;
+    margin: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) 0 0 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    color: #000 !important;
+    background: var(--wm-tint) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+/* ---- takeover: a surface that must own the screen (PIN logon, fatal / connectivity errors,
+ * the agent update countdown). While one is up (html[data-wm-takeover], set by wmShell.js) the
+ * shell and everything it hosts step aside, so the two never overlap. ---- */
+html.ui-mobile[data-wm-takeover] #wmShell,
+html.ui-mobile[data-wm-takeover] body > #galleryWindow,
+html.ui-mobile[data-wm-takeover] body > .pswp,
+html.ui-mobile[data-wm-takeover] body > #toastContainer,
+html.ui-mobile[data-wm-takeover] body > .page-background {
+    display: none !important;
+}
+
+html.ui-mobile body > #pinModal:not(.hidden),
+html.ui-mobile body > #agentClientUpdateDialog:not(.hidden) {
+    position: fixed !important;
+    inset: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    transform: none !important;
+    margin: 0 !important;
+    z-index: 2200 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    background: #fff !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    color: #000 !important;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left) !important;
+    animation: none !important;
+}
+
+html.ui-mobile #pinModal::before,
+html.ui-mobile #pinModal::after,
+html.ui-mobile #pinModal .modal-window-controls,
+html.ui-mobile #pinModal .modal-window-title i,
+html.ui-mobile #pinModal .modal-window-title img,
+html.ui-mobile #agentClientUpdateDialog::before,
+html.ui-mobile #agentClientUpdateDialog::after,
+html.ui-mobile #agentClientUpdateDialog .modal-window-controls {
+    display: none !important;
+}
+
+html.ui-mobile #pinModal > .modal-content {
+    position: static !important;
+    width: auto !important;
+    max-width: none !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    background: #fff !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+/* the WM title bar, title "Device Locked"-style: the page's own heading */
+html.ui-mobile #pinModal .modal-window-title,
+html.ui-mobile #agentClientUpdateDialog .modal-window-title {
+    position: static !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    height: calc(25 * var(--wm-px)) !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 calc(5 * var(--wm-px)) !important;
+    background: var(--wm-title) !important;
+    border: 0 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid var(--wm-rule) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+html.ui-mobile #pinModal .modal-window-title-main,
+html.ui-mobile #pinModal .modal-window-title-main span,
+html.ui-mobile #agentClientUpdateDialog .modal-window-title-main,
+html.ui-mobile #agentClientUpdateDialog .modal-window-title-main span {
+    font: bold calc(12 * var(--wm-px)) var(--wm-font) !important;
+    color: #fff !important;
+    text-shadow: none !important;
+    text-align: left !important;
+}
+
+html.ui-mobile #pinModal .modal-body {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: calc(8 * var(--wm-px)) !important;
+    padding: calc(12 * var(--wm-px)) calc(8 * var(--wm-px)) !important;
+    background: #fff !important;
+    color: #000 !important;
+}
+
+html.ui-mobile #pinModal .modal-body p {
+    font: bold calc(12 * var(--wm-px)) var(--wm-font) !important;
+    color: var(--wm-menu-text) !important;
+    text-shadow: none !important;
+    margin: 0 !important;
+}
+
+html.ui-mobile #pinModal .pin-pad,
+html.ui-mobile #pinModal .pin-display {
+    background: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+}
+
+html.ui-mobile #pinModal .pin-dot {
+    width: calc(9 * var(--wm-px)) !important;
+    height: calc(9 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+}
+
+html.ui-mobile #pinModal .pin-dot.filled,
+html.ui-mobile #pinModal .pin-dot.active {
+    background: var(--wm-highlight) !important;
+}
+
+html.ui-mobile #pinModal .pin-button {
+    width: calc(54 * var(--wm-px)) !important;
+    height: calc(30 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: linear-gradient(to bottom, #fff, var(--wm-tint)) !important;
+    color: #000 !important;
+    font: bold calc(14 * var(--wm-px)) var(--wm-font) !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+
+html.ui-mobile #pinModal .pin-button:active {
+    background: var(--wm-highlight) !important;
+    color: #fff !important;
+}
+
+html.ui-mobile #agentClientUpdateDialog .modal-content {
+    flex: 1 1 auto !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: calc(10 * var(--wm-px)) calc(8 * var(--wm-px)) !important;
+    background: #fff !important;
+    color: #000 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+/* fatal and connectivity error screens keep their own full-screen look: they own the screen */
+html.ui-mobile body > #dreamscapeFatalErrorRoot,
+html.ui-mobile body > #dreamscapeConnectivityErrorOverlay,
+html.ui-mobile body > #dreamscapeConnectivityErrorWindow,
+html.ui-mobile body > .dreamscape-app-error-window {
+    z-index: 2300 !important;
+}

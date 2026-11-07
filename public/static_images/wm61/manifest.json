@@ -1,0 +1,2017 @@
+{
+  "source": "Windows Mobile 6.1 Professional ROM (VGA, 192 dpi) via Device Emulator; Yozora #709",
+  "densities": {
+    "1x": "96 dpi (<name>.png)",
+    "2x": "192 dpi (<name>@2x.png)"
+  },
+  "note": "This ROM is a VGA build: most modules ship only the 192-dpi resource DLL, so many 1x files are flagged \"downscaled\" (box filter from the 2x art) or use a native 32 px frame. See per-item flags.",
+  "items": {
+    "status-data-off": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4680_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Connectivity, not connected (arrows with x), as in ref/today.png."
+    },
+    "status-data-on": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4684_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Connectivity, connected (two arrows)."
+    },
+    "status-signal-off": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4674_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Radio off (antenna with x)."
+    },
+    "status-signal-none": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4675_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Antenna without bars or dots."
+    },
+    "status-signal-search-1": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4681_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Antenna + 1 dot; with -2/-3 probably the searching-for-service sequence. No ascending signal-bar icons exist in this ROM dump."
+    },
+    "status-signal-search-2": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4694_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Antenna + 2 dots."
+    },
+    "status-signal-search-3": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4695_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Antenna + 3 dots."
+    },
+    "status-signal-alert": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4682_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Antenna with \"!\" (radio/SIM problem)."
+    },
+    "status-volume": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_5072_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Speaker on, as in ref/today.png."
+    },
+    "status-volume-off": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_5074_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Speaker muted (x)."
+    },
+    "status-vibrate": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_5073_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Vibrate."
+    },
+    "status-battery-full": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_5088_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "4 bars, as in ref/today.png."
+    },
+    "status-battery-3": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_5086_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "3 bars."
+    },
+    "status-battery-2": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_5089_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "2 bars."
+    },
+    "status-battery-1": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_5076_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "1 bar."
+    },
+    "status-battery-empty": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_5077_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Empty with \"!\" (critical)."
+    },
+    "status-battery-charging": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_5080_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Charging plug."
+    },
+    "status-battery-unknown": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_5087_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Upright battery with \"!\" (no battery / unknown)."
+    },
+    "status-data-anim-00": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4744_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Data arrows sequence 4744-4761 (frames in id order); probably the connecting/transfer animation. Frame 00 = both arrows, no tails."
+    },
+    "status-data-anim-01": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4745_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-02": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4746_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-03": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4747_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-04": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4748_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-05": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4749_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-06": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4750_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-07": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4751_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-08": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4752_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-09": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4753_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-10": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4754_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-11": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4755_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-12": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4756_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-13": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4757_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-14": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4758_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-15": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4759_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-16": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4760_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "status-data-anim-17": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4761_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "title-close": {
+      "1x": {
+        "source": "gwes.exe bmp_8302",
+        "size": [
+          23,
+          26
+        ]
+      },
+      "2x": {
+        "source": "gwes.exe bmp_8303",
+        "size": [
+          46,
+          52
+        ]
+      },
+      "notes": "Glyph only (white, alpha from mask). Canvas is the whole title-bar cell: at 2x x=433..478, y=0..51 on a 480-wide screen. The green button behind it is drawn (see README/report)."
+    },
+    "title-ok": {
+      "1x": {
+        "source": "gwes.exe bmp_8300",
+        "size": [
+          23,
+          26
+        ]
+      },
+      "2x": {
+        "source": "gwes.exe bmp_8301",
+        "size": [
+          46,
+          52
+        ]
+      },
+      "notes": "Glyph only, same cell as title-close."
+    },
+    "sip-keyboard": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "msim.192.dll ico_15366_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "White keyboard glyph (identical to shellres.192 icon 5081). msim.dll 1x icon 15376 is the older grey 2-bpp keyboard art (different design), so 1x is downscaled."
+    },
+    "app-today": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_8218_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "app-today-lg": {
+      "1x": {
+        "source": "shellres.192.dll ico_8218_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_8218_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "No 96-dpi resource in this VGA ROM; 1x uses the native 32x32 frame of the 192-dpi group (the 2x small-icon art), not a resample."
+    },
+    "app-programs": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_8217_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "app-programs-lg": {
+      "1x": {
+        "source": "shellres.192.dll ico_8217_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_8217_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "No 96-dpi resource in this VGA ROM; 1x uses the native 32x32 frame of the 192-dpi group (the 2x small-icon art), not a resample."
+    },
+    "app-settings": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_8216_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "app-settings-lg": {
+      "1x": {
+        "source": "shellres.192.dll ico_8216_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_8216_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "No 96-dpi resource in this VGA ROM; 1x uses the native 32x32 frame of the 192-dpi group (the 2x small-icon art), not a resample."
+    },
+    "app-help": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_8212_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "app-help-lg": {
+      "1x": {
+        "source": "shellres.192.dll ico_8212_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_8212_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "No 96-dpi resource in this VGA ROM; 1x uses the native 32x32 frame of the 192-dpi group (the 2x small-icon art), not a resample."
+    },
+    "app-search": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_8213_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "app-search-lg": {
+      "1x": {
+        "source": "shellres.192.dll ico_8213_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_8213_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "No 96-dpi resource in this VGA ROM; 1x uses the native 32x32 frame of the 192-dpi group (the 2x small-icon art), not a resample."
+    },
+    "app-games": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_8229_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "app-games-lg": {
+      "1x": {
+        "source": "shellres.192.dll ico_8229_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_8229_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "No 96-dpi resource in this VGA ROM; 1x uses the native 32x32 frame of the 192-dpi group (the 2x small-icon art), not a resample."
+    },
+    "app-phone": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13953_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Phone app (cprog.exe) not in the dump; shellres icon 13953 is the blue handset shown in ref/startmenu.png."
+    },
+    "app-phone-lg": {
+      "1x": {
+        "source": "shellres.192.dll ico_13953_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13953_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "No 96-dpi resource in this VGA ROM; 1x uses the native 32x32 frame of the 192-dpi group (the 2x small-icon art), not a resample."
+    },
+    "app-office": {
+      "1x": {
+        "source": "officeres.dll ico_7690_1_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "officeres.192.dll ico_7690_1_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Office Mobile folder (icon 7690; 7691 is a variant without 1x)."
+    },
+    "app-office-lg": {
+      "1x": {
+        "source": "officeres.dll ico_7690_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "officeres.192.dll ico_7690_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      }
+    },
+    "app-calendar": {
+      "1x": {
+        "source": "outres.dll ico_10002_4_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.dll ico_10002_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "One multi-size group (16/32/64): the 32 frame is both 1x large and 2x small."
+    },
+    "app-calendar-lg": {
+      "1x": {
+        "source": "outres.dll ico_10002_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "outres.dll ico_10002_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      }
+    },
+    "app-contacts": {
+      "1x": {
+        "source": "outres.dll ico_10000_4_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.dll ico_10000_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "One multi-size group (16/32/64): the 32 frame is both 1x large and 2x small."
+    },
+    "app-contacts-lg": {
+      "1x": {
+        "source": "outres.dll ico_10000_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "outres.dll ico_10000_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      }
+    },
+    "app-ie": {
+      "1x": {
+        "source": "iexplore.exe ico_1001_0_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "iexplore.exe ico_1001_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "One multi-size group (16/32/64): the 32 frame is both 1x large and 2x small."
+    },
+    "app-ie-lg": {
+      "1x": {
+        "source": "iexplore.exe ico_1001_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "iexplore.exe ico_1001_4_64x64",
+        "size": [
+          64,
+          64
+        ]
+      }
+    },
+    "app-messaging": {
+      "1x": {
+        "source": "tmail.exe ico_1001_4_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "tmail.exe ico_1001_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "One multi-size group (16/32/64): the 32 frame is both 1x large and 2x small."
+    },
+    "app-messaging-lg": {
+      "1x": {
+        "source": "tmail.exe ico_1001_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "tmail.exe ico_1001_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      }
+    },
+    "app-file-explorer": {
+      "1x": {
+        "source": "fexplore.exe ico_1001_0_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "fexplore.exe ico_1001_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "One multi-size group (16/32/64): the 32 frame is both 1x large and 2x small."
+    },
+    "app-file-explorer-lg": {
+      "1x": {
+        "source": "fexplore.exe ico_1001_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "fexplore.exe ico_1001_4_64x64",
+        "size": [
+          64,
+          64
+        ]
+      }
+    },
+    "app-pictures": {
+      "1x": {
+        "source": "pimgres.dll ico_101_0_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "pimgres.dll ico_101_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "One multi-size group (16/32/64): the 32 frame is both 1x large and 2x small."
+    },
+    "app-pictures-lg": {
+      "1x": {
+        "source": "pimgres.dll ico_101_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "pimgres.dll ico_101_4_64x64",
+        "size": [
+          64,
+          64
+        ]
+      }
+    },
+    "app-notes": {
+      "1x": {
+        "source": "notes.exe ico_106_4_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "notes.exe ico_106_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "One multi-size group (16/32/64): the 32 frame is both 1x large and 2x small."
+    },
+    "app-notes-lg": {
+      "1x": {
+        "source": "notes.exe ico_106_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "notes.exe ico_106_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      }
+    },
+    "app-calculator": {
+      "1x": {
+        "source": "MobileCalculator.exe ico_32512_4_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "MobileCalculator.exe ico_32512_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "\\Windows\\MobileCalculator.exe icon 32512 (16/32/64 in one group)."
+    },
+    "app-calculator-lg": {
+      "1x": {
+        "source": "MobileCalculator.exe ico_32512_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "MobileCalculator.exe ico_32512_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      }
+    },
+    "app-task-manager": {
+      "1x": {
+        "source": "taskmgr.exe ico_1_0_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellresapps.96.dll ico_20228_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "2x-uses-96dpi-32px-frame"
+      ],
+      "notes": "No 32px frame in shellresapps.192; 2x small uses the 96-dpi large frame (native 32px). 1x small is taskmgr.exe icon 1 (16px)."
+    },
+    "app-task-manager-lg": {
+      "1x": {
+        "source": "shellresapps.96.dll ico_20228_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellresapps.192.dll ico_20228_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "notes": "shellresapps icon 20228 (20229 is a darker variant; 20228 matches ref/programs.png)."
+    },
+    "today-clock": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13840_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "today-phone": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "tshres.192.dll ico_12502_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Wireless \"Phone off\" item. shellres icon 13999 is the 64px variant of the same art."
+    },
+    "today-getting-started": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "coreres.dll ico_20797_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "2x-uses-96dpi-32px-frame",
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "coreres.dll (96 dpi) 32px frame; matches ref/today.png pixel for pixel. coreres.192.dll only has a 64px frame. 20798 is identical."
+    },
+    "today-owner": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13841_1_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "today-messages": {
+      "1x": {
+        "source": "syncres.dll ico_4550_3_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "syncres.dll ico_4550_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Open envelope; matches ref/today.png."
+    },
+    "today-tasks": {
+      "1x": {
+        "source": "outres.dll ico_10001_4_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.dll ico_10001_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      }
+    },
+    "today-calendar": {
+      "1x": {
+        "source": "outres.dll ico_10002_4_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.dll ico_10002_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      }
+    },
+    "today-lock": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "tshres.192.dll ico_16113_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Open padlock (\"Device unlocked\")."
+    },
+    "today-lock-locked": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "tshres.192.dll ico_16112_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Closed padlock."
+    },
+    "today-search-button": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          15
+        ]
+      },
+      "2x": {
+        "source": "WLMHSSearchBarResources.192.dll GIF/102 (PNG)",
+        "size": [
+          32,
+          30
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Live Search button, normal state (32x30). WLMHSSearchBarResources GIF 101 (240x32) is the search bar artwork."
+    },
+    "today-search-button-pressed": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          15
+        ]
+      },
+      "2x": {
+        "source": "WLMHSSearchBarResources.192.dll GIF/103 (PNG)",
+        "size": [
+          32,
+          30
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Pressed state."
+    },
+    "menu-check": {
+      "1x": {
+        "source": "gwes.exe bmp_2 crop 7x7+0+0",
+        "size": [
+          7,
+          7
+        ]
+      },
+      "2x": {
+        "source": "gwes.exe bmp_5 crop 14x14+0+0",
+        "size": [
+          14,
+          14
+        ]
+      },
+      "notes": "Mask glyph (black, recolour at runtime: menus draw it in the item text colour, e.g. #087D10 in ref/menu-submenu.png). 2x matches the ref exactly."
+    },
+    "menu-submenu-arrow": {
+      "1x": {
+        "source": "gwes.exe bmp_2 crop 4x7+23+0",
+        "size": [
+          4,
+          8
+        ]
+      },
+      "2x": {
+        "source": "gwes.exe bmp_5 crop 8x15+46+0",
+        "size": [
+          8,
+          16
+        ]
+      },
+      "flags": [
+        "canvas-padded"
+      ],
+      "notes": "Mask glyph; glyph 4x7 (1x) / 8x15 (2x), padded with one transparent row at the bottom to keep 2:1. Ref shows 14 rows at 2x (last 1px row clipped by the menu)."
+    },
+    "msgbox-error": {
+      "1x": {
+        "source": "gwes.exe ico_16_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "gwes.exe ico_16_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "notes": "gwes icon group 16 (64/43/32)."
+    },
+    "msgbox-question": {
+      "1x": {
+        "source": "gwes.exe ico_32_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "gwes.exe ico_32_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "notes": "gwes icon group 32 (64/43/32)."
+    },
+    "msgbox-warning": {
+      "1x": {
+        "source": "gwes.exe ico_48_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "gwes.exe ico_48_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "notes": "gwes icon group 48 (64/43/32)."
+    },
+    "msgbox-info": {
+      "1x": {
+        "source": "gwes.exe ico_64_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "gwes.exe ico_64_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "notes": "gwes icon group 64 (64/43/32)."
+    },
+    "wait-0": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4896",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "16-bpp opaque tile, includes its light square backing; no mask or colour key in the ROM."
+    },
+    "wait-1": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4897",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-2": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4898",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-3": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4899",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-4": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4900",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-5": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4901",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-6": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4902",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-7": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4903",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-8": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4904",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-9": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4905",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-10": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4906",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-11": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4907",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-12": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4908",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-13": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4909",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-14": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4910",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    },
+    "wait-15": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_4911",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "opaque-source",
+        "1x-downscaled-from-2x"
+      ]
+    }
+  },
+  "notDelivered": {
+    "status-signal-0..5": "No ascending signal-bar icons in the dump (only antenna + 1-3 dots, exported as status-signal-search-*). tshres bmp 12302 holds Wi-Fi network bars (colour, list use).",
+    "status-data-active": "No distinct active icon; see status-data-anim-00..17.",
+    "sip-arrow": "Drawn, not a resource: white filled triangle 13x7 at 2x (rows 1,3,...,13 px), at x=266..278, y=606..612 in ref/sip.png.",
+    "scroll-up/scroll-down": "Drawn by gwes (see README).",
+    "dropdown-arrow": "Drawn: black filled triangle 13x7 at 2x (13,11,...,1 px rows). shellresapps icon 13332 is a different, taller arrow.",
+    "windows-flag": "Not exported (copyright rule; use the Melaton emblem). shellres.192 icon 4609 is 41x36 at 2x, drawn at x=4, y=8 of the 50 px title bar; no 1x flag in this ROM. A 2 px vertical separator follows at x=50..51 (2x), y=7..45, gradient #004918 at the ends to #84C35A at y=26."
+  }
+}

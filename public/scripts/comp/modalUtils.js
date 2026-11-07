@@ -4094,7 +4094,9 @@ function initializeGalleryWindow() {
     galleryWindowPreference = localStorage.getItem('galleryWindowMode');
 
     // Check if we're in desktop mode (wide screen)
-    const isWideScreen = window.innerWidth >= 1200;
+    // window.uiShell (app.html) is fixed for the page's life: a phone page never turns into the
+    // desktop and a desktop page never into the phone layout when the viewport is resized (#709)
+    const isWideScreen = window.uiShell === 'desktop';
     const willBeDesktopMode = isWideScreen && (galleryWindowPreference !== 'maximized');
 
     // If not in desktop mode, show gallery immediately (it's hidden by default in HTML)
@@ -4150,7 +4152,8 @@ function updateGalleryWindowMode() {
     if (!galleryWindow) return;
 
     const wasDesktopMode = document.body.classList.contains('desktop-mode');
-    const isWideScreen = window.innerWidth >= 1200;
+    // the shell picked at load, not the current width: resizing never crosses desktop <-> phone (#709)
+    const isWideScreen = window.uiShell === 'desktop';
     const isWindowed = galleryWindow.classList.contains('windowed');
 
     // Determine if windowed mode should be active
@@ -4414,8 +4417,8 @@ function maximizeGalleryWindow() {
         localStorage.setItem('galleryWindowMode', 'maximized');
         updateGalleryWindowMode();
     } else {
-        // Switch to windowed mode (only if screen is wide enough)
-        if (window.innerWidth >= 1200) {
+        // Switch to windowed mode (only on a desktop page; a phone page stays Melaton Mobile)
+        if (window.uiShell === 'desktop') {
             galleryWindowPreference = 'windowed';
             localStorage.setItem('galleryWindowMode', 'windowed');
             updateGalleryWindowMode();

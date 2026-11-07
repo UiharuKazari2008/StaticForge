@@ -83,6 +83,9 @@ function wireExitConfirmationListeners() {
     });
 
     window.addEventListener('popstate', (event) => {
+        // Melaton Mobile (wmShell.js) keeps a history entry while an app is open: the back
+        // gesture closes the app there, and only a pop it does not own asks to leave
+        if (window.wmShell && typeof window.wmShell.onPopState === 'function' && window.wmShell.onPopState(event)) return;
         event.preventDefault();
         showExitConfirmation(event, 'leave');
     });
