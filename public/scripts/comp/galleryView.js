@@ -5023,9 +5023,15 @@ function updateGalleryGrid(onlyIfChanged = false, updatePlaceholders = true) {
         // Use actual rendered layout
         columns = calculateTrueItemsPerRow();
     } else {
-        // Fallback to theoretical calculation when no items rendered yet
+        // An empty auto-fill grid still lists its tracks (gallery-core.css .gallery). The guess below
+        // used the saved size plus a border and came out a column short (2 of 3 at 1049px), which
+        // left the visible rows of a jump on placeholders.
+        const tracks = gallery.clientWidth > 0 ? getComputedStyle(gallery).gridTemplateColumns : '';
+        const trackCount = tracks && tracks !== 'none' ? tracks.trim().split(/\s+/).length : 0;
         const { width: containerWidth } = getGalleryContainerDimensions();
-        if (containerWidth <= 0) {
+        if (trackCount > 0) {
+            columns = trackCount;
+        } else if (containerWidth <= 0) {
             columns = 5; // Fallback
         } else {
             // Calculate optimal columns based on container width and minmax value
