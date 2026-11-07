@@ -28,7 +28,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "fe-device", "fe-file", "fe-folder", "menu-check", "menu-submenu-arrow", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "sip-keyboard", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-off", "status-data-on", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
+    const HD_ART = new Set(["app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "fe-device", "fe-file", "fe-folder", "menu-check", "menu-submenu-arrow", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "sip-keyboard", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-off", "status-data-on", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "set-about"]);
     const srcset = (name) => `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -282,6 +282,26 @@
         shell.querySelector('.wm-title').textContent = text;
     }
 
+    /** Settings > Menus > Start button (wmPrograms.js): text and icon, live; WM's by default. */
+    function startButtonPrefs() {
+        try {
+            if (window.wmSettings && typeof window.wmSettings.startButton === 'function') {
+                const b = window.wmSettings.startButton();
+                if (b && b.text) return b;
+            }
+        } catch (_) { /* settings not loaded */ }
+        return { text: 'Start', icon: '/static_images/melaton/melaton-white-256.png' };
+    }
+
+    function applyStartButton() {
+        if (!shell) return;
+        const b = startButtonPrefs();
+        const img = shell.querySelector('.wm-start img');
+        if (img && b.icon && img.getAttribute('src') !== b.icon) img.setAttribute('src', b.icon);
+        shell.querySelector('.wm-start').setAttribute('aria-label', b.text);
+        if (current === 'today' && !viewerActive && root.dataset.wmBoot !== 'install') setTitle(b.text);
+    }
+
     function setTitleAction(kind) {
         const btn = shell.querySelector('.wm-title-action');
         btn.hidden = !kind;
@@ -450,7 +470,10 @@
         // WM 6.1's Start menu: pinned programs | recent programs | Programs, Settings, Help. Above
         // them, as on WM 5 / 6.0, a strip of icons: here the apps open in this session, to switch
         // between them (the current one framed)
-        const items = [...apps.values()].filter((a) => a.inStart);
+        // Settings > Menus: the apps chosen for the Start menu (each keeps its group)
+        let chosen = null;
+        try { chosen = JSON.parse(localStorage.getItem('wmStartMenu') || 'null'); } catch (_) { chosen = null; }
+        const items = [...apps.values()].filter((a) => a.inStart && (!Array.isArray(chosen) || chosen.includes(a.id) || a.inStart === 'system'));
         const pinned = items.filter((a) => a.inStart === 'top');
         const lower = items.filter((a) => a.inStart === 'bottom');
         const system = ['programs', 'settings', 'help'].map((id) => apps.get(id)).filter((a) => a && a.inStart === 'system')
@@ -540,7 +563,7 @@
         const page = pageFor(app);
         page.hidden = false;
         // Today's title bar reads "Start"; an app shows its name and the X (or ok) at the right
-        setTitle(id === 'today' ? 'Start' : (app.title || id));
+        setTitle(id === 'today' ? startButtonPrefs().text : (app.title || id));
         setTitleAction(id === 'today' ? null : (app.titleAction || 'close'));
         if (typeof app.show === 'function') app.show(page);
         renderSoftKeys();
@@ -614,6 +637,7 @@
 
     function refreshStatus() {
         if (!shell) return;
+        applyStartButton();
         const ws = window.wsClient;
         const connected = !!(ws && typeof ws.isConnected === 'function' && ws.isConnected());
         const data = shell.querySelector('[data-role="data"]');
@@ -867,6 +891,13 @@
         if (!today || !today.page) return;
         let picture = null;
         try { picture = localStorage.getItem(TODAY_BG_KEY); } catch (_) { /* storage off */ }
+        // Settings > Today: "Use desktop wallpaper" wins over a picture that is still stored
+        try {
+            const useDesktop = window.wmSettings && typeof window.wmSettings.todayUsesDesktop === 'function'
+                ? window.wmSettings.todayUsesDesktop()
+                : localStorage.getItem('wmTodayUseDesktop') === '1';
+            if (useDesktop) picture = null;
+        } catch (_) { /* default: the picture if any */ }
         // only a same-site path is used
         if (picture && !/^\/[^/]/.test(picture)) picture = null;
         const wall = picture ? null : desktopWallpaper();
@@ -1161,6 +1192,7 @@
                     strip.innerHTML = prints.map((p) => `<button type="button" class="wm-today-print" data-filename="${escapeHtml(p.filename || p.original || '')}" aria-label="${escapeHtml(p.filename || 'Print')}" style="background-image:url('${escapeHtml(previewUrl(p))}')"></button>`).join('');
                 }
                 strip.hidden = !prints.length;
+                applyTodayItems(page);
             },
             softKeys() {
                 return {
@@ -1172,6 +1204,32 @@
 
         function workspaceMenu() {
             return workspaceItems();
+        }
+
+        // Settings > Today > Items: order and on / off of the rows (wmTodayItems = [{ id, on }])
+        let itemsKey = null;
+        function applyTodayItems(page) {
+            let list = null;
+            let raw = null;
+            try { raw = localStorage.getItem('wmTodayItems'); list = JSON.parse(raw || 'null'); } catch (_) { list = null; }
+            const off = new Set();
+            if (Array.isArray(list)) {
+                list.forEach((it) => { if (it && it.id && it.on === false) off.add(it.id); });
+                if (raw !== itemsKey) {
+                    // the rows in the stored order; rows not in the list keep their place at the end
+                    list.forEach((it) => {
+                        const row = page.querySelector(`[data-row="${CSS.escape(String(it.id))}"]`);
+                        if (row) page.appendChild(row);
+                    });
+                    page.querySelectorAll(':scope > [data-row]').forEach((row) => {
+                        if (!list.some((it) => it && it.id === row.dataset.row)) page.appendChild(row);
+                    });
+                }
+            }
+            itemsKey = raw;
+            page.querySelectorAll(':scope > [data-row]').forEach((row) => {
+                row.classList.toggle('wm-today-off', off.has(row.dataset.row));
+            });
         }
 
         registerApp(today);
@@ -1701,7 +1759,7 @@
         } else {
             root.removeAttribute('data-wm-viewer');
             const app = current && apps.get(current);
-            setTitle(current === 'today' ? 'Start' : ((app && app.title) || current));
+            setTitle(current === 'today' ? startButtonPrefs().text : ((app && app.title) || current));
             setTitleAction(current === 'today' ? null : ((app && app.titleAction) || 'close'));
         }
         renderSoftKeys();
@@ -1949,6 +2007,13 @@
         stack.push('today');
         activate('today');
         applyTodayBackground();
+        applyStartButton();
+        document.addEventListener('wmSettingsChange', () => {
+            applyTodayBackground(true);
+            applyStartButton();
+            const today = apps.get('today');
+            if (today && today.page) today.refresh();
+        });
         watchDirector();
         startBoot();
         refreshStatus();
@@ -1969,7 +2034,7 @@
         dropdown: (anchor, items, align, onClose) => showDropdown(anchor, items, align, onClose),
         closeMenus: () => closeMenus(),
         /** Registered apps (id, title, icon, inStart) in registration order. */
-        listApps: () => [...apps.values()].map((a) => ({ id: a.id, title: a.title, startLabel: a.startLabel, icon: a.icon, inStart: a.inStart })),
+        listApps: () => [...apps.values()].map((a) => ({ id: a.id, title: a.title, startLabel: a.startLabel, icon: a.icon, inStart: a.inStart, sip: !!a.sip })),
         /** A context menu at a point (tap-and-hold), kept on screen. */
         menuAt: (x, y, items) => {
             showPopup('context', items, null);
@@ -1986,6 +2051,7 @@
         syncHistory: () => syncHistory(),
         refreshSoftKeys: () => renderSoftKeys(),
         setTitle: (t) => setTitle(t),
+        setTitleAction: (k) => setTitleAction(k),
         art: { url: art, url2x: art2x, img: imgTag, srcset },
         escapeHtml,
         applyTheme,

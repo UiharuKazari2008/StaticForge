@@ -2008,3 +2008,23 @@ html.ui-mobile #toastContainer button:not(.toast-close) {
     display: inline-flex;
     align-items: center;
 }
+
+/* Settings > Today > Items: rows switched off */
+.wm-today > .wm-today-off {
+    display: none !important;
+}
+
+/* ---- Settings > Screen > Glossy title bar (the glossy WM 6.1 themes, emulator 2x halved):
+ * 11 px gloss over a 14 px base, brighter toward the middle, then the 1 px rule; the soft-key
+ * bar gets the same centre-bright base ---- */
+html.ui-mobile[data-wm-titlebar="glossy"] .wm-titlebar {
+    background:
+        radial-gradient(ellipse 60% 140% at 50% 100%, color-mix(in srgb, var(--wm-softkey-base) 70%, #fff) 0%, transparent 70%) 0 calc(11 * var(--wm-px)) / 100% calc(14 * var(--wm-px)) no-repeat,
+        linear-gradient(to bottom, var(--wm-gloss-top) 0, var(--wm-gloss-bottom) calc(11 * var(--wm-px)), var(--wm-softkey-base) calc(11 * var(--wm-px)), color-mix(in srgb, var(--wm-softkey-base) 75%, #000) 100%);
+}
+
+html.ui-mobile[data-wm-titlebar="glossy"] .wm-softkeys {
+    background:
+        radial-gradient(ellipse 60% 140% at 50% 100%, color-mix(in srgb, var(--wm-softkey-base) 70%, #fff) 0%, transparent 70%) 0 calc(11 * var(--wm-px)) / 100% calc(14 * var(--wm-px)) no-repeat,
+        linear-gradient(to bottom, var(--wm-gloss-top) 0, var(--wm-gloss-bottom) calc(11 * var(--wm-px)), color-mix(in srgb, var(--wm-softkey-base) 78%, #000) calc(11 * var(--wm-px)), color-mix(in srgb, var(--wm-softkey-base) 60%, #000) 100%);
+}
