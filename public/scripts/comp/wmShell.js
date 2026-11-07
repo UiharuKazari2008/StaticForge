@@ -934,7 +934,10 @@
     let notes = []; // [{ id (the newest toast), ids, type, title, toast }]
     let noteShown = null; // a toast id while its bubble is up
     let noteTrayOpen = false;
-    const noteSeen = new Set(); // toast ids that have had their bubble
+    // toast id + phase that have had their bubble: a progress toast that ends (updateGlassToastComplete,
+    // its bar gone) is news again, so the result comes up even after the running one was hidden
+    const noteSeen = new Set();
+    const seenKey = (id, n) => `${id}\u0001${n.running ? 'running' : 'done'}`;
     let noteSnapshot = '';
     let noteQueued = false;
     let noteKeysFor = ''; // the soft keys on screen were made for this (bubble id + Dismiss or not)
@@ -953,7 +956,7 @@
             const type = (t.className.match(/glass-toast-(\w+)/) || [])[1] || 'info';
             const key = `${type}\u0001${title}\u0001${text}`;
             let n = byKey.get(key);
-            if (!n) { n = { ids: [], type, title }; byKey.set(key, n); }
+            if (!n) { n = { ids: [], type, title, running: t.classList.contains('upload-progress') }; byKey.set(key, n); }
             n.ids.push(t.id);
             n.id = t.id;
             n.toast = t;
@@ -979,16 +982,16 @@
     function refreshNotes() {
         if (!shell) return;
         notes = readToasts();
-        const live = new Set(notes.flatMap((n) => n.ids));
-        for (const id of [...noteSeen]) if (!live.has(id)) noteSeen.delete(id);
+        const live = new Set(notes.flatMap((n) => n.ids.map((id) => seenKey(id, n))));
+        for (const k of [...noteSeen]) if (!live.has(k)) noteSeen.delete(k);
         if (!noteOf(noteShown)) noteShown = null;
         if (!notes.length) noteTrayOpen = false;
         if (!noteShown && !noteTrayOpen && notesMayPop()) {
-            const next = notes.find((n) => !n.ids.some((id) => noteSeen.has(id)));
+            const next = notes.find((n) => !n.ids.some((id) => noteSeen.has(seenKey(id, n))));
             if (next) noteShown = next.id;
         }
         const shown = noteShownNote();
-        if (shown) shown.ids.forEach((id) => noteSeen.add(id));
+        if (shown) shown.ids.forEach((id) => noteSeen.add(seenKey(id, shown)));
         renderNotes();
         const keysFor = shown ? `${shown.id}:${!!shown.toast.querySelector('.toast-close')}` : '';
         if (keysFor !== noteKeysFor) { noteKeysFor = keysFor; renderSoftKeys(); }
@@ -1134,7 +1137,7 @@
         closeMenus(true);
         closeBubble();
         if (noteShownNote()) {
-            notes.forEach((n) => n.ids.forEach((id) => noteSeen.add(id)));
+            notes.forEach((n) => n.ids.forEach((id) => noteSeen.add(seenKey(id, n))));
             hideNote();
             return;
         }

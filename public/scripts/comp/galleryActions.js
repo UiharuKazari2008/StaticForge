@@ -239,11 +239,14 @@ async function upscaleImage(image, event = null) {
 
     // Check if we're in a modal context
     const isInModal = !document.getElementById('manualModal').classList.contains('hidden');
+    // The phone (html.ui-mobile, wmShell.js) gets the toast in Studio too: Studio is one page among
+    // others there, and the toast is the shell's notification, still up after the user leaves it
+    const toastProgress = !isInModal || window.uiShell === 'mobile';
 
     let toastId;
     let progressInterval;
 
-    if (!isInModal) {
+    if (toastProgress) {
         // Use glass toast with progress when not in modal (global pattern)
         if (!progressToastId) {
             progressToastId = showGlassToast('info', 'Upscaling Image', 'Upscaling image...', true, false, '<i class="nai-upscale"></i>');
@@ -255,7 +258,8 @@ async function upscaleImage(image, event = null) {
             progress += 1;
             updateGlassToastProgress(progressToastId, progress);
         }, 1000);
-    } else {
+    }
+    if (isInModal) {
         // Use preview animation when in modal for upscaling
         showManualLoading(true, 'Upscaling image...');
     }
@@ -305,7 +309,7 @@ async function upscaleImage(image, event = null) {
                 const { filename, metadata } = result;
 
                 // Show success message
-                if (!isInModal) {
+                if (toastProgress) {
                     clearInterval(progressInterval);
                     updateGlassToastProgress(progressToastId, 100);
                     updateGlassToastComplete(progressToastId, {
@@ -356,7 +360,7 @@ async function upscaleImage(image, event = null) {
 
         } catch (error) {
             console.error('Upscaling error:', error);
-            if (!isInModal) {
+            if (toastProgress) {
                 if (progressInterval) clearInterval(progressInterval);
                 updateGlassToastComplete(progressToastId, {
                     type: 'error',
@@ -375,7 +379,7 @@ async function upscaleImage(image, event = null) {
 
     } catch (error) {
         console.error('Upscaling error:', error);
-        if (!isInModal) {
+        if (toastProgress) {
             if (progressInterval) clearInterval(progressInterval);
             updateGlassToastComplete(progressToastId, {
                 type: 'error',
@@ -388,11 +392,8 @@ async function upscaleImage(image, event = null) {
             showError('Image upscaling failed. Please try again.');
         }
     } finally {
-        if (isInModal) {
-            showManualLoading(false);
-        } else if (progressInterval) {
-            clearInterval(progressInterval);
-        }
+        if (isInModal) showManualLoading(false);
+        if (progressInterval) clearInterval(progressInterval);
     }
 }
 

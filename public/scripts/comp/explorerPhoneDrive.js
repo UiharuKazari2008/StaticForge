@@ -1179,8 +1179,10 @@
 
     function beginProgress(app, op, items, from, to, verb, onCancel) {
         const fop = root.fileOperationProgress;
-        if (!fop || !fop.available()) return null;
+        // the desktop's Vista dialog; on the phone (wmFileExplorer.js) a WM notification with the bar
+        if (!fop || !(typeof fop.reports === 'function' ? fop.reports() : fop.available())) return null;
         return fop.begin({
+            phone: true,
             op,
             verb,
             items: items.map((i) => ({ name: i.name, size: Number(i.size) || 0 })),

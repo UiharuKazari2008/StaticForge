@@ -704,12 +704,190 @@
         }
     }
 
+    /** html.ui-mobile (app.html, the WM 6.1 phone shell): no desktop windows, no Vista dialog. */
+    function isPhone() {
+        return !!doc && !!doc.documentElement && doc.documentElement.classList.contains('ui-mobile') && !isDesktop();
+    }
+
+    /**
+     * The phone's stand-in for the dialog (begin({ ..., phone: true }) under html.ui-mobile): a
+     * progress toast, which the shell (wmShell.js) shows as a WM notification: the header as its
+     * title, from / to and the time left as its text, the bar, Cancel. A failure asks Try Again /
+     * Skip / Cancel as on the desktop (confirmationDialog.js, a WM message box there); complete()
+     * turns the toast into the end with its buttons.
+     */
+    class PhoneOperation extends Operation {
+        get shown() {
+            return !!this.toastId;
+        }
+
+        phoneLine() {
+            if (this.cancelled) return TEXT.canceling;
+            if (this.task) return this.line;
+            // "From DCIM to Pictures." as the dialog's from / to line, then its time line
+            const parts = [];
+            if (this.from) parts.push(`${TEXT.from} ${this.from.name}`);
+            if (this.to) parts.push(`${TEXT.to.trim()} ${this.to.name}`);
+            const where = parts.join(' ');
+            const left = this.estimate ? `About ${formatDuration(this.estimate.seconds)} remaining` : TEXT.calculatingTime;
+            return where ? `${where.charAt(0).toUpperCase()}${where.slice(1)}. ${left}` : left;
+        }
+
+        show() {
+            if (this.finished || this.toastId || !isPhone() || typeof root.showGlassToast !== 'function') return;
+            this.shownAt = Date.now();
+            const buttons = this.cancellable ? [{ text: TEXT.cancel, onClick: () => this.cancel() }] : null;
+            this.toastId = root.showGlassToast('info', this.headerText, this.phoneLine(), true, false, null, buttons);
+            this.render();
+            const tick = () => {
+                if (!this.toastId || this.completed) return;
+                this.updateEstimate();
+                this.render();
+                this.tickTimer = setTimeout(tick, ESTIMATE_EVERY_MS);
+            };
+            this.tickTimer = setTimeout(tick, ESTIMATE_DELAY_MS);
+        }
+
+        render() {
+            if (!this.toastId || this.completed) return;
+            const pct = this.marquee ? 0 : Math.max(0, Math.min(100, this.fraction() * 100));
+            if (typeof root.updateGlassToastProgress === 'function') root.updateGlassToastProgress(this.toastId, pct);
+            if (typeof root.updateGlassToast === 'function') root.updateGlassToast(this.toastId, 'info', this.headerText, this.phoneLine());
+        }
+
+        playMovie() {}
+
+        toggleDetails() {}
+
+        setMarquee(on) {
+            this.marquee = !!on;
+            this.render();
+        }
+
+        setLine(text) {
+            this.line = String(text == null ? '' : text);
+            this.render();
+        }
+
+        setHeader(text) {
+            if (!text || !this.task || this.completed) return;
+            this.header = String(text);
+            this.render();
+        }
+
+        setPlace(which, place) {
+            if (!place || !place.name || (which !== 'from' && which !== 'to') || !this[which]) return;
+            this[which] = place;
+            this.render();
+        }
+
+        setOnCancel(fn) {
+            if (typeof fn !== 'function') return;
+            const had = this.cancellable;
+            this.onCancel = fn;
+            this.cancellable = true;
+            if (!had && this.toastId && !this.cancelled && typeof root.updateGlassToastButtons === 'function') {
+                root.updateGlassToastButtons(this.toastId, [{ text: TEXT.cancel, onClick: () => this.cancel() }]);
+            }
+        }
+
+        async attempt(item, fn) {
+            for (;;) {
+                try {
+                    return { ok: true, value: await fn() };
+                } catch (err) {
+                    if (!this.toastId) throw err;
+                    console.error('File operation:', err);
+                    const answer = await this.interrupted(item, err);
+                    if (answer === 'retry') continue;
+                    if (answer !== 'skip') this.cancel();
+                    return { ok: false, error: err };
+                }
+            }
+        }
+
+        cancel() {
+            if (this.cancelled || this.finished) return;
+            this.cancelled = true;
+            if (this.onCancel) {
+                try { this.onCancel(); } catch (err) { console.error('File operation cancel:', err); }
+            }
+            if (!this.toastId) return;
+            if (typeof root.updateGlassToastButtons === 'function') root.updateGlassToastButtons(this.toastId, []);
+            if (typeof root.updateGlassToast === 'function') root.updateGlassToast(this.toastId, 'info', this.headerText, TEXT.canceling);
+        }
+
+        finish() {
+            if (this.finished) return;
+            this.finished = true;
+            if (this.toastId && !this.cancelled) {
+                this.doneItems = this.totalItems;
+                this.doneBytes = this.totalBytes;
+                this.percent = 100;
+                this.marquee = false;
+                this.render();
+                const left = MIN_VISIBLE_MS - (Date.now() - this.shownAt);
+                if (left > 0) {
+                    setTimeout(() => this.close(), left);
+                    return;
+                }
+            }
+            this.close();
+        }
+
+        complete({ header, lines, buttons } = {}) {
+            if (this.finished || !this.toastId) {
+                this.finished = true;
+                this.close();
+                return Promise.resolve('close');
+            }
+            this.finished = true;
+            this.completed = true;
+            clearTimeout(this.tickTimer);
+            const id = this.toastId;
+            const text = (lines || []).map((parts) => [].concat(parts)
+                .map((part) => (part && typeof part === 'object' ? String(part.b || '') : String(part == null ? '' : part))).join('')).join(' ');
+            return new Promise((resolve) => {
+                this.resolveComplete = resolve;
+                const own = (buttons || []).filter((b) => b && b.value !== 'close');
+                if (typeof root.updateGlassToastComplete === 'function') {
+                    root.updateGlassToastComplete(id, {
+                        type: 'success',
+                        title: header || this.headerText,
+                        message: text || header || this.headerText,
+                        showProgress: false,
+                        timeout: false,
+                        buttons: own.map((b) => ({ text: b.text, onClick: () => { this.answer = b.value; this.close(); } }))
+                    });
+                }
+            });
+        }
+
+        close() {
+            clearTimeout(this.tickTimer);
+            if (this.resolveComplete) {
+                this.resolveComplete(this.answer || 'close');
+                this.resolveComplete = null;
+            }
+            const id = this.toastId;
+            this.toastId = null;
+            if (id && typeof root.removeGlassToast === 'function') root.removeGlassToast(id);
+        }
+    }
+
+    /** options.phone: on the phone (html.ui-mobile) a progress notification stands in for the dialog. */
     function begin(options) {
-        return new Operation(options || {});
+        const o = options || {};
+        return o.phone && isPhone() ? new PhoneOperation(o) : new Operation(o);
     }
 
     function available() {
         return isDesktop();
+    }
+
+    /** Whether begin({ ..., phone: true }) reports progress: the desktop's dialog or the phone's notification. */
+    function reports() {
+        return isDesktop() || isPhone();
     }
 
     /** Work that is not a file transfer under the same dialog: title as the header, line as its status. */
@@ -796,7 +974,7 @@
         return s < 60 ? plural(Math.max(1, Math.round(s)), 'Second', 'Seconds') : formatDuration(s);
     }
 
-    const api = { begin, task, run, batches, available, formatBytes, formatDuration, formatElapsed, MOVIES, MIN_VISIBLE_MS };
+    const api = { begin, task, run, batches, available, reports, isPhone, formatBytes, formatDuration, formatElapsed, MOVIES, MIN_VISIBLE_MS };
     if (root) root.fileOperationProgress = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : null);
