@@ -114,7 +114,9 @@ html.ui-mobile[data-wm-app="today"] #wmShell {
 /* ---- title bar: 25 px flat colour + 1 px rule ---- */
 .wm-titlebar {
     flex: 0 0 auto;
-    height: calc(25 * var(--wm-px));
+    /* 25 px + the 1 px rule (the page sizes border-box) */
+    height: calc(26 * var(--wm-px));
+    box-sizing: border-box;
     border-bottom: calc(1 * var(--wm-px)) solid var(--wm-rule);
     background: var(--wm-title);
     color: #fff;
@@ -244,7 +246,9 @@ html.ui-mobile[data-wm-app="today"] #wmShell > .wm-content {
 /* ---- soft-key bar: 1 px rule, 11 px gloss, 14 px base ---- */
 .wm-softkeys {
     flex: 0 0 auto;
-    height: calc(25 * var(--wm-px));
+    /* 1 px rule + 25 px (border-box) */
+    height: calc(26 * var(--wm-px));
+    box-sizing: border-box;
     border-top: calc(1 * var(--wm-px)) solid var(--wm-rule);
     background: linear-gradient(to bottom, var(--wm-gloss-top) 0, var(--wm-gloss-bottom) calc(11 * var(--wm-px)), var(--wm-softkey-base) calc(11 * var(--wm-px)), var(--wm-softkey-base) 100%);
     color: #fff;
@@ -1767,4 +1771,40 @@ html.ui-mobile body > .pswp .pswp__preloader {
 /* the default button of a message box (the device draws it with a thicker frame) */
 .wm-msgbox-buttons button.is-default {
     border-width: calc(2 * var(--wm-px)) !important;
+}
+
+/* ---- Start menu: the open programs as a strip of icons on top (WM 5 / 6.0 style), 16 px icons
+ * in 22 px cells, the current one framed; tap switches to it ---- */
+.wm-startmenu-running {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(1 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) calc(1 * var(--wm-px));
+}
+
+.wm-startmenu-run {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: calc(22 * var(--wm-px));
+    height: calc(22 * var(--wm-px));
+    padding: 0 !important;
+    border: calc(1 * var(--wm-px)) solid transparent !important;
+    box-sizing: border-box;
+}
+
+.wm-startmenu-run img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-startmenu-run.is-current {
+    border-color: var(--wm-highlight) !important;
+}
+
+.wm-startmenu-run:active,
+.wm-startmenu-run:focus-visible {
+    background: var(--wm-highlight) !important;
+    outline: none;
 }

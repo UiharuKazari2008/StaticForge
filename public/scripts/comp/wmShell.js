@@ -419,12 +419,34 @@
         const menu = shell.querySelector('.wm-startmenu');
         if (!menu.hidden) { closeMenus(); return; }
         closeMenus(true);
+        // WM 6.1's Start menu: pinned programs | recent programs | Programs, Settings, Help. Above
+        // them, as on WM 5 / 6.0, a strip of icons: here the apps open in this session, to switch
+        // between them (the current one framed)
         const items = [...apps.values()].filter((a) => a.inStart);
         const pinned = items.filter((a) => a.inStart === 'top');
         const lower = items.filter((a) => a.inStart === 'bottom');
+        const system = ['programs', 'settings', 'help'].map((id) => apps.get(id)).filter((a) => a && a.inStart === 'system')
+            .concat(items.filter((a) => a.inStart === 'system' && !['programs', 'settings', 'help'].includes(a.id)));
+        const running = openedApps.filter((id) => apps.has(id));
         const row = (a) => `<button type="button" class="wm-startmenu-item" role="menuitem" data-app="${escapeHtml(a.id)}">${imgTag(a.icon)}<span>${escapeHtml(a.startLabel || a.title)}</span></button>`;
-        menu.innerHTML = pinned.map(row).join('')
-            + (lower.length ? '<div class="wm-startmenu-sep" role="separator"></div>' + lower.map(row).join('') : '');
+        const sep = '<div class="wm-startmenu-sep" role="separator"></div>';
+        const strip = running.length
+            ? `<div class="wm-startmenu-running" role="group" aria-label="Open programs">${running.map((id) => {
+                const a = apps.get(id);
+                return `<button type="button" class="wm-startmenu-run${id === current ? ' is-current' : ''}" data-app="${escapeHtml(id)}" title="${escapeHtml(a.startLabel || a.title)}" aria-label="${escapeHtml(a.startLabel || a.title)}">${imgTag(a.icon)}</button>`;
+            }).join('')}</div>${sep}`
+            : '';
+        menu.innerHTML = strip + pinned.map(row).join('')
+            + (lower.length ? sep + lower.map(row).join('') : '')
+            + (system.length ? sep + system.map(row).join('') : '');
+        menu.querySelectorAll('.wm-startmenu-run').forEach((b) => {
+            b.addEventListener('click', (e) => {
+                e.stopPropagation();
+                closeMenus();
+                // switching keeps the app as it was (its page stays mounted)
+                switchTo(b.dataset.app);
+            });
+        });
         menu.querySelectorAll('.wm-startmenu-item').forEach((b) => {
             b.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -457,9 +479,29 @@
         return page;
     }
 
+    // apps opened in this session, most recent first (the Start menu's strip)
+    const openedApps = [];
+    const MAX_OPEN_STRIP = 6;
+
+    function noteOpened(id) {
+        const app = apps.get(id);
+        if (!app || id === 'today' || !app.inStart) return;
+        const at = openedApps.indexOf(id);
+        if (at >= 0) openedApps.splice(at, 1);
+        openedApps.unshift(id);
+        if (openedApps.length > MAX_OPEN_STRIP) openedApps.length = MAX_OPEN_STRIP;
+    }
+
+    /** Bring an open app to the front over Today, as it was left. */
+    function switchTo(id) {
+        if (id === current) return;
+        open(id, { fromStart: true });
+    }
+
     function activate(id) {
         const app = apps.get(id);
         if (!app) return;
+        noteOpened(id);
         const prev = current && apps.get(current);
         if (prev && prev !== app) {
             if (prev.page) prev.page.hidden = true;
@@ -620,23 +662,47 @@
 
     const TODAY_BG_KEY = 'wmTodayBackground';
 
-    /** Today's picture (Pictures > Menu > Set as Today Background), over the workspace background. */
-    function applyTodayBackground() {
+    /** The active workspace's desktop wallpaper (resolveWorkspaceWallpaperUrl: modalUtils.js). */
+    function desktopWallpaper() {
+        try {
+            const w = typeof workspaces !== 'undefined' && typeof activeWorkspace !== 'undefined' ? workspaces[activeWorkspace] : null;
+            if (!w || !w.wallpaper || typeof resolveWorkspaceWallpaperUrl !== 'function') return null;
+            const url = resolveWorkspaceWallpaperUrl(w.wallpaper);
+            return url ? { url, position: w.wallpaperPosition || 'center' } : null;
+        } catch (_) { return null; }
+    }
+
+    let todayBgKey = '';
+
+    /**
+     * Today's background: a picture set from Pictures & Videos (Menu > Set as Today Background),
+     * else the workspace's desktop wallpaper, else the page background.
+     */
+    function applyTodayBackground(force) {
         const today = apps.get('today');
         if (!today || !today.page) return;
-        let url = null;
-        try { url = localStorage.getItem(TODAY_BG_KEY); } catch (_) { /* storage off */ }
+        let picture = null;
+        try { picture = localStorage.getItem(TODAY_BG_KEY); } catch (_) { /* storage off */ }
         // only a same-site path is used
-        if (url && !/^\/[^/]/.test(url)) url = null;
-        const set = (u) => {
+        if (picture && !/^\/[^/]/.test(picture)) picture = null;
+        const wall = picture ? null : desktopWallpaper();
+        const url = picture || (wall && wall.url) || null;
+        const key = `${url}|${wall ? wall.position : ''}`;
+        if (!force && key === todayBgKey) return;
+        todayBgKey = key;
+        const set = (u, position) => {
             today.page.style.backgroundImage = u ? `url("${u.replace(/["\\\n]/g, encodeURIComponent)}")` : '';
+            // the desktop's own placement for its wallpaper (center / fill / fit / tile / stretch)
+            const pos = position || 'center';
+            today.page.style.backgroundSize = /fit/.test(pos) ? 'contain' : /stretch/.test(pos) ? '100% 100%' : /tile/.test(pos) ? 'auto' : 'cover';
+            today.page.style.backgroundRepeat = /tile/.test(pos) ? 'repeat' : 'no-repeat';
             today.page.classList.toggle('has-picture', !!u);
         };
-        set(url);
+        set(url, wall && wall.position);
         if (url) {
             // a picture that no longer loads falls back to the workspace background
             const probe = new Image();
-            probe.onerror = () => set(null);
+            probe.onerror = () => { set(null); todayBgKey = ''; };
             probe.src = url;
         }
     }
@@ -751,6 +817,34 @@
             return n ? `${n} ${n === 1 ? 'print' : 'prints'} in progress` : 'No tasks';
         }
 
+        // Director: its status push (director_computer_status, kept on directorInstance._status
+        // by director.js) says whether a turn runs and in which session; Xi has its own part
+        let directorStatus = null;
+        let directorAsked = false;
+
+        function directorText() {
+            const st = directorStatus || (window.directorInstance && window.directorInstance._status) || null;
+            if (!st) {
+                const ws = window.wsClient;
+                if (!directorAsked && ws && ws.initializationCompleted && typeof ws.sendMessage === 'function') {
+                    directorAsked = true;
+                    ws.sendMessage('director_computer_status', {}, false)
+                        .then((r) => { directorStatus = (r && (r.data || r)) || null; if (current === 'today') today.refresh(); })
+                        .catch(() => { /* no Director on this server */ });
+                }
+                return '';
+            }
+            const xi = st.xi && st.xi.running ? st.xi : null;
+            if (xi) return `Yozora is working${xi.sessionName ? `: ${xi.sessionName}` : '...'}`;
+            if (st.running) return `Director is working${st.sessionName ? `: ${st.sessionName}` : '...'}`;
+            return 'Director is idle';
+        }
+
+        if (window.wsClient && typeof window.wsClient.on === 'function') {
+            const onDirector = (d) => { directorStatus = (d && (d.data || d)) || directorStatus; if (current === 'today') today.refresh(); };
+            window.wsClient.on('director_computer_status', onDirector);
+        }
+
         function novelAiText() {
             const o = window.optionsData;
             if (!o) return '';
@@ -801,6 +895,9 @@
                     </div>
                     <div class="wm-today-row is-plain" data-row="tasks">
                         ${imgTag('today-tasks')}<span class="wm-today-text" data-f="tasks"></span>
+                    </div>
+                    <div class="wm-today-row is-plain" data-row="director" hidden>
+                        <img src="/static_images/app_icons/director.png" alt="" draggable="false"><span class="wm-today-text" data-f="director"></span>
                     </div>
                     <div class="wm-today-row is-plain" data-row="novelai" hidden>
                         ${imgTag('today-calendar')}<span class="wm-today-text" data-f="novelai"></span>
@@ -859,6 +956,7 @@
             refresh() {
                 const page = this.page;
                 if (!page) return;
+                applyTodayBackground();
                 const now = new Date();
                 setText(page.querySelector('[data-f="day"]'), fmtDay.format(now));
                 setText(page.querySelector('[data-f="date"]'), fmtDate.format(now));
@@ -872,6 +970,9 @@
                     setText(page.querySelector('[data-f="messages"]'), mailUnread ? `${mailUnread} unread ${mailUnread === 1 ? 'message' : 'messages'}` : 'No unread messages');
                 }
                 setText(page.querySelector('[data-f="tasks"]'), tasksText());
+                const dir = directorText();
+                page.querySelector('[data-row="director"]').hidden = !dir;
+                setText(page.querySelector('[data-f="director"]'), dir || '');
                 const nai = novelAiText();
                 const naiRow = page.querySelector('[data-row="novelai"]');
                 naiRow.hidden = !nai;
@@ -907,7 +1008,7 @@
 
         registerApp(today);
         // switching workspace changes Today's rows, theme and prints
-        document.addEventListener('workspaceSwitchComplete', () => { recentKey = ''; today.refresh(); });
+        document.addEventListener('workspaceSwitchComplete', () => { recentKey = ''; applyTodayBackground(true); today.refresh(); });
     }
 
     function registerGalleryApp() {
@@ -1698,6 +1799,8 @@
         menu: (side, items, btn) => showPopup(side, items, btn),
         dropdown: (anchor, items, align, onClose) => showDropdown(anchor, items, align, onClose),
         closeMenus: () => closeMenus(),
+        /** Registered apps (id, title, icon, inStart) in registration order. */
+        listApps: () => [...apps.values()].map((a) => ({ id: a.id, title: a.title, startLabel: a.startLabel, icon: a.icon, inStart: a.inStart })),
         /** A context menu at a point (tap-and-hold), kept on screen. */
         menuAt: (x, y, items) => {
             showPopup('context', items, null);
