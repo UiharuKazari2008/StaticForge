@@ -22,8 +22,9 @@
  * Files from the phone itself (<input type=file>) stay the browser's picker: "Browse device..."
  * (Menu) where the caller can take them (the host's extraButton, the Director's attachments).
  *
- * Also routed here on phones: the Director's Attach File (its file input's click), Internet
- * Explorer's upload fields (wmBrowser.js via window.wmFileDialogs.open).
+ * Also routed here on phones: Studio's name dialogs (openStudioSaveNameDialog: Save Preset, Save
+ * to Desktop, the session name, Open Preset), the Director's Attach File (its file input's click),
+ * Internet Explorer's upload fields (wmBrowser.js via window.wmFileDialogs.open).
  *
  * Only on phones: does nothing unless window.uiShell is 'mobile'. Styles: wm-file-dialogs.css.
  */
@@ -232,7 +233,15 @@
         render();
         const isPhone = String(d.location).startsWith('phone:');
         try {
-            if (isPhone) {
+            if (typeof d.opts.items === 'function') {
+                // a list of its own (Studio's presets): no folders or locations
+                const all = await d.opts.items();
+                if (my !== token || d.done) return;
+                d.all = all || [];
+                d.folders = [];
+            } else if (d.opts.folderFixed || d.opts.noFolder) {
+                d.folders = [];
+            } else if (isPhone) {
                 await loadPhone(d);
             } else if (d.kind === 'save') {
                 const s = await survey(wsRoot(d.location), 1, false);
@@ -362,7 +371,7 @@
         }
         const title = esc(d.opts.title || (d.kind === 'save' ? 'Save As' : 'Open'));
         const typeLabel = esc(d.opts.typeLabel || 'All Files (*.*)');
-        const many = locations().length + phoneRoots().length > 1;
+        const many = !d.opts.noLocation && typeof d.opts.items !== 'function' && locations().length + phoneRoots().length > 1;
         if (d.kind === 'save') {
             const had = page.querySelector('[data-f="name"]');
             if (had) d.name = had.value;
@@ -370,10 +379,10 @@
                 <div class="wm-form-hdr">${title}</div>
                 <div class="wfd-form">
                     <div class="wfd-row"><label for="wfdName">Name:</label><input id="wfdName" class="wm-edit" data-f="name" type="text" autocomplete="off" spellcheck="false" value="${esc(d.name)}"></div>
-                    <div class="wfd-row"><span class="wfd-label">Folder:</span><button type="button" class="wm-combo" data-dd="folder"${d.loading ? ' disabled' : ''}><span>${esc(folderLabel(d))}</span></button></div>
-                    <div class="wfd-row"><span class="wfd-label">Type:</span><button type="button" class="wm-combo" data-dd="type"><span>${typeLabel}</span></button></div>
-                    <div class="wfd-row"><span class="wfd-label">Location:</span><button type="button" class="wm-combo" data-dd="location"${many ? '' : ' disabled'}><span>${esc(locationLabel(d))}</span></button></div>
-                    <div class="wfd-buttons"><button type="button" class="wm-button" data-act="save"${d.busy ? ' disabled' : ''}>Save</button><button type="button" class="wm-button" data-act="cancel">Cancel</button></div>
+                    ${d.opts.noFolder ? '' : `<div class="wfd-row"><span class="wfd-label">Folder:</span><button type="button" class="wm-combo" data-dd="folder"${d.loading || d.opts.folderFixed ? ' disabled' : ''}><span>${esc(d.opts.folderFixed || folderLabel(d))}</span></button></div>`}
+                    ${d.opts.noType ? '' : `<div class="wfd-row"><span class="wfd-label">Type:</span><button type="button" class="wm-combo" data-dd="type"><span>${typeLabel}</span></button></div>`}
+                    ${d.opts.noLocation ? '' : `<div class="wfd-row"><span class="wfd-label">Location:</span><button type="button" class="wm-combo" data-dd="location"${many ? '' : ' disabled'}><span>${esc(locationLabel(d))}</span></button></div>`}
+                    <div class="wfd-buttons"><button type="button" class="wm-button" data-act="save"${d.busy ? ' disabled' : ''}>${esc(d.opts.okLabel || 'Save')}</button><button type="button" class="wm-button" data-act="cancel">Cancel</button></div>
                     ${d.error ? `<p class="wfd-note">${esc(d.error)}</p>` : ''}
                 </div>
             </div>`;
@@ -385,8 +394,10 @@
             page.innerHTML = `<div class="wfd wfd-open">
                 <div class="wfd-hdr">${title}</div>
                 <div class="wfd-top${many ? ' has-loc' : ''}">
-                    <div class="wfd-row has-btn"><span class="wfd-label">Folder:</span><button type="button" class="wm-combo" data-dd="folder"${d.loading ? ' disabled' : ''}><span>${esc(folderLabel(d))}</span></button><button type="button" class="wm-button" data-act="cancel">Cancel</button></div>
-                    <div class="wfd-row"><span class="wfd-label">Type:</span><button type="button" class="wm-combo" data-dd="type"><span>${typeLabel}</span></button></div>
+                    ${typeof d.opts.items === 'function'
+                        ? `<div class="wfd-row has-btn"><span class="wfd-label">Type:</span><button type="button" class="wm-combo" data-dd="type"><span>${typeLabel}</span></button><button type="button" class="wm-button" data-act="cancel">Cancel</button></div>`
+                        : `<div class="wfd-row has-btn"><span class="wfd-label">Folder:</span><button type="button" class="wm-combo" data-dd="folder"${d.loading ? ' disabled' : ''}><span>${esc(folderLabel(d))}</span></button><button type="button" class="wm-button" data-act="cancel">Cancel</button></div>
+                    <div class="wfd-row"><span class="wfd-label">Type:</span><button type="button" class="wm-combo" data-dd="type"><span>${typeLabel}</span></button></div>`}
                     ${many ? `<div class="wfd-row"><span class="wfd-label">Location:</span><button type="button" class="wm-combo" data-dd="location"><span>${esc(locationLabel(d))}</span></button></div>` : ''}
                 </div>
                 <div class="wfd-scroll" role="listbox" aria-label="${title}">
@@ -505,13 +516,13 @@
         d.name = name;
         if (!name) { await message('Enter a name for the file.'); return; }
         if (BAD_NAME.test(name)) { await message('The name contains characters that cannot be used: \\ / : * ? " < > |'); return; }
-        const path = d.folder || wsRoot(d.location);
+        const path = d.opts.folderFixed ? null : (d.folder || wsRoot(d.location));
         d.busy = true;
         render();
         let ok = false;
         try {
             let items = [];
-            try { items = await list(path); } catch (_) { items = []; }
+            if (path) { try { items = await list(path); } catch (_) { items = []; } }
             if (d.done) return;
             ok = !!(await d.opts.onSave({ path, name, workspaceId: d.location, items }));
         } catch (err) {
@@ -708,6 +719,76 @@
         return true;
     }
 
+    /**
+     * Studio's name dialogs (studioSession.js openStudioSaveNameDialog, #studioSaveNameModal): Save
+     * As > New Preset / To Desktop, File > Save Preset, the session name and Open Preset, as WM's Save
+     * As / Open with the desktop's own save, rename and open calls.
+     */
+    function studioNameDialog(mode) {
+        /* global studioSessionPresetName, studioRenameSessionPreset, studioSaveFindDesktopRequest, handleManualSave, openManualModalWithContent */
+        let current = '';
+        try { current = studioSessionPresetName(); } catch (_) { current = ''; }
+        if (mode === 'load-preset') {
+            return show({
+                kind: 'open',
+                title: 'Open Preset',
+                typeLabel: 'Presets',
+                items: async () => {
+                    const presets = (window.optionsData && Array.isArray(window.optionsData.presets)) ? window.optionsData.presets : [];
+                    return presets.filter((p) => p && p.name).map((p) => ({ item: { id: `preset:${p.name}`, name: p.name, shortcutType: 'preset' }, path: '', label: 'Presets' }));
+                },
+                async onPick(item, _folder, ctl) {
+                    ctl.close();
+                    await openManualModalWithContent({ type: 'preset', name: item.name, title: item.name });
+                    return true;
+                }
+            });
+        }
+        if (mode === 'rename') {
+            return show({
+                kind: 'save',
+                title: 'Session Name',
+                noFolder: true,
+                noType: true,
+                noLocation: true,
+                okLabel: 'OK',
+                suggestName: () => current,
+                onSave: ({ name }) => studioRenameSessionPreset(name)
+            });
+        }
+        if (mode === 'desktop') {
+            return show({
+                kind: 'save',
+                title: 'Save to Desktop',
+                folderFixed: 'Desktop',
+                typeLabel: 'Studio Sessions',
+                suggestName: () => current,
+                async onSave({ name, workspaceId }) {
+                    const existing = await studioSaveFindDesktopRequest(workspaceId, name);
+                    return saveRequestAsDesktopShortcut({ name, workspaceId, overwriteId: existing ? existing.id : null });
+                }
+            });
+        }
+        return show({
+            kind: 'save',
+            title: 'Save Preset',
+            noFolder: true,
+            typeLabel: 'Presets',
+            suggestName: () => (mode === 'preset-current' ? current : ''),
+            onSave: ({ name, workspaceId }) => handleManualSave({ name, workspaceId })
+        });
+    }
+
+    function wrapStudioName() {
+        const orig = window.openStudioSaveNameDialog;
+        if (typeof orig !== 'function' || orig._wmFd) return !!(orig && orig._wmFd);
+        const wrapped = function (mode) { return studioNameDialog(mode || 'preset-new'); };
+        wrapped._wmFd = true;
+        wrapped.desktop = orig;
+        window.openStudioSaveNameDialog = wrapped;
+        return true;
+    }
+
     // ---------------------------------------------------------------- Director: Attach File
 
     /** A picked file as a Director attachment (director.js explorerItemAttachment where it has it). */
@@ -823,7 +904,8 @@
         let tries = 0;
         const tick = () => {
             const a = ws || register();
-            const b = wrapStudio();
+            const b1 = wrapStudio();
+            const b = wrapStudioName() && b1;
             const c = wrapAttachInput();
             if ((a && b && c) || ++tries > 120) return;
             setTimeout(tick, 500);
