@@ -2324,6 +2324,246 @@
         "1x-uses-native-32px-frame"
       ],
       "notes": "Settings applet icon: Wireless Manager (Settings grid, Melaton Mobile Settings app)."
+    },
+    "msg-acct-outlook": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll ico_10011_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Messaging account picker: the Outlook E-mail account (Dreamscape: the signed-in person's Dovecote mailbox)."
+    },
+    "msg-acct-mail": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll ico_10012_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Messaging account picker: an e-mail account (Dreamscape: an agent's Dovecote mailbox)."
+    },
+    "msg-unread": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll RCDATA 11097 (GIF)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Message list: unread message (closed envelope)."
+    },
+    "msg-read": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll RCDATA 11098 (GIF)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Message list: read message (open envelope)."
+    },
+    "msg-attach-mail": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bitmap 22505 frame 0 (32x32 strip), #FF00FF key made transparent",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Message list: a message with attachments (envelope with a paper clip)."
+    },
+    "msg-attachment": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll RCDATA 11077 (GIF)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Message view: attachment (blank page)."
+    },
+    "msg-folder-inbox": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bitmap 22002 frame 0 (32x32 strip), #FF00FF key made transparent",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Folder: Inbox."
+    },
+    "msg-folder-sent": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bitmap 22002 frame 1, #FF00FF key made transparent",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Folder: Sent Items."
+    },
+    "msg-folder-folder": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bitmap 22002 frame 2, #FF00FF key made transparent",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Folder: any other folder (Archive, Junk E-mail)."
+    },
+    "msg-folder-deleted": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bitmap 22002 frame 3, #FF00FF key made transparent",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Folder: Deleted Items."
+    },
+    "msg-folder-account": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bitmap 22002 frame 5, #FF00FF key made transparent",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Folder list: the account itself (the tray of folders)."
+    },
+    "msg-folder-outbox": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bitmap 22002 frame 7, #FF00FF key made transparent",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Folder: Outbox."
     }
   },
   "notDelivered": {
