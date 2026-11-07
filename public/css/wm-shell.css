@@ -87,13 +87,35 @@ html.ui-mobile body {
     pointer-events: none;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    --wm-safe-top: env(safe-area-inset-top);
+    --wm-safe-right: env(safe-area-inset-right);
+    --wm-safe-bottom: env(safe-area-inset-bottom);
+    --wm-safe-left: env(safe-area-inset-left);
+    padding: var(--wm-safe-top) var(--wm-safe-right) var(--wm-safe-bottom) var(--wm-safe-left);
     background: #000;
 }
 
-/* Today shows the workspace background (.page-background) through the shell */
+/* Today shows the workspace background (.page-background) through the shell, but never in the
+ * system bar bands around it: those stay black as in every other app. A phone that reports a
+ * sub-pixel top inset (the Fold7 cover screen: the title bar lands at 45.8 CSS px, device row
+ * 103 of a black status band) otherwise showed one row of wallpaper above the title bar as a
+ * light line. The bands overshoot by 1 px under the opaque title and soft-key bars. */
 html.ui-mobile[data-wm-app="today"] #wmShell {
     background: transparent;
+    box-shadow:
+        inset 0 calc(var(--wm-safe-top) + 1px) #000,
+        inset 0 calc(-1 * var(--wm-safe-bottom) - 1px) #000,
+        inset var(--wm-safe-left) 0 #000,
+        inset calc(-1 * var(--wm-safe-right)) 0 #000;
+}
+
+/* while Today fades in after the splash its bars are see-through: no overshoot then */
+html.ui-mobile[data-wm-app="today"][data-wm-boot="reveal"] #wmShell {
+    box-shadow:
+        inset 0 var(--wm-safe-top) #000,
+        inset 0 calc(-1 * var(--wm-safe-bottom)) #000,
+        inset var(--wm-safe-left) 0 #000,
+        inset calc(-1 * var(--wm-safe-right)) 0 #000;
 }
 
 #wmShell > * {
@@ -1211,6 +1233,16 @@ html.ui-mobile body > #agentClientUpdateDialog:not(.hidden) {
     color: #000 !important;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left) !important;
     animation: none !important;
+}
+
+/* their white page stops at the system bars: the bands around it stay black like the shell's */
+html.ui-mobile body > #pinModal:not(.hidden),
+html.ui-mobile body > #agentClientUpdateDialog:not(.hidden) {
+    box-shadow:
+        inset 0 env(safe-area-inset-top) #000,
+        inset 0 calc(-1 * env(safe-area-inset-bottom)) #000,
+        inset env(safe-area-inset-left) 0 #000,
+        inset calc(-1 * env(safe-area-inset-right)) 0 #000 !important;
 }
 
 html.ui-mobile #pinModal::before,
