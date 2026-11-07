@@ -108,15 +108,38 @@ function normalizeWorkspacePersonalization(raw) {
  * Melaton Mobile's own wallpaper placement (wmShell.js applyTodayBackground, Settings > Today):
  * size fill (cover) / fit / stretch / tile / center (natural size) and a focal point for the
  * crop. null = the same as the desktop (wallpaperPosition, cover). The desktop never reads it.
+ * The focal point is stored as "<x>% <y>%" (0-100, 0.1 steps; Settings > Today > Wallpaper's
+ * focus sliders); the keywords of older records map to 0 / 50 / 100.
  */
 const MOBILE_WALLPAPER_SIZES = new Set(['fill', 'fit', 'stretch', 'tile', 'center']);
+const MOBILE_WALLPAPER_KEYWORDS = { left: ['x', 0], right: ['x', 100], top: ['y', 0], bottom: ['y', 100], center: [null, 50] };
+
+/** "left top" / "30% 70%" / "center" / "top" ... -> "<x>% <y>%" (missing or unknown = 50). */
+function normalizeMobileWallpaperPosition(raw) {
+    const tokens = String(raw == null ? '' : raw).trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 2);
+    let x = null;
+    let y = null;
+    const free = [];
+    for (const t of tokens) {
+        const m = /^(-?\d+(?:\.\d+)?)%$/.exec(t);
+        if (m) { free.push(Number(m[1])); continue; }
+        const k = MOBILE_WALLPAPER_KEYWORDS[t];
+        if (!k) free.push(50);
+        else if (k[0] === 'x' && x === null) x = k[1];
+        else if (k[0] === 'y' && y === null) y = k[1];
+        else free.push(k[1]);
+    }
+    for (const v of free) {
+        if (x === null) x = v;
+        else if (y === null) y = v;
+    }
+    const pct = (v) => (Number.isFinite(v) ? Math.round(Math.min(100, Math.max(0, v)) * 10) / 10 : 50);
+    return `${pct(x === null ? 50 : x)}% ${pct(y === null ? 50 : y)}%`;
+}
 
 function normalizeWorkspaceMobileWallpaper(raw) {
     if (!raw || typeof raw !== 'object' || !MOBILE_WALLPAPER_SIZES.has(raw.size)) return null;
-    const [h, v] = String(raw.position || 'center center').trim().split(/\s+/);
-    const horizontal = ['left', 'center', 'right'].includes(h) ? h : 'center';
-    const vertical = ['top', 'center', 'bottom'].includes(v) ? v : 'center';
-    return { size: raw.size, position: `${horizontal} ${vertical}` };
+    return { size: raw.size, position: normalizeMobileWallpaperPosition(raw.position) };
 }
 
 /**

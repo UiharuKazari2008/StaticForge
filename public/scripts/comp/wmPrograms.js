@@ -411,13 +411,13 @@
         ['tile', 'Tile'],
         ['center', 'Center']
     ];
-    const WALL_H = ['left', 'center', 'right'];
-    const WALL_V = ['top', 'center', 'bottom'];
+    // the focus sliders: [axis, label, low end, high end]
+    const WALL_AXES = [['x', 'Horizontal focus', 'Left', 'Right'], ['y', 'Vertical focus', 'Top', 'Bottom']];
     const wallNatural = new Map(); // url -> { w, h }
 
     function initWall() {
         const own = sh && sh.wallpaper ? sh.wallpaper.mobile() : null;
-        const wall = own ? { size: own.size, position: own.position } : { size: 'desktop', position: 'center center' };
+        const wall = own ? { size: own.size, position: own.position } : { size: 'desktop', position: '50% 50%' };
         return { ...wall, initial: `${wall.size}|${wall.position}` };
     }
 
@@ -467,20 +467,38 @@
         }
     }
 
+    /** Focus { x, y } of the draft (0-100 %). */
+    function wallFocusOf(w) {
+        if (sh.wallpaper && typeof sh.wallpaper.focus === 'function') return sh.wallpaper.focus(w.position);
+        const m = /^(\d+(?:\.\d+)?)% (\d+(?:\.\d+)?)%$/.exec(w.position || '');
+        return m ? { x: Number(m[1]), y: Number(m[2]) } : { x: 50, y: 50 };
+    }
+
     function renderWall(el, d, api) {
         const w = d.wall;
         const same = w.size === 'desktop';
+        // Same as desktop has no focus of its own and Stretch shows the whole picture; Fill, Fit,
+        // Tile and Center all move the picture (CSS background-position)
         const focusOff = same || w.size === 'stretch';
-        const [ph, pv] = w.position.split(' ');
+        const focus = wallFocusOf(w);
         const label = (WALL_SIZES.find(([k]) => k === w.size) || WALL_SIZES[0])[1];
         // the preview frame takes the screen's shape (portrait or landscape)
         const portrait = window.innerHeight >= window.innerWidth;
+        const pos = (v) => `calc(4 * var(--wm-px) + (100% - 8 * var(--wm-px)) * ${v / 100})`;
+        const slider = ([axis, name, lo, hi]) => `<div class="wm-wall-axis${focusOff ? ' is-disabled' : ''}" data-axis="${axis}">
+                <div class="wm-slider-scale"><span>${esc(lo)}</span><span class="wm-wall-value" data-f="${axis}-value"></span><span>${esc(hi)}</span></div>
+                <div class="wm-slider wm-wall-slider" role="slider"${focusOff ? ' aria-disabled="true"' : ' tabindex="0"'} aria-label="${esc(name)}" aria-valuemin="0" aria-valuemax="100">
+                    <div class="wm-slider-track"></div>
+                    ${[0, 25, 50, 75, 100].map((v) => `<div class="wm-slider-tick" style="left:${pos(v)}"></div>`).join('')}
+                    <div class="wm-slider-thumb"></div>
+                </div>
+            </div>`;
         el.innerHTML = `<p>Select how the wallpaper is placed on the Today screen of this workspace's phones:</p>
             <div class="wm-form-row"><label>Picture:</label><button type="button" class="wm-combo" data-act="size"><span>${esc(label)}</span></button></div>
             <div class="wm-wall-side">
                 <div class="wm-wall-focus-box">
                     <div class="wm-form-sub">Focus:</div>
-                    <div class="wm-wall-focus${focusOff ? ' is-disabled' : ''}" role="radiogroup" aria-label="Focus">${WALL_V.map((v) => WALL_H.map((h) => `<button type="button" class="wm-wall-focus-cell${!focusOff && h === ph && v === pv ? ' is-selected' : ''}" data-pos="${h} ${v}" role="radio" aria-checked="${!focusOff && h === ph && v === pv}" aria-label="${esc(`${v} ${h}`)}"${focusOff ? ' disabled' : ''}></button>`).join('')).join('')}</div>
+                    ${WALL_AXES.map(slider).join('')}
                 </div>
                 <div class="wm-wall-phone${portrait ? '' : ' is-landscape'}" aria-hidden="true"><div class="wm-wall-screen" data-f="screen"></div></div>
             </div>
@@ -490,9 +508,74 @@
             e.stopPropagation();
             sh.dropdown(combo, WALL_SIZES.map(([k, l]) => ({ label: l, radio: k === w.size, action: () => { w.size = k; api.rerender(); } })), 'left');
         });
-        el.querySelectorAll('.wm-wall-focus-cell').forEach((c) => c.addEventListener('click', () => { w.position = c.dataset.pos; api.rerender(); }));
         const screen = el.querySelector('[data-f="screen"]');
-        requestAnimationFrame(() => { if (screen.isConnected) paintWallPreview(screen, d); });
+        let painted = 0;
+        const repaint = () => {
+            if (painted) return;
+            painted = requestAnimationFrame(() => { painted = 0; if (screen.isConnected) paintWallPreview(screen, d); });
+        };
+        el.querySelectorAll('.wm-wall-axis').forEach((box) => {
+            const axis = box.dataset.axis;
+            const track = box.querySelector('.wm-wall-slider');
+            const thumb = box.querySelector('.wm-slider-thumb');
+            const value = box.querySelector('.wm-wall-value');
+            const show = () => {
+                const v = focus[axis];
+                thumb.style.left = pos(v);
+                value.textContent = `${Math.round(v)}%`;
+                track.setAttribute('aria-valuenow', String(Math.round(v)));
+                track.setAttribute('aria-valuetext', `${Math.round(v)}%`);
+            };
+            const set = (v) => {
+                v = Math.round(Math.max(0, Math.min(100, v)));
+                if (v === focus[axis]) return;
+                focus[axis] = v;
+                w.position = `${focus.x}% ${focus.y}%`;
+                show();
+                repaint();
+            };
+            show();
+            if (focusOff) return;
+            const line = box.querySelector('.wm-slider-track'); // spans 0 % to 100 % (pos())
+            const fromX = (x) => {
+                const r = line.getBoundingClientRect();
+                return ((x - r.left) / Math.max(1, r.width)) * 100;
+            };
+            track.addEventListener('pointerdown', (e) => {
+                if (e.button > 0) return;
+                // the drag is the slider's: no page scroll, tab swipe or menu gesture under it
+                e.stopPropagation();
+                e.preventDefault();
+                track.focus({ preventScroll: true });
+                track.setPointerCapture(e.pointerId);
+                // a press on the thumb drags from where it is; elsewhere the thumb jumps there
+                const tr = thumb.getBoundingClientRect();
+                const grab = e.clientX >= tr.left - 2 && e.clientX <= tr.right + 2 ? e.clientX - (tr.left + tr.width / 2) : 0;
+                set(fromX(e.clientX - grab));
+                box.classList.add('is-dragging');
+                const move = (ev) => { ev.stopPropagation(); set(fromX(ev.clientX - grab)); };
+                const up = () => {
+                    box.classList.remove('is-dragging');
+                    track.removeEventListener('pointermove', move);
+                    track.removeEventListener('pointerup', up);
+                    track.removeEventListener('pointercancel', up);
+                };
+                track.addEventListener('pointermove', move);
+                track.addEventListener('pointerup', up);
+                track.addEventListener('pointercancel', up);
+            });
+            ['touchstart', 'touchmove'].forEach((t) => track.addEventListener(t, (e) => e.stopPropagation(), { passive: true }));
+            track.addEventListener('keydown', (e) => {
+                const step = { ArrowLeft: -1, ArrowRight: 1, PageUp: -10, PageDown: 10 }[e.key];
+                if (step !== undefined) set(focus[axis] + step);
+                else if (e.key === 'Home') set(0);
+                else if (e.key === 'End') set(100);
+                else return;
+                e.preventDefault();
+                e.stopPropagation();
+            });
+        });
+        repaint();
     }
 
     /**

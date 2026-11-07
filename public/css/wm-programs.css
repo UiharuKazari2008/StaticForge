@@ -625,34 +625,65 @@
     background: #fff;
 }
 
-/* Settings > Today > Wallpaper: the 3 x 3 focus picker beside a phone-shaped preview */
+/* Settings > Today > Wallpaper: horizontal and vertical focus trackbars beside a phone-shaped preview */
 .wm-wall-side {
     display: flex;
     align-items: flex-start;
-    gap: calc(14 * var(--wm-px));
+    gap: calc(10 * var(--wm-px));
     margin: calc(4 * var(--wm-px)) 0 calc(6 * var(--wm-px));
 }
 
-.wm-wall-focus {
+.wm-wall-focus-box {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.wm-wall-axis .wm-slider-scale {
     display: grid;
-    grid-template-columns: repeat(3, calc(18 * var(--wm-px)));
-    grid-auto-rows: calc(18 * var(--wm-px));
-    gap: calc(2 * var(--wm-px));
+    grid-template-columns: 1fr auto 1fr;
+    margin-top: calc(4 * var(--wm-px));
 }
 
-.wm-wall-focus-cell {
-    border: calc(1 * var(--wm-px)) solid #000 !important;
-    background: #fff !important;
-    box-sizing: border-box;
+.wm-wall-axis .wm-slider-scale > :last-child {
+    text-align: right;
 }
 
-.wm-wall-focus-cell.is-selected {
-    background: var(--wm-highlight) !important;
+.wm-wall-value {
+    font-weight: normal;
 }
 
-.wm-wall-focus.is-disabled .wm-wall-focus-cell {
-    border-color: #8c8e8c !important;
-    background: #e7e7e7 !important;
+/* the focus frame is drawn only round the slider in use (two on the page) */
+.wm-wall-slider {
+    height: calc(28 * var(--wm-px));
+    margin: calc(1 * var(--wm-px)) 0 calc(2 * var(--wm-px));
+    border-color: transparent;
+    outline: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+}
+
+.wm-wall-slider:focus,
+.wm-wall-axis.is-dragging .wm-wall-slider {
+    border-color: var(--wm-highlight);
+}
+
+.wm-wall-axis.is-disabled .wm-slider-scale,
+.wm-wall-axis.is-disabled .wm-wall-value {
+    color: #8c8e8c;
+}
+
+.wm-wall-axis.is-disabled .wm-wall-slider {
+    cursor: default;
+}
+
+.wm-wall-axis.is-disabled .wm-slider-track {
+    border-color: #8c8e8c;
+}
+
+.wm-wall-axis.is-disabled .wm-slider-tick,
+.wm-wall-axis.is-disabled .wm-slider-thumb::before {
+    background: #8c8e8c;
 }
 
 /* a black handset with a speaker slot; the screen keeps the real screen's shape */

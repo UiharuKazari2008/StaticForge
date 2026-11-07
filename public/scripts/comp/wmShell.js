@@ -1331,14 +1331,41 @@
     // ---- the phone's own wallpaper placement (workspace record mobileWallpaper, modules/workspace.js)
 
     const WALL_SIZES = ['fill', 'fit', 'stretch', 'tile', 'center'];
-    const WALL_H = ['left', 'center', 'right'];
-    const WALL_V = ['top', 'center', 'bottom'];
+    const WALL_KEYWORDS = { left: ['x', 0], right: ['x', 100], top: ['y', 0], bottom: ['y', 100], center: [null, 50] };
 
-    /** { size, position } or null (null = same as the desktop). */
+    /**
+     * The focal point { x, y } (0-100 %) of a position: "<x>% <y>%" (Settings > Today > Wallpaper's
+     * sliders) or keywords from older records (left / center / right, top / center / bottom).
+     * Same rules as modules/workspace.js normalizeMobileWallpaperPosition.
+     */
+    function wallFocus(raw) {
+        const tokens = String(raw == null ? '' : raw).trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 2);
+        let x = null;
+        let y = null;
+        const free = [];
+        for (const t of tokens) {
+            const m = /^(-?\d+(?:\.\d+)?)%$/.exec(t);
+            if (m) { free.push(Number(m[1])); continue; }
+            const k = WALL_KEYWORDS[t];
+            if (!k) free.push(50);
+            else if (k[0] === 'x' && x === null) x = k[1];
+            else if (k[0] === 'y' && y === null) y = k[1];
+            else free.push(k[1]);
+        }
+        for (const v of free) {
+            if (x === null) x = v;
+            else if (y === null) y = v;
+        }
+        const pct = (v) => (Number.isFinite(v) ? Math.round(Math.min(100, Math.max(0, v)) * 10) / 10 : 50);
+        return { x: pct(x === null ? 50 : x), y: pct(y === null ? 50 : y) };
+    }
+
+    const wallPosition = (raw) => { const f = wallFocus(raw); return `${f.x}% ${f.y}%`; };
+
+    /** { size, position "<x>% <y>%" } or null (null = same as the desktop). */
     function normalizeMobileWallpaper(raw) {
         if (!raw || typeof raw !== 'object' || !WALL_SIZES.includes(raw.size)) return null;
-        const [h, v] = String(raw.position || 'center center').trim().split(/\s+/);
-        return { size: raw.size, position: `${WALL_H.includes(h) ? h : 'center'} ${WALL_V.includes(v) ? v : 'center'}` };
+        return { size: raw.size, position: wallPosition(raw.position) };
     }
 
     function mobileWallpaper() {
@@ -1374,6 +1401,9 @@
 
     const naturalSizes = new Map(); // url -> { w, h } once loaded
 
+    // this window's save waits for the server's settings_updated echo: it carries the stored value
+    let wallEcho = null; // { id, resolve }
+
     /** Save the phone placement on the workspace (null = same as the desktop); Today redraws now. */
     async function setMobileWallpaper(value) {
         const next = normalizeMobileWallpaper(value);
@@ -1384,14 +1414,33 @@
         applyTodayBackground(true);
         const client = window.wsClient;
         if (!id || !client || typeof client.updateWorkspaceSettings !== 'function') return next;
+        const echo = new Promise((resolve) => {
+            wallEcho = { id, resolve };
+            setTimeout(() => resolve(undefined), 3000);
+        });
         try {
             await client.updateWorkspaceSettings(id, { mobileWallpaper: next });
         } catch (err) {
+            wallEcho = null;
             // not saved: Today and the record go back to the saved placement
             if (w && w.mobileWallpaper === next) {
                 w.mobileWallpaper = before;
                 applyTodayBackground(true);
             }
+            throw err;
+        }
+        const stored = await echo;
+        wallEcho = null;
+        const kept = stored === undefined ? next : normalizeMobileWallpaper(stored);
+        if (next && kept && kept.size === next.size && kept.position !== next.position) {
+            // a server from before the focus sliders keeps only keywords (it stored the centre):
+            // save the nearest keyword point instead and say so, rather than lose the focus quietly
+            const f = wallFocus(next.position);
+            const near = (v, lo, hi) => (v < 25 ? lo : v > 75 ? hi : 'center');
+            const words = `${near(f.x, 'left', 'right')} ${near(f.y, 'top', 'bottom')}`;
+            await client.updateWorkspaceSettings(id, { mobileWallpaper: { size: next.size, position: words } });
+            const err = new Error('The server can only keep Left, Center or Right and Top, Center or Bottom until Dreamscape is updated. The nearest of those was saved.');
+            err.savedPosition = wallPosition(words);
             throw err;
         }
         return next;
@@ -1770,6 +1819,7 @@
         document.addEventListener('workspaceUpdated', (ev) => {
             const d = ev && ev.detail;
             if (!d || !d.settings || d.settings.mobileWallpaper === undefined) return;
+            if (wallEcho && wallEcho.id === d.workspaceId) { const e = wallEcho; wallEcho = null; e.resolve(d.settings.mobileWallpaper); }
             const w = typeof workspaces !== 'undefined' && workspaces ? workspaces[d.workspaceId] : null;
             if (w) w.mobileWallpaper = normalizeMobileWallpaper(d.settings.mobileWallpaper);
             if (typeof activeWorkspace !== 'undefined' && d.workspaceId === activeWorkspace) applyTodayBackground(true);
@@ -2606,6 +2656,8 @@
             desktop: () => { const w = desktopWallpaper(); return w ? w.url : null; },
             desktopPosition: () => { const w = activeWorkspaceRecord(); return (w && w.wallpaperPosition) || 'center center'; },
             mobile: () => mobileWallpaper(),
+            /** { x, y } 0-100 % of a placement position (keywords or percentages). */
+            focus: (position) => wallFocus(position),
             set: (v) => setMobileWallpaper(v),
             css: (placement, natural, scale) => placementCss(placement, natural, scale)
         },
