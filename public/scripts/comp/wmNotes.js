@@ -194,7 +194,7 @@
         let listToken = 0;
         let sortField = SORTS.some(([k]) => k === stored(SORT_KEY)) ? stored(SORT_KEY) : 'name';
         let folder = stored(FOLDER_KEY) || 'active'; // 'active' | '*' | a workspace id
-        let editing = null; // { noteId|null, workspaceId, name, original }
+        let editing = null; // { noteId|null, workspaceId, name, original, saving: the save in flight }
         let pending = null; // a note to open once the app is shown
 
         const isCurrent = () => !!(ws && ws.current === APP_ID);
@@ -370,12 +370,23 @@
             return `Note${n}`;
         }
 
-        /** Saves the page (ok, New, leaving the app). Resolves with the note id saved, or null. */
-        async function saveEditing() {
-            if (!editing) return null;
+        /**
+         * Saves the page (ok, New, leaving the app). Resolves with the note id saved, or null.
+         * Saves of one page run one after another (ed.saving): leaving the app starts a save without
+         * waiting, and an ok right after must see the note that save created, not create it again.
+         */
+        function saveEditing() {
+            if (!editing) return Promise.resolve(null);
             const ed = editing;
             const text = page.querySelector('.nt-text').value;
-            if (readOnly()) return ed.noteId;
+            if (readOnly()) return Promise.resolve(ed.noteId);
+            const run = (ed.saving || Promise.resolve()).catch(() => {}).then(() => writeNote(ed, text));
+            ed.saving = run;
+            run.then(() => { if (ed.saving === run) ed.saving = null; }, () => { if (ed.saving === run) ed.saving = null; });
+            return run;
+        }
+
+        async function writeNote(ed, text) {
             try {
                 if (!ed.noteId) {
                     // an untouched new note is not kept (WM drops an empty note)
@@ -551,6 +562,36 @@
 
         // ---- page
 
+        /**
+         * live: another client (or the desktop Notepad) changed a note. The note_* types are taken by
+         * 'only'-phase handlers (ws/handlers/80-notesInbound.js), so wsClient.on never sees them, and
+         * only note_updated / note_deleted reach the document 'wsMessage' bridge; a 'pre' handler sees
+         * all four. A rename or trash through the VFS comes as vfs_updated on the bridge.
+         */
+        let liveTimer = null;
+        function liveChanged() {
+            clearTimeout(liveTimer);
+            liveTimer = setTimeout(() => {
+                if (page && isCurrent() && page.dataset.view !== 'note') load({ keep: true });
+            }, 250);
+        }
+
+        function liveRefresh() {
+            if (typeof registerWsInboundHandler === 'function') { // eslint-disable-line no-undef
+                // eslint-disable-next-line no-undef
+                registerWsInboundHandler({
+                    id: 'wm61.notes.live', type: 'note_created', alias: ['note_updated', 'note_deleted', 'note_content_updated'], phase: 'pre',
+                    handler: liveChanged
+                });
+            }
+            document.addEventListener('wsMessage', (e) => {
+                const d = e.detail || {};
+                if (d.type !== 'vfs_updated') return;
+                const path = String((d.data && d.data.path) || '');
+                if (!path || /\/Notes(\/|$)/i.test(path)) liveChanged();
+            });
+        }
+
         function mount(p) {
             page = p;
             p.classList.add('wm-notes');
@@ -600,13 +641,7 @@
                 ws.dropdown(sortBtn, SORTS.map(([k, l]) => ({ label: l, radio: sortField === k, action: () => setSort(k) })), 'right', () => { sortBtn.setAttribute('aria-expanded', 'false'); renderBar(); });
             });
 
-            // live: another client (or the desktop Notepad) changed a note
-            const c = wsc();
-            if (c && typeof c.on === 'function') {
-                ['note_created', 'note_updated', 'note_deleted', 'note_content_updated'].forEach((t) => c.on(t, () => {
-                    if (isCurrent() && page.dataset.view !== 'note') load({ keep: true });
-                }));
-            }
+            liveRefresh();
             renderBar();
         }
 
@@ -667,16 +702,20 @@
         const GROUPS = ['#ab', 'cde', 'fgh', 'ijk', 'lmn', 'opq', 'rst', 'uvw', 'xyz'];
         const VIEW_KEY = 'wmContactsViewBy';
         let page = null;
-        let entries = []; // { c, fileId, fileName, item, path }
+        // one entry per person card: { c, key, fileId, index (of the card in its file), count (cards
+        // in the file), fileName, item, path }. Rows are keyed by file and card index, not by UID: a
+        // copied .vcf keeps its UID, and a UID match would open, edit or delete the other file.
+        let entries = [];
         let loaded = false;
         let loadToken = 0;
         let search = '';
-        let selectedUid = null;
+        let selectedKey = null;
         let group = null; // { at: index, letter }
         let viewBy = stored(VIEW_KEY) === 'company' ? 'company' : 'name';
         let layers = []; // 'card' | 'edit'
         let current = null; // the entry on the card / in the form
         let draft = null; // the card being edited
+        let draftStart = ''; // the draft as the form opened, to tell a changed one
         let cardTab = 'summary';
         let editTab = 'details';
         let pending = null;
@@ -717,6 +756,32 @@
             return { id, cards: VC().parseVcf(text) };
         }
 
+        const keyOf = (fileId, index) => `${fileId}#${index}`;
+
+        function makeEntry(c, fileId, index, count, item, path) {
+            return { c, key: keyOf(fileId, index), fileId, index, count, fileName: item ? item.name : null, item, path };
+        }
+
+        /**
+         * The card's place in its file, read again now: a file holds several cards (an address book
+         * exported from another phone), and a write must keep the others.
+         */
+        async function reread(e) {
+            const r = await readFile(e.item || { id: e.fileId });
+            let at = r.cards[e.index] && r.cards[e.index].uid === e.c.uid ? e.index : r.cards.findIndex((x) => x.uid === e.c.uid);
+            // a card without a UID line gets a new one on every read: then the same place in a file
+            // of the same shape, holding the same name
+            if (at < 0 && r.cards.length === e.count && r.cards[e.index] && VC().displayName(r.cards[e.index]) === VC().displayName(e.c)) at = e.index;
+            if (at < 0 && r.cards.length === 1 && e.count === 1) at = 0;
+            if (at < 0) throw new Error('The file was changed elsewhere; open the contact again.');
+            return { cards: r.cards, at };
+        }
+
+        async function writeCards(fileId, cards) {
+            const data = await blobToBase64(new Blob([cards.map((x) => VC().toVcf(x)).join('')], { type: 'text/vcard' }));
+            await vfs().replaceFile(fileId, data, 'text/vcard');
+        }
+
         async function load(opts = {}) {
             if (!page) return;
             const token = ++loadToken;
@@ -735,7 +800,7 @@
                     if (!x) continue;
                     x.r.cards.forEach((c, n) => {
                         if (c.group) return; // contact groups are a Vista thing; WM lists people
-                        list.push({ c, fileId: n ? null : x.r.id, fileName: n ? null : x.f.name, item: n ? null : x.f, path: folderPath() });
+                        list.push(makeEntry(c, x.r.id, n, x.r.cards.length, x.f, folderPath()));
                     });
                 }
             } catch (err) {
@@ -745,10 +810,13 @@
             entries = list;
             loaded = true;
             sortEntries();
-            if (opts.select) selectedUid = opts.select;
-            if (selectedUid && !entries.some((e) => e.c.uid === selectedUid)) selectedUid = null;
-            if (current) {
-                const again = entries.find((e) => (current.fileId && e.fileId === current.fileId) || e.c.uid === current.c.uid);
+            if (opts.select) selectedKey = opts.select;
+            if (opts.selectUid) { const hit = entries.find((e) => e.c.uid === opts.selectUid); if (hit) selectedKey = hit.key; }
+            if (selectedKey && !entries.some((e) => e.key === selectedKey)) selectedKey = null;
+            if (current && current.fileId) {
+                // the same file and card only; a file opened from elsewhere is not swapped for a
+                // Contacts card that happens to share its UID
+                const again = entries.find((e) => e.key === current.key);
                 if (again) current = again;
             }
             renderList(failed);
@@ -789,9 +857,9 @@
             note.textContent = failed || 'Select New to create a new contact.';
             listEl.innerHTML = shown.map((e) => {
                 const [num, kind] = defaultComm(e.c);
-                const sel = e.c.uid === selectedUid;
+                const sel = e.key === selectedKey;
                 const line1 = viewBy === 'company' && e.c.work.company ? `${e.c.work.company}` : fileAs(e.c);
-                return `<div class="ct-row${sel ? ' is-selected' : ''}" role="option" aria-selected="${sel}" data-uid="${esc(e.c.uid)}">`
+                return `<div class="ct-row${sel ? ' is-selected' : ''}" role="option" aria-selected="${sel}" data-key="${esc(e.key)}">`
                     + `<span class="ct-ico">${e.c.photo && /^data:image\//.test(e.c.photo) ? `<img src="${esc(e.c.photo)}" alt="">` : icon('contacts-card')}</span>`
                     + `<span class="ct-name">${esc(line1)}</span>`
                     + `<span class="ct-sub"><span class="ct-num">${esc(viewBy === 'company' && e.c.work.company ? fileAs(e.c) : num)}</span>${kind && viewBy !== 'company' ? `<span class="ct-kind">${esc(kind)}</span>` : ''}</span></div>`;
@@ -799,10 +867,10 @@
             page.querySelectorAll('.ct-tab').forEach((t, n) => t.classList.toggle('is-selected', !!group && group.at === n));
         }
 
-        function selectRow(uid) {
-            selectedUid = uid;
+        function selectRow(key) {
+            selectedKey = key;
             page.querySelectorAll('.ct-row').forEach((r) => {
-                const on = r.dataset.uid === uid;
+                const on = r.dataset.key === key;
                 r.classList.toggle('is-selected', on);
                 r.setAttribute('aria-selected', String(on));
             });
@@ -810,7 +878,7 @@
         }
 
         function scrollToSelected() {
-            const row = selectedUid && page.querySelector(`.ct-row[data-uid="${CSS.escape(selectedUid)}"]`);
+            const row = selectedKey && page.querySelector(`.ct-row[data-key="${CSS.escape(selectedKey)}"]`);
             if (row) row.scrollIntoView({ block: 'start' });
         }
 
@@ -829,7 +897,7 @@
                 if (hit) {
                     group = { at, letter: L };
                     renderList();
-                    selectRow(hit.c.uid);
+                    selectRow(hit.key);
                     scrollToSelected();
                     return;
                 }
@@ -838,8 +906,8 @@
             renderList();
         }
 
-        const entryByUid = (uid) => entries.find((e) => e.c.uid === uid) || null;
-        const selectedEntry = () => entryByUid(selectedUid);
+        const entryByKey = (key) => entries.find((e) => e.key === key) || null;
+        const selectedEntry = () => entryByKey(selectedKey);
 
         // ---- layers
 
@@ -873,7 +941,7 @@
         function openCard(e) {
             current = e;
             cardTab = 'summary';
-            selectedUid = e.c.uid;
+            if (e.key) selectedKey = e.key;
             renderCard();
             push('card');
         }
@@ -1024,6 +1092,7 @@
         function openForm(e) {
             current = e || null;
             draft = e ? JSON.parse(JSON.stringify(e.c)) : VC().blank();
+            draftStart = JSON.stringify(draft);
             editTab = 'details';
             renderForm();
             push('edit');
@@ -1118,41 +1187,76 @@
             return `${VC().displayName(c).replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80) || 'Contact'}.vcf`;
         }
 
-        /** ok on the form: write the card (a new file in Contacts, or the card's own file). */
-        async function saveForm() {
+        /** The form's notes are kept in the draft; true when the draft differs from what was opened. */
+        function formChanged() {
+            if (!draft || !page) return false;
+            draft.notes = page.querySelector('.ct-editview .ct-form-notes').value;
+            return JSON.stringify(draft) !== draftStart;
+        }
+
+        /** Leaves the form without saving (Cancel, or back on an unchanged form). */
+        function discardForm(fromBack) {
+            draft = null;
+            if (!current) layers = [layers[0]];
+            if (fromBack === true) { // the shell syncs history after onBack
+                layers.pop();
+                if (!layers.length) current = null;
+                showLayer();
+            } else pop();
+            if (current && view() === 'card') renderCard();
+        }
+
+        /**
+         * ok on the form: write the card (a new file in Contacts, or the card's own file with the
+         * file's other cards kept). Resolves true once saved (or nothing to save), false otherwise.
+         */
+        let saving = null;
+        function saveForm() {
+            if (!saving) saving = doSaveForm().finally(() => { saving = null; });
+            return saving;
+        }
+
+        async function doSaveForm() {
+            if (!draft) return true;
             const ed = page.querySelector('.ct-editview');
             draft.notes = ed.querySelector('.ct-form-notes').value;
             if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-            if (!current && isEmptyCard(draft)) { pop(); return; } // an untouched new contact is dropped
-            if (readOnly()) { await ws.messageBox({ title: 'Contacts', icon: 'error', text: 'Contacts cannot be changed with a read-only account.' }); return; }
+            if (!current && isEmptyCard(draft)) { discardForm(); return true; } // an untouched new contact is dropped
+            if (readOnly()) { await ws.messageBox({ title: 'Contacts', icon: 'error', text: 'Contacts cannot be changed with a read-only account.' }); return false; }
             const c = draft;
+            let selectKey = null;
             try {
-                const data = await blobToBase64(new Blob([VC().toVcf(c)], { type: 'text/vcard' }));
                 if (current && current.fileId) {
-                    await vfs().replaceFile(current.fileId, data, 'text/vcard');
+                    const { cards, at } = await reread(current);
+                    cards[at] = c;
+                    await writeCards(current.fileId, cards);
+                    current = makeEntry(c, current.fileId, at, cards.length, current.item, current.path);
+                    selectKey = current.key;
                 } else {
+                    const data = await blobToBase64(new Blob([VC().toVcf(c)], { type: 'text/vcard' }));
                     await ensureFolder();
                     const used = new Set(entries.map((x) => (x.fileName || '').toLowerCase()));
                     let name = fileNameOf(c);
                     for (let n = 2; used.has(name.toLowerCase()); n++) name = fileNameOf(c).replace(/\.vcf$/, ` (${n}).vcf`);
                     const res = await vfs().uploadFile(folderPath(), data, name, 'text/vcard');
-                    const f = res && (res.file || res.entry || res);
-                    current = { c, fileId: (f && (f.id || f.fileId)) || null, fileName: name, item: null, path: folderPath() };
+                    const f = (res && (res.file || (res.data && res.data.file) || res.entry)) || null;
+                    const fid = (f && (f.targetId || f.id || f.fileId)) || null;
+                    current = fid ? makeEntry(c, fid, 0, 1, Object.assign({ name }, f), folderPath()) : { c, key: null, fileId: null, index: 0, count: 1, fileName: name, item: null, path: folderPath() };
+                    selectKey = current.key;
                 }
             } catch (err) {
                 // wab32res 9107: what Vista says when a card cannot be written
                 await errorBox('Contacts', 'Changes to this contact could not be saved.', err);
-                return;
+                return false;
             }
-            current.c = c;
-            selectedUid = c.uid;
             if (window.explorerContacts && typeof window.explorerContacts.changed === 'function') { try { window.explorerContacts.changed(); } catch (_) { /* desktop not loaded */ } }
             draft = null;
             // a new contact shows its card after ok; an edit returns to the card
             if (layers.length === 1) { layers = ['card']; showLayer(); ws.syncHistory(); } else pop();
             cardTab = 'summary';
             renderCard();
-            await load({ keep: true, select: c.uid });
+            await load(selectKey ? { keep: true, select: selectKey } : { keep: true, selectUid: c.uid });
+            return true;
         }
 
         async function deleteContact(e) {
@@ -1163,14 +1267,24 @@
             });
             if (!yes) return;
             try {
-                if (!e.item) throw new Error('This contact shares its file with others; delete it from the desktop Contacts folder.');
-                await vfs().moveToTrash([trashRef(e.item)], e.path || folderPath());
+                let trash = e.count <= 1;
+                if (!trash) {
+                    // one card of several: the file keeps the others
+                    const { cards, at } = await reread(e);
+                    cards.splice(at, 1);
+                    if (cards.some((x) => !x.group)) await writeCards(e.fileId, cards);
+                    else trash = true; // only group cards left: the file goes, as the last person did
+                }
+                if (trash) {
+                    if (!e.item) throw new Error('The file of this contact is not known.');
+                    await vfs().moveToTrash([trashRef(e.item)], e.path || folderPath());
+                }
             } catch (err) {
                 await errorBox('Contacts', 'The contact could not be deleted.', err);
                 return;
             }
             if (layers.length) { layers = []; current = null; draft = null; showLayer(); ws.syncHistory(); }
-            selectedUid = null;
+            selectedKey = null;
             await load({ keep: true });
         }
 
@@ -1188,7 +1302,7 @@
             } catch (err) {
                 await errorBox('Contacts', 'The contact could not be copied.', err);
             }
-            await load({ keep: true, select: c.uid });
+            await load({ keep: true, selectUid: c.uid });
         }
 
         function sendContactRows(e) {
@@ -1238,7 +1352,7 @@
 
         function formMenu() {
             return [
-                { label: 'Cancel', action: () => { draft = null; if (!current) layers = []; pop(); if (current) renderCard(); } },
+                { label: 'Cancel', action: () => discardForm() },
                 '-',
                 { label: 'Delete Contact', disabled: !current || readOnly(), action: () => deleteContact(current) }
             ];
@@ -1272,7 +1386,7 @@
                 group = null;
                 renderList();
                 const first = visible()[0];
-                if (first) selectRow(first.c.uid);
+                if (first) selectRow(first.key);
             });
             p.querySelector('.ct-tabs').addEventListener('click', (e) => {
                 const t = e.target.closest('.ct-tab');
@@ -1280,8 +1394,8 @@
             });
             const scroll = p.querySelector('.ct-scroll');
             onHold(scroll, '.ct-row', (row, x, y) => {
-                selectRow(row.dataset.uid);
-                const en = entryByUid(row.dataset.uid);
+                selectRow(row.dataset.key);
+                const en = entryByKey(row.dataset.key);
                 ws.menuAt(x, y, [
                     { label: 'Edit', disabled: readOnly(), action: () => openForm(en) },
                     { label: 'Send Contact', submenu: () => sendContactRows(en) },
@@ -1292,8 +1406,8 @@
             scroll.addEventListener('click', (e) => {
                 const row = e.target.closest('.ct-row');
                 if (!row) return;
-                selectRow(row.dataset.uid);
-                const en = entryByUid(row.dataset.uid);
+                selectRow(row.dataset.key);
+                const en = entryByKey(row.dataset.key);
                 if (en) openCard(en);
             });
 
@@ -1356,7 +1470,12 @@
                     historyDepth: () => layers.length,
                     onBack() {
                         if (!layers.length) return false;
-                        if (view() === 'edit') { draft = null; if (!current) layers = [layers[0]]; }
+                        if (view() === 'edit') {
+                            // back keeps what was typed, as ok does (and as Notes does)
+                            if (formChanged()) saveForm();
+                            else discardForm(true);
+                            return true;
+                        }
                         layers.pop();
                         if (!layers.length) { current = null; draft = null; }
                         showLayer();
@@ -1378,15 +1497,21 @@
             async openFile(item, folder) {
                 if (!ws || !item) return;
                 const show = async () => {
+                    // a half-done form is saved first, as Notes saves the open note
+                    if (view() === 'edit' && formChanged() && !(await saveForm())) return;
                     try {
                         await ensureVCard();
                         const r = await readFile(item);
-                        const c = r.cards.find((x) => !x.group) || r.cards[0];
+                        let at = r.cards.findIndex((x) => !x.group);
+                        if (at < 0) at = 0;
+                        const c = r.cards[at];
                         if (!c) throw new Error('The file holds no contact.');
                         const path = folder || null;
                         layers = [];
-                        openCard({ c, fileId: r.id, fileName: item.name, item, path });
-                        load({ keep: loaded, select: c.uid });
+                        draft = null;
+                        const e = makeEntry(c, r.id, at, r.cards.length, item, path);
+                        openCard(e);
+                        load({ keep: loaded, select: e.key });
                     } catch (err) {
                         layers = [];
                         showLayer();
