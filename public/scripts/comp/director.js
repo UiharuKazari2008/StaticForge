@@ -648,7 +648,19 @@ class Director {
     // Persona mascot over the chat area (public/scripts/comp/directorMascot.js, #688).
     setupMascot() {
         const host = document.getElementById('directorSessionChat');
-        if (this.mascot || !host || typeof DirectorMascot !== 'function') return;
+        if (this.mascot || !host) return;
+        if (typeof DirectorMascot !== 'function') {
+            // directorMascot.js is loaded on demand (featureLoader 'director_mascot'), off the boot script list.
+            if (this._mascotLoading || typeof featureLoader === 'undefined') return;
+            this._mascotLoading = featureLoader.loadFeature('director_mascot')
+                .then(() => {
+                    this.setupMascot();
+                    if (this.mascot && this.currentSession) this.mascot.onMessages(this.currentSession.messages || []);
+                })
+                .catch((err) => console.warn('[Director] mascot failed to load:', err))
+                .finally(() => { this._mascotLoading = null; });
+            return;
+        }
         this.mascot = new DirectorMascot({
             // The Studio-docked Director shows her too (Yukimi 2026-11-06); Show Mascot still turns her off,
             // and her layers are released whenever she is hidden (applyView).
@@ -2441,6 +2453,10 @@ class Director {
         const label = this.prettyToolLabel(row);
         const local = { name: (row && row.name) || title, label, args: (row && row.args) || '', result: (row && row.result) || '' };
         // DirectorToolInspector: public/scripts/comp/directorToolInspector.js (a Vista window with the call broken down)
+        // directorToolInspector.js is loaded on first use (featureLoader 'director_tool_inspector').
+        if (!window.DirectorToolInspector && typeof featureLoader !== 'undefined') {
+            try { await featureLoader.loadFeature('director_tool_inspector'); } catch (err) { console.warn('[Director] tool inspector failed to load:', err); }
+        }
         const show = (payload, detail) => {
             if (window.DirectorToolInspector) {
                 window.DirectorToolInspector.open(Object.assign({}, payload, { detail }));

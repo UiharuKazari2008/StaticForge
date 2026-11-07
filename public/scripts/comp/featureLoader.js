@@ -331,6 +331,13 @@ const FEATURE_MANIFEST = {
             'scripts/comp/cplPages3.js',
             'scripts/comp/cplDeviceManager.js'
         ]
+    },
+    // Director add-ons loaded on demand by director.js (setupMascot / openToolPayload); styles stay in director.css.
+    director_mascot: {
+        scripts: ['scripts/comp/directorMascot.js']
+    },
+    director_tool_inspector: {
+        scripts: ['scripts/comp/directorToolInspector.js']
     }
 };
 
