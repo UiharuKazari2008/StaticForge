@@ -379,6 +379,8 @@ class AlchemyOwnedTab {
             sleep: opts.sleep
         });
         this.sleep = opts.sleep || sleep;
+        this.now = opts.now || Date.now;
+        this.navTimeoutMs = opts.navTimeoutMs || DEFAULT_NAV_TIMEOUT_MS;
         this.readState = opts.readState || readState;
         this.lookup = opts.lookup || null;
         this.writeState = opts.writeState || writeState;
@@ -472,11 +474,62 @@ class AlchemyOwnedTab {
         };
     }
 
+    async routeDiscord(targetUrl, currentUrl) {
+        try {
+            const destination = new URL(targetUrl);
+            if (destination.origin !== new URL(currentUrl).origin) {
+                throw new Error('Discord document navigation is disabled; use a same-origin channel path');
+            }
+            const route = destination.pathname + destination.search + destination.hash;
+            await this.evaluate(`(function(){
+                if (location.origin !== ${JSON.stringify(destination.origin)}) throw new Error('Discord document changed');
+                var route = ${JSON.stringify(route)};
+                if (location.pathname + location.search + location.hash === route) return;
+                var link = Array.from(document.querySelectorAll('a[href]')).find(function(a) {
+                    return a.getAttribute('href') === route && a.origin === location.origin;
+                });
+                if (link) {
+                    // Let React handle the click, but suppress the native document navigation
+                    // if no router handles it. A missing router must fail closed, not reload.
+                    var preventNavigation = function(event) {
+                        if (event.target === link || link.contains(event.target)) event.preventDefault();
+                    };
+                    window.addEventListener('click', preventNavigation);
+                    try { link.click(); }
+                    finally { window.removeEventListener('click', preventNavigation); }
+                } else {
+                    history.pushState(history.state, '', route);
+                    window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+                }
+            })()`);
+            const deadline = this.now() + this.navTimeoutMs;
+            while (this.now() < deadline) {
+                const ready = await this.evaluate(`(function(){
+                    if (location.origin !== ${JSON.stringify(destination.origin)} || location.pathname !== ${JSON.stringify(destination.pathname)}) return false;
+                    return !!document.querySelector('ol[data-list-id="chat-messages"], [data-list-id="chat-messages"], li[id^="chat-messages-"]');
+                })()`);
+                if (ready) return this.info();
+                await this.sleep(200);
+            }
+            throw new Error('Destination path and message list did not become ready before timeout');
+        } catch (cause) {
+            const error = new Error(`Discord in-app route failed: ${cause.message}. The tab was not reloaded; keep the signed-in window open.`);
+            error.code = 'DISCORD_INAPP_ROUTE_FAILED';
+            error.cause = cause;
+            throw error;
+        }
+    }
+
     async navigate(url) {
         const targetUrl = String(url || '').trim();
         if (!targetUrl) throw new Error('url is required');
         await assertNavigableUrl(targetUrl, this.lookup);
         await this.pacer.wait();
+        const current = await this.info();
+        if (isDiscordHost(current.url)) {
+            // Once Discord is open, never navigate the document, even on route failure.
+            return this.routeDiscord(targetUrl, current.url);
+        }
         await this.send('Page.navigate', { url: targetUrl }, DEFAULT_NAV_TIMEOUT_MS);
         const deadline = Date.now() + DEFAULT_NAV_TIMEOUT_MS;
         let last = null;
