@@ -11,8 +11,9 @@ Emulator. Yozora #709.
 - `title-close`, `title-ok`, `menu-check` and `menu-submenu-arrow` are glyph masks
   (white or black); the button and menu colours around them are drawn, not bitmaps.
 - `wait-N` frames are opaque tiles in the ROM (no mask).
-- The Windows flag is not included; the OS mark is the Melaton emblem
-  (`../melaton/`).
+- The OS mark is the Melaton emblem (`../melaton/`). The Windows flag
+  (`start-flag`, shellres icon 4609) is only for the opt-in Settings > Menus >
+  Start (Windows flag) choice Yukimi asked for (2026-11-07), never the default.
 
 ## Drawn chrome (2x pixels, 480x640 screen)
 

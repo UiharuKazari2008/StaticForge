@@ -143,6 +143,33 @@ html.ui-mobile[data-wm-app="today"] #wmShell {
     pointer-events: none;
 }
 
+/* Settings > Menus > Start (Windows flag): WM 6.1's own Start cell (device, 2x halved): the colour
+ * flag (shellres icon 4609, 41 x 36 at 2x) at x 2, y 4 of a 25 px cell, then a 1 px rule that
+ * fades from the title colour at its ends to the light green (#84C35A) in the middle, y 3.5..23 */
+.wm-start.is-flag {
+    width: calc(25 * var(--wm-px));
+    align-items: flex-start;
+    justify-content: flex-start;
+    border-right: 0;
+    position: relative;
+}
+
+.wm-start.is-flag img {
+    width: calc(21 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) 0 0 calc(2 * var(--wm-px));
+}
+
+.wm-start.is-flag::after {
+    content: '';
+    position: absolute;
+    right: calc(-1 * var(--wm-px));
+    top: calc(3.5 * var(--wm-px));
+    height: calc(19.5 * var(--wm-px));
+    width: calc(1 * var(--wm-px));
+    background: linear-gradient(to bottom, var(--wm-title), var(--wm-button-light) 50%, var(--wm-title));
+}
+
 .wm-start[aria-expanded="true"] {
     background: var(--wm-highlight);
 }

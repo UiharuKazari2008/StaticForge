@@ -3776,6 +3776,34 @@
         "1x-downscaled-from-2x"
       ],
       "notes": "File Explorer folder bar and folder drop-down: Storage Card (image list 19712 cell 1, ref-fe/dd-storagecard.png, fe-sc-mypics.png)."
+    },
+    "start-flag": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          21,
+          18
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4609 (41x36), 1 transparent column added on the right",
+        "size": [
+          42,
+          36
+        ]
+      },
+      "4x": {
+        "source": "up4 (4x-UltraSharp) from @2x",
+        "size": [
+          84,
+          72
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "user-chosen-exception"
+      ],
+      "notes": "WM 6.1 Start flag, drawn at x=4, y=8 of the 50 px title bar (2x). Not the default: only for Settings > Menus > Start (Windows flag), Yukimi's 2026-11-07 opt-in exception to the copyright rule (the default Start mark stays the Melaton emblem). A 2 px separator follows at x=50..51 (2x), y=7..45, title colour at the ends to #84C35A at y=26."
     }
   },
   "notDelivered": {
@@ -3784,7 +3812,6 @@
     "sip-arrow": "Drawn, not a resource: white filled triangle 13x7 at 2x (rows 1,3,...,13 px), at x=266..278, y=606..612 in ref/sip.png.",
     "scroll-up/scroll-down": "Drawn by gwes (see README).",
     "dropdown-arrow": "Drawn: black filled triangle 13x7 at 2x (13,11,...,1 px rows). shellresapps icon 13332 is a different, taller arrow.",
-    "windows-flag": "Not exported (copyright rule; use the Melaton emblem). shellres.192 icon 4609 is 41x36 at 2x, drawn at x=4, y=8 of the 50 px title bar; no 1x flag in this ROM. A 2 px vertical separator follows at x=50..51 (2x), y=7..45, gradient #004918 at the ends to #84C35A at y=26.",
     "status-signal-1..4": "Drawn (Melaton extension), see items: the ROM has only antenna + 1-3 dots (status-signal-search-*)."
   }
 }

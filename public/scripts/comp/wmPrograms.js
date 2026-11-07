@@ -18,7 +18,8 @@
  *   wmTodayBackground  same-site preview path ('/previews/...'), written by Pictures and here
  *   wmTodayItems       JSON [{ id, on }] in display order; ids = Today's data-row values
  *   wmStartMenu        JSON [appId] shown in the Start menu (absent = the apps' own inStart)
- *   wmStartSource      'wm' | 'desktop' | 'custom'  (absent = wm: "Start" + Melaton emblem)
+ *   wmStartSource      'wm' | 'flag' | 'desktop' | 'custom'  (absent = wm: "Start" + Melaton emblem;
+ *                      flag = "Start" + WM 6.1's own Windows flag, opt-in at Yukimi's request)
  *   wmStartText        string (the resolved text, also for 'desktop')
  *   wmStartIcon        same-site image path (the resolved icon, also for 'desktop')
  * window.wmSettings.startButton() resolves the Start text and icon live (desktop values change).
@@ -42,6 +43,10 @@
     };
     const SCALES = [1, 1.25, 1.5, 1.75, 2];
     const MELATON_EMBLEM = '/static_images/melaton/melaton-white-256.png';
+    // WM 6.1's colour Start flag (shellres.192 icon 4609); a user-chosen exception to the copyright
+    // rule's emblem mapping, never the default
+    const WM_FLAG = '/static_images/wm61/start-flag.png';
+    const WM_FLAG_SRCSET = '/static_images/wm61/start-flag.png 1x, /static_images/wm61/start-flag@2x.png 2x, /static_images/wm61/start-flag@4x.png 4x';
 
     const lsGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
     const lsSet = (k, v) => {
@@ -89,8 +94,8 @@
         return !lsGet(K.todayBackground);
     }
 
-    // Start button: WM's own ("Start", Melaton emblem), the desktop's (its server-side Taskbar and
-    // Start Menu Properties start button), or custom text and icon
+    // Start button: WM's own ("Start", Melaton emblem), "Start" with the Windows flag, the desktop's
+    // (its server-side Taskbar and Start Menu Properties start button), or custom text and icon
     function desktopStartButton() {
         let text = '';
         let icon = '';
@@ -113,6 +118,7 @@
             const icon = lsGet(K.startIcon);
             return { source: 'custom', text: (lsGet(K.startText) || '').trim() || 'Start', icon: sameSite(icon) ? icon : MELATON_EMBLEM };
         }
+        if (src === 'flag') return { source: 'flag', text: 'Start', icon: WM_FLAG };
         return { source: 'wm', text: 'Start', icon: MELATON_EMBLEM };
     }
 
@@ -359,6 +365,7 @@
     const START_ICONS = () => {
         const list = [
             { label: 'Melaton', src: MELATON_EMBLEM },
+            { label: 'Windows', src: WM_FLAG },
             { label: 'Dreamscape', src: '/static_images/app_icons/48/dreamscape-logo.webp' }
         ];
         for (const l of desktopLaunchables()) {
@@ -622,12 +629,13 @@
                     const custom = d.source === 'custom';
                     el.innerHTML = `<p>The Start button's text replaces "Start" on the Today screen.</p>
                         ${radio('src', 'wm', 'Start (Melaton emblem)', d.source === 'wm')}
+                        ${radio('src', 'flag', 'Start (Windows flag)', d.source === 'flag')}
                         ${radio('src', 'desktop', `Same as the desktop (${desk.text})`, d.source === 'desktop')}
                         ${radio('src', 'custom', 'Custom', custom)}
                         <div class="wm-form-gap"></div>
                         <div class="wm-form-row"><label for="wmStartTextEdit">Text:</label><div class="wm-combo-edit"><input id="wmStartTextEdit" class="wm-edit" type="text" maxlength="24" autocomplete="off" value="${esc(d.text)}"${custom ? '' : ' disabled'}><button type="button" class="wm-combo" data-act="text" aria-label="Presets"${custom ? '' : ' disabled'}></button></div></div>
                         <div class="wm-form-sub">Icon:</div>
-                        <div class="wm-picker is-icons"${custom ? '' : ' hidden'}>${START_ICONS().map((ic) => `<button type="button" class="wm-picker-cell${ic.src === d.icon ? ' is-selected' : ''}" data-src="${esc(ic.src)}" title="${esc(ic.label)}" aria-label="${esc(ic.label)}" style="background:#4a4d4a"><img src="${esc(ic.src)}" alt="" loading="lazy" draggable="false"></button>`).join('')}</div>`;
+                        <div class="wm-picker is-icons"${custom ? '' : ' hidden'}>${START_ICONS().map((ic) => `<button type="button" class="wm-picker-cell${ic.src === d.icon ? ' is-selected' : ''}" data-src="${esc(ic.src)}" title="${esc(ic.label)}" aria-label="${esc(ic.label)}" style="background:#4a4d4a"><img src="${esc(ic.src)}"${ic.src === WM_FLAG ? ` srcset="${WM_FLAG_SRCSET}"` : ''} alt="" loading="lazy" draggable="false"></button>`).join('')}</div>`;
                     el.querySelectorAll('input[name="src"]').forEach((r) => r.addEventListener('change', () => { d.source = r.value; api.rerender(); }));
                     const edit = el.querySelector('.wm-edit');
                     edit.addEventListener('input', () => { d.text = edit.value; });
@@ -656,7 +664,7 @@
                     lsSet(K.startText, String(d.text || '').trim().slice(0, 24) || 'Start');
                     lsSet(K.startIcon, sameSite(d.icon) ? d.icon : MELATON_EMBLEM);
                 } else {
-                    const sb = d.source === 'desktop' ? desktopStartButton() : { text: 'Start', icon: MELATON_EMBLEM };
+                    const sb = d.source === 'desktop' ? desktopStartButton() : { text: 'Start', icon: d.source === 'flag' ? WM_FLAG : MELATON_EMBLEM };
                     lsSet(K.startText, sb.text);
                     lsSet(K.startIcon, sb.icon);
                 }
