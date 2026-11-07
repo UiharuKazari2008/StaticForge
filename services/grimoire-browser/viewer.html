@@ -18,6 +18,13 @@
     cursor: default;
     touch-action: none;
   }
+  /* the full-resolution still (zoomed or phone sessions): drawn over the frame until the next one */
+  #still {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  #still[hidden] { display: none; }
   #tabStatus {
     position: absolute;
     inset: 0;
@@ -48,6 +55,7 @@
 </head>
 <body>
 <canvas id="view" tabindex="0"></canvas>
+<canvas id="still" hidden></canvas>
 <div id="tabStatus" hidden>
   <p id="tabStatusTitle"></p>
   <p id="tabStatusUrl"></p>
@@ -168,6 +176,14 @@
     enqueueInput(obj);
   }
 
+  var stillCanvas = document.getElementById('still');
+  var stillCtx = stillCanvas.getContext('2d', { alpha: false });
+  // Arrival order of frames and stills: a frame hides the still only if it came after it.
+  var arrivals = 0;
+  var stillArrival = 0;
+  var frameArrival = 0;
+  var queuedArrival = 0;
+
   var queuedBytes = null;
   var drawing = false;
   var paintGen = 0;
@@ -179,11 +195,44 @@
     for (var q = 0; q < queued.length; q++) paintRegions(queued[q]);
   }
 
+  function hideStill() {
+    if (!stillCanvas.hidden) stillCanvas.hidden = true;
+  }
+
+  function drawStill(msg) {
+    var arrival = stillArrival = ++arrivals;
+    var bin = atob(msg.data);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var img = new Image();
+    var url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+    img.onload = function () {
+      URL.revokeObjectURL(url);
+      // a newer frame or still came first, or the still is not of this frame's size
+      if (arrival !== stillArrival || frameArrival > arrival) return;
+      if (Math.abs(msg.cssW - canvas.width) > 1.5 || Math.abs(msg.cssH - canvas.height) > 1.5) return;
+      if (stillCanvas.width !== img.width || stillCanvas.height !== img.height) {
+        stillCanvas.width = img.width;
+        stillCanvas.height = img.height;
+      }
+      stillCtx.drawImage(img, 0, 0);
+      stillCanvas.hidden = false;
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); };
+    img.src = url;
+  }
+
   function drawBytes(bytes) {
     queuedBytes = bytes;
-    if (drawing) return;
+    queuedArrival = frameArrival = ++arrivals;
+    paintQueued();
+  }
+
+  function paintQueued() {
+    if (drawing || !queuedBytes) return;
     drawing = true;
     var gen = ++paintGen;
+    var arrival = queuedArrival;
     var blob = new Blob([queuedBytes], { type: 'image/jpeg' });
     queuedBytes = null;
     var img = new Image();
@@ -197,16 +246,17 @@
           canvas.height = img.height;
         }
         ctx.drawImage(img, 0, 0);
+        if (arrival > stillArrival) hideStill();
         flushRegions();
         if (tabState === 'unresponsive') showTabStatus('ok');
       }
-      if (queuedBytes) drawBytes(queuedBytes);
+      paintQueued();
     };
     img.onerror = function () {
       URL.revokeObjectURL(url);
       drawing = false;
       if (gen === paintGen) flushRegions();
-      if (queuedBytes) drawBytes(queuedBytes);
+      paintQueued();
     };
     img.src = url;
   }
@@ -232,6 +282,12 @@
           URL.revokeObjectURL(url);
           if (gen !== paintGen) return;
           ctx.drawImage(tile, rect.x, rect.y, rect.w, rect.h);
+          // a small change patches the still (soft until the next one) instead of dropping it
+          if (!stillCanvas.hidden && msg.arrival > stillArrival && canvas.width && canvas.height) {
+            var sx = stillCanvas.width / canvas.width;
+            var sy = stillCanvas.height / canvas.height;
+            stillCtx.drawImage(tile, rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy);
+          }
           if (tabState === 'unresponsive') showTabStatus('ok');
         };
         tile.onerror = function () { URL.revokeObjectURL(url); };
@@ -241,6 +297,7 @@
   }
 
   function drawRegions(msg) {
+    msg.arrival = frameArrival = ++arrivals;
     if (drawing) {
       regionQueue.push(msg);
       return;
@@ -258,6 +315,8 @@
       meta = msg.metadata;
     } else if (msg.type === 'regions') {
       drawRegions(msg);
+    } else if (msg.type === 'still' && msg.data) {
+      drawStill(msg);
     } else if (msg.type === 'frame' && msg.data) {
       var bin = atob(msg.data);
       var bytes = new Uint8Array(bin.length);
@@ -564,15 +623,23 @@
           var lines = buf.split('\n');
           buf = lines.pop();
           var lastFrame = null;
+          var lateStill = null;
           for (var n = 0; n < lines.length; n++) {
             if (!lines[n]) continue;
             var parsed = null;
             try { parsed = JSON.parse(lines[n]); } catch (e) { parsed = null; }
             if (!parsed) continue;
-            if (parsed.type === 'frame') lastFrame = parsed;
-            else handleControl(parsed);
+            if (parsed.type === 'frame') {
+              lastFrame = parsed;
+              lateStill = null;
+            } else if (parsed.type === 'still' && lastFrame) {
+              lateStill = parsed;
+            } else {
+              handleControl(parsed);
+            }
           }
           if (lastFrame) handleControl(lastFrame);
+          if (lateStill) handleControl(lateStill);
           return pump();
         });
       }
@@ -846,6 +913,9 @@
       send({ type: 'reload' });
     } else if (data.type === 'grimoire-browser-zoom' && typeof data.value === 'number') {
       send({ type: 'zoom', value: data.value });
+    } else if (data.type === 'grimoire-browser-scale' && typeof data.value === 'number') {
+      // device pixels per page CSS pixel wanted for stills (Internet Explorer on the phone, #709)
+      send({ type: 'still-scale', value: data.value });
     } else if (data.type === 'grimoire-browser-print') {
       send({ type: 'print', id: String(data.id || '') });
     } else if (data.type === 'grimoire-browser-dialog-reply' && data.id) {

@@ -864,6 +864,109 @@ async function packFrame(session, jpeg, gen) {
     return { json: { type: 'regions', width, height, rects: regions } };
 }
 
+// Full-resolution still (Yozora #709). Chromium's screencast sends frames at the CSS viewport size
+// whatever the device scale (measured headless and headful, Chromium 154/156: a 391 x 612 viewport
+// at DSF 1.96 gives 391 x 612 frames with maxWidth 766, 1501 or 3000), so a zoomed session (zoom > 1)
+// or a phone that wants device pixels gets soft frames. Once the screencast has been quiet for a
+// moment, Page.captureScreenshot with a clip scale gives the same view at the wanted scale; the viewer
+// draws it over the frame until the next frame. Frames stay the motion path; no still at scale 1.
+const STILL_SETTLE_MS = 350;
+const STILL_MIN_GAP_MS = 1200;
+const STILL_MAX_GAP_MS = 8000;
+const STILL_MAX_PIXELS = 1920 * 1440;
+const STILL_MAX_SCALE = 4;
+
+function stillScale(session) {
+    const meta = session.meta || {};
+    const cssW = Number(meta.deviceWidth) || 0;
+    const cssH = Number(meta.deviceHeight) || 0;
+    if (!cssW || !cssH) return 0;
+    let scale = Math.max(session.zoom || 1, session.clientScale || 0);
+    scale = Math.min(scale, STILL_MAX_SCALE, Math.sqrt(STILL_MAX_PIXELS / (cssW * cssH)));
+    return scale >= 1.1 ? scale : 0;
+}
+
+// Every frame or tile pack that reaches the viewers makes the last still stale and restarts the wait.
+function sendFrame(session, payload, binary) {
+    broadcast(session, payload, binary);
+    // a page that keeps changing (an animation, a ticker) gets stills further apart, so a still a
+    // second does not ride on top of the frames; one that settles goes back to the short gap
+    if (session.stillAt && session.stillSentGen === session.stillGen && !(session.stillInputAt > session.stillAt)) {
+        const lived = Date.now() - session.stillAt;
+        session.stillGap = lived < 3000 ? Math.min(STILL_MAX_GAP_MS, (session.stillGap || STILL_MIN_GAP_MS) * 2) : STILL_MIN_GAP_MS;
+    }
+    session.stillGen = (session.stillGen || 0) + 1;
+    armStill(session);
+}
+
+function armStill(session, delay) {
+    if (session.stillTimer) clearTimeout(session.stillTimer);
+    session.stillTimer = null;
+    if (!stillScale(session) || !session.sockets.size) return;
+    const gap = Math.max(0, (session.stillAt || 0) + (session.stillGap || STILL_MIN_GAP_MS) - Date.now());
+    session.stillTimer = setTimeout(() => {
+        session.stillTimer = null;
+        captureStill(session).catch((err) => {
+            console.warn('[grimoire-browser] still', err && err.message);
+        });
+    }, Math.max(delay == null ? STILL_SETTLE_MS : delay, gap));
+}
+
+async function captureStill(session) {
+    if (!sessions.get(session.id) || session.closing) return;
+    if (session.stillBusy) {
+        armStill(session);
+        return;
+    }
+    const scale = stillScale(session);
+    if (!scale || !session.sockets.size) return;
+    // still moving: frames in flight, a scroll or a page load
+    if (session.framePump || session.latestFrame || session.pendingScroll || scrollBurst(session) || session.navigating) {
+        armStill(session);
+        return;
+    }
+    if (session.stillSentGen === session.stillGen) return;
+    if (socketsCongested(session)) {
+        armStill(session, STILL_MIN_GAP_MS);
+        return;
+    }
+    const gen = session.stillGen;
+    const meta = session.meta;
+    session.stillBusy = true;
+    let shot;
+    let view;
+    try {
+        const metrics = await session.cdp.send('Page.getLayoutMetrics');
+        view = metrics && metrics.cssVisualViewport;
+        // a pinch-zoomed page (pageScaleFactor) is left to the frames
+        if (!view || Math.abs((view.scale || 1) - 1) > 0.001 || session.stillGen !== gen) return;
+        shot = await session.cdp.send('Page.captureScreenshot', {
+            format: 'jpeg',
+            quality: session.settings.jpegQuality,
+            captureBeyondViewport: false,
+            clip: { x: view.pageX, y: view.pageY, width: meta.deviceWidth, height: meta.deviceHeight, scale }
+        });
+    } finally {
+        session.stillBusy = false;
+        session.stillQuietUntil = Date.now() + 250;
+    }
+    if (!shot || !shot.data || !sessions.get(session.id) || session.stillGen !== gen || session.meta !== meta) return;
+    session.stillSentGen = gen;
+    session.stillAt = Date.now();
+    const still = {
+        type: 'still',
+        gen,
+        w: Math.round(meta.deviceWidth * scale),
+        h: Math.round(meta.deviceHeight * scale),
+        cssW: meta.deviceWidth,
+        cssH: meta.deviceHeight,
+        scale,
+        data: shot.data
+    };
+    session.still = still;
+    broadcast(session, still);
+}
+
 function schedulePump(session) {
     if (!sessions.get(session.id)) return;
     session.nextFrameAt = session.paceNow ? 0 : Date.now() + frameIntervalMs(session);
@@ -896,7 +999,7 @@ function pumpFrames(session) {
     session.painted = frame;
     // A scrolled frame differs everywhere; diffing it only delays it.
     if (session.framePump || scrollBurst(session)) {
-        broadcast(session, frame, true);
+        sendFrame(session, frame, true);
         session.packGen = (session.packGen || 0) + 1;
         session.pixels = null;
         schedulePump(session);
@@ -913,7 +1016,7 @@ function pumpFrames(session) {
             session.packGen += 1;
             session.pixels = null;
         }
-        broadcast(session, frame, true);
+        sendFrame(session, frame, true);
         schedulePump(session);
     }, 40);
     packFrame(session, frame, gen).then((packed) => {
@@ -921,17 +1024,17 @@ function pumpFrames(session) {
         settled = true;
         clearTimeout(budget);
         session.framePump = false;
-        if (packed && packed.stale) broadcast(session, frame, true);
-        else if (packed && packed.binary) broadcast(session, packed.binary, true);
-        else if (packed && packed.json) broadcast(session, packed.json);
-        else if (!(packed && packed.skip)) broadcast(session, frame, true);
+        if (packed && packed.stale) sendFrame(session, frame, true);
+        else if (packed && packed.binary) sendFrame(session, packed.binary, true);
+        else if (packed && packed.json) sendFrame(session, packed.json);
+        else if (!(packed && packed.skip)) sendFrame(session, frame, true);
         schedulePump(session);
     }).catch(() => {
         if (settled || !sessions.get(session.id)) return;
         settled = true;
         clearTimeout(budget);
         session.framePump = false;
-        broadcast(session, frame, true);
+        sendFrame(session, frame, true);
         schedulePump(session);
     });
 }
@@ -1332,6 +1435,8 @@ async function closeSession(id) {
     session.navSettle = null;
     clearTimeout(session.frameTimer);
     session.frameTimer = null;
+    clearTimeout(session.stillTimer);
+    session.stillTimer = null;
     clearTimeout(session.healthTimer);
     session.healthTimer = null;
     clearTimeout(session.clipboardCheck);
@@ -1991,6 +2096,12 @@ async function createSession(body, adoptedPage) {
             metadata.offsetTop,
             metadata.pageScaleFactor
         ].join(':');
+        // Page.captureScreenshot with a clip scale briefly emulates the bigger device: the screencast
+        // sends a frame or two of that size with odd metadata. They are not the page; drop them.
+        if (metaKey !== current.metaKey && (current.stillBusy || Date.now() < (current.stillQuietUntil || 0))) {
+            current.cdp.send('Page.screencastFrameAck', { sessionId: event.sessionId }).catch(() => {});
+            return;
+        }
         if (metaKey !== current.metaKey) {
             current.metaKey = metaKey;
             current.meta = metadata;
@@ -2385,6 +2496,15 @@ async function onViewerMessage(session, raw) {
         await restartScreencast(session);
         return;
     }
+    // the viewer's wanted device pixels per CSS pixel (a phone at its pixel ratio); stills only
+    if (msg.type === 'still-scale') {
+        const scale = Math.max(0, Math.min(STILL_MAX_SCALE, Number(msg.value) || 0));
+        if (Math.abs(scale - (session.clientScale || 0)) < 0.01) return;
+        session.clientScale = scale;
+        session.stillGen = (session.stillGen || 0) + 1;
+        armStill(session);
+        return;
+    }
     if (msg.type === 'zoom') {
         const zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Number(msg.value) || 1));
         if (Math.abs(zoom - (session.zoom || 1)) < 0.001) return;
@@ -2640,6 +2760,11 @@ function attachViewer(ws, session) {
     if (!session.popup) flushOrphans(session);
     if (session.painted) {
         try { ws.send(session.painted); } catch (_) {}
+        if (session.still && session.still.gen === session.stillGen) {
+            try { ws.send(JSON.stringify(session.still)); } catch (_) {}
+        } else {
+            armStill(session);
+        }
     } else {
         restartScreencast(session).catch(() => {});
     }
@@ -2654,6 +2779,11 @@ function attachViewer(ws, session) {
             || preview.type === 'wheel'
         );
         if (gesture) releaseFramePace(session);
+        // the person did something: the next still comes soon again, however busy the page was
+        if (gesture || (preview && /^(scroll-to|resize|zoom|still-scale)$/.test(preview.type))) {
+            session.stillGap = STILL_MIN_GAP_MS;
+            session.stillInputAt = Date.now();
+        }
         if (preview && (preview.type === 'dialog-reply' || preview.type === 'file-chooser-reply' || preview.type === 'navigate' || preview.type === 'reload' || preview.type === 'key' || preview.type === 'paste' || preview.type === 'ping' || preview.type === 'rtt' || preview.type === 'inspect' || preview.type === 'copy')) {
             onViewerMessage(session, raw).catch((err) => {
                 console.error('[grimoire-browser] input', err && err.message);

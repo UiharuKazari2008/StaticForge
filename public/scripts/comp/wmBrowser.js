@@ -186,10 +186,12 @@
 
     /**
      * Layout of the viewer: { W, H } page area, s = sharpness (frame px per phone px), V = CSS
-     * viewport width, z = Alchemy zoom (its device scale). Alchemy's screencast frames shrink when
-     * its zoom is over 1 (a 766 px session at zoom 1.96 sends 199 px frames), so z stays at or
-     * under 1: the frame is never wider than the CSS viewport, and One Column is 1 frame px per
-     * phone px.
+     * viewport width, z = Alchemy zoom (its device scale), d = still scale. Chromium's screencast
+     * frames are CSS-viewport sized whatever the device scale (zoom 1.96 on a 766 px session sends
+     * 391 px frames), so z stays at or under 1 for the moving picture: the frame is never wider
+     * than the CSS viewport, and One Column is 1 frame px per phone px. Sharpness comes from
+     * Alchemy's still once the page settles: d = phone device px per page CSS px (3 on a dpr 3
+     * phone in One Column, more at Larger), capped at 4; Alchemy caps its pixels too.
      */
     function geometry() {
         const W = Math.max(1, els.view.clientWidth);
@@ -202,7 +204,8 @@
         s = Math.max(s, 320 / W, 240 / H);
         const L = Math.round(W * s);
         const z = Math.max(0.1, Math.min(4, L / V));
-        return { W, H, s, V: L / z, L, Lh: Math.round(H * s), z };
+        const d = Math.min(4, (W * Math.max(1, window.devicePixelRatio || 1)) / (L / z));
+        return { W, H, s, V: L / z, L, Lh: Math.round(H * s), z, d: Math.round(d * 100) / 100 };
     }
 
     function layoutFrame() {
@@ -211,7 +214,11 @@
         frame.style.width = `${g.L}px`;
         frame.style.height = `${g.Lh}px`;
         frame.style.transform = `scale(${1 / g.s})`;
-        if (ready) post({ type: 'grimoire-browser-zoom', value: g.z });
+        if (ready) {
+            post({ type: 'grimoire-browser-zoom', value: g.z });
+            // a still at the phone's own pixels once the page settles (older viewers ignore it)
+            post({ type: 'grimoire-browser-scale', value: g.d });
+        }
     }
 
     function post(msg) {
