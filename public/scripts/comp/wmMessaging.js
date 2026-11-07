@@ -1204,12 +1204,14 @@
             hide() {
                 clearTimeout(pushTimer);
             },
-            // the title bar's X steps out of a message or form first; on the list it closes the app
-            onTitleAction() {
-                if (top() === 'list') return true;
-                goBack();
-                return false;
+            // WM: X on the lists (Smart Minimize), ok on a message and on a new message (ok asks to
+            // save one with text, as the back key does); Move has its own Cancel / Select: no corner
+            titleKind() {
+                const t = top();
+                if (t === 'read' || t === 'compose') return 'ok';
+                return t === 'move' ? null : 'close';
             },
+            onTitleOk: () => goBack(),
             historyDepth: () => layers.length,
             onBack: () => goBack(),
             softKeys

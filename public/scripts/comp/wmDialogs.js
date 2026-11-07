@@ -448,8 +448,15 @@
                 cancelTop();
                 return false;
             },
-            onTitleAction() {
-                cancelAll();
+            // WM: a form with its own Cancel / OK soft keys has no corner button (as the Logon and
+            // connection dialogs); a window shown without a form (Done) has ok, which does Done
+            titleKind() {
+                const t = top();
+                return t && !t.form ? 'ok' : null;
+            },
+            onTitleOk() {
+                if (!top()) return false;
+                cancelTop();
                 return true;
             }
         });

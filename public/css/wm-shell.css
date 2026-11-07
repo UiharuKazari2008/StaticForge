@@ -33,6 +33,9 @@ html.ui-mobile {
     --wm-rule: #292c29;
     --wm-button-border: #214d08;
     --wm-button-light: #84d34a;
+    --wm-button-ring-bottom: #5ec51c;
+    --wm-button-fill-top: #63a239;
+    --wm-button-fill-bottom: #448e12;
     --wm-font: Tahoma, 'Segoe UI', Verdana, sans-serif;
     background: #000;
 }
@@ -340,40 +343,75 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
     .wm-status-icon[data-icon="signal-search"] { animation: none; }
 }
 
-/* ok / X: 19 x 17 px box 4 px from the top and 3 px from the right (device: 38 x 34 at 2x).
- * 1 px dark border, 1 px light top edge, gradient fill, and the ROM's white glyph (gwes 8300-8303,
- * drawn on a whole 23 x 26 title-bar cell, so it is placed relative to that cell). */
+/* ok / X (emulator 2x halved, the same frame for both and for a message box's own ok): a 19 x 17 px
+ * box 4 px from the top and 3 px from the right, square corners. A 1 px border (#214D08 on green),
+ * then a 1 px bevel ring that fades top to bottom (#84D34A -> #5EC51C, the sides included), then the
+ * fill (#63A239 -> #448E12) and the ROM's white glyph (gwes 8300-8303, drawn on a whole 23 x 26
+ * title-bar cell, so it is placed relative to that cell). Pressed: ring and fill turn upside down
+ * and the glyph takes the Start rule colour (#397D08).
+ * Every ring is a real border so it lands on whole device pixels at any scale (--wm-px 1.25 at
+ * dpr 2.625 smeared the old inset shadows); the colours come from the theme roles. */
 .wm-title-action {
     flex: 0 0 auto;
+    position: relative;
     width: calc(19 * var(--wm-px));
     height: calc(17 * var(--wm-px));
     margin: 0 calc(3 * var(--wm-px)) 0 0;
     padding: 0 !important;
     border: calc(1 * var(--wm-px)) solid var(--wm-button-border) !important;
     box-sizing: border-box;
-    box-shadow:
-        inset 0 calc(1 * var(--wm-px)) 0 var(--wm-button-light),
-        inset calc(1 * var(--wm-px)) 0 0 var(--wm-highlight),
-        inset calc(-1 * var(--wm-px)) 0 0 var(--wm-highlight),
-        inset 0 calc(-1 * var(--wm-px)) 0 var(--wm-gloss-bottom);
-    background-origin: border-box !important;
-    background-repeat: no-repeat !important;
-    background-size: calc(23 * var(--wm-px)) calc(26 * var(--wm-px)), 100% 100% !important;
-    background-position: calc(-1.5 * var(--wm-px)) calc(-4 * var(--wm-px)), 0 0 !important;
+    box-shadow: none;
+    background: none !important;
     color: transparent;
     font-size: 0;
 }
 
+.wm-title-action::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: calc(1 * var(--wm-px)) solid transparent;
+    background:
+        linear-gradient(to bottom, var(--wm-button-fill-top), var(--wm-button-fill-bottom)) padding-box,
+        linear-gradient(to bottom, var(--wm-button-light), var(--wm-button-ring-bottom)) border-box;
+    pointer-events: none;
+}
+
+/* the glyph covers the border box, like the cell it was cut from */
+.wm-title-action::after {
+    content: '';
+    position: absolute;
+    inset: calc(-1 * var(--wm-px));
+    background: #fff;
+    -webkit-mask: var(--wm-title-glyph) calc(-1.5 * var(--wm-px)) calc(-4 * var(--wm-px)) / calc(23 * var(--wm-px)) calc(26 * var(--wm-px)) no-repeat;
+    mask: var(--wm-title-glyph) calc(-1.5 * var(--wm-px)) calc(-4 * var(--wm-px)) / calc(23 * var(--wm-px)) calc(26 * var(--wm-px)) no-repeat;
+    pointer-events: none;
+}
+
+/* at 1x the cell's half-pixel offset would blur the 1x glyph: whole pixels there */
+@media (max-resolution: 1.49dppx) {
+    .wm-title-action::after {
+        -webkit-mask-position: round(calc(-1.5 * var(--wm-px)), 1px) round(calc(-4 * var(--wm-px)), 1px);
+        mask-position: round(calc(-1.5 * var(--wm-px)), 1px) round(calc(-4 * var(--wm-px)), 1px);
+    }
+}
+
 .wm-title-action[data-kind="close"] {
-    background-image: image-set(url('/static_images/wm61/title-close.png') 1x, url('/static_images/wm61/title-close@2x.png') 2x, url('/static_images/wm61/title-close@4x.png') 4x), linear-gradient(to bottom, var(--wm-gloss-bottom), var(--wm-softkey-base)) !important;
+    --wm-title-glyph: image-set(url('/static_images/wm61/title-close.png') 1x, url('/static_images/wm61/title-close@2x.png') 2x, url('/static_images/wm61/title-close@4x.png') 4x);
 }
 
 .wm-title-action[data-kind="ok"] {
-    background-image: image-set(url('/static_images/wm61/title-ok.png') 1x, url('/static_images/wm61/title-ok@2x.png') 2x, url('/static_images/wm61/title-ok@4x.png') 4x), linear-gradient(to bottom, var(--wm-gloss-bottom), var(--wm-softkey-base)) !important;
+    --wm-title-glyph: image-set(url('/static_images/wm61/title-ok.png') 1x, url('/static_images/wm61/title-ok@2x.png') 2x, url('/static_images/wm61/title-ok@4x.png') 4x);
 }
 
-.wm-title-action:active {
-    filter: brightness(1.2);
+.wm-title-action:active::before {
+    background:
+        linear-gradient(to top, var(--wm-button-fill-top), var(--wm-button-fill-bottom)) padding-box,
+        linear-gradient(to top, var(--wm-button-light), var(--wm-button-ring-bottom)) border-box;
+}
+
+.wm-title-action:active::after {
+    background: var(--wm-start-rule);
 }
 
 .wm-title-action[hidden] {

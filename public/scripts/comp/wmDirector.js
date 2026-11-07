@@ -638,6 +638,14 @@
                 if (d && d.mascot && patchedMascot === d.mascot) { d.mascot.applyView(); syncBlink(d.mascot); }
             },
             softKeys,
+            // WM: X on the conversation and its lists (Smart Minimize), ok on the reply composer
+            // (closes it, the text stays), as Messaging's new message
+            titleKind: () => (composing && !isDraft() ? 'ok' : 'close'),
+            onTitleOk() {
+                if (!(composing && !isDraft())) return false;
+                closeComposer();
+                return true;
+            },
             historyDepth() {
                 return (sub ? 1 : 0) + (composing && !isDraft() ? 1 : 0) + (peeking() ? 1 : 0);
             },

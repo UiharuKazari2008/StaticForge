@@ -182,12 +182,9 @@
         return `<div class="wm-tabs" role="tablist">${tabs.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${esc(id)}" aria-selected="${id === current}">${esc(label)}</button>`).join('')}</div>`;
     }
 
-    function setTitleKind(kind) {
-        const btn = document.querySelector('#wmShell .wm-titlebar .wm-title-action');
-        if (!btn) return;
-        btn.hidden = false;
-        btn.dataset.kind = kind;
-        btn.setAttribute('aria-label', kind === 'ok' ? 'OK' : 'Close');
+    /** A Settings layer changed: the shell's corner follows the app's titleKind(). */
+    function refreshTitleKind() {
+        if (sh && typeof sh.refreshTitleAction === 'function') sh.refreshTitleAction();
     }
 
     const fmtMB = (bytes) => {
@@ -1193,7 +1190,7 @@
             page.innerHTML = `<div class="wm-set-scroll"><div class="wm-icongrid" role="list">${items.map((i) => iconCell(i)).join('')}</div></div>${tabsHtml(SET_TABS, gridTab)}`;
             bindGrid(page.querySelector('.wm-icongrid'), openPage);
             page.querySelectorAll('.wm-tab').forEach((t) => t.addEventListener('click', () => { gridTab = t.dataset.tab; renderGrid(); }));
-            if (sh.current === 'settings') setTitleKind('close');
+            if (sh.current === 'settings') refreshTitleKind();
         }
 
         function renderPage() {
@@ -1210,7 +1207,7 @@
                 console.warn('Settings: could not draw', def.id, tab, err);
             }
             page.querySelectorAll('.wm-tab').forEach((t) => t.addEventListener('click', () => { open.tab = t.dataset.tab; renderPage(); }));
-            setTitleKind('ok');
+            refreshTitleKind();
         }
 
         function openPage(id, tab) {
@@ -1286,10 +1283,12 @@
             },
             hide() { open = null; },
             softKeys() { return { left: null, right: null }; },
-            onTitleAction() {
-                if (!open) return true;
+            // WM: X on the Settings grid, ok on a settings page (saves it, back to the grid)
+            titleKind: () => (open ? 'ok' : 'close'),
+            onTitleOk() {
+                if (!open) return false;
                 commitPage();
-                return false;
+                return true;
             },
             historyDepth: () => (open ? 1 : 0),
             onBack() {

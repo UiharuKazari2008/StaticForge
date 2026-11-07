@@ -111,13 +111,9 @@
         try { return localStorage.getItem(key); } catch (_) { return null; }
     }
 
-    /** The shell sets the title button once per app; a sub-page switches X <-> ok on the button itself. */
-    function setTitleKind(kind) {
-        const btn = document.querySelector('#wmShell > .wm-titlebar > .wm-title-action');
-        if (!btn) return;
-        btn.hidden = false;
-        btn.dataset.kind = kind;
-        btn.setAttribute('aria-label', kind === 'ok' ? 'OK' : 'Close');
+    /** A layer changed: the shell's title-bar corner follows the app's titleKind(). */
+    function refreshTitleKind() {
+        if (ws && typeof ws.refreshTitleAction === 'function') ws.refreshTitleAction();
     }
 
     function errorBox(title, text, err) {
@@ -322,7 +318,7 @@
             page.querySelector('.nt-noteview').hidden = view !== 'note';
             page.dataset.view = view;
             if (isCurrent()) {
-                setTitleKind(view === 'note' ? 'ok' : 'close');
+                refreshTitleKind();
                 ws.refreshSoftKeys();
             }
         }
@@ -670,8 +666,11 @@
                         // leaving the app keeps what was typed (WM saves on deactivate)
                         if (editing) saveEditing().catch(() => {});
                     },
-                    onTitleAction() {
-                        if (page && page.dataset.view === 'note') { closeNote(); return false; }
+                    // WM: X on the list (Smart Minimize), ok on a note (saves it, back to the list)
+                    titleKind: () => (page && page.dataset.view === 'note' ? 'ok' : 'close'),
+                    onTitleOk() {
+                        if (!page || page.dataset.view !== 'note') return false;
+                        closeNote();
                         return true;
                     },
                     historyDepth: () => (editing ? 1 : 0),
@@ -919,7 +918,7 @@
             page.querySelector('.ct-editview').hidden = v !== 'edit';
             page.dataset.view = v;
             if (isCurrent()) {
-                setTitleKind(v === 'list' ? 'close' : 'ok');
+                refreshTitleKind();
                 ws.refreshSoftKeys();
             }
         }
@@ -1463,11 +1462,13 @@
                         if (pending) return;
                         load({ keep: loaded });
                     },
-                    onTitleAction() {
+                    // WM: X on the list, ok on a contact card and on the edit form (ok saves the form)
+                    titleKind: () => (view() === 'list' ? 'close' : 'ok'),
+                    onTitleOk() {
                         const v = view();
-                        if (v === 'edit') { saveForm(); return false; }
-                        if (v === 'card') { pop(); return false; }
-                        return true;
+                        if (v === 'edit') { saveForm(); return true; }
+                        if (v === 'card') { pop(); return true; }
+                        return false;
                     },
                     historyDepth: () => layers.length,
                     onBack() {

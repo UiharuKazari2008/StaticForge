@@ -909,6 +909,13 @@
                 if (a && page && page.contains(a) && typeof a.blur === 'function') a.blur();
             },
             softKeys,
+            // WM: X on Studio, ok on a tool page (as its Done soft key)
+            titleKind: () => (tools.length ? 'ok' : 'close'),
+            onTitleOk() {
+                if (!tools.length) return false;
+                closeTool();
+                return true;
+            },
             historyDepth() { return tools.length; },
             onBack() {
                 if (tools.length) { closeTool(); return true; }

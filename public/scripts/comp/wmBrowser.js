@@ -1698,15 +1698,13 @@
                 syncAudio();
                 if (session) scheduleIdleClose();
             },
-            onTitleAction() {
-                // X closes Internet Explorer: Alchemy's session goes now (it has only four)
-                closeSession();
-                sub = null;
-                if (els.sub) els.sub.hidden = true;
-                page.classList.remove('has-sub');
-                entries = [homeEntry()];
-                idx = 0;
-                render();
+            // WM: X on the page (Smart Minimize: the page stays, and hide() lets Alchemy's session
+            // go after the idle wait), ok on Favorites / History (back to the page)
+            titleKind: () => (sub ? 'ok' : 'close'),
+            onTitleOk() {
+                if (!sub) return false;
+                closeSub();
+                return true;
             },
             historyDepth: () => idx + (sub ? 1 : 0),
             onBack: () => goBack(),

@@ -12,6 +12,15 @@
  * Apps register with wmShell.registerApp({ id, title, icon, inStart, mount(page), show(), hide(),
  * softKeys() }) and run one at a time with a back stack.
  *
+ * The title bar's corner button follows WM 6.1 and is decided in one place (titleKindNow): X on an
+ * application's main view (Smart Minimize: the app goes to the background as it is, the screen
+ * under it comes back), ok on a form, property page, viewer or edit screen (confirm and close, back
+ * to the previous screen), nothing on Today, under a message box or an ok bubble, and on a full
+ * screen dialog that has its own OK / Cancel soft keys. An app tells the shell what its current
+ * layer is with titleKind() -> 'close' | 'ok' | null (or a fixed titleAction), handles ok with
+ * onTitleOk() (true = handled; else its onBack() step, else back to the previous app), and calls
+ * wmShell.refreshTitleAction() when a layer changes without syncHistory / refreshSoftKeys.
+ *
  * Theme: WM 6.1 draws its chrome from a handful of colour roles (HKLM\Software\Microsoft\Color);
  * here every role is derived from the workspace colour (--primary-color) with the hue, saturation
  * and lightness relations measured on the device's green theme (applyTheme).
@@ -58,8 +67,17 @@
         '--wm-today-rule': { dh: -26, s: 84, l: 40 },
         '--wm-start-rule': { dh: -28, s: 88, l: 26 },
         '--wm-button-border': { dh: -22, s: 81, l: 17 },
-        '--wm-button-light': { dh: -27, s: 61, l: 56 }
+        '--wm-button-light': { dh: -27, s: 61, l: 56 },
+        // the ok / X button's bevel ring (light top -> this at the bottom) and its fill
+        '--wm-button-ring-bottom': { dh: -26, s: 75, l: 44 },
+        '--wm-button-fill-top': { dh: -27, s: 48, l: 43 },
+        '--wm-button-fill-bottom': { dh: -27, s: 78, l: 31 }
     };
+    // WM's button border (#214D08) parts from the title (#004918) by hue more than by lightness
+    // (OKLab difference 0.029). Without the hue shift the same lightness put the border on the
+    // title's own colour and the button lost its frame: the border is made light enough to keep
+    // WM's difference in every hue.
+    const BUTTON_BORDER_DE = 0.0287;
     const REF_SATURATION = 64;
     const THEME_CACHE_KEY = 'wmThemeRoles';
 
@@ -98,12 +116,40 @@
         // a grey workspace gives a grey phone; a vivid one is capped a little above WM's own green
         const k = Math.max(0, Math.min(1.25, base.s / REF_SATURATION));
         const out = {};
+        const hsl = {};
         for (const [name, role] of Object.entries(ROLES)) {
             const h = ((base.h + role.dh * HUE_SHIFT_SHARE * Math.min(1, k)) % 360 + 360) % 360;
             const s = Math.min(100, role.s * k);
+            hsl[name] = { h, s, l: role.l };
             out[name] = `hsl(${h.toFixed(1)} ${s.toFixed(1)}% ${role.l}%)`;
         }
+        const t = hsl['--wm-title'];
+        const b = hsl['--wm-button-border'];
+        let l = b.l;
+        while (l < 40 && oklabDistance(hslToRgb(b.h, b.s, l), hslToRgb(t.h, t.s, t.l)) < BUTTON_BORDER_DE) l += 0.25;
+        out['--wm-button-border'] = `hsl(${b.h.toFixed(1)} ${b.s.toFixed(1)}% ${l}%)`;
         return out;
+    }
+
+    /** sRGB 0..1 of an HSL colour (h degrees, s and l percent). */
+    function hslToRgb(h, s, l) {
+        s /= 100; l /= 100;
+        const a = s * Math.min(l, 1 - l);
+        const f = (n) => { const k = (n + h / 30) % 12; return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+        return [f(0), f(8), f(4)];
+    }
+
+    function oklab(rgb) {
+        const [r, g, b] = rgb.map((c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+        const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+        const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+        const q = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+        return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * q, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * q, 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * q];
+    }
+
+    function oklabDistance(a, b) {
+        const x = oklab(a), y = oklab(b);
+        return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
     }
 
     function applyTheme() {
@@ -119,7 +165,10 @@
     /** The last workspace theme, so the splash already has it before the workspace CSS loads. */
     function applyCachedTheme() {
         try {
-            const roles = JSON.parse(localStorage.getItem(THEME_CACHE_KEY) || 'null');
+            let roles = JSON.parse(localStorage.getItem(THEME_CACHE_KEY) || 'null');
+            // a cache from before a role was added: the highlight role is the workspace colour's
+            // hue and saturation at WM's lightness, so every role comes again from it
+            if (roles && roles['--wm-highlight'] && Object.keys(ROLES).some((k) => !(k in roles))) roles = deriveRoles(roles['--wm-highlight']) || roles;
             if (roles) for (const [name, value] of Object.entries(roles)) root.style.setProperty(name, value);
         } catch (_) { /* no cache */ }
     }
@@ -202,12 +251,7 @@
             try { start.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
             start.click();
         });
-        shell.querySelector('.wm-title-action').addEventListener('click', () => {
-            if (viewerActive) { closeViewer(); return; }
-            const app = current && apps.get(current);
-            if (app && typeof app.onTitleAction === 'function' && app.onTitleAction() === false) return;
-            back();
-        });
+        shell.querySelector('.wm-title-action').addEventListener('click', (e) => pressTitleAction(e.currentTarget.dataset.kind));
         shell.querySelectorAll('.wm-softkey').forEach((btn) => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -379,12 +423,73 @@
 
     function setTitleAction(kind) {
         const btn = shell.querySelector('.wm-title-action');
+        kind = kind === 'ok' || kind === 'close' ? kind : null;
+        if (btn.hidden === !kind && (!kind || btn.dataset.kind === kind)) return;
         btn.hidden = !kind;
         if (kind) {
             btn.dataset.kind = kind;
             btn.setAttribute('aria-label', kind === 'ok' ? 'OK' : 'Close');
         }
         fitStatus();
+    }
+
+    // the boot screens' own corner: none while wceload copies, ok on its last page
+    let bootTitleKind = null;
+
+    /** A modal on screen takes the corner away (WM: a message box, a bubble with an OK button). */
+    function modalUp() {
+        const box = shell.querySelector('.wm-msgbox-layer');
+        if (box && !box.hidden) return true;
+        const b = shell.querySelector('.wm-bubble');
+        if (b && !b.hidden && b.dataset.modal === '1') return true;
+        // the desktop's confirmation / input dialog, drawn as a WM message box
+        const c = document.getElementById('confirmationDialog');
+        return !!(c && !c.classList.contains('hidden') && c.getClientRects().length);
+    }
+
+    /**
+     * WM 6.1's rule for the title bar's corner, for whatever is on screen now: 'close' (X, Smart
+     * Minimize) on an app's main view, 'ok' on a form / page / viewer / editor, null (nothing) on
+     * Today, under a modal and on a dialog with its own OK / Cancel. The app names its layer.
+     */
+    function titleKindNow() {
+        const boot = root.dataset.wmBoot;
+        if (boot === 'splash' || boot === 'install') return boot === 'install' ? bootTitleKind : null;
+        if (modalUp()) return null;
+        if (viewerActive && !viewerClosing) return 'ok';
+        if (!current || current === 'today') return null;
+        const app = apps.get(current);
+        if (!app) return null;
+        let kind;
+        if (typeof app.titleKind === 'function') {
+            try { kind = app.titleKind(); } catch (_) { kind = 'close'; }
+        } else if (titleKinds.has(current)) kind = titleKinds.get(current);
+        else kind = 'titleAction' in app ? app.titleAction : 'close';
+        return kind === 'ok' || kind === 'close' ? kind : null;
+    }
+
+    // what apps without titleKind() set with wmShell.setTitleAction (their current layer's corner)
+    const titleKinds = new Map();
+
+    function refreshTitleAction() {
+        if (shell) setTitleAction(titleKindNow());
+    }
+
+    /** The corner button: ok confirms the layer and goes back one screen, X minimizes the app. */
+    function pressTitleAction(kind) {
+        if (viewerActive) { closeViewer(); return; }
+        const app = current && apps.get(current);
+        if (kind === 'ok' && app) {
+            if (typeof app.onTitleOk === 'function' && app.onTitleOk()) { syncHistory({ noPush: true }); refreshTitleAction(); return; }
+            // the app's own back step (a page, a sub-view), as the back key takes it
+            if (typeof app.onBack === 'function' && app.historyDepth && Number(app.historyDepth()) > 0 && app.onBack()) {
+                syncHistory({ noPush: true });
+                renderSoftKeys();
+                return;
+            }
+        }
+        // X (and ok on an app's only screen): the screen under it comes back; the app keeps its state
+        back();
     }
 
     // ---------------------------------------------------------------- soft keys
@@ -405,6 +510,8 @@
             btn.setAttribute('aria-expanded', 'false');
         }
         shell.querySelector('.wm-sip').hidden = !(app && app.sip);
+        // the corner follows the same layer as the soft keys
+        refreshTitleAction();
     }
 
     function pressSoftKey(side, btn) {
@@ -646,7 +753,6 @@
         page.hidden = false;
         // Today's title bar reads "Start"; an app shows its name and the X (or ok) at the right
         setTitle(id === 'today' ? startButtonPrefs().text : (app.title || id));
-        setTitleAction(id === 'today' ? null : (app.titleAction || 'close'));
         if (typeof app.show === 'function') app.show(page);
         renderSoftKeys();
     }
@@ -701,6 +807,7 @@
         syncQueued = true;
         queueMicrotask(() => {
             syncQueued = false;
+            refreshTitleAction();
             const noPush = syncNoPush;
             syncNoPush = false;
             if (ignorePops > 0) return;
@@ -938,6 +1045,9 @@
         const el = shell.querySelector('.wm-bubble');
         el.innerHTML = '<span class="wm-bubble-tail" aria-hidden="true"></span>';
         el.dataset.role = role || '';
+        // a bubble with an OK button is modal: the title bar's ok / X goes until it is answered
+        // (WM: Phone's "A wireless radio must be attached"); a Hide bubble leaves it
+        el.dataset.modal = (buttons || []).some((b) => /^ok$/i.test(String(b && b.text).trim())) ? '1' : '';
         const head = document.createElement('div');
         head.className = 'wm-bubble-title';
         head.textContent = title || '';
@@ -973,6 +1083,7 @@
             el.appendChild(row);
         }
         el.hidden = false;
+        refreshTitleAction();
         // the tail points at the status icon
         if (anchor) {
             const sr = shell.getBoundingClientRect();
@@ -986,7 +1097,8 @@
 
     function closeBubble() {
         const el = shell && shell.querySelector('.wm-bubble');
-        if (el) { el.hidden = true; el.dataset.role = ''; }
+        if (el) { el.hidden = true; el.dataset.role = ''; el.dataset.modal = ''; }
+        refreshTitleAction();
     }
 
     // ---------------------------------------------------------------- notifications
@@ -1386,6 +1498,7 @@
                 layer.hidden = true;
                 layer.innerHTML = '';
                 document.removeEventListener('keydown', onKey, true);
+                refreshTitleAction();
                 resolve(value);
             };
             const onKey = (e) => {
@@ -1406,6 +1519,8 @@
                 }
             }
             layer.hidden = false;
+            // WM: the title bar's corner goes empty while a message box is up
+            refreshTitleAction();
             const first = field || layer.querySelector('.wm-msgbox-buttons .is-default') || layer.querySelector('button');
             if (first) first.focus();
         });
@@ -2390,10 +2505,6 @@
                 gridTimer = null;
                 if (searchBar && !searchBar.hidden) setSearch(false);
             },
-            onTitleAction() {
-                if (searchBar && !searchBar.hidden) { setSearch(false); return false; }
-                return true;
-            },
             softKeys() {
                 const searching = !!(searchBar && !searchBar.hidden);
                 if (searching) return { left: { label: 'Cancel', action: () => setSearch(false) }, right: null };
@@ -2536,12 +2647,10 @@
         if (open) {
             root.setAttribute('data-wm-viewer', '');
             setTitle('Pictures & Videos');
-            setTitleAction('ok');
         } else {
             root.removeAttribute('data-wm-viewer');
             const app = current && apps.get(current);
             setTitle(current === 'today' ? startButtonPrefs().text : ((app && app.title) || current));
-            setTitleAction(current === 'today' ? null : ((app && app.titleAction) || 'close'));
         }
         renderSoftKeys();
         // the tap that opened the viewer is still fresh here (150 ms poll): its entry is allowed
@@ -2571,6 +2680,9 @@
         } else if (root.hasAttribute('data-wm-takeover')) {
             root.removeAttribute('data-wm-takeover');
         }
+        // the corner catches up with layers that changed without telling the shell (a desktop
+        // dialog opening as a WM message box, an app's own view switch)
+        refreshTitleAction();
     }
 
     // ---------------------------------------------------------------- startup
@@ -2637,7 +2749,8 @@
         if (phase === 'install') {
             closeMenus();
             setTitle('Start');
-            setTitleAction(null);
+            bootTitleKind = null;
+            refreshTitleAction();
             // wceload shows no soft keys while it copies (only the SIP button)
             softKeys = { left: null, right: null };
             shell.querySelectorAll('.wm-softkey').forEach((b) => { b.textContent = ''; b.disabled = true; });
@@ -2677,7 +2790,8 @@
         inst.querySelector('.wm-installer-done-title').textContent = `${installNoun()} was successfully installed on your device.`;
         // wceload's own wording (device capture inst-06 / inst-18)
         inst.querySelector('.wm-installer-done-note').textContent = 'If you need more storage space, you can remove installed programs.';
-        setTitleAction('ok');
+        bootTitleKind = 'ok';
+        refreshTitleAction();
         const btn = shell.querySelector('.wm-title-action');
         const onOk = (e) => {
             e.stopImmediatePropagation();
@@ -2835,7 +2949,13 @@
         syncHistory: () => syncHistory(),
         refreshSoftKeys: () => renderSoftKeys(),
         setTitle: (t) => setTitle(t),
-        setTitleAction: (k) => setTitleAction(k),
+        /** The current app's corner for its layer ('close' | 'ok' | null), for apps without titleKind(). */
+        setTitleAction: (k) => {
+            if (current) titleKinds.set(current, k === 'ok' || k === 'close' ? k : null);
+            refreshTitleAction();
+        },
+        /** An app's layer changed: the corner follows (titleKind()). */
+        refreshTitleAction: () => refreshTitleAction(),
         art: { url: art, url2x: art2x, img: imgTag, srcset },
         escapeHtml,
         applyTheme,
