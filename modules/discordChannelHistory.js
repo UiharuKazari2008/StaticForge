@@ -398,7 +398,22 @@ async function readHistory(tab, input, options) {
     if (cursor.error) return { success: false, error: cursor.error };
     const limit = clampLimit(input && input.limit);
 
+    // Inspect the current document before routing: checking sign-in must never navigate.
+    const current = await tab.info();
+    if (isDiscordHost(current.url)) {
+        const session = await tab.evaluate(detectSessionScript());
+        if (session && session.login) {
+            return { success: false, code: 'DISCORD_NOT_SIGNED_IN', error: NOT_SIGNED_IN_ERROR };
+        }
+    }
+
     let dest = channel;
+    // A named channel may already be in the sidebar. Resolve it without first routing
+    // to the guild root (which has no destination message list to wait for).
+    if (dest.resolveFromSidebar && isDiscordHost(current.url)) {
+        dest = await resolveSidebarChannel(tab, dest, sleepFn, scrollGapMs);
+        if (dest.error) return { success: false, error: dest.error };
+    }
     const jumpId = cursor.kind === 'messageId' ? cursor.messageId : (channel.messageId || '');
     if (dest.channelId && jumpId) {
         dest = {
@@ -407,7 +422,12 @@ async function readHistory(tab, input, options) {
         };
     }
 
-    await tab.navigate(dest.url);
+    try {
+        await tab.navigate(dest.url);
+    } catch (error) {
+        if (error.code !== 'DISCORD_INAPP_ROUTE_FAILED') throw error;
+        return { success: false, code: error.code, error: error.message };
+    }
     let session = await waitForMessages(tab, sleepFn, opts.sessionTimeoutMs);
     if (session && session.login) {
         return {
@@ -427,7 +447,12 @@ async function readHistory(tab, input, options) {
                 url: `https://discord.com/channels/${dest.guildId}/${dest.channelId}/${jumpId}`
             };
         }
-        await tab.navigate(dest.url);
+        try {
+            await tab.navigate(dest.url);
+        } catch (error) {
+            if (error.code !== 'DISCORD_INAPP_ROUTE_FAILED') throw error;
+            return { success: false, code: error.code, error: error.message };
+        }
         session = await waitForMessages(tab, sleepFn, opts.sessionTimeoutMs);
         if (session && session.login) {
             return {
