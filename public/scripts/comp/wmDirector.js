@@ -234,6 +234,34 @@
     // ---------------------------------------------------------------- hand-offs from other views
 
     let pendingRun = null;
+    // the picture view the Director opened over (Pictures & Videos' Menu > Ask Wren): Back re-opens it
+    let viewerReturn = null;
+
+    /** The picture the open PhotoSwipe shows, or null (the shell's viewer: lightbox.js). */
+    function openViewerPicture() {
+        if (!document.querySelector('.pswp.pswp--open')) return null;
+        try {
+            const p = (typeof lightbox !== 'undefined' && lightbox && lightbox.pswp) || window.pswp;
+            const d = p && p.currSlide && p.currSlide.data;
+            const item = (d && d.data) || null;
+            return (item && (item.filename || item.original)) || null;
+        } catch (_) { return null; }
+    }
+
+    /**
+     * The Director app left (hide): when that was Back to the view it opened over, the picture view
+     * comes back too, as the desktop's Glancewell/Lumen stay open behind their Ask Wren.
+     */
+    function restoreViewer() {
+        const ret = viewerReturn;
+        viewerReturn = null;
+        if (!ret) return;
+        setTimeout(() => {
+            if (!ws || ws.current !== ret.app || openViewerPicture()) return;
+            if (typeof showLightbox !== 'function') return;
+            try { showLightbox({ filename: ret.filename }); } catch (_) { /* viewer not ready */ }
+        }, 0);
+    }
 
     /**
      * Another view hands something to the Director (Ask Wren in Pictures & Videos, File Explorer or
@@ -258,6 +286,9 @@
                     finish(v);
                 } catch (err) { console.warn('[wmDirector] hand-off', err); finish(undefined); }
             };
+            // the shell closes the picture view under a newly opened app; Back brings it back
+            const pic = openViewerPicture();
+            viewerReturn = pic && ws.current && ws.current !== APP_ID ? { app: ws.current, filename: pic } : null;
             ws.open(APP_ID);
             // left before the Director came up: the hand-off is dropped (nothing waits on it forever)
             setTimeout(() => finish(undefined), 20000);
@@ -599,6 +630,7 @@
             },
             hide() {
                 shown = false;
+                restoreViewer();
                 if (composing) { composing = false; syncComposer(); }
                 const d = dir();
                 if (d && d.directorChatInput) d.directorChatInput.blur();
