@@ -73,8 +73,13 @@
         const desktopPwaWindow = !!(window.matchMedia && matchMedia('(display-mode: window-controls-overlay)').matches);
         globalThis.uiShell = (isWideScreen || desktopPwaWindow) ? 'desktop' : 'mobile';
         if (globalThis.uiShell === 'mobile') document.documentElement.classList.add('ui-mobile');
-        // html.wm-touch drives the 1.5x finger scale of wm-shell.css; it never changes while the page lives
-        if (touchFirst) document.documentElement.classList.add('wm-touch');
+        // html.wm-touch drives the 1.5x finger scale of wm-shell.css; it never changes while the page lives.
+        // In the phone shell a touch screen is enough: a stylus phone (S Pen) can report a hovering
+        // pointer at load, and the any-hover guard only exists for desktop touch laptops.
+        const touchScreen = (navigator.maxTouchPoints || 0) > 0 && mqMatch('(any-pointer: coarse)');
+        if (touchFirst || (globalThis.uiShell === 'mobile' && touchScreen)) {
+            document.documentElement.classList.add('wm-touch');
+        }
         if (!galleryWindowPreference && isWideScreen) {
             // only a wide first load stores a choice: a phone's load used to store 'maximized'
             // and kept a later wide load of the same browser out of the desktop
