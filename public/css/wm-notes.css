@@ -1,1 +1,478 @@
-/* Melaton Mobile Notes app (#709) */
+/*
+ * Melaton Mobile: Notes and Contacts (WM 6.1 Professional), Yozora #709. wmNotes.js.
+ * Measured on the Device Emulator (VGA, 2x halved; refs in ~/.cache/wm61/ref-notes); lengths are
+ * N * --wm-px like wm-shell.css. List fields are the theme's white-to-tint gradient.
+ */
+
+.wm-notes,
+.wm-contacts {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+    color: #000;
+}
+
+.wm-notes > [hidden],
+.wm-contacts > [hidden],
+.wm-contacts [hidden] {
+    display: none !important;
+}
+
+.wm-notes .nt-listview,
+.wm-notes .nt-noteview,
+.wm-contacts .ct-listview,
+.wm-contacts .ct-cardview,
+.wm-contacts .ct-editview {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---- Notes: list ---- */
+
+.wm-notes .nt-folder {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.wm-notes .nt-folder-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-notes .wm-pv-sort {
+    flex: 0 0 auto;
+}
+
+.wm-notes .nt-scroll,
+.wm-contacts .ct-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* rows 18 px: icon at x 2, bold name at x 20, the time / date column, the size 6 px from the right */
+.wm-notes .nt-row {
+    display: grid;
+    grid-template-columns: calc(20 * var(--wm-px)) minmax(0, 1fr) auto calc(42 * var(--wm-px));
+    align-items: center;
+    height: calc(18 * var(--wm-px));
+    padding-right: calc(6 * var(--wm-px));
+    font-weight: bold;
+    white-space: nowrap;
+    cursor: default;
+    -webkit-touch-callout: none;
+}
+
+.wm-notes .nt-row.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-notes .nt-ico img {
+    display: block;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin-left: calc(2 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-notes .nt-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: calc(8 * var(--wm-px));
+}
+
+.wm-notes .nt-date {
+    padding-right: calc(4 * var(--wm-px));
+}
+
+.wm-notes .nt-size {
+    text-align: right;
+}
+
+.wm-notes .nt-empty,
+.wm-contacts .ct-note {
+    margin: 0;
+    padding: calc(100 * var(--wm-px)) calc(8 * var(--wm-px)) 0;
+    text-align: center;
+}
+
+/* ---- Notes: the note page (typing mode: white, the text from x 4) ---- */
+
+.wm-notes .nt-noteview {
+    background: #fff;
+}
+
+.wm-notes .nt-text {
+    --nt-zoom: 1;
+    flex: 1 1 auto;
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+    padding: calc(30 * var(--wm-px)) calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    resize: none;
+    background: #fff;
+    color: #000;
+    font: calc(13 * var(--nt-zoom) * var(--wm-px)) / 1.35 var(--wm-font);
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* ---- Contacts: list ---- */
+
+/* "Enter a name..." box: 20 px, 1 px black frame, 3 px in, on the tab-strip tint (26 px band) */
+.wm-contacts .ct-searchbar {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    height: calc(26 * var(--wm-px));
+    padding: calc(3 * var(--wm-px)) calc(3 * var(--wm-px));
+    background: var(--wm-tab-strip);
+}
+
+.wm-contacts .ct-search {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    height: calc(20 * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    outline: none;
+    background: #fff;
+    color: #000;
+    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+    -webkit-appearance: none;
+    appearance: none;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.wm-contacts .ct-search::placeholder {
+    color: #000;
+    opacity: 1;
+}
+
+.wm-contacts .ct-search::-webkit-search-cancel-button {
+    display: none;
+}
+
+/* letter tabs: 17 px, nine cells split by 1 px rules, a 1 px rule under */
+.wm-contacts .ct-tabs {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    height: calc(17 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-contacts .ct-tab {
+    min-width: 0;
+    border-left: calc(1 * var(--wm-px)) solid #000 !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    line-height: calc(16 * var(--wm-px)) !important;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-contacts .ct-tab:first-child {
+    border-left: 0 !important;
+}
+
+.wm-contacts .ct-tab.is-selected {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text) !important;
+}
+
+/* "No matches: ..." a bold white line on the highlight colour, 28 px */
+.wm-contacts .ct-nomatch {
+    flex: 0 0 auto;
+    padding: calc(1 * var(--wm-px)) calc(8 * var(--wm-px));
+    min-height: calc(26 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+    font-weight: bold;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+/* rows 28 px: the card icon at x 7, bold "Last, First" at x 30, the number and its letter under */
+.wm-contacts .ct-row {
+    display: grid;
+    grid-template-columns: calc(30 * var(--wm-px)) minmax(0, 1fr);
+    grid-template-rows: calc(13 * var(--wm-px)) calc(14 * var(--wm-px));
+    height: calc(28 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    box-sizing: border-box;
+    cursor: default;
+    -webkit-touch-callout: none;
+    white-space: nowrap;
+}
+
+.wm-contacts .ct-row.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-contacts .ct-ico {
+    grid-row: 1 / 3;
+    align-self: center;
+}
+
+.wm-contacts .ct-ico img {
+    display: block;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin-left: calc(7 * var(--wm-px));
+    object-fit: cover;
+    pointer-events: none;
+}
+
+.wm-contacts .ct-name {
+    align-self: end;
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-contacts .ct-sub {
+    display: flex;
+    gap: calc(8 * var(--wm-px));
+    overflow: hidden;
+}
+
+.wm-contacts .ct-num {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- Contacts: the card ---- */
+
+.wm-contacts .ct-cardview,
+.wm-contacts .ct-editview {
+    background: #fff;
+}
+
+.wm-contacts .ct-card-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: calc(20 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    font-weight: bold;
+}
+
+.wm-contacts .ct-card-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-contacts .ct-card-photo {
+    width: calc(40 * var(--wm-px));
+    height: calc(40 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) 0;
+    object-fit: cover;
+}
+
+.wm-contacts .ct-card-body,
+.wm-contacts .ct-form-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+}
+
+/* rows 31 px: the 16 px icon at x 10, the action bold at x 27, the value under it */
+.wm-contacts .ct-crow {
+    display: grid;
+    grid-template-columns: calc(27 * var(--wm-px)) minmax(0, 1fr);
+    grid-template-rows: calc(15 * var(--wm-px)) calc(15 * var(--wm-px));
+    height: calc(31 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    box-sizing: border-box;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.wm-contacts .ct-crow.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-contacts .ct-crow-ico {
+    grid-row: 1 / 3;
+    padding-top: calc(3 * var(--wm-px));
+}
+
+.wm-contacts .ct-crow-ico img {
+    display: block;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin-left: calc(9 * var(--wm-px));
+}
+
+.wm-contacts .ct-crow-label {
+    align-self: end;
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-contacts .ct-crow.is-info .ct-crow-label {
+    font-weight: normal;
+    color: #555;
+}
+
+.wm-contacts .ct-crow.is-info.is-selected .ct-crow-label {
+    color: inherit;
+}
+
+.wm-contacts .ct-crow-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-contacts .ct-card-empty {
+    margin: 0;
+    padding: calc(40 * var(--wm-px)) calc(8 * var(--wm-px)) 0;
+    text-align: center;
+}
+
+.wm-contacts .ct-card-notes {
+    padding: calc(4 * var(--wm-px));
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* bottom tabs: 22 px on the tab-strip tint, a 1 px black rule above; the open tab is white and
+ * joins the page (its top rule gone), the others framed */
+.wm-contacts .ct-btabs {
+    flex: 0 0 auto;
+    display: flex;
+    height: calc(22 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+}
+
+.wm-contacts .ct-btab {
+    position: relative;
+    top: calc(-1 * var(--wm-px));
+    padding: 0 calc(5 * var(--wm-px)) !important;
+    border-right: calc(1 * var(--wm-px)) solid #000 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
+    border-top: calc(1 * var(--wm-px)) solid #000 !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+}
+
+.wm-contacts .ct-btab.is-selected {
+    background: #fff !important;
+    border-top-color: #fff !important;
+}
+
+/* ---- Contacts: the form ---- */
+
+/* labels right-aligned to x 74, fields from x 78 with a grey rule under; rows 19.5 px */
+.wm-contacts .ct-field {
+    display: grid;
+    grid-template-columns: calc(74 * var(--wm-px)) minmax(0, 1fr) auto;
+    column-gap: calc(4 * var(--wm-px));
+    align-items: end;
+    height: calc(19.5 * var(--wm-px));
+    padding-right: calc(5 * var(--wm-px));
+}
+
+.wm-contacts .ct-flabel {
+    padding-bottom: calc(2 * var(--wm-px));
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-contacts .ct-field input,
+.wm-contacts .ct-fstatic {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: calc(18 * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(2 * var(--wm-px));
+    border: 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    color: #000;
+    font: calc(13 * var(--wm-px)) var(--wm-font);
+    line-height: calc(17 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: text;
+    -webkit-user-select: text;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.wm-contacts .ct-field input:focus {
+    border-bottom-color: #000;
+}
+
+.wm-contacts .ct-field input[readonly] {
+    cursor: pointer;
+}
+
+.wm-contacts .ct-field.is-static {
+    grid-template-columns: calc(74 * var(--wm-px)) minmax(0, 1fr);
+}
+
+.wm-contacts .ct-fdrop {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: calc(14 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    margin-left: calc(-18 * var(--wm-px)) !important;
+}
+
+.wm-contacts .ct-field.has-parts input {
+    padding-right: calc(16 * var(--wm-px));
+}
+
+.wm-contacts .ct-parts {
+    background: color-mix(in srgb, #fff 70%, var(--wm-tint));
+}
+
+.wm-contacts .ct-form-notes {
+    flex: 1 1 auto;
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+    padding: calc(4 * var(--wm-px));
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    resize: none;
+    background: #fff;
+    color: #000;
+    font: calc(13 * var(--wm-px)) / 1.35 var(--wm-font);
+    user-select: text;
+    -webkit-user-select: text;
+}

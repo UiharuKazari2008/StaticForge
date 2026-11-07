@@ -2598,6 +2598,186 @@
         "1x-downscaled-from-2x"
       ],
       "notes": "Folder: Outbox."
+    },
+    "notes-folders": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_11139 #0 (32x32 strip, key 192,192,192)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Notes folder bar: All Folders (stacked folders), ref-notes/n-list.png."
+    },
+    "notes-note": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bmp_11071 #7 (32x32 strip, key 0,255,0)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Notes list row icon (the yellow note)."
+    },
+    "contacts-card": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bmp_8005 #11 (32x32 strip, key 132,132,0)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Contacts list row icon (contact card)."
+    },
+    "contacts-mobile": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bmp_8005 #0",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Contact card: Call mobile."
+    },
+    "contacts-work": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bmp_8005 #1",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Contact card: Call work."
+    },
+    "contacts-home": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bmp_8005 #2",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Contact card: Call home."
+    },
+    "contacts-email": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bmp_8005 #3",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Contact card: Send e-mail."
+    },
+    "contacts-web": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bmp_8005 #4",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Contact card: web page."
+    },
+    "contacts-sms": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bmp_8005 #5",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Contact card: Send text message."
     }
   },
   "notDelivered": {
