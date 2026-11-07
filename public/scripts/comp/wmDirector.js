@@ -27,6 +27,10 @@
  *                Show Mascot)
  *   Sessions     a WM list of the persona's chats (preview, name, date); tap opens one; back key
  *                and Cancel return to her
+ *   hand-offs    Ask Wren (Pictures & Videos, File Explorer, Studio), Attach to Director Message
+ *                (File Explorer), Studio's Open session in Director and Expand Canvas's Director
+ *                brief open this app over the view they came from (Back returns there) and run the
+ *                desktop function on the window hosted here (handOff)
  *
  * Only on phones: does nothing unless window.uiShell is 'mobile'. Styles: public/css/wm-director.css.
  */
@@ -133,6 +137,7 @@
     function patchDirector() {
         const d = dir();
         if (!d) return false;
+        patchHandOffs(d);
         if (patchedDirector !== d && typeof d.saveReopenState === 'function') {
             patchedDirector = d;
             const save = d.saveReopenState.bind(d);
@@ -159,24 +164,38 @@
         return true;
     }
 
-    async function attach() {
+    /**
+     * Host the desktop window and open it. run: a hand-off from another view (handOff) that opens it
+     * its own way, as on the desktop (Ask Wren looks up the image's chat while the window opens).
+     */
+    async function attach(run) {
         const d = dir();
         const status = page.querySelector('.wmd-status');
-        if (!d || !d.directorWindow) {
+        if (run && d && d.directorWindow) {
+            status.hidden = true;
+            hostWindow(d);
+            patchMascot(d);
+            watchChat(d);
+            await run(d);
+            // the window opens in the app's page: a hand-off that left it closed opens it the normal way
+            if (shown && !d.directorWindowIsOpen()) await d.openDirectorWindow();
+            hostWindow(d);
+        } else if (!d || !d.directorWindow) {
             status.hidden = false;
             status.querySelector('.wmd-status-text').textContent = 'The Director is starting...';
-            if (!waitTimer) waitTimer = setTimeout(() => { waitTimer = null; if (shown) void attach(); }, 1000);
+            if (!waitTimer) waitTimer = setTimeout(() => { waitTimer = null; if (shown) void attach(run); }, 1000);
             return;
-        }
-        status.hidden = true;
-        hostWindow(d);
-        patchMascot(d);
-        watchChat(d);
-        if (!d.directorWindowIsOpen()) {
-            await d.openDirectorWindow();
         } else {
-            if (d.mascot) d.mascot.applyView();
-            d.paintPersonaToggle();
+            status.hidden = true;
+            hostWindow(d);
+            patchMascot(d);
+            watchChat(d);
+            if (!d.directorWindowIsOpen()) {
+                await d.openDirectorWindow();
+            } else {
+                if (d.mascot) d.mascot.applyView();
+                d.paintPersonaToggle();
+            }
         }
         if (!shown) return;
         syncBlink(d.mascot);
@@ -211,6 +230,73 @@
         if (sub === 'sessions') { ws.setTitle(`${personaName(dir() && dir().persona)}: Sessions`); return; }
         ws.setTitle('Director');
     }
+
+    // ---------------------------------------------------------------- hand-offs from other views
+
+    let pendingRun = null;
+
+    /**
+     * Another view hands something to the Director (Ask Wren in Pictures & Videos, File Explorer or
+     * Studio; Attach to Director Message; Studio's Open session in Director; Expand Canvas with the
+     * Director on): the app opens over that view (Back returns to it) and the desktop function runs on
+     * the window hosted here, so its chips, lookups and send path are director.js's own.
+     */
+    function handOff(run) {
+        const d = dir();
+        const booted = document.documentElement.dataset.wmBoot === 'done';
+        if (!ws || !booted || (shown && isCurrent() && d && d.directorWindowIsOpen())) return Promise.resolve(run(d));
+        return new Promise((resolve) => {
+            let done = false;
+            const finish = (v) => { if (!done) { done = true; resolve(v); } };
+            pendingRun = async (dd) => {
+                const had = dd && dd.pendingAttachments ? dd.pendingAttachments.length : 0;
+                try {
+                    const v = await run(dd);
+                    // a chip went on the message being written: the composer shows it (the desktop
+                    // focuses its always-visible textarea; here the composer is closed until opened)
+                    if (dd && dd.pendingAttachments && dd.pendingAttachments.length > had && shown && isCurrent() && !composing) openComposer();
+                    finish(v);
+                } catch (err) { console.warn('[wmDirector] hand-off', err); finish(undefined); }
+            };
+            ws.open(APP_ID);
+            // left before the Director came up: the hand-off is dropped (nothing waits on it forever)
+            setTimeout(() => finish(undefined), 20000);
+        });
+    }
+
+    /** director.js's hand-off entry points, on this instance: through the app. */
+    function patchHandOffs(d) {
+        ['askWrenAboutImage', 'openSessionInWindow', 'startExpandCanvasChat'].forEach((name) => {
+            const orig = d[name];
+            if (typeof orig !== 'function' || orig._wmDirector) return;
+            const wrapped = function (...args) {
+                return handOff((dd) => orig.apply(dd || d, args));
+            };
+            wrapped._wmDirector = true;
+            d[name] = wrapped;
+        });
+    }
+
+    const sameAttachment = (a, b) => !!(a && b && a.source === b.source
+        && (a.filename || a.hash || a.fileId) === (b.filename || b.hash || b.fileId));
+
+    /**
+     * Attach to Director Message: rows the desktop Director takes from Explorer (explorerItemAttachment
+     * shapes) go on the message being written, as the desktop's drop does (dropPasteFallback.js).
+     */
+    function attachItems(list) {
+        const items = (list || []).filter(Boolean);
+        if (!items.length) return Promise.resolve();
+        return handOff(async (d) => {
+            if (!d) return;
+            if (!d.directorWindowIsOpen()) await d.openDirectorWindow();
+            items.forEach((it) => { if (!d.pendingAttachments.some((p) => sameAttachment(p, it))) d.pendingAttachments.push(it); });
+            d.renderAttachChips();
+            if (shown && isCurrent()) openComposer();
+        });
+    }
+
+    window.wmDirectorApp = { attach: attachItems, handOff };
 
     // ---------------------------------------------------------------- composer
 
@@ -507,7 +593,9 @@
             show(p) {
                 page = p;
                 shown = true;
-                void attach();
+                const run = pendingRun;
+                pendingRun = null;
+                void attach(run);
             },
             hide() {
                 shown = false;

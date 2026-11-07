@@ -5862,19 +5862,29 @@ class Director {
         }
         const out = [];
         items.forEach((item) => {
-            if (!item) return;
-            if (item.targetKind === 'image' || item.targetKind === 'scrap') {
-                const filename = item.previewImageFilename || item.targetId;
-                if (filename) out.push({ source: 'workspace', filename, name: item.name || filename });
-            } else if (item.targetKind === 'reference') {
-                const hash = item.targetId || item.previewHash;
-                if (hash) out.push({ source: 'reference', hash, name: item.name || hash });
-            } else if (item.targetKind === 'user-file') {
-                const fileId = item.targetId || item.id;
-                if (fileId) out.push({ source: 'vfs', fileId, name: item.name || 'file' });
-            }
+            const attachment = this.explorerItemAttachment(item);
+            if (attachment) out.push(attachment);
         });
         return out;
+    }
+
+    // An Explorer row as a message attachment (null: the Director takes no such item). The phone's
+    // File Explorer (wmFileExplorer.js) attaches its rows with this too.
+    explorerItemAttachment(item) {
+        if (!item) return null;
+        if (item.targetKind === 'image' || item.targetKind === 'scrap') {
+            const filename = item.previewImageFilename || item.targetId;
+            return filename ? { source: 'workspace', filename, name: item.name || filename } : null;
+        }
+        if (item.targetKind === 'reference') {
+            const hash = item.targetId || item.previewHash;
+            return hash ? { source: 'reference', hash, name: item.name || hash } : null;
+        }
+        if (item.targetKind === 'user-file') {
+            const fileId = item.targetId || item.id;
+            return fileId ? { source: 'vfs', fileId, name: item.name || 'file' } : null;
+        }
+        return null;
     }
 
     addComputerFiles(fileList) {

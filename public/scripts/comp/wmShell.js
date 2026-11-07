@@ -2152,6 +2152,9 @@
                 { label: 'Upscale', disabled: !item || !!item.upscaled || !fn('upscaleImage'), action: () => run('upscaleImage', item) },
                 { label: 'Expand Canvas', disabled: !item || !fn('openImageExpansionModal'), action: () => run('openImageExpansionModal', item && (item.upscaled || item.original || item.filename)) },
                 '-',
+                // the desktop gallery's Ask Wren (galleryView.js 'ask-wren'): the Director app opens with it attached
+                { label: 'Ask Wren', disabled: !fn('askWrenAboutImage'), action: () => run('askWrenAboutImage', name) },
+                '-',
                 { label: 'Set as Today Background', action: () => setTodayBackground(name) },
                 { label: scraps ? 'Restore from Scraps' : 'Move to Scraps', disabled: !item, action: () => run(scraps ? 'removeFromScraps' : 'moveToScraps', item) },
                 { label: 'Delete', disabled: !item || !fn('deleteImage'), action: () => run('deleteImage', item) }
@@ -2445,6 +2448,16 @@
                         // lightbox.js has one pin button that toggles: the label follows the picture
                         const label = a[0] === 'Pin image' && item && item.isPinned ? 'Unpin' : a[1];
                         items.push({ label, action: () => viewerPress(a[0]) });
+                    }
+                    // Glancewell's and Lumen's Ask Wren (lightbox.js gw-email, imageViewer.js): the
+                    // Director app opens over the viewer with the picture attached; Back returns here
+                    const pic = item && (item.filename || item.original);
+                    if (pic && typeof window.askWrenAboutImage === 'function') {
+                        // its own group above Move to Scraps / Delete (the desktop menus keep it away from them)
+                        const ask = { label: 'Ask Wren', action: () => window.askWrenAboutImage(pic) };
+                        const at = items.findIndex((it) => it && (it.label === 'Move to Scraps' || it.label === 'Delete'));
+                        if (at > 0 && items[at - 1] === '-') items.splice(at, 0, ask, '-');
+                        else { if (items[items.length - 1] !== '-') items.push('-'); items.push(ask); }
                     }
                     while (items[items.length - 1] === '-') items.pop();
                     return items;

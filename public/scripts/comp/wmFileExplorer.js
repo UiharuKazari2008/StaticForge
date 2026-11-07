@@ -1239,6 +1239,27 @@
         return { label: 'Send...', disabled: !ok, action: () => sharePhone(files) };
     }
 
+    /**
+     * The desktop Explorer's hand-offs to the Director: Ask Wren on a picture (explorerApplet.js
+     * 'ask-wren'), and the files the Director takes from an Explorer selection (director.js
+     * explorerItemAttachment: pictures, references, files) put on its message, worded as the
+     * desktop's drop prompt (dropPasteFallback.js). Both open the Director app (wmDirector.js).
+     */
+    function directorItems(sel) {
+        const d = window.directorInstance;
+        if (!d || typeof d.explorerItemAttachment !== 'function' || inPhone()) return [];
+        const out = [];
+        const one = sel.length === 1 ? sel[0] : null;
+        const picture = one && (one.targetKind === 'image' || one.targetKind === 'scrap') ? (one.previewImageFilename || one.targetId) : '';
+        /* global askWrenAboutImage */
+        if (picture && typeof askWrenAboutImage === 'function') out.push({ label: 'Ask Wren', action: () => askWrenAboutImage(picture) });
+        const att = sel.map((i) => (isPhoneItem(i) ? null : d.explorerItemAttachment(i))).filter(Boolean);
+        if (!picture && att.length && window.wmDirectorApp) {
+            out.push({ label: 'Attach to Director Message', action: () => { void window.wmDirectorApp.attach(att); } });
+        }
+        return out;
+    }
+
     function mainMenu() {
         const sel = selectedItems();
         return [
@@ -1283,6 +1304,8 @@
             sendItem(sel),
             { label: 'Beam File...', disabled: true }
         ];
+        const director = directorItems(sel);
+        if (director.length) list.push('-', ...director);
         // the phone's own items: Android's app for a file, and the bridge's facts
         const one = sel.length === 1 ? sel[0] : null;
         if (one && (isPhoneItem(one) || isPhoneRoot(one))) {
