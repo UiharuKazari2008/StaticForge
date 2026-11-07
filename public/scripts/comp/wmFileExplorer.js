@@ -124,6 +124,8 @@
                     const fl = window.featureLoader;
                     // _loadScript skips a script already on the page (the explorer feature loads the same two)
                     if (!fl || typeof fl._loadScript !== 'function') return false;
+                    // the transfers' progress notification (fileOperationProgress.begin({ phone: true }))
+                    await fl._loadScript('scripts/comp/fileOperationProgress.js').catch(() => {});
                     await fl._loadScript('scripts/comp/phoneStorageBridge.js');
                     await fl._loadScript('scripts/comp/explorerPhoneDrive.js');
                 }
@@ -1098,7 +1100,23 @@
             await load({ keep: true });
             return;
         }
+        // the desktop's Vista copy dialog is a WM notification here: bar, from / to, Cancel
+        // fileOperationProgress.js comes with the explorer feature, which the phone does not load
+        if (!window.fileOperationProgress && window.featureLoader && typeof window.featureLoader._loadScript === 'function') {
+            await window.featureLoader._loadScript('scripts/comp/fileOperationProgress.js').catch(() => {});
+        }
+        const fop = window.fileOperationProgress;
+        const progress = fop && typeof fop.reports === 'function' && fop.reports()
+            ? fop.begin({
+                phone: true,
+                op: op === 'cut' ? 'move' : 'copy',
+                items: list.map((i) => ({ name: i.name, size: Number(i.size) || 0 })),
+                from: phoneApp._progressPlace(sourcePath || path),
+                to: phoneApp._progressPlace(path)
+            })
+            : null;
         for (const i of list) {
+            if (progress && !progress.next()) break;
             try {
                 if (op === 'cut') {
                     await vfsClient.moveItems(refsOf([i]), path);
@@ -1115,11 +1133,14 @@
                         if (fresh) await renameTo(fresh, copyName(i.name, new Set(after.map((a) => String(a.name).toLowerCase()))));
                     }
                 }
+                if (progress) progress.done(i);
             } catch (err) {
+                if (progress) progress.finish();
                 await errorBox(op === 'cut' ? 'Error Moving File' : 'Error Copying File', op === 'cut' ? 'move' : 'copy', i, err);
                 break;
             }
         }
+        if (progress) progress.finish();
         if (op === 'cut') { touchGallery(list); clipboard = null; }
         await load({ keep: true });
     }

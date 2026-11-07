@@ -737,7 +737,8 @@
             if (this.finished || this.toastId || !isPhone() || typeof root.showGlassToast !== 'function') return;
             this.shownAt = Date.now();
             const buttons = this.cancellable ? [{ text: TEXT.cancel, onClick: () => this.cancel() }] : null;
-            this.toastId = root.showGlassToast('info', this.headerText, this.phoneLine(), true, false, null, buttons);
+            // the toast's message is markup: folder names are escaped (render() then sets text)
+            this.toastId = root.showGlassToast('info', escapeHtml(this.headerText), escapeHtml(this.phoneLine()), true, false, null, buttons);
             this.render();
             const tick = () => {
                 if (!this.toastId || this.completed) return;
@@ -860,11 +861,21 @@
                         buttons: own.map((b) => ({ text: b.text, onClick: () => { this.answer = b.value; this.close(); } }))
                     });
                 }
+                // the shell's Dismiss removes the toast without a button: that answers 'close'
+                const watch = () => {
+                    if (!this.resolveComplete) return;
+                    const el = doc && doc.getElementById(id);
+                    if (!el || el.classList.contains('removing')) { this.close(); return; }
+                    this.watchTimer = setTimeout(watch, 500);
+                };
+                if (doc && doc.getElementById(id)) this.watchTimer = setTimeout(watch, 500);
+                else if (!own.length) this.close();
             });
         }
 
         close() {
             clearTimeout(this.tickTimer);
+            clearTimeout(this.watchTimer);
             if (this.resolveComplete) {
                 this.resolveComplete(this.answer || 'close');
                 this.resolveComplete = null;
