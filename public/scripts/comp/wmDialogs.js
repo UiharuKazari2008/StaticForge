@@ -49,7 +49,15 @@
         imageExpansionDialog: {
             ok: () => document.getElementById('submitExpansionBtn'),
             cancel: () => document.getElementById('closeExpansionModalBtn'),
-            label: () => 'Expand'
+            // over 1 MP or with upscale after, the Anlas show on the key (and are asked before
+            // anything runs: submitImageExpansion's showCreditCostDialog, a WM message box here)
+            label: () => {
+                let cost = 0;
+                try { cost = typeof getExpansionCostInfo === 'function' ? getExpansionCostInfo().cost : 0; } catch (_) { cost = 0; }
+                return cost > 0 ? `Expand (${cost} Anlas)` : 'Expand';
+            },
+            // what changes the price: the target size, upscale after, the model / steps
+            watch: (win) => win
         }
     };
 
@@ -114,6 +122,14 @@
             ko.observe(ok, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['class', 'disabled'] });
             layer.okObs = ko;
         }
+        const watched = layer.form && layer.form.watch && layer.form.watch(win);
+        if (watched) {
+            const wo = new MutationObserver(refreshLater);
+            wo.observe(watched, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['data-state', 'disabled'] });
+            watched.addEventListener('input', refreshLater);
+            layer.watchObs = wo;
+            layer.watched = watched;
+        }
         const scroll = win.querySelector('.modal-content, .credit-cost-content');
         if (scroll) scroll.scrollTop = 0;
         paint();
@@ -127,6 +143,9 @@
         const [layer] = layers.splice(i, 1);
         if (layer.obs) layer.obs.disconnect();
         if (layer.okObs) layer.okObs.disconnect();
+        if (layer.watchObs) layer.watchObs.disconnect();
+        if (layer.watched) layer.watched.removeEventListener('input', refreshLater);
+        if (layer.cancelTimer) clearTimeout(layer.cancelTimer);
         win.removeAttribute('data-wmo-under');
         if (win.isConnected) {
             try {
@@ -150,15 +169,25 @@
             || Array.from(win.querySelectorAll('button')).find((b) => /^\s*(cancel|close)\s*$/i.test(b.textContent || ''));
         if (btn) btn.click();
         else if (typeof window.closeModal === 'function') { try { window.closeModal(win); } catch (_) { /* below */ } }
-        // a window that keeps itself open after its close is let go anyway
-        setTimeout(() => {
-            if (!hosted(win)) return;
+        // a window that keeps itself open after its close is let go anyway: this hosting of it only
+        // (released and opened again within the second, the new form stays)
+        if (layer.cancelTimer) clearTimeout(layer.cancelTimer);
+        layer.cancelTimer = setTimeout(() => {
+            layer.cancelTimer = null;
+            if (!layers.includes(layer)) return;
             if (!win.classList.contains('hidden')) win.classList.add('hidden');
             release(win);
         }, 1000); // after closeModal's own 600 ms fallback (modalUtils.js)
     }
 
     function cancelTop() { cancel(top()); }
+
+    let refreshQueued = false;
+    function refreshLater() {
+        if (refreshQueued) return;
+        refreshQueued = true;
+        setTimeout(() => { refreshQueued = false; if (isCurrent()) ws.refreshSoftKeys(); }, 120);
+    }
 
     function cancelAll() {
         for (let i = layers.length - 1; i >= 0; i--) cancel(layers[i]);
@@ -289,6 +318,12 @@
 
     let lastPicker = { el: null, at: 0 };
 
+    /** The combo's width given to the shell's popup goes with its drop-down (other menus share it). */
+    function clearPopupWidth() {
+        const pop = document.querySelector('#wmShell > .wm-popup');
+        if (pop) pop.style.minWidth = '';
+    }
+
     function patchContextMenu() {
         if (typeof contextMenu === 'undefined' || !contextMenu || typeof contextMenu._openMenu !== 'function') return false;
         if (contextMenu._wmOpPatched) return true;
@@ -307,7 +342,10 @@
             let items = [];
             try { items = itemsFromConfig(config, target); } catch (err) { console.warn('[wmDialogs] menu', err); }
             if (!items.length) return undefined;
-            ws.dropdown(target, items, 'left', () => { if (typeof config.onHide === 'function') { try { config.onHide(target); } catch (_) { /* best effort */ } } });
+            ws.dropdown(target, items, 'left', () => {
+                clearPopupWidth();
+                if (typeof config.onHide === 'function') { try { config.onHide(target); } catch (_) { /* best effort */ } }
+            });
             const p = document.querySelector('#wmShell > .wm-popup');
             if (p && !p.hidden) p.style.minWidth = `${Math.round(target.getBoundingClientRect().width)}px`;
             return undefined;
@@ -350,6 +388,7 @@
         // the desktop list leaves the layout first, so the combo is measured where it sits
         menu.classList.add('wmo-dd-proxied');
         ws.dropdown(box, items, 'left', () => {
+            clearPopupWidth();
             menu.classList.remove('wmo-dd-proxied');
             // closed without a pick: the desktop list closes too
             setTimeout(() => {

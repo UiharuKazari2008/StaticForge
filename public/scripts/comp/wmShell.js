@@ -482,6 +482,8 @@
         const pop = shell.querySelector('.wm-popup');
         pop.dataset.side = side;
         pop.style.top = pop.style.left = pop.style.right = pop.style.bottom = '';
+        // sizes an app gave its last menu (a combo's width, a scroll limit) do not carry over
+        pop.style.minWidth = pop.style.maxHeight = pop.style.overflowY = '';
         fillMenu(pop, items);
         pop.hidden = false;
         openPopup = pop;
@@ -2146,7 +2148,8 @@
                 { label: 'View', action: () => viewPicture(name) },
                 '-',
                 { label: 'Recast Spell', disabled: !item || !fn('rerollImage'), action: () => run('rerollImage', item) },
-                { label: 'Upscale', disabled: !item || !fn('upscaleImage'), action: () => run('upscaleImage', item) },
+                // an upscaled picture is not upscaled again (the desktop's gallery menu refuses it too)
+                { label: 'Upscale', disabled: !item || !!item.upscaled || !fn('upscaleImage'), action: () => run('upscaleImage', item) },
                 { label: 'Expand Canvas', disabled: !item || !fn('openImageExpansionModal'), action: () => run('openImageExpansionModal', item && (item.upscaled || item.original || item.filename)) },
                 '-',
                 { label: 'Set as Today Background', action: () => setTodayBackground(name) },
@@ -2375,7 +2378,7 @@
         ['Pin image', 'Pin'],
         '-',
         ['Recast Spell', 'Recast Spell'],
-        ['Create Persona', 'Create Persona'],
+        // Create Persona is not offered: its chat window (chatSystem) has no phone form yet
         ['Expand canvas', 'Expand Canvas'],
         ['Upscale image', 'Upscale'],
         '-',

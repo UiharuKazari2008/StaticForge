@@ -763,9 +763,10 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null, or
         // Set upscale toggle if it was used (check both possible property names)
         const upscaleToggle = document.getElementById('expansionUpscaleToggle');
         if (upscaleToggle) {
-            const wasUpscaled = metadata.forge_data.expansion_params?.upscale || 
+            const wasUpscaled = metadata.forge_data.expansion_params?.upscale ||
                                metadata.forge_data.expansion_params?.upscaleAfterComplete
-            upscaleToggle.setAttribute('data-state', wasUpscaled ? 'on' : 'off');
+            // Melaton Mobile starts unticked: upscale after spends Anlas (wmDialogs.js)
+            upscaleToggle.setAttribute('data-state', wasUpscaled && window.uiShell !== 'mobile' ? 'on' : 'off');
         }
         
         // Set inset toggle if it was used
@@ -3404,6 +3405,45 @@ function buildExpansionDirectorBrief(imageToExpand) {
 }
 
 // Submit image expansion
+/**
+ * What Expand would spend in Anlas: the inpaint at the target size, priced as Generate prices a
+ * print (calculateCreditCost: utilities.js; the server's defaults are 28 steps, Euler Ancestral,
+ * the source's model), plus NovelAI's upscale when "upscale after" is on (calculateUpscaleInfo).
+ * { cost, outputResolution }; cost 0 = free (Opus, up to 1 MP).
+ */
+function getExpansionCostInfo() {
+    const res = expansionModalData.selectedResolution;
+    const dims = res && typeof getDimensionsFromResolution === 'function' ? getDimensionsFromResolution(res) : null;
+    if (!dims || !dims.width || !dims.height) return { cost: 0, outputResolution: null };
+    const outputResolution = { width: dims.width, height: dims.height };
+    const over = getExpansionOverrideParams();
+    const body = { width: dims.width, height: dims.height, steps: over.steps || 28, sampler: over.sampler || 'k_euler_ancestral', image: true, strength: 1 };
+    if (over.model) body.model = over.model;
+    let cost = 0;
+    try {
+        const price = calculateCreditCost(body);
+        cost = Number(price && (price.isFree ? price.opus : price.list)) || 0;
+    } catch (_) {
+        // unknown model: price it as the default model
+        delete body.model;
+        try {
+            const price = calculateCreditCost(body);
+            cost = Number(price && (price.isFree ? price.opus : price.list)) || 0;
+        } catch (__) { cost = 0; }
+    }
+    const upscaleToggle = document.getElementById('expansionUpscaleToggle');
+    if (upscaleToggle && !upscaleToggle.disabled && upscaleToggle.getAttribute('data-state') === 'on'
+        && typeof calculateUpscaleInfo === 'function') {
+        const up = calculateUpscaleInfo(dims.width, dims.height);
+        if (up && up.available) {
+            cost += Number(up.cost) || 0;
+            outputResolution.width = up.outputResolution.width;
+            outputResolution.height = up.outputResolution.height;
+        }
+    }
+    return { cost, outputResolution };
+}
+
 async function submitImageExpansion() {
     // Use the target image that was determined by selectExpansionMode
     const imageToExpand = expansionModalData.targetImage;
@@ -3452,6 +3492,17 @@ async function submitImageExpansion() {
         // startExpandCanvasChat: public/scripts/comp/director.js
         await startExpandCanvasChat(brief.content, brief.attachments);
         return;
+    }
+
+    // Over 1 MP (large / wallpaper / custom) or with upscale after: Anlas, asked like Generate asks
+    // (unless Allow Charge is on). Declined: the dialog stays open.
+    const expansionCost = getExpansionCostInfo();
+    if (expansionCost.cost > 0 && !forcePaidRequest) {
+        // the desktop box is Generate's (cost only); the phone's message box also names the size
+        const confirmed = await showCreditCostDialog(expansionCost.cost, null, window.uiShell === 'mobile' ? expansionCost.outputResolution : null);
+        if (!confirmed) return;
+        const dialogNow = document.getElementById('imageExpansionDialog');
+        if (!dialogNow || dialogNow.classList.contains('hidden') || expansionModalData.targetImage !== imageToExpand) return;
     }
 
     // Close modal
