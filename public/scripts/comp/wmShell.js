@@ -173,6 +173,7 @@
             toggleStartMenu();
         });
         shell.querySelector('.wm-title-action').addEventListener('click', () => {
+            if (viewerActive) { closeViewer(); return; }
             const app = current && apps.get(current);
             if (app && typeof app.onTitleAction === 'function' && app.onTitleAction() === false) return;
             back();
@@ -194,12 +195,17 @@
             if (e.target.closest && e.target.closest('#wmShell .wm-start, #wmShell .wm-softkey, #wmShell [aria-haspopup="menu"]')) return;
             closeMenus();
         }, true);
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && openPopup) { closeMenus(); e.preventDefault(); }
-        });
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && openPopup) {
+                const sub = openPopup.querySelector(':scope > .wm-popup-sub');
+                if (sub) { closeSubmenu(openPopup); syncHistory(); } else closeMenus();
+                e.preventDefault();
+                e.stopImmediatePropagation(); // the picture behind the menu stays open
+            }
+        }, true);
         // The phone's back button / gesture walks the app stack instead of leaving the page. One
-        // history entry ({ wm: 'app' }) sits above the page's own while an app is open (syncHistory).
-        history.replaceState(Object.assign({}, history.state, { wm: 'root' }), '');
+        // history entry per open layer sits above the page's own (syncHistory).
+        history.replaceState(Object.assign({}, history.state, { wm: 'root', n: 0 }), '');
     }
 
     /**
@@ -210,29 +216,38 @@
     function onPopState() {
         if (!shell) return false;
         if (ignorePops > 0) {
+            // our own history.go(): the layers already match
             ignorePops--;
-            // an app opened while this pop was pending gets its entry back
             if (!ignorePops) syncHistory();
             return true;
         }
-        if (openPopup) {
-            closeMenus();
-            syncHistory();
-            return true;
+        // the user went back one step: close the top layer (menu, then the picture view, then the
+        // app). Nothing is pushed here: Chrome on Android skips entries added without a tap, so
+        // entries are only added when something is opened.
+        let closed = false;
+        const sub = openPopup && openPopup.querySelector(':scope > .wm-popup-sub');
+        if (sub) {
+            // back steps out of a submenu to its parent menu (the parent keeps its entry)
+            closeSubmenu(openPopup);
+            closed = true;
+        } else if (openPopup) {
+            closeMenus(true);
+            closed = true;
+        } else if (viewerActive && !viewerClosing) {
+            viewerClosing = true;
+            closeViewer();
+            closed = true;
+        } else if (stack.length > 1) {
+            const app = apps.get(current);
+            // the app's own steps first (File Explorer goes back a folder)
+            if (!(app && typeof app.onBack === 'function' && app.onBack())) {
+                stack.pop();
+                activate(stack[stack.length - 1]);
+            }
+            closed = true;
         }
-        // the picture viewer (PhotoSwipe) closes first, like a WM full-screen picture
-        if (document.querySelector('.pswp--open') && typeof hideLightbox === 'function') {
-            hideLightbox();
-            syncHistory();
-            return true;
-        }
-        if (stack.length > 1) {
-            stack.pop();
-            activate(stack[stack.length - 1]);
-            syncHistory();
-            return true;
-        }
-        return false;
+        if (closed) syncHistory({ noPush: true });
+        return closed;
     }
 
     function setTitle(text) {
@@ -253,7 +268,8 @@
 
     function renderSoftKeys() {
         const app = current && apps.get(current);
-        softKeys = (app && typeof app.softKeys === 'function' ? app.softKeys() : null) || { left: null, right: null };
+        softKeys = viewerActive ? viewerSoftKeys()
+            : ((app && typeof app.softKeys === 'function' ? app.softKeys() : null) || { left: null, right: null });
         for (const side of ['left', 'right']) {
             const btn = shell.querySelector(`.wm-softkey[data-side="${side}"]`);
             const key = softKeys[side];
@@ -281,11 +297,8 @@
 
     let popupOnClose = null;
 
-    function showPopup(side, items, btn) {
-        closeMenus();
-        const pop = shell.querySelector('.wm-popup');
-        pop.dataset.side = side;
-        pop.style.top = pop.style.left = pop.style.right = pop.style.bottom = '';
+    /** Menu rows: items { label, action, disabled, checked, radio, submenu } or '-' separators. */
+    function fillMenu(pop, items) {
         pop.innerHTML = '';
         for (const item of items) {
             if (item === '-' || item.separator) {
@@ -306,16 +319,67 @@
             }
             b.textContent = item.label;
             b.disabled = !!item.disabled;
-            b.addEventListener('click', (e) => {
-                e.stopPropagation();
-                closeMenus();
-                if (typeof item.action === 'function') item.action();
-            });
+            if (item.submenu) {
+                b.classList.add('has-submenu');
+                b.setAttribute('aria-haspopup', 'menu');
+                b.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openSubmenu(pop, b, typeof item.submenu === 'function' ? item.submenu() : item.submenu);
+                });
+            } else {
+                b.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    closeMenus();
+                    if (typeof item.action === 'function') item.action();
+                });
+            }
             pop.appendChild(b);
         }
+    }
+
+    /**
+     * WM submenu (Menu > Edit ▸ on the device): opens to the left over its parent, its bottom on
+     * the row that opened it. It lives inside the parent popup, so taps in it count as inside.
+     */
+    function closeSubmenu(parentPop) {
+        parentPop.querySelectorAll(':scope > .wm-popup-sub').forEach((n) => n.remove());
+        parentPop.querySelectorAll('.wm-popup-item.is-open').forEach((n) => n.classList.remove('is-open'));
+    }
+
+    function openSubmenu(parentPop, row, items) {
+        // a second tap on the row that opened it closes the submenu
+        if (row.classList.contains('is-open')) { closeSubmenu(parentPop); syncHistory(); return; }
+        const hadSub = !!parentPop.querySelector(':scope > .wm-popup-sub');
+        closeSubmenu(parentPop);
+        const sub = document.createElement('div');
+        sub.className = 'wm-popup wm-popup-sub';
+        sub.setAttribute('role', 'menu');
+        fillMenu(sub, items.length ? items : [{ label: '(empty)', disabled: true }]);
+        parentPop.appendChild(sub);
+        row.classList.add('is-open');
+        const pr = parentPop.getBoundingClientRect();
+        const rr = row.getBoundingClientRect();
+        const sw = sub.offsetWidth;
+        const sh = sub.offsetHeight;
+        let left = pr.left + pr.width * 0.35 - sw;
+        if (left < 2) left = Math.min(pr.right - pr.width * 0.35, window.innerWidth - sw - 2);
+        let top = rr.bottom - sh;
+        top = Math.max(2, Math.min(top, window.innerHeight - sh - 2));
+        sub.style.left = `${Math.max(2, left)}px`;
+        sub.style.top = `${top}px`;
+        if (!hadSub) syncHistory();
+    }
+
+    function showPopup(side, items, btn) {
+        closeMenus(true);
+        const pop = shell.querySelector('.wm-popup');
+        pop.dataset.side = side;
+        pop.style.top = pop.style.left = pop.style.right = pop.style.bottom = '';
+        fillMenu(pop, items);
         pop.hidden = false;
         openPopup = pop;
         if (btn) btn.setAttribute('aria-expanded', 'true');
+        syncHistory();
     }
 
     /** A WM drop-down: the popup hangs under its control (folder bar, combo). */
@@ -335,7 +399,8 @@
         popupOnClose = onClose;
     }
 
-    function closeMenus() {
+    function closeMenus(silent) {
+        const had = !!openPopup;
         shell.querySelector('.wm-popup').hidden = true;
         dropdownAnchor = null;
         if (popupOnClose) { const fn = popupOnClose; popupOnClose = null; fn(); }
@@ -343,6 +408,7 @@
         shell.querySelector('.wm-start').setAttribute('aria-expanded', 'false');
         shell.querySelectorAll('.wm-softkey').forEach((b) => b.setAttribute('aria-expanded', 'false'));
         openPopup = null;
+        if (had && !silent) syncHistory();
     }
 
     // ---------------------------------------------------------------- Start menu
@@ -350,7 +416,7 @@
     function toggleStartMenu() {
         const menu = shell.querySelector('.wm-startmenu');
         if (!menu.hidden) { closeMenus(); return; }
-        closeMenus();
+        closeMenus(true);
         const items = [...apps.values()].filter((a) => a.inStart);
         const pinned = items.filter((a) => a.inStart === 'top');
         const lower = items.filter((a) => a.inStart === 'bottom');
@@ -367,6 +433,7 @@
         menu.hidden = false;
         openPopup = menu;
         shell.querySelector('.wm-start').setAttribute('aria-expanded', 'true');
+        syncHistory();
     }
 
     // ---------------------------------------------------------------- apps
@@ -409,7 +476,9 @@
 
     function open(id, opts = {}) {
         if (!apps.has(id)) return;
-        closeMenus();
+        closeMenus(true);
+        // an app opened over the picture view (Start menu) replaces it
+        if (viewerActive) { viewerClosing = true; closeViewer(); }
         // Start menu and Today rows switch apps: the stack keeps Today at the bottom
         if (opts.fromStart || id === 'today') stack.length = 0;
         if (id !== 'today' && !stack.includes('today')) stack.push('today');
@@ -421,24 +490,52 @@
     }
 
     function back() {
-        closeMenus();
+        closeMenus(true);
         if (stack.length > 1) stack.pop();
         activate(stack[stack.length - 1] || 'today');
         syncHistory();
     }
 
     let ignorePops = 0;
+    let syncQueued = false;
+    let syncNoPush = false;
 
-    /** Exactly one { wm: 'app' } history entry while an app is open over Today, none on Today. */
-    function syncHistory() {
-        const want = stack.length > 1;
-        const have = !!(history.state && history.state.wm === 'app');
-        if (want && !have) {
-            history.pushState({ wm: 'app' }, '');
-        } else if (!want && have) {
-            ignorePops++;
-            history.back();
-        }
+    /** One history entry per open layer: each app over Today, an open menu, the picture view. */
+    function desiredDepth() {
+        const sub = openPopup && openPopup.querySelector(':scope > .wm-popup-sub') ? 1 : 0;
+        // an app can hold back steps of its own (File Explorer: the folders visited)
+        const app = current && current !== 'today' && apps.get(current);
+        const own = app && typeof app.historyDepth === 'function' ? Math.max(0, Number(app.historyDepth()) || 0) : 0;
+        return Math.max(0, stack.length - 1) + own + (openPopup ? 1 + sub : 0) + (viewerActive && !viewerClosing ? 1 : 0);
+    }
+
+    function historyDepth() {
+        const st = history.state;
+        return st && st.wm === 'layer' ? Number(st.n) || 0 : 0;
+    }
+
+    /**
+     * Bring history in line with the open layers, once per task (a menu closing and an app opening
+     * in the same tap cancel out). Entries are pushed only outside popstate (after a tap).
+     */
+    function syncHistory(opts) {
+        if (opts && opts.noPush) syncNoPush = true;
+        if (syncQueued) return;
+        syncQueued = true;
+        queueMicrotask(() => {
+            syncQueued = false;
+            const noPush = syncNoPush;
+            syncNoPush = false;
+            if (ignorePops > 0) return;
+            const want = desiredDepth();
+            const have = historyDepth();
+            if (want > have && !noPush) {
+                for (let n = have + 1; n <= want; n++) history.pushState({ wm: 'layer', n }, '');
+            } else if (want < have) {
+                ignorePops++;
+                history.go(want - have);
+            }
+        });
     }
 
     // ---------------------------------------------------------------- status icons
@@ -557,6 +654,23 @@
     }
 
     // ---------------------------------------------------------------- built-in apps
+
+    /** The workspaces as menu items, the active one with WM's dot (Today and Pictures menus). */
+    function workspaceItems() {
+        let list = [];
+        try {
+            if (typeof workspaces !== 'undefined') {
+                list = Object.values(workspaces).filter(Boolean).sort((a, b) => (Number(a.sort) || 0) - (Number(b.sort) || 0) || String(a.name).localeCompare(String(b.name)));
+            }
+        } catch (_) { /* not loaded */ }
+        const active = typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
+        if (!list.length) return [{ label: 'No workspaces', disabled: true }];
+        return list.map((w) => ({
+            label: w.name || w.id,
+            radio: w.id === active,
+            action: () => { if (w.id !== active && typeof setActiveWorkspace === 'function') setActiveWorkspace(w.id); }
+        }));
+    }
 
     /** Preview URL for a gallery row, resolved the way the gallery's own tiles are (galleryView.js). */
     function previewUrl(item) {
@@ -785,21 +899,7 @@
         };
 
         function workspaceMenu() {
-            let list = [];
-            try {
-                if (typeof workspaces !== 'undefined') {
-                    list = Object.values(workspaces).filter(Boolean).sort((a, b) => (Number(a.sort) || 0) - (Number(b.sort) || 0) || String(a.name).localeCompare(String(b.name)));
-                }
-            } catch (_) { /* not loaded */ }
-            const active = typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
-            if (!list.length) return [{ label: 'No workspaces', disabled: true }];
-            return list.map((w) => ({
-                label: w.name || w.id,
-                checked: w.id === active,
-                action: () => {
-                    if (w.id !== active && typeof setActiveWorkspace === 'function') setActiveWorkspace(w.id);
-                }
-            }));
+            return workspaceItems();
         }
 
         registerApp(today);
@@ -1040,6 +1140,95 @@
             return SORTS.map(([k, label]) => ({ label, radio: sortBy === k, action: () => { sortBy = k; renderGrid(page, true); } }));
         }
 
+        const fmtMonth = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' });
+
+        /** Months of the list in its order (date sort): label, first index, count, first picture. */
+        function monthsOf(list) {
+            const out = [];
+            list.forEach((item, i) => {
+                const t = itemTime(item);
+                const key = t ? fmtMonth.format(new Date(t)) : 'Older';
+                const last = out[out.length - 1];
+                if (last && last.label === key) last.count++;
+                else out.push({ label: key, index: i, count: 1, item });
+            });
+            return out;
+        }
+
+        function jumpToIndex(page, i) {
+            const cells = page.querySelectorAll('.wm-pv-cell');
+            const el = cells[Math.max(0, Math.min(i, cells.length - 1))];
+            if (!el) return;
+            const scroller = page.querySelector('.wm-pv-scroll');
+            // twice: content-visibility blocks above settle to their real height after the first
+            const go = () => { scroller.scrollTop += el.getBoundingClientRect().top - scroller.getBoundingClientRect().top; };
+            go();
+            requestAnimationFrame(() => requestAnimationFrame(go));
+            selectCell(page, el.dataset.filename);
+        }
+
+        function reloadGallery() {
+            // Refresh Gallery on the desktop's gallery menu (mainMenuManager.js); the grid keeps its
+            // place, and reads "Loading..." if the list is empty for a moment
+            viewSwitchedAt = Date.now();
+            try {
+                if (typeof invalidateGalleryImagesSyncState === 'function') invalidateGalleryImagesSyncState();
+                if (typeof switchGalleryView === 'function') switchGalleryView(typeof currentGalleryView !== 'undefined' ? currentGalleryView : activeView(), true);
+            } catch (_) { /* gallery not ready */ }
+        }
+
+        // another workspace's pictures start at their top
+        document.addEventListener('workspaceSwitchComplete', () => {
+            const gpage = apps.get('gallery') && apps.get('gallery').page;
+            if (!gpage) return;
+            gpage.querySelector('.wm-pv-scroll').scrollTop = 0;
+            viewSwitchedAt = Date.now();
+            searchResults = null;
+            selectedName = null;
+            renderGrid(gpage, true);
+            if (current === 'gallery') renderSoftKeys();
+        });
+
+        function canGoToDate() {
+            return !searchResults && sortBy === 'date';
+        }
+
+        function goToMenu(page) {
+            if (!canGoToDate()) return [{ label: 'Sort by Date first', disabled: true }];
+            return monthsOf(galleryList()).map((m) => ({ label: `${m.label} (${m.count})`, action: () => jumpToIndex(page, m.index) }));
+        }
+
+        function workspaceSubmenu() {
+            return workspaceItems();
+        }
+
+        // Visual Index: the desktop's jump index as a WM list, one row per month with its first
+        // picture and count; a row goes back to the grid at that month
+        registerApp({
+            id: 'pv-index',
+            title: 'Visual Index',
+            icon: 'app-pictures',
+            titleAction: 'ok',
+            mount(ipage) {
+                ipage.classList.add('wm-pv-index');
+                ipage.addEventListener('click', (e) => {
+                    const row = e.target.closest('[data-index]');
+                    if (!row) return;
+                    const i = Number(row.dataset.index);
+                    back();
+                    const gpage = apps.get('gallery').page;
+                    if (gpage) setTimeout(() => jumpToIndex(gpage, i), 30);
+                });
+            },
+            show(ipage) {
+                const months = monthsOf(galleryList());
+                ipage.innerHTML = months.map((m) => `<button type="button" class="wm-pv-index-row" data-index="${m.index}"><img src="${escapeHtml(previewUrl(m.item))}" alt="" loading="lazy" decoding="async"><span class="wm-pv-index-label">${escapeHtml(m.label)}</span><span class="wm-pv-index-count">${m.count}</span></button>`).join('') || '<p class="wm-photos-empty">No pictures</p>';
+            },
+            softKeys() {
+                return { left: null, right: null };
+            }
+        });
+
         function switchView(v) {
             const b = document.querySelector(`#galleryWindow .gallery-toggle-group .gallery-toggle-btn[data-view="${v}"]`);
             if (b) b.click();
@@ -1119,6 +1308,12 @@
                         // Show, Set as Today Background..., Go To, Tools; here what Dreamscape has
                         menu: () => [
                             { label: 'Search...', action: () => setSearch(true) },
+                            { label: 'Jump to Top', action: () => { page.querySelector('.wm-pv-scroll').scrollTop = 0; } },
+                            { label: 'Go To', submenu: () => goToMenu(page) },
+                            { label: 'Visual Index', disabled: !canGoToDate(), action: () => open('pv-index') },
+                            { label: 'Reload', action: reloadGallery },
+                            '-',
+                            { label: 'Switch Workspace', submenu: workspaceSubmenu },
                             '-',
                             { label: 'Set as Today Background', disabled: !selectedName, action: () => setTodayBackground(selectedName) },
                             '-',
@@ -1131,6 +1326,115 @@
                 };
             }
         });
+    }
+
+    // ---------------------------------------------------------------- picture view
+
+    // WM 6.1's picture view: black, the title bar with ok, soft keys Send / Menu. The PhotoSwipe
+    // viewer (lightbox.js, padded between the bars on phones) keeps its gestures; its own buttons
+    // are hidden and reached from the soft keys.
+    let viewerActive = false;
+    let viewerClosing = false; // closed by the back gesture, PhotoSwipe still animating out
+    const VIEWER_ACTIONS = [
+        // [button title in lightbox.js, menu label]
+        ['Copy to clipboard', 'Copy'],
+        ['Pin image', 'Pin'],
+        '-',
+        ['Recast Spell', 'Recast Spell'],
+        ['Create Persona', 'Create Persona'],
+        ['Expand canvas', 'Expand Canvas'],
+        ['Upscale image', 'Upscale'],
+        '-',
+        ['Move to scraps', 'Move to Scraps'],
+        ['Destroy image', 'Delete']
+    ];
+
+    /** Close whichever PhotoSwipe is open (the gallery's or a standalone one): its own close. */
+    function closeViewer() {
+        // the instance itself (a scripted click on its hidden close button does nothing)
+        try {
+            const p = (typeof lightbox !== 'undefined' && lightbox && lightbox.pswp) || window.pswp;
+            if (p && !p.isDestroying && typeof p.close === 'function') { p.close(); return; }
+        } catch (_) { /* fall through */ }
+        if (typeof hideLightbox === 'function') hideLightbox();
+    }
+
+    function viewerSlides() {
+        try {
+            const p = (typeof lightbox !== 'undefined' && lightbox && lightbox.pswp) || window.pswp;
+            return p && typeof p.getNumItems === 'function' ? p.getNumItems() : 0;
+        } catch (_) { return 0; }
+    }
+
+    function viewerItem() {
+        try {
+            const p = (typeof lightbox !== 'undefined' && lightbox && lightbox.pswp) || window.pswp;
+            const d = p && p.currSlide && p.currSlide.data;
+            return (d && d.data) || null;
+        } catch (_) { return null; }
+    }
+
+    function viewerButton(title) {
+        const pswp = document.querySelector('.pswp.pswp--open');
+        if (!pswp) return null;
+        // a button lightbox.js has hidden for this picture is not offered
+        return [...pswp.querySelectorAll('button')].find((b) => (b.title || b.getAttribute('aria-label')) === title && !b.closest('.hidden')) || null;
+    }
+
+    function viewerPress(title) {
+        const b = viewerButton(title);
+        if (b) b.click();
+    }
+
+    function viewerSoftKeys() {
+        return {
+            left: { label: 'Save', disabled: !viewerButton('Download image'), action: () => viewerPress('Download image') },
+            right: {
+                label: 'Menu',
+                menu: () => {
+                    const items = [{ label: 'Zoom', action: () => viewerPress('Zoom in/out') }];
+                    if (viewerSlides() > 1) {
+                        items.push({ label: 'Previous', action: () => viewerPress('Previous') });
+                        items.push({ label: 'Next', action: () => viewerPress('Next') });
+                    }
+                    items.push('-');
+                    const item = viewerItem();
+                    let sep = false;
+                    for (const a of VIEWER_ACTIONS) {
+                        if (a === '-') { sep = true; continue; }
+                        if (!viewerButton(a[0])) continue;
+                        if (sep && items[items.length - 1] !== '-') items.push('-');
+                        sep = false;
+                        // lightbox.js has one pin button that toggles: the label follows the picture
+                        const label = a[0] === 'Pin image' && item && item.isPinned ? 'Unpin' : a[1];
+                        items.push({ label, action: () => viewerPress(a[0]) });
+                    }
+                    while (items[items.length - 1] === '-') items.pop();
+                    return items;
+                }
+            }
+        };
+    }
+
+    function checkViewer() {
+        const open = !!document.querySelector('.pswp.pswp--open');
+        if (open === viewerActive) return;
+        viewerActive = open;
+        viewerClosing = false;
+        closeMenus(true);
+        if (open) {
+            root.setAttribute('data-wm-viewer', '');
+            setTitle('Pictures & Videos');
+            setTitleAction('ok');
+        } else {
+            root.removeAttribute('data-wm-viewer');
+            const app = current && apps.get(current);
+            setTitle(current === 'today' ? 'Start' : ((app && app.title) || current));
+            setTitleAction(current === 'today' ? null : ((app && app.titleAction) || 'close'));
+        }
+        renderSoftKeys();
+        // the tap that opened the viewer is still fresh here (150 ms poll): its entry is allowed
+        syncHistory();
     }
 
     // ---------------------------------------------------------------- takeover
@@ -1378,6 +1682,7 @@
         setInterval(refreshStatus, 2000);
         checkTakeover();
         setInterval(checkTakeover, 400);
+        setInterval(checkViewer, 150);
         document.dispatchEvent(new CustomEvent('wmShellReady'));
     }
 
@@ -1386,6 +1691,28 @@
         open,
         back,
         messageBox,
+        // for apps in their own files (wmFileExplorer.js ...)
+        menu: (side, items, btn) => showPopup(side, items, btn),
+        dropdown: (anchor, items, align, onClose) => showDropdown(anchor, items, align, onClose),
+        closeMenus: () => closeMenus(),
+        /** A context menu at a point (tap-and-hold), kept on screen. */
+        menuAt: (x, y, items) => {
+            showPopup('context', items, null);
+            const pop = shell.querySelector('.wm-popup');
+            const sr = shell.getBoundingClientRect();
+            const w = pop.offsetWidth;
+            const h = pop.offsetHeight;
+            pop.style.right = 'auto';
+            pop.style.bottom = 'auto';
+            pop.style.left = `${Math.max(2, Math.min(x - sr.left, sr.width - w - 2))}px`;
+            pop.style.top = `${Math.max(2, Math.min(y - sr.top, sr.height - h - 2))}px`;
+        },
+        /** Apps with their own back steps call this after a step (it adds the entry after a tap). */
+        syncHistory: () => syncHistory(),
+        refreshSoftKeys: () => renderSoftKeys(),
+        setTitle: (t) => setTitle(t),
+        art: { url: art, url2x: art2x, img: imgTag },
+        escapeHtml,
         applyTheme,
         onPopState,
         thumbFor,

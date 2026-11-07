@@ -726,6 +726,7 @@
 
     /** Tap-and-hold: the shell's popup menu, moved to the tap point and kept on screen. */
     function openContext(list, x, y) {
+        if (typeof ws.menuAt === 'function') { ws.menuAt(x, y, list); return; }
         ws.menu('context', list, null);
         const shell = shellEl();
         const pop = shell && shell.querySelector(':scope > .wm-popup:not([hidden])');

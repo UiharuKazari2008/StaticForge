@@ -1652,3 +1652,113 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
     background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
     background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
 }
+
+/* ---- WM submenus: ▸ on the row, the list opens left over its parent ---- */
+.wm-popup-item.has-submenu::after {
+    content: '';
+    position: absolute;
+    right: calc(5 * var(--wm-px));
+    width: calc(4 * var(--wm-px));
+    height: calc(8 * var(--wm-px));
+    background: currentColor;
+    -webkit-mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-submenu-arrow.png') 1x, url('/static_images/wm61/menu-submenu-arrow@2x.png') 2x);
+    mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-submenu-arrow.png') 1x, url('/static_images/wm61/menu-submenu-arrow@2x.png') 2x);
+}
+
+.wm-popup-item.is-open {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text);
+}
+
+.wm-popup-sub {
+    position: fixed !important;
+    right: auto !important;
+    bottom: auto !important;
+    z-index: 12;
+    max-height: calc(100vh - 8px);
+    overflow-y: auto;
+}
+
+/* ---- picture view (PhotoSwipe on a phone): black between the WM bars, its own buttons hidden;
+ * the shell's title bar (Pictures & Videos, ok) and soft keys (Save / Menu) stay on top ---- */
+/* under the shell from its first frame (the opening zoom), not only once the shell notices */
+html.ui-mobile body > .pswp {
+    z-index: 1999 !important;
+}
+
+html.ui-mobile body > .pswp .pswp__bg {
+    background: #000 !important;
+    opacity: 1 !important;
+    backdrop-filter: none !important;
+}
+
+html.ui-mobile body > .pswp .pswp__button,
+html.ui-mobile body > .pswp .pswp__counter,
+html.ui-mobile body > .pswp .pswp__button--custom,
+html.ui-mobile body > .pswp .round-button,
+html.ui-mobile body > .pswp [class*="pswp__custom"],
+html.ui-mobile body > .pswp [class*="action-bar"],
+html.ui-mobile body > .pswp [class*="toolbar"] {
+    display: none !important;
+}
+
+html.ui-mobile[data-wm-viewer] #wmShell {
+    background: transparent;
+}
+
+html.ui-mobile[data-wm-viewer] #wmShell > .wm-content {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* ---- Visual Index: one WM list row per month ---- */
+.wm-pv-index {
+    background: #fff;
+    color: #000;
+}
+
+.wm-pv-index-row {
+    display: flex !important;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    width: 100%;
+    height: calc(36 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px)) 0 calc(3 * var(--wm-px)) !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #bdbebd !important;
+    box-sizing: border-box;
+    text-align: left;
+    font-weight: bold;
+}
+
+.wm-pv-index-row img {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    object-fit: contain;
+    flex: 0 0 auto;
+}
+
+.wm-pv-index-label {
+    flex: 1 1 auto;
+}
+
+.wm-pv-index-count {
+    font-weight: normal;
+}
+
+.wm-pv-index-row:active {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text);
+}
+
+/* the top bar's buttons and counter are hidden; its loading indicator shows mid-screen */
+html.ui-mobile body > .pswp .pswp__top-bar {
+    background: none !important;
+    pointer-events: none;
+}
+
+html.ui-mobile body > .pswp .pswp__preloader {
+    position: fixed !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%);
+}

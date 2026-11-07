@@ -1299,6 +1299,9 @@ async function initializePhotoSwipe() {
             doubleTapAction: 'zoom',
             indexIndicatorSep: ' / ',
             preloaderDelay: 2000,
+            // Melaton Mobile (#709): the picture sits between the WM title bar and soft-key bar
+            // (26 px each, times --wm-px), as in WM 6.1's picture view; desktop options unchanged
+            ...(window.uiShell === 'mobile' ? { paddingFn: wmViewerPadding } : {}),
             errorMsg: '<div class="pswp__error-msg">Image not found</div>',
             closeTitle: 'Close (Esc)',
             prevTitle: 'Previous (arrow left)',
@@ -1813,6 +1816,9 @@ async function openStandalonePhotoSwipe(dataSource, index, options) {
             tapAction: 'zoom',
             doubleTapAction: 'zoom',
             preloaderDelay: 2000,
+            // Melaton Mobile (#709): the picture sits between the WM title bar and soft-key bar
+            // (26 px each, times --wm-px), as in WM 6.1's picture view; desktop options unchanged
+            ...(window.uiShell === 'mobile' ? { paddingFn: wmViewerPadding } : {}),
             errorMsg: '<div class="pswp__error-msg">Image not found</div>',
             closeTitle: 'Close (Esc)',
             zoomTitle: 'Zoom in/out'
@@ -1891,6 +1897,12 @@ function standaloneUrlTitle(url) {
     } catch (_err) {
         return last;
     }
+}
+
+/** Melaton Mobile: room for the WM title bar and soft-key bar around the picture. */
+function wmViewerPadding() {
+    const px = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
+    return { top: 26 * px, bottom: 26 * px, left: 0, right: 0 };
 }
 
 // Show lightbox with PhotoSwipe
