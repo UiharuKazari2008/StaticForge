@@ -987,18 +987,27 @@
     margin: calc(-16 * var(--wm-px)) 0 0 calc(-16 * var(--wm-px));
     pointer-events: none;
     background: center / contain no-repeat image-set(url('/static_images/wm61/wait-0.png') 1x, url('/static_images/wm61/wait-0@2x.png') 2x, url('/static_images/wm61/wait-0@4x.png') 4x);
-    animation: wms-wait 1.6s steps(1) infinite;
+    /* the shell's wait cursor: all 16 frames, 90 ms each (wmShell.js setBootPhase) */
+    animation: wms-wait 1.44s steps(1) infinite;
 }
 
 @keyframes wms-wait {
-    0% { background-image: image-set(url('/static_images/wm61/wait-0@2x.png') 1x, url('/static_images/wm61/wait-0@4x.png') 2x); }
-    12.5% { background-image: image-set(url('/static_images/wm61/wait-2@2x.png') 1x, url('/static_images/wm61/wait-2@4x.png') 2x); }
-    25% { background-image: image-set(url('/static_images/wm61/wait-4@2x.png') 1x, url('/static_images/wm61/wait-4@4x.png') 2x); }
-    37.5% { background-image: image-set(url('/static_images/wm61/wait-6@2x.png') 1x, url('/static_images/wm61/wait-6@4x.png') 2x); }
-    50% { background-image: image-set(url('/static_images/wm61/wait-8@2x.png') 1x, url('/static_images/wm61/wait-8@4x.png') 2x); }
-    62.5% { background-image: image-set(url('/static_images/wm61/wait-10@2x.png') 1x, url('/static_images/wm61/wait-10@4x.png') 2x); }
-    75% { background-image: image-set(url('/static_images/wm61/wait-12@2x.png') 1x, url('/static_images/wm61/wait-12@4x.png') 2x); }
-    87.5% { background-image: image-set(url('/static_images/wm61/wait-14@2x.png') 1x, url('/static_images/wm61/wait-14@4x.png') 2x); }
+    0% { background-image: image-set(url('/static_images/wm61/wait-0.png') 1x, url('/static_images/wm61/wait-0@2x.png') 2x, url('/static_images/wm61/wait-0@4x.png') 4x); }
+    6.25% { background-image: image-set(url('/static_images/wm61/wait-1.png') 1x, url('/static_images/wm61/wait-1@2x.png') 2x, url('/static_images/wm61/wait-1@4x.png') 4x); }
+    12.5% { background-image: image-set(url('/static_images/wm61/wait-2.png') 1x, url('/static_images/wm61/wait-2@2x.png') 2x, url('/static_images/wm61/wait-2@4x.png') 4x); }
+    18.75% { background-image: image-set(url('/static_images/wm61/wait-3.png') 1x, url('/static_images/wm61/wait-3@2x.png') 2x, url('/static_images/wm61/wait-3@4x.png') 4x); }
+    25% { background-image: image-set(url('/static_images/wm61/wait-4.png') 1x, url('/static_images/wm61/wait-4@2x.png') 2x, url('/static_images/wm61/wait-4@4x.png') 4x); }
+    31.25% { background-image: image-set(url('/static_images/wm61/wait-5.png') 1x, url('/static_images/wm61/wait-5@2x.png') 2x, url('/static_images/wm61/wait-5@4x.png') 4x); }
+    37.5% { background-image: image-set(url('/static_images/wm61/wait-6.png') 1x, url('/static_images/wm61/wait-6@2x.png') 2x, url('/static_images/wm61/wait-6@4x.png') 4x); }
+    43.75% { background-image: image-set(url('/static_images/wm61/wait-7.png') 1x, url('/static_images/wm61/wait-7@2x.png') 2x, url('/static_images/wm61/wait-7@4x.png') 4x); }
+    50% { background-image: image-set(url('/static_images/wm61/wait-8.png') 1x, url('/static_images/wm61/wait-8@2x.png') 2x, url('/static_images/wm61/wait-8@4x.png') 4x); }
+    56.25% { background-image: image-set(url('/static_images/wm61/wait-9.png') 1x, url('/static_images/wm61/wait-9@2x.png') 2x, url('/static_images/wm61/wait-9@4x.png') 4x); }
+    62.5% { background-image: image-set(url('/static_images/wm61/wait-10.png') 1x, url('/static_images/wm61/wait-10@2x.png') 2x, url('/static_images/wm61/wait-10@4x.png') 4x); }
+    68.75% { background-image: image-set(url('/static_images/wm61/wait-11.png') 1x, url('/static_images/wm61/wait-11@2x.png') 2x, url('/static_images/wm61/wait-11@4x.png') 4x); }
+    75% { background-image: image-set(url('/static_images/wm61/wait-12.png') 1x, url('/static_images/wm61/wait-12@2x.png') 2x, url('/static_images/wm61/wait-12@4x.png') 4x); }
+    81.25% { background-image: image-set(url('/static_images/wm61/wait-13.png') 1x, url('/static_images/wm61/wait-13@2x.png') 2x, url('/static_images/wm61/wait-13@4x.png') 4x); }
+    87.5% { background-image: image-set(url('/static_images/wm61/wait-14.png') 1x, url('/static_images/wm61/wait-14@2x.png') 2x, url('/static_images/wm61/wait-14@4x.png') 4x); }
+    93.75% { background-image: image-set(url('/static_images/wm61/wait-15.png') 1x, url('/static_images/wm61/wait-15@2x.png') 2x, url('/static_images/wm61/wait-15@4x.png') 4x); }
 }
 
 /* the tab strip fits a 360 px phone: tabs share the width */
@@ -1041,12 +1050,145 @@ html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#charac
     max-width: calc(100vw - 8px) !important;
 }
 
-/* the desktop's rows are drawn for dark glass: on WM's white they keep their hues, darkened */
+/* the desktop's rows are drawn for dark glass: on WM's white the text is black / dark grey, and
+ * only the small coloured marks (badges, dots, icons) keep their hues, darkened */
 html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay > .character-autocomplete-list {
     background: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
-    filter: brightness(0.5) saturate(1.6);
+    filter: none !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-item :is(.character-name, .character-info-row) {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    text-shadow: none !important;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-item :is(.character-copyright, .placeholder-desc, .placeholder-desc-text, .tag-wiki-preview-text, .tag-meta-icons) {
+    color: #404040 !important;
+    -webkit-text-fill-color: #404040 !important;
+    text-shadow: none !important;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-item :is(.match-type-badge, .tag-category-badge, .badge, .count-dot, .tag-meta-icon) {
+    filter: brightness(0.55) saturate(1.6);
+    border-radius: 0 !important;
+    text-shadow: none !important;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-item {
+    border-color: #c0c0c0 !important;
+    background: #fff !important;
+}
+
+/* the results footer: a plain tab-strip row, black text */
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .search-status-display {
+    background: var(--wm-tab-strip) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 0 !important;
+    border-top: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    opacity: 1 !important;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .search-status-display :is(span, i, div) {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    text-shadow: none !important;
+    filter: none !important;
+    opacity: 1 !important;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .search-status-display i[class^="nai-"],
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .search-status-display i[class*=" nai-"] {
+    background-color: #000 !important;
+}
+
+/* WM scroll bar on the list (wm-shell.css draws the same for app pages) */
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-list::-webkit-scrollbar {
+    width: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-list::-webkit-scrollbar-track {
+    background: #fff;
+    border-left: calc(1 * var(--wm-px)) solid #000;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-list::-webkit-scrollbar-thumb {
+    background: var(--wm-tab-strip);
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-right: 0;
+    border-radius: 0;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-list::-webkit-scrollbar-button:single-button {
+    display: block;
+    height: calc(19 * var(--wm-px));
+    background: var(--wm-tab-strip) center / calc(8 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
+    border-left: calc(1 * var(--wm-px)) solid #000;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-list::-webkit-scrollbar-button:single-button:vertical:decrement {
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background-image: linear-gradient(to bottom right, transparent 50%, #000 50%), linear-gradient(to bottom left, transparent 50%, #000 50%);
+    background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-list::-webkit-scrollbar-button:single-button:vertical:increment {
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background-image: linear-gradient(to top right, transparent 50%, #000 50%), linear-gradient(to top left, transparent 50%, #000 50%);
+    background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
+}
+
+/* the view bar (type filter, ranking) as a WM tab strip: no glass, black text, a 1 px black rule */
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar:not(.hidden) {
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: var(--wm-tab-strip) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    letter-spacing: normal !important;
+    text-shadow: none !important;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar::before,
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar::after {
+    display: none !important;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar :is(button, span, i) {
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    font-weight: normal !important;
+    letter-spacing: normal !important;
+    text-shadow: none !important;
+    text-transform: none !important;
+    filter: none !important;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar :is(button, span) {
+    font-family: var(--wm-font) !important;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar button {
+    font-size: calc(12 * var(--wm-px)) !important;
+    border: 0 !important;
 }
 
 /* the key guide is for a keyboard */
@@ -1101,4 +1243,143 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
 .wm-studio #manualModal .vibe-reference-info .custom-dropdown {
     width: auto !important;
     min-width: calc(110 * var(--wm-px)) !important;
+}
+
+/* ---- a tool page under the one opened from it (the vSlider editor over vSlider) ---- */
+.wm-studio .wms-tool-host > .modal[data-wms-under] {
+    display: none !important;
+}
+
+/* ---- the prompt's status strip (tokens, UC level, quality, newlines) as a WM row under the field ---- */
+.wm-studio #manualModal .prompt-textarea-container::before,
+.wm-studio #manualModal .prompt-textarea-container::after {
+    display: none !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-container,
+.wm-studio #manualModal .prompt-textarea-container:focus-within,
+.wm-studio #manualModal .prompt-tabs {
+    border: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+.wm-studio #manualModal :is(#manualPrompt, #manualUc, #manualPromptNegative, #creativeDirectiveInput) {
+    padding-bottom: 0 !important;
+}
+
+.wm-studio #manualModal :is(input, textarea, .form-control):focus,
+.wm-studio #manualModal :is(input, textarea, .form-control):focus-visible {
+    box-shadow: none !important;
+    outline: none !important;
+    border-color: #000 !important;
+}
+
+.wm-studio #manualModal .prompt-status-icons {
+    position: static !important;
+    inset: auto !important;
+    display: flex !important;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) 0 0 !important;
+    padding: 0 !important;
+    opacity: 1 !important;
+    background: none !important;
+    pointer-events: auto;
+}
+
+.wm-studio #manualModal .prompt-status-icons .prompt-status-icon {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    opacity: 1 !important;
+    filter: none !important;
+    text-shadow: none !important;
+}
+
+.wm-studio #manualModal .prompt-status-icons .prompt-status-icon.hidden {
+    display: none !important;
+}
+
+.wm-studio #manualModal .prompt-status-icons .prompt-token-progress {
+    flex: 1 1 auto;
+    min-width: 0;
+    opacity: 1 !important;
+}
+
+/* WM progress bar: a 1 px black frame, the highlight colour as the fill */
+.wm-studio #manualModal .prompt-status-icons .token-progress-bar {
+    height: calc(8 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    overflow: hidden;
+}
+
+.wm-studio #manualModal .prompt-status-icons .token-progress-fill {
+    height: 100% !important;
+    border-radius: 0 !important;
+    background: var(--wm-highlight) !important;
+    box-shadow: none !important;
+}
+
+.wm-studio #manualModal .prompt-status-icons :is(.token-progress-inner, .token-progress-inner-ne) {
+    display: none !important;
+}
+
+/* ---- a combo whose list the WM drop-down stands in for keeps the form still behind it ---- */
+.wm-studio #manualModal .custom-dropdown-menu.wms-dd-proxied {
+    position: absolute !important;
+    display: none !important;
+}
+
+.wm-studio #manualModal .custom-dropdown:is(.open, .active) {
+    position: relative !important;
+}
+
+/* Steps: the desktop's number-field rule drops the 3 px inset every other field has */
+.wm-studio #manualModal .model-control input#manualSteps#manualSteps {
+    padding: 0 calc(3 * var(--wm-px)) !important;
+}
+
+/* ---- flat WM fields: no Vista badges, colour dots or gems inside combos and the Anlas row ---- */
+.wm-studio #manualModal .custom-dropdown-btn .custom-dropdown-badge {
+    display: inline-block;
+    margin-left: calc(3 * var(--wm-px)) !important;
+    padding: 0 calc(2 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: var(--wm-tab-strip) !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    font: calc(10 * var(--wm-px)) / calc(12 * var(--wm-px)) var(--wm-font) !important;
+    text-shadow: none !important;
+    filter: none !important;
+}
+
+.wm-studio #manualModal .custom-dropdown-btn .workspace-color-indicator {
+    width: calc(9 * var(--wm-px)) !important;
+    height: calc(9 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    filter: none !important;
+    align-self: center;
+}
+
+.wm-studio #manualModal .custom-dropdown-btn .workspace-option-content {
+    align-items: center !important;
+    gap: calc(4 * var(--wm-px)) !important;
+}
+
+.wm-studio #manualModal .inset-badge i[class^="nai-"],
+.wm-studio #manualModal .inset-badge i[class*=" nai-"] {
+    background: #000 !important;
+    filter: none !important;
+    opacity: 1 !important;
 }

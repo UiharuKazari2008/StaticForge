@@ -17,13 +17,15 @@
  *   Print       the preview (the finished print, its progress while printing); a tap on the print
  *               opens the shell's picture view
  *
- *   soft keys   Generate (the desktop's Generate button; disabled with the progress while a print
- *               runs) | Menu: the desktop menu bar's File Edit Add Model Image Tools View Help, built
+ *   soft keys   Generate (the desktop's Generate button; it queues another print while one runs, the
+ *               progress shows in the title) | Menu: the desktop menu bar's File Edit Add Model Image Tools View Help, built
  *               from the same item builders (studioMenuBarItems / handleStudioMenuBarAction)
  *   tool pages  any desktop window that opens while Studio is on screen (Character Positions, Text
- *               Expanders, Stage Results ...) is moved into a full-screen sub-page with Done; the back
- *               key and Done close it the window's own way. Desktop context menus raised inside Studio
- *               (contextMenu.js) are shown as WM menus.
+ *               Expanders, Stage Results ...) is moved into a full-screen sub-page with Done; a window
+ *               opened from it (the vSlider editor) stacks over it. The back key and Done close the top
+ *               one the window's own way; switching apps closes none. Desktop context menus raised
+ *               inside Studio (contextMenu.js) are shown as WM menus (combos as WM drop-downs) and run
+ *               the desktop menu's onHide when they close. The Anlas question is a WM message box.
  *   entry points every path that opens the desktop Studio (openManualModalWithContent: MCP open_in_studio /
  *               apply_studio_changes / print_studio, gallery and viewer "open in Studio", presets,
  *               Programs) brings this app up; so does #manualModal opening by any other route.
@@ -48,7 +50,7 @@
     let shown = false;
     let tab = 'prompt';
     let opening = false; // an openManualModalWithContent call is running
-    let tool = null; // { win, parent, next, title } a desktop window hosted as a sub-page
+    const tools = []; // [{ win, parent, next, title }] desktop windows hosted as sub-pages, the last on top
     let progressTimer = null;
     let wasGenerating = false;
 
@@ -110,8 +112,16 @@
     }
 
     function refreshTitle() {
-        if (!ws || !isCurrent()) return;
-        ws.setTitle(tool ? tool.title : 'Studio');
+        if (!ws || !isCurrent() || root.hasAttribute('data-wm-viewer')) return;
+        const top = tools[tools.length - 1];
+        if (top) { ws.setTitle(top.title); return; }
+        // a print running: its progress in the title (Generate stays free to queue another)
+        if (generating()) {
+            const p = progress();
+            ws.setTitle(p && p.pct > 0 && p.pct <= 100 ? `Printing ${Math.round(p.pct)}%` : 'Printing...');
+            return;
+        }
+        ws.setTitle('Studio');
     }
 
     // ---------------------------------------------------------------- tabs
@@ -163,7 +173,8 @@
 
     function generate() {
         const btn = document.getElementById('manualGenerateBtn');
-        if (!btn || btn.disabled || generating()) return;
+        // as on the desktop, a print can be queued while another runs
+        if (!btn || btn.disabled) return;
         // the desktop's own Generate (its Anlas question is the shell's WM message box)
         btn.click();
         setTimeout(syncGenerating, 50);
@@ -173,21 +184,17 @@
         const now = generating();
         if (now && !wasGenerating) {
             // the print shows on the Print page while it runs
-            if (shown && !tool) setTab('print');
+            if (shown && !tools.length) setTab('print');
             if (!progressTimer) progressTimer = setInterval(syncGenerating, 500);
         }
         if (!now && progressTimer) { clearInterval(progressTimer); progressTimer = null; }
         wasGenerating = now;
         if (page) { page.classList.toggle('wms-generating', now); paintEmpty(); }
-        if (isCurrent() && !tool) ws.refreshSoftKeys();
+        refreshTitle();
+        if (isCurrent() && !tools.length) ws.refreshSoftKeys();
     }
 
     function generateKey() {
-        if (generating()) {
-            const p = progress();
-            const pct = p && p.pct > 0 && p.pct <= 100 ? ` ${Math.round(p.pct)}%` : '...';
-            return { label: `Printing${pct}`, disabled: true };
-        }
         const btn = document.getElementById('manualGenerateBtn');
         return { label: 'Generate', disabled: !studioOpen() || !btn || btn.disabled, action: generate };
     }
@@ -219,7 +226,7 @@
             if (item.separator) {
                 if (out.length && out[out.length - 1] !== '-') out.push('-');
                 const heading = resolve(item.text, target);
-                if (heading) out.push({ label: String(heading), disabled: true, indent: 0 });
+                if (heading) out.push({ label: String(heading), disabled: true, indent: 0, heading: true });
                 continue;
             }
             if (!visible(item)) continue;
@@ -257,7 +264,7 @@
     }
 
     /** A contextMenu config (sections: list / icons; custom and grid sections have no WM rows). */
-    function wmItemsFromConfig(config, target) {
+    function wmItemsFromConfig(config, target, flat) {
         const run = (action, t, item) => {
             if (config && typeof config.onAction === 'function') { config.onAction(action, t, item); return; }
             document.dispatchEvent(new CustomEvent('contextMenuAction', { detail: { action, target: t, item, menu: contextMenu } }));
@@ -272,13 +279,83 @@
             let rows = [];
             if (section.type === 'icons' && Array.isArray(section.icons)) rows = section.icons.map((ic) => Object.assign(ic, { text: ic.text || ic.tooltip }));
             else if (Array.isArray(section.items) && section.type !== 'grid' && section.type !== 'custom') rows = section.items;
-            if (section.title) rows = [{ separator: true, text: section.title }, ...rows];
             const items = wmItems(rows, target, run);
             if (!items.length) continue;
-            if (out.length) out.push('-');
+            const title = resolve(section.title, target);
+            if (title && flat) {
+                // a combo's list: the title is a greyed heading (dropped when it only repeats the label)
+                if (out.length && out[out.length - 1] !== '-') out.push('-');
+                out.push({ label: String(title).replace(/\s+/g, ' ').trim(), disabled: true, heading: true }, ...items);
+                continue;
+            }
+            if (title) {
+                // a titled section is one row with its rows as a submenu: long desktop menus stay short
+                out.push({ label: String(title).replace(/\s+/g, ' ').trim(), submenu: () => items });
+                continue;
+            }
+            if (out.length && out[out.length - 1] !== '-') out.push('-');
             out.push(...items);
         }
+        while (out.length && out[out.length - 1] === '-') out.pop();
         return out;
+    }
+
+    /** Heading rows that only repeat the field label (a combo's single group) go. */
+    function dropLoneHeading(items) {
+        const headings = items.filter((i) => i && i.heading);
+        if (headings.length !== 1) return items;
+        const out = items.filter((i) => !(i && i.heading));
+        while (out.length && out[0] === '-') out.shift();
+        return out;
+    }
+
+    // ---------------------------------------------------------------- WM menu closing = the desktop menu's onHide
+
+    let menuHide = null; // what the desktop menu would run when it hides (onHide, SmartText draft save)
+    let popupWatched = false;
+
+    function flushSmartText() {
+        /* global flushAutofillSettingsDraftIfDirty */
+        try { if (typeof flushAutofillSettingsDraftIfDirty === 'function') void flushAutofillSettingsDraftIfDirty(); } catch (_) { /* nothing to save */ }
+    }
+
+    function shellPopup() {
+        return document.querySelector('#wmShell > .wm-popup');
+    }
+
+    /** The shell runs no close callback for menu / menuAt: its popup going hidden is the close. */
+    function armMenuHide(fn) {
+        const prev = menuHide;
+        menuHide = fn;
+        if (prev && prev !== fn) { try { prev(); } catch (_) { /* best effort */ } }
+        const pop = shellPopup();
+        if (!pop || popupWatched || typeof MutationObserver !== 'function') return;
+        popupWatched = true;
+        new MutationObserver(() => {
+            if (!pop.hidden) return;
+            pop.style.maxHeight = '';
+            pop.style.overflowY = '';
+            pop.style.minWidth = '';
+            if (!menuHide) return;
+            const run = menuHide;
+            menuHide = null;
+            try { run(); } catch (err) { console.warn('[wmStudio] menu onHide', err); }
+        }).observe(pop, { attributes: true, attributeFilter: ['hidden'] });
+    }
+
+    /** A context menu kept between the title bar and the soft keys (it scrolls when longer). */
+    function menuInContent(x, y, items) {
+        ws.menuAt(x, y, items);
+        const pop = shellPopup();
+        const content = document.querySelector('#wmShell > .wm-content');
+        if (!pop || !content || !pop.offsetParent) return;
+        const cr = content.getBoundingClientRect();
+        const or = pop.offsetParent.getBoundingClientRect();
+        pop.style.maxHeight = `${Math.max(40, cr.height - 4)}px`;
+        pop.style.overflowY = 'auto';
+        const h = pop.offsetHeight;
+        const top = Math.max(cr.top + 2, Math.min(y, cr.bottom - h - 2));
+        pop.style.top = `${top - or.top}px`;
     }
 
     function menuBarTitle(name) {
@@ -295,6 +372,17 @@
         return items.length ? items : [{ label: '(empty)', disabled: true }];
     }
 
+    /** The desktop menu bar's onHide (attachClickMenuToElement options): saves Edit > SmartText changes. */
+    function menuBarHide() {
+        let ran = false;
+        try {
+            const title = document.querySelector('#manualModalMenuBar .naxt-menu-title[data-click-menu]');
+            const cfg = title && contextMenu && contextMenu.clickMenuConfigs && contextMenu.clickMenuConfigs[title.dataset.clickMenu];
+            if (cfg && typeof cfg.onHide === 'function') { cfg.onHide(title); ran = true; }
+        } catch (_) { /* below */ }
+        if (!ran) flushSmartText();
+    }
+
     function clickIf(id) {
         const b = document.getElementById(id);
         if (b && !b.disabled && !b.classList.contains('hidden')) { b.click(); return true; }
@@ -308,6 +396,7 @@
 
     function mainMenu() {
         if (!studioOpen()) return [{ label: 'Studio is starting...', disabled: true }];
+        armMenuHide(menuBarHide);
         const items = MENUS.map((name) => ({ label: name, submenu: () => menuBarItems(name) }));
         // the preview's own buttons (manualPreviewManager.js)
         items.splice(MENUS.indexOf('Help'), 0, '-',
@@ -325,6 +414,8 @@
         }, 60);
     }
 
+    let lastCombo = { el: null, at: 0 };
+
     /** Desktop context menus raised inside Studio (long press on a prompt, the print, Generate ...) as WM menus. */
     function patchContextMenu() {
         /* global contextMenu */
@@ -337,9 +428,26 @@
                 ? (this.clickMenuConfigs && this.clickMenuConfigs[target.dataset.clickMenu])
                 : (this.configs && this.configs[target.dataset.contextMenu]);
             if (!config) return undefined;
+            const combo = trigger === 'click' && target.closest && target.closest('.custom-dropdown');
             let items = [];
-            try { items = wmItemsFromConfig(config, target); } catch (err) { console.warn('[wmStudio] context menu', err); }
+            try { items = wmItemsFromConfig(config, target, !!combo); } catch (err) { console.warn('[wmStudio] context menu', err); }
             if (!items.length) return undefined;
+            const onHide = () => {
+                if (typeof config.onHide !== 'function') { flushSmartText(); return; }
+                try { config.onHide(target); } catch (err) { console.warn('[wmStudio] onHide', err); }
+            };
+            // a desktop combo (Sampler, Model ...): a WM drop-down under the whole combo, at least its width
+            if (combo) {
+                // a touch raises the desktop menu twice (touch, then its click): the second would close it again
+                const pop0 = shellPopup();
+                if (pop0 && !pop0.hidden && lastCombo.el === combo && Date.now() - lastCombo.at < 600) return undefined;
+                lastCombo = { el: combo, at: Date.now() };
+                armMenuHide(null);
+                ws.dropdown(combo, dropLoneHeading(items), 'left', onHide);
+                const pop = shellPopup();
+                if (pop && !pop.hidden) pop.style.minWidth = `${Math.round(combo.getBoundingClientRect().width)}px`;
+                return undefined;
+            }
             let x = 0;
             let y = 0;
             const pt = event && ((event.touches && event.touches[0]) || (event.changedTouches && event.changedTouches[0]) || event);
@@ -347,7 +455,8 @@
                 const r = target.getBoundingClientRect();
                 x = r.left; y = r.bottom;
             }
-            ws.menuAt(x, y, items);
+            armMenuHide(onHide);
+            menuInContent(x, y, items);
             return undefined;
         };
         return true;
@@ -374,7 +483,7 @@
             if (!text || r.classList.contains('hidden') || r.closest('.hidden') !== menu.closest('.hidden')) continue;
             if (r.classList.contains('custom-dropdown-group')) {
                 if (items.length) items.push('-');
-                items.push({ label: text, disabled: true });
+                items.push({ label: text, disabled: true, heading: true });
                 continue;
             }
             items.push({
@@ -385,8 +494,9 @@
             });
         }
         let picked = false;
+        // the desktop list leaves the layout first, so the combo is measured where it sits
         menu.classList.add('wms-dd-proxied');
-        ws.dropdown(btn, items, 'left', () => {
+        ws.dropdown(box, dropLoneHeading(items), 'left', () => {
             menu.classList.remove('wms-dd-proxied');
             // closed without a pick: the desktop list closes too
             setTimeout(() => {
@@ -397,6 +507,8 @@
                 box.classList.remove('open', 'active');
             }, 0);
         });
+        const pop = shellPopup();
+        if (pop && !pop.hidden) pop.style.minWidth = `${Math.round(box.getBoundingClientRect().width)}px`;
     }
 
     // ---------------------------------------------------------------- the print
@@ -418,8 +530,7 @@
 
     // ---------------------------------------------------------------- tool windows as sub-pages
 
-    // windows this page closed on its own (a second tool page replaced them): never hosted again
-    // while they animate out, or two windows would keep swapping places
+    // windows this page is closing (Done / back): never hosted again while they animate out
     const dismissed = new WeakSet();
     const NOT_TOOLS = new Set(['manualModal', 'galleryWindow', 'confirmationDialog', 'bootMessageBox', 'pinModal', 'agentClientUpdateDialog', 'directorWindow']);
 
@@ -430,43 +541,48 @@
     }
 
     function windowTitle(win) {
-        const t = win.querySelector('.modal-window-title-main span, .modal-window-title span, .modal-window-title');
+        const t = win.querySelector(':scope > .modal-window-title .modal-window-title-main span, :scope > .modal-window-title span, :scope > .modal-window-title')
+            || win.querySelector('.credit-cost-header span, .modal-header h3, .modal-header h2, .modal-header .modal-title, [class$="-header"] > span, [class$="-header"] > h3');
         const text = t && t.textContent.replace(/\s+/g, ' ').trim();
         return text || 'Studio';
     }
 
+    function setUnder() {
+        tools.forEach((t, i) => {
+            if (i === tools.length - 1) t.win.removeAttribute('data-wms-under');
+            else t.win.setAttribute('data-wms-under', '');
+        });
+    }
+
+    /**
+     * A desktop window that opens over Studio is pushed as a sub-page over the one before it (the
+     * vSlider editor over vSlider): nothing under it closes; Done or back pops back down.
+     */
     function hostTool(win) {
-        if (tool && tool.win === win) return;
-        if (tool) {
-            // one tool page at a time: the one under it closes its own way
-            const prev = tool.win;
-            releaseTool(true);
-            const close = prev.querySelector('.modal-window-controls .close-btn, .modal-window-controls [id^="close"]');
-            if (!prev.classList.contains('hidden')) {
-                dismissed.add(prev);
-                if (close) close.click();
-            }
-        }
+        if (!page || tools.some((t) => t.win === win)) return;
         const box = page.querySelector('.wms-tool');
-        tool = { win, parent: win.parentNode, next: win.nextSibling, title: windowTitle(win) };
+        tools.push({ win, parent: win.parentNode, next: win.nextSibling, title: windowTitle(win) });
         box.querySelector('.wms-tool-host').appendChild(win);
+        setUnder();
         box.hidden = false;
         page.classList.add('wms-has-tool');
         refreshTitle();
-        ws.refreshSoftKeys();
-        ws.syncHistory();
+        if (isCurrent()) { ws.refreshSoftKeys(); ws.syncHistory(); }
     }
 
-    /** The window is back where the desktop keeps it (body); the sub-page closes. */
-    function releaseTool(silent) {
-        if (!tool) return;
-        const { win, parent, next } = tool;
-        tool = null;
+    /** A window is back where the desktop keeps it (body); the sub-page under it shows again. */
+    function releaseTool(win, silent) {
+        const i = tools.findIndex((t) => t.win === win);
+        if (i < 0) return;
+        const { parent, next } = tools[i];
+        tools.splice(i, 1);
+        win.removeAttribute('data-wms-under');
         try {
             if (next && next.parentNode === parent) parent.insertBefore(win, next);
             else (parent || document.body).appendChild(win);
         } catch (_) { document.body.appendChild(win); }
-        if (page) {
+        setUnder();
+        if (page && !tools.length) {
             page.querySelector('.wms-tool').hidden = true;
             page.classList.remove('wms-has-tool');
         }
@@ -475,15 +591,30 @@
         if (isCurrent()) { ws.refreshSoftKeys(); ws.syncHistory(); }
     }
 
-    /** Done / back: the window's own close button (its code saves or discards as on the desktop). */
+    function releaseAll() {
+        while (tools.length) releaseTool(tools[tools.length - 1].win, true);
+    }
+
+    /**
+     * Done / back: the top window closes its own way (its close button, else a dialog's own Cancel),
+     * so its code saves or discards and resolves whatever waits on it, as on the desktop.
+     */
     function closeTool() {
-        if (!tool) return;
-        const win = tool.win;
-        const btn = win.querySelector('.modal-window-controls .close-btn, .modal-window-controls [id^="close"], [data-action="close"]');
+        const top = tools[tools.length - 1];
+        if (!top) return;
+        const win = top.win;
+        dismissed.add(win);
+        const btn = win.querySelector('.modal-window-controls .close-btn, .modal-window-controls [id^="close"], [data-action="close"]')
+            || win.querySelector('.credit-cost-cancel-btn, [data-dialog-cancel], [data-action="cancel"]')
+            || Array.from(win.querySelectorAll('button.btn-secondary, button')).find((b) => /^\s*cancel\s*$/i.test(b.textContent || ''));
         if (btn) btn.click();
         else if (typeof window.closeModal === 'function') { try { window.closeModal(win); } catch (_) { /* below */ } }
         // a window that keeps itself open after its close is let go anyway
-        setTimeout(() => { if (tool && tool.win === win) { if (!win.classList.contains('hidden')) win.classList.add('hidden'); releaseTool(); } }, 600);
+        setTimeout(() => {
+            if (!tools.some((t) => t.win === win)) return;
+            if (!win.classList.contains('hidden')) win.classList.add('hidden');
+            releaseTool(win);
+        }, 1000); // after closeModal's own 600 ms fallback (modalUtils.js)
     }
 
     function watchWindows() {
@@ -502,8 +633,8 @@
             if (seen.has(el) || !el.classList || !el.classList.contains('modal')) return;
             seen.add(el);
             new MutationObserver(() => {
-                if (tool && tool.win === el) {
-                    if (el.classList.contains('hidden') || el.classList.contains('minimised')) releaseTool();
+                if (tools.some((t) => t.win === el)) {
+                    if (el.classList.contains('hidden') || el.classList.contains('minimised')) releaseTool(el);
                     return;
                 }
                 if (el.classList.contains('hidden')) dismissed.delete(el);
@@ -557,7 +688,7 @@
                     if (root.dataset.wmBoot === 'done' && !isCurrent()) openApp();
                 } else if (isCurrent()) {
                     // the desktop closed Studio (File > Close): the app closes too
-                    if (tool) releaseTool(true);
+                    releaseAll();
                     ws.back();
                 }
             }).observe(m, { attributes: true, attributeFilter: ['class'] });
@@ -576,6 +707,60 @@
             const el = document.getElementById(id);
             if (el && typeof MutationObserver === 'function') new MutationObserver(later).observe(el, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'src'] });
         });
+    }
+
+    // ---------------------------------------------------------------- the Anlas question
+
+    /**
+     * creditCostDialog.js builds a desktop window and resolves only through its own buttons. On the
+     * phone the print's question is a WM message box (Generate resolves true, Cancel false), so
+     * nothing is left half-open behind the shell. The upscale form (scale and delivery choices) stays
+     * the desktop's, hosted as a tool page whose Done is its Cancel.
+     */
+    function wrapCreditCost() {
+        /* global showCreditCostDialog */
+        if (typeof showCreditCostDialog !== 'function' || showCreditCostDialog._wmStudio) return;
+        const orig = showCreditCostDialog;
+        const wrapped = function (cost, event, outputResolution, isUpscaling) {
+            if (isUpscaling || !ws || typeof ws.messageBox !== 'function') return orig.apply(this, arguments);
+            let text = `This will cost ${cost} Anlas to generate`;
+            if (outputResolution && outputResolution.width && outputResolution.height) text += ` (${outputResolution.width} x ${outputResolution.height})`;
+            text += '.';
+            return ws.messageBox({
+                title: 'Payment Required',
+                text,
+                icon: 'question',
+                buttons: [{ text: 'Generate', value: true, default: true }, { text: 'Cancel', value: false }],
+                cancelValue: false
+            }).then((v) => v === true);
+        };
+        wrapped._wmStudio = true;
+        window.showCreditCostDialog = wrapped;
+    }
+
+    // ---------------------------------------------------------------- the app icon at dpr 3
+
+    /**
+     * The shell's art table (HD_ART, wmShell.js) has no app-studio yet, so its srcset stops at @2x and
+     * the icon is scaled up on dpr-3 phones. Until the shell lists it, its images get the @4x art
+     * (app-studio@4x.png, app-studio-lg@4x.png) here.
+     */
+    function hdIcon() {
+        const shell = document.getElementById('wmShell');
+        if (!shell) return;
+        const fix = (scope) => {
+            scope.querySelectorAll('img[src*="/app-studio"]').forEach((img) => {
+                const m = /\/(app-studio(?:-lg)?)\.png(?:$|\?)/.exec(img.getAttribute('src') || '');
+                const set = img.getAttribute('srcset') || '';
+                if (!m || / 4x/.test(set)) return;
+                img.setAttribute('srcset', `${set ? `${set}, ` : ''}/static_images/wm61/${m[1]}@4x.png 4x`);
+            });
+        };
+        fix(shell);
+        if (typeof MutationObserver !== 'function') return;
+        new MutationObserver((muts) => {
+            for (const mu of muts) mu.addedNodes.forEach((n) => { if (n.nodeType === 1) fix(n.tagName === 'IMG' ? n.parentNode || shell : n); });
+        }).observe(shell, { childList: true, subtree: true });
     }
 
     // ---------------------------------------------------------------- app
@@ -623,7 +808,7 @@
     }
 
     function softKeys() {
-        if (tool) return { left: { label: 'Done', action: closeTool }, right: null };
+        if (tools.length) return { left: { label: 'Done', action: closeTool }, right: null };
         return { left: generateKey(), right: { label: 'Menu', menu: mainMenu } };
     }
 
@@ -646,19 +831,26 @@
             },
             hide() {
                 shown = false;
-                if (tool) closeTool();
+                // open tool pages stay hosted in the hidden page, as they were (switching apps closes nothing)
                 const a = document.activeElement;
                 if (a && page && page.contains(a) && typeof a.blur === 'function') a.blur();
             },
             softKeys,
-            historyDepth() { return tool ? 1 : 0; },
+            historyDepth() { return tools.length; },
             onBack() {
-                if (tool) { closeTool(); return true; }
+                if (tools.length) { closeTool(); return true; }
                 return false;
             }
         });
         wrapEntryPoints();
+        wrapCreditCost();
         watchWindows();
+        hdIcon();
+        // the shell puts the app title back when the picture view closes: a tool page keeps its own
+        if (typeof MutationObserver === 'function') {
+            new MutationObserver(() => { if (!root.hasAttribute('data-wm-viewer')) refreshTitle(); })
+                .observe(root, { attributes: true, attributeFilter: ['data-wm-viewer'] });
+        }
         if (!patchContextMenu()) {
             const t = setInterval(() => { if (patchContextMenu()) clearInterval(t); }, 1000);
             setTimeout(() => clearInterval(t), 60000);
