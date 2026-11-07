@@ -803,7 +803,7 @@
         }
         // battery: the app's numbers, else the browser's
         let level = null; let charging = null;
-        if (bat && Number.isFinite(bat.level)) { level = Math.max(0, Math.min(100, Math.round(bat.level))); charging = bat.charging === true || (bat.charging == null && !!bat.plugged); }
+        if (bat && Number.isFinite(bat.level)) { level = Math.max(0, Math.min(100, Math.round(bat.level))); charging = typeof bat.charging === 'boolean' ? bat.charging : bat.plugged ? true : null; }
         else if (webBattery) { level = webBattery.level; charging = webBattery.charging; }
         let battery = null;
         if (level != null) {
