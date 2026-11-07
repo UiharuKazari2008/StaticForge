@@ -624,3 +624,78 @@
     color: #8c8e8c;
     background: #fff;
 }
+
+/* Settings > Today > Wallpaper: the 3 x 3 focus picker beside a phone-shaped preview */
+.wm-wall-side {
+    display: flex;
+    align-items: flex-start;
+    gap: calc(14 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) 0 calc(6 * var(--wm-px));
+}
+
+.wm-wall-focus {
+    display: grid;
+    grid-template-columns: repeat(3, calc(18 * var(--wm-px)));
+    grid-auto-rows: calc(18 * var(--wm-px));
+    gap: calc(2 * var(--wm-px));
+}
+
+.wm-wall-focus-cell {
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    background: #fff !important;
+    box-sizing: border-box;
+}
+
+.wm-wall-focus-cell.is-selected {
+    background: var(--wm-highlight) !important;
+}
+
+.wm-wall-focus.is-disabled .wm-wall-focus-cell {
+    border-color: #8c8e8c !important;
+    background: #e7e7e7 !important;
+}
+
+/* a black handset with a speaker slot; the screen keeps the real screen's shape */
+.wm-wall-phone {
+    flex: 0 0 auto;
+    padding: calc(9 * var(--wm-px)) calc(4 * var(--wm-px)) calc(11 * var(--wm-px));
+    border-radius: calc(7 * var(--wm-px));
+    background: #2a2b2a;
+    position: relative;
+}
+
+.wm-wall-phone::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: calc(3 * var(--wm-px));
+    width: calc(14 * var(--wm-px));
+    height: calc(2 * var(--wm-px));
+    margin-left: calc(-7 * var(--wm-px));
+    border-radius: calc(1 * var(--wm-px));
+    background: #5a5d5a;
+}
+
+.wm-wall-screen {
+    width: calc(54 * var(--wm-px));
+    height: calc(110 * var(--wm-px));
+    background-color: #000;
+    border: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-wall-phone.is-landscape {
+    padding: calc(4 * var(--wm-px)) calc(11 * var(--wm-px)) calc(4 * var(--wm-px)) calc(9 * var(--wm-px));
+}
+
+.wm-wall-phone.is-landscape::before {
+    left: calc(3 * var(--wm-px));
+    top: 50%;
+    width: calc(2 * var(--wm-px));
+    height: calc(14 * var(--wm-px));
+    margin: calc(-7 * var(--wm-px)) 0 0;
+}
+
+.wm-wall-phone.is-landscape .wm-wall-screen {
+    width: calc(110 * var(--wm-px));
+    height: calc(54 * var(--wm-px));
+}

@@ -392,6 +392,102 @@
         return `<label class="wm-check"><input type="radio" name="${esc(name)}" value="${esc(value)}"${checked ? ' checked' : ''}><span>${esc(label)}</span></label>`;
     }
 
+    // ---- Settings > Today > Wallpaper: this workspace's phone placement (wmShell.js wallpaper;
+    // saved on the workspace record as mobileWallpaper, so every phone gets it; the desktop
+    // never reads it). 'desktop' = the same as the desktop (no record of its own).
+
+    const WALL_SIZES = [
+        ['desktop', 'Same as desktop'],
+        ['fill', 'Fill screen'],
+        ['fit', 'Fit to screen'],
+        ['stretch', 'Stretch'],
+        ['tile', 'Tile'],
+        ['center', 'Center']
+    ];
+    const WALL_H = ['left', 'center', 'right'];
+    const WALL_V = ['top', 'center', 'bottom'];
+    const wallNatural = new Map(); // url -> { w, h }
+
+    function initWall() {
+        const own = sh && sh.wallpaper ? sh.wallpaper.mobile() : null;
+        const wall = own ? { size: own.size, position: own.position } : { size: 'desktop', position: 'center center' };
+        return { ...wall, initial: `${wall.size}|${wall.position}` };
+    }
+
+    /** The draft's placement as wmShell takes it (null = same as the desktop). */
+    function wallValue(w) {
+        return w.size === 'desktop' ? null : { size: w.size, position: w.position };
+    }
+
+    async function commitWall(w) {
+        if (!w || `${w.size}|${w.position}` === w.initial || !sh.wallpaper) return true;
+        try {
+            await sh.wallpaper.set(wallValue(w));
+            w.initial = `${w.size}|${w.position}`;
+            return true;
+        } catch (err) {
+            await sh.messageBox({ title: 'Today', icon: 'error', text: (err && err.message) || 'The wallpaper setting could not be saved.' });
+            return false;
+        }
+    }
+
+    /** The picture Today would show with this draft: the chosen picture, else the desktop's. */
+    function wallPictureFor(d) {
+        if (!d.useDesktop && sameSite(d.picture)) return d.picture;
+        return sh.wallpaper ? sh.wallpaper.desktop() : null;
+    }
+
+    /** Draw the draft placement into the phone-shaped preview (scaled from the Today screen). */
+    function paintWallPreview(screen, d) {
+        const url = wallPictureFor(d);
+        const w = d.wall;
+        const placement = w.size === 'desktop' ? { size: 'fill', position: sh.wallpaper.desktopPosition() } : w;
+        const todayW = Math.max(1, window.innerWidth);
+        const scale = screen.clientWidth / todayW;
+        const css = sh.wallpaper.css(placement, url && wallNatural.get(url), scale);
+        screen.style.backgroundImage = url ? `url("${url.replace(/["\\\n]/g, encodeURIComponent)}")` : '';
+        screen.style.backgroundSize = css.size;
+        screen.style.backgroundPosition = css.position;
+        screen.style.backgroundRepeat = css.repeat;
+        screen.classList.toggle('is-empty', !url);
+        if (url && !wallNatural.has(url) && (placement.size === 'tile' || placement.size === 'center')) {
+            const img = new Image();
+            img.onload = () => {
+                wallNatural.set(url, { w: img.naturalWidth, h: img.naturalHeight });
+                if (screen.isConnected) paintWallPreview(screen, d);
+            };
+            img.src = url;
+        }
+    }
+
+    function renderWall(el, d, api) {
+        const w = d.wall;
+        const same = w.size === 'desktop';
+        const focusOff = same || w.size === 'stretch';
+        const [ph, pv] = w.position.split(' ');
+        const label = (WALL_SIZES.find(([k]) => k === w.size) || WALL_SIZES[0])[1];
+        // the preview frame takes the screen's shape (portrait or landscape)
+        const portrait = window.innerHeight >= window.innerWidth;
+        el.innerHTML = `<p>Select how the wallpaper is placed on the Today screen of this workspace's phones:</p>
+            <div class="wm-form-row"><label>Picture:</label><button type="button" class="wm-combo" data-act="size"><span>${esc(label)}</span></button></div>
+            <div class="wm-wall-side">
+                <div class="wm-wall-focus-box">
+                    <div class="wm-form-sub">Focus:</div>
+                    <div class="wm-wall-focus${focusOff ? ' is-disabled' : ''}" role="radiogroup" aria-label="Focus">${WALL_V.map((v) => WALL_H.map((h) => `<button type="button" class="wm-wall-focus-cell${!focusOff && h === ph && v === pv ? ' is-selected' : ''}" data-pos="${h} ${v}" role="radio" aria-checked="${!focusOff && h === ph && v === pv}" aria-label="${esc(`${v} ${h}`)}"${focusOff ? ' disabled' : ''}></button>`).join('')).join('')}</div>
+                </div>
+                <div class="wm-wall-phone${portrait ? '' : ' is-landscape'}" aria-hidden="true"><div class="wm-wall-screen" data-f="screen"></div></div>
+            </div>
+            <p class="wm-form-note">${same ? "The phone fills the screen at the desktop's position." : 'The desktop keeps its own setting.'} Applies to a custom Today picture too.</p>`;
+        const combo = el.querySelector('[data-act="size"]');
+        combo.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sh.dropdown(combo, WALL_SIZES.map(([k, l]) => ({ label: l, radio: k === w.size, action: () => { w.size = k; api.rerender(); } })), 'left');
+        });
+        el.querySelectorAll('.wm-wall-focus-cell').forEach((c) => c.addEventListener('click', () => { w.position = c.dataset.pos; api.rerender(); }));
+        const screen = el.querySelector('[data-f="screen"]');
+        requestAnimationFrame(() => { if (screen.isConnected) paintWallPreview(screen, d); });
+    }
+
     /**
      * Page: { label, icon, tab (grid), tabs [[id, label]], available(), init() -> draft,
      * render(el, tabId, draft, api), commit(draft) -> keys | Promise }.
@@ -399,9 +495,10 @@
     const PAGES = [
         {
             id: 'today', tab: 'personal', label: 'Today', icon: 'set-today',
-            tabs: [['appearance', 'Appearance'], ['items', 'Items']],
-            init: () => ({ useDesktop: todayUsesDesktop(), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false }),
+            tabs: [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items']],
+            init: () => ({ useDesktop: todayUsesDesktop(), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall() }),
             render(el, tab, d, api) {
+                if (tab === 'wallpaper') { renderWall(el, d, api); return; }
                 if (tab === 'items') {
                     el.innerHTML = `<p>Checked items appear on the Today screen.</p>
                         <div class="wm-listbox-side">
@@ -451,7 +548,8 @@
                 });
                 el.querySelector('[data-act="browse"]').addEventListener('click', () => { d.browsing = true; api.rerender(); });
             },
-            commit(d) {
+            async commit(d) {
+                if (!(await commitWall(d.wall))) return false;
                 const useDesktop = d.useDesktop || !sameSite(d.picture);
                 lsSet(K.todayUseDesktop, useDesktop ? '1' : '0');
                 if (sameSite(d.picture)) lsSet(K.todayBackground, d.picture);

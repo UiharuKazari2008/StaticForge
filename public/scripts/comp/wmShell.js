@@ -1307,25 +1307,90 @@
 
     const TODAY_BG_KEY = 'wmTodayBackground';
 
+    /** The active workspace's record (workspaceUtils.js), or null. */
+    function activeWorkspaceRecord() {
+        try {
+            return typeof workspaces !== 'undefined' && typeof activeWorkspace !== 'undefined' ? workspaces[activeWorkspace] || null : null;
+        } catch (_) { return null; }
+    }
+
     /** The active workspace's desktop wallpaper (resolveWorkspaceWallpaperUrl: modalUtils.js). */
     function desktopWallpaper() {
         try {
-            const w = typeof workspaces !== 'undefined' && typeof activeWorkspace !== 'undefined' ? workspaces[activeWorkspace] : null;
+            const w = activeWorkspaceRecord();
             if (!w || !w.wallpaper || typeof resolveWorkspaceWallpaperUrl !== 'function') return null;
             const url = resolveWorkspaceWallpaperUrl(w.wallpaper);
             return url ? { url, position: w.wallpaperPosition || 'center' } : null;
         } catch (_) { return null; }
     }
 
+    // ---- the phone's own wallpaper placement (workspace record mobileWallpaper, modules/workspace.js)
+
+    const WALL_SIZES = ['fill', 'fit', 'stretch', 'tile', 'center'];
+    const WALL_H = ['left', 'center', 'right'];
+    const WALL_V = ['top', 'center', 'bottom'];
+
+    /** { size, position } or null (null = same as the desktop). */
+    function normalizeMobileWallpaper(raw) {
+        if (!raw || typeof raw !== 'object' || !WALL_SIZES.includes(raw.size)) return null;
+        const [h, v] = String(raw.position || 'center center').trim().split(/\s+/);
+        return { size: raw.size, position: `${WALL_H.includes(h) ? h : 'center'} ${WALL_V.includes(v) ? v : 'center'}` };
+    }
+
+    function mobileWallpaper() {
+        const w = activeWorkspaceRecord();
+        return normalizeMobileWallpaper(w && w.mobileWallpaper);
+    }
+
+    /**
+     * The placement Today uses: the workspace's phone placement, else the desktop's (cover at its
+     * focal point; wallpaperPosition may be keywords or percentages).
+     */
+    function wallpaperPlacement() {
+        const own = mobileWallpaper();
+        if (own) return own;
+        const w = activeWorkspaceRecord();
+        return { size: 'fill', position: (w && w.wallpaperPosition) || 'center center' };
+    }
+
+    /**
+     * CSS background for a placement. Tile and Center draw the picture at its own pixels (device
+     * pixels, so a phone shows it at the size the desktop does); scale shrinks that for a preview.
+     */
+    function placementCss(placement, natural, scale) {
+        const p = placement || { size: 'fill', position: 'center center' };
+        const k = scale || 1;
+        const dpr = window.devicePixelRatio || 1;
+        const real = natural && natural.w > 0 && natural.h > 0
+            ? `${Math.max(1, (natural.w / dpr) * k)}px ${Math.max(1, (natural.h / dpr) * k)}px`
+            : 'auto';
+        const size = p.size === 'fit' ? 'contain' : p.size === 'stretch' ? '100% 100%' : (p.size === 'tile' || p.size === 'center') ? real : 'cover';
+        return { size, position: p.position || 'center center', repeat: p.size === 'tile' ? 'repeat' : 'no-repeat' };
+    }
+
+    const naturalSizes = new Map(); // url -> { w, h } once loaded
+
+    /** Save the phone placement on the workspace (null = same as the desktop); Today redraws now. */
+    async function setMobileWallpaper(value) {
+        const next = normalizeMobileWallpaper(value);
+        const w = activeWorkspaceRecord();
+        const id = typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
+        if (w) w.mobileWallpaper = next;
+        applyTodayBackground(true);
+        const client = window.wsClient;
+        if (!id || !client || typeof client.updateWorkspaceSettings !== 'function') return next;
+        await client.updateWorkspaceSettings(id, { mobileWallpaper: next });
+        return next;
+    }
+
     let todayBgKey = '';
 
     /**
      * Today's background: a picture set from Pictures & Videos (Menu > Set as Today Background),
-     * else the workspace's desktop wallpaper, else the page background.
+     * else the workspace's desktop wallpaper, else the page background. Both are placed by the
+     * workspace's phone placement (Settings > Today > Wallpaper), else the desktop's.
      */
-    function applyTodayBackground(force) {
-        const today = apps.get('today');
-        if (!today || !today.page) return;
+    function todayPicture() {
         let picture = null;
         try { picture = localStorage.getItem(TODAY_BG_KEY); } catch (_) { /* storage off */ }
         // Settings > Today: "Use desktop wallpaper" wins over a picture that is still stored
@@ -1338,23 +1403,35 @@
         // only a same-site path is used
         if (picture && !/^\/[^/]/.test(picture)) picture = null;
         const wall = picture ? null : desktopWallpaper();
-        const url = picture || (wall && wall.url) || null;
-        const key = `${url}|${wall ? wall.position : ''}`;
+        return picture || (wall && wall.url) || null;
+    }
+
+    function applyTodayBackground(force) {
+        const today = apps.get('today');
+        if (!today || !today.page) return;
+        const url = todayPicture();
+        const placement = wallpaperPlacement();
+        const key = `${url}|${placement.size}|${placement.position}`;
         if (!force && key === todayBgKey) return;
         todayBgKey = key;
-        const set = (u, position) => {
+        const set = (u) => {
             today.page.style.backgroundImage = u ? `url("${u.replace(/["\\\n]/g, encodeURIComponent)}")` : '';
-            // the desktop's own placement for its wallpaper (center / fill / fit / tile / stretch)
-            const pos = position || 'center';
-            today.page.style.backgroundSize = /fit/.test(pos) ? 'contain' : /stretch/.test(pos) ? '100% 100%' : /tile/.test(pos) ? 'auto' : 'cover';
-            today.page.style.backgroundRepeat = /tile/.test(pos) ? 'repeat' : 'no-repeat';
+            const css = placementCss(placement, u && naturalSizes.get(u));
+            today.page.style.backgroundSize = css.size;
+            today.page.style.backgroundPosition = css.position;
+            today.page.style.backgroundRepeat = css.repeat;
             today.page.classList.toggle('has-picture', !!u);
         };
-        set(url, wall && wall.position);
+        set(url);
         if (url) {
-            // a picture that no longer loads falls back to the workspace background
+            // a picture that no longer loads falls back to the workspace background;
+            // Tile and Center need its pixel size
             const probe = new Image();
             probe.onerror = () => { set(null); todayBgKey = ''; };
+            probe.onload = () => {
+                naturalSizes.set(url, { w: probe.naturalWidth, h: probe.naturalHeight });
+                if (todayBgKey === key && (placement.size === 'tile' || placement.size === 'center')) set(url);
+            };
             probe.src = url;
         }
     }
@@ -1672,6 +1749,14 @@
         registerApp(today);
         // switching workspace changes Today's rows, theme and prints
         document.addEventListener('workspaceSwitchComplete', () => { recentKey = ''; applyTodayBackground(true); today.refresh(); });
+        // another window saved this workspace's phone placement (settings_updated carries it)
+        document.addEventListener('workspaceUpdated', (ev) => {
+            const d = ev && ev.detail;
+            if (!d || !d.settings || d.settings.mobileWallpaper === undefined) return;
+            const w = typeof workspaces !== 'undefined' && workspaces ? workspaces[d.workspaceId] : null;
+            if (w) w.mobileWallpaper = normalizeMobileWallpaper(d.settings.mobileWallpaper);
+            if (typeof activeWorkspace !== 'undefined' && d.workspaceId === activeWorkspace) applyTodayBackground(true);
+        });
     }
 
     function registerGalleryApp() {
@@ -2498,6 +2583,15 @@
         onPopState,
         thumbFor,
         bubble: (opts) => bubble(opts || {}),
+        /** Today's wallpaper placement (Settings > Today > Wallpaper). */
+        wallpaper: {
+            picture: () => todayPicture(),
+            desktop: () => { const w = desktopWallpaper(); return w ? w.url : null; },
+            desktopPosition: () => { const w = activeWorkspaceRecord(); return (w && w.wallpaperPosition) || 'center center'; },
+            mobile: () => mobileWallpaper(),
+            set: (v) => setMobileWallpaper(v),
+            css: (placement, natural, scale) => placementCss(placement, natural, scale)
+        },
         closeBubble: () => closeBubble(),
         // tests: run the startup sequence again (splash, installer, Today) on a live page
         _test: { restartBoot() { clearInterval(bootTimer); installKind = null; bootStart = Date.now(); setBoot('splash'); bootTimer = setInterval(bootTick, 200); } },

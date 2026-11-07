@@ -105,6 +105,21 @@ function normalizeWorkspacePersonalization(raw) {
 }
 
 /**
+ * Melaton Mobile's own wallpaper placement (wmShell.js applyTodayBackground, Settings > Today):
+ * size fill (cover) / fit / stretch / tile / center (natural size) and a focal point for the
+ * crop. null = the same as the desktop (wallpaperPosition, cover). The desktop never reads it.
+ */
+const MOBILE_WALLPAPER_SIZES = new Set(['fill', 'fit', 'stretch', 'tile', 'center']);
+
+function normalizeWorkspaceMobileWallpaper(raw) {
+    if (!raw || typeof raw !== 'object' || !MOBILE_WALLPAPER_SIZES.has(raw.size)) return null;
+    const [h, v] = String(raw.position || 'center center').trim().split(/\s+/);
+    const horizontal = ['left', 'center', 'right'].includes(h) ? h : 'center';
+    const vertical = ['top', 'center', 'bottom'].includes(v) ? v : 'center';
+    return { size: raw.size, position: `${horizontal} ${vertical}` };
+}
+
+/**
  * The desktop's icon view (desktopIconView.js): Vista's icon size (16-256; 32 / 48 / 96 are
  * Classic / Medium / Large), Auto Arrange, Align to Grid, Show Desktop Icons, the last Sort By,
  * and the icons picked in Desktop Icon Settings for its system icons.
@@ -223,6 +238,10 @@ class WorkspaceManager {
 
     normalizeWorkspacePersonalization(raw) {
         return normalizeWorkspacePersonalization(raw);
+    }
+
+    normalizeWorkspaceMobileWallpaper(raw) {
+        return normalizeWorkspaceMobileWallpaper(raw);
     }
 
     resolveWorkspaceRef(value) {
@@ -596,6 +615,9 @@ class WorkspaceManager {
         }
         if (typeof settings.desktopView !== 'undefined') {
             updates.desktopView = normalizeWorkspaceDesktopView(settings.desktopView);
+        }
+        if (typeof settings.mobileWallpaper !== 'undefined') {
+            updates.mobileWallpaper = normalizeWorkspaceMobileWallpaper(settings.mobileWallpaper);
         }
 
         // Merge all updates at once (fluent API - use array notation for workspace ID)
