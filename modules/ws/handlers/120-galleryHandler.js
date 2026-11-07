@@ -360,6 +360,7 @@ function sendGalleryMetaProbeResponse(handlers, ws, requestId, {
             gallery: [],
             viewType,
             workspaceId: activeWorkspaceId,
+            peekSupported: true,
             blockSize: GALLERY_BLOCK_SIZE,
             pinnedIndexes: Array.isArray(pinnedIndexes) ? pinnedIndexes : [],
             lastGalleryDestructiveAt,
@@ -562,7 +563,8 @@ async function handleGalleryRequest(handlers, ws, message, clientInfo, wsServer)
 
         // Honor client workspace so gallery stays in sync after reconnect (session map may still be default)
         if (clientWorkspaceId && workspaces[clientWorkspaceId]) {
-            if (clientWorkspaceId !== activeWorkspaceId) {
+            // peek: read another workspace's gallery (home-screen widgets) without switching the session
+            if (clientWorkspaceId !== activeWorkspaceId && message.peek !== true) {
                 wm.setActiveWorkspace(clientWorkspaceId, clientInfo.sessionId);
             }
             activeWorkspaceId = clientWorkspaceId;
