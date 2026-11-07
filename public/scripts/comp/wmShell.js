@@ -319,6 +319,8 @@
             }
             b.textContent = item.label;
             b.disabled = !!item.disabled;
+            // path levels in a drop-down (File Explorer's folder list): 12 px per level
+            if (item.indent) b.style.setProperty('--wm-indent', String(Number(item.indent) || 0));
             if (item.submenu) {
                 b.classList.add('has-submenu');
                 b.setAttribute('aria-haspopup', 'menu');
@@ -605,12 +607,13 @@
                     const el = document.createElement('button');
                     el.type = 'button';
                     el.textContent = b.text;
+                    if (b.default) el.classList.add('is-default');
                     el.addEventListener('click', () => done(b.value));
                     row.appendChild(el);
                 }
             }
             layer.hidden = false;
-            const first = field || layer.querySelector('button');
+            const first = field || layer.querySelector('.wm-msgbox-buttons .is-default') || layer.querySelector('button');
             if (first) first.focus();
         });
     }

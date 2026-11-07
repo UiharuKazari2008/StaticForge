@@ -163,3 +163,78 @@
     background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
     background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
 }
+
+/* ---- View > Thumbnails: Pictures & Videos cells (80 px columns, ruled, white-to-green field),
+ * a picture fitted into 68 x 46 or the item's icon at 32 px, the name under it ---- */
+.wm-fe .fe-list.fe-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(80 * var(--wm-px)), 1fr));
+    background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+    background-attachment: local;
+}
+
+.wm-fe .fe-list.fe-grid .fe-tile {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    height: calc(66 * var(--wm-px)) !important;
+    min-width: 0;
+    padding: calc(3 * var(--wm-px)) calc(2 * var(--wm-px)) 0 !important;
+    gap: calc(1 * var(--wm-px));
+    border: 0 !important;
+    border-right: calc(1 * var(--wm-px)) solid #bdbebd !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #bdbebd !important;
+    box-sizing: border-box;
+    background: transparent;
+    font-weight: normal;
+}
+
+.wm-fe .fe-list.fe-grid .fe-tile-thumb {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(68 * var(--wm-px));
+    height: calc(46 * var(--wm-px));
+}
+
+.wm-fe .fe-list.fe-grid .fe-thumb {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+.wm-fe .fe-list.fe-grid .fe-thumb-icon {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-fe .fe-list.fe-grid .fe-name {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+}
+
+.wm-fe .fe-list.fe-grid .fe-tile.is-selected {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text) !important;
+}
+
+.wm-fe .fe-list.fe-grid .fe-tile.is-cut .fe-tile-thumb {
+    opacity: 0.5;
+}
+
+.wm-fe .fe-list.fe-grid .fe-rename {
+    width: 100%;
+    font-size: calc(11 * var(--wm-px));
+}

@@ -373,7 +373,8 @@ html.ui-mobile[data-wm-app="today"] #wmShell > .wm-content {
     align-items: center;
     width: 100%;
     height: calc(17 * var(--wm-px));
-    padding: 0 calc(14 * var(--wm-px)) 0 calc(16 * var(--wm-px)) !important;
+    /* --wm-indent: path level in a drop-down, 12 px each (File Explorer's folder list) */
+    padding: 0 calc(14 * var(--wm-px)) 0 calc((16 + 12 * var(--wm-indent, 0)) * var(--wm-px)) !important;
     font-weight: bold;
     text-align: left;
     white-space: nowrap;
@@ -1592,7 +1593,7 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
 .wm-popup-item.is-radio[aria-checked="true"]::before {
     content: '';
     position: absolute;
-    left: calc(6 * var(--wm-px));
+    left: calc((6 + 12 * var(--wm-indent, 0)) * var(--wm-px));
     width: calc(5 * var(--wm-px));
     height: calc(5 * var(--wm-px));
     border-radius: 50%;
@@ -1761,4 +1762,9 @@ html.ui-mobile body > .pswp .pswp__preloader {
     left: 50% !important;
     top: 50% !important;
     transform: translate(-50%, -50%);
+}
+
+/* the default button of a message box (the device draws it with a thicker frame) */
+.wm-msgbox-buttons button.is-default {
+    border-width: calc(2 * var(--wm-px)) !important;
 }

@@ -2223,7 +2223,11 @@ class ServiceWorkerManager {
 
         const silent = data.silent === true;
         const updatedFiles = this._resolveUpdatedFilesFromCacheComplete(data);
-        const updateKind = this.classifyStaticCacheUpdate(updatedFiles);
+        // A restart already pending (scripts waiting to load) takes later batches with it: applying a
+        // CSS-only batch live would run the old scripts on new CSS (seen on phones, #709), and the
+        // apply resets the fuse, so the pending script restart would be forgotten
+        const restartPending = this.pendingUpdateFuse && this.pendingUpdateKind === 'restart';
+        const updateKind = restartPending ? 'restart' : this.classifyStaticCacheUpdate(updatedFiles);
         this.pendingUpdateKind = updateKind;
         const canApplyWithoutRestart = updateKind === 'css-only' || updateKind === 'apply-safe';
         this.pendingApplyFiles = canApplyWithoutRestart ? updatedFiles.slice() : null;

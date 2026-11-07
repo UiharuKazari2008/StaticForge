@@ -55,6 +55,9 @@
     let renamingId = null;
     let sortField = 'name';
     let showAll = false;
+    // Menu > View: List (WM's) or Thumbnails (previews in Pictures & Videos cells), kept per phone
+    const VIEW_KEY = 'wmFileExplorerView';
+    let viewMode = (() => { try { return localStorage.getItem(VIEW_KEY) === 'thumbs' ? 'thumbs' : 'list'; } catch (_) { return 'list'; } })();
     try {
         const s = localStorage.getItem(SORT_KEY);
         if (SORTS.some(([k]) => k === s)) sortField = s;
@@ -315,8 +318,8 @@
 
     function up() {
         if (trail.length < 2) return;
-        const from = trail[trail.length - 1].path;
-        navigate(trail[trail.length - 2].path, null, { trail: trail.slice(0, -1), select: from });
+        // WM selects the first item of the parent, not the folder you came out of
+        navigate(trail[trail.length - 2].path, null, { trail: trail.slice(0, -1) });
     }
 
     /** Back gesture: the folder seen before this one; false when there is none (the app closes). */
@@ -354,11 +357,48 @@
             + '</div>';
     }
 
+    /** A preview for pictures (same-site path only), else the item's icon. */
+    function previewOf(i) {
+        if (isFolder(i)) return null;
+        const url = typeof i.previewUrl === 'string' && /^\/[^/\\]/.test(i.previewUrl) ? i.previewUrl : null;
+        const picture = i.targetKind === 'image' || i.targetKind === 'scrap' || /^image\//.test(i.mimeType || '');
+        return picture ? url : null;
+    }
+
+    /** Thumbnails: a Pictures & Videos cell with the picture fitted, or the icon, and the name. */
+    function tileHtml(i) {
+        const icon = iconOf(i);
+        const sel = selected.has(i.id);
+        const pic = previewOf(i);
+        const thumb = pic
+            ? `<img class="fe-thumb" src="${esc(pic)}" alt="" loading="lazy" decoding="async" draggable="false">`
+            : `<img class="fe-thumb-icon" src="${ART}${icon}@2x.png" alt="" draggable="false">`;
+        return `<div class="fe-row fe-tile${sel ? ' is-selected' : ''}${clipboard && clipboard.op === 'cut' && clipboard.ids.has(i.id) ? ' is-cut' : ''}" role="option" aria-selected="${sel}" data-id="${esc(i.id)}">`
+            + `<span class="fe-tile-thumb">${thumb}</span>`
+            + `<span class="fe-name">${esc(i.name)}</span>`
+            + '</div>';
+    }
+
+    function setView(mode) {
+        viewMode = mode === 'thumbs' ? 'thumbs' : 'list';
+        try { localStorage.setItem(VIEW_KEY, viewMode); } catch (_) { /* storage off */ }
+        render();
+        scrollToSelection();
+    }
+
+    function viewItems() {
+        return [
+            { label: 'List', radio: viewMode === 'list', action: () => setView('list') },
+            { label: 'Thumbnails', radio: viewMode === 'thumbs', action: () => setView('thumbs') }
+        ];
+    }
+
     function render() {
         if (!page) return;
         renderBar();
         const list = page.querySelector('.fe-list');
-        list.innerHTML = items.map(rowHtml).join('');
+        list.classList.toggle('fe-grid', viewMode === 'thumbs');
+        list.innerHTML = items.map(viewMode === 'thumbs' ? tileHtml : rowHtml).join('');
         const empty = page.querySelector('.fe-empty');
         empty.textContent = listError;
         empty.hidden = !listError;
@@ -518,6 +558,34 @@
     }
 
     let committing = false;
+    /** Rename one listed item through the call its kind needs. */
+    async function renameTo(i, name) {
+        if (i.targetKind === 'vfs-folder' && !isLiveDesktopShortcut(i)) await vfsClient.renameFolder(i.targetId, name);
+        else if (i.targetKind === 'user-file' && !isUserFileLink(i)) await vfsClient.renameFile(i.targetId, name);
+        else if (isUserFileLink(i) || isVfsVirtualEntry(i)) await vfsClient.renameEntry(i.id, name);
+        else if (isStoredShortcut(i)) await vfsClient.renameShortcutEntry(i.id, name);
+        else if (isLiveDesktopShortcut(i) && typeof desktopShortcuts !== 'undefined') await desktopShortcuts.renameShortcut(i.id, name);
+        else throw new Error('This item cannot be renamed.');
+    }
+
+    /** Items of a folder whose names contain `name` (the listing's own search). */
+    async function namesakes(path, name) {
+        try {
+            const res = await vfsClient.listDirectory(path, { offset: 0, limit: 500, sortField: 'name', sortDirection: 'asc', search: name });
+            return (res && res.items) || [];
+        } catch (_) { return []; }
+    }
+
+    /** WM's name for a copy pasted where its name is taken: "Copy of x", "Copy (2) of x", ... */
+    function copyName(name, taken) {
+        let n = 1;
+        for (;;) {
+            const candidate = n === 1 ? `Copy of ${name}` : `Copy (${n}) of ${name}`;
+            if (!taken.has(candidate.toLowerCase())) return candidate;
+            n++;
+        }
+    }
+
     async function commitRename() {
         if (committing) return;
         const id = renamingId;
@@ -537,16 +605,12 @@
         committing = true;
         renamingId = null;
         try {
-            if (i.targetKind === 'vfs-folder' && !isLiveDesktopShortcut(i)) await vfsClient.renameFolder(i.targetId, name);
-            else if (i.targetKind === 'user-file' && !isUserFileLink(i)) await vfsClient.renameFile(i.targetId, name);
-            else if (isUserFileLink(i) || isVfsVirtualEntry(i)) await vfsClient.renameEntry(i.id, name);
-            else if (isStoredShortcut(i)) await vfsClient.renameShortcutEntry(i.id, name);
-            else if (isLiveDesktopShortcut(i) && typeof desktopShortcuts !== 'undefined') await desktopShortcuts.renameShortcut(i.id, name);
-            else throw new Error('This item cannot be renamed.');
+            await renameTo(i, name);
         } catch (err) {
             committing = false;
             render();
-            await errorBox('Error Renaming File', 'rename', i, err);
+            // the device answers a taken name (and any refusal) with this box
+            await ws.messageBox({ title: 'Error Renaming File', icon: 'error', text: `Cannot rename '${i.name}': Access is denied.\n\nBe certain that the file is not write-protected and is not currently in use.` });
             return;
         }
         committing = false;
@@ -561,11 +625,15 @@
             await ws.messageBox({ title: 'File Explorer', icon: 'error', text: sel.length === 1 ? `Cannot delete '${sel[0].name}': it is a system item.` : 'The selected items cannot be deleted.' });
             return;
         }
+        // the device's own questions (Confirm File / Folder / Multiple File Delete), No the default
+        const one = ok.length === 1 ? ok[0] : null;
+        const folder = one && isFolder(one);
         const yes = await ws.messageBox({
-            title: 'Delete',
-            icon: 'question',
-            text: ok.length === 1 ? `Are you sure you want to delete "${ok[0].name}"?` : `Are you sure you want to delete these ${ok.length} items?`,
-            buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }],
+            title: !one ? 'Confirm Multiple File Delete' : (folder ? 'Confirm Folder Delete' : 'Confirm File Delete'),
+            icon: 'warning',
+            text: !one ? `Are you sure you want to delete these ${ok.length} items?`
+                : (folder ? `Are you sure you want to remove the folder '${one.name}' and all its contents?` : `Are you sure you want to delete '${one.name}'?`),
+            buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }],
             cancelValue: false
         });
         if (!yes) return;
@@ -616,8 +684,21 @@
         }
         for (const i of list) {
             try {
-                if (op === 'cut') await vfsClient.moveItems(refsOf([i]), path);
-                else await vfsClient.copyItems(refsOf([i]), path, { userFileCopyMode: asShortcut ? 'shortcut' : 'duplicate' });
+                if (op === 'cut') {
+                    await vfsClient.moveItems(refsOf([i]), path);
+                } else {
+                    // a copy into a folder that already has this name gets WM's "Copy of ..." (the
+                    // server keeps the name; the new item is renamed right after it is made)
+                    const before = asShortcut ? [] : await namesakes(path, i.name);
+                    const clash = before.some((b) => String(b.name).toLowerCase() === String(i.name).toLowerCase());
+                    await vfsClient.copyItems(refsOf([i]), path, { userFileCopyMode: asShortcut ? 'shortcut' : 'duplicate' });
+                    if (clash) {
+                        const known = new Set(before.map((b) => b.id));
+                        const after = await namesakes(path, i.name);
+                        const fresh = after.find((a) => !known.has(a.id) && String(a.name).toLowerCase() === String(i.name).toLowerCase());
+                        if (fresh) await renameTo(fresh, copyName(i.name, new Set(after.map((a) => String(a.name).toLowerCase()))));
+                    }
+                }
             } catch (err) {
                 await errorBox(op === 'cut' ? 'Error Moving File' : 'Error Copying File', op === 'cut' ? 'move' : 'copy', i, err);
                 break;
@@ -684,6 +765,7 @@
             { label: 'Refresh', action: () => load({ keep: true }) },
             { label: 'Show All Files', checked: showAll, action: toggleShowAll },
             { label: 'Sort By', submenu: sortItems },
+            { label: 'View', submenu: viewItems },
             '-',
             { label: 'Send...', disabled: true },
             { label: 'Beam File...', disabled: true },
@@ -697,22 +779,22 @@
 
     function contextMenu(onItem) {
         if (!onItem) {
+            // device (hold on empty space): Refresh, Show All Files | Paste, Paste Shortcut, New Folder
             return [
+                { label: 'Refresh', action: () => load({ keep: true }) },
+                { label: 'Show All Files', checked: showAll, action: toggleShowAll },
+                '-',
                 { label: 'Paste', disabled: !canPaste(), action: () => paste(false) },
                 { label: 'Paste Shortcut', disabled: !canPasteShortcut(), action: () => paste(true) },
-                '-',
-                { label: 'New Folder', disabled: !writable(pathNow()) || readOnly(), action: newFolder },
-                { label: 'Refresh', action: () => load({ keep: true }) },
-                '-',
-                { label: 'Select All', disabled: !items.length, action: selectAll }
+                { label: 'New Folder', disabled: !writable(pathNow()) || readOnly(), action: newFolder }
             ];
         }
         const sel = selectedItems();
         const cutCopy = sel.length > 0 && sel.every(canCutCopy);
         return [
+            // device (hold on a file or folder): Cut, Copy | Rename, Delete | Send..., Beam File...
             { label: 'Cut', disabled: !cutCopy, action: () => copySel('cut') },
             { label: 'Copy', disabled: !cutCopy, action: () => copySel('copy') },
-            { label: 'Paste', disabled: !canPaste(), action: () => paste(false) },
             '-',
             { label: 'Rename', disabled: sel.length !== 1 || !canRename(sel[0]) || readOnly(), action: () => startRename(sel[0].id) },
             { label: 'Delete', disabled: !sel.length || !sel.some(canDelete) || readOnly(), action: deleteSelection },
@@ -817,10 +899,12 @@
             e.stopPropagation();
             // the path from My Device down to this folder, each level indented, then the places
             const cur = pathNow();
-            const levels = trail.map((t, n) => ({ label: `${'   '.repeat(n)}${placeName(t.path, t.name)}`, radio: n === trail.length - 1, action: () => { if (t.path !== cur) navigate(t.path, null, { trail: trail.slice(0, n + 1), select: trail[n + 1] && trail[n + 1].path }); } }));
+            // the device indents each level 12 px; the bar reads "Show" while the list is open
+            folderBtn.querySelector('.fe-folder-name').textContent = 'Show';
+            const levels = trail.map((t, n) => ({ label: placeName(t.path, t.name), indent: n, radio: n === trail.length - 1, action: () => { if (t.path !== cur) navigate(t.path, null, { trail: trail.slice(0, n + 1), select: trail[n + 1] && trail[n + 1].path }); } }));
             const places = goToItems().filter((g) => !trail.some((t) => placeName(t.path, t.name) === g.label));
             folderBtn.setAttribute('aria-expanded', 'true');
-            ws.dropdown(folderBtn, places.length ? levels.concat(['-'], places.map((g) => Object.assign(g, { radio: null }))) : levels, 'left', () => folderBtn.setAttribute('aria-expanded', 'false'));
+            ws.dropdown(folderBtn, places.length ? levels.concat(['-'], places.map((g) => Object.assign(g, { radio: null }))) : levels, 'left', () => { folderBtn.setAttribute('aria-expanded', 'false'); renderBar(); });
         });
         const sortBtn = p.querySelector('.wm-pv-sort');
         sortBtn.addEventListener('click', (e) => {
