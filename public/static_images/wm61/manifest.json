@@ -2197,7 +2197,8 @@
       "flags": [
         "1x-uses-native-32px-frame"
       ],
-      "notes": "Settings applet icon: About (Settings grid, Melaton Mobile Settings app). The phone screen shows the ROM's flag art (applet icon as shipped)."
+      "notes": "Melaton emblem (melaton-flat): the ROM About icon shows the Windows flag (copyright rule)",
+      "source": "public/static_images/melaton/melaton-flat-256.png"
     },
     "set-clock": {
       "1x": {
@@ -2438,26 +2439,6 @@
         "1x-downscaled-from-2x"
       ],
       "notes": "Message list: read message (open envelope)."
-    },
-    "msg-attach-mail": {
-      "1x": {
-        "source": "box-downscaled from @2x",
-        "size": [
-          16,
-          16
-        ]
-      },
-      "2x": {
-        "source": "outres.192.dll bitmap 22505 frame 0 (32x32 strip), #FF00FF key made transparent",
-        "size": [
-          32,
-          32
-        ]
-      },
-      "flags": [
-        "1x-downscaled-from-2x"
-      ],
-      "notes": "Message list: a message with attachments (envelope with a paper clip)."
     },
     "msg-attachment": {
       "1x": {
@@ -2778,6 +2759,26 @@
         "1x-downscaled-from-2x"
       ],
       "notes": "Contact card: Send text message."
+    },
+    "msg-attach-mail": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bitmap 22505 frame 0 (32x32 strip), #FF00FF key made transparent",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Message list: a message with attachments (envelope with a paper clip)."
     },
     "ie-stop": {
       "1x": {
