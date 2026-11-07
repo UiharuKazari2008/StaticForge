@@ -875,6 +875,11 @@ const STILL_MIN_GAP_MS = 1200;
 const STILL_MAX_GAP_MS = 8000;
 const STILL_MAX_PIXELS = 1920 * 1440;
 const STILL_MAX_SCALE = 4;
+// One still on the way at a time: the viewer acks each one ('still-ack'), so a slow link (the
+// phone's relay) never queues stills ahead of frames; an old viewer that never acks gets one per 10 s.
+const STILL_ACK_WAIT_MS = 10000;
+// A link this slow (the viewer's measured round trip, relay queue included) waits for a still.
+const STILL_MAX_RTT_MS = 1000;
 
 function stillScale(session) {
     const meta = session.meta || {};
@@ -896,7 +901,33 @@ function sendFrame(session, payload, binary) {
         session.stillGap = lived < 3000 ? Math.min(STILL_MAX_GAP_MS, (session.stillGap || STILL_MIN_GAP_MS) * 2) : STILL_MIN_GAP_MS;
     }
     session.stillGen = (session.stillGen || 0) + 1;
+    // the still says which binary frame it was taken over, so a transport that delivers it ahead
+    // of that frame (the relay flushes text before its pending frame) does not hide it
+    session.stillBaseBytes = binary && payload && payload.length ? payload.length : 0;
     armStill(session);
+}
+
+// A viewport change (resize, zoom, print) must not overlap a still capture: when the capture ends,
+// Chromium puts back the device metrics it saved first, undoing the new viewport. Cancel and wait.
+async function changeViewport(session) {
+    session.viewportBusy = (session.viewportBusy || 0) + 1;
+    try {
+        await settleStill(session);
+        await applyViewport(session);
+        await restartScreencast(session);
+    } finally {
+        session.viewportBusy -= 1;
+    }
+}
+
+async function settleStill(session) {
+    if (session.stillTimer) clearTimeout(session.stillTimer);
+    session.stillTimer = null;
+    session.stillGen = (session.stillGen || 0) + 1;
+    if (session.stillPromise) {
+        try { await session.stillPromise; } catch (_) {}
+    }
+    session.stillQuietUntil = 0;
 }
 
 function armStill(session, delay) {
@@ -906,8 +937,14 @@ function armStill(session, delay) {
     const gap = Math.max(0, (session.stillAt || 0) + (session.stillGap || STILL_MIN_GAP_MS) - Date.now());
     session.stillTimer = setTimeout(() => {
         session.stillTimer = null;
-        captureStill(session).catch((err) => {
+        const run = captureStill(session).catch((err) => {
+            // the page closed under the capture: nothing to report
+            if (!sessions.get(session.id) || session.closing) return;
             console.warn('[grimoire-browser] still', err && err.message);
+        });
+        session.stillPromise = run;
+        run.then(() => {
+            if (session.stillPromise === run) session.stillPromise = null;
         });
     }, Math.max(delay == null ? STILL_SETTLE_MS : delay, gap));
 }
@@ -921,17 +958,19 @@ async function captureStill(session) {
     const scale = stillScale(session);
     if (!scale || !session.sockets.size) return;
     // still moving: frames in flight, a scroll or a page load
-    if (session.framePump || session.latestFrame || session.pendingScroll || scrollBurst(session) || session.navigating) {
+    if (session.viewportBusy || session.framePump || session.latestFrame || session.pendingScroll || scrollBurst(session) || session.navigating) {
         armStill(session);
         return;
     }
     if (session.stillSentGen === session.stillGen) return;
-    if (socketsCongested(session)) {
+    if (socketsCongested(session) || (session.rttMs || 0) > STILL_MAX_RTT_MS
+        || (session.stillUnacked && Date.now() - session.stillUnacked < STILL_ACK_WAIT_MS)) {
         armStill(session, STILL_MIN_GAP_MS);
         return;
     }
     const gen = session.stillGen;
     const meta = session.meta;
+    const baseBytes = session.stillBaseBytes || 0;
     session.stillBusy = true;
     let shot;
     let view;
@@ -940,6 +979,9 @@ async function captureStill(session) {
         view = metrics && metrics.cssVisualViewport;
         // a pinch-zoomed page (pageScaleFactor) is left to the frames
         if (!view || Math.abs((view.scale || 1) - 1) > 0.001 || session.stillGen !== gen) return;
+        // the capture emulates the scaled device for a moment; the screencast sends a frame of
+        // that size, which the frame handler drops (and only that size)
+        session.stillSide = { w: Math.round(meta.deviceWidth * scale), h: Math.round(meta.deviceHeight * scale) };
         shot = await session.cdp.send('Page.captureScreenshot', {
             format: 'jpeg',
             quality: session.settings.jpegQuality,
@@ -953,6 +995,7 @@ async function captureStill(session) {
     if (!shot || !shot.data || !sessions.get(session.id) || session.stillGen !== gen || session.meta !== meta) return;
     session.stillSentGen = gen;
     session.stillAt = Date.now();
+    session.stillUnacked = Date.now();
     const still = {
         type: 'still',
         gen,
@@ -961,6 +1004,7 @@ async function captureStill(session) {
         cssW: meta.deviceWidth,
         cssH: meta.deviceHeight,
         scale,
+        baseBytes,
         data: shot.data
     };
     session.still = still;
@@ -1948,6 +1992,7 @@ async function publishFeeds(session) {
 // Print (Grimoire's Print ▾): headful Chromium has no Page.printToPDF, so the whole page goes out as
 // one picture (up to 12000 CSS pixels tall) that the Grimoire window lays out on paper.
 async function capturePrintPage(session) {
+    await settleStill(session);
     const metrics = await session.cdp.send('Page.getLayoutMetrics');
     const size = metrics.cssContentSize || metrics.contentSize || {};
     const width = Math.max(1, Math.ceil(size.width || session.width));
@@ -2097,8 +2142,10 @@ async function createSession(body, adoptedPage) {
             metadata.pageScaleFactor
         ].join(':');
         // Page.captureScreenshot with a clip scale briefly emulates the bigger device: the screencast
-        // sends a frame or two of that size with odd metadata. They are not the page; drop them.
-        if (metaKey !== current.metaKey && (current.stillBusy || Date.now() < (current.stillQuietUntil || 0))) {
+        // sends a frame of that size. It is not the page; drop it (a real change is never that size).
+        const side = current.stillSide;
+        if (metaKey !== current.metaKey && side && (current.stillBusy || Date.now() < (current.stillQuietUntil || 0))
+            && Math.abs((metadata.deviceWidth || 0) - side.w) <= 2 && Math.abs((metadata.deviceHeight || 0) - side.h) <= 2) {
             current.cdp.send('Page.screencastFrameAck', { sessionId: event.sessionId }).catch(() => {});
             return;
         }
@@ -2492,11 +2539,14 @@ async function onViewerMessage(session, raw) {
         if (width === session.width && height === session.height) return;
         session.width = width;
         session.height = height;
-        await applyViewport(session);
-        await restartScreencast(session);
+        await changeViewport(session);
         return;
     }
     // the viewer's wanted device pixels per CSS pixel (a phone at its pixel ratio); stills only
+    if (msg.type === 'still-ack') {
+        session.stillUnacked = 0;
+        return;
+    }
     if (msg.type === 'still-scale') {
         const scale = Math.max(0, Math.min(STILL_MAX_SCALE, Number(msg.value) || 0));
         if (Math.abs(scale - (session.clientScale || 0)) < 0.01) return;
@@ -2509,8 +2559,7 @@ async function onViewerMessage(session, raw) {
         const zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Number(msg.value) || 1));
         if (Math.abs(zoom - (session.zoom || 1)) < 0.001) return;
         session.zoom = zoom;
-        await applyViewport(session);
-        await restartScreencast(session);
+        await changeViewport(session);
         return;
     }
     if (msg.type === 'print') {
@@ -2784,7 +2833,7 @@ function attachViewer(ws, session) {
             session.stillGap = STILL_MIN_GAP_MS;
             session.stillInputAt = Date.now();
         }
-        if (preview && (preview.type === 'dialog-reply' || preview.type === 'file-chooser-reply' || preview.type === 'navigate' || preview.type === 'reload' || preview.type === 'key' || preview.type === 'paste' || preview.type === 'ping' || preview.type === 'rtt' || preview.type === 'inspect' || preview.type === 'copy')) {
+        if (preview && (preview.type === 'dialog-reply' || preview.type === 'file-chooser-reply' || preview.type === 'navigate' || preview.type === 'reload' || preview.type === 'key' || preview.type === 'paste' || preview.type === 'ping' || preview.type === 'rtt' || preview.type === 'still-ack' || preview.type === 'inspect' || preview.type === 'copy')) {
             onViewerMessage(session, raw).catch((err) => {
                 console.error('[grimoire-browser] input', err && err.message);
             });

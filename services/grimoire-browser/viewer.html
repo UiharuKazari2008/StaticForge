@@ -183,6 +183,9 @@
   var stillArrival = 0;
   var frameArrival = 0;
   var queuedArrival = 0;
+  // byte size of the frame the last still was taken over: the relay can deliver that frame after
+  // the still, and it must not hide it
+  var stillBase = 0;
 
   var queuedBytes = null;
   var drawing = false;
@@ -201,6 +204,9 @@
 
   function drawStill(msg) {
     var arrival = stillArrival = ++arrivals;
+    stillBase = msg.baseBytes || 0;
+    // one still on the way at a time (Alchemy waits for this before the next)
+    send({ type: 'still-ack' });
     var bin = atob(msg.data);
     var bytes = new Uint8Array(bin.length);
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -208,9 +214,10 @@
     var url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
     img.onload = function () {
       URL.revokeObjectURL(url);
-      // a newer frame or still came first, or the still is not of this frame's size
+      // a newer frame or still came first, or the still is not of the page's current CSS size
+      // (frames can be smaller than that: the phone's Desktop view gets 780 px frames of 1024)
       if (arrival !== stillArrival || frameArrival > arrival) return;
-      if (Math.abs(msg.cssW - canvas.width) > 1.5 || Math.abs(msg.cssH - canvas.height) > 1.5) return;
+      if (Math.abs(msg.cssW - (meta.deviceWidth || 0)) > 1.5 || Math.abs(msg.cssH - (meta.deviceHeight || 0)) > 1.5) return;
       if (stillCanvas.width !== img.width || stillCanvas.height !== img.height) {
         stillCanvas.width = img.width;
         stillCanvas.height = img.height;
@@ -224,6 +231,14 @@
 
   function drawBytes(bytes) {
     queuedBytes = bytes;
+    if (stillBase && bytes.length === stillBase && frameArrival < stillArrival) {
+      // the still's own frame, delivered after it: older than the still
+      queuedArrival = frameArrival = stillArrival - 0.5;
+      stillBase = 0;
+      paintQueued();
+      return;
+    }
+    stillBase = 0;
     queuedArrival = frameArrival = ++arrivals;
     paintQueued();
   }

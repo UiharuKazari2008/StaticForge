@@ -188,10 +188,11 @@
      * Layout of the viewer: { W, H } page area, s = sharpness (frame px per phone px), V = CSS
      * viewport width, z = Alchemy zoom (its device scale), d = still scale. Chromium's screencast
      * frames are CSS-viewport sized whatever the device scale (zoom 1.96 on a 766 px session sends
-     * 391 px frames), so z stays at or under 1 for the moving picture: the frame is never wider
-     * than the CSS viewport, and One Column is 1 frame px per phone px. Sharpness comes from
-     * Alchemy's still once the page settles: d = phone device px per page CSS px (3 on a dpr 3
-     * phone in One Column, more at Larger), capped at 4; Alchemy caps its pixels too.
+     * 391 px frames), so the moving picture is at most 1 frame px per CSS px. z stays at or under
+     * 1 up to Medium; at Larger and Largest in One Column the 320 px minimum frame width pushes
+     * it over 1 (312 or 260 CSS px frames in a 390 px box), so those frames are softer. Sharpness
+     * comes from Alchemy's still once the page settles: d = phone device px per page CSS px (3 on
+     * a dpr 3 phone in One Column, more at Larger), capped at 4; Alchemy caps its pixels too.
      */
     function geometry() {
         const W = Math.max(1, els.view.clientWidth);
