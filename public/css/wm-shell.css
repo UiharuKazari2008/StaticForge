@@ -230,6 +230,8 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
     width: calc(16 * var(--wm-px));
     height: calc(16 * var(--wm-px));
     background: center / contain no-repeat;
+    /* 1-bit ROM glyphs: keep their pixel steps when a screen scale stretches them */
+    image-rendering: pixelated;
 }
 
 .wm-status-icon[data-icon="data-off"] { background-image: image-set(url('/static_images/wm61/status-data-off.png') 1x, url('/static_images/wm61/status-data-off@2x.png') 2x, url('/static_images/wm61/status-data-off@4x.png') 4x); }
@@ -1209,6 +1211,7 @@ html.ui-mobile body > #toastContainer {
     padding: 0;
     border: 0;
     background: center / calc(16 * var(--wm-px)) no-repeat;
+    image-rendering: pixelated;
 }
 
 /* ---- takeover: a surface that must own the screen (PIN logon, fatal / connectivity errors,
@@ -1990,8 +1993,8 @@ html.ui-mobile body > .pswp .pswp__preloader {
     outline: none;
 }
 
-/* ---- title-bar status icons as buttons; the notification icons (Director, prints, mail) are
- * their programs' own colour icons, as WM 6.1 draws a notifying program's icon ---- */
+/* ---- title-bar status icons as buttons; all of them, the notification ones (Director, prints,
+ * mail, toasts) included, are WM 6.1's white 1-bit title-bar glyphs ---- */
 .wm-status-icon {
     padding: 0 !important;
 }

@@ -28,7 +28,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-clock", "set-connections", "set-memory", "set-menus", "set-owner", "set-power", "set-regional", "set-screen", "set-sounds", "set-today", "set-usb", "set-wireless", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-off", "status-data-on", "status-notify-many", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
+    const HD_ART = new Set(["app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-clock", "set-connections", "set-memory", "set-menus", "set-owner", "set-power", "set-regional", "set-screen", "set-sounds", "set-today", "set-usb", "set-wireless", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-off", "status-data-on", "status-director", "status-mail", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
     const srcset = (name) => `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -145,9 +145,10 @@
         }).observe(document.head, { childList: true });
     }
 
-    // Title-bar notification icons are the notifying program's own small icon in colour, as WM 6.1
-    // draws them (SHNotificationAdd on the emulator, ~/.cache/wm61 wn1.png: Messaging's envelope)
-    const STATUS_APP_ICONS = { mail: 'app-messaging', prints: 'app-studio', director: 'app-director' };
+    // Title-bar status icons are WM 6.1's white 1-bit glyphs: new mail is outres 32507 (the title-bar
+    // envelope), prints and the Director are Melaton glyphs drawn in the same style (manifest.json)
+    const STATUS_APP_ICONS = { mail: 'status-mail', prints: 'status-prints', director: 'status-director' };
+    const STATUS_APP_ROLES = ['mail', 'prints', 'director'];
     const artImageSet = (name) => `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x${HD_ART.has(name) ? `, url("${ART}${name}@4x.png") 4x` : ''})`;
 
     // ---------------------------------------------------------------- frame
@@ -720,9 +721,9 @@
         shell.querySelector('[data-role="prints"]').hidden = !printsInProgress();
         const mailEl = shell.querySelector('[data-role="mail"]');
         mailEl.hidden = !(shellMailUnread > 0);
-        fitStatus();
+        if (noteTrayOpen) renderNotes(); else fitStatus();
         const bubble = shell.querySelector('.wm-bubble');
-        if (!bubble.hidden && bubble.dataset.role) statusBubble(bubble.dataset.role, shell.querySelector(`.wm-status-icon[data-role="${bubble.dataset.role}"]`), true);
+        if (!bubble.hidden && bubble.dataset.role) statusBubble(bubble.dataset.role, shell.querySelector(statusFolded.includes(bubble.dataset.role) ? '[data-role="notify"]' : `.wm-status-icon[data-role="${bubble.dataset.role}"]`), true);
         const today = apps.get('today');
         if (today && typeof today.refresh === 'function' && current === 'today') today.refresh();
         // notifications held back during startup or a takeover come up once it ends
@@ -730,22 +731,30 @@
     }
 
     /**
-     * A narrow title bar sheds its least useful icons so the title keeps its floor (.wm-title min-width):
-     * roaming first, then a battery that is neither low nor charging, then volume.
+     * A narrow title bar makes room so the title keeps its floor (.wm-title min-width): roaming goes
+     * first, then mail, prints and the Director fold into the notification bubble (WM shows one
+     * speech bubble for several pending notifications; the tray lists them), then volume. The
+     * signal and a known battery always stay.
      */
+    let statusFolded = [];
     function fitStatus() {
         if (!shell) return;
         const bar = shell.querySelector('.wm-titlebar');
-        const icons = ['roaming', 'battery', 'volume'].map((r) => shell.querySelector(`.wm-status-icon[data-role="${r}"]`));
-        icons.forEach((el) => el.classList.remove('wm-shed'));
-        if (bar.scrollWidth <= bar.clientWidth + 1) return;
-        const b = deviceView().battery;
-        const keepBattery = !!(b && (b.charging || (b.level != null && b.level <= 25)));
-        for (const el of icons) {
-            if (el.hidden || (el.dataset.role === 'battery' && keepBattery)) continue;
-            el.classList.add('wm-shed');
-            if (bar.scrollWidth <= bar.clientWidth + 1) return;
+        const el = (r) => shell.querySelector(`.wm-status-icon[data-role="${r}"]`);
+        const fits = () => bar.scrollWidth <= bar.clientWidth + 1;
+        ['roaming', 'volume', ...STATUS_APP_ROLES].forEach((r) => el(r).classList.remove('wm-shed'));
+        statusFolded = [];
+        paintNotifyIcon();
+        if (fits()) return;
+        if (!el('roaming').hidden) { el('roaming').classList.add('wm-shed'); if (fits()) return; }
+        const apps = STATUS_APP_ROLES.filter((r) => !el(r).hidden);
+        if (apps.length) {
+            apps.forEach((r) => el(r).classList.add('wm-shed'));
+            statusFolded = apps;
+            paintNotifyIcon();
+            if (fits()) return;
         }
+        if (!el('volume').hidden) el('volume').classList.add('wm-shed');
     }
 
     // ---------------------------------------------------------------- status: device (battery, signal, data, Wi-Fi)
@@ -1023,7 +1032,7 @@
         const live = new Set(notes.flatMap((n) => n.ids.map((id) => seenKey(id, n))));
         for (const k of [...noteSeen]) if (!live.has(k)) noteSeen.delete(k);
         if (!noteOf(noteShown)) noteShown = null;
-        if (!notes.length) noteTrayOpen = false;
+        if (!notes.length && !statusFolded.length) noteTrayOpen = false;
         if (!noteShown && !noteTrayOpen && notesMayPop()) {
             const next = notes.find((n) => !n.ids.some((id) => noteSeen.has(seenKey(id, n))));
             if (next) noteShown = next.id;
@@ -1039,37 +1048,58 @@
         return n.title || 'Dreamscape';
     }
 
-    /** The title bar / tray icon: the toast's own picture, else a message box icon for its kind. */
+    /**
+     * The title bar / tray glyph for a notification: WM 6.1's white glyphs only (a reminder is
+     * notify.dll's bell, anything else the speech bubble, shellres 4673), never a colour icon.
+     */
     function noteIcon(n) {
-        const img = n.toast && n.toast.querySelector('.toast-icon img[src]');
-        if (img) return `url("${img.src.replace(/"/g, '%22')}")`;
-        return artImageSet(n.type === 'error' ? 'msgbox-error' : n.type === 'warning' ? 'msgbox-warning' : 'msgbox-info');
+        return artImageSet(n && n.type === 'reminder' ? 'status-reminder' : 'status-notify-many');
     }
 
-    function renderNotes() {
+    const STATUS_APP_LABEL = { mail: 'Messages', prints: 'Prints', director: 'Director' };
+
+    /** The bubble icon: pending notifications plus any status icons folded into it by fitStatus. */
+    function paintNotifyIcon() {
         const icon = shell.querySelector('[data-role="notify"]');
-        icon.hidden = !notes.length;
-        if (notes.length > 1) {
+        const count = notes.length + statusFolded.length;
+        icon.hidden = !count;
+        if (count > 1) {
             icon.dataset.icon = 'notify-many';
             icon.style.backgroundImage = '';
-            icon.setAttribute('aria-label', `${notes.length} notifications`);
+            icon.setAttribute('aria-label', `${count} notifications`);
         } else if (notes.length) {
             delete icon.dataset.icon;
             icon.style.backgroundImage = noteIcon(notes[0]);
             icon.setAttribute('aria-label', `Notification: ${noteTitle(notes[0])}`);
+        } else if (count) {
+            delete icon.dataset.icon;
+            icon.style.backgroundImage = artImageSet(STATUS_APP_ICONS[statusFolded[0]]);
+            icon.setAttribute('aria-label', STATUS_APP_LABEL[statusFolded[0]]);
         }
+    }
+
+    function renderNotes() {
+        fitStatus();
         const tray = shell.querySelector('.wm-notify-tray');
         tray.hidden = !noteTrayOpen;
         if (noteTrayOpen) {
             tray.textContent = '';
-            for (const n of notes) {
+            const add = (image, label, tap) => {
                 const b = document.createElement('button');
                 b.type = 'button';
                 b.className = 'wm-notify-tray-icon';
-                b.style.backgroundImage = noteIcon(n);
-                b.setAttribute('aria-label', noteTitle(n));
-                b.addEventListener('click', (e) => { e.stopPropagation(); showNote(n.id); });
+                b.style.backgroundImage = image;
+                b.setAttribute('aria-label', label);
+                b.addEventListener('click', (e) => { e.stopPropagation(); tap(); });
                 tray.appendChild(b);
+            };
+            for (const n of notes) add(noteIcon(n), noteTitle(n), () => showNote(n.id));
+            for (const r of statusFolded) {
+                add(artImageSet(STATUS_APP_ICONS[r]), STATUS_APP_LABEL[r], () => {
+                    noteTrayOpen = false;
+                    renderNotes();
+                    statusBubble(r, shell.querySelector('[data-role="notify"]'));
+                });
             }
         }
         renderNoteBubble();
@@ -1179,7 +1209,8 @@
             hideNote();
             return;
         }
-        if (notes.length === 1) { showNote(notes[0].id); return; }
+        if (notes.length === 1 && !statusFolded.length) { showNote(notes[0].id); return; }
+        if (!notes.length && statusFolded.length === 1) { statusBubble(statusFolded[0], shell.querySelector('[data-role="notify"]')); return; }
         noteTrayOpen = !noteTrayOpen;
         renderNotes();
     }

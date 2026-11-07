@@ -3363,7 +3363,7 @@
         "1x-downscaled-from-2x",
         "4x-point-upscaled"
       ],
-      "notes": "Speech bubble: several notifications pending (title bar), as on the emulator with two SHNotificationAdd bubbles."
+      "notes": "Speech bubble: pending notifications (title bar). Several (or toasts plus folded status icons) show it as on the emulator with two SHNotificationAdd bubbles; a single toast of any kind but a reminder shows it too."
     },
     "status-signal-1": {
       "1x": {
@@ -4146,6 +4146,119 @@
         "user-chosen-exception"
       ],
       "notes": "WM 6.1 Start flag, drawn at x=4, y=8 of the 50 px title bar (2x). Not the default: only for Settings > Menus > Start (Windows flag), Yukimi's 2026-11-07 opt-in exception to the copyright rule (the default Start mark stays the Melaton emblem). A 2 px separator follows at x=50..51 (2x), y=7..45, title colour at the ends to #84C35A at y=26."
+    },
+    "status-mail": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll ico_32507_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
+      ],
+      "notes": "New e-mail / unread messages: the white envelope WM 6.1 shows in the title bar (Messaging). Replaces the colour app-messaging icon there."
+    },
+    "status-reminder": {
+      "1x": {
+        "source": "notify.dll ico_8300_0_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "notify.dll ico_8300_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "4x-point-upscaled"
+      ],
+      "notes": "Reminder bell: the title-bar glyph for a pending reminder notification."
+    },
+    "status-prints": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "drawn (Melaton extension)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-extension"
+      ],
+      "notes": "Melaton extension: prints in progress. A picture (frame, sun, two hills) drawn 1-bit in the size and strokes of outres 32507 (32 x 24 frame at y 6..29, 4 px sides); the ROM has no picture or printer title-bar glyph. Source: ~/.cache/wm61/tools/draw-status-melaton.py."
+    },
+    "status-director": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "drawn (Melaton extension)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-extension"
+      ],
+      "notes": "Melaton extension: the Director (busy pulses). A clapperboard drawn 1-bit in the strokes of outres 32507 (striped clapper y 6..11, slate y 14..29, 4 px sides); the ROM has no matching glyph."
     }
   },
   "notDelivered": {
