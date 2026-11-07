@@ -25,7 +25,12 @@
     const ART = '/static_images/wm61/';
     const art = (name) => `${ART}${name}.png`;
     const art2x = (name) => `${ART}${name}@2x.png`;
-    const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${art(name)} 1x, ${art2x(name)} 2x" alt="${alt}" draggable="false">`;
+    // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
+    // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
+    // when art is added: ls public/static_images/wm61/*@4x.png)
+    const HD_ART = new Set(["app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "fe-device", "fe-file", "fe-folder", "menu-check", "menu-submenu-arrow", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "sip-keyboard", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-off", "status-data-on", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
+    const srcset = (name) => `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
+    const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     const apps = new Map();
@@ -140,6 +145,15 @@
         }).observe(document.head, { childList: true });
     }
 
+    // White title-bar glyphs drawn like WM's own (16 x 16 masks; the colour comes from CSS):
+    // an envelope for unread mail, a picture for prints in progress, a clapperboard for the Director
+    const svgUrl = (body) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>${body}</svg>`)}")`;
+    const GLYPHS = {
+        mail: svgUrl("<path d='M1 3.5h14v9H1z M2.6 4.7 8 8.8l5.4-4.1v-.01H2.6z' fill-rule='evenodd'/>"),
+        prints: svgUrl("<path d='M1.5 2.5h13v11h-13z M3 4v6.6l3.2-3.2 2.4 2.4 1.6-1.6L13 11V4z' fill-rule='evenodd'/><circle cx='10.6' cy='6' r='1.2'/>"),
+        director: svgUrl("<path d='M1.5 7h13v6.5h-13z'/><path d='M1.2 3.1 13.8 1.3l.5 3.2L1.7 6.3z M4.2 2.7l2.2 2.9 1.7-.2-2.2-2.9z M8.4 2.1l2.2 2.9 1.7-.2-2.2-2.9z' fill-rule='evenodd'/>")
+    };
+
     // ---------------------------------------------------------------- frame
 
     function build() {
@@ -152,8 +166,11 @@
                 </button>
                 <div class="wm-title" role="heading" aria-level="1">Start</div>
                 <div class="wm-status">
-                    <span class="wm-status-icon" data-role="data" data-icon="data-off" title="Not connected"></span>
-                    <span class="wm-status-icon" data-role="volume" data-icon="volume"></span>
+                    <button type="button" class="wm-status-icon wm-status-glyph" data-role="mail" hidden aria-label="Messages"></button>
+                    <button type="button" class="wm-status-icon wm-status-glyph" data-role="prints" hidden aria-label="Prints"></button>
+                    <button type="button" class="wm-status-icon wm-status-glyph" data-role="director" hidden aria-label="Director"></button>
+                    <button type="button" class="wm-status-icon" data-role="data" data-icon="data-off" aria-label="Connectivity"></button>
+                    <button type="button" class="wm-status-icon" data-role="volume" data-icon="volume" aria-label="Volume"></button>
                 </div>
                 <button type="button" class="wm-title-action" data-kind="close" aria-label="Close" hidden></button>
             </header>
@@ -165,7 +182,8 @@
             </footer>
             <nav class="wm-startmenu" role="menu" hidden></nav>
             <div class="wm-popup" role="menu" hidden></div>
-            <div class="wm-msgbox-layer" hidden></div>`;
+            <div class="wm-msgbox-layer" hidden></div>
+            <div class="wm-bubble" role="dialog" hidden></div>`;
         document.body.appendChild(shell);
 
         shell.querySelector('.wm-start').addEventListener('click', (e) => {
@@ -184,11 +202,21 @@
                 pressSoftKey(btn.dataset.side, btn);
             });
         });
+        shell.querySelectorAll('.wm-status-glyph').forEach((b) => b.style.setProperty('--wm-glyph', GLYPHS[b.dataset.role]));
+        shell.querySelectorAll('.wm-status-icon').forEach((b) => {
+            b.addEventListener('click', (e) => {
+                e.stopPropagation();
+                statusBubble(b.dataset.role, b);
+            });
+        });
         shell.querySelector('.wm-sip').addEventListener('click', () => {
             const input = shell.querySelector('.wm-content input:not([type=hidden]), .wm-content textarea, .wm-searchbar:not([hidden]) input');
             if (input) input.focus();
         });
         document.addEventListener('click', (e) => {
+            // a tap outside an open bubble hides it (its own buttons and links close it too)
+            const bub = shell.querySelector('.wm-bubble');
+            if (!bub.hidden && !bub.contains(e.target) && !(e.target.closest && e.target.closest('#wmShell .wm-status-icon'))) closeBubble();
             if (!openPopup || openPopup.contains(e.target)) return;
             // Start and the soft keys toggle their own menus: closing here first would let
             // their click handler open the menu again
@@ -595,8 +623,164 @@
         let muted = false;
         try { muted = !!(window.tabVolume && typeof window.tabVolume.isMuted === 'function' && window.tabVolume.isMuted()); } catch (_) { /* volume unknown */ }
         vol.dataset.icon = muted ? 'volume-off' : 'volume';
+        // the Director, prints in progress and unread mail show while they have something to say
+        const dir = directorState();
+        const dirEl = shell.querySelector('[data-role="director"]');
+        dirEl.hidden = !dir;
+        if (dir) dirEl.classList.toggle('is-busy', dir.running);
+        shell.querySelector('[data-role="prints"]').hidden = !printsInProgress();
+        const mailEl = shell.querySelector('[data-role="mail"]');
+        mailEl.hidden = !(shellMailUnread > 0);
+        const bubble = shell.querySelector('.wm-bubble');
+        if (!bubble.hidden && bubble.dataset.role) statusBubble(bubble.dataset.role, shell.querySelector(`.wm-status-icon[data-role="${bubble.dataset.role}"]`), true);
         const today = apps.get('today');
         if (today && typeof today.refresh === 'function' && current === 'today') today.refresh();
+    }
+
+    // ---------------------------------------------------------------- status: shared state
+
+    let shellDirectorStatus = null;
+    let shellDirectorAsked = false;
+    let shellMailUnread = 0;
+    const GEN_REQUEST_TYPES = new Set(['generate_image', 'generate_preset', 'reroll_image', 'upscale_image', 'expand_image', 'reroll_expanded_image', 'enhance_image', 'max_enhance_image', 'animate_image']);
+
+    /** { running, persona, name } from director_computer_status (null before the first answer). */
+    function directorState() {
+        const st = shellDirectorStatus || (window.directorInstance && window.directorInstance._status) || null;
+        if (!st) {
+            const ws = window.wsClient;
+            if (!shellDirectorAsked && ws && ws.initializationCompleted && typeof ws.sendMessage === 'function') {
+                shellDirectorAsked = true;
+                ws.sendMessage('director_computer_status', {}, false)
+                    .then((r) => { shellDirectorStatus = (r && (r.data || r)) || null; refreshStatus(); })
+                    .catch(() => { /* no Director on this server */ });
+            }
+            return null;
+        }
+        const xi = st.xi && st.xi.running ? st.xi : null;
+        if (xi) return { running: true, persona: 'Yozora', name: xi.sessionName || '' };
+        return { running: !!st.running, persona: 'Director', name: st.sessionName || '' };
+    }
+
+    function watchDirector() {
+        const ws = window.wsClient;
+        if (!ws || typeof ws.on !== 'function') return;
+        ws.on('director_computer_status', (d) => { shellDirectorStatus = (d && (d.data || d)) || shellDirectorStatus; refreshStatus(); });
+    }
+
+    function printsInProgress() {
+        const ws = window.wsClient;
+        let n = 0;
+        if (ws && ws.pendingRequests && typeof ws.pendingRequests.forEach === 'function') {
+            ws.pendingRequests.forEach((req) => { if (req && GEN_REQUEST_TYPES.has(req.type)) n++; });
+        }
+        return n;
+    }
+
+    // ---------------------------------------------------------------- notification bubble
+
+    /**
+     * WM notification bubble (device: Connectivity / Cannot Connect): rounded 2 px black frame 9 px
+     * in from the sides, a tail up to the status icon that opened it, the title on a band in the
+     * highlight colour, sections split by 1 px rules, blue underlined links, buttons at the right.
+     * sections: strings, { html }, { links: [{ label, action }] }; buttons: [{ text, action }].
+     */
+    function bubble({ title, sections = [], buttons = [{ text: 'Hide' }], anchor = null, role = '' } = {}) {
+        const el = shell.querySelector('.wm-bubble');
+        el.innerHTML = '<span class="wm-bubble-tail" aria-hidden="true"></span>';
+        el.dataset.role = role || '';
+        const head = document.createElement('div');
+        head.className = 'wm-bubble-title';
+        head.textContent = title || '';
+        el.appendChild(head);
+        for (const sec of sections) {
+            const part = document.createElement('div');
+            part.className = 'wm-bubble-section';
+            if (typeof sec === 'string') part.textContent = sec;
+            else if (sec && sec.html) part.innerHTML = sec.html;
+            else if (sec && sec.links) {
+                part.classList.add('is-links');
+                for (const l of sec.links) {
+                    const a = document.createElement('button');
+                    a.type = 'button';
+                    a.className = 'wm-bubble-link';
+                    a.textContent = l.label;
+                    a.addEventListener('click', (e) => { e.stopPropagation(); closeBubble(); if (typeof l.action === 'function') l.action(); });
+                    part.appendChild(a);
+                }
+            } else if (sec && sec.node) part.appendChild(sec.node);
+            el.appendChild(part);
+        }
+        if (buttons && buttons.length) {
+            const row = document.createElement('div');
+            row.className = 'wm-bubble-buttons';
+            for (const b of buttons) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = b.text;
+                btn.addEventListener('click', (e) => { e.stopPropagation(); closeBubble(); if (typeof b.action === 'function') b.action(); });
+                row.appendChild(btn);
+            }
+            el.appendChild(row);
+        }
+        el.hidden = false;
+        // the tail points at the status icon
+        if (anchor) {
+            const sr = shell.getBoundingClientRect();
+            const ar = anchor.getBoundingClientRect();
+            el.style.setProperty('--wm-tail-x', `${Math.round(ar.left + ar.width / 2 - sr.left)}px`);
+            el.classList.add('has-tail');
+        } else {
+            el.classList.remove('has-tail');
+        }
+    }
+
+    function closeBubble() {
+        const el = shell && shell.querySelector('.wm-bubble');
+        if (el) { el.hidden = true; el.dataset.role = ''; }
+    }
+
+    /** The bubble for a title-bar status icon; update=true repaints an open one in place. */
+    function statusBubble(role, anchor, update) {
+        const el = shell.querySelector('.wm-bubble');
+        if (!update && !el.hidden && el.dataset.role === role) { closeBubble(); return; }
+        closeMenus(true);
+        const ws = window.wsClient;
+        if (role === 'data') {
+            const connected = !!(ws && ws.isConnected && ws.isConnected());
+            const rtt = ws && Array.isArray(ws.rttMeasurements) && ws.rttMeasurements.length ? Math.round(ws.rttMeasurements[ws.rttMeasurements.length - 1]) : null;
+            const host = location.host;
+            const sections = connected
+                ? [`Connected to Dreamscape at ${host}.${rtt != null ? ` Round trip ${rtt} ms.` : ''}`]
+                : [(ws && ws.connectionUi && ws.connectionUi.message) || `Not connected to Dreamscape at ${host}.`];
+            const links = [{ label: 'Settings', action: () => { if (apps.has('settings')) open('settings'); } }];
+            if (!connected) links.unshift({ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() });
+            sections.push({ links });
+            bubble({ title: 'Connectivity', role, anchor, sections, buttons: [{ text: 'Hide' }] });
+        } else if (role === 'volume') {
+            const tv = window.tabVolume;
+            const node = document.createElement('div');
+            node.className = 'wm-bubble-volume';
+            const muted = !!(tv && tv.isMuted && tv.isMuted());
+            node.innerHTML = `<label><input type="radio" name="wmvol" value="on"${muted ? '' : ' checked'}> On</label><label><input type="radio" name="wmvol" value="off"${muted ? ' checked' : ''}> Off</label><input type="range" min="0" max="100" step="5" aria-label="Volume">`;
+            const range = node.querySelector('input[type=range]');
+            range.value = String(tv && tv.getLevel ? tv.getLevel() : 100);
+            range.addEventListener('input', () => { if (tv && tv.setLevel) tv.setLevel(Number(range.value)); refreshStatus(); });
+            node.querySelectorAll('input[type=radio]').forEach((r) => r.addEventListener('change', () => { if (tv && tv.setMuted) tv.setMuted(r.value === 'off'); refreshStatus(); }));
+            if (update && !el.hidden) return; // keep the live controls
+            bubble({ title: 'Volume', role, anchor, sections: [{ node }], buttons: [{ text: 'Hide' }] });
+        } else if (role === 'director') {
+            const d = directorState();
+            const text = !d ? 'The Director has not reported yet.'
+                : d.running ? `${d.persona} is working${d.name ? ` on "${d.name}"` : ''}.` : `${d.persona} is idle.`;
+            const links = apps.has('director') ? [{ label: 'Open Director', action: () => open('director') }] : [];
+            bubble({ title: 'Director', role, anchor, sections: links.length ? [text, { links }] : [text], buttons: [{ text: 'Hide' }] });
+        } else if (role === 'prints') {
+            const n = printsInProgress();
+            bubble({ title: 'Prints', role, anchor, sections: [n ? `${n} ${n === 1 ? 'print is' : 'prints are'} in progress.` : 'No prints in progress.', { links: [{ label: 'Pictures & Videos', action: () => open('gallery') }] }], buttons: [{ text: 'Hide' }] });
+        } else if (role === 'mail') {
+            bubble({ title: 'Messaging', role, anchor, sections: [shellMailUnread ? `${shellMailUnread} unread ${shellMailUnread === 1 ? 'message' : 'messages'}.` : 'No unread messages.', ...(apps.has('messaging') ? [{ links: [{ label: 'Messaging', action: () => open('messaging') }] }] : [])], buttons: [{ text: 'Hide' }] });
+        }
     }
 
     // ---------------------------------------------------------------- message box
@@ -787,6 +971,7 @@
                 const owner = typeof DESKTOP_DOVECOTE_HUMAN_OWNER !== 'undefined' ? DESKTOP_DOVECOTE_HUMAN_OWNER : 'yukimi';
                 const mine = boxes.find((b) => b.owner === owner);
                 mailUnread = mine ? (mine.unread || 0) : 0;
+                shellMailUnread = mailUnread;
                 ok = true;
             } catch (_) { /* mail unavailable: the row keeps its last text */ }
             mailLoading = false;
@@ -819,30 +1004,12 @@
 
         // Director: its status push (director_computer_status, kept on directorInstance._status
         // by director.js) says whether a turn runs and in which session; Xi has its own part
-        let directorStatus = null;
-        let directorAsked = false;
 
         function directorText() {
-            const st = directorStatus || (window.directorInstance && window.directorInstance._status) || null;
-            if (!st) {
-                const ws = window.wsClient;
-                if (!directorAsked && ws && ws.initializationCompleted && typeof ws.sendMessage === 'function') {
-                    directorAsked = true;
-                    ws.sendMessage('director_computer_status', {}, false)
-                        .then((r) => { directorStatus = (r && (r.data || r)) || null; if (current === 'today') today.refresh(); })
-                        .catch(() => { /* no Director on this server */ });
-                }
-                return '';
-            }
-            const xi = st.xi && st.xi.running ? st.xi : null;
-            if (xi) return `Yozora is working${xi.sessionName ? `: ${xi.sessionName}` : '...'}`;
-            if (st.running) return `Director is working${st.sessionName ? `: ${st.sessionName}` : '...'}`;
-            return 'Director is idle';
-        }
-
-        if (window.wsClient && typeof window.wsClient.on === 'function') {
-            const onDirector = (d) => { directorStatus = (d && (d.data || d)) || directorStatus; if (current === 'today') today.refresh(); };
-            window.wsClient.on('director_computer_status', onDirector);
+            const d = directorState();
+            if (!d) return '';
+            if (d.running) return `${d.persona} is working${d.name ? `: ${d.name}` : '...'}`;
+            return `${d.persona} is idle`;
         }
 
         function novelAiText() {
@@ -945,7 +1112,8 @@
                     const owner = typeof DESKTOP_DOVECOTE_HUMAN_OWNER !== 'undefined' ? DESKTOP_DOVECOTE_HUMAN_OWNER : 'yukimi';
                     const mine = boxes.find((b) => b.owner === owner);
                     mailUnread = mine ? (mine.unread || 0) : 0;
-                    today.refresh();
+                    shellMailUnread = mailUnread;
+                    refreshStatus();
                 });
                 window.addEventListener('meletonaccountschange', () => today.refresh());
             },
@@ -1638,7 +1806,7 @@
             let frame = 0;
             const tick = () => {
                 img.src = art(`wait-${frame}`);
-                img.srcset = `${art(`wait-${frame}`)} 1x, ${art2x(`wait-${frame}`)} 2x`;
+                img.srcset = srcset(`wait-${frame}`);
                 frame = (frame + 1) % 16;
             };
             tick();
@@ -1781,6 +1949,7 @@
         stack.push('today');
         activate('today');
         applyTodayBackground();
+        watchDirector();
         startBoot();
         refreshStatus();
         setInterval(refreshStatus, 2000);
@@ -1817,11 +1986,13 @@
         syncHistory: () => syncHistory(),
         refreshSoftKeys: () => renderSoftKeys(),
         setTitle: (t) => setTitle(t),
-        art: { url: art, url2x: art2x, img: imgTag },
+        art: { url: art, url2x: art2x, img: imgTag, srcset },
         escapeHtml,
         applyTheme,
         onPopState,
         thumbFor,
+        bubble: (opts) => bubble(opts || {}),
+        closeBubble: () => closeBubble(),
         // tests: run the startup sequence again (splash, installer, Today) on a live page
         _test: { restartBoot() { clearInterval(bootTimer); installKind = null; bootStart = Date.now(); setBoot('splash'); bootTimer = setInterval(bootTick, 200); } },
         deriveRoles,

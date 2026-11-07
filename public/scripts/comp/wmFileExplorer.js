@@ -350,7 +350,7 @@
         const file = !isFolder(i);
         const name = esc(i.name);
         return `<div class="fe-row${sel ? ' is-selected' : ''}${clipboard && clipboard.op === 'cut' && clipboard.ids.has(i.id) ? ' is-cut' : ''}" role="option" aria-selected="${sel}" data-id="${esc(i.id)}">`
-            + `<span class="fe-ico" style="--fe-mask:url('${ART}${icon}@2x.png')"><img src="${ART}${icon}.png" srcset="${ART}${icon}.png 1x, ${ART}${icon}@2x.png 2x" alt="" draggable="false"></span>`
+            + `<span class="fe-ico" style="--fe-mask:url('${ART}${icon}@2x.png')"><img src="${ART}${icon}.png" srcset="${ws.art && ws.art.srcset ? ws.art.srcset(icon) : `${ART}${icon}.png 1x, ${ART}${icon}@2x.png 2x`}" alt="" draggable="false"></span>`
             + `<span class="fe-name">${name}</span>`
             + `<span class="fe-date">${file ? esc(fmtDate(i.modifiedAt)) : ''}</span>`
             + `<span class="fe-size">${file ? esc(fmtSize(i.sizeBytes != null ? i.sizeBytes : i.size)) : ''}</span>`
@@ -372,7 +372,7 @@
         const pic = previewOf(i);
         const thumb = pic
             ? `<img class="fe-thumb" src="${esc(pic)}" alt="" loading="lazy" decoding="async" draggable="false">`
-            : `<img class="fe-thumb-icon" src="${ART}${icon}@2x.png" alt="" draggable="false">`;
+            : `<img class="fe-thumb-icon" src="${ART}${icon}@2x.png" srcset="${ART}${icon}@2x.png 1x${ws.art && ws.art.srcset && /@4x/.test(ws.art.srcset(icon)) ? `, ${ART}${icon}@4x.png 2x` : ''}" alt="" draggable="false">`;
         return `<div class="fe-row fe-tile${sel ? ' is-selected' : ''}${clipboard && clipboard.op === 'cut' && clipboard.ids.has(i.id) ? ' is-cut' : ''}" role="option" aria-selected="${sel}" data-id="${esc(i.id)}">`
             + `<span class="fe-tile-thumb">${thumb}</span>`
             + `<span class="fe-name">${esc(i.name)}</span>`
@@ -457,6 +457,15 @@
         const nav = navPathOf(i);
         if (nav) {
             navigate(nav, i.name, { child: true });
+            return;
+        }
+        // notes open in Notes, contact cards in Contacts (wmNotes.js)
+        if (i.targetKind === 'note' && i.targetId && window.wmNotesApp) {
+            window.wmNotesApp.openNote(i.targetId, i.workspaceId, i.name);
+            return;
+        }
+        if (/\.vcf$/i.test(i.name || '') && i.targetKind === 'user-file' && !i.isShortcut && window.wmContactsApp) {
+            window.wmContactsApp.openFile(i, pathNow());
             return;
         }
         if (typeof showLightbox !== 'function') { await noApp(i); return; }

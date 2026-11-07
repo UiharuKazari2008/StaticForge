@@ -334,6 +334,8 @@ function collectWorkspaceWallpaperUrls() {
     return urls;
 }
 
+const WALLPAPER_DECODE_CAP_MS = 15000;
+
 function preloadWallpaperIntoMemory(url) {
     if (!url) return Promise.resolve();
     const existing = wallpaperMemoryImages.get(url);
@@ -349,6 +351,9 @@ function preloadWallpaperIntoMemory(url) {
         let finish = null;
         promise = new Promise((resolve) => {
             finish = () => resolve();
+            // a request the service worker never answers (it was seen during a large asset update)
+            // must not hold the boot: the wallpaper still paints when it arrives
+            setTimeout(resolve, WALLPAPER_DECODE_CAP_MS);
         });
         img._preloadPromise = promise;
         wallpaperMemoryImages.set(url, img);

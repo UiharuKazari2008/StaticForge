@@ -365,7 +365,13 @@
         },
         onChange(fn) {
             if (typeof fn === 'function') changeListeners.push(fn);
-        }
+        },
+        // the tab's master level (0-100) and mute, for surfaces without the tray flyout
+        // (Melaton Mobile's volume bubble, #709)
+        getLevel: () => level,
+        setLevel: (v) => setLevel(Number(v)),
+        isMuted: () => muted,
+        setMuted: (m) => setMuted(!!m)
     };
 
     readStored();

@@ -170,11 +170,11 @@ html.ui-mobile[data-wm-app="today"] #wmShell {
     background: center / contain no-repeat;
 }
 
-.wm-status-icon[data-icon="data-off"] { background-image: image-set(url('/static_images/wm61/status-data-off.png') 1x, url('/static_images/wm61/status-data-off@2x.png') 2x); }
-.wm-status-icon[data-icon="data-on"] { background-image: image-set(url('/static_images/wm61/status-data-on.png') 1x, url('/static_images/wm61/status-data-on@2x.png') 2x); }
+.wm-status-icon[data-icon="data-off"] { background-image: image-set(url('/static_images/wm61/status-data-off.png') 1x, url('/static_images/wm61/status-data-off@2x.png') 2x, url('/static_images/wm61/status-data-off@4x.png') 4x); }
+.wm-status-icon[data-icon="data-on"] { background-image: image-set(url('/static_images/wm61/status-data-on.png') 1x, url('/static_images/wm61/status-data-on@2x.png') 2x, url('/static_images/wm61/status-data-on@4x.png') 4x); }
 .wm-status-icon[data-icon="data-active"] { background-image: image-set(url('/static_images/wm61/status-data-active.png') 1x, url('/static_images/wm61/status-data-active@2x.png') 2x); }
-.wm-status-icon[data-icon="volume"] { background-image: image-set(url('/static_images/wm61/status-volume.png') 1x, url('/static_images/wm61/status-volume@2x.png') 2x); }
-.wm-status-icon[data-icon="volume-off"] { background-image: image-set(url('/static_images/wm61/status-volume-off.png') 1x, url('/static_images/wm61/status-volume-off@2x.png') 2x); }
+.wm-status-icon[data-icon="volume"] { background-image: image-set(url('/static_images/wm61/status-volume.png') 1x, url('/static_images/wm61/status-volume@2x.png') 2x, url('/static_images/wm61/status-volume@4x.png') 4x); }
+.wm-status-icon[data-icon="volume-off"] { background-image: image-set(url('/static_images/wm61/status-volume-off.png') 1x, url('/static_images/wm61/status-volume-off@2x.png') 2x, url('/static_images/wm61/status-volume-off@4x.png') 4x); }
 
 /* ok / X: 19 x 17 px box 4 px from the top and 3 px from the right (device: 38 x 34 at 2x).
  * 1 px dark border, 1 px light top edge, gradient fill, and the ROM's white glyph (gwes 8300-8303,
@@ -201,11 +201,11 @@ html.ui-mobile[data-wm-app="today"] #wmShell {
 }
 
 .wm-title-action[data-kind="close"] {
-    background-image: image-set(url('/static_images/wm61/title-close.png') 1x, url('/static_images/wm61/title-close@2x.png') 2x), linear-gradient(to bottom, var(--wm-gloss-bottom), var(--wm-softkey-base)) !important;
+    background-image: image-set(url('/static_images/wm61/title-close.png') 1x, url('/static_images/wm61/title-close@2x.png') 2x, url('/static_images/wm61/title-close@4x.png') 4x), linear-gradient(to bottom, var(--wm-gloss-bottom), var(--wm-softkey-base)) !important;
 }
 
 .wm-title-action[data-kind="ok"] {
-    background-image: image-set(url('/static_images/wm61/title-ok.png') 1x, url('/static_images/wm61/title-ok@2x.png') 2x), linear-gradient(to bottom, var(--wm-gloss-bottom), var(--wm-softkey-base)) !important;
+    background-image: image-set(url('/static_images/wm61/title-ok.png') 1x, url('/static_images/wm61/title-ok@2x.png') 2x, url('/static_images/wm61/title-ok@4x.png') 4x), linear-gradient(to bottom, var(--wm-gloss-bottom), var(--wm-softkey-base)) !important;
 }
 
 .wm-title-action:active {
@@ -394,8 +394,8 @@ html.ui-mobile[data-wm-app="today"] #wmShell > .wm-content {
     height: calc(7 * var(--wm-px));
     /* gwes glyph mask: black art, the menu paints it in its own text colour */
     background: currentColor;
-    -webkit-mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-check.png') 1x, url('/static_images/wm61/menu-check@2x.png') 2x);
-    mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-check.png') 1x, url('/static_images/wm61/menu-check@2x.png') 2x);
+    -webkit-mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-check.png') 1x, url('/static_images/wm61/menu-check@2x.png') 2x, url('/static_images/wm61/menu-check@4x.png') 4x);
+    mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-check.png') 1x, url('/static_images/wm61/menu-check@2x.png') 2x, url('/static_images/wm61/menu-check@4x.png') 4x);
 }
 
 .wm-popup-item:hover:not(:disabled),
@@ -1260,11 +1260,11 @@ div.wm-today-row {
     width: calc(16 * var(--wm-px)) !important;
     height: calc(15 * var(--wm-px)) !important;
     align-self: center;
-    background: center / contain no-repeat image-set(url('/static_images/wm61/today-search-button.png') 1x, url('/static_images/wm61/today-search-button@2x.png') 2x) !important;
+    background: center / contain no-repeat image-set(url('/static_images/wm61/today-search-button.png') 1x, url('/static_images/wm61/today-search-button@2x.png') 2x, url('/static_images/wm61/today-search-button@4x.png') 4x) !important;
 }
 
 .wm-today-search-go:active {
-    background-image: image-set(url('/static_images/wm61/today-search-button-pressed.png') 1x, url('/static_images/wm61/today-search-button-pressed@2x.png') 2x) !important;
+    background-image: image-set(url('/static_images/wm61/today-search-button-pressed.png') 1x, url('/static_images/wm61/today-search-button-pressed@2x.png') 2x, url('/static_images/wm61/today-search-button-pressed@4x.png') 4x) !important;
 }
 
 /* newest prints: one row of square tiles under the items */
@@ -1666,8 +1666,8 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
     width: calc(4 * var(--wm-px));
     height: calc(8 * var(--wm-px));
     background: currentColor;
-    -webkit-mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-submenu-arrow.png') 1x, url('/static_images/wm61/menu-submenu-arrow@2x.png') 2x);
-    mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-submenu-arrow.png') 1x, url('/static_images/wm61/menu-submenu-arrow@2x.png') 2x);
+    -webkit-mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-submenu-arrow.png') 1x, url('/static_images/wm61/menu-submenu-arrow@2x.png') 2x, url('/static_images/wm61/menu-submenu-arrow@4x.png') 4x);
+    mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-submenu-arrow.png') 1x, url('/static_images/wm61/menu-submenu-arrow@2x.png') 2x, url('/static_images/wm61/menu-submenu-arrow@4x.png') 4x);
 }
 
 .wm-popup-item.is-open {
@@ -1807,4 +1807,204 @@ html.ui-mobile body > .pswp .pswp__preloader {
 .wm-startmenu-run:focus-visible {
     background: var(--wm-highlight) !important;
     outline: none;
+}
+
+/* ---- title-bar status icons as buttons; extra glyphs (Director, prints, mail) are white
+ * silhouettes of their app icons, like WM's own glyphs ---- */
+.wm-status-icon {
+    padding: 0 !important;
+}
+
+.wm-status-icon[hidden] {
+    display: none !important;
+}
+
+.wm-status-glyph {
+    background: #fff !important;
+    -webkit-mask: center / contain no-repeat var(--wm-glyph);
+    mask: center / contain no-repeat var(--wm-glyph);
+}
+
+.wm-status-glyph.is-busy {
+    animation: wm-status-pulse 1.2s steps(2, jump-none) infinite;
+}
+
+@keyframes wm-status-pulse {
+    0% { opacity: 1; }
+    100% { opacity: 0.45; }
+}
+
+/* ---- notification bubble (device: Connectivity / Cannot Connect, 2x halved) ---- */
+.wm-bubble {
+    --wm-tail-x: 50%;
+    position: absolute;
+    left: calc(env(safe-area-inset-left) + 9 * var(--wm-px));
+    right: calc(env(safe-area-inset-right) + 9 * var(--wm-px));
+    top: calc(env(safe-area-inset-top) + 36 * var(--wm-px));
+    z-index: 13;
+    background: #fff;
+    color: #000;
+    border: calc(2 * var(--wm-px)) solid #000;
+    border-radius: calc(8 * var(--wm-px));
+    box-sizing: border-box;
+    padding-bottom: calc(5 * var(--wm-px));
+}
+
+.wm-bubble[hidden] {
+    display: none;
+}
+
+/* the tail up to the status icon: a black triangle with one in the title colour inside */
+.wm-bubble-tail {
+    display: none;
+    position: absolute;
+    left: calc(var(--wm-tail-x) - 9 * var(--wm-px) - env(safe-area-inset-left) - 7 * var(--wm-px));
+    top: calc(-12 * var(--wm-px));
+    width: calc(14 * var(--wm-px));
+    height: calc(12 * var(--wm-px));
+    background: #000;
+    clip-path: polygon(0 100%, 50% 0, 100% 100%);
+}
+
+.wm-bubble-tail::after {
+    content: '';
+    position: absolute;
+    left: calc(3 * var(--wm-px));
+    right: calc(3 * var(--wm-px));
+    top: calc(4 * var(--wm-px));
+    bottom: calc(-1 * var(--wm-px));
+    background: var(--wm-highlight);
+    clip-path: polygon(0 100%, 50% 0, 100% 100%);
+}
+
+.wm-bubble.has-tail .wm-bubble-tail {
+    display: block;
+}
+
+.wm-bubble-title {
+    padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
+    border-radius: calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) 0 0;
+    background: linear-gradient(to bottom, var(--wm-highlight), color-mix(in srgb, var(--wm-highlight) 82%, #000));
+    color: #fff;
+    font-weight: bold;
+}
+
+.wm-bubble-section {
+    margin: 0 calc(5 * var(--wm-px));
+    padding: calc(4 * var(--wm-px)) 0;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    overflow-wrap: anywhere;
+    user-select: text;
+}
+
+.wm-bubble-title + .wm-bubble-section {
+    border-top: 0;
+}
+
+.wm-bubble-section.is-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(4 * var(--wm-px)) calc(10 * var(--wm-px));
+    justify-content: space-between;
+}
+
+.wm-bubble-link {
+    color: #00f !important;
+    text-decoration: underline;
+    padding: 0 !important;
+}
+
+.wm-bubble-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: calc(4 * var(--wm-px));
+    margin: 0 calc(5 * var(--wm-px));
+}
+
+.wm-bubble-buttons button {
+    padding: calc(1 * var(--wm-px)) calc(4 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    background: var(--wm-tint) !important;
+    font-weight: bold;
+}
+
+.wm-bubble-volume {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(6 * var(--wm-px)) calc(12 * var(--wm-px));
+}
+
+.wm-bubble-volume input[type="range"] {
+    flex: 1 1 100%;
+    accent-color: var(--wm-highlight);
+}
+
+/* ---- toasts drawn as WM notification bubbles (no tail: they are not tied to an icon) ---- */
+html.ui-mobile #toastContainer > * {
+    flex-direction: column !important;
+    gap: 0 !important;
+    padding: 0 0 calc(5 * var(--wm-px)) !important;
+    border: calc(2 * var(--wm-px)) solid #000 !important;
+    border-radius: calc(8 * var(--wm-px)) !important;
+    overflow: hidden;
+}
+
+html.ui-mobile #toastContainer .toast-icon {
+    display: none !important;
+}
+
+html.ui-mobile #toastContainer .toast-content {
+    width: 100%;
+}
+
+html.ui-mobile #toastContainer .toast-title {
+    display: block;
+    padding: calc(4 * var(--wm-px)) calc(24 * var(--wm-px)) calc(4 * var(--wm-px)) calc(6 * var(--wm-px)) !important;
+    background: linear-gradient(to bottom, var(--wm-highlight), color-mix(in srgb, var(--wm-highlight) 82%, #000)) !important;
+    color: #fff !important;
+}
+
+html.ui-mobile #toastContainer .toast-message {
+    display: block;
+    padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px)) 0 !important;
+}
+
+html.ui-mobile #toastContainer .toast-progress {
+    margin: calc(4 * var(--wm-px)) calc(6 * var(--wm-px)) 0 !important;
+}
+
+html.ui-mobile #toastContainer .toast-close {
+    top: calc(3 * var(--wm-px)) !important;
+    color: #fff !important;
+}
+
+html.ui-mobile #toastContainer button:not(.toast-close) {
+    margin-left: calc(6 * var(--wm-px)) !important;
+}
+
+/* the volume bubble's controls are plain WM controls, not the desktop's styled inputs */
+.wm-bubble-volume input[type="radio"] {
+    appearance: auto !important;
+    -webkit-appearance: radio !important;
+    width: calc(13 * var(--wm-px)) !important;
+    height: calc(13 * var(--wm-px)) !important;
+    margin: 0 calc(3 * var(--wm-px)) 0 0 !important;
+    accent-color: var(--wm-highlight);
+    vertical-align: middle;
+}
+
+.wm-bubble-volume input[type="range"] {
+    appearance: auto !important;
+    -webkit-appearance: auto !important;
+    height: calc(18 * var(--wm-px)) !important;
+    background: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.wm-bubble-volume label {
+    display: inline-flex;
+    align-items: center;
 }
