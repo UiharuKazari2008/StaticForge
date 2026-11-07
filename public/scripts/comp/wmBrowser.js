@@ -19,6 +19,8 @@
  * the zoom value.
  * Back key: historyDepth() / onBack() walk the pages seen here (Chromium's own history where the
  * two agree, else a fresh navigation); Favorites and History are layers too.
+ * Home: the Grimoire homepage in the start page's layout, and the Grimoire's wiki, search and
+ * documentation pages drawn here without Alchemy (see "Grimoire pages" below).
  * Sessions: Alchemy has a 4-session cap, so the session is closed when the app is closed (title
  * X), 60 s after the app goes behind another, and when the tab goes away.
  *
@@ -59,14 +61,21 @@
     // Zoom: IE Mobile's text sizes
     const ZOOMS = [['largest', 'Largest', 1.5], ['larger', 'Larger', 1.25], ['medium', 'Medium', 1], ['smaller', 'Smaller', 0.85], ['smallest', 'Smallest', 0.7]];
 
-    const GRIMOIRE_ONLY = 'Grimoire wiki pages open in Grimoire on the desktop. Internet Explorer on this phone shows web pages.';
+    const GRIMOIRE_ONLY = 'Dreamscape apps (dsap: addresses) open on the desktop. Internet Explorer on this phone shows web pages and the Grimoire.';
+    // the Grimoire's own pages (tagWikiSearchModal.js addresses), drawn here without Alchemy
+    const GRIM_HOME_URL = 'edtx://en.grimoire.jp/index.dtxt';
+    const RECENT_KEY = 'dreamWikiRecentPages'; // DREAMWIKI_RECENT_STORAGE_KEY, shared with the desktop Grimoire
+    const RECENT_MAX = 20;
+    const ALCHEMY_HOME = 'https://www.bing.com/'; // ALCHEMY_HOME_URL: public/scripts/comp/featureLoader.js
 
     let ws = null; // window.wmShell
     let page = null;
     let els = {};
     let sub = null; // null | 'favorites' | 'history'
     let subSel = -1;
-    let entries = [{ home: true }]; // pages seen here: { home } | { url, title, pending }
+    // pages seen here: Grimoire pages { home: true, grim, url, title } (no Alchemy) | web pages { url, title, pending }
+    const homeEntry = () => ({ home: true, grim: { kind: 'home' }, url: GRIM_HOME_URL, title: 'Grimoire' });
+    let entries = [homeEntry()];
     let idx = 0;
     let chromeAt = -1; // the entry Chromium is on
     let chromeBase = 0; // entries before this are not in Chromium's history (a new session)
@@ -103,7 +112,7 @@
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const isCurrent = () => !!(ws && ws.current === APP_ID);
-    const entry = () => entries[idx] || { home: true };
+    const entry = () => entries[idx] || homeEntry();
     const onHome = () => !!entry().home;
     const srcsetOf = (name) => (window.wmShell ? window.wmShell.art.srcset(name) : `/static_images/wm61/${name}@2x.png 2x`);
     const img = (name, cls) => `<img class="${cls || ''}" src="/static_images/wm61/${name}.png" srcset="${srcsetOf(name)}" alt="" draggable="false">`;
@@ -360,8 +369,10 @@
         if (!raw) return;
         const url = webUrl(raw);
         if (!url) {
-            // Grimoire's own pages (and chrome:) are saved in the shared favorites; Alchemy cannot open them
-            if (ws) ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: GRIMOIRE_ONLY });
+            // the Grimoire's own pages show here; dsap: apps (and chrome:) are saved in the shared favorites but Alchemy cannot open them
+            const g = parseGrim(raw);
+            if (g) openLocal(g, title);
+            else if (ws) ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: GRIMOIRE_ONLY });
             return;
         }
         pendingInspect = null;
@@ -392,12 +403,24 @@
 
     function goHome() {
         closeSub();
-        if (onHome()) return;
+        if (onHome() && entry().grim.kind === 'home') return;
+        pushLocal(homeEntry());
+    }
+
+    function pushLocal(e) {
+        pendingInspect = null;
         entries = entries.slice(0, idx + 1);
-        entries.push({ home: true });
+        entries.push(e);
         idx = entries.length - 1;
         render();
         step();
+    }
+
+    /** A Grimoire page (parseGrim's target) as a new entry. */
+    function openLocal(g, title) {
+        closeSub();
+        if (g.kind === 'home') { goHome(); return; }
+        pushLocal({ home: true, grim: g, url: grimUrl(g), title: title || grimTitle(g) });
     }
 
     /** Move to entries[target]: the start page shows here; web pages step Chromium's history where it matches. */
@@ -435,7 +458,7 @@
     function goForward() { goTo(idx + 1); }
 
     function refresh() {
-        if (onHome()) { render(); return; }
+        if (onHome()) { renderLocal(true); return; }
         if (!session) { entry().pending = true; openSession(entry().url); return; }
         setLoading(true);
         post({ type: 'grimoire-browser-reload' });
@@ -997,7 +1020,7 @@
     }
 
     function subRows() {
-        if (sub === 'favorites') return favorites.map((f) => ({ url: f.url, title: f.title || f.url, sub: webUrl(f.url) ? hostOf(f.url) : 'Desktop only', icon: 'ie-favorite' }));
+        if (sub === 'favorites') return favorites.map((f) => ({ url: f.url, title: f.title || f.url, sub: webUrl(f.url) ? hostOf(f.url) : parseGrim(f.url) ? 'Grimoire' : 'Desktop only', icon: 'ie-favorite' }));
         return readList(HISTORY_KEY).map((h) => ({ url: h.url, title: h.title || h.url, sub: h.at ? new Date(h.at).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric', year: '2-digit' }) : '', icon: 'ie-page' }));
     }
 
@@ -1027,7 +1050,7 @@
         const has = subSel >= 0 && subSel < subRows().length;
         if (sub === 'favorites') {
             return [
-                { label: 'Add to Favorites...', disabled: onHome(), action: () => addFavorite() },
+                { label: 'Add to Favorites...', action: () => addFavorite() },
                 { label: 'Edit...', disabled: !has, action: () => renameFavorite(subSel) },
                 { label: 'Delete', disabled: !has, action: () => deleteFavorite(subSel) },
                 '-',
@@ -1061,7 +1084,7 @@
             { label: 'Home', action: goHome },
             loading && web ? { label: 'Stop', action: stop } : { label: 'Refresh', action: refresh },
             '-',
-            { label: 'Add to Favorites...', disabled: !web, action: () => addFavorite() },
+            { label: 'Add to Favorites...', action: () => addFavorite() },
             { label: 'History', action: () => openSub('history') },
             '-',
             {
@@ -1073,11 +1096,11 @@
             {
                 label: 'Tools',
                 submenu: [
-                    { label: 'Copy Link', disabled: !web, action: () => copyText(entry().url) },
+                    { label: 'Copy Link', action: () => copyText(entry().url) },
                     { label: 'Paste', disabled: !web || !frame, action: pasteFromClipboard },
                     { label: 'Clear History', action: clearHistory },
                     '-',
-                    { label: 'Properties', disabled: !web, action: properties }
+                    { label: 'Properties', action: properties }
                 ]
             }
         ];
@@ -1108,8 +1131,242 @@
         ws.messageBox({
             title: 'Properties',
             icon: 'info',
-            text: `${e.title || hostOf(e.url)}\n\nAddress: ${e.url}\nSecurity: ${secure ? 'Secure (HTTPS)' : 'Not secure'}\nLoaded by: Alchemy`
+            text: e.home
+                ? `${e.title || 'Grimoire'}\n\nAddress: ${e.url}\nLoaded by: Grimoire`
+                : `${e.title || hostOf(e.url)}\n\nAddress: ${e.url}\nSecurity: ${secure ? 'Secure (HTTPS)' : 'Not secure'}\nLoaded by: Alchemy`
         });
+    }
+
+    // ---------------------------------------------------------------- Grimoire pages
+
+    /**
+     * The Grimoire's pages, drawn here in the phone layout from the same server calls as the desktop
+     * Grimoire (tagWikiSearchModal.js): its homepage is IE's start page (search box, starting points,
+     * recently visited, then IE's Favorites / History), tag wiki pages (get_tag_wiki_page), the wiki
+     * search (search_tag_wiki) and the documentation sites (get_static_wiki_site_index / _page).
+     * Addresses are the desktop's: edtx://en.grimoire.jp/index.dtxt, .../search?q=,
+     * edtx://wiki.danbooru.jp/tag/<name>, rdf://docs.novelai.jp/<page>, edtx://en.grimoire.jp/docs/<site>/<page>.
+     * Dreamscape apps (dsap:), Fandom and the Apocrypha stay on the desktop.
+     */
+    function parseGrim(raw) {
+        const text = String(raw || '').trim();
+        let m;
+        if (/^edtx:\/\/en\.grimoire\.jp\/?(?:index\.dtxt)?$/i.test(text)) return { kind: 'home' };
+        if ((m = /^edtx:\/\/en\.grimoire\.jp\/search\/?(?:\?(.*))?$/i.exec(text))) {
+            let q = '';
+            try { q = new URLSearchParams(m[1] || '').get('q') || ''; } catch (_) { /* none */ }
+            return q.trim() ? { kind: 'search', q: q.trim() } : { kind: 'home' };
+        }
+        if ((m = /^edtx:\/\/wiki\.(?:danbooru|e621)\.(?:jp|com)\/tag\/([^?#]+)/i.exec(text))) {
+            let name = m[1];
+            try { name = decodeURIComponent(name); } catch (_) { /* as is */ }
+            name = name.replace(/_/g, ' ').trim();
+            return name ? { kind: 'wiki', tag: name } : null;
+        }
+        if ((m = /^rdf:\/\/docs\.novelai\.jp\/?(.*)$/i.exec(text))) return m[1] ? { kind: 'doc', site: 'novelai', page: m[1] } : { kind: 'site', site: 'novelai' };
+        if ((m = /^edtx:\/\/en\.grimoire\.jp\/docs\/([^/?#]+)\/?([^?#]*)$/i.exec(text))) return m[2] ? { kind: 'doc', site: m[1], page: m[2] } : { kind: 'site', site: m[1] };
+        return null;
+    }
+
+    function grimUrl(g) {
+        if (g.kind === 'search') return 'edtx://en.grimoire.jp/search?q=' + encodeURIComponent(g.q);
+        if (g.kind === 'wiki') return 'edtx://wiki.danbooru.jp/tag/' + encodeURIComponent(String(g.tag).replace(/\s+/g, '_'));
+        if (g.kind === 'site') return g.site === 'novelai' ? 'rdf://docs.novelai.jp/' : `edtx://en.grimoire.jp/docs/${g.site}`;
+        if (g.kind === 'doc') return g.site === 'novelai' ? `rdf://docs.novelai.jp/${g.page}` : `edtx://en.grimoire.jp/docs/${g.site}/${g.page}`;
+        return GRIM_HOME_URL;
+    }
+
+    function grimTitle(g) {
+        if (g.kind === 'search') return `Search: ${g.q}`;
+        if (g.kind === 'wiki') return g.tag;
+        if (g.kind === 'site') return g.site === 'novelai' ? 'NovelAI Documentation' : g.site;
+        if (g.kind === 'doc') return g.page;
+        return 'Grimoire';
+    }
+
+    function readRecent() {
+        return readList(RECENT_KEY).filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim());
+    }
+
+    function noteRecent(name) {
+        const t = String(name || '').trim();
+        if (!t) return;
+        const list = readRecent().filter((x) => x.toLowerCase() !== t.toLowerCase());
+        list.unshift(t);
+        writeList(RECENT_KEY, list.slice(0, RECENT_MAX));
+    }
+
+    const linkTo = (g, label, icon) => `<a class="wmb-home-link${icon ? ' has-icon' : ''}" href="${esc(grimUrl(g))}" data-grim="${esc(JSON.stringify(g))}">${icon || ''}${esc(label)}</a>`;
+    const webLink = (url, label, icon) => `<a class="wmb-home-link${icon ? ' has-icon' : ''}" href="${esc(url)}" data-url="${esc(url)}">${icon || ''}${esc(label)}</a>`;
+    const iconImg = (src) => `<img class="wmb-link-ico" src="${esc(src)}" alt="" draggable="false">`;
+
+    let docSites = null; // get_wiki_home's documentation sites (Fandom stays on the desktop)
+    let docSitesAsked = false;
+
+    function loadDocSites() {
+        if (docSitesAsked || !window.wsClient || !window.wsClient.isConnected || !window.wsClient.isConnected()) return;
+        docSitesAsked = true;
+        window.wsClient.sendMessage('get_wiki_home', {}).then((r) => {
+            docSites = ((r && r.sites) || []).filter((x) => x && x.id && x.kind !== 'fandom');
+            if (onHome() && entry().grim.kind === 'home') renderHomeLists();
+        }).catch(() => { docSitesAsked = false; });
+    }
+
+    function renderHomeLists() {
+        loadDocSites();
+        const open = (k) => els.home.querySelector(`[data-exp="${k}"]`).getAttribute('aria-expanded') === 'true';
+        const list = (k) => els.home.querySelector(`[data-list="${k}"]`);
+        for (const k of ['start', 'recent', 'favorites', 'history']) list(k).hidden = !open(k);
+        const row = (r) => (webUrl(r.url) ? webLink(r.url, r.title || r.url) : `<a class="wmb-home-link" href="${esc(r.url)}" data-url="${esc(r.url)}">${esc(r.title || r.url)}</a>`);
+        if (open('start')) {
+            const tagIcon = iconImg('/static_images/wm61/ie-page.png');
+            const rows = [
+                linkTo({ kind: 'wiki', tag: 'tag groups' }, 'Danbooru Tags', tagIcon),
+                linkTo({ kind: 'wiki', tag: 'tag_group:index' }, 'e621 Tags', tagIcon)
+            ];
+            (docSites || []).forEach((site) => {
+                const name = site.id === 'novelai' || String(site.id).toLowerCase().includes('novelai') ? 'NovelAI' : (site.name || site.id);
+                rows.push(linkTo({ kind: 'site', site: site.id }, name, site.icon ? iconImg(site.icon) : iconImg('/static_images/wm61/ie-folder.png')));
+            });
+            rows.push(webLink(ALCHEMY_HOME, 'Perform Alchemy!', iconImg('/static_images/app_icons/24/alchemy.webp')));
+            list('start').innerHTML = rows.join('');
+        }
+        if (open('recent')) {
+            const r = readRecent().slice(0, 12);
+            list('recent').innerHTML = r.length ? r.map((n) => linkTo({ kind: 'wiki', tag: n }, n)).join('') : '<div class="wmb-home-none">No pages yet.</div>';
+        }
+        if (open('favorites')) list('favorites').innerHTML = favorites.length ? favorites.slice(0, 30).map((f) => row({ url: f.url, title: f.title })).join('') : `<div class="wmb-home-none">${favoritesLoaded ? 'No favorites.' : 'Loading...'}</div>`;
+        if (open('history')) {
+            const h = readList(HISTORY_KEY).slice(0, 15);
+            list('history').innerHTML = h.length ? h.map(row).join('') : '<div class="wmb-home-none">No history.</div>';
+        }
+    }
+
+    let localShown = null; // the entry drawn in .wmb-gpage
+
+    /** Draw the Grimoire entry on screen (again with force: Refresh). */
+    function renderLocal(force) {
+        const e = entry();
+        if (!e.home) return;
+        if (e.grim.kind === 'home') { renderHomeLists(); return; }
+        if (localShown === e && !force) return;
+        localShown = e;
+        const box = els.gpage;
+        // Back and Forward show a page as it was left (its scroll too); Refresh asks the server again
+        if (e.html && !force) {
+            box.innerHTML = e.html;
+            box.scrollTop = e.scroll || 0;
+            return;
+        }
+        box.scrollTop = 0;
+        box.innerHTML = '<div class="wmb-g-note">Loading...</div>';
+        const still = () => localShown === e && entry() === e;
+        const ws_ = window.wsClient;
+        if (!ws_ || !ws_.isConnected || !ws_.isConnected()) {
+            box.innerHTML = '<div class="wmb-g-note">The Grimoire cannot be reached: this phone is not connected to Dreamscape. Try again later.</div>';
+            localShown = null;
+            return;
+        }
+        loadGrimPage(e.grim, force).then((html) => {
+            if (!still()) return;
+            e.html = html;
+            e.scroll = 0;
+            box.innerHTML = html;
+            const t = box.querySelector('[data-page-title]');
+            if (t) { e.title = t.dataset.pageTitle; }
+            noteHistory(e.url, e.title);
+        }).catch((err) => {
+            if (!still()) return;
+            box.innerHTML = `<div class="wmb-g-note">${esc((err && err.message) || 'The page cannot be displayed.')}</div>`;
+            localShown = null;
+        });
+    }
+
+    const searchForm = (q) => `
+        <form class="wmb-search wmb-g-search" action="#">
+            <input type="search" class="wmb-search-input" value="${esc(q || '')}" autocomplete="off" enterkeyhint="search" placeholder="Search the Grim" aria-label="Search the Grimoire">
+            <button type="submit" class="wmb-search-go" aria-label="Search">${img('ie-search')}</button>
+        </form>`;
+
+    async function loadGrimPage(g, force) {
+        const send = (type, data) => window.wsClient.sendMessage(type, data);
+        if (g.kind === 'search') {
+            const r = await send('search_tag_wiki', { query: g.q, searchType: 'name', source: 'both', includeNonTag: false, includeOnline: false, limit: 50 });
+            const rows = ((r && r.results) || []).map((x) => {
+                const name = x.title || x.name || '';
+                const meta = [x.categoryName, Array.isArray(x.source) ? x.source.filter((s) => s !== 'database').join(', ') : x.source].filter(Boolean).join(' · ');
+                return x.hasWiki
+                    ? `<div class="wmb-g-result">${linkTo({ kind: 'wiki', tag: name }, name)}<span class="wmb-g-meta">${esc(meta)}</span></div>`
+                    : `<div class="wmb-g-result is-nowiki"><span>${esc(name)}</span><span class="wmb-g-meta">${esc(meta ? meta + ' · ' : '')}no wiki page</span></div>`;
+            });
+            return `<div data-page-title="${esc('Search: ' + g.q)}">${searchForm(g.q)}
+                <h1 class="wmb-g-title">Results for “${esc(g.q)}”</h1>
+                ${rows.length ? rows.join('') : '<div class="wmb-g-note">No pages found.</div>'}
+                <div class="wmb-g-more">${webLink(searchUrl(g.q), `Search the web for “${g.q}”`)}</div></div>`;
+        }
+        if (g.kind === 'wiki') {
+            const name = String(g.tag).trim().replace(/\s+/g, '_').toLowerCase();
+            const r = await send('get_tag_wiki_page', Object.assign({ tagName: name, source: 'both', format: 'html' }, force ? { force: true } : {}));
+            const bodies = r && Array.isArray(r.bodies) ? r.bodies : (r && (r.html || r.body) ? [{ source: r.bodySource || '', html: r.html || r.body }] : []);
+            if (!bodies.length) throw new Error((r && r.error) || `“${g.tag}” has no wiki page.`);
+            const title = String(r.tagName || g.tag).replace(/_/g, ' ');
+            noteRecent(title);
+            const nax = r.naxImage && r.naxImage.gallerySlug && r.naxImage.filename
+                ? `<img class="wmb-g-nax" src="/naxCache/${encodeURIComponent(r.naxImage.gallerySlug)}/${encodeURIComponent(r.naxImage.filename)}" alt="">` : '';
+            return `<article class="wmb-g-wiki" data-page-title="${esc(title)}">
+                <h1 class="wmb-g-title">${esc(title)}</h1>${nax}
+                ${bodies.map((b) => `${bodies.length > 1 || b.source ? `<div class="wmb-g-source">${esc(b.source === 'e621' ? 'e621' : b.source === 'danbooru' ? 'Danbooru' : (b.source || ''))}</div>` : ''}<div class="wmb-g-body">${b.html || ''}</div>`).join('')}
+                </article>`;
+        }
+        if (g.kind === 'site') {
+            const r = await send('get_static_wiki_site_index', { siteId: g.site });
+            const groups = (r && r.groups) || [];
+            const title = (r && r.name) || g.site;
+            return `<article class="wmb-g-wiki" data-page-title="${esc(title)}"><h1 class="wmb-g-title">${esc(title)}</h1>
+                ${groups.length ? groups.map((gr) => `<h2 class="wmb-g-group">${esc(gr.name || 'Other')}</h2>${(gr.pages || []).map((pg) => linkTo({ kind: 'doc', site: g.site, page: pg.id }, pg.title || pg.id)).join('')}`).join('') : '<div class="wmb-g-note">No pages imported yet.</div>'}
+                </article>`;
+        }
+        if (g.kind === 'doc') {
+            const r = await send('get_static_wiki_page', { siteId: g.site, pageId: g.page });
+            if (!r || (!r.html && !r.text)) throw new Error((r && r.error) || 'The page cannot be displayed.');
+            const title = r.title || g.page;
+            return `<article class="wmb-g-wiki" data-page-title="${esc(title)}"><h1 class="wmb-g-title">${esc(title)}</h1>
+                <div class="wmb-g-body">${r.html || `<pre>${esc(r.text)}</pre>`}</div></article>`;
+        }
+        throw new Error('The page cannot be displayed.');
+    }
+
+    /** Links on the Grimoire pages: Grimoire pages stay here, web links go to Alchemy, anchors scroll. */
+    function scrollToAnchor(id) {
+        let target = null;
+        try { target = id && els.gpage.querySelector('#' + CSS.escape(id)); } catch (_) { target = null; }
+        if (target) els.gpage.scrollTop += target.getBoundingClientRect().top - els.gpage.getBoundingClientRect().top;
+    }
+
+    function onLocalClick(e) {
+        // DText's collapsed sections (tagWikiSearchModal.js opens them the same way)
+        const toggle = e.target.closest && e.target.closest('.tag-wiki-section-toggle');
+        if (toggle && els.gpage.contains(toggle)) {
+            let body = null;
+            try { body = els.gpage.querySelector('#' + CSS.escape(toggle.dataset.target || '')); } catch (_) { body = null; }
+            if (body) toggle.classList.toggle('is-open', body.classList.toggle('hidden') === false);
+            return;
+        }
+        const a = e.target.closest && e.target.closest('a');
+        if (!a) return;
+        e.preventDefault();
+        if (a.dataset.tagName && a.dataset.tagName.startsWith('#')) { scrollToAnchor(a.dataset.tagName.slice(1)); return; }
+        if (a.dataset.grim) { try { openLocal(JSON.parse(a.dataset.grim), a.textContent.trim()); } catch (_) { /* bad link */ } return; }
+        if (a.classList.contains('tag-wiki-link') && a.dataset.tagName) { openLocal({ kind: 'wiki', tag: a.dataset.tagName }); return; }
+        if (a.dataset.wikiSite && a.dataset.wikiPage) { openLocal({ kind: 'doc', site: a.dataset.wikiSite, page: a.dataset.wikiPage }, a.textContent.trim()); return; }
+        if (a.dataset.url) { navigate(a.dataset.url, a.textContent.trim()); return; }
+        const href = (a.getAttribute('href') || '').trim();
+        if (href.startsWith('#')) { scrollToAnchor(href.slice(1)); return; }
+        if (!href) return;
+        let abs = href;
+        try { abs = new URL(href, location.href).href; } catch (_) { /* as is */ }
+        if (/^(edtx|rdf):/i.test(href)) navigate(href, a.textContent.trim());
+        else if (webUrl(abs) && new URL(abs).origin !== location.origin) navigate(abs, a.textContent.trim());
     }
 
     // ---------------------------------------------------------------- rendering
@@ -1124,8 +1381,8 @@
     function renderAddress() {
         if (!els.addr || addrEditing) return;
         const e = entry();
-        els.addr.value = e.home ? '' : (e.url || '');
-        els.addr.placeholder = e.home ? 'Enter a web address' : '';
+        els.addr.value = e.url || '';
+        els.addr.placeholder = 'Enter a web address';
         const secure = !e.home && /^https:/i.test(e.url || '');
         els.lock.innerHTML = img(secure ? 'ie-lock' : 'ie-unlock');
         els.lock.title = secure ? 'Secure connection' : 'Not secure';
@@ -1137,28 +1394,15 @@
         const home = onHome();
         page.classList.toggle('on-home', home);
         page.classList.toggle('is-full', fullScreen);
-        els.home.hidden = !home;
+        const start = home && entry().grim.kind === 'home';
+        els.home.hidden = !start;
+        els.gpage.hidden = !home || start;
         els.frameWrap.hidden = home;
         page.classList.toggle('is-loading', loading && !home);
-        if (home) renderHomeLists();
+        if (home) renderLocal(false);
         renderAddress();
         if (!home) requestAnimationFrame(layoutFrame);
         syncPageShown();
-    }
-
-    function renderHomeLists() {
-        const favOpen = els.home.querySelector('[data-exp="favorites"]').getAttribute('aria-expanded') === 'true';
-        const hisOpen = els.home.querySelector('[data-exp="history"]').getAttribute('aria-expanded') === 'true';
-        const favList = els.home.querySelector('[data-list="favorites"]');
-        const hisList = els.home.querySelector('[data-list="history"]');
-        favList.hidden = !favOpen;
-        hisList.hidden = !hisOpen;
-        const row = (r) => `<a class="wmb-home-link" href="${esc(r.url)}" data-url="${esc(r.url)}">${esc(r.title || r.url)}</a>`;
-        if (favOpen) favList.innerHTML = favorites.length ? favorites.slice(0, 30).map((f) => row({ url: f.url, title: f.title })).join('') : `<div class="wmb-home-none">${favoritesLoaded ? 'No favorites.' : 'Loading...'}</div>`;
-        if (hisOpen) {
-            const h = readList(HISTORY_KEY).slice(0, 15);
-            hisList.innerHTML = h.length ? h.map(row).join('') : '<div class="wmb-home-none">No history.</div>';
-        }
     }
 
     function submitAddress() {
@@ -1166,7 +1410,11 @@
         if (!text) return;
         const url = webUrl(text) || searchUrl(text);
         if (/^(edtx|rdf|dsap):/i.test(text)) {
-            ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: GRIMOIRE_ONLY });
+            const g = parseGrim(text);
+            addrEditing = false;
+            els.addr.blur();
+            if (g) openLocal(g);
+            else ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: GRIMOIRE_ONLY });
             return;
         }
         if (webUrl(text)) noteTyped(url);
@@ -1189,16 +1437,24 @@
             </div>
             <div class="wmb-view">
                 <div class="wmb-home">
-                    <div class="wmb-logo">${img('ie-logo', 'wmb-logo-img')}<div class="wmb-logo-text"><small>Xyridian</small><b>Internet Explorer Mobile</b></div></div>
+                    <div class="wmb-logo wmb-g-logo">
+                        <img class="wmb-logo-img" src="/static_images/app_icons/64/dreamscape-logo.webp" srcset="/static_images/app_icons/128/dreamscape-logo.webp 2x" alt="" draggable="false">
+                        <div class="wmb-logo-text"><small>Dreamscape</small><b>The Grimoire</b><span class="wmb-g-tagline">The central home of Knowledge</span></div>
+                    </div>
                     <form class="wmb-search" action="#">
-                        <input type="search" class="wmb-search-input" autocomplete="off" enterkeyhint="search" aria-label="Search">
+                        <input type="search" class="wmb-search-input" autocomplete="off" enterkeyhint="search" placeholder="Search the Grim" aria-label="Search the Grimoire">
                         <button type="submit" class="wmb-search-go" aria-label="Search">${img('ie-search')}</button>
                     </form>
+                    <button type="button" class="wmb-exp" data-exp="start" aria-expanded="true"><span>Starting Points</span>${img('ie-chevron', 'wmb-chev')}</button>
+                    <div class="wmb-home-list" data-list="start"></div>
+                    <button type="button" class="wmb-exp" data-exp="recent" aria-expanded="true"><span>Recently Visited</span>${img('ie-chevron', 'wmb-chev')}</button>
+                    <div class="wmb-home-list" data-list="recent"></div>
                     <button type="button" class="wmb-exp" data-exp="favorites" aria-expanded="false"><span>Favorites</span>${img('ie-chevron', 'wmb-chev')}</button>
                     <div class="wmb-home-list" data-list="favorites" hidden></div>
                     <button type="button" class="wmb-exp" data-exp="history" aria-expanded="false"><span>History</span>${img('ie-chevron', 'wmb-chev')}</button>
                     <div class="wmb-home-list" data-list="history" hidden></div>
                 </div>
+                <div class="wmb-gpage" hidden></div>
                 <div class="wmb-frame-wrap" hidden>
                     <div class="wmb-touch"></div>
                     <div class="wmb-busy" aria-hidden="true"></div>
@@ -1214,6 +1470,7 @@
             go: page.querySelector('.wmb-go'),
             view: page.querySelector('.wmb-view'),
             home: page.querySelector('.wmb-home'),
+            gpage: page.querySelector('.wmb-gpage'),
             frameWrap: page.querySelector('.wmb-frame-wrap'),
             touch: page.querySelector('.wmb-touch'),
             sub: page.querySelector('.wmb-sub'),
@@ -1244,7 +1501,8 @@
             const q = input.value.trim();
             if (!q) { input.focus(); return; }
             input.blur();
-            navigate(webUrl(q) || searchUrl(q));
+            if (webUrl(q)) navigate(webUrl(q));
+            else openLocal({ kind: 'search', q });
             input.value = '';
         });
         els.home.addEventListener('click', (e) => {
@@ -1255,8 +1513,17 @@
                 renderHomeLists();
                 return;
             }
-            const link = e.target.closest('.wmb-home-link');
-            if (link) { e.preventDefault(); navigate(link.dataset.url, link.textContent); }
+            onLocalClick(e);
+        });
+        els.gpage.addEventListener('click', onLocalClick);
+        els.gpage.addEventListener('scroll', () => { if (localShown && localShown === entry()) localShown.scroll = els.gpage.scrollTop; }, { passive: true });
+        els.gpage.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const input = e.target.querySelector('input');
+            const q = input ? input.value.trim() : '';
+            if (!q) { if (input) input.focus(); return; }
+            input.blur();
+            openLocal({ kind: 'search', q });
         });
 
         els.sub.addEventListener('click', (e) => {
@@ -1354,7 +1621,7 @@
                 sub = null;
                 if (els.sub) els.sub.hidden = true;
                 page.classList.remove('has-sub');
-                entries = [{ home: true }];
+                entries = [homeEntry()];
                 idx = 0;
                 render();
             },
@@ -1378,14 +1645,16 @@
         window.wmBrowser = {
             open(url) {
                 const u = webUrl(url);
-                if (!u) return false;
+                const g = u ? null : parseGrim(url);
+                if (!u && !g) return false;
                 ws.open(APP_ID);
-                navigate(u);
+                if (u) navigate(u);
+                else openLocal(g);
                 return true;
             },
             closeSession,
             // tests: the pages seen here and where Chromium is
-            _state: () => ({ entries: entries.map((e) => (e.home ? 'home' : e.url)), idx, idle: !!idleTimer, inspect: pendingInspect, chromeAt, chromeBase, session: session && session.id, loading, frame: !!frame, ready, viewMode, zoomKey, geometry: els.view ? geometry() : null })
+            _state: () => ({ entries: entries.map((e) => (e.home ? (e.grim.kind === 'home' ? 'home' : e.url) : e.url)), idx, idle: !!idleTimer, inspect: pendingInspect, chromeAt, chromeBase, session: session && session.id, loading, frame: !!frame, ready, viewMode, zoomKey, geometry: els.view ? geometry() : null })
         };
         try {
             // featureLoader.js's global function: on the phone it opens this app
@@ -1408,7 +1677,9 @@
         if (/^dsap:/i.test(address) || (address && !/^(?:edtx|rdf|https?):/i.test(address) && typeof window.isDsapPseudoUrl === 'function' && window.isDsapPseudoUrl(address))) return null;
         if (window.wmBrowser.open(address)) return true;
         ws.open(APP_ID);
-        goHome();
+        const g = t.tag ? { kind: 'wiki', tag: String(t.tag) } : parseGrim(address);
+        if (g && g.kind !== 'home') openLocal(g);
+        else goHome();
         return true;
     }
 
@@ -1429,7 +1700,10 @@
         } catch (_) { /* not configurable: the desktop route stays */ }
         try {
             // featureLoader.js: Help, Recent Items, the Start menu's Grimoire
-            window.openGrimoireApplet = async () => { openGrimoireTarget({}); };
+            window.openGrimoireApplet = async (query) => {
+                const q = String(query || '').trim();
+                openGrimoireTarget(q ? { address: 'edtx://en.grimoire.jp/search?q=' + encodeURIComponent(q) } : {});
+            };
         } catch (_) { /* read-only */ }
         // the Grimoire window's own openers (tagWikiSearchModal.js), used by Studio's prompt boxes
         // (autocompleteUtils.js, promptTextareaContextMenu.js) and Run: patched once the feature loads
