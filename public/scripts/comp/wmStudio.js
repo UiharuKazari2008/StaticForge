@@ -25,7 +25,8 @@
  *               opened from it (the vSlider editor) stacks over it. The back key and Done close the top
  *               one the window's own way; switching apps closes none. Desktop context menus raised
  *               inside Studio (contextMenu.js) are shown as WM menus (combos as WM drop-downs) and run
- *               the desktop menu's onHide when they close. The Anlas question is a WM message box.
+ *               the desktop menu's onHide when they close. The Anlas question (a WM message box), the
+ *               upscale choices and Expand Canvas are wmDialogs.js's WM forms, as everywhere on the phone.
  *   entry points every path that opens the desktop Studio (openManualModalWithContent: MCP open_in_studio /
  *               apply_studio_changes / print_studio, gallery and viewer "open in Studio", presets,
  *               Programs) brings this app up; so does #manualModal opening by any other route.
@@ -537,7 +538,7 @@
 
     function isToolCandidate(el) {
         return !!(el && el.nodeType === 1 && el.parentNode === document.body && el.classList.contains('modal')
-            && !NOT_TOOLS.has(el.id) && !el.classList.contains('hidden') && !el.classList.contains('hidden-alt')
+            && !NOT_TOOLS.has(el.id) && !(window.wmDialogs && window.wmDialogs.claims(el)) && !el.classList.contains('hidden') && !el.classList.contains('hidden-alt')
             && !el.classList.contains('minimised') && !el.classList.contains('closing') && !dismissed.has(el));
     }
 
@@ -809,35 +810,6 @@
         });
     }
 
-    // ---------------------------------------------------------------- the Anlas question
-
-    /**
-     * creditCostDialog.js builds a desktop window and resolves only through its own buttons. On the
-     * phone the print's question is a WM message box (Generate resolves true, Cancel false), so
-     * nothing is left half-open behind the shell. The upscale form (scale and delivery choices) stays
-     * the desktop's, hosted as a tool page whose Done is its Cancel.
-     */
-    function wrapCreditCost() {
-        /* global showCreditCostDialog */
-        if (typeof showCreditCostDialog !== 'function' || showCreditCostDialog._wmStudio) return;
-        const orig = showCreditCostDialog;
-        const wrapped = function (cost, event, outputResolution, isUpscaling) {
-            if (isUpscaling || !ws || typeof ws.messageBox !== 'function') return orig.apply(this, arguments);
-            let text = `This will cost ${cost} Anlas to generate`;
-            if (outputResolution && outputResolution.width && outputResolution.height) text += ` (${outputResolution.width} x ${outputResolution.height})`;
-            text += '.';
-            return ws.messageBox({
-                title: 'Payment Required',
-                text,
-                icon: 'question',
-                buttons: [{ text: 'Generate', value: true, default: true }, { text: 'Cancel', value: false }],
-                cancelValue: false
-            }).then((v) => v === true);
-        };
-        wrapped._wmStudio = true;
-        window.showCreditCostDialog = wrapped;
-    }
-
     // ---------------------------------------------------------------- the app icon at dpr 3
 
     /**
@@ -944,7 +916,6 @@
             }
         });
         wrapEntryPoints();
-        wrapCreditCost();
         watchWindows();
         wrapOpenModal();
         hdIcon();

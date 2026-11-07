@@ -2125,6 +2125,28 @@
             try { showLightbox({ filename: name }); } catch (_) { /* viewer not ready */ }
         }
 
+        /**
+         * A picture's tap-and-hold menu: the picture view's operations on it, run by the desktop's own
+         * functions (galleryActions.js, imageExpansion.js, galleryView.js) on the gallery's item.
+         */
+        function pictureMenu(name) {
+            const item = galleryList().find((it) => (it.filename || it.original) === name) || null;
+            const fn = (f) => (typeof window[f] === 'function' ? window[f] : null);
+            const run = (f, arg) => { const g = fn(f); if (g && arg) { try { g(arg); } catch (err) { console.warn('[wmShell] picture menu', f, err); } } };
+            const scraps = typeof currentGalleryView !== 'undefined' && currentGalleryView === 'scraps';
+            return [
+                { label: 'View', action: () => viewPicture(name) },
+                '-',
+                { label: 'Recast Spell', disabled: !item || !fn('rerollImage'), action: () => run('rerollImage', item) },
+                { label: 'Upscale', disabled: !item || !fn('upscaleImage'), action: () => run('upscaleImage', item) },
+                { label: 'Expand Canvas', disabled: !item || !fn('openImageExpansionModal'), action: () => run('openImageExpansionModal', item && (item.upscaled || item.original || item.filename)) },
+                '-',
+                { label: 'Set as Today Background', action: () => setTodayBackground(name) },
+                { label: scraps ? 'Restore from Scraps' : 'Move to Scraps', disabled: !item, action: () => run(scraps ? 'removeFromScraps' : 'moveToScraps', item) },
+                { label: 'Delete', disabled: !item || !fn('deleteImage'), action: () => run('deleteImage', item) }
+            ];
+        }
+
         /** WM's folder drop-down: the gallery views, the current one with a dot. */
         function folderMenu() {
             const view = activeView();
@@ -2256,6 +2278,15 @@
                     // WM: a tap selects the picture and opens it
                     selectCell(page, cell.dataset.filename);
                     viewPicture(cell.dataset.filename);
+                });
+                // WM: tap-and-hold a picture for its pop-up menu (the picture view's operations;
+                // their questions are WM forms, wmDialogs.js)
+                page.querySelector('.wm-pv-grid').addEventListener('contextmenu', (e) => {
+                    const cell = e.target.closest('.wm-pv-cell');
+                    if (!cell) return;
+                    e.preventDefault();
+                    selectCell(page, cell.dataset.filename);
+                    window.wmShell.menuAt(e.clientX, e.clientY, pictureMenu(cell.dataset.filename));
                 });
                 page.querySelector('.wm-pv-folder').addEventListener('click', (e) => {
                     e.stopPropagation();

@@ -1,0 +1,494 @@
+/* Melaton Mobile: operation dialogs as WM forms (wmDialogs.js, Yozora #709).
+ * The desktop's upscale choices (#creditCostDialog) and Expand Canvas (#imageExpansionDialog) are
+ * re-hosted in the .wm-op page: no window frame, WM's white form with 12 px text, 20 px fields with
+ * a 1 px black frame, combo boxes with WM's drop arrow, check boxes for the desktop's toggles; the
+ * dialog's own OK / Cancel buttons are the soft keys. Every rule sits under .wm-op (phones only). */
+
+.wm-op {
+    background: #fff;
+}
+
+.wm-op .wmo-host {
+    position: absolute;
+    inset: 0;
+}
+
+/* ---- a hosted window fills the page ---- */
+.wm-op .wmo-host > .modal {
+    position: absolute !important;
+    inset: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    translate: none !important;
+    scale: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    animation: none !important;
+    transition: none !important;
+    z-index: auto !important;
+    display: flex !important;
+    flex-direction: column;
+    overflow: auto !important;
+    background: #fff !important;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+    backdrop-filter: none !important;
+    filter: none !important;
+    contain: layout paint;
+}
+
+/* a window opened from the form (Expand's compiled prompt) covers it */
+.wm-op .wmo-host > .modal[data-wmo-under] {
+    display: none !important;
+}
+
+/* the picture view shows over the hidden content pane: the hosted windows hide with it */
+html.ui-mobile[data-wm-viewer] .wm-op .wmo-host > .modal {
+    visibility: hidden !important;
+}
+
+.wm-op .wmo-host > .modal::before,
+.wm-op .wmo-host > .modal::after,
+.wm-op .wmo-host > .modal > .modal-focus-overlay,
+.wm-op .wmo-host > .modal > .modal-window-title,
+.wm-op .wmo-host > .modal > .modal-window-controls,
+.wm-op .wmo-host > .modal > .resize-handle,
+.wm-op .credit-cost-header,
+.wm-op .credit-cost-buttons,
+.wm-op #imageExpansionDialog #submitExpansionBtn {
+    display: none !important;
+}
+
+.wm-op .wmo-host > .modal > .modal-content,
+.wm-op .credit-cost-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0 !important;
+    padding: calc(7 * var(--wm-px)) calc(5 * var(--wm-px)) calc(8 * var(--wm-px)) !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    overflow: auto;
+    backdrop-filter: none !important;
+}
+
+.wm-op .modal-body {
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: none !important;
+}
+
+.wm-op .wmo-host :is(label, .form-group, .form-row, span, p, div, strong) {
+    font-family: var(--wm-font) !important;
+    color: #000;
+    text-shadow: none !important;
+}
+
+/* ---- rows: the label, then its field (WM's stacked form) ---- */
+.wm-op :is(.form-group, .form-row) {
+    display: block !important;
+    width: auto !important;
+    margin: 0 0 calc(6 * var(--wm-px)) !important;
+    padding: 0 !important;
+    flex: none !important;
+    border: 0 !important;
+    background: none !important;
+}
+
+.wm-op .form-group > label {
+    display: block !important;
+    margin: 0 0 calc(2 * var(--wm-px)) !important;
+    padding: 0 !important;
+    font: calc(12 * var(--wm-px)) / calc(14 * var(--wm-px)) var(--wm-font) !important;
+    color: #000 !important;
+    opacity: 1 !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+}
+
+.wm-op .credit-cost-message {
+    display: block !important;
+    margin: 0 0 calc(8 * var(--wm-px)) !important;
+    padding: 0 !important;
+    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+    color: #000 !important;
+    background: none !important;
+}
+
+.wm-op .credit-cost-message > .director-expandable-content {
+    display: block !important;
+    margin: calc(8 * var(--wm-px)) 0 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+}
+
+/* ---- edit boxes ---- */
+.wm-op .wmo-host :is(input[type="text"], input[type="number"], input:not([type]), textarea, .form-control) {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: calc(20 * var(--wm-px)) !important;
+    height: auto;
+    margin: 0 !important;
+    padding: 0 calc(3 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+    -webkit-text-fill-color: #000 !important;
+    outline: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.wm-op .wmo-host textarea {
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
+    resize: none !important;
+}
+
+.wm-op .wmo-host :is(input, textarea)::placeholder {
+    color: #808080 !important;
+    -webkit-text-fill-color: #808080 !important;
+}
+
+/* the percent read-outs over Rescale / Noise sit inside their edit box */
+.wm-op .percentage-input-container {
+    position: relative;
+    display: block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+}
+
+.wm-op .percentage-input-overlay {
+    position: absolute;
+    right: calc(4 * var(--wm-px)) !important;
+    top: 0 !important;
+    bottom: auto !important;
+    height: calc(20 * var(--wm-px)) !important;
+    display: flex !important;
+    align-items: center;
+    transform: none !important;
+    margin: 0 !important;
+    color: #4a4d4a !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    pointer-events: none;
+}
+
+/* ---- push buttons: WM's tint face, 1 px black frame ---- */
+.wm-op .wmo-host :is(button.btn-secondary, button.btn-primary, button.btn-danger, .custom-dropdown-btn) {
+    box-sizing: border-box !important;
+    min-width: calc(22 * var(--wm-px)) !important;
+    height: calc(20 * var(--wm-px)) !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 calc(6 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: var(--wm-tint) !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    text-shadow: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    opacity: 1;
+    animation: none !important;
+    transition: none !important;
+    -webkit-text-fill-color: currentColor !important;
+}
+
+.wm-op .wmo-host :is(button.btn-secondary, button.btn-primary, button.btn-danger) :is(i, .icon-fa) {
+    color: #000 !important;
+    font-size: calc(11 * var(--wm-px)) !important;
+    -webkit-text-fill-color: #000 !important;
+}
+
+.wm-op .wmo-host button:active:not(:disabled) {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text, #fff) !important;
+}
+
+/* ---- combo boxes: white box, the value, WM's arrow button at the right ---- */
+.wm-op .custom-dropdown {
+    position: relative;
+    display: block !important;
+    width: 100% !important;
+    min-width: 0;
+}
+
+.wm-op .wmo-host .custom-dropdown .custom-dropdown-btn,
+.wm-op .wmo-host .director-expandable-content .custom-dropdown-btn {
+    position: relative;
+    display: flex !important;
+    align-items: center;
+    width: 100% !important;
+    padding: 0 calc(16 * var(--wm-px)) 0 calc(3 * var(--wm-px)) !important;
+    background: #fff !important;
+    text-align: left !important;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-op .wmo-host .custom-dropdown-btn::before {
+    display: none !important;
+}
+
+.wm-op .wmo-host .custom-dropdown-btn::after {
+    content: '' !important;
+    display: block !important;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: auto !important;
+    width: calc(13 * var(--wm-px)) !important;
+    height: auto !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-left: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background:
+        linear-gradient(to top right, transparent 50%, #000 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to top left, transparent 50%, #000 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        var(--wm-tab-strip) !important;
+    -webkit-mask: none !important;
+    mask: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+}
+
+.wm-op .wmo-host .custom-dropdown-btn > :is(span, div) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+}
+
+.wm-op .wmo-host .custom-dropdown-btn > :is(i.dropdown-arrow, .fa-chevron-down, .fa-caret-down) {
+    display: none !important;
+}
+
+/* Image Position: the cell grid stays a small picture before the name */
+.wm-op .mask-bias-button-content {
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+}
+
+/* a desktop drop-down list the WM drop-down stands in for */
+.wm-op .custom-dropdown-menu.wmo-dd-proxied {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+/* ---- Expand Canvas ---- */
+.wm-op #imageExpansionDialog .resolution-group {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(4 * var(--wm-px)) calc(8 * var(--wm-px));
+}
+
+.wm-op #imageExpansionDialog .resolution-group > .custom-dropdown {
+    flex: 1 0 100%;
+}
+
+.wm-op #imageExpansionDialog .custom-resolution-inputs:not(.hidden) {
+    display: flex !important;
+    flex: 1 0 100%;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+}
+
+.wm-op #imageExpansionDialog .custom-resolution-inputs .x-seperator {
+    flex: 0 0 auto;
+}
+
+/* the desktop's icon toggles (upscale after, inset, compiled prompt, Director, advanced): WM check
+ * boxes with the button's own title as their text */
+.wm-op #imageExpansionDialog :is(#expansionUpscaleToggle, #expansionInsetToggle, #expansionEditCompiledPromptBtn, #expansionDirectorToggle, #expansionAdvancedToggle, #expansionAutoSeedToggle) {
+    display: inline-flex !important;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    width: auto !important;
+    height: auto !important;
+    min-height: calc(18 * var(--wm-px)) !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: none !important;
+    color: #000 !important;
+    text-align: left;
+    white-space: normal;
+}
+
+.wm-op #imageExpansionDialog :is(#expansionUpscaleToggle, #expansionInsetToggle, #expansionEditCompiledPromptBtn, #expansionDirectorToggle, #expansionAdvancedToggle, #expansionAutoSeedToggle).hidden {
+    display: none !important;
+}
+
+.wm-op #imageExpansionDialog :is(#expansionUpscaleToggle, #expansionInsetToggle, #expansionEditCompiledPromptBtn, #expansionDirectorToggle, #expansionAdvancedToggle, #expansionAutoSeedToggle) > i {
+    display: none !important;
+}
+
+.wm-op #imageExpansionDialog :is(#expansionUpscaleToggle, #expansionInsetToggle, #expansionEditCompiledPromptBtn, #expansionDirectorToggle, #expansionAdvancedToggle, #expansionAutoSeedToggle)::before {
+    content: '' !important;
+    display: block !important;
+    position: static !important;
+    flex: 0 0 auto;
+    width: calc(13 * var(--wm-px)) !important;
+    height: calc(13 * var(--wm-px)) !important;
+    margin: 0 !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    outline: 0 !important;
+    background: #fff center / 100% 100% no-repeat !important;
+    box-shadow: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+}
+
+.wm-op #imageExpansionDialog :is(#expansionUpscaleToggle, #expansionInsetToggle, #expansionEditCompiledPromptBtn, #expansionDirectorToggle, #expansionAutoSeedToggle)[data-state="on"]::before,
+.wm-op #imageExpansionDialog:has(#expansionAdvancedOptions:not(.hidden)) #expansionAdvancedToggle::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11'%3E%3Cpath d='M2 5.2 4.3 7.5 9 2.8' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E") !important;
+}
+
+.wm-op #imageExpansionDialog :is(#expansionUpscaleToggle, #expansionInsetToggle, #expansionEditCompiledPromptBtn, #expansionDirectorToggle, #expansionAdvancedToggle, #expansionAutoSeedToggle)::after {
+    content: attr(title) !important;
+    display: inline !important;
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    outline: 0 !important;
+    text-decoration: none !important;
+    background: none !important;
+    box-shadow: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) / calc(14 * var(--wm-px)) var(--wm-font) !important;
+}
+
+.wm-op #imageExpansionDialog #expansionAdvancedToggle::after {
+    content: 'Advanced options' !important;
+}
+
+.wm-op #imageExpansionDialog #expansionAutoSeedToggle::after {
+    content: 'Random seed' !important;
+}
+
+.wm-op #imageExpansionDialog :is(#expansionUpscaleToggle, #expansionInsetToggle, #expansionEditCompiledPromptBtn, #expansionDirectorToggle, #expansionAdvancedToggle, #expansionAutoSeedToggle):disabled {
+    color: #8c8e8c !important;
+}
+
+.wm-op #imageExpansionDialog .modal-footer {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    gap: calc(2 * var(--wm-px));
+    margin: calc(6 * var(--wm-px)) 0 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: none !important;
+}
+
+.wm-op #imageExpansionDialog .modal-footer > :is(.controls-flex-left, .controls-flex-right) {
+    display: flex !important;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: calc(2 * var(--wm-px));
+    margin: 0 !important;
+}
+
+.wm-op #imageExpansionDialog #rerollExpansionBtn:not(.hidden) {
+    display: inline-flex !important;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    min-width: calc(76 * var(--wm-px)) !important;
+    margin-top: calc(4 * var(--wm-px)) !important;
+}
+
+.wm-op #imageExpansionDialog #expansionAdvancedOptions:not(.hidden) {
+    display: block !important;
+    margin-top: calc(6 * var(--wm-px));
+}
+
+/* the canvas preview: the new canvas with the picture placed in it, fitted to the screen width */
+.wm-op #imageExpansionDialog .expansion-canvas-preview:not(.hidden) {
+    display: block !important;
+}
+
+.wm-op #imageExpansionDialog .expansion-canvas-preview-stage {
+    max-width: 100%;
+    margin: 0 auto;
+}
+
+.wm-op #imageExpansionDialog .expansion-canvas-preview-target {
+    border: calc(1 * var(--wm-px)) dotted #000 !important;
+    background: repeating-conic-gradient(#d6d3ce 0 25%, #fff 0 50%) 0 0 / calc(8 * var(--wm-px)) calc(8 * var(--wm-px)) !important;
+}
+
+.wm-op #imageExpansionDialog .expansion-canvas-preview-edge {
+    color: #000 !important;
+}
+
+.wm-op #imageExpansionDialog .expansion-canvas-preview-meta {
+    color: #4a4d4a !important;
+    font-size: calc(11 * var(--wm-px)) !important;
+}
+
+/* loading the dialog's choices: WM's white page with the wait cursor's place */
+.wm-op #imageExpansionDialog .gallery-move-right-panel-cover {
+    background: #fff !important;
+    backdrop-filter: none !important;
+}
+
+.wm-op #imageExpansionDialog .gallery-move-right-panel-cover .cover-spinner i {
+    color: #000 !important;
+}
+
+/* ---- the upscale choices: label left, combo right (WM's label: field rows) ---- */
+.wm-op #creditCostDialog .director-expandable-content > .form-group {
+    display: grid !important;
+    grid-template-columns: calc(62 * var(--wm-px)) minmax(0, 1fr);
+    align-items: center;
+    column-gap: calc(5 * var(--wm-px));
+    margin: 0 0 calc(1 * var(--wm-px)) !important;
+}
+
+.wm-op #creditCostDialog .director-expandable-content > .form-group > label {
+    margin: 0 !important;
+    text-align: right;
+}
+
+.wm-op #creditCostDialog .custom-dropdown-btn {
+    width: 100% !important;
+}
