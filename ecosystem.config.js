@@ -48,6 +48,8 @@ module.exports = {
         watch: false,
         // Timestamp every log line (SQLITE_IOERR on 2026-10-15 could not be dated).
         time: true,
+        // Give Chromium time to save its profile on restart (shutdown waits up to 6s + 1.5s).
+        kill_timeout: 10000,
         env: {
             HOST: '127.0.0.1',
             PORT: '9330',
