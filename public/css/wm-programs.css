@@ -675,6 +675,8 @@
 
 .wm-wall-axis.is-disabled .wm-wall-slider {
     cursor: default;
+    /* greyed: takes no input, so a swipe that starts on it still scrolls the page */
+    touch-action: pan-y;
 }
 
 .wm-wall-axis.is-disabled .wm-slider-track {

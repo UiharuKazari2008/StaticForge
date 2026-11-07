@@ -1431,11 +1431,18 @@
         }
         const stored = await echo;
         wallEcho = null;
-        const kept = stored === undefined ? next : normalizeMobileWallpaper(stored);
-        if (next && kept && kept.size === next.size && kept.position !== next.position) {
-            // a server from before the focus sliders keeps only keywords (it stored the centre):
+        // A server from before the focus sliders keeps only keywords: it echoes the words
+        // "center center" for any percentage. The new server always echoes "<x>% <y>%", so a
+        // percentage echo (or another window's save landing in the 3 s window) is never this case.
+        const keywordPoint = (f) => [0, 50, 100].includes(f.x) && [0, 50, 100].includes(f.y);
+        const storedRaw = stored && typeof stored === 'object' ? String(stored.position || '') : '';
+        const sentFocus = next ? wallFocus(next.position) : null;
+        const oldServer = !!next && !!stored && stored.size === next.size
+            && !storedRaw.includes('%') && /^\s*center\s+center\s*$/i.test(storedRaw)
+            && !keywordPoint(sentFocus);
+        if (oldServer) {
             // save the nearest keyword point instead and say so, rather than lose the focus quietly
-            const f = wallFocus(next.position);
+            const f = sentFocus;
             const near = (v, lo, hi) => (v < 25 ? lo : v > 75 ? hi : 'center');
             const words = `${near(f.x, 'left', 'right')} ${near(f.y, 'top', 'bottom')}`;
             await client.updateWorkspaceSettings(id, { mobileWallpaper: { size: next.size, position: words } });

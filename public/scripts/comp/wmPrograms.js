@@ -487,7 +487,7 @@
         const pos = (v) => `calc(4 * var(--wm-px) + (100% - 8 * var(--wm-px)) * ${v / 100})`;
         const slider = ([axis, name, lo, hi]) => `<div class="wm-wall-axis${focusOff ? ' is-disabled' : ''}" data-axis="${axis}">
                 <div class="wm-slider-scale"><span>${esc(lo)}</span><span class="wm-wall-value" data-f="${axis}-value"></span><span>${esc(hi)}</span></div>
-                <div class="wm-slider wm-wall-slider" role="slider"${focusOff ? ' aria-disabled="true"' : ' tabindex="0"'} aria-label="${esc(name)}" aria-valuemin="0" aria-valuemax="100">
+                <div class="wm-slider wm-wall-slider" role="slider" aria-orientation="horizontal"${focusOff ? ' aria-disabled="true"' : ' tabindex="0"'} aria-label="${esc(name)}" aria-valuemin="0" aria-valuemax="100">
                     <div class="wm-slider-track"></div>
                     ${[0, 25, 50, 75, 100].map((v) => `<div class="wm-slider-tick" style="left:${pos(v)}"></div>`).join('')}
                     <div class="wm-slider-thumb"></div>
@@ -566,6 +566,8 @@
             });
             ['touchstart', 'touchmove'].forEach((t) => track.addEventListener(t, (e) => e.stopPropagation(), { passive: true }));
             track.addEventListener('keydown', (e) => {
+                // both trackbars are horizontal: Left / Right step them, while Up / Down are left
+                // to move between controls as on WM 6.1 (the D-pad walks the page's controls)
                 const step = { ArrowLeft: -1, ArrowRight: 1, PageUp: -10, PageDown: 10 }[e.key];
                 if (step !== undefined) set(focus[axis] + step);
                 else if (e.key === 'Home') set(0);
