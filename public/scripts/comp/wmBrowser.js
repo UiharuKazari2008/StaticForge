@@ -1391,6 +1391,82 @@
             // featureLoader.js's global function: on the phone it opens this app
             window.openGrimoireUrl = async (url) => { if (!window.wmBrowser.open(url)) ws.open(APP_ID); };
         } catch (_) { /* read-only */ }
+        routeGrimoire();
+    }
+
+    /**
+     * Grimoire (Alchemy's desktop window) opened from anywhere on the phone lands in this app. Without
+     * this, a wiki or search opened from Studio (a prompt tag's wiki, Search in Grimoire), Help, Recent
+     * Items or a desktop shortcut showed the desktop Grimoire window: Studio hosted it as a tool page
+     * whose soft keys were only Done, the IE keys and menu were gone. grimoireOpenInTab is set by
+     * grimoireTabs.js when the Grimoire feature loads (after this file), so the global is a getter that
+     * keeps the desktop's function for what only the desktop shows (dsap: apps such as NovelAI Explore).
+     */
+    function openGrimoireTarget(target) {
+        const t = target || {};
+        const address = String(t.url || t.address || '').trim();
+        if (/^dsap:/i.test(address) || (address && !/^(?:edtx|rdf|https?):/i.test(address) && typeof window.isDsapPseudoUrl === 'function' && window.isDsapPseudoUrl(address))) return null;
+        if (window.wmBrowser.open(address)) return true;
+        ws.open(APP_ID);
+        goHome();
+        return true;
+    }
+
+    function routeGrimoire() {
+        let desktopOpenInTab = typeof window.grimoireOpenInTab === 'function' ? window.grimoireOpenInTab : null;
+        const phoneOpenInTab = function (target) {
+            const done = openGrimoireTarget(target);
+            if (done !== null) return done;
+            return desktopOpenInTab ? desktopOpenInTab.apply(this, arguments) : false;
+        };
+        try {
+            Object.defineProperty(window, 'grimoireOpenInTab', {
+                configurable: true,
+                enumerable: true,
+                get: () => phoneOpenInTab,
+                set: (fn) => { if (fn !== phoneOpenInTab) desktopOpenInTab = fn; }
+            });
+        } catch (_) { /* not configurable: the desktop route stays */ }
+        try {
+            // featureLoader.js: Help, Recent Items, the Start menu's Grimoire
+            window.openGrimoireApplet = async () => { openGrimoireTarget({}); };
+        } catch (_) { /* read-only */ }
+        // the Grimoire window's own openers (tagWikiSearchModal.js), used by Studio's prompt boxes
+        // (autocompleteUtils.js, promptTextareaContextMenu.js) and Run: patched once the feature loads
+        const fl = window.featureLoader;
+        if (fl && typeof fl.loadFeature === 'function' && !fl.loadFeature._wmBrowser) {
+            const load = fl.loadFeature;
+            const wrapped = async function () {
+                const out = await load.apply(this, arguments);
+                patchGrimoireWindow();
+                return out;
+            };
+            wrapped._wmBrowser = true;
+            fl.loadFeature = wrapped;
+        }
+        patchGrimoireWindow();
+    }
+
+    function patchGrimoireWindow() {
+        let g = null;
+        try { /* global tagWikiSearchModal */ g = typeof tagWikiSearchModal !== 'undefined' ? tagWikiSearchModal : null; } catch (_) { g = null; }
+        if (!g || g._wmBrowser) return;
+        g._wmBrowser = true;
+        g.openSearchForTerm = function (term) {
+            const q = String(term || '').trim().replace(/_/g, ' ').replace(/\s+/g, ' ');
+            if (q) openGrimoireTarget({ address: 'edtx://en.grimoire.jp/search?q=' + encodeURIComponent(q) });
+        };
+        // true only when there is an article (callers search instead on false)
+        g.openStandaloneWikiIfDirectMatch = async function (name, options) {
+            const tag = (options && options.tag) || this.buildWikiTagFromTerm(String(name || '').trim());
+            if (!tag) return false;
+            try {
+                const found = await this.getTagWikiPage(tag, { force: !!(options && options.force), quiet: true });
+                if (!this.hasWikiPageContent(found)) return false;
+            } catch (_) { return false; }
+            openGrimoireTarget({ tag: tag.title || tag.name });
+            return true;
+        };
     }
 
     if (window.wmShell) register();
