@@ -51,10 +51,13 @@
         const agentBrowserSession = new URLSearchParams(location.search).get('agent') === '1';
         let galleryWindowPreference = null; // 'windowed', 'maximized', or null for auto
 
-        galleryWindowPreference = agentBrowserSession
+        galleryWindowPreference = (agentBrowserSession && !(innerWidth < 1200 && window.matchMedia && matchMedia('(pointer: coarse)').matches))
             ? 'windowed'
             : localStorage.getItem('galleryWindowMode');
-        const isWideScreen = agentBrowserSession || innerWidth >= 1200;
+        // A phone (coarse pointer, under 1200 px) is a phone even as an agent tab: ?agent=1 forces
+        // the desktop only on desktop browsers (#709)
+        const phoneBrowser = innerWidth < 1200 && !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+        const isWideScreen = (agentBrowserSession && !phoneBrowser) || innerWidth >= 1200;
         // The shell is chosen once per page load and never changes while the page lives: the
         // desktop and Melaton Mobile (wm-shell.css, wmShell.js, #709) never share the screen.
         // Under 1200 px a page that is not an agent tab is a phone.

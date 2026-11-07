@@ -224,20 +224,11 @@ html.ui-mobile[data-wm-app="today"] #wmShell {
 }
 
 /* the Gallery app hosts #galleryWindow under the bars: the content pane is see-through */
-html.ui-mobile[data-wm-app="gallery"] #wmShell > .wm-content,
 html.ui-mobile[data-wm-app="today"] #wmShell > .wm-content {
     background: transparent;
 }
 
-/* the Gallery's pane is empty: taps go through it to #galleryWindow under the shell */
-html.ui-mobile[data-wm-app="gallery"] #wmShell > .wm-content,
-html.ui-mobile[data-wm-app="gallery"] #wmShell > .wm-content > .wm-page {
-    pointer-events: none !important;
-}
 
-html.ui-mobile[data-wm-app="gallery"] #wmShell {
-    background: transparent;
-}
 
 .wm-page {
     position: absolute;
@@ -1211,4 +1202,363 @@ html.ui-mobile body > #dreamscapeConnectivityErrorOverlay,
 html.ui-mobile body > #dreamscapeConnectivityErrorWindow,
 html.ui-mobile body > .dreamscape-app-error-window {
     z-index: 2300 !important;
+}
+
+/* ---- Today rows (slice 2) ---- */
+.wm-today-row[hidden],
+.wm-today-prints[hidden] {
+    display: none !important;
+}
+
+div.wm-today-row {
+    cursor: default;
+}
+
+/* Live Search: 17 px box 2.5 px in from the sides, 1 px #4A96CE frame on the Today background,
+ * the search button (WLMHSSearchBarResources) inside at the right (device: 34 px at 2x) */
+.wm-today-search {
+    display: flex;
+    align-items: stretch;
+    height: calc(17 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) calc(2.5 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #4a96ce;
+    box-sizing: border-box;
+}
+
+.wm-today-search input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    margin: 0;
+    padding: 0 calc(3 * var(--wm-px));
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #fff;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    outline: none;
+    user-select: text;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.wm-today-search input::placeholder {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.wm-today-search input::-webkit-search-cancel-button {
+    display: none;
+}
+
+.wm-today-search-go {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px)) !important;
+    height: calc(15 * var(--wm-px)) !important;
+    align-self: center;
+    background: center / contain no-repeat image-set(url('/static_images/wm61/today-search-button.png') 1x, url('/static_images/wm61/today-search-button@2x.png') 2x) !important;
+}
+
+.wm-today-search-go:active {
+    background-image: image-set(url('/static_images/wm61/today-search-button-pressed.png') 1x, url('/static_images/wm61/today-search-button-pressed@2x.png') 2x) !important;
+}
+
+/* newest prints: one row of square tiles under the items */
+.wm-today-prints {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(44 * var(--wm-px)), 1fr));
+    grid-template-rows: auto;
+    grid-auto-rows: 0;
+    overflow: hidden;
+    gap: calc(2 * var(--wm-px));
+    padding: calc(3 * var(--wm-px)) calc(3 * var(--wm-px)) 0;
+    border-bottom: 0;
+}
+
+.wm-today-print {
+    aspect-ratio: 1;
+    /* longhands: the tile's inline background-image must survive */
+    background-color: #000 !important;
+    background-position: center !important;
+    background-size: cover !important;
+    background-repeat: no-repeat !important;
+    border: calc(1 * var(--wm-px)) solid var(--wm-today-rule) !important;
+    box-sizing: border-box;
+}
+
+.wm-today-print:active {
+    border-color: var(--wm-highlight) !important;
+}
+
+/* ---- Pictures: the Windows Phone Photos grid (slice 2) ----
+ * The desktop gallery window never shows on a phone: it keeps loading, paging and searching the
+ * list (allImages) underneath, and the Pictures app draws that list itself. */
+html.ui-mobile body > #galleryWindow {
+    display: none !important;
+}
+
+/* WP view pixel (--wp-v) = screen short side / 480, set by wmShell.js layoutGrid */
+.wm-photos {
+    /* WP draws no scroll bar on the grid */
+    scrollbar-width: none;
+    --wp-v: 0.8125px;
+    --wp-cols: 4;
+    background: #000;
+    color: #fff;
+    font-family: 'Segoe UI', var(--wm-font);
+    overscroll-behavior: contain;
+}
+
+.wm-photos-group {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 600px;
+}
+
+/* month header: accent colour, 32 vp regular, 24 vp from the left; ~42 vp from its baseline to
+ * the first row, ~56 vp from the last row of the group before */
+.wm-photos-month {
+    margin: 0;
+    padding: calc(44 * var(--wp-v)) calc(24 * var(--wp-v)) calc(20 * var(--wp-v));
+    font-size: calc(32 * var(--wp-v));
+    font-weight: 400;
+    line-height: 1;
+    color: var(--wm-highlight);
+    text-transform: lowercase;
+}
+
+.wm-photos-group:first-child .wm-photos-month {
+    padding-top: calc(18 * var(--wp-v));
+}
+
+.wm-photos-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--wp-cols), calc(99 * var(--wp-v)));
+    gap: calc(12 * var(--wp-v));
+    padding: 0 calc(24 * var(--wp-v));
+}
+
+.wm-photos-list > .wm-photos-group:last-child .wm-photos-grid {
+    padding-bottom: calc(24 * var(--wp-v));
+}
+
+.wm-photo {
+    display: block;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    width: calc(99 * var(--wp-v));
+    height: calc(99 * var(--wp-v));
+    padding: 0 !important;
+    overflow: hidden;
+    background: #1f1f1f !important;
+    transition: transform 0.1s ease-out;
+}
+
+.wm-photo img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+}
+
+/* WP tilt feedback, simplified: the pressed tile sinks a little */
+.wm-photo:active {
+    transform: scale(0.95);
+}
+
+.wm-photos-empty {
+    margin: calc(24 * var(--wp-v));
+    font-size: calc(24 * var(--wp-v));
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.wm-photos-empty[hidden] {
+    display: none;
+}
+
+.wm-photos::-webkit-scrollbar {
+    display: none;
+}
+
+/* ---- startup: splash, installer (wceload), Today fill-in (slice 2) ---- */
+
+/* Splash: full screen over the bars, as the device's boot logo. WM 6.1's is a green field
+ * lighter toward the lower right with three white swirl arcs and the logo at the top left;
+ * here it takes the workspace colour and the Melaton emblem. */
+.wm-splash {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: none;
+    overflow: hidden;
+    background:
+        radial-gradient(ellipse 70% 55% at 78% 52%, color-mix(in srgb, var(--wm-highlight) 70%, #fff) 0%, transparent 70%),
+        radial-gradient(ellipse 120% 90% at 60% 60%, var(--wm-highlight) 0%, var(--wm-softkey-base) 55%, var(--wm-title) 115%);
+    color: #fff;
+    font-family: 'Segoe UI', var(--wm-font);
+}
+
+html.ui-mobile[data-wm-boot="splash"] .wm-splash {
+    display: block;
+}
+
+.wm-splash-swirl {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.28);
+    stroke-width: 3;
+}
+
+.wm-splash-logo {
+    position: absolute;
+    left: 8%;
+    top: 13%;
+    right: 8%;
+    display: flex;
+    align-items: flex-start;
+    gap: 3%;
+}
+
+.wm-splash-logo img {
+    width: 26%;
+    max-width: 120px;
+    aspect-ratio: 1;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
+}
+
+.wm-splash-words {
+    display: flex;
+    flex-direction: column;
+    line-height: 1;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.wm-splash-brand {
+    font-size: clamp(14px, 5.6vw, 30px);
+}
+
+.wm-splash-product {
+    font-size: clamp(34px, 14vw, 76px);
+    letter-spacing: -0.02em;
+    padding-bottom: 0.08em;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.wm-splash-version {
+    margin-top: 0.5em;
+    font-size: clamp(12px, 4.4vw, 24px);
+}
+
+/* the release in the Xyridian star orange, as on the desktop's logon strip */
+.wm-splash-version b {
+    font-weight: inherit;
+    color: #f88800;
+}
+
+/* nothing else shows while the splash is up */
+html.ui-mobile[data-wm-boot="splash"] body > #toastContainer,
+html.ui-mobile[data-wm-boot="install"] body > #toastContainer {
+    display: none !important;
+}
+
+/* Installer: wceload's page over the WM 6.1 theme's white-to-green field */
+.wm-installer {
+    position: absolute;
+    inset: 0;
+    display: none;
+    background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+    color: #000;
+}
+
+html.ui-mobile[data-wm-boot="install"] .wm-installer {
+    display: block;
+    z-index: 25;
+}
+
+html.ui-mobile[data-wm-boot="install"] .wm-page {
+    visibility: hidden;
+}
+
+/* label 12 px about 8 px under the title bar; bar at x 8, 164 x 15, 1 px black frame, 1 px
+ * padding, 7 x 11 blocks every 9 px (device: 2x) */
+.wm-installer-progress {
+    padding: calc(7 * var(--wm-px)) calc(8 * var(--wm-px)) 0;
+}
+
+.wm-installer-progress[hidden],
+.wm-installer-done[hidden],
+.wm-installer-wait[hidden] {
+    display: none !important;
+}
+
+.wm-installer-text {
+    margin: 0 0 calc(4 * var(--wm-px)) calc(1.5 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+}
+
+.wm-installer-bar {
+    position: relative !important;
+    width: calc(164 * var(--wm-px)) !important;
+    max-width: 100% !important;
+    height: calc(15 * var(--wm-px)) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    box-sizing: border-box !important;
+    background: #fff !important;
+    overflow: hidden !important;
+}
+
+.wm-installer-bar span {
+    position: absolute;
+    left: calc(1 * var(--wm-px));
+    top: calc(1 * var(--wm-px));
+    bottom: calc(1 * var(--wm-px));
+    /* whole blocks: wmShell.js sets --wm-install-blocks (18 fit the bar) */
+    width: calc(var(--wm-install-blocks, 0) * 9 * var(--wm-px));
+    max-width: calc(100% - 2 * var(--wm-px));
+    /* whole blocks only: 7 px of colour, 2 px gap */
+    background: repeating-linear-gradient(to right, var(--wm-highlight) 0, var(--wm-highlight) calc(7 * var(--wm-px)), transparent calc(7 * var(--wm-px)), transparent calc(9 * var(--wm-px)));
+    transition: width 0.2s linear;
+}
+
+/* the wait cursor, centred on the screen */
+.wm-installer-wait {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    transform: translate(-50%, -50%);
+}
+
+.wm-installer-done {
+    padding: calc(5 * var(--wm-px)) calc(8 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+}
+
+.wm-installer-done p {
+    margin: 0 0 calc(8 * var(--wm-px));
+}
+
+/* Today after the splash: items fill in one after another */
+.wm-today .wm-boot-hidden {
+    visibility: hidden;
+}
+
+/* the first moments of Today after the splash: no title bar content and no soft keys yet */
+html.ui-mobile[data-wm-boot="reveal"] .wm-titlebar > *,
+html.ui-mobile[data-wm-boot="reveal"] .wm-softkeys > * {
+    visibility: hidden;
+}
+
+html.ui-mobile[data-wm-boot="reveal"] .wm-titlebar,
+html.ui-mobile[data-wm-boot="reveal"] .wm-softkeys {
+    background: transparent;
+    border-color: transparent;
 }

@@ -56,6 +56,7 @@
         '--wm-button-light': { dh: -27, s: 61, l: 56 }
     };
     const REF_SATURATION = 64;
+    const THEME_CACHE_KEY = 'wmThemeRoles';
 
     function cssColorToRgb(value) {
         const probe = document.createElement('span');
@@ -101,14 +102,28 @@
     }
 
     function applyTheme() {
+        // before the workspace is known --primary-color is the page default: keep the cached roles
+        if (!document.body.dataset.workspace) return;
         const color = getComputedStyle(document.body).getPropertyValue('--primary-color').trim();
         const roles = deriveRoles(color);
         if (!roles) return;
         for (const [name, value] of Object.entries(roles)) root.style.setProperty(name, value);
+        try { localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(roles)); } catch (_) { /* storage off */ }
+    }
+
+    /** The last workspace theme, so the splash already has it before the workspace CSS loads. */
+    function applyCachedTheme() {
+        try {
+            const roles = JSON.parse(localStorage.getItem(THEME_CACHE_KEY) || 'null');
+            if (roles) for (const [name, value] of Object.entries(roles)) root.style.setProperty(name, value);
+        } catch (_) { /* no cache */ }
     }
 
     function watchTheme() {
-        applyTheme();
+        applyCachedTheme();
+        // the workspace stylesheet sets --primary-color once the workspace is known; before that
+        // the cached roles stay (applyTheme ignores the page default until data-workspace is set)
+        if (document.body.dataset.workspace) applyTheme();
         new MutationObserver(applyTheme).observe(document.body, { attributes: true, attributeFilter: ['data-workspace', 'style'] });
         const link = document.getElementById('workspace-styles');
         if (link) {
@@ -202,6 +217,12 @@
         }
         if (openPopup) {
             closeMenus();
+            syncHistory();
+            return true;
+        }
+        // the picture viewer (PhotoSwipe) closes first, like a WM full-screen picture
+        if (document.querySelector('.pswp--open') && typeof hideLightbox === 'function') {
+            hideLightbox();
             syncHistory();
             return true;
         }
@@ -468,13 +489,122 @@
         });
     }
 
+    /** The viewer's zoom origin: the tapped print's tile on screen, else nothing (fade). */
+    function thumbFor(name) {
+        if (!shell || !name) return undefined;
+        const sel = `[data-filename="${CSS.escape(name)}"]`;
+        const el = shell.querySelector(`.wm-page:not([hidden]) .wm-photo${sel} img, .wm-page:not([hidden]) .wm-today-print${sel}`);
+        if (!el) return undefined;
+        const r = el.getBoundingClientRect();
+        if (r.width < 2 || r.height < 2 || r.bottom < 0 || r.top > window.innerHeight) return undefined;
+        return el;
+    }
+
     // ---------------------------------------------------------------- built-in apps
 
+    /** Preview URL for a gallery row, resolved the way the gallery's own tiles are (galleryView.js). */
+    function previewUrl(item) {
+        try {
+            if (typeof resolveGalleryPreviewUrl === 'function') {
+                const u = resolveGalleryPreviewUrl(item);
+                if (u) return u;
+            }
+            if (item.preview) {
+                const p = typeof getGalleryPreviewUrl === 'function' ? getGalleryPreviewUrl(item.preview) : item.preview;
+                return `/previews/${encodeURIComponent(p)}`;
+            }
+        } catch (_) { /* no preview */ }
+        return '';
+    }
+
+    // Today: the WM 6.1 Today items mapped to Dreamscape. WM: date/time, Wireless ("Phone off"),
+    // Owner, Messages, Tasks, Calendar, Live Search, Device Lock. Here: date/time, connection
+    // (and install / update progress), owner = the Melaton account, Messages = Dovecote unread,
+    // Tasks = this phone's prints in flight, Calendar = NovelAI Anlas and subscription, Live
+    // Search = gallery search, workspace, and the newest prints.
     function registerTodayApp() {
         const fmtDate = new Intl.DateTimeFormat(undefined, { month: 'long', day: '2-digit', year: 'numeric' });
         const fmtDay = new Intl.DateTimeFormat(undefined, { weekday: 'long' });
         const fmtTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
-        registerApp({
+        const fmtRenew = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+        const TIERS = ['Paper', 'Tablet', 'Scroll', 'Opus'];
+        const GEN_TYPES = new Set(['generate_image', 'generate_preset', 'reroll_image', 'upscale_image', 'expand_image', 'reroll_expanded_image', 'enhance_image', 'max_enhance_image', 'animate_image']);
+        let mailUnread = null;
+        let mailLoading = false;
+        let mailFailedAt = 0; // a failed request waits 45 s before the next try
+        let recentKey = '';
+
+        const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+
+        async function loadMail() {
+            if (mailLoading || Date.now() - mailFailedAt < 45000) return;
+            const ws = window.wsClient;
+            if (!ws || typeof ws.isConnected !== 'function' || !ws.isConnected()) return;
+            mailLoading = true;
+            let ok = false;
+            try {
+                const r = await ws.sendMessage('dovecote_list_mailboxes', {}, false);
+                const boxes = (r && (r.mailboxes || (r.data && r.data.mailboxes))) || [];
+                const owner = typeof DESKTOP_DOVECOTE_HUMAN_OWNER !== 'undefined' ? DESKTOP_DOVECOTE_HUMAN_OWNER : 'yukimi';
+                const mine = boxes.find((b) => b.owner === owner);
+                mailUnread = mine ? (mine.unread || 0) : 0;
+                ok = true;
+            } catch (_) { /* mail unavailable: the row keeps its last text */ }
+            mailLoading = false;
+            if (!ok) { mailFailedAt = Date.now(); return; }
+            mailFailedAt = 0;
+            if (current === 'today') today.refresh();
+        }
+
+        function connectionText() {
+            const ws = window.wsClient;
+            const swm = window.serviceWorkerManager;
+            if (swm && swm.bootComplete === false && swm._bootOrchestrating && Number(swm.updateProgress) > 0 && Number(swm.updateProgress) < 100) {
+                return { text: `Installing... ${Math.round(swm.updateProgress)}%`, plain: false };
+            }
+            if (!ws) return { text: 'Not connected', plain: false };
+            if (ws.isConnected() && ws.initializationCompleted) return { text: 'Connected', plain: false };
+            if (ws.isConnected()) return { text: 'Connecting...', plain: false };
+            if (ws.connectionPhase === 'failed') return { text: 'Not connected', plain: false, tap: 'reconnect' };
+            return { text: (ws.connectionUi && ws.connectionUi.message) || 'Connecting...', plain: false };
+        }
+
+        function tasksText() {
+            const ws = window.wsClient;
+            let n = 0;
+            if (ws && ws.pendingRequests && typeof ws.pendingRequests.forEach === 'function') {
+                ws.pendingRequests.forEach((req) => { if (req && GEN_TYPES.has(req.type)) n++; });
+            }
+            return n ? `${n} ${n === 1 ? 'print' : 'prints'} in progress` : 'No tasks';
+        }
+
+        function novelAiText() {
+            const o = window.optionsData;
+            if (!o) return '';
+            const parts = [];
+            const bal = o.balance && Number(o.balance.totalCredits);
+            if (Number.isFinite(bal) && bal >= 0) parts.push(`${bal.toLocaleString()} Anlas`);
+            const sub = o.user && o.user.subscription;
+            if (sub && Number.isFinite(Number(sub.tier))) {
+                let t = TIERS[Number(sub.tier)] || 'Subscription';
+                if (sub.expiresAt) t += ` until ${fmtRenew.format(new Date(Number(sub.expiresAt) * 1000))}`;
+                parts.push(t);
+            }
+            return parts.join(', ');
+        }
+
+        function newestPrints(n) {
+            let list = [];
+            try {
+                // the full list is kept in originalAllImages while a gallery search filters allImages
+                if (Array.isArray(window.originalAllImages) && window.originalAllImages.length) list = window.originalAllImages;
+                else if (typeof allImages !== 'undefined' && Array.isArray(allImages)) list = allImages;
+            } catch (_) { /* gallery not loaded yet */ }
+            return list.slice(0, n);
+        }
+
+
+        const today = {
             id: 'today',
             title: 'Today',
             icon: 'app-today',
@@ -482,49 +612,143 @@
             mount(page) {
                 page.classList.add('wm-today');
                 page.innerHTML = `
-                    <button type="button" class="wm-today-row wm-today-date" data-row="date">
+                    <div class="wm-today-row wm-today-date" data-row="date">
                         ${imgTag('today-clock')}
                         <span class="wm-today-text"><span data-f="day"></span><br><span data-f="date"></span></span>
                         <span class="wm-today-time" data-f="time"></span>
-                    </button>
+                    </div>
                     <button type="button" class="wm-today-row" data-row="connection">
                         ${imgTag('today-phone')}<span class="wm-today-text" data-f="connection"></span>
                     </button>
+                    <div class="wm-today-row" data-row="owner">
+                        ${imgTag('today-owner')}<span class="wm-today-text" data-f="owner"></span>
+                    </div>
+                    <div class="wm-today-row is-plain" data-row="messages">
+                        ${imgTag('today-messages')}<span class="wm-today-text" data-f="messages">Messages</span>
+                    </div>
+                    <div class="wm-today-row is-plain" data-row="tasks">
+                        ${imgTag('today-tasks')}<span class="wm-today-text" data-f="tasks"></span>
+                    </div>
+                    <div class="wm-today-row is-plain" data-row="novelai" hidden>
+                        ${imgTag('today-calendar')}<span class="wm-today-text" data-f="novelai"></span>
+                    </div>
+                    <form class="wm-today-search" data-row="search" role="search">
+                        <input type="search" enterkeyhint="search" autocomplete="off" placeholder="Search pictures" aria-label="Search pictures">
+                        <button type="submit" class="wm-today-search-go" aria-label="Search"></button>
+                    </form>
                     <button type="button" class="wm-today-row" data-row="workspace">
-                        ${imgTag('today-owner')}<span class="wm-today-text workspace-name" data-f="workspace"></span>
+                        ${imgTag('app-file-explorer')}<span class="wm-today-text workspace-name" data-f="workspace"></span>
                     </button>
-                    <button type="button" class="wm-today-row is-plain" data-row="gallery">
-                        ${imgTag('app-pictures')}<span class="wm-today-text">Pictures</span>
-                    </button>`;
-                page.querySelector('[data-row="gallery"]').addEventListener('click', () => open('gallery'));
+                    <div class="wm-today-prints" data-row="prints" hidden></div>`;
+                page.querySelector('[data-row="connection"]').addEventListener('click', () => {
+                    const ws = window.wsClient;
+                    if (ws && !ws.isConnected() && typeof ws.manualReconnect === 'function') ws.manualReconnect();
+                });
+                page.querySelector('[data-row="workspace"]').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showPopup('right', workspaceMenu(), null);
+                });
+                page.querySelector('[data-row="search"]').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const input = e.currentTarget.querySelector('input');
+                    const q = input.value.trim();
+                    input.value = '';
+                    input.blur();
+                    open('gallery');
+                    if (q) {
+                        const gallery = apps.get('gallery');
+                        if (gallery && typeof gallery.search === 'function') gallery.search(q);
+                    }
+                });
+                page.querySelector('[data-row="prints"]').addEventListener('click', (e) => {
+                    const tile = e.target.closest('[data-filename]');
+                    if (!tile) return;
+                    open('gallery');
+                    // the gallery's own viewer (PhotoSwipe), on the print that was tapped
+                    try {
+                        if (typeof showLightbox === 'function') showLightbox({ filename: tile.dataset.filename });
+                    } catch (_) { /* the gallery opens without the viewer */ }
+                });
+                document.addEventListener('dovecoteMailboxUpdated', (ev) => {
+                    const boxes = ev.detail && ev.detail.mailboxes;
+                    if (!boxes) { loadMail(); return; }
+                    const owner = typeof DESKTOP_DOVECOTE_HUMAN_OWNER !== 'undefined' ? DESKTOP_DOVECOTE_HUMAN_OWNER : 'yukimi';
+                    const mine = boxes.find((b) => b.owner === owner);
+                    mailUnread = mine ? (mine.unread || 0) : 0;
+                    today.refresh();
+                });
+                window.addEventListener('meletonaccountschange', () => today.refresh());
             },
-            show() { this.refresh(); },
+            show() {
+                if (mailUnread == null) loadMail();
+                this.refresh();
+            },
             refresh() {
                 const page = this.page;
                 if (!page) return;
                 const now = new Date();
-                page.querySelector('[data-f="day"]').textContent = fmtDay.format(now);
-                page.querySelector('[data-f="date"]').textContent = fmtDate.format(now);
-                page.querySelector('[data-f="time"]').textContent = fmtTime.format(now);
-                const ws = window.wsClient;
-                const connected = !!(ws && typeof ws.isConnected === 'function' && ws.isConnected());
-                page.querySelector('[data-f="connection"]').textContent = connected ? 'Connected' : 'Not connected';
+                setText(page.querySelector('[data-f="day"]'), fmtDay.format(now));
+                setText(page.querySelector('[data-f="date"]'), fmtDate.format(now));
+                setText(page.querySelector('[data-f="time"]'), fmtTime.format(now));
+                setText(page.querySelector('[data-f="connection"]'), connectionText().text);
+                const acc = window.meletonAccounts;
+                setText(page.querySelector('[data-f="owner"]'), acc && typeof acc.name === 'function' ? acc.name() : 'Owner');
+                if (mailUnread == null) {
+                    if (window.wsClient && window.wsClient.initializationCompleted) loadMail();
+                } else {
+                    setText(page.querySelector('[data-f="messages"]'), mailUnread ? `${mailUnread} unread ${mailUnread === 1 ? 'message' : 'messages'}` : 'No unread messages');
+                }
+                setText(page.querySelector('[data-f="tasks"]'), tasksText());
+                const nai = novelAiText();
+                const naiRow = page.querySelector('[data-row="novelai"]');
+                naiRow.hidden = !nai;
+                setText(page.querySelector('[data-f="novelai"]'), nai);
                 const wsEl = page.querySelector('[data-f="workspace"]');
                 try {
-                    // workspaceUtils keeps every .workspace-name in step on later switches
                     if (typeof workspaces !== 'undefined' && typeof activeWorkspace !== 'undefined' && workspaces[activeWorkspace]) {
-                        wsEl.textContent = workspaces[activeWorkspace].name;
+                        setText(wsEl, workspaces[activeWorkspace].name);
                     }
                 } catch (_) { /* workspaces not loaded yet */ }
                 if (!wsEl.textContent) wsEl.textContent = 'Workspace';
+                // newest prints: as many square tiles as fit one row
+                const strip = page.querySelector('[data-row="prints"]');
+                const prints = newestPrints(8);
+                const key = prints.map((p) => p.filename || p.preview).join('|');
+                if (key !== recentKey) {
+                    recentKey = key;
+                    strip.innerHTML = prints.map((p) => `<button type="button" class="wm-today-print" data-filename="${escapeHtml(p.filename || p.original || '')}" aria-label="${escapeHtml(p.filename || 'Print')}" style="background-image:url('${escapeHtml(previewUrl(p))}')"></button>`).join('');
+                }
+                strip.hidden = !prints.length;
             },
             softKeys() {
                 return {
                     left: { label: 'Pictures', action: () => open('gallery') },
-                    right: null
+                    right: { label: 'Menu', menu: () => workspaceMenu().concat(['-', { label: 'Reconnect', disabled: !!(window.wsClient && window.wsClient.isConnected()), action: () => window.wsClient && window.wsClient.manualReconnect() }]) }
                 };
             }
-        });
+        };
+
+        function workspaceMenu() {
+            let list = [];
+            try {
+                if (typeof workspaces !== 'undefined') {
+                    list = Object.values(workspaces).filter(Boolean).sort((a, b) => (Number(a.sort) || 0) - (Number(b.sort) || 0) || String(a.name).localeCompare(String(b.name)));
+                }
+            } catch (_) { /* not loaded */ }
+            const active = typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
+            if (!list.length) return [{ label: 'No workspaces', disabled: true }];
+            return list.map((w) => ({
+                label: w.name || w.id,
+                checked: w.id === active,
+                action: () => {
+                    if (w.id !== active && typeof setActiveWorkspace === 'function') setActiveWorkspace(w.id);
+                }
+            }));
+        }
+
+        registerApp(today);
+        // switching workspace changes Today's rows, theme and prints
+        document.addEventListener('workspaceSwitchComplete', () => { recentKey = ''; today.refresh(); });
     }
 
     function registerGalleryApp() {
@@ -583,23 +807,161 @@
                     if (fs && typeof fs.clearSearch === 'function') fs.clearSearch(true, true);
                     else if (t) t.dispatchEvent(new Event('change', { bubbles: true }));
                 }
+                // clearSearch reloads the gallery without applyFilteredImages: the grid drops the
+                // results itself
+                searchResults = null;
+                const page = apps.get('gallery') && apps.get('gallery').page;
+                if (page) renderGrid(page, true);
             }
             renderSoftKeys();
         };
+        // ---- the Windows Phone Photos grid (WP7.5-8.1 camera roll, measured on device shots):
+        // 4 square centre-cropped tiles in 480 view pixels: 24 margin + 4 x 99 + 3 x 12 gaps + 24,
+        // month headers in the accent colour. Landscape keeps the portrait cell size (short side).
+        let gridTimer = null;
+        let gridSig = '';
+        let gridView = null;
+        let viewSwitchedAt = 0;
+        const fmtMonth = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' });
+
+        // Gallery search never filters allImages: fileSearch hands its results (relevance order)
+        // to applyFilteredImages(images, indices); ([], []) = nothing found, (all, null) = cleared.
+        // Pictures listens there for what to draw.
+        let searchResults = null; // null = no search; [] = nothing found
+        let filterSeq = 0;
+        if (typeof window.applyFilteredImages === 'function' && !window.applyFilteredImages.__wm) {
+            const orig = window.applyFilteredImages;
+            const wrapped = function (images, indices) {
+                if (indices == null) searchResults = null;
+                else searchResults = Array.isArray(images) ? images.slice() : [];
+                filterSeq++;
+                return orig.apply(this, arguments);
+            };
+            wrapped.__wm = true;
+            window.applyFilteredImages = wrapped;
+        }
+
+        function galleryList() {
+            if (searchResults) return searchResults;
+            try {
+                if (typeof allImages !== 'undefined' && Array.isArray(allImages)) return allImages;
+            } catch (_) { /* gallery not loaded */ }
+            return [];
+        }
+
+        /** The first tile on screen and its offset, to put the view back after a rebuild. */
+        function gridAnchor(page) {
+            const top = page.getBoundingClientRect().top;
+            for (const el of page.querySelectorAll('.wm-photo')) {
+                const r = el.getBoundingClientRect();
+                if (r.bottom > top) return { name: el.dataset.filename, offset: r.top - top };
+            }
+            return null;
+        }
+
+        function itemTime(item) {
+            const t = Number(item.mtime) || 0;
+            if (t) return t;
+            const m = String(item.filename || item.original || '').match(/^(\d{12,13})_/);
+            return m ? Number(m[1]) : 0;
+        }
+
+        function layoutGrid(page) {
+            const w = page.clientWidth || window.innerWidth;
+            const h = page.clientHeight || window.innerHeight;
+            const v = Math.min(w, Math.max(h, 1)) / 480; // one WP view pixel
+            const cols = w <= h ? 4 : Math.max(4, Math.floor((w - 48 * v + 12 * v) / (111 * v)));
+            page.style.setProperty('--wp-v', `${v}px`);
+            page.style.setProperty('--wp-cols', String(cols));
+        }
+
+        function renderGrid(page, force) {
+            const view = activeView();
+            if (view !== gridView) {
+                // another view (Images / Scraps / ...) starts at its top; a search belongs to its view
+                if (gridView !== null) { page.scrollTop = 0; viewSwitchedAt = Date.now(); searchResults = null; }
+                gridView = view;
+            }
+            const list = galleryList();
+            const nameOf = (it) => (it && (it.filename || it.original)) || '';
+            const sig = `${list.length}|${nameOf(list[0])}|${nameOf(list[list.length - 1])}|${view}|${filterSeq}|${searchResults ? 's' : 'a'}`;
+            if (!force && sig === gridSig) return;
+            gridSig = sig;
+            const anchor = gridAnchor(page);
+            const box = page.querySelector('.wm-photos-list');
+            const cols = Number(page.style.getPropertyValue('--wp-cols')) || 4;
+            const v = parseFloat(page.style.getPropertyValue('--wp-v')) || 0.8;
+            const groups = [];
+            if (searchResults) {
+                // relevance order: one group, not months
+                groups.push({ key: 'search results', items: list });
+            } else {
+                for (const item of list) {
+                    const t = itemTime(item);
+                    const key = t ? fmtMonth.format(new Date(t)).toLowerCase() : 'older';
+                    const last = groups[groups.length - 1];
+                    if (last && last.key === key) last.items.push(item);
+                    else groups.push({ key, items: [item] });
+                }
+            }
+            let html = '';
+            for (const g of groups) {
+                // the group's real height before it renders (content-visibility), so a rebuild
+                // above the viewport keeps scroll positions: header ~82 vp + rows of 111 vp
+                const est = Math.round((82 + Math.ceil(g.items.length / cols) * 111) * v);
+                html += `<section class="wm-photos-group" style="contain-intrinsic-size:auto ${est}px"><h2 class="wm-photos-month">${escapeHtml(g.key)}</h2><div class="wm-photos-grid">`;
+                for (const item of g.items) {
+                    const name = nameOf(item);
+                    html += `<button type="button" class="wm-photo" data-filename="${escapeHtml(name)}" aria-label="${escapeHtml(name)}"><img src="${escapeHtml(previewUrl(item))}" alt="" loading="lazy" decoding="async" draggable="false"></button>`;
+                }
+                html += '</div></section>';
+            }
+            box.innerHTML = html;
+            if (anchor && !(Date.now() - viewSwitchedAt < 50)) {
+                const el = box.querySelector(`.wm-photo[data-filename="${CSS.escape(anchor.name)}"]`);
+                if (el) page.scrollTop += el.getBoundingClientRect().top - page.getBoundingClientRect().top - anchor.offset;
+            }
+            const empty = page.querySelector('.wm-photos-empty');
+            const loading = !list.length && !searchResults && Date.now() - viewSwitchedAt < 4000;
+            empty.textContent = loading ? 'Loading...' : (searchResults ? 'No matches' : 'No pictures');
+            empty.hidden = list.length > 0;
+        }
+
         registerApp({
             id: 'gallery',
+            /** Run a gallery search (Today's Live Search box): the search bar shows the query. */
+            search(q) {
+                setSearch(true);
+                const input = searchBar.querySelector('input');
+                input.value = q;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            },
             title: 'Pictures',
             startLabel: 'Pictures & Videos',
             icon: 'app-pictures',
             inStart: 'top',
-            show() {
-                const gw = document.getElementById('galleryWindow');
-                if (gw) gw.classList.remove('hidden');
-                if (typeof updateGalleryGrid === 'function') {
-                    try { updateGalleryGrid(true, true); } catch (_) { /* gallery not ready */ }
-                }
+            mount(page) {
+                page.classList.add('wm-photos');
+                page.innerHTML = '<div class="wm-photos-list"></div><p class="wm-photos-empty" hidden>No pictures</p>';
+                page.addEventListener('click', (e) => {
+                    const tile = e.target.closest('.wm-photo');
+                    if (!tile || typeof showLightbox !== 'function') return;
+                    try { showLightbox({ filename: tile.dataset.filename }); } catch (_) { /* viewer not ready */ }
+                });
+                new ResizeObserver(() => layoutGrid(page)).observe(page);
+            },
+            show(page) {
+                layoutGrid(page);
+                renderGrid(page, false);
+                // the desktop gallery keeps loading, paging and searching underneath (allImages):
+                // follow it while Pictures is on screen
+                clearInterval(gridTimer);
+                gridTimer = setInterval(() => renderGrid(page, false), 700);
             },
             hide() {
+                clearInterval(gridTimer);
+                gridTimer = null;
                 if (searchBar && !searchBar.hidden) setSearch(false);
             },
             onTitleAction() {
@@ -654,6 +1016,210 @@
         }
     }
 
+    // ---------------------------------------------------------------- startup
+
+    // The WM 6.1 boot, measured on the emulator (hard and soft reset): black, the splash
+    // (logo over the green swirl) while the OS starts, then Today with its items filling in.
+    // A first install or an update download is wceload's screen instead ("Installing x.cab ..."
+    // with the segmented bar and the wait cursor, then "x was successfully installed on your
+    // device." with ok). Here: splash until the page's startup finishes, the installer while the
+    // service worker downloads the app, then Today. html[data-wm-boot] = splash | install | done.
+    const BOOT_MIN_SPLASH_MS = 1600;
+    const BOOT_MAX_SPLASH_MS = 25000;
+    const INSTALLED_KEY = 'melatonMobileInstalled';
+    const INSTALL_DONE_KEY = 'wmInstallDone';
+    let bootStart = 0;
+    let bootTimer = null;
+    let waitTimer = null;
+    let installKind = null;
+
+    function installNoun() {
+        return installKind === 'update' ? 'Melaton Mobile update' : 'Melaton Mobile';
+    }
+
+    function buildBootLayers() {
+        const splash = document.createElement('div');
+        splash.className = 'wm-splash';
+        splash.setAttribute('aria-label', 'Melaton Mobile is starting');
+        splash.innerHTML = `
+            <svg class="wm-splash-swirl" viewBox="0 0 480 640" aria-hidden="true" preserveAspectRatio="xMidYMax slice">
+                <circle cx="248" cy="508" r="214" />
+                <circle cx="232" cy="500" r="146" />
+                <path d="M 230 432 A 72 72 0 1 0 300 500" />
+            </svg>
+            <div class="wm-splash-logo">
+                <img src="/static_images/melaton/melaton-white-256.png" alt="" draggable="false">
+                <div class="wm-splash-words">
+                    <span class="wm-splash-brand">Melaton</span>
+                    <span class="wm-splash-product">Mobile</span>
+                    <span class="wm-splash-version">Version 2026 <b>R7</b></span>
+                </div>
+            </div>`;
+        shell.appendChild(splash);
+
+        const inst = document.createElement('section');
+        inst.className = 'wm-installer';
+        inst.innerHTML = `
+            <div class="wm-installer-progress">
+                <p class="wm-installer-text"></p>
+                <div class="wm-installer-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span></span></div>
+            </div>
+            <div class="wm-installer-done" hidden>
+                <p><b class="wm-installer-done-title"></b></p>
+                <p class="wm-installer-done-note"></p>
+            </div>
+            <img class="wm-installer-wait" alt="" draggable="false">`;
+        shell.querySelector('.wm-content').appendChild(inst);
+    }
+
+    function setBoot(phase) {
+        if (root.dataset.wmBoot === phase) return;
+        root.dataset.wmBoot = phase;
+        clearInterval(waitTimer);
+        waitTimer = null;
+        if (phase === 'install') {
+            closeMenus();
+            setTitle('Start');
+            setTitleAction(null);
+            // wceload shows no soft keys while it copies (only the SIP button)
+            softKeys = { left: null, right: null };
+            shell.querySelectorAll('.wm-softkey').forEach((b) => { b.textContent = ''; b.disabled = true; });
+            const img = shell.querySelector('.wm-installer-wait');
+            let frame = 0;
+            const tick = () => {
+                img.src = art(`wait-${frame}`);
+                img.srcset = `${art(`wait-${frame}`)} 1x, ${art2x(`wait-${frame}`)} 2x`;
+                frame = (frame + 1) % 16;
+            };
+            tick();
+            waitTimer = setInterval(tick, 90);
+        }
+    }
+
+    function setInstallProgress(pct) {
+        const inst = shell.querySelector('.wm-installer');
+        inst.querySelector('.wm-installer-progress').hidden = false;
+        inst.querySelector('.wm-installer-done').hidden = true;
+        inst.querySelector('.wm-installer-wait').hidden = false;
+        inst.querySelector('.wm-installer-text').textContent = `Installing ${installNoun()} ...`;
+        const bar = inst.querySelector('.wm-installer-bar');
+        const p = Math.max(0, Math.min(100, Math.round(pct)));
+        bar.setAttribute('aria-valuenow', String(p));
+        bar.style.setProperty('--wm-install-blocks', String(Math.floor(p * 18 / 100)));
+    }
+
+    /** wceload's last page: "<name> was successfully installed on your device." + ok. */
+    function showInstallDone(kind) {
+        installKind = kind;
+        setBoot('install');
+        clearInterval(waitTimer);
+        const inst = shell.querySelector('.wm-installer');
+        inst.querySelector('.wm-installer-progress').hidden = true;
+        inst.querySelector('.wm-installer-wait').hidden = true;
+        inst.querySelector('.wm-installer-done').hidden = false;
+        inst.querySelector('.wm-installer-done-title').textContent = `${installNoun()} was successfully installed on your device.`;
+        // wceload's own wording (device capture inst-06 / inst-18)
+        inst.querySelector('.wm-installer-done-note').textContent = 'If you need more storage space, you can remove installed programs.';
+        setTitleAction('ok');
+        const btn = shell.querySelector('.wm-title-action');
+        const onOk = (e) => {
+            e.stopImmediatePropagation();
+            btn.removeEventListener('click', onOk, true);
+            try { sessionStorage.removeItem(INSTALL_DONE_KEY); } catch (_) { /* storage off */ }
+            finishBoot();
+        };
+        btn.addEventListener('click', onOk, true);
+        // an update moves on by itself; only the first install waits for ok
+        if (kind === 'update') {
+            setTimeout(() => {
+                if (root.dataset.wmBoot !== 'install') return;
+                btn.removeEventListener('click', onOk, true);
+                try { sessionStorage.removeItem(INSTALL_DONE_KEY); } catch (_) { /* storage off */ }
+                finishBoot();
+            }, 2000);
+        }
+    }
+
+    function swDownloading() {
+        const swm = window.serviceWorkerManager;
+        if (!swm || swm.bootComplete) return null;
+        const pct = Number(swm.updateProgress);
+        const total = Number(swm.lastUpdateFilesTotal) || 0;
+        if (swm._bootOrchestrating && total > 0 && pct > 0 && pct < 100) return pct;
+        return null;
+    }
+
+    function finishBoot() {
+        clearInterval(bootTimer);
+        bootTimer = null;
+        try {
+            // a boot that ends here installed nothing more (the done screen belongs to the reload
+            // a download causes); the device counts as installed once startup really finished
+            sessionStorage.removeItem(INSTALL_DONE_KEY);
+            if (window.wsClient && window.wsClient.initializationCompleted) localStorage.setItem(INSTALLED_KEY, String(Date.now()));
+        } catch (_) { /* storage off */ }
+        stack.length = 0;
+        stack.push('today');
+        activate('today');
+        // As on the device after the splash: Today's background and date line first with no title
+        // bar or soft keys (reveal), the items fill in over ~2 s, the bars come last
+        setBoot('reveal');
+        const page = apps.get('today').page;
+        const rows = page ? [...page.children].slice(1) : [];
+        rows.forEach((r) => r.classList.add('wm-boot-hidden'));
+        rows.forEach((r, i) => setTimeout(() => r.classList.remove('wm-boot-hidden'), 1400 + i * 90));
+        setTimeout(() => { if (root.dataset.wmBoot === 'reveal') setBoot('done'); }, 1400 + rows.length * 90 + 300);
+    }
+
+    function bootTick() {
+        const ws = window.wsClient;
+        let pct = swDownloading();
+        // once the installer is up it stays for the whole download, including the 0 % / 100 %
+        // stretches between passes and the verify before the reload (no splash time limit)
+        const swm = window.serviceWorkerManager;
+        if (pct == null && root.dataset.wmBoot === 'install' && swm && swm._bootOrchestrating && !swm.bootComplete) {
+            pct = Number(swm.updateProgress) || 0;
+        }
+        if (pct != null) {
+            if (!installKind) {
+                let installed = false;
+                try { installed = !!(localStorage.getItem(INSTALLED_KEY) || localStorage.getItem('melatonInstalled')); } catch (_) { /* storage off */ }
+                installKind = installed ? 'update' : 'install';
+            }
+            setBoot('install');
+            setInstallProgress(pct);
+            // the page reloads itself when the download finishes: the next load says it is done
+            try { sessionStorage.setItem(INSTALL_DONE_KEY, installKind); } catch (_) { /* storage off */ }
+            return;
+        }
+        const ready = !!(ws && ws.initializationCompleted);
+        const elapsed = Date.now() - bootStart;
+        if ((ready && elapsed >= BOOT_MIN_SPLASH_MS) || elapsed >= BOOT_MAX_SPLASH_MS) {
+            let done = null;
+            try { done = sessionStorage.getItem(INSTALL_DONE_KEY); } catch (_) { /* storage off */ }
+            if (done && ready) { clearInterval(bootTimer); bootTimer = null; showInstallDone(done); return; }
+            finishBoot();
+        }
+    }
+
+    function startBoot() {
+        buildBootLayers();
+        bootStart = Date.now();
+        setBoot('splash');
+        bootTimer = setInterval(bootTick, 200);
+    }
+
+    /** Mobile wording for the connection steps the desktop names after its computer. */
+    function useMobileWording() {
+        try {
+            const beats = window.WebSocketClient && window.WebSocketClient.CONNECTION_BEATS
+                || (window.wsClient && window.wsClient.constructor && window.wsClient.constructor.CONNECTION_BEATS);
+            if (beats && beats.establishing) beats.establishing.message = 'Registering your device on the network…';
+            const ui = window.wsClient && window.wsClient.connectionUi;
+            if (ui && ui.message === 'Registering your computer on the network…') ui.message = 'Registering your device on the network…';
+        } catch (_) { /* wording stays */ }
+    }
+
     // ---------------------------------------------------------------- boot
 
     function init() {
@@ -661,8 +1227,10 @@
         registerTodayApp();
         registerGalleryApp();
         watchTheme();
+        useMobileWording();
         stack.push('today');
         activate('today');
+        startBoot();
         refreshStatus();
         setInterval(refreshStatus, 2000);
         checkTakeover();
@@ -677,6 +1245,9 @@
         messageBox,
         applyTheme,
         onPopState,
+        thumbFor,
+        // tests: run the startup sequence again (splash, installer, Today) on a live page
+        _test: { restartBoot() { clearInterval(bootTimer); installKind = null; bootStart = Date.now(); setBoot('splash'); bootTimer = setInterval(bootTick, 200); } },
         deriveRoles,
         get current() { return current; }
     };

@@ -1354,6 +1354,14 @@ async function initializePhotoSwipe() {
 
         // Add thumbEl filter for zoom animation from thumbnails
         lightbox.addFilter('thumbEl', (thumbEl, data, index) => {
+            // Melaton Mobile (#709): the zoom grows from the tapped tile in Pictures or on Today
+            // (wmShell.thumbFor), or fades when it is not on screen; the hidden desktop gallery's
+            // cells are 0x0 there and would zoom from the corner
+            if (window.uiShell === 'mobile') {
+                const d = data && data.data;
+                const name = d && (d.filename || d.upscaled || d.original);
+                return (window.wmShell && typeof window.wmShell.thumbFor === 'function' && name) ? window.wmShell.thumbFor(name) : undefined;
+            }
             // Only use manual preview image if:
             // 1. Manual modal is open (not hidden)
             // 2. AND either:
