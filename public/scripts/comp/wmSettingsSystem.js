@@ -180,6 +180,7 @@
         clearInterval(d.timer);
         d.timer = setInterval(() => {
             if (!el.isConnected) { clearInterval(d.timer); return; }
+            if (el.closest('[hidden]')) return; // Settings is behind another app
             const set = (f, v) => { const i = el.querySelector(`[data-f="${f}"]`); if (i && i.value !== v) i.value = v; };
             set('time-home', timeOf(d.zone));
             set('date-home', dateOf(d.zone));
@@ -468,7 +469,7 @@
             ${PLANS.map((p) => ui.radio('plan', p.id, p.name, p.id === d.plan)).join('')}
             ${ui.gap()}
             <div data-f="min"></div>
-            ${ui.note('The plans are the desktop\'s Power Options. Melaton turns off (puts to sleep) after this time.')}`;
+            ${ui.note('The plans and this time are the desktop\'s Power Options values.')}`;
         el.querySelectorAll('input[name="plan"]').forEach((r) => r.addEventListener('change', () => {
             if (!r.checked) return;
             d.plan = r.value;
@@ -513,7 +514,7 @@
         el.innerHTML = `${ui.text(ext ? 'On external power:' : 'On battery power:')}
             <div data-f="min"></div>
             ${ui.gap()}
-            ${ui.note(`Battery Power and External Power set the same time: Melaton has one display time, the active power plan's (${planOf(d.plan).name}).`)}`;
+            ${ui.note(`Battery Power and External Power set the same value: the display time of the desktop's active Power Options plan (${planOf(d.plan).name}).`)}`;
         minutesControl(el.querySelector('[data-f="min"]'), d, 'display', 'Turn off backlight if device is not used for');
     }
 
@@ -578,12 +579,36 @@
         return whenLoaded(d, ['scripts/comp/cplUpdate.js']);
     }
 
-    /** While the page shows, every update state comes here and the update bubble stays down (as the desktop page). */
+    /** The manager's own fields, while a download runs or after it (the phone has no tray to report them). */
+    function pollUpdate(d) {
+        const m = swm();
+        const st = d.view.state;
+        if (!m || !(st === 'checking' || st === 'downloading')) return false;
+        let next = null;
+        if (m.isUpdating) {
+            const progress = m.updateProgress || 0;
+            const filesTotal = m.pendingUpdateFilesTotal || (m.trayPopup && m.trayPopup.filesTotal) || d.view.filesTotal || 0;
+            if (st !== 'downloading' || progress !== d.view.progress || filesTotal !== d.view.filesTotal) next = { state: 'downloading', message: '', progress, filesTotal };
+        } else if (st === 'downloading') {
+            // the download ended: install now (styles and assets), restart, or nothing left
+            const now = updateInitialState();
+            next = now.state === 'idle' ? { state: 'uptodate' } : now;
+        }
+        if (!next) return false;
+        d.view = next;
+        return true;
+    }
+
+    /**
+     * While the page shows, every state the manager reports comes here (the desktop page's hook),
+     * and the page's own check runs silently (noToast), so no update bubble comes up over it.
+     * Behind another app or gone, the hook is handed back.
+     */
     function attachForeground(d, el) {
         const m = swm();
         if (!m) return;
         const view = (state, info) => {
-            if (!el.isConnected) { if (m.foregroundUpdateView === view) m.foregroundUpdateView = null; return; }
+            if (!el.isConnected || el.closest('[hidden]')) { if (m.foregroundUpdateView === view) m.foregroundUpdateView = null; return; }
             const cu = window.cplUpdate;
             const st = cu && typeof cu.classify === 'function' ? cu.classify(state, info && info.message) : state;
             d.view = { state: st, message: info && info.message, progress: info && info.progress, filesTotal: info && info.filesTotal };
@@ -591,11 +616,19 @@
         };
         m.foregroundUpdateView = view;
         clearInterval(d.watch);
-        // leaving the page (ok, back, another app) hands the states back to the shell's bubble
         d.watch = setInterval(() => {
-            if (el.isConnected) return;
-            clearInterval(d.watch);
-            if (m.foregroundUpdateView === view) m.foregroundUpdateView = null;
+            if (!el.isConnected) {
+                clearInterval(d.watch);
+                if (m.foregroundUpdateView === view) m.foregroundUpdateView = null;
+                return;
+            }
+            if (el.closest('[hidden]')) {
+                // Settings is behind Start, Today or another app: states go to the shell again
+                if (m.foregroundUpdateView === view) m.foregroundUpdateView = null;
+                return;
+            }
+            if (!m.foregroundUpdateView) m.foregroundUpdateView = view;
+            if (pollUpdate(d) && d.rerender) d.rerender();
         }, 500);
     }
 
@@ -604,15 +637,18 @@
         if (!m) return;
         if (what === 'check' || what === 'install') {
             // the desktop page's own check (cplUpdate.js check() without refreshServerCacheAndCheck:
-            // that one opens the desktop Control Panel on its prepare stage, which the phone has not)
+            // that one opens the desktop Control Panel on its prepare stage, which the phone has not).
+            // Silent: the phone's toasts are bubbles, and this page shows the progress itself.
             d.view = { state: 'checking', message: '', progress: 0, filesTotal: 0 };
             if (d.rerender) d.rerender();
-            Promise.resolve(m.checkStaticFileUpdates(false)).then(() => {
-                if ((d.view.state === 'checking' || d.view.state === 'preparing') && !m.isUpdating) {
+            Promise.resolve(m.checkStaticFileUpdates(true)).then(() => {
+                if (d.view.state !== 'checking' && d.view.state !== 'preparing') return;
+                if (m.isUpdating) pollUpdate(d);
+                else {
                     const now = updateInitialState();
                     d.view = now.state === 'idle' ? { state: 'uptodate' } : now;
-                    if (d.rerender) d.rerender();
                 }
+                if (d.rerender) d.rerender();
             });
         } else if (what === 'apply' && typeof m.applyStaticCacheUpdate === 'function') {
             d.view = { ...d.view, state: 'installing' };
@@ -710,7 +746,7 @@
             ${ui.buttons([['remove', 'Remove', !d.sel]])}
             ${ui.gap()}
             ${ui.text(`Total storage memory available: ${fmtStorage(free)}`)}
-            ${ui.note('Removed programs leave the Start menu here and on the desktop. The desktop\'s Turn Melaton features on or off brings them back.')}`;
+            ${ui.note('Removed programs leave this list and the desktop\'s Programs and Features. The desktop\'s Turn Melaton features on or off brings them back.')}`;
         ui.bindListbox(el.querySelector('.wm-listbox'), (key) => {
             d.sel = key;
             const b = el.querySelector('[data-act="remove"]');
@@ -748,8 +784,13 @@
     // ================================================================ About: Server, Hardware
 
     function aboutInit() {
-        const d = { sys: null, rating: null, ratingFailed: false, cats: null, sysFailed: false };
-        return whenLoaded(d, ['scripts/comp/experienceIndex.js', 'scripts/comp/cplSystem.js', 'scripts/comp/cplDeviceManager.js'], () => {
+        // nothing loads or runs (Experience Index, devices, version) until a Server or Hardware tab shows
+        return { started: false, ready: false, sys: null, rating: null, ratingFailed: false, cats: null, sysFailed: false };
+    }
+
+    function aboutStart(d) {
+        d.started = true;
+        whenLoaded(d, ['scripts/comp/experienceIndex.js', 'scripts/comp/cplSystem.js', 'scripts/comp/cplDeviceManager.js'], () => {
             // the System page's sources: the cached version info (get_system_info), the session's rating
             const vi = typeof window.getMeletonVersionInfo === 'function' ? window.getMeletonVersionInfo() : null;
             d.version = vi;
@@ -783,6 +824,7 @@
 
     function aboutRender(el, tab, d, api) {
         d.rerender = api.rerender;
+        if (!d.started) aboutStart(d);
         if (!d.ready) { el.innerHTML = loadingHtml(d); return; }
         if (tab === 'sys-hardware') {
             if (!d.cats) { el.innerHTML = ui.text('Looking for devices...'); return; }
