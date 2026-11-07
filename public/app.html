@@ -51,12 +51,20 @@
         const agentBrowserSession = new URLSearchParams(location.search).get('agent') === '1';
         let galleryWindowPreference = null; // 'windowed', 'maximized', or null for auto
 
-        galleryWindowPreference = (agentBrowserSession && !(innerWidth < 1200 && window.matchMedia && matchMedia('(pointer: coarse)').matches))
+        // Touch is decided once per load (#709). An Android WebView reports a fine, hovering primary
+        // pointer until the first touch and only then flips (pointer: coarse) on, so anything keyed
+        // to that query changed mid-session (Melaton Mobile grew 1.5x on the first tap). A touch
+        // screen with no fine pointer, or a primary coarse pointer at load, is touch for the page.
+        const mqMatch = (q) => !!(window.matchMedia && matchMedia(q).matches);
+        const touchFirst = mqMatch('(pointer: coarse)')
+            || ((navigator.maxTouchPoints || 0) > 0 && mqMatch('(any-pointer: coarse)') && !mqMatch('(any-hover: hover)'));
+        globalThis.touchFirst = touchFirst;
+        galleryWindowPreference = (agentBrowserSession && !(innerWidth < 1200 && touchFirst))
             ? 'windowed'
             : localStorage.getItem('galleryWindowMode');
-        // A phone (coarse pointer, under 1200 px) is a phone even as an agent tab: ?agent=1 forces
+        // A phone (touch, under 1200 px) is a phone even as an agent tab: ?agent=1 forces
         // the desktop only on desktop browsers (#709)
-        const phoneBrowser = innerWidth < 1200 && !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+        const phoneBrowser = innerWidth < 1200 && touchFirst;
         const isWideScreen = (agentBrowserSession && !phoneBrowser) || innerWidth >= 1200;
         // The shell is chosen once per page load and never changes while the page lives: the
         // desktop and Melaton Mobile (wm-shell.css, wmShell.js, #709) never share the screen.
@@ -65,6 +73,8 @@
         const desktopPwaWindow = !!(window.matchMedia && matchMedia('(display-mode: window-controls-overlay)').matches);
         globalThis.uiShell = (isWideScreen || desktopPwaWindow) ? 'desktop' : 'mobile';
         if (globalThis.uiShell === 'mobile') document.documentElement.classList.add('ui-mobile');
+        // html.wm-touch drives the 1.5x finger scale of wm-shell.css; it never changes while the page lives
+        if (touchFirst) document.documentElement.classList.add('wm-touch');
         if (!galleryWindowPreference && isWideScreen) {
             // only a wide first load stores a choice: a phone's load used to store 'maximized'
             // and kept a later wide load of the same browser out of the desktop

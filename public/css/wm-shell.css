@@ -37,11 +37,12 @@ html.ui-mobile {
     background: #000;
 }
 
-/* Finger input: WM 6.1 was drawn for a stylus; a coarse pointer gets the same layout 1.5x larger */
-@media (pointer: coarse) {
-    html.ui-mobile {
-        --wm-px: 1.5px;
-    }
+/* Finger input: WM 6.1 was drawn for a stylus; touch gets the same layout 1.5x larger.
+   html.wm-touch is decided once at load in app.html, not by (pointer: coarse): an Android WebView
+   flips that query on the first touch and the whole shell grew mid-session. Settings > Screen
+   (wmScale) overrides it inline. */
+html.ui-mobile.wm-touch {
+    --wm-px: 1.5px;
 }
 
 /* ---- no crossover: only the shell and its hosted surfaces render ---- */

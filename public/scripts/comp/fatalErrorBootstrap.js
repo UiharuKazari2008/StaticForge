@@ -16,7 +16,12 @@
         }
     }
     function computeCanHover() {
-        if (mq('(any-hover: hover)') || mq('(hover: hover)')) return true;
+        if (mq('(any-hover: hover)')) return true;
+        // An Android WebView reports (hover: hover) for its primary pointer until the first touch
+        // while (any-hover: hover) is already false: a touch screen without any hovering pointer
+        // is no-hover from load (#709)
+        if ((navigator.maxTouchPoints || 0) > 0 && mq('(any-pointer: coarse)')) return false;
+        if (mq('(hover: hover)')) return true;
         // No touch hardware but MQ says no-hover → broken desktop report
         if ((navigator.maxTouchPoints || 0) === 0) return true;
         return false;
