@@ -234,6 +234,12 @@
                 if (sub) { closeSubmenu(openPopup); syncHistory(); } else closeMenus();
                 e.preventDefault();
                 e.stopImmediatePropagation(); // the picture behind the menu stays open
+                return;
+            }
+            if (e.key === 'Escape' && !e.repeat && escapeIsBack(e)) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                backKey();
             }
         }, true);
         // The phone's back button / gesture walks the app stack instead of leaving the page. One
@@ -257,6 +263,13 @@
         // the user went back one step: close the top layer (menu, then the picture view, then the
         // app). Nothing is pushed here: Chrome on Android skips entries added without a tap, so
         // entries are only added when something is opened.
+        const closed = closeTopLayer();
+        if (closed) syncHistory({ noPush: true });
+        return closed;
+    }
+
+    /** One back step: the top layer closes. false = nothing to close (Today, no menu or bubble). */
+    function closeTopLayer() {
         let closed = false;
         const sub = openPopup && openPopup.querySelector(':scope > .wm-popup-sub');
         if (sub) {
@@ -283,8 +296,33 @@
             }
             closed = true;
         }
-        if (closed) syncHistory({ noPush: true });
         return closed;
+    }
+
+    /**
+     * The Dreamscape Android app turns its back key into Escape (DSApp-Kotlin MainActivity:
+     * onBackPressedDispatcher -> KEYCODE_ESCAPE), the desktop's "close the top window". On the phone it
+     * is WM's back key: Escapes that a phone surface handles itself pass (a WM message box, the shell's own
+     * text boxes, the tag autocomplete / character card / metadata overlays); every other one steps back
+     * one layer, and the desktop's Escape handlers never see it (they would close a re-hosted window).
+     */
+    function escapeIsBack(e) {
+        if (root.dataset.wmBoot && root.dataset.wmBoot !== 'done') return false;
+        if (root.dataset.wmTakeover) return false;
+        const box = shell.querySelector('.wm-msgbox-layer');
+        if (box && !box.hidden) return false;
+        const t = e.target;
+        if (t && t.closest && t.closest('#wmShell') && t.matches && t.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button])')) return false;
+        // fixed overlays have no offsetParent: a box on screen is the test
+        const shown = (id) => { const el = document.getElementById(id); return !!(el && !el.classList.contains('hidden') && el.getClientRects().length); };
+        if (shown('characterAutocompleteOverlay') || shown('presetAutocompleteOverlay') || shown('metadataDialog')) return false;
+        return true;
+    }
+
+    function backKey() {
+        // with a history entry for the layer, go back through history so the entries stay in step
+        if (historyDepth() > 0) { history.back(); return; }
+        if (closeTopLayer()) syncHistory({ noPush: true });
     }
 
     function setTitle(text) {
