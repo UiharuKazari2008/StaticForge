@@ -599,25 +599,48 @@
         const body = view.querySelector('.msg-body');
         if (m.loadError) { body.textContent = m.loadError; return; }
         if (pending || m.body == null) { body.textContent = m.format === 'html' ? bodyText({ format: 'html', body: m.snippet }) : (m.snippet || ''); return; }
-        // Agent mail: dovecote_render_body marks the message read for its owner (the server reads it without
-        // markRead:false), which would eat an agent's unread mail. Show it as plain text instead.
-        if (m.format === 'html' && isMine()) renderHtmlBody(body, m);
-        else if (m.format === 'html') body.textContent = bodyText(m);
+        if (m.format === 'html') renderHtmlBody(body, m);
         else body.textContent = String(m.body || '');
         view.querySelector('.msg-read').scrollTop = 0;
+    }
+
+    /**
+     * An agent's HTML mail, cleaned here: dovecote_render_body marks a message read for its owner, and the
+     * body fetched with markRead:false is already in hand. No scripts, frames, plug-ins, forms, refreshes,
+     * base or linked styles, handlers or script links; the frame's CSP still blocks every remote load.
+     */
+    function cleanAgentHtml(html) {
+        try {
+            const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+            doc.querySelectorAll('script, noscript, iframe, frame, frameset, object, embed, applet, meta, base, link, form, template').forEach((n) => n.remove());
+            doc.querySelectorAll('*').forEach((el) => {
+                for (const at of [...el.attributes]) {
+                    const name = at.name.toLowerCase();
+                    const v = at.value.replace(/[\s\u0000-\u001f]+/g, '').toLowerCase();
+                    if (name.startsWith('on') || name === 'srcdoc' || name === 'formaction') el.removeAttribute(at.name);
+                    else if (/^(href|src|xlink:href|action|background|poster|data)$/.test(name) && /^(javascript|vbscript|data:text\/html)/.test(v)) el.removeAttribute(at.name);
+                }
+            });
+            return `${[...doc.head.querySelectorAll('style')].map((st) => st.outerHTML).join('')}${doc.body ? doc.body.innerHTML : ''}`;
+        } catch (_) {
+            return '';
+        }
     }
 
     /** HTML mail: the server's sanitized body (dovecote_render_body) in a script-less frame, as on the desktop. */
     async function renderHtmlBody(host, m) {
         const token = readToken;
         host.textContent = m.snippet || '';
-        const request = { id: m.id };
-        if (!isMine()) request.viewAsOwner = owner;
         let r;
-        try {
-            r = await send('dovecote_render_body', request, true);
-        } catch (_) {
-            return;
+        if (isMine()) {
+            try {
+                r = await send('dovecote_render_body', { id: m.id }, true);
+            } catch (_) {
+                return;
+            }
+        } else {
+            // an agent's mail stays unread for the agent
+            r = { html: cleanAgentHtml(m.body) };
         }
         if (token !== readToken || !host.isConnected) return;
         const frame = document.createElement('iframe');
