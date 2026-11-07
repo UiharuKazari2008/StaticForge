@@ -67,7 +67,7 @@
         ['custom', 'Custom color', null]
     ];
     const IG_MAGNITUDES = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5];
-    const IG_SCALES = [['1', '1×'], ['1.5', '1.5×'], ['2', '2×']];
+    const IG_SCALES = [['1', '1x'], ['1.5', '1.5x'], ['2', '2x']];
     const IG_KEYS = ['streamImageGeneration', 'showStreamedImagesUnprocessed', 'simpleOutputViewer', 'lockOutputViewerCamera',
         'reducedMotion', 'hideQuickstartGallery', 'persistHistory', 'imageFormat', 'automaticDownload', 'alphaMode',
         'transparencyBackground', 'transparencyCustomColor'];
@@ -146,7 +146,7 @@
                     <div class="wm-form-sub">Magnitude: <span data-f="mag">${esc(Number(d.enh.magnitude).toFixed(1))}</span></div>
                     <div data-f="track"></div>
                     ${ui.gap()}
-                    ${ui.row('Upscale:', ui.comboHtml('scale', scale ? scale[1] : '1×'))}`;
+                    ${ui.row('Upscale:', ui.comboHtml('scale', scale ? scale[1] : '1x'))}`;
                 ui.trackbar(el.querySelector('[data-f="track"]'), {
                     steps: IG_MAGNITUDES, value: Number(d.enh.magnitude), lo: '1.0', hi: '5.5', label: 'Magnitude',
                     onChange: (v) => { d.enh.magnitude = v; el.querySelector('[data-f="mag"]').textContent = v.toFixed(1); }
@@ -166,7 +166,8 @@
         },
         async commit(d) {
             const s = d.s;
-            if (s.transparencyBackground === 'custom' || d.colorText !== d.saved.transparencyCustomColor) {
+            // the Color box only counts while Custom color is picked (it is disabled otherwise)
+            if (s.transparencyBackground === 'custom') {
                 const c = igColor(d.colorText);
                 if (!c) {
                     await errorBox('Image Generation', 'Enter the custom color as # and six hexadecimal digits, for example #808080.');
@@ -495,7 +496,7 @@
             if (tab === 'signatures') {
                 const id = ui.uid('wmDsSig');
                 el.innerHTML = `${ui.check('signatureOutgoing', 'Add signatures to all outgoing messages', s.signatureOutgoing)}
-                    ${ui.check('signatureSkipReplies', 'Don’t add signatures to replies and forwards', s.signatureSkipReplies)}
+                    ${ui.check('signatureSkipReplies', 'Don\'t add signatures to replies and forwards', s.signatureSkipReplies)}
                     <div class="wm-form-sub"><label for="${id}">Signature:</label></div>
                     <textarea id="${id}" class="wm-ds-textarea" spellcheck="true" maxlength="${Number(mail().SIGNATURE_MAX) || 4000}">${esc(s.signature)}</textarea>`;
                 el.querySelectorAll('.wm-check input').forEach((c) => c.addEventListener('change', () => { s[c.name] = c.checked; }));
@@ -603,7 +604,8 @@
         init: () => ({}),
         render(el, tab, d) {
             const draw = () => {
-                if (!el.isConnected) { if (idxDraw === draw) idxDraw = null; clearInterval(d.timer); return; }
+                // gone, or Settings hidden (hide() leaves the page DOM; show() draws the grid anew)
+                if (!el.isConnected || el.closest('[hidden]')) { if (idxDraw === draw) idxDraw = null; clearInterval(d.timer); return; }
                 const s = idxState();
                 const busy = s.syncActive || s.ftsActive;
                 let bar = '';
