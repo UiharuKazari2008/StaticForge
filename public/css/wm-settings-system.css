@@ -1,1 +1,154 @@
 /* Melaton Mobile Settings: System pages (Clock & Alarms, Regional Settings, Power, Backlight, Melaton Update, Remove Programs, About) (wmSettingsSystem.js, Yozora #709); html.ui-mobile only. */
+
+/* Clock & Alarms > Time (the emulator, 2x): the zone name column is 100 px wide (radio at x 4,
+ * bold name), the fields from x 101 to 233 are 20 px rows, 1 px apart, drawn with only a line
+ * under them (WM 6.1's date / time pickers); greyed while Visiting is off */
+html.ui-mobile .wm-sys-clock {
+    display: grid;
+    grid-template-columns: calc(96 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(5 * var(--wm-px));
+    row-gap: calc(8 * var(--wm-px));
+    margin-bottom: calc(10 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-clock-side {
+    display: flex;
+    align-items: flex-start;
+    padding-top: calc(2 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-clock-name {
+    padding-left: calc(18 * var(--wm-px));
+    font-size: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-clock .wm-check span {
+    font-weight: bold;
+    font-size: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-clock-fields {
+    display: flex;
+    flex-direction: column;
+    gap: calc(1 * var(--wm-px));
+    min-width: 0;
+}
+
+html.ui-mobile .wm-sys-clock-fields .wm-combo,
+html.ui-mobile .wm-sys-clock-fields .wm-edit {
+    border: 0 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
+    background: transparent !important;
+}
+
+html.ui-mobile .wm-sys-clock-fields .wm-combo::after {
+    border-left: 0;
+}
+
+html.ui-mobile .wm-sys-clock-fields .wm-edit:disabled,
+html.ui-mobile .wm-sys-clock-fields .wm-combo:disabled {
+    border-bottom-color: #a5a6a5 !important;
+    color: #a5a6a5 !important;
+    -webkit-text-fill-color: #a5a6a5;
+}
+
+html.ui-mobile .wm-sys-clock-fields .wm-combo:disabled::after {
+    opacity: 0.35;
+}
+
+/* "Label:" facts whose labels are longer than About's (Regional Settings, About > Server) */
+html.ui-mobile .wm-sys-facts .wm-facts {
+    grid-template-columns: max-content minmax(0, 1fr);
+}
+
+html.ui-mobile .wm-sys-facts .wm-facts > :nth-child(even) {
+    font-size: calc(12 * var(--wm-px));
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+html.ui-mobile .wm-form > .wm-combo + .wm-form-sub {
+    margin-top: calc(8 * var(--wm-px));
+}
+
+/* Power > Advanced, Backlight: the check box over its combo, the combo indented under the label */
+html.ui-mobile .wm-sys-minutes {
+    margin-bottom: calc(8 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-minutes-combo {
+    width: calc(120 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) 0 0 calc(18 * var(--wm-px));
+}
+
+/* Power > Battery, Melaton Update: WM's progress bar (1 px black frame, highlight fill) */
+html.ui-mobile .wm-sys-meter {
+    position: relative;
+    height: calc(10 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    overflow: hidden;
+}
+
+html.ui-mobile .wm-sys-meter > div {
+    height: 100%;
+    background: var(--wm-highlight);
+}
+
+html.ui-mobile .wm-sys-meter.is-marquee > div {
+    position: absolute;
+    width: 30%;
+    animation: wm-sys-marquee 1.6s linear infinite;
+}
+
+@keyframes wm-sys-marquee {
+    from { left: -30%; }
+    to { left: 100%; }
+}
+
+html.ui-mobile .wm-sys-battery {
+    margin-bottom: calc(6 * var(--wm-px));
+}
+
+/* Melaton Update: the state icon beside its title and text */
+html.ui-mobile .wm-sys-update {
+    display: flex;
+    gap: calc(6 * var(--wm-px));
+    align-items: flex-start;
+}
+
+html.ui-mobile .wm-sys-update-icon {
+    flex: 0 0 auto;
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-update-text p {
+    margin: calc(3 * var(--wm-px)) 0 0;
+}
+
+html.ui-mobile .wm-sys-empty {
+    height: calc(120 * var(--wm-px));
+}
+
+/* About > Hardware: the category rows bold, as Device Manager's tree */
+html.ui-mobile .wm-sys-devices .wm-listbox-row:not(.is-indent) {
+    font-weight: bold;
+}
+
+html.ui-mobile .wm-sys-devices .wm-listbox-row img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-devices .wm-listbox-row span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html.ui-mobile .wm-sys-clock-fields .wm-edit {
+    border-radius: 0 !important;
+}

@@ -4434,6 +4434,67 @@
         ]
       },
       "notes": "Settings applet icon: Workspace (Melaton extension; WM window icon) (Settings grid, Melaton Mobile Settings app, wmSettingsPersonal.js)."
+    },
+    "set-backlight": {
+      "1x": {
+        "source": "shellres.192.dll ico_13902_1_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13902_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Backlight (Settings grid, Melaton Mobile Settings app). @4x: up4/run.js."
+    },
+    "set-remove-programs": {
+      "1x": {
+        "source": "shellres.192.dll ico_13943_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13943_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Remove Programs (Settings grid, Melaton Mobile Settings app). @4x: up4/run.js."
+    },
+    "set-update": {
+      "1x": {
+        "source": "downscaled from 2x (box filter)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "autoupdatecpl.cpl ico_101_4_64x64 + melaton-flat emblem",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "downscaled"
+      ],
+      "notes": "Settings applet icon: Melaton Update (Windows Update analogue). The ROM's Windows flag over the globe is replaced by the Melaton emblem (melaton-flat, saturated, 1px shadow) on a redrawn sphere (copyright rule). @4x: up4/run.js.",
+      "source": "public/static_images/melaton/melaton-flat-256.png"
     }
   },
   "notDelivered": {
