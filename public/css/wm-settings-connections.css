@@ -1,1 +1,143 @@
 /* Melaton Mobile Settings: Connections pages (Connections, Network Cards, Domain Enroll, Wireless Manager, Remote Access, Grimoire) (wmSettingsConnections.js, Yozora #709); html.ui-mobile only. */
+
+html.ui-mobile .wm-setc .wm-setc-gap-top {
+    margin-top: calc(8 * var(--wm-px));
+}
+
+/* the "<connection> Status" facts: longer labels than About's */
+html.ui-mobile .wm-setc .wm-facts {
+    grid-template-columns: calc(96 * var(--wm-px)) minmax(0, 1fr);
+}
+
+/* Network Cards (~/.cache/wm61/ref-r9c/02-netcards.png): full-width combo, a tall adapter list */
+html.ui-mobile .wm-setc > .wm-combo {
+    width: 100%;
+}
+
+html.ui-mobile .wm-setc .wm-setc-adapters {
+    min-height: calc(176 * var(--wm-px));
+}
+
+/* the adapter's page (03-adapter.png): the address row under the radios, indented */
+html.ui-mobile .wm-setc .wm-setc-ip {
+    margin: calc(4 * var(--wm-px)) 0 calc(4 * var(--wm-px)) calc(30 * var(--wm-px));
+}
+
+/* Domain Enrollment (05-domain.png): bold one-size-up labels with the value on the next line */
+html.ui-mobile .wm-setc .wm-setc-enroll {
+    display: flex;
+    flex-direction: column;
+    margin-top: calc(10 * var(--wm-px));
+}
+
+html.ui-mobile .wm-setc .wm-setc-enroll b {
+    display: block;
+    margin-top: calc(6 * var(--wm-px));
+    font-size: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile .wm-setc .wm-setc-enroll > label {
+    margin: 0;
+}
+
+html.ui-mobile .wm-setc .wm-setc-enroll > .wm-edit {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Wireless Manager: WM 6.1's big rounded radio rows, icon left, name bold, state at the right;
+ * grey when off, the theme's green gloss when connected */
+html.ui-mobile .wm-setc .wm-setc-radio {
+    display: flex;
+    align-items: center;
+    gap: calc(8 * var(--wm-px));
+    width: 100%;
+    min-height: calc(46 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) 0;
+    padding: calc(4 * var(--wm-px)) calc(8 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #5a5d5a;
+    border-radius: calc(6 * var(--wm-px));
+    background: linear-gradient(#f7f7f7, #d6d7d6 50%, #c6c7c6 50%, #e7e7e7);
+    color: #000;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+html.ui-mobile .wm-setc .wm-setc-radio img {
+    flex: 0 0 auto;
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    filter: grayscale(1) opacity(0.6);
+}
+
+html.ui-mobile .wm-setc .wm-setc-radio.is-on {
+    border-color: var(--wm-button-border);
+    background: linear-gradient(var(--wm-gloss-top), var(--wm-button-light) 50%, var(--wm-gloss-bottom) 50%, var(--wm-button-light));
+}
+
+html.ui-mobile .wm-setc .wm-setc-radio.is-on img,
+html.ui-mobile .wm-setc .wm-setc-radio.is-busy img {
+    filter: none;
+}
+
+html.ui-mobile .wm-setc .wm-setc-radio:active {
+    border-color: var(--wm-title);
+}
+
+html.ui-mobile .wm-setc .wm-setc-radio-name {
+    flex: 1 1 auto;
+    font-weight: bold;
+    font-size: calc(14 * var(--wm-px));
+}
+
+html.ui-mobile .wm-setc .wm-setc-radio-state {
+    flex: 0 0 auto;
+    font-size: calc(12 * var(--wm-px));
+}
+
+html.ui-mobile .wm-setc .wm-setc-radio.is-busy .wm-setc-radio-state {
+    font-style: italic;
+}
+
+/* Remote Access > Generation: "[1 v] to [8 v] prints" */
+html.ui-mobile .wm-setc .wm-setc-prints {
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    margin: calc(3 * var(--wm-px)) 0;
+}
+
+html.ui-mobile .wm-setc .wm-setc-prints .wm-combo {
+    width: calc(46 * var(--wm-px));
+    flex: 0 0 auto;
+}
+
+/* Remote Access > Open With: each choice's line under its radio */
+html.ui-mobile .wm-setc .wm-setc-radio-note {
+    margin: 0 0 calc(4 * var(--wm-px)) calc(22 * var(--wm-px));
+}
+
+/* Grimoire > Memory: label, then its button, on one line each */
+html.ui-mobile .wm-setc .wm-setc-mem {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    row-gap: calc(4 * var(--wm-px));
+    column-gap: calc(6 * var(--wm-px));
+}
+
+html.ui-mobile .wm-setc .wm-setc-mem .wm-button {
+    min-width: calc(90 * var(--wm-px));
+}
+
+/* Grimoire > General / Advanced: full-width edit and combos */
+html.ui-mobile .wm-setc > .wm-edit {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+html.ui-mobile .wm-setc .wm-combo + .wm-check {
+    margin-top: calc(6 * var(--wm-px));
+}

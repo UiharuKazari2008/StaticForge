@@ -2694,6 +2694,66 @@
       ],
       "notes": "Settings applet icon: Wireless Manager (Settings grid, Melaton Mobile Settings app)."
     },
+    "set-netcards": {
+      "1x": {
+        "source": "shellres.192.dll ico_13888_1_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13888_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Network Cards (Settings grid, Melaton Mobile Settings app)."
+    },
+    "set-domain": {
+      "1x": {
+        "source": "shellres.192.dll ico_14002_1_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_14002_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Domain Enroll (Settings grid, Melaton Mobile Settings app)."
+    },
+    "set-grimoire": {
+      "1x": {
+        "source": "iexplore.exe ico_1001_2_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "iexplore.exe ico_1001_4_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings item icon: Grimoire (Internet Explorer's globe; Melaton Mobile Settings app, Connections)."
+    },
     "msg-acct-outlook": {
       "1x": {
         "source": "box-downscaled from @2x",
