@@ -17,7 +17,7 @@
  *   CHROME_NO_SANDBOX        default 1 (set 0 to keep the sandbox)
  *   GRIMOIRE_BROWSER_IDLE_MS default 600000
  *   MAX_SESSIONS             default 4 (popup windows have their own cap of the same size)
- *   ALCHEMY_CDP_PORT         default 9335: loopback CDP for Hoshino's Alchemy-owned Discord tab (modules/alchemyOwnedTab.js); 0 turns it off
+ *   ALCHEMY_CDP_PORT         default 9339: loopback CDP for Hoshino's Alchemy-owned Discord tab (modules/alchemyOwnedTab.js); 0 turns it off
  *   ALCHEMY_PROFILE_DIR      default ~/.local/share/dreamscape/alchemy-profile (cookies, extension logins: keep 0700)
  *   ALCHEMY_EXTENSIONS_DIR   default ~/.local/share/dreamscape/alchemy-extensions (scripts/alchemy-update-extension.js)
  *   ALCHEMY_CHROMIUM_DIR     default ~/.local/share/dreamscape/alchemy-chromium (scripts/alchemy-brand-chromium.js)
@@ -72,7 +72,7 @@ const ADMIN_TOKEN = String(process.env.GRIMOIRE_BROWSER_TOKEN || '');
 const FRAME_ANCESTORS = String(process.env.FRAME_ANCESTORS || '*').trim() || '*';
 const IDLE_MS = Math.max(15000, Number(process.env.GRIMOIRE_BROWSER_IDLE_MS || 600000));
 const MAX_SESSIONS = Math.max(1, Number(process.env.MAX_SESSIONS || 4));
-const ALCHEMY_CDP_PORT = Math.max(0, Number(process.env.ALCHEMY_CDP_PORT || 9335) || 0);
+const ALCHEMY_CDP_PORT = Math.max(0, Number(process.env.ALCHEMY_CDP_PORT || 9339) || 0);
 // modules/alchemyOwnedTab.js opens its tab with this marker; it is never closed for being over the window cap.
 const ALCHEMY_OWNED_MARKER = '#alchemy-owned';
 const DIALOG_MS = 5 * 60 * 1000;

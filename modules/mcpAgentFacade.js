@@ -3476,7 +3476,7 @@ const TOOL_DEFS = [
     {
         name: 'alchemy_browser',
         core: true,
-        description: 'Drive the Alchemy-owned tab in the Alchemy browser Yukimi signs in to (grimoire-browser, loopback CDP 127.0.0.1:9335). Ops: navigate, info, scroll, click, read_dom, read_text. Never touches the Dreamscape /app?agent=1 tab and does not launch another Chrome. Public http(s) sites only (no loopback/private hosts). Read-only on Discord: clicks there are refused. Needs the sfapp_alchemy_browser scope and an allowlisted key (Hoshino, Yukimi).',
+        description: 'Drive the Alchemy-owned tab in the Alchemy browser Yukimi signs in to (grimoire-browser, loopback CDP 127.0.0.1:9339). Ops: navigate, info, scroll, click, read_dom, read_text. Never touches the Dreamscape /app?agent=1 tab and does not launch another Chrome. Public http(s) sites only (no loopback/private hosts). Read-only on Discord: clicks there are refused. Needs the sfapp_alchemy_browser scope and an allowlisted key (Hoshino, Yukimi).',
         scope: 'sfapp_alchemy_browser',
         role: 'alchemy',
         inputSchema: {
