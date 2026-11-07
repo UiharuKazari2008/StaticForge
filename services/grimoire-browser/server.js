@@ -2953,11 +2953,19 @@ async function main() {
         console.log('[grimoire-browser] listening on http://' + bound.address + ':' + bound.port);
     });
 
+    // Close Chromium first so it flushes the profile (logins in localStorage) before pm2's
+    // kill_timeout; sessions die with the browser, so their page closes are not awaited.
+    let shuttingDown = false;
     const shutdown = async () => {
-        for (const id of [...sessions.keys()]) await closeSession(id);
+        if (shuttingDown) return;
+        shuttingDown = true;
         if (browser) {
-            try { await browser.close(); } catch (_) {}
+            await Promise.race([
+                browser.close().catch(() => {}),
+                new Promise((resolve) => setTimeout(resolve, 6000).unref())
+            ]);
         }
+        for (const id of [...sessions.keys()]) closeSession(id).catch(() => {});
         stopDisplay();
         stopAudio();
         server.close(() => process.exit(0));
