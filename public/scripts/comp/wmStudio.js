@@ -106,6 +106,7 @@
         }
         if (!shown) return;
         hostStudio();
+        adoptOpenWindows();
         paintTab();
         refreshTitle();
         if (isCurrent()) ws.refreshSoftKeys();
@@ -617,6 +618,64 @@
         }, 1000); // after closeModal's own 600 ms fallback (modalUtils.js)
     }
 
+    /**
+     * Desktop windows open while another app is on screen (SmartText, Ledge from a Director print, a
+     * tool from an MCP action) are drawn nowhere: the shell covers the desktop. Each gets a WM
+     * notification (Show brings Studio up), and Studio hosts every such window when it comes up, so
+     * no window stays open unseen and asking for it again from Studio's menu shows it.
+     */
+    const behind = new Map(); // win -> toast id of its notification
+
+    function unnotify(win) {
+        const id = behind.get(win);
+        if (!id) return;
+        behind.delete(win);
+        try { if (typeof window.removeGlassToast === 'function') window.removeGlassToast(id); } catch (_) { /* gone */ }
+    }
+
+    function notifyBehind(win) {
+        if (root.dataset.wmBoot !== 'done' || !isToolCandidate(win) || typeof window.showGlassToast !== 'function') return;
+        unnotify(win);
+        const id = window.showGlassToast('info', esc(windowTitle(win)), 'Open in Studio.', false, false, null,
+            [{ text: 'Show', onClick: () => { unnotify(win); if (!isCurrent()) ws.open(APP_ID); } }]);
+        if (id) behind.set(win, id);
+    }
+
+    /** Studio is on screen: windows left open behind other apps become its tool pages, the topmost last. */
+    function adoptOpenWindows() {
+        if (!page || !shown || !isCurrent() || !studioOpen()) return;
+        const z = (w) => parseInt(getComputedStyle(w).zIndex, 10) || 0;
+        Array.from(document.body.children).filter(isToolCandidate)
+            .sort((a, b) => z(a) - z(b))
+            .forEach((w) => { unnotify(w); hostTool(w); });
+    }
+
+    /** A window opening, or asked for again while open: hosted over Studio, else a notification. */
+    function routeWindow(el) {
+        if (!isToolCandidate(el)) return;
+        if (isCurrent() && studioOpen()) { unnotify(el); hostTool(el); }
+        else notifyBehind(el);
+    }
+
+    /**
+     * openModal on a window that is already open only raises it on the desktop (no class change for
+     * the watcher to see). On the phone that is the user asking for it again: route it as an opening.
+     * The Director window has its own route (patchDirectorFocus).
+     */
+    function wrapOpenModal() {
+        const orig = window.openModal;
+        if (typeof orig !== 'function' || orig._wmStudio) return;
+        const wrapped = function (m) {
+            const reopen = !!(m && m.nodeType === 1 && m.id !== 'directorWindow' && m.parentNode === document.body
+                && !m.classList.contains('hidden') && !m.classList.contains('hidden-alt'));
+            const out = orig.apply(this, arguments);
+            if (reopen && root.dataset.wmBoot === 'done') routeWindow(m);
+            return out;
+        };
+        wrapped._wmStudio = true;
+        window.openModal = wrapped;
+    }
+
     function openDirectorApp() {
         if (ws.listApps().some((a) => a.id === 'director')) ws.open('director');
     }
@@ -653,14 +712,13 @@
         const wasOpen = new WeakMap();
         const isOpen = (el) => !el.classList.contains('hidden') && !el.classList.contains('hidden-alt') && !el.classList.contains('minimised');
         const check = (el) => {
-            if (!isCurrent() || !studioOpen()) return;
             // the Director (Image > Ask Wren ...) is its own app (wmDirector.js): its window opening
             // over Studio opens that app (an already open one is brought up by patchDirectorFocus)
             if (el.id === 'directorWindow') {
-                openDirectorApp();
+                if (isCurrent() && studioOpen()) openDirectorApp();
                 return;
             }
-            if (isToolCandidate(el)) hostTool(el);
+            routeWindow(el);
         };
         const observeWin = (el) => {
             if (seen.has(el) || !el.classList || !el.classList.contains('modal')) return;
@@ -670,6 +728,7 @@
                 const open = isOpen(el);
                 const opened = open && !wasOpen.get(el);
                 wasOpen.set(el, open);
+                if (!open) unnotify(el);
                 if (tools.some((t) => t.win === el)) {
                     if (!open) releaseTool(el);
                     return;
@@ -681,7 +740,11 @@
         Array.from(document.body.children).forEach(observeWin);
         new MutationObserver((muts) => {
             // only windows new to the page: a hosted window put back on body is not a new opening
-            for (const m of muts) m.addedNodes.forEach((n) => { if (n.nodeType === 1 && !seen.has(n)) { observeWin(n); check(n); } });
+            for (const m of muts) {
+                m.addedNodes.forEach((n) => { if (n.nodeType === 1 && !seen.has(n)) { observeWin(n); check(n); } });
+                // a dialog removed from the page (not hosted) needs no notification any more
+                m.removedNodes.forEach((n) => { if (behind.has(n)) setTimeout(() => { if (!n.isConnected) unnotify(n); }, 0); });
+            }
         }).observe(document.body, { childList: true });
     }
 
@@ -883,6 +946,7 @@
         wrapEntryPoints();
         wrapCreditCost();
         watchWindows();
+        wrapOpenModal();
         hdIcon();
         // the shell puts the app title back when the picture view closes: a tool page keeps its own
         if (typeof MutationObserver === 'function') {
