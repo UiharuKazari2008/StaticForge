@@ -17,7 +17,11 @@
  *   Open      (commdlg GetOpenFileName) a black bold "Open" header; Folder (All Folders + the
  *             folders) with Cancel at its right, Type; a list with a column header (Name ^, Folder,
  *             Date, Size: a tap sorts, again reverses) and 18 px rows; a tap on a file opens it.
+ *             (ref-fd/open*.png: tools/wmfiledlg.cs as \Storage Card\wmopen.exe.)
  *             "All Folders" lists the files of every folder (two levels deep) in one list.
+ *             The server sorts and pages: a folder's list loads PAGE files at a time in the
+ *             header's order as it scrolls; All Folders shows each folder's first ALL_PER_FOLDER
+ *             and says so. Pictures open newest first.
  *
  * Files from the phone itself (<input type=file>) stay the browser's picker: "Browse device..."
  * (Menu) where the caller can take them (the host's extraButton, the Director's attachments).
@@ -35,9 +39,13 @@
 
     const APP_ID = 'wm-file';
     const ART = '/static_images/wm61/';
-    const LIST_LIMIT = 500;
-    const MAX_FOLDERS = 24; // listings for "All Folders" / the Folder list
+    const PAGE = 100; // one request of a folder's files, in the header's order (the server sorts)
+    const ALL_PER_FOLDER = 30; // "All Folders": the first files of each folder (a folder of its own pages on)
+    const MAX_LISTINGS = 60; // folder listings for the Folder list / All Folders
+    const FILL = 40; // a folder's list loads on until this many rows show (or it ends)
+    const MAX_FOLDERS = 24; // the phone's own volume: folders walked
     const SORT_KEY = 'wmFileDialogSort';
+    const NAME_SORT = { field: 'name', dir: 'asc' };
     const BAD_NAME = /[\\/:*?"<>|]/;
     const root = document.documentElement;
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -97,7 +105,27 @@
         if (!n) return '';
         if (n < 1e12) n *= 1000;
         const d = new Date(n);
-        return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`;
+        return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
+    }
+
+    /** A page's <input accept> ("image/*,.pdf"): does the item match it? */
+    function matchesAccept(item, acceptAttr) {
+        const tokens = String(acceptAttr || '').toLowerCase().split(',').map((s) => s.trim()).filter(Boolean);
+        if (!tokens.length || !item) return true;
+        const names = [item.name, item.previewImageFilename, item.targetId, item.shortcutData && item.shortcutData.filename]
+            .filter(Boolean).map((s) => String(s).toLowerCase());
+        const isImg = item.targetKind === 'image' || item.targetKind === 'scrap' || item.shortcutType === 'image';
+        let mime = String(item.mimeType || '').toLowerCase();
+        if (!mime) {
+            const ext = (names.map((s) => (/\.([a-z0-9]+)$/.exec(s) || [])[1]).find(Boolean)) || (isImg ? 'png' : '');
+            const byExt = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp', txt: 'text/plain', pdf: 'application/pdf', json: 'application/json', mp4: 'video/mp4', webm: 'video/webm' };
+            mime = byExt[ext] || (isImg ? 'image/png' : '');
+        }
+        return tokens.some((t) => {
+            if (t.startsWith('.')) return names.some((n) => n.endsWith(t));
+            if (t.endsWith('/*')) return mime.startsWith(t.slice(0, -1));
+            return mime === t;
+        });
     }
 
     function fmtSize(b) {
@@ -126,48 +154,83 @@
 
     // ---------------------------------------------------------------- listing
 
-    async function list(path) {
-        /* global vfsClient */
-        if (typeof vfsClient === 'undefined' || !vfsClient) throw new Error('The file system is not available.');
-        const res = await vfsClient.listDirectory(path, { offset: 0, limit: LIST_LIMIT, sortField: 'name', sortDirection: 'asc', search: '' });
-        return ((res && res.items) || []).filter((i) => !String(i.name || '').startsWith('.'));
+    const isClient = (d) => typeof d.opts.items === 'function' || String(d.location).startsWith('phone:');
+
+    function serverSort(sort) {
+        const f = sort && (sort.field === 'date' || sort.field === 'size') ? sort.field : 'name';
+        return { sortField: f, sortDirection: sort && sort.dir === 'desc' ? 'desc' : 'asc' };
     }
 
     /**
-     * The folders of a location (two levels; the first level only for Save As) and, for "All
-     * Folders", the files of each: { folders: [{ path, label }], files: [{ item, path, label }] }.
+     * One request of a folder in the header's order (the server sorts and pages; folders come
+     * first): { items (no dot files), consumed, hasMore }.
      */
-    async function survey(rootPath, depth, withFiles) {
+    async function listPage(path, sort, offset = 0, limit = PAGE, search = '') {
+        /* global vfsClient */
+        if (typeof vfsClient === 'undefined' || !vfsClient) throw new Error('The file system is not available.');
+        const res = await vfsClient.listDirectory(path, Object.assign({ offset, limit, search }, serverSort(sort)));
+        const raw = (res && res.items) || [];
+        return { items: raw.filter((i) => !String(i.name || '').startsWith('.')), consumed: raw.length, hasMore: !!(res && res.hasMore) };
+    }
+
+    /** A folder's first page; while a page is all folders it reads on, so every subfolder is known. */
+    async function firstPage(path, sort) {
+        const items = [];
+        let offset = 0;
+        let hasMore = true;
+        for (let n = 0; n < 20 && hasMore; n++) {
+            const r = await listPage(path, sort, offset, PAGE);
+            items.push(...r.items);
+            offset += r.consumed;
+            hasMore = r.hasMore && r.consumed > 0;
+            if (!r.consumed || r.items.some((i) => !isFolder(i))) break;
+        }
+        return { items, offset, hasMore };
+    }
+
+    /**
+     * The folders of a location, `levels` deep, and (withFiles, Open) each listed folder's first
+     * page of files in the header's order: { folders: [{ path, label }], pages: Map(path -> page),
+     * cut (folders past MAX_LISTINGS were not listed) }. A page is { path, files: [{ item, path,
+     * label }], offset, hasMore, loading }.
+     */
+    async function survey(rootPath, levels, sort, withFiles) {
         const folders = [];
-        const files = [];
+        const pages = new Map();
         let level = [{ path: rootPath, label: '' }];
         let listed = 0;
-        for (let d = 0; d <= depth && level.length; d++) {
-            const batch = level.slice(0, Math.max(0, MAX_FOLDERS - listed));
+        let cut = false;
+        for (let d = 0; d <= levels && level.length; d++) {
+            if (!withFiles && d === levels) break; // Save As: the last level's folders need no listing
+            const batch = level.slice(0, Math.max(0, MAX_LISTINGS - listed));
+            if (batch.length < level.length) cut = true;
             listed += batch.length;
-            const results = await Promise.all(batch.map((f) => list(f.path).then((items) => ({ f, items }), () => ({ f, items: [] }))));
+            const results = await Promise.all(batch.map((f) => firstPage(f.path, sort).then((r) => ({ f, r }), () => ({ f, r: null }))));
             const next = [];
-            for (const { f, items } of results) {
-                for (const i of items) {
+            for (const { f, r } of results) {
+                if (!r) continue;
+                const files = [];
+                for (const i of r.items) {
                     if (isFolder(i)) {
+                        if (d >= levels) continue;
                         // not places to keep files: the workspaces themselves, System, the Trash
                         if (i.targetKind === 'workspace' || ['@system', '@workspaces', '@trash'].includes(i.targetId)) continue;
                         const p = folderPath(i, f.path);
                         if (!p) continue;
                         const sub = { path: p, label: f.label ? `${f.label}\\${i.name}` : i.name };
-                        if (d < depth || !withFiles) folders.push(sub);
-                        if (d < depth) next.push(sub);
+                        folders.push(sub);
+                        next.push(sub);
                     } else if (withFiles) {
                         files.push({ item: i, path: f.path, label: f.label });
                     }
                 }
+                if (withFiles) pages.set(f.path, { path: f.path, files, offset: r.offset, hasMore: r.hasMore, loading: false });
             }
             level = next;
-            if (!withFiles && d >= depth - 1) break;
         }
         // a folder's subfolders follow it (Desktop, Desktop\Test, Downloads ...)
         folders.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' }));
-        return { folders, files };
+        return { folders: folders.filter((f, i, a) => a.findIndex((g) => g.path === f.path) === i), pages, cut };
     }
 
     // ---------------------------------------------------------------- the dialog
@@ -177,15 +240,24 @@
      *   sameType(item) -> bool (Save As: what a name overwrites), suggestName() -> string,
      *   onPick(item, folderPath) -> Promise<false keeps it open>, onSave({ path, name, workspaceId,
      *   items }) -> Promise<truthy closes>, onCancel(), extra: [{ label, action }] (Menu),
-     *   phone: true = the phone's own volumes as locations too (files read through the bridge) }
+     *   phone: true = the phone's own volumes as locations too (files read through the bridge),
+     *   pictures: true = the newest first by default (its own remembered order), acceptAttr: a
+     *   page's <input accept> the list keeps to }
      * Resolves when the dialog is on screen.
      */
     function show(opts) {
         if (!ws) return Promise.resolve(false);
         if (dlg) settle(dlg, 'cancel', true);
         const prev = ws.current && ws.current !== APP_ID ? ws.listApps().find((a) => a.id === ws.current) : null;
-        let sort = { field: 'name', dir: 'asc' };
-        try { const s = JSON.parse(localStorage.getItem(SORT_KEY) || 'null'); if (s && s.field) sort = s; } catch (_) { /* default */ }
+        // pictures (Open Picture, Attach File): the newest first unless the header was tapped there
+        const sortKey = opts.pictures ? `${SORT_KEY}:pictures` : SORT_KEY;
+        let sort = opts.pictures ? { field: 'date', dir: 'desc' } : { field: 'name', dir: 'asc' };
+        try { const s = JSON.parse(localStorage.getItem(sortKey) || 'null'); if (s && s.field) sort = s; } catch (_) { /* default */ }
+        if (opts.acceptAttr) {
+            // a page's <input accept>: the list holds what the Type says
+            const own = typeof opts.accept === 'function' ? opts.accept : () => true;
+            opts = Object.assign({}, opts, { accept: (i) => own(i) && matchesAccept(i, opts.acceptAttr) });
+        }
         const start = String(opts.startPath || '');
         const m = /^\/Workspaces\/([^/]+)(\/.*)?$/.exec(start);
         const loc = m ? m[1] : activeWs();
@@ -202,6 +274,9 @@
             loading: true,
             error: '',
             sort,
+            sortKey,
+            pages: new Map(),
+            cut: false,
             selected: null,
             name: opts.kind === 'save' && typeof opts.suggestName === 'function' ? String(opts.suggestName() || '') : '',
             busy: false,
@@ -230,34 +305,33 @@
         const my = ++token;
         d.loading = true;
         d.error = '';
+        d.pages = new Map();
+        d.cut = false;
         render();
-        const isPhone = String(d.location).startsWith('phone:');
+        const stale = () => my !== token || d.done;
         try {
             if (typeof d.opts.items === 'function') {
                 // a list of its own (Studio's presets): no folders or locations
                 const all = await d.opts.items();
-                if (my !== token || d.done) return;
+                if (stale()) return;
                 d.all = all || [];
                 d.folders = [];
             } else if (d.opts.folderFixed || d.opts.noFolder) {
                 d.folders = [];
-            } else if (isPhone) {
+            } else if (isClient(d)) {
                 await loadPhone(d);
             } else if (d.kind === 'save') {
-                const s = await survey(wsRoot(d.location), 1, false);
-                if (my !== token || d.done) return;
+                const s = await survey(wsRoot(d.location), 1, NAME_SORT, false);
+                if (stale()) return;
                 d.folders = s.folders;
             } else {
-                const s = await survey(wsRoot(d.location), 2, true);
-                if (my !== token || d.done) return;
-                d.folders = s.folders.filter((f, i, a) => a.findIndex((g) => g.path === f.path) === i);
-                d.all = s.files;
-                // a start folder deeper than the list: shown on its own
-                if (d.folder && !d.folders.some((f) => f.path === d.folder)) {
-                    const items = await list(d.folder).catch(() => []);
-                    if (my !== token || d.done) return;
-                    d.extraFiles = items.filter((i) => !isFolder(i)).map((item) => ({ item, path: d.folder, label: d.startLabel || '' }));
-                }
+                // the start folder (Pictures for Open Picture) shows first; the Folder list follows
+                if (d.folder) void more(d, d.folder);
+                const s = await survey(wsRoot(d.location), 2, d.sort, true);
+                if (stale()) return;
+                d.folders = s.folders;
+                d.cut = s.cut;
+                for (const [k, pg] of s.pages) if (!d.pages.has(k)) d.pages.set(k, pg);
             }
             if (o.first && d.folder && !d.folders.some((f) => f.path === d.folder)) {
                 // the start folder (a file's own) is in the Folder list by its name
@@ -267,18 +341,65 @@
                     const dp = st && (st.displayPath || (st.stats && st.stats.displayPath));
                     if (dp) label = String(dp).split('/').filter(Boolean).slice(2).join('\\');
                 } catch (_) { /* below */ }
-                if (my !== token || d.done) return;
+                if (stale()) return;
                 d.startLabel = label || d.folder.split('/').pop();
                 d.folders.unshift({ path: d.folder, label: d.startLabel });
-                if (d.extraFiles) d.extraFiles.forEach((f) => { f.label = d.startLabel; });
             }
         } catch (err) {
-            if (my !== token || d.done) return;
+            if (stale()) return;
             d.error = (err && err.message) || 'Cannot open this folder.';
         }
-        if (my !== token || d.done) return;
+        if (stale()) return;
         d.loading = false;
         render();
+        // a folder's own list fills the screen (a listed folder brought its first page only)
+        if (d.kind === 'open' && !isClient(d) && d.folder) void more(d, d.folder);
+    }
+
+    const acceptOf = (d) => {
+        const accept = typeof d.opts.accept === 'function' ? d.opts.accept : () => true;
+        return (r) => { try { return !!accept(r.item); } catch (_) { return false; } };
+    };
+
+    /**
+     * A folder's next files (the server's order, PAGE at a time) until FILL rows of the Type show
+     * or the folder ends; the rows are added under the list when it is the one on screen.
+     */
+    async function more(d, path, force) {
+        if (!d || d.done || isClient(d)) return;
+        let pg = d.pages.get(path);
+        if (!pg) {
+            pg = { path, files: [], offset: 0, hasMore: true, loading: false };
+            d.pages.set(path, pg);
+        }
+        if (pg.loading || !pg.hasMore) return;
+        const ok = acceptOf(d);
+        const shown = pg.files.filter(ok).length;
+        if (shown >= FILL && !force) return; // already a screenful: the rest comes as it scrolls
+        const want = shown < FILL ? FILL - shown : 20;
+        let got = 0;
+        pg.loading = true;
+        pg.error = '';
+        tail(d);
+        try {
+            for (let n = 0; n < 10 && pg.hasMore && got < want; n++) {
+                const r = await listPage(path, d.sort, pg.offset, PAGE);
+                if (d.done || d.pages.get(path) !== pg) return;
+                const add = r.items.filter((i) => !isFolder(i)).map((item) => ({ item, path, label: '' }));
+                pg.files.push(...add);
+                pg.offset += r.consumed;
+                pg.hasMore = r.hasMore && r.consumed > 0;
+                const fit = add.filter(ok);
+                got += fit.length;
+                appendRows(d, path, fit);
+            }
+        } catch (err) {
+            pg.error = (err && err.message) || 'Cannot open this folder.';
+            pg.hasMore = false;
+        } finally {
+            pg.loading = false;
+        }
+        if (d.pages.get(path) === pg) tail(d);
     }
 
     /** The phone's own volume as a location (files read through the Android bridge). */
@@ -310,17 +431,19 @@
         await walk('/', '', 0);
         d.folders = folders;
         d.all = files;
-        d.extraFiles = null;
     }
 
-    /** The Open list: the folder's files (or every folder's), the Type's only, in the header's order. */
-    function rows(d) {
-        const accept = typeof d.opts.accept === 'function' ? d.opts.accept : () => true;
-        let src = (d.all || []).concat(d.extraFiles || []);
-        if (d.folder) src = src.filter((r) => r.path === d.folder);
-        src = src.filter((r) => { try { return accept(r.item); } catch (_) { return false; } });
+    /** A row's Folder column: the folder's name in the Folder list (the location for its top). */
+    function rowLabel(d, r) {
+        if (r.label) return r.label;
+        if (r.path === d.folder && d.startLabel) return d.startLabel;
+        const f = d.folders.find((x) => x.path === r.path);
+        return f ? f.label : locationLabel(d);
+    }
+
+    function clientSort(d, src) {
         const k = d.sort.field;
-        const val = (r) => (k === 'folder' ? (r.label || '').toLowerCase()
+        const val = (r) => (k === 'folder' ? rowLabel(d, r).toLowerCase()
             : k === 'date' ? (Number(r.item.modifiedAt) || Date.parse(r.item.modifiedAt || r.item.updatedAt || '') || 0)
                 : k === 'size' ? (Number(r.item.sizeBytes != null ? r.item.sizeBytes : r.item.size) || 0)
                     : String(r.item.name || '').toLowerCase());
@@ -331,6 +454,72 @@
             const c = typeof va === 'string' ? va.localeCompare(vb, undefined, { numeric: true }) : va - vb;
             return (c || String(a.item.name || '').localeCompare(String(b.item.name || ''), undefined, { numeric: true })) * dir;
         });
+    }
+
+    /**
+     * The Open list: the folder's files (or every folder's), the Type's only, in the header's order.
+     * A folder of the VFS is in the server's order as it pages in; "All Folders" holds the first
+     * ALL_PER_FOLDER of each listed folder (d.allCut: some folder has more, or was not listed).
+     */
+    function rows(d) {
+        const ok = acceptOf(d);
+        if (isClient(d)) {
+            let src = d.all || [];
+            if (d.folder) src = src.filter((r) => r.path === d.folder);
+            return clientSort(d, src.filter(ok));
+        }
+        if (d.folder) {
+            const pg = d.pages.get(d.folder);
+            return pg ? pg.files.filter(ok) : [];
+        }
+        const out = [];
+        d.allCut = !!d.cut;
+        for (const pg of d.pages.values()) {
+            const fit = pg.files.filter(ok);
+            if (fit.length > ALL_PER_FOLDER || pg.hasMore) d.allCut = true;
+            out.push(...fit.slice(0, ALL_PER_FOLDER));
+        }
+        return clientSort(d, out);
+    }
+
+    function rowHtml(d, x) {
+        return `<div class="wfd-item${d.selected === x.item.id ? ' is-selected' : ''}" role="option" data-id="${esc(x.item.id)}">`
+            + `<span class="wfd-name">${icon(iconOf(x.item))}<span>${esc(x.item.name)}</span></span>`
+            + `<span class="wfd-folder">${esc(rowLabel(d, x))}</span><span class="wfd-date">${esc(fmtDate(x.item.modifiedAt || x.item.updatedAt))}</span>`
+            + `<span class="wfd-size">${esc(fmtSize(x.item.sizeBytes != null ? x.item.sizeBytes : x.item.size))}</span></div>`;
+    }
+
+    /** Under the list: Searching..., an error, "no files", More files... or the All Folders cap. */
+    function tailHtml(d, count) {
+        if (d.error) return `<p class="wfd-note">${esc(d.error)}</p>`;
+        if (!isClient(d) && d.folder) {
+            const pg = d.pages.get(d.folder);
+            if (!pg || pg.loading) return '<p class="wfd-note">Searching...</p>';
+            if (pg.error) return `<p class="wfd-note">${esc(pg.error)}</p>`;
+            if (pg.hasMore) return '<button type="button" class="wfd-more" data-act="more">More files...</button>';
+            return count ? '' : '<p class="wfd-note">No files of this type.</p>';
+        }
+        if (d.loading) return '<p class="wfd-note">Searching...</p>';
+        if (!isClient(d) && d.allCut) {
+            return `<p class="wfd-note">${count ? '' : 'No files of this type. '}Showing up to ${ALL_PER_FOLDER} files from each folder${d.cut ? ' (not every folder was searched)' : ''}. Choose a folder in the Folder list to see all of its files.</p>`;
+        }
+        return count ? '' : '<p class="wfd-note">No files of this type.</p>';
+    }
+
+    /** Refreshes the part under the list of the Open dialog on screen. */
+    function tail(d) {
+        if (!page || dlg !== d || d.kind !== 'open') return;
+        const el = page.querySelector('.wfd-tail');
+        if (!el) return;
+        el.innerHTML = tailHtml(d, page.querySelectorAll('.wfd-item').length);
+    }
+
+    /** New files of a folder in the server's order: added under the list when it shows that folder. */
+    function appendRows(d, path, add) {
+        if (!page || dlg !== d || d.kind !== 'open' || d.folder !== path || !add.length) return;
+        const table = page.querySelector('.wfd-table');
+        if (!table) return;
+        table.insertAdjacentHTML('beforeend', add.map((x) => rowHtml(d, x)).join(''));
     }
 
     function folderLabel(d) {
@@ -387,7 +576,8 @@
                 </div>
             </div>`;
         } else {
-            const r = d.loading ? [] : rows(d);
+            // a folder of its own shows its files as they page in, before the Folder list is read
+            const r = d.loading && (isClient(d) || !d.folder) ? [] : rows(d);
             const arrow = (k) => (d.sort.field === k ? `<i class="wfd-sort${d.sort.dir === 'desc' ? ' is-desc' : ''}" aria-hidden="true"></i>` : '');
             const scroll = page.querySelector('.wfd-scroll');
             const keep = scroll ? { top: scroll.scrollTop, left: scroll.scrollLeft } : null;
@@ -405,12 +595,9 @@
                         <div class="wfd-head" role="row">
                             <button type="button" class="wfd-col is-name" data-sort="name">Name${arrow('name')}</button><button type="button" class="wfd-col is-folder" data-sort="folder">Folder${arrow('folder')}</button><button type="button" class="wfd-col is-date" data-sort="date">Date${arrow('date')}</button><button type="button" class="wfd-col is-size" data-sort="size">Size${arrow('size')}</button>
                         </div>
-                        ${r.map((x) => `<div class="wfd-item${d.selected === x.item.id ? ' is-selected' : ''}" role="option" data-id="${esc(x.item.id)}">`
-                            + `<span class="wfd-name">${icon(iconOf(x.item))}<span>${esc(x.item.name)}</span></span>`
-                            + `<span class="wfd-folder">${esc(x.label || locationLabel(d))}</span><span class="wfd-date">${esc(fmtDate(x.item.modifiedAt || x.item.updatedAt))}</span>`
-                            + `<span class="wfd-size">${esc(fmtSize(x.item.sizeBytes != null ? x.item.sizeBytes : x.item.size))}</span></div>`).join('')}
+                        ${r.map((x) => rowHtml(d, x)).join('')}
                     </div>
-                    ${d.loading ? '<p class="wfd-note">Searching...</p>' : (d.error ? `<p class="wfd-note">${esc(d.error)}</p>` : (!r.length ? '<p class="wfd-note">No files of this type.</p>' : ''))}
+                    <div class="wfd-tail">${tailHtml(d, r.length)}</div>
                 </div>
             </div>`;
             const sc = page.querySelector('.wfd-scroll');
@@ -477,8 +664,15 @@
             return;
         }
         if (which === 'folder') {
-            const items = [{ label: d.kind === 'save' ? 'None' : 'All Folders', radio: !d.folder, action: () => { d.folder = ''; d.selected = null; render(); } }];
-            d.folders.forEach((f) => items.push({ label: f.label, radio: d.folder === f.path, action: () => { d.folder = f.path; d.selected = null; render(); } }));
+            const choose = (path) => {
+                d.folder = path;
+                d.selected = null;
+                render();
+                // a folder of the VFS pages in from the server (its first files came with the survey)
+                if (path && !isClient(d) && d.kind === 'open') void more(d, path);
+            };
+            const items = [{ label: d.kind === 'save' ? 'None' : 'All Folders', radio: !d.folder, action: () => choose('') }];
+            d.folders.forEach((f) => items.push({ label: f.label, radio: d.folder === f.path, action: () => choose(f.path) }));
             dropdown(btn, items);
             return;
         }
@@ -489,7 +683,6 @@
                 d.folder = '';
                 d.folders = [];
                 d.all = [];
-                d.extraFiles = null;
                 d.selected = null;
                 void load(d);
             };
@@ -522,7 +715,8 @@
         let ok = false;
         try {
             let items = [];
-            if (path) { try { items = await list(path); } catch (_) { items = []; } }
+            // what the name would overwrite: the folder's entries of that name (the server's search)
+            if (path) { try { items = (await listPage(path, NAME_SORT, 0, 500, name)).items; } catch (_) { items = []; } }
             if (d.done) return;
             ok = !!(await d.opts.onSave({ path, name, workspaceId: d.location, items }));
         } catch (err) {
@@ -537,7 +731,8 @@
     async function pick(id) {
         const d = dlg;
         if (!d || d.busy) return;
-        const row = (d.all || []).concat(d.extraFiles || []).find((r) => r.item.id === id);
+        let row = (d.all || []).find((r) => r.item.id === id);
+        for (const pg of d.pages.values()) { if (row) break; row = pg.files.find((r) => r.item.id === id); }
         if (!row) return;
         d.selected = id;
         render();
@@ -577,14 +772,22 @@
             if (act) {
                 if (act.dataset.act === 'cancel') settle(dlg, 'cancel');
                 else if (act.dataset.act === 'save') void doSave();
+                else if (act.dataset.act === 'more' && dlg.folder) void more(dlg, dlg.folder, true);
                 return;
             }
             const col = t.closest('[data-sort]');
             if (col) {
+                const d = dlg;
                 const k = col.dataset.sort;
-                dlg.sort = { field: k, dir: dlg.sort.field === k && dlg.sort.dir === 'asc' ? 'desc' : 'asc' };
-                try { localStorage.setItem(SORT_KEY, JSON.stringify(dlg.sort)); } catch (_) { /* this time only */ }
-                render();
+                const was = JSON.stringify(serverSort(d.sort));
+                d.sort = { field: k, dir: d.sort.field === k && d.sort.dir === 'asc' ? 'desc' : 'asc' };
+                try { localStorage.setItem(d.sortKey, JSON.stringify(d.sort)); } catch (_) { /* this time only */ }
+                // the VFS sorts on the server: a new order is a new listing (Folder sorts the loaded rows)
+                if (!isClient(d) && JSON.stringify(serverSort(d.sort)) !== was) {
+                    const sc = page.querySelector('.wfd-scroll');
+                    if (sc) sc.scrollTop = 0;
+                    void load(d);
+                } else render();
                 return;
             }
             const row = t.closest('.wfd-item');
@@ -596,6 +799,13 @@
                 void doSave();
             }
         });
+        // a folder's list pages on as it nears its end
+        page.addEventListener('scroll', (e) => {
+            const sc = e.target;
+            const d = dlg;
+            if (!d || d.kind !== 'open' || !d.folder || isClient(d) || !sc.classList || !sc.classList.contains('wfd-scroll')) return;
+            if (sc.scrollHeight - sc.scrollTop - sc.clientHeight < sc.clientHeight) void more(d, d.folder, true);
+        }, true);
         page.addEventListener('input', (e) => { if (dlg && e.target && e.target.matches && e.target.matches('[data-f="name"]')) dlg.name = e.target.value; });
     }
 
@@ -635,6 +845,7 @@
             title: (host && host.title) || (save ? 'Save As' : 'Open'),
             typeLabel,
             startPath,
+            pictures: mode === 'open-gallery',
             accept,
             suggestName: () => {
                 if (host && typeof host.suggestName === 'function') return host.suggestName();
@@ -833,6 +1044,7 @@
             appTitle: 'Director',
             typeLabel: 'All Files (*.*)',
             phone: true,
+            pictures: true,
             accept: (i) => !!(i.phoneFile ? (Number(i.size) || 0) <= 8 * 1024 * 1024 : attachmentOf(dir, i)),
             extra: [{ label: 'Browse device...', action: () => { settle(dlg, 'done'); HTMLInputElement.prototype.click.call(input); } }],
             async onPick(item) {
@@ -892,7 +1104,13 @@
         });
         window.wmFileDialogs = {
             /** WM's Open dialog over the VFS: see show() for the options. */
-            open: (opts) => show(Object.assign({}, opts, { kind: 'open' })),
+            open: (opts) => {
+                const o = Object.assign({}, opts, { kind: 'open' });
+                // Internet Explorer's upload fields (wmBrowser.js) name the page's accept in the Type
+                const m = !o.acceptAttr && /^Files \((.+)\)$/.exec(String(o.typeLabel || ''));
+                if (m) o.acceptAttr = m[1];
+                return show(o);
+            },
             save: (opts) => show(Object.assign({}, opts, { kind: 'save' })),
             close: () => { if (dlg) settle(dlg, 'done'); },
             get isOpen() { return !!dlg; }

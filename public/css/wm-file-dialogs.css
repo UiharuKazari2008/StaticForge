@@ -66,8 +66,9 @@
     font-weight: normal;
 }
 
-/* ---- Open (commdlg): black bold header 24 tall over a 1 px rule; Folder [combo] [Cancel] at
- * y 9 (combo x 51 - 170, Cancel 174 - 230, 19 tall); Type below it (x 51 - 230) ---- */
+/* ---- Open (commdlg GetOpenFileName, ref-fd/open.png): black bold header 23 tall over a 1 px
+ * rule; Folder [combo] [Cancel] at y 9 (label x 9, combo x 50 - 171, Cancel 175 - 232, 20 tall);
+ * Type 4 below it (x 50 - 232); the list's frame 8 under the Type ---- */
 .wm-fd .wfd-hdr {
     flex: 0 0 auto;
     display: flex;
@@ -83,18 +84,18 @@
 
 .wm-fd .wfd-top {
     flex: 0 0 auto;
-    padding: calc(9 * var(--wm-px)) calc(10 * var(--wm-px)) calc(9 * var(--wm-px)) calc(10 * var(--wm-px));
+    padding: calc(9 * var(--wm-px)) calc(8 * var(--wm-px)) calc(8 * var(--wm-px)) calc(9 * var(--wm-px));
 }
 
 .wm-fd .wfd-open .wfd-row {
     display: grid;
     grid-template-columns: calc(41 * var(--wm-px)) minmax(0, 1fr);
     align-items: center;
-    height: calc(19 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
 }
 
 .wm-fd .wfd-open .wfd-row + .wfd-row {
-    margin-top: calc(5 * var(--wm-px));
+    margin-top: calc(4 * var(--wm-px));
 }
 
 .wm-fd .wfd-open .wfd-top.has-loc .wfd-row {
@@ -103,7 +104,11 @@
 
 .wm-fd .wfd-open .wfd-row.has-btn {
     grid-template-columns: calc(41 * var(--wm-px)) minmax(0, 1fr) auto;
-    column-gap: calc(4 * var(--wm-px));
+}
+
+/* Cancel 4 right of the Folder box (a column gap would also move the box off the Type box's x) */
+.wm-fd .wfd-open .wfd-row.has-btn > .wm-button {
+    margin-left: calc(4 * var(--wm-px));
 }
 
 .wm-fd .wfd-open .wfd-top.has-loc .wfd-row.has-btn {
@@ -111,16 +116,17 @@
 }
 
 .wm-fd .wfd-open .wfd-row .wm-combo {
-    height: calc(19 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
 }
 
 .wm-fd .wfd-open .wfd-row .wm-button {
-    min-width: calc(56 * var(--wm-px));
-    height: calc(19 * var(--wm-px));
+    min-width: calc(57 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
 }
 
-/* the list: a column header (Name 100 or what is left, Folder 69, Date 70 for "10/28 12:59", Size 46) and 18 px rows, normal weight;
- * wider than the screen it scrolls sideways, as the dialog's own list does */
+/* the list: a column header 19.5 tall between 1 px black rules (Name 101 or what is left, Folder
+ * 68, Date 80, Size 46, each ending in a 2 px black divider) and 18 px rows, normal weight; wider
+ * than the screen it scrolls sideways, as the dialog's own list does (ref-fd/open-right.png) */
 .wm-fd .wfd-scroll {
     flex: 1 1 auto;
     min-height: 0;
@@ -131,20 +137,20 @@
 }
 
 .wm-fd .wfd-table {
-    min-width: calc(285 * var(--wm-px));
+    min-width: calc(295 * var(--wm-px));
 }
 
 .wm-fd .wfd-head,
 .wm-fd .wfd-item {
     display: grid;
-    grid-template-columns: minmax(calc(100 * var(--wm-px)), 1fr) calc(69 * var(--wm-px)) calc(70 * var(--wm-px)) calc(46 * var(--wm-px));
+    grid-template-columns: minmax(calc(101 * var(--wm-px)), 1fr) calc(68 * var(--wm-px)) calc(80 * var(--wm-px)) calc(46 * var(--wm-px));
 }
 
 .wm-fd .wfd-head {
     position: sticky;
     top: 0;
     z-index: 1;
-    height: calc(19 * var(--wm-px));
+    height: calc(19.5 * var(--wm-px));
     background: var(--wm-tint);
     border-bottom: calc(1 * var(--wm-px)) solid #000;
 }
@@ -152,12 +158,12 @@
 .wm-fd .wfd-col {
     display: flex !important;
     align-items: center;
-    gap: calc(6 * var(--wm-px));
+    gap: calc(12 * var(--wm-px));
     min-width: 0;
     height: 100%;
     padding: 0 calc(6 * var(--wm-px)) !important;
     border: 0 !important;
-    border-right: calc(1 * var(--wm-px)) solid #a5a6a5 !important;
+    border-right: calc(2 * var(--wm-px)) solid #000 !important;
     background: transparent !important;
     color: #000 !important;
     font: calc(12 * var(--wm-px)) var(--wm-font);
@@ -228,8 +234,8 @@
 
 .wm-fd .wfd-combo-list::-webkit-scrollbar,
 .wm-fd .wfd-scroll::-webkit-scrollbar {
-    width: calc(13 * var(--wm-px));
-    height: calc(13 * var(--wm-px));
+    width: calc(12 * var(--wm-px));
+    height: calc(12 * var(--wm-px));
 }
 
 .wm-fd .wfd-combo-list::-webkit-scrollbar-track,
@@ -244,10 +250,8 @@
 }
 
 /* a combo box's list: the box's width, 1 px black frame, plain 14 px rows (Tahoma 12), the current
- * one highlighted */
-.wm-fd {
-    position: relative;
-}
+ * one highlighted; it is placed in the page (.wm-page: absolute, inset 0; never position: relative
+ * here, or the page grows to its rows and the list stops scrolling on its own) */
 
 .wm-fd .wfd-combo-list {
     position: absolute;
@@ -279,4 +283,32 @@
     height: calc(1 * var(--wm-px));
     margin: calc(2 * var(--wm-px)) 0;
     background: #a5a6a5;
+}
+
+/* the Folder, Date and Size text sits 5 - 6 in from its column's left edge */
+.wm-fd .wfd-item > .wfd-folder,
+.wm-fd .wfd-item > .wfd-date,
+.wm-fd .wfd-item > .wfd-size {
+    padding-left: calc(5 * var(--wm-px));
+}
+
+/* a folder with more files than are loaded: the next ones come in as the list nears its end, or
+ * at a tap here */
+.wm-fd .wfd-more {
+    display: block;
+    width: 100%;
+    height: calc(18 * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(21 * var(--wm-px)) !important;
+    border: 0 !important;
+    background: transparent !important;
+    color: #0000ff !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    text-align: left;
+    text-decoration: underline;
+}
+
+.wm-fd .wfd-more:active {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text) !important;
 }
