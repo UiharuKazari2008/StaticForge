@@ -4003,7 +4003,9 @@ class ServiceWorkerManager {
                         type: 'success',
                         title: 'Updates Complete',
                         message: 'CSS and assets can be applied without restarting.',
-                        customIcon: '<i class="fas fa-check-circle"></i>'
+                        customIcon: '<i class="fas fa-check-circle"></i>',
+                        // the download is done: no empty progress bar under the result
+                        showProgress: false
                     });
                 }
             }
@@ -4051,7 +4053,9 @@ class ServiceWorkerManager {
                         type: 'success',
                         title: 'Updates Complete',
                         message: 'Updates have been downloaded. Restart to apply changes.',
-                        customIcon: '<i class="fas fa-check-circle"></i>'
+                        customIcon: '<i class="fas fa-check-circle"></i>',
+                        // the download is done: no empty progress bar under the result
+                        showProgress: false
                     });
                 }
             }
