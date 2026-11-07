@@ -2279,15 +2279,16 @@
          * never show; Clear Today Background turns it back on. An open Settings page and Today
          * follow through wmSettingsChange.
          */
-        function setTodayBackground(name) {
+        function setTodayBackground(name, item) {
             const useKey = (window.wmSettings && window.wmSettings.keys && window.wmSettings.keys.todayUseDesktop) || 'wmTodayUseDesktop';
             try {
                 if (!name) {
                     localStorage.removeItem(TODAY_BG_KEY);
                     localStorage.setItem(useKey, '1');
                 } else {
-                    const item = galleryList().find((it) => (it.filename || it.original) === name);
-                    const url = item && todayPictureUrl(item);
+                    // the viewer passes its own item: a picture opened from Director or Today need not be in this list
+                    const pic = (item && (item.filename || item.original) === name) ? item : galleryList().find((it) => (it.filename || it.original) === name);
+                    const url = pic && todayPictureUrl(pic);
                     if (!url) {
                         messageBox({ title: 'Pictures & Videos', icon: 'error', text: 'This picture cannot be set as the Today background.' });
                         return;
@@ -2609,7 +2610,7 @@
                     const item = viewerItem();
                     // WM 6.1's viewer Menu: Zoom, Play Slide Show, Set as Today Background...
                     const shown = item && (item.filename || item.original);
-                    if (shown && setTodayBackgroundFn) items.push({ label: 'Set as Today Background', action: () => setTodayBackgroundFn(shown) });
+                    if (shown && setTodayBackgroundFn) items.push({ label: 'Set as Today Background', action: () => setTodayBackgroundFn(shown, item) });
                     items.push('-');
                     let sep = false;
                     for (const a of VIEWER_ACTIONS) {
