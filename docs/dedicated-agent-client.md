@@ -32,7 +32,7 @@ The isolated Chromium profile is stored at:
 
 The Chromium debugging endpoint listens only on `127.0.0.1:9334`.
 
-After the Dreamscape agent tab is ready, the supervisor also opens an **Alchemy-owned** tab (`about:blank#alchemy-owned`) on the same persistent profile. MCP `alchemy_browser` and `read_discord_channel_history` drive that tab only. They never navigate the `/app?agent=1` priority tab and never launch a second Chrome. Discord cookies stay in this profile after Yukimi signs in once in that tab.
+The Alchemy-owned tab used by MCP `alchemy_browser` and `read_discord_channel_history` no longer lives here. It now opens in Yukimi's Alchemy browser (`services/grimoire-browser`, profile `~/.local/share/dreamscape/alchemy-profile`), which exposes a loopback-only CDP port (`ALCHEMY_CDP_PORT`, default `127.0.0.1:9335`; `0` turns it off). `modules/alchemyOwnedTab.js` opens its own tab at `https://discord.com/app#alchemy-owned`; Alchemy adopts that page as a window, so Yukimi signs in to discord.com there once (open Alchemy / Internet Explorer in Dreamscape and look for the Discord window). It never takes over her other tabs, never touches the `/app?agent=1` tab, and is never closed for being over Alchemy's window cap. Tool access stays gated by `sfapp_alchemy_browser` to Hoshino and Yukimi, history reads are read-only, and cookies or tokens are never returned.
 
 ## Verification
 

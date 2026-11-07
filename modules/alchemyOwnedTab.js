@@ -1,9 +1,11 @@
 'use strict';
 
 /**
- * Alchemy-owned tab on the dedicated-agent-client Chromium (CDP 127.0.0.1:9334).
- * Reuses that persistent profile. Does not launch another Chrome.
- * Scoped to one owned tab — never the Dreamscape /app?agent=1 priority tab.
+ * Alchemy-owned tab in Yukimi's Alchemy browser (services/grimoire-browser, profile
+ * ~/.local/share/dreamscape/alchemy-profile), driven over its loopback CDP port
+ * (ALCHEMY_CDP_PORT, default 127.0.0.1:9335). Does not launch another Chrome.
+ * Scoped to one owned tab (opened at discord.com, so Yukimi can see it in Alchemy and sign in)
+ * — never one of her own tabs and never the Dreamscape /app?agent=1 priority tab.
  */
 
 const dns = require('dns');
@@ -23,9 +25,12 @@ function loadWebSocket() {
 }
 
 const CDP_HOST = '127.0.0.1';
-const CDP_PORT = Number(process.env.DREAMSCAPE_AGENT_CDP_PORT || 9334);
+const CDP_PORT = Number(process.env.ALCHEMY_CDP_PORT || 9335);
 const ALCHEMY_OWNED_HASH = 'alchemy-owned';
 const ALCHEMY_BLANK_URL = `about:blank#${ALCHEMY_OWNED_HASH}`;
+// New owned tabs open here: Alchemy adopts the page as a window Yukimi can see and sign in to.
+const ALCHEMY_START_URL = `https://discord.com/app#${ALCHEMY_OWNED_HASH}`;
+const DISCORD_SIGN_IN_HINT = 'Yukimi: open Alchemy (Internet Explorer / Grimoire) in Dreamscape and sign in to discord.com in the Discord window Hoshino opened there.';
 const DEFAULT_ACTION_GAP_MS = 700;
 const DEFAULT_NAV_TIMEOUT_MS = 45000;
 const STATE_DIR = path.join(os.homedir(), '.cache', 'dreamscape-agent-client');
@@ -390,7 +395,7 @@ class AlchemyOwnedTab {
     }
 
     async createOwnedTarget() {
-        const encoded = encodeURIComponent(ALCHEMY_BLANK_URL);
+        const encoded = encodeURIComponent(ALCHEMY_START_URL);
         return this.requestJson(`${this.origin}/json/new?${encoded}`, { method: 'PUT' });
     }
 
@@ -399,7 +404,7 @@ class AlchemyOwnedTab {
         try {
             targets = await this.listTargets();
         } catch (error) {
-            const err = new Error(`Alchemy Chromium is not reachable on ${this.host}:${this.port}. The dedicated-agent-client service must be running.`);
+            const err = new Error(`Alchemy browser is not reachable on ${this.host}:${this.port}. Open Alchemy (Internet Explorer / Grimoire) in Dreamscape so grimoire-browser starts its Chromium, then retry.`);
             err.code = 'ALCHEMY_CDP_OFFLINE';
             err.cause = error;
             throw err;
@@ -660,6 +665,8 @@ module.exports = {
     CDP_PORT,
     ALCHEMY_OWNED_HASH,
     ALCHEMY_BLANK_URL,
+    ALCHEMY_START_URL,
+    DISCORD_SIGN_IN_HINT,
     DEFAULT_ACTION_GAP_MS,
     STATE_FILE,
     isDreamscapeAgentUrl,

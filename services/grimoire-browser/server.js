@@ -17,6 +17,7 @@
  *   CHROME_NO_SANDBOX        default 1 (set 0 to keep the sandbox)
  *   GRIMOIRE_BROWSER_IDLE_MS default 600000
  *   MAX_SESSIONS             default 4 (popup windows have their own cap of the same size)
+ *   ALCHEMY_CDP_PORT         default 9335: loopback CDP for Hoshino's Alchemy-owned Discord tab (modules/alchemyOwnedTab.js); 0 turns it off
  *   ALCHEMY_PROFILE_DIR      default ~/.local/share/dreamscape/alchemy-profile (cookies, extension logins: keep 0700)
  *   ALCHEMY_EXTENSIONS_DIR   default ~/.local/share/dreamscape/alchemy-extensions (scripts/alchemy-update-extension.js)
  *   ALCHEMY_CHROMIUM_DIR     default ~/.local/share/dreamscape/alchemy-chromium (scripts/alchemy-brand-chromium.js)
@@ -71,6 +72,9 @@ const ADMIN_TOKEN = String(process.env.GRIMOIRE_BROWSER_TOKEN || '');
 const FRAME_ANCESTORS = String(process.env.FRAME_ANCESTORS || '*').trim() || '*';
 const IDLE_MS = Math.max(15000, Number(process.env.GRIMOIRE_BROWSER_IDLE_MS || 600000));
 const MAX_SESSIONS = Math.max(1, Number(process.env.MAX_SESSIONS || 4));
+const ALCHEMY_CDP_PORT = Math.max(0, Number(process.env.ALCHEMY_CDP_PORT || 9335) || 0);
+// modules/alchemyOwnedTab.js opens its tab with this marker; it is never closed for being over the window cap.
+const ALCHEMY_OWNED_MARKER = '#alchemy-owned';
 const DIALOG_MS = 5 * 60 * 1000;
 const DATA_DIR = path.join(os.homedir(), '.local', 'share', 'dreamscape');
 const PROFILE_DIR = process.env.ALCHEMY_PROFILE_DIR || path.join(DATA_DIR, 'alchemy-profile');
@@ -1582,6 +1586,7 @@ async function adoptOrphan(target) {
     if (target.type() !== 'page') return;
     const opener = target.opener();
     if (opener && opener.type() === 'page') return;
+    const owned = String(target.url() || '').includes(ALCHEMY_OWNED_MARKER);
     await new Promise((resolve) => setTimeout(resolve, 1000));
     const page = await target.page().catch(() => null);
     if (!page || page.isClosed() || ownPages.has(page)) return;
@@ -1589,12 +1594,12 @@ async function adoptOrphan(target) {
     for (const session of sessions.values()) {
         if (session.sockets.size && (!announce || session.idleAt > announce.idleAt)) announce = session;
     }
-    if (!announce && pendingOrphans.length < MAX_SESSIONS) {
+    if (!announce && (owned || pendingOrphans.length < MAX_SESSIONS)) {
         pendingOrphans.push(page);
         return;
     }
     if (!announce || popupCount() >= MAX_SESSIONS) {
-        page.close().catch(() => {});
+        if (!owned) page.close().catch(() => {});
         return;
     }
     adoptPopup(announce, page, '');
@@ -1863,6 +1868,8 @@ async function launchBrowser() {
     if (extensionDirs) args.push('--disable-extensions-except=' + extensionDirs, '--load-extension=' + extensionDirs);
     else args.push('--disable-extensions');
     if (NO_SANDBOX) args.push('--no-sandbox', '--disable-setuid-sandbox');
+    // Loopback only: Dreamscape drives one Alchemy-owned tab here (identity-gated MCP); cookies never leave Chromium.
+    if (ALCHEMY_CDP_PORT) args.push('--remote-debugging-address=127.0.0.1', '--remote-debugging-port=' + ALCHEMY_CDP_PORT);
     const env = Object.assign({}, process.env);
     let audio = false;
     if (AUDIO) {

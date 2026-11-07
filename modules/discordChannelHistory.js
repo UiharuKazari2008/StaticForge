@@ -9,7 +9,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { URL } = require('url');
-const { isDiscordHost, isHttpOrBlank } = require('./alchemyOwnedTab');
+const { isDiscordHost, isHttpOrBlank, DISCORD_SIGN_IN_HINT } = require('./alchemyOwnedTab');
+const NOT_SIGNED_IN_ERROR = `Alchemy tab is not signed in to Discord. ${DISCORD_SIGN_IN_HINT} Bots never receive cookies or tokens.`;
 
 const NOVELAI_GUILD_ID = '336642139381301249';
 const DEFAULT_LIMIT = 40;
@@ -412,7 +413,7 @@ async function readHistory(tab, input, options) {
         return {
             success: false,
             code: 'DISCORD_NOT_SIGNED_IN',
-            error: 'Alchemy tab is not signed in to Discord. Yukimi signs in once in that tab; bots never receive cookies or tokens.'
+            error: NOT_SIGNED_IN_ERROR
         };
     }
 
@@ -432,7 +433,7 @@ async function readHistory(tab, input, options) {
             return {
                 success: false,
                 code: 'DISCORD_NOT_SIGNED_IN',
-                error: 'Alchemy tab is not signed in to Discord. Yukimi signs in once in that tab; bots never receive cookies or tokens.'
+                error: NOT_SIGNED_IN_ERROR
             };
         }
     }
