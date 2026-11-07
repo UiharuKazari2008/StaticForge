@@ -443,6 +443,12 @@ class WebSocketMessageHandlers {
             'search_index_trigger',
             'search_index_toggle_pause',
             'director_custom_providers_save',
+            // Prompt index lifecycle: global writes, not for read-only clients (get_prompt_index_status stays open)
+            'prompt_index_start',
+            'prompt_index_pause',
+            'prompt_index_resume',
+            'prompt_index_cancel',
+            'prompt_index_reconcile',
             'generate_image',
             'upscale_image',
             'enhance_image',
