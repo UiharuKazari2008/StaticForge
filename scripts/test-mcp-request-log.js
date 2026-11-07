@@ -7,7 +7,12 @@ assert.strictEqual(mcpRequestLog.redactMcpPath('/abc-uuid-1234', 'abc-uuid-1234'
 assert.strictEqual(mcpRequestLog.redactMcpPath('/other', 'abc-uuid-1234'), '/{mcp}');
 assert.ok(mcpRequestLog.isMcpRpcPath('/abc-uuid-1234/mcp', 'abc-uuid-1234'));
 assert.ok(mcpRequestLog.isMcpRpcPath('/abc-uuid-1234', 'abc-uuid-1234'));
+assert.ok(mcpRequestLog.isMcpRpcPath('/abc-uuid-1234/mcp/', 'abc-uuid-1234'));
 assert.ok(!mcpRequestLog.isMcpRpcPath('/abc-uuid-1234/oauth/token', 'abc-uuid-1234'));
+assert.strictEqual(mcpRequestLog.redactMcpPath('/abc-uuid-1234/oauth/token', 'abc-uuid-1234'), '/{mcp}/oauth/token');
+assert.strictEqual(mcpRequestLog.redactMcpPath('/abc-uuid-1234/gallery/secret-file.png', 'abc-uuid-1234'), '/{mcp}/gallery/…');
+assert.strictEqual(mcpRequestLog.redactMcpPath('/abc-uuid-1234/sse', 'abc-uuid-1234'), '/{mcp}/sse/…');
+assert.strictEqual(mcpRequestLog.sanitizeMcpLogUserAgent('Grok Connector/1.0\nforged line'), 'Grok_Connector/1.0_forged_line');
 assert.ok(!mcpRequestLog.isMcpRpcPath('/abc-uuid-1234/artifacts/deadbeef', 'abc-uuid-1234'));
 
 assert.strictEqual(mcpRequestLog.sanitizeMcpLogToken('tools/call'), 'tools/call');
@@ -155,7 +160,7 @@ assert.ok(!String(mcpRequestLog.peekMcpActor({
     applicationAuth: { applicationKeyId: 'key-1', appName: 'guren\nforged' }
 })).includes('\n'));
 
-assert.strictEqual(mcpRequestLog.shouldSkipMcpCallLog({ method: 'GET', body: { method: 'tools/call' } }), true);
+assert.strictEqual(mcpRequestLog.shouldSkipMcpCallLog({ method: 'GET', body: { method: 'tools/call' } }), false);
 assert.strictEqual(mcpRequestLog.shouldSkipMcpCallLog({
     method: 'POST',
     body: { method: 'notifications/initialized' }
@@ -248,16 +253,27 @@ try {
     assert.ok(!captured[2].includes('browser-session'));
     assert.ok(!captured[2].includes('actor='));
 
-    const getReq = {
+    const makeGet = () => ({
         method: 'GET',
         path: '/abc-uuid-1234/mcp',
-        headers: { 'x-real-ip': '203.0.113.9' }
-    };
+        headers: { 'x-real-ip': '203.0.113.9', accept: 'text/event-stream', 'user-agent': 'Probe Client/2' }
+    });
     const getRes = mockRes();
     getRes.statusCode = 405;
-    assert.strictEqual(mcpRequestLog.attachMcpRequestLog(getReq, getRes, { uuid: 'abc-uuid-1234' }), false);
+    assert.strictEqual(mcpRequestLog.attachMcpRequestLog(makeGet(), getRes, { uuid: 'abc-uuid-1234' }), true);
     getRes.emit('finish');
-    assert.strictEqual(captured.length, 3);
+    assert.strictEqual(captured.length, 4);
+    assert.ok(captured[3].includes('GET /{mcp}/mcp accept=sse'));
+    assert.ok(captured[3].includes('status=405'));
+    assert.ok(captured[3].includes('accept=sse'));
+    assert.ok(captured[3].includes('ua=Probe_Client/2'));
+    // Same caller, path and status inside the window: no second line.
+    const getRes2 = mockRes();
+    getRes2.statusCode = 405;
+    mcpRequestLog.attachMcpRequestLog(makeGet(), getRes2, { uuid: 'abc-uuid-1234' });
+    getRes2.emit('finish');
+    assert.strictEqual(captured.length, 4);
+    captured.splice(3, 1);
 
     const notifyReq = {
         method: 'POST',

@@ -2120,13 +2120,12 @@ app.use((req, res, next) => {
     const mcpPrefix = `/${globalResources.getMcpPathUuid()}`;
     if (req.path.startsWith(mcpPrefix)) {
         // Verbose logger skips MCP so prompts/tokens never hit stdout.
-        // Cheap one-line JSON-RPC log (method/tool/actor/IP/status/duration/abort).
-        if (mcpRequestLog.isMcpRpcPath(req.path, globalResources.getMcpPathUuid())) {
-            mcpRequestLog.attachMcpRequestLog(req, res, {
-                globalResources,
-                uuid: globalResources.getMcpPathUuid()
-            });
-        }
+        // Cheap one-line log (method/tool/actor/IP/status/duration/abort) for JSON-RPC, and
+        // for GETs and other sub-routes too (deduped), so a client that never POSTs still shows.
+        mcpRequestLog.attachMcpRequestLog(req, res, {
+            globalResources,
+            uuid: globalResources.getMcpPathUuid()
+        });
         return next();
     }
     const apocryphaPrefix = `/${globalResources.getApocryphaPathUuid()}`;

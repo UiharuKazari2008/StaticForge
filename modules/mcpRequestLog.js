@@ -11,6 +11,13 @@ const LAG_WARN_COOLDOWN_MS = 30000;
 const LAG_SAMPLE_MS = 1000;
 const MCP_LOG_TOKEN_MAX = 64;
 const MCP_LOG_TOKEN_RE = /[^A-Za-z0-9_./:-]+/g;
+const MCP_LOG_UA_MAX = 80;
+// GETs (stream probes, 405s, artifact fetches) and non-RPC sub-routes: one line per
+// caller + method + path + status per window, so a client probing GET every session stays one line.
+const MCP_LOG_REPEAT_WINDOW_MS = 10 * 60 * 1000;
+const MCP_LOG_REPEAT_MAX_KEYS = 2000;
+const MCP_LOG_WHOLE_SUBPATHS = new Set(['/oauth/register', '/oauth/authorize', '/oauth/token']);
+const repeatSeenAt = new Map();
 
 let lagHistogram = null;
 let lagTimer = null;
@@ -50,7 +57,13 @@ function isMcpRequestLogEnabled(globalResources) {
 function isMcpRpcPath(reqPath, uuid) {
     if (!uuid || !reqPath) return false;
     const prefix = `/${String(uuid)}`;
-    return reqPath === prefix || reqPath === `${prefix}/` || reqPath === `${prefix}/mcp`;
+    return reqPath === prefix || reqPath === `${prefix}/` || reqPath === `${prefix}/mcp` || reqPath === `${prefix}/mcp/`;
+}
+
+function isMcpPrefixPath(reqPath, uuid) {
+    if (!uuid || !reqPath) return false;
+    const prefix = `/${String(uuid)}`;
+    return reqPath === prefix || reqPath.startsWith(`${prefix}/`);
 }
 
 function redactMcpPath(reqPath, uuid) {
@@ -59,7 +72,13 @@ function redactMcpPath(reqPath, uuid) {
     if (!id) return '/{mcp}';
     const prefix = `/${id}`;
     if (raw === prefix || raw.startsWith(`${prefix}/`)) {
-        return `/{mcp}${raw.slice(prefix.length)}` || '/{mcp}';
+        const rest = raw.slice(prefix.length);
+        if (isMcpRpcPath(raw, id) || MCP_LOG_WHOLE_SUBPATHS.has(rest)) {
+            return `/{mcp}${rest}` || '/{mcp}';
+        }
+        // Other sub-routes carry file names, artifact ids or VFS ids: first segment only.
+        const first = sanitizeMcpLogToken(rest.split('/')[1] || '');
+        return first ? `/{mcp}/${first}/…` : '/{mcp}/…';
     }
     return '/{mcp}';
 }
@@ -68,6 +87,27 @@ function sanitizeMcpLogToken(value) {
     if (value == null) return null;
     const cleaned = String(value).replace(MCP_LOG_TOKEN_RE, '').slice(0, MCP_LOG_TOKEN_MAX);
     return cleaned || null;
+}
+
+function sanitizeMcpLogUserAgent(value) {
+    if (value == null) return null;
+    const cleaned = String(value).replace(/[^A-Za-z0-9_./:;()+-]+/g, '_').replace(/_+/g, '_')
+        .slice(0, MCP_LOG_UA_MAX);
+    return cleaned || null;
+}
+
+function isRepeatMcpLogLine(key, now) {
+    const at = now == null ? Date.now() : now;
+    const last = repeatSeenAt.get(key);
+    if (last != null && at - last < MCP_LOG_REPEAT_WINDOW_MS) return true;
+    if (repeatSeenAt.size >= MCP_LOG_REPEAT_MAX_KEYS) {
+        for (const [k, t] of repeatSeenAt) {
+            if (at - t >= MCP_LOG_REPEAT_WINDOW_MS) repeatSeenAt.delete(k);
+        }
+        if (repeatSeenAt.size >= MCP_LOG_REPEAT_MAX_KEYS) repeatSeenAt.clear();
+    }
+    repeatSeenAt.set(key, at);
+    return false;
 }
 
 function peekMcpRpc(body) {
@@ -129,8 +169,6 @@ function peekSseRpcOutcome(chunk) {
 }
 
 function shouldSkipMcpCallLog(req, peeked) {
-    const httpMethod = req && req.method ? String(req.method).toUpperCase() : '';
-    if (httpMethod === 'GET') return true;
     const rpc = peeked || peekMcpRpc(req && req.body);
     return rpc.rpcMethod === 'notifications/initialized';
 }
@@ -147,6 +185,9 @@ function formatMcpCallLine(info) {
     if (info.batch) parts.push(`batch=${info.batch}`);
     const actor = sanitizeMcpLogToken(info.actor);
     if (actor) parts.push(`actor=${actor}`);
+    if (info.sse) parts.push('accept=sse');
+    const ua = actor ? null : sanitizeMcpLogUserAgent(info.userAgent);
+    if (ua) parts.push(`ua=${ua}`);
     parts.push(`status=${info.status != null ? info.status : '-'}`);
     parts.push(info.outcome || 'ok');
     parts.push(`${Number(info.durationMs) || 0}ms`);
@@ -200,7 +241,13 @@ function attachMcpRequestLog(req, res, options) {
     const start = Date.now();
     const ip = peekMcpIp(req);
     const httpMethod = req && req.method ? String(req.method) : null;
-    const path = redactMcpPath(req && (req.path || req.url), opts.uuid);
+    const rawPath = req && (req.path || req.url);
+    const path = redactMcpPath(rawPath, opts.uuid);
+    const headers = (req && req.headers) || {};
+    const accept = String(headers.accept || '');
+    const sse = accept.includes('text/event-stream') && !accept.includes('application/json');
+    const userAgent = headers['user-agent'];
+    const dedupe = String(httpMethod || '').toUpperCase() === 'GET' || !isMcpRpcPath(rawPath, opts.uuid);
     let finished = false;
     let outcomeHint = null;
     let emitted = false;
@@ -208,6 +255,9 @@ function attachMcpRequestLog(req, res, options) {
     const emit = (outcome) => {
         if (emitted) return;
         emitted = true;
+        const actor = peekMcpActor(req);
+        const status = res && res.statusCode;
+        if (dedupe && isRepeatMcpLogLine(`${actor || ip}|${httpMethod}|${path}|${status}|${outcome}`)) return;
         console.log(formatMcpCallLine({
             ip,
             httpMethod,
@@ -215,8 +265,10 @@ function attachMcpRequestLog(req, res, options) {
             rpcMethod: peeked.rpcMethod,
             tool: peeked.tool,
             batch: peeked.batch,
-            actor: peekMcpActor(req),
-            status: res && res.statusCode,
+            actor,
+            status,
+            sse,
+            userAgent,
             outcome,
             durationMs: Date.now() - start
         }));
@@ -260,7 +312,11 @@ module.exports = {
     MCP_LOG_TOKEN_MAX,
     redactMcpPath,
     isMcpRpcPath,
+    isMcpPrefixPath,
     isMcpRequestLogEnabled,
+    sanitizeMcpLogUserAgent,
+    isRepeatMcpLogLine,
+    MCP_LOG_REPEAT_WINDOW_MS,
     shouldSkipMcpCallLog,
     peekMcpRpc,
     peekMcpActor,
