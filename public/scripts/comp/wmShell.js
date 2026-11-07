@@ -713,11 +713,10 @@
         let muted = false;
         try { muted = !!(window.tabVolume && typeof window.tabVolume.isMuted === 'function' && window.tabVolume.isMuted()); } catch (_) { /* volume unknown */ }
         vol.dataset.icon = muted ? 'volume-off' : 'volume';
-        // the Director, prints in progress and unread mail show while they have something to say
+        // pending things only, as WM shows a notification glyph: the Director while a turn runs,
+        // prints in progress, unread mail (an idle Director has nothing pending)
         const dir = directorState();
-        const dirEl = shell.querySelector('[data-role="director"]');
-        dirEl.hidden = !dir;
-        if (dir) dirEl.classList.toggle('is-busy', dir.running);
+        shell.querySelector('[data-role="director"]').hidden = !(dir && dir.running);
         shell.querySelector('[data-role="prints"]').hidden = !printsInProgress();
         const mailEl = shell.querySelector('[data-role="mail"]');
         mailEl.hidden = !(shellMailUnread > 0);
@@ -1078,11 +1077,17 @@
         }
     }
 
+    let noteTrayKey = '';
     function renderNotes() {
         fitStatus();
+        // the tray's only entries may have unfolded (a print ended, the bar got wider): close it
+        if (!notes.length && !statusFolded.length) noteTrayOpen = false;
         const tray = shell.querySelector('.wm-notify-tray');
         tray.hidden = !noteTrayOpen;
-        if (noteTrayOpen) {
+        // rebuilt only when its entries change: refreshStatus runs every 2 s, and a rebuild between
+        // pointerdown and pointerup would swallow the tap
+        const key = noteTrayOpen ? JSON.stringify([notes.map((n) => [n.id, n.type, noteTitle(n)]), statusFolded]) : '';
+        if (noteTrayOpen && key !== noteTrayKey) {
             tray.textContent = '';
             const add = (image, label, tap) => {
                 const b = document.createElement('button');
@@ -1102,6 +1107,7 @@
                 });
             }
         }
+        noteTrayKey = key;
         renderNoteBubble();
     }
 
@@ -1203,6 +1209,8 @@
     /** The title bar icon: hides an open bubble; one notification comes back, several open the tray. */
     function noteIconTap() {
         closeMenus(true);
+        const bub = shell.querySelector('.wm-bubble');
+        if (!notes.length && statusFolded.length === 1 && !bub.hidden && bub.dataset.role === statusFolded[0]) { closeBubble(); return; }
         closeBubble();
         if (noteShownNote()) {
             notes.forEach((n) => n.ids.forEach((id) => noteSeen.add(seenKey(id, n))));
@@ -2716,7 +2724,7 @@
         startBoot();
         refreshStatus();
         setInterval(refreshStatus, 2000);
-        window.addEventListener('resize', fitStatus);
+        window.addEventListener('resize', () => { if (noteTrayOpen) renderNotes(); else fitStatus(); });
         checkTakeover();
         setInterval(checkTakeover, 400);
         setInterval(checkViewer, 150);

@@ -3339,7 +3339,7 @@
     },
     "status-notify-many": {
       "1x": {
-        "source": "box-downscaled from @2x",
+        "source": "box-downscaled from @2x, alpha thresholded at 50% (1-bit)",
         "size": [
           16,
           16
@@ -4149,7 +4149,7 @@
     },
     "status-mail": {
       "1x": {
-        "source": "box-downscaled from @2x",
+        "source": "2x2-downscaled from @2x, alpha thresholded at 50% (1-bit)",
         "size": [
           16,
           16
@@ -4204,7 +4204,7 @@
     },
     "status-prints": {
       "1x": {
-        "source": "box-downscaled from @2x",
+        "source": "2x2-downscaled from @2x, alpha thresholded at 50% (1-bit)",
         "size": [
           16,
           16
@@ -4233,7 +4233,7 @@
     },
     "status-director": {
       "1x": {
-        "source": "box-downscaled from @2x",
+        "source": "2x2-downscaled from @2x, alpha thresholded at 50% (1-bit)",
         "size": [
           16,
           16

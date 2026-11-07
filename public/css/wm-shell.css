@@ -1197,8 +1197,12 @@ html.ui-mobile body > #toastContainer {
     display: flex;
     justify-content: center;
     gap: calc(8 * var(--wm-px));
-    height: calc(22 * var(--wm-px));
-    background: var(--wm-highlight);
+    /* WM 6.1: a 22 px strip in the soft key bar's base colour (emulator: #429a08 on the stock
+       green, so the white glyphs stay legible) and a black 1 px rule under it */
+    box-sizing: border-box;
+    height: calc(23 * var(--wm-px));
+    background: var(--wm-softkey-base);
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
 }
 
 .wm-notify-tray[hidden] {
@@ -2002,15 +2006,6 @@ html.ui-mobile body > .pswp .pswp__preloader {
 .wm-status-icon[hidden],
 .wm-status-icon.wm-shed {
     display: none !important;
-}
-
-.wm-status-app.is-busy {
-    animation: wm-status-pulse 1.2s steps(2, jump-none) infinite;
-}
-
-@keyframes wm-status-pulse {
-    0% { opacity: 1; }
-    100% { opacity: 0.45; }
 }
 
 /* ---- notification bubble (device: Connectivity / Cannot Connect, 2x halved) ---- */
