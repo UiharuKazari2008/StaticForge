@@ -1,1 +1,1104 @@
-/* Melaton Mobile: Studio (Yozora #709). Placeholder, built next. */
+/*
+ * Melaton Mobile: Studio (Yozora #709). wmStudio.js.
+ * The desktop Studio window (#manualModal) is hosted in this page between the WM title bar and the
+ * soft keys as a WM tabbed form: its frame, caption, menu bar and resize handles go, the long desktop
+ * layout is split into pages (page[data-tab]) picked on the WM tab strip at the bottom. WM parts use
+ * the shell's metrics: N * --wm-px, var(--wm-font).
+ */
+
+.wm-studio {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: #fff;
+    color: #000;
+}
+
+.wm-studio > .wms-host {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.wm-studio > .wms-tabs {
+    position: relative;
+    z-index: 3;
+}
+
+/* ---- the desktop window, frameless and full page ---- */
+.wm-studio #manualModal {
+    position: absolute !important;
+    inset: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    translate: none !important;
+    scale: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    animation: none !important;
+    transition: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    z-index: auto !important;
+    display: flex !important;
+    flex-direction: column;
+    background: #fff !important;
+    color: #000;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    contain: layout paint;
+}
+
+.wm-studio #manualModal.hidden {
+    display: none !important;
+}
+
+.wm-studio #manualModal::before,
+.wm-studio #manualModal::after,
+.wm-studio #manualModal > .modal-focus-overlay,
+.wm-studio #manualModal > .modal-window-title,
+.wm-studio #manualModal > .modal-window-menu,
+.wm-studio #manualModal > .modal-window-controls,
+.wm-studio #manualModal > .resize-handle,
+.wm-studio #manualModal .manual-preview-handle,
+.wm-studio #manualModal #directorCommonHeader,
+.wm-studio #manualModal #directorContainer,
+.wm-studio #manualModal .form-section-scroll > .custom-scrollbar,
+.wm-studio #manualModal .bottom-border {
+    display: none !important;
+}
+
+.wm-studio #manualForm {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: #fff !important;
+    overflow: hidden;
+}
+
+.wm-studio #manualModal .manual-modal-split {
+    position: absolute !important;
+    inset: 0;
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.wm-studio #manualModal .manual-modal-form-section {
+    position: absolute !important;
+    inset: 0;
+    display: flex !important;
+    flex-direction: column;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: #fff !important;
+}
+
+.wm-studio #manualModal .prompt-options-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: none !important;
+    border: 0 !important;
+}
+
+.wm-studio #manualModal .form-section-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+    background: #fff !important;
+    border: 0 !important;
+    -webkit-mask: none !important;
+    mask: none !important;
+}
+
+.wm-studio #manualModal .form-section-scroll > .scrollable-content {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) calc(8 * var(--wm-px)) !important;
+    transform: none !important;
+}
+
+.wm-studio #manualModal .model-control {
+    position: absolute !important;
+    inset: 0;
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) calc(8 * var(--wm-px)) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+    background: #fff !important;
+    border: 0 !important;
+}
+
+.wm-studio #manualModal #manualPanelSection {
+    position: absolute !important;
+    inset: 0;
+    display: flex !important;
+    flex-direction: column;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    transform: none !important;
+    opacity: 1 !important;
+    background: #fff !important;
+}
+
+/* ---- pages: one part of the desktop layout per tab ---- */
+.wm-studio:not([data-tab="settings"]) #manualModal .model-control,
+.wm-studio:not([data-tab="print"]) #manualModal #manualPanelSection,
+.wm-studio:is([data-tab="settings"], [data-tab="print"]) #manualModal .manual-modal-form-section {
+    display: none !important;
+}
+
+.wm-studio[data-tab="prompt"] #manualModal :is(#characterPromptsContainer, #textOverlaysContainer, #transformationRow, #pipelineStagesSection),
+.wm-studio[data-tab="chars"] #manualModal .scrollable-content > :not(#characterPromptsContainer):not(#textOverlaysContainer),
+.wm-studio[data-tab="images"] #manualModal .scrollable-content > :not(#transformationRow):not(#pipelineStagesSection) {
+    display: none !important;
+}
+
+/* the preview's desktop extras: the reference browser, the quick start gallery */
+.wm-studio #manualModal #cacheBrowserContainer,
+.wm-studio #manualModal #manualQuickstartGallery,
+.wm-studio #manualModal #manualQuickstartHideBtn,
+.wm-studio #manualModal .manual-preview-controls-top-right,
+.wm-studio #manualModal .manual-preview-blur-background {
+    display: none !important;
+}
+
+/* ---- WM bits of the page ---- */
+.wm-studio .wms-status {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(8 * var(--wm-px));
+    background: #fff;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+}
+
+.wm-studio .wms-norefs,
+.wm-studio .wms-noprint {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(20 * var(--wm-px));
+    z-index: 2;
+    margin: 0;
+    text-align: center;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    color: #000;
+    pointer-events: none;
+}
+
+.wm-studio .wms-noprint[hidden],
+.wm-studio .wms-norefs[hidden],
+.wm-studio .wms-status[hidden],
+.wm-studio .wms-empty[hidden],
+.wm-studio .wms-tool[hidden] {
+    display: none !important;
+}
+
+.wm-studio .wms-status img {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
+.wm-studio .wms-empty {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(20 * var(--wm-px));
+    z-index: 2;
+    margin: 0;
+    text-align: center;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    color: #000;
+    pointer-events: none;
+}
+
+.wm-studio .wms-wait {
+    display: none;
+}
+
+/* ---- a desktop tool window as a full-screen sub-page ---- */
+.wm-studio .wms-tool {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: #fff;
+}
+
+.wm-studio.wms-has-tool > .wms-tabs {
+    display: none;
+}
+
+.wm-studio .wms-tool-host {
+    position: absolute;
+    inset: 0;
+}
+
+.wm-studio .wms-tool-host > .modal {
+    position: absolute !important;
+    inset: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    translate: none !important;
+    scale: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    animation: none !important;
+    transition: none !important;
+    z-index: auto !important;
+    display: flex !important;
+    flex-direction: column;
+    overflow: auto !important;
+    background: #fff !important;
+    color: #000;
+    contain: layout paint;
+}
+
+.wm-studio .wms-tool-host > .modal::before,
+.wm-studio .wms-tool-host > .modal::after,
+.wm-studio .wms-tool-host > .modal > .modal-focus-overlay,
+.wm-studio .wms-tool-host > .modal > .modal-window-title,
+.wm-studio .wms-tool-host > .modal > .modal-window-controls,
+.wm-studio .wms-tool-host > .modal > .resize-handle {
+    display: none !important;
+}
+
+/* ======================================================================
+ * WM form idioms over the desktop controls (Settings pages, Calendar form):
+ * 12 px text, 20 px fields with a 1 px black frame, tint buttons, no Vista gloss
+ * ====================================================================== */
+.wm-studio #manualModal :is(label, .form-group, .form-row, span, p, div) {
+    font-family: var(--wm-font) !important;
+}
+
+.wm-studio #manualModal :is(input[type="text"], input[type="number"], input:not([type]), textarea, .form-control) {
+    box-sizing: border-box !important;
+    min-height: calc(20 * var(--wm-px)) !important;
+    margin: 0 !important;
+    padding: 0 calc(3 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+    text-shadow: none !important;
+    -webkit-text-fill-color: #000 !important;
+    outline: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+}
+
+.wm-studio #manualModal textarea {
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
+    resize: none !important;
+}
+
+.wm-studio #manualModal :is(input, textarea)::placeholder {
+    color: #808080 !important;
+    -webkit-text-fill-color: #808080 !important;
+}
+
+.wm-studio #manualModal :is(input, textarea):disabled {
+    background: #fff !important;
+    color: #808080 !important;
+    -webkit-text-fill-color: #808080 !important;
+}
+
+/* buttons: WM's tint push button; a lit indicator / toggle draws in the highlight colour */
+.wm-studio #manualModal :is(button.btn-secondary, button.btn-primary, button.btn-danger, .custom-dropdown-btn, .gallery-toggle-btn) {
+    box-sizing: border-box !important;
+    min-width: calc(22 * var(--wm-px)) !important;
+    height: calc(20 * var(--wm-px)) !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 calc(4 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: var(--wm-tint) !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    text-shadow: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    opacity: 1;
+    animation: none !important;
+    transition: none !important;
+    -webkit-text-fill-color: currentColor !important;
+}
+
+.wm-studio #manualModal :is(button.btn-secondary, button.btn-primary, button.btn-danger, .gallery-toggle-btn)::before,
+.wm-studio #manualModal :is(button.btn-secondary, button.btn-primary, button.btn-danger, .gallery-toggle-btn)::after {
+    display: none !important;
+}
+
+.wm-studio #manualModal :is(button.btn-secondary, button.btn-primary, button.btn-danger) :is(i, .icon-fa) {
+    color: #000 !important;
+    font-size: calc(11 * var(--wm-px)) !important;
+    text-shadow: none !important;
+    filter: none !important;
+    -webkit-text-fill-color: #000 !important;
+}
+
+.wm-studio #manualModal :is(button[data-state="on"], button.active, button[aria-pressed="true"], .gallery-toggle-btn.active) {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text, #fff) !important;
+}
+
+.wm-studio #manualModal :is(button[data-state="on"], button.active, button[aria-pressed="true"], .gallery-toggle-btn.active) :is(i, .icon-fa) {
+    color: var(--wm-highlight-text, #fff) !important;
+    -webkit-text-fill-color: var(--wm-highlight-text, #fff) !important;
+}
+
+.wm-studio #manualModal button:disabled,
+.wm-studio #manualModal button.disabled {
+    color: #808080 !important;
+}
+
+.wm-studio #manualModal button:active:not(:disabled) {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text, #fff) !important;
+}
+
+/* the desktop's indicator lamps and pressed-corner effects */
+.wm-studio #manualModal button.indicator::after,
+.wm-studio #manualModal .indicator-dot {
+    display: none !important;
+}
+
+/* drop-down combos: white box, the value, WM's arrow button at the right */
+.wm-studio #manualModal .custom-dropdown {
+    position: relative;
+    min-width: 0;
+    width: 100%;
+}
+
+.wm-studio #manualModal .custom-dropdown > .custom-dropdown-btn,
+.wm-studio #manualModal .custom-dropdown-btn {
+    position: relative;
+    display: flex !important;
+    align-items: center;
+    width: 100% !important;
+    padding: 0 calc(16 * var(--wm-px)) 0 calc(3 * var(--wm-px)) !important;
+    background: #fff !important;
+    text-align: left !important;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-studio #manualModal .custom-dropdown-btn::after {
+    content: '' !important;
+    display: block !important;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: calc(13 * var(--wm-px));
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    background:
+        linear-gradient(to top right, transparent 50%, #000 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to top left, transparent 50%, #000 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        var(--wm-tab-strip);
+    -webkit-mask: none !important;
+    mask: none !important;
+    transform: none !important;
+}
+
+.wm-studio #manualModal .custom-dropdown-btn > :is(span, div) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+}
+
+.wm-studio #manualModal .custom-dropdown-btn > i.dropdown-arrow,
+.wm-studio #manualModal .custom-dropdown-btn > .fa-chevron-down,
+.wm-studio #manualModal .custom-dropdown-btn > .fa-caret-down {
+    display: none !important;
+}
+
+/* a desktop drop-down list the WM drop-down stands in for (wmStudio.js) */
+.wm-studio #manualModal .custom-dropdown-menu.wms-dd-proxied {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+/* a desktop list left on screen (no rows to copy): a WM list under its control */
+.wm-studio #manualModal .custom-dropdown-menu:not(.hidden) {
+    z-index: 20 !important;
+    max-width: calc(100vw - 8px) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    backdrop-filter: none !important;
+}
+
+/* ---- Prompt page ---- */
+.wm-studio #manualModal .prompt-tabs .tab-header {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    margin: 0 0 calc(4 * var(--wm-px)) !important;
+    padding: 0 !important;
+    height: auto !important;
+    background: none !important;
+}
+
+/* Base Prompt | Undesired Content: the desktop's icon toggle as WM text buttons */
+.wm-studio #manualModal #tab-buttons {
+    display: flex !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    width: auto !important;
+    height: auto !important;
+}
+
+.wm-studio #manualModal #tab-buttons .gallery-toggle-slider {
+    display: none !important;
+}
+
+.wm-studio #manualModal #tab-buttons .gallery-toggle-btn {
+    width: auto !important;
+    padding: 0 calc(5 * var(--wm-px)) !important;
+}
+
+.wm-studio #manualModal #tab-buttons .gallery-toggle-btn + .gallery-toggle-btn {
+    border-left: 0 !important;
+}
+
+.wm-studio #manualModal #tab-buttons .gallery-toggle-btn.hidden {
+    display: none !important;
+}
+
+.wm-studio #manualModal #tab-buttons .gallery-toggle-btn > i {
+    display: none !important;
+}
+
+.wm-studio #manualModal #tab-buttons .gallery-toggle-btn::after {
+    content: attr(title) !important;
+    display: inline !important;
+    position: static !important;
+    background: none !important;
+    -webkit-mask: none !important;
+    mask: none !important;
+    width: auto !important;
+    height: auto !important;
+}
+
+.wm-studio #manualModal #tab-buttons .gallery-toggle-btn[data-tab="prompt"]::after { content: 'Prompt' !important; }
+.wm-studio #manualModal #tab-buttons .gallery-toggle-btn[data-tab="creative"]::after { content: 'Directive' !important; }
+.wm-studio #manualModal #tab-buttons .gallery-toggle-btn[data-tab="uc"]::after { content: 'Undesired' !important; }
+
+.wm-studio #manualModal .prompt-tabs .extra-buttons {
+    display: flex !important;
+    gap: calc(2 * var(--wm-px));
+    margin-left: auto !important;
+}
+
+/* Windows & Applications is the desktop's window list */
+.wm-studio #manualModal #windowListEditorBtn {
+    display: none !important;
+}
+
+.wm-studio #manualModal #manualPresetPlaceholder {
+    flex: 1 1 100%;
+    order: 9;
+    min-width: 0;
+    color: #000 !important;
+    font: bold calc(12 * var(--wm-px)) var(--wm-font) !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-container {
+    position: relative;
+    margin: 0 !important;
+    border: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-background {
+    display: none !important;
+}
+
+.wm-studio #manualModal :is(#manualPrompt, #manualUc, #manualPromptNegative, #creativeDirectiveInput) {
+    width: 100% !important;
+    height: calc(150 * var(--wm-px)) !important;
+    min-height: calc(80 * var(--wm-px)) !important;
+    max-height: none !important;
+    padding-bottom: calc(18 * var(--wm-px)) !important;
+}
+
+.wm-studio #manualModal .tab-content,
+.wm-studio #manualModal .tab-pane {
+    background: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+/* token / Anlas row */
+.wm-studio #manualModal .character-prompts-header {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) 0 0 !important;
+    padding: 0 !important;
+    background: none !important;
+    border: 0 !important;
+}
+
+.wm-studio #manualModal .character-prompts-header > div {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.wm-studio #manualModal .inset-badge {
+    display: inline-flex !important;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    height: calc(20 * var(--wm-px)) !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 calc(4 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #000 !important;
+}
+
+.wm-studio #manualModal .inset-badge.hidden {
+    display: none !important;
+}
+
+.wm-studio #manualModal .inset-badge :is(span, i, .price-list) {
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    text-shadow: none !important;
+    -webkit-text-fill-color: #000 !important;
+    filter: none !important;
+}
+
+/* ---- Settings page: label / field rows ---- */
+.wm-studio #manualModal .model-control .control-holder {
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: none !important;
+    border: 0 !important;
+    transform: none !important;
+}
+
+.wm-studio #manualModal .model-control .control-holder > .form-row {
+    display: block !important;
+    float: none !important;
+    clear: both;
+    justify-self: stretch !important;
+    order: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+    transform: none !important;
+    visibility: visible !important;
+}
+
+.wm-studio #manualModal .model-control .control-holder > .form-row.hidden {
+    display: none !important;
+}
+
+.wm-studio #manualModal .model-control .control-holder > .form-row > .form-group {
+    display: grid !important;
+    grid-template-columns: calc(66 * var(--wm-px)) minmax(0, 1fr);
+    align-items: center;
+    column-gap: calc(5 * var(--wm-px));
+    width: auto !important;
+    min-height: calc(20 * var(--wm-px));
+    height: auto !important;
+    margin: 0 0 calc(3 * var(--wm-px)) !important;
+    padding: 0 !important;
+    flex: none !important;
+}
+
+.wm-studio #manualModal .model-control .control-holder > .form-row > .form-group > label {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    opacity: 1 !important;
+}
+
+.wm-studio #manualModal .model-control .control-holder > .form-row > .form-group > label .hidden,
+.wm-studio #manualModal .model-control label .small-viewport,
+.wm-studio #manualModal .model-control label i {
+    display: none !important;
+}
+
+.wm-studio #manualModal .model-control label .full-viewport {
+    display: inline !important;
+}
+
+.wm-studio #manualModal .model-control .control-holder > .form-row > .form-group > :not(label) {
+    display: flex !important;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    width: auto !important;
+    min-width: 0;
+    max-width: none !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.wm-studio #manualModal .model-control .control-holder > .form-row > .form-group > input {
+    display: block !important;
+    width: 100% !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    background: #fff !important;
+}
+
+.wm-studio #manualModal .model-control .control-holder > .form-row > .form-group > :is(.hidden, input[type="hidden"]),
+.wm-studio #manualModal .model-control :is(.hidden, input[type="hidden"]) {
+    display: none !important;
+}
+
+.wm-studio #manualModal .model-control .percentage-input-container {
+    position: relative;
+    flex: 1 1 auto;
+}
+
+.wm-studio #manualModal .model-control .percentage-input-container input {
+    width: 100% !important;
+    color: transparent !important;
+    -webkit-text-fill-color: transparent !important;
+}
+
+.wm-studio #manualModal .model-control .percentage-input-container input:focus {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+}
+
+.wm-studio #manualModal .model-control .percentage-input-overlay {
+    position: absolute;
+    left: calc(4 * var(--wm-px));
+    top: 50%;
+    transform: translateY(-50%);
+    color: #000 !important;
+    pointer-events: none;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+}
+
+.wm-studio #manualModal .model-control .percentage-input-container:focus-within .percentage-input-overlay {
+    display: none;
+}
+
+.wm-studio #manualModal .model-control :is(.guidance-group, .model-group, .resolution-group, .seed-input-group) input {
+    flex: 1 1 auto;
+    width: auto !important;
+    min-width: 0;
+}
+
+.wm-studio #manualModal .model-control .resolution-group {
+    flex-wrap: wrap;
+}
+
+.wm-studio #manualModal .model-control .resolution-group > .custom-dropdown {
+    flex: 1 1 calc(100% - 30 * var(--wm-px));
+}
+
+.wm-studio #manualModal .model-control .custom-resolution-inputs:not(.hidden),
+.wm-studio #manualModal .model-control #manualUpscaleChoices:not(.hidden) {
+    display: flex !important;
+    flex: 1 1 100%;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+}
+
+.wm-studio #manualModal .model-control .custom-resolution-dims,
+.wm-studio #manualModal .model-control .custom-ratio-guts {
+    display: flex !important;
+    align-items: center;
+    gap: calc(2 * var(--wm-px));
+    min-width: 0;
+}
+
+.wm-studio #manualModal .model-control .x-seperator {
+    font-size: calc(9 * var(--wm-px)) !important;
+}
+
+/* the last row: only the number of prints (Generate is the left soft key) */
+.wm-studio #manualModal .model-control .control-row-last :is(#controlsToggle, #manualPendingRequestsSpinner, #closeManualBtn, #manualGenerateBtnAlt, .controls-flex-left) {
+    display: none !important;
+}
+
+.wm-studio #manualModal .model-control .control-row-last > .form-group > label {
+    font-size: 0 !important;
+}
+
+.wm-studio #manualModal .model-control .control-row-last > .form-group > label::after {
+    content: 'Prints';
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+}
+
+.wm-studio #manualModal .model-control .control-row-last .gen-controls,
+.wm-studio #manualModal .model-control .control-row-last .controls-flex-right {
+    display: flex !important;
+    gap: calc(3 * var(--wm-px));
+    margin: 0 !important;
+    padding: 0 !important;
+    width: auto !important;
+    justify-content: flex-start !important;
+}
+
+.wm-studio #manualModal #manualPrintsCountAlt {
+    width: calc(40 * var(--wm-px)) !important;
+}
+
+/* ---- Print page ---- */
+.wm-studio #manualModal #manualPanelSection .manual-preview-container {
+    position: absolute !important;
+    inset: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+}
+
+.wm-studio #manualModal #manualPanelSection .manual-preview-content {
+    position: absolute !important;
+    inset: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    display: flex !important;
+    flex-direction: column;
+}
+
+.wm-studio #manualModal .manual-preview-image-container {
+    position: relative !important;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #000 !important;
+}
+
+.wm-studio #manualModal #manualPreviewImageContainerInner {
+    position: absolute !important;
+    inset: 0 !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: auto !important;
+    height: auto !important;
+    transform: none !important;
+}
+
+.wm-studio #manualModal #manualPreviewImage {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+.wm-studio #manualModal #manualPreviewImage.hidden {
+    display: none !important;
+}
+
+/* no print yet: the desktop's placeholder (quick start gallery) gives way to WM's empty-view text (.wms-noprint) */
+.wm-studio #manualModal #manualPreviewPlaceholder,
+.wm-studio #manualModal .manual-preview-compare-labels,
+.wm-studio #manualModal #manualPreviewCompareSourceImage,
+.wm-studio #manualModal #manualPreviewOriginalImage,
+.wm-studio #manualModal :is(#previewStars, #previewBackgroundLines, #previewForegroundLines, #manualPreviewDialogs, #manualStageIndicators) {
+    display: none !important;
+}
+
+.wm-studio #manualModal #manualPanelSection,
+.wm-studio #manualModal #manualPanelSection * {
+    transition: none !important;
+}
+
+.wm-studio #manualModal #manualPanelSection :is(.manual-preview-container, .manual-preview-image-container, #manualPreviewImageContainerInner) {
+    background: #fff !important;
+    clip-path: none !important;
+    -webkit-mask: none !important;
+    mask: none !important;
+}
+
+/* the preview's own buttons are on Menu; the name of the print stays under it */
+.wm-studio #manualModal .manual-preview-controls {
+    position: relative !important;
+    flex: 0 0 auto;
+    display: flex !important;
+    align-items: center;
+    height: calc(20 * var(--wm-px)) !important;
+    margin: 0 !important;
+    padding: 0 calc(4 * var(--wm-px)) !important;
+    border-top: calc(1 * var(--wm-px)) solid #000 !important;
+    background: var(--wm-tab-strip) !important;
+    inset: auto !important;
+    transform: none !important;
+}
+
+.wm-studio #manualModal .manual-preview-controls :is(.manual-preview-controls-left, .manual-preview-controls-right),
+.wm-studio #manualModal .manual-preview-controls-top-left {
+    display: none !important;
+}
+
+.wm-studio #manualModal .manual-preview-controls-center {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex !important;
+    justify-content: flex-start !important;
+    position: static !important;
+    transform: none !important;
+}
+
+.wm-studio #manualModal #generatedImageNameDisplay {
+    display: flex !important;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    min-width: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+}
+
+.wm-studio #manualModal #generatedImageNameDisplay i {
+    display: none !important;
+}
+
+.wm-studio #manualModal #generatedImageNameText {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    -webkit-text-fill-color: #000 !important;
+    text-shadow: none !important;
+}
+
+/* while printing: WM's wait cursor over the print */
+.wm-studio.wms-generating[data-tab="print"] .wms-wait {
+    display: block;
+    position: absolute;
+    left: 50%;
+    top: 45%;
+    z-index: 4;
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    margin: calc(-16 * var(--wm-px)) 0 0 calc(-16 * var(--wm-px));
+    pointer-events: none;
+    background: center / contain no-repeat image-set(url('/static_images/wm61/wait-0.png') 1x, url('/static_images/wm61/wait-0@2x.png') 2x, url('/static_images/wm61/wait-0@4x.png') 4x);
+    animation: wms-wait 1.6s steps(1) infinite;
+}
+
+@keyframes wms-wait {
+    0% { background-image: image-set(url('/static_images/wm61/wait-0@2x.png') 1x, url('/static_images/wm61/wait-0@4x.png') 2x); }
+    12.5% { background-image: image-set(url('/static_images/wm61/wait-2@2x.png') 1x, url('/static_images/wm61/wait-2@4x.png') 2x); }
+    25% { background-image: image-set(url('/static_images/wm61/wait-4@2x.png') 1x, url('/static_images/wm61/wait-4@4x.png') 2x); }
+    37.5% { background-image: image-set(url('/static_images/wm61/wait-6@2x.png') 1x, url('/static_images/wm61/wait-6@4x.png') 2x); }
+    50% { background-image: image-set(url('/static_images/wm61/wait-8@2x.png') 1x, url('/static_images/wm61/wait-8@4x.png') 2x); }
+    62.5% { background-image: image-set(url('/static_images/wm61/wait-10@2x.png') 1x, url('/static_images/wm61/wait-10@4x.png') 2x); }
+    75% { background-image: image-set(url('/static_images/wm61/wait-12@2x.png') 1x, url('/static_images/wm61/wait-12@4x.png') 2x); }
+    87.5% { background-image: image-set(url('/static_images/wm61/wait-14@2x.png') 1x, url('/static_images/wm61/wait-14@4x.png') 2x); }
+}
+
+/* the tab strip fits a 360 px phone: tabs share the width */
+.wm-studio > .wms-tabs .wm-tab {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 calc(3 * var(--wm-px)) !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ======================================================================
+ * Prompt editors' pop-ups (autocompleteUtils.js): the tag autocomplete with its spelling
+ * suggestions and the view bar live at body level, which the ui-mobile allow-list hides
+ * (wm-shell.css: :not() with ten ids). While Studio is the current app they show over the
+ * page as a WM list: the id repeated eleven times outranks that rule.
+ * ====================================================================== */
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay:not(.hidden) {
+    display: flex !important;
+    left: 4px !important;
+    right: auto !important;
+    width: calc(100vw - 8px) !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    max-height: 45vh !important;
+    z-index: 2100 !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar:not(.hidden) {
+    display: flex !important;
+    z-index: 2101 !important;
+    max-width: calc(100vw - 8px) !important;
+}
+
+/* the desktop's rows are drawn for dark glass: on WM's white they keep their hues, darkened */
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay > .character-autocomplete-list {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    filter: brightness(0.5) saturate(1.6);
+}
+
+/* the key guide is for a keyboard */
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay > .character-autocomplete-keyguide {
+    display: none !important;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay :is(.character-autocomplete-item, .autocomplete-item, [class*="autocomplete-option"]) {
+    color: #000 !important;
+    font-family: var(--wm-font) !important;
+    border-radius: 0 !important;
+    text-shadow: none !important;
+}
+
+html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay :is(.selected, .active, .keyboard-selected, .is-selected) {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text, #fff) !important;
+}
+
+/* the picture view (a tap on the print) shows over the hidden content pane: the hosted windows
+ * hide with it (their own visibility is forced visible above) */
+html.ui-mobile[data-wm-viewer] .wm-studio #manualModal,
+html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
+    visibility: hidden !important;
+}
+
+/* the desktop's magnifier loupe follows a mouse */
+.wm-studio #manualModal .image-loupe {
+    display: none !important;
+}
+
+.wm-studio #manualModal .manual-preview-controls:has(#generatedImageNameDisplay.hidden) {
+    display: none !important;
+}
+
+/* a hosted tool window: WM's white form */
+.wm-studio .wms-tool-host > .modal > .modal-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    font-family: var(--wm-font);
+    overflow: auto;
+}
+
+/* ---- Images page ---- */
+.wm-studio #manualModal #imageBiasDropdown,
+.wm-studio #manualModal .vibe-reference-info .custom-dropdown {
+    width: auto !important;
+    min-width: calc(110 * var(--wm-px)) !important;
+}
