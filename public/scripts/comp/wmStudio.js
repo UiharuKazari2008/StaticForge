@@ -617,14 +617,47 @@
         }, 1000); // after closeModal's own 600 ms fallback (modalUtils.js)
     }
 
+    function openDirectorApp() {
+        if (ws.listApps().some((a) => a.id === 'director')) ws.open('director');
+    }
+
+    /**
+     * Ask Wren, the Director button and the tray focus an already open Director window
+     * (director.js focusDirectorWindow): over Studio that is the Director app. Explicit, so a window
+     * merely losing or regaining active-window (another window opening or closing) moves nothing.
+     */
+    function patchDirectorFocus() {
+        const d = window.directorInstance;
+        if (!d || typeof d.focusDirectorWindow !== 'function') return false;
+        if (d.focusDirectorWindow._wmStudio) return true;
+        const orig = d.focusDirectorWindow;
+        const wrapped = function () {
+            const out = orig.apply(this, arguments);
+            if (isCurrent() && root.dataset.wmBoot === 'done') openDirectorApp();
+            return out;
+        };
+        wrapped._wmStudio = true;
+        d.focusDirectorWindow = wrapped;
+        return true;
+    }
+
+    /**
+     * Only a window that opens (hidden -> shown) while Studio is on screen becomes a tool page. Any
+     * other class change (setActiveWindow moving active-window, opening / closing animations) is not
+     * an opening: without this a window left open behind another app, or the Director window hosted
+     * in its own app, was grabbed (or the Director app opened) the next time a window took focus.
+     */
     function watchWindows() {
         if (typeof MutationObserver !== 'function') return;
         const seen = new WeakSet();
+        const wasOpen = new WeakMap();
+        const isOpen = (el) => !el.classList.contains('hidden') && !el.classList.contains('hidden-alt') && !el.classList.contains('minimised');
         const check = (el) => {
             if (!isCurrent() || !studioOpen()) return;
-            // the Director (Image > Ask Wren ...) is its own app (wmDirector.js)
+            // the Director (Image > Ask Wren ...) is its own app (wmDirector.js): its window opening
+            // over Studio opens that app (an already open one is brought up by patchDirectorFocus)
             if (el.id === 'directorWindow') {
-                if (!el.classList.contains('hidden') && ws.listApps().some((a) => a.id === 'director')) ws.open('director');
+                openDirectorApp();
                 return;
             }
             if (isToolCandidate(el)) hostTool(el);
@@ -632,13 +665,17 @@
         const observeWin = (el) => {
             if (seen.has(el) || !el.classList || !el.classList.contains('modal')) return;
             seen.add(el);
+            wasOpen.set(el, isOpen(el));
             new MutationObserver(() => {
+                const open = isOpen(el);
+                const opened = open && !wasOpen.get(el);
+                wasOpen.set(el, open);
                 if (tools.some((t) => t.win === el)) {
-                    if (el.classList.contains('hidden') || el.classList.contains('minimised')) releaseTool(el);
+                    if (!open) releaseTool(el);
                     return;
                 }
                 if (el.classList.contains('hidden')) dismissed.delete(el);
-                check(el);
+                if (opened) check(el);
             }).observe(el, { attributes: true, attributeFilter: ['class'] });
         };
         Array.from(document.body.children).forEach(observeWin);
@@ -826,6 +863,7 @@
                 page = p;
                 shown = true;
                 patchContextMenu();
+                patchDirectorFocus();
                 void attach();
                 syncGenerating();
             },

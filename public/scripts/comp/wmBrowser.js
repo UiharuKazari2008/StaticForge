@@ -1612,6 +1612,9 @@
                 visible = false;
                 ws.closeMenus();
                 if (document.activeElement === els.ime) els.ime.blur();
+                // the Alchemy frame (or the address box) lets go of the focus: keys go to the app on screen
+                const a = document.activeElement;
+                if (a && page && page.contains(a) && typeof a.blur === 'function') a.blur();
                 syncAudio();
                 if (session) scheduleIdleClose();
             },
@@ -1668,13 +1671,23 @@
      * this, a wiki or search opened from Studio (a prompt tag's wiki, Search in Grimoire), Help, Recent
      * Items or a desktop shortcut showed the desktop Grimoire window: Studio hosted it as a tool page
      * whose soft keys were only Done, the IE keys and menu were gone. grimoireOpenInTab is set by
-     * grimoireTabs.js when the Grimoire feature loads (after this file), so the global is a getter that
-     * keeps the desktop's function for what only the desktop shows (dsap: apps such as NovelAI Explore).
+     * grimoireTabs.js when the Grimoire feature loads (after this file), so the global is a getter.
+     * Dreamscape apps (dsap:, such as NovelAI Explore from Studio) have no phone page: they get IE's
+     * own message (as typed in the address bar), not the desktop Grimoire window, which stayed open
+     * hidden behind the shell or became a Done-only tool page over Studio.
      */
+    function isDsapAddress(address) {
+        return /^dsap:/i.test(address) || (!!address && !/^(?:edtx|rdf|https?):/i.test(address) && typeof window.isDsapPseudoUrl === 'function' && !!window.isDsapPseudoUrl(address));
+    }
+
+    function dsapMessage() {
+        ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: GRIMOIRE_ONLY });
+    }
+
     function openGrimoireTarget(target) {
         const t = target || {};
         const address = String(t.url || t.address || '').trim();
-        if (/^dsap:/i.test(address) || (address && !/^(?:edtx|rdf|https?):/i.test(address) && typeof window.isDsapPseudoUrl === 'function' && window.isDsapPseudoUrl(address))) return null;
+        if (isDsapAddress(address)) { dsapMessage(); return true; }
         if (window.wmBrowser.open(address)) return true;
         ws.open(APP_ID);
         const g = t.tag ? { kind: 'wiki', tag: String(t.tag) } : parseGrim(address);
@@ -1684,20 +1697,34 @@
     }
 
     function routeGrimoire() {
-        let desktopOpenInTab = typeof window.grimoireOpenInTab === 'function' ? window.grimoireOpenInTab : null;
         const phoneOpenInTab = function (target) {
-            const done = openGrimoireTarget(target);
-            if (done !== null) return done;
-            return desktopOpenInTab ? desktopOpenInTab.apply(this, arguments) : false;
+            return openGrimoireTarget(target);
         };
         try {
             Object.defineProperty(window, 'grimoireOpenInTab', {
                 configurable: true,
                 enumerable: true,
                 get: () => phoneOpenInTab,
-                set: (fn) => { if (fn !== phoneOpenInTab) desktopOpenInTab = fn; }
+                // grimoireTabs.js sets the desktop's function when the feature loads: the phone keeps its own
+                set: () => { /* ignored */ }
             });
         } catch (_) { /* not configurable: the desktop route stays */ }
+        try {
+            // dsapRegistry.js: every dsap: opener (Studio's Explore, the Director's lookback links, a
+            // standalone applet window) ends in the desktop Grimoire; on the phone they get the message
+            const desktopOpenDsap = window.openDsapInGrimoire;
+            if (typeof desktopOpenDsap === 'function' && !desktopOpenDsap._wmBrowser) {
+                const phoneOpenDsap = async function (url) {
+                    const address = String(url || '').trim();
+                    if (!address) return undefined;
+                    if (isDsapAddress(address)) { dsapMessage(); return undefined; }
+                    openGrimoireTarget({ address });
+                    return undefined;
+                };
+                phoneOpenDsap._wmBrowser = true;
+                window.openDsapInGrimoire = phoneOpenDsap;
+            }
+        } catch (_) { /* read-only */ }
         try {
             // featureLoader.js: Help, Recent Items, the Start menu's Grimoire
             window.openGrimoireApplet = async (query) => {

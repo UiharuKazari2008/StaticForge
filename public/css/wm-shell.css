@@ -351,8 +351,10 @@ html.ui-mobile[data-wm-app="today"] #wmShell > .wm-content {
     -webkit-overflow-scrolling: touch;
 }
 
+/* the shell's app switch is page.hidden: an app's own page rule (.wm-page.wm-browser { display:
+ * flex }, same specificity, later file) must not keep a switched-away page on screen over Today */
 .wm-page[hidden] {
-    display: none;
+    display: none !important;
 }
 
 /* ---- soft-key bar: 1 px rule, 11 px gloss, 14 px base ---- */
