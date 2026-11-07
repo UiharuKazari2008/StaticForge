@@ -148,7 +148,8 @@ html.ui-mobile[data-wm-app="today"] #wmShell {
 
 .wm-title {
     flex: 1 1 auto;
-    min-width: 0;
+    /* a floor so a full status strip cannot squeeze the app name to "..." (fitStatus sheds icons instead) */
+    min-width: calc(60 * var(--wm-px));
     padding-left: calc(5 * var(--wm-px));
     font-weight: bold;
     white-space: nowrap;
@@ -1922,7 +1923,8 @@ html.ui-mobile body > .pswp .pswp__preloader {
     padding: 0 !important;
 }
 
-.wm-status-icon[hidden] {
+.wm-status-icon[hidden],
+.wm-status-icon.wm-shed {
     display: none !important;
 }
 

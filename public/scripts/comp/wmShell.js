@@ -318,9 +318,11 @@
     function setTitleAction(kind) {
         const btn = shell.querySelector('.wm-title-action');
         btn.hidden = !kind;
-        if (!kind) return;
-        btn.dataset.kind = kind;
-        btn.setAttribute('aria-label', kind === 'ok' ? 'OK' : 'Close');
+        if (kind) {
+            btn.dataset.kind = kind;
+            btn.setAttribute('aria-label', kind === 'ok' ? 'OK' : 'Close');
+        }
+        fitStatus();
     }
 
     // ---------------------------------------------------------------- soft keys
@@ -678,12 +680,32 @@
         shell.querySelector('[data-role="prints"]').hidden = !printsInProgress();
         const mailEl = shell.querySelector('[data-role="mail"]');
         mailEl.hidden = !(shellMailUnread > 0);
+        fitStatus();
         const bubble = shell.querySelector('.wm-bubble');
         if (!bubble.hidden && bubble.dataset.role) statusBubble(bubble.dataset.role, shell.querySelector(`.wm-status-icon[data-role="${bubble.dataset.role}"]`), true);
         const today = apps.get('today');
         if (today && typeof today.refresh === 'function' && current === 'today') today.refresh();
         // notifications held back during startup or a takeover come up once it ends
         if (notes.length && !noteShown && notesMayPop()) refreshNotes();
+    }
+
+    /**
+     * A narrow title bar sheds its least useful icons so the title keeps its floor (.wm-title min-width):
+     * roaming first, then a battery that is neither low nor charging, then volume.
+     */
+    function fitStatus() {
+        if (!shell) return;
+        const bar = shell.querySelector('.wm-titlebar');
+        const icons = ['roaming', 'battery', 'volume'].map((r) => shell.querySelector(`.wm-status-icon[data-role="${r}"]`));
+        icons.forEach((el) => el.classList.remove('wm-shed'));
+        if (bar.scrollWidth <= bar.clientWidth + 1) return;
+        const b = deviceView().battery;
+        const keepBattery = !!(b && (b.charging || (b.level != null && b.level <= 25)));
+        for (const el of icons) {
+            if (el.hidden || (el.dataset.role === 'battery' && keepBattery)) continue;
+            el.classList.add('wm-shed');
+            if (bar.scrollWidth <= bar.clientWidth + 1) return;
+        }
     }
 
     // ---------------------------------------------------------------- status: device (battery, signal, data, Wi-Fi)
@@ -1136,7 +1158,9 @@
     /** The bubble for a title-bar status icon; update=true repaints an open one in place. */
     function statusBubble(role, anchor, update) {
         const el = shell.querySelector('.wm-bubble');
-        if (!update && !el.hidden && el.dataset.role === role) { closeBubble(); return; }
+        // roaming opens the Phone bubble, so a second tap on it closes that bubble
+        const r = role === 'roaming' ? 'signal' : role;
+        if (!update && !el.hidden && el.dataset.role === r) { closeBubble(); return; }
         closeMenus(true);
         const ws = window.wsClient;
         if (role === 'data') {
@@ -2433,6 +2457,7 @@
         startBoot();
         refreshStatus();
         setInterval(refreshStatus, 2000);
+        window.addEventListener('resize', fitStatus);
         checkTakeover();
         setInterval(checkTakeover, 400);
         setInterval(checkViewer, 150);
