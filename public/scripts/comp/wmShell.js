@@ -71,8 +71,15 @@
         // the ok / X button's bevel ring (light top -> this at the bottom) and its fill
         '--wm-button-ring-bottom': { dh: -26, s: 75, l: 44 },
         '--wm-button-fill-top': { dh: -27, s: 48, l: 43 },
-        '--wm-button-fill-bottom': { dh: -27, s: 78, l: 31 }
+        '--wm-button-fill-bottom': { dh: -27, s: 78, l: 31 },
+        // the pressed glyph (#397D08 on green)
+        '--wm-button-pressed-glyph': { dh: -28, s: 88, l: 26 }
     };
+    // The ok / X frame keeps WM's hue shift (about -27 deg, toward yellow) while the workspace hue is
+    // near WM's own green (highlight #31D339, 123 deg): full shift within 15 deg, none past 45 deg,
+    // so a green workspace draws the frame 1:1 with the emulator and other hues are unchanged.
+    const BUTTON_ROLES = new Set(['--wm-button-border', '--wm-button-light', '--wm-button-ring-bottom', '--wm-button-fill-top', '--wm-button-fill-bottom', '--wm-button-pressed-glyph']);
+    const WM_GREEN_HUE = 123;
     // WM's button border (#214D08) parts from the title (#004918) by hue more than by lightness
     // (OKLab difference 0.029). Without the hue shift the same lightness put the border on the
     // title's own colour and the button lost its frame: the border is made light enough to keep
@@ -115,10 +122,13 @@
         const base = rgbToHsl(rgb);
         // a grey workspace gives a grey phone; a vivid one is capped a little above WM's own green
         const k = Math.max(0, Math.min(1.25, base.s / REF_SATURATION));
+        const fromGreen = Math.abs((((base.h - WM_GREEN_HUE) % 360) + 540) % 360 - 180);
+        const nearGreen = Math.max(0, Math.min(1, (45 - fromGreen) / 30));
         const out = {};
         const hsl = {};
         for (const [name, role] of Object.entries(ROLES)) {
-            const h = ((base.h + role.dh * HUE_SHIFT_SHARE * Math.min(1, k)) % 360 + 360) % 360;
+            const share = BUTTON_ROLES.has(name) ? Math.max(HUE_SHIFT_SHARE, nearGreen) : HUE_SHIFT_SHARE;
+            const h = ((base.h + role.dh * share * Math.min(1, k)) % 360 + 360) % 360;
             const s = Math.min(100, role.s * k);
             hsl[name] = { h, s, l: role.l };
             out[name] = `hsl(${h.toFixed(1)} ${s.toFixed(1)}% ${role.l}%)`;
@@ -171,6 +181,37 @@
             if (roles && roles['--wm-highlight'] && Object.keys(ROLES).some((k) => !(k in roles))) roles = deriveRoles(roles['--wm-highlight']) || roles;
             if (roles) for (const [name, value] of Object.entries(roles)) root.style.setProperty(name, value);
         } catch (_) { /* no cache */ }
+    }
+
+    /**
+     * Device-pixel helpers for wm-shell.css: --wm-dpx is one device pixel (the ok / X frame rounds
+     * its lengths to it), and html.wm-art-1x / -2x / -4x names the art for the scale the shell is
+     * drawn at (dpr x --wm-px), so dpr 2 at touch scale takes the 4x glyphs, not 2x scaled up.
+     */
+    let pixelScaleKey = '';
+    function syncPixelScale() {
+        const dpr = window.devicePixelRatio || 1;
+        const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        const scale = dpr * px;
+        const artClass = scale <= 1.01 ? 'wm-art-1x' : scale <= 2.01 ? 'wm-art-2x' : 'wm-art-4x';
+        const key = `${dpr}|${artClass}`;
+        if (key === pixelScaleKey) return;
+        pixelScaleKey = key;
+        root.style.setProperty('--wm-dpx', `${1 / dpr}px`);
+        for (const c of ['wm-art-1x', 'wm-art-2x', 'wm-art-4x']) root.classList.toggle(c, c === artClass);
+    }
+
+    function watchPixelScale() {
+        syncPixelScale();
+        window.addEventListener('resize', syncPixelScale);
+        // Settings > Screen sets --wm-px inline on <html>
+        new MutationObserver(syncPixelScale).observe(root, { attributes: true, attributeFilter: ['style'] });
+        // a dpr change without a resize (the window moves to another screen)
+        const watchDpr = () => {
+            if (!window.matchMedia) return;
+            matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener('change', () => { syncPixelScale(); watchDpr(); }, { once: true });
+        };
+        watchDpr();
     }
 
     function watchTheme() {
@@ -2899,6 +2940,7 @@
         registerTodayApp();
         registerGalleryApp();
         watchTheme();
+        watchPixelScale();
         useMobileWording();
         stack.push('today');
         activate('today');

@@ -1253,14 +1253,29 @@
             return keys;
         }
 
-        /** ok (and the back key): save the page, then back to the grid; false keeps it open. */
-        async function commitPage() {
-            if (!open) return;
+        /**
+         * ok and the back key: save the page once, then back to the grid. A second ok or back while
+         * the save runs does nothing; a commit that says false (a message box, a sub-view going
+         * back) keeps the page open. The back key's history entry is already gone, so it is pushed
+         * again when the page stays and not pushed when it closes.
+         */
+        function commitAndClose(viaBack) {
+            if (!open) return false;
             const cur = open;
-            const keys = await commitAll(cur);
-            if (keys === false) return;
-            if (keys.length) changed(keys);
-            if (open === cur) { closePage(); sh.syncHistory(); }
+            if (backPending === cur) return true;
+            backPending = cur;
+            commitAll(cur)
+                .catch(() => [])
+                .then((keys) => {
+                    if (backPending === cur) backPending = null;
+                    if (open !== cur) return;
+                    if (keys === false) { if (viaBack) sh.syncHistory(); return; }
+                    if (Array.isArray(keys) && keys.length) changed(keys);
+                    closePage();
+                    sh.syncHistory(viaBack ? { noPush: true } : undefined);
+                })
+                .catch((err) => console.warn('Settings: could not close', cur.def.id, err));
+            return true;
         }
 
         settingsHost = {
@@ -1278,40 +1293,20 @@
                 page = p;
                 page.classList.add('wm-set');
             },
+            // an open page and its draft stay while Settings is in the background (WM keeps the
+            // property page behind other programs); reopening comes back to it with ok
             show() {
-                open = null;
+                if (open) { refreshTitleKind(); return; }
                 renderGrid();
             },
-            hide() { open = null; },
+            hide() {},
             softKeys() { return { left: null, right: null }; },
             // WM: X on the Settings grid, ok on a settings page (saves it, back to the grid)
             titleKind: () => (open ? 'ok' : 'close'),
-            onTitleOk() {
-                if (!open) return false;
-                commitPage();
-                return true;
-            },
+            onTitleOk: () => commitAndClose(false),
             historyDepth: () => (open ? 1 : 0),
-            onBack() {
-                if (!open) return false;
-                // the back key leaves a page as ok does on the device; the entry is already gone.
-                // A commit that says false (a message box, a sub-view going back) keeps the page
-                // open with its entry pushed again, as with ok.
-                const cur = open;
-                if (backPending === cur) return true;
-                backPending = cur;
-                commitAll(cur)
-                    .catch(() => [])
-                    .then((keys) => {
-                        if (backPending === cur) backPending = null;
-                        if (open !== cur) return;
-                        if (keys === false) { sh.syncHistory(); return; }
-                        if (Array.isArray(keys) && keys.length) changed(keys);
-                        closePage();
-                        sh.syncHistory({ noPush: true });
-                    });
-                return true;
-            }
+            // the back key leaves a page as ok does on the device
+            onBack: () => commitAndClose(true)
         });
     }
 

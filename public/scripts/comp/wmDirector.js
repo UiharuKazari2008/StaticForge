@@ -631,7 +631,7 @@
             hide() {
                 shown = false;
                 restoreViewer();
-                if (composing) { composing = false; syncComposer(); }
+                // the composer stays open (Smart Minimize): reopening comes back to it with ok
                 const d = dir();
                 if (d && d.directorChatInput) d.directorChatInput.blur();
                 // she lets go of her sprite layers while the app is in the background

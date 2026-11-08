@@ -36,6 +36,7 @@ html.ui-mobile {
     --wm-button-ring-bottom: #5ec51c;
     --wm-button-fill-top: #63a239;
     --wm-button-fill-bottom: #448e12;
+    --wm-button-pressed-glyph: #397d08;
     --wm-font: Tahoma, 'Segoe UI', Verdana, sans-serif;
     background: #000;
 }
@@ -348,20 +349,27 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
  * then a 1 px bevel ring that fades top to bottom (#84D34A -> #5EC51C, the sides included), then the
  * fill (#63A239 -> #448E12) and the ROM's white glyph (gwes 8300-8303, drawn on a whole 23 x 26
  * title-bar cell, so it is placed relative to that cell). Pressed: ring and fill turn upside down
- * and the glyph takes the Start rule colour (#397D08).
- * Every ring is a real border so it lands on whole device pixels at any scale (--wm-px 1.25 at
- * dpr 2.625 smeared the old inset shadows); the colours come from the theme roles. */
+ * and the glyph darkens to #397D08 (--wm-button-pressed-glyph).
+ * Every length is rounded to whole device pixels (--wm-dpx = 1 device pixel, set by wmShell.js;
+ * the fallback is a 1/64 px step), so at dpr 2.625 and --wm-px 1.5 the box, its border and its
+ * ring land on the pixel grid with the same thickness on all four edges. The box is placed from the
+ * title bar's top, not centred, so its top edge is a whole device pixel too. The border and the ring
+ * are background layers, not CSS borders: Chrome floors a border width to whole CSS pixels in some
+ * cases (1.52 px drew as 1 px = 2.625 device pixels at dpr 2.625). */
 .wm-title-action {
+    --wm-dpx-step: var(--wm-dpx, 0.015625px);
+    --wm-btn-bw: max(var(--wm-dpx-step), round(calc(1 * var(--wm-px)), var(--wm-dpx-step)));
     flex: 0 0 auto;
+    align-self: flex-start;
     position: relative;
-    width: calc(19 * var(--wm-px));
-    height: calc(17 * var(--wm-px));
-    margin: 0 calc(3 * var(--wm-px)) 0 0;
+    width: round(calc(19 * var(--wm-px)), var(--wm-dpx-step));
+    height: round(calc(17 * var(--wm-px)), var(--wm-dpx-step));
+    margin: round(calc(4 * var(--wm-px)), var(--wm-dpx-step)) round(calc(3 * var(--wm-px)), var(--wm-dpx-step)) 0 0;
     padding: 0 !important;
-    border: calc(1 * var(--wm-px)) solid var(--wm-button-border) !important;
+    border: 0 !important;
     box-sizing: border-box;
     box-shadow: none;
-    background: none !important;
+    background: var(--wm-button-border) !important;
     color: transparent;
     font-size: 0;
 }
@@ -369,31 +377,27 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
 .wm-title-action::before {
     content: '';
     position: absolute;
-    inset: 0;
-    border: calc(1 * var(--wm-px)) solid transparent;
+    inset: var(--wm-btn-bw);
+    padding: var(--wm-btn-bw);
+    box-sizing: border-box;
     background:
-        linear-gradient(to bottom, var(--wm-button-fill-top), var(--wm-button-fill-bottom)) padding-box,
-        linear-gradient(to bottom, var(--wm-button-light), var(--wm-button-ring-bottom)) border-box;
+        linear-gradient(to bottom, var(--wm-button-fill-top), var(--wm-button-fill-bottom)) content-box,
+        linear-gradient(to bottom, var(--wm-button-light), var(--wm-button-ring-bottom)) padding-box;
     pointer-events: none;
 }
 
-/* the glyph covers the border box, like the cell it was cut from */
+/* the glyph covers the border box, like the cell it was cut from. The offset rounds down: at 1x
+ * -1.5 px gives -2, which keeps WM's gap between the ok's k and the right ring */
 .wm-title-action::after {
+    --wm-glyph-pos: round(down, calc(-1.5 * var(--wm-px)), var(--wm-dpx-step)) round(down, calc(-4 * var(--wm-px)), var(--wm-dpx-step));
+    --wm-glyph-size: round(calc(23 * var(--wm-px)), var(--wm-dpx-step)) round(calc(26 * var(--wm-px)), var(--wm-dpx-step));
     content: '';
     position: absolute;
-    inset: calc(-1 * var(--wm-px));
+    inset: 0;
     background: #fff;
-    -webkit-mask: var(--wm-title-glyph) calc(-1.5 * var(--wm-px)) calc(-4 * var(--wm-px)) / calc(23 * var(--wm-px)) calc(26 * var(--wm-px)) no-repeat;
-    mask: var(--wm-title-glyph) calc(-1.5 * var(--wm-px)) calc(-4 * var(--wm-px)) / calc(23 * var(--wm-px)) calc(26 * var(--wm-px)) no-repeat;
+    -webkit-mask: var(--wm-title-glyph) var(--wm-glyph-pos) / var(--wm-glyph-size) no-repeat;
+    mask: var(--wm-title-glyph) var(--wm-glyph-pos) / var(--wm-glyph-size) no-repeat;
     pointer-events: none;
-}
-
-/* at 1x the cell's half-pixel offset would blur the 1x glyph: whole pixels there */
-@media (max-resolution: 1.49dppx) {
-    .wm-title-action::after {
-        -webkit-mask-position: round(calc(-1.5 * var(--wm-px)), 1px) round(calc(-4 * var(--wm-px)), 1px);
-        mask-position: round(calc(-1.5 * var(--wm-px)), 1px) round(calc(-4 * var(--wm-px)), 1px);
-    }
 }
 
 .wm-title-action[data-kind="close"] {
@@ -404,14 +408,24 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
     --wm-title-glyph: image-set(url('/static_images/wm61/title-ok.png') 1x, url('/static_images/wm61/title-ok@2x.png') 2x, url('/static_images/wm61/title-ok@4x.png') 4x);
 }
 
+/* the art follows the scale it is drawn at (device pixels per WM pixel = dpr x --wm-px), not dpr
+   alone: dpr 2 at touch scale needs the 4x art, dpr 1 at touch scale the 2x art scaled down.
+   wmShell.js sets html.wm-art-1x / -2x / -4x; the image-set above is the fallback before that. */
+html.wm-art-1x .wm-title-action[data-kind="close"] { --wm-title-glyph: url('/static_images/wm61/title-close.png'); }
+html.wm-art-2x .wm-title-action[data-kind="close"] { --wm-title-glyph: url('/static_images/wm61/title-close@2x.png'); }
+html.wm-art-4x .wm-title-action[data-kind="close"] { --wm-title-glyph: url('/static_images/wm61/title-close@4x.png'); }
+html.wm-art-1x .wm-title-action[data-kind="ok"] { --wm-title-glyph: url('/static_images/wm61/title-ok.png'); }
+html.wm-art-2x .wm-title-action[data-kind="ok"] { --wm-title-glyph: url('/static_images/wm61/title-ok@2x.png'); }
+html.wm-art-4x .wm-title-action[data-kind="ok"] { --wm-title-glyph: url('/static_images/wm61/title-ok@4x.png'); }
+
 .wm-title-action:active::before {
     background:
-        linear-gradient(to top, var(--wm-button-fill-top), var(--wm-button-fill-bottom)) padding-box,
-        linear-gradient(to top, var(--wm-button-light), var(--wm-button-ring-bottom)) border-box;
+        linear-gradient(to top, var(--wm-button-fill-top), var(--wm-button-fill-bottom)) content-box,
+        linear-gradient(to top, var(--wm-button-light), var(--wm-button-ring-bottom)) padding-box;
 }
 
 .wm-title-action:active::after {
-    background: var(--wm-start-rule);
+    background: var(--wm-button-pressed-glyph);
 }
 
 .wm-title-action[hidden] {
