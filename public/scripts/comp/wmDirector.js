@@ -60,8 +60,10 @@
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     let ws = null; // window.wmShell
-    // WM's wait cursor (wmShell.busy) while a session or persona the user picked loads
-    const busyOf = (fn) => (ws && typeof ws.busy === 'function' ? ws.busy(fn) : fn());
+    // WM's wait cursor (wmShell.busy) while a session or persona the user picked loads. paint: the
+    // cursor is on screen in the tap's own frame (a chat opening is a server round trip, then a
+    // synchronous rebuild of its rows), Yozora #723
+    const busyOf = (fn) => (ws && typeof ws.busy === 'function' ? ws.busy(fn, { paint: true }) : fn());
     let page = null;
     let shown = false;
     // pages over her scene (Sessions, Prints, History, a tool's inspector ...): the top one shows
@@ -193,22 +195,32 @@
      * Host the desktop window and open it. run: a hand-off from another view (handOff) that opens it
      * its own way, as on the desktop (Ask Wren looks up the image's chat while the window opens).
      */
+    let startBusy = null;
+    let everShown = false;
+    function endStartBusy() {
+        if (startBusy) { startBusy(); startBusy = null; }
+    }
+
     async function attach(run) {
         const d = dir();
+        if (d && d.directorWindow) endStartBusy();
         const status = page.querySelector('.wmd-status');
         if (run && d && d.directorWindow) {
             status.hidden = true;
             hostWindow(d);
             patchMascot(d);
             watchChat(d);
-            await run(d);
+            // no paint deferral: a hand-off can focus the composer (the SIP needs the tap's gesture)
+            await (ws && typeof ws.busy === 'function' ? ws.busy(() => run(d)) : run(d));
             // the window opens in the app's page: a hand-off that left it closed opens it the normal way
             if (shown && !d.directorWindowIsOpen()) await d.openDirectorWindow();
             hostWindow(d);
         } else if (!d || !d.directorWindow) {
             status.hidden = false;
             status.querySelector('.wmd-status-text').textContent = 'The Director is starting...';
-            if (!waitTimer) waitTimer = setTimeout(() => { waitTimer = null; if (shown) void attach(run); }, 1000);
+            // the wait cursor while she loads (released when she attaches or the app is left)
+            if (!startBusy && ws && typeof ws.busy === 'function') startBusy = ws.busy(true, { timeout: 60000 });
+            if (!waitTimer) waitTimer = setTimeout(() => { waitTimer = null; if (shown) void attach(run); else endStartBusy(); }, 1000);
             return;
         } else {
             status.hidden = true;
@@ -216,7 +228,10 @@
             patchMascot(d);
             watchChat(d);
             if (!d.directorWindowIsOpen()) {
-                await d.openDirectorWindow();
+                // the first open loads her sessions and builds the window: the wait cursor meanwhile
+                await busyOf(() => d.openDirectorWindow());
+                if (!shown) return;
+                hostWindow(d);
             } else {
                 if (d.mascot) d.mascot.applyView();
                 d.paintPersonaToggle();
@@ -233,7 +248,14 @@
         syncComposer();
         refreshTitle();
         paintQueue();
-        if (d.mascot) d.mascot.settleLayout(600);
+        // settle her once the page has painted and once after the bars settle (settleLayout re-measured
+        // every frame for 600 ms: ~40 % of the main thread after each open at 4x throttle, #723)
+        if (d.mascot) {
+            const m2 = d.mascot;
+            const again = () => { if (shown && m2._shown) m2.layout(); };
+            requestAnimationFrame(again);
+            setTimeout(again, 300);
+        }
         if (ws && isCurrent()) ws.refreshSoftKeys();
     }
 
@@ -833,12 +855,36 @@
         renderSessions();
     }
 
+    /**
+     * showSessionChat resolves once it has asked for the chat's messages; they arrive later
+     * (director_get_messages_response) and render ~16 ms after that: the wait cursor lasts until then
+     * (it was gone ~0.5 s before the rows were built at 4x throttle, #723).
+     */
+    function messagesArrived(id, ms = 10000) {
+        const wc = window.wsClient;
+        if (!wc || typeof wc.on !== 'function' || typeof wc.off !== 'function' || (typeof wc.isConnected === 'function' && !wc.isConnected())) return Promise.resolve();
+        return new Promise((resolve) => {
+            let timer = null;
+            let over = false;
+            // off() after the dispatch loop: removing a handler while it runs would skip the next one
+            const done = () => { if (over) return; over = true; clearTimeout(timer); setTimeout(() => { wc.off('director_get_messages_response', on); resolve(); }, 40); };
+            const on = (data) => { const b = data && data.data; if (!b || String(b.sessionId) === String(id)) done(); };
+            timer = setTimeout(done, ms);
+            wc.on('director_get_messages_response', on);
+        });
+    }
+
     async function openSession(id) {
         const d = dir();
         const s = sessionById(id);
         if (!s) return;
         while (stack.length) popPage();
-        try { await busyOf(() => d.showSessionChat(s)); } catch (err) { console.warn('[wmDirector] open session', err); }
+        try {
+            await busyOf(() => {
+                const arrived = messagesArrived(s.id);
+                return Promise.resolve(d.showSessionChat(s)).then(() => arrived);
+            });
+        } catch (err) { console.warn('[wmDirector] open session', err); }
         syncComposer();
         ws.refreshSoftKeys();
     }
@@ -1098,6 +1144,17 @@
             if (window.wmSettings && typeof window.wmSettings.open === 'function') window.wmSettings.open('director', null, { direct: true });
         };
         d.togglePrintsPane = function () { inApp(showPrints); };
+        // the log hidden behind her scene is not laid out (wm-director.css content-visibility): a
+        // scroll to the bottom there would lay all its rows out (~270 ms a call at 4x, #723). Menu > Log
+        // scrolls to the bottom when it opens (directorMascot.js togglePeek)
+        if (typeof d.scrollToBottom === 'function') {
+            const scrollToBottom = d.scrollToBottom;
+            d.scrollToBottom = function () {
+                const chat = this.directorSessionChat;
+                if (chat && page && page.contains(chat) && chat.classList.contains('director-mascot-view') && chat.classList.contains('dm-log-hidden') && !chat.classList.contains('dm-log-peek')) return;
+                return scrollToBottom.apply(this, arguments);
+            };
+        }
         // the queued messages (the desktop's chip in its always-visible composer) also show over her scene
         const queueChip = d.renderQueueChip;
         if (typeof queueChip === 'function') {
@@ -1379,7 +1436,7 @@
                     ws.open(APP_ID);
                     const dd = dir();
                     const ss = dd && (dd.directorSessions || []).find((x) => String(x.id) === id);
-                    if (dd && ss && !(dd.currentSession && String(dd.currentSession.id) === id)) void busyOf(() => dd.showSessionChat(ss));
+                    if (dd && ss && !(dd.currentSession && String(dd.currentSession.id) === id)) void busyOf(() => { const arrived = messagesArrived(ss.id); return Promise.resolve(dd.showSessionChat(ss)).then(() => arrived); });
                 }
             }]);
         });
@@ -1401,10 +1458,25 @@
                 shown = true;
                 const run = pendingRun;
                 pendingRun = null;
+                // her first show after a load lays out the whole window and her layers (~0.7 s at 4x
+                // throttle, #723): the bars and the wait cursor paint first. Hand-offs run at once (they
+                // can focus the composer, which needs the tap's gesture)
+                if (!everShown && !run && ws && typeof ws.busy === 'function' && document.documentElement.dataset.wmBoot === 'done') {
+                    everShown = true;
+                    p.classList.add('wmd-prepaint');
+                    void ws.busy(() => {
+                        p.classList.remove('wmd-prepaint');
+                        return shown ? attach(null) : null;
+                    }, { paint: true });
+                    return;
+                }
+                everShown = true;
+                p.classList.remove('wmd-prepaint');
                 void attach(run);
             },
             hide() {
                 shown = false;
+                endStartBusy();
                 restoreViewer();
                 // the composer stays open (Smart Minimize): reopening comes back to it with ok
                 const d = dir();

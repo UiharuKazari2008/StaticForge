@@ -1507,7 +1507,8 @@
     /** The shell's wait cursor (wmShell.busy) around work the user waits on; not before boot ends. */
     function waitCursor(fn) {
         if (!ws || typeof ws.busy !== 'function' || root.dataset.wmBoot !== 'done') return fn();
-        return ws.busy(fn);
+        // paint: the cursor is on screen before the desktop Studio's synchronous open blocks the thread
+        return ws.busy(fn, { paint: true });
     }
 
     /** Everything that opens the desktop Studio opens this app (it would otherwise be invisible). */
@@ -1541,6 +1542,21 @@
             };
             wrappedLoad._wmStudio = true;
             window.loadIntoManualForm = wrappedLoad;
+        }
+        // the print view's loading overlay (prev / next print, delete, Open in Studio): the desktop draws
+        // an image-and-arrows throbber over the print; on the phone the shell's wait cursor stands for
+        // it (wm-studio.css hides the throbber; a download's progress bar stays)
+        const navLoading = window.showManualPreviewNavigationLoading;
+        if (typeof navLoading === 'function' && !navLoading._wmStudio) {
+            let release = null;
+            const wrappedNav = function (show) {
+                const out = navLoading.apply(this, arguments);
+                if (show && !release && ws && typeof ws.busy === 'function' && root.dataset.wmBoot === 'done') release = ws.busy(true);
+                else if (!show && release) { release(); release = null; }
+                return out;
+            };
+            wrappedNav._wmStudio = true;
+            window.showManualPreviewNavigationLoading = wrappedNav;
         }
         // any other route that shows #manualModal (openModal, a restore)
         const m = modal();
@@ -1621,9 +1637,21 @@
 
     // ---------------------------------------------------------------- app
 
+    /**
+     * The tag autocomplete (body children) wears the WM look while Studio is on screen: wm-studio.css
+     * keys it on .wms-ac on the two elements, not on html[data-wm-app] (a descendant rule hanging off
+     * the root attribute restyled the whole document on every app switch, Yozora #723).
+     */
+    function markAutocomplete(on) {
+        ['characterAutocompleteOverlay', 'characterAutocompleteViewBar'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle('wms-ac', on);
+        });
+    }
+
     function mount(p) {
         page = p;
-        page.classList.add('wm-studio');
+        page.classList.add('wm-studio', 'wms-prepaint');
         page.dataset.tab = tab;
         page.innerHTML = `
             <div class="wms-host"></div>
@@ -1698,13 +1726,31 @@
             show(p) {
                 page = p;
                 shown = true;
+                markAutocomplete(true);
                 patchContextMenu();
                 patchDirectorFocus();
+                // the desktop form's first style pass on screen is ~400 ms at 4x throttle (Yozora #723):
+                // the page left hidden holds it back (hide() sets wms-prepaint, so the shell's own
+                // measuring in the tap does not lay it out); the title, tabs and soft keys paint with
+                // the wait cursor first, the form right after
+                const prepaint = p.classList.contains('wms-prepaint');
+                if (prepaint && ws && typeof ws.busy === 'function' && root.dataset.wmBoot === 'done') {
+                    syncGenerating();
+                    void ws.busy(() => {
+                        if (!shown) return null;
+                        p.classList.remove('wms-prepaint');
+                        return attach();
+                    }, { paint: true });
+                    return;
+                }
+                p.classList.remove('wms-prepaint');
                 void attach();
                 syncGenerating();
             },
             hide() {
                 shown = false;
+                markAutocomplete(false);
+                if (page) page.classList.add('wms-prepaint');
                 // open tool pages stay hosted in the hidden page, as they were (switching apps closes nothing)
                 const a = document.activeElement;
                 if (a && page && page.contains(a) && typeof a.blur === 'function') a.blur();

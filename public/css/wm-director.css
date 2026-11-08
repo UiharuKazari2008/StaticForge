@@ -329,6 +329,14 @@
     padding-bottom: calc(30 * var(--wm-px)) !important;
 }
 
+/* her scene with the log hidden: the log's rows are not laid out (~490 ms of layout on every open
+ * at 4x throttle, and director.js's scroll reads after each render forced it again, Yozora #723).
+ * The box keeps its space (the composer stays put); Menu > Log lays the rows out and scrolls to the
+ * bottom (directorMascot.js togglePeek). Not content-visibility: scroll reads force locked content. */
+.wm-director #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden:not(.dm-log-peek) .director-chat-messages-container > * {
+    display: none !important;
+}
+
 /* ---- status (Director not loaded yet) ---- */
 .wm-director .wmd-status {
     position: absolute;
@@ -1109,4 +1117,9 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
 .wm-director .wmd-queue:active {
     background-color: var(--wm-highlight);
     color: var(--wm-highlight-text, #fff);
+}
+
+/* the frame before her first show after a load (wmDirector.js show): bars and the wait cursor only */
+.wm-director.wmd-prepaint > .wmd-host {
+    display: none !important;
 }

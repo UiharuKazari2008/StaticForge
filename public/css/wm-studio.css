@@ -411,6 +411,11 @@
     display: none;
 }
 
+/* the frame before the form shows (wmStudio.js show): bars, tabs and the wait cursor only */
+.wm-studio.wms-prepaint > :is(.wms-host, .wms-tool, .wms-noprint, .wms-norefs, .wms-wait) {
+    display: none !important;
+}
+
 /* ---- a desktop tool window as a full-screen sub-page ---- */
 .wm-studio .wms-tool {
     position: absolute;
@@ -1183,7 +1188,7 @@
  * (wm-shell.css: :not() with ten ids). While Studio is the current app they show over the
  * page as a WM list: the id repeated eleven times outranks that rule.
  * ====================================================================== */
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay:not(.hidden) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay:not(.hidden) {
     display: flex !important;
     left: 4px !important;
     right: auto !important;
@@ -1202,7 +1207,7 @@ html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay#charac
     font: calc(12 * var(--wm-px)) var(--wm-font) !important;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar:not(.hidden) {
+html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar:not(.hidden) {
     display: flex !important;
     z-index: 2101 !important;
     max-width: calc(100vw - 8px) !important;
@@ -1210,7 +1215,7 @@ html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#charac
 
 /* the desktop's rows are drawn for dark glass: on WM's white the text is black / dark grey, and
  * only the small coloured marks (badges, dots, icons) keep their hues, darkened */
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay > .character-autocomplete-list {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac > .character-autocomplete-list {
     background: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -1220,31 +1225,31 @@ html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay > .cha
     box-shadow: none !important;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-item :is(.character-name, .character-info-row) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item :is(.character-name, .character-info-row) {
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
     text-shadow: none !important;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-item :is(.character-copyright, .placeholder-desc, .placeholder-desc-text, .tag-wiki-preview-text, .tag-meta-icons) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item :is(.character-copyright, .placeholder-desc, .placeholder-desc-text, .tag-wiki-preview-text, .tag-meta-icons) {
     color: #404040 !important;
     -webkit-text-fill-color: #404040 !important;
     text-shadow: none !important;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-item :is(.match-type-badge, .tag-category-badge, .badge, .count-dot, .tag-meta-icon) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item :is(.match-type-badge, .tag-category-badge, .badge, .count-dot, .tag-meta-icon) {
     filter: brightness(0.55) saturate(1.6);
     border-radius: 0 !important;
     text-shadow: none !important;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-item {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item {
     border-color: #c0c0c0 !important;
     background: #fff !important;
 }
 
 /* the results footer: a plain tab-strip row, black text */
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .search-status-display {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-display {
     background: var(--wm-tab-strip) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -1257,7 +1262,7 @@ html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .searc
     opacity: 1 !important;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .search-status-display :is(span, i, div) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-display :is(span, i, div) {
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
     text-shadow: none !important;
@@ -1265,43 +1270,43 @@ html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .searc
     opacity: 1 !important;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .search-status-display i[class^="nai-"],
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .search-status-display i[class*=" nai-"] {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-display i[class^="nai-"],
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-display i[class*=" nai-"] {
     background-color: #000 !important;
 }
 
 /* WM scroll bar on the list (wm-shell.css draws the same for app pages) */
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-list::-webkit-scrollbar {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-list::-webkit-scrollbar {
     width: calc(13 * var(--wm-px));
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-list::-webkit-scrollbar-track {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-list::-webkit-scrollbar-track {
     background: #fff;
     border-left: calc(1 * var(--wm-px)) solid #000;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-list::-webkit-scrollbar-thumb {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-list::-webkit-scrollbar-thumb {
     background: var(--wm-tab-strip);
     border: calc(1 * var(--wm-px)) solid #000;
     border-right: 0;
     border-radius: 0;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-list::-webkit-scrollbar-button:single-button {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-list::-webkit-scrollbar-button:single-button {
     display: block;
     height: calc(19 * var(--wm-px));
     background: var(--wm-tab-strip) center / calc(8 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
     border-left: calc(1 * var(--wm-px)) solid #000;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-list::-webkit-scrollbar-button:single-button:vertical:decrement {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-list::-webkit-scrollbar-button:single-button:vertical:decrement {
     border-bottom: calc(1 * var(--wm-px)) solid #000;
     background-image: linear-gradient(to bottom right, transparent 50%, #000 50%), linear-gradient(to bottom left, transparent 50%, #000 50%);
     background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
     background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .character-autocomplete-list::-webkit-scrollbar-button:single-button:vertical:increment {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-list::-webkit-scrollbar-button:single-button:vertical:increment {
     border-top: calc(1 * var(--wm-px)) solid #000;
     background-image: linear-gradient(to top right, transparent 50%, #000 50%), linear-gradient(to top left, transparent 50%, #000 50%);
     background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
@@ -1309,7 +1314,7 @@ html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay .chara
 }
 
 /* the view bar (type filter, ranking) as a WM tab strip: no glass, black text, a 1 px black rule */
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar:not(.hidden) {
+html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocompleteViewBar:not(.hidden) {
     border: calc(1 * var(--wm-px)) solid #000 !important;
     border-radius: 0 !important;
     background: var(--wm-tab-strip) !important;
@@ -1322,12 +1327,12 @@ html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#charac
     text-shadow: none !important;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar::before,
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar::after {
+html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocompleteViewBar::before,
+html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocompleteViewBar::after {
     display: none !important;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar :is(button, span, i) {
+html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocompleteViewBar :is(button, span, i) {
     border-radius: 0 !important;
     background: none !important;
     box-shadow: none !important;
@@ -1340,28 +1345,28 @@ html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#charac
     filter: none !important;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar :is(button, span) {
+html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocompleteViewBar :is(button, span) {
     font-family: var(--wm-font) !important;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteViewBar#characterAutocompleteViewBar button {
+html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocompleteViewBar button {
     font-size: calc(12 * var(--wm-px)) !important;
     border: 0 !important;
 }
 
 /* the key guide is for a keyboard */
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay > .character-autocomplete-keyguide {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac > .character-autocomplete-keyguide {
     display: none !important;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay :is(.character-autocomplete-item, .autocomplete-item, [class*="autocomplete-option"]) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.character-autocomplete-item, .autocomplete-item, [class*="autocomplete-option"]) {
     color: #000 !important;
     font-family: var(--wm-font) !important;
     border-radius: 0 !important;
     text-shadow: none !important;
 }
 
-html.ui-mobile[data-wm-app="studio"] body > #characterAutocompleteOverlay :is(.selected, .active, .keyboard-selected, .is-selected) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.selected, .active, .keyboard-selected, .is-selected) {
     background: var(--wm-highlight) !important;
     color: var(--wm-highlight-text, #fff) !important;
 }
@@ -2427,4 +2432,36 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
 /* no stages: no "Pipeline Stages" head over nothing (the page shows its "No images" text) */
 .wm-studio[data-tab="images"] #manualModal #pipelineStagesSection:not(:has(.pipeline-stage-item)) {
     display: none !important;
+}
+
+/* desktop throbbers over the print and the form (Yozora #723): the shell's wait cursor stands for
+ * them on the phone (wmStudio.js wraps showManualPreviewNavigationLoading; the metadata fetch runs
+ * under the open's wait cursor). A download's progress bar stays */
+.wm-studio #manualModal #manualPreviewNavigationLoading:not(.download-progress),
+.wm-studio #manualModal #manualPreviewNavigationLoading .manual-preview-navigation-loading-icon,
+.wm-studio #manualModal .spinner-overlay {
+    display: none !important;
+}
+
+/* the spelling / thesaurus chips in the tag pop-up: the desktop's dark-glass colours were pale text on
+ * pale chips on the white WM list (unreadable); WM buttons, the accepted one in the highlight */
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .suggestion-btn {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    background: var(--wm-tint) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .suggestion-btn.tab-accept-target {
+    color: var(--wm-highlight-text, #fff) !important;
+    -webkit-text-fill-color: var(--wm-highlight-text, #fff) !important;
+    background: var(--wm-highlight) !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inline {
+    color: #404040 !important;
+    -webkit-text-fill-color: #404040 !important;
 }

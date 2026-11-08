@@ -404,7 +404,10 @@
     background: var(--wm-highlight) !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(li, tr, [role="option"], [role="row"], [class*="-item"], [class*="-row"]):is(.selected, .active, .is-selected, .is-active, [aria-selected="true"]):not(button) :is(div, span, p, label, td, small, strong, b, i) {
+/* the rows' text: named row classes, never [class*=] here. An attribute substring test on an
+ * ancestor makes every class change anywhere in the page restyle the whole subtree under it
+ * (Yozora #723: ~150 ms per class toggle at 4x throttle, every phone app paid it) */
+.wm-studio .wms-tool-host > .modal :is(li, tr, [role="option"], [role="row"], .autocomplete-item, .character-autocomplete-item, .preset-autocomplete-item, .config-editor-tree-item, .config-editor-row, .config-editor-checkpoint-row, .text-replacement-lock-item, .dic-item, .dic-ci-item, .character-db-row, .tag-wiki-result-item, .vibe-manager-gallery-item, .request-item, .chat-session-item, .notebook-note-item, .word-lookup-word-row):is(.selected, .active, .is-selected, .is-active, [aria-selected="true"]):not(button) :is(div, span, p, label, td, small, strong, b, i) {
     color: var(--wm-highlight-text, #fff) !important;
     -webkit-text-fill-color: var(--wm-highlight-text, #fff) !important;
 }
@@ -488,7 +491,7 @@
     overflow: hidden;
 }
 
-.wm-studio .wms-tool-host > .modal :is([class*="progress-fill"], [class*="progress-bar"] > [class*="fill"], [class*="meter-fill"], .progress > .progress-bar-inner) {
+.wm-studio .wms-tool-host > .modal :is([class*="progress-fill"], :is(.progress-bar, .file-progress-bar, .loading-progress-bar, .token-progress-bar, .lcd-progress-bar) > [class*="fill"], [class*="meter-fill"], .progress > .progress-bar-inner) {
     height: 100% !important;
     border-radius: 0 !important;
     background: var(--wm-highlight) !important;
@@ -574,7 +577,7 @@
 }
 
 /* captions drawn over a picture (Stage Results' "Stage 0 - Base", Saved) stay white on the image */
-.wm-studio .wms-tool-host > .modal :is(.gallery-item-overlay, [class*="image-overlay"], [class*="caption-overlay"]) :is(div, span, p, small, strong) {
+.wm-studio .wms-tool-host > .modal :is(.gallery-item-overlay, .image-overlay, .caption-overlay) :is(div, span, p, small, strong) {
     color: #fff !important;
     -webkit-text-fill-color: #fff !important;
     text-shadow: 0 0 calc(2 * var(--wm-px)) #000, 0 0 calc(1 * var(--wm-px)) #000 !important;
