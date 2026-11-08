@@ -1,0 +1,14 @@
+{
+    "id": "paypass",
+    "version": "2.4.310",
+    "title": "PayPass Operator",
+    "publisher": "AmusementVISION",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "paypass",
+    "icon": "assets/paypass-48.png",
+    "client": {
+        "entry": "client/paypass.js",
+        "styles": ["assets/paypass.css"]
+    }
+}
