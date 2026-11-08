@@ -45,6 +45,7 @@
     const FILL = 40; // a folder's list loads on until this many rows show (or it ends)
     const MAX_FOLDERS = 24; // the phone's own volume: folders walked
     const SORT_KEY = 'wmFileDialogSort';
+    const VIEW_KEY = 'wmFileDialogPictureView'; // a picture Open's view: 'thumbs' (default) or 'details'
     const NAME_SORT = { field: 'name', dir: 'asc' };
     const BAD_NAME = /[\\/:*?"<>|]/;
     const root = document.documentElement;
@@ -145,6 +146,32 @@
         if (i.targetKind === 'note') return 'app-notes';
         if (i.shortcutType === 'request' || i.shortcutType === 'preset') return 'app-studio';
         return 'fe-file';
+    }
+
+    const isPicture = (i) => i.targetKind === 'image' || i.targetKind === 'scrap' || i.shortcutType === 'image' || /^image\//.test(i.mimeType || '');
+
+    /** A picture's preview: the item's same-site preview path (the phone's own pictures: its preview). */
+    function thumbOf(i) {
+        const u = typeof i.previewUrl === 'string' ? i.previewUrl : '';
+        if (!u) return null;
+        if (i.phoneFile) return /^image\//.test(i.mimeType || '') ? u : null;
+        return /^\/[^/\\]/.test(u) ? u : null;
+    }
+
+    /**
+     * An Open that lists pictures shows them as thumbnails (WM's own picture picker is the Pictures &
+     * Videos grid): the name alone does not tell prints apart. Menu > View switches to Details and back.
+     */
+    function viewOf(d) {
+        if (!d.pics) return 'details';
+        let v = null;
+        try { v = localStorage.getItem(VIEW_KEY); } catch (_) { /* default */ }
+        return v === 'details' ? 'details' : 'thumbs';
+    }
+
+    function setView(d, v) {
+        try { localStorage.setItem(VIEW_KEY, v); } catch (_) { /* this time only */ }
+        render();
     }
 
     function icon(name) {
@@ -482,6 +509,13 @@
         return clientSort(d, out);
     }
 
+    function tileHtml(d, x) {
+        const t = thumbOf(x.item);
+        return `<div class="wfd-item wfd-tile${d.selected === x.item.id ? ' is-selected' : ''}" role="option" data-id="${esc(x.item.id)}" title="${esc(x.item.name)}">`
+            + `<span class="wfd-tthumb">${t ? `<img src="${esc(t)}" alt="" loading="lazy" decoding="async" draggable="false">` : icon(iconOf(x.item))}</span>`
+            + `<span class="wfd-tname">${esc(x.item.name)}</span></div>`;
+    }
+
     function rowHtml(d, x) {
         return `<div class="wfd-item${d.selected === x.item.id ? ' is-selected' : ''}" role="option" data-id="${esc(x.item.id)}">`
             + `<span class="wfd-name">${icon(iconOf(x.item))}<span>${esc(x.item.name)}</span></span>`
@@ -517,6 +551,8 @@
     /** New files of a folder in the server's order: added under the list when it shows that folder. */
     function appendRows(d, path, add) {
         if (!page || dlg !== d || d.kind !== 'open' || d.folder !== path || !add.length) return;
+        const grid = page.querySelector('.wfd-grid');
+        if (grid) { grid.insertAdjacentHTML('beforeend', add.map((x) => tileHtml(d, x)).join('')); return; }
         const table = page.querySelector('.wfd-table');
         if (!table) return;
         table.insertAdjacentHTML('beforeend', add.map((x) => rowHtml(d, x)).join(''));
@@ -581,6 +617,11 @@
             const arrow = (k) => (d.sort.field === k ? `<i class="wfd-sort${d.sort.dir === 'desc' ? ' is-desc' : ''}" aria-hidden="true"></i>` : '');
             const scroll = page.querySelector('.wfd-scroll');
             const keep = scroll ? { top: scroll.scrollTop, left: scroll.scrollLeft } : null;
+            // a list of pictures (or a picture Type) keeps the thumbnails while it pages in
+            const wasPics = d.pics;
+            d.pics = r.length ? r.every((x) => isPicture(x.item)) : (!!d.pics || /picture|image/i.test(d.opts.typeLabel || ''));
+            const thumbs = viewOf(d) === 'thumbs';
+            if (isCurrent() && wasPics !== d.pics) ws.refreshSoftKeys();
             page.innerHTML = `<div class="wfd wfd-open">
                 <div class="wfd-hdr">${title}</div>
                 <div class="wfd-top${many ? ' has-loc' : ''}">
@@ -591,12 +632,12 @@
                     ${many ? `<div class="wfd-row"><span class="wfd-label">Location:</span><button type="button" class="wm-combo" data-dd="location"><span>${esc(locationLabel(d))}</span></button></div>` : ''}
                 </div>
                 <div class="wfd-scroll" role="listbox" aria-label="${title}">
-                    <div class="wfd-table">
+                    ${thumbs ? `<div class="wfd-grid">${r.map((x) => tileHtml(d, x)).join('')}</div>` : `<div class="wfd-table">
                         <div class="wfd-head" role="row">
                             <button type="button" class="wfd-col is-name" data-sort="name">Name${arrow('name')}</button><button type="button" class="wfd-col is-folder" data-sort="folder">Folder${arrow('folder')}</button><button type="button" class="wfd-col is-date" data-sort="date">Date${arrow('date')}</button><button type="button" class="wfd-col is-size" data-sort="size">Size${arrow('size')}</button>
                         </div>
                         ${r.map((x) => rowHtml(d, x)).join('')}
-                    </div>
+                    </div>`}
                     <div class="wfd-tail">${tailHtml(d, r.length)}</div>
                 </div>
             </div>`;
@@ -753,10 +794,41 @@
         const d = dlg;
         if (!d) return { left: null, right: null };
         const extra = (d.opts.extra || []).filter(Boolean);
+        const items = () => {
+            const out = extra.map((x) => ({ label: x.label, action: () => x.action(d) }));
+            if (d.kind === 'open' && d.pics) {
+                const v = viewOf(d);
+                if (out.length) out.push('-');
+                out.push({ label: 'View', submenu: () => [
+                    { label: 'Thumbnails', radio: v === 'thumbs', action: () => setView(d, 'thumbs') },
+                    { label: 'Details', radio: v === 'details', action: () => setView(d, 'details') }
+                ] });
+                // the thumbnails have no column header to sort by
+                if (v === 'thumbs') {
+                    out.push({ label: 'Sort By', submenu: () => [['name', 'Name'], ['folder', 'Folder'], ['date', 'Date'], ['size', 'Size']].map(([k, l]) => ({
+                        label: l, radio: d.sort.field === k, action: () => sortBy(d, k, k === 'date' || k === 'size' ? 'desc' : 'asc')
+                    })) });
+                }
+            }
+            return out;
+        };
+        const any = extra.length || (d.kind === 'open' && d.pics);
         return {
             left: null,
-            right: extra.length ? { label: 'Menu', menu: () => extra.map((x) => ({ label: x.label, action: () => x.action(d) })) } : null
+            right: any ? { label: 'Menu', menu: items } : null
         };
+    }
+
+    /** A new order: the VFS sorts on the server, so it is a new listing (Folder sorts the loaded rows). */
+    function sortBy(d, k, dir) {
+        const was = JSON.stringify(serverSort(d.sort));
+        d.sort = { field: k, dir };
+        try { localStorage.setItem(d.sortKey, JSON.stringify(d.sort)); } catch (_) { /* this time only */ }
+        if (!isClient(d) && JSON.stringify(serverSort(d.sort)) !== was) {
+            const sc = page && page.querySelector('.wfd-scroll');
+            if (sc) sc.scrollTop = 0;
+            void load(d);
+        } else render();
     }
 
     function mount(p) {
@@ -779,15 +851,7 @@
             if (col) {
                 const d = dlg;
                 const k = col.dataset.sort;
-                const was = JSON.stringify(serverSort(d.sort));
-                d.sort = { field: k, dir: d.sort.field === k && d.sort.dir === 'asc' ? 'desc' : 'asc' };
-                try { localStorage.setItem(d.sortKey, JSON.stringify(d.sort)); } catch (_) { /* this time only */ }
-                // the VFS sorts on the server: a new order is a new listing (Folder sorts the loaded rows)
-                if (!isClient(d) && JSON.stringify(serverSort(d.sort)) !== was) {
-                    const sc = page.querySelector('.wfd-scroll');
-                    if (sc) sc.scrollTop = 0;
-                    void load(d);
-                } else render();
+                sortBy(d, k, d.sort.field === k && d.sort.dir === 'asc' ? 'desc' : 'asc');
                 return;
             }
             const row = t.closest('.wfd-item');

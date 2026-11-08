@@ -312,3 +312,60 @@
     background: var(--wm-highlight) !important;
     color: var(--wm-highlight-text) !important;
 }
+
+/* ---- a picture Open as thumbnails (WM's picture picker is the Pictures & Videos grid):
+ * 80 px columns of 61 px cells with #BDBEBD rules, the name under each picture ---- */
+.wm-fd .wfd-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(80 * var(--wm-px)), 1fr));
+}
+
+.wm-fd .wfd-item.wfd-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    padding: calc(3 * var(--wm-px)) calc(3 * var(--wm-px)) calc(2 * var(--wm-px));
+    border-right: calc(1 * var(--wm-px)) solid #bdbebd;
+    border-bottom: calc(1 * var(--wm-px)) solid #bdbebd;
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.wm-fd .wfd-tile > .wfd-tthumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: calc(61 * var(--wm-px));
+    padding: 0;
+    overflow: hidden;
+}
+
+.wm-fd .wfd-tile > .wfd-tthumb > img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* no preview: the file's 32 px icon in the cell */
+.wm-fd .wfd-tile > .wfd-tthumb > img[srcset] {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    object-fit: contain;
+}
+
+.wm-fd .wfd-tile > .wfd-tname {
+    display: block;
+    margin-top: calc(2 * var(--wm-px));
+    padding: 0 calc(1 * var(--wm-px));
+    font: calc(11 * var(--wm-px)) var(--wm-font);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-fd .wfd-tile.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
