@@ -8,7 +8,8 @@
  *   function list   the cabinet's items: State (the status through replace, on an LCD), Control (toggle
  *               buttons, a trackbar, Execute), folders open in place ([+]) with their children
  *   event log   every POLL / CHECK / SEND the server made for this console
- *   dialogs     the item's warning (Reboot Required ...), System Error, Properties, About
+ *   dialogs     warnings and System Error are Melaton message boxes; About, Properties, Network
+ *               Diagnostics and the Capture Viewer are dialog windows the console owns
  *
  * Everything reaches the cabinets through the server (xlink_* packets, modules/xlink.js); the client
  * names a device, an item path and an operation, never a URL.
@@ -20,6 +21,7 @@
 
     const doc = document;
     const VERSION = '3.02.0117';
+    const A = '/melaton-apps/xlink/assets';
     const POLL_S = 60;
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
@@ -28,9 +30,8 @@
     const stamp = (t) => { const d = new Date(t); return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${clock(t)}`; };
 
     /*
-     * menu.json names Font Awesome glyphs (AVS-Menu drew them). The console draws Vista's own 16 px art
-     * for them instead (.cursor/rules/vista-icons-not-fa.mdc); a name with no entry gets the generic
-     * application icon.
+     * menu.json names Font Awesome glyphs (AVS-Menu drew them). The console never draws the glyphs
+     * (.cursor/rules/vista-icons-not-fa.mdc): its own icons below, else Vista's 16 px art for the name.
      */
     const ICONS = {
         joystick: 'vista-cmdbar/programs.png',
@@ -67,8 +68,14 @@
         person: 'vista-cpl/users-16.png',
         'image-landscape': 'vista-cmdbar/picture.png'
     };
-    const iconUrl = (name) => `/static_images/${ICONS[name] || 'vista-icons/application-16.png'}`;
-    const icon = (name) => `<img class="xl-ico" src="${iconUrl(name)}" alt="" width="16" height="16">`;
+    // XLink's own function icons (GPT Image, scripts/generate-app-icon.js, 32 px in assets/icons), one per
+    // name menu.json uses; another name falls back to the Vista art above, then the application icon
+    const OWN_ICONS = new Set(['joystick', 'video', 'camera-viewfinder', 'image-slash', 'sensor-triangle-exclamation', 'light-switch-on',
+        'disc-drive', 'volume-slash', 'speakers', 'ethernet', 'tv', 'credit-card', 'coin-blank', 'lightbulb-cfl-on', 'alarm-exclamation', 'leaf',
+        'circle-nodes', 'lightbulb-exclamation-on', 'pickaxe', 'rotate-exclamation', 'fan', 'hammer', 'lightbulb-on', 'search', 'fingerprint',
+        'person', 'image-landscape']);
+    const iconUrl = (name) => (OWN_ICONS.has(name) ? `/melaton-apps/xlink/assets/icons/${name}.png` : `/static_images/${ICONS[name] || 'vista-icons/application-16.png'}`);
+    const icon = (name) => (name ? `<img class="xl-ico" src="${iconUrl(name)}" alt="" width="16" height="16">` : '<span class="xl-ico"></span>');
 
     /** A colour from menu.json, made safe for a style attribute. */
     const colour = (c) => (/^(#[0-9a-f]{3,8}|[a-z]{3,20})$/i.test(String(c || '').trim()) ? String(c).trim() : '');
@@ -110,20 +117,43 @@
             this.logLines = [];
             this.autoPoll = true;
             this.showLog = true;
+            this.children = new Set();
             this.build();
             void this.boot();
         }
 
+        /**
+         * The console's window, built like the other system packages' (perfmon, wordpad): a stable id and
+         * window identifier set before openModal (so its place and size are remembered), default and
+         * minimum size, the taskbar image, Minimize and Close (the shell adds Maximize to a resizable window), centred on first open, and
+         * registered with programFaults. Closing it ends the app; ending the app closes it.
+         */
         build() {
-            const w = this.app.openWindow({ title: 'XLink Operator Console', width: 900, minWidth: 640 });
-            this.win = w;
-            this.modal = w.modal;
-            this.modal.classList.add('xl-window');
-            // openWindow sizes the width only (the shell falls back to its 150 px minimum height);
-            // the console fills its window, so give it a height unless a saved size is usable
-            this.modal.dataset.windowMinHeight = '420';
-            if (!(parseFloat(this.modal.style.height) >= 420)) this.modal.style.height = `${Math.min(640, root.innerHeight - 80)}px`;
-            w.body.classList.add('xl-root');
+            const m = doc.createElement('div');
+            m.className = 'modal hidden resizeable-window xl-window';
+            m.dataset.windowIdentifier = 'melatonXLink';
+            m.dataset.windowClient = 'light';
+            m.dataset.taskbarIcon = `${A}/xlink-32.png`;
+            m.dataset.windowDefaultWidth = '920';
+            m.dataset.windowDefaultHeight = '660';
+            m.dataset.windowMinWidth = '660';
+            m.dataset.windowMinHeight = '440';
+            m.style.width = '920px';
+            m.style.height = `${Math.min(660, root.innerHeight - 60)}px`;
+            m.setAttribute('role', 'dialog');
+            m.setAttribute('aria-label', 'XLink Operator Console');
+            m.innerHTML = `
+                <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${A}/xlink-16.png" alt=""><span>XLink Operator Console</span></div></div>
+                <div class="modal-focus-overlay"></div>
+                <div class="modal-window-controls">
+                    <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
+                    <button type="button" class="btn-danger close-btn btn-small xl-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+                </div>
+                <div class="modal-content xl-client"><div class="xl-root"></div></div>`;
+            doc.body.appendChild(m);
+            this.modal = m;
+            const body = m.querySelector('.xl-root');
+            const w = { body };
             w.body.innerHTML = `
                 <div class="xl-menubar">
                     <span data-xl-menu="file"><u>F</u>ile</span><span data-xl-menu="cabinet"><u>C</u>abinet</span><span data-xl-menu="view"><u>V</u>iew</span><span data-xl-menu="tools"><u>T</u>ools</span><span data-xl-menu="help"><u>H</u>elp</span>
@@ -137,7 +167,7 @@
                     <span class="xl-tb-sep"></span>
                     <button type="button" class="xl-tb" data-xl="properties" title="Properties"><img src="/static_images/vista-cmdbar/properties.png" alt="">Properties</button>
                     <span class="xl-tb-fill"></span>
-                    <span class="xl-link"><span class="xl-led"></span><span class="xl-link-text">OFFLINE</span></span>
+                    <span class="xl-link" title="XLink: no nodes"><img src="${A}/xlink-logo.png" alt="XLink" width="67" height="20"></span>
                 </div>
                 <div class="xl-main">
                     <div class="xl-tree" tabindex="0"></div>
@@ -154,17 +184,16 @@
                 <div class="xl-status"><span class="xl-st-main">Ready</span><span class="xl-st-nodes">Nodes: 0/0</span><span class="xl-st-poll">Auto poll: ${POLL_S}s</span><span class="xl-st-user">OPERATOR (ADMIN)</span><span class="xl-st-clock"></span></div>
                 <div class="xl-splash">
                     <div class="xl-splash-box">
-                        <div class="xl-splash-band"><span class="xl-splash-x">X</span><span class="xl-splash-name">XLink<small>Operator Console</small></span></div>
+                        <div class="xl-splash-band"><span class="xl-logo-band"><img src="${A}/xlink-logo.png" alt="XLink" width="133" height="39"><small>Operator Console</small></span></div>
                         <div class="xl-splash-body">
-                            <div>AmusementVISION Network Management Suite</div>
+                            <div>AmusementVISION 2024 Network Management Suite</div>
                             <div>Version ${VERSION}</div>
                             <div class="xl-splash-step">Initializing...</div>
                             <div class="xl-splash-bar"><span></span></div>
-                            <div class="xl-splash-copy">Copyright (C) 2004-2011 AmusementVISION. All rights reserved.<br>Licensed to: BlueSteel Arcade</div>
+                            <div class="xl-splash-copy">Copyright (C) 2004-2024 AmusementVISION. All rights reserved.<br>Licensed to: BlueSteel Arcade</div>
                         </div>
                     </div>
                 </div>
-                <div class="xl-dlg-layer hidden"></div>
                 <input type="file" class="xl-file" accept=".json,application/json" hidden>`;
             const q = (s) => w.body.querySelector(s);
             this.el = q;
@@ -210,6 +239,33 @@
             const tick = setInterval(() => this.tick(), 1000);
             this.app.signal.addEventListener('abort', () => clearInterval(tick));
             this.tick();
+            m.querySelector('.xl-close').addEventListener('click', () => this.app.exit(), sig);
+            doc.addEventListener('staticforge:modal-lifecycle', (e) => {
+                if (e && e.detail && e.detail.id === m.id && e.detail.type === 'closed') this.app.exit();
+            }, sig);
+            // before openModal: an id-less window restores the shared 'unknown' geometry
+            m.id = 'melatonXLinkModal';
+            call('openModal', m);
+            m.classList.remove('hidden');
+            let placed = false;
+            const place = () => {
+                if (placed || m.hasAttribute('data-window-position-restored')) return;
+                placed = true;
+                const r = m.getBoundingClientRect();
+                call('setModalOffsetsFromViewportTopLeft', m, Math.max(0, Math.round((root.innerWidth - r.width) / 2)), Math.max(0, Math.round((root.innerHeight - 35 - r.height) / 2)));
+            };
+            requestAnimationFrame(place);
+            setTimeout(place, 60);
+            if (root.programFaults && root.programFaults.registerProgram) {
+                root.programFaults.registerProgram(m.id, { name: 'XLink Operator Console', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'xlink' }) });
+            }
+        }
+
+        destroy() {
+            this.children.forEach((c) => c.close());
+            try { call('closeModal', this.modal); } catch (_) { /* gone */ }
+            const m = this.modal;
+            setTimeout(() => m.remove(), 400);
         }
 
         splitter(bar, left) {
@@ -368,9 +424,10 @@
             t.innerHTML = html;
             const online = this.devices.filter((d) => d.status && !d.status.failed).length;
             this.el('.xl-st-nodes').textContent = `Nodes: ${online}/${this.devices.length}`;
+            // the XLink plate is lit while a node answers, dark when none does
             const link = this.el('.xl-link');
             link.classList.toggle('is-up', this.devices.length > 0 && online > 0);
-            this.el('.xl-link-text').textContent = this.devices.length ? (online ? 'LINK' : 'NO NODES') : 'OFFLINE';
+            link.title = this.devices.length ? (online ? `XLink: ${online} node(s) linked` : 'XLink: no nodes answering') : 'XLink: offline';
         }
 
         treeKey(ev) {
@@ -444,13 +501,7 @@
             const twisty = folder ? `<button type="button" class="xl-twisty" data-xl="open" data-path="${path}">${opened ? '-' : '+'}</button>` : '<span class="xl-twisty-sp"></span>';
             let ctl = '';
             if (it.toggle) {
-                ctl = `<span class="xl-toggle">${it.toggle.map((t, i) => {
-                    const bg = colour(t.bg);
-                    const fg = colour(t.color) || (bg ? ink(bg) : '');
-                    const st = t.active && bg ? ` style="background:${bg};color:${fg}"` : '';
-                    const face = t.icon ? `<img src="${iconUrl(t.icon)}" alt="${esc(t.label)}" width="16" height="16">` : esc(t.label);
-                    return `<button type="button" class="xl-tgl${t.active ? ' is-on' : ''}" data-xl="toggle" data-path="${path}" data-value="${i}"${st} title="${esc(t.label)}">${face}</button>`;
-                }).join('')}</span>`;
+                ctl = this.switches(it, path);
             } else if (it.kind === 'slider') {
                 const v = Math.max(0, Math.min(100, parseInt(it.status && it.status.text, 10) || 0));
                 ctl = it.status && !it.status.failed
@@ -469,6 +520,29 @@
                 <span class="xl-c-state">${state}</span>
                 <span class="xl-c-ctl">${ctl}</span>
             </div>`;
+        }
+
+        /**
+         * A function's switch, drawn as panel hardware: a plain I / O pair is a rocker switch (the pressed
+         * half is the lit position); any other set is a bank of illuminated push keys on a bezel, the lit
+         * key's lamp in the menu's colour (bg), green when the menu gives none.
+         */
+        switches(it, path) {
+            const t = it.toggle;
+            const lampOf = (b) => colour(b.bg) || (b.active ? '#39ff5a' : '');
+            if (t.length === 2 && t[0].label === 'I' && t[1].label === 'O' && !t[0].icon && !t[1].icon) {
+                const on = t[0].active;
+                const off = t[1].active;
+                const lit = on ? t[0] : off ? t[1] : null;
+                const lamp = lit ? lampOf(lit) : '';
+                return `<span class="xl-rocker${on ? ' is-on' : off ? ' is-off' : ''}"${lamp ? ` style="--lamp:${lamp}"` : ''}>
+                    <button type="button" class="xl-rk xl-rk-i" data-xl="toggle" data-path="${path}" data-value="0" title="I (On)">I</button><button type="button" class="xl-rk xl-rk-o" data-xl="toggle" data-path="${path}" data-value="1" title="O (Off)">O</button></span>`;
+            }
+            return `<span class="xl-panel">${t.map((b, i) => {
+                const lamp = b.active ? lampOf(b) : '';
+                const face = b.icon ? `<img src="${iconUrl(b.icon)}" alt="${esc(b.label)}" width="16" height="16">` : esc(b.label);
+                return `<button type="button" class="xl-key${b.active ? ' is-lit' : ''}" data-xl="toggle" data-path="${path}" data-value="${i}" title="${esc(b.label)}"${lamp ? ` style="--lamp:${lamp}"` : ''}><span class="xl-lamp"></span><span class="xl-cap">${face}</span></button>`;
+            }).join('')}</span>`;
         }
 
         listClick(ev) {
@@ -666,7 +740,11 @@
             const url = `/xlink/captures/${encodeURIComponent(name)}`;
             void this.dialog({
                 title: `Capture Viewer - ${name}`,
+                kind: 'viewer',
                 cls: 'xl-viewer',
+                resizable: true,
+                width: Math.min(1100, root.innerWidth - 80),
+                height: Math.min(760, root.innerHeight - 100),
                 body: `<div class="xl-viewer-img"><img src="${url}" alt=""></div>`,
                 buttons: [{ text: 'Save As...', value: 'save' }, { text: 'Close', value: 'close', def: true }]
             }).then((v) => {
@@ -680,56 +758,103 @@
 
         // ---------------------------------------------------------------- dialogs
 
-        /** An in-window Win2000-style dialog. Resolves with the button value (null on close). */
+        /**
+         * A dialog window of the console's own (About, Properties, Network Diagnostics, Capture Viewer): a
+         * real desktop window owned by the console (its caption takes the console's icon, centred on it),
+         * fixed size, the console's grey client inside. Resolves with the button value (null on close).
+         */
         dialog(o) {
-            const layer = this.el('.xl-dlg-layer');
-            layer.classList.remove('hidden');
-            this.dialogOpen = (this.dialogOpen || 0) + 1;
-            const box = doc.createElement('div');
-            box.className = `xl-dlg ${o.cls || ''}`;
-            box.innerHTML = `
-                <div class="xl-dlg-cap"><span>${esc(o.title)}</span><button type="button" class="xl-dlg-x" title="Close">x</button></div>
-                <div class="xl-dlg-body">${o.body}</div>
-                <div class="xl-dlg-btns">${o.buttons.map((b) => `<button type="button" class="xl-btn${b.def ? ' is-def' : ''}" data-v="${esc(b.value)}">${esc(b.text)}</button>`).join('')}</div>`;
-            layer.appendChild(box);
-            const def = box.querySelector('.is-def') || box.querySelector('.xl-dlg-btns button');
-            setTimeout(() => def && def.focus(), 0);
+            const id = `melatonXLinkDialog-${++dialogSeq}`;
+            const m = doc.createElement('div');
+            m.className = `modal hidden on-top xl-window xl-child ${o.cls || ''}`;
+            m.id = id;
+            m.dataset.windowIdentifier = `melatonXLink-${o.kind || 'dialog'}`;
+            m.dataset.windowRestorePosition = 'false';
+            m.dataset.windowRestoreSize = 'false';
+            m.dataset.windowFixedSize = o.resizable ? 'false' : 'true';
+            if (o.resizable) m.classList.add('resizeable-window');
+            m.dataset.windowClient = 'light';
+            m.dataset.iconOwnerId = this.modal.id;
+            m.dataset.parentModalId = this.modal.id;
+            m.dataset.taskbarIcon = `${A}/xlink-32.png`;
+            if (o.width) { m.style.width = `${o.width}px`; m.dataset.windowDefaultWidth = String(o.width); }
+            if (o.height) { m.style.height = `${o.height}px`; m.dataset.windowDefaultHeight = String(o.height); }
+            m.setAttribute('role', 'dialog');
+            m.setAttribute('aria-label', o.title);
+            m.innerHTML = `
+                <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${A}/xlink-16.png" alt=""><span>${esc(o.title)}</span></div></div>
+                <div class="modal-focus-overlay"></div>
+                <div class="modal-window-controls"><button type="button" class="btn-danger close-btn btn-small xl-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button></div>
+                <div class="modal-content xl-client"><div class="xl-root xl-dlg">
+                    <div class="xl-dlg-body">${o.body}</div>
+                    <div class="xl-dlg-btns">${o.buttons.map((b) => `<button type="button" class="xl-btn${b.def ? ' is-def' : ''}" data-v="${esc(b.value)}">${esc(b.text)}</button>`).join('')}</div>
+                </div></div>`;
+            doc.body.appendChild(m);
             return new Promise((resolve) => {
-                const done = (v) => {
-                    box.remove();
-                    this.dialogOpen--;
-                    if (!layer.childElementCount) layer.classList.add('hidden');
+                let done = false;
+                const ctl = new AbortController();
+                const finish = (v) => {
+                    if (done) return;
+                    done = true;
+                    ctl.abort();
+                    this.children.delete(handle);
+                    try { call('closeModal', m); } catch (_) { /* gone */ }
+                    setTimeout(() => m.remove(), 400);
                     resolve(v);
                 };
-                box.addEventListener('click', (ev) => {
+                const handle = { close: () => finish(null) };
+                this.children.add(handle);
+                m.addEventListener('click', (ev) => {
                     const b = ev.target.closest('[data-v]');
-                    if (b) done(b.dataset.v);
-                    else if (ev.target.closest('.xl-dlg-x')) done(null);
+                    if (b) finish(b.dataset.v);
+                    else if (ev.target.closest('.xl-close')) finish(null);
+                }, { signal: ctl.signal });
+                m.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Escape') { ev.stopPropagation(); finish(null); }
+                }, { signal: ctl.signal });
+                doc.addEventListener('staticforge:modal-lifecycle', (e) => {
+                    if (e && e.detail && e.detail.id === id && e.detail.type === 'closed') finish(null);
+                }, { signal: ctl.signal });
+                call('openModal', m);
+                m.classList.remove('hidden');
+                requestAnimationFrame(() => {
+                    const r = m.getBoundingClientRect();
+                    const o2 = this.modal.getBoundingClientRect();
+                    call('setModalOffsetsFromViewportTopLeft', m, Math.max(0, Math.round(o2.left + (o2.width - r.width) / 2)), Math.max(0, Math.round(o2.top + (o2.height - r.height) / 2)));
+                    const def = m.querySelector('.is-def') || m.querySelector('.xl-dlg-btns button');
+                    if (def) def.focus({ preventScroll: true });
                 });
-                box.addEventListener('keydown', (ev) => {
-                    if (ev.key === 'Escape') { ev.stopPropagation(); done(null); }
-                });
-                this.app.signal.addEventListener('abort', () => done(null));
             });
         }
 
+        /**
+         * Message boxes are the system's (a 2011 program calls MessageBox): Melaton's message box with the
+         * warning or error icon, titled with the program's name.
+         */
+        async messageBox(text, buttons, kind) {
+            this.dialogOpen = (this.dialogOpen || 0) + 1;
+            try {
+                return await call('showConfirmationDialog', `<p>${esc(text).replace(/\n/g, '<br>')}</p>`, buttons, null, {
+                    title: 'XLink Operator Console',
+                    icon: kind === 'error' ? 'fas fa-circle-xmark' : 'fas fa-triangle-exclamation',
+                    width: 400
+                });
+            } finally {
+                this.dialogOpen--;
+            }
+        }
+
         async confirm(w, it) {
-            // message box art: a red icon_color reads as Vista's error icon, anything else as the warning
-            const art = /^(red|#f00|#ff0000)$/i.test(w.iconColor) ? 'msgbox-error-32' : 'msgbox-warning-32';
-            const v = await this.dialog({
-                title: `XLink - ${it ? it.text : 'Confirm'}`,
-                body: `<div class="xl-msg"><img class="xl-msg-ico" src="/static_images/vista-icons/${art}.png" alt=""><div><b>${esc(w.header)}</b><p>${esc(w.message)}</p></div></div>`,
-                buttons: [{ text: w.ok || 'OK', value: 'ok' }, { text: 'Cancel', value: 'cancel', def: true }]
-            });
+            const text = `${w.header}\n\n${w.message}${it ? `\n\nFunction: ${it.text}` : ''}`;
+            const v = await this.messageBox(text, [
+                { text: w.ok || 'OK', value: 'ok', className: 'btn-standard' },
+                { text: 'Cancel', value: null, className: 'btn-standard primary' }
+            ], /^(red|#f00|#ff0000)$/i.test(w.iconColor) ? 'error' : 'warning');
             return v === 'ok';
         }
 
         async error(message) {
-            await this.dialog({
-                title: 'XLink - System Error',
-                body: `<div class="xl-msg"><img class="xl-msg-ico" src="/static_images/vista-icons/msgbox-error-32.png" alt=""><div><b>System Error</b><p>${esc(message)}</p></div></div>`,
-                buttons: [{ text: 'OK', value: 'ok', def: true }]
-            });
+            await this.messageBox(`System Error\n\n${message}`, [{ text: 'OK', value: true, className: 'btn-standard primary' }], 'error');
         }
 
         properties() {
@@ -752,13 +877,14 @@
             } else {
                 body = `<table class="xl-props"><tr><th>Cabinets</th><td>${this.devices.length}</td></tr><tr><th>Poll interval</th><td>${POLL_S} s</td></tr><tr><th>Console</th><td>${VERSION}</td></tr></table>`;
             }
-            void this.dialog({ title: 'Properties', body, buttons: [{ text: 'OK', value: 'ok', def: true }] });
+            void this.dialog({ title: 'Properties', kind: 'properties', body, buttons: [{ text: 'OK', value: 'ok', def: true }] });
         }
 
         async diagnostics() {
             const lines = this.devices.map((d) => `${d.key.toUpperCase().padEnd(8)} ${d.name.padEnd(14)} ${d.status ? (d.status.failed ? 'NO RESPONSE' : `UP   ${d.status.text}`) : 'NO STATUS'}`);
             void this.dialog({
                 title: 'Network Diagnostics',
+                kind: 'diagnostics',
                 body: `<pre class="xl-pre">XLINK NETWORK DIAGNOSTICS\n-------------------------\nNODE     CABINET        RESULT\n${esc(lines.join('\n'))}\n\n${this.devices.filter((d) => d.status && !d.status.failed).length} of ${this.devices.length} node(s) responding.</pre>`,
                 buttons: [{ text: 'OK', value: 'ok', def: true }]
             });
@@ -767,9 +893,10 @@
         about() {
             void this.dialog({
                 title: 'About XLink Operator Console',
+                kind: 'about',
                 cls: 'xl-about',
-                body: `<div class="xl-about-band"><span class="xl-splash-x">X</span><span class="xl-splash-name">XLink<small>Operator Console</small></span></div>
-                    <div class="xl-about-text">AmusementVISION Network Management Suite<br>Version ${VERSION} (Build 2011/03/12)<br>Copyright (C) 2004-2011 AmusementVISION.<br>All rights reserved.<br><br>Licensed to: BlueSteel Arcade<br>Serial: AVSX-0302-7738-1145<br><br>Node table: ${this.devices.length} cabinet(s)</div>`,
+                body: `<div class="xl-about-band"><span class="xl-logo-band"><img src="${A}/xlink-logo.png" alt="XLink" width="133" height="39"><small>Operator Console</small></span></div>
+                    <div class="xl-about-text">AmusementVISION 2024 Network Management Suite<br>Version ${VERSION} (Build 2024/03/12)<br>Copyright (C) 2004-2024 AmusementVISION.<br>All rights reserved.<br><br>Licensed to: BlueSteel Arcade<br>Serial: AVSX-0302-7738-1145<br><br>Node table: ${this.devices.length} cabinet(s)</div>`,
                 buttons: [{ text: 'OK', value: 'ok', def: true }]
             });
         }
@@ -796,12 +923,13 @@
     }
 
     let running = null;
+    let dialogSeq = 0;
 
     function start(app) {
         if (running) { call('bringModalToFront', running.modal); app.exit(); return; }
         const c = new Console(app);
         running = c;
-        app.onExit(() => { if (running === c) running = null; });
+        app.onExit(() => { if (running === c) running = null; c.destroy(); });
     }
 
     root.melatonXLink = { start, _running: () => running };

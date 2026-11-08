@@ -7790,17 +7790,21 @@ const START_MENU_PACKAGE_APPS = [
     ['expanders', 'Expanders'],
     ['presets', 'Spellbook']
 ];
-const START_MENU_PACKAGE_IDS = new Set(START_MENU_PACKAGE_APPS.map((pair) => pair[0]));
+// Other publishers' program folders, the same way (Yozora #719: the AmusementVISION suite's XLink)
+const START_MENU_VENDOR_FOLDERS = [
+    { folderId: 'amusementvision-2024', text: 'AmusementVISION 2024', apps: [['xlink', 'XLink Operator Console']] }
+];
+const START_MENU_PACKAGE_IDS = new Set(START_MENU_PACKAGE_APPS.concat(...START_MENU_VENDOR_FOLDERS.map((f) => f.apps)).map((pair) => pair[0]));
 
 function isStartMenuPackageApp(item) {
     return !!item && START_MENU_PACKAGE_IDS.has(item.launchId);
 }
 
-function getStartMenuPackageItems() {
+function getStartMenuPackageItems(apps = START_MENU_PACKAGE_APPS) {
     const byId = new Map();
     getAllAppsMenuItems().concat(flattenToolsSubmenuItems(buildToolsSubmenuItems()))
         .forEach((item) => { if (isStartMenuPackageApp(item) && !byId.has(item.launchId)) byId.set(item.launchId, item); });
-    return START_MENU_PACKAGE_APPS
+    return apps
         .map(([launchId, label]) => {
             const item = byId.get(launchId);
             return item && isStartMenuItemLaunchable(item) ? { ...item, text: label, fullName: label } : null;
@@ -7825,9 +7829,10 @@ function getStartMenuProgramsTree() {
             ? { folder: true, folderId: `custom-${item.folderId}`, text: item.text, children: (item.customFolderItems || []).filter((child) => !isStartMenuPackageApp(child)) }
             : item));
     if (!custom) entries.sort(byStartMenuLabel);
-    // folders after the apps, by name: Accessories, Dreamscape 2026 R7
+    // folders after the apps, by name: Accessories, Dreamscape 2026 R7, then other publishers' (AmusementVISION 2024)
     entries.push({ folder: true, folderId: 'accessories', text: 'Accessories', children: getStartMenuAccessoriesItems() });
     entries.push({ folder: true, folderId: 'dreamscape-r7', text: START_MENU_PACKAGE_FOLDER, children: getStartMenuPackageItems() });
+    START_MENU_VENDOR_FOLDERS.forEach((f) => entries.push({ folder: true, folderId: f.folderId, text: f.text, children: getStartMenuPackageItems(f.apps) }));
     entries.push({ folder: true, folderId: 'games', text: 'Games', children: startMenuGameLaunchables.filter(isStartMenuItemLaunchable).sort(byStartMenuLabel) });
     return entries.filter((entry) => !entry.folder || entry.children.length > 0);
 }
