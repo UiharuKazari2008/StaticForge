@@ -2130,9 +2130,28 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
 .wm-studio #manualModal .prompt-textarea-toolbar .toolbar-btn,
 .wm-studio #manualModal .prompt-textarea-toolbar .emphasis-btn {
     width: calc(24 * var(--wm-px)) !important;
-    min-width: 0 !important;
+    min-width: calc(24 * var(--wm-px)) !important;
     height: calc(22 * var(--wm-px)) !important;
     padding: 0 !important;
+    /* a narrow strip wraps the buttons; it never squeezes them (they shrank to 10 px and overlapped) */
+    flex: 0 0 auto !important;
+}
+
+/* every button group in the strip wraps too (the regular buttons sat in a no-wrap row) */
+.wm-studio #manualModal .prompt-textarea-toolbar :is(.toolbar-regular-buttons, .toolbar-buttons, .toolbar-actions) {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    flex: 0 1 auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    gap: calc(2 * var(--wm-px)) !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar .custom-dropdown {
+    flex: 0 0 auto !important;
+    /* a block wrapper filled the row, one button per line: it is as wide as its button */
+    width: max-content !important;
+    min-width: 0 !important;
 }
 
 /* the emphasis bar (New Group, its weight, + - [ ] apply cancel) as WM controls: black label,
