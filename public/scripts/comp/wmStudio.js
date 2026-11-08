@@ -99,12 +99,43 @@
         lightOverlays();
         modelName();
         steppers();
+        stagePercents();
         foldSections();
         pairsLayout();
         diceBySeed();
         resolutionDims();
         watchPopupDecor();
         return true;
+    }
+
+    // ---------------------------------------------------------------- the stages' percent fields
+
+    /**
+     * A pipeline stage's Strength / Noise (and any other percent field on the Images page) are the
+     * same 0..1 input under a "NN%" overlay as Rescale: each gets the WM percent edit box
+     * (percentProxy), stages added later too.
+     */
+    let stagesWatched = false;
+    function stagePercents() {
+        const box = document.getElementById('pipelineStagesContainer');
+        const row = document.getElementById('transformationRow');
+        const scan = () => [box, row].forEach((root) => {
+            if (!root) return;
+            root.querySelectorAll('.percentage-input-container:not(.wms-pct-host)').forEach((field) => {
+                const input = field.querySelector('input');
+                if (input) percentProxy(input, field);
+            });
+        });
+        scan();
+        if (stagesWatched || typeof MutationObserver !== 'function') return;
+        stagesWatched = true;
+        let queued = false;
+        const mo = new MutationObserver(() => {
+            if (queued) return;
+            queued = true;
+            requestAnimationFrame(() => { queued = false; scan(); });
+        });
+        [box, row].forEach((root) => { if (root) mo.observe(root, { childList: true, subtree: true }); });
     }
 
     // ---------------------------------------------------------------- Settings: pairs or one per row
@@ -475,16 +506,21 @@
         px.spellcheck = false;
         px.setAttribute('aria-label', (input.getAttribute('aria-label') || input.id || 'Value') + ' (percent)');
         const pct = () => {
+            if (String(input.value).trim() === '') return ''; // empty: inherited (a stage's Strength)
             const v = Number(input.value);
             if (!Number.isFinite(v)) return '';
             return String(Math.round(v * 1000) / 10);
         };
+        const ov = field.querySelector('.percentage-input-overlay');
         let typing = false; // the user's own keys since the box took focus: leave their text alone
         const show = () => {
             px.disabled = !!input.disabled;
             if (typing) return;
             const p = pct();
             px.value = p === '' ? '' : document.activeElement === px ? p : `${p}%`;
+            // an empty field shows what it inherits (a stage's Strength: the overlay's "50%"), greyed
+            const ovText = ov ? ov.textContent.trim() : '';
+            px.placeholder = p === '' ? ovText : '';
         };
         const commit = () => {
             if (!typing) { show(); return; }
@@ -513,7 +549,6 @@
         });
         // the desktop sets the field from presets, the wheel steps, locks: follow it
         ['input', 'change'].forEach((t) => input.addEventListener(t, show));
-        const ov = field.querySelector('.percentage-input-overlay');
         if (ov && typeof MutationObserver === 'function') new MutationObserver(show).observe(ov, { childList: true, characterData: true, subtree: true });
         new MutationObserver(show).observe(input, { attributes: true, attributeFilter: ['disabled', 'value'] });
         field.classList.add('wms-pct-host');

@@ -2204,3 +2204,208 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
     color: var(--wm-highlight-text, #fff);
     -webkit-text-fill-color: var(--wm-highlight-text, #fff);
 }
+
+/* ======================================================================
+ * Images page: base image / references and the pipeline stages as WM form rows. The desktop's
+ * section labels and stage names were pale cyan caps (unreadable on white) and a stage's
+ * controls ran off the right edge at 360 / 390 px: black text, rows that wrap.
+ * ====================================================================== */
+.wm-studio[data-tab="images"] #manualModal :is(#transformationRow, #pipelineStagesSection) :is(label, .stage-type-label, .stage-type-label :not(i), .stage-hex-id, .character-name-input-placeholder, .section-label, span:not([class*="fa-"]):not([class*="nai-"])) {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    font-family: var(--wm-font) !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    font-weight: normal !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    text-shadow: none !important;
+    opacity: 1 !important;
+}
+
+/* "Pipeline Stages": a WM section head (bold over a rule) */
+.wm-studio[data-tab="images"] #manualModal #pipelineStagesHeader {
+    display: block !important;
+    height: auto !important;
+    margin: calc(6 * var(--wm-px)) 0 calc(4 * var(--wm-px)) !important;
+    padding: 0 0 calc(1 * var(--wm-px)) !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal #pipelineStagesSection > #pipelineStagesHeader > label {
+    display: block !important;
+    height: auto !important;
+    font-weight: bold !important;
+    line-height: calc(15 * var(--wm-px)) !important;
+}
+
+/* a stage: its name (bold) and buttons on top, wrapping; the fields under it, wrapping */
+.wm-studio[data-tab="images"] #manualModal .pipeline-stage-item,
+.wm-studio[data-tab="images"] #manualModal .pipeline-stage-holder {
+    margin: 0 0 calc(4 * var(--wm-px)) !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .pipeline-stage-holder {
+    display: block !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #c0c0c0 !important;
+    padding-bottom: calc(4 * var(--wm-px)) !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-header {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: calc(3 * var(--wm-px)) !important;
+    height: auto !important;
+    margin: 0 0 calc(3 * var(--wm-px)) !important;
+    padding: 0 !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-header .workspace-drag-handle {
+    display: none !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-type-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: calc(4 * var(--wm-px)) !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-type-label :is(.character-name-input-placeholder, .stage-hex-id) {
+    font-weight: bold !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-type-label > i {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    font-size: calc(11 * var(--wm-px)) !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-controls {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: calc(2 * var(--wm-px)) !important;
+    margin-left: auto !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-controls > button,
+.wm-studio[data-tab="images"] #manualModal #transformationRow button.btn-small {
+    width: calc(24 * var(--wm-px)) !important;
+    min-width: 0 !important;
+    height: calc(22 * var(--wm-px)) !important;
+    padding: 0 !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-body :is(.form-row, .group-controls-container, .stage-controls-section) {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: flex-start !important;
+    gap: calc(4 * var(--wm-px)) calc(6 * var(--wm-px)) !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-body .form-group {
+    flex: 0 0 auto !important;
+    max-width: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: calc(2 * var(--wm-px)) !important;
+    width: auto !important;
+    min-width: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-body .form-group > label {
+    text-align: left !important;
+    justify-content: flex-start !important;
+    height: auto !important;
+    line-height: calc(14 * var(--wm-px)) !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-body :is(input.form-control, .percentage-input-container):not(.wms-pct) {
+    width: calc(54 * var(--wm-px)) !important;
+    min-width: 0 !important;
+    height: calc(20 * var(--wm-px)) !important;
+    min-height: 0 !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-body .group-seed > div {
+    display: flex !important;
+    gap: calc(2 * var(--wm-px)) !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-body .group-seed input.form-control {
+    width: calc(110 * var(--wm-px)) !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-body :is(.custom-dropdown, .resolution-group) {
+    width: calc(100 * var(--wm-px)) !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .stage-body .stage-controls-section + .stage-controls-section {
+    margin-top: calc(4 * var(--wm-px)) !important;
+}
+
+/* the base image card: no grey glass frame, WM buttons */
+.wm-studio[data-tab="images"] #manualModal #transformationRow :is(.transformation-image-container, .reference-image-container, [class*="image-card"]) {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+}
+
+/* the base image: a "Base Image" section head, the picture in a 1 px black frame on white, the
+ * img2img mark as a plain WM glyph box (no translucent teal tile) */
+.wm-studio[data-tab="images"] #manualModal #transformationSection {
+    background: none !important;
+    border: 0 !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal #transformationRow:not(.hidden)::before {
+    content: 'Base Image';
+    display: block;
+    flex: 0 0 100%;
+    margin: calc(6 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+    padding: 0 0 calc(1 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    color: #000;
+    font: bold calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font);
+}
+
+.wm-studio[data-tab="images"] #manualModal #transformationRow,
+.wm-studio[data-tab="images"] #manualModal #transformationRow > #transformationSection {
+    flex-wrap: wrap !important;
+    height: auto !important;
+    max-height: none !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .variation-image-container {
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .variation-image-container .overlay-icon-container {
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: var(--wm-tint) !important;
+    opacity: 1 !important;
+}
+
+.wm-studio[data-tab="images"] #manualModal .mask-bias-grid {
+    border-radius: 0 !important;
+}
+
+/* no stages: no "Pipeline Stages" head over nothing (the page shows its "No images" text) */
+.wm-studio[data-tab="images"] #manualModal #pipelineStagesSection:not(:has(.pipeline-stage-item)) {
+    display: none !important;
+}

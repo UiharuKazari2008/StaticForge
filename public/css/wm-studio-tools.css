@@ -467,11 +467,13 @@
 }
 
 /* rows of buttons (tool bars, action rows) wrap at 360 px instead of running off the page */
-.wm-studio .wms-tool-host > .modal :is([class*="toolbar"], [class*="actions"], [class*="header"], [class*="controls"], .button-row, .btn-row):not(.modal-window-title-toolbar) {
+.wm-studio .wms-tool-host > .modal :is([class*="toolbar"], [class*="actions"], [class*="header"], [class*="controls"], [class*="command-set"], [class*="button-group"], .button-row, .btn-row):not(.modal-window-title-toolbar) {
     flex-wrap: wrap !important;
     row-gap: calc(3 * var(--wm-px)) !important;
     max-width: 100%;
     min-width: 0;
+    height: auto !important;
+    overflow: visible !important;
 }
 
 /* ---- progress bars / meters: WM's 1 px black frame, the highlight colour as the fill ---- */
