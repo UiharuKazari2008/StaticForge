@@ -2820,6 +2820,30 @@ html.disable-blur .director-attach-chip {
     white-space: pre-wrap;
 }
 
+/* GFM pipe tables (director.js processMarkdown): a plain grid in the text's own colours */
+.director-md-table {
+    display: block;
+    max-width: 100%;
+    margin: 6px 0;
+    overflow-x: auto;
+    border-collapse: collapse;
+    font-size: 0.95em;
+    line-height: 1.35;
+}
+
+.director-md-table th,
+.director-md-table td {
+    padding: 3px 8px;
+    border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+    text-align: left;
+    vertical-align: top;
+}
+
+.director-md-table th {
+    font-weight: 600;
+    background: color-mix(in srgb, currentColor 7%, transparent);
+}
+
 .director-message-content a,
 .director-message-primary-focus a,
 .director-message-issues a {

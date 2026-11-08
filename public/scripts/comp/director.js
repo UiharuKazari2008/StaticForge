@@ -1054,28 +1054,12 @@ class Director {
     modelMenuItems() {
         if (this.modelCatalog.length && !this.modelCatalog[0].provider) this._modelsRequested = 0;
         this.requestDirectorModels();
-        const order = ['Cursor', 'Anthropic', 'OpenAI', 'Google', 'Moonshot', 'Meta', 'Z.ai', 'Other'];
         if (!this.modelCatalog.length && this._modelCatalogError) {
             return [{ text: this._modelCatalogError, disabled: () => true }];
         }
-        const models = (this.modelCatalog.length
+        const models = this.sortModelsByProvider(this.modelCatalog.length
             ? this.modelCatalog.slice()
-            : [{ id: this.selectedModel || this.defaultModel(), name: this.selectedModelName(), provider: { claude: 'Anthropic', tokenrouter: 'Other' }[this.activeEngine()] || 'Cursor', cost: 2, price: '' }]
-        ).sort((a, b) => {
-            const ap = order.indexOf(this.modelProvider(a));
-            const bp = order.indexOf(this.modelProvider(b));
-            const ai = ap < 0 ? order.length : ap;
-            const bi = bp < 0 ? order.length : bp;
-            if (ai !== bi) return ai - bi;
-            // TokenRouter brings providers past the known list; keep each one together.
-            if (ai === order.length) {
-                const byProvider = this.modelProvider(a).localeCompare(this.modelProvider(b));
-                if (byProvider) return byProvider;
-            }
-            const released = (Number(b.released) || 0) - (Number(a.released) || 0);
-            if (released) return released;
-            return String(a.name || '').localeCompare(String(b.name || ''));
-        });
+            : [{ id: this.selectedModel || this.defaultModel(), name: this.selectedModelName(), provider: { claude: 'Anthropic', tokenrouter: 'Other' }[this.activeEngine()] || 'Cursor', cost: 2, price: '' }]);
         const items = [];
         let provider = '';
         models.forEach((model) => {
@@ -1094,6 +1078,26 @@ class Director {
             });
         });
         return items;
+    }
+
+    // Model pickers group by provider (one heading each), newest first inside a provider.
+    sortModelsByProvider(models) {
+        const order = ['Cursor', 'Anthropic', 'OpenAI', 'Google', 'Moonshot', 'Meta', 'Z.ai', 'Other'];
+        return models.slice().sort((a, b) => {
+            const ap = order.indexOf(this.modelProvider(a));
+            const bp = order.indexOf(this.modelProvider(b));
+            const ai = ap < 0 ? order.length : ap;
+            const bi = bp < 0 ? order.length : bp;
+            if (ai !== bi) return ai - bi;
+            // TokenRouter brings providers past the known list; keep each one together.
+            if (ai === order.length) {
+                const byProvider = this.modelProvider(a).localeCompare(this.modelProvider(b));
+                if (byProvider) return byProvider;
+            }
+            const released = (Number(b.released) || 0) - (Number(a.released) || 0);
+            if (released) return released;
+            return String(a.name || '').localeCompare(String(b.name || ''));
+        });
     }
 
     selectedModelName() {
@@ -6262,7 +6266,7 @@ class Director {
             card.classList.toggle('is-rescored', changed);
             if (changed) status.textContent = 'Rescored. Sends with your next message, or Submit now.';
             else if (report.review) status.textContent = 'Reviewed.';
-            else status.textContent = 'Click a score to change it.';
+            else status.textContent = window.uiShell === 'mobile' ? 'Tap a score to change it.' : 'Click a score to change it.';
             list.querySelectorAll('[data-report-row]').forEach((row) => {
                 const at = Number(row.dataset.reportRow);
                 row.dataset.score = scores[at];
@@ -8902,7 +8906,8 @@ class Director {
     retryMenuConfig(choice, repaint) {
         const director = this;
         const familyItems = () => {
-            const models = director.catalogFor(choice.engine);
+            // grouped like the header's Model menu (a heading per provider, not one per row change)
+            const models = director.sortModelsByProvider(director.catalogFor(choice.engine));
             if (!models.length) {
                 director.requestDirectorModels(choice.engine);
                 return [{ text: 'Loading models...', disabled: () => true }];
@@ -9177,7 +9182,22 @@ class Director {
             out.push(list === 'ol' ? '</ol>' : '</ul>');
             list = null;
         };
-        lines.forEach((line, index) => {
+        // GFM pipe tables (| a | b | over |---|---|): a header row, the rule, then body rows
+        const tableRow = /^\s*\|.*\|\s*$/;
+        const tableRule = /^\s*\|?(\s*:?-{3,}:?\s*\|)+\s*(:?-{3,}:?\s*)?\|?\s*$/;
+        const cells = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+        for (let index = 0; index < lines.length; index++) {
+            const line = lines[index];
+            if (tableRow.test(line) && index + 1 < lines.length && tableRule.test(lines[index + 1])) {
+                closeList();
+                const head = cells(line);
+                const rows = [];
+                let next = index + 2;
+                while (next < lines.length && tableRow.test(lines[next])) rows.push(cells(lines[next++]));
+                out.push(`<table class="director-md-table"><thead><tr>${head.map((cell) => `<th>${cell}</th>`).join('')}</tr></thead><tbody>${rows.map((row) => `<tr>${head.map((_, col) => `<td>${row[col] || ''}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+                index = next - 1;
+                continue;
+            }
             const bullet = /^(?:[-*])\s+(.*)$/.exec(line);
             const numbered = /^\d+\.\s+(.*)$/.exec(line);
             if (bullet || numbered) {
@@ -9188,12 +9208,13 @@ class Director {
                     list = kind;
                 }
                 out.push(`<li>${(numbered || bullet)[1]}</li>`);
-                return;
+                continue;
             }
             closeList();
-            if (index > 0) out.push('<br>');
+            // a table already ends its block: no extra line break after it
+            if (index > 0 && !/<\/table>$/.test(out[out.length - 1] || '')) out.push('<br>');
             out.push(line);
-        });
+        }
         closeList();
         let html = out.join('');
         stash.forEach((chunk, index) => {
