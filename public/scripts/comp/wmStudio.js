@@ -204,7 +204,70 @@
                 return b;
             };
             box.append(mk(-1), field, mk(1));
+            if (cfg.field === '.percentage-input-container') percentProxy(input, field);
         }
+    }
+
+    /**
+     * Rescale / Strength / Noise: the desktop field is a 0..1 number under a "NN%" overlay that hides
+     * while it is edited, so the phone showed "0%" and then "0.00" in a box with the desktop's blue
+     * glow. A WM edit box takes its place and is edited in percent; it writes the fraction into the
+     * desktop's input and fires the desktop's input / change, and follows any change made to it.
+     */
+    function percentProxy(input, field) {
+        if (field.querySelector('.wms-pct')) return;
+        const px = document.createElement('input');
+        px.type = 'text';
+        px.className = 'wms-pct';
+        px.inputMode = 'decimal';
+        px.autocomplete = 'off';
+        px.spellcheck = false;
+        px.setAttribute('aria-label', (input.getAttribute('aria-label') || input.id || 'Value') + ' (percent)');
+        const pct = () => {
+            const v = Number(input.value);
+            if (!Number.isFinite(v)) return '';
+            return String(Math.round(v * 1000) / 10);
+        };
+        let typing = false; // the user's own keys since the box took focus: leave their text alone
+        const show = () => {
+            px.disabled = !!input.disabled;
+            if (typing) return;
+            const p = pct();
+            px.value = p === '' ? '' : document.activeElement === px ? p : `${p}%`;
+        };
+        const commit = () => {
+            if (!typing) { show(); return; }
+            const n = parseFloat(String(px.value).replace('%', '').replace(',', '.'));
+            if (!Number.isFinite(n)) { show(); return; }
+            let v = Math.max(0, Math.min(100, n)) / 100;
+            const min = input.min !== '' ? Number(input.min) : null;
+            const max = input.max !== '' ? Number(input.max) : null;
+            if (min !== null && Number.isFinite(min)) v = Math.max(min, v);
+            if (max !== null && Number.isFinite(max)) v = Math.min(max, v);
+            const next = v.toFixed(2);
+            if (next !== input.value) {
+                input.value = next;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            typing = false;
+            show();
+        };
+        px.addEventListener('focus', () => { typing = false; px.value = pct(); requestAnimationFrame(() => { try { px.select(); } catch (_) { /* no selection */ } }); });
+        px.addEventListener('input', () => { typing = true; });
+        px.addEventListener('blur', commit);
+        px.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); px.blur(); }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); typing = false; px.value = pct(); px.blur(); }
+        });
+        // the desktop sets the field from presets, the wheel steps, locks: follow it
+        ['input', 'change'].forEach((t) => input.addEventListener(t, show));
+        const ov = field.querySelector('.percentage-input-overlay');
+        if (ov && typeof MutationObserver === 'function') new MutationObserver(show).observe(ov, { childList: true, characterData: true, subtree: true });
+        new MutationObserver(show).observe(input, { attributes: true, attributeFilter: ['disabled', 'value'] });
+        field.classList.add('wms-pct-host');
+        field.appendChild(px);
+        show();
     }
 
     // ---------------------------------------------------------------- the light highlight palette everywhere

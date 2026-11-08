@@ -1848,3 +1848,39 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     text-shadow: none !important;
     font-family: var(--wm-font) !important;
 }
+
+/* Rescale / Strength / Noise: the phone's percent edit box (wmStudio.js percentProxy) stands in for the
+ * desktop's 0..1 input and its "NN%" overlay; the field frame is the WM edit box's, no glow or rounding */
+.wm-studio #manualModal .percentage-input-container.wms-pct-host {
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: none !important;
+    outline: none !important;
+}
+
+.wm-studio #manualModal .percentage-input-container.wms-pct-host > :not(.wms-pct) {
+    display: none !important;
+}
+
+.wm-studio #manualModal .percentage-input-container.wms-pct-host > .wms-pct {
+    display: block !important;
+    box-sizing: border-box;
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 calc(3 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    text-align: center;
+}
+
+.wm-studio #manualModal .percentage-input-container.wms-pct-host > .wms-pct:disabled {
+    color: #848284 !important;
+    -webkit-text-fill-color: #848284 !important;
+}
