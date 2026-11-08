@@ -662,3 +662,16 @@
     background: none !important;
     border: 0 !important;
 }
+
+/* the view bar's two combos share the row at 360 px: their text ends in an ellipsis, not a cut */
+.wm-studio .wms-tool-host > #characterAutofillTool #characterAutocompleteViewBar :is(button, .custom-dropdown-btn) {
+    min-width: 0 !important;
+    overflow: hidden !important;
+}
+
+.wm-studio .wms-tool-host > #characterAutofillTool #characterAutocompleteViewBar :is(button, .custom-dropdown-btn) > span {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
