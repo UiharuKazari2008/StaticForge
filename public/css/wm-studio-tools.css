@@ -56,12 +56,12 @@
 
 /* glass panels, cards and their glows: plain white with a grey rule where the desktop drew a box
  * (colour marks - swatches, dots, previews, progress fills - keep their own paint) */
-.wm-studio .wms-tool-host > .modal :where(div, section, header, footer, aside, nav, ul, ol, li, form, fieldset, table, thead, tbody, tr, td, th, p, span, label):where(:not([style*="background"])):where(:not([class*="color"]):not([class*="swatch"]):not([class*="dot"]):not([class*="thumb"]):not([class*="preview"]):not([class*="progress"]):not([class*="fill"]):not([class*="badge"]):not([class*="image"]):not([class*="img"]):not([class*="avatar"]):not([class*="icon"])) {
+.wm-studio .wms-tool-host > .modal :where(div, section, article, header, footer, aside, nav, ul, ol, li, form, fieldset, table, thead, tbody, tr, td, th, p, span, label):where(:not([style*="background"])):where(:not([class*="color"]):not([class*="swatch"]):not([class*="dot"]):not([class*="thumb"]):not([class*="preview"]):not([class*="progress"]):not([class*="fill"]):not([class*="badge"]):not([class*="image"]):not([class*="img"]):not([class*="avatar"]):not([class*="icon"])) {
     background-color: transparent !important;
     background-image: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(div, section, header, footer, aside, nav, ul, ol, li, form, fieldset, table, span, label, p, img, canvas) {
+.wm-studio .wms-tool-host > .modal :is(div, section, article, header, footer, aside, nav, ul, ol, li, form, fieldset, table, span, label, p, img, canvas) {
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -69,7 +69,7 @@
     filter: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(div, section, header, footer, aside, ul, li, fieldset, table, td, th) {
+.wm-studio .wms-tool-host > .modal :is(div, section, article, header, footer, aside, ul, li, fieldset, table, td, th) {
     border-color: #a0a0a0 !important;
 }
 
@@ -377,22 +377,22 @@
 }
 
 .wm-studio .wms-tool-host > .modal input[type="range"]::-webkit-slider-runnable-track {
-    height: calc(4 * var(--wm-px));
-    border: calc(1 * var(--wm-px)) solid #000;
-    border-radius: 0;
-    background: #fff;
-    box-shadow: none;
+    height: calc(4 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
 }
 
 .wm-studio .wms-tool-host > .modal input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: calc(9 * var(--wm-px));
-    height: calc(18 * var(--wm-px));
-    margin-top: calc(-8 * var(--wm-px));
-    border: calc(1 * var(--wm-px)) solid #000;
-    border-radius: 0;
-    background: var(--wm-tint);
-    box-shadow: none;
+    -webkit-appearance: none !important;
+    width: calc(9 * var(--wm-px)) !important;
+    height: calc(18 * var(--wm-px)) !important;
+    margin-top: calc(-8 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: var(--wm-tint) !important;
+    box-shadow: none !important;
 }
 
 .wm-studio .wms-tool-host > .modal input[type="range"]:active::-webkit-slider-thumb {
@@ -571,4 +571,94 @@
     background: var(--wm-tab-strip) !important;
     box-shadow: none !important;
     outline: 0 !important;
+}
+
+/* captions drawn over a picture (Stage Results' "Stage 0 - Base", Saved) stay white on the image */
+.wm-studio .wms-tool-host > .modal :is(.gallery-item-overlay, [class*="image-overlay"], [class*="caption-overlay"]) :is(div, span, p, small, strong) {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+    text-shadow: 0 0 calc(2 * var(--wm-px)) #000, 0 0 calc(1 * var(--wm-px)) #000 !important;
+}
+
+/* Properties: the parameter cells wrap in rows (Steps, Guidance, Rescale ran into each other) */
+.wm-studio .wms-tool-host > .modal .blueprint-info .form-row {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: calc(4 * var(--wm-px)) calc(10 * var(--wm-px)) !important;
+    align-items: flex-start !important;
+}
+
+.wm-studio .wms-tool-host > .modal .blueprint-info .form-row > .form-group {
+    flex: 0 0 auto !important;
+    min-width: calc(48 * var(--wm-px)) !important;
+    width: auto !important;
+    margin: 0 !important;
+}
+
+.wm-studio .wms-tool-host > .modal .blueprint-info .form-row > .form-group > label {
+    color: #404040 !important;
+    -webkit-text-fill-color: #404040 !important;
+}
+
+/* a read-only prompt box: the field is the frame (no second, taller frame round it) */
+.wm-studio .wms-tool-host > .modal .prompt-textarea-emphasis-wrap {
+    height: auto !important;
+    min-height: 0 !important;
+    border: 0 !important;
+    padding: 0 !important;
+}
+
+.wm-studio .wms-tool-host > .modal .prompt-textarea-container.image-prompt-inspector-prompt,
+.wm-studio .wms-tool-host > .modal [class*="image-prompt-inspector-p"].prompt-textarea-container {
+    height: auto !important;
+    min-height: 0 !important;
+    border: 0 !important;
+    padding: 0 !important;
+}
+
+/* badge lists (Properties' forge data) wrap inside the page */
+.wm-studio .wms-tool-host > .modal :is(.badge-list, .meta-value) {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: calc(3 * var(--wm-px)) !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+}
+
+.wm-studio .wms-tool-host > .modal .blueprint-info .form-row > .form-group:has(.badge-list) {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+}
+
+.wm-studio .wms-tool-host > .modal .blueprint-info .form-row > .form-group > label {
+    text-align: left !important;
+    justify-content: flex-start !important;
+}
+
+.wm-studio .wms-tool-host > .modal [class*="scroll-shell"] {
+    overflow-x: hidden !important;
+}
+
+/* expander badges (where it lives, how it expands): their coloured glyphs on the row, no white tile */
+.wm-studio .wms-tool-host > .modal .text-replacement-badge {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.wm-studio .wms-tool-host > .modal .text-replacement-badge :is(span, i) {
+    filter: brightness(0.55) saturate(1.6) !important;
+}
+
+/* vSlider cards: a WM group (bold title, a rule under it), no glass */
+.wm-studio .wms-tool-host > .modal .vslider-card {
+    margin: 0 0 calc(6 * var(--wm-px)) !important;
+    padding: calc(3 * var(--wm-px)) 0 calc(6 * var(--wm-px)) !important;
+    border: 0 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #c0c0c0 !important;
+}
+
+.wm-studio .wms-tool-host > .modal :is(.slider-ticks-container, .slider-container) {
+    background: none !important;
+    border: 0 !important;
 }
