@@ -86,6 +86,8 @@ GRIMOIRE_BROWSER_TOKEN='replace-with-a-long-secret' pnpm start
 
 On the Dreamscape host it runs as the PM2 app `grimoire-browser` in `ecosystem.config.js` (127.0.0.1:9330, token from `secure.config.json` `grimoireBrowserToken`). It is in the saved PM2 list, so `pm2-kanmi.service` starts it on boot. `./restart` and `./reload` restart only Dreamscape, so open browser sessions survive a server bounce.
 
+On stop or restart, the service closes Chromium first (waits up to 6 seconds) so the persistent profile can flush logins stored in localStorage, then tears down sessions without waiting on each page close. `ecosystem.config.js` sets `kill_timeout` to 10000 ms so pm2 does not kill the process before that flush finishes (#716).
+
 Listens on `0.0.0.0:9330` unless `HOST` / `PORT` are set. Chromium is `CHROME_BIN`, or the newest Chrome under `~/.cache/ms-playwright` or `~/.cache/puppeteer`.
 
 `FRAME_ANCESTORS` is the CSP `frame-ancestors` value (default `*`). Set it to the Dreamscape origin when the service is reachable beyond the LAN, for example `https://staticforge.737.jp.net`.
