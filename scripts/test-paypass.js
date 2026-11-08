@@ -49,12 +49,22 @@ const server = http.createServer((req, res) => {
     if (p === '/get/card/1576D061') return json({ id: 'emmy', ...USERS[0] });
     if (p === `/deposit/user/emmy/5`) return res.end('65.5');
     if (p === `/deposit/scan/${POS}/10`) { state.pending[POS] = 'deposit_card'; setTimeout(() => { delete state.pending[POS]; }, 150); return res.end('Waiting for card scan'); }
-    if (p === `/get/scan/${POS}`) { state.pending[POS] = 'info_card'; return res.end('Waiting'); }
+    // like openCreditIC: a tap clears the pending command and leaves the customer in pendingResponse
+    if (p === `/get/scan/${POS}`) {
+        state.pending[POS] = 'info_card';
+        setTimeout(() => { delete state.pending[POS]; state.response = { status: true, id: 'emmy', ...USERS[0] }; }, 50);
+        return res.end('Waiting');
+    }
     if (p === `/wait_pending/${POS}`) {
         const t = setInterval(() => { if (!state.pending[POS]) { clearInterval(t); res.end('Request Completed'); } }, 20);
         return undefined;
     }
-    if (p === `/wait_data/${POS}`) { delete state.pending[POS]; return json({ id: 'emmy', ...USERS[0] }); }
+    if (p === `/wait_data/${POS}`) {
+        // openCreditIC refuses a wait that arrives after the tap
+        if (!state.pending[POS]) { res.statusCode = 404; return res.end('No pending scan requests'); }
+        const t = setInterval(() => { if (state.response) { clearInterval(t); const r = state.response; delete state.response; json(r); } }, 10);
+        return undefined;
+    }
     if (p.startsWith('/set/') || p.startsWith('/update/') || p.startsWith('/register/') || p.startsWith('/cancel_pending/')) return res.end('OK');
     res.statusCode = 404;
     return res.end('Unknown Card');
@@ -101,8 +111,10 @@ const server = http.createServer((req, res) => {
     assert.deepStrictEqual(await paypass.wait({ pos: POS }), { done: true });
     r = await paypass.action({ op: 'lookup', pos: POS });
     assert.deepStrictEqual([r.scan, r.lookup], [true, true]);
+    // the card is tapped 50 ms after arming; the client asks 300 ms later and still gets the customer
+    await new Promise((res) => setTimeout(res, 300));
     const w = await paypass.wait({ pos: POS, lookup: true });
-    assert.strictEqual(w.customer.name, 'Emmy');
+    assert.strictEqual(w.customer && w.customer.name, 'Emmy', 'a quick tap is not lost');
     r = await paypass.action({ op: 'deletecard', card: 'FFFF0000' });
     assert.deepStrictEqual([r.ok, r.code, r.message], [false, 404, 'Unknown Card']);
 

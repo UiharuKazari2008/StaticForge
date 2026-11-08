@@ -95,6 +95,7 @@
 .pp-fk.is-green kbd { background: var(--pp-green); }
 .pp-fk.is-blue kbd { background: var(--pp-blue); }
 .pp-fk.is-amber kbd { background: var(--pp-amber); }
+.pp-fk.is-red kbd { background: var(--pp-red); }
 .pp-fk-fill { flex: 1; }
 .pp-status { display: flex; gap: 2px; height: 22px; padding: 2px; background: var(--pp-face); border-top: 1px solid var(--pp-line); }
 .pp-status > span { padding: 2px 8px; border: 1px solid; border-color: #9aa7ba #fff #fff #9aa7ba; white-space: nowrap; overflow: hidden; }

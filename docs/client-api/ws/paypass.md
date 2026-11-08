@@ -32,7 +32,7 @@ Every packet is admin only (`admin`, `dev_admin`). A failure comes back in the `
 | `paypass_overview` | none | `{ arcade, pos: [{ mac, name }], freePlay, machines, users, pending, currency, at }` |
 | `paypass_customer` | `id` or `card` | `{ id, name, contact, notes, credits, locked, freePlay, freePlayUntil, created, cards, history, topups }`. History and top-ups are newest first, at most 200 each. |
 | `paypass_action` | `op` + fields (below) | `{ ok, code, message, scan, lookup }` |
-| `paypass_wait` | `pos`, `lookup?` | `{ done, customer?, message? }`. Waits up to 45 s for the card a scan op asked for (`/wait_pending`, or `/wait_data` for a lookup); on no card it cancels the reader's pending command. |
+| `paypass_wait` | `pos`, `lookup?` | `{ done, customer?, message? }`. The card a scan op asked for, up to 45 s. The wait (`/wait_pending`, or `/wait_data` for a lookup) is started by `paypass_action` the moment it arms the reader: openCreditIC's `/wait_data` refuses once the tap has cleared the pending command, so a wait sent after a quick tap lost the customer. With no card, it cancels the reader's pending command. |
 
 Each `machines[]` entry is `{ mac, name, freePlay, plays, last, session, day, active }`:
 - `last`: `{ userName, cost, freePlay, ok, time }`

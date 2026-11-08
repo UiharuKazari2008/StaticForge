@@ -286,6 +286,34 @@ const OPS = {
     cancel(d) { return { path: `/cancel_pending/${enc(mac(d.pos))}` }; }
 };
 
+/**
+ * Armed readers: POS mac -> the wait already running for it. openCreditIC's /wait_data only answers
+ * while the reader's command is still pending, and a tap clears it: a wait sent after the tap gets
+ * "No pending scan requests" and the scanned customer is lost (a quick tap beat the client's round
+ * trip). So the wait starts here, the moment the reader is armed, and paypass_wait collects it.
+ */
+const waiters = new Map();
+
+function startWait(pos, lookup) {
+    const p = (async () => {
+        if (lookup) {
+            const res = await call(`/wait_data/${enc(pos)}`, null, { timeout: WAIT_MS });
+            if (res.ok && res.json) return { done: true, customer: shapeCustomer(res.json) };
+            if (res.code === 404 && res.json) return { done: false, message: 'Unknown card: it is not registered to a customer.' };
+            return { done: false, message: res.code === 500 ? 'No card was scanned' : String(res.text || 'No card was scanned').slice(0, 300) };
+        }
+        const res = await call(`/wait_pending/${enc(pos)}`, null, { timeout: WAIT_MS });
+        if (res.ok) return { done: true };
+        await call(`/cancel_pending/${enc(pos)}`);
+        return { done: false, message: 'No card was scanned' };
+    })();
+    const entry = { p, lookup: !!lookup, at: Date.now() };
+    waiters.set(pos, entry);
+    // nobody collected it (the client went away): drop it once it settles
+    p.finally(() => setTimeout(() => { if (waiters.get(pos) === entry) waiters.delete(pos); }, 5000));
+    return entry;
+}
+
 /** Run an operation: { op, ...fields } -> { ok, code, text, scan?, lookup? }. */
 async function action(req) {
     const r = req || {};
@@ -293,6 +321,7 @@ async function action(req) {
     if (!op) throw Object.assign(new Error('Unknown operation'), { code: 'PAYPASS_BAD_OP' });
     const plan = op(r);
     const res = await call(plan.path, plan.query);
+    if (plan.scan && res.ok) startWait(mac(r.pos), !!plan.lookup);
     return {
         ok: res.ok,
         code: res.code,
@@ -303,21 +332,16 @@ async function action(req) {
 }
 
 /**
- * Wait for the card a scan op asked for: { pos, lookup } -> { done, customer? }. A lookup waits for
- * the scanned card's data (/wait_data); other scans wait until the reader's command is gone.
+ * Wait for the card a scan op asked for: { pos, lookup } -> { done, customer?, message? }. Collects the
+ * wait action() started when it armed the reader; without one (an old client) it starts it now.
  */
 async function wait(req) {
     const r = req || {};
     const pos = mac(r.pos);
-    if (r.lookup) {
-        const res = await call(`/wait_data/${enc(pos)}`, null, { timeout: WAIT_MS });
-        if (res.ok && res.json) return { done: true, customer: shapeCustomer(res.json) };
-        return { done: false, message: res.code === 500 ? 'No card was scanned' : String(res.text || 'No card was scanned').slice(0, 300) };
-    }
-    const res = await call(`/wait_pending/${enc(pos)}`, null, { timeout: WAIT_MS });
-    if (res.ok) return { done: true };
-    await call(`/cancel_pending/${enc(pos)}`);
-    return { done: false, message: 'No card was scanned' };
+    let entry = waiters.get(pos);
+    if (!entry || entry.lookup !== !!r.lookup) entry = startWait(pos, !!r.lookup);
+    waiters.delete(pos);
+    return entry.p;
 }
 
 function info() {

@@ -10,6 +10,7 @@
  *   F1 Register   new customer + card (serial, or scan on the POS terminal)
  *   F2 Deposit    credits or free play, by scan, customer ID or card serial
  *   F3 Lookup     customer by ID, card serial or scan -> Customer window (edit, lock, delete, cards, history)
+ *   F7 Scan Card  lookup by scan: tap a card on the POS terminal, its Customer window opens
  *   F4 Transfer   tap the old card, then the new one
  *   F6 Free Play  arcade-wide and per-machine free play, revoke all customers' free play
  *   F5 Refresh
@@ -33,7 +34,7 @@
     const short = (t) => { if (!t) return '-'; const d = new Date(t); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${clock(t)}`; };
     const span = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`; };
     // the function-key strip: key -> [command, label]
-    const FKEYS = { F1: ['register', 'Register customer'], F2: ['deposit', 'Deposit credits'], F3: ['lookup', 'Lookup customer'], F4: ['transfer', 'Card transfer'], F5: ['refresh', 'Refresh'], F6: ['freeplay', 'Free play config'] };
+    const FKEYS = { F1: ['register', 'Register customer'], F2: ['deposit', 'Deposit credits'], F3: ['lookup', 'Lookup customer'], F4: ['transfer', 'Card transfer'], F5: ['refresh', 'Refresh'], F6: ['freeplay', 'Free play config'], F7: ['scan', 'Scan card lookup'] };
     const ico = (name, size = 16) => `<img class="pp-ico" src="${A}/icons/${name}.png" alt="" width="${size}" height="${size}">`;
 
     class PayPass {
@@ -92,6 +93,7 @@
                         <button type="button" class="pp-fk is-green" data-pp="register"><kbd>F1</kbd>${ico('register', 20)}Register</button>
                         <button type="button" class="pp-fk is-green" data-pp="deposit"><kbd>F2</kbd>${ico('deposit', 20)}Deposit</button>
                         <button type="button" class="pp-fk is-blue" data-pp="lookup"><kbd>F3</kbd>${ico('lookup', 20)}Lookup</button>
+                        <button type="button" class="pp-fk is-red" data-pp="scan" title="Tap a card on the POS terminal to open its customer"><kbd>F7</kbd>${ico('scan', 20)}Scan Card</button>
                         <button type="button" class="pp-fk is-blue" data-pp="transfer"><kbd>F4</kbd>${ico('transfer', 20)}Transfer</button>
                         <button type="button" class="pp-fk is-amber" data-pp="freeplay"><kbd>F6</kbd>${ico('freeplay', 20)}Free Play</button>
                         <span class="pp-fk-fill"></span>
@@ -201,6 +203,7 @@
                     { text: 'Register Customer...', subtext: 'F1', action: 'register' },
                     { text: 'Deposit Credits...', subtext: 'F2', action: 'deposit' },
                     { text: 'Lookup Customer...', subtext: 'F3', action: 'lookup' },
+                    { text: 'Scan Card Lookup', subtext: 'F7', action: 'scan' },
                     { text: 'Card Transfer...', subtext: 'F4', action: 'transfer' }];
                 case 'arcade': return [
                     { text: 'Free Play Config...', subtext: 'F6', action: 'freeplay' },
@@ -217,6 +220,7 @@
                 case 'register': this.registerWin(); break;
                 case 'deposit': this.depositWin(); break;
                 case 'lookup': this.lookupWin(); break;
+                case 'scan': await this.scanLookup(); break;
                 case 'transfer': await this.transfer(); break;
                 case 'freeplay': this.freePlayWin(); break;
                 case 'about': this.about(); break;
@@ -593,6 +597,18 @@
                     return false;
                 }
             });
+        }
+
+        /** F7: lookup by scan, without the Select Customer box. */
+        async scanLookup() {
+            if (this.scanning) return;
+            this.scanning = true;
+            try {
+                const r = await this.op({ op: 'lookup', pos: this.pos }, 'Lookup customer');
+                if (r.ok && r.customer) this.customerWin(r.customer);
+            } finally {
+                this.scanning = false;
+            }
         }
 
         async openCustomer(q) {
