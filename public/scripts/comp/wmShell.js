@@ -138,7 +138,20 @@
         let l = b.l;
         while (l < 40 && oklabDistance(hslToRgb(b.h, b.s, l), hslToRgb(t.h, t.s, t.l)) < BUTTON_BORDER_DE) l += 0.25;
         out['--wm-button-border'] = `hsl(${b.h.toFixed(1)} ${b.s.toFixed(1)}% ${l}%)`;
+        // WM keeps white text on the highlight (menus, selected rows, the active toggle): a light
+        // workspace colour (teal, yellow, cyan) would leave it unreadable, so the highlight darkens
+        // until white reaches 3:1
+        const hl = hsl['--wm-highlight'];
+        let hlL = hl.l;
+        while (hlL > 20 && contrastWithWhite(hslToRgb(hl.h, hl.s, hlL)) < 3) hlL -= 1;
+        if (hlL !== hl.l) out['--wm-highlight'] = `hsl(${hl.h.toFixed(1)} ${hl.s.toFixed(1)}% ${hlL}%)`;
         return out;
+    }
+
+    /** WCAG contrast of white text on an sRGB 0..1 colour. */
+    function contrastWithWhite(rgb) {
+        const [r, g, b] = rgb.map((c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+        return 1.05 / (0.2126 * r + 0.7152 * g + 0.0722 * b + 0.05);
     }
 
     /** sRGB 0..1 of an HSL colour (h degrees, s and l percent). */
