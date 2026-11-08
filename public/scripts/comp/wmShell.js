@@ -431,6 +431,8 @@
         if (root.dataset.wmTakeover) return false;
         const box = shell.querySelector('.wm-msgbox-layer');
         if (box && !box.hidden) return false;
+        // the desktop's question: back answers it (confirmationDialog.js takes Escape as Cancel), not the app under it
+        if (root.hasAttribute('data-wm-dialog')) return false;
         const t = e.target;
         if (t && t.closest && t.closest('#wmShell') && t.matches && t.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button])')) return false;
         // fixed overlays have no offsetParent: a box on screen is the test
@@ -561,10 +563,16 @@
     // ---------------------------------------------------------------- soft keys
 
     let softKeys = { left: null, right: null };
+    let lastModal = false; // a message box was up when the keys were last drawn
 
     function renderSoftKeys() {
         const app = current && apps.get(current);
-        softKeys = noteShownNote() ? noteSoftKeys()
+        // a message box (the shell's, or the desktop's question drawn as one) owns the screen: its own
+        // buttons answer it, the soft keys go blank (WM 6.1's MessageBox) and the app's keys under it
+        // cannot be pressed through it
+        lastModal = modalUp();
+        softKeys = lastModal ? { left: null, right: null }
+            : noteShownNote() ? noteSoftKeys()
             : viewerActive ? viewerSoftKeys()
             : ((app && typeof app.softKeys === 'function' ? app.softKeys() : null) || { left: null, right: null });
         for (const side of ['left', 'right']) {
@@ -581,6 +589,8 @@
     }
 
     function pressSoftKey(side, btn) {
+        // a box that came up since the keys were drawn (the poll below has not caught it yet)
+        if (modalUp()) { if (!lastModal) renderSoftKeys(); return; }
         const key = softKeys[side];
         if (!key || key.disabled) return;
         if (key.menu) {
@@ -3062,6 +3072,19 @@
         // the corner catches up with layers that changed without telling the shell (a desktop
         // dialog opening as a WM message box, an app's own view switch)
         refreshTitleAction();
+        // and the soft keys: blank under a message box, the app's again once it is answered
+        if (modalUp() !== lastModal) renderSoftKeys();
+        // the desktop's question is modal like WM's MessageBox: taps on the shell and the app under
+        // it do nothing (html[data-wm-dialog], wm-shell.css); its opening is seen at once, not on the poll
+        const dlg = document.getElementById('confirmationDialog');
+        const dlgUp = !!(dlg && !dlg.classList.contains('hidden') && dlg.getClientRects().length);
+        if (dlgUp !== root.hasAttribute('data-wm-dialog')) {
+            if (dlgUp) { closeMenus(); root.setAttribute('data-wm-dialog', ''); } else root.removeAttribute('data-wm-dialog');
+        }
+        if (dlg && !dlg._wmWatched && typeof MutationObserver === 'function') {
+            dlg._wmWatched = true;
+            new MutationObserver(() => checkTakeover()).observe(dlg, { attributes: true, attributeFilter: ['class', 'style'] });
+        }
     }
 
     // ---------------------------------------------------------------- startup
@@ -3277,6 +3300,9 @@
 
     function init() {
         build();
+        // the menus' tick and submenu arrow are CSS masks: fetched with the shell, not on the first
+        // menu (the title bar's ok / X are inline in wm-shell.css)
+        ['menu-check', 'menu-submenu-arrow'].forEach((n) => ['', '@2x', '@4x'].forEach((x) => { const img = new Image(); img.src = `/static_images/wm61/${n}${x}.png`; }));
         registerTodayApp();
         registerGalleryApp();
         watchTheme();

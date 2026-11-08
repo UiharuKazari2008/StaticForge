@@ -400,23 +400,34 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
     pointer-events: none;
 }
 
+/* the title bar's ok / X glyphs inline (the files in static_images/wm61, base64): the corner is on
+ * screen from the first frame, so it never waits for (or, after a cache clear, misses) a mask download */
+html.ui-mobile {
+    --wm-art-title-close-1x: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABcAAAAaCAYAAABctMd+AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAHdElNRQfqCwcGDjgjAHJOAAAAXklEQVRIx+3UQQoAIAgEwIz+/+XtEgRR2VpeQqFDCKMskQBIXpXd5MADf4qjHbZHbQ7lbsJlAmLRN20+G6DCTCyi3K9wl8x3UagDTp7iCB8PcM28kCg14N+/JfDAe1UWFRIxlfqVBwAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMS0wN1QwNToxNDo0MCswMDowMGARvUoAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTEtMDdUMDU6MTQ6NDArMDA6MDARTAX2AAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTExLTA3VDA2OjE0OjU2KzAwOjAwVOl9QwAAAABJRU5ErkJggg==');
+    --wm-art-title-close-2x: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAC4AAAA0CAYAAAD19ArKAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAJcEhZcwAAHYQAAB2EASJc0AgAAAAHdElNRQfqCwcGDjgjAHJOAAAAu0lEQVRo3u3X0QqAIAwF0Bb9/y+v54Jqbndz0r1PkhgHEedEVbcVs88GEL5KCCec8KYhnHDCm4bw6hyBtfeHvCSvuwS545aOBNa1oI+KOuemw5+A8P4wAn87m/owHvlHGtyCT0Ej4F5ACI2Cj0LCaCTcCoKg0fDS/L4AjYAgeATcAwnjo/Cve9papErh1uKSgs+4VcT4LRQ0XJxzU+GlBSjSAXkR7Up+aQgnnPCmIZxwwpuGcMIJb5pl4SdUkhlrtYgnuAAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMS0wN1QwNToxNDo0MCswMDowMGARvUoAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTEtMDdUMDU6MTQ6NDArMDA6MDARTAX2AAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTExLTA3VDA2OjE0OjU2KzAwOjAwVOl9QwAAAABJRU5ErkJggg==');
+    --wm-art-title-close-4x: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFwAAABoCAYAAAB8BJfjAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAJcEhZcwAAHYQAAB2EASJc0AgAAAAHdElNRQfqCwcUBSG7PXRbAAABAUlEQVR42u3aQQrCMBRF0Vbc/5br6IMIWqnpy6eeMxYTmkuINssCAAAAAAAAAAAAAMAVrOkBt23bPk5oXYfOKT3enltyMJblPnsCr6rIX8vbK3sWhYe1K7wcLb1r2UXhYW0LL9+W3r3sovCw+Dm8HC3ytfRR35Oi8LBphZf03jur7KLwsOmFl7NLn112UXhYi1V/Nrr0LmUXhYe1Wv1nv5bereyi8DAPPMwDD2u3zzmlMFSb1fdLk1NMX3X/FnIqb3zCFB7W7m7h24me9Nbe3cKLa38v5dsC63Pd76coPKxt4Uf31u6lKzysXeGjTg1dS1c4AAAAAAAAAAAAAAAA8FceowVgSjT0yPMAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTEtMDdUMDY6MTQ6NTYrMDA6MDByoeQgAAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTExLTA3VDA2OjE0OjU2KzAwOjAwA/xcnAAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMS0wN1QyMDowNTozMyswMDowMK959O0AAAAASUVORK5CYII=');
+    --wm-art-title-ok-1x: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABcAAAAaCAYAAABctMd+AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAHdElNRQfqCwcGDjgjAHJOAAAAV0lEQVRIx2P8//8/A60AE81MHjV81HCaG/4fioeey4kGLAS8jwwYCajDkGciQgMjmhhRBlMaLHgNptRwgoASw/EFF17DkTXi8z5eCxhHK4tRw0cNpwwAAHBfEi2hFwf9AAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTExLTA3VDA1OjE0OjQwKzAwOjAwYBG9SgAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMS0wN1QwNToxNDo0MCswMDowMBFMBfYAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTEtMDdUMDY6MTQ6NTYrMDA6MDBU6X1DAAAAAElFTkSuQmCC');
+    --wm-art-title-ok-2x: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAC4AAAA0CAYAAAD19ArKAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAJcEhZcwAAHYQAAB2EASJc0AgAAAAHdElNRQfqCwcGDjgjAHJOAAAAtElEQVRo3u3ZQQ6AIAxEUWu8/5Xr3gRtBwLF/Nli6LMiIWrufuyYczUA+C4BDhx40QAHDrxogM/ONaHG88BvIybdtuPAgf8dru4qrU8D2R3D1TmUjrs4NgytwCMw9UNN6mn1rnHLFmzcXHqODPytmH1cOxSdhZdKBbj0TqyATz9kva3j3nWb7npvx10pKtxYNzxSUEWlGqB03MSxyLVhvPFHAjjwmgEOHHjRAAcOvGiAAw/mBjTGGmVwbza8AAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTExLTA3VDA1OjE0OjQwKzAwOjAwYBG9SgAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMS0wN1QwNToxNDo0MCswMDowMBFMBfYAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTEtMDdUMDY6MTQ6NTYrMDA6MDBU6X1DAAAAAElFTkSuQmCC');
+    --wm-art-title-ok-4x: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFwAAABoCAYAAAB8BJfjAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAJcEhZcwAAHYQAAB2EASJc0AgAAAAHdElNRQfqCwcUBSG7PXRbAAABD0lEQVR42u3ZQY6FIBQEQJ38+1+Z2ejGxD868hqjVXsE2zYhME0AAAAAAAAAAAAAADzBPHoBV7XW2tcXnOdbvePP6AW8jcDDBB4m8DCBhwk8TOBhAg8TeJjAwwQe9klN9NeZx1b1GcjR9fReh4aHlTf8bLO343o3bFSzVxoeVtbw/zZ77zmpc+3qeTQ8LLZL2do2qdcfsecuN0MaHtb9q15t0tnxV/+M9J2nhocJPEzgYa8PvC1S870+8LTHBz4vRq9j9fjA76bsy/feT++19Oi40aeEKw0PG3aWktwZTNP5plfR8LCyhvdqVHqHUX3+ruFhsfZU3dpX7W7OruMoDQcAAAAAAAAAAAAAAABe5RcVqWhNgkEOGwAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMS0wN1QwNjoxNDo1NiswMDowMHKh5CAAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTEtMDdUMDY6MTQ6NTYrMDA6MDAD/FycAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTExLTA3VDIwOjA1OjMzKzAwOjAwr3n07QAAAABJRU5ErkJggg==');
+}
+
 .wm-title-action[data-kind="close"] {
-    --wm-title-glyph: image-set(url('/static_images/wm61/title-close.png') 1x, url('/static_images/wm61/title-close@2x.png') 2x, url('/static_images/wm61/title-close@4x.png') 4x);
+    --wm-title-glyph: image-set(var(--wm-art-title-close-1x) 1x, var(--wm-art-title-close-2x) 2x, var(--wm-art-title-close-4x) 4x);
 }
 
 .wm-title-action[data-kind="ok"] {
-    --wm-title-glyph: image-set(url('/static_images/wm61/title-ok.png') 1x, url('/static_images/wm61/title-ok@2x.png') 2x, url('/static_images/wm61/title-ok@4x.png') 4x);
+    --wm-title-glyph: image-set(var(--wm-art-title-ok-1x) 1x, var(--wm-art-title-ok-2x) 2x, var(--wm-art-title-ok-4x) 4x);
 }
 
 /* the art follows the scale it is drawn at (device pixels per WM pixel = dpr x --wm-px), not dpr
    alone: dpr 2 at touch scale needs the 4x art, dpr 1 at touch scale the 2x art scaled down.
    wmShell.js sets html.wm-art-1x / -2x / -4x; the image-set above is the fallback before that. */
-html.wm-art-1x .wm-title-action[data-kind="close"] { --wm-title-glyph: url('/static_images/wm61/title-close.png'); }
-html.wm-art-2x .wm-title-action[data-kind="close"] { --wm-title-glyph: url('/static_images/wm61/title-close@2x.png'); }
-html.wm-art-4x .wm-title-action[data-kind="close"] { --wm-title-glyph: url('/static_images/wm61/title-close@4x.png'); }
-html.wm-art-1x .wm-title-action[data-kind="ok"] { --wm-title-glyph: url('/static_images/wm61/title-ok.png'); }
-html.wm-art-2x .wm-title-action[data-kind="ok"] { --wm-title-glyph: url('/static_images/wm61/title-ok@2x.png'); }
-html.wm-art-4x .wm-title-action[data-kind="ok"] { --wm-title-glyph: url('/static_images/wm61/title-ok@4x.png'); }
+html.wm-art-1x .wm-title-action[data-kind="close"] { --wm-title-glyph: var(--wm-art-title-close-1x); }
+html.wm-art-2x .wm-title-action[data-kind="close"] { --wm-title-glyph: var(--wm-art-title-close-2x); }
+html.wm-art-4x .wm-title-action[data-kind="close"] { --wm-title-glyph: var(--wm-art-title-close-4x); }
+html.wm-art-1x .wm-title-action[data-kind="ok"] { --wm-title-glyph: var(--wm-art-title-ok-1x); }
+html.wm-art-2x .wm-title-action[data-kind="ok"] { --wm-title-glyph: var(--wm-art-title-ok-2x); }
+html.wm-art-4x .wm-title-action[data-kind="ok"] { --wm-title-glyph: var(--wm-art-title-ok-4x); }
 
 .wm-title-action:active::before {
     background:
@@ -1937,12 +1948,26 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
  * black, arrow buttons; browsers with overlay scroll bars (Android) keep their own */
 .wm-pv-scroll::-webkit-scrollbar,
 .wm-popup::-webkit-scrollbar,
+html.ui-mobile .scrollable-content::-webkit-scrollbar,
 #wmShell .wm-page::-webkit-scrollbar {
+    display: block;
     width: calc(13 * var(--wm-px));
+}
+
+/* desktop scrollers hosted in phone apps (customScrollbar.js: .scrollable-content inside a
+ * .has-custom-scrollbar host): the WM bar above on the scroller itself, and the desktop's glass
+ * overlay track and thumb (.custom-scrollbar, a sibling of the scroller, never a scroller) go */
+html.ui-mobile .scrollable-content {
+    scrollbar-width: auto;
+}
+
+html.ui-mobile .custom-scrollbar {
+    display: none !important;
 }
 
 .wm-pv-scroll::-webkit-scrollbar-track,
 .wm-popup::-webkit-scrollbar-track,
+html.ui-mobile .scrollable-content::-webkit-scrollbar-track,
 #wmShell .wm-page::-webkit-scrollbar-track {
     background: #fff;
     border-left: calc(1 * var(--wm-px)) solid #000;
@@ -1950,6 +1975,7 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
 
 .wm-pv-scroll::-webkit-scrollbar-thumb,
 .wm-popup::-webkit-scrollbar-thumb,
+html.ui-mobile .scrollable-content::-webkit-scrollbar-thumb,
 #wmShell .wm-page::-webkit-scrollbar-thumb {
     background: var(--wm-tab-strip);
     border: calc(1 * var(--wm-px)) solid #000;
@@ -1959,6 +1985,7 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
 
 .wm-pv-scroll::-webkit-scrollbar-button:single-button,
 .wm-popup::-webkit-scrollbar-button:single-button,
+html.ui-mobile .scrollable-content::-webkit-scrollbar-button:single-button,
 #wmShell .wm-page::-webkit-scrollbar-button:single-button {
     display: block;
     height: calc(19 * var(--wm-px));
@@ -1968,6 +1995,7 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
 
 .wm-pv-scroll::-webkit-scrollbar-button:single-button:vertical:decrement,
 .wm-popup::-webkit-scrollbar-button:single-button:vertical:decrement,
+html.ui-mobile .scrollable-content::-webkit-scrollbar-button:single-button:vertical:decrement,
 #wmShell .wm-page::-webkit-scrollbar-button:single-button:vertical:decrement {
     border-bottom: calc(1 * var(--wm-px)) solid #000;
     background-image: linear-gradient(to bottom right, transparent 50%, #000 50%), linear-gradient(to bottom left, transparent 50%, #000 50%);
@@ -1977,6 +2005,7 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
 
 .wm-pv-scroll::-webkit-scrollbar-button:single-button:vertical:increment,
 .wm-popup::-webkit-scrollbar-button:single-button:vertical:increment,
+html.ui-mobile .scrollable-content::-webkit-scrollbar-button:single-button:vertical:increment,
 #wmShell .wm-page::-webkit-scrollbar-button:single-button:vertical:increment {
     border-top: calc(1 * var(--wm-px)) solid #000;
     background-image: linear-gradient(to top right, transparent 50%, #000 50%), linear-gradient(to top left, transparent 50%, #000 50%);
@@ -2297,4 +2326,10 @@ html.ui-mobile[data-wm-titlebar="glossy"] .wm-softkeys {
     background:
         radial-gradient(ellipse 60% 140% at 50% 100%, color-mix(in srgb, var(--wm-softkey-base) 70%, #fff) 0%, transparent 70%) 0 calc(11 * var(--wm-px)) / 100% calc(14 * var(--wm-px)) no-repeat,
         linear-gradient(to bottom, var(--wm-gloss-top) 0, var(--wm-gloss-bottom) calc(11 * var(--wm-px)), color-mix(in srgb, var(--wm-softkey-base) 78%, #000) calc(11 * var(--wm-px)), color-mix(in srgb, var(--wm-softkey-base) 60%, #000) 100%);
+}
+
+/* the desktop's question up (wmShell checkTakeover): modal like WM's MessageBox, nothing under it
+ * takes a tap (the soft keys are blank meanwhile) */
+html.ui-mobile[data-wm-dialog] #wmShell {
+    pointer-events: none;
 }
