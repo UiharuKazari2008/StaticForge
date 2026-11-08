@@ -55,6 +55,17 @@ function getRentanAgentOverride() {
     };
 }
 
+// This device's Studio pick survives a reload (the phone WebView reloads often) without
+// being saved as the server default, so other engines can still be tried per device.
+const RENTAN_AGENT_PICK_KEY = 'rentanAgentPick';
+
+function storeRentanAgentPick(agent) {
+    try {
+        if (agent) localStorage.setItem(RENTAN_AGENT_PICK_KEY, JSON.stringify(agent));
+        else localStorage.removeItem(RENTAN_AGENT_PICK_KEY);
+    } catch (_) { /* storage blocked */ }
+}
+
 /** agent: {engine, model, effort, fast}, or null to follow the saved default. */
 function setRentanAgentOverride(agent) {
     const carousel = document.getElementById('dynamicCarousel');
@@ -64,6 +75,7 @@ function setRentanAgentOverride(agent) {
         delete carousel.dataset.agentModel;
         delete carousel.dataset.agentEffort;
         delete carousel.dataset.agentFast;
+        storeRentanAgentPick(null);
         return;
     }
     carousel.dataset.agentEngine = agent.engine;
@@ -71,7 +83,14 @@ function setRentanAgentOverride(agent) {
     else delete carousel.dataset.agentModel;
     carousel.dataset.agentEffort = agent.effort ? String(agent.effort) : 'medium';
     carousel.dataset.agentFast = agent.fast === true ? 'true' : 'false';
+    storeRentanAgentPick(getRentanAgentOverride());
 }
+
+(function restoreRentanAgentPick() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(RENTAN_AGENT_PICK_KEY) || 'null'); } catch (_) { saved = null; }
+    if (saved && typeof saved === 'object' && rentanAgentEngineOk(saved.engine)) setRentanAgentOverride(saved);
+})();
 
 function rentanAgentBaseline() {
     return rentanAgentDefault || rentanAgentBuiltIn || RENTAN_AGENT_FALLBACK;

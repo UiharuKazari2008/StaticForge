@@ -74,17 +74,28 @@
         return !!(btn && btn.classList.contains('generating-effect'));
     }
 
-    /** The print's progress from the socket (websocket.js progressStates): { phase, pct } or null. */
+    // Rentan's phases before the print starts (modules/dynagenWren.js progress, imageGeneration.js review)
+    const RENTAN_PHASES = new Set(['thinking', 'streaming', 'reviewing', 'tool_execution']);
+
+    /**
+     * The print's progress from the socket (websocket.js progressStates): { phase, pct, rentan, queued }
+     * or null. queued: prints waiting behind it in the server FIFO (generationJobQueue.js 'queued').
+     */
     function progress() {
         const states = window.wsClient && window.wsClient.progressStates;
         if (!states || typeof states.forEach !== 'function') return null;
         let best = null;
+        let queued = 0;
+        let rentan = false;
         states.forEach((s) => {
             if (!s) return;
+            if (s.phase === 'queued') { queued++; return; }
+            if (RENTAN_PHASES.has(s.phase)) rentan = true;
             const pct = Number(s.progress);
             if (!best || (Number.isFinite(pct) && pct > best.pct)) best = { phase: s.phase || '', pct: Number.isFinite(pct) ? pct : 0 };
         });
-        return best;
+        if (!best && !queued) return null;
+        return { ...(best || { phase: 'queued', pct: 0 }), rentan, queued };
     }
 
     // ---------------------------------------------------------------- hosting the desktop Studio
@@ -716,7 +727,13 @@
         // a print running: its progress in the title (Generate stays free to queue another)
         if (generating()) {
             const p = progress();
-            ws.setTitle(p && p.pct > 0 && p.pct <= 100 ? `Printing ${Math.round(p.pct)}%` : 'Printing...');
+            // Rentan resolves the scene before the print goes out (it can take a while): say so
+            let title = 'Printing...';
+            if (p && p.rentan) title = 'Rentan...';
+            else if (p && p.pct > 0 && p.pct <= 100) title = `Printing ${Math.round(p.pct)}%`;
+            else if (p && p.phase === 'queued') title = 'Queued...';
+            if (p && p.queued && p.phase !== 'queued') title += ` +${p.queued}`;
+            ws.setTitle(title);
             return;
         }
         ws.setTitle('Studio');

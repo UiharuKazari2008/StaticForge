@@ -4911,9 +4911,10 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             if (window.dynamicGenerationData.dialogs_count !== undefined) {
                 dynamicCarousel.setAttribute('data-creative-directive-dialogs', window.dynamicGenerationData.dialogs_count.toString());
             }
-            // Rentan engine / model the print was made with; none follows the saved default (dynamicGenerationManager.js)
-            if (typeof setRentanAgentOverride === 'function') {
-                setRentanAgentOverride(window.dynamicGenerationData.agent || null);
+            // Rentan engine / model the print was made with (dynamicGenerationManager.js). A print
+            // that followed the default keeps this Studio's current pick rather than clearing it.
+            if (typeof setRentanAgentOverride === 'function' && window.dynamicGenerationData.agent) {
+                setRentanAgentOverride(window.dynamicGenerationData.agent);
             }
             if (typeof setRentanReducedContext === 'function') {
                 setRentanReducedContext(window.dynamicGenerationData.reduced_context || null);

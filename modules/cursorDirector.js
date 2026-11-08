@@ -17,6 +17,8 @@ const RUN_HARD_MS = 0;
 // attempts (#351). Both are well under the Director chat caps above.
 const DYNAGEN_IDLE_MS = 2 * 60 * 1000;
 const DYNAGEN_HARD_MS = 3 * 60 * 1000;
+// Claude CLI API retries for a Rentan turn on TokenRouter or a custom provider (default 10).
+const RENTAN_CLI_MAX_RETRIES = 2;
 const RENTAN_REVIEW_HARD_MS = 8 * 60 * 1000;
 const DEFAULT_IDLE_SHUTDOWN_MINUTES = 15;
 const INFLIGHT_MAX_RESUMES = 3;
@@ -1237,7 +1239,10 @@ function tokenRouterCliEnv(link, run) {
         // as a 2 KB preview plus a file path the model never opens.
         MAX_MCP_OUTPUT_TOKENS: '60000',
         // Newline-separated; the bridge reads both (effort -> reasoning_effort, lane -> modules/tokenRouterGate.js).
-        ANTHROPIC_CUSTOM_HEADERS: headers.join('\n')
+        ANTHROPIC_CUSTOM_HEADERS: headers.join('\n'),
+        // Rentan holds a print: a dead upstream (a tunnel 530) must fail in seconds, not
+        // after the CLI's default ten backed-off retries (~3 min per print).
+        ...(Number.isInteger(run.maxRetries) ? { CLAUDE_CODE_MAX_RETRIES: String(run.maxRetries) } : {})
     };
 }
 
@@ -6853,7 +6858,8 @@ async function executeDynagenTurn(gr, job, review, started) {
             return runClaudeTurn(await tokenRouterJail(jail, {
                 ...cliRun,
                 lane: 'normal',
-                providerId: providerId || undefined
+                providerId: providerId || undefined,
+                maxRetries: RENTAN_CLI_MAX_RETRIES
             }), routed, probe.prompt, tracker, marker, limits);
         };
         let turned;

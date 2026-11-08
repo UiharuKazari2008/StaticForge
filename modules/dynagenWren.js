@@ -489,6 +489,15 @@ function sendRentanError(handler, ws, message) {
     });
 }
 
+// Claude CLI errors that mean the engine's API is unreachable, not that the turn went wrong:
+// "API Error: 530 Cloudflare Tunnel error", 502/503/504, overloaded, connection and timeout errors.
+function isRentanUpstreamOutage(error) {
+    const text = String((error && error.message) || '');
+    return /API Error: 5\d\d\b/.test(text)
+        || /API Error: (Connection error|Request timed out)/i.test(text)
+        || /\boverloaded_error\b/.test(text);
+}
+
 const RENTAN_MAX_ATTEMPTS = 5;
 const RENTAN_ATTEMPT_WAIT_MS = 45 * 1000;
 
@@ -1051,8 +1060,10 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
             })
         });
     } catch (error) {
-        // Out of Cursor usage even on Auto, or the server resolve failed twice: print on the last scene.
-        const reusable = error.code === 'CURSOR_USAGE_LIMIT' || error.code === 'RENTAN_SERVER_FAILED';
+        // Out of Cursor usage even on Auto, the server resolve failed twice, or the engine's
+        // upstream is down (5xx, tunnel, timeout): print on the last scene.
+        const reusable = error.code === 'CURSOR_USAGE_LIMIT' || error.code === 'RENTAN_SERVER_FAILED'
+            || isRentanUpstreamOutage(error);
         if (reusable && cp && Array.isArray(cp.dg_expanders) && cp.dg_expanders.length) {
             console.warn(`Rentan ${body.workspace || ''}: ${error.code === 'CURSOR_USAGE_LIMIT' ? 'Cursor usage limit' : error.message}; last scene reused`);
             reuseCachedScene();
