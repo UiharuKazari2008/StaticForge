@@ -51,6 +51,8 @@ public/sounds/vista/*
 !public/sounds/planet/
 public/sounds/planet/*
 !public/sounds/planet/innerlight.opus
+# Windows Mobile 6.1 system sounds from the device ROM (\Windows), Melaton Mobile's (wmShell.js)
+!public/sounds/wm61/
 # Cursor packs served at /cursors/*. Vista is committed; Posy and others stay host-local.
 public/cursors/*
 !public/cursors/vista/

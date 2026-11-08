@@ -1221,6 +1221,7 @@
         notes = readToasts();
         const live = new Set(notes.flatMap((n) => n.ids.map((id) => seenKey(id, n))));
         for (const k of [...noteSeen]) if (!live.has(k)) noteSeen.delete(k);
+        soundNewNotes(live);
         if (!noteOf(noteShown)) noteShown = null;
         if (!notes.length && !statusFolded.length) noteTrayOpen = false;
         if (!noteShown && !noteTrayOpen && notesMayPop()) {
@@ -1232,6 +1233,26 @@
         renderNotes();
         const keysFor = shown ? `${shown.id}:${!!shown.toast.querySelector('.toast-close')}` : '';
         if (keysFor !== noteKeysFor) { noteKeysFor = keysFor; renderSoftKeys(); }
+    }
+
+    /**
+     * A notification sounds once as it arrives (SHNotificationAdd plays its class's Wave; the default
+     * class is Alarm2.wav) and again when a running one ends with its result; updates in between are
+     * silent. An error notice is an error (SystemHand, the Program Error event's settings). Notices
+     * that came during startup or a takeover sound when they can show.
+     */
+    const noteSounded = new Set();
+    function soundNewNotes(live) {
+        for (const k of [...noteSounded]) if (!live.has(k)) noteSounded.delete(k);
+        if (!notesMayPop()) return;
+        let fresh = null;
+        for (const n of notes) {
+            const keys = n.ids.map((id) => seenKey(id, n));
+            if (keys.every((k) => noteSounded.has(k))) continue;
+            keys.forEach((k) => noteSounded.add(k));
+            if (!fresh || n.type === 'error') fresh = n;
+        }
+        if (fresh) playSystemSound(fresh.type === 'error' ? 'SystemHand' : 'Notification', { event: fresh.type === 'error' ? 'error' : 'balloon' });
     }
 
     function noteTitle(n) {
@@ -1516,6 +1537,170 @@
         }
     }
 
+    // ---------------------------------------------------------------- system sounds
+
+    /**
+     * WM 6.1's system sounds, from the device (Yozora #709; dump: ~/.cache/wm61/snd-evidence).
+     * PlaySound's aliases are a fixed table in coredll (slot 1 at 0x033CD308, read on the emulator
+     * with ~/.cache/wm61/tools/wmmem2.cs) indexed into HKLM\Snd\Event "Curr0" (multi_sz, the
+     * scheme; EventMask 0x1F7ED):
+     *   0 SystemAsterisk alarm2   1 Close ""        2 SystemHand alarm2      3 SystemDefault default
+     *   4 EmptyRecycleBin Empty   5 SystemExclamation alarm2  6-8 IR begin/end/intr infbeg/infend
+     *   9 MenuPopup ""   10 MenuCommand ""   11 Open ""   12 SystemQuestion alarm2
+     *   13-15 RN begin/end/intr   16 SystemStart alarm2   17 Maximize ""   18 Minimize ""
+     *   19 RecordStart voicbeep   20 RecordEnd RecEnd
+     * gwes plays SystemAsterisk / Exclamation / Question / Hand for a message box's icon (MessageBeep;
+     * no icon is MB_OK, SystemDefault) and SystemStart at startup; menus are silent. A notification
+     * plays its class's Wave (HKCU\ControlPanel\Notifications): Default \Windows\Alarm2.wav with
+     * Options 13 (sound + vibrate + display); new e-mail is Options 8 (no sound), so new mail stays
+     * silent. The files are the ROM's own (public/sounds/wm61, \Windows\Alarm2.wav and Default.wav).
+     *
+     * The phone's switches are the workspace's (Settings > Sounds & Notifications, the desktop's own
+     * store): each WM sound follows the desktop event it stands for (EVENT_OF). (None), a group's
+     * check box off or No Sounds silences it; a sound picked for that event plays as picked; the
+     * scheme's own sound plays WM's. Muted or volume 0 (tabVolume) is silent; tabVolume's master gain
+     * scales the rest. Nothing plays before a tap or key has unlocked audio (no queue, never throws).
+     */
+    const SND_BASE = '/sounds/wm61/';
+    const SND_FILE = {
+        SystemAsterisk: 'Alarm2.wav', SystemQuestion: 'Alarm2.wav', SystemExclamation: 'Alarm2.wav',
+        SystemHand: 'Alarm2.wav', SystemDefault: 'Default.wav', SystemStart: 'Alarm2.wav',
+        Notification: 'Alarm2.wav'
+    };
+    // the desktop event (desktopSounds.SCHEME, the Sound dialog's list) whose settings each one follows
+    const SND_EVENT_OF = {
+        SystemAsterisk: 'dialog', SystemQuestion: 'dialog', SystemDefault: 'dialog',
+        SystemExclamation: 'warning', SystemHand: 'critical-stop', SystemStart: 'logon',
+        Notification: 'balloon'
+    };
+    const MSGBOX_SOUND = { info: 'SystemAsterisk', question: 'SystemQuestion', warning: 'SystemExclamation', error: 'SystemHand' };
+    const snd = { ctx: null, buffers: new Map(), last: 0, log: [] };
+
+    function sndUnlock() {
+        try {
+            if (!snd.ctx) {
+                const Ctor = window.AudioContext || window.webkitAudioContext;
+                if (!Ctor) return;
+                snd.ctx = new Ctor();
+            }
+            if (snd.ctx.state === 'suspended' && snd.ctx.resume) snd.ctx.resume().catch(() => {});
+            new Set(Object.values(SND_FILE)).forEach(sndBuffer);
+        } catch (_) { /* no audio */ }
+    }
+
+    /** Decoded audio by file (several sounds share one WAV); null when it cannot load. */
+    function sndBuffer(file) {
+        if (!snd.buffers.has(file)) {
+            const p = fetch(SND_BASE + encodeURIComponent(file), { credentials: 'same-origin' })
+                .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`sound ${r.status}`))))
+                .then((bytes) => snd.ctx.decodeAudioData(bytes))
+                .catch(() => { snd.buffers.delete(file); return null; });
+            snd.buffers.set(file, p);
+        }
+        return snd.buffers.get(file);
+    }
+
+    function sndSilentNow() {
+        try {
+            const tv = window.tabVolume;
+            if (tv && typeof tv.isMuted === 'function' && tv.isMuted()) return true;
+            if (tv && typeof tv.getLevel === 'function' && Number(tv.getLevel()) <= 0) return true;
+        } catch (_) { /* volume unknown: play */ }
+        return false;
+    }
+
+    // what played, for tests (wmShell.sounds.log)
+    function sndNote(name, event, file, at) {
+        snd.log.push({ name, event, file, at });
+        if (snd.log.length > 50) snd.log.shift();
+    }
+
+    /**
+     * Play one WM system sound (SND_FILE's names); resolves true when it started. opts.event: the
+     * desktop event whose settings decide (default SND_EVENT_OF). A second sound within 300 ms is
+     * dropped: a message box and the desktop's own call for the same box are one beep.
+     */
+    async function playSystemSound(name, opts = {}) {
+        try {
+            const file = SND_FILE[name];
+            if (!file) return false;
+            const event = opts.event || SND_EVENT_OF[name];
+            const pers = window.desktopPersonalization;
+            let own;
+            if (pers && typeof pers.soundFile === 'function') {
+                if (name === 'SystemStart' && pers.soundFile('logon-startup') === '') return false;
+                own = pers.soundFile(event);
+            }
+            if (own === '' || sndSilentNow()) return false;
+            const ctx = snd.ctx;
+            if (!ctx || ctx.state !== 'running') return false;
+            const now = Date.now();
+            if (now - snd.last < 300) return false;
+            snd.last = now;
+            const ds = window.desktopSounds;
+            const schemeFile = ds && ds.SCHEME ? ds.SCHEME[event] : undefined;
+            // a sound picked for the event on Settings > Sounds & Notifications plays as picked
+            if (typeof own === 'string' && own !== schemeFile && ds && Array.isArray(ds.FILES) && ds.FILES.includes(own) && typeof ds.playFile === 'function') {
+                sndNote(name, event, `vista/${own}`, now);
+                return !!(await ds.playFile(own));
+            }
+            sndNote(name, event, `wm61/${file}`, now);
+            const buffer = await sndBuffer(file);
+            if (!buffer) return false;
+            const src = ctx.createBufferSource();
+            src.buffer = buffer;
+            src.connect(ctx.destination); // tabVolume's master gain sits on the way out
+            src.start(0);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /**
+     * The desktop's own sound calls on the phone (desktopSounds.play only plays in desktop mode):
+     * a boot message box, an exception window, a dropped connection and the confirmation dialog's
+     * sound map to WM's; every other desktop event (logon, mail, prints, recycle ...) has no WM
+     * sound or comes as a notification here.
+     */
+    const DESKTOP_SOUND = { error: 'SystemHand', 'critical-stop': 'SystemHand', warning: 'SystemExclamation', dialog: 'SystemAsterisk' };
+    function watchSystemSounds() {
+        const unlock = () => sndUnlock();
+        document.addEventListener('pointerdown', unlock, { capture: true, passive: true });
+        document.addEventListener('keydown', unlock, { capture: true });
+        const ds = window.desktopSounds;
+        if (ds && typeof ds.play === 'function' && !ds.wmWrapped) {
+            const play = ds.play;
+            ds.play = function (eventId, options) {
+                const name = DESKTOP_SOUND[eventId];
+                if (name) playSystemSound(name, { event: eventId === 'dialog' ? 'dialog' : eventId });
+                return play.call(this, eventId, options);
+            };
+            ds.wmWrapped = true;
+        }
+        // the desktop's confirmation dialog is drawn as a WM message box: it beeps like one, by its
+        // icon (showInputDialog's edit box is a form, not a message box: silent). Wrapped at the
+        // global (confirmationDialog.js sets the icon before it returns); its classes cannot tell a
+        // new question from the last one still closing.
+        const ask = window.showConfirmationDialog;
+        if (typeof ask === 'function' && !ask.wmWrapped) {
+            const wrapped = function () {
+                const result = ask.apply(this, arguments);
+                try {
+                    const dlg = document.getElementById('confirmationDialog');
+                    const icon = (dlg && dlg.querySelector('.modal-window-title-main i') || {}).className || '';
+                    const name = /exclamation|warning/.test(icon) ? 'SystemExclamation'
+                        : /xmark|times|ban|skull|bug|bomb/.test(icon) ? 'SystemHand'
+                            : /info|check/.test(icon) ? 'SystemAsterisk' : 'SystemQuestion';
+                    if (dlg) playSystemSound(name);
+                } catch (_) { /* no sound */ }
+                return result;
+            };
+            wrapped.wmWrapped = true;
+            window.showConfirmationDialog = wrapped;
+        }
+    }
+
     // ---------------------------------------------------------------- message box
 
     /**
@@ -1575,6 +1760,9 @@
             layer.hidden = false;
             // WM: the title bar's corner goes empty while a message box is up
             refreshTitleAction();
+            // MessageBeep by the icon (none: MB_OK, the default beep); an edit box with no icon is a
+            // form, not a message box
+            if (icon || !input) playSystemSound(icon ? MSGBOX_SOUND[icon] || 'SystemDefault' : 'SystemDefault');
             const first = field || layer.querySelector('.wm-msgbox-buttons .is-default') || layer.querySelector('button');
             if (first) first.focus();
         });
@@ -2890,6 +3078,9 @@
         // As on the device after the splash: Today's background and date line first with no title
         // bar or soft keys (reveal), the items fill in over ~2 s, the bars come last
         setBoot('reveal');
+        // gwes plays SystemStart as the shell comes up (only once audio is unlocked: a tap or key
+        // during startup, e.g. the PIN; a cold load stays silent)
+        playSystemSound('SystemStart');
         const page = apps.get('today').page;
         const rows = page ? [...page.children].slice(1) : [];
         rows.forEach((r) => r.classList.add('wm-boot-hidden'));
@@ -2968,6 +3159,7 @@
         watchDirector();
         watchDevice();
         watchToasts();
+        watchSystemSounds();
         startBoot();
         refreshStatus();
         setInterval(refreshStatus, 2000);
@@ -3018,6 +3210,8 @@
         onPopState,
         thumbFor,
         bubble: (opts) => bubble(opts || {}),
+        /** WM 6.1 system sounds: play('SystemHand' | 'SystemExclamation' | 'Notification' ...), log (what played). */
+        sounds: { play: (name, opts) => playSystemSound(name, opts || {}), log: snd.log, files: SND_FILE },
         /** Today's wallpaper placement (Settings > Today > Wallpaper). */
         wallpaper: {
             picture: () => todayPicture(),
