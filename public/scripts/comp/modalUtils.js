@@ -6660,6 +6660,8 @@ function buildToolsSubmenuItems() {
         { launchId: 'taskmgr', icon: 'fas fa-chart-line', imageIcon: 'vista-task-manager.png', text: 'Melaton Task Manager', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'taskmgr' }) },
         // Administrative Tools > Reliability and Performance Monitor (Yozora #632; apps/perfmon, a system package)
         { launchId: 'perfmon', icon: 'fas fa-gauge', imageIcon: 'vista-reliability-performance.png', text: 'Reliability and Performance Monitor', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'perfmon' }) },
+        // XLink Operator Console: the arcade cabinets' control menu, admins (Yozora #719; apps/xlink, a system package)
+        { launchId: 'xlink', icon: 'fas fa-joystick', imageIcon: 'xlink.png', text: 'XLink Operator Console', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'xlink' }) },
         // Accessories > WordPad (Yozora #632; apps/wordpad, a system package)
         { launchId: 'wordpad', icon: 'fas fa-file-word', imageIcon: 'vista-wordpad.png', text: 'WordPad', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'wordpad' }) },
         // Accessories > Sound Recorder (Yozora #632; apps/soundrec, a system package)

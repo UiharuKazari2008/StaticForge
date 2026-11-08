@@ -1,0 +1,14 @@
+{
+    "id": "xlink",
+    "version": "3.2.117",
+    "title": "XLink Operator Console",
+    "publisher": "AmusementVISION",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "xlink",
+    "icon": "assets/xlink-48.png",
+    "client": {
+        "entry": "client/xlink.js",
+        "styles": ["assets/xlink.css"]
+    }
+}
