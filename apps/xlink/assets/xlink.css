@@ -35,8 +35,6 @@
 .xl-window .xl-root button { font: inherit; color: var(--xl-text); }
 .xl-ico { width: 16px; height: 16px; flex: none; }
 .xl-row .xl-ico { width: 20px; height: 20px; }
-.xl-root ::-webkit-scrollbar { width: 12px; height: 12px; background: var(--xl-bg1); }
-.xl-root ::-webkit-scrollbar-thumb { background: linear-gradient(90deg, #454950, #383b41); border: 2px solid var(--xl-bg1); border-radius: 6px; }
 
 /* ---- menu bar and control strip ---- */
 .xl-menubar { display: flex; height: 20px; padding: 1px 4px; background: linear-gradient(#2c2f34, #222428); border-bottom: 1px solid var(--xl-line); }
@@ -52,9 +50,9 @@
 .xl-tc small { color: var(--xl-dim); font: bold 9px Arial, sans-serif; letter-spacing: 1px; }
 .xl-tc b { color: var(--xl-amber); font: bold 17px/26px 'Lucida Console', 'Courier New', monospace; letter-spacing: 1px; text-shadow: 0 0 6px rgba(240, 166, 55, .55); }
 .xl-link { display: inline-flex; align-items: center; height: 26px; padding: 0 9px; border-radius: 2px; background: #050505; box-shadow: var(--xl-well); }
-.xl-link img { width: 67px; height: 20px; opacity: .25; transition: opacity .3s steps(3); }
-.xl-link.is-up img { opacity: 1; filter: drop-shadow(0 0 3px rgba(120, 190, 255, .7)); }
-.xl-busy .xl-link.is-up img { animation: xl-blink .3s steps(1) infinite; }
+/* steady: lit while a node answers, dimmed when none does (no blinking, no glow) */
+.xl-link img { width: 67px; height: 20px; opacity: .3; }
+.xl-link.is-up img { opacity: 1; }
 @keyframes xl-blink { 50% { opacity: .35; } }
 
 /* ---- device list + function list ---- */
