@@ -41,7 +41,6 @@ function registerPackets(handlersCtx) {
         value: d.value,
         confirmed: !!d.confirmed
     }), 'The device did not accept the command');
-    packet('xlink_captures', async () => xlink.captures(), 'Failed to read the captures folder');
     packet('xlink_save', async (d) => xlink.saveFile(String(d.name || ''), String(d.text || '')), 'Failed to save the configuration');
 }
 

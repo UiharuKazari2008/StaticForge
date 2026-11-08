@@ -74,7 +74,6 @@ const desktopSoundsStatic = require('./modules/desktopSoundsStatic');
 const vistaGadgetStatic = require('./modules/vistaGadgetStatic');
 const vistaGadgetProxy = require('./modules/vistaGadgetProxy');
 const calendarFeed = require('./modules/calendarFeed');
-const xlink = require('./modules/xlink');
 const installManifestFilter = require('./modules/installManifestFilter');
 const { browserRequest } = require('./modules/browserHttp');
 const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
@@ -4501,12 +4500,6 @@ async function handleAdminUnixSocketMessage(message, socket) {
         // Windows Calendar's Subscribe: an .ics from another site, fetched here (modules/calendarFeed.js)
         app.get('/calendar-feed', authMiddleware, (req, res) => {
             calendarFeed.handle(req, res).catch((err) => {
-                if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
-            });
-        });
-        // XLink Operator Console's Saved Captures (apps/xlink, Yozora #719), admins only (modules/xlink.js)
-        app.get('/xlink/captures/:name', authMiddleware, (req, res) => {
-            xlink.handleCapture(req, res).catch((err) => {
                 if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
             });
         });

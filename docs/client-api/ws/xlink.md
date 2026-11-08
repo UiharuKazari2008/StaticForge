@@ -15,24 +15,22 @@ packet, so a cabinet that is off does not raise the desktop's Mainframe exceptio
 
 ## Files
 
-In `.cache/packages/.data/xlink/` (`XLINK_DATA_DIR` overrides it in tests). They are read again whenever their
+In `.cache/packages/.data/xlink/` (`XLINK_DATA_DIR` overrides it in tests). It is read again whenever its
 mtime changes.
 
 | File | Holds |
 |---|---|
 | `menu.json` | `{ devices: { <key>: Device } }`, AVS-Menu's format unchanged |
-| `config.json` | `{ captures: <server folder of .png screenshots>, all_captures: bool }` |
 
 ## Packet index
 
 | Request type | Fields | Reply `data` |
 |---|---|---|
-| `xlink_info` | none | `{ dataDir, devices, problem, captures }` |
+| `xlink_info` | none | `{ dataDir, devices, problem }` |
 | `xlink_devices` | none | `{ devices: [{ key, name, icon, badges, status, items }] }`: devices sorted by `position`, each with its own status. No item polling. |
 | `xlink_device` | `device`, `force?` | `{ key, name, icon, badges, status, items: [Item], polledAt, log, cached? }`: the device, every item and child polled in parallel, cached 4 s unless `force` |
 | `xlink_action` | `device`, `path: [i, childIndex?]`, `op: send \| toggle \| slider`, `value?`, `confirmed?` | `{ confirm: { header, message, ok, icon, iconColor }, log }` when a warning applies and `confirmed` is not set; otherwise `{ ok, code, failure, log, snapshot }` (`snapshot` is the device polled again) |
-| `xlink_captures` | none | `{ folder, all, configured, missing?, reason?, files: [{ name, mtime, size }] }`: `*.png`, newest first, at most 100, the last 7 days unless `all_captures` |
-| `xlink_save` | `name: menu.json \| config.json`, `text` | `{ saved }`: File > Import in the console. The text must parse, and menu.json must have `devices`. |
+| `xlink_save` | `name: menu.json`, `text` | `{ saved }`: File > Import in the console. The text must parse, and menu.json must have `devices`. |
 
 `Item` = `{ text, icon, badges: [{ text, color, textColor }], append, status, kind, toggle, warning, endpoints, children: [Item] }`
 - `status`: `null`, or `{ text, color, failed?, gated? }`.
@@ -41,9 +39,6 @@ mtime changes.
 - `warning`: true when the item has a usable warning.
 
 `log` lines are `{ t, verb: POLL | CHECK | SEND | SET, url (host+path), code, ms, ok, error, body }`.
-
-`GET /xlink/captures/<name>[?thumb=1]` (auth, admins) serves a capture, or a 240 x 160 JPEG thumbnail
-(sharp, kept in memory).
 
 ## menu.json semantics (as AVS-Menu's server.js)
 
@@ -68,3 +63,4 @@ Changes from AVS-Menu:
   every 60 s (View > Auto Poll), and after each command.
 - Icons: menu.json's Font Awesome names are drawn as Vista 16 px art (`ICONS` in the client); unknown
   names get the application icon.
+- AVS-Menu's Saved Captures (config.json `captures`) is not ported (Yukimi, 2026-11-08: old and outdated).

@@ -162,28 +162,10 @@ const server = http.createServer((req, res) => {
     const dead = await xlink._get('http://127.0.0.1:1/x', 500);
     assert.strictEqual(dead.ok, false);
 
-    // ---- captures: png only, newest first, 7 days unless all_captures
-    const caps = path.join(dir, 'caps');
-    fs.mkdirSync(caps);
-    fs.writeFileSync(path.join(caps, 'new.png'), 'x');
-    fs.writeFileSync(path.join(caps, 'old.PNG'), 'x');
-    fs.writeFileSync(path.join(caps, 'note.txt'), 'x');
-    const old = (Date.now() - 10 * 864e5) / 1000;
-    fs.utimesSync(path.join(caps, 'old.PNG'), old, old);
-    assert.strictEqual(xlink.captures().configured, false);
-    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ captures: caps }));
-    assert.deepStrictEqual(xlink.captures().files.map((f) => f.name), ['new.png']);
-    xlink.saveFile('config.json', JSON.stringify({ captures: caps, all_captures: true }));
-    assert.deepStrictEqual(xlink.captures().files.map((f) => f.name), ['new.png', 'old.PNG']);
-    assert.ok(xlink.capturePath('new.png'));
-    assert.strictEqual(xlink.capturePath('../menu.json'), null);
-    assert.strictEqual(xlink.capturePath('note.txt'), null);
-    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ captures: path.join(dir, 'missing') }));
-    assert.strictEqual(xlink.captures().missing, true);
-
     // ---- import validation
     assert.throws(() => xlink.saveFile('menu.json', '{"nodevices":1}'), /devices/);
     assert.throws(() => xlink.saveFile('../x.json', '{}'), /Unknown/);
+    assert.throws(() => xlink.saveFile('config.json', '{}'), /Unknown/);
 
     // ---- the package
     const manifest = validateManifest(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'apps/xlink/manifest.json'), 'utf8')), { trusted: true });

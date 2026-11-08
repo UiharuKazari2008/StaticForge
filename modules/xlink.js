@@ -9,7 +9,6 @@
  *
  * Files, in the app's data dir (.cache/packages/.data/xlink/), read again whenever they change:
  *   menu.json    { devices: { <key>: Device } }, AVS-Menu's format unchanged
- *   config.json  { captures: <folder of .png screenshots>, all_captures: bool }
  *
  * menu.json semantics follow AVS-Menu's server.js:
  *   status + replace   [match, text, colour]: case-insensitive substring of the body, LAST match wins;
@@ -36,8 +35,6 @@ const CHECK_TIMEOUT_MS = 3000;
 const ACTION_TIMEOUT_MS = 30000;
 const SNAPSHOT_TTL_MS = 4000;
 const BODY_LIMIT = 4096;
-const CAPTURE_LIMIT = 100;
-const WEEK_MS = 7 * 864e5;
 
 const files = new Map(); // name -> { mtimeMs, data }
 
@@ -60,10 +57,6 @@ function menu() {
         throw err;
     }
     return m;
-}
-
-function config() {
-    return readJson('config.json', {}) || {};
 }
 
 function isHttpUrl(u) {
@@ -317,72 +310,11 @@ async function action(req) {
     };
 }
 
-/** Saved Captures: { folder, all, files: [{ name, mtime, size }] } newest first, at most 100. */
-function captures() {
-    const c = config();
-    const folder = c.captures ? String(c.captures) : '';
-    if (!folder) return { folder: '', all: !!c.all_captures, configured: false, files: [] };
-    let names;
-    try { names = fs.readdirSync(folder); } catch (err) {
-        return { folder, all: !!c.all_captures, configured: true, missing: true, reason: err.code || err.message, files: [] };
-    }
-    const now = Date.now();
-    const list = [];
-    for (const name of names) {
-        if (!/\.png$/i.test(name)) continue;
-        let st;
-        try { st = fs.statSync(path.join(folder, name)); } catch (_) { continue; }
-        if (!st.isFile()) continue;
-        if (!c.all_captures && now - st.mtimeMs > WEEK_MS) continue;
-        list.push({ name, mtime: st.mtimeMs, size: st.size });
-    }
-    list.sort((a, b) => b.mtime - a.mtime);
-    return { folder, all: !!c.all_captures, configured: true, files: list.slice(0, CAPTURE_LIMIT) };
-}
-
-/** A capture's absolute path, or null (name only, .png, inside the folder). */
-function capturePath(name) {
-    const c = config();
-    if (!c.captures || typeof name !== 'string' || !/\.png$/i.test(name) || name !== path.basename(name) || name.startsWith('.')) return null;
-    const abs = path.join(String(c.captures), name);
-    try { if (!fs.statSync(abs).isFile()) return null; } catch (_) { return null; }
-    return abs;
-}
-
-const thumbs = new Map(); // abs|mtime -> Buffer (jpeg), at most 200
-
-/** GET /xlink/captures/:name[?thumb=1] (admins). */
-async function handleCapture(req, res) {
-    if (req.userType !== 'admin' && req.userType !== 'dev_admin') {
-        res.status(403).json({ success: false, error: 'Admin access required' });
-        return;
-    }
-    const abs = capturePath(req.params.name);
-    if (!abs) { res.status(404).end(); return; }
-    if (!req.query.thumb) {
-        res.set('Cache-Control', 'private, max-age=300');
-        res.sendFile(path.basename(abs), { root: path.dirname(abs), dotfiles: 'allow' });
-        return;
-    }
-    const st = fs.statSync(abs);
-    const k = `${abs}|${st.mtimeMs}`;
-    let buf = thumbs.get(k);
-    if (!buf) {
-        const sharp = require('sharp');
-        buf = await sharp(abs).resize(240, 160, { fit: 'inside' }).jpeg({ quality: 70 }).toBuffer();
-        thumbs.set(k, buf);
-        if (thumbs.size > 200) thumbs.delete(thumbs.keys().next().value);
-    }
-    res.set('Content-Type', 'image/jpeg');
-    res.set('Cache-Control', 'private, max-age=3600');
-    res.end(buf);
-}
-
-/** Save menu.json / config.json from the console's Import (validated JSON). */
+/** Save menu.json from the console's Import (validated JSON). */
 function saveFile(name, text) {
-    if (name !== 'menu.json' && name !== 'config.json') throw Object.assign(new Error('Unknown file'), { code: 'XLINK_BAD_FILE' });
+    if (name !== 'menu.json') throw Object.assign(new Error('Unknown file'), { code: 'XLINK_BAD_FILE' });
     const data = JSON.parse(String(text));
-    if (name === 'menu.json' && (!data || typeof data.devices !== 'object' || !data.devices)) throw Object.assign(new Error('menu.json needs a "devices" object'), { code: 'XLINK_BAD_FILE' });
+    if ((!data || typeof data.devices !== 'object' || !data.devices)) throw Object.assign(new Error('menu.json needs a "devices" object'), { code: 'XLINK_BAD_FILE' });
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const tmp = path.join(DATA_DIR, `.${name}.tmp`);
     fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`);
@@ -396,7 +328,7 @@ function info() {
     let count = 0;
     let problem = '';
     try { count = Object.keys(menu().devices).length; } catch (err) { problem = err.message; }
-    return { dataDir: DATA_DIR, devices: count, problem, captures: !!config().captures };
+    return { dataDir: DATA_DIR, devices: count, problem };
 }
 
-module.exports = { DATA_DIR, devices, device, action, captures, capturePath, handleCapture, saveFile, info, _applyReplace: applyReplace, _toggleRow: toggleRow, _get: get };
+module.exports = { DATA_DIR, devices, device, action, saveFile, info, _applyReplace: applyReplace, _toggleRow: toggleRow, _get: get };

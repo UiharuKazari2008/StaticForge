@@ -1,20 +1,23 @@
-/* XLink Operator Console (apps/xlink, Yozora #719). A third-party operator package from the late
-   2000s: Windows 2000 face colours and bevels inside the Melaton frame, Tahoma 8 pt, LCD status cells. */
+/* XLink Operator Console (apps/xlink, Yozora #719). Broadcast control software from around 2010: the
+   router / switcher control panels it borrows from (charcoal panels, amber section heads, tally lamps,
+   backlit keys, faders, a time-of-day clock), inside the Melaton frame. */
 
 .xl-window {
-    --xl-face: #d4d0c8;
-    --xl-hi: #ffffff;
-    --xl-lite: #e8e6e0;
-    --xl-shadow: #808080;
-    --xl-dark: #404040;
-    --xl-sel: #0a246a;
-    --xl-raised: inset -1px -1px 0 var(--xl-dark), inset 1px 1px 0 var(--xl-hi), inset -2px -2px 0 var(--xl-shadow), inset 2px 2px 0 var(--xl-lite);
-    --xl-sunken: inset 1px 1px 0 var(--xl-shadow), inset -1px -1px 0 var(--xl-hi), inset 2px 2px 0 var(--xl-dark), inset -2px -2px 0 var(--xl-lite);
-    --xl-pressed: inset 1px 1px 0 var(--xl-dark), inset -1px -1px 0 var(--xl-hi), inset 2px 2px 0 var(--xl-shadow);
-    --xl-thin: inset 1px 1px 0 var(--xl-shadow), inset -1px -1px 0 var(--xl-hi);
+    --xl-bg0: #121316;
+    --xl-bg1: #1c1e22;
+    --xl-bg2: #26292e;
+    --xl-bg3: #31353b;
+    --xl-line: #08090a;
+    --xl-hi: rgba(255, 255, 255, .07);
+    --xl-text: #d6d9dd;
+    --xl-dim: #858c96;
+    --xl-amber: #f0a637;
+    --xl-sel: #2c5d96;
+    --xl-well: inset 0 1px 2px rgba(0, 0, 0, .7), 0 1px 0 var(--xl-hi);
+    --xl-ridge: inset 0 1px 0 rgba(255, 255, 255, .1), 0 1px 1px rgba(0, 0, 0, .6);
 }
 
-.xl-window > .modal-content.xl-client { display: flex; flex-direction: column; min-height: 0; padding: 0 !important; background: var(--xl-face); }
+.xl-window > .modal-content.xl-client { display: flex; flex-direction: column; min-height: 0; padding: 0 !important; background: var(--xl-bg0); }
 .xl-window .xl-root {
     position: relative;
     display: flex;
@@ -23,158 +26,154 @@
     min-height: 0;
     padding: 0;
     overflow: hidden;
-    background: var(--xl-face);
-    color: #000;
+    background: var(--xl-bg0);
+    color: var(--xl-text);
     font: 11px/1.25 Tahoma, 'Microsoft Sans Serif', sans-serif;
     cursor: default;
     user-select: none;
 }
-.xl-root button { font: inherit; color: #000; }
-.xl-root img { image-rendering: auto; }
+.xl-window .xl-root button { font: inherit; color: var(--xl-text); }
 .xl-ico { width: 16px; height: 16px; flex: none; }
 .xl-row .xl-ico { width: 20px; height: 20px; }
+.xl-root ::-webkit-scrollbar { width: 12px; height: 12px; background: var(--xl-bg1); }
+.xl-root ::-webkit-scrollbar-thumb { background: linear-gradient(90deg, #454950, #383b41); border: 2px solid var(--xl-bg1); border-radius: 6px; }
 
-/* ---- menu bar and toolbar ---- */
-.xl-menubar { display: flex; height: 19px; padding: 1px 2px; box-shadow: inset 0 -1px 0 var(--xl-shadow), 0 1px 0 var(--xl-hi); }
-.xl-menubar span { padding: 1px 7px; }
-.xl-menubar span:hover { box-shadow: var(--xl-thin); box-shadow: inset -1px -1px 0 var(--xl-shadow), inset 1px 1px 0 var(--xl-hi); }
-.xl-menubar u { text-decoration: underline; }
-.xl-toolbar { display: flex; align-items: center; gap: 1px; height: 30px; padding: 2px 4px; margin-top: 2px; box-shadow: inset 0 1px 0 var(--xl-hi), inset 0 -1px 0 var(--xl-shadow); }
-.xl-tb { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 6px; border: 0; background: transparent; }
-.xl-tb img { width: 16px; height: 16px; }
-.xl-tb:hover { box-shadow: inset -1px -1px 0 var(--xl-shadow), inset 1px 1px 0 var(--xl-hi); }
-.xl-tb:active { box-shadow: var(--xl-thin); padding: 1px 5px 0 7px; }
-.xl-tb-sep { width: 2px; height: 22px; margin: 0 3px; box-shadow: inset 1px 0 0 var(--xl-shadow), inset -1px 0 0 var(--xl-hi); }
+/* ---- menu bar and control strip ---- */
+.xl-menubar { display: flex; height: 20px; padding: 1px 4px; background: linear-gradient(#2c2f34, #222428); border-bottom: 1px solid var(--xl-line); }
+.xl-menubar span { padding: 2px 8px; color: var(--xl-text); }
+.xl-menubar span:hover { background: var(--xl-sel); color: #fff; }
+.xl-toolbar { display: flex; align-items: center; gap: 4px; height: 38px; padding: 0 6px; background: linear-gradient(#34383e, #24272b); border-top: 1px solid rgba(255, 255, 255, .06); border-bottom: 1px solid var(--xl-line); }
+.xl-window .xl-root .xl-tb { min-width: 64px; height: 26px; padding: 0 10px; border: 1px solid #0c0d0f; border-radius: 3px; background: linear-gradient(#4b4f56, #363940); box-shadow: var(--xl-ridge); color: #e3e5e8; font: bold 10px Arial, Tahoma, sans-serif; letter-spacing: 1px; text-transform: uppercase; }
+.xl-window .xl-root .xl-tb:hover { background: linear-gradient(#575c64, #40444b); }
+.xl-window .xl-root .xl-tb:active { background: linear-gradient(#2c2f34, #3a3e44); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .7); }
+.xl-tb-sep { width: 1px; height: 24px; margin: 0 4px; background: var(--xl-line); box-shadow: 1px 0 0 var(--xl-hi); }
 .xl-tb-fill { flex: 1; }
-.xl-link { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; background: linear-gradient(#1b1b1b, #000); box-shadow: var(--xl-sunken); }
-.xl-link img { width: 67px; height: 20px; opacity: .28; transition: opacity .3s steps(3); }
+.xl-tc { display: inline-flex; align-items: baseline; gap: 6px; height: 26px; padding: 0 10px; border-radius: 2px; background: #050505; box-shadow: var(--xl-well); line-height: 26px; }
+.xl-tc small { color: var(--xl-dim); font: bold 9px Arial, sans-serif; letter-spacing: 1px; }
+.xl-tc b { color: var(--xl-amber); font: bold 17px/26px 'Lucida Console', 'Courier New', monospace; letter-spacing: 1px; text-shadow: 0 0 6px rgba(240, 166, 55, .55); }
+.xl-link { display: inline-flex; align-items: center; height: 26px; padding: 0 9px; border-radius: 2px; background: #050505; box-shadow: var(--xl-well); }
+.xl-link img { width: 67px; height: 20px; opacity: .25; transition: opacity .3s steps(3); }
 .xl-link.is-up img { opacity: 1; filter: drop-shadow(0 0 3px rgba(120, 190, 255, .7)); }
 .xl-busy .xl-link.is-up img { animation: xl-blink .3s steps(1) infinite; }
 @keyframes xl-blink { 50% { opacity: .35; } }
 
-/* ---- tree + list ---- */
-.xl-main { flex: 1; display: flex; min-height: 0; padding: 3px 3px 0; }
-.xl-tree { width: 190px; flex: none; overflow: auto; padding: 3px 0; background: #fff; box-shadow: var(--xl-sunken); outline: none; }
-.xl-tnode { position: relative; display: flex; align-items: center; gap: 4px; height: 18px; padding-left: calc(6px + var(--d) * 18px); white-space: nowrap; }
-.xl-tnode > span:not(.xl-tled) { padding: 1px 2px; }
-.xl-tnode.is-sel > span:not(.xl-tled) { background: var(--xl-sel); color: #fff; outline: 1px dotted #ffd; outline-offset: -1px; }
-.xl-tnode[style*="--d:1"]::before { content: ''; position: absolute; left: 13px; top: -9px; width: 8px; height: 18px; border-left: 1px dotted var(--xl-shadow); border-bottom: 1px dotted var(--xl-shadow); }
-.xl-tled { width: 7px; height: 7px; margin-left: 2px; border: 1px solid #333; background: var(--led, #3c3); }
-.xl-tled.is-off { background: #888; }
-.xl-split { width: 4px; flex: none; cursor: col-resize; }
-.xl-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.xl-head { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; margin-bottom: 3px; background: linear-gradient(90deg, #0a246a, #3a6ea5 60%, #a6caf0); color: #fff; box-shadow: var(--xl-thin); }
-.xl-head-ico img, .xl-head-ico .xl-ico { display: block; }
-.xl-head-title { font: bold 13px Tahoma, sans-serif; display: inline-flex; align-items: center; gap: 6px; }
-.xl-head-sub { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.xl-list { flex: 1; overflow: auto; background: #fff; box-shadow: var(--xl-sunken); padding: 2px; outline: none; }
-.xl-cols, .xl-row { display: grid; grid-template-columns: minmax(200px, 1fr) 150px minmax(190px, auto); align-items: center; }
-.xl-cols { position: sticky; top: -2px; z-index: 1; height: 18px; margin: -2px -2px 0; }
-.xl-cols > span { height: 18px; line-height: 18px; padding: 0 6px; background: var(--xl-face); box-shadow: var(--xl-raised); }
-.xl-row { min-height: 36px; border-bottom: 1px solid #ecebe6; }
-.xl-row:nth-of-type(even) { background: #f5f4ef; }
-.xl-row.is-child { background: #fffde8; }
-.xl-row.is-sel { background: #c7d5ec; }
-.xl-row > span { padding: 4px 8px; min-width: 0; }
-.xl-c-name { display: flex; align-items: center; gap: 4px; padding-left: calc(4px + var(--d, 0) * 22px) !important; }
+/* ---- device list + function list ---- */
+.xl-main { flex: 1; display: flex; min-height: 0; padding: 5px 5px 0; }
+.xl-side { width: 190px; flex: none; display: flex; flex-direction: column; min-width: 0; background: var(--xl-bg1); border: 1px solid var(--xl-line); box-shadow: inset 0 1px 0 var(--xl-hi); }
+.xl-panehead { height: 20px; padding: 0 8px; background: linear-gradient(#2e3136, #25282c); border-bottom: 1px solid var(--xl-line); color: var(--xl-amber); font: bold 10px/20px Arial, sans-serif; letter-spacing: 2px; text-transform: uppercase; }
+.xl-tree { flex: 1; overflow: auto; padding: 4px 0; outline: none; }
+.xl-tnode { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px 0 calc(8px + var(--d) * 12px); white-space: nowrap; border-bottom: 1px solid rgba(0, 0, 0, .35); }
+.xl-tnode > span:not(.xl-tled) { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.xl-tnode:hover { background: var(--xl-bg2); }
+.xl-tnode.is-sel { background: linear-gradient(#356aa6, #24507f); color: #fff; }
+.xl-tled { order: 9; width: 14px; height: 8px; flex: none; border-radius: 2px; background: var(--led, #3bd16f); box-shadow: 0 0 5px var(--led, #3bd16f), inset 0 1px 0 rgba(255, 255, 255, .5); }
+.xl-tled.is-off { background: #3a1010; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .8); }
+.xl-split { width: 5px; flex: none; cursor: col-resize; }
+.xl-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--xl-line); background: var(--xl-bg1); box-shadow: inset 0 1px 0 var(--xl-hi); }
+.xl-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; background: linear-gradient(#30343a, #222529); border-bottom: 1px solid var(--xl-line); }
+.xl-head-ico img, .xl-head-ico .xl-ico { display: block; width: 20px; height: 20px; }
+.xl-head-title { display: inline-flex; align-items: center; gap: 6px; color: #fff; font: bold 14px Arial, Tahoma, sans-serif; letter-spacing: .5px; text-transform: uppercase; }
+.xl-head-sub { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--xl-dim); white-space: nowrap; }
+.xl-list { flex: 1; overflow: auto; outline: none; }
+.xl-cols, .xl-row { display: grid; grid-template-columns: minmax(150px, 1fr) 140px 226px; align-items: center; }
+.xl-cols { position: sticky; top: 0; z-index: 1; height: 20px; background: linear-gradient(#2a2d32, #212327); border-bottom: 1px solid var(--xl-line); }
+.xl-cols > span { padding: 0 10px; color: var(--xl-amber); font: bold 9px/20px Arial, sans-serif; letter-spacing: 2px; text-transform: uppercase; }
+.xl-row { min-height: 40px; background: var(--xl-bg1); border-bottom: 1px solid #111214; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03); }
+.xl-row:nth-of-type(even) { background: #202226; }
+.xl-row.is-child { background: #17181b; }
+.xl-row.is-child .xl-c-name { color: #c2c6cc; }
+.xl-row.is-sel { background: #263a52; }
+.xl-row > span { padding: 5px 10px; min-width: 0; }
+.xl-c-name { display: flex; align-items: center; gap: 6px; padding-left: calc(8px + var(--d, 0) * 24px) !important; }
 .xl-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .xl-c-ctl { display: flex; justify-content: flex-start; }
-.xl-twisty { width: 11px; height: 11px; flex: none; padding: 0; border: 1px solid var(--xl-shadow); background: #fff; font: 9px/9px 'Lucida Console', monospace !important; text-align: center; }
-.xl-twisty-sp { width: 11px; flex: none; }
-.xl-warnmark { width: 12px; height: 12px; opacity: .85; }
-.xl-badge { display: inline-block; padding: 0 4px; height: 14px; line-height: 13px; border: 1px solid #555; font-size: 10px; font-weight: bold; white-space: nowrap; }
-.xl-lcd { display: inline-block; box-sizing: border-box; min-width: 112px; max-width: 132px; padding: 5px 10px 4px; line-height: 13px; background: #0c140c; box-shadow: var(--xl-sunken); color: var(--lcd, #7cff5a); font: 11px 'Lucida Console', 'Courier New', monospace; text-transform: uppercase; text-shadow: 0 0 3px currentColor; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
-.xl-lcd.is-empty { color: #2b3f2b; text-shadow: none; }
+.xl-window .xl-root .xl-twisty { width: 13px; height: 13px; flex: none; padding: 0; border: 1px solid #0c0d0f; border-radius: 2px; background: linear-gradient(#4b4f56, #363940); color: #e3e5e8; font: bold 10px/11px 'Lucida Console', monospace; text-align: center; }
+.xl-twisty-sp { width: 13px; flex: none; }
+.xl-warnmark { width: 12px; height: 12px; }
+.xl-badge { display: inline-block; padding: 0 5px; height: 15px; border-radius: 2px; font: bold 9px/15px Arial, sans-serif; letter-spacing: .5px; text-transform: uppercase; white-space: nowrap; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 0 0 1px rgba(0, 0, 0, .6); }
+
+/* status readouts: tally-coloured text on a black well */
+.xl-lcd { display: inline-block; box-sizing: border-box; width: 100%; max-width: 136px; padding: 6px 11px 5px; border-radius: 2px; background: #050505; box-shadow: var(--xl-well); color: var(--lcd, #59f58a); font: 11px/13px 'Lucida Console', 'Courier New', monospace; letter-spacing: .5px; text-transform: uppercase; text-shadow: 0 0 4px currentColor; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.xl-lcd.is-empty { color: #2a2d31; text-shadow: none; }
 .xl-lcd.is-failed { animation: xl-blink 1s steps(1) infinite; }
-.xl-head .xl-lcd { min-width: 0; padding: 3px 8px 2px; }
-.xl-na { color: var(--xl-shadow); }
-.xl-root .xl-empty { padding: 30px 20px; text-align: center; color: #333; }
-.xl-empty img { vertical-align: -3px; }
-.xl-wait { width: 160px; height: 12px; margin: 10px auto 0; background: #fff; box-shadow: var(--xl-thin); overflow: hidden; }
-.xl-wait span { display: block; width: 40px; height: 100%; background: repeating-linear-gradient(90deg, var(--xl-sel) 0 8px, transparent 8px 10px); animation: xl-wait 1.4s linear infinite; }
+.xl-head .xl-lcd { width: auto; min-width: 0; padding: 4px 9px 3px; }
+.xl-na { color: var(--xl-dim); }
+.xl-window .xl-root .xl-empty { padding: 40px 20px; text-align: center; color: var(--xl-dim); }
+.xl-wait { width: 160px; height: 6px; margin: 12px auto 0; border-radius: 3px; background: #050505; box-shadow: var(--xl-well); overflow: hidden; }
+.xl-wait span { display: block; width: 40px; height: 100%; background: var(--xl-amber); box-shadow: 0 0 6px var(--xl-amber); animation: xl-wait 1.4s linear infinite; }
 @keyframes xl-wait { from { transform: translateX(-40px); } to { transform: translateX(160px); } }
 
 /* ---- controls ---- */
-.xl-btn { min-width: 72px; height: 21px; padding: 0 8px; border: 0; background: var(--xl-face); box-shadow: var(--xl-raised); }
-.xl-btn:active { box-shadow: var(--xl-pressed); padding: 1px 7px 0 9px; }
-.xl-btn:focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
-.xl-btn.is-def { box-shadow: 0 0 0 1px #000, var(--xl-raised); }
-/* switch hardware: a bank of illuminated push keys on a gunmetal bezel, and the rocker for I / O */
-.xl-panel { display: inline-flex; gap: 4px; padding: 4px 5px 5px; border-radius: 3px; background: linear-gradient(#6b6f76, #3a3d42 60%, #2a2c30); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), inset 0 -1px 0 rgba(0, 0, 0, .6), 0 0 0 1px #1c1d20, 0 1px 0 #fff; }
-.xl-key { position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; min-width: 42px; height: 28px; padding: 3px 7px 3px; border: 0; border-radius: 3px; background: linear-gradient(#fbfbfa, #dcdcd8 50%, #c4c4bf); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(0, 0, 0, .25), 0 2px 0 #121314, 0 3px 2px rgba(0, 0, 0, .45); color: #222 !important; font: bold 10px/10px Tahoma, sans-serif !important; letter-spacing: .3px; transform: translateY(-1px); }
-.xl-key:hover { background: linear-gradient(#ffffff, #e6e6e2 50%, #cfcfca); }
-.xl-key:active { transform: translateY(1px); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .35), 0 0 0 #121314; }
-.xl-key .xl-lamp { width: 20px; height: 4px; border-radius: 2px; background: linear-gradient(#3b3b3b, #575757); box-shadow: inset 0 1px 1px rgba(0, 0, 0, .7); }
-.xl-key.is-lit { transform: translateY(1px); background: linear-gradient(#d9d9d4, #c8c8c2 50%, #b6b6b0); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .35), 0 1px 0 #121314; }
-.xl-key.is-lit .xl-lamp { background: var(--lamp, #39ff5a); box-shadow: 0 0 5px 1px var(--lamp, #39ff5a), inset 0 1px 0 rgba(255, 255, 255, .6); }
-.xl-key .xl-cap img { width: 14px; height: 14px; }
-.xl-rocker { display: inline-flex; padding: 4px; border-radius: 4px; background: linear-gradient(#2c2d30, #111214); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 0 0 1px #000, 0 1px 0 #fff; }
-.xl-rk { width: 30px; height: 26px; padding: 0; border: 0; color: #e8e8e8 !important; font: bold 12px 'Arial Black', Tahoma, sans-serif !important; text-shadow: 0 -1px 0 #000; }
-.xl-rk-i { border-radius: 2px 0 0 2px; background: linear-gradient(90deg, #3c3e42, #26272a); box-shadow: inset 1px 1px 0 rgba(255, 255, 255, .2); }
-.xl-rk-o { border-radius: 0 2px 2px 0; background: linear-gradient(90deg, #26272a, #3c3e42); box-shadow: inset -1px 1px 0 rgba(255, 255, 255, .2); }
-/* the pressed half sits low and dark; the raised half catches the light */
-.xl-rocker.is-on .xl-rk-i, .xl-rocker.is-off .xl-rk-o { background: linear-gradient(#111, #1d1e20); box-shadow: inset 0 2px 3px rgba(0, 0, 0, .8); }
-.xl-rocker.is-on .xl-rk-o, .xl-rocker.is-off .xl-rk-i { background: linear-gradient(#5b5e64, #34363a 70%, #232427); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 -1px 0 #000; }
-.xl-rocker.is-on .xl-rk-i, .xl-rocker.is-off .xl-rk-o { color: var(--lamp, #39ff5a) !important; text-shadow: 0 0 6px var(--lamp, #39ff5a); }
-.xl-slider-box { display: inline-flex; align-items: center; gap: 6px; }
-.xl-root input.xl-slider { width: 130px; height: 20px; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: none; -webkit-appearance: none; appearance: none; }
-.xl-root input.xl-slider:focus-visible { outline: 1px dotted #000; }
-.xl-slider::-webkit-slider-runnable-track { height: 4px; background: #fff; box-shadow: var(--xl-sunken); }
-.xl-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 21px; margin-top: -9px; background: var(--xl-face); box-shadow: var(--xl-raised); clip-path: polygon(0 0, 100% 0, 100% 70%, 50% 100%, 0 70%); }
-.xl-slider::-moz-range-track { height: 4px; background: #fff; box-shadow: var(--xl-sunken); }
-.xl-slider::-moz-range-thumb { width: 11px; height: 21px; border: 0; border-radius: 0; background: var(--xl-face); box-shadow: var(--xl-raised); }
-.xl-slider-val { min-width: 44px; padding: 5px 8px 4px; line-height: 13px; background: #0c140c; color: #7cff5a; font: 11px 'Lucida Console', monospace; box-shadow: var(--xl-sunken); text-align: right; }
+.xl-window .xl-root .xl-btn { min-width: 70px; height: 26px; padding: 0 12px; border: 1px solid #0c0d0f; border-radius: 3px; background: linear-gradient(#4b4f56, #363940); box-shadow: var(--xl-ridge); color: #e3e5e8; font: bold 10px Arial, Tahoma, sans-serif; letter-spacing: 1px; text-transform: uppercase; }
+.xl-window .xl-root .xl-btn:hover { background: linear-gradient(#575c64, #40444b); }
+.xl-window .xl-root .xl-btn:active { background: linear-gradient(#2c2f34, #3a3e44); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .7); }
+.xl-window .xl-root .xl-btn:focus-visible { outline: 1px solid var(--xl-amber); outline-offset: 1px; }
+.xl-window .xl-root .xl-btn.is-def { border-color: var(--xl-amber); }
+.xl-window .xl-root .xl-row .xl-btn[data-xl="send"]:active { background: #c62828; color: #fff; }
+
+/* backlit keys: dark caps that fill with the lamp's colour when lit (the menu's bg, green without one) */
+.xl-panel { display: inline-flex; gap: 3px; padding: 3px; border-radius: 3px; background: #08090a; box-shadow: 0 1px 0 var(--xl-hi); }
+.xl-window .xl-root .xl-key { display: inline-flex; align-items: center; justify-content: center; min-width: 48px; height: 28px; padding: 0 9px; border: 0; border-radius: 2px; background: linear-gradient(#484c53, #33363b); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), inset 0 -1px 0 rgba(0, 0, 0, .4); color: #c9ccd1; font: bold 11px Arial, Tahoma, sans-serif; letter-spacing: .5px; text-transform: uppercase; }
+.xl-window .xl-root .xl-key:hover { background: linear-gradient(#545961, #3c3f45); }
+.xl-window .xl-root .xl-key:active { box-shadow: inset 0 2px 3px rgba(0, 0, 0, .6); }
+.xl-key .xl-lamp { display: none; }
+.xl-window .xl-root .xl-key.is-lit { background: var(--lamp, #3bd16f); color: #0c0c0c; text-shadow: 0 1px 0 rgba(255, 255, 255, .35); box-shadow: 0 0 9px var(--lamp, #3bd16f), inset 0 1px 0 rgba(255, 255, 255, .55), inset 0 -6px 10px rgba(0, 0, 0, .18); }
+.xl-key .xl-cap img { width: 16px; height: 16px; display: block; }
+
+/* the rocker for plain I / O: the pressed half sits low, its letter lit */
+.xl-rocker { display: inline-flex; padding: 3px; border-radius: 3px; background: #08090a; box-shadow: 0 1px 0 var(--xl-hi); }
+.xl-window .xl-root .xl-rk { width: 32px; height: 28px; padding: 0; border: 0; color: #9da2a9; font: bold 12px 'Arial Black', Tahoma, sans-serif; text-shadow: 0 -1px 0 #000; }
+.xl-window .xl-root .xl-rk-i { border-radius: 2px 0 0 2px; background: linear-gradient(90deg, #4a4e55, #33363b); box-shadow: inset 1px 1px 0 rgba(255, 255, 255, .14); }
+.xl-window .xl-root .xl-rk-o { border-radius: 0 2px 2px 0; background: linear-gradient(90deg, #33363b, #4a4e55); box-shadow: inset -1px 1px 0 rgba(255, 255, 255, .14); }
+.xl-window .xl-root :is(.xl-rocker.is-on .xl-rk-i, .xl-rocker.is-off .xl-rk-o) { background: linear-gradient(#141518, #1d1f23); box-shadow: inset 0 2px 4px rgba(0, 0, 0, .9); color: var(--lamp, #3bd16f); text-shadow: 0 0 7px var(--lamp, #3bd16f); }
+
+/* the fader: a slot with a scale under it, a ribbed cap */
+.xl-slider-box { display: inline-flex; align-items: center; gap: 8px; }
+.xl-window .xl-root input.xl-slider { width: 150px; height: 28px; margin: 0; padding: 0; border: 0; border-radius: 0; background: repeating-linear-gradient(90deg, #4a4f57 0 1px, transparent 1px 15px) 0 23px / 100% 5px no-repeat; box-shadow: none; outline: none; -webkit-appearance: none; appearance: none; }
+.xl-window .xl-root input.xl-slider:focus-visible { outline: 1px solid var(--xl-amber); }
+.xl-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: #000; box-shadow: var(--xl-well); }
+.xl-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 24px; margin-top: -10px; border-radius: 2px; background: repeating-linear-gradient(#d9dce0 0 2px, #9ea3aa 2px 4px); box-shadow: 0 0 0 1px #000, 0 2px 3px rgba(0, 0, 0, .7), inset 0 1px 0 #fff; }
+.xl-slider::-moz-range-track { height: 4px; border-radius: 2px; background: #000; }
+.xl-slider::-moz-range-thumb { width: 14px; height: 24px; border: 0; border-radius: 2px; background: repeating-linear-gradient(#d9dce0 0 2px, #9ea3aa 2px 4px); box-shadow: 0 0 0 1px #000; }
+.xl-slider-val { min-width: 50px; padding: 6px 9px 5px; border-radius: 2px; background: #050505; color: var(--xl-amber); font: 11px/13px 'Lucida Console', monospace; box-shadow: var(--xl-well); text-align: right; text-shadow: 0 0 4px rgba(240, 166, 55, .55); }
 
 /* ---- event log + status bar ---- */
-.xl-logbox { display: flex; flex-direction: column; height: 112px; margin: 3px 3px 0; }
+.xl-logbox { display: flex; flex-direction: column; height: 118px; margin: 5px 5px 0; border: 1px solid var(--xl-line); }
 .xl-nolog .xl-logbox { display: none; }
-.xl-logbar { display: flex; align-items: center; gap: 4px; height: 16px; padding: 0 2px 0 6px; background: linear-gradient(90deg, #808080, #c0c0c0); color: #fff; font-weight: bold; }
+.xl-logbar { display: flex; align-items: center; gap: 4px; height: 20px; padding: 0 3px 0 8px; background: linear-gradient(#2e3136, #25282c); border-bottom: 1px solid var(--xl-line); color: var(--xl-amber); font: bold 10px Arial, sans-serif; letter-spacing: 2px; text-transform: uppercase; }
 .xl-logbar span { flex: 1; }
 /* the light client's 7.css would paint these as Vista push buttons */
-.xl-window .xl-root .xl-logbar button { height: 14px; min-height: 0; min-width: 16px; border: 0 !important; border-radius: 0 !important; background: var(--xl-face) !important; box-shadow: var(--xl-raised) !important; color: #000; line-height: 12px; min-width: 16px; padding: 0 4px; border: 0; background: var(--xl-face); box-shadow: var(--xl-raised); font-size: 10px; font-weight: normal; }
-.xl-log { flex: 1; overflow: auto; padding: 2px 4px; background: #fff; box-shadow: var(--xl-sunken); font: 11px/13px 'Lucida Console', 'Courier New', monospace; white-space: pre; user-select: text; }
-.xl-log .is-err { color: #c00000; }
-.xl-status { display: flex; gap: 2px; height: 20px; padding: 2px 2px 1px; }
-.xl-status > span { padding: 1px 6px; box-shadow: var(--xl-thin); white-space: nowrap; overflow: hidden; }
-.xl-st-main { flex: 1; }
+.xl-window .xl-root .xl-logbar .xl-mini { height: 15px; min-height: 0; min-width: 18px; padding: 0 6px; border: 1px solid #0c0d0f !important; border-radius: 2px !important; background: linear-gradient(#4b4f56, #363940) !important; box-shadow: var(--xl-ridge) !important; color: #e3e5e8; font: bold 9px/13px Arial, sans-serif; letter-spacing: 1px; }
+.xl-log { flex: 1; overflow: auto; padding: 3px 6px; background: #070809; color: #9fd8a8; font: 11px/14px 'Lucida Console', 'Courier New', monospace; white-space: pre; user-select: text; }
+.xl-log .is-err { color: #ff6b5e; }
+.xl-status { display: flex; gap: 3px; height: 22px; padding: 3px 5px; }
+.xl-status > span { padding: 0 8px; border-radius: 2px; background: var(--xl-bg1); box-shadow: inset 0 1px 1px rgba(0, 0, 0, .6); line-height: 16px; white-space: nowrap; overflow: hidden; color: var(--xl-dim); }
+.xl-status > .xl-st-main { flex: 1; color: var(--xl-text); }
 .xl-st-nodes { width: 82px; }
 .xl-st-poll { width: 96px; }
 .xl-st-clock { width: 56px; text-align: center; }
 .xl-busy .xl-list, .xl-busy .xl-tree { cursor: progress; }
 
-/* ---- captures ---- */
-.xl-caps { display: grid; grid-template-columns: repeat(auto-fill, 132px); gap: 6px; padding: 6px; }
-.xl-cap { display: flex; flex-direction: column; align-items: center; padding: 3px; border: 1px solid transparent; }
-.xl-cap.is-sel { border: 1px dotted #000; background: #c7d5ec; }
-.xl-cap-img { display: flex; align-items: center; justify-content: center; width: 124px; height: 84px; background: #000; box-shadow: var(--xl-thin); }
-.xl-cap-img img { max-width: 120px; max-height: 80px; }
-.xl-cap-name { width: 124px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
-.xl-cap-date { color: #555; font-size: 10px; }
-
 /* ---- splash ---- */
-.xl-splash { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: #3a6ea5; }
-.xl-splash-box { width: 380px; background: var(--xl-face); box-shadow: 0 0 0 1px #000, var(--xl-raised), 4px 4px 0 rgba(0, 0, 0, .35); }
-.xl-splash-band, .xl-about-band { display: flex; align-items: center; gap: 10px; height: 74px; padding: 0 16px; background: linear-gradient(135deg, #000 0%, #0a246a 55%, #1d6fd1 100%); color: #fff; }
-.xl-logo-band { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.xl-splash { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, #1d2733 0%, #0a0c0f 70%); }
+.xl-splash-box { width: 400px; border: 1px solid #000; background: var(--xl-bg1); box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 10px 30px rgba(0, 0, 0, .7); }
+.xl-splash-band, .xl-about-band { display: flex; align-items: center; gap: 10px; height: 80px; padding: 0 18px; background: linear-gradient(135deg, #000 0%, #0c1a2c 55%, #173a63 100%); border-bottom: 2px solid var(--xl-amber); color: #fff; }
+.xl-logo-band { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 5px; }
 .xl-logo-band img { display: block; filter: drop-shadow(0 0 6px rgba(120, 190, 255, .6)); }
-.xl-logo-band small { font: bold 11px Tahoma, sans-serif; letter-spacing: 4px; text-transform: uppercase; color: #a6caf0; }
-.xl-splash-body { padding: 10px 16px 12px; }
-.xl-splash-step { margin-top: 12px; height: 14px; }
-.xl-splash-bar { height: 14px; margin-top: 3px; padding: 2px; background: #fff; box-shadow: var(--xl-thin); }
-.xl-splash-bar span { display: block; width: 0; height: 100%; background: repeating-linear-gradient(90deg, var(--xl-sel) 0 7px, transparent 7px 9px); transition: width .2s steps(4); }
-.xl-splash-copy { margin-top: 12px; color: #444; font-size: 10px; }
+.xl-logo-band small { font: bold 10px Arial, sans-serif; letter-spacing: 4px; text-transform: uppercase; color: var(--xl-amber); }
+.xl-splash-body { padding: 12px 18px 14px; color: var(--xl-text); }
+.xl-splash-step { margin-top: 14px; height: 14px; color: var(--xl-dim); font: 11px 'Lucida Console', monospace; }
+.xl-splash-bar { height: 6px; margin-top: 4px; border-radius: 3px; background: #050505; box-shadow: var(--xl-well); overflow: hidden; }
+.xl-splash-bar span { display: block; width: 0; height: 100%; background: var(--xl-amber); box-shadow: 0 0 6px var(--xl-amber); transition: width .2s steps(4); }
+.xl-splash-copy { margin-top: 14px; color: var(--xl-dim); font-size: 10px; }
 
-/* ---- the console's own dialog windows (About, Properties, Diagnostics, Capture Viewer) ---- */
+/* ---- the console's own dialog windows (About, Properties, Diagnostics) ---- */
 .xl-child .xl-root { min-height: 0; }
-.xl-dlg-body { flex: 1; min-height: 0; padding: 12px 12px 6px; text-align: left; }
-.xl-dlg-btns { display: flex; justify-content: flex-end; gap: 6px; padding: 6px 10px 10px; }
-.xl-props { border-collapse: collapse; min-width: 340px; }
-.xl-root .xl-props th { padding: 2px 10px 2px 0; text-align: left; font-weight: normal; color: #333; white-space: nowrap; vertical-align: top; }
-.xl-root .xl-props td { padding: 2px 0; color: #000; user-select: text; word-break: break-all; }
-.xl-pre { margin: 0; padding: 6px; background: #000; color: #c0c0c0; font: 11px/14px 'Lucida Console', monospace; box-shadow: var(--xl-sunken); user-select: text; }
+.xl-dlg-body { flex: 1; min-height: 0; padding: 14px 14px 8px; text-align: left; }
+.xl-dlg-btns { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 12px 12px; }
+.xl-props { border-collapse: collapse; min-width: 360px; }
+.xl-window .xl-root .xl-props th { padding: 4px 14px 4px 0; text-align: left; color: var(--xl-amber); font: bold 9px Arial, sans-serif; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; vertical-align: top; }
+.xl-window .xl-root .xl-props td { padding: 4px 0; color: var(--xl-text); user-select: text; word-break: break-all; border-bottom: 1px solid #111214; }
+.xl-pre { margin: 0; padding: 8px; border-radius: 2px; background: #050505; color: #9fd8a8; font: 11px/14px 'Lucida Console', monospace; box-shadow: var(--xl-well); user-select: text; }
 .xl-about .xl-dlg-body { padding: 0; }
-.xl-about-band { margin: 0 0 8px; }
-.xl-about-text { padding: 4px 16px 4px; }
-.xl-viewer .xl-dlg-body { padding: 4px; }
-.xl-viewer-img { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000; box-shadow: var(--xl-sunken); }
-.xl-viewer-img img { max-width: 100%; max-height: 100%; }
+.xl-about-text { padding: 12px 18px 4px; }

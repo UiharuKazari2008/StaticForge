@@ -1,15 +1,15 @@
 /**
  * XLink Operator Console (Yozora #719): the arcade cabinets' control menu, replacing the AVS-Menu web
- * app ("XLink Global Management"). Built to feel like the operator software that ships on a CD with
- * the cabinets: Windows 2000 grey, bevels everywhere, an LCD strip per status, a log window nobody
- * reads and a splash screen that takes a little too long.
+ * app ("XLink Global Management"). Built like a broadcast control package from around 2010 (the
+ * router / switcher panels it borrows from: charcoal panels, tally lamps, backlit keys, a fader, a
+ * time-of-day clock), a little dated: a log window nobody reads and a splash that takes too long.
  *
- *   tree        XLink Global Management > each cabinet (menu.json devices, by position) > Saved Captures
+ *   tree        XLink Global Management > each cabinet (menu.json devices, by position)
  *   function list   the cabinet's items: State (the status through replace, on an LCD), Control (toggle
- *               buttons, a trackbar, Execute), folders open in place ([+]) with their children
+ *               keys or a rocker, a fader, Take), folders open in place ([+]) with their children
  *   event log   every POLL / CHECK / SEND the server made for this console
  *   dialogs     warnings and System Error are Melaton message boxes; About, Properties, Network
- *               Diagnostics and the Capture Viewer are dialog windows the console owns
+ *               Diagnostics are dialog windows the console owns
  *
  * Everything reaches the cabinets through the server (xlink_* packets, modules/xlink.js); the client
  * names a device, an item path and an operation, never a URL.
@@ -136,7 +136,7 @@
             m.dataset.taskbarIcon = `${A}/xlink-32.png`;
             m.dataset.windowDefaultWidth = '920';
             m.dataset.windowDefaultHeight = '660';
-            m.dataset.windowMinWidth = '660';
+            m.dataset.windowMinWidth = '760';
             m.dataset.windowMinHeight = '440';
             m.style.width = '920px';
             m.style.height = `${Math.min(660, root.innerHeight - 60)}px`;
@@ -159,18 +159,17 @@
                     <span data-xl-menu="file"><u>F</u>ile</span><span data-xl-menu="cabinet"><u>C</u>abinet</span><span data-xl-menu="view"><u>V</u>iew</span><span data-xl-menu="tools"><u>T</u>ools</span><span data-xl-menu="help"><u>H</u>elp</span>
                 </div>
                 <div class="xl-toolbar">
-                    <button type="button" class="xl-tb" data-xl="refresh" title="Poll the selected cabinet now (F5)"><img src="/static_images/vista-cmdbar/refresh.png" alt="">Poll</button>
-                    <button type="button" class="xl-tb" data-xl="pollall" title="Poll every cabinet"><img src="/static_images/vista-cmdbar/programs.png" alt="">Poll All</button>
+                    <button type="button" class="xl-tb" data-xl="refresh" title="Poll the selected cabinet now (F5)">Poll</button>
+                    <button type="button" class="xl-tb" data-xl="pollall" title="Poll every cabinet">Poll All</button>
                     <span class="xl-tb-sep"></span>
-                    <button type="button" class="xl-tb" data-xl="captures" title="Saved Captures"><img src="/static_images/vista-cmdbar/picture.png" alt="">Captures</button>
-                    <button type="button" class="xl-tb" data-xl="log" title="Show or hide the event log"><img src="/static_images/vista-cmdbar/text-document.png" alt="">Event Log</button>
-                    <span class="xl-tb-sep"></span>
-                    <button type="button" class="xl-tb" data-xl="properties" title="Properties"><img src="/static_images/vista-cmdbar/properties.png" alt="">Properties</button>
+                    <button type="button" class="xl-tb" data-xl="log" title="Show or hide the event log">Log</button>
+                    <button type="button" class="xl-tb" data-xl="properties" title="Properties">Properties</button>
                     <span class="xl-tb-fill"></span>
+                    <span class="xl-tc" title="Time of day"><small>TOD</small><b class="xl-tc-v">--:--:--</b></span>
                     <span class="xl-link" title="XLink: no nodes"><img src="${A}/xlink-logo.png" alt="XLink" width="67" height="20"></span>
                 </div>
                 <div class="xl-main">
-                    <div class="xl-tree" tabindex="0"></div>
+                    <div class="xl-side"><div class="xl-panehead">Devices</div><div class="xl-tree" tabindex="0"></div></div>
                     <div class="xl-split"></div>
                     <div class="xl-pane">
                         <div class="xl-head"></div>
@@ -178,7 +177,7 @@
                     </div>
                 </div>
                 <div class="xl-logbox">
-                    <div class="xl-logbar"><span>Event Log</span><button type="button" data-xl="clearlog">Clear</button><button type="button" data-xl="log" title="Hide">x</button></div>
+                    <div class="xl-logbar"><span>Event Log</span><button type="button" class="xl-mini" data-xl="clearlog">Clear</button><button type="button" class="xl-mini" data-xl="log" title="Hide">x</button></div>
                     <div class="xl-log"></div>
                 </div>
                 <div class="xl-status"><span class="xl-st-main">Ready</span><span class="xl-st-nodes">Nodes: 0/0</span><span class="xl-st-poll">Auto poll: ${POLL_S}s</span><span class="xl-st-user">OPERATOR (ADMIN)</span><span class="xl-st-clock"></span></div>
@@ -212,7 +211,6 @@
                 const row = ev.target.closest('.xl-row[data-path]');
                 if (!row || ev.target.closest('button, input')) return;
                 if (row.classList.contains('is-folder')) this.toggleOpen(row.dataset.path);
-                else if (row.dataset.cap) this.viewCapture(row.dataset.cap);
                 else if (row.dataset.kind === 'button') void this.run(row.dataset.path, 'send');
             }, sig);
             q('.xl-list').addEventListener('change', (ev) => {
@@ -228,7 +226,7 @@
             }, sig);
             q('.xl-file').addEventListener('change', () => void this.importFile(), sig);
             q('.xl-splash').addEventListener('click', () => this.splashDone(), sig);
-            this.splitter(q('.xl-split'), q('.xl-tree'));
+            this.splitter(q('.xl-split'), q('.xl-side'));
             w.body.querySelectorAll('[data-xl-menu]').forEach((t) => {
                 if (!root.contextMenu) return;
                 root.contextMenu.attachClickMenuToElement(t, {
@@ -284,7 +282,6 @@
             switch (name) {
                 case 'file': return [
                     { text: 'Import Menu Definition (menu.json)...', action: 'import-menu' },
-                    { text: 'Import Site Settings (config.json)...', action: 'import-config' },
                     { separator: true },
                     { text: 'Export Event Log...', action: 'export-log' },
                     { separator: true },
@@ -299,9 +296,7 @@
                     { text: 'Properties', action: 'properties' }];
                 case 'view': return [
                     { text: 'Event Log', action: 'log', showIndicator: true, checked: this.showLog },
-                    { text: 'Auto Poll (60 s)', action: 'autopoll', showIndicator: true, checked: this.autoPoll },
-                    { separator: true },
-                    { text: 'Saved Captures', action: 'captures' }];
+                    { text: 'Auto Poll (60 s)', action: 'autopoll', showIndicator: true, checked: this.autoPoll }];
                 case 'tools': return [
                     { text: 'Network Diagnostics...', action: 'diag' },
                     { text: 'Options...', action: 'options', disabled: true }];
@@ -318,7 +313,6 @@
                 case 'exit': this.app.exit(); break;
                 case 'refresh': await this.refresh(true); break;
                 case 'pollall': await this.pollAll(); break;
-                case 'captures': this.select('captures'); break;
                 case 'log': this.showLog = !this.showLog; this.modal.classList.toggle('xl-nolog', !this.showLog); break;
                 case 'clearlog': this.logLines = []; this.el('.xl-log').innerHTML = ''; break;
                 case 'autopoll': this.autoPoll = !this.autoPoll; this.countdown = POLL_S; this.tick(); break;
@@ -328,7 +322,6 @@
                 case 'about': this.about(); break;
                 case 'diag': this.diagnostics(); break;
                 case 'import-menu': this.importing = 'menu.json'; this.el('.xl-file').click(); break;
-                case 'import-config': this.importing = 'config.json'; this.el('.xl-file').click(); break;
                 case 'export-log': this.exportLog(); break;
                 case 'toggle': await this.run(el.dataset.path, 'toggle', Number(el.dataset.value)); break;
                 case 'send': await this.run(el.dataset.path, 'send'); break;
@@ -420,7 +413,6 @@
                 const led = `<span class="xl-tled${st && !st.failed ? '' : ' is-off'}"${st && colour(st.color) ? ` style="--led:${colour(st.color)}"` : ''}></span>`;
                 html += row(`dev:${d.key}`, 1, icon(d.icon), esc(d.name), led);
             });
-            html += row('captures', 1, icon('image-landscape'), 'Saved Captures');
             t.innerHTML = html;
             const online = this.devices.filter((d) => d.status && !d.status.failed).length;
             this.el('.xl-st-nodes').textContent = `Nodes: ${online}/${this.devices.length}`;
@@ -431,7 +423,7 @@
         }
 
         treeKey(ev) {
-            const ids = ['root', ...this.devices.map((d) => `dev:${d.key}`), 'captures'];
+            const ids = ['root', ...this.devices.map((d) => `dev:${d.key}`)];
             const i = ids.indexOf(this.node);
             if (ev.key === 'ArrowDown' && i < ids.length - 1) { ev.preventDefault(); this.select(ids[i + 1]); }
             if (ev.key === 'ArrowUp' && i > 0) { ev.preventDefault(); this.select(ids[i - 1]); }
@@ -441,8 +433,7 @@
             this.node = id;
             this.renderTree();
             this.countdown = POLL_S;
-            if (id === 'captures') void this.showCaptures();
-            else if (id.startsWith('dev:')) {
+            if (id.startsWith('dev:')) {
                 const snap = this.snaps.get(this.deviceKey());
                 if (snap) this.renderDevice(snap);
                 else this.renderPending();
@@ -508,9 +499,9 @@
                     ? `<span class="xl-slider-box"><input type="range" class="xl-slider" min="0" max="100" step="1" value="${v}" data-path="${path}" data-append="${esc(it.append)}"><span class="xl-slider-val">${v}${esc(it.append)}</span></span>`
                     : '<span class="xl-na">N/A</span>';
             } else if (it.kind === 'button') {
-                ctl = `<button type="button" class="xl-btn" data-xl="send" data-path="${path}">Execute</button>`;
+                ctl = `<button type="button" class="xl-btn" data-xl="send" data-path="${path}">Take</button>`;
             } else if (folder) {
-                ctl = `<button type="button" class="xl-btn" data-xl="open" data-path="${path}">${opened ? 'Close' : 'Open'} &gt;&gt;</button>`;
+                ctl = `<button type="button" class="xl-btn" data-xl="open" data-path="${path}">${opened ? 'Close' : 'Open'}</button>`;
             }
             const warn = it.warning ? '<img class="xl-warnmark" src="/static_images/vista-icons/warning-16.png" alt="" title="Asks for confirmation">' : '';
             // no status: an unlit LCD on toggles (AVS-Menu showed none; the switch still reads as a panel), else nothing
@@ -591,7 +582,6 @@
             const key = this.deviceKey();
             if (!key) {
                 if (this.node === 'root') { try { await this.loadDevices(); } catch (_) { /* shown */ } this.renderRoot(); }
-                if (this.node === 'captures') await this.showCaptures();
                 return;
             }
             this.setBusy(true, `Polling ${key}...`);
@@ -662,7 +652,9 @@
         }
 
         tick() {
-            this.el('.xl-st-clock').textContent = clock(Date.now());
+            const now = clock(Date.now());
+            this.el('.xl-st-clock').textContent = now;
+            this.el('.xl-tc-v').textContent = now;
             const p = this.el('.xl-st-poll');
             if (!this.autoPoll) { p.textContent = 'Auto poll: OFF'; return; }
             if (!this.busy && !this.dialogOpen) this.countdown--;
@@ -703,63 +695,10 @@
             setTimeout(() => URL.revokeObjectURL(a.href), 1000);
         }
 
-        // ---------------------------------------------------------------- captures
-
-        async showCaptures() {
-            this.head(icon('image-landscape'), 'Saved Captures', 'Reading folder...');
-            const list = this.el('.xl-list');
-            list.innerHTML = '<div class="xl-empty">Reading capture folder...</div>';
-            let r;
-            try { r = await this.send('xlink_captures', {}); } catch (err) {
-                list.innerHTML = `<div class="xl-empty">Failed to read the captures folder.<br>${esc(err.details || err.message)}</div>`;
-                return;
-            }
-            if (this.node !== 'captures') return;
-            this.head(icon('image-landscape'), 'Saved Captures', `${esc(r.folder || '(not configured)')} &nbsp; ${r.files.length} file(s)${r.all ? '' : ', last 7 days'}`);
-            if (!r.configured) { list.innerHTML = '<div class="xl-empty">No capture folder is configured.<br><br>Import a config.json with a "captures" folder (File &gt; Import Site Settings).</div>'; return; }
-            if (r.missing) { list.innerHTML = `<div class="xl-empty"><img src="/static_images/vista-icons/error-16.png" alt=""> The capture folder could not be opened (${esc(r.reason)}).<br><br>${esc(r.folder)}</div>`; return; }
-            if (!r.files.length) { list.innerHTML = '<div class="xl-empty">No Saved Captures</div>'; return; }
-            list.innerHTML = `<div class="xl-caps">${r.files.map((f) => `
-                <div class="xl-cap" data-cap="${esc(f.name)}" title="${esc(f.name)}">
-                    <span class="xl-cap-img"><img loading="lazy" src="/xlink/captures/${encodeURIComponent(f.name)}?thumb=1" alt=""></span>
-                    <span class="xl-cap-name">${esc(f.name)}</span>
-                    <span class="xl-cap-date">${stamp(f.mtime)}</span>
-                </div>`).join('')}</div>`;
-            list.querySelector('.xl-caps').addEventListener('dblclick', (ev) => {
-                const c = ev.target.closest('[data-cap]');
-                if (c) this.viewCapture(c.dataset.cap);
-            });
-            list.querySelector('.xl-caps').addEventListener('click', (ev) => {
-                const c = ev.target.closest('[data-cap]');
-                list.querySelectorAll('.xl-cap.is-sel').forEach((x) => x.classList.remove('is-sel'));
-                if (c) c.classList.add('is-sel');
-            });
-        }
-
-        viewCapture(name) {
-            const url = `/xlink/captures/${encodeURIComponent(name)}`;
-            void this.dialog({
-                title: `Capture Viewer - ${name}`,
-                kind: 'viewer',
-                cls: 'xl-viewer',
-                resizable: true,
-                width: Math.min(1100, root.innerWidth - 80),
-                height: Math.min(760, root.innerHeight - 100),
-                body: `<div class="xl-viewer-img"><img src="${url}" alt=""></div>`,
-                buttons: [{ text: 'Save As...', value: 'save' }, { text: 'Close', value: 'close', def: true }]
-            }).then((v) => {
-                if (v !== 'save') return;
-                const a = doc.createElement('a');
-                a.href = url;
-                a.download = name;
-                a.click();
-            });
-        }
-
         // ---------------------------------------------------------------- dialogs
 
         /**
-         * A dialog window of the console's own (About, Properties, Network Diagnostics, Capture Viewer): a
+         * A dialog window of the console's own (About, Properties, Network Diagnostics): a
          * real desktop window owned by the console (its caption takes the console's icon, centred on it),
          * fixed size, the console's grey client inside. Resolves with the button value (null on close).
          */
