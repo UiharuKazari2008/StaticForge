@@ -725,7 +725,7 @@
                         ${radio('src', 'custom', 'Custom', custom)}
                         <div class="wm-form-gap"></div>
                         <div class="wm-form-row"><label for="wmStartTextEdit">Text:</label><div class="wm-combo-edit"><input id="wmStartTextEdit" class="wm-edit" type="text" maxlength="24" autocomplete="off" value="${esc(d.text)}"${custom ? '' : ' disabled'}><button type="button" class="wm-combo" data-act="text" aria-label="Presets"${custom ? '' : ' disabled'}></button></div></div>
-                        <div class="wm-form-sub">Icon:</div>
+                        <div class="wm-form-sub"${custom ? '' : ' hidden'}>Icon:</div>
                         <div class="wm-picker is-icons"${custom ? '' : ' hidden'}>${START_ICONS().map((ic) => `<button type="button" class="wm-picker-cell${ic.src === d.icon ? ' is-selected' : ''}" data-src="${esc(ic.src)}" title="${esc(ic.label)}" aria-label="${esc(ic.label)}" style="background:#4a4d4a"><img src="${esc(ic.src)}"${ic.src === WM_FLAG ? ` srcset="${WM_FLAG_SRCSET}"` : ''} alt="" loading="lazy" draggable="false"></button>`).join('')}</div>`;
                     el.querySelectorAll('input[name="src"]').forEach((r) => r.addEventListener('change', () => { d.source = r.value; api.rerender(); }));
                     const edit = el.querySelector('.wm-edit');

@@ -62,7 +62,12 @@
     /** Draft helper: load the scripts, then mark the draft ready and redraw its page. */
     function whenLoaded(d, srcs, after) {
         d.ready = false;
-        need(...srcs).then((ok) => {
+        // WM shows the wait cursor while an applet loads (no "Loading..." text); a cached script
+        // resolves before the cursor's delay and nothing shows
+        const loaded = need(...srcs);
+        const s = sh();
+        if (s && typeof s.busy === 'function') s.busy(loaded).catch(() => {});
+        loaded.then((ok) => {
             d.ready = true;
             d.loadFailed = !ok;
             try { if (after) after(d); } catch (err) { console.warn('Settings: setup failed', err); }
@@ -83,17 +88,23 @@
             const pop = document.querySelector('#wmShell > .wm-popup');
             const content = document.querySelector('#wmShell > .wm-content');
             if (!pop || pop.hidden || !content) return;
+            // one layout of the ~420 rows: size the list, then scroll the choice to the middle
+            // (scrollIntoView after the first measure cost a second full layout on a phone)
             const cr = content.getBoundingClientRect();
             const pr = pop.getBoundingClientRect();
             pop.style.maxHeight = `${Math.max(60, cr.bottom - pr.top - 2)}px`;
+            // the list stays on the screen: as wide as the room right of it, long names cut
+            pop.style.maxWidth = `${Math.max(80, cr.right - pr.left)}px`;
+            pop.style.overflowX = 'hidden';
             pop.style.overflowY = 'auto';
             const cur = pop.querySelector('[aria-checked="true"]');
-            if (cur) cur.scrollIntoView({ block: 'center' });
+            if (cur) pop.scrollTop = Math.max(0, cur.offsetTop - (pop.clientHeight - cur.offsetHeight) / 2);
         });
     }
 
     function loadingHtml(d) {
-        return d.loadFailed ? ui.text('This page could not be loaded. Check the connection and try again.') : ui.text('Loading...');
+        // still loading: the page stays blank under the shell's wait cursor (whenLoaded)
+        return d.loadFailed ? ui.text('This page could not be loaded. Check the connection and try again.') : '';
     }
 
     // ================================================================ Clock & Alarms
@@ -108,12 +119,81 @@
 
     /** "GMT-5 New York" as WM writes a zone (the desktop's "(GMT-05:00) New York" shortened). */
     function wmZoneText(cd, zone) {
-        const label = cd ? cd.zoneLabel(zone) : zone;
+        return wmZoneLabel(cd ? cd.zoneLabel(zone) : zone);
+    }
+
+    function wmZoneLabel(label) {
         const m = /^\(GMT([+-])(\d{2}):(\d{2})\)\s*(.*)$/.exec(label);
         if (!m) return label;
         const h = Number(m[2]);
         const off = h || Number(m[3]) ? `${m[1]}${h}${m[3] !== '00' ? `:${m[3]}` : ''}` : '';
         return `GMT${off} ${m[4]}`;
+    }
+
+    /**
+     * The zone list for the two combos. cplDialogs.zones() makes two Intl formatters per zone
+     * (~420 zones: 2+ s in one task on a phone), so the list is built here a few zones per task,
+     * with one formatter each, the same labels and order: started in the background when the page
+     * draws, finished under the wait cursor if a combo is tapped first. bindCombo maps the options
+     * only on its click.
+     */
+    let zoneOpts = null;
+    function zoneOptions(cd, zone) {
+        if (!cd) return [[zone, zone]];
+        return { map: (f) => (zoneOpts || [[zone, wmZoneText(cd, zone)]]).map(f) };
+    }
+
+    let zoneJob = null; // { list, i, rows, jan }
+
+    /** Builds up to `ms` of the zone list (Infinity: the rest); true once it is complete. */
+    function zoneStep(ms) {
+        if (zoneOpts) return true;
+        if (!zoneJob) {
+            let list;
+            try { list = Intl.supportedValuesOf('timeZone'); } catch (_) { list = ['UTC']; }
+            zoneJob = { list, i: 0, rows: [], jan: new Date(new Date().getFullYear(), 0, 1) };
+        }
+        const j = zoneJob;
+        const until = performance.now() + ms;
+        for (; j.i < j.list.length && performance.now() < until; j.i++) {
+            const z = j.list[j.i];
+            let off = 0;
+            try {
+                const part = new Intl.DateTimeFormat('en-US', { timeZone: z, timeZoneName: 'longOffset' }).formatToParts(j.jan).find((p) => p.type === 'timeZoneName');
+                const m = /GMT([+-]\d{2}):?(\d{2})?/.exec(part ? part.value : '');
+                if (m) { const h = Number(m[1]); off = h * 60 + Math.sign(h || 1) * Number(m[2] || 0); }
+            } catch (_) { /* GMT */ }
+            const a = Math.abs(off);
+            const city = z.split('/').slice(1).join(', ').replace(/_/g, ' ') || z;
+            // cplDialogs.zoneLabel's text
+            j.rows.push({ value: z, off, text: `(GMT${off < 0 ? '-' : '+'}${String(Math.floor(a / 60)).padStart(2, '0')}:${String(a % 60).padStart(2, '0')}) ${city}` });
+        }
+        if (j.i < j.list.length) return false;
+        j.rows.sort((x, y) => x.off - y.off || x.text.localeCompare(y.text));
+        zoneOpts = j.rows.map((z) => [z.value, wmZoneLabel(z.text)]);
+        zoneJob = null;
+        return true;
+    }
+
+    /** The background build: small steps between other work. */
+    let zoneTimer = 0;
+    function buildZones() {
+        if (zoneOpts || zoneTimer) return;
+        const tick = () => { zoneTimer = 0; if (!zoneStep(10)) zoneTimer = setTimeout(tick, 0); };
+        zoneTimer = setTimeout(tick, 0);
+    }
+
+    /** A zone combo tapped before the list is built: the wait cursor paints, the rest builds, the drop-down opens. */
+    function warmZones(cd, btn) {
+        if (!cd || !btn) return;
+        btn.addEventListener('click', (e) => {
+            if (zoneOpts || btn.disabled) return;
+            e.stopImmediatePropagation();
+            const run = () => { clearTimeout(zoneTimer); zoneTimer = 0; zoneStep(Infinity); if (btn.isConnected) btn.click(); };
+            const s = sh();
+            if (s && typeof s.busy === 'function') s.busy(run, { paint: true }).catch(() => {});
+            else run();
+        }, true);
     }
 
     function clockInit() {
@@ -147,8 +227,7 @@
             el.querySelector('input[name="dstReminder"]').addEventListener('change', (e) => { d.dstReminder = e.target.checked; });
             return;
         }
-        const zones = cd ? cd.zones() : [{ value: d.zone, text: d.zone }];
-        const opts = zones.map((z) => [z.value, wmZoneText(cd, z.value)]);
+        const opts = zoneOptions(cd, d.zone);
         const timeOf = (zone) => (cd ? cd.fmt(zone, { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '');
         const dateOf = (zone) => (cd ? cd.fmt(zone, { month: 'numeric', day: 'numeric', year: 'numeric' }) : '');
         const off = d.c1on ? '' : ' disabled';
@@ -169,6 +248,9 @@
             </div>
             ${ui.note('Home is the time zone the desktop and its clocks use. Visiting is the desktop\'s first additional clock.')}`;
         const zoneBtn = el.querySelector('[data-act="zone"]');
+        if (cd && !zoneOpts) buildZones();
+        warmZones(cd, zoneBtn);
+        warmZones(cd, el.querySelector('[data-act="c1zone"]'));
         ui.bindCombo(zoneBtn, opts, d.zone, (v) => { d.zone = v; api.rerender(); });
         longCombo(zoneBtn);
         const c1Btn = el.querySelector('[data-act="c1zone"]');

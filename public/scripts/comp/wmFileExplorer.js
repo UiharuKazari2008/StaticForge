@@ -606,13 +606,28 @@
         }
     }
 
+    // the row icon as a CSS background (image-set from the shell's srcset): 300 <img srcset> rows
+    // cost ~400 ms of parsing on a phone, a background next to nothing
+    const icoStyles = new Map();
+    function icoStyle(icon) {
+        let st = icoStyles.get(icon);
+        if (!st) {
+            const set = ws.art && ws.art.srcset ? ws.art.srcset(icon) : `${ART}${icon}.png 1x, ${ART}${icon}@2x.png 2x`;
+            const parts = String(set).split(',').map((p) => p.trim().split(/\s+/)).filter((p) => p[0]);
+            const img = parts.length ? `image-set(${parts.map(([u, d]) => `url('${u}') ${d || '1x'}`).join(', ')})` : `url('${ART}${icon}.png')`;
+            st = `--fe-mask:url('${ART}${icon}@2x.png');--fe-img:${img}`;
+            icoStyles.set(icon, st);
+        }
+        return st;
+    }
+
     function rowHtml(i) {
         const icon = iconOf(i);
         const sel = selected.has(i.id);
         const file = !isFolder(i);
         const name = esc(i.name);
         return `<div class="fe-row${sel ? ' is-selected' : ''}${clipboard && clipboard.op === 'cut' && clipboard.ids.has(i.id) ? ' is-cut' : ''}" role="option" aria-selected="${sel}" data-id="${esc(i.id)}">`
-            + `<span class="fe-ico" style="--fe-mask:url('${ART}${icon}@2x.png')"><img src="${ART}${icon}.png" srcset="${ws.art && ws.art.srcset ? ws.art.srcset(icon) : `${ART}${icon}.png 1x, ${ART}${icon}@2x.png 2x`}" alt="" draggable="false"></span>`
+            + `<span class="fe-ico" style="${esc(icoStyle(icon))}"></span>`
             + `<span class="fe-name">${name}</span>`
             + `<span class="fe-date">${file ? esc(fmtDate(i.modifiedAt)) : ''}</span>`
             + `<span class="fe-size">${file ? esc(fmtSize(i.sizeBytes != null ? i.sizeBytes : i.size)) : ''}</span>`
@@ -689,7 +704,10 @@
     function scrollToSelection() {
         if (!page || !anchorId) return;
         const row = page.querySelector(`.fe-row[data-id="${CSS.escape(anchorId)}"]`);
-        if (row) row.scrollIntoView({ block: 'nearest' });
+        if (!row) return;
+        // the first row (a folder just opened): the top, without a forced layout of the whole list
+        if (!row.previousElementSibling) { const sc = page.querySelector('.fe-scroll'); if (sc) sc.scrollTop = 0; return; }
+        row.scrollIntoView({ block: 'nearest' });
     }
 
     const itemById = (id) => items.find((i) => i.id === id) || null;
@@ -1499,6 +1517,7 @@
             title: 'File Explorer',
             icon: 'app-file-explorer',
             inStart: 'top',
+            sip: true,
             mount,
             show() {
                 renderBar();

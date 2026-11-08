@@ -220,10 +220,22 @@
     padding-left: calc(2 * var(--wm-px));
 }
 
-.wm-fd .wfd-item .wfd-name > img {
+.wm-fd .wfd-item .wfd-name > img,
+.wm-fd .wfd-item .wfd-name > .wfd-ico {
     flex: 0 0 auto;
     width: calc(16 * var(--wm-px));
     height: calc(16 * var(--wm-px));
+}
+
+.wm-fd .wfd-item .wfd-name > .wfd-ico {
+    display: block;
+    background: var(--wfd-img) center / 100% 100% no-repeat;
+}
+
+/* rows off screen skip layout and paint */
+.wm-fd .wfd-table > .wfd-item {
+    content-visibility: auto;
+    contain-intrinsic-size: auto calc(18 * var(--wm-px));
 }
 
 .wm-fd .wfd-item .wfd-name > span {
@@ -247,6 +259,7 @@
 .wm-fd .wfd-scroll::-webkit-scrollbar-thumb {
     background: var(--wm-tab-strip, var(--wm-tint));
     border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0; /* WM's thumb is square (a desktop scrollbar rule rounded it) */
 }
 
 /* a combo box's list: the box's width, 1 px black frame, plain 14 px rows (Tahoma 12), the current

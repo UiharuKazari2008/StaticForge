@@ -405,12 +405,15 @@
             const st = { ready: false, error: '', catalogAsked: new Set(), ruleSel: '', propSel: '' };
             st.loading = dirLoad(st).catch((err) => { st.error = (err && err.message) || 'Director Settings could not be read.'; })
                 .then(() => { if (st.redraw) st.redraw(); });
+            // the page waits under the shell's wait cursor (WM shows no "Reading..." text)
+            const sh = window.wmShell;
+            if (sh && typeof sh.busy === 'function') sh.busy(st.loading).catch(() => {});
             return st;
         },
         render(el, tab, st, api) {
             st.redraw = () => { if (el.isConnected) rerenderKeep(el, api); };
             if (!st.ready) {
-                el.innerHTML = ui.text(st.error || 'Reading Director Settings...');
+                el.innerHTML = st.error ? ui.text(st.error) : '';
                 return;
             }
             if (tab === 'learned') { dirRenderLearned(el, st, api); return; }

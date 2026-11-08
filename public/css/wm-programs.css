@@ -91,6 +91,24 @@
     box-decoration-break: clone;
 }
 
+/* a ListView in icon view shows the focused item's whole label (no 2-line cut) over the row
+   below: two long names ("Remote Desktop Connection" / "Remote Desktop Manager") tell apart */
+.wm-icongrid-cell.is-selected {
+    z-index: 1;
+}
+
+.wm-icongrid-cell.is-selected .wm-icongrid-label {
+    display: block;
+    overflow: visible;
+}
+
+/* the whole label in one highlight box, as the ListView draws it */
+.wm-icongrid-cell.is-selected .wm-icongrid-label span {
+    display: inline-block;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
 .wm-icongrid-cell.is-selected .wm-icongrid-label span {
     background: var(--wm-highlight);
     color: var(--wm-highlight-text);

@@ -524,7 +524,8 @@
         tabs: [['general', 'General'], ['memory', 'Memory'], ['advanced', 'Advanced']],
         init() {
             const d = { io: null, s: null, error: '' };
-            internetOptions()
+            // the page waits under the shell's wait cursor (WM shows no "Reading..." text)
+            const loaded = internetOptions()
                 .then((io) => { d.io = io; return io.alchemySettings(); })
                 .then((s) => {
                     d.s = s;
@@ -536,13 +537,15 @@
                 })
                 .catch((err) => { d.error = (err && err.message) || 'The settings could not be read.'; })
                 .then(() => { if (d.rerender) d.rerender(); });
+            const sh = root.wmShell;
+            if (sh && typeof sh.busy === 'function') sh.busy(loaded).catch(() => {});
             return d;
         },
         render(el, tab, d, api) {
             el.classList.add('wm-setc');
             d.rerender = api.rerender;
             if (d.error) { el.innerHTML = ui.text(d.error); return; }
-            if (!d.s) { el.innerHTML = ui.note('Reading the settings...'); return; }
+            if (!d.s) { el.innerHTML = ''; return; }
             const io = d.io;
             if (tab === 'memory') {
                 el.innerHTML = `<p>Delete the browsing history of Grimoire and Alchemy, the remote browser this phone's Internet Explorer uses.</p>

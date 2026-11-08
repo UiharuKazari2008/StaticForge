@@ -53,7 +53,7 @@
 
     let ws = null; // window.wmShell
     // WM's wait cursor (wmShell.busy) over work the dialog waits for: a save, a pick that opens the file
-    const busyOf = (fn) => (ws && typeof ws.busy === 'function' ? ws.busy(fn) : fn());
+    const busyOf = (fn, opts) => (ws && typeof ws.busy === 'function' ? ws.busy(fn, opts) : fn());
     let page = null;
     let dlg = null; // the dialog on screen (one at a time)
     let token = 0;
@@ -327,10 +327,20 @@
             try { d.opts.onCancel(); } catch (err) { console.warn('[wmFileDialogs] cancel', err); }
         }
         // stay: another dialog replaces it, or the shell is already leaving this page
-        if (!stay && isCurrent() && !dlg) ws.back();
+        if (!stay && isCurrent() && !dlg) ws.back({ app: true });
     }
 
-    async function load(d, o = {}) {
+    /** A list the user waits for (open, Folder, Location, the header's sort): WM's wait cursor while it loads. */
+    function load(d, o = {}) {
+        const p = loadList(d, o);
+        // only while nothing is on screen to use: a start folder shows first (more() holds the
+        // cursor itself while it is empty) and a Save dialog's name box is usable at once; the
+        // Folder survey behind them must not lock Cancel, the soft keys or Back (#723 review)
+        if (ws && typeof ws.busy === 'function' && d.kind === 'open' && !d.folder) ws.busy(p).catch(() => {});
+        return p;
+    }
+
+    async function loadList(d, o = {}) {
         const my = ++token;
         d.loading = true;
         d.error = '';
@@ -410,6 +420,10 @@
         pg.loading = true;
         pg.error = '';
         tail(d);
+        // nothing of the folder on screen yet: the user waits (the wait cursor); paging on as the
+        // list scrolls stays quiet
+        let release = null;
+        if (!shown && ws && typeof ws.busy === 'function' && d.folder === path) release = ws.busy();
         try {
             for (let n = 0; n < 10 && pg.hasMore && got < want; n++) {
                 const r = await listPage(path, d.sort, pg.offset, PAGE);
@@ -427,6 +441,7 @@
             pg.hasMore = false;
         } finally {
             pg.loading = false;
+            if (release) release();
         }
         if (d.pages.get(path) === pg) tail(d);
     }
@@ -518,9 +533,24 @@
             + `<span class="wfd-tname">${esc(x.item.name)}</span></div>`;
     }
 
+    // a list row's icon as a CSS background (image-set from the shell's srcset): a hundred
+    // <img srcset> rows cost hundreds of ms of parsing on a phone
+    const rowIcons = new Map();
+    function rowIcon(name) {
+        let h = rowIcons.get(name);
+        if (!h) {
+            const set = ws && ws.art && ws.art.srcset ? ws.art.srcset(name) : `${ART}${name}.png 1x, ${ART}${name}@2x.png 2x`;
+            const parts = String(set).split(',').map((p) => p.trim().split(/\s+/)).filter((p) => p[0]);
+            const img = parts.length ? `image-set(${parts.map(([u, x]) => `url('${u}') ${x || '1x'}`).join(', ')})` : `url('${ART}${name}.png')`;
+            h = `<i class="wfd-ico" style="${esc(`--wfd-img:${img}`)}"></i>`;
+            rowIcons.set(name, h);
+        }
+        return h;
+    }
+
     function rowHtml(d, x) {
         return `<div class="wfd-item${d.selected === x.item.id ? ' is-selected' : ''}" role="option" data-id="${esc(x.item.id)}">`
-            + `<span class="wfd-name">${icon(iconOf(x.item))}<span>${esc(x.item.name)}</span></span>`
+            + `<span class="wfd-name">${rowIcon(iconOf(x.item))}<span>${esc(x.item.name)}</span></span>`
             + `<span class="wfd-folder">${esc(rowLabel(d, x))}</span><span class="wfd-date">${esc(fmtDate(x.item.modifiedAt || x.item.updatedAt))}</span>`
             + `<span class="wfd-size">${esc(fmtSize(x.item.sizeBytes != null ? x.item.sizeBytes : x.item.size))}</span></div>`;
     }
@@ -530,12 +560,13 @@
         if (d.error) return `<p class="wfd-note">${esc(d.error)}</p>`;
         if (!isClient(d) && d.folder) {
             const pg = d.pages.get(d.folder);
-            if (!pg || pg.loading) return '<p class="wfd-note">Searching...</p>';
+            // loading: WM's wait cursor, no text under the list
+            if (!pg || pg.loading) return '';
             if (pg.error) return `<p class="wfd-note">${esc(pg.error)}</p>`;
             if (pg.hasMore) return '<button type="button" class="wfd-more" data-act="more">More files...</button>';
             return count ? '' : '<p class="wfd-note">No files of this type.</p>';
         }
-        if (d.loading) return '<p class="wfd-note">Searching...</p>';
+        if (d.loading) return '';
         if (!isClient(d) && d.allCut) {
             return `<p class="wfd-note">${count ? '' : 'No files of this type. '}Showing up to ${ALL_PER_FOLDER} files from each folder${d.cut ? ' (not every folder was searched)' : ''}. Choose a folder in the Folder list to see all of its files.</p>`;
         }
@@ -781,11 +812,13 @@
         for (const pg of d.pages.values()) { if (row) break; row = pg.files.find((r) => r.item.id === id); }
         if (!row) return;
         d.selected = id;
-        render();
+        // the tapped row lights up (no redraw of the whole list inside the tap)
+        if (page) page.querySelectorAll('.wfd-item').forEach((r) => r.classList.toggle('is-selected', r.dataset.id === String(id)));
+        else render();
         d.busy = true;
         let keep = false;
         try {
-            keep = (await busyOf(() => d.opts.onPick(row.item, row.path, { close: () => settle(d, 'done') }))) === false;
+            keep = (await busyOf(() => d.opts.onPick(row.item, row.path, { close: () => settle(d, 'done') }), { paint: true })) === false;
         } catch (err) {
             console.warn('[wmFileDialogs] open', err);
             keep = true;
