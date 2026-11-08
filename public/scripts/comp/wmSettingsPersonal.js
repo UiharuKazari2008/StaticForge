@@ -39,8 +39,7 @@
     const esc = ui.esc;
 
     // Monolith helpers are classic-script globals (not window properties): reached by name with typeof.
-    /* global isAndroidNotificationBridgeDetected, readDesktopSettingsNotificationBridgeEnabledPreference,
-       readDesktopSettingsBypassNotificationBridgeDesktopPreference, desktopSettingsGlobalState,
+    /* global desktopSettingsGlobalState,
        persistUserGlobalSettingsPatch, readDesktopSettingsVirtualKeyboardPreference, setDesktopVirtualKeyboardEnabled,
        getAutofillSearchSettings, saveAutofillSearchSettingsToServer, AUTOFILL_DELAY_PRESETS,
        AUTOFILL_MAX_RESULTS_PRESETS, workspaces, activeWorkspace, localGalleryImageUrl, localCacheUploadUrl,
@@ -143,16 +142,14 @@
         // mode only (a phone may hold 'off' from an earlier desktop session) and must not read as,
         // or be saved as, No Sounds for the workspace
         const mailApi = window.dovecoteMailSettings;
-        const detected = call('isAndroidNotificationBridgeDetected') === true;
         const d = {
             scheme: p.soundScheme === 'none' ? 'none' : 'default',
             sounds: { ...p.sounds },
             startupSound: p.startupSound !== false,
             mail: mailApi && typeof mailApi.soundOn === 'function' ? { sound: !!mailApi.soundOn(), notify: !!mailApi.notifyOn() } : null,
-            bridge: detected ? {
-                on: call('readDesktopSettingsNotificationBridgeEnabledPreference') !== false,
-                bypass: call('readDesktopSettingsBypassNotificationBridgeDesktopPreference') === true
-            } : null,
+            // the phone shows every toast as a WM notification and never routes to the Android
+            // Notification Bridge (toastManager.js), so its switches are not offered here (#723)
+            bridge: null,
             sel: '',
             stash: new Map()
         };

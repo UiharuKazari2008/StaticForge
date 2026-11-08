@@ -201,8 +201,18 @@ function _isDesktopModeForNotificationBridge() {
     return !!(window.isDesktop || document.body.classList.contains('desktop-mode'));
 }
 
+/** Melaton Mobile (html.ui-mobile, window.uiShell 'mobile'): the phone shell draws every toast itself. */
+function _isMobileShellForNotificationBridge() {
+    return window.uiShell === 'mobile' || document.documentElement.classList.contains('ui-mobile');
+}
+
 function _canUseAndroidNotificationBridge() {
     if (!_androidBridgeHostReady) return false;
+    // The phone UI shows toasts as Windows Mobile notifications (wmShell reads #toastContainer:
+    // bubble, title-bar icon, tray). A toast sent to the Android bridge gets no DOM node there and
+    // never shows, so on the phone nothing goes to the bridge, buttons and progress included (#723).
+    // The persistent ongoing notification (androidNotificationBridge.js) is separate and stays.
+    if (_isMobileShellForNotificationBridge()) return false;
     if (!readNotificationBridgeEnabledPreference()) return false;
     if (readBypassNotificationBridgeInDesktopPreference() && _isDesktopModeForNotificationBridge()) {
         return false;
