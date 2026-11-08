@@ -9231,6 +9231,12 @@ class WebSocketClient {
 
     // 🎯 SINGLE SOURCE OF TRUTH for ALL ticker display logic
     updateTickerDisplay() {
+        // Melaton Mobile has no ticker (the WM shell shows its own status): keep the bookkeeping, skip
+        // the drawing, which ran on every request (~740 ms of script in a folder survey on a phone, #723)
+        if (window.uiShell === 'mobile') {
+            if (this.pendingRequestsCount === 0) this.pruneOrphanPaginationGroups();
+            return;
+        }
         // Update ticker badge
         this.updateTickerBadge();
 

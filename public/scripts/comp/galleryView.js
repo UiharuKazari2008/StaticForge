@@ -561,6 +561,9 @@ function startPlaceholderWatcher() {
 // Process queued placeholders with RTT-based multiplexing
 function processNextPlaceholders() {
     try {
+    // Melaton Mobile never shows this grid: its placeholders are not resolved there (they ran as
+    // 0.5-2.5 s tasks behind other phone apps, #723). uiShell is decided once per load.
+    if (window.uiShell === 'mobile') placeholderResolutionQueue.length = 0;
     // One chain: a direct call (scroll end, a finished load) takes over any pending wake-up
     if (placeholderWatcherFrameId) {
         clearTimeout(placeholderWatcherFrameId);
@@ -5474,6 +5477,7 @@ function processPlaceholderCleanup() {
 
 // Resolve all currently visible placeholders after fast scrolling stops using the existing queue system
 function resolveVisiblePlaceholders() {
+    if (window.uiShell === 'mobile') return; // the phone never shows this grid (#723)
     if (!gallery) return;
 
     const placeholders = gallery.querySelectorAll('.gallery-placeholder');
@@ -5684,6 +5688,10 @@ function initIntersectionObserver() {
 }
 
 function updateVirtualScroll() {
+    // Melaton Mobile never shows this grid (Pictures & Videos draws its own from allImages) and its
+    // cells measure 0x0 there, so every row counted as visible: opening the viewer (a scroll /
+    // resize) rendered the whole gallery, 2.5 s before the picture showed on a phone (#723)
+    if (window.uiShell === 'mobile') return;
     if (!gallery) return;
 
     // Don't update virtual scroll if gallery is resetting (prevents converting items to placeholders during load)

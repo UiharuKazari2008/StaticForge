@@ -609,8 +609,12 @@
     /** Menu rows: items { label, action, disabled, checked, radio, submenu } or '-' separators. */
     function fillMenu(pop, items) {
         pop.innerHTML = '';
+        // WM never draws two separators in a row or one at an end: items left out on a condition
+        // (Clear Today Background) must not leave a doubled line (#723)
+        const isSep = (it) => it === '-' || !!(it && it.separator);
+        items = items.filter((it, i, all) => it && (!isSep(it) || (i > 0 && !isSep(all[i - 1]) && all.slice(i + 1).some((x) => x && !isSep(x)))));
         for (const item of items) {
-            if (item === '-' || item.separator) {
+            if (isSep(item)) {
                 pop.insertAdjacentHTML('beforeend', '<div class="wm-popup-sep" role="separator"></div>');
                 continue;
             }
@@ -690,7 +694,7 @@
         pop.dataset.side = side;
         pop.style.top = pop.style.left = pop.style.right = pop.style.bottom = '';
         // sizes an app gave its last menu (a combo's width, a scroll limit) do not carry over
-        pop.style.minWidth = pop.style.maxHeight = pop.style.overflowY = '';
+        pop.style.minWidth = pop.style.maxWidth = pop.style.maxHeight = pop.style.overflowX = pop.style.overflowY = '';
         fillMenu(pop, items);
         pop.hidden = false;
         openPopup = pop;
@@ -851,8 +855,11 @@
         syncHistory();
     }
 
-    function back() {
+    /** One screen back; { app: true } = the current app's page itself (a form or file dialog ending), not the picture view over it. */
+    function back(opts) {
         closeMenus(true);
+        // the picture view is the top layer: back closes it first, as the title's ok and the back key do
+        if (!(opts && opts.app) && viewerActive && !viewerClosing) { viewerClosing = true; closeViewer(); return; }
         if (stack.length > 1) stack.pop();
         activate(stack[stack.length - 1] || 'today');
         syncHistory();
@@ -1573,6 +1580,13 @@
      * nothing) it returns a release function instead. Calls nest (counted); each releases on its
      * own end or after `timeout` ms (default 30 s), so the phone is never locked for good. The shell
      * is aria-busy while it lasts. Message boxes stay usable above it (an error box, a question).
+     *
+     * Rule for apps (Yozora #723): every blocking action goes through this one cursor, never an
+     * app spinner. Work that starts with heavy synchronous DOM work (a desktop dialog re-hosted, a
+     * long list built) must pass { paint: true }: the cursor shows at once and the work runs after
+     * the next frame, so the cursor is on screen before the main thread blocks (with the default a
+     * synchronous fn runs inside the tap and the cursor's timer can never fire). paint also suits
+     * any tap whose result takes a server round trip: the user sees the cursor in the same frame.
      */
     let busyCount = 0;
     let busyPopped = false;
@@ -1612,15 +1626,28 @@
         busyFrameTimer = setInterval(tick, 90);
     }
 
+    /** Resolves after the next frame is painted (a timer stands in where rAF does not run: hidden tabs). */
+    function afterPaint() {
+        return new Promise((resolve) => {
+            let done = false;
+            const go = () => { if (!done) { done = true; resolve(); } };
+            try { requestAnimationFrame(() => setTimeout(go, 0)); } catch (_) { /* timer below */ }
+            setTimeout(go, 100);
+        });
+    }
+
     function busy(work = true, opts = {}) {
         if (!shell) return work === true ? () => {} : Promise.resolve(typeof work === 'function' ? work() : work);
-        const delay = Number.isFinite(opts.delay) ? Math.max(0, opts.delay) : 150;
+        const paint = !!opts.paint;
+        const delay = paint ? 0 : Number.isFinite(opts.delay) ? Math.max(0, opts.delay) : 150;
         const timeout = Number.isFinite(opts.timeout) ? opts.timeout : 30000;
         busyCount++;
         paintBusy();
         if (!busyFrameTimer) {
             clearTimeout(busyShowTimer);
-            busyShowTimer = setTimeout(showBusyCursor, delay);
+            busyShowTimer = null;
+            if (delay === 0) showBusyCursor();
+            else busyShowTimer = setTimeout(showBusyCursor, delay);
         }
         let released = false;
         const release = () => {
@@ -1636,12 +1663,14 @@
         };
         const limit = setTimeout(release, timeout);
         if (work === true || work == null) return release;
-        let p;
-        try {
-            p = Promise.resolve(typeof work === 'function' ? work() : work);
-        } catch (err) {
-            p = Promise.reject(err);
-        }
+        const run = () => {
+            try {
+                return Promise.resolve(typeof work === 'function' ? work() : work);
+            } catch (err) {
+                return Promise.reject(err);
+            }
+        };
+        const p = paint && typeof work === 'function' ? afterPaint().then(run) : run();
         return p.finally(release);
     }
 
@@ -2578,6 +2607,20 @@
             sortBtn.disabled = !!searchResults;
         }
 
+        // the grid's blocks still to come after a render (renderGrid), added after the first paint
+        let gridToken = 0;
+        let gridRest = null;
+
+        /** Every block of the grid now (a jump to a cell further down). */
+        function flushGrid() {
+            const g = gridRest;
+            if (!g) return;
+            gridRest = null;
+            let add = '';
+            for (; g.next < g.total; g.next += CHUNK) add += g.chunkHtml(g.next);
+            g.box.insertAdjacentHTML('beforeend', add);
+        }
+
         function renderGrid(page, force) {
             const view = activeView();
             if (view !== gridView) {
@@ -2596,20 +2639,42 @@
             const box = page.querySelector('.wm-pv-grid');
             const cols = Number(page.style.getPropertyValue('--wm-pv-cols')) || 3;
             const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
-            let html = '';
-            for (let i = 0; i < list.length; i += CHUNK) {
+            const chunkHtml = (i) => {
                 const part = list.slice(i, i + CHUNK);
                 // the block's real height before it renders (content-visibility): rows of 61 px
                 const est = Math.round(Math.ceil(part.length / cols) * 61 * px);
-                html += `<div class="wm-pv-chunk" style="contain-intrinsic-size:auto ${est}px">`;
+                let html = `<div class="wm-pv-chunk" style="contain-intrinsic-size:auto ${est}px">`;
                 for (const item of part) {
                     const name = nameOf(item);
                     const sel = name === selectedName ? ' is-selected' : '';
                     html += `<button type="button" class="wm-pv-cell wm-photo${sel}" data-filename="${escapeHtml(name)}" aria-label="${escapeHtml(name)}"><img src="${escapeHtml(previewUrl(item))}" alt="" loading="lazy" decoding="async" draggable="false"></button>`;
                 }
-                html += '</div>';
+                return `${html}</div>`;
+            };
+            // The screen's blocks now, the rest after the first paint in small batches: building all
+            // of a large gallery (1,600+ cells) in the tap took over a second on a phone (#723).
+            // Up to the scroll anchor's block when the grid is redrawn while scrolled.
+            let now = 2 * CHUNK;
+            if (anchor) {
+                const at = list.findIndex((it) => nameOf(it) === anchor.name);
+                if (at >= 0) now = Math.max(now, (Math.floor(at / CHUNK) + 2) * CHUNK);
             }
+            let html = '';
+            for (let i = 0; i < Math.min(now, list.length); i += CHUNK) html += chunkHtml(i);
             box.innerHTML = html;
+            const token = ++gridToken;
+            gridRest = now < list.length ? { token, box, next: now, total: list.length, chunkHtml } : null;
+            if (gridRest) {
+                const more = () => {
+                    const g = gridRest;
+                    if (!g || g.token !== token) return;
+                    let add = '';
+                    for (let n = 0; n < 1 && g.next < g.total; n++, g.next += CHUNK) add += g.chunkHtml(g.next);
+                    g.box.insertAdjacentHTML('beforeend', add);
+                    if (g.next < g.total) setTimeout(more, 0); else gridRest = null;
+                };
+                afterPaint().then(more);
+            }
             // a selection that left the list (view switch, search, delete) is dropped
             if (selectedName && !list.some((it) => nameOf(it) === selectedName)) {
                 selectedName = null;
@@ -2666,7 +2731,8 @@
 
         function viewPicture(name) {
             if (!name || typeof showLightbox !== 'function') return;
-            try { showLightbox({ filename: name }); } catch (_) { /* viewer not ready */ }
+            // the wait cursor if the viewer is slow to come up (its first open loads PhotoSwipe)
+            busy(Promise.resolve().then(() => showLightbox({ filename: name })).catch(() => { /* viewer not ready */ }));
         }
 
         /**
@@ -2721,6 +2787,7 @@
         }
 
         function jumpToIndex(page, i) {
+            flushGrid();
             const cells = page.querySelectorAll('.wm-pv-cell');
             const el = cells[Math.max(0, Math.min(i, cells.length - 1))];
             if (!el) return;
@@ -2855,7 +2922,10 @@
             },
             show(page) {
                 layoutGrid(page);
-                renderGrid(page, false);
+                // the first fill of the grid behind WM's wait cursor (the folder bar and soft keys are
+                // up at once); later shows only redraw what changed
+                if (!gridSig) busy(() => renderGrid(page, false), { paint: true });
+                else renderGrid(page, false);
                 // the desktop gallery keeps loading, paging and searching underneath (allImages):
                 // follow it while Pictures is on screen
                 clearInterval(gridTimer);
@@ -2951,7 +3021,13 @@
         try {
             const p = (typeof lightbox !== 'undefined' && lightbox && lightbox.pswp) || window.pswp;
             const d = p && p.currSlide && p.currSlide.data;
-            return d && d.src && !d.data ? { src: d.src, name: d.filename || String(d.src).split('/').pop().split('?')[0] } : null;
+            if (!d || !d.src) return null;
+            // a gallery slide saves through the viewer's own Download; a standalone one (a mail
+            // attachment by data URL, a picture by URL) is saved from its src under its title
+            if (d.data && !d.data.isStandalone) return null;
+            const inline = /^(data|blob):/i.test(String(d.src));
+            const name = (d.data && d.data.title) || d.filename || (inline ? '' : String(d.src).split('/').pop().split('?')[0]) || 'picture';
+            return { src: d.src, name };
         } catch (_) { return null; }
     }
 
@@ -3024,8 +3100,14 @@
         };
     }
 
+    // live collections: the 150 / 400 ms polls below re-scan the page only after the DOM changed
+    // (a querySelector walked all ~13,000 nodes on every tick: the shell's largest idle cost, #723)
+    const openViewers = document.getElementsByClassName('pswp--open');
+    const appErrorWindows = document.getElementsByClassName('dreamscape-app-error-window');
+
     function checkViewer() {
-        const open = !!document.querySelector('.pswp.pswp--open');
+        let open = false;
+        for (const el of openViewers) { if (el.classList.contains('pswp')) { open = true; break; } }
         if (open === viewerActive) return;
         viewerActive = open;
         viewerClosing = false;
@@ -3060,8 +3142,8 @@
     function checkTakeover() {
         let on = TAKEOVER.some((id) => shown(document.getElementById(id)));
         if (!on) {
-            for (const el of document.querySelectorAll('body > .dreamscape-app-error-window')) {
-                if (shown(el)) { on = true; break; }
+            for (const el of appErrorWindows) {
+                if (el.parentElement === document.body && shown(el)) { on = true; break; }
             }
         }
         if (on) {
@@ -3303,6 +3385,8 @@
         // the menus' tick and submenu arrow are CSS masks: fetched with the shell, not on the first
         // menu (the title bar's ok / X are inline in wm-shell.css)
         ['menu-check', 'menu-submenu-arrow'].forEach((n) => ['', '@2x', '@4x'].forEach((x) => { const img = new Image(); img.src = `/static_images/wm61/${n}${x}.png`; }));
+        // the wait cursor's frames: a busy() right after boot must not show an empty frame while they download
+        for (let f = 0; f < 16; f++) { const img = new Image(); img.decoding = 'async'; img.srcset = srcset(`wait-${f}`); img.src = art(`wait-${f}`); }
         registerTodayApp();
         registerGalleryApp();
         watchTheme();
@@ -3374,6 +3458,8 @@
         bubble: (opts) => bubble(opts || {}),
         /** WM's wait cursor while the user must wait: busy(promise | fn, { delay, timeout }) or busy() -> release. */
         busy: (work, opts) => busy(work, opts || {}),
+        /** Resolves once the next frame has painted (yield before heavy synchronous work). */
+        afterPaint: () => afterPaint(),
         isBusy: () => busyCount > 0,
         /** WM 6.1 system sounds: play('SystemHand' | 'SystemExclamation' | 'Notification' ...), log (what played). */
         sounds: { play: (name, opts) => playSystemSound(name, opts || {}), log: snd.log, files: SND_FILE },

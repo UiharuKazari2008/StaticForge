@@ -3698,7 +3698,8 @@ async function openManualModalWithContent(content = null, event = null) {
                     void manualModal.offsetWidth;
                     openModal(manualModal);
                     // mcpLaunchKeepsTopWindow: public/scripts/comp/modalUtils.js — MCP opens stay behind the focused window
-if (typeof mcpLaunchKeepsTopWindow !== 'function' || !mcpLaunchKeepsTopWindow()) {
+// the phone shell (Melaton Mobile) never focuses on open: it would pop the soft keyboard over Studio (#723)
+if (window.uiShell !== 'mobile' && (typeof mcpLaunchKeepsTopWindow !== 'function' || !mcpLaunchKeepsTopWindow())) {
     manualPrompt.focus();
 }
                     schedulePostOpenPromptLayout();
@@ -3708,7 +3709,8 @@ if (typeof mcpLaunchKeepsTopWindow !== 'function' || !mcpLaunchKeepsTopWindow())
             }
             openModal(manualModal);
             // mcpLaunchKeepsTopWindow: public/scripts/comp/modalUtils.js — MCP opens stay behind the focused window
-if (typeof mcpLaunchKeepsTopWindow !== 'function' || !mcpLaunchKeepsTopWindow()) {
+// the phone shell (Melaton Mobile) never focuses on open: it would pop the soft keyboard over Studio (#723)
+if (window.uiShell !== 'mobile' && (typeof mcpLaunchKeepsTopWindow !== 'function' || !mcpLaunchKeepsTopWindow())) {
     manualPrompt.focus();
 }
             schedulePostOpenPromptLayout();

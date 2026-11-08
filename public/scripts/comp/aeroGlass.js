@@ -244,8 +244,15 @@
 
     // Every mode tracks the origin: the frosted wallpaper copy and the screen-anchored
     // streaks (#407, all modes) both read --aero-x / --aero-y.
+    // Melaton Mobile (html.ui-mobile) has no window frames: the phone shell re-hosts desktop dialogs
+    // flat, so frame origins, surface origins, contrast sampling and the frosted copy are all wasted
+    // work there (#723: about a third of Studio's open on a phone went here).
+    function phoneUi() {
+        return !!(root && root.classList && root.classList.contains('ui-mobile'));
+    }
+
     function syncModal(modal) {
-        if (!modal) return false;
+        if (!modal || phoneUi()) return false;
         if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt')) return false;
         const origin = computeModalOrigin(modal);
         if (!origin) return false;
@@ -267,7 +274,7 @@
      * viewport origin goes to --aero-sx / --aero-sy; drag offsets inherit from the window.
      */
     function syncSurfaces(modal) {
-        if (!modal || typeof modal.querySelectorAll !== 'function') return 0;
+        if (!modal || typeof modal.querySelectorAll !== 'function' || phoneUi()) return 0;
         let count = 0;
         modal.querySelectorAll('[data-aero-surface]').forEach((el) => {
             const rect = el.getBoundingClientRect();
@@ -499,6 +506,7 @@
 
     function scheduleContrast() {
         clearTimeout(state.contrastTimer);
+        if (phoneUi()) return;
         state.contrastTimer = setTimeout(() => {
             state.contrastTimer = null;
             syncContrast();
@@ -761,7 +769,7 @@
     }
 
     function scheduleWallpaperRefresh(force) {
-        if (state.mode !== 'frosted') return;
+        if (state.mode !== 'frosted' || phoneUi()) return;
         clearTimeout(state.refreshTimer);
         state.refreshTimer = setTimeout(() => {
             state.refreshTimer = null;
