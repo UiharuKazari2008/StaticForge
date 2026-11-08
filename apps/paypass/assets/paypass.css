@@ -29,11 +29,12 @@
 .pp-menubar span { padding: 2px 8px; }
 .pp-menubar span:hover { background: var(--pp-blue); color: #fff; }
 .pp-band { display: flex; align-items: center; gap: 12px; height: 62px; padding: 0 14px; background: linear-gradient(180deg, #2a5cf0 0%, var(--pp-blue) 45%, var(--pp-navy) 100%); border-bottom: 3px solid var(--pp-green); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35); }
-.pp-band-logo { width: 48px; height: 48px; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .4)); }
-.pp-band-title { display: flex; flex-direction: column; }
-.pp-band-title b { font: bold 22px/1 'Trebuchet MS', Tahoma, sans-serif; letter-spacing: -.5px; text-shadow: 0 1px 2px rgba(0, 0, 0, .5); }
-.pp-band-title b i { color: #8fe08f; }
-.pp-band-title small { margin-top: 3px; color: #c9d6ff; font-size: 11px; letter-spacing: .5px; }
+/* openCreditIC's own PAYPASS wordmark (ui_images/seq-logo-no-gutter.png), then "Manager" and the arcade */
+.pp-band-title { display: flex; align-items: center; gap: 12px; }
+.pp-wordmark { display: block; width: 156px; height: 36px; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .45)); }
+.pp-band-sub { display: flex; flex-direction: column; padding-left: 12px; border-left: 1px solid rgba(255, 255, 255, .35); }
+.pp-band-sub b { font: bold 16px/1 Tahoma, sans-serif; letter-spacing: .5px; }
+.pp-band-sub small { margin-top: 4px; color: #c9d6ff; font-size: 11px; letter-spacing: .5px; }
 .pp-band-fill { flex: 1; }
 .pp-term { display: flex; flex-direction: column; gap: 2px; color: #c9d6ff; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
 .pp-window .pp-root .pp-term select { min-width: 190px; height: 24px; padding: 0 4px; border: 1px solid #000d40; border-radius: 2px; background: #fff; color: var(--pp-text); font: 12px Tahoma, sans-serif; text-transform: none; letter-spacing: 0; }
@@ -44,8 +45,8 @@
 .pp-window .pp-root .pp-tab { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 14px; border: 1px solid var(--pp-line); border-bottom: 0; border-radius: 4px 4px 0 0; background: linear-gradient(#eef2f7, #d9e1ec); color: var(--pp-text); }
 .pp-window .pp-root .pp-tab.is-on { height: 28px; margin-bottom: -1px; background: var(--pp-panel); font-weight: bold; }
 .pp-tabs-fill { flex: 1; }
-.pp-find { align-self: center; color: var(--pp-dark); }
-.pp-window .pp-root .pp-find input { width: 190px; height: 22px; padding: 0 5px; border: 1px solid var(--pp-line); border-radius: 2px; background: #fff; color: var(--pp-text); font: 12px Tahoma, sans-serif; }
+.pp-find { align-self: center; flex: none; color: var(--pp-dark); white-space: nowrap; }
+.pp-window .pp-root .pp-find input { width: 170px; height: 22px; padding: 0 5px; border: 1px solid var(--pp-line); border-radius: 2px; background: #fff; color: var(--pp-text); font: 12px Tahoma, sans-serif; }
 .pp-view { flex: 1; min-height: 0; overflow: auto; background: var(--pp-panel); }
 .pp-busy .pp-view { cursor: progress; }
 
@@ -86,8 +87,8 @@
 .pp-empty p { margin: 0; }
 
 /* ---- function keys + status ---- */
-.pp-fkeys { display: flex; align-items: center; gap: 4px; padding: 6px 8px; background: linear-gradient(#cdd6e3, #b8c4d6); border-top: 1px solid var(--pp-line); }
-.pp-window .pp-root .pp-fk { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px 0 6px; border: 1px solid #6f7d93; border-radius: 3px; background: linear-gradient(#ffffff, #dde4ee 60%, #cbd5e3); box-shadow: inset 0 1px 0 #fff, 0 1px 1px rgba(0, 0, 0, .2); color: var(--pp-text); font: bold 12px Tahoma, sans-serif; }
+.pp-fkeys { display: flex; align-items: center; gap: 4px; overflow: hidden; padding: 6px 8px; background: linear-gradient(#cdd6e3, #b8c4d6); border-top: 1px solid var(--pp-line); }
+.pp-window .pp-root .pp-fk { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px 0 6px; border: 1px solid #6f7d93; border-radius: 3px; background: linear-gradient(#ffffff, #dde4ee 60%, #cbd5e3); box-shadow: inset 0 1px 0 #fff, 0 1px 1px rgba(0, 0, 0, .2); color: var(--pp-text); font: bold 12px Tahoma, sans-serif; white-space: nowrap; flex: none; }
 .pp-window .pp-root .pp-fk:hover { border-color: var(--pp-blue); }
 .pp-window .pp-root .pp-fk:active { background: linear-gradient(#cbd5e3, #e3e9f2); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .3); }
 .pp-fk kbd { display: inline-block; min-width: 22px; padding: 2px 3px; border-radius: 2px; background: #3c475a; color: #fff; font: bold 10px Tahoma, sans-serif; text-align: center; }
@@ -165,6 +166,8 @@
 .pp-window .pp-root .pp-fpsw:not(.is-on) .pp-fpb[data-fpv="0"] { background: linear-gradient(#8a96a8, #5d6b80); color: #fff; }
 .pp-fprow + .pp-field { margin-top: 10px; }
 
-.pp-about { display: flex; gap: 14px; align-items: flex-start; padding: 8px 4px; }
-.pp-about b { font-size: 16px; }
-.pp-about b i { color: var(--pp-green); }
+.pp-aboutwin .pp-form-body { padding: 0; }
+.pp-about-band { padding: 14px 18px; background: linear-gradient(180deg, #2a5cf0 0%, var(--pp-blue) 45%, var(--pp-navy) 100%); border-bottom: 3px solid var(--pp-green); }
+.pp-about-band img { display: block; }
+.pp-about { display: flex; gap: 14px; align-items: flex-start; padding: 12px 18px 8px; }
+.pp-about b { font-size: 14px; }

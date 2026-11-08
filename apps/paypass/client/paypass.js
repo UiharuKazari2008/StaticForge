@@ -58,7 +58,7 @@
             m.dataset.taskbarIcon = `${A}/paypass-32.png`;
             m.dataset.windowDefaultWidth = '980';
             m.dataset.windowDefaultHeight = '680';
-            m.dataset.windowMinWidth = '720';
+            m.dataset.windowMinWidth = '860';
             m.dataset.windowMinHeight = '480';
             m.style.width = '980px';
             m.style.height = `${Math.min(680, root.innerHeight - 60)}px`;
@@ -74,8 +74,7 @@
                 <div class="modal-content pp-client"><div class="pp-root">
                     <div class="pp-menubar"><span data-pp-menu="file"><u>F</u>ile</span><span data-pp-menu="customers"><u>C</u>ustomers</span><span data-pp-menu="arcade"><u>A</u>rcade</span><span data-pp-menu="help"><u>H</u>elp</span></div>
                     <div class="pp-band">
-                        <img class="pp-band-logo" src="${A}/paypass-48.png" alt="">
-                        <span class="pp-band-title"><b>pay<i>Pass</i> Manager</b><small class="pp-arcade">Connecting...</small></span>
+                        <span class="pp-band-title"><img class="pp-wordmark" src="${A}/paypass-wordmark.png" alt="PayPass" width="156" height="36"><span class="pp-band-sub"><b>Manager</b><small class="pp-arcade">Connecting...</small></span></span>
                         <span class="pp-band-fill"></span>
                         <label class="pp-term"><span>POS Terminal</span><select class="pp-pos"></select></label>
                         <span class="pp-online"><span class="pp-lamp"></span><span class="pp-online-text">OFFLINE</span></span>
@@ -693,7 +692,7 @@
         about() {
             this.openWin({
                 kind: 'about', title: 'About PayPass Operator', width: 380, cls: 'pp-aboutwin',
-                body: `<div class="pp-about">${ico('paypass', 64)}<div><b>pay<i>Pass</i> Operator</b><br>openCreditIC front desk console<br>Version ${VERSION}<br>AmusementVISION 2024<br><br>Server: ${esc(this.data ? this.data.arcade : '-')}<br>Terminal: ${esc(this.termName())}</div></div>`,
+                body: `<div class="pp-about-band"><img src="${A}/paypass-wordmark.png" alt="PayPass" width="195" height="45"></div><div class="pp-about"><img src="${A}/paypass-48.png" alt="" width="48" height="48"><div><b>PayPass Operator</b><br>openCreditIC front desk console<br>Version ${VERSION}<br>AmusementVISION 2024<br><br>Server: ${esc(this.data ? this.data.arcade : '-')}<br>Terminal: ${esc(this.termName())}</div></div>`,
                 buttons: [{ text: 'OK', value: 'cancel', def: true }]
             });
         }
