@@ -32,6 +32,8 @@
     const stamp = (t) => { if (!t) return '-'; const d = new Date(t); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${clock(t)}`; };
     const short = (t) => { if (!t) return '-'; const d = new Date(t); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${clock(t)}`; };
     const span = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`; };
+    // the function-key strip: key -> [command, label]
+    const FKEYS = { F1: ['register', 'Register customer'], F2: ['deposit', 'Deposit credits'], F3: ['lookup', 'Lookup customer'], F4: ['transfer', 'Card transfer'], F5: ['refresh', 'Refresh'], F6: ['freeplay', 'Free play config'] };
     const ico = (name, size = 16) => `<img class="pp-ico" src="${A}/icons/${name}.png" alt="" width="${size}" height="${size}">`;
 
     class PayPass {
@@ -120,10 +122,6 @@
             }, sig);
             q('.pp-filter').addEventListener('input', (ev) => { this.filter = ev.target.value.trim().toLowerCase(); if (this.view === 'customers') this.render(); }, sig);
             q('.pp-pos').addEventListener('change', (ev) => { this.pos = ev.target.value; }, sig);
-            m.addEventListener('keydown', (ev) => {
-                const k = { F1: 'register', F2: 'deposit', F3: 'lookup', F4: 'transfer', F5: 'refresh', F6: 'freeplay' }[ev.key];
-                if (k) { ev.preventDefault(); void this.command(k); }
-            }, sig);
             m.querySelectorAll('[data-pp-menu]').forEach((t) => {
                 if (!root.contextMenu) return;
                 root.contextMenu.attachClickMenuToElement(t, {
@@ -139,6 +137,7 @@
             this.app.signal.addEventListener('abort', () => clearInterval(tick));
             // before openModal: an id-less window restores the shared 'unknown' geometry
             m.id = 'melatonPayPassModal';
+            this.registerKeys();
             call('openModal', m);
             m.classList.remove('hidden');
             let placed = false;
@@ -155,7 +154,40 @@
             }
         }
 
+        /**
+         * The function-key strip's keys, through the desktop's keyboard registry (modalKeyboardRegistry.js)
+         * while the main window has the focus: the registry sees them before the browser does (F5 would
+         * reload the page, F1 opens help, F3 find), and lists them in the shortcut overlay.
+         */
+        registerKeys() {
+            if (typeof root.registerKeyboardListener !== 'function') return;
+            const id = this.modal.id;
+            root.registerKeyboardListener({
+                id: `${id}.fkeys`,
+                type: 'whenFocused',
+                modalId: id,
+                priority: 80,
+                showInOverlay: false,
+                handler: (e) => {
+                    if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return false;
+                    const k = FKEYS[e.key];
+                    if (!k) return false;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!e.repeat) void this.command(k[0]);
+                    return true;
+                }
+            });
+            Object.entries(FKEYS).forEach(([key, [, label]]) => {
+                root.registerKeyboardListener({ id: `${id}.overlay.${key}`, type: 'whenFocused', modalId: id, overlayOnly: true, label, keys: key, icon: 'fas fa-keyboard' });
+            });
+        }
+
         destroy() {
+            if (typeof root.unregisterKeyboardListener === 'function') {
+                root.unregisterKeyboardListener(`${this.modal.id}.fkeys`);
+                Object.keys(FKEYS).forEach((key) => root.unregisterKeyboardListener(`${this.modal.id}.overlay.${key}`));
+            }
             this.children.forEach((c) => c.close());
             try { call('closeModal', this.modal); } catch (_) { /* gone */ }
             const m = this.modal;

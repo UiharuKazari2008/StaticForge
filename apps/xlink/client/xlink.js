@@ -221,9 +221,6 @@
                 const s = ev.target.closest('input.xl-slider');
                 if (s) { const o = s.parentNode.querySelector('.xl-slider-val'); if (o) o.textContent = `${s.value}${s.dataset.append || ''}`; }
             }, sig);
-            this.modal.addEventListener('keydown', (ev) => {
-                if (ev.key === 'F5') { ev.preventDefault(); void this.command('refresh'); }
-            }, sig);
             q('.xl-file').addEventListener('change', () => void this.importFile(), sig);
             q('.xl-splash').addEventListener('click', () => this.splashDone(), sig);
             this.splitter(q('.xl-split'), q('.xl-side'));
@@ -243,6 +240,19 @@
             }, sig);
             // before openModal: an id-less window restores the shared 'unknown' geometry
             m.id = 'melatonXLinkModal';
+            // F5 polls (Cabinet > Poll Now), through the desktop's keyboard registry so the browser never reloads
+            if (typeof root.registerKeyboardListener === 'function') {
+                root.registerKeyboardListener({
+                    id: `${m.id}.f5`, type: 'whenFocused', modalId: m.id, priority: 80, label: 'Poll now', keys: 'F5', icon: 'fas fa-rotate',
+                    handler: (e) => {
+                        if (e.key !== 'F5' || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return false;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!e.repeat) void this.command('refresh');
+                        return true;
+                    }
+                });
+            }
             call('openModal', m);
             m.classList.remove('hidden');
             let placed = false;
@@ -260,6 +270,7 @@
         }
 
         destroy() {
+            if (typeof root.unregisterKeyboardListener === 'function') root.unregisterKeyboardListener(`${this.modal.id}.f5`);
             this.children.forEach((c) => c.close());
             try { call('closeModal', this.modal); } catch (_) { /* gone */ }
             const m = this.modal;
