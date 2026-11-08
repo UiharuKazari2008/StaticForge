@@ -1665,3 +1665,186 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     text-shadow: none !important;
     opacity: 1 !important;
 }
+
+/* ======================================================================
+ * Settings: short fields side by side (Steps | Guidance, Rescale | Prints, Seed | Locks), the wide
+ * ones (Model, Resolution, Sampler, Workspace) across. One grid for the whole section: label, field,
+ * label, field; the desktop's rows step aside (display: contents) so their groups are its cells.
+ * ====================================================================== */
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder {
+    display: grid !important;
+    grid-template-columns: calc(66 * var(--wm-px)) minmax(0, 1fr) max-content minmax(0, 1fr);
+    column-gap: calc(5 * var(--wm-px));
+    align-items: center;
+}
+
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .form-row {
+    display: contents !important;
+}
+
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .form-row.hidden {
+    display: none !important;
+}
+
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .form-row > .form-group {
+    grid-column: 1 / -1;
+    min-width: 0;
+}
+
+/* half rows share the section's columns */
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > :is(.control-row-steps, .control-row-img2imgctrl, .control-row-last, .control-row-seed, .control-row-lockcontrols) > .form-group {
+    grid-template-columns: subgrid !important;
+}
+
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder :is(.control-row-steps > .form-group:nth-child(odd), .control-row-img2imgctrl > .form-group:nth-child(1), .control-row-seed > .form-group) {
+    grid-column: 1 / 3;
+}
+
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder :is(.control-row-steps > .form-group:nth-child(2), .control-row-img2imgctrl > .form-group:nth-child(2), .control-row-last > .form-group, .control-row-lockcontrols > .form-group) {
+    grid-column: 3 / 5;
+}
+
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-model > .form-group { order: 1; }
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-steps > .form-group:nth-child(1) { order: 2; }
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-steps > .form-group:nth-child(2) { order: 3; }
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-steps > .form-group:nth-child(3) { order: 4; }
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-last > .form-group { order: 5; }
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-resolution > .form-group { order: 6; }
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-img2imgctrl > .form-group { order: 7; }
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-sampler > .form-group { order: 8; }
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-workspace > .form-group { order: 9; }
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-seed > .form-group { order: 10; }
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-lockcontrols > .form-group { order: 11; }
+
+/* a right-hand label sits right after its left neighbour's field */
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder :is(.control-row-steps > .form-group:nth-child(2), .control-row-img2imgctrl > .form-group:nth-child(2), .control-row-last > .form-group, .control-row-lockcontrols > .form-group) > label {
+    padding-left: calc(3 * var(--wm-px)) !important;
+}
+
+/* the percentage fields keep the row's height, not the desktop's extra margin */
+.wm-studio #manualModal .model-control .control-holder > .form-row > .form-group {
+    margin-top: 0 !important;
+}
+
+/* ---- - / + steppers (wmStudio.js) ---- */
+.wm-studio #manualModal .wms-stepper {
+    display: flex !important;
+    gap: 0 !important;
+    align-items: stretch !important;
+    width: 100%;
+    min-width: 0;
+    height: calc(20 * var(--wm-px));
+}
+
+.wm-studio #manualModal .wms-stepper > :not(.wms-step) {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 100% !important;
+    margin: 0 !important;
+}
+
+.wm-studio #manualModal .wms-stepper > input,
+.wm-studio #manualModal .wms-stepper > .percentage-input-container > input {
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    text-align: center;
+    -moz-appearance: textfield;
+}
+
+.wm-studio #manualModal .wms-stepper input::-webkit-inner-spin-button,
+.wm-studio #manualModal .wms-stepper input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.wm-studio #manualModal .model-control .wms-stepper > .percentage-input-container {
+    min-height: 0 !important;
+    height: calc(20 * var(--wm-px)) !important;
+    padding: 0 !important;
+}
+
+.wm-studio #manualModal .wms-stepper > .percentage-input-container > input {
+    max-width: none !important;
+    min-width: 0 !important;
+    padding: 0 calc(3 * var(--wm-px)) !important;
+}
+
+.wm-studio #manualModal .model-control .wms-stepper .percentage-input-overlay {
+    left: 0 !important;
+    right: 0 !important;
+    width: auto !important;
+    justify-content: center !important;
+    text-align: center !important;
+}
+
+.wm-studio #manualModal .wms-step {
+    flex: 0 0 auto;
+    align-self: stretch !important;
+    box-sizing: border-box;
+    width: calc(24 * var(--wm-px));
+    height: calc(20 * var(--wm-px)) !important;
+    margin: 0;
+    padding: 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: var(--wm-tint);
+    color: #000;
+    font: bold calc(14 * var(--wm-px)) / 1 var(--wm-font);
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.wm-studio #manualModal .wms-step-down { border-right: 0; }
+.wm-studio #manualModal .wms-step-up { border-left: 0; }
+
+.wm-studio #manualModal .wms-step:active {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text, #fff);
+}
+
+/* Prints: the stepper takes the cell (the desktop's fixed 40 px field goes) */
+.wm-studio #manualModal .model-control .control-row-last :is(.gen-controls, .controls-flex-right) {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.wm-studio #manualModal .wms-stepper > #manualPrintsCountAlt {
+    width: auto !important;
+}
+
+/* ---- the model's full name (wmStudio.js) in place of the short form and badge ---- */
+.wm-studio #manualModal #manualModelSelected {
+    display: none !important;
+}
+
+.wm-studio #manualModal #manualModelDropdownBtn > .wms-model-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---- the Enshutsuka strip under the prompt: a flat WM strip, black text ---- */
+.wm-studio #manualModal #dynamicGenerationGroup {
+    margin: 0 !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-top: 0 !important;
+    border-radius: 0 !important;
+    background: var(--wm-tab-strip) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    color: #000 !important;
+}
+
+.wm-studio #manualModal #dynamicGenerationGroup :is(span, div, label, p):not(button *) {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    text-shadow: none !important;
+    font-family: var(--wm-font) !important;
+}

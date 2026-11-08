@@ -96,7 +96,155 @@
         if (m.parentNode !== host) host.appendChild(m);
         ensureCharsSection();
         watchPromptEditors();
+        lightOverlays();
+        modelName();
+        steppers();
         return true;
+    }
+
+    // ---------------------------------------------------------------- the model's full name
+
+    /**
+     * The model combo shows the desktop's short form (v5 + an F badge); the phone row has room for the
+     * name the model list uses (NovelAI v5, NovelAI v5 (Curated) ...), kept in step with the choice.
+     */
+    let modelWatched = false;
+    function modelName() {
+        const btn = document.getElementById('manualModelDropdownBtn');
+        const sel = document.getElementById('manualModelSelected');
+        if (!btn || !sel) return;
+        let span = btn.querySelector(':scope > .wms-model-name');
+        if (!span) {
+            span = document.createElement('span');
+            span.className = 'wms-model-name';
+            btn.insertBefore(span, sel);
+        }
+        const paint = () => {
+            const value = (document.getElementById('manualModel') || {}).value || '';
+            const menu = btn.parentNode && btn.parentNode.querySelector(':scope > .custom-dropdown-menu');
+            const opt = value && menu ? Array.from(menu.querySelectorAll('.custom-dropdown-option')).find((o) => o.dataset.value === value) : null;
+            span.textContent = (opt && opt.textContent.replace(/\s+/g, ' ').trim()) || sel.textContent.replace(/\s+/g, ' ').trim();
+        };
+        paint();
+        if (modelWatched || typeof MutationObserver !== 'function') return;
+        modelWatched = true;
+        new MutationObserver(paint).observe(sel, { childList: true, subtree: true, characterData: true });
+    }
+
+    // ---------------------------------------------------------------- number steppers
+
+    /**
+     * - / + beside the numeric settings. Steps, Guidance and Rescale take the desktop's own wheel step
+     * (manualGenerationParams.js: Steps' pause at 28, Guidance 0.1, Rescale 0.01, the Medium locks);
+     * other fields step by their step / min / max. Each step fires input and change; holding repeats.
+     */
+    const STEPPERS = [
+        { id: 'manualSteps', wheel: true },
+        { id: 'manualGuidance', wheel: true },
+        { id: 'manualRescale', wheel: true, field: '.percentage-input-container' },
+        { id: 'manualPrintsCountAlt' },
+        { id: 'manualStrengthValue', field: '.percentage-input-container' },
+        { id: 'manualNoiseValue', field: '.percentage-input-container' }
+    ];
+
+    function stepInput(input, cfg, dir) {
+        if (!input || input.disabled || input.readOnly) return;
+        const before = input.value;
+        if (cfg.wheel) {
+            input.dispatchEvent(new WheelEvent('wheel', { deltaY: dir > 0 ? -100 : 100, bubbles: true, cancelable: true }));
+        } else {
+            try { if (dir > 0) input.stepUp(); else input.stepDown(); } catch (_) {
+                const st = Number(input.step) || 1;
+                let v = (Number(input.value) || 0) + dir * st;
+                if (input.min !== '') v = Math.max(Number(input.min), v);
+                if (input.max !== '') v = Math.min(Number(input.max), v);
+                input.value = String(v);
+            }
+        }
+        if (input.value === before) return;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function steppers() {
+        for (const cfg of STEPPERS) {
+            const input = document.getElementById(cfg.id);
+            if (!input) continue;
+            const field = (cfg.field && input.closest(cfg.field)) || input;
+            if (field.parentNode && field.parentNode.classList.contains('wms-stepper')) continue;
+            const box = document.createElement('span');
+            box.className = 'wms-stepper';
+            field.parentNode.insertBefore(box, field);
+            const mk = (dir) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.tabIndex = -1;
+                b.className = `wms-step ${dir > 0 ? 'wms-step-up' : 'wms-step-down'}`;
+                b.setAttribute('aria-label', dir > 0 ? 'Increase' : 'Decrease');
+                b.textContent = dir > 0 ? '+' : '\u2212';
+                let hold = 0;
+                let rep = 0;
+                const stop = () => { clearTimeout(hold); clearInterval(rep); hold = rep = 0; };
+                let pressed = false;
+                b.addEventListener('pointerdown', (e) => {
+                    if (e.button > 0) return;
+                    e.preventDefault();
+                    pressed = true;
+                    stop();
+                    stepInput(input, cfg, dir);
+                    // held: repeats a little slower than the wheel gate (150 ms) so no step is dropped
+                    hold = setTimeout(() => { rep = setInterval(() => stepInput(input, cfg, dir), 170); }, 400);
+                });
+                ['pointerup', 'pointercancel', 'pointerleave', 'blur'].forEach((t) => b.addEventListener(t, stop));
+                // keyboard / assistive clicks (no pointer press before them; a tap's click has detail 0 too)
+                b.addEventListener('click', () => {
+                    if (pressed) { pressed = false; return; }
+                    stepInput(input, cfg, dir);
+                });
+                return b;
+            };
+            box.append(mk(-1), field, mk(1));
+        }
+    }
+
+    // ---------------------------------------------------------------- the light highlight palette everywhere
+
+    /**
+     * initializeEmphasisOverlay (emphasisHighlight.js: app start, a prompt put in by open / apply, a
+     * new character) paints with the dark-box palette; only updateEmphasisHighlighting asks the box
+     * for --prompt-surface. On the white WM field that left near-white rings and solid syntax chips
+     * until the next keystroke: Studio's editors are repainted here in the light palette.
+     */
+    function repaintOverlay(ta) {
+        /* global findPromptEmphasisHighlightOverlay, highlightEmphasisForTextarea, resolveEmphasisBagForTextarea, invalidateEmphasisSpanIndex */
+        if (!ta || ta.closest('.creative-directive-container, .prompt-textarea-container.director-prompt')) return;
+        if (typeof findPromptEmphasisHighlightOverlay !== 'function' || typeof highlightEmphasisForTextarea !== 'function') return;
+        const ov = findPromptEmphasisHighlightOverlay(ta);
+        if (!ov) return;
+        try {
+            const bag = typeof resolveEmphasisBagForTextarea === 'function' ? resolveEmphasisBagForTextarea(ta) : null;
+            ov.innerHTML = highlightEmphasisForTextarea(ta, ta.value, bag);
+            if (typeof invalidateEmphasisSpanIndex === 'function') invalidateEmphasisSpanIndex(ov);
+            ov.scrollTop = ta.scrollTop;
+        } catch (err) { console.warn('[wmStudio] highlight', err); }
+    }
+
+    let lightWrapped = false;
+    function lightOverlays() {
+        const m = modal();
+        if (!m) return;
+        /* global invalidateLightPromptSurfaceCache */
+        try { if (typeof invalidateLightPromptSurfaceCache === 'function') invalidateLightPromptSurfaceCache(); } catch (_) { /* below */ }
+        if (!lightWrapped && typeof window.initializeEmphasisOverlay === 'function') {
+            lightWrapped = true;
+            const orig = window.initializeEmphasisOverlay;
+            window.initializeEmphasisOverlay = function (ta) {
+                const out = orig.apply(this, arguments);
+                if (ta && ta.nodeType === 1 && m.contains(ta)) repaintOverlay(ta);
+                return out;
+            };
+        }
+        m.querySelectorAll('.prompt-textarea-container textarea, .character-prompt-textarea-container textarea').forEach(repaintOverlay);
     }
 
     /** The Characters section head and its empty row, in the Prompt page's flow before the overlays. */
@@ -335,7 +483,17 @@
             if (!visible(item)) continue;
             try { if (typeof item.initfn === 'function') item.initfn(item, target); } catch (_) { /* as is */ }
             try { if (typeof item.loadfn === 'function') item.loadfn(item, target); } catch (_) { /* as is */ }
-            const label = resolve(item.text, target) || resolve(item.tooltip, target) || resolve(item.label, target);
+            let label = resolve(item.text, target) || resolve(item.tooltip, target) || resolve(item.label, target);
+            // rows drawn by a content() function (Datasets, Adjustments: a name and, when on, a bias
+            // stepper): the name is the label; the bias steps are a submenu
+            let node = null;
+            if (!label && typeof item.content === 'function') {
+                try { node = item.content(target); } catch (_) { node = null; }
+                if (node && node.nodeType === 1) {
+                    const name = node.querySelector('.dataset-name');
+                    label = (name || node).textContent;
+                }
+            }
             if (!label) continue; // custom rows (sliders, grids) have no WM counterpart
             const row = { label: String(label).replace(/\s+/g, ' ').trim(), disabled: !!resolve(item.disabled) };
             const sub = Array.isArray(item.submenu) ? item.submenu : null;
@@ -345,6 +503,34 @@
                     if (!list) { try { list = item.optionsfn(target); } catch (_) { list = []; } }
                     return wmItems(list, target, run, item.handlerfn || handlerfn);
                 };
+            } else if ((handlerfn || item.action) && node && node.querySelector('[data-bias-step]')) {
+                row.checked = !!item.checked;
+                const biasEl = node.querySelector('.dataset-bias-value');
+                const bias = biasEl ? biasEl.textContent.trim() : '';
+                if (bias) row.label += `  ${bias}`;
+                const toggle = () => {
+                    addAt = Date.now();
+                    try {
+                        if (handlerfn) handlerfn(item, target, null);
+                        else run(item.action, target, item);
+                    } catch (err) { console.warn('[wmStudio] menu action failed', err); }
+                    afterAction();
+                };
+                // the desktop row's own - / + (wireStudioBiasControls listens for mousedown)
+                const step = (dir) => () => {
+                    let fresh = null;
+                    try { fresh = item.content(target); } catch (_) { fresh = null; }
+                    const btn = fresh && Array.from(fresh.querySelectorAll('[data-bias-step]')).find((el) => Math.sign(Number(el.dataset.biasStep)) === dir);
+                    if (btn) btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+                    afterAction();
+                };
+                row.submenu = () => [
+                    { label: 'On', checked: !!item.checked, action: toggle },
+                    '-',
+                    { label: bias ? `Bias ${bias}` : 'Bias', disabled: true, heading: true },
+                    { label: 'Increase', action: step(1) },
+                    { label: 'Decrease', action: step(-1) }
+                ];
             } else if (handlerfn || item.action) {
                 const marked = item.showIndicator || item.indicatorMark || item.checked != null;
                 if (marked && item.indicatorMark === 'radio') row.radio = !!item.checked;
@@ -864,6 +1050,12 @@
         if (!isCurrent()) ws.open(APP_ID);
     }
 
+    /** The shell's wait cursor (wmShell.busy) around work the user waits on; not before boot ends. */
+    function waitCursor(fn) {
+        if (!ws || typeof ws.busy !== 'function' || root.dataset.wmBoot !== 'done') return fn();
+        return ws.busy(fn);
+    }
+
     /** Everything that opens the desktop Studio opens this app (it would otherwise be invisible). */
     function wrapEntryPoints() {
         const orig = window.openManualModalWithContent;
@@ -874,7 +1066,8 @@
                 if (content && typeof content === 'object' && ['image', 'preset', 'metadata'].includes(content.type)) tab = 'prompt';
                 try {
                     if (root.dataset.wmBoot === 'done') openApp();
-                    return await orig.apply(this, arguments);
+                    // the shell's wait cursor while the print / preset / metadata loads
+                    return await waitCursor(() => orig.apply(this, arguments));
                 } finally {
                     opening = false;
                     hostStudio();
@@ -883,6 +1076,17 @@
             };
             wrapped._wmStudio = true;
             window.openManualModalWithContent = wrapped;
+        }
+        // loading a print's metadata or a preset into the form (menus, presets, MCP) on Studio's screen
+        const load = window.loadIntoManualForm;
+        if (typeof load === 'function' && !load._wmStudio) {
+            const wrappedLoad = function () {
+                const args = arguments;
+                if (!isCurrent() && !opening) return load.apply(this, args);
+                return waitCursor(() => load.apply(this, args));
+            };
+            wrappedLoad._wmStudio = true;
+            window.loadIntoManualForm = wrappedLoad;
         }
         // any other route that shows #manualModal (openModal, a restore)
         const m = modal();
