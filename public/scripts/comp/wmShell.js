@@ -2958,6 +2958,18 @@
                     // WM 6.1's viewer Menu: Zoom, Play Slide Show, Set as Today Background...
                     const shown = item && (item.filename || item.original);
                     if (shown && setTodayBackgroundFn) items.push({ label: 'Set as Today Background', action: () => setTodayBackgroundFn(shown, item) });
+                    // Edit: the picture in DreamStudio (Glancewell's Open > DreamStudio, imageViewer.js
+                    // openInCreator) or with the Director (Glancewell's E-mail: askWrenAboutImage); each
+                    // opens its app over the viewer, Back returns here
+                    const editPic = item && (item.filename || item.original);
+                    const canStudio = !!(item && typeof window.openManualModalWithContent === 'function');
+                    const canDirector = !!(editPic && typeof window.askWrenAboutImage === 'function');
+                    if (canStudio || canDirector) {
+                        items.push({ label: 'Edit', submenu: () => [
+                            { label: 'DreamStudio', disabled: !canStudio, action: () => { window.openManualModalWithContent({ type: 'image', image: item }); } },
+                            { label: 'Director', disabled: !canDirector, action: () => window.askWrenAboutImage(editPic) }
+                        ] });
+                    }
                     items.push('-');
                     let sep = false;
                     for (const a of VIEWER_ACTIONS) {
@@ -2968,16 +2980,6 @@
                         // lightbox.js has one pin button that toggles: the label follows the picture
                         const label = a[0] === 'Pin image' && item && item.isPinned ? 'Unpin' : a[1];
                         items.push({ label, action: () => viewerPress(a[0]) });
-                    }
-                    // Glancewell's and Lumen's Ask Wren (lightbox.js gw-email, imageViewer.js): the
-                    // Director app opens over the viewer with the picture attached; Back returns here
-                    const pic = item && (item.filename || item.original);
-                    if (pic && typeof window.askWrenAboutImage === 'function') {
-                        // its own group above Move to Scraps / Delete (the desktop menus keep it away from them)
-                        const ask = { label: 'Ask Wren', action: () => window.askWrenAboutImage(pic) };
-                        const at = items.findIndex((it) => it && (it.label === 'Move to Scraps' || it.label === 'Delete'));
-                        if (at > 0 && items[at - 1] === '-') items.splice(at, 0, ask, '-');
-                        else { if (items[items.length - 1] !== '-') items.push('-'); items.push(ask); }
                     }
                     while (items[items.length - 1] === '-') items.pop();
                     return items;
