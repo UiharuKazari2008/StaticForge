@@ -1936,17 +1936,20 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
 /* WM scroll bar (device: 26 px at 2x): white track with a black left edge, tint thumb framed in
  * black, arrow buttons; browsers with overlay scroll bars (Android) keep their own */
 .wm-pv-scroll::-webkit-scrollbar,
+.wm-popup::-webkit-scrollbar,
 #wmShell .wm-page::-webkit-scrollbar {
     width: calc(13 * var(--wm-px));
 }
 
 .wm-pv-scroll::-webkit-scrollbar-track,
+.wm-popup::-webkit-scrollbar-track,
 #wmShell .wm-page::-webkit-scrollbar-track {
     background: #fff;
     border-left: calc(1 * var(--wm-px)) solid #000;
 }
 
 .wm-pv-scroll::-webkit-scrollbar-thumb,
+.wm-popup::-webkit-scrollbar-thumb,
 #wmShell .wm-page::-webkit-scrollbar-thumb {
     background: var(--wm-tab-strip);
     border: calc(1 * var(--wm-px)) solid #000;
@@ -1955,6 +1958,7 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
 }
 
 .wm-pv-scroll::-webkit-scrollbar-button:single-button,
+.wm-popup::-webkit-scrollbar-button:single-button,
 #wmShell .wm-page::-webkit-scrollbar-button:single-button {
     display: block;
     height: calc(19 * var(--wm-px));
@@ -1963,6 +1967,7 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
 }
 
 .wm-pv-scroll::-webkit-scrollbar-button:single-button:vertical:decrement,
+.wm-popup::-webkit-scrollbar-button:single-button:vertical:decrement,
 #wmShell .wm-page::-webkit-scrollbar-button:single-button:vertical:decrement {
     border-bottom: calc(1 * var(--wm-px)) solid #000;
     background-image: linear-gradient(to bottom right, transparent 50%, #000 50%), linear-gradient(to bottom left, transparent 50%, #000 50%);
@@ -1971,6 +1976,7 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
 }
 
 .wm-pv-scroll::-webkit-scrollbar-button:single-button:vertical:increment,
+.wm-popup::-webkit-scrollbar-button:single-button:vertical:increment,
 #wmShell .wm-page::-webkit-scrollbar-button:single-button:vertical:increment {
     border-top: calc(1 * var(--wm-px)) solid #000;
     background-image: linear-gradient(to top right, transparent 50%, #000 50%), linear-gradient(to top left, transparent 50%, #000 50%);
@@ -2001,6 +2007,7 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
     bottom: auto !important;
     z-index: 12;
     max-height: calc(100vh - 8px);
+    overflow-x: hidden;
     overflow-y: auto;
 }
 

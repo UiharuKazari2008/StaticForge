@@ -1166,10 +1166,12 @@
     Object.assign(window.wmSettings, {
         registerPage,
         extendPage,
-        open: (id, tab) => {
+        // opts.direct: opened from a program (the Director's Director Settings...): ok and back on the
+        // page return to that program, as WM's control panel applets started by a program do
+        open: (id, tab, opts) => {
             if (!sh || !settingsHost) return false;
             sh.open('settings');
-            return settingsHost.openPage(id, tab);
+            return settingsHost.openPage(id, tab, opts);
         },
         ui
     });
@@ -1211,7 +1213,7 @@
             refreshTitleKind();
         }
 
-        function openPage(id, tab) {
+        function openPage(id, tab, opts) {
             const def = PAGES.find((p) => p.id === id);
             if (!def || !safeAvailable(def)) return false;
             const exts = extsFor(def);
@@ -1221,7 +1223,7 @@
                 try { extDrafts.set(x.id, typeof x.init === 'function' ? x.init() : {}); } catch (err) { console.warn('Settings: init failed', x.id, err); extDrafts.set(x.id, {}); }
             }
             const first = tabs[0] ? tabs[0][0] : '';
-            open = { def, exts, tabs, tab: tab && tabs.some(([t]) => t === tab) ? tab : first, draft: def.init(), extDrafts };
+            open = { def, exts, tabs, tab: tab && tabs.some(([t]) => t === tab) ? tab : first, draft: def.init(), extDrafts, direct: !!(opts && opts.direct) };
             renderPage();
             sh.syncHistory();
             return true;
@@ -1274,6 +1276,8 @@
                     if (Array.isArray(keys) && keys.length) changed(keys);
                     closePage();
                     sh.syncHistory(viaBack ? { noPush: true } : undefined);
+                    // a page a program opened goes back to that program, not to the Settings grid
+                    if (cur.direct && sh.current === 'settings') sh.back();
                 })
                 .catch((err) => console.warn('Settings: could not close', cur.def.id, err));
             return true;
@@ -1281,7 +1285,7 @@
 
         settingsHost = {
             refresh() { if (page && !open && sh.current === 'settings') renderGrid(); },
-            openPage: (id, tab) => openPage(id, tab)
+            openPage: (id, tab, opts) => openPage(id, tab, opts)
         };
 
         sh.registerApp({

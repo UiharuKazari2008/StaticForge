@@ -668,6 +668,9 @@
         top = Math.max(2, Math.min(top, window.innerHeight - sh - 2));
         sub.style.left = `${Math.max(2, left)}px`;
         sub.style.top = `${top}px`;
+        // a long list that scrolls (the Director's models) opens on its current choice
+        const on = sub.scrollHeight > sub.clientHeight && sub.querySelector(':scope > [aria-checked="true"]');
+        if (on) sub.scrollTop = Math.max(0, on.offsetTop - (sub.clientHeight - on.offsetHeight) / 2);
         if (!hadSub) syncHistory();
     }
 
@@ -2927,8 +2930,31 @@
         try {
             const p = (typeof lightbox !== 'undefined' && lightbox && lightbox.pswp) || window.pswp;
             const d = p && p.currSlide && p.currSlide.data;
-            return (d && d.data) || null;
+            // a standalone viewer's slide (the Director's prints: mcpActivityClient glancewellSlides) has
+            // only its file name: enough for Edit and Set as Today Background
+            return (d && d.data) || (d && d.filename ? { filename: d.filename } : null);
         } catch (_) { return null; }
+    }
+
+    /** The picture on screen as a file to save (a slide without lightbox.js's Download button). */
+    function viewerSlideFile() {
+        try {
+            const p = (typeof lightbox !== 'undefined' && lightbox && lightbox.pswp) || window.pswp;
+            const d = p && p.currSlide && p.currSlide.data;
+            return d && d.src && !d.data ? { src: d.src, name: d.filename || String(d.src).split('/').pop().split('?')[0] } : null;
+        } catch (_) { return null; }
+    }
+
+    function viewerSave() {
+        if (viewerButton('Download image')) { viewerPress('Download image'); return; }
+        const f = viewerSlideFile();
+        if (!f) return;
+        const a = document.createElement('a');
+        a.href = f.src;
+        a.download = f.name || '';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
     }
 
     function viewerButton(title) {
@@ -2945,7 +2971,7 @@
 
     function viewerSoftKeys() {
         return {
-            left: { label: 'Save', disabled: !viewerButton('Download image'), action: () => viewerPress('Download image') },
+            left: { label: 'Save', disabled: !viewerButton('Download image') && !viewerSlideFile(), action: viewerSave },
             right: {
                 label: 'Menu',
                 menu: () => {
@@ -3000,7 +3026,10 @@
         } else {
             root.removeAttribute('data-wm-viewer');
             const app = current && apps.get(current);
-            setTitle(current === 'today' ? startButtonPrefs().text : ((app && app.title) || current));
+            // an app on one of its own pages names that page (titleNow(), e.g. the Director's Prints)
+            let now = null;
+            try { now = app && typeof app.titleNow === 'function' ? app.titleNow() : null; } catch (_) { now = null; }
+            setTitle(current === 'today' ? startButtonPrefs().text : (now || (app && app.title) || current));
         }
         renderSoftKeys();
         // the tap that opened the viewer is still fresh here (150 ms poll): its entry is allowed

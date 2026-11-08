@@ -23,10 +23,27 @@
  *   compose      Reply opens the composer (the desktop's textarea, attachments chips) over the
  *                text box and focuses it for the SIP; soft keys Send / Cancel
  *   soft keys    Reply | Menu. Menu: Sessions, New Session, Persona >, Report Card / Reply, Log,
- *                Stop, Delete Session..., Attach File..., Options > (Visual Novel / Messages view,
- *                Show Mascot)
- *   Sessions     a WM list of the persona's chats (preview, name, date); tap opens one; back key
- *                and Cancel return to her
+ *                Prints, History, Browser (while her browser pane shows), Stop, Quick Tasks >,
+ *                Session > (Restart / Retry / Undo / Auto-Repair, Fork, Move to workspace, Nuke,
+ *                Delete Session...), Computer > (Cleanup, Reinstall, Prompt guide >), Attach File...,
+ *                Options > (model line, Visual Novel / Messages, Show Mascot, Show >, Send on Enter,
+ *                Engine / Model / Thinking / Context / Fast, Director Settings...). The rows come from
+ *                director.js's own menus (toolsMenuConfig, modelPrefItems, the session and message
+ *                menus) through wmRows, so every pick runs the desktop handler.
+ *   composing    Send | Menu (Attach File..., Attach Print >, Remove Attachments, Quick Tasks >, Cancel);
+ *                attachments are WM thumbnails with a remove box
+ *   Sessions     a WM list of the persona's chats (preview, name, date, workspace) with Archives;
+ *                tap opens one, tap-and-hold its menu (Fork, Move, Auto-Repair, Nuke, Delete);
+ *                back key and Cancel return to her
+ *   pages        the desktop's windows as pages with ok: Prints (the prints pane: tap views,
+ *                hold for Open / Show on Message / Attach / Recycle), History (Open Full History),
+ *                the tool inspector (directorToolInspector.js hosted, tabs at the bottom), text
+ *                (showDirectorText), Browser; Director Settings opens Settings > Director, whose ok
+ *                comes back here
+ *   desktop menus  tap-and-hold on a log row (Retry / Revert / Fork) and the restart box's choice
+ *                button open WM menus (contextMenu.js is patched for this app); inside the message
+ *                box the drop-down is drawn in the box (the shell sits under it)
+ *   notices      a turn that ends while the app is not on screen raises a WM notification (View)
  *   hand-offs    Ask Wren (Pictures & Videos, File Explorer, Studio), Attach to Director Message
  *                (File Explorer), Studio's Open session in Director and Expand Canvas's Director
  *                brief open this app over the view they came from (Back returns there) and run the
@@ -47,7 +64,9 @@
     const busyOf = (fn) => (ws && typeof ws.busy === 'function' ? ws.busy(fn) : fn());
     let page = null;
     let shown = false;
-    let sub = null; // null | 'sessions'
+    // pages over her scene (Sessions, Prints, History, a tool's inspector ...): the top one shows
+    const stack = [];
+    const top = () => stack[stack.length - 1] || null;
     let composing = false;
     let patchedMascot = null;
     let waitTimer = null;
@@ -95,6 +114,8 @@
             if (!page || !page.contains(this.host)) return;
             const box = this.host.getBoundingClientRect();
             if (!box.width || !box.height) return;
+            // landscape: the desktop's own staging (sized from the height, her face toward her side)
+            if (box.width > box.height) return;
             const [W, H] = this.manifest.size;
             const cam = this.camera();
             const face = Array.isArray(this.manifest.face) ? this.manifest.face : [cam[0] + cam[2] / 2, cam[1] + cam[3] * 0.2, cam[2] * 0.15];
@@ -140,6 +161,8 @@
         const d = dir();
         if (!d) return false;
         patchHandOffs(d);
+        patchWindows(d);
+        patchContextMenu();
         if (patchedDirector !== d && typeof d.saveReopenState === 'function') {
             patchedDirector = d;
             const save = d.saveReopenState.bind(d);
@@ -225,12 +248,6 @@
             syncComposer();
             if (isCurrent()) { ws.refreshSoftKeys(); ws.syncHistory(); }
         }).observe(chat, { attributes: true, attributeFilter: ['class'] });
-    }
-
-    function refreshTitle() {
-        if (!ws || !isCurrent()) return;
-        if (sub === 'sessions') { ws.setTitle(`${personaName(dir() && dir().persona)}: Sessions`); return; }
-        ws.setTitle('Director');
     }
 
     // ---------------------------------------------------------------- hand-offs from other views
@@ -406,65 +423,414 @@
         if (m._result && !m.el.result.classList.contains('hidden')) m.pageReply();
     }
 
+    // ---------------------------------------------------------------- pages over her scene
+
+    /**
+     * A page over her scene: Sessions (a list, X in the corner like the chat), and the desktop's other
+     * windows in phone form with ok in the corner: Prints (the desktop's prints pane), History (Open
+     * Full History), a tool call's inspector (directorToolInspector.js), text (showDirectorText).
+     * spec: { kind, title, corner: 'ok' | 'close', render(el), keys() -> soft keys, onClose() }.
+     */
+    function pushPage(spec) {
+        // the log stays open under a page opened from it (a tool's inspector): ok comes back to it
+        if (composing) closeComposer();
+        const el = document.createElement('div');
+        el.className = `wmd-page wmd-page-${spec.kind}`;
+        page.appendChild(el);
+        spec.el = el;
+        stack.push(spec);
+        spec.render(el);
+        paintStack();
+        return spec;
+    }
+
+    function popPage() {
+        const p = stack.pop();
+        if (!p) return false;
+        try { if (typeof p.onClose === 'function') p.onClose.call(p); } catch (err) { console.warn('[wmDirector] page close', err); }
+        p.el.remove();
+        paintStack();
+        const d = dir();
+        if (!stack.length && d && d.mascot) d.mascot.settleLayout(400);
+        return true;
+    }
+
+    /** Close every page of a kind (and the ones over it). */
+    function closePages(kind) {
+        const at = stack.findIndex((p) => p.kind === kind);
+        if (at < 0) return;
+        while (stack.length > at) popPage();
+    }
+
+    function paintStack() {
+        stack.forEach((p, i) => { p.el.hidden = i !== stack.length - 1; });
+        page.classList.toggle('wmd-has-page', stack.length > 0);
+        refreshTitle();
+        if (ws && isCurrent()) { ws.refreshSoftKeys(); ws.syncHistory(); }
+    }
+
+    function refreshTitle() {
+        if (!ws || !isCurrent()) return;
+        const t = top();
+        ws.setTitle(t ? (typeof t.title === 'function' ? t.title() : t.title) : 'Director');
+    }
+
+    /** WM's tap-and-hold: a held row opens its menu at the finger (WM draws the red dots ring; here the hold). */
+    function onHold(root, selector, open) {
+        let timer = null;
+        let at = null;
+        let fired = 0;
+        const cancel = () => { clearTimeout(timer); timer = null; };
+        root.addEventListener('touchstart', (e) => {
+            const row = e.target.closest && e.target.closest(selector);
+            if (!row || e.touches.length !== 1) return;
+            at = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            cancel();
+            timer = setTimeout(() => { timer = null; fired = Date.now(); open(row, at.x, at.y); }, 550);
+        }, { passive: true });
+        root.addEventListener('touchmove', (e) => {
+            if (!timer || !at) return;
+            const t = e.touches[0];
+            if (Math.abs(t.clientX - at.x) > 8 || Math.abs(t.clientY - at.y) > 8) cancel();
+        }, { passive: true });
+        // the touch that held does not also click (WM: lifting the stylus leaves the menu up)
+        root.addEventListener('touchend', (e) => { cancel(); if (Date.now() - fired < 2000 && e.cancelable) e.preventDefault(); }, { passive: false });
+        root.addEventListener('touchcancel', cancel, { passive: true });
+        // a mouse's right click, and Chrome's own long-press event
+        root.addEventListener('contextmenu', (e) => {
+            const row = e.target.closest && e.target.closest(selector);
+            if (!row) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (Date.now() - fired < 800) return;
+            fired = Date.now();
+            open(row, e.clientX, e.clientY);
+        });
+        // the click that ends a hold does not also open the row, nor close its menu (window capture:
+        // ahead of the shell's tap-outside)
+        window.addEventListener('click', (e) => {
+            if (Date.now() - fired < 800 && root.contains(e.target) && e.target.closest && e.target.closest(selector)) { e.preventDefault(); e.stopImmediatePropagation(); }
+        }, true);
+    }
+
+    // ---------------------------------------------------------------- desktop menus as WM rows
+
+    const resolveV = (v, t) => { try { return typeof v === 'function' ? v(t) : v; } catch (_) { return undefined; } };
+    const plainText = (html) => { const n = document.createElement('div'); n.innerHTML = String(html || ''); return n.textContent.replace(/\s+/g, ' ').trim(); };
+
+    /**
+     * contextMenu.js rows (director.js's own menus: the tools menu, the session and message menus, the
+     * restart dialog's choice) as WM menu rows, so each runs the desktop's handler. pick: a value list
+     * (Engine, Model, Thinking ...): the current one gets WM's dot.
+     */
+    function wmRows(items, target, run, handlerfn, pick) {
+        const out = [];
+        for (const item of items || []) {
+            if (!item) continue;
+            if (item.separator) {
+                if (out.length && out[out.length - 1] !== '-') out.push('-');
+                const heading = resolveV(item.text, target);
+                if (heading) out.push({ label: String(heading), disabled: true });
+                continue;
+            }
+            if (resolveV(item.hidden, target) === true) continue;
+            try { if (typeof item.loadfn === 'function') item.loadfn(item, target); } catch (_) { /* as is */ }
+            let label = resolveV(item.text, target) || resolveV(item.label, target) || (item.content ? plainText(resolveV(item.content, target)) : '');
+            if (!label) continue;
+            label = String(label).replace(/\s+/g, ' ').trim();
+            const subtext = resolveV(item.subtext, target);
+            if (subtext) label += ` (${subtext})`;
+            const row = { label, disabled: !!resolveV(item.disabled, target) };
+            if (Array.isArray(item.submenu) || typeof item.optionsfn === 'function') {
+                const valueList = item.valueDisplay != null;
+                row.submenu = () => {
+                    let list = item.submenu;
+                    if (!Array.isArray(list)) { try { list = item.optionsfn(target) || []; } catch (_) { list = []; } }
+                    return wmRows(list, target, run, item.handlerfn || handlerfn, valueList);
+                };
+            } else if (handlerfn || item.action || typeof item.onClick === 'function') {
+                if (item.showIndicator || item.checked != null || typeof item.loadfn === 'function') {
+                    if (pick || item.indicatorMark === 'radio') row.radio = !!item.checked;
+                    else row.checked = !!item.checked;
+                }
+                row.action = () => {
+                    try {
+                        if (handlerfn) handlerfn(item, target, null);
+                        else if (item.action) run(item.action, target, item);
+                        else item.onClick();
+                    } catch (err) { console.warn('[wmDirector] menu action', err); }
+                    after();
+                };
+            } else {
+                continue;
+            }
+            out.push(row);
+        }
+        while (out.length && out[out.length - 1] === '-') out.pop();
+        while (out.length && out[0] === '-') out.shift();
+        return out;
+    }
+
+    /** A contextMenu config's list rows (its onAction runs them). */
+    function rowsOfConfig(config, target) {
+        if (!config) return [];
+        const run = (action, t, item) => { if (typeof config.onAction === 'function') config.onAction(action, t, item); };
+        try { if (typeof config.beforeShow === 'function') config.beforeShow(null, target, true); } catch (_) { /* as is */ }
+        const out = [];
+        (config.sections || []).forEach((section) => {
+            if (!section || !Array.isArray(section.items) || resolveV(section.hidden, target) === true) return;
+            const rows = wmRows(section.items, target, run);
+            if (!rows.length) return;
+            if (out.length) out.push('-');
+            out.push(...rows);
+        });
+        return out;
+    }
+
+    /**
+     * Desktop menus raised in the Director on a phone (tap-and-hold on a log row or a print, the restart
+     * dialog's engine / model button): contextMenu.js would draw them as hidden desktop menus; here they
+     * are WM menus that run the same handlers. Other apps' menus go on to the desktop code (or wmStudio).
+     */
+    function patchContextMenu() {
+        /* global contextMenu */
+        if (typeof contextMenu === 'undefined' || !contextMenu || typeof contextMenu._openMenu !== 'function') return false;
+        if (contextMenu._wmDirectorPatched) return true;
+        contextMenu._wmDirectorPatched = true;
+        const open = contextMenu._openMenu.bind(contextMenu);
+        contextMenu._openMenu = function (event, target, trigger, isTouch, isProxyEvent) {
+            const mine = isCurrent() && target && ((page && page.contains(target)) || (target.closest && target.closest('#confirmationDialog')));
+            if (!mine) return open(event, target, trigger, isTouch, isProxyEvent);
+            const config = trigger === 'click'
+                ? (this.clickMenuConfigs && this.clickMenuConfigs[target.dataset.clickMenu])
+                : (this.configs && this.configs[target.dataset.contextMenu]);
+            let items = [];
+            try { items = rowsOfConfig(config, target); } catch (err) { console.warn('[wmDirector] context menu', err); }
+            if (!items.length) return undefined;
+            const pt = event && ((event.touches && event.touches[0]) || (event.changedTouches && event.changedTouches[0]) || event);
+            let x = pt && Number.isFinite(pt.clientX) ? pt.clientX : 0;
+            let y = pt && Number.isFinite(pt.clientY) ? pt.clientY : 0;
+            if (!x && !y) { const r = target.getBoundingClientRect(); x = r.left; y = r.bottom; }
+            const box = target.closest && target.closest('#confirmationDialog');
+            if (trigger === 'click') {
+                // a combo-like button (the restart dialog's choice): its list hangs under it, and the
+                // click that follows the mousedown it opened on does not close it again
+                swallow = { target, until: Date.now() + 700 };
+                if (box) dialogMenu(box, target, items);
+                else ws.dropdown(target, items, 'left');
+            } else if (box) {
+                dialogMenu(box, target, items);
+            } else {
+                ws.menuAt(x, y, items);
+            }
+            return undefined;
+        };
+        window.addEventListener('click', (e) => {
+            if (!swallow || Date.now() > swallow.until || !swallow.target.contains(e.target)) return;
+            swallow = null;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }, true);
+        return true;
+    }
+    let swallow = null;
+
+    /**
+     * A WM drop-down inside the desktop message box (#confirmationDialog sits over the shell, so the
+     * shell's own popup would draw under it): the shell's popup classes and behaviour (rows, dots and
+     * ticks, submenus opening left over their parent, a tap outside or Back closes it).
+     */
+    let dlgPop = null;
+    function closeDialogMenu() {
+        if (!dlgPop) return;
+        dlgPop.root.querySelectorAll('.wmd-dlg-pop').forEach((n) => n.remove());
+        document.removeEventListener('pointerdown', dlgPop.outside, true);
+        document.removeEventListener('keydown', dlgPop.key, true);
+        dlgPop = null;
+    }
+
+    function fillDialogMenu(root, pop, items, level) {
+        items.forEach((item) => {
+            if (item === '-') { pop.insertAdjacentHTML('beforeend', '<div class="wm-popup-sep" role="separator"></div>'); return; }
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'wm-popup-item';
+            if (item.radio != null) { b.setAttribute('role', 'menuitemradio'); b.setAttribute('aria-checked', item.radio ? 'true' : 'false'); b.classList.add('is-radio'); }
+            else if (item.checked != null) { b.setAttribute('role', 'menuitemcheckbox'); b.setAttribute('aria-checked', item.checked ? 'true' : 'false'); }
+            b.textContent = item.label;
+            b.disabled = !!item.disabled;
+            if (item.submenu) {
+                b.classList.add('has-submenu');
+                b.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    root.querySelectorAll('.wmd-dlg-pop').forEach((n) => { if (Number(n.dataset.level) > level) n.remove(); });
+                    pop.querySelectorAll('.is-open').forEach((n) => n.classList.remove('is-open'));
+                    if (b.classList.contains('is-open')) return;
+                    b.classList.add('is-open');
+                    const list = typeof item.submenu === 'function' ? item.submenu() : item.submenu;
+                    openDialogPop(root, b, list.length ? list : [{ label: '(empty)', disabled: true }], level + 1, pop);
+                });
+            } else {
+                b.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    closeDialogMenu();
+                    if (typeof item.action === 'function') item.action();
+                });
+            }
+            pop.appendChild(b);
+        });
+    }
+
+    function openDialogPop(root, anchor, items, level, parentPop) {
+        const pop = document.createElement('div');
+        pop.className = 'wm-popup wmd-dlg-pop';
+        pop.dataset.level = String(level);
+        pop.setAttribute('role', 'menu');
+        fillDialogMenu(root, pop, items, level);
+        root.appendChild(pop);
+        const box = root.getBoundingClientRect();
+        const a = anchor.getBoundingClientRect();
+        const w = pop.offsetWidth;
+        const h = pop.offsetHeight;
+        let left;
+        let topY;
+        if (!parentPop) {
+            // under the control, at least its width
+            pop.style.minWidth = `${Math.round(a.width)}px`;
+            left = a.left;
+            topY = a.bottom + h > window.innerHeight - 2 ? Math.max(2, a.top - h) : a.bottom;
+        } else {
+            // a submenu: to the left over its parent, its bottom on the row that opened it (wmShell)
+            const pr = parentPop.getBoundingClientRect();
+            left = pr.left + pr.width * 0.35 - w;
+            if (left < 2) left = Math.min(pr.right - pr.width * 0.35, window.innerWidth - w - 2);
+            topY = Math.max(2, Math.min(a.bottom - h, window.innerHeight - h - 2));
+        }
+        left = Math.max(2, Math.min(left, window.innerWidth - Math.max(w, pop.offsetWidth) - 2));
+        pop.style.left = `${Math.round(left - box.left)}px`;
+        pop.style.top = `${Math.round(topY - box.top)}px`;
+        const on = pop.scrollHeight > pop.clientHeight && pop.querySelector(':scope > [aria-checked="true"]');
+        if (on) pop.scrollTop = Math.max(0, on.offsetTop - (pop.clientHeight - on.offsetHeight) / 2);
+        return pop;
+    }
+
+    function dialogMenu(root, anchor, items) {
+        const again = dlgPop && dlgPop.anchor === anchor;
+        closeDialogMenu();
+        root.querySelectorAll('.wmd-dlg-pop').forEach((n) => n.remove()); // left by a box closed under it
+        if (again) return; // a second tap on the control closes its list
+        const outside = (e) => { if (!e.target.closest || (!e.target.closest('.wmd-dlg-pop') && !anchor.contains(e.target))) closeDialogMenu(); };
+        const key = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); closeDialogMenu(); } };
+        dlgPop = { root, anchor, outside, key };
+        document.addEventListener('pointerdown', outside, true);
+        document.addEventListener('keydown', key, true);
+        openDialogPop(root, anchor, items, 0, null);
+    }
+
     // ---------------------------------------------------------------- sessions list
 
     function sessionDate(d, s) {
-        try { return d.formatSessionDate(s.updated_at || s.created_at); } catch (_) { return ''; }
+        try {
+            const when = d.formatSessionDate(s.archived ? (s.archived_at || s.updated_at || s.created_at) : (s.updated_at || s.created_at));
+            return s.archived ? `Archived ${when}` : when;
+        } catch (_) { return ''; }
+    }
+
+    function sessionRow(d, s, curId) {
+        let thumb;
+        if (d.persona !== 'xi') {
+            let src = '';
+            try { src = d.getSessionPreviewImage(s) || ''; } catch (_) { src = ''; }
+            // no preview (a chat without prints, a deleted print): the Director's icon, as the desktop row's fallback
+            thumb = src
+                ? `<img class="wmd-session-thumb" src="${esc(src)}" data-file="${esc(s.filename || '')}" alt="" loading="lazy" decoding="async">`
+                : '<img class="wmd-session-thumb is-icon" src="/static_images/app_icons/director.png" alt="">';
+        } else {
+            thumb = '<img class="wmd-session-thumb is-icon" src="/static_images/app_icons/director.png" alt="">';
+        }
+        const busy = d._running && d._runningSessionId === s.id;
+        // the workspace the chat belongs to (the desktop row's colour dot): its colour and name
+        let ws0 = null;
+        try { ws0 = d.sessionWorkspaceMeta(s); } catch (_) { ws0 = null; }
+        const wsTag = ws0 ? `<span class="wmd-session-ws"><i style="background:${esc(ws0.color)}"></i>${esc(ws0.name)}</span>` : '';
+        return `<button type="button" class="wmd-session${String(s.id) === String(curId) ? ' is-current' : ''}" data-id="${esc(s.id)}">${thumb}<span class="wmd-session-text"><span class="wmd-session-name">${esc(s.name || 'Untitled')}</span><span class="wmd-session-date"><span>${busy ? 'Working... ' : ''}${esc(sessionDate(d, s))}</span>${wsTag}</span></span></button>`;
     }
 
     function renderSessions() {
         const d = dir();
-        const list = page.querySelector('.wmd-sessions-list');
+        const t = stack.find((p) => p.kind === 'sessions');
+        const list = t && t.el.querySelector('.wmd-sessions-list');
         if (!d || !list) return;
-        const sessions = (d.directorSessions || []).filter((s) => !s.archived);
-        const xi = d.persona === 'xi';
+        const all = d.directorSessions || [];
         const curId = d.currentSession && d.currentSession.id;
-        list.innerHTML = sessions.map((s) => {
-            let thumb = '';
-            if (!xi) {
-                let src = '';
-                try { src = d.getSessionPreviewImage(s) || ''; } catch (_) { src = ''; }
-                thumb = `<img class="wmd-session-thumb" src="${esc(src)}" alt="" loading="lazy" decoding="async" onerror="this.style.visibility='hidden'">`;
-            } else {
-                thumb = '<img class="wmd-session-thumb is-icon" src="/static_images/app_icons/director.png" alt="">';
-            }
-            const busy = d._running && d._runningSessionId === s.id;
-            return `<button type="button" class="wmd-session${String(s.id) === String(curId) ? ' is-current' : ''}" data-id="${esc(s.id)}">${thumb}<span class="wmd-session-text"><span class="wmd-session-name">${esc(s.name || 'Untitled')}</span><span class="wmd-session-date">${busy ? 'Working... ' : ''}${esc(sessionDate(d, s))}</span></span></button>`;
-        }).join('') || '<p class="wmd-empty">No sessions</p>';
+        const active = all.filter((s) => !s.archived);
+        const archived = all.filter((s) => s.archived);
+        // the desktop list: the chats, then "Archives" and the archived ones
+        list.innerHTML = active.map((s) => sessionRow(d, s, curId)).join('')
+            + (archived.length ? `<div class="wmd-group">Archives</div>${archived.map((s) => sessionRow(d, s, curId)).join('')}` : '')
+            || '<p class="wmd-empty">No sessions</p>';
+        // the desktop row's fallback (the full picture while its preview is not written), then her icon
+        list.querySelectorAll('img.wmd-session-thumb[data-file]').forEach((img) => {
+            img.onerror = () => {
+                /* global localGalleryImageUrl */
+                const full = img.dataset.file && typeof localGalleryImageUrl === 'function' ? localGalleryImageUrl(img.dataset.file) : '';
+                if (full && img.dataset.fullTried !== '1') { img.dataset.fullTried = '1'; img.src = full; return; }
+                img.onerror = null;
+                img.classList.add('is-icon');
+                img.src = '/static_images/app_icons/director.png';
+            };
+        });
+    }
+
+    function sessionById(id) {
+        const d = dir();
+        return d && (d.directorSessions || []).find((x) => String(x.id) === String(id));
+    }
+
+    /** The desktop session row's menu (Fork, Move to workspace, Auto-Repair, Nuke, Delete) for a chat. */
+    function sessionMenuRows(id) {
+        const d = dir();
+        if (!d || !d.directorSessionContextConfig || id == null) return [];
+        // director.js finds the chat from the row the menu was raised on (sessionFromMenuTarget)
+        const target = document.createElement('div');
+        target.className = 'director-session-item';
+        target.dataset.sessionId = String(id);
+        return rowsOfConfig(d.directorSessionContextConfig, target);
     }
 
     async function showSessions() {
         const d = dir();
         if (!d) return;
-        if (composing) closeComposer();
-        sub = 'sessions';
-        page.classList.add('wmd-show-sessions');
-        page.querySelector('.wmd-sessions').hidden = false;
+        if (!stack.some((p) => p.kind === 'sessions')) {
+            pushPage({
+                kind: 'sessions',
+                corner: 'close',
+                title: () => `${personaName(dir() && dir().persona)}: Sessions`,
+                render(el) {
+                    el.innerHTML = '<div class="wmd-sessions-list" role="list"></div>';
+                    const list = el.firstChild;
+                    list.addEventListener('click', (e) => {
+                        const row = e.target.closest('.wmd-session');
+                        if (row) void openSession(row.dataset.id);
+                    });
+                    onHold(list, '.wmd-session', (row, x, y) => {
+                        const id = row.dataset.id;
+                        ws.menuAt(x, y, [{ label: 'Open', action: () => { void openSession(id); } }, '-', ...sessionMenuRows(id)]);
+                    });
+                },
+                keys: () => ({ left: { label: 'Cancel', action: () => closePages('sessions') }, right: { label: 'Menu', menu: sessionsMenu } })
+            });
+        }
         renderSessions();
-        refreshTitle();
-        ws.refreshSoftKeys();
-        ws.syncHistory();
-        try { await d.loadDirectorSessions(); } catch (_) { /* keep what is listed */ }
-        if (sub === 'sessions') renderSessions();
-    }
-
-    function closeSessions() {
-        if (sub !== 'sessions') return;
-        sub = null;
-        page.classList.remove('wmd-show-sessions');
-        page.querySelector('.wmd-sessions').hidden = true;
-        refreshTitle();
-        ws.refreshSoftKeys();
-        const d = dir();
-        if (d && d.mascot) d.mascot.settleLayout(400);
+        try { await busyOf(() => d.loadDirectorSessions()); } catch (_) { /* keep what is listed */ }
+        renderSessions();
     }
 
     async function openSession(id) {
         const d = dir();
-        const s = d && (d.directorSessions || []).find((x) => String(x.id) === String(id));
+        const s = sessionById(id);
         if (!s) return;
-        closeSessions();
-        ws.syncHistory();
+        while (stack.length) popPage();
         try { await busyOf(() => d.showSessionChat(s)); } catch (err) { console.warn('[wmDirector] open session', err); }
         syncComposer();
         ws.refreshSoftKeys();
@@ -473,7 +839,7 @@
     async function newSession() {
         const d = dir();
         if (!d) return;
-        if (sub) { closeSessions(); ws.syncHistory(); }
+        while (stack.length) popPage();
         try { await busyOf(() => d.openNewSession()); } catch (err) { console.warn('[wmDirector] new session', err); }
         openComposer();
     }
@@ -482,9 +848,11 @@
         const d = dir();
         if (!d || d.persona === p) return;
         if (composing) closeComposer();
+        // pages of the other persona's chat (prints, history) do not carry over; Sessions does
+        while (stack.length && top().kind !== 'sessions') popPage();
         try { await busyOf(() => d.setPersona(p)); } catch (err) { console.warn('[wmDirector] persona', err); }
         syncComposer();
-        if (sub === 'sessions') { renderSessions(); try { await d.loadDirectorSessions(); } catch (_) { /* best effort */ } renderSessions(); }
+        if (top() && top().kind === 'sessions') { renderSessions(); try { await d.loadDirectorSessions(); } catch (_) { /* best effort */ } renderSessions(); }
         refreshTitle();
         ws.refreshSoftKeys();
     }
@@ -498,18 +866,290 @@
         return items;
     }
 
+    // ---------------------------------------------------------------- Prints (the desktop's prints pane)
+
+    function thumbSrc(d, filename) {
+        try { return d.getSessionPreviewImage({ filename, image_type: 'generated' }) || ''; } catch (_) { return ''; }
+    }
+
+    function printMenuRows(filename, messageId) {
+        const d = dir();
+        // the desktop print's menu (director.js wirePrintMenu): Open, Show on message, Attach, Recycle
+        return [
+            { label: 'Open', action: () => d.openSessionImage(filename) },
+            { label: 'Show on Message', disabled: !messageId, action: () => showOnMessage(messageId) },
+            { label: 'Attach to Message', action: () => attachPrint(filename) },
+            '-',
+            { label: 'Recycle Session...', disabled: !!d._running, action: () => { void d.recycleSession(filename); } }
+        ];
+    }
+
+    function attachPrint(filename) {
+        const d = dir();
+        while (stack.length) popPage();
+        d.attachPrintToComposer(filename);
+        openComposer();
+    }
+
+    /** Show on message: the log opens on the row that made the print. */
+    function showOnMessage(messageId) {
+        const d = dir();
+        while (stack.length) popPage();
+        const m = d.mascot;
+        if (m && m.vnBubbles() && !m.peek) m.togglePeek(true);
+        const node = d.directorChatMessages && d.directorChatMessages.querySelector(`[data-message-key="${CSS.escape(String(messageId))}"]`);
+        if (node) { d.revealDirectorRow(node); d.markPrintMessage(messageId, true); setTimeout(() => d.markPrintMessage(messageId, false), 2400); }
+        after();
+    }
+
+    function renderPrints(el) {
+        const d = dir();
+        const prints = d.sessionPrints().slice().reverse();
+        const pending = d._imagePending === true;
+        el.innerHTML = `<div class="wmd-prints-grid">${pending ? '<div class="wmd-print is-pending" aria-label="Waiting for the print"></div>' : ''}${prints.map((p) => `<button type="button" class="wmd-print" data-file="${esc(p.filename)}" data-msg="${esc(p.messageId || '')}"><img src="${esc(thumbSrc(d, p.filename))}" alt="" loading="lazy" decoding="async"></button>`).join('')}</div>`
+            + (prints.length || pending ? '' : '<p class="wmd-empty">No prints in this session</p>');
+        // the preview webp is written after the print: the full file until then (the desktop's fallback)
+        el.querySelectorAll('.wmd-print img').forEach((img) => {
+            img.addEventListener('error', () => {
+                const name = img.parentNode.dataset.file;
+                /* global localGalleryImageUrl */
+                const full = typeof localGalleryImageUrl === 'function' ? localGalleryImageUrl(name) : '';
+                if (img.dataset.fullTried === '1' || !full) { img.style.visibility = 'hidden'; return; }
+                img.dataset.fullTried = '1';
+                img.src = full;
+            }, { once: false });
+        });
+    }
+
+    function showPrints() {
+        const d = dir();
+        if (!d || !d.currentSession) return;
+        closePages('prints');
+        pushPage({
+            kind: 'prints',
+            corner: 'ok',
+            title: 'Prints',
+            render(el) {
+                renderPrints(el);
+                el.addEventListener('click', (e) => {
+                    const b = e.target.closest('.wmd-print[data-file]');
+                    if (b) dir().openSessionImage(b.dataset.file);
+                });
+                onHold(el, '.wmd-print[data-file]', (b, x, y) => ws.menuAt(x, y, printMenuRows(b.dataset.file, b.dataset.msg)));
+            },
+            keys: () => ({ left: null, right: { label: 'Menu', menu: () => [{ label: 'Refresh', action: () => { const p = stack.find((x) => x.kind === 'prints'); if (p) renderPrints(p.el); } }] } })
+        });
+    }
+
+    // ---------------------------------------------------------------- History (Open Full History)
+
+    function showHistory() {
+        const d = dir();
+        if (!d || !d.currentSession) return;
+        const entries = d.historyEntries();
+        let selected = Math.max(0, entries.length - 1);
+        for (let i = entries.length - 1; i >= 0; i--) { if (entries[i].kind === 'Thinking') { selected = i; break; } }
+        closePages('history');
+        pushPage({
+            kind: 'history',
+            corner: 'ok',
+            title: () => (dir() && dir().currentSession && dir().currentSession.name) || 'History',
+            render(el) {
+                el.innerHTML = `<div class="wm-form-hdr">History</div><div class="wmd-history-list" role="list">${entries.map((e, i) => {
+                    const line = e.text.replace(/\s+/g, ' ').trim();
+                    return `<button type="button" class="wmd-history-row${i === selected ? ' is-current' : ''}" data-i="${i}"><b>${esc(e.kind)}</b><span>${esc(line.length > 120 ? `${line.slice(0, 117)}...` : line)}</span></button>`;
+                }).join('') || '<p class="wmd-empty">This chat has no messages yet.</p>'}</div>`;
+                const list = el.querySelector('.wmd-history-list');
+                list.addEventListener('click', (e) => {
+                    const row = e.target.closest('.wmd-history-row');
+                    if (!row) return;
+                    list.querySelectorAll('.is-current').forEach((n) => n.classList.remove('is-current'));
+                    row.classList.add('is-current');
+                    const entry = entries[Number(row.dataset.i)];
+                    if (entry) showText(entry.kind, entry.text, '');
+                });
+                const cur = list.querySelector('.is-current');
+                if (cur) setTimeout(() => cur.scrollIntoView({ block: 'center' }), 0);
+            },
+            keys: () => ({
+                left: { label: 'View', disabled: !entries.length, action: () => { const p = top(); const row = p && p.el.querySelector('.wmd-history-row.is-current'); if (row) row.click(); } },
+                right: null
+            })
+        });
+    }
+
+    // ---------------------------------------------------------------- Browser (the desktop's browser pane)
+
+    function browserShown(d) {
+        const pane = d && d.directorBrowserPane;
+        return !!(pane && !pane.classList.contains('hidden') && d.directorBrowserPreview && d.directorBrowserPreview.getAttribute('src'));
+    }
+
+    function showBrowser() {
+        const d = dir();
+        if (!browserShown(d)) return;
+        closePages('browser');
+        pushPage({
+            kind: 'browser',
+            corner: 'ok',
+            title: 'Browser',
+            render(el) {
+                el.innerHTML = '<div class="wmd-browser"><img alt=""></div>';
+                const img = el.querySelector('img');
+                img.src = d.directorBrowserPreview.getAttribute('src');
+                // the next shot of the page while it is open (director.js swaps the pane's src)
+                const mo = new MutationObserver(() => { const src = d.directorBrowserPreview.getAttribute('src'); if (src) img.src = src; });
+                mo.observe(d.directorBrowserPreview, { attributes: true, attributeFilter: ['src'] });
+                el._mo = mo;
+            },
+            keys: () => ({ left: null, right: null }),
+            onClose() { if (this.el && this.el._mo) this.el._mo.disconnect(); }
+        });
+    }
+
+    // ---------------------------------------------------------------- text (showDirectorText) and the inspector
+
+    function copyText(text, what) {
+        const done = () => { if (ws && ws.bubble) ws.bubble({ title: 'Director', sections: [{ text: `${what} copied.` }] }); };
+        try { navigator.clipboard.writeText(text).then(done, () => {}); } catch (_) { /* no clipboard */ }
+    }
+
+    /** The desktop's read-only text window (cleanup output, a change, a history entry) as a WM page. */
+    function showText(title, text, status) {
+        pushPage({
+            kind: 'text',
+            corner: 'ok',
+            title: 'Director',
+            render(el) {
+                el.innerHTML = `<div class="wm-form-hdr"></div><pre class="wmd-text"></pre>${status ? '<div class="wmd-text-status"></div>' : ''}`;
+                el.querySelector('.wm-form-hdr').textContent = title || '';
+                el.querySelector('.wmd-text').textContent = text || '(empty)';
+                if (status) el.querySelector('.wmd-text-status').textContent = status;
+            },
+            keys: () => ({ left: { label: 'Copy', action: () => copyText(text || '', 'Text') }, right: null })
+        });
+    }
+
+    /**
+     * The tool inspector (directorToolInspector.js, a Vista window on the desktop): its own window is
+     * moved into a page here and drawn as a WM page (header, Input / Output / Raw as WM's tabs at the
+     * bottom, Copy on the left soft key, ok closes), so its renderer stays one.
+     */
+    function hostInspector() {
+        const modal = document.getElementById('directorToolInspector');
+        if (!modal) return;
+        const title = modal.querySelector('.modal-window-title-main span');
+        const existing = stack.find((p) => p.kind === 'inspector');
+        if (existing) {
+            while (top() !== existing) popPage();
+            existing.el.appendChild(modal);
+            refreshTitle();
+            return;
+        }
+        pushPage({
+            kind: 'inspector',
+            corner: 'ok',
+            title: () => ((title && title.textContent) || 'Tool').replace(/ - Inspector$/, ''),
+            render(el) { el.appendChild(modal); },
+            keys: () => ({
+                left: { label: 'Copy', action: () => { const b = modal.querySelector('[data-action="copy"]'); if (b) b.click(); } },
+                right: null
+            }),
+            onClose() {
+                document.body.appendChild(modal);
+                // closeModal: public/scripts/comp/modalUtils.js
+                if (typeof closeModal === 'function') closeModal(modal);
+                else modal.classList.add('hidden');
+            }
+        });
+    }
+
+    let patchedInspector = null;
+    function patchInspector() {
+        const insp = window.DirectorToolInspector;
+        if (!insp || patchedInspector === insp || typeof insp.open !== 'function') return;
+        patchedInspector = insp;
+        const open = insp.open;
+        insp.open = function (payload) {
+            const r = open.call(this, payload);
+            if (shown && isCurrent()) hostInspector();
+            else void handOff(() => hostInspector());
+            return r;
+        };
+    }
+
+    /** director.js's desktop windows, on this instance: as pages of this app (one renderer each where it has one). */
+    function patchWindows(d) {
+        if (d._wmDirectorWindows) return;
+        d._wmDirectorWindows = true;
+        // raised from elsewhere (the Director docked in another view): the app comes up over it first
+        const inApp = (fn) => { if (shown && isCurrent()) fn(); else void handOff(() => fn()); };
+        d.openFullHistory = function () { inApp(showHistory); };
+        d.showDirectorText = function (title, text, status) { inApp(() => showText(title, text, status)); };
+        // Director Settings: Settings > Dreamscape > Director (wmSettingsDreamscape.js: the same messages)
+        d.openDirectorSettings = async function () {
+            if (window.wmSettings && typeof window.wmSettings.open === 'function') window.wmSettings.open('director', null, { direct: true });
+        };
+        d.togglePrintsPane = function () { inApp(showPrints); };
+        // the inspector is loaded on first use: wrap it once it is there
+        const payload = d.openToolPayload;
+        d.openToolPayload = async function (row) {
+            if (!window.DirectorToolInspector && typeof featureLoader !== 'undefined') {
+                /* global featureLoader */
+                try { await busyOf(() => featureLoader.loadFeature('director_tool_inspector')); } catch (_) { /* director.js falls back */ }
+            }
+            patchInspector();
+            return busyOf(() => payload.call(this, row));
+        };
+    }
+
     // ---------------------------------------------------------------- menus
+
+    /** The desktop tools menu's rows by their text (director.js toolsMenuConfig: one source). */
+    function toolRows(texts) {
+        const d = dir();
+        const cfg = d.toolsMenuConfig();
+        const all = (cfg.sections && cfg.sections[0] && cfg.sections[0].items) || [];
+        const run = (action) => cfg.onAction(action);
+        const list = texts.map((t) => all.find((i) => i && i.text === t)).filter(Boolean);
+        return wmRows(list, null, run);
+    }
+
+    function infoLine(d) {
+        const parts = [];
+        try { parts.push(d.persona === 'xi' ? d.engineName(d.displayEngine()) : d.selectedModelName()); } catch (_) { /* none */ }
+        const ctx = document.getElementById('directorContextPercent');
+        const ctxText = ctx && ctx.closest('.hidden') == null ? ctx.textContent.trim() : '';
+        if (ctxText && ctxText !== '—') parts.push(`Context ${ctxText}`);
+        const usage = document.getElementById('directorUsageAuto');
+        const usageText = usage && usage.closest('.hidden') == null ? usage.textContent.trim() : '';
+        if (usageText && usageText !== '—') parts.push(usageText);
+        return parts.filter(Boolean).join(' · ');
+    }
 
     function optionsItems() {
         const d = dir();
         const m = d && d.mascot;
-        if (!m) return [{ label: 'No options', disabled: true }];
-        return [
-            { label: 'Visual Novel', radio: m.view === 'mascot', action: () => { unpeek(m); m.setView('mascot'); after(); } },
-            { label: 'Messages', radio: m.view !== 'mascot', action: () => { unpeek(m); m.setView('messages'); after(); } },
-            '-',
-            { label: 'Show Mascot', checked: !!m.enabled, action: () => { unpeek(m); m.setEnabled(!m.enabled); after(); } }
-        ];
+        if (!d) return [{ label: 'No options', disabled: true }];
+        const cfg = d.toolsMenuConfig();
+        const run = (action) => cfg.onAction(action);
+        const items = [];
+        const info = infoLine(d);
+        if (info) items.push({ label: info, disabled: true }, '-');
+        if (m) {
+            items.push(
+                { label: 'Visual Novel', radio: m.view === 'mascot', action: () => { unpeek(m); m.setView('mascot'); if (d.currentSession) m.onMessages(d.currentSession.messages || []); after(); } },
+                { label: 'Messages', radio: m.view !== 'mascot', action: () => { unpeek(m); m.setView('messages'); after(); } },
+                '-',
+                { label: 'Show Mascot', checked: !!m.enabled, action: () => { unpeek(m); m.setEnabled(!m.enabled); after(); } }
+            );
+        }
+        items.push(...toolRows(['Show', 'Send on Enter']));
+        // the model the next turn runs on (the desktop header's picker): Engine, Model, Thinking, Context, Fast
+        const model = wmRows([d.engineMenuItem(), ...d.modelPrefItems()], null, run);
+        if (model.length) items.push('-', ...model);
+        items.push('-', { label: 'Director Settings...', action: () => { void d.openDirectorSettings(); } });
+        return items;
     }
 
     /** A view switch closes the log first, so no hidden peek is left behind (it would eat a Back press). */
@@ -524,6 +1164,17 @@
         if (ws && isCurrent()) { ws.refreshSoftKeys(); ws.syncHistory(); }
     }
 
+    function sessionItems() {
+        const d = dir();
+        const id = d && d.currentSession && d.currentSession.id;
+        const rows = toolRows(['Restart Session', 'Retry Last Message', 'Undo Last Message', 'Auto-Repair Session']);
+        // the session row's own menu (Fork, Move to workspace, Nuke), without the repeats
+        const own = sessionMenuRows(id).filter((r) => r === '-' || !/^(Auto-Repair Session|Delete Session)/.test(r.label));
+        const out = rows.concat(own.length ? ['-', ...own] : []);
+        out.push('-', { label: 'Delete Session...', disabled: !id || isDraft(d), action: () => { void d.deleteSession().then(after); } });
+        return out;
+    }
+
     function mainMenu() {
         const d = dir();
         if (!d) return [{ label: 'The Director is starting...', disabled: true }];
@@ -531,22 +1182,49 @@
         const vn = !!(m && m.vnBubbles());
         const result = !!(vn && m._result && !m.el.result.classList.contains('hidden'));
         const card = !!(result && m._result.card);
+        const draft = isDraft(d);
         const items = [
             { label: 'Sessions', action: () => { void showSessions(); } },
             { label: 'New Session', action: () => { void newSession(); } },
-            { label: 'Persona', submenu: personaItems }
+            { label: 'Persona', submenu: personaItems },
+            '-'
         ];
-        items.push('-');
         if (vn) {
             items.push({ label: m._tab === 'card' ? 'Show Reply' : 'Report Card', disabled: !result || (!card && m._tab !== 'card'), action: () => { m.quickAction(m._tab === 'card' ? 'reply' : 'card'); after(); } });
-            items.push({ label: 'Log', checked: !!m.peek, action: () => { m.togglePeek(); after(); ws.syncHistory(); } });
+            items.push({ label: 'Log', checked: !!m.peek, action: () => { m.togglePeek(); after(); } });
         }
+        if (d.persona !== 'xi') items.push({ label: 'Prints', disabled: draft || !d.sessionPrints().length, action: showPrints });
+        items.push({ label: 'History', disabled: draft || !d.currentSession, action: showHistory });
+        // the desktop's browser pane (what her Dreamspace browser shows while she works)
+        if (browserShown(d)) items.push({ label: 'Browser', action: showBrowser });
+        items.push('-');
         items.push({ label: 'Stop', disabled: !running(d), action: () => { d.abortTurn(); after(); } });
-        // the desktop's Delete (its confirmation is the shell's WM message box)
-        items.push({ label: 'Delete Session...', disabled: isDraft(d), action: () => { void d.deleteSession().then(after); } });
+        const quick = toolRows(['Quick Tasks']);
+        if (quick.length) items.push(...quick);
+        items.push({ label: 'Session', disabled: draft, submenu: sessionItems });
+        const computer = wmRows(d.computerMenuItems(), null, (a) => d.handleToolsAction(a));
+        items.push({ label: 'Computer', submenu: () => computer });
         items.push('-');
         items.push({ label: 'Attach File...', action: () => { if (d.directorAttachFileInput) d.directorAttachFileInput.click(); openComposer(); } });
         items.push({ label: 'Options', submenu: optionsItems });
+        return items;
+    }
+
+    /** Menu while writing (WM Messaging's compose Menu): attach, take the attachments off, Cancel. */
+    function composeMenu() {
+        const d = dir();
+        const n = d && d.pendingAttachments ? d.pendingAttachments.length : 0;
+        const items = [
+            { label: 'Attach File...', action: () => { if (d.directorAttachFileInput) d.directorAttachFileInput.click(); } }
+        ];
+        if (d && d.persona !== 'xi' && d.currentSession && !isDraft(d)) {
+            const prints = d.sessionPrints().slice().reverse().slice(0, 12);
+            if (prints.length) items.push({ label: 'Attach Print', submenu: () => prints.map((p, i) => ({ label: i === 0 ? 'Latest print' : `Print ${prints.length - i}`, action: () => { d.attachPrintToComposer(p.filename); ws.refreshSoftKeys(); } })) });
+        }
+        items.push({ label: n > 1 ? `Remove Attachments (${n})` : 'Remove Attachment', disabled: !n, action: () => { d.pendingAttachments.splice(0); d.renderAttachChips(); ws.refreshSoftKeys(); } });
+        const quick = toolRows(['Quick Tasks']);
+        if (quick.length) items.push('-', ...quick);
+        items.push('-', { label: 'Cancel', action: closeComposer });
         return items;
     }
 
@@ -565,8 +1243,7 @@
         page.classList.add('wm-director');
         page.innerHTML = `
             <div class="wmd-host"></div>
-            <div class="wmd-status" hidden><img src="/static_images/app_icons/director.png" alt=""><span class="wmd-status-text"></span></div>
-            <div class="wmd-sessions" hidden><div class="wmd-sessions-list" role="list"></div></div>`;
+            <div class="wmd-status" hidden><img src="/static_images/app_icons/director.png" alt=""><span class="wmd-status-text"></span></div>`;
         // tap to advance: a tap on her scene (not on a control, a link, the text box's own parts or the composer)
         page.querySelector('.wmd-host').addEventListener('click', (e) => {
             if (composing) return;
@@ -575,17 +1252,13 @@
             if (!t.closest('.director-mascot-stage, .dm-vn-layer, #directorSessionChat')) return;
             advance();
         });
-        page.querySelector('.wmd-sessions-list').addEventListener('click', (e) => {
-            const row = e.target.closest('.wmd-session');
-            if (row) void openSession(row.dataset.id);
-        });
         // the composer's text decides the left soft key (Send while there is something to send)
         page.addEventListener('input', (e) => {
             if (e.target && e.target.id === 'directorChatInput' && isCurrent()) ws.refreshSoftKeys();
         });
         // the SIP button opens the composer (its edit box is not on screen until then)
         document.addEventListener('click', (e) => {
-            if (!isCurrent() || composing || sub || !e.target.closest || !e.target.closest('#wmShell .wm-sip')) return;
+            if (!isCurrent() || composing || stack.length || !e.target.closest || !e.target.closest('#wmShell .wm-sip')) return;
             openComposer();
         }, true);
         page.addEventListener('focusin', (e) => {
@@ -599,17 +1272,57 @@
 
     function softKeys() {
         const d = dir();
-        if (sub === 'sessions') {
-            return { left: { label: 'Cancel', action: () => { closeSessions(); ws.syncHistory(); } }, right: { label: 'Menu', menu: sessionsMenu } };
-        }
+        const t = top();
+        if (t) return t.keys ? t.keys() : { left: null, right: null };
         if (composing || isDraft(d)) {
             const has = !!(d && ((d.directorChatInput && d.directorChatInput.value.trim()) || (d.pendingAttachments && d.pendingAttachments.length)));
             return {
                 left: { label: 'Send', disabled: !has, action: () => { void send(); } },
-                right: isDraft(d) && !composing ? { label: 'Menu', menu: mainMenu } : { label: 'Cancel', action: closeComposer }
+                right: isDraft(d) && !composing ? { label: 'Menu', menu: mainMenu } : { label: 'Menu', menu: composeMenu }
             };
         }
         return { left: { label: 'Reply', disabled: !d, action: openComposer }, right: { label: 'Menu', menu: mainMenu } };
+    }
+
+    // ---------------------------------------------------------------- turn notifications
+
+    /**
+     * A turn that ends while the Director is not on screen: a WM notification (the shell draws the
+     * toast as its bubble, with its sound; the Android app posts it as a phone notification), View
+     * opens the app. The title bar's Director glyph already shows while a turn runs.
+     */
+    let runningTurns = new Map(); // session id -> { name, xi }
+    function noteTurns() {
+        const d = dir();
+        const st = d && d._status;
+        if (!st) return;
+        const now = new Map();
+        if (st.running && st.sessionId) now.set(String(st.sessionId), { name: st.sessionName || '', xi: false, last: st.last });
+        if (st.xi && st.xi.running && st.xi.sessionId) now.set(String(st.xi.sessionId), { name: st.xi.sessionName || '', xi: true });
+        const ended = [...runningTurns.entries()].filter(([id]) => !now.has(id));
+        runningTurns = now;
+        if (!ended.length || (shown && isCurrent()) || typeof showGlassToast !== 'function') return;
+        ended.forEach(([id, turn]) => {
+            const s = (d.directorSessions || []).find((x) => String(x.id) === id);
+            const persona = turn.xi ? 'xi' : (s && s.memoryStore === 'obliterated' ? 'kabuki' : 'wren');
+            const name = turn.name || (s && s.name) || '';
+            const last = st.last && String(st.last.sessionId) === id ? st.last : null;
+            const failed = !!(last && (last.state === 'error' || last.error));
+            const who = personaName(persona);
+            const text = failed
+                ? `${who} stopped with an error${name ? ` in "${name}"` : ''}.`
+                : `${who} replied${name ? ` in "${name}"` : ''}.`;
+            /* global showGlassToast */
+            showGlassToast(failed ? 'error' : 'info', 'Director', text, false, 8000, null, [{
+                text: 'View',
+                onClick: () => {
+                    ws.open(APP_ID);
+                    const dd = dir();
+                    const ss = dd && (dd.directorSessions || []).find((x) => String(x.id) === id);
+                    if (dd && ss && !(dd.currentSession && String(dd.currentSession.id) === id)) void busyOf(() => dd.showSessionChat(ss));
+                }
+            }]);
+        });
     }
 
     function register() {
@@ -640,31 +1353,49 @@
                 if (d && d.mascot && patchedMascot === d.mascot) { d.mascot.applyView(); syncBlink(d.mascot); }
             },
             softKeys,
+            // the title over a page (the shell puts it back after the picture view)
+            titleNow: () => { const t = top(); return t ? (typeof t.title === 'function' ? t.title() : t.title) : null; },
             // WM: X on the conversation and its lists (Smart Minimize), ok on the reply composer
-            // (closes it, the text stays), as Messaging's new message
-            titleKind: () => (composing && !isDraft() ? 'ok' : 'close'),
+            // (closes it, the text stays), as Messaging's new message, and on the pages that stand
+            // for the desktop's windows (Prints, History, the inspector, text)
+            titleKind: () => {
+                const t = top();
+                if (t) return t.corner || 'ok';
+                return composing && !isDraft() ? 'ok' : 'close';
+            },
             onTitleOk() {
-                if (!(composing && !isDraft())) return false;
+                const t = top();
+                if (t && t.corner === 'ok') { popPage(); return true; }
+                if (t || !(composing && !isDraft())) return false;
                 closeComposer();
                 return true;
             },
             historyDepth() {
-                return (sub ? 1 : 0) + (composing && !isDraft() ? 1 : 0) + (peeking() ? 1 : 0);
+                return stack.length + (composing && !isDraft() ? 1 : 0) + (peeking() ? 1 : 0);
             },
             onBack() {
-                if (sub === 'sessions') { closeSessions(); return true; }
+                if (stack.length) { popPage(); return true; }
                 if (peeking()) { dir().mascot.togglePeek(false); after(); return true; }
                 if (composing && !isDraft()) { closeComposer(); return true; }
                 return false;
             }
         });
         waitForDirector();
+        patchContextMenu();
         // the soft keys follow the Director (a turn starts or ends, a chat opens)
-        const refresh = () => { if (isCurrent()) { syncComposer(); ws.refreshSoftKeys(); if (sub === 'sessions') renderSessions(); } };
+        const refresh = () => {
+            if (!isCurrent()) return;
+            syncComposer();
+            ws.refreshSoftKeys();
+            if (stack.some((p) => p.kind === 'sessions')) renderSessions();
+            const pr = stack.find((p) => p.kind === 'prints');
+            if (pr) renderPrints(pr.el);
+        };
         if (window.wsClient && typeof window.wsClient.on === 'function') {
-            ['director_computer_status', 'director_session_created', 'director_turn_complete', 'director_message_response'].forEach((t) => {
+            ['director_computer_status', 'director_message_response', 'director_messages_updated', 'director_get_sessions_response', 'director_create_session_response', 'director_delete_session_response', 'director_fork_session_response', 'director_move_session_response', 'director_session_image', 'director_session_renamed'].forEach((t) => {
                 try { window.wsClient.on(t, () => setTimeout(refresh, 50)); } catch (_) { /* no such event */ }
             });
+            try { window.wsClient.on('director_computer_status', () => setTimeout(noteTurns, 60)); } catch (_) { /* no such event */ }
         }
     }
 

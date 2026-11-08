@@ -7,6 +7,8 @@
  */
 
 .wm-director {
+    /* its layers (the scene, pages over it) stack inside the app's page, under the shell's menus */
+    isolation: isolate;
     overflow: hidden !important;
     background: #000;
     color: #000;
@@ -38,7 +40,7 @@
     translate: none !important;
     scale: none !important;
     opacity: 1 !important;
-    visibility: visible !important;
+    visibility: inherit !important; /* the window may be hidden by its desktop state, never shown over the picture view */
     animation: none !important;
     transition: none !important;
     filter: none !important;
@@ -348,19 +350,36 @@
     height: calc(32 * var(--wm-px));
 }
 
-/* ---- Sessions: a WM list over the scene ---- */
-.wm-director .wmd-sessions {
+/* ---- pages over her scene (wmDirector.js pushPage): Sessions, Prints, History, inspector, text ---- */
+.wm-director .wmd-page {
     position: absolute;
     inset: 0;
     z-index: 30;
+    display: flex;
+    flex-direction: column;
     background: #fff;
+    color: #000;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    overflow: hidden;
+}
+
+.wm-director .wmd-page[hidden] {
+    display: none;
+}
+
+.wm-director .wmd-page-sessions,
+.wm-director .wmd-page-prints {
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
 }
 
-.wm-director .wmd-sessions[hidden] {
-    display: none;
+/* a group heading in a WM list (Archives): bold on the tab-strip tint, rules above and below */
+.wm-director .wmd-group {
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid var(--wm-rule, #000);
+    background: var(--wm-tab-strip);
+    font-weight: bold;
 }
 
 .wm-director .wmd-session {
@@ -415,10 +434,32 @@
 }
 
 .wm-director .wmd-session-date {
+    display: flex;
+    justify-content: space-between;
+    gap: calc(4 * var(--wm-px));
     font-size: calc(11 * var(--wm-px));
+    white-space: nowrap;
+}
+
+.wm-director .wmd-session-date > span {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+}
+
+/* the chat's workspace: a 7 px colour square (1 px black frame) and its name */
+.wm-director .wmd-session-ws {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    flex: 0 1 auto;
+}
+
+.wm-director .wmd-session-ws i {
+    flex: 0 0 auto;
+    width: calc(7 * var(--wm-px));
+    height: calc(7 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
 }
 
 .wm-director .wmd-empty {
@@ -440,4 +481,567 @@
     border-radius: 0 !important;
     box-shadow: none !important;
     color: #000;
+}
+
+/* ---- Prints (the desktop's prints pane): WM Pictures & Videos' thumbnail grid, newest first ---- */
+.wm-director .wmd-prints-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(76 * var(--wm-px)), 1fr));
+    gap: calc(2 * var(--wm-px));
+    padding: calc(2 * var(--wm-px));
+}
+
+.wm-director .wmd-print {
+    position: relative;
+    aspect-ratio: 1;
+    margin: 0;
+    padding: calc(2 * var(--wm-px));
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.wm-director .wmd-print img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border: calc(1 * var(--wm-px)) solid #000;
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+.wm-director .wmd-print:active {
+    background: var(--wm-highlight);
+}
+
+/* a print still on its way: an empty frame with WM's wait cursor art */
+.wm-director .wmd-print.is-pending {
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff url('/static_images/wm61/wait-0.png') center / calc(24 * var(--wm-px)) no-repeat;
+}
+
+/* ---- History (Open Full History): a WM list, kind in bold over a one-line preview ---- */
+.wm-director .wmd-history-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.wm-director .wmd-history-row {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin: 0;
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    border: 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #c0c0c0;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    text-align: left;
+    box-sizing: border-box;
+}
+
+.wm-director .wmd-history-row > * {
+    max-width: 100%;
+}
+
+.wm-director .wmd-history-row span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-director .wmd-history-row.is-current {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text, #fff);
+}
+
+/* ---- text (showDirectorText, a history entry): a read-only WM page ---- */
+.wm-director .wmd-text {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px));
+    overflow: auto;
+    overscroll-behavior: contain;
+    background: #fff;
+    color: #000;
+    font: calc(12 * var(--wm-px)) / 1.35 var(--wm-font);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.wm-director .wmd-text-status {
+    flex: 0 0 auto;
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+    font-size: calc(11 * var(--wm-px));
+}
+
+/* ---- the tool inspector (directorToolInspector.js) hosted in a page: a WM form, tabs at the bottom ---- */
+.wm-director .wmd-page-inspector #directorToolInspector {
+    position: static !important;
+    inset: auto !important;
+    display: flex !important;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    translate: none !important;
+    opacity: 1 !important;
+    visibility: inherit !important;
+    animation: none !important;
+    transition: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    background: #fff !important;
+    z-index: auto !important;
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector::before,
+.wm-director .wmd-page-inspector #directorToolInspector::after,
+.wm-director .wmd-page-inspector #directorToolInspector > .modal-window-title,
+.wm-director .wmd-page-inspector #directorToolInspector > .modal-window-controls,
+.wm-director .wmd-page-inspector #directorToolInspector > .modal-focus-overlay,
+.wm-director .wmd-page-inspector #directorToolInspector .resize-handle,
+.wm-director .wmd-page-inspector #directorToolInspector .dti-footer {
+    display: none !important;
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector > .modal-content.dti-client {
+    flex: 1 1 auto;
+    width: auto;
+    height: auto;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    font: calc(12 * var(--wm-px)) / 1.35 var(--wm-font);
+}
+
+/* the header: WM's form header (bold, highlight colour, 1 px black rule) and a plain line under it */
+.wm-director .wmd-page-inspector #directorToolInspector .dti-head {
+    padding: calc(3 * var(--wm-px)) calc(8 * var(--wm-px)) calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector .dti-instruction {
+    color: var(--wm-highlight);
+    font-size: calc(12 * var(--wm-px));
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector .dti-blurb {
+    margin: 0;
+    color: #000;
+    font-size: calc(11 * var(--wm-px));
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector .dti-pane {
+    order: 2;
+    margin: 0;
+    border: 0;
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector .dti-page {
+    padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
+    overscroll-behavior: contain;
+}
+
+/* Input / Output / Raw: WM's tab control under the page (wm-programs.css .wm-tabs metrics) */
+.wm-director .wmd-page-inspector #directorToolInspector .dti-tabs {
+    order: 3;
+    height: calc(22 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+    align-items: stretch;
+    box-sizing: border-box;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector .dti-tab,
+.wm-director .wmd-page-inspector #directorToolInspector .dti-tab.is-selected {
+    height: auto;
+    margin: calc(-1 * var(--wm-px)) 0 0;
+    padding: 0 calc(5 * var(--wm-px));
+    border: 0;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    border-right: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: transparent;
+    color: #000;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    line-height: calc(21 * var(--wm-px));
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector .dti-tab + .dti-tab {
+    margin-left: 0;
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector .dti-tab.is-selected {
+    background: #fff;
+    border-top-color: #fff;
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector .dti-tab:focus-visible {
+    outline: none;
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector .dti-key {
+    color: #000;
+    font-weight: bold;
+    max-width: calc(110 * var(--wm-px));
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector .dti-table {
+    grid-template-columns: minmax(calc(60 * var(--wm-px)), max-content) minmax(0, 1fr);
+    column-gap: calc(6 * var(--wm-px));
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector :is(.dti-value .dti-table, .dti-text, .dti-chip) {
+    border-radius: 0;
+    border-color: #808080;
+    background: #fff;
+}
+
+/* one scroller on a phone: long texts grow with the page instead of scrolling inside it */
+.wm-director .wmd-page-inspector #directorToolInspector .dti-text {
+    max-height: none;
+    overflow: visible;
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector :is(.dti-mono, .dti-raw) {
+    font: calc(11 * var(--wm-px)) / 1.3 'Courier New', monospace;
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector .dti-image img {
+    max-width: calc(120 * var(--wm-px));
+    max-height: calc(120 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    box-shadow: none;
+}
+
+/* ---- WM scroll bars on the pages (wm-shell.css draws the same for .wm-page) ---- */
+.wm-director .wmd-page-sessions::-webkit-scrollbar,
+.wm-director .wmd-page-prints::-webkit-scrollbar,
+.wm-director .wmd-history-list::-webkit-scrollbar,
+.wm-director .wmd-text::-webkit-scrollbar,
+.wm-director .wmd-page-inspector #directorToolInspector .dti-page::-webkit-scrollbar,
+.wm-director #directorSessionChat:not(.director-mascot-view) .scrollable-content::-webkit-scrollbar {
+    width: calc(13 * var(--wm-px));
+    height: 0;
+}
+
+.wm-director .wmd-page-sessions::-webkit-scrollbar-track,
+.wm-director .wmd-page-prints::-webkit-scrollbar-track,
+.wm-director .wmd-history-list::-webkit-scrollbar-track,
+.wm-director .wmd-text::-webkit-scrollbar-track,
+.wm-director .wmd-page-inspector #directorToolInspector .dti-page::-webkit-scrollbar-track,
+.wm-director #directorSessionChat:not(.director-mascot-view) .scrollable-content::-webkit-scrollbar-track {
+    background: #fff;
+    border-left: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-director .wmd-page-sessions::-webkit-scrollbar-thumb,
+.wm-director .wmd-page-prints::-webkit-scrollbar-thumb,
+.wm-director .wmd-history-list::-webkit-scrollbar-thumb,
+.wm-director .wmd-text::-webkit-scrollbar-thumb,
+.wm-director .wmd-page-inspector #directorToolInspector .dti-page::-webkit-scrollbar-thumb,
+.wm-director #directorSessionChat:not(.director-mascot-view) .scrollable-content::-webkit-scrollbar-thumb {
+    background: var(--wm-tab-strip);
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-right: 0;
+    border-radius: 0;
+}
+
+.wm-director .wmd-page-sessions::-webkit-scrollbar-button:single-button,
+.wm-director .wmd-page-prints::-webkit-scrollbar-button:single-button,
+.wm-director .wmd-history-list::-webkit-scrollbar-button:single-button,
+.wm-director .wmd-text::-webkit-scrollbar-button:single-button,
+.wm-director .wmd-page-inspector #directorToolInspector .dti-page::-webkit-scrollbar-button:single-button,
+.wm-director #directorSessionChat:not(.director-mascot-view) .scrollable-content::-webkit-scrollbar-button:single-button {
+    display: block;
+    height: calc(19 * var(--wm-px));
+    background: var(--wm-tab-strip) center / calc(8 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
+    border-left: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-director .wmd-page-sessions::-webkit-scrollbar-button:single-button:vertical:decrement,
+.wm-director .wmd-page-prints::-webkit-scrollbar-button:single-button:vertical:decrement,
+.wm-director .wmd-history-list::-webkit-scrollbar-button:single-button:vertical:decrement,
+.wm-director .wmd-text::-webkit-scrollbar-button:single-button:vertical:decrement,
+.wm-director .wmd-page-inspector #directorToolInspector .dti-page::-webkit-scrollbar-button:single-button:vertical:decrement,
+.wm-director #directorSessionChat:not(.director-mascot-view) .scrollable-content::-webkit-scrollbar-button:single-button:vertical:decrement {
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background-image: linear-gradient(to bottom right, transparent 50%, #000 50%), linear-gradient(to bottom left, transparent 50%, #000 50%);
+    background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
+}
+
+.wm-director .wmd-page-sessions::-webkit-scrollbar-button:single-button:vertical:increment,
+.wm-director .wmd-page-prints::-webkit-scrollbar-button:single-button:vertical:increment,
+.wm-director .wmd-history-list::-webkit-scrollbar-button:single-button:vertical:increment,
+.wm-director .wmd-text::-webkit-scrollbar-button:single-button:vertical:increment,
+.wm-director .wmd-page-inspector #directorToolInspector .dti-page::-webkit-scrollbar-button:single-button:vertical:increment,
+.wm-director #directorSessionChat:not(.director-mascot-view) .scrollable-content::-webkit-scrollbar-button:single-button:vertical:increment {
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background-image: linear-gradient(to top right, transparent 50%, #000 50%), linear-gradient(to top left, transparent 50%, #000 50%);
+    background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
+}
+
+/* nested values (an object inside a result): the key over its value, so a phone's width is not split twice */
+.wm-director .wmd-page-inspector #directorToolInspector .dti-value .dti-table {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: calc(1 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector .dti-value .dti-table > .dti-row > .dti-key {
+    max-width: none;
+}
+
+.wm-director .wmd-page-inspector #directorToolInspector .dti-value .dti-table > .dti-row > .dti-value {
+    margin-bottom: calc(3 * var(--wm-px));
+}
+
+/* ---- the Restart / Revert message box (director.js rollbackToMessage) in WM's message box ----
+ * the engine / model choice is a WM combo box across the box (its list is a WM drop-down, wmDirector.js),
+ * Restore is a WM check box; Restart and Cancel stay the box's push buttons */
+html.ui-mobile #confirmationDialog .confirmation-controls #directorRetryChoiceBtn {
+    flex: 1 0 100% !important;
+    display: block !important;
+    min-width: 0 !important;
+    line-height: calc(18 * var(--wm-px));
+    height: calc(20 * var(--wm-px)) !important;
+    padding: 0 calc(16 * var(--wm-px)) 0 calc(3 * var(--wm-px)) !important;
+    overflow: hidden;
+    position: relative;
+    background: #fff !important;
+    text-align: left;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+html.ui-mobile #confirmationDialog #directorRetryChoiceBtn .director-engine-icon {
+    display: none !important;
+}
+
+/* the combo's drop arrow: a black triangle in a tinted square at the right */
+html.ui-mobile #confirmationDialog #directorRetryChoiceBtn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: calc(13 * var(--wm-px));
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    background:
+        linear-gradient(to bottom right, transparent 50%, #000 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to bottom left, transparent 50%, #000 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        var(--wm-tab-strip);
+    transform: scaleY(-1);
+}
+
+html.ui-mobile #confirmationDialog .confirmation-controls #directorRollbackRestoreBtn {
+    margin-right: auto !important;
+    min-width: 0 !important;
+    padding: 0 calc(2 * var(--wm-px)) !important;
+    display: inline-flex !important;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    background: transparent !important;
+    border-color: transparent !important;
+}
+
+html.ui-mobile #confirmationDialog #directorRollbackRestoreBtn::after {
+    content: none !important;
+}
+
+/* WM's check box: 11 px, 1 px black frame, a black tick when on */
+html.ui-mobile #confirmationDialog #directorRollbackRestoreBtn::before {
+    content: '' !important;
+    display: block !important;
+    position: static !important;
+    flex: 0 0 auto;
+    width: calc(13 * var(--wm-px)) !important;
+    height: calc(13 * var(--wm-px)) !important;
+    margin: 0 !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    box-sizing: border-box;
+}
+
+html.ui-mobile #confirmationDialog #directorRollbackRestoreBtn[data-state="on"]::before {
+    /* WM's tick (wm-programs.css .wm-check) */
+    background: #fff center / 100% 100% no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11'%3E%3Cpath d='M2 5.2 4.3 7.5 9 2.8' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E") !important;
+}
+
+html.ui-mobile #confirmationDialog #directorRollbackRestoreBtn:active {
+    background: transparent !important;
+    color: #000 !important;
+}
+
+/* a drop-down raised in the message box (wmDirector.js dialogMenu): the shell's popup look, inside the
+ * box so it draws over it (the shell sits under the box) */
+html.ui-mobile #confirmationDialog .wmd-dlg-pop {
+    position: absolute;
+    z-index: 5;
+    bottom: auto;
+    max-height: calc(100vh - 8px);
+    max-width: calc(100vw - 4px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    text-align: left;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    white-space: nowrap;
+}
+
+html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item {
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--wm-menu-text) !important;
+    font: bold calc(12 * var(--wm-px)) var(--wm-font) !important;
+    min-height: 0 !important;
+}
+
+html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:disabled {
+    color: #bdbebd !important;
+}
+
+html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item.is-open,
+html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disabled) {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text, #fff) !important;
+}
+
+/* ---- attachments on the message being written: WM thumbnails (1 px black frame, square) with a
+ * remove box always shown (a phone has no hover); files without a picture: WM's file icon and name ---- */
+.wm-director #directorAttachChips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(3 * var(--wm-px));
+}
+
+.wm-director #directorAttachChips .director-attach-chip {
+    position: relative;
+    width: calc(34 * var(--wm-px));
+    height: calc(34 * var(--wm-px));
+    max-width: none;
+    padding: 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff;
+    backdrop-filter: none;
+    overflow: visible;
+}
+
+.wm-director #directorAttachChips .director-attach-chip .director-session-preview {
+    border-radius: 0;
+}
+
+/* no picture: the WM file glyph and the name beside it */
+.wm-director #directorAttachChips .director-attach-chip > i {
+    display: none;
+}
+
+.wm-director #directorAttachChips .director-attach-chip:not(:has(.director-session-preview)) {
+    width: auto;
+    max-width: calc(150 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    padding: 0 calc(16 * var(--wm-px)) 0 calc(19 * var(--wm-px));
+    justify-content: flex-start;
+    background: #fff calc(2 * var(--wm-px)) 50% / calc(16 * var(--wm-px)) no-repeat image-set(url('/static_images/wm61/fe-file.png') 1x, url('/static_images/wm61/fe-file@2x.png') 2x);
+}
+
+.wm-director #directorAttachChips .director-attach-chip > span,
+.wm-director #directorAttachChips .director-attach-chip[data-queue-chip]::after {
+    content: attr(title);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: calc(11 * var(--wm-px)) var(--wm-font);
+    line-height: calc(18 * var(--wm-px));
+}
+
+/* the remove box: 11 px, black frame, a black x (WM's close glyph drawn with two strokes) */
+.wm-director #directorAttachChips .director-attach-chip .btn-secondary {
+    position: absolute;
+    inset: auto;
+    top: calc(-4 * var(--wm-px));
+    right: calc(-4 * var(--wm-px));
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    opacity: 1;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background:
+        linear-gradient(45deg, transparent calc(50% - 0.75px), #000 calc(50% - 0.75px), #000 calc(50% + 0.75px), transparent calc(50% + 0.75px)) center / 70% 70% no-repeat,
+        linear-gradient(-45deg, transparent calc(50% - 0.75px), #000 calc(50% - 0.75px), #000 calc(50% + 0.75px), transparent calc(50% + 0.75px)) center / 70% 70% no-repeat,
+        #fff;
+    box-shadow: none;
+}
+
+.wm-director #directorAttachChips .director-attach-chip:not(:has(.director-session-preview)) .btn-secondary {
+    top: calc(3 * var(--wm-px));
+    right: calc(2 * var(--wm-px));
+}
+
+.wm-director #directorAttachChips .director-attach-chip .btn-secondary i {
+    display: none;
+}
+
+/* landscape: room for the growth chip beside the others (the desktop's HUD row) */
+@media (orientation: landscape) {
+    .wm-director .dm-vn-layer .dm-hud-grow {
+        display: flex;
+    }
+}
+
+/* ---- Browser (the desktop's browser pane): the shot at the page's width, scrolled ---- */
+.wm-director .wmd-browser {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background: #fff;
+}
+
+.wm-director .wmd-browser img {
+    display: block;
+    width: 100%;
+    height: auto;
 }
