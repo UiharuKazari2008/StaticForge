@@ -99,7 +99,248 @@
         lightOverlays();
         modelName();
         steppers();
+        foldSections();
+        pairsLayout();
+        diceBySeed();
+        resolutionDims();
+        watchPopupDecor();
         return true;
+    }
+
+    // ---------------------------------------------------------------- Settings: pairs or one per row
+
+    /**
+     * Steps | Guidance and Rescale | Prints share a row only where both - / + steppers keep their
+     * value readable: about 312 WM px of form (a 390 px phone at 1x, landscape at the touch scale).
+     * A narrower form (a 411 px phone at the touch scale 1.5) gets one field per row.
+     */
+    let pairsWatched = false;
+    function pairsLayout() {
+        const holder = document.querySelector('#manualModal .model-control .control-holder');
+        if (!holder || !page) return;
+        const fit = () => {
+            if (!page || tab !== 'prompt' || !holder.offsetWidth) return;
+            const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+            page.classList.toggle('wms-pairs', holder.offsetWidth / px >= 312);
+        };
+        fit();
+        if (pairsWatched || typeof ResizeObserver !== 'function') return;
+        pairsWatched = true;
+        new ResizeObserver(fit).observe(holder);
+        // Settings > Screen changes the scale (--wm-px) without resizing the form
+        new MutationObserver(fit).observe(root, { attributes: true, attributeFilter: ['style', 'class'] });
+    }
+
+    // ---------------------------------------------------------------- the dice beside Seed
+
+    /**
+     * The random prompt toggle (the dice) sat alone in a row under the token strip; on the phone it
+     * sits in the Seed row with the locks (the Locks label goes), so that row holds the badges only.
+     */
+    function diceBySeed() {
+        const dice = document.getElementById('randomPromptToggleBtn');
+        const locks = document.querySelector('#manualModal .control-row-lockcontrols .seed-input-group');
+        if (!dice || !locks || dice.parentNode === locks) return;
+        dice.classList.add('wms-dice');
+        locks.insertBefore(dice, locks.firstChild);
+    }
+
+    // ---------------------------------------------------------------- Resolution: its size in the combo
+
+    function resolutionItems() {
+        /* global getStudioResolutionMenuItems */
+        try { return typeof getStudioResolutionMenuItems === 'function' ? getStudioResolutionMenuItems() : []; } catch (_) { return []; }
+    }
+
+    /** "Square" + "1024x1024" in the closed combo when both fit; the name (and its badge) alone when not. */
+    let resWatched = false;
+    function resolutionDims() {
+        const btn = document.getElementById('manualResolutionDropdownBtn');
+        const sel = document.getElementById('manualResolutionSelected');
+        if (!btn || !sel) return;
+        let dims = btn.querySelector(':scope > .wms-res-dims');
+        if (!dims) {
+            dims = document.createElement('span');
+            dims.className = 'wms-res-dims';
+            sel.after(dims);
+        }
+        const paint = () => {
+            const cur = resolutionItems().find((i) => i && !i.separator && i.checked);
+            dims.textContent = (cur && cur.subtext) || '';
+            dims.hidden = false;
+            // only when the name and its badge still fit beside it
+            requestAnimationFrame(() => {
+                if (!btn.offsetWidth) return;
+                if (btn.scrollWidth > btn.clientWidth + 1 || sel.scrollWidth > sel.clientWidth + 1) dims.hidden = true;
+            });
+        };
+        paint();
+        if (resWatched || typeof MutationObserver !== 'function') return;
+        resWatched = true;
+        new MutationObserver(paint).observe(sel, { childList: true, subtree: true, characterData: true });
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => paint()).observe(btn.parentNode);
+    }
+
+    // ---------------------------------------------------------------- badges and sizes in WM drop-down rows
+
+    /**
+     * The desktop's model badges (F full, C curated, L legacy) and resolution group badges (LG, WP, XL
+     * cost Anlas; SM and the free wallpapers are free) as WM badges in the drop-down / submenu rows.
+     * Rows are matched by their label; labels carrying a badge are unique (resolutions carry their size).
+     */
+    const decor = new Map(); // label -> { badge, cls }
+
+    function modelBadge(value) {
+        /* global modelGroups */
+        try {
+            for (const g of modelGroups) {
+                const o = g.options.find((x) => x.value === value);
+                if (o) return o.badge ? { badge: o.badge, cls: o.badge_class || '' } : null;
+            }
+        } catch (_) { /* no list */ }
+        return null;
+    }
+
+    function resolutionBadge(value) {
+        /* global RESOLUTION_GROUPS */
+        if (String(value).startsWith('normal_wallpaper_')) return { badge: 'WP', cls: 'free-badge' };
+        try {
+            const g = RESOLUTION_GROUPS.find((x) => x.options.some((o) => o.value === value));
+            if (g && g.badge) return { badge: g.badge, cls: g.free ? 'free-badge' : 'paid-badge' };
+        } catch (_) { /* no list */ }
+        return null;
+    }
+
+    /** A desktop row's phone label and badge (registered for the popup decorator). */
+    function rowDecor(item, label) {
+        let text = label;
+        let deco = null;
+        if (item.action === 'studio-select-model') deco = modelBadge(item.value);
+        else if (item.action === 'studio-select-resolution') {
+            // short names: the free wallpapers are Portrait / Landscape with a WP badge, as the combo shows them
+            if (String(item.value).startsWith('normal_wallpaper_')) text = String(item.value).endsWith('_portrait') ? 'Portrait' : 'Landscape';
+            if (item.subtext) text += ` ${item.subtext}`;
+            deco = resolutionBadge(item.value);
+        } else if (item.subtext) {
+            text += ` ${item.subtext}`;
+        }
+        if (deco) decor.set(text, deco);
+        return text;
+    }
+
+    function decorateRows(scope) {
+        if (!decor.size) return;
+        scope.querySelectorAll('.wm-popup-item').forEach((b) => {
+            if (b.querySelector('.wms-badge')) return;
+            const d = decor.get(b.textContent);
+            if (!d) return;
+            const s = document.createElement('span');
+            s.className = `wms-badge ${d.cls}`;
+            s.textContent = d.badge;
+            b.appendChild(s);
+        });
+    }
+
+    let decorWatched = false;
+    function watchPopupDecor() {
+        const pop = shellPopup();
+        if (decorWatched || !pop || typeof MutationObserver !== 'function') return;
+        decorWatched = true;
+        new MutationObserver(() => decorateRows(pop)).observe(pop, { childList: true, subtree: true });
+    }
+
+    /**
+     * A WM drop-down hangs under its combo; one taller than the room left (Resolution near the
+     * bottom) opens above the combo when there is more room there, and scrolls within the room.
+     */
+    function fitDropdown(anchor) {
+        const pop = shellPopup();
+        const content = document.querySelector('#wmShell > .wm-content');
+        if (!pop || pop.hidden || !content || !pop.offsetParent) return;
+        const cr = content.getBoundingClientRect();
+        const ar = anchor.getBoundingClientRect();
+        const or = pop.offsetParent.getBoundingClientRect();
+        const below = cr.bottom - ar.bottom - 2;
+        const above = ar.top - cr.top - 2;
+        const h = pop.scrollHeight;
+        if (h <= below) return;
+        const up = above > below;
+        const room = Math.max(40, up ? above : below);
+        pop.style.maxHeight = `${room}px`;
+        pop.style.overflowY = 'auto';
+        if (up) pop.style.top = `${ar.top - Math.min(h, room) - or.top}px`;
+    }
+
+    // ---------------------------------------------------------------- Characters / Settings fold
+
+    const FOLD_KEY = 'wmStudioFold';
+    let fold = {};
+    try { fold = JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch (_) { fold = {}; }
+
+    function setFold(name, closed) {
+        fold[name] = !!closed;
+        try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (_) { /* private mode */ }
+        paintFold();
+    }
+
+    function foldHead(name, label) {
+        const head = document.createElement('div');
+        head.className = 'wms-sect wms-fold';
+        head.dataset.fold = name;
+        head.setAttribute('role', 'button');
+        head.tabIndex = 0;
+        head.innerHTML = `<span class="wms-fold-name">${esc(label)}</span><span class="wms-fold-sum"></span><span class="wms-fold-box" aria-hidden="true"></span>`;
+        const toggle = (e) => {
+            e.preventDefault();
+            setFold(name, !fold[name]);
+        };
+        head.addEventListener('click', toggle);
+        head.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') toggle(e); });
+        return head;
+    }
+
+    function foldSections() {
+        if (!page) return;
+        const chars = page.querySelector('.wms-chars > .wms-sect:not(.wms-fold)');
+        if (chars) chars.replaceWith(foldHead('chars', 'Characters'));
+        const mc = document.querySelector('#manualModal .model-control');
+        if (mc && !mc.querySelector(':scope > .wms-fold')) mc.insertBefore(foldHead('settings', 'Settings'), mc.firstChild);
+        paintFold();
+    }
+
+    function settingsSummary() {
+        const val = (id) => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+        const model = (document.querySelector('#manualModelDropdownBtn > .wms-model-name') || {}).textContent || '';
+        const res = (document.getElementById('manualResolutionSelected') || {}).textContent || '';
+        const g = parseFloat(val('manualGuidance'));
+        return [model.trim(), val('manualSteps') && `${val('manualSteps')} steps`, Number.isFinite(g) ? g.toFixed(1) : '', res.replace(/\s+/g, ' ').trim()]
+            .filter(Boolean).join(', ');
+    }
+
+    function charsSummary() {
+        const chars = document.getElementById('characterPromptsContainer');
+        const n = chars ? chars.children.length : 0;
+        return n ? `${n} ${n === 1 ? 'character' : 'characters'}` : 'None';
+    }
+
+    function paintFold() {
+        if (!page) return;
+        ['chars', 'settings'].forEach((name) => {
+            const closed = !!fold[name];
+            page.classList.toggle(`wms-fold-${name}`, closed);
+            const head = name === 'settings'
+                ? document.querySelector('#manualModal .model-control > .wms-fold')
+                : page.querySelector('.wms-chars > .wms-fold');
+            if (!head) return;
+            head.setAttribute('aria-expanded', String(!closed));
+            const sum = head.querySelector('.wms-fold-sum');
+            if (sum) sum.textContent = closed ? (name === 'settings' ? settingsSummary() : charsSummary()) : '';
+        });
+    }
+
+    /** A section asked for (Menu > Add > Character, the Settings shortcut): opened first. */
+    function unfold(name) {
+        if (fold[name]) setFold(name, false);
     }
 
     // ---------------------------------------------------------------- the model's full name
@@ -124,6 +365,16 @@
             const menu = btn.parentNode && btn.parentNode.querySelector(':scope > .custom-dropdown-menu');
             const opt = value && menu ? Array.from(menu.querySelectorAll('.custom-dropdown-option')).find((o) => o.dataset.value === value) : null;
             span.textContent = (opt && opt.textContent.replace(/\s+/g, ' ').trim()) || sel.textContent.replace(/\s+/g, ' ').trim();
+            // the desktop's badge (F full, C curated, L legacy) after the name, as in the drop-down rows
+            let badge = btn.querySelector(':scope > .wms-badge');
+            const d = modelBadge(value);
+            if (!d) { if (badge) badge.remove(); return; }
+            if (!badge) {
+                badge = document.createElement('span');
+                span.after(badge);
+            }
+            badge.className = `wms-badge ${d.cls}`;
+            badge.textContent = d.badge;
         };
         paint();
         if (modelWatched || typeof MutationObserver !== 'function') return;
@@ -327,6 +578,7 @@
         /* global handleStudioMenuBarAction */
         if (typeof handleStudioMenuBarAction !== 'function') return;
         addAt = Date.now();
+        unfold('chars');
         try { handleStudioMenuBarAction('studio-add-character', menuBarTitle('Add'), { action: 'studio-add-character' }); } catch (err) { console.warn('[wmStudio] add character', err); }
         afterAction();
     }
@@ -339,6 +591,7 @@
         const sel = SECTIONS[name];
         if (!sel || !page) return;
         if (tab !== 'prompt') setTab('prompt');
+        unfold(name === 'settings' ? 'settings' : 'chars');
         const el = page.querySelector(`#manualModal ${sel}`) || page.querySelector(sel);
         const sc = formScroller();
         if (!el || !sc) return;
@@ -467,6 +720,7 @@
         const overlays = document.getElementById('textOverlaysContainer');
         const none = !(chars && chars.children.length) && !(overlays && overlays.children.length && !overlays.classList.contains('hidden'));
         if (empty) empty.hidden = !none;
+        paintFold();
         const noprint = page.querySelector('.wms-noprint');
         const img = document.getElementById('manualPreviewImage');
         const hasPrint = !!(img && !img.classList.contains('hidden') && img.getAttribute('src'));
@@ -558,7 +812,7 @@
                 }
             }
             if (!label) continue; // custom rows (sliders, grids) have no WM counterpart
-            const row = { label: String(label).replace(/\s+/g, ' ').trim(), disabled: !!resolve(item.disabled) };
+            const row = { label: rowDecor(item, String(label).replace(/\s+/g, ' ').trim()), disabled: !!resolve(item.disabled) };
             const sub = Array.isArray(item.submenu) ? item.submenu : null;
             if (sub || typeof item.optionsfn === 'function') {
                 row.submenu = () => {
@@ -751,13 +1005,25 @@
         if (!studioOpen()) return [{ label: 'Studio is starting...', disabled: true }];
         armMenuHide(menuBarHide);
         const items = MENUS.map((name) => ({ label: name, submenu: () => menuBarItems(name) }));
+        // the Settings section's Workspace row lives here on the phone (its combo's own list and action)
+        items.splice(MENUS.indexOf('View') + 1, 0, { label: 'Workspace', submenu: workspaceItems });
         // the preview's own buttons (manualPreviewManager.js)
-        items.splice(MENUS.indexOf('Help'), 0, '-',
+        items.splice(items.findIndex((i) => i.label === 'Help'), 0, '-',
             { label: 'Previous Print', disabled: !enabled('manualPreviewPrevBtn'), action: () => { clickIf('manualPreviewPrevBtn'); setTab('print'); } },
             { label: 'Next Print', disabled: !enabled('manualPreviewNextBtn'), action: () => { clickIf('manualPreviewNextBtn'); setTab('print'); } },
             { label: 'View Print', disabled: !printName(), action: viewPrint },
             '-');
         return items;
+    }
+
+    /** The Workspace combo's own click menu (manualWorkspaceDropdownBtn): its rows, its radio, its action. */
+    function workspaceItems() {
+        const btn = document.getElementById('manualWorkspaceDropdownBtn');
+        const cfg = btn && typeof contextMenu !== 'undefined' && contextMenu && contextMenu.clickMenuConfigs && contextMenu.clickMenuConfigs[btn.dataset.clickMenu];
+        if (!cfg) return [{ label: 'Not ready yet', disabled: true }];
+        let items = [];
+        try { items = dropLoneHeading(wmItemsFromConfig(cfg, btn, true)); } catch (err) { console.warn('[wmStudio] workspaces', err); }
+        return items.length ? items : [{ label: '(empty)', disabled: true }];
     }
 
     function afterAction() {
@@ -799,6 +1065,7 @@
                 ws.dropdown(combo, dropLoneHeading(items), sideOf(combo), onHide);
                 const pop = shellPopup();
                 if (pop && !pop.hidden) pop.style.minWidth = `${Math.round(combo.getBoundingClientRect().width)}px`;
+                fitDropdown(combo);
                 return undefined;
             }
             let x = 0;
@@ -868,6 +1135,7 @@
         });
         const pop = shellPopup();
         if (pop && !pop.hidden) pop.style.minWidth = `${Math.round(box.getBoundingClientRect().width)}px`;
+        fitDropdown(box);
     }
 
     // ---------------------------------------------------------------- the print
@@ -1180,6 +1448,7 @@
             const added = muts.flatMap((mu) => Array.from(mu.addedNodes)).filter((n) => n.nodeType === 1).pop();
             if (!added) return;
             addAt = 0;
+            unfold('chars');
             requestAnimationFrame(() => {
                 const sc = formScroller();
                 if (!sc) return;

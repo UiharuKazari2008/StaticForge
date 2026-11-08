@@ -225,8 +225,7 @@
 }
 
 /* section heads: bold text over a rule, as WM's grouped forms */
-.wm-studio .wms-sect,
-.wm-studio[data-tab="prompt"] #manualModal .model-control::before {
+.wm-studio .wms-sect {
     display: block;
     margin: calc(6 * var(--wm-px)) 0 calc(4 * var(--wm-px));
     padding: 0 0 calc(1 * var(--wm-px));
@@ -235,8 +234,74 @@
     font: bold calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
 }
 
-.wm-studio[data-tab="prompt"] #manualModal .model-control::before {
-    content: 'Settings';
+/* Characters / Settings fold (wmStudio.js foldSections): the whole head is the touch target, a WM
+ * tree view's [-] / [+] box at its right; folded, the head shows a one-line summary */
+.wm-studio .wms-sect.wms-fold {
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    min-height: calc(20 * var(--wm-px));
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+}
+
+.wm-studio #manualModal .model-control > .wms-sect.wms-fold {
+    margin-top: calc(6 * var(--wm-px)) !important;
+}
+
+.wm-studio .wms-fold > .wms-fold-name {
+    flex: 0 0 auto;
+    font: inherit;
+    color: #000 !important;
+}
+
+.wm-studio .wms-fold > .wms-fold-sum {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: #4a4d4a !important;
+    font: calc(11 * var(--wm-px)) var(--wm-font) !important;
+}
+
+.wm-studio .wms-fold > .wms-fold-box {
+    flex: 0 0 auto;
+    position: relative;
+    box-sizing: border-box;
+    width: calc(11 * var(--wm-px));
+    height: calc(11 * var(--wm-px));
+    margin-right: calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background:
+        linear-gradient(#000, #000) center / calc(5 * var(--wm-px)) calc(1 * var(--wm-px)) no-repeat,
+        #fff;
+}
+
+/* the touch target reaches past the small box */
+.wm-studio .wms-fold > .wms-fold-box::before {
+    content: '';
+    position: absolute;
+    inset: calc(-8 * var(--wm-px)) calc(-6 * var(--wm-px));
+}
+
+.wm-studio .wms-fold[aria-expanded="false"] > .wms-fold-box {
+    background:
+        linear-gradient(#000, #000) center / calc(5 * var(--wm-px)) calc(1 * var(--wm-px)) no-repeat,
+        linear-gradient(#000, #000) center / calc(1 * var(--wm-px)) calc(5 * var(--wm-px)) no-repeat,
+        #fff;
+}
+
+.wm-studio .wms-fold:active > .wms-fold-name {
+    color: var(--wm-highlight) !important;
+}
+
+.wm-studio.wms-fold-settings[data-tab] #manualModal .model-control.model-control > .control-holder.control-holder,
+.wm-studio.wms-fold-chars :is(.wms-chars-none, #characterPromptsContainer, #textOverlaysContainer) {
+    display: none !important;
 }
 
 .wm-studio .wms-chars-none {
@@ -1667,15 +1732,22 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
 }
 
 /* ======================================================================
- * Settings: short fields side by side (Steps | Guidance, Rescale | Prints, Seed | Locks), the wide
- * ones (Model, Resolution, Sampler, Workspace) across. One grid for the whole section: label, field,
- * label, field; the desktop's rows step aside (display: contents) so their groups are its cells.
+ * Settings: one grid for the whole section: label, field (the desktop's rows step aside with
+ * display: contents, so their groups are its cells). The wide fields (Model, Resolution, Sampler)
+ * go across. Steps, Guidance, Rescale and Prints take a row each, their - / + steppers at a fixed
+ * width; where both steppers of a pair keep their value readable (wmStudio.js pairsLayout:
+ * .wms-pairs, about 312 WM px of form) they pair up: Steps | Guidance, Rescale | Prints.
+ * Seed shares its row with the dice and the locks (no Locks label).
  * ====================================================================== */
 .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder {
     display: grid !important;
-    grid-template-columns: calc(66 * var(--wm-px)) minmax(0, 1fr) max-content minmax(0, 1fr);
+    grid-template-columns: calc(66 * var(--wm-px)) minmax(0, 1fr) max-content;
     column-gap: calc(5 * var(--wm-px));
     align-items: center;
+}
+
+.wm-studio.wms-pairs[data-tab="prompt"] #manualModal .model-control .control-holder {
+    grid-template-columns: calc(66 * var(--wm-px)) minmax(0, 1fr) max-content minmax(0, 1fr);
 }
 
 .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .form-row {
@@ -1691,17 +1763,46 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     min-width: 0;
 }
 
-/* half rows share the section's columns */
-.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > :is(.control-row-steps, .control-row-img2imgctrl, .control-row-last, .control-row-seed, .control-row-lockcontrols) > .form-group {
+/* one field per row: the stepper keeps a stepper's width, not the whole row */
+.wm-studio[data-tab="prompt"]:not(.wms-pairs) #manualModal .model-control .control-holder > .form-row > .form-group .wms-stepper {
+    max-width: calc(150 * var(--wm-px)) !important;
+}
+
+/* half rows share the section's columns (pairs) */
+.wm-studio.wms-pairs[data-tab="prompt"] #manualModal .model-control .control-holder > :is(.control-row-steps, .control-row-img2imgctrl, .control-row-last) > .form-group,
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-seed > .form-group {
     grid-template-columns: subgrid !important;
 }
 
-.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder :is(.control-row-steps > .form-group:nth-child(odd), .control-row-img2imgctrl > .form-group:nth-child(1), .control-row-seed > .form-group) {
+.wm-studio.wms-pairs[data-tab="prompt"] #manualModal .model-control .control-holder :is(.control-row-steps > .form-group:nth-child(odd), .control-row-img2imgctrl > .form-group:nth-child(1)),
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-seed > .form-group {
     grid-column: 1 / 3;
 }
 
-.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder :is(.control-row-steps > .form-group:nth-child(2), .control-row-img2imgctrl > .form-group:nth-child(2), .control-row-last > .form-group, .control-row-lockcontrols > .form-group) {
+.wm-studio.wms-pairs[data-tab="prompt"] #manualModal .model-control .control-holder :is(.control-row-steps > .form-group:nth-child(2), .control-row-img2imgctrl > .form-group:nth-child(2), .control-row-last > .form-group) {
     grid-column: 3 / 5;
+}
+
+/* Seed | the dice and the locks: no label, the buttons right after the seed field */
+.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-lockcontrols > .form-group {
+    grid-column: 3 / -1;
+    display: flex !important;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.wm-studio #manualModal .model-control .control-holder > .form-row.control-row-lockcontrols > .form-group > label {
+    display: none !important;
+}
+
+.wm-studio #manualModal .model-control .control-row-seed #manualSeed {
+    width: 100% !important;
+    text-align: left !important;
+}
+
+.wm-studio #manualModal .model-control .control-row-lockcontrols .seed-input-group {
+    display: flex !important;
+    gap: calc(3 * var(--wm-px)) !important;
 }
 
 .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-model > .form-group { order: 1; }
@@ -1712,14 +1813,20 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
 .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-resolution > .form-group { order: 6; }
 .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-img2imgctrl > .form-group { order: 7; }
 .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-sampler > .form-group { order: 8; }
-.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-workspace > .form-group { order: 9; }
 .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-seed > .form-group { order: 10; }
 .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-lockcontrols > .form-group { order: 11; }
 
+/* the workspace picker is Menu > Workspace on the phone (wmStudio.js workspaceItems) */
+.wm-studio #manualModal .model-control .control-holder > .control-row-workspace.control-row-workspace,
+.wm-studio #manualModal .model-control .control-holder > .control-row-workspace > .form-group {
+    display: none !important;
+}
+
 /* a right-hand label sits right after its left neighbour's field */
-.wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder :is(.control-row-steps > .form-group:nth-child(2), .control-row-img2imgctrl > .form-group:nth-child(2), .control-row-last > .form-group, .control-row-lockcontrols > .form-group) > label {
+.wm-studio.wms-pairs[data-tab="prompt"] #manualModal .model-control .control-holder :is(.control-row-steps > .form-group:nth-child(2), .control-row-img2imgctrl > .form-group:nth-child(2), .control-row-last > .form-group) > label {
     padding-left: calc(3 * var(--wm-px)) !important;
 }
+
 
 /* the percentage fields keep the row's height, not the desktop's extra margin */
 .wm-studio #manualModal .model-control .control-holder > .form-row > .form-group {
@@ -1883,4 +1990,97 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
 .wm-studio #manualModal .percentage-input-container.wms-pct-host > .wms-pct:disabled {
     color: #848284 !important;
     -webkit-text-fill-color: #848284 !important;
+}
+
+/* ---- WM badges (wmStudio.js): the desktop model badges F / C / L and the resolution group badges in
+ * the closed combos and the drop-down rows; the desktop's colours, flat in a 1 px frame. Paid sizes
+ * (LG, WP, XL) keep the plain face, free ones (SM, the Normal wallpapers) the desktop's green ---- */
+.wm-studio #manualModal .wms-badge,
+html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge {
+    display: inline-block;
+    flex: 0 0 auto;
+    margin-left: calc(4 * var(--wm-px));
+    padding: 0 calc(2 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: var(--wm-tab-strip);
+    color: #000;
+    -webkit-text-fill-color: currentColor;
+    font: calc(10 * var(--wm-px)) / calc(12 * var(--wm-px)) var(--wm-font);
+    font-weight: normal;
+    text-shadow: none;
+    vertical-align: middle;
+}
+
+.wm-studio #manualModal .wms-badge.full-model-badge,
+html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.full-model-badge {
+    background: #d85a00;
+    color: #fff;
+}
+
+.wm-studio #manualModal .wms-badge.curated-badge,
+html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.curated-badge {
+    background: #004fd8;
+    color: #fff;
+}
+
+.wm-studio #manualModal .wms-badge.legacy-badge,
+html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.legacy-badge {
+    background: #000;
+    color: #fff;
+}
+
+.wm-studio #manualModal .wms-badge.legacy-furry-badge,
+html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.legacy-furry-badge {
+    background: #63004e;
+    color: #fff;
+}
+
+.wm-studio #manualModal .wms-badge.free-badge,
+html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
+    background: #00b152;
+    color: #fff;
+}
+
+/* Resolution: the size after the name (hidden by wmStudio.js when it would not fit) */
+.wm-studio #manualModal #manualResolutionDropdownBtn > .wms-res-dims {
+    flex: 0 0 auto;
+    margin-left: calc(5 * var(--wm-px));
+    color: #4a4d4a !important;
+    -webkit-text-fill-color: #4a4d4a !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    white-space: nowrap;
+}
+
+.wm-studio #manualModal #manualResolutionDropdownBtn > .wms-res-dims[hidden] {
+    display: none !important;
+}
+
+.wm-studio #manualModal #manualResolutionSelected {
+    display: inline-flex !important;
+    align-items: center;
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+/* the dice beside Seed (wmStudio.js diceBySeed): a WM push button like the locks */
+.wm-studio #manualModal .seed-input-group > #randomPromptToggleBtn {
+    flex: 0 0 auto;
+    width: calc(22 * var(--wm-px)) !important;
+}
+
+/* the row under the token strip lost its dice: only the badges, at the right */
+.wm-studio #manualModal .character-prompts-header > .character-prompts-title-group:not(:has(*)) {
+    display: none !important;
+}
+
+/* Prints: the desktop's spacing before the count goes; its stepper lines up with the others */
+.wm-studio #manualModal .model-control .control-row-last .wms-stepper {
+    margin-left: 0 !important;
+}
+
+/* the focused prompt's token count stays on one line at 360 px */
+.wm-studio #manualModal .token-info-top .token-count {
+    white-space: nowrap !important;
 }
