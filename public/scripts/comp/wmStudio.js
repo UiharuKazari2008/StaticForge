@@ -677,7 +677,7 @@
     function refreshTitle() {
         if (!ws || !isCurrent() || root.hasAttribute('data-wm-viewer')) return;
         const top = tools[tools.length - 1];
-        if (top) { ws.setTitle(top.title); return; }
+        if (top) { ws.setTitle(windowTitle(top.win)); return; }
         // a print running: its progress in the title (Generate stays free to queue another)
         if (generating()) {
             const p = progress();
@@ -1167,11 +1167,64 @@
             && !el.classList.contains('minimised') && !el.classList.contains('closing') && !dismissed.has(el));
     }
 
+    /** The window's caption: its title bar's own text first (not the toolbar beside it), else a header. */
     function windowTitle(win) {
-        const t = win.querySelector(':scope > .modal-window-title .modal-window-title-main span, :scope > .modal-window-title span, :scope > .modal-window-title')
-            || win.querySelector('.credit-cost-header span, .modal-header h3, .modal-header h2, .modal-header .modal-title, [class$="-header"] > span, [class$="-header"] > h3');
-        const text = t && t.textContent.replace(/\s+/g, ' ').trim();
-        return text || 'Studio';
+        const sels = [
+            ':scope > .modal-window-title .modal-window-title-main span',
+            ':scope > .modal-window-title .modal-window-title-main',
+            ':scope > .modal-window-title > span',
+            '.credit-cost-header span', '.modal-header h3', '.modal-header h2', '.modal-header .modal-title',
+            '[class$="-header"] > span', '[class$="-header"] > h3'
+        ];
+        for (const sel of sels) {
+            const t = win.querySelector(sel);
+            const text = t && t.textContent.replace(/\s+/g, ' ').trim();
+            if (text) return text;
+        }
+        return 'Studio';
+    }
+
+    // ---------------------------------------------------------------- a tool page's soft keys
+
+    const FOOTERS = '.modal-footer, .modal-footer-colored, .character-position-footer, .modal-actions, .dialog-buttons';
+
+    /** The buttons of the window's footer rows (hidden on the phone: they are its soft keys and Menu). */
+    function toolButtons(win) {
+        const seen = new Set();
+        const out = [];
+        win.querySelectorAll(FOOTERS).forEach((f) => {
+            if (f.closest('.modal') !== win) return; // a nested window's footer is its own
+            f.querySelectorAll('button').forEach((b) => {
+                if (seen.has(b) || b.hidden || b.classList.contains('hidden') || b.closest('.hidden')) return;
+                if (getComputedStyle(b).display === 'none') return;
+                const label = (b.textContent || '').replace(/\s+/g, ' ').trim() || b.title || b.getAttribute('aria-label') || '';
+                if (!label) return;
+                seen.add(b);
+                out.push({ b, label });
+            });
+        });
+        return out;
+    }
+
+    /**
+     * Soft keys of the top tool page. A form with Cancel or a Save (vSlider editor, Text Expander,
+     * Time and Date ...): left = its own primary button (Save, Apply ...), Menu = the other buttons
+     * and Cancel. A tool window (Character Positions, vSlider, Activity ...): left = Done (its close),
+     * Menu = its footer's buttons. Every row presses the desktop button.
+     */
+    function toolKeys(win) {
+        const btns = toolButtons(win);
+        const cancel = btns.find((x) => /^(cancel|close)$/i.test(x.label));
+        const prim = btns.filter((x) => x !== cancel && x.b.classList.contains('btn-primary')).pop();
+        const form = !!(prim && (cancel || /^(save|ok|update|write|process|combine|replace)/i.test(prim.label)));
+        const press = (x) => () => { if (!x.b.disabled) { x.b.click(); afterAction(); } };
+        const left = form
+            ? { label: prim.label.length > 14 ? prim.label.split(' ')[0] : prim.label, disabled: prim.b.disabled, action: press(prim) }
+            : { label: 'Done', action: closeTool };
+        const rows = btns.filter((x) => x !== cancel && !(form && x === prim))
+            .map((x) => ({ label: x.label, disabled: !!x.b.disabled, action: press(x) }));
+        if (form) rows.push('-', { label: cancel ? cancel.label : 'Cancel', action: closeTool });
+        return { left, right: rows.length ? { label: 'Menu', menu: () => toolKeys(win).rows } : null, rows, form, prim };
     }
 
     function setUnder() {
@@ -1188,7 +1241,24 @@
     function hostTool(win) {
         if (!page || tools.some((t) => t.win === win)) return;
         const box = page.querySelector('.wms-tool');
-        tools.push({ win, parent: win.parentNode, next: win.nextSibling, title: windowTitle(win) });
+        const entry = { win, parent: win.parentNode, next: win.nextSibling, title: windowTitle(win), mo: null };
+        tools.push(entry);
+        // its caption (SmartText [field]) and footer buttons (enabled, shown) follow on the title bar / soft keys
+        if (typeof MutationObserver === 'function') {
+            let queued = false;
+            entry.mo = new MutationObserver(() => {
+                if (queued) return;
+                queued = true;
+                requestAnimationFrame(() => {
+                    queued = false;
+                    if (tools[tools.length - 1] !== entry || !isCurrent()) return;
+                    refreshTitle();
+                    ws.refreshSoftKeys();
+                });
+            });
+            const watch = [win.querySelector(':scope > .modal-window-title'), ...win.querySelectorAll(FOOTERS)].filter(Boolean);
+            watch.forEach((el) => entry.mo.observe(el, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['disabled', 'class', 'hidden'] }));
+        }
         box.querySelector('.wms-tool-host').appendChild(win);
         setUnder();
         box.hidden = false;
@@ -1201,7 +1271,8 @@
     function releaseTool(win, silent) {
         const i = tools.findIndex((t) => t.win === win);
         if (i < 0) return;
-        const { parent, next } = tools[i];
+        const { parent, next, mo } = tools[i];
+        if (mo) mo.disconnect();
         tools.splice(i, 1);
         win.removeAttribute('data-wms-under');
         try {
@@ -1528,6 +1599,21 @@
             if (!btn || !page.contains(btn)) return;
             setTimeout(() => proxyDropdown(btn), 0);
         }, true);
+        // a long press on a prompt field: Chrome on Android raises contextmenu (pointerType touch) before
+        // contextMenu.js's own long-press timer confirms the press, so the desktop let the native text
+        // menu through and the prompt menu never showed. On the phone the hold opens the prompt's menu
+        // (Copy / Cut / Paste are on it) as a WM menu.
+        page.addEventListener('contextmenu', (e) => {
+            if (!isCurrent() || !e.target.closest || e.pointerType === 'mouse') return;
+            const t = e.target.closest('[data-context-menu]');
+            if (!t || !page.contains(t) || !/^(TEXTAREA|INPUT)$/.test(t.tagName) || typeof contextMenu === 'undefined' || !contextMenu) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (contextMenu.touchTimer) { clearTimeout(contextMenu.touchTimer); contextMenu.touchTimer = null; }
+            const pop = shellPopup();
+            if (pop && !pop.hidden) return; // the timer already opened it
+            try { contextMenu.showMenu(e, t, true, true); } catch (err) { console.warn('[wmStudio] prompt menu', err); }
+        }, true);
         // a tap on the finished print opens it in the picture view
         page.addEventListener('click', (e) => {
             if (tab !== 'print' || !e.target.closest) return;
@@ -1540,7 +1626,10 @@
     }
 
     function softKeys() {
-        if (tools.length) return { left: { label: 'Done', action: closeTool }, right: null };
+        if (tools.length) {
+            const k = toolKeys(tools[tools.length - 1].win);
+            return { left: k.left, right: k.right };
+        }
         return { left: generateKey(), right: { label: 'Menu', menu: mainMenu } };
     }
 
@@ -1573,7 +1662,9 @@
             titleKind: () => (tools.length ? 'ok' : 'close'),
             onTitleOk() {
                 if (!tools.length) return false;
-                closeTool();
+                // ok = the page's left soft key (a form's Save, else Done)
+                const k = toolKeys(tools[tools.length - 1].win);
+                if (k.left && typeof k.left.action === 'function' && !k.left.disabled) k.left.action();
                 return true;
             },
             historyDepth() { return tools.length; },

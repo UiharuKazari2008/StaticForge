@@ -3517,6 +3517,9 @@ function computeTagOverlayReplaceRange(value, tokenStart, tokenEnd, insertText, 
 function shouldAbortAutocompleteSearchSession() {
     if (!currentSearchSessionBounds || !currentCharacterAutocompleteTarget) return false;
     const target = currentCharacterAutocompleteTarget;
+    // SmartText's own search box (lookup mode) searches for the prompt it inserts into while the
+    // focus is in the tool, not in the prompt: that session is the tool's and never caret-bound
+    if (document.activeElement !== target && isAutofillToolLookupMode()) return false;
     if (document.activeElement !== target) return true;
     if (typeof target.selectionStart !== 'number') return true;
 

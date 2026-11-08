@@ -245,7 +245,8 @@ class CharacterPositionToolManager {
         const preview = document.getElementById('manualPreviewImage');
         const datasetUrl = this._usableImageUrl(preview?.dataset.manualPreviewUrl);
         const galleryUrl = this._galleryUrlFromCurrentPreview();
-        const src = this._usableImageUrl(preview?.currentSrc || preview?.src);
+        // an empty src attribute reads back as the page's own URL: no print, no image
+        const src = preview?.getAttribute('src') ? this._usableImageUrl(preview.currentSrc || preview.src) : '';
         const previewVisible = preview && !preview.classList.contains('hidden');
         if (previewVisible) {
             if (datasetUrl) return datasetUrl;

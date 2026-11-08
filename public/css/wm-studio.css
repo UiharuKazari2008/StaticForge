@@ -2084,3 +2084,123 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
 .wm-studio #manualModal .token-info-top .token-count {
     white-space: nowrap !important;
 }
+
+/* ---- no desktop shadows on the WM form (the collapsed character field's 16 px drop shadow
+ * read as a scroll shadow on the phone) ---- */
+.wm-studio #manualModal :is(div, span, section, label, input, textarea, button, ul, li, img) {
+    box-shadow: none !important;
+}
+
+/* ---- a character: name and its one-line field, the move / delete / on buttons small at the right ---- */
+.wm-studio #manualModal .character-prompt-item .character-prompt-controls {
+    display: flex !important;
+    justify-content: flex-end !important;
+    gap: calc(3 * var(--wm-px)) !important;
+    width: auto !important;
+}
+
+.wm-studio #manualModal .character-prompt-item .character-prompt-controls > button {
+    flex: 0 0 auto !important;
+    width: calc(26 * var(--wm-px)) !important;
+    min-width: 0 !important;
+    height: calc(20 * var(--wm-px)) !important;
+    padding: 0 !important;
+}
+
+.wm-studio #manualModal .character-prompt-item .character-prompt-preview input {
+    font-style: normal !important;
+}
+
+/* ---- the prompt toolbar keeps every button on the page: its rows wrap at 360 / 390 px ---- */
+.wm-studio #manualModal .prompt-textarea-toolbar.prompt-textarea-toolbar:not(.hidden) {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    row-gap: calc(2 * var(--wm-px)) !important;
+    height: auto !important;
+    max-height: none !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar :is(.toolbar-left, .toolbar-right) {
+    flex-wrap: wrap !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    gap: calc(2 * var(--wm-px)) !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar .toolbar-btn,
+.wm-studio #manualModal .prompt-textarea-toolbar .emphasis-btn {
+    width: calc(24 * var(--wm-px)) !important;
+    min-width: 0 !important;
+    height: calc(22 * var(--wm-px)) !important;
+    padding: 0 !important;
+}
+
+/* the emphasis bar (New Group, its weight, + - [ ] apply cancel) as WM controls: black label,
+ * the weight in a WM edit box, tint buttons; it wraps instead of running off the page */
+.wm-studio #manualModal .prompt-textarea-toolbar.emphasis-mode .toolbar-emphasis-elements,
+.wm-studio #manualModal .toolbar-direct-emphasis-elements {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar .emphasis-toolbar {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: calc(3 * var(--wm-px)) !important;
+    width: 100% !important;
+    padding: 0 !important;
+    background: none !important;
+    border: 0 !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar .emphasis-type {
+    flex: 0 0 auto;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    text-shadow: none !important;
+    opacity: 1 !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar .emphasis-value {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    min-width: calc(40 * var(--wm-px)) !important;
+    height: calc(20 * var(--wm-px)) !important;
+    padding: 0 calc(3 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    font: calc(12 * var(--wm-px)) / calc(18 * var(--wm-px)) var(--wm-font) !important;
+    text-align: center !important;
+    text-shadow: none !important;
+    opacity: 1 !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar .emphasis-controls,
+.wm-studio #manualModal .prompt-textarea-toolbar .emphasis-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: calc(2 * var(--wm-px)) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: none !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar .emphasis-controls .hidden {
+    display: none !important;
+}
+
+/* selected prompt text: WM's highlight with white text */
+.wm-studio #manualModal :is(textarea, input)::selection {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text, #fff);
+    -webkit-text-fill-color: var(--wm-highlight-text, #fff);
+}
