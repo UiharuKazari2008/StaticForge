@@ -34,6 +34,8 @@ The Chromium debugging endpoint listens only on `127.0.0.1:9334`.
 
 The Alchemy-owned tab used by MCP `alchemy_browser` and `read_discord_channel_history` no longer lives here. It now opens in Yukimi's Alchemy browser (`services/grimoire-browser`, profile `~/.local/share/dreamscape/alchemy-profile`), which exposes a loopback-only CDP port (`ALCHEMY_CDP_PORT`, default `127.0.0.1:9339`; `0` turns it off). `modules/alchemyOwnedTab.js` opens its own tab at `https://discord.com/app#alchemy-owned`; Alchemy adopts that page as a window, so Yukimi signs in to discord.com there once (open Alchemy / Internet Explorer in Dreamscape and look for the Discord window). It never takes over her other tabs, never touches the `/app?agent=1` tab, and is never closed for being over Alchemy's window cap. Tool access stays gated by `sfapp_alchemy_browser` to Hoshino and Yukimi, history reads are read-only, and cookies or tokens are never returned.
 
+Once Discord is open in that window, channel changes stay in-app. `modules/alchemyOwnedTab.js` routes a same-origin Discord URL by clicking an existing sidebar link or by `history.pushState` plus `popstate`; it never calls `Page.navigate` on an already-open Discord document, even when routing fails (`DISCORD_INAPP_ROUTE_FAILED` leaves the signed-in window intact). `read_discord_channel_history` checks sign-in on the current document before routing, and a named channel already in the sidebar is resolved without first loading the guild root (#717).
+
 ## Verification
 
 ```bash
