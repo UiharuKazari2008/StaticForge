@@ -275,8 +275,10 @@
 .wm-director #directorChatInput {
     flex: 1 1 auto;
     min-width: 0;
-    min-height: calc(19 * var(--wm-px)) !important;
+    /* WM Messaging's body field: three lines before it grows */
+    min-height: calc(46 * var(--wm-px)) !important;
     max-height: 30vh !important;
+    box-sizing: border-box !important;
     margin: 0 !important;
     padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
     font: calc(12 * var(--wm-px)) / 1.3 var(--wm-font) !important;
@@ -747,6 +749,7 @@
 
 /* ---- WM scroll bars on the pages (wm-shell.css draws the same for .wm-page) ---- */
 .wm-director .wmd-page-sessions::-webkit-scrollbar,
+.wm-director #directorComposer #directorAttachChips::-webkit-scrollbar,
 .wm-director .wmd-page-prints::-webkit-scrollbar,
 .wm-director .wmd-history-list::-webkit-scrollbar,
 .wm-director .wmd-text::-webkit-scrollbar,
@@ -757,6 +760,7 @@
 }
 
 .wm-director .wmd-page-sessions::-webkit-scrollbar-track,
+.wm-director #directorComposer #directorAttachChips::-webkit-scrollbar-track,
 .wm-director .wmd-page-prints::-webkit-scrollbar-track,
 .wm-director .wmd-history-list::-webkit-scrollbar-track,
 .wm-director .wmd-text::-webkit-scrollbar-track,
@@ -767,6 +771,7 @@
 }
 
 .wm-director .wmd-page-sessions::-webkit-scrollbar-thumb,
+.wm-director #directorComposer #directorAttachChips::-webkit-scrollbar-thumb,
 .wm-director .wmd-page-prints::-webkit-scrollbar-thumb,
 .wm-director .wmd-history-list::-webkit-scrollbar-thumb,
 .wm-director .wmd-text::-webkit-scrollbar-thumb,
@@ -779,6 +784,7 @@
 }
 
 .wm-director .wmd-page-sessions::-webkit-scrollbar-button:single-button,
+.wm-director #directorComposer #directorAttachChips::-webkit-scrollbar-button:single-button,
 .wm-director .wmd-page-prints::-webkit-scrollbar-button:single-button,
 .wm-director .wmd-history-list::-webkit-scrollbar-button:single-button,
 .wm-director .wmd-text::-webkit-scrollbar-button:single-button,
@@ -791,6 +797,7 @@
 }
 
 .wm-director .wmd-page-sessions::-webkit-scrollbar-button:single-button:vertical:decrement,
+.wm-director #directorComposer #directorAttachChips::-webkit-scrollbar-button:single-button:vertical:decrement,
 .wm-director .wmd-page-prints::-webkit-scrollbar-button:single-button:vertical:decrement,
 .wm-director .wmd-history-list::-webkit-scrollbar-button:single-button:vertical:decrement,
 .wm-director .wmd-text::-webkit-scrollbar-button:single-button:vertical:decrement,
@@ -803,6 +810,7 @@
 }
 
 .wm-director .wmd-page-sessions::-webkit-scrollbar-button:single-button:vertical:increment,
+.wm-director #directorComposer #directorAttachChips::-webkit-scrollbar-button:single-button:vertical:increment,
 .wm-director .wmd-page-prints::-webkit-scrollbar-button:single-button:vertical:increment,
 .wm-director .wmd-history-list::-webkit-scrollbar-button:single-button:vertical:increment,
 .wm-director .wmd-text::-webkit-scrollbar-button:single-button:vertical:increment,
@@ -944,61 +952,84 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
     color: var(--wm-highlight-text, #fff) !important;
 }
 
-/* ---- attachments on the message being written: WM thumbnails (1 px black frame, square) with a
- * remove box always shown (a phone has no hover); files without a picture: WM's file icon and name ---- */
-.wm-director #directorAttachChips {
+/* ---- attachments on the message being written (WM Messaging's attachment list, as tiles under the
+ * text): every tile is 36 px high with its own space (4 px apart, wrapping, two rows then scrolling);
+ * pictures are framed thumbnails, other files WM's file icon and their name; the remove box sits
+ * inside its tile's corner (a phone has no hover) ---- */
+.wm-director #directorComposer #directorAttachChips {
     display: flex;
     flex-wrap: wrap;
-    gap: calc(3 * var(--wm-px));
+    align-items: flex-start;
+    gap: calc(4 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) 0 0 !important;
+    padding: 0 !important;
+    max-height: calc(76 * var(--wm-px) + 1px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.wm-director #directorComposer #directorAttachChips:empty {
+    display: none;
 }
 
 .wm-director #directorAttachChips .director-attach-chip {
     position: relative;
-    width: calc(34 * var(--wm-px));
-    height: calc(34 * var(--wm-px));
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: calc(36 * var(--wm-px));
+    height: calc(36 * var(--wm-px));
     max-width: none;
+    margin: 0;
     padding: 0;
+    gap: 0;
     border: calc(1 * var(--wm-px)) solid #000;
     border-radius: 0;
     background: #fff;
     backdrop-filter: none;
-    overflow: visible;
+    overflow: hidden;
 }
 
 .wm-director #directorAttachChips .director-attach-chip .director-session-preview {
     border-radius: 0;
 }
 
-/* no picture: the WM file glyph and the name beside it */
 .wm-director #directorAttachChips .director-attach-chip > i {
     display: none;
 }
 
+/* no picture (a file, the queued messages): WM's file icon at the left, the name in up to two lines */
 .wm-director #directorAttachChips .director-attach-chip:not(:has(.director-session-preview)) {
-    width: auto;
-    max-width: calc(150 * var(--wm-px));
-    height: calc(20 * var(--wm-px));
-    padding: 0 calc(16 * var(--wm-px)) 0 calc(19 * var(--wm-px));
+    display: flex;
+    align-items: center;
     justify-content: flex-start;
-    background: #fff calc(2 * var(--wm-px)) 50% / calc(16 * var(--wm-px)) no-repeat image-set(url('/static_images/wm61/fe-file.png') 1x, url('/static_images/wm61/fe-file@2x.png') 2x);
+    width: auto;
+    min-width: calc(80 * var(--wm-px));
+    max-width: calc(140 * var(--wm-px));
+    padding: 0 calc(17 * var(--wm-px)) 0 calc(22 * var(--wm-px));
+    background: #fff calc(3 * var(--wm-px)) 50% / calc(16 * var(--wm-px)) no-repeat image-set(url('/static_images/wm61/fe-file.png') 1x, url('/static_images/wm61/fe-file@2x.png') 2x, url('/static_images/wm61/fe-file@4x.png') 4x);
 }
 
 .wm-director #directorAttachChips .director-attach-chip > span,
 .wm-director #directorAttachChips .director-attach-chip[data-queue-chip]::after {
     content: attr(title);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    max-width: none;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font: calc(11 * var(--wm-px)) var(--wm-font);
-    line-height: calc(18 * var(--wm-px));
+    overflow-wrap: anywhere;
+    white-space: normal;
+    color: #000;
+    font: calc(11 * var(--wm-px)) / calc(13 * var(--wm-px)) var(--wm-font);
 }
 
-/* the remove box: 11 px, black frame, a black x (WM's close glyph drawn with two strokes) */
+/* the remove box: 13 px, black frame, a black x, inside the tile's top right corner */
 .wm-director #directorAttachChips .director-attach-chip .btn-secondary {
     position: absolute;
     inset: auto;
-    top: calc(-4 * var(--wm-px));
-    right: calc(-4 * var(--wm-px));
+    top: calc(1 * var(--wm-px));
+    right: calc(1 * var(--wm-px));
     width: calc(13 * var(--wm-px));
     height: calc(13 * var(--wm-px));
     min-width: 0;
@@ -1015,9 +1046,11 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
     box-shadow: none;
 }
 
-.wm-director #directorAttachChips .director-attach-chip:not(:has(.director-session-preview)) .btn-secondary {
-    top: calc(3 * var(--wm-px));
-    right: calc(2 * var(--wm-px));
+/* a bigger touch target than the 13 px box it draws */
+.wm-director #directorAttachChips .director-attach-chip .btn-secondary::after {
+    content: '';
+    position: absolute;
+    inset: calc(-6 * var(--wm-px));
 }
 
 .wm-director #directorAttachChips .director-attach-chip .btn-secondary i {
@@ -1044,4 +1077,36 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
     display: block;
     width: 100%;
     height: auto;
+}
+
+/* ---- queued messages over her scene (wmDirector.js paintQueue): a WM label under the title banner ---- */
+.wm-director .wmd-queue {
+    position: absolute;
+    z-index: 25;
+    top: calc(var(--wmd-queue-top, 52px));
+    left: 6px;
+    max-width: calc(100% - 12px);
+    box-sizing: border-box;
+    margin: 0;
+    padding: calc(2 * var(--wm-px)) calc(5 * var(--wm-px)) calc(2 * var(--wm-px)) calc(22 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff calc(3 * var(--wm-px)) 50% / calc(14 * var(--wm-px)) no-repeat image-set(url('/static_images/wm61/msg-folder-outbox.png') 1x, url('/static_images/wm61/msg-folder-outbox@2x.png') 2x, url('/static_images/wm61/msg-folder-outbox@4x.png') 4x);
+    box-shadow: none;
+    color: #000;
+    font: calc(11 * var(--wm-px)) / calc(14 * var(--wm-px)) var(--wm-font);
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-director .wmd-queue[hidden],
+.wm-director.wmd-composing .wmd-queue {
+    display: none;
+}
+
+.wm-director .wmd-queue:active {
+    background-color: var(--wm-highlight);
+    color: var(--wm-highlight-text, #fff);
 }

@@ -224,8 +224,15 @@
         }
         if (!shown) return;
         syncBlink(d.mascot);
+        // a chat that loaded while the app was in the background (a reload reopens it hidden) was read
+        // with her VN off (isHosted false): its reply box is set now that she is on screen
+        const m = d.mascot;
+        if (m && !m._result && !m.working && m.vnBubbles() && d.currentSession && Array.isArray(d.currentSession.messages) && d.currentSession.messages.length) {
+            m.onMessages(d.currentSession.messages);
+        }
         syncComposer();
         refreshTitle();
+        paintQueue();
         if (d.mascot) d.mascot.settleLayout(600);
         if (ws && isCurrent()) ws.refreshSoftKeys();
     }
@@ -1091,6 +1098,15 @@
             if (window.wmSettings && typeof window.wmSettings.open === 'function') window.wmSettings.open('director', null, { direct: true });
         };
         d.togglePrintsPane = function () { inApp(showPrints); };
+        // the queued messages (the desktop's chip in its always-visible composer) also show over her scene
+        const queueChip = d.renderQueueChip;
+        if (typeof queueChip === 'function') {
+            d.renderQueueChip = function (...args) {
+                const r = queueChip.apply(this, args);
+                paintQueue();
+                return r;
+            };
+        }
         // the inspector is loaded on first use: wrap it once it is there
         const payload = d.openToolPayload;
         d.openToolPayload = async function (row) {
@@ -1101,6 +1117,49 @@
             patchInspector();
             return busyOf(() => payload.call(this, row));
         };
+    }
+
+    // ---------------------------------------------------------------- queued messages
+
+    function queuedRows(d) {
+        const id = d && d.currentSession && d.currentSession.id;
+        try { return id && typeof d.queuedForSession === 'function' ? d.queuedForSession(id) : []; } catch (_) { return []; }
+    }
+
+    /** Clear: the desktop chip's own remove button (director.js renderQueueChip), one code path. */
+    function clearQueue() {
+        const btn = document.querySelector('#directorAttachChips [data-queue-chip] button');
+        if (btn) btn.click();
+        paintQueue();
+        after();
+    }
+
+    /**
+     * Messages written while she works wait for the turn to end (director.js's queue). The desktop shows
+     * them as a chip in its composer, which is always on screen; on the phone the composer is closed
+     * most of the time, so a WM label over her scene says so (tap: its menu).
+     */
+    function paintQueue() {
+        if (!page) return;
+        const d = dir();
+        const rows = queuedRows(d);
+        let el = page.querySelector('.wmd-queue');
+        if (!rows.length) { if (el) el.hidden = true; return; }
+        if (!el) {
+            el = document.createElement('button');
+            el.type = 'button';
+            el.className = 'wmd-queue';
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const r = el.getBoundingClientRect();
+                ws.menuAt(r.left, r.bottom, [{ label: 'Clear Queued Messages', action: clearQueue }]);
+            });
+            page.appendChild(el);
+        }
+        const first = String((rows[0] && rows[0].content) || '').replace(/\s+/g, ' ').trim();
+        el.textContent = rows.length === 1 ? `Queued: ${first || '1 message'}` : `Queued: ${rows.length} messages`;
+        el.title = 'Sends when this turn finishes';
+        el.hidden = false;
     }
 
     // ---------------------------------------------------------------- menus
@@ -1199,6 +1258,7 @@
         if (browserShown(d)) items.push({ label: 'Browser', action: showBrowser });
         items.push('-');
         items.push({ label: 'Stop', disabled: !running(d), action: () => { d.abortTurn(); after(); } });
+        if (queuedRows(d).length) items.push({ label: 'Clear Queued Messages', action: clearQueue });
         const quick = toolRows(['Quick Tasks']);
         if (quick.length) items.push(...quick);
         items.push({ label: 'Session', disabled: draft, submenu: sessionItems });
@@ -1390,6 +1450,7 @@
             if (stack.some((p) => p.kind === 'sessions')) renderSessions();
             const pr = stack.find((p) => p.kind === 'prints');
             if (pr) renderPrints(pr.el);
+            paintQueue();
         };
         if (window.wsClient && typeof window.wsClient.on === 'function') {
             ['director_computer_status', 'director_message_response', 'director_messages_updated', 'director_get_sessions_response', 'director_create_session_response', 'director_delete_session_response', 'director_fork_session_response', 'director_move_session_response', 'director_session_image', 'director_session_renamed'].forEach((t) => {
