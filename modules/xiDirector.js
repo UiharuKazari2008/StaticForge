@@ -1382,7 +1382,11 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
         const runtime = sanitizeRuntime((peekIndex().chats.find((item) => item.id === sessionId) || {}).runtime);
         if (runtime === 'cursor') director.installUnrestrictedCli(layout().configDir);
         if (runtime === 'tokenrouter') director._test.requireTokenRouterKey(gr);
-        if (customProviders.isEngine(runtime)) customProviders.requireReady(gr, runtime);
+        if (customProviders.isEngine(runtime)) {
+            // the bridge looks custom providers up through gr (unbound after a restart until a turn binds it)
+            tokenRouter.bindGlobalResources(gr);
+            customProviders.requireReady(gr, runtime);
+        }
         await ensureXiMcp(gr);
         const catalog = cachedModels();
         const runModel = runtime === 'cursor' ? director._test.resolveRunModel(catalog, message) : null;

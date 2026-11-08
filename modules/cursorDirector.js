@@ -6821,6 +6821,8 @@ async function executeDynagenTurn(gr, job, review, started) {
         } else if (agent.engine === 'claude') {
             cliRun = resolveClaudeRun(agent);
         } else if (customProviders.isEngine(agent.engine)) {
+            // The bridge looks the provider up through gr; after a restart nothing else may have bound it yet.
+            tokenRouter.bindGlobalResources(gr);
             customProviders.requireReady(gr, agent.engine);
             cliRun = await customProviders.resolveForTurn(gr, agent.engine, agent);
         } else {
@@ -7768,6 +7770,7 @@ async function resolveHiddenRun(gr, jail, agent) {
     }
     if (agent.engine === 'claude') return { model: null, cliRun: resolveClaudeRun(agent) };
     if (customProviders.isEngine(agent.engine)) {
+        tokenRouter.bindGlobalResources(gr);
         customProviders.requireReady(gr, agent.engine);
         return { model: null, cliRun: await customProviders.resolveForTurn(gr, agent.engine, agent) };
     }
