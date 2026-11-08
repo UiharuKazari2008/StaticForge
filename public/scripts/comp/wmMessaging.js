@@ -56,7 +56,7 @@
 
     let ws = null; // window.wmShell
     // WM's wait cursor (wmShell.busy) over work the user waits for: a message sending, a reply's original loading
-    const busyOf = (fn) => (ws && typeof ws.busy === 'function' ? ws.busy(fn) : fn());
+    const busyOf = (fn, opts) => (ws && typeof ws.busy === 'function' ? ws.busy(fn, opts) : fn());
     let page = null;
     let mailboxes = []; // [{ owner, label, unread, spamUnread }]
     let owner = null; // the account on screen
@@ -204,7 +204,9 @@
         const request = { folder, limit: Math.max(PAGE_LIMIT, opts.keep ? mail.length : 0) };
         if (!isMine()) request.viewAsOwner = owner;
         try {
-            const r = await send('dovecote_list_mail', request);
+            // a new folder / account is a wait (the list is empty until it comes): the wait cursor;
+            // a refresh of the list on screen (keep) runs behind it
+            const r = await (opts.keep ? send('dovecote_list_mail', request) : busyOf(() => send('dovecote_list_mail', request)));
             if (token !== listToken) return;
             mail = (r && r.mail) || [];
             nextCursor = (r && r.nextCursor) || null;
@@ -259,7 +261,7 @@
         const list = (ids || []).map(String).filter(Boolean);
         if (!list.length || !isMine()) return false;
         try {
-            await send('dovecote_mark_mail', Object.assign({ ids: list }, patch));
+            await busyOf(() => send('dovecote_mark_mail', Object.assign({ ids: list }, patch)));
             return true;
         } catch (err) {
             await ws.messageBox({ title: 'Messaging', icon: 'error', text: (err && err.message) || 'The message could not be changed.' });
@@ -422,8 +424,10 @@
         const unread = !m.read && !out;
         // a message with attachments has the envelope with the paper clip (its unread state is the bold)
         const icon = m.attachments && m.attachments.length ? 'msg-attach-mail' : (unread ? 'msg-unread' : 'msg-read');
+        // the envelope is a CSS background (wm-messaging.css): an <img srcset> per row cost ~10 ms
+        // each to insert on a throttled phone (image selection runs as the list is parsed)
         return `<div class="msg-row${unread ? ' is-unread' : ''}${String(selectedId) === String(m.id) ? ' is-selected' : ''}" role="option" data-id="${id}" aria-selected="${String(selectedId) === String(m.id)}">
-            <span class="msg-ico">${img(icon)}</span>
+            <span class="msg-ico" data-ico="${icon}"></span>
             <span class="msg-from">${esc(who || '(no sender)')}</span>
             <span class="msg-date">${esc(listDate(m.createdAt))}</span>
             <span class="msg-subj">${esc(m.subject || '(no subject)')}</span>
@@ -439,7 +443,7 @@
         list.innerHTML = rows.map(rowHtml).join('') + (hasMore ? '<div class="msg-more">Loading...</div>' : '');
         let text = '';
         if (listError) text = listError;
-        else if (loading && !rows.length) text = 'Loading...';
+        else if (loading && !rows.length) text = '';
         else if (!rows.length) text = 'No messages.';
         empty.textContent = text;
         empty.hidden = !text;
@@ -564,7 +568,7 @@
         // an agent's mailbox is only looked at: its unread mail stays unread for the agent
         if (!isMine()) { request.viewAsOwner = owner; request.markRead = false; }
         try {
-            const r = await send('dovecote_get_mail', request, true);
+            const r = await busyOf(() => send('dovecote_get_mail', request, true));
             if (token !== readToken) return;
             const full = r && r.mail;
             if (full) reading = full;
@@ -589,7 +593,7 @@
         if (!m) { view.querySelector('.msg-read').innerHTML = ''; return; }
         const to = listOf(m.to).map(personName).join('; ');
         const cc = listOf(m.cc).map(personName).join('; ');
-        const att = (m.attachments || []).map((a) => `<div class="msg-att">${img('msg-attachment')}<span>${esc(a.name || 'attachment')}</span></div>`).join('');
+        const att = (m.attachments || []).map((a, n) => `<div class="msg-att" role="button" data-n="${n}">${img('msg-attachment')}<span>${esc(a.name || 'attachment')}</span></div>`).join('');
         view.querySelector('.msg-read').innerHTML = `
             <div class="msg-hdr">
                 <div class="msg-hdr-from">${esc(senderText(m))}</div>
@@ -638,7 +642,7 @@
         let r;
         if (isMine()) {
             try {
-                r = await send('dovecote_render_body', { id: m.id }, true);
+                r = await busyOf(() => send('dovecote_render_body', { id: m.id }, true));
             } catch (_) {
                 return;
             }
@@ -694,6 +698,45 @@
         });
         host.textContent = '';
         host.appendChild(frame);
+    }
+
+    /**
+     * A tap on an attachment: its bytes (dovecote_get_attachment) under the wait cursor, then a picture in
+     * the shell's picture view (lightbox.js), anything else saved (the desktop's Dovecote does the same).
+     */
+    async function openAttachment(n) {
+        const m = reading;
+        const a = m && m.attachments && m.attachments[n];
+        if (!a || !a.id) return;
+        const request = { id: a.id };
+        if (!isMine()) request.viewAsOwner = owner;
+        let base64;
+        try {
+            const r = await busyOf(() => send('dovecote_get_attachment', request, true));
+            base64 = r && r.attachment && r.attachment.base64;
+        } catch (err) {
+            await ws.messageBox({ title: 'Messaging', icon: 'error', text: (err && err.message) || 'The attachment could not be opened.' });
+            return;
+        }
+        if (!base64 || reading !== m) return;
+        const type = String(a.mimeType || 'application/octet-stream');
+        const name = a.name || 'attachment';
+        if (type.startsWith('image/') && typeof showLightbox === 'function') { // eslint-disable-line no-undef
+            try { showLightbox({ url: `data:${type};base64,${base64}`, title: name }); return; } catch (_) { /* saved below */ } // eslint-disable-line no-undef
+        }
+        try {
+            const bin = atob(base64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const url = URL.createObjectURL(new Blob([bytes], { type }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = name;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (_) { /* nothing to save */ }
     }
 
     /** The message one step up or down the list from the one being read. */
@@ -1073,6 +1116,10 @@
                 </form>
             </div>`;
         onListPointer(p.querySelector('.msg-scroll'));
+        p.querySelector('.msg-read').addEventListener('click', (e) => {
+            const att = e.target.closest('.msg-atts .msg-att[data-n]');
+            if (att) openAttachment(Number(att.dataset.n));
+        });
         const folderBtn = p.querySelector('.msg-folder');
         folderBtn.addEventListener('click', (e) => {
             e.stopPropagation();

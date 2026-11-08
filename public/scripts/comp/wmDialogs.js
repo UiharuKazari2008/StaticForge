@@ -154,7 +154,7 @@
             } catch (_) { document.body.appendChild(win); }
         }
         if (!isCurrent()) return;
-        if (!layers.length) { ws.back(); return; }
+        if (!layers.length) { ws.back({ app: true }); return; }
         paint();
         ws.syncHistory();
     }
@@ -232,6 +232,38 @@
         };
         wrapped._wmOp = true;
         window.openModal = wrapped;
+    }
+
+    /**
+     * Expand Canvas (imageExpansion.js) builds its dialog and reads the picture's metadata before the
+     * form can be used (~250 ms of script on a throttled phone, then a round trip): the shell's wait
+     * cursor from the tap until it is ready, painted first (the dialog's own cover spinner is hidden in
+     * wm-dialogs.css). Every caller goes through the global, so the picture menu, Studio and Spellbook too.
+     */
+    function wrapExpansion() {
+        const orig = window.openImageExpansionModal;
+        if (typeof orig !== 'function' || orig._wmOp) return;
+        const wrapped = function () {
+            const args = arguments;
+            const self = this;
+            let result = null;
+            // the cursor ends when the form is usable (its cover drops .show), not when the whole
+            // call settles: the prompt compile after it runs in the background (#723 review)
+            const ready = ws.busy(() => {
+                try { result = Promise.resolve(orig.apply(self, args)); } catch (err) { result = Promise.reject(err); }
+                const cover = document.querySelector('.gallery-move-right-panel-cover.show');
+                if (!cover || typeof MutationObserver !== 'function') return result;
+                return new Promise((resolve) => {
+                    const mo = new MutationObserver(() => { if (!cover.classList.contains('show')) { mo.disconnect(); resolve(); } });
+                    mo.observe(cover, { attributes: true, attributeFilter: ['class'] });
+                    result.then(() => { mo.disconnect(); resolve(); }, () => { mo.disconnect(); resolve(); });
+                });
+            }, { paint: true });
+            // callers still get the call's own promise (and its errors)
+            return ready.then(() => result);
+        };
+        wrapped._wmOp = true;
+        window.openImageExpansionModal = wrapped;
     }
 
     // ---------------------------------------------------------------- the Anlas question
@@ -434,6 +466,12 @@
                 patchContextMenu();
                 paint();
             },
+            // the shell's title when the picture view closes over a form: the form's own, not
+            // "Melaton Mobile" for a frame (Expand Canvas from the viewer, #723)
+            titleNow() {
+                const t = top();
+                return t ? windowTitle(t.win) : null;
+            },
             hide() {
                 // another app replaces the form: its dialogs cancel (none stays open unseen)
                 const a = document.activeElement;
@@ -462,6 +500,7 @@
         });
         wrapOpenModal();
         wrapCreditCost();
+        wrapExpansion();
         if (!patchContextMenu()) {
             const t = setInterval(() => { if (patchContextMenu()) clearInterval(t); }, 1000);
             setTimeout(() => clearInterval(t), 60000);

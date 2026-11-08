@@ -532,10 +532,16 @@
         void dir;
     }
 
+    let grimLoading = false; // a Grimoire page on its way (renderLocal)
+    function setGrimLoading(on) {
+        grimLoading = !!on;
+        if (page) page.classList.toggle('is-loading', (loading && !onHome()) || (grimLoading && onHome()));
+    }
+
     function setLoading(on) {
         loading = !!on;
         if (!page) return;
-        page.classList.toggle('is-loading', loading && !onHome());
+        page.classList.toggle('is-loading', (loading && !onHome()) || (grimLoading && onHome()));
         renderGoButton();
         if (isCurrent()) ws.refreshSoftKeys();
     }
@@ -1056,7 +1062,7 @@
             await ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: 'Open a web page first, then add it to Favorites.' });
             return;
         }
-        if (!favoritesLoaded) await loadSettings();
+        if (!favoritesLoaded) await busyOf(loadSettings);
         const name = await ws.messageBox({
             title: 'Add Favorite',
             text: `Name:\n(${u})`,
@@ -1101,7 +1107,8 @@
         subSel = -1;
         renderSub();
         syncPageShown();
-        if (kind === 'favorites' && !favoritesLoaded) loadSettings().then(() => { if (sub === 'favorites') renderSub(); });
+        // the list waits for the favorites under the wait cursor (no "Loading..." row of its own)
+        if (kind === 'favorites' && !favoritesLoaded) busyOf(loadSettings).then(() => { if (sub === 'favorites') renderSub(); });
         step();
     }
 
@@ -1126,7 +1133,7 @@
         page.classList.add('has-sub');
         els.sub.hidden = false;
         const rows = subRows();
-        const empty = sub === 'favorites' ? (favoritesLoaded ? 'No favorites.' : 'Loading...') : 'No history.';
+        const empty = sub === 'favorites' ? (favoritesLoaded ? 'No favorites.' : '') : 'No history.';
         els.sub.innerHTML = `
             <div class="wmb-sub-head">${sub === 'favorites' ? 'Favorites' : 'History'}</div>
             <div class="wmb-sub-list" role="listbox">
@@ -1332,7 +1339,7 @@
             const r = readRecent().slice(0, 12);
             list('recent').innerHTML = r.length ? r.map((n) => linkTo({ kind: 'wiki', tag: n }, n)).join('') : '<div class="wmb-home-none">No pages yet.</div>';
         }
-        if (open('favorites')) list('favorites').innerHTML = favorites.length ? favorites.slice(0, 30).map((f) => row({ url: f.url, title: f.title })).join('') : `<div class="wmb-home-none">${favoritesLoaded ? 'No favorites.' : 'Loading...'}</div>`;
+        if (open('favorites')) list('favorites').innerHTML = favorites.length ? favorites.slice(0, 30).map((f) => row({ url: f.url, title: f.title })).join('') : (favoritesLoaded ? '<div class="wmb-home-none">No favorites.</div>' : '');
         if (open('history')) {
             const h = readList(HISTORY_KEY).slice(0, 15);
             list('history').innerHTML = h.length ? h.map(row).join('') : '<div class="wmb-home-none">No history.</div>';
@@ -1346,17 +1353,28 @@
         const e = entry();
         if (!e.home) return;
         if (e.grim.kind === 'home') { renderHomeLists(); return; }
-        if (localShown === e && !force) return;
+        if (localShown === e && !force) {
+            // back on a page whose request is still out (the start page was shown meanwhile): its ring again
+            if (!e.html && e.pending) { setGrimLoading(true); return; }
+            // already on screen as it is (#723 review: a page that arrived while away was left blank)
+            if (e.html && els.gpage.childElementCount) return;
+        }
         localShown = e;
+        setGrimLoading(false);
         const box = els.gpage;
         // Back and Forward show a page as it was left (its scroll too); Refresh asks the server again
         if (e.html && !force) {
+            // a fresh page lets off-screen blocks skip layout (wm-browser.css); one shown again at its
+            // old scroll is laid out whole, or the estimated block heights would put the scroll elsewhere
+            box.classList.toggle('is-restoring', !!e.scroll);
             box.innerHTML = e.html;
             box.scrollTop = e.scroll || 0;
             return;
         }
         box.scrollTop = 0;
-        box.innerHTML = '<div class="wmb-g-note">Loading...</div>';
+        box.classList.remove('is-restoring');
+        // a Grimoire page is browsing like a web page: IE's busy ring turns while it comes, the page is blank
+        box.innerHTML = '';
         const still = () => localShown === e && entry() === e;
         const ws_ = window.wsClient;
         if (!ws_ || !ws_.isConnected || !ws_.isConnected()) {
@@ -1364,10 +1382,13 @@
             localShown = null;
             return;
         }
-        loadGrimPage(e.grim, force).then((html) => {
-            if (!still()) return;
+        setGrimLoading(true);
+        e.pending = true;
+        loadGrimPage(e.grim, force).finally(() => { e.pending = false; if (localShown === e) setGrimLoading(false); }).then((html) => {
+            // kept even when the user went elsewhere meanwhile: Forward shows it without asking again
             e.html = html;
             e.scroll = 0;
+            if (!still()) return;
             box.innerHTML = html;
             const t = box.querySelector('[data-page-title]');
             if (t) { e.title = t.dataset.pageTitle; }
@@ -1495,7 +1516,8 @@
         els.home.hidden = !start;
         els.gpage.hidden = !home || start;
         els.frameWrap.hidden = home;
-        page.classList.toggle('is-loading', loading && !home);
+        if (!home || entry().grim.kind === 'home') grimLoading = false;
+        page.classList.toggle('is-loading', (loading && !home) || (grimLoading && home));
         if (home) renderLocal(false);
         renderAddress();
         if (!home) requestAnimationFrame(layoutFrame);
@@ -1554,8 +1576,8 @@
                 <div class="wmb-gpage" hidden></div>
                 <div class="wmb-frame-wrap" hidden>
                     <div class="wmb-touch"></div>
-                    <div class="wmb-busy" aria-hidden="true"></div>
                 </div>
+                <div class="wmb-busy" aria-hidden="true"></div>
                 <div class="wmb-sub" hidden></div>
                 <textarea class="wmb-ime" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Type into the page"></textarea>
             </div>`;
@@ -1606,7 +1628,7 @@
             const exp = e.target.closest('.wmb-exp');
             if (exp) {
                 exp.setAttribute('aria-expanded', exp.getAttribute('aria-expanded') === 'true' ? 'false' : 'true');
-                if (exp.dataset.exp === 'favorites' && !favoritesLoaded) loadSettings().then(renderHomeLists);
+                if (exp.dataset.exp === 'favorites' && !favoritesLoaded) busyOf(loadSettings).then(renderHomeLists);
                 renderHomeLists();
                 return;
             }

@@ -465,14 +465,15 @@ html.ui-mobile[data-wm-viewer] .wm-op .wmo-host > .modal {
     font-size: calc(11 * var(--wm-px)) !important;
 }
 
-/* loading the dialog's choices: WM's white page with the wait cursor's place */
+/* loading the dialog's choices: WM's white page under the shell's wait cursor */
 .wm-op #imageExpansionDialog .gallery-move-right-panel-cover {
     background: #fff !important;
     backdrop-filter: none !important;
 }
 
-.wm-op #imageExpansionDialog .gallery-move-right-panel-cover .cover-spinner i {
-    color: #000 !important;
+/* no spinner of its own: the shell's wait cursor runs while it loads (wmDialogs.js wrapExpansion) */
+.wm-op #imageExpansionDialog .gallery-move-right-panel-cover :is(.cover-spinner, .cover-text) {
+    display: none !important;
 }
 
 /* ---- the upscale choices: label left, combo right (WM's label: field rows) ---- */

@@ -72,6 +72,10 @@
     cursor: default;
     -webkit-touch-callout: none;
     user-select: none;
+    /* a 50-row page laid out whole cost ~150 ms on a throttled phone: off-screen rows skip layout
+       (the intrinsic size is the content box: the two 15 px lines) */
+    content-visibility: auto;
+    contain-intrinsic-size: auto calc(30 * var(--wm-px));
 }
 
 .wm-msg .msg-row .msg-ico {
@@ -79,6 +83,24 @@
     grid-column: 1;
     margin-left: calc(2 * var(--wm-px));
 }
+
+/* the list's envelopes (wmMessaging.js rowHtml data-ico) */
+.wm-msg .msg-row .msg-ico[data-ico] {
+    background: no-repeat center / 100% 100%;
+}
+
+.wm-msg .msg-row .msg-ico[data-ico="msg-read"] {
+    background-image: image-set(url('/static_images/wm61/msg-read.png') 1x, url('/static_images/wm61/msg-read@2x.png') 2x, url('/static_images/wm61/msg-read@4x.png') 4x);
+}
+
+.wm-msg .msg-row .msg-ico[data-ico="msg-unread"] {
+    background-image: image-set(url('/static_images/wm61/msg-unread.png') 1x, url('/static_images/wm61/msg-unread@2x.png') 2x, url('/static_images/wm61/msg-unread@4x.png') 4x);
+}
+
+.wm-msg .msg-row .msg-ico[data-ico="msg-attach-mail"] {
+    background-image: image-set(url('/static_images/wm61/msg-attach-mail.png') 1x, url('/static_images/wm61/msg-attach-mail@2x.png') 2x, url('/static_images/wm61/msg-attach-mail@4x.png') 4x);
+}
+
 
 .wm-msg .msg-from,
 .wm-msg .msg-subj {
@@ -241,9 +263,24 @@
     gap: calc(4 * var(--wm-px));
     height: calc(18 * var(--wm-px));
     color: #00f;
-    text-decoration: underline;
     white-space: nowrap;
     overflow: hidden;
+    cursor: default;
+}
+
+.wm-msg .msg-att > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-decoration: underline;
+}
+
+.wm-msg .msg-compose-atts .msg-att {
+    color: inherit;
+}
+
+.wm-msg .msg-compose-atts .msg-att > span {
+    text-decoration: none;
 }
 
 .wm-msg .msg-att img {

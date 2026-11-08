@@ -257,6 +257,9 @@
             if (!opts.keep) { items = []; render(); }
             let list = [];
             let failed = '';
+            // an emptied list (a folder picked, the first open) is a wait: the wait cursor over it;
+            // a refresh of the list on screen (keep) runs behind it
+            const done = opts.keep ? () => {} : busyHold();
             try {
                 if (!vfs()) throw new Error('The file system is not available.');
                 const ids = folder === '*' ? workspaceList().map((w) => w.id) : [folderWs()];
@@ -264,6 +267,8 @@
                 list = parts.flat();
             } catch (err) {
                 failed = (err && err.message) || 'Cannot read the notes.';
+            } finally {
+                done();
             }
             if (token !== listToken) return;
             loading = false;
@@ -791,6 +796,8 @@
             const token = ++loadToken;
             let list = [];
             let failed = '';
+            // the first read of the Contacts folder is a wait (the list is empty until it comes)
+            const done = loaded ? () => {} : busyHold();
             try {
                 await ensureVCard();
                 if (!vfs() || !VC()) throw new Error('Contacts are not available.');
@@ -809,6 +816,8 @@
                 }
             } catch (err) {
                 failed = (err && err.message) || 'Cannot read the contacts.';
+            } finally {
+                done();
             }
             if (token !== loadToken) return;
             entries = list;

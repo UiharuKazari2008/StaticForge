@@ -241,6 +241,8 @@
 
 .wm-contacts .ct-name {
     align-self: end;
+    /* the line box fits its 13 px track: with the font's normal line height it stood out of the row's top */
+    line-height: calc(13 * var(--wm-px));
     font-weight: bold;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -248,6 +250,7 @@
 
 .wm-contacts .ct-sub {
     display: flex;
+    line-height: calc(14 * var(--wm-px));
     gap: calc(8 * var(--wm-px));
     overflow: hidden;
 }
@@ -439,8 +442,16 @@
     cursor: pointer;
 }
 
-.wm-contacts .ct-field.is-static {
-    grid-template-columns: calc(74 * var(--wm-px)) minmax(0, 1fr);
+/* the static rows keep the third (drop arrow) column: without it their rule ran 4 px past the others */
+
+/* a date row: WM's drop arrow, not Chrome's calendar glyph */
+.wm-contacts .ct-field input[type="date"]::-webkit-calendar-picker-indicator {
+    width: calc(7 * var(--wm-px));
+    height: calc(4 * var(--wm-px));
+    margin: 0 calc(1.5 * var(--wm-px)) 0 0;
+    padding: 0;
+    background: no-repeat center / 100% 100% url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 4'%3E%3Cpath d='M0 0h7L3.5 3.5z'/%3E%3C/svg%3E");
+    cursor: pointer;
 }
 
 .wm-contacts .ct-fdrop {

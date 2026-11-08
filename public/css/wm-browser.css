@@ -297,6 +297,13 @@
     overflow-wrap: anywhere;
 }
 
+/* a long wiki page: blocks off screen skip style and layout (tag groups took ~1.2 s on a throttled
+   phone laid out whole); a page shown again at its old scroll is laid out whole (wmBrowser.js) */
+.wm-browser .wmb-gpage:not(.is-restoring) :is(.wmb-g-body, .wmb-g-wiki, [data-page-title]) > * {
+    content-visibility: auto;
+    contain-intrinsic-size: auto calc(40 * var(--wm-px));
+}
+
 .wm-browser .wmb-gpage[hidden] {
     display: none;
 }
