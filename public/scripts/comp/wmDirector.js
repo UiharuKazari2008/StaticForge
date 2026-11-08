@@ -43,6 +43,8 @@
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     let ws = null; // window.wmShell
+    // WM's wait cursor (wmShell.busy) while a session or persona the user picked loads
+    const busyOf = (fn) => (ws && typeof ws.busy === 'function' ? ws.busy(fn) : fn());
     let page = null;
     let shown = false;
     let sub = null; // null | 'sessions'
@@ -463,7 +465,7 @@
         if (!s) return;
         closeSessions();
         ws.syncHistory();
-        await d.showSessionChat(s);
+        try { await busyOf(() => d.showSessionChat(s)); } catch (err) { console.warn('[wmDirector] open session', err); }
         syncComposer();
         ws.refreshSoftKeys();
     }
@@ -472,7 +474,7 @@
         const d = dir();
         if (!d) return;
         if (sub) { closeSessions(); ws.syncHistory(); }
-        await d.openNewSession();
+        try { await busyOf(() => d.openNewSession()); } catch (err) { console.warn('[wmDirector] new session', err); }
         openComposer();
     }
 
@@ -480,7 +482,7 @@
         const d = dir();
         if (!d || d.persona === p) return;
         if (composing) closeComposer();
-        await d.setPersona(p);
+        try { await busyOf(() => d.setPersona(p)); } catch (err) { console.warn('[wmDirector] persona', err); }
         syncComposer();
         if (sub === 'sessions') { renderSessions(); try { await d.loadDirectorSessions(); } catch (_) { /* best effort */ } renderSessions(); }
         refreshTitle();

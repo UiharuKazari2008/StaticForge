@@ -773,6 +773,36 @@ html.ui-mobile[data-wm-search="1"] body > #galleryWindow {
 }
 
 /* ---- message box (replaces the desktop's dialogs while the shell is up) ---- */
+/*
+ * Busy (wmShell.busy): while an operation the user must wait for runs, a see-through layer over the
+ * whole shell (title bar, content, soft keys) takes every tap, and after a short delay WM's wait
+ * cursor spins in the middle of the screen. Message boxes (z 20) stay above it: an operation that
+ * asks or reports an error is answered as usual, and the cursor hides while one is up.
+ */
+.wm-busy {
+    position: absolute;
+    inset: 0;
+    z-index: 19;
+    cursor: wait;
+    touch-action: none;
+}
+
+.wm-busy[hidden],
+.wm-busy-wait[hidden],
+.wm-msgbox-layer:not([hidden]) ~ .wm-busy .wm-busy-wait {
+    display: none;
+}
+
+.wm-busy-wait {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
 .wm-msgbox-layer {
     position: absolute;
     inset: 0;

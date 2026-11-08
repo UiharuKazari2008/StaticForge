@@ -55,6 +55,10 @@
     const VC = () => window.melatonVCard || null;
 
     let ws = null; // window.wmShell
+    // WM's wait cursor (wmShell.busy) over work the user waits for: a note or card opening or saving
+    const busyOf = (fn) => (ws && typeof ws.busy === 'function' ? ws.busy(fn) : fn());
+    // the same held open by hand: the returned release ends it (idempotent)
+    const busyHold = () => (ws && typeof ws.busy === 'function' ? ws.busy(true) : () => {});
 
     /** vcard.js comes with Explorer's feature on the desktop (featureLoader.js); the phone loads it alone. */
     let vcardLoading = null;
@@ -332,7 +336,7 @@
             ws.syncHistory();
             if (noteId) {
                 try {
-                    const res = await wsc().getNote(noteId);
+                    const res = await busyOf(() => wsc().getNote(noteId));
                     const note = res && (res.note || (res.data && res.data.note));
                     if (!note) throw new Error('The note was not found.');
                     if (!editing || editing.noteId !== noteId) return;
@@ -409,7 +413,7 @@
 
         async function closeNote() {
             let id = null;
-            try { id = await saveEditing(); } catch (_) { return false; }
+            try { id = await busyOf(() => saveEditing()); } catch (_) { return false; }
             editing = null;
             page.querySelector('.nt-text').blur();
             showView('list');
@@ -437,7 +441,7 @@
             });
             if (!name || name === i.name) return;
             try {
-                const res = await wsc().updateNote(i.noteId, { name });
+                const res = await busyOf(() => wsc().updateNote(i.noteId, { name }));
                 if (res && res.success === false) throw new Error('');
             } catch (err) {
                 await errorBox('Notes', 'The note could not be renamed.', err);
@@ -448,14 +452,14 @@
         async function copyNote(i) {
             if (!i || readOnly()) return;
             try {
-                const res = await wsc().getNote(i.noteId);
+                const res = await busyOf(() => wsc().getNote(i.noteId));
                 const note = res && res.note;
                 if (!note) throw new Error('The note was not found.');
                 const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now().toString(16)}`;
                 const taken = new Set(items.map((x) => x.name.toLowerCase()));
                 let name = `Copy of ${note.name}`;
                 for (let n = 2; taken.has(name.toLowerCase()); n++) name = `Copy (${n}) of ${note.name}`;
-                await wsc().createNote({ id, name, workspaceId: note.workspace_id || i.workspaceId, content: note.content || '', icon: note.icon || 'fas fa-file-lines', color: note.color || '#ffc107' });
+                await busyOf(() => wsc().createNote({ id, name, workspaceId: note.workspace_id || i.workspaceId, content: note.content || '', icon: note.icon || 'fas fa-file-lines', color: note.color || '#ffc107' }));
                 await load({ keep: true, select: id });
             } catch (err) {
                 await errorBox('Notes', 'The note could not be copied.', err);
@@ -471,7 +475,7 @@
             });
             if (!yes) return;
             try {
-                await vfs().moveToTrash([trashRef(i.vfs)], `/Workspaces/${i.workspaceId}/Notes`);
+                await busyOf(() => vfs().moveToTrash([trashRef(i.vfs)], `/Workspaces/${i.workspaceId}/Notes`));
             } catch (err) {
                 await errorBox('Notes', 'The note could not be deleted.', err);
             }
@@ -1213,7 +1217,7 @@
          */
         let saving = null;
         function saveForm() {
-            if (!saving) saving = doSaveForm().finally(() => { saving = null; });
+            if (!saving) saving = busyOf(() => doSaveForm()).finally(() => { saving = null; });
             return saving;
         }
 
@@ -1267,6 +1271,7 @@
                 buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false
             });
             if (!yes) return;
+            const done = busyHold();
             try {
                 let trash = e.count <= 1;
                 if (!trash) {
@@ -1281,9 +1286,11 @@
                     await vfs().moveToTrash([trashRef(e.item)], e.path || folderPath());
                 }
             } catch (err) {
+                done();
                 await errorBox('Contacts', 'The contact could not be deleted.', err);
                 return;
             }
+            done();
             if (layers.length) { layers = []; current = null; draft = null; showLayer(); ws.syncHistory(); }
             selectedKey = null;
             await load({ keep: true });
@@ -1293,6 +1300,7 @@
             if (!e || readOnly()) return;
             const c = JSON.parse(JSON.stringify(e.c));
             c.uid = VC().blank().uid;
+            const done = busyHold();
             try {
                 const data = await blobToBase64(new Blob([VC().toVcf(c)], { type: 'text/vcard' }));
                 await ensureFolder();
@@ -1300,7 +1308,9 @@
                 let name = fileNameOf(c);
                 for (let n = 2; used.has(name.toLowerCase()); n++) name = fileNameOf(c).replace(/\.vcf$/, ` (${n}).vcf`);
                 await vfs().uploadFile(folderPath(), data, name, 'text/vcard');
+                done();
             } catch (err) {
+                done();
                 await errorBox('Contacts', 'The contact could not be copied.', err);
             }
             await load({ keep: true, selectUid: c.uid });
@@ -1502,9 +1512,11 @@
                 const show = async () => {
                     // a half-done form is saved first, as Notes saves the open note
                     if (view() === 'edit' && formChanged() && !(await saveForm())) return;
+                    const done = busyHold();
                     try {
                         await ensureVCard();
                         const r = await readFile(item);
+                        done();
                         let at = r.cards.findIndex((x) => !x.group);
                         if (at < 0) at = 0;
                         const c = r.cards[at];
@@ -1516,6 +1528,7 @@
                         openCard(e);
                         load({ keep: loaded, select: e.key });
                     } catch (err) {
+                        done();
                         layers = [];
                         showLayer();
                         await errorBox('Contacts', `Cannot open '${item.name}'.`, err);

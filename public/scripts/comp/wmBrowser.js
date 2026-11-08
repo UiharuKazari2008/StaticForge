@@ -69,6 +69,8 @@
     const ALCHEMY_HOME = 'https://www.bing.com/'; // ALCHEMY_HOME_URL: public/scripts/comp/featureLoader.js
 
     let ws = null; // window.wmShell
+    // WM's wait cursor (wmShell.busy) while a download is saved or a picked file uploads
+    const busyOf = (fn) => (ws && typeof ws.busy === 'function' ? ws.busy(fn) : fn());
     let page = null;
     let els = {};
     let sub = null; // null | 'favorites' | 'history'
@@ -648,15 +650,17 @@
                 const files = [...(input.files || [])];
                 if (!files.length) { reply(true); return; }
                 try {
-                    for (const file of (data.multiple ? files : files.slice(0, 1))) {
-                        const res = await fetch(base + '/upload?' + s.query + '&name=' + encodeURIComponent(file.name), {
-                            method: 'POST',
-                            credentials: 'same-origin',
-                            headers: { 'Content-Type': 'application/octet-stream' },
-                            body: file
-                        });
-                        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not upload ' + file.name);
-                    }
+                    await busyOf(async () => {
+                        for (const file of (data.multiple ? files : files.slice(0, 1))) {
+                            const res = await fetch(base + '/upload?' + s.query + '&name=' + encodeURIComponent(file.name), {
+                                method: 'POST',
+                                credentials: 'same-origin',
+                                headers: { 'Content-Type': 'application/octet-stream' },
+                                body: file
+                            });
+                            if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not upload ' + file.name);
+                        }
+                    });
                     reply(false);
                 } catch (err) { failed(err); }
             }, { once: true });
@@ -763,14 +767,17 @@
             if (typeof activeWorkspace !== 'undefined' && activeWorkspace) ws0 = activeWorkspace;
         } catch (_) { /* none */ }
         try {
-            const res = await fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(session.id) + '/save?' + session.query, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(Object.assign({ filename, workspaceId: ws0 }, ref))
+            const info = await busyOf(async () => {
+                const res = await fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(session.id) + '/save?' + session.query, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(Object.assign({ filename, workspaceId: ws0 }, ref))
+                });
+                const body = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(body.error || 'The file could not be saved.');
+                return body;
             });
-            const info = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(info.error || 'The file could not be saved.');
             await ws.messageBox({ title: 'Download Complete', icon: 'info', text: `${info.name || filename} was saved to Downloads.` });
         } catch (err) {
             await ws.messageBox({ title: 'Internet Explorer', icon: 'error', text: `Cannot download '${filename}'. ${(err && err.message) || ''}` });

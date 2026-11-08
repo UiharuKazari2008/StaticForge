@@ -1264,7 +1264,8 @@
             const cur = open;
             if (backPending === cur) return true;
             backPending = cur;
-            commitAll(cur)
+            // WM's wait cursor while the page saves (most pages write to the server)
+            (typeof sh.busy === 'function' ? sh.busy(() => commitAll(cur)) : commitAll(cur))
                 .catch(() => [])
                 .then((keys) => {
                     if (backPending === cur) backPending = null;

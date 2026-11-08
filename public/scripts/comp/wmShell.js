@@ -287,6 +287,7 @@
             <nav class="wm-startmenu" role="menu" hidden></nav>
             <div class="wm-popup" role="menu" hidden></div>
             <div class="wm-msgbox-layer" hidden></div>
+            <div class="wm-busy" role="status" aria-live="polite" hidden><img class="wm-busy-wait" alt="Please wait" draggable="false" hidden></div>
             <div class="wm-bubble" role="dialog" hidden></div>
             <div class="wm-notify-tray" role="listbox" aria-label="Notifications" hidden></div>
             <div class="wm-notify" role="alertdialog" hidden></div>`;
@@ -337,6 +338,12 @@
             closeMenus();
         }, true);
         window.addEventListener('keydown', (e) => {
+            if (busyBlocksKey()) {
+                // busy: keys (soft keys, back, Enter) wait with the taps
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                return;
+            }
             if (e.key === 'Escape' && openPopup) {
                 const sub = openPopup.querySelector(':scope > .wm-popup-sub');
                 if (sub) { closeSubmenu(openPopup); syncHistory(); } else closeMenus();
@@ -362,6 +369,11 @@
      */
     function onPopState() {
         if (!shell) return false;
+        if (busyCount > 0 && !ignorePops) {
+            // back while busy: nothing closes under a running operation; the entry comes back after
+            busyPopped = true;
+            return true;
+        }
         if (ignorePops > 0) {
             // our own history.go(): the layers already match
             ignorePops--;
@@ -1535,6 +1547,99 @@
         } else if (role === 'mail') {
             bubble({ title: 'Messaging', role, anchor, sections: [shellMailUnread ? `${shellMailUnread} unread ${shellMailUnread === 1 ? 'message' : 'messages'}.` : 'No unread messages.', ...(apps.has('messaging') ? [{ links: [{ label: 'Messaging', action: () => open('messaging') }] }] : [])], buttons: [{ text: 'Hide' }] });
         }
+    }
+
+    // ---------------------------------------------------------------- busy
+
+    /**
+     * WM's wait cursor while the user must wait (a file opening, a folder loading, a save to the
+     * server): busy(work, { delay, timeout }) blocks every tap and key on the shell at once and shows
+     * the spinning wait cursor (wait-0..15, 90 ms a frame, as the device and the installer) in the
+     * middle of the screen after `delay` ms (default 150: quick work does not flicker). work is a
+     * promise or a function returning one: busy resolves / rejects with it. With work true (or
+     * nothing) it returns a release function instead. Calls nest (counted); each releases on its
+     * own end or after `timeout` ms (default 30 s), so the phone is never locked for good. The shell
+     * is aria-busy while it lasts. Message boxes stay usable above it (an error box, a question).
+     */
+    let busyCount = 0;
+    let busyPopped = false;
+    let busyShowTimer = null;
+    let busyFrameTimer = null;
+
+    function paintBusy() {
+        const layer = shell && shell.querySelector('.wm-busy');
+        if (!layer) return;
+        const img = layer.querySelector('.wm-busy-wait');
+        const on = busyCount > 0;
+        layer.hidden = !on;
+        shell.querySelector('.wm-content').setAttribute('aria-busy', on ? 'true' : 'false');
+        if (!on) {
+            clearTimeout(busyShowTimer);
+            clearInterval(busyFrameTimer);
+            busyShowTimer = null;
+            busyFrameTimer = null;
+            img.hidden = true;
+            img.removeAttribute('src');
+            img.removeAttribute('srcset');
+        }
+    }
+
+    function showBusyCursor() {
+        busyShowTimer = null;
+        if (busyCount <= 0 || busyFrameTimer) return;
+        const img = shell.querySelector('.wm-busy-wait');
+        let frame = 0;
+        const tick = () => {
+            img.src = art(`wait-${frame}`);
+            img.srcset = srcset(`wait-${frame}`);
+            frame = (frame + 1) % 16;
+        };
+        tick();
+        img.hidden = false;
+        busyFrameTimer = setInterval(tick, 90);
+    }
+
+    function busy(work = true, opts = {}) {
+        if (!shell) return work === true ? () => {} : Promise.resolve(typeof work === 'function' ? work() : work);
+        const delay = Number.isFinite(opts.delay) ? Math.max(0, opts.delay) : 150;
+        const timeout = Number.isFinite(opts.timeout) ? opts.timeout : 30000;
+        busyCount++;
+        paintBusy();
+        if (!busyFrameTimer) {
+            clearTimeout(busyShowTimer);
+            busyShowTimer = setTimeout(showBusyCursor, delay);
+        }
+        let released = false;
+        const release = () => {
+            if (released) return;
+            released = true;
+            clearTimeout(limit);
+            busyCount = Math.max(0, busyCount - 1);
+            paintBusy();
+            if (!busyCount && busyPopped) {
+                busyPopped = false;
+                syncHistory();
+            }
+        };
+        const limit = setTimeout(release, timeout);
+        if (work === true || work == null) return release;
+        let p;
+        try {
+            p = Promise.resolve(typeof work === 'function' ? work() : work);
+        } catch (err) {
+            p = Promise.reject(err);
+        }
+        return p.finally(release);
+    }
+
+    /** Keys wait while busy, except for a message box or the desktop's question over it. */
+    function busyBlocksKey() {
+        if (busyCount <= 0) return false;
+        const box = shell.querySelector('.wm-msgbox-layer');
+        if (box && !box.hidden) return false;
+        const dlg = document.getElementById('confirmationDialog');
+        if (dlg && !dlg.classList.contains('hidden')) return false;
+        return true;
     }
 
     // ---------------------------------------------------------------- system sounds
@@ -3210,6 +3315,9 @@
         onPopState,
         thumbFor,
         bubble: (opts) => bubble(opts || {}),
+        /** WM's wait cursor while the user must wait: busy(promise | fn, { delay, timeout }) or busy() -> release. */
+        busy: (work, opts) => busy(work, opts || {}),
+        isBusy: () => busyCount > 0,
         /** WM 6.1 system sounds: play('SystemHand' | 'SystemExclamation' | 'Notification' ...), log (what played). */
         sounds: { play: (name, opts) => playSystemSound(name, opts || {}), log: snd.log, files: SND_FILE },
         /** Today's wallpaper placement (Settings > Today > Wallpaper). */

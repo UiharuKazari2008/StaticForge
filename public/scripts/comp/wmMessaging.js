@@ -55,6 +55,8 @@
     const SORTS = [['received', 'Received'], ['from', 'From'], ['subject', 'Subject']];
 
     let ws = null; // window.wmShell
+    // WM's wait cursor (wmShell.busy) over work the user waits for: a message sending, a reply's original loading
+    const busyOf = (fn) => (ws && typeof ws.busy === 'function' ? ws.busy(fn) : fn());
     let page = null;
     let mailboxes = []; // [{ owner, label, unread, spamUnread }]
     let owner = null; // the account on screen
@@ -328,14 +330,16 @@
             cancelValue: false
         });
         if (!yes) return;
-        for (let round = 0; round < 20; round++) {
-            let ids = [];
-            try {
-                const r = await send('dovecote_list_mail', { folder: 'deleted', limit: 200 });
-                ids = ((r && r.mail) || []).map((m) => String(m.id));
-            } catch (_) { break; }
-            if (!ids.length || !(await mark(ids, { deleted: true }))) break;
-        }
+        await busyOf(async () => {
+            for (let round = 0; round < 20; round++) {
+                let ids = [];
+                try {
+                    const r = await send('dovecote_list_mail', { folder: 'deleted', limit: 200 });
+                    ids = ((r && r.mail) || []).map((m) => String(m.id));
+                } catch (_) { break; }
+                if (!ids.length || !(await mark(ids, { deleted: true }))) break;
+            }
+        });
         if (folder === 'deleted') loadFolder();
         loadMailboxes();
     }
@@ -753,7 +757,7 @@
         let full = m;
         if (m.body == null) {
             try {
-                const r = await send('dovecote_get_mail', { id: m.id, markRead: false }, true);
+                const r = await busyOf(() => send('dovecote_get_mail', { id: m.id, markRead: false }, true));
                 if (r && r.mail) full = r.mail;
             } catch (_) { /* the quote has no body */ }
         }
@@ -833,7 +837,7 @@
         sending = true;
         if (isCurrent()) ws.refreshSoftKeys();
         try {
-            await send('dovecote_send_mail', request, true);
+            await busyOf(() => send('dovecote_send_mail', request, true));
         } catch (err) {
             sending = false;
             if (isCurrent()) ws.refreshSoftKeys();

@@ -317,7 +317,8 @@
 
     async function dirLearnedAction(st, type, payload) {
         try {
-            st.learned = await dir().directorRequest(type, payload);
+            // WM's wait cursor while the Director saves it
+            st.learned = await (window.wmShell && typeof window.wmShell.busy === 'function' ? window.wmShell.busy(() => dir().directorRequest(type, payload)) : dir().directorRequest(type, payload));
         } catch (err) {
             await errorBox('Director', (err && err.message) || 'Could not save that change.');
         }

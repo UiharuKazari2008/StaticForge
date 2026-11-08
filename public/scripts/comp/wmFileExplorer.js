@@ -40,6 +40,8 @@
     const ART = '/static_images/wm61/';
 
     let ws = null; // window.wmShell
+    // WM's wait cursor (wmShell.busy) over work the user waits for: a file opening, a folder made, renamed or deleted
+    const busyOf = (fn) => (ws && typeof ws.busy === 'function' ? ws.busy(fn) : fn());
     let page = null;
     let trail = []; // [{ path, name }] from My Device down to the folder on screen
     let visits = []; // earlier trails, for the back gesture
@@ -470,6 +472,8 @@
         const path = pathNow();
         loading = true;
         listError = '';
+        // a folder opening: WM's wait cursor until its list is in (a refresh after an operation keeps the list)
+        const release = !opts.keep && ws && typeof ws.busy === 'function' ? ws.busy(true) : null;
         if (!opts.keep) { items = []; hasMore = false; render(); }
         if (!isPhonePath(path) && PD()) PD().leave(phoneApp); // stop watching the phone folder left
         try {
@@ -513,6 +517,7 @@
             listError = err && /^(denied|permission|no_access)$/.test(err.code || '') ? 'Access is denied.' : ((err && err.message) || 'Cannot open this folder.');
         } finally {
             if (token === listToken) loading = false;
+            if (release) release();
         }
         render();
         if (opts.select || !opts.keep) scrollToSelection();
@@ -739,13 +744,13 @@
         try {
             if (i.targetKind === 'image' || i.targetKind === 'scrap') {
                 const fn = i.previewImageFilename || i.targetId;
-                if (fn && galleryHas(fn)) await showLightbox({ filename: fn });
-                else if (url) await showLightbox({ url, title: i.name });
+                if (fn && galleryHas(fn)) await busyOf(() => showLightbox({ filename: fn }));
+                else if (url) await busyOf(() => showLightbox({ url, title: i.name }));
                 else await noApp(i);
                 return;
             }
             if (/^image\//.test(i.mimeType || '') && url) {
-                await showLightbox({ url, title: i.name });
+                await busyOf(() => showLightbox({ url, title: i.name }));
                 return;
             }
         } catch (_) { /* the viewer could not open it */ }
@@ -767,7 +772,7 @@
         if ((program === 'lumen' || PD().kindOf(i.name, i.mimeType) === 'image') && typeof showLightbox === 'function') {
             const url = PS().fileUrl(i.phone.root, i.phone.path);
             try {
-                if (url) { await showLightbox({ url, title: i.name }); return; }
+                if (url) { await busyOf(() => showLightbox({ url, title: i.name })); return; }
             } catch (_) { /* the viewer could not open it: Android's app below */ }
         }
         await openInAndroid(i);
@@ -776,7 +781,7 @@
     async function openInAndroid(i) {
         if (!phoneCan('open')) { await noApp(i); return; }
         try {
-            await PS().call('open', { root: i.phone.root, path: i.phone.path, chooser: true });
+            await busyOf(() => PS().call('open', { root: i.phone.root, path: i.phone.path, chooser: true }));
         } catch (err) {
             if (err && err.code === 'no_app') await noApp(i);
             else await errorBox('File Explorer', 'open', i, err);
@@ -850,9 +855,9 @@
                 const taken = new Set(items.map((i) => String(i.name).toLowerCase()));
                 let name = 'New Folder';
                 for (let n = 2; taken.has(name.toLowerCase()); n++) name = `New Folder${n}`;
-                await PS().call('mkdir', { root: p.root, path: PS().joinPath(p.path, name) });
+                await busyOf(() => PS().call('mkdir', { root: p.root, path: PS().joinPath(p.path, name) }));
             } else {
-                await vfsClient.createFolder(pathNow(), 'New Folder');
+                await busyOf(() => vfsClient.createFolder(pathNow(), 'New Folder'));
             }
         } catch (err) {
             await errorBox('Error Creating Folder', 'create', { name: 'New Folder' }, err);
@@ -958,7 +963,7 @@
         committing = true;
         renamingId = null;
         try {
-            await renameTo(i, name);
+            await busyOf(() => renameTo(i, name));
         } catch (err) {
             committing = false;
             render();
@@ -991,33 +996,36 @@
             cancelValue: false
         });
         if (!yes) return;
-        const path = pathNow();
-        if (ok.every(isPhoneItem)) {
-            await deletePhone(ok);
+        // WM's wait cursor until the items are gone and the folder is listed again
+        await busyOf(async () => {
+            const path = pathNow();
+            if (ok.every(isPhoneItem)) {
+                await deletePhone(ok);
+                selected.clear();
+                await load({ keep: true });
+                return;
+            }
+            for (const i of ok) {
+                try {
+                    if (i.isTrashItem) {
+                        await vfsClient.permanentlyDelete([{ id: i.id, trashItemId: i.trashItemId || i.id, isTrashItem: true, targetKind: i.targetKind, targetId: i.targetId, name: i.name, workspaceId: i.workspaceId }], path);
+                    } else if (canTrash(i)) {
+                        await vfsClient.moveToTrash(refsOf([i]), path);
+                    } else if (isLiveDesktopShortcut(i)) {
+                        if (typeof desktopShortcuts === 'undefined') throw new Error('The desktop is not loaded.');
+                        await desktopShortcuts.removeShortcut(i.id);
+                    } else {
+                        await vfsClient.deleteEntry(i.id);
+                    }
+                } catch (err) {
+                    await errorBox('Error Deleting File', 'delete', i, err);
+                    break;
+                }
+            }
+            touchGallery(ok);
             selected.clear();
             await load({ keep: true });
-            return;
-        }
-        for (const i of ok) {
-            try {
-                if (i.isTrashItem) {
-                    await vfsClient.permanentlyDelete([{ id: i.id, trashItemId: i.trashItemId || i.id, isTrashItem: true, targetKind: i.targetKind, targetId: i.targetId, name: i.name, workspaceId: i.workspaceId }], path);
-                } else if (canTrash(i)) {
-                    await vfsClient.moveToTrash(refsOf([i]), path);
-                } else if (isLiveDesktopShortcut(i)) {
-                    if (typeof desktopShortcuts === 'undefined') throw new Error('The desktop is not loaded.');
-                    await desktopShortcuts.removeShortcut(i.id);
-                } else {
-                    await vfsClient.deleteEntry(i.id);
-                }
-            } catch (err) {
-                await errorBox('Error Deleting File', 'delete', i, err);
-                break;
-            }
-        }
-        touchGallery(ok);
-        selected.clear();
-        await load({ keep: true });
+        });
     }
 
     /**

@@ -564,7 +564,8 @@
                     const yes = await ui.messageBox({ title: 'Grimoire', icon: 'question', text: q, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }] });
                     if (!yes) return;
                     let ok = false;
-                    try { ok = await io.clearBrowsingData(what); } catch (_) { ok = false; }
+                    // WM's wait cursor while Alchemy clears it
+                    try { ok = await (window.wmShell && typeof window.wmShell.busy === 'function' ? window.wmShell.busy(() => io.clearBrowsingData(what)) : io.clearBrowsingData(what)); } catch (_) { ok = false; }
                     if (what.history) {
                         // the phone's own Internet Explorer history (wmBrowser.js wmIeHistory / wmIeTyped)
                         try { localStorage.removeItem('wmIeHistory'); localStorage.removeItem('wmIeTyped'); } catch (_) { /* private mode */ }

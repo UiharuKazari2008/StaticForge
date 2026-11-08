@@ -768,7 +768,8 @@
                 await ui.messageBox({ title: 'Remove Programs', icon: 'error', text: `${p.name} could not be removed. Melaton is not connected.` });
                 return;
             }
-            await r.set(UNINSTALL_KEY, { Hidden: reg(UNINSTALL_KEY, 'Hidden', []).concat([p.id]) });
+            // WM's wait cursor while the server takes it
+            await (window.wmShell && typeof window.wmShell.busy === 'function' ? window.wmShell.busy(() => r.set(UNINSTALL_KEY, { Hidden: reg(UNINSTALL_KEY, 'Hidden', []).concat([p.id]) })) : r.set(UNINSTALL_KEY, { Hidden: reg(UNINSTALL_KEY, 'Hidden', []).concat([p.id]) }));
             d.sel = null;
             api.rerender();
         });

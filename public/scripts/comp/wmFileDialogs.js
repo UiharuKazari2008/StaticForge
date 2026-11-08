@@ -52,6 +52,8 @@
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     let ws = null; // window.wmShell
+    // WM's wait cursor (wmShell.busy) over work the dialog waits for: a save, a pick that opens the file
+    const busyOf = (fn) => (ws && typeof ws.busy === 'function' ? ws.busy(fn) : fn());
     let page = null;
     let dlg = null; // the dialog on screen (one at a time)
     let token = 0;
@@ -755,11 +757,14 @@
         render();
         let ok = false;
         try {
-            let items = [];
-            // what the name would overwrite: the folder's entries of that name (the server's search)
-            if (path) { try { items = (await listPage(path, NAME_SORT, 0, 500, name)).items; } catch (_) { items = []; } }
-            if (d.done) return;
-            ok = !!(await d.opts.onSave({ path, name, workspaceId: d.location, items }));
+            ok = await busyOf(async () => {
+                let items = [];
+                // what the name would overwrite: the folder's entries of that name (the server's search)
+                if (path) { try { items = (await listPage(path, NAME_SORT, 0, 500, name)).items; } catch (_) { items = []; } }
+                if (d.done) return null;
+                return !!(await d.opts.onSave({ path, name, workspaceId: d.location, items }));
+            });
+            if (ok === null) return;
         } catch (err) {
             console.warn('[wmFileDialogs] save', err);
             await message(`${name} could not be saved. ${(err && err.message) || ''}`.trim(), 'error');
@@ -780,7 +785,7 @@
         d.busy = true;
         let keep = false;
         try {
-            keep = (await d.opts.onPick(row.item, row.path, { close: () => settle(d, 'done') })) === false;
+            keep = (await busyOf(() => d.opts.onPick(row.item, row.path, { close: () => settle(d, 'done') }))) === false;
         } catch (err) {
             console.warn('[wmFileDialogs] open', err);
             keep = true;
