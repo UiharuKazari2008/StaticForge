@@ -9,11 +9,12 @@
  * Anlas cost display and Generate all stay the desktop's code. wm-studio.css drops the window frame
  * and splits the long desktop layout into the pages of a WM tabbed form:
  *
- *   Prompt      base prompt / creative directive / undesired content (the desktop's own toggle),
- *               preset row, Rentan, the token and Anlas row
- *   Characters  character prompts and text overlays (Menu > Add adds them)
+ *   Prompt      one scrolling form: base prompt / creative directive / undesired content (the
+ *               desktop's own toggle) with its emphasis highlighting, preset row, Rentan, the token and
+ *               Anlas row; then Characters (character prompts and text overlays, a "No characters"
+ *               row with Add when there are none); then Settings (model, steps, guidance, resolution,
+ *               upscale, sampler, workspace, locks, seed, prints)
  *   Images      base image, director reference, vibe transfers, pipeline stages
- *   Settings    model, steps, guidance, resolution, upscale, sampler, workspace, locks, seed
  *   Print       the preview (the finished print, its progress while printing); a tap on the print
  *               opens the shell's picture view
  *
@@ -42,7 +43,9 @@
 
     const APP_ID = 'studio';
     const root = document.documentElement;
-    const TABS = [['prompt', 'Prompt'], ['chars', 'Characters'], ['images', 'Images'], ['settings', 'Settings'], ['print', 'Print']];
+    const TABS = [['prompt', 'Prompt'], ['images', 'Images'], ['print', 'Print']];
+    // the former Characters and Settings tabs are sections of the Prompt page
+    const SECTIONS = { chars: '.wms-chars', characters: '.wms-chars', settings: '.model-control' };
     const MENUS = ['File', 'Edit', 'Add', 'Model', 'Image', 'Tools', 'View', 'Help'];
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -50,6 +53,8 @@
     let page = null;
     let shown = false;
     let tab = 'prompt';
+    let paintedTab = '';
+    let addAt = 0; // a character / overlay was just asked for: the new one is scrolled to
     let opening = false; // an openManualModalWithContent call is running
     const tools = []; // [{ win, parent, next, title }] desktop windows hosted as sub-pages, the last on top
     let progressTimer = null;
@@ -89,7 +94,99 @@
         const host = page && page.querySelector('.wms-host');
         if (!m || !host) return false;
         if (m.parentNode !== host) host.appendChild(m);
+        ensureCharsSection();
+        watchPromptEditors();
         return true;
+    }
+
+    /** The Characters section head and its empty row, in the Prompt page's flow before the overlays. */
+    function ensureCharsSection() {
+        if (!page || page.querySelector('.wms-chars')) return;
+        const list = document.getElementById('textOverlaysContainer') || document.getElementById('characterPromptsContainer');
+        if (!list || !list.parentNode) return;
+        const box = document.createElement('div');
+        box.className = 'wms-chars';
+        box.innerHTML = '<div class="wms-sect">Characters</div><div class="wms-chars-none"><span>No characters.</span><button type="button" class="wms-chars-add">Add</button></div>';
+        box.querySelector('.wms-chars-add').addEventListener('click', addCharacter);
+        list.parentNode.insertBefore(box, list);
+        paintEmpty();
+    }
+
+    function addCharacter() {
+        /* global handleStudioMenuBarAction */
+        if (typeof handleStudioMenuBarAction !== 'function') return;
+        addAt = Date.now();
+        try { handleStudioMenuBarAction('studio-add-character', menuBarTitle('Add'), { action: 'studio-add-character' }); } catch (err) { console.warn('[wmStudio] add character', err); }
+        afterAction();
+    }
+
+    /** The Prompt page's scroller (the whole form scrolls as one page). */
+    const formScroller = () => document.getElementById('manualForm');
+
+    /** A section of the Prompt page (the former Characters / Settings tabs) scrolled to the top. */
+    function showSection(name) {
+        const sel = SECTIONS[name];
+        if (!sel || !page) return;
+        if (tab !== 'prompt') setTab('prompt');
+        const el = page.querySelector(`#manualModal ${sel}`) || page.querySelector(sel);
+        const sc = formScroller();
+        if (!el || !sc) return;
+        sc.scrollTop += el.getBoundingClientRect().top - sc.getBoundingClientRect().top;
+    }
+
+    // ---------------------------------------------------------------- prompt highlighting
+
+    /**
+     * The emphasis / tag highlight overlay (emphasisHighlight.js) is the textarea's absolutely placed
+     * sibling. On the desktop the textarea grows with its text; here it has a fixed height and
+     * scrolls, so the overlay is sized to the textarea (--wms-ta-*) and follows its scrolling.
+     */
+    let editorsWatched = false;
+    function watchPromptEditors() {
+        const m = modal();
+        if (editorsWatched || !m) return;
+        editorsWatched = true;
+        const fit = (ta) => {
+            const host = ta.parentElement;
+            if (!host || ta.offsetParent === null) return;
+            host.style.setProperty('--wms-ta-top', `${ta.offsetTop}px`);
+            host.style.setProperty('--wms-ta-h', `${ta.offsetHeight}px`);
+            syncOverlayScroll(ta);
+        };
+        const ro = typeof ResizeObserver === 'function' ? new ResizeObserver((entries) => entries.forEach((e) => fit(e.target))) : null;
+        const seen = new WeakSet();
+        const scan = () => {
+            m.querySelectorAll('textarea.prompt-textarea, textarea.character-prompt-textarea, .prompt-textarea-container textarea, .character-prompt-textarea-container textarea').forEach((ta) => {
+                if (seen.has(ta)) return;
+                seen.add(ta);
+                if (ro) ro.observe(ta); else fit(ta);
+            });
+        };
+        scan();
+        if (typeof MutationObserver === 'function') {
+            let queued = false;
+            // new editors come with characters and text overlays (the main ones are static)
+            const mo = new MutationObserver(() => {
+                if (queued) return;
+                queued = true;
+                requestAnimationFrame(() => { queued = false; scan(); });
+            });
+            ['characterPromptsContainer', 'textOverlaysContainer'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) mo.observe(el, { childList: true });
+            });
+        }
+        // the textarea scrolling inside its box: the overlays scroll with it
+        m.addEventListener('scroll', (e) => { if (e.target && e.target.tagName === 'TEXTAREA') syncOverlayScroll(e.target); }, true);
+    }
+
+    function syncOverlayScroll(ta) {
+        const host = ta.parentElement;
+        if (!host) return;
+        host.querySelectorAll(':scope > .emphasis-highlight-overlay, :scope > .search-highlight-overlay').forEach((ov) => {
+            if (ov.scrollTop !== ta.scrollTop) ov.scrollTop = ta.scrollTop;
+            if (ov.scrollLeft !== ta.scrollLeft) ov.scrollLeft = ta.scrollLeft;
+        });
     }
 
     async function attach() {
@@ -129,6 +226,7 @@
     // ---------------------------------------------------------------- tabs
 
     function setTab(id) {
+        if (SECTIONS[id]) { showSection(id); return; }
         if (!TABS.some(([t]) => t === id)) return;
         tab = id;
         paintTab();
@@ -139,22 +237,25 @@
         if (!page) return;
         page.dataset.tab = tab;
         page.querySelectorAll('.wms-tabs .wm-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
-        // each page starts at its top
-        const scroll = page.querySelector('#manualModal .form-section-scroll');
-        if (scroll) scroll.scrollTop = 0;
-        const ctl = page.querySelector('#manualModal .model-control');
-        if (ctl) ctl.scrollTop = 0;
+        // each page starts at its top when it is switched to
+        if (paintedTab !== tab) {
+            paintedTab = tab;
+            const scroll = page.querySelector('#manualModal .form-section-scroll');
+            if (scroll) scroll.scrollTop = 0;
+            const form = formScroller();
+            if (form && page.contains(form)) form.scrollTop = 0;
+        }
         paintEmpty();
     }
 
-    /** Characters with none yet: WM's empty-list text. */
+    /** Characters with none yet: a "No characters" row with Add in the Prompt page's Characters section. */
     function paintEmpty() {
         if (!page) return;
-        const empty = page.querySelector('.wms-empty');
+        const empty = page.querySelector('.wms-chars-none');
         const chars = document.getElementById('characterPromptsContainer');
         const overlays = document.getElementById('textOverlaysContainer');
         const none = !(chars && chars.children.length) && !(overlays && overlays.children.length && !overlays.classList.contains('hidden'));
-        empty.hidden = !(tab === 'chars' && none);
+        if (empty) empty.hidden = !none;
         const noprint = page.querySelector('.wms-noprint');
         const img = document.getElementById('manualPreviewImage');
         const hasPrint = !!(img && !img.classList.contains('hidden') && img.getAttribute('src'));
@@ -249,6 +350,7 @@
                 if (marked && item.indicatorMark === 'radio') row.radio = !!item.checked;
                 else if (marked) row.checked = !!item.checked;
                 row.action = () => {
+                    addAt = Date.now();
                     try {
                         if (handlerfn) handlerfn(item, target, null);
                         else run(item.action, target, item);
@@ -445,7 +547,7 @@
                 if (pop0 && !pop0.hidden && lastCombo.el === combo && Date.now() - lastCombo.at < 600) return undefined;
                 lastCombo = { el: combo, at: Date.now() };
                 armMenuHide(null);
-                ws.dropdown(combo, dropLoneHeading(items), 'left', onHide);
+                ws.dropdown(combo, dropLoneHeading(items), sideOf(combo), onHide);
                 const pop = shellPopup();
                 if (pop && !pop.hidden) pop.style.minWidth = `${Math.round(combo.getBoundingClientRect().width)}px`;
                 return undefined;
@@ -467,6 +569,12 @@
     // ---------------------------------------------------------------- drop-down combos
 
     let proxying = false;
+
+    /** A narrow control at the right edge (the toolbar's Add) drops its list leftwards, kept on screen. */
+    function sideOf(el) {
+        const r = el.getBoundingClientRect();
+        return r.left > window.innerWidth / 2 ? 'right' : 'left';
+    }
 
     /**
      * A desktop custom drop-down (manualDropdownManager.js) that just opened: its rows (groups as greyed
@@ -498,7 +606,7 @@
         let picked = false;
         // the desktop list leaves the layout first, so the combo is measured where it sits
         menu.classList.add('wms-dd-proxied');
-        ws.dropdown(box, dropLoneHeading(items), 'left', () => {
+        ws.dropdown(box, dropLoneHeading(items), sideOf(box), () => {
             menu.classList.remove('wms-dd-proxied');
             // closed without a pick: the desktop list closes too
             setTimeout(() => {
@@ -798,8 +906,25 @@
         if (btn && typeof MutationObserver === 'function') {
             new MutationObserver(syncGenerating).observe(btn, { attributes: true, attributeFilter: ['class', 'disabled'] });
         }
-        const chars = document.getElementById('characterPromptsContainer');
-        if (chars && typeof MutationObserver === 'function') new MutationObserver(paintEmpty).observe(chars, { childList: true });
+        // a character or text overlay added from Menu > Add or the Add row: shown where it lands
+        const onAdded = (muts) => {
+            paintEmpty();
+            if (!shown || tab !== 'prompt' || Date.now() - addAt > 2000) return;
+            const added = muts.flatMap((mu) => Array.from(mu.addedNodes)).filter((n) => n.nodeType === 1).pop();
+            if (!added) return;
+            addAt = 0;
+            requestAnimationFrame(() => {
+                const sc = formScroller();
+                if (!sc) return;
+                const r = added.getBoundingClientRect();
+                const s = sc.getBoundingClientRect();
+                if (r.top < s.top || r.bottom > s.bottom) sc.scrollTop += r.top - s.top - 4;
+            });
+        };
+        ['characterPromptsContainer', 'textOverlaysContainer'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el && typeof MutationObserver === 'function') new MutationObserver(onAdded).observe(el, id === 'textOverlaysContainer' ? { childList: true, attributes: true, attributeFilter: ['class'] } : { childList: true });
+        });
         const img = document.getElementById('manualPreviewImage');
         if (img && typeof MutationObserver === 'function') new MutationObserver(paintEmpty).observe(img, { attributes: true, attributeFilter: ['class', 'src'] });
         let queued = false;
@@ -844,7 +969,6 @@
         page.innerHTML = `
             <div class="wms-host"></div>
             <div class="wms-status" hidden><img src="/static_images/app_icons/64/studio.webp" alt=""><span>Studio is starting...</span></div>
-            <p class="wms-empty" hidden>No characters.<br>Tap Menu, Add, Character.</p>
             <p class="wms-noprint" hidden>No print yet. Tap Generate.</p>
             <p class="wms-norefs" hidden>No images.<br>Tap Menu, Add, Base Image.</p>
             <div class="wms-wait" aria-hidden="true"></div>

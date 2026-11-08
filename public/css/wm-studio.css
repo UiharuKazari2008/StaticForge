@@ -183,16 +183,114 @@
 }
 
 /* ---- pages: one part of the desktop layout per tab ---- */
-.wm-studio:not([data-tab="settings"]) #manualModal .model-control,
+.wm-studio:not([data-tab="prompt"]) #manualModal .model-control,
 .wm-studio:not([data-tab="print"]) #manualModal #manualPanelSection,
-.wm-studio:is([data-tab="settings"], [data-tab="print"]) #manualModal .manual-modal-form-section {
+.wm-studio[data-tab="print"] #manualModal .manual-modal-form-section {
     display: none !important;
 }
 
-.wm-studio[data-tab="prompt"] #manualModal :is(#characterPromptsContainer, #textOverlaysContainer, #transformationRow, #pipelineStagesSection),
-.wm-studio[data-tab="chars"] #manualModal .scrollable-content > :not(#characterPromptsContainer):not(#textOverlaysContainer),
+.wm-studio[data-tab="prompt"] #manualModal :is(#transformationRow, #pipelineStagesSection),
 .wm-studio[data-tab="images"] #manualModal .scrollable-content > :not(#transformationRow):not(#pipelineStagesSection) {
     display: none !important;
+}
+
+/* Prompt: one WM form scrolling as a whole (prompt, Characters, Settings): the form is the
+ * scroller and the desktop's two panes (the prompt column, the settings column) follow each other */
+.wm-studio[data-tab="prompt"] #manualForm {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+}
+
+.wm-studio[data-tab="prompt"] #manualModal :is(.manual-modal-split, .manual-modal-form-section, .model-control) {
+    position: relative !important;
+    inset: auto !important;
+}
+
+.wm-studio[data-tab="prompt"] #manualModal :is(.manual-modal-form-section, .prompt-options-container) {
+    display: block !important;
+}
+
+.wm-studio[data-tab="prompt"] #manualModal .form-section-scroll {
+    overflow: visible !important;
+}
+
+.wm-studio[data-tab="prompt"] #manualModal .form-section-scroll > .scrollable-content {
+    padding-bottom: 0 !important;
+}
+
+.wm-studio[data-tab="prompt"] #manualModal .model-control {
+    overflow: visible !important;
+    padding-top: 0 !important;
+}
+
+/* section heads: bold text over a rule, as WM's grouped forms */
+.wm-studio .wms-sect,
+.wm-studio[data-tab="prompt"] #manualModal .model-control::before {
+    display: block;
+    margin: calc(6 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+    padding: 0 0 calc(1 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    color: #000;
+    font: bold calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+}
+
+.wm-studio[data-tab="prompt"] #manualModal .model-control::before {
+    content: 'Settings';
+}
+
+.wm-studio .wms-chars-none {
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    min-height: calc(20 * var(--wm-px));
+    margin: 0 0 calc(3 * var(--wm-px));
+    color: #000;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+}
+
+.wm-studio .wms-chars-none[hidden] {
+    display: none !important;
+}
+
+.wm-studio .wms-chars-none > span {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.wm-studio .wms-chars-add {
+    box-sizing: border-box;
+    min-width: calc(44 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(6 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: var(--wm-tint);
+    color: #000;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+}
+
+.wm-studio .wms-chars-add:active {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text, #fff);
+}
+
+/* WM scroll bar on the Prompt form (wm-shell.css draws the same for app pages) */
+.wm-studio #manualForm::-webkit-scrollbar {
+    width: calc(13 * var(--wm-px));
+}
+
+.wm-studio #manualForm::-webkit-scrollbar-track {
+    background: #fff;
+    border-left: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-studio #manualForm::-webkit-scrollbar-thumb {
+    background: var(--wm-tab-strip);
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-right: 0;
+    border-radius: 0;
 }
 
 /* the preview's desktop extras: the reference browser, the quick start gallery */
@@ -235,7 +333,6 @@
 .wm-studio .wms-noprint[hidden],
 .wm-studio .wms-norefs[hidden],
 .wm-studio .wms-status[hidden],
-.wm-studio .wms-empty[hidden],
 .wm-studio .wms-tool[hidden] {
     display: none !important;
 }
@@ -243,19 +340,6 @@
 .wm-studio .wms-status img {
     width: calc(32 * var(--wm-px));
     height: calc(32 * var(--wm-px));
-}
-
-.wm-studio .wms-empty {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: calc(20 * var(--wm-px));
-    z-index: 2;
-    margin: 0;
-    text-align: center;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
-    color: #000;
-    pointer-events: none;
 }
 
 .wm-studio .wms-wait {
@@ -638,9 +722,18 @@
     display: none !important;
 }
 
-.wm-studio #manualModal .inset-badge :is(span, i, .price-list) {
+.wm-studio #manualModal .inset-badge :is(span, .price-list) {
     color: #000 !important;
     font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    text-shadow: none !important;
+    -webkit-text-fill-color: #000 !important;
+    filter: none !important;
+}
+
+/* icon-font glyphs (the tokens-free check) keep their own font: the WM font drew them as a box */
+.wm-studio #manualModal .inset-badge i {
+    color: #000 !important;
+    font-size: calc(11 * var(--wm-px)) !important;
     text-shadow: none !important;
     -webkit-text-fill-color: #000 !important;
     filter: none !important;
@@ -1381,5 +1474,194 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
 .wm-studio #manualModal .inset-badge i[class*=" nai-"] {
     background: #000 !important;
     filter: none !important;
+    opacity: 1 !important;
+}
+
+/* ======================================================================
+ * Prompt highlighting (emphasisHighlight.js): the overlay paints tag and emphasis fills behind
+ * the textarea's own (transparent-backed) text. The WM field rules made the textarea opaque white
+ * over it, and the overlay kept the desktop's metrics (monospace 0.85em, 1.35 line, 0.45em padding,
+ * no border) while the field is 12/15 px WM font with a 1 px frame and 2/3 px padding. Here the
+ * white is on the box behind both, the overlay copies the field glyph for glyph, and wmStudio.js
+ * sizes it to the textarea (--wms-ta-top / --wms-ta-h) and scrolls it with it.
+ * --prompt-surface: light picks the highlight palette made for white boxes.
+ * ====================================================================== */
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) {
+    --prompt-surface: light;
+}
+
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container, .prompt-textarea-emphasis-wrap) {
+    position: relative !important;
+}
+
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container, .prompt-textarea-emphasis-wrap) > textarea {
+    position: relative !important;
+    z-index: 2 !important;
+    background: transparent !important;
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
+    letter-spacing: normal !important;
+    word-spacing: normal !important;
+    tab-size: 4 !important;
+    white-space: pre-wrap !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+    line-break: anywhere !important;
+}
+
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container, .prompt-textarea-emphasis-wrap) > :is(.emphasis-highlight-overlay, .search-highlight-overlay) {
+    position: absolute !important;
+    top: var(--wms-ta-top, 0) !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: auto !important;
+    height: var(--wms-ta-h, calc(150 * var(--wm-px))) !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid transparent !important;
+    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+    letter-spacing: normal !important;
+    word-spacing: normal !important;
+    tab-size: 4 !important;
+    white-space: pre-wrap !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+    line-break: anywhere !important;
+    overflow: hidden !important;
+    color: transparent !important;
+    -webkit-text-fill-color: transparent !important;
+    background: #fff !important;
+    pointer-events: none !important;
+    z-index: 1 !important;
+}
+
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container, .prompt-textarea-emphasis-wrap) > .search-highlight-overlay {
+    background: transparent !important;
+    z-index: 3 !important;
+}
+
+/* ring of an inline-coloured highlight: dark on the white field */
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .emphasis-highlight {
+    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) rgba(0, 0, 0, 0.32);
+}
+
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .search-highlight-overlay .search-highlight {
+    background: rgb(51 153 255 / 20%);
+    box-shadow: inset 0 0 0 1px rgb(31 95 191 / 70%);
+}
+
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .emphasis-highlight-overlay .emphasis-selection-highlight {
+    background: rgb(255 204 0 / 30%);
+    box-shadow: inset 0 0 0 2px #c79a00;
+}
+
+/* ---- Prompt toolbar: Director and Add as WM icon + label buttons; the Studio menu button is
+ * the Menu soft key (same commands) ---- */
+.wm-studio #manualModal #studioImageGenSettingsBtn {
+    display: none !important;
+}
+
+.wm-studio #manualModal #addItemDropdown {
+    width: auto !important;
+}
+
+.wm-studio #manualModal .prompt-tabs .extra-buttons :is(#directorBtn, #addItemDropdownBtn) {
+    display: inline-flex !important;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    width: auto !important;
+    height: calc(22 * var(--wm-px)) !important;
+    padding: 0 calc(5 * var(--wm-px)) 0 calc(4 * var(--wm-px)) !important;
+}
+
+.wm-studio #manualModal .prompt-tabs .extra-buttons :is(#directorBtn, #addItemDropdownBtn)::after {
+    display: inline !important;
+    position: static !important;
+    inset: auto !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    background: none !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    outline: none !important;
+    -webkit-mask: none !important;
+    mask: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+    color: inherit;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+}
+
+.wm-studio #manualModal .prompt-tabs .extra-buttons #directorBtn::after { content: 'Director' !important; }
+.wm-studio #manualModal .prompt-tabs .extra-buttons #addItemDropdownBtn::after { content: 'Add' !important; }
+
+.wm-studio #manualModal #tab-buttons .gallery-toggle-btn {
+    height: calc(22 * var(--wm-px)) !important;
+}
+
+/* the focused prompt's toolbar (token count, datasets, quality ...): a flat WM strip with black text */
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar:not(.hidden) {
+    min-height: 0 !important;
+    margin: calc(2 * var(--wm-px)) 0 0 !important;
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: var(--wm-tab-strip) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    color: #000 !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar :is(.token-count, .text-search-label, .text-search-match-count) {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    text-shadow: none !important;
+    opacity: 1 !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar .token-info-container .token-progress-bar {
+    height: calc(4 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar .token-info-container .token-progress-fill {
+    border-radius: 0 !important;
+    background: var(--wm-highlight) !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar .token-info-container :is(.token-progress-inner, .token-progress-inner-ne) {
+    display: none !important;
+}
+
+/* character prompts on the WM form: the field is the box (no dark glass, glow or fixed desktop
+ * height around it), the name reads black, the drag grip (a mouse drag) goes */
+.wm-studio #manualModal .character-prompt-textarea-container,
+.wm-studio #manualModal .character-prompt-textarea-container.textarea-focused {
+    height: auto !important;
+    min-height: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+.wm-studio #manualModal .character-prompt-textarea-container::after,
+.wm-studio #manualModal .character-prompt-textarea-background,
+.wm-studio #manualModal .character-prompt-item .workspace-drag-handle {
+    display: none !important;
+}
+
+.wm-studio #manualModal .character-prompt-item :is(.character-name-input, .character-name-input-placeholder) {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    text-shadow: none !important;
     opacity: 1 !important;
 }
