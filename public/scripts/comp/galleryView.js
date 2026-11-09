@@ -6980,6 +6980,24 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
         }, { passive: true });
     }
 
+    // Columns follow the grid's own width. Caption double-click, snap and work-area refits
+    // maximise through modalUtils without modalResized, and a stale realGalleryColumns (3 of 5)
+    // put the visible rows' strip math below the viewport: they stayed on BlurHash for good.
+    if (gallery && typeof ResizeObserver === 'function') {
+        let lastGalleryGridWidth = 0;
+        new ResizeObserver((entries) => {
+            const width = Math.round(entries[entries.length - 1].contentRect.width);
+            if (!width || width === lastGalleryGridWidth) return;
+            lastGalleryGridWidth = width;
+            const before = realGalleryColumns;
+            updateGalleryGrid(true, true);
+            if (realGalleryColumns !== before) {
+                updateVirtualScroll();
+                resolveVisiblePlaceholders();
+            }
+        }).observe(gallery);
+    }
+
     // Catch up placeholders left while the gallery was behind another window
     const { galleryWindow } = getGalleryScrollRoots();
     if (galleryWindow) {

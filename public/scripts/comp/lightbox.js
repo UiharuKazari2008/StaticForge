@@ -1191,6 +1191,13 @@ function wireGlancewellChromeOnce() {
 function attachGlancewellChrome(pswp) {
     if (!pswp || !document.body.classList.contains('desktop-mode')) return;
     wireGlancewellChromeOnce();
+    // PhotoSwipe listens for keys on the whole document: arrows, z and Tab only reach it while
+    // the Glancewell window is the active window and the key is not typed into a field
+    pswp.on('keydown', (ev) => {
+        const t = ev.originalEvent && ev.originalEvent.target;
+        const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+        if (typing || !isPhotoSwipeWindowKeyboardContext()) ev.preventDefault();
+    });
     pswp.on('change', () => syncGlancewellChrome());
     pswp.on('afterInit', () => {
         syncGlancewellChrome();

@@ -4592,7 +4592,14 @@ class ExplorerApplet {
                 } else if ((item.mimeType || '').startsWith('text/')) {
                     await this.downloadSelectionItem(item);
                 } else if ((item.mimeType || '').startsWith('image/') && item.previewUrl) {
-                    openImageInViewer(item.previewUrl, item.name, {});
+                    // Lumen shows the file itself; previewUrl is Explorer's small webp thumbnail and
+                    // stays only for formats the browser cannot draw (TIFF, HEIC, ...)
+                    let src = item.previewUrl;
+                    if (/^image\/(png|jpe?g|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon|svg\+xml)$/i.test(item.mimeType)) {
+                        const resp = await vfsClient.downloadFile(item.targetId);
+                        if (resp && resp.downloadUrl) src = resp.downloadUrl;
+                    }
+                    openImageInViewer(src, item.name, {});
                 } else {
                     await this.downloadSelectionItem(item);
                 }
