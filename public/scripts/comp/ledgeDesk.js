@@ -2,6 +2,11 @@
 // Server sessions live in modules/ledgeDesk.js.
 
 const ledgeWindows = new Map();
+// Vista art for the balloons (.cursor/rules/vista-icons-not-fa.mdc)
+const LEDGE_TOAST_ICONS = {
+    saved: '<img src="/static_images/vista-icons/info-32.png" width="32" height="32" alt="">',
+    error: '<img src="/static_images/vista-icons/error-32.png" width="32" height="32" alt="">'
+};
 let ledgeMenuImage = null;
 let ledgeItemMenu = null;
 
@@ -33,12 +38,25 @@ function ledgeItemMenuConfig() {
     if (ledgeItemMenu) return ledgeItemMenu;
     // createManualPreviewImageContextMenuConfig: public/scripts/comp/manualModalManager.js
     const config = createManualPreviewImageContextMenuConfig();
+    // The menu is the Studio preview's; it reads window.currentManualPreviewImage for its states,
+    // which is the Studio's picture and must stay so (a right-click here used to replace it, so
+    // the Studio's own commands then acted on the Ledge card). Its readers are pointed at the card.
     config.beforeShow = (_event, target) => {
         const item = target && target.closest ? target.closest('.gallery-item') : null;
         ledgeMenuImage = ledgeImageForItem(item);
-        if (ledgeMenuImage) window.currentManualPreviewImage = ledgeMenuImage;
     };
     config.sections.forEach((section) => {
+        if (section.items) {
+            // getImageGenerationTransparencySubmenu: public/scripts/comp/imageGenerationSettings.js
+            section.items = section.items.filter((menuItem) => menuItem.optionsfn !== getImageGenerationTransparencySubmenu);
+            section.items.forEach((menuItem, index) => {
+                if (menuItem.action === 'view-image-data') menuItem.disabled = () => !ledgeMenuImage;
+                if (menuItem.text === 'Original') {
+                    // buildUnupscaledOriginalContextMenuItem: public/scripts/comp/galleryView.js
+                    section.items[index] = buildUnupscaledOriginalContextMenuItem(() => ledgeMenuImage);
+                }
+            });
+        }
         if (!section.icons) return;
         section.icons.forEach((icon) => {
             if (icon.action !== 'toggle-favorite') return;
@@ -53,11 +71,8 @@ function ledgeItemMenuConfig() {
         });
     });
     config.onAction = (action, target, item) => {
-        const galleryItem = target && target.closest ? target.closest('.gallery-item') : null;
-        const image = ledgeImageForItem(galleryItem);
-        if (image) window.currentManualPreviewImage = image;
-        // studioIsPreviewMenuAction: public/scripts/comp/imageGenerationSettings.js
-        if (studioIsPreviewMenuAction(action)) {
+        // stageResultIsImageAction: public/scripts/comp/stageResultsReview.js
+        if (stageResultIsImageAction(action)) {
             // stageResultsReviewManager.runImageAction: public/scripts/comp/stageResultsReview.js
             void stageResultsReviewManager.runImageAction(action, target);
             return;
@@ -114,9 +129,9 @@ async function ledgeSave(host) {
             items
         }), name, 'application/json');
         if (saved && saved.success === false) throw new Error(saved.error || 'Save failed');
-        showGlassToast('success', null, `Saved ${name} to the desktop`, false, 2500, '<i class="fas fa-check"></i>');
+        showGlassToast('success', null, `Saved ${name} to the desktop`, false, 2500, LEDGE_TOAST_ICONS.saved);
     } catch (err) {
-        showGlassToast('error', null, (err && err.message) || 'Could not save this desk', false, 3000, '<i class="fas fa-xmark"></i>');
+        showGlassToast('error', null, (err && err.message) || 'Could not save this desk', false, 3000, LEDGE_TOAST_ICONS.error);
     }
 }
 
@@ -149,92 +164,140 @@ function ledgeRender(host, session) {
     if (barName) barName.textContent = session.name || 'Desk';
     const gallery = host.querySelector('.gallery');
     if (!gallery) return;
-    gallery.replaceChildren();
-    (session.items || []).forEach((item) => {
-        const filename = item.filename || '';
-        const card = document.createElement('div');
-        card.className = 'gallery-item fade-in';
-        card.dataset.itemId = item.id || '';
-        card.dataset.filename = filename;
-        card.dataset.stageFilename = filename;
-        card.dataset.note = item.text || '';
-        if (item.checked) card.classList.add('selected');
-
-        const picture = document.createElement('img');
-        // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
-        picture.src = item.src || (filename ? localGalleryImageUrl(filename) : '');
-        picture.alt = item.text || filename || 'Item';
-
-        const box = document.createElement('input');
-        box.type = 'checkbox';
-        box.className = 'gallery-item-checkbox';
-        box.checked = item.checked === true;
-        box.title = 'Mark this item';
-        box.addEventListener('click', (event) => event.stopPropagation());
-        box.addEventListener('change', () => {
-            card.classList.toggle('selected', box.checked);
-            ledgeSendChecks(session.sessionId, host);
-        });
-
-        const overlay = document.createElement('div');
-        overlay.className = 'gallery-item-overlay';
-        const label = document.createElement('div');
-        label.className = 'gallery-item-title';
-        label.textContent = item.text || filename || 'Item';
-        const info = document.createElement('div');
-        info.className = 'gallery-item-info';
-        info.textContent = item.text ? filename : '';
-        overlay.append(label, info);
-
-        const actions = document.createElement('div');
-        actions.className = 'gallery-actions';
-        const image = ledgeImageForItem(card);
-        actions.append(
-            ledgeActionButton('fas fa-arrow-left', 'Modify', () => {
-                const known = ledgeImageForItem(card);
-                if (!known) return;
-                // openManualModalWithContent: public/scripts/comp/manualModalManager.js
-                openManualModalWithContent({ type: 'image', image: known });
-            }),
-            ledgeActionButton('fa-regular fa-star', 'Favorite', () => {
-                const known = ledgeImageForItem(card);
-                if (!known) return;
-                const pinBtn = actions.querySelector('.ledge-pin');
-                // togglePinImage / checkIfImageIsPinned / applyPinButtonState: public/scripts/comp/galleryView.js
-                togglePinImage(known, pinBtn).then(() => {
-                    const pinned = checkIfImageIsPinned(known.filename || known.original);
-                    applyPinButtonState(pinBtn, pinned);
-                    pinBtn.title = pinned ? 'Unfavorite' : 'Favorite';
-                });
-            }),
-            ledgeActionButton('fas fa-download', 'Download', () => {
-                const known = ledgeImageForItem(card);
-                if (!known) return;
-                // downloadImage: public/scripts/comp/galleryView.js
-                downloadImage({ filename: known.filename, original: known.original || known.filename, upscaled: known.upscaled });
-            })
-        );
-        const pinBtn = actions.children[1];
-        pinBtn.classList.add('ledge-pin');
-        if (image) {
-            const pinned = checkIfImageIsPinned(image.filename || image.original);
-            applyPinButtonState(pinBtn, pinned);
-            pinBtn.title = pinned ? 'Unfavorite' : 'Favorite';
-        }
-        overlay.appendChild(actions);
-
-        card.addEventListener('click', (event) => {
-            if (event.target.closest('.gallery-item-checkbox, .gallery-actions')) return;
-            if (!filename) return;
-            const known = ledgeImageForItem(card);
-            // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
-            openGalleryImageInViewer(known || { filename, original: filename });
-        });
-        card.append(picture, box, overlay);
-        if (contextMenu) contextMenu.attachToElement(card, ledgeItemMenuConfig());
-        gallery.appendChild(card);
+    // Cards are kept by item id while their picture and note are the same: an add or remove used
+    // to rebuild every card, reloading every picture and resetting the scroll position
+    const existing = new Map();
+    gallery.querySelectorAll('.gallery-item').forEach((card) => {
+        if (card.dataset.itemId) existing.set(card.dataset.itemId, card);
     });
+    const cards = (session.items || []).map((item) => {
+        const kept = item.id ? existing.get(item.id) : null;
+        if (kept && kept.dataset.key === ledgeItemKey(item)) {
+            existing.delete(item.id);
+            ledgeSetCardChecked(kept, item.checked === true);
+            return kept;
+        }
+        return ledgeBuildCard(host, session, item);
+    });
+    gallery.replaceChildren(...cards);
     ledgeReflow(host);
+}
+
+function ledgeItemKey(item) {
+    return `${item.filename || ''}\n${item.src || ''}\n${item.text || ''}`;
+}
+
+function ledgeSetCardChecked(card, checked) {
+    const box = card.querySelector('.gallery-item-checkbox');
+    if (box) box.checked = checked;
+    card.classList.toggle('selected', checked);
+}
+
+/** Someone checked a card (here or in another tab): the boxes follow, nothing is rebuilt. */
+function ledgeSyncChecks(host, session) {
+    const checked = new Set(Array.isArray(session.checked)
+        ? session.checked
+        : (session.items || []).filter((item) => item.checked).map((item) => item.id));
+    host.querySelectorAll('.gallery-item').forEach((card) => {
+        ledgeSetCardChecked(card, checked.has(card.dataset.itemId));
+    });
+}
+
+function ledgeBuildCard(host, session, item) {
+    const filename = item.filename || '';
+    const card = document.createElement('div');
+    card.dataset.key = ledgeItemKey(item);
+    card.className = 'gallery-item fade-in';
+    card.dataset.itemId = item.id || '';
+    card.dataset.filename = filename;
+    card.dataset.stageFilename = filename;
+    card.dataset.note = item.text || '';
+    if (item.checked) card.classList.add('selected');
+
+    const picture = document.createElement('img');
+    picture.alt = item.text || filename || 'Item';
+    picture.decoding = 'async';
+    picture.loading = 'lazy';
+    if (item.src) {
+        picture.src = item.src;
+    } else if (filename) {
+        // the Studio preview WebP at the picture's own size (#648), the PNG only when there is none
+        // localGalleryImageUrl / studioPreviewDisplayUrl: public/scripts/comp/assetUrlResolver.js
+        const full = localGalleryImageUrl(filename);
+        picture.addEventListener('error', () => {
+            if (!picture.src.endsWith(full)) picture.src = full;
+        }, { once: true });
+        picture.src = studioPreviewDisplayUrl(full);
+    }
+
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.className = 'gallery-item-checkbox';
+    box.checked = item.checked === true;
+    box.title = 'Mark this item';
+    box.addEventListener('click', (event) => event.stopPropagation());
+    box.addEventListener('change', () => {
+        card.classList.toggle('selected', box.checked);
+        ledgeSendChecks(session.sessionId, host);
+    });
+
+    const overlay = document.createElement('div');
+    overlay.className = 'gallery-item-overlay';
+    const label = document.createElement('div');
+    label.className = 'gallery-item-title';
+    label.textContent = item.text || filename || 'Item';
+    const info = document.createElement('div');
+    info.className = 'gallery-item-info';
+    info.textContent = item.text ? filename : '';
+    overlay.append(label, info);
+
+    const actions = document.createElement('div');
+    actions.className = 'gallery-actions';
+    const image = ledgeImageForItem(card);
+    actions.append(
+        ledgeActionButton('fas fa-arrow-left', 'Modify', () => {
+            const known = ledgeImageForItem(card);
+            if (!known) return;
+            // openManualModalWithContent: public/scripts/comp/manualModalManager.js
+            openManualModalWithContent({ type: 'image', image: known });
+        }),
+        ledgeActionButton('fa-regular fa-star', 'Favorite', () => {
+            const known = ledgeImageForItem(card);
+            if (!known) return;
+            const pinBtn = actions.querySelector('.ledge-pin');
+            // togglePinImage / checkIfImageIsPinned / applyPinButtonState: public/scripts/comp/galleryView.js
+            togglePinImage(known, pinBtn).then(() => {
+                const pinned = checkIfImageIsPinned(known.filename || known.original);
+                applyPinButtonState(pinBtn, pinned);
+                pinBtn.title = pinned ? 'Unfavorite' : 'Favorite';
+            });
+        }),
+        ledgeActionButton('fas fa-download', 'Download', () => {
+            const known = ledgeImageForItem(card);
+            if (!known) return;
+            // downloadImage: public/scripts/comp/galleryView.js
+            downloadImage({ filename: known.filename, original: known.original || known.filename, upscaled: known.upscaled });
+        })
+    );
+    const pinBtn = actions.children[1];
+    pinBtn.classList.add('ledge-pin');
+    if (image) {
+        const pinned = checkIfImageIsPinned(image.filename || image.original);
+        applyPinButtonState(pinBtn, pinned);
+        pinBtn.title = pinned ? 'Unfavorite' : 'Favorite';
+    }
+    overlay.appendChild(actions);
+
+    card.addEventListener('click', (event) => {
+        if (event.target.closest('.gallery-item-checkbox, .gallery-actions')) return;
+        if (!filename) return;
+        const known = ledgeImageForItem(card);
+        // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
+        openGalleryImageInViewer(known || { filename, original: filename });
+    });
+    card.append(picture, box, overlay);
+    if (contextMenu) contextMenu.attachToElement(card, ledgeItemMenuConfig());
+    return card;
 }
 
 function ledgeCloneTemplate() {
@@ -285,7 +348,7 @@ function presentLedge(data) {
     if (!data.sessionId) return;
     if (data.reason === 'checks') {
         const host = ledgeWindows.get(data.sessionId);
-        if (host) ledgeRender(host, data);
+        if (host) ledgeSyncChecks(host, data);
         return;
     }
     ledgeEnsureWindow(data);

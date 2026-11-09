@@ -1987,9 +1987,9 @@ img.loading {
     }
 }
 
-/* Staged generation results review — scripts/comp/stageResultsReview.js
-   Ledge clones the same window from #ledgeDeskTemplate (public/scripts/comp/ledgeDesk.js). */
-#stageResultsReview,
+/* Ledge - public/scripts/comp/ledgeDesk.js, one window per session cloned from #ledgeDeskTemplate.
+   Stage Results, which it shared these rules with, is a light Vista window now
+   (css/stage-results-review.css). */
 .ledge-desk {
     width: 1100px;
     height: 820px;
@@ -1997,7 +1997,6 @@ img.loading {
     flex-direction: column;
 }
 
-#stageResultsReview > .modal-content,
 .ledge-desk > .modal-content {
     overflow: hidden;
     min-height: 0;
@@ -2008,7 +2007,6 @@ img.loading {
     flex-direction: column;
 }
 
-#stageResultsReview .modal-body,
 .ledge-desk .modal-body {
     flex: 1;
     min-height: 0;
@@ -2018,30 +2016,20 @@ img.loading {
     padding: 0;
 }
 
-#stageResultsReview .stage-results-scroll-shell,
 .ledge-desk .stage-results-scroll-shell {
     flex: 1;
     min-height: 0;
     overflow: hidden;
 }
 
-#stageResultsReview .stage-results-scrollable,
 .ledge-desk .stage-results-scrollable {
     height: 100%;
     overflow: auto;
     padding: 2px 4px 4px 0;
 }
 
-#stageResultsReview .gallery,
 .ledge-desk .gallery {
     margin-bottom: 0;
-}
-
-#stageResultsReview .gallery-item-overlay {
-    opacity: 1;
-    justify-content: flex-end;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.72), transparent 55%);
-    pointer-events: none;
 }
 
 /* Ledge in the Workspace window's design (Yukimi, Oct 22 2026; References did the same, #474):
@@ -2108,12 +2096,10 @@ body:not(.windows-classic-theme) .ledge-desk {
     padding-top: 0.15rem;
 }
 
-#stageResultsReview .gallery-actions,
 .ledge-desk .gallery-actions {
     pointer-events: auto;
 }
 
-#stageResultsReview .gallery-item[data-stage-filename],
 .ledge-desk .gallery-item[data-stage-filename] {
     cursor: var(--c-pointer);
 }

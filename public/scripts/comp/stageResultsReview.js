@@ -78,10 +78,14 @@ function buildChainResultSlots(files, metadata) {
         : (forge && Array.isArray(forge.pipeline) ? forge.pipeline : []);
     // calculateStageHexIdsFromData / getPipelineStageMenuLabel / resolvePipelineStageTypeMeta: public/scripts/comp/pipelineStageManager.js
     const hexIds = calculateStageHexIdsFromData(pipeline);
-    const liveCount = pipelineStagesContainer
-        ? pipelineStagesContainer.querySelectorAll('.pipeline-stage-item').length
-        : 0;
-    const useLiveLabels = pipeline.length > 0 && liveCount === pipeline.length;
+    // The Studio's own labels (custom names, the managed Phasewalker names) only when its stages are
+    // this image's stages: same count and the same type at every place, not just the same count
+    const liveItems = pipelineStagesContainer
+        ? Array.from(pipelineStagesContainer.querySelectorAll('.pipeline-stage-item'))
+        : [];
+    const useLiveLabels = pipeline.length > 0
+        && liveItems.length === pipeline.length
+        && liveItems.every((item, index) => !pipeline[index].type || item.dataset.stageType === pipeline[index].type);
     return files.map((file) => {
         const stageIndex = Number(file.stageIndex) || 0;
         let label;
@@ -121,23 +125,62 @@ function buildChainResultSlots(files, metadata) {
     });
 }
 
+
+// Vista art for this window's balloons (.cursor/rules/vista-icons-not-fa.mdc)
+const STAGE_RESULTS_TOAST_ICONS = {
+    phase: '<img src="/static_images/vista-icons/phasewalker-32.png" width="32" height="32" alt="">',
+    info: '<img src="/static_images/vista-icons/info-32.png" width="32" height="32" alt="">',
+    warning: '<img src="/static_images/vista-icons/warning-32.png" width="32" height="32" alt="">',
+    error: '<img src="/static_images/vista-icons/error-32.png" width="32" height="32" alt="">'
+};
+
+/** The stage an expander writes to (bracketGenExpanderStageIndex in bracketGenerationApplet.js, which
+ *  loads only with Phasewalker): stages [n, ...] or { start: n }. */
+function stageResultExpanderStage(row) {
+    if (!row || row.stages === undefined || row.stages === null) return null;
+    if (Array.isArray(row.stages)) return row.stages.length ? Number(row.stages[0]) : null;
+    if (typeof row.stages === 'object' && row.stages.start !== undefined) return Number(row.stages.start);
+    return null;
+}
+
+/** Thumbnail for a saved file: the Studio preview WebP at the picture's own size (#648), not the PNG. */
+function stageResultThumbUrl(filename) {
+    // localGalleryImageUrl / studioPreviewDisplayUrl: public/scripts/comp/assetUrlResolver.js
+    return studioPreviewDisplayUrl(localGalleryImageUrl(filename));
+}
+
+const STAGE_RESULT_STATE_TEXT = {
+    waiting: 'Waiting',
+    generating: 'Rendering',
+    saved: '',
+    failed: 'Failed',
+    stopped: 'Not saved'
+};
+
 class StageResultsReviewManager {
     constructor() {
         this.element = null;
-        this.gallery = null;
+        this.view = null;
         this.titleEl = null;
-        this.scrollShell = null;
+        this.toolbar = null;
+        this.summaryEl = null;
+        this.detailEl = null;
         this.sessionActive = false;
         this.printMode = false;
+        this.selected = null;
+        this._menuConfig = null;
+        this._reopenTimer = null;
     }
 
     init() {
         this.element = document.getElementById('stageResultsReview');
-        this.gallery = document.getElementById('stageResultsGallery');
+        this.view = document.getElementById('stageResultsView');
         this.titleEl = document.getElementById('stageResultsReviewTitle');
-        if (!this.element || !this.gallery) return;
+        if (!this.element || !this.view) return;
+        this.toolbar = this.element.querySelector('.stage-results-toolbar');
+        this.summaryEl = document.getElementById('stageResultsSummary');
+        this.detailEl = document.getElementById('stageResultsDetail');
 
-        this.scrollShell = this.element.querySelector('.stage-results-scroll-shell');
         transientWindowsWithPositions.add('stage-results-review');
         // linkToolWindowToParent / addResizeHandles / openModal / closeModal / bringModalToFront: public/scripts/comp/modalUtils.js
         linkToolWindowToParent(this.element, document.getElementById('manualModal'));
@@ -148,7 +191,25 @@ class StageResultsReviewManager {
         document.getElementById('stageResultsReviewCloseBtn')?.addEventListener('click', () => {
             closeModal(this.element);
         });
-        this.gallery.addEventListener('click', (event) => this.onGalleryClick(event));
+        this.view.addEventListener('click', (event) => this.onViewClick(event));
+        this.view.addEventListener('dblclick', (event) => this.onViewDoubleClick(event));
+        this.view.addEventListener('keydown', (event) => this.onViewKeyDown(event));
+        // a right-click selects first, as Explorer does (the menu then acts on that item)
+        this.view.addEventListener('contextmenu', (event) => {
+            const item = event.target.closest('.stage-result-item');
+            if (item) this.select(item);
+        }, true);
+        this.view.addEventListener('focusin', () => this.syncDetails());
+        if (this.toolbar) {
+            this.toolbar.addEventListener('click', (event) => {
+                const btn = event.target.closest('button[data-sr-cmd]');
+                if (!btn || btn.disabled) return;
+                void this.runCommand(btn.dataset.srCmd);
+            });
+            // Phasewalker can compile or unload while this window is open: look again before a click
+            this.toolbar.addEventListener('pointerenter', () => this.syncToolbar());
+        }
+        this.renderEmpty();
     }
 
     isStagedRequest(requestBody) {
@@ -160,8 +221,8 @@ class StageResultsReviewManager {
     }
 
     openForGeneration(requestBody) {
-        if (!this.element || !this.gallery || !this.isStagedRequest(requestBody)) {
-            this.sessionActive = false;
+        if (!this.element || !this.view || !this.isStagedRequest(requestBody)) {
+            this.releaseSession();
             this.printMode = false;
             return;
         }
@@ -196,7 +257,7 @@ class StageResultsReviewManager {
         }
         openModal(this.element);
         bringModalToFront(this.element);
-        this.reinitScrollbar();
+        this.syncToolbar();
     }
 
     showAfterClose() {
@@ -215,6 +276,10 @@ class StageResultsReviewManager {
         this._reopenTimer = setTimeout(poll, 50);
     }
 
+    isOpen() {
+        return !!(this.element && !this.element.classList.contains('hidden') && !this.element.classList.contains('minimised'));
+    }
+
     previewChainFilename() {
         const image = currentManualPreviewImage;
         if (!image) return '';
@@ -223,24 +288,28 @@ class StageResultsReviewManager {
         return image.original || image.filename || image.upscaled || '';
     }
 
+    items() {
+        return this.view ? Array.from(this.view.querySelectorAll('.stage-result-item')) : [];
+    }
+
     hasResults() {
-        return !!(this.gallery && this.gallery.querySelector('.gallery-item'));
+        return !!(this.view && this.view.querySelector('.stage-result-item'));
     }
 
     async openFromStudio() {
-        if (!this.element || !this.gallery) return;
+        if (!this.element || !this.view) return;
         if (this.sessionActive) {
             this.show();
             return;
         }
         const filename = this.previewChainFilename();
-        if (filename && this.gallery.querySelector(`.gallery-item[data-stage-filename="${CSS.escape(filename)}"]`)) {
+        if (filename && this.view.querySelector(`.stage-result-item[data-stage-filename="${CSS.escape(filename)}"]`)) {
             this.show();
             return;
         }
         if (!filename) {
             if (this.hasResults()) this.show();
-            else showGlassToast('info', 'Stage Results', 'Load an image in Studio first', false);
+            else showGlassToast('info', 'Stage Results', 'Load an image in Studio first', false, 4000, STAGE_RESULTS_TOAST_ICONS.info);
             return;
         }
 
@@ -254,7 +323,7 @@ class StageResultsReviewManager {
             const data = await wsClient.requestStageChain(filename);
             files = (data && data.files) || [];
         } catch (error) {
-            showGlassToast('error', 'Stage Results', error.message || 'Could not load the generation chain', false);
+            showGlassToast('error', 'Stage Results', error.message || 'Could not load the generation chain', false, 5000, STAGE_RESULTS_TOAST_ICONS.error);
             return;
         }
         if (!files.length) {
@@ -266,118 +335,212 @@ class StageResultsReviewManager {
         this.printMode = false;
         this.sessionActive = false;
         this.renderSlots(slots);
+        const items = this.items();
         slots.forEach((slot, index) => {
-            const item = this.gallery.children[index];
-            if (item && slot.filename) this.fillSlot(item, slot.filename);
+            if (items[index] && slot.filename) this.fillSlot(items[index], slot.filename);
         });
+        // the picture the Studio shows is the one selected
+        const current = this.view.querySelector(`.stage-result-item[data-stage-filename="${CSS.escape(filename)}"]`);
+        if (current) this.select(current);
         this.show();
     }
 
+    /** The run ended (saved, failed or cancelled): slots that never got a file say so. */
     releaseSession() {
         this.sessionActive = false;
-        this.clearGenerating();
+        this.items().forEach((item) => {
+            const state = item.dataset.state;
+            if (state === 'waiting' || state === 'generating') this.setItemState(item, 'stopped');
+        });
+        this.syncDetails();
+    }
+
+    renderEmpty() {
+        if (!this.view) return;
+        const empty = document.createElement('div');
+        empty.className = 'stage-results-empty';
+        empty.textContent = 'This folder is empty.';
+        this.view.replaceChildren(empty);
+        this.selected = null;
+        this.syncTitle();
+        this.syncDetails();
+        this.syncToolbar();
     }
 
     renderSlots(slots) {
-        this.gallery.replaceChildren();
+        const fragment = document.createDocumentFragment();
         slots.forEach((slot) => {
             const item = document.createElement('div');
-            item.className = 'gallery-item gallery-placeholder';
+            item.className = 'stage-result-item';
+            item.setAttribute('role', 'option');
+            item.setAttribute('aria-selected', 'false');
             item.dataset.currentStage = String(slot.currentStage);
             item.dataset.stageIndex = String(slot.stageIndex);
             item.dataset.stageId = slot.stageId || '';
             item.dataset.stageType = slot.stageType || '';
             item.dataset.label = slot.label;
             item.dataset.hex = slot.hex || '';
+            item.title = slot.label;
 
-            const overlay = document.createElement('div');
-            overlay.className = 'gallery-item-overlay';
-            const title = document.createElement('div');
-            title.className = 'gallery-item-title';
-            title.textContent = slot.label;
-            const info = document.createElement('div');
-            info.className = 'gallery-item-info';
-            info.textContent = 'Waiting';
-            overlay.append(title, info);
-            item.appendChild(overlay);
-            this.gallery.appendChild(item);
+            const thumb = document.createElement('div');
+            thumb.className = 'stage-result-thumb';
+            const frame = document.createElement('div');
+            frame.className = 'stage-result-frame';
+            thumb.appendChild(frame);
+
+            const label = document.createElement('span');
+            label.className = 'stage-result-label';
+            label.textContent = slot.label;
+            const status = document.createElement('span');
+            status.className = 'stage-result-status';
+            const progress = document.createElement('div');
+            progress.className = 'stage-result-progress';
+            progress.setAttribute('role', 'progressbar');
+            progress.setAttribute('aria-valuemin', '0');
+            progress.setAttribute('aria-valuemax', '100');
+            progress.appendChild(document.createElement('div'));
+
+            item.append(thumb, label, status, progress);
+            this.setItemState(item, 'waiting');
+            fragment.appendChild(item);
         });
+        this.view.replaceChildren(fragment);
+        this.view.scrollTop = 0;
+        this.selected = null;
         this.syncTitle();
+        this.syncDetails();
+        this.syncToolbar();
+    }
+
+    setItemState(item, state, statusText) {
+        if (!item) return;
+        item.dataset.state = state;
+        item.classList.toggle('is-generating', state === 'generating');
+        item.classList.toggle('is-failed', state === 'failed');
+        const status = item.querySelector('.stage-result-status');
+        if (status) {
+            const text = statusText != null ? statusText : STAGE_RESULT_STATE_TEXT[state];
+            status.textContent = text || '';
+        }
+        if (state !== 'generating') {
+            // a step preview that never became a saved picture goes with the state
+            if (state !== 'saved') {
+                const preview = item.querySelector('.stage-result-thumb > img.stage-result-step');
+                if (preview) {
+                    const frame = document.createElement('div');
+                    frame.className = 'stage-result-frame';
+                    preview.replaceWith(frame);
+                }
+            }
+        }
     }
 
     findSlot(currentStage) {
-        if (!this.gallery || currentStage == null) return null;
-        return this.gallery.querySelector(`.gallery-item[data-current-stage="${currentStage}"]`);
+        if (!this.view || currentStage == null) return null;
+        return this.view.querySelector(`.stage-result-item[data-current-stage="${CSS.escape(String(currentStage))}"]`);
     }
 
-    clearGenerating() {
-        if (!this.gallery) return;
-        this.gallery.querySelectorAll('.gallery-item.gallery-generating').forEach((item) => {
-            item.classList.remove('gallery-generating');
-            item.querySelector('.gallery-generating-overlay')?.remove();
-        });
+    activeSlot() {
+        return this.view ? this.view.querySelector('.stage-result-item.is-generating') : null;
     }
 
     markGenerating(data) {
-        if (!this.sessionActive || !this.gallery) return;
-        const currentStage = data.currentStage;
-        this.gallery.querySelectorAll('.gallery-item.gallery-generating').forEach((item) => {
-            if (Number(item.dataset.currentStage) !== Number(currentStage)) {
-                item.classList.remove('gallery-generating');
-                item.querySelector('.gallery-generating-overlay')?.remove();
-            }
-        });
-
-        const item = this.findSlot(currentStage);
+        // a stage that saves nothing renders toward the next slot that does: that slot shows it
+        const stage = Number(data.currentStage);
+        const item = this.findSlot(data.currentStage)
+            || this.items().find((entry) => entry.dataset.state === 'waiting' && Number(entry.dataset.currentStage) > stage);
         if (!item || item.dataset.stageFilename) return;
+        this.items().forEach((other) => {
+            if (other !== item && other.dataset.state === 'generating') this.setItemState(other, 'waiting');
+        });
+        if (item.dataset.state !== 'generating') this.setItemState(item, 'generating');
+        this.updateSlotProgress(item, data);
+    }
 
-        if (!item.classList.contains('gallery-generating')) {
-            item.classList.add('gallery-generating');
-            // buildGalleryRerollGeneratingInnerHtml: public/scripts/comp/galleryView.js
-            item.insertAdjacentHTML('beforeend', buildGalleryRerollGeneratingInnerHtml());
+    /** Step count, status words and the latest step frame on a rendering slot. */
+    updateSlotProgress(item, data) {
+        if (!item) return;
+        const bar = item.querySelector('.stage-result-progress');
+        const fill = bar && bar.firstElementChild;
+        if (fill && data.totalSteps) {
+            const step = Math.max(0, Math.min(Number(data.totalSteps), Number(data.currentStep) || 0));
+            const pct = Math.round((step / Number(data.totalSteps)) * 100);
+            fill.style.width = `${pct}%`;
+            bar.setAttribute('aria-valuenow', String(pct));
         }
-
-        const status = item.querySelector('.gallery-generating-status');
+        const status = item.querySelector('.stage-result-status');
         if (status) {
+            let text = '';
             // getGenerationStatusMessage: public/scripts/comp/generationProgress.js
-            status.textContent = getGenerationStatusMessage(data);
+            if (typeof getGenerationStatusMessage === 'function') text = getGenerationStatusMessage(data) || '';
+            if (!text && data.totalSteps) text = `Step ${Number(data.currentStep) || 0} of ${data.totalSteps}`;
+            status.textContent = text || STAGE_RESULT_STATE_TEXT.generating;
         }
-        const bar = item.querySelector('.gallery-generating-progress-bar');
-        if (bar && data.totalSteps) {
-            const step = Number(data.currentStep) || 0;
-            bar.style.width = `${Math.max(0, Math.min(100, (step / data.totalSteps) * 100))}%`;
+        if (!this.isOpen()) return;
+        const frameData = data.imageData
+            || (Array.isArray(data.stepFrames) && data.stepFrames.length
+                ? data.stepFrames[data.stepFrames.length - 1].imageData
+                : null);
+        if (!frameData) return;
+        const mime = data.imageFormat === 'png' ? 'image/png' : 'image/jpeg';
+        const src = String(frameData).startsWith('data:') ? frameData : `data:${mime};base64,${frameData}`;
+        const thumb = item.querySelector('.stage-result-thumb');
+        if (!thumb) return;
+        let img = thumb.querySelector('img.stage-result-step');
+        if (!img) {
+            img = document.createElement('img');
+            img.className = 'stage-result-step';
+            img.alt = '';
+            // step frames come small: scale the frame up to the largest the box holds (245 x 246
+            // with the photo frame's 11 px of white), as the saved picture fills it
+            img.addEventListener('load', () => {
+                const w = img.naturalWidth;
+                const h = img.naturalHeight;
+                if (!w || !h) return;
+                const scale = Math.min(234 / w, 235 / h);
+                img.style.width = `${Math.round(w * scale) + 11}px`;
+                img.style.height = `${Math.round(h * scale) + 11}px`;
+            });
+            thumb.replaceChildren(img);
         }
-        const info = item.querySelector('.gallery-item-info');
-        if (info) info.textContent = 'Generating';
+        if (img.src !== src) img.src = src;
     }
 
     fillSlot(item, filename) {
         if (!item || !filename) return;
-
+        const known = findImageByFilename(filename);
         item.dataset.stageFilename = filename;
-        item.classList.remove('gallery-placeholder', 'gallery-generating');
-        item.classList.add('fade-in');
-        item.querySelector('.gallery-generating-overlay')?.remove();
+        this.setItemState(item, 'saved');
 
-        // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
-        const src = localGalleryImageUrl(filename);
-        let img = item.querySelector('img:not(.gallery-generating-step-preview)');
-        if (!img) {
-            img = document.createElement('img');
-            img.alt = item.dataset.label || filename;
-            item.insertBefore(img, item.firstChild);
-        }
+        const thumb = item.querySelector('.stage-result-thumb');
+        const img = document.createElement('img');
+        img.alt = item.dataset.label || filename;
+        img.decoding = 'async';
+        img.draggable = false;
+        // resolveGalleryPreviewUrl: public/scripts/comp/assetUrlResolver.js
+        const src = known && known.storage === 'remote' ? resolveGalleryPreviewUrl(known) : stageResultThumbUrl(filename);
+        img.addEventListener('error', () => {
+            // no preview WebP (a JPEG / remote file): the file itself
+            const full = localGalleryImageUrl(filename);
+            if (img.src.endsWith(full)) return;
+            img.src = full;
+        }, { once: true });
+        img.addEventListener('load', () => {
+            item.dataset.size = `${img.naturalWidth} × ${img.naturalHeight}`;
+            if (item === this.selected) this.syncDetails();
+        }, { once: true });
         img.src = src;
+        if (thumb) thumb.replaceChildren(img);
 
-        const info = item.querySelector('.gallery-item-info');
-        if (info) info.textContent = 'Saved';
-        this.ensureResultChrome(item);
+        this.attachMenu(item);
         this.syncTitle();
+        if (item === this.selected) this.syncToolbar();
+        this.syncDetails();
     }
 
     imageForItem(item) {
         if (!item) return null;
-        const filename = item.dataset.stageFilename;
+        const filename = item.dataset.stageFilename || item.dataset.filename;
         if (!filename) return null;
         // findImageByFilename: public/scripts/comp/galleryView.js
         const known = findImageByFilename(filename);
@@ -385,21 +548,177 @@ class StageResultsReviewManager {
         return { filename: filename, original: filename };
     }
 
+    // ---- selection ----
+
+    select(item, options = {}) {
+        if (item === this.selected) {
+            if (options.scroll && item) item.scrollIntoView({ block: 'nearest' });
+            return;
+        }
+        if (this.selected) {
+            this.selected.classList.remove('is-selected');
+            this.selected.setAttribute('aria-selected', 'false');
+        }
+        this.selected = item || null;
+        if (item) {
+            item.classList.add('is-selected');
+            item.setAttribute('aria-selected', 'true');
+            if (options.scroll) item.scrollIntoView({ block: 'nearest' });
+        }
+        this.syncToolbar();
+        this.syncDetails();
+    }
+
+    onViewClick(event) {
+        const item = event.target.closest('.stage-result-item');
+        this.select(item);
+    }
+
+    onViewDoubleClick(event) {
+        const item = event.target.closest('.stage-result-item');
+        if (item && item.dataset.stageFilename) void this.runCommand('preview');
+    }
+
+    onViewKeyDown(event) {
+        const items = this.items();
+        if (!items.length) return;
+        const index = this.selected ? items.indexOf(this.selected) : -1;
+        // items per row from the layout (auto-fill columns)
+        const firstTop = items[0].offsetTop;
+        let perRow = items.findIndex((item) => item.offsetTop !== firstTop);
+        if (perRow <= 0) perRow = items.length;
+        let next = null;
+        switch (event.key) {
+            case 'ArrowRight': next = items[Math.min(items.length - 1, index + 1)]; break;
+            case 'ArrowLeft': next = items[Math.max(0, index - 1)]; break;
+            case 'ArrowDown': next = items[index < 0 ? 0 : Math.min(items.length - 1, index + perRow)]; break;
+            case 'ArrowUp': next = items[index < 0 ? 0 : Math.max(0, index - perRow)]; break;
+            case 'Home': next = items[0]; break;
+            case 'End': next = items[items.length - 1]; break;
+            case 'Enter':
+                if (this.selected && this.selected.dataset.stageFilename) void this.runCommand('preview');
+                event.preventDefault();
+                return;
+            default:
+                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && this.selected?.dataset.stageFilename) {
+                    void this.runCommand('copy');
+                    event.preventDefault();
+                }
+                return;
+        }
+        event.preventDefault();
+        if (next) this.select(next, { scroll: true });
+    }
+
+    // ---- toolbar, title, details ----
+
+    phasewalkerActive() {
+        const container = document.getElementById('pipelineStagesContainer');
+        if (container && container.querySelector('.pipeline-stage-item[data-managed="true"]')) return true;
+        return typeof requestBodyReplacements !== 'undefined' && requestBodyReplacements.some((row) => row.managed);
+    }
+
+    /** A saved stage Phasewalker compiled a phase for (an expander of its keywords targets it). */
+    hasPhaseFor(item) {
+        if (!item || this.printMode || typeof requestBodyReplacements === 'undefined') return false;
+        const stageIndex = Number(item.dataset.stageIndex);
+        if (!Number.isFinite(stageIndex)) return false;
+        return requestBodyReplacements.some((row) => row.managed && stageResultExpanderStage(row) === stageIndex);
+    }
+
+    syncToolbar() {
+        if (!this.toolbar) return;
+        const item = this.selected;
+        const hasFile = !!(item && item.dataset.stageFilename);
+        this.toolbar.querySelectorAll('button[data-sr-cmd]').forEach((btn) => {
+            const cmd = btn.dataset.srCmd;
+            if (cmd === 'use-phase') {
+                const offered = !this.printMode && this.phasewalkerActive();
+                btn.classList.toggle('hidden', !offered);
+                this.toolbar.querySelector('[data-sr-sep="use-phase"]')?.classList.toggle('hidden', !offered);
+                btn.disabled = !offered || !hasFile || !this.hasPhaseFor(item);
+                return;
+            }
+            btn.disabled = !hasFile;
+            if (cmd === 'favorite') {
+                const image = hasFile ? this.imageForItem(item) : null;
+                // checkIfImageIsPinned: public/scripts/comp/galleryView.js
+                const pinned = !!(image && checkIfImageIsPinned(image.filename || image.original));
+                btn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+                btn.title = pinned ? 'Remove from Favorites' : 'Add to Favorites';
+            }
+        });
+    }
+
+    syncTitle() {
+        if (!this.titleEl) return;
+        this.titleEl.textContent = this.printMode ? 'Prints' : 'Stage Results';
+    }
+
+    syncDetails() {
+        if (!this.summaryEl || !this.detailEl) return;
+        const item = this.selected;
+        if (item) {
+            const filename = item.dataset.stageFilename || '';
+            this.summaryEl.textContent = item.dataset.label || filename;
+            const parts = [];
+            if (filename) parts.push(filename);
+            if (item.dataset.size) parts.push(`Dimensions: ${item.dataset.size}`);
+            if (!filename) {
+                const status = item.querySelector('.stage-result-status');
+                parts.push((status && status.textContent) || STAGE_RESULT_STATE_TEXT[item.dataset.state] || '');
+            }
+            this.detailEl.textContent = parts.filter(Boolean).join('\u2003');
+            return;
+        }
+        const items = this.items();
+        const saved = items.filter((entry) => entry.dataset.stageFilename).length;
+        const noun = this.printMode ? 'print' : 'stage';
+        this.summaryEl.textContent = items.length
+            ? `${saved} of ${items.length} ${noun}${items.length === 1 ? '' : 's'} saved`
+            : 'No results';
+        const active = this.activeSlot();
+        if (active) this.detailEl.textContent = `Rendering ${active.dataset.label || ''}`.trim();
+        else if (this.sessionActive) this.detailEl.textContent = 'Waiting for the next stage';
+        else this.detailEl.textContent = items.length ? 'Select a picture to see its details.' : '';
+    }
+
+    // ---- commands ----
+
+    async runCommand(cmd) {
+        const item = this.selected;
+        if (!item || !item.dataset.stageFilename) return;
+        if (cmd === 'use-phase') {
+            await this.useThisPhase(item);
+            return;
+        }
+        const action = {
+            preview: 'open-in-window',
+            studio: 'modify-preview',
+            favorite: 'toggle-favorite',
+            copy: 'copy',
+            download: 'download',
+            properties: 'view-image-data'
+        }[cmd];
+        if (action) await this.runImageAction(action, item);
+    }
+
+    attachMenu(item) {
+        if (!item || typeof contextMenu === 'undefined' || !contextMenu || item.dataset.contextMenu) return;
+        contextMenu.attachToElement(item, this.menuConfig());
+    }
+
     menuConfig() {
         if (this._menuConfig) return this._menuConfig;
         // createManualPreviewImageContextMenuConfig: public/scripts/comp/manualModalManager.js
         const config = createManualPreviewImageContextMenuConfig();
         const manager = this;
-        config.beforeShow = (_event, target) => {
-            manager._menuItem = target && target.closest ? target.closest('.gallery-item') : null;
-        };
         config.sections.forEach((section) => {
             if (section.icons) {
                 section.icons.forEach((icon) => {
                     if (icon.action !== 'toggle-favorite') return;
                     icon.loadfn = (menuItem, target) => {
-                        const galleryItem = target && target.closest ? target.closest('.gallery-item') : null;
-                        const image = manager.imageForItem(galleryItem);
+                        const image = manager.imageForItem(target && target.closest ? target.closest('.stage-result-item') : null);
                         const filename = image && (image.filename || image.original || image.upscaled);
                         // checkIfImageIsPinned: public/scripts/comp/galleryView.js
                         const isPinned = filename ? checkIfImageIsPinned(filename) : false;
@@ -409,11 +728,13 @@ class StageResultsReviewManager {
                 });
             }
             if (!section.items) return;
+            // the Studio preview's display setting, not a command on this picture
+            section.items = section.items.filter((menuItem) => menuItem.optionsfn !== getImageGenerationTransparencySubmenu);
             section.items.forEach((menuItem, index) => {
                 if (menuItem.action === 'view-image-data') menuItem.disabled = false;
                 if (menuItem.text === 'Original') {
                     // buildUnupscaledOriginalContextMenuItem: public/scripts/comp/galleryView.js
-                    section.items[index] = buildUnupscaledOriginalContextMenuItem(() => manager.imageForItem(manager._menuItem));
+                    section.items[index] = buildUnupscaledOriginalContextMenuItem(() => manager.imageForItem(manager.selected));
                 }
             });
         });
@@ -421,9 +742,10 @@ class StageResultsReviewManager {
         if (list) {
             list.items.unshift({
                 icon: 'fas fa-crown',
-                text: 'Use this phase',
+                text: 'Use This Phase',
                 action: 'use-phase',
-                hidden: () => manager.printMode || !manager.phasewalkerActive()
+                hidden: () => manager.printMode || !manager.phasewalkerActive(),
+                disabled: () => !manager.hasPhaseFor(manager.selected)
             });
         }
         config.onAction = (action, target, item) => {
@@ -433,111 +755,47 @@ class StageResultsReviewManager {
         return config;
     }
 
-    makeActionButton(iconClass, title, onClick) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'btn-primary round-button';
-        btn.title = title;
-        btn.innerHTML = `<i class="${iconClass}"></i>`;
-        btn.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onClick(event);
-        });
-        return btn;
-    }
-
-    ensureResultChrome(item) {
-        if (!item || item.querySelector('.gallery-actions')) {
-            if (item && contextMenu && !item.dataset.contextMenu) {
-                contextMenu.attachToElement(item, this.menuConfig());
-            }
+    async useThisPhase(item) {
+        if (this.printMode || !item) return;
+        if (!this.phasewalkerActive()) {
+            showGlassToast('info', null, 'Phasewalker is not compiled into the Studio', false, 3000, STAGE_RESULTS_TOAST_ICONS.phase);
+            this.syncToolbar();
             return;
         }
-        const overlay = item.querySelector('.gallery-item-overlay');
-        if (!overlay) return;
-
-        const actions = document.createElement('div');
-        actions.className = 'gallery-actions';
-
-        const modifyBtn = this.makeActionButton('fas fa-arrow-left', 'Modify', () => {
-            const image = this.imageForItem(item);
-            if (!image) return;
-            // openManualModalWithContent: public/scripts/comp/manualModalManager.js
-            openManualModalWithContent({ type: 'image', image: image });
-        });
-
-        const crownBtn = this.makeActionButton('fas fa-crown', 'Use this phase', () => {
-            void this.useThisPhase(item);
-        });
-        crownBtn.classList.add('stage-result-use-phase');
-        if (this.printMode || !this.phasewalkerActive()) crownBtn.classList.add('hidden');
-
-        const pinBtn = this.makeActionButton('fa-regular fa-star', 'Favorite', () => {
-            const image = this.imageForItem(item);
-            if (!image) return;
-            // togglePinImage / checkIfImageIsPinned: public/scripts/comp/galleryView.js
-            togglePinImage(image, pinBtn).then(() => {
-                const pinned = checkIfImageIsPinned(image.filename || image.original);
-                pinBtn.title = pinned ? 'Unfavorite' : 'Favorite';
-            });
-        });
-        pinBtn.classList.add('stage-result-pin');
-        const image = this.imageForItem(item);
-        if (image) {
-            // applyPinButtonState: public/scripts/comp/galleryView.js
-            const pinned = checkIfImageIsPinned(image.filename || image.original);
-            applyPinButtonState(pinBtn, pinned);
-            pinBtn.title = pinned ? 'Unfavorite' : 'Favorite';
-        }
-
-        const downloadBtn = this.makeActionButton('fas fa-download', 'Download', () => {
-            const image = this.imageForItem(item);
-            if (!image) return;
-            // downloadImage: public/scripts/comp/galleryView.js
-            downloadImage({ filename: image.filename, original: image.original || image.filename, upscaled: image.upscaled });
-        });
-
-        actions.append(modifyBtn, crownBtn, pinBtn, downloadBtn);
-        overlay.appendChild(actions);
-
-        if (contextMenu) contextMenu.attachToElement(item, this.menuConfig());
-    }
-
-    phasewalkerActive() {
-        const container = document.getElementById('pipelineStagesContainer');
-        if (container && container.querySelector('.pipeline-stage-item[data-managed="true"]')) return true;
-        return requestBodyReplacements.some((row) => row.managed);
-    }
-
-    async useThisPhase(item) {
-        if (this.printMode) return;
-        if (!this.phasewalkerActive()) {
-            showGlassToast('info', null, 'Phasewalker is not compiled', false, 3000, '<i class="fas fa-crown"></i>');
+        const stageIndex = Number(item.dataset.stageIndex);
+        if (!Number.isFinite(stageIndex)) return;
+        if (!this.hasPhaseFor(item)) {
+            showGlassToast('warning', null, `Phasewalker has no phase for ${item.dataset.label || 'this stage'}`, false, 4000, STAGE_RESULTS_TOAST_ICONS.phase);
             return;
         }
         // featureLoader.loadFeature: public/scripts/comp/featureLoader.js
         await featureLoader.loadFeature('bracket_gen');
-        const stageIndex = Number(item && item.dataset.stageIndex);
-        if (!Number.isFinite(stageIndex)) return;
+        // bracketGenerationApplet.confirmSaveBeforeUnload: public/scripts/comp/bracketGenerationApplet.js
         const ok = await bracketGenerationApplet.confirmSaveBeforeUnload();
         if (!ok) return;
         // bracketGenBakeStageIntoPrompts: public/scripts/comp/bracketGenerationApplet.js
         const baked = bracketGenBakeStageIntoPrompts(stageIndex);
         if (!baked) {
-            showGlassToast('warning', null, 'No phase to take over', false, 4000, '<i class="fas fa-crown"></i>');
+            showGlassToast('warning', null, 'No phase to take over', false, 4000, STAGE_RESULTS_TOAST_ICONS.phase);
             return;
         }
         bracketGenerationApplet.updateChrome();
-        showGlassToast('success', null, 'Took over this phase', false, 3000, '<i class="fas fa-crown"></i>');
+        this.syncToolbar();
+        showGlassToast('success', null, `Took over ${item.dataset.label || 'this phase'}`, false, 3000, STAGE_RESULTS_TOAST_ICONS.phase);
     }
 
+    /**
+     * An image command on a Stage Results item or a Ledge card (ledgeDesk.js routes its menu here).
+     * @param {string} action - a Studio preview menu action
+     * @param {Element} target - the item, or an element inside it
+     */
     async runImageAction(action, target) {
-        const galleryItem = target && target.closest ? target.closest('.gallery-item') : null;
+        const galleryItem = target && target.closest ? target.closest('.stage-result-item, .gallery-item') : null;
         const image = this.imageForItem(galleryItem);
         if (!image) return;
         const filename = image.filename || image.original || image.upscaled;
-        const pinBtn = galleryItem ? galleryItem.querySelector('.stage-result-pin') : null;
+        // Ledge keeps a Favorite button on its card; Stage Results shows the state in its toolbar
+        const pinBtn = galleryItem ? galleryItem.querySelector('.ledge-pin') : null;
 
         switch (action) {
             case 'modify-preview':
@@ -549,12 +807,15 @@ class StageResultsReviewManager {
                 applyImageAsVariationBase(image);
                 break;
             case 'toggle-favorite':
+                // togglePinImage / checkIfImageIsPinned: public/scripts/comp/galleryView.js
                 await togglePinImage(image, pinBtn);
                 if (pinBtn) {
                     pinBtn.title = checkIfImageIsPinned(filename) ? 'Unfavorite' : 'Favorite';
                 }
+                if (galleryItem && galleryItem === this.selected) this.syncToolbar();
                 break;
             case 'download':
+                // downloadImage: public/scripts/comp/galleryView.js
                 downloadImage({ filename: filename, original: image.original || filename, upscaled: image.upscaled });
                 break;
             case 'copy':
@@ -562,7 +823,7 @@ class StageResultsReviewManager {
                 copyImageToClipboard(image);
                 break;
             case 'open-in-window':
-                // openGalleryImageInViewer: public/scripts/comp/galleryView.js
+                // openGalleryImageInViewer: public/scripts/comp/imageViewer.js
                 openGalleryImageInViewer(image);
                 break;
             case 'edit-in-paint':
@@ -613,6 +874,10 @@ class StageResultsReviewManager {
                 // upscaleImage: public/scripts/comp/galleryActions.js
                 upscaleImage(image);
                 break;
+            case 'create-animation':
+                // animateImage: public/scripts/comp/galleryActions.js
+                void animateImage(image);
+                break;
             case 'expand-canvas':
                 expandCanvasFromGallery(image);
                 break;
@@ -632,87 +897,88 @@ class StageResultsReviewManager {
         }
     }
 
+    // ---- generation progress ----
+
     applyProgress(data) {
-        if (!this.sessionActive || !data) return;
-        if (this.printMode && data.stageType !== 'print') return;
+        if (!this.sessionActive || !data || !this.view) return;
+        const phase = data.phase;
 
-        if (data.phase === 'generating' || data.phase === 'stage_delay' || data.phase === 'upscaling' || data.phase === 'previews') {
-            this.markGenerating(data);
+        // A print of several runs each copy as a whole generation: its own step events carry no
+        // stageType 'print' (or a pipeline stage's), so they belong to the print rendering now
+        if (this.printMode && data.stageType !== 'print') {
+            if (phase === 'generating' || phase === 'reviewing') this.updateSlotProgress(this.activeSlot(), data);
+            return;
         }
 
-        if ((data.phase === 'stage_complete' || data.phase === 'complete') && data.filename) {
+        if (phase === 'generating' || phase === 'stage_delay' || phase === 'upscaling' || phase === 'previews' || phase === 'reviewing') {
+            if (data.currentStage != null) this.markGenerating(data);
+            else this.updateSlotProgress(this.activeSlot(), data);
+            this.syncDetails();
+        }
+
+        if ((phase === 'stage_complete' || phase === 'complete') && data.filename) {
             const item = this.findSlot(data.currentStage)
-                || this.gallery.querySelector('.gallery-item.gallery-generating')
-                || this.gallery.querySelector('.gallery-item.gallery-placeholder');
-            if (item) this.fillSlot(item, data.filename);
+                || this.activeSlot()
+                || this.view.querySelector('.stage-result-item[data-state="waiting"]');
+            if (item && !item.dataset.stageFilename) this.fillSlot(item, data.filename);
         }
 
-        if (data.phase === 'error') {
-            const item = this.findSlot(data.currentStage);
-            if (item && !item.dataset.stageFilename) {
-                const info = item.querySelector('.gallery-item-info');
-                if (info) info.textContent = 'Failed';
-                item.classList.remove('gallery-generating');
-                item.querySelector('.gallery-generating-overlay')?.remove();
-            }
+        if (phase === 'error') {
+            const item = this.findSlot(data.currentStage) || this.activeSlot();
+            if (item && !item.dataset.stageFilename) this.setItemState(item, 'failed');
+            this.syncDetails();
         }
     }
 
+    /**
+     * The generation's reply: every saved file, matched to its slot by stage (the server's
+     * stageIndex: 0 the base, n the pipeline's nth stage; the copy number for prints), else in order.
+     */
     applySavedFilenames(filenames) {
-        if (!this.gallery) return;
-        const names = [];
+        if (!this.view) return;
         const list = Array.isArray(filenames) ? filenames : (filenames ? [filenames] : []);
+        const items = this.items();
+        const used = new Set();
+        const pending = [];
         list.forEach((entry) => {
             const name = typeof entry === 'string' ? entry : entry?.filename;
-            if (name) names.push(name);
+            if (!name) return;
+            const stageIndex = entry && typeof entry === 'object' ? Number(entry.stageIndex) : NaN;
+            const slot = Number.isFinite(stageIndex)
+                ? items.find((item) => !used.has(item) && Number(item.dataset.stageIndex) === stageIndex)
+                : null;
+            if (slot) {
+                used.add(slot);
+                if (slot.dataset.stageFilename !== name) this.fillSlot(slot, name);
+            } else {
+                pending.push(name);
+            }
         });
-        if (names.length === 0) return;
-
-        const items = Array.from(this.gallery.querySelectorAll('.gallery-item'));
-        names.forEach((name, index) => {
-            if (items[index]) this.fillSlot(items[index], name);
+        pending.forEach((name) => {
+            if (items.some((item) => item.dataset.stageFilename === name)) return;
+            const slot = items.find((item) => !used.has(item) && !item.dataset.stageFilename);
+            if (!slot) return;
+            used.add(slot);
+            this.fillSlot(slot, name);
         });
-        this.sessionActive = false;
-        this.clearGenerating();
+        this.releaseSession();
     }
+}
 
-    syncTitle() {
-        if (!this.titleEl || !this.gallery) return;
-        const total = this.gallery.querySelectorAll('.gallery-item').length;
-        const filled = this.gallery.querySelectorAll('.gallery-item[data-stage-filename]').length;
-        const heading = this.printMode ? 'Prints' : 'Stage Results';
-        this.titleEl.textContent = total === 0
-            ? heading
-            : `${heading} · ${filled}/${total}`;
-    }
-
-    reinitScrollbar() {
-        if (!this.scrollShell) return;
-        // customScrollbar.forceReinit: public/scripts/comp/customScrollbar.js
-        setTimeout(() => {
-            customScrollbar.forceReinit(this.scrollShell);
-        }, 0);
-    }
-
-    onGalleryClick(event) {
-        if (event.target.closest('.gallery-actions')) return;
-        const item = event.target.closest('.gallery-item');
-        const filename = item?.dataset.stageFilename;
-        if (!filename) return;
-        // openImageInViewer: public/scripts/comp/imageViewer.js
-        // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
-        openImageInViewer(localGalleryImageUrl(filename), item.dataset.label || filename, { filename });
-    }
+/** A Studio preview menu command that runImageAction carries out on an item's own picture
+ *  (Create Animation acts on the Studio preview in the Studio's handler, so it is listed here). */
+function stageResultIsImageAction(action) {
+    // studioIsPreviewMenuAction: public/scripts/comp/imageGenerationSettings.js
+    return action === 'create-animation' || studioIsPreviewMenuAction(action);
 }
 
 function handleStageResultMenuAction(action, target, item) {
     if (action === 'use-phase') {
-        const galleryItem = target && target.closest ? target.closest('.gallery-item') : null;
-        if (galleryItem) void stageResultsReviewManager.useThisPhase(galleryItem);
+        const resultItem = target && target.closest ? target.closest('.stage-result-item') : null;
+        if (resultItem) void stageResultsReviewManager.useThisPhase(resultItem);
         return;
     }
-    // studioIsPreviewMenuAction: public/scripts/comp/imageGenerationSettings.js
-    if (studioIsPreviewMenuAction(action)) {
+    if (stageResultIsImageAction(action)) {
         void stageResultsReviewManager.runImageAction(action, target);
         return;
     }
