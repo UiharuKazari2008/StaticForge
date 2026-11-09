@@ -522,7 +522,8 @@
                 }
             }
             hasMore = !!(res && res.hasMore);
-            for (const id of [...selected]) if (!items.some((i) => i.id === id)) selected.delete(id);
+            const itemIds = new Set(items.map((i) => i.id));
+            for (const id of [...selected]) if (!itemIds.has(id)) selected.delete(id);
             if (opts.select) {
                 selected.clear();
                 const want = items.find((i) => i.id === opts.select || i.navPath === opts.select);
