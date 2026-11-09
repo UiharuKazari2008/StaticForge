@@ -1695,11 +1695,10 @@ class WorkspaceManager {
                         workspaces[targetId].scraps.push(item);
                         existingScrapsSet.add(item);
                         actuallyAdded.push(item);
-                        // Remove from main files list when adding to scraps
-                        workspaces[targetId].files = workspaces[targetId].files.filter(file => file !== item);
                         addedCount++;
                     }
                 });
+                // JULES: perf optimization — Set lookup O(1) in a single pass O(N) instead of O(M * N) filter per added item
                 const validItemsSet = new Set(validItems);
                 // Remove from files list of all workspaces (since scraps are shared)
                 Object.keys(workspaces).forEach(workspaceId => {
