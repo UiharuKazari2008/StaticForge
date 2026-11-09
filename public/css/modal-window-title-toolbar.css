@@ -2048,3 +2048,9 @@ html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert
     margin-top: 6px;
     background-image: url("/static_images/window-controls/vista-minimize-small.png");
 }
+
+/* a tool window has no Maximize (Vista draws only Close on WS_EX_TOOLWINDOW; modalUtils adds the
+   work-area maximize to resizeable windows). Double-clicking the caption still maximizes. */
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls > .modal-work-area-maximize {
+    display: none;
+}
