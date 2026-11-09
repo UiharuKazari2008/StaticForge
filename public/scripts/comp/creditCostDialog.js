@@ -620,6 +620,4 @@ function fillLocalUpscaleSelect(select, includeNovelAi) {
 async function refreshLocalUpscaleSelects() {
     await fetchLocalUpscaleModels();
     fillLocalUpscaleSelect(document.getElementById('manualUpscaleModel'), true);
-    fillLocalUpscaleSelect(document.getElementById('enhanceUpscaleModel'), true);
-    fillLocalUpscaleSelect(document.getElementById('enhanceMiniUpscaleModel'), true);
 }
