@@ -1,98 +1,139 @@
-/* Token display modal */
-/* Token Display Modal Styles */
-.token-modal-content {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-    height: 100%;
-}
-
-.token-summary-info {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-md);
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
-}
-
-.token-display-container {
-    flex: 1;
-    border: 1px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
-    background: #000000;
-    padding: 6px;
-}
-
-.token-display-text {
-    font-family: 'Courier New', monospace;
-    font-size: 14px;
-    line-height: 1.2;
-    white-space: normal;
-    word-wrap: break-word;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0;
-    align-items: flex-start;
-}
-
-.token-highlight {
-    display: inline-block;
-    padding: 2px 2px;
-    margin: 0;
-    border-radius: 0;
-    position: relative;
-    transition: var(--transition-highlight);
-    color: white;
-    font-weight: 400;
-    min-height: 20px;
-    line-height: 1.2;
-    vertical-align: top;
-}
-
-
-.token-tooltip {
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.9);
-    color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    white-space: nowrap;
-    z-index: 1000;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-}
-
-
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .token-highlight:hover:not(:disabled) {
-        transform: scale(1.05);
-        z-index: 10;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    }
-
-    .token-highlight:hover:not(:disabled) .token-tooltip {
-        opacity: 1;
-    }
-}
-
-.token-strength-indicator {
-    position: absolute;
-    top: -2px;
-    right: -2px;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-    opacity: 0.7;
-}
+/* Token Analysis tool window (#tokenDisplayModal) - public/scripts/comp/emphasisTokenModal.js, markup
+   in app.html. A light Vista owned tool window (data-window-client="light" + .win7: #f0f0f0, black
+   Segoe UI 9pt, vista-glass-controls.css #444) laid out as a dialog page:
+   - the field's name and its count on one line (7 px from the client's edges, as a dialog's margin);
+   - the tokens in a read-only multi-line edit: the EDIT face (vista-controls/edit-normal.png), white,
+     one tinted box per token; the selected token is Vista's #3399ff with white text while the box has
+     focus and #f0f0f0 / black when it does not (the list view's selection);
+   - "Selected token": a Vista group box (vista-glass-controls.css fieldset) with label / value pairs
+     21 px apart (the Event Viewer preview pane's spacing, studio-activity-tool.css).
+   Scrollbars are the desktop's Vista scrollbars (vista-scrollbars.css). Classic keeps these rules:
+   the colours are the system colours Classic uses too. */
 
 #tokenDisplayModal {
-    width: 500px;
+    width: 520px;
+    height: 400px;
+    min-width: 340px;
+    min-height: 260px;
+}
+
+#tokenDisplayModal > .modal-content.token-analysis-content {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+    padding: 7px 7px 8px;
+    overflow: hidden;
+}
+
+#tokenDisplayModal .token-analysis-head {
+    flex: none;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+#tokenDisplayModal .token-analysis-field {
+    flex: none;
+}
+
+#tokenDisplayModal .token-analysis-count {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #000;
+}
+
+/* the read-only edit with the tokens */
+#tokenDisplayModal .token-analysis-box {
+    flex: 1 1 auto;
+    min-height: 48px;
+    margin: 0;
+    padding: 3px 4px;
+    overflow: auto;
+    border: 2px solid transparent;
+    border-image: url("/static_images/vista-controls/edit-normal.png") 2 fill / 2px stretch;
+    background: #fff;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 20px;
+    outline: none;
+    cursor: var(--c-text, text);
+    overflow-wrap: anywhere;
+}
+
+#tokenDisplayModal .token-analysis-box:focus-visible {
+    border-image-source: url("/static_images/vista-controls/edit-focus.png");
+}
+
+/* one token: its text kept as typed (the word-start space included), tints in turn; the boxes
+   abut so the prompt reads as written */
+#tokenDisplayModal .token-analysis-item {
+    padding: 2px 0;
+    white-space: pre-wrap;
+    color: #000;
+    cursor: var(--c-default, default);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+#tokenDisplayModal .token-analysis-item.tone-0 { background: #dccbea; }
+#tokenDisplayModal .token-analysis-item.tone-1 { background: #cde8c6; }
+#tokenDisplayModal .token-analysis-item.tone-2 { background: #c9dcf2; }
+#tokenDisplayModal .token-analysis-item.is-special { background: #e3e3e3; color: #555; }
+#tokenDisplayModal .token-analysis-item.is-unknown { background: #f8d0d0; color: #a00000; }
+
+#tokenDisplayModal .token-analysis-item.is-selected {
+    background: #f0f0f0;
+    outline: 1px solid #c0c0c0;
+}
+
+#tokenDisplayModal .token-analysis-box:focus .token-analysis-item.is-selected {
+    background: #3399ff;
+    color: #fff;
+    outline: none;
+}
+
+#tokenDisplayModal .token-analysis-empty {
+    color: #6d6d6d;
+}
+
+/* the group box: 9 px in from its frame, the caption 8 px from its left edge */
+#tokenDisplayModal fieldset.token-analysis-group {
+    flex: none;
+    min-width: 0;
+    margin: 0;
+    padding: 2px 9px 6px;
+}
+
+#tokenDisplayModal fieldset.token-analysis-group > legend {
+    margin-left: -1px;
+    padding: 0 2px;
+    color: #000;
+    font: inherit;
+}
+
+#tokenDisplayModal .token-analysis-details {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr);
+    grid-auto-rows: 21px;
+    align-items: center;
+    margin: 0;
+}
+
+#tokenDisplayModal .token-analysis-details > dt,
+#tokenDisplayModal .token-analysis-details > dd {
+    margin: 0;
+    font-weight: 400;
+    color: #000;
+    white-space: pre;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#tokenDisplayModal .token-analysis-details > dd.token-analysis-hint {
+    color: #6d6d6d;
+    white-space: nowrap;
 }

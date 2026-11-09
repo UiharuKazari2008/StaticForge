@@ -1,0 +1,248 @@
+/* Compile to Prompts tool window (#compileToPromptsModal) - public/scripts/comp/compileToPromptsApplet.js,
+   markup in app.html. A light Vista owned tool window (data-window-client="light" + .win7: #f0f0f0,
+   black Segoe UI 9pt, vista-glass-controls.css #444) laid out as Windows Update's "Select the updates
+   you want to install" page:
+   - one line of text on the page (7 px dialog margins);
+   - the changes in a report list view inside the 2 px sunken client edge (#a0a0a0 / #696969 outside,
+     #fff / #e3e3e3 inside), Vista header items 24 px (HEADER IMAGE, vista-controls/header-item-*.png),
+     19 px rows with the list's check box first (header check box selects all), the selected row
+     #3399ff with white text while the list has focus and #f0f0f0 when it does not (as
+     studio-activity-tool.css measured for Event Viewer);
+   - the selected change's details as label / value pairs in a sunken read-only box;
+   - the count and Vista push buttons (75 x 23, 7 px apart) at the foot.
+   genso-lock.css still carries the old dark rules for .compile-to-prompts-*; this markup no longer
+   uses those classes, and the window size below overrides its #compileToPromptsModal size. */
+
+body #compileToPromptsModal {
+    width: 680px;
+    height: 520px;
+    min-width: 480px;
+    min-height: 360px;
+}
+
+#compileToPromptsModal > .modal-content.ctp-content {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-height: 0;
+    padding: 9px 7px 7px;
+    overflow: hidden;
+}
+
+#compileToPromptsModal .ctp-intro {
+    flex: none;
+    margin: 0 0 0 1px;
+    color: #000;
+}
+
+/* ---- the list ---- */
+
+#compileToPromptsModal .ctp-list {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 80px;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px 0 #696969, inset -1px -1px 0 #e3e3e3;
+    padding: 1px;
+    background: #fff;
+    outline: none;
+    overflow: hidden;
+}
+
+#compileToPromptsModal .ctp-scroll {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    background: #fff;
+}
+
+#compileToPromptsModal .ctp-head,
+#compileToPromptsModal .ctp-row {
+    display: grid;
+    grid-template-columns: 24px 92px 132px minmax(90px, 1fr) minmax(120px, 1.4fr) 96px;
+    align-items: center;
+    min-width: 554px;
+}
+
+#compileToPromptsModal .ctp-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    height: 24px;
+    background: #fff;
+}
+
+#compileToPromptsModal .ctp-head > .ctp-cell {
+    box-sizing: border-box;
+    height: 24px;
+    padding: 4px 6px 0;
+    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 2 0 1 fill / 0 2px 0 1px stretch;
+    color: #000;
+}
+
+#compileToPromptsModal .ctp-head > .ctp-cell:last-child {
+    border-image-width: 0 0 0 1px;
+}
+
+#compileToPromptsModal .ctp-cell {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#compileToPromptsModal .ctp-row {
+    height: 19px;
+    color: #000;
+    cursor: var(--c-default, default);
+}
+
+#compileToPromptsModal .ctp-row > .ctp-cell {
+    padding: 0 6px;
+    line-height: 19px;
+    color: inherit;
+}
+
+/* the check box column: the 13 px box (vista-glass-controls.css draws it on the label) centred */
+#compileToPromptsModal :is(.ctp-head, .ctp-row) > .ctp-col-check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0 0 3px;
+}
+
+#compileToPromptsModal .ctp-head > .ctp-col-check {
+    padding-top: 0;
+}
+
+#compileToPromptsModal .ctp-col-check > label {
+    width: 13px;
+    height: 13px;
+    margin: 0;
+    padding: 0;
+    font-size: 0;
+}
+
+#compileToPromptsModal .ctp-col-check > label::before {
+    left: 0;
+    top: 0;
+    margin: 0;
+}
+
+#compileToPromptsModal .ctp-row > .ctp-col-change {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+#compileToPromptsModal .ctp-row > .ctp-col-change > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+#compileToPromptsModal .ctp-row > .ctp-col-change > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#compileToPromptsModal .ctp-row.is-selected {
+    background: #f0f0f0;
+}
+
+#compileToPromptsModal .ctp-list:focus-within .ctp-row.is-selected {
+    background: #3399ff;
+    color: #fff;
+}
+
+#compileToPromptsModal .ctp-empty {
+    padding: 6px 0 0;
+    color: #000;
+    text-align: center;
+}
+
+#compileToPromptsModal .ctp-empty.hidden {
+    display: none;
+}
+
+/* ---- the details box: a read-only multi-line edit with a client edge ---- */
+
+#compileToPromptsModal .ctp-details {
+    flex: none;
+    height: 132px;
+    padding: 4px 6px;
+    overflow: auto;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px 0 #696969, inset -1px -1px 0 #e3e3e3;
+    background: #fff;
+    color: #000;
+}
+
+#compileToPromptsModal .ctp-details.is-empty {
+    background: #f0f0f0;
+}
+
+#compileToPromptsModal .ctp-pairs {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    column-gap: 8px;
+    row-gap: 3px;
+    margin: 0;
+}
+
+#compileToPromptsModal .ctp-pairs > dt,
+#compileToPromptsModal .ctp-pairs > dd {
+    margin: 0;
+    font-weight: 400;
+    color: #000;
+    line-height: 15px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+#compileToPromptsModal .ctp-pairs > dt {
+    color: #6d6d6d;
+}
+
+#compileToPromptsModal .ctp-warning {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+#compileToPromptsModal .ctp-warning > img {
+    flex: none;
+    margin-top: -1px;
+}
+
+/* ---- the foot: the count on the left, the buttons right-aligned 7 px apart ---- */
+
+#compileToPromptsModal .ctp-foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 2px 0 0;
+}
+
+#compileToPromptsModal .ctp-count {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #000;
+}
+
+#compileToPromptsModal .ctp-foot > button {
+    flex: none;
+    min-width: 75px;
+    height: 23px;
+    margin: 0;
+    padding: 0 10px;
+}

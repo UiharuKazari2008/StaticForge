@@ -39,7 +39,7 @@
     const FORM_IDS = ['positionDialog', 'createTextReplacementModal', 'createRequestBodyReplacementModal', 'updatePresetModal',
         'workspaceEditModal', 'workspaceDumpModal', 'unifiedUploadModal', 'vibeEncodingModal',
         'bulkChangePresetModal', 'cacheMetadataModal', 'timeDateModal', 'weatherLocationModal',
-        'tokenDisplayModal', 'naxtCustomTagModal',
+        'naxtCustomTagModal',
         'vfsImportChoiceModal', 'directorFeedbackModal', 'compiledPromptModal', 'chatModal', 'updateNoteModal',
         'requestFormWindow'];
     // forms with Studio's prompt boxes: no 7.css on the client (its textarea and button rules would

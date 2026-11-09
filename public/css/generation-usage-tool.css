@@ -1,0 +1,76 @@
+/* Usage tool window (#generationUsageTool) - public/scripts/comp/usageToolManager.js, markup in
+   app.html. A light Vista owned tool window (data-window-client="light" + .win7: #f0f0f0, black
+   Segoe UI 9pt, vista-glass-controls.css #444) laid out as a property page:
+   - "Opus V5 usage": a Vista group box (fieldset) with the used share and Vista's progress bar
+     (PROGRESS IMAGE_622 + fill 626; the red fill 627 when the meter is nearly empty, as
+     vista-glass-controls.css draws [role=progressbar].error), 15 px tall as on the VM;
+   - the readings as label / value pairs 21 px apart (studio-activity-tool.css's preview pane). */
+
+#generationUsageTool {
+    width: 360px;
+    height: 252px;
+    min-width: 300px;
+    min-height: 236px;
+}
+
+#generationUsageTool > .modal-content.generation-usage-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+    padding: 7px 11px 10px;
+    overflow: hidden;
+}
+
+#generationUsageTool fieldset.generation-usage-meter {
+    flex: none;
+    min-width: 0;
+    margin: 0;
+    padding: 3px 9px 10px;
+}
+
+#generationUsageTool fieldset.generation-usage-meter > legend {
+    margin-left: -1px;
+    padding: 0 2px;
+    color: #000;
+    font: inherit;
+}
+
+#generationUsageTool .generation-usage-meter-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 0 5px;
+    white-space: nowrap;
+}
+
+#generationUsageTool .generation-usage-meter-line > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #000;
+}
+
+#generationUsageTool #generationUsageBar {
+    height: 15px;
+}
+
+#generationUsageTool .generation-usage-pairs {
+    flex: none;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    grid-auto-rows: 21px;
+    column-gap: 12px;
+    align-items: center;
+    margin: 0 0 0 1px;
+}
+
+#generationUsageTool .generation-usage-pairs > dt,
+#generationUsageTool .generation-usage-pairs > dd {
+    margin: 0;
+    font-weight: 400;
+    color: #000;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

@@ -1225,10 +1225,6 @@ div#manualResolutionDropdownMenu {
     outline-offset: 1px;
 }
 
-#generationUsageTool .token-progress-bar {
-    height: 16px;
-}
-
 .token-free-display.token-free-warning {
     background: #ffeb3b1a;
     color: #ffd54f;

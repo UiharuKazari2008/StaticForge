@@ -54,16 +54,17 @@ body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jum
     box-shadow: none;
 }
 
-/* the summary ("Oct 13, 3:30 PM (9 images)") is the bar's own text: white with Explorer's glow */
-body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jump-index-summary {
-    padding: 0 4px;
-    color: #fff;
-    font: 12px/15px "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
-    text-shadow: 0 0 6px hsl(200 80% 10% / 90%), 0 1px 1px hsl(200 80% 10% / 70%);
-}
-
 body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jump-index-controls {
     gap: 0;
+    margin-left: 0;
+}
+
+/* the picker's value is part of the command's label ("Time gap: 30 minutes") */
+body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jump-index-controls .custom-dropdown-btn > span {
+    margin-left: 0.3em;
+    color: inherit;
+    font: inherit;
+    text-shadow: inherit;
 }
 
 /* ---- the pickers: Explorer's drop-down command buttons (flat text and a 7x4 arrow; hot is
@@ -201,14 +202,15 @@ body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jum
     box-shadow: 0 0 0 1px #b9b9b9, 1px 1px 3px #0005;
 }
 
-/* ---- the count: Explorer's item caption under the thumbnail, black 9pt on one line, in place
-   of the dark badge over the picture ---- */
+/* ---- the caption: Explorer's item label under the thumbnail, black 9pt, the group's first time;
+   its size under it in Explorer's grey secondary text (#6d6d6d, as Tiles view shows a second line),
+   in place of the dark badge over the picture ---- */
 
-body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jump-index-card-meta {
+body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool :is(.gallery-jump-index-card-meta, .gallery-jump-index-card-count) {
     position: static;
     display: block;
     max-width: none;
-    margin: 6px 0 0;
+    margin: 0;
     padding: 0 2px;
     background: none;
     border: 0;
@@ -220,6 +222,46 @@ body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jum
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jump-index-card-meta {
+    margin-top: 6px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jump-index-card-count {
+    color: #6d6d6d;
+}
+
+/* ---- the details pane: Explorer's (vista-explorer.css .explorer-statusbar: the UIFILE gradient
+   #f4fcff, #ecfbfe, #bbd9f0 left to right, a #9db6c5 line above) at its small size, the group's
+   time span on the first line and its size and distance from here on the second ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jump-index-details {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+    height: 44px;
+    padding: 0 10px;
+    background: linear-gradient(to right, #f4fcff, #ecfbfe 50%, #bbd9f0);
+    border-top: 1px solid #9db6c5;
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 45%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool :is(.gallery-jump-index-summary, .gallery-jump-index-detail) {
+    flex: none;
+    padding: 0;
+    color: #000;
+    font: 12px/15px "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    text-shadow: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jump-index-detail {
+    color: #5a5a5a;
 }
 
 /* ---- scrollbar: Vista's 17px bar (vista-scrollbars.css, #467) instead of the overlay. That sheet
@@ -241,4 +283,26 @@ body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jum
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
+}
+
+/* ---- every theme (Classic, the phone): the details pane and the tile's count as plain lines; the
+   base look of the rest is keyboard-shortcuts.css ---- */
+
+.gallery-jump-index-details {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 10px;
+}
+
+.gallery-jump-index-detail {
+    font-size: 0.78rem;
+    opacity: 0.8;
+}
+
+.gallery-jump-index-card-count {
+    display: block;
+    padding: 2px 4px 4px;
+    font-size: 0.7rem;
+    text-align: center;
 }

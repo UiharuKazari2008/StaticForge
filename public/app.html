@@ -427,6 +427,8 @@
         href="/css/manual-modal-splash.css">
     <link rel="stylesheet"
         href="/css/token-display.css">
+    <link rel="stylesheet" href="/css/generation-usage-tool.css">
+    <link rel="stylesheet" href="/css/compile-to-prompts.css">
     <link rel="stylesheet"
         href="/css/modal-window-title-toolbar.css">
     <link rel="stylesheet"
@@ -1198,24 +1200,28 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content dark">
+        <div class="modal-content gallery-jump-index-client">
             <div class="modal-body gallery-jump-index-content">
-                <div class="gallery-jump-index-header">
-                    <span class="gallery-jump-index-summary" id="galleryJumpIndexSummary">No jump boundaries</span>
+                <div class="gallery-jump-index-header" role="toolbar" aria-label="Visual Index">
                     <div class="gallery-jump-index-controls">
                         <button type="button" id="galleryJumpIndexMinTimeDropdownBtn"
-                            class="custom-dropdown-btn hover-show colored right">
-                            <span id="galleryJumpIndexMinTimeSelected">30m</span>
+                            class="custom-dropdown-btn hover-show colored right" title="Start a new group after a gap of at least this long">
+                            Time gap: <span id="galleryJumpIndexMinTimeSelected">30 minutes</span>
                         </button>
                         <button type="button" id="galleryJumpIndexMaxGroupDropdownBtn"
-                            class="custom-dropdown-btn hover-show colored right">
-                            <span id="galleryJumpIndexMaxGroupSelected">100</span>
+                            class="custom-dropdown-btn hover-show colored right" title="Start a new group after this many images">
+                            Group size: <span id="galleryJumpIndexMaxGroupSelected">100</span>
                         </button>
                     </div>
                 </div>
                 <div class="gallery-jump-index-grid-shell" data-custom-scrollbar
                     data-scrollable-wrapper-class="gallery-jump-index-grid-scrollable">
-                    <div id="galleryJumpIndexGrid" class="gallery-jump-index-grid"></div>
+                    <div id="galleryJumpIndexGrid" class="gallery-jump-index-grid" role="listbox" aria-label="Groups"></div>
+                </div>
+                <!-- Explorer's details pane: the group under the pointer, else the one in view -->
+                <div class="gallery-jump-index-details" aria-live="polite">
+                    <span class="gallery-jump-index-summary" id="galleryJumpIndexSummary">No groups</span>
+                    <span class="gallery-jump-index-detail" id="galleryJumpIndexDetail"></span>
                 </div>
             </div>
         </div>
@@ -3190,14 +3196,18 @@
         </div>
     </div>
 
-    <!-- Studio Generation Usage Tool -->
-    <div id="generationUsageTool" class="modal hidden transient tool-window resizeable-window"
-        data-window-identifier="generation-usage-tool" data-parent-modal-id="manualModal" data-window-min-width="400"
-        data-window-min-height="220" data-window-max-width="580" data-window-max-height="360"
-        data-window-default-width="460" data-window-default-height="260">
+    <!-- Studio Generation Usage: public/scripts/comp/usageToolManager.js. A light Vista tool window
+         (css/generation-usage-tool.css): the Opus V5 meter as a Vista progress bar in a group box,
+         then label / value pairs (images in 24 hours, images left, refill). -->
+    <div id="generationUsageTool" class="modal hidden transient tool-window resizeable-window generation-usage-tool"
+        data-window-client="light"
+        data-window-identifier="generation-usage-tool" data-parent-modal-id="manualModal" data-window-min-width="300"
+        data-window-min-height="236" data-window-max-width="560" data-window-max-height="360"
+        data-window-default-width="360" data-window-default-height="252">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-battery-bolt icon-fa"></i>
+                <img src="/static_images/app_icons/24/vista-performance.webp" srcset="/static_images/app_icons/24/vista-performance.webp 1x, /static_images/app_icons/48/vista-performance.webp 2x" alt="" class="icon-image" />
                 <span>Usage</span>
             </div>
         </div>
@@ -3209,44 +3219,30 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content dark">
-            <div class="modal-body">
-                <div class="form-section">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label id="generationUsageStatusLabel">Usage</label>
-                            <span id="generationUsagePercent">—</span>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <div class="token-progress-bar">
-                                <div id="generationUsageFill" class="token-progress-fill"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>24h</label>
-                            <span id="generationUsageDayCount">—</span>
-                        </div>
-                        <div class="form-group">
-                            <label>Left</label>
-                            <span id="generationUsageRemaining">—</span>
-                        </div>
-                        <div class="form-group">
-                            <label>Refill</label>
-                            <span id="generationUsageRefill">—</span>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Last 24 hours</label>
-                            <span id="generationUsageDayComparison">—</span>
-                        </div>
-                    </div>
+        <div class="modal-content win7 generation-usage-content">
+            <fieldset class="generation-usage-meter">
+                <legend id="generationUsageStatusLabel">Opus V5 usage</legend>
+                <div class="generation-usage-meter-line">
+                    <span id="generationUsagePercent">&mdash;</span>
+                    <span id="generationUsageMeterNote" class="generation-usage-meter-note"></span>
                 </div>
-            </div>
+                <div id="generationUsageBar" role="progressbar" aria-labelledby="generationUsageStatusLabel"
+                    aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div id="generationUsageFill" style="width: 0%"></div>
+                </div>
+            </fieldset>
+            <dl class="generation-usage-pairs">
+                <dt>Images in the last 24 hours:</dt>
+                <dd id="generationUsageDayCount">&mdash;</dd>
+                <dt>Images left at current settings:</dt>
+                <dd id="generationUsageRemaining">&mdash;</dd>
+                <dt>Refill rate:</dt>
+                <dd id="generationUsageRefill">&mdash;</dd>
+                <dt>Next 1% in:</dt>
+                <dd id="generationUsageNext">&mdash;</dd>
+                <dt>Full in:</dt>
+                <dd id="generationUsageFull">&mdash;</dd>
+            </dl>
         </div>
     </div>
 
@@ -4500,13 +4496,19 @@
         </div>
     </div>
 
-    <!-- Compile to Prompts Modal -->
+    <!-- Compile to Prompts: public/scripts/comp/compileToPromptsApplet.js. A light Vista tool window
+         (css/compile-to-prompts.css) laid out as Windows Update's list of updates to install: the
+         changes Rentan compiled in a report list with check boxes, the selected change's details
+         under it, the count and the buttons at the foot. -->
     <div id="compileToPromptsModal" class="modal resizeable-window hidden tool-window compile-to-prompts-modal"
-        data-parent-modal-id="manualModal" data-window-min-width="420" data-window-min-height="320"
-        data-window-max-width="900" data-window-max-height="900">
+        data-window-client="light" data-window-identifier="compile-to-prompts"
+        data-parent-modal-id="manualModal" data-window-min-width="480" data-window-min-height="360"
+        data-window-max-width="1400" data-window-max-height="1100"
+        data-window-default-width="680" data-window-default-height="520">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-file-pen"></i>
+                <img src="/static_images/app_icons/24/vista-code-file.webp" srcset="/static_images/app_icons/24/vista-code-file.webp 1x, /static_images/app_icons/48/vista-code-file.webp 2x" alt="" class="icon-image" />
                 <span>Compile to Prompts</span>
             </div>
         </div>
@@ -4519,29 +4521,31 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content dark">
-            <div class="modal-body compile-to-prompts-body">
-                <div class="compile-to-prompts-toolbar">
-                    <button type="button" id="compileToPromptsSelectAllBtn" class="btn-secondary btn-small">Select
-                        All</button>
-                    <button type="button" id="compileToPromptsSelectNoneBtn" class="btn-secondary btn-small">Select
-                        None</button>
-                </div>
-                <div id="compileToPromptsListContainer"
-                    class="text-replacement-lock-list-container form-section-scroll">
-                    <div id="compileToPromptsList" class="text-replacement-lock-list"></div>
+        <div class="modal-content win7 ctp-content">
+            <p class="ctp-intro">Rentan compiled these changes. Select the ones to write into the prompts.</p>
+            <div class="ctp-list" tabindex="0" role="grid" aria-label="Changes" aria-multiselectable="false">
+                <div class="ctp-scroll">
+                    <div class="ctp-head" role="row">
+                        <span class="ctp-cell ctp-col-check" role="columnheader">
+                            <input type="checkbox" id="compileToPromptsAllCheck" aria-label="Select all" />
+                            <label for="compileToPromptsAllCheck"></label>
+                        </span>
+                        <span class="ctp-cell ctp-col-change" role="columnheader">Change</span>
+                        <span class="ctp-cell ctp-col-field" role="columnheader">Field</span>
+                        <span class="ctp-cell ctp-col-find" role="columnheader">Find</span>
+                        <span class="ctp-cell ctp-col-text" role="columnheader">Text</span>
+                        <span class="ctp-cell ctp-col-category" role="columnheader">Category</span>
+                    </div>
+                    <div id="compileToPromptsList" class="ctp-rows" role="rowgroup"></div>
+                    <div id="compileToPromptsEmpty" class="ctp-empty hidden">Rentan compiled no prompt changes.</div>
                 </div>
             </div>
-            <div class="modal-footer compile-to-prompts-footer">
-                <div class="form-actions">
-                    <button type="button" id="compileToPromptsCancelBtn" class="btn-secondary">Cancel</button>
-                    <button type="button" id="compileToPromptsApplyBtn" class="btn-primary">
-                        <i class="fas fa-check"></i> Apply
-                    </button>
-                    <button type="button" id="compileToPromptsApplyCloseBtn" class="btn-primary">
-                        <i class="fas fa-check-double"></i> Apply &amp; Close Rentan
-                    </button>
-                </div>
+            <div id="compileToPromptsDetails" class="ctp-details selectable" aria-live="polite"></div>
+            <div class="ctp-foot">
+                <span id="compileToPromptsCount" class="ctp-count"></span>
+                <button type="button" id="compileToPromptsApplyBtn" class="btn-primary">Apply</button>
+                <button type="button" id="compileToPromptsApplyCloseBtn" class="btn-secondary">Apply and Close Rentan</button>
+                <button type="button" id="compileToPromptsCancelBtn" class="btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
@@ -7002,8 +7006,14 @@ Examples:
         </div>
     </div>
 
-    <!-- Token Display Modal -->
-    <div id="tokenDisplayModal" class="modal hidden tool-window on-top">
+    <!-- Token Analysis: public/scripts/comp/emphasisTokenModal.js. A light Vista tool window
+         (css/vista-studio-tools.css): the field and its count, the tokens in a read-only box (one
+         box per token, tinted in turn) and the selected token's properties under it. -->
+    <div id="tokenDisplayModal" class="modal hidden tool-window on-top resizeable-window token-analysis-tool"
+        data-window-client="light"
+        data-window-identifier="token-analysis" data-window-min-width="340" data-window-min-height="260"
+        data-window-max-width="1200" data-window-max-height="1000"
+        data-window-default-width="520" data-window-default-height="400">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-code icon-fa"></i>
@@ -7019,16 +7029,17 @@ Examples:
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding dark">
-            <div class="modal-body">
-                <div class="token-modal-content">
-                    <div class="token-display-container">
-                        <div id="tokenModalDisplay" class="token-display-text selectable">
-                            <!-- Tokens will be displayed here with highlighting -->
-                        </div>
-                    </div>
-                </div>
+        <div class="modal-content win7 token-analysis-content">
+            <div class="token-analysis-head">
+                <span id="tokenModalField" class="token-analysis-field"></span>
+                <span id="tokenModalCount" class="token-analysis-count"></span>
             </div>
+            <div id="tokenModalDisplay" class="token-analysis-box selectable" tabindex="0" role="listbox"
+                aria-label="Tokens" aria-describedby="tokenModalCount"></div>
+            <fieldset class="token-analysis-group">
+                <legend>Selected token</legend>
+                <dl id="tokenModalDetails" class="token-analysis-details"></dl>
+            </fieldset>
         </div>
     </div>
 

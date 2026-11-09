@@ -15,6 +15,7 @@ let galleryTimeJumpDebounceUntil = 0;
 let galleryJumpIndexToolEl = null;
 let galleryJumpIndexListEl = null;
 let galleryJumpIndexSummaryEl = null;
+let galleryJumpIndexDetailEl = null;
 let galleryJumpIndexMinTimeSelectedEl = null;
 let galleryJumpIndexMaxGroupSelectedEl = null;
 let galleryJumpIndexRegenerating = false;
@@ -27,15 +28,15 @@ let galleryJumpIndexListenersInitialized = false;
 let selectedGalleryJumpIndexMinTimeMs = GALLERY_JUMP_INDEX_DEFAULT_MIN_TIME_MS;
 let selectedGalleryJumpIndexMaxGroupImages = GALLERY_JUMP_INDEX_DEFAULT_MAX_GROUP_IMAGES;
 const GALLERY_JUMP_INDEX_MIN_TIME_OPTIONS = [
-    { value: 5 * 60 * 1000, name: '5m' },
-    { value: 15 * 60 * 1000, name: '15m' },
-    { value: 30 * 60 * 1000, name: '30m' },
-    { value: 60 * 60 * 1000, name: '1h' },
-    { value: 6 * 60 * 60 * 1000, name: '6h' },
-    { value: 12 * 60 * 60 * 1000, name: '12h' },
-    { value: 24 * 60 * 60 * 1000, name: '1d' },
-    { value: 7 * 24 * 60 * 60 * 1000, name: '7d' },
-    { value: 30 * 24 * 60 * 60 * 1000, name: '30d' }
+    { value: 5 * 60 * 1000, name: '5 minutes' },
+    { value: 15 * 60 * 1000, name: '15 minutes' },
+    { value: 30 * 60 * 1000, name: '30 minutes' },
+    { value: 60 * 60 * 1000, name: '1 hour' },
+    { value: 6 * 60 * 60 * 1000, name: '6 hours' },
+    { value: 12 * 60 * 60 * 1000, name: '12 hours' },
+    { value: 24 * 60 * 60 * 1000, name: '1 day' },
+    { value: 7 * 24 * 60 * 60 * 1000, name: '7 days' },
+    { value: 30 * 24 * 60 * 60 * 1000, name: '30 days' }
 ];
 const GALLERY_JUMP_INDEX_MAX_GROUP_OPTIONS = [
     { value: 25, name: '25' },
@@ -43,7 +44,7 @@ const GALLERY_JUMP_INDEX_MAX_GROUP_OPTIONS = [
     { value: 100, name: '100' },
     { value: 200, name: '200' },
     { value: 400, name: '400' },
-    { value: 'none', name: 'No max' }
+    { value: 'none', name: 'No limit' }
 ];
 
 function getGalleryImageTimestampMs(image) {
@@ -200,13 +201,17 @@ function refreshGalleryJumpIndexUI() {
     triggerGalleryVirtualScrollFromShortcut();
 }
 
+// The first row in view: currentVisibleIndex, which the gallery's scroll pass sets (galleryView.js,
+// the title bar's index) just before it calls updateGalleryJumpIndexActiveCard. lastHintIndex is
+// only the last position hint sent to the server: hints pause after a programmatic jump until the
+// user scrolls, so it went stale and the Visual Index marked (and measured from) the group the
+// gallery was at before the jump.
 function getCurrentGalleryAnchorIndex() {
     const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
     if (!effectiveLength) return 0;
-    if (Number.isFinite(lastHintIndex) && lastHintIndex >= 0) {
-        return Math.max(0, Math.min(effectiveLength - 1, lastHintIndex));
-    }
-    return Math.max(0, Math.min(effectiveLength - 1, getFirstVisibleRowIndex()));
+    let index = typeof currentVisibleIndex === 'number' && currentVisibleIndex >= 0 ? currentVisibleIndex : null;
+    if (index === null) index = Number.isFinite(lastHintIndex) && lastHintIndex >= 0 ? lastHintIndex : getFirstVisibleRowIndex();
+    return Math.max(0, Math.min(effectiveLength - 1, index));
 }
 
 function getGalleryJumpIndexSelectedThresholdMs() {
@@ -235,11 +240,14 @@ function buildGalleryJumpIndexEntries(minTimeMs, maxGroupImages) {
     const entries = [];
     let groupStart = 0;
     let groupStartTs = getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(groupStart));
+    const timestamps = new Array(effectiveLength);
+    timestamps[0] = groupStartTs;
     entries.push({ index: 0, groupCount: 0 });
 
+    let prevTs = groupStartTs;
     for (let i = 1; i < effectiveLength; i++) {
-        const prevTs = getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(i - 1));
         const currTs = getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(i));
+        timestamps[i] = currTs;
         const groupSize = i - groupStart;
         const timeFromStart = (groupStartTs !== null && currTs !== null) ? Math.abs(currTs - groupStartTs) : 0;
         const reachedMinGroupSize = groupSize >= GALLERY_JUMP_INDEX_MIN_GROUP_IMAGES;
@@ -251,96 +259,130 @@ function buildGalleryJumpIndexEntries(minTimeMs, maxGroupImages) {
             groupStartTs = currTs;
             entries.push({ index: i, groupCount: 0 });
         }
+        prevTs = currTs;
     }
 
-    // Fill each group's item count based on boundary start indices.
+    // Each group's item count and the earliest / latest time in it (the gallery sorts either way).
     for (let i = 0; i < entries.length; i++) {
         const start = entries[i].index;
         const end = i < entries.length - 1 ? entries[i + 1].index : effectiveLength;
         entries[i].groupCount = Math.max(1, end - start);
+        let first = null;
+        let last = null;
+        for (let k = start; k < end; k++) {
+            const ts = timestamps[k];
+            if (ts === null || ts === undefined) continue;
+            if (first === null || ts < first) first = ts;
+            if (last === null || ts > last) last = ts;
+        }
+        entries[i].firstMs = first;
+        entries[i].lastMs = last;
+        entries[i].startMs = timestamps[start] ?? null;
     }
 
     return entries;
 }
 
+/** "Oct 13, 3:30 PM" (no year this year), the time only for the second end of a same-day span. */
+function formatGalleryJumpIndexTime(ms, { timeOnly = false } = {}) {
+    if (!Number.isFinite(ms)) return '';
+    const date = new Date(ms);
+    if (timeOnly) return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const opts = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+    if (date.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+    return date.toLocaleString([], opts);
+}
+
+/** A tile's caption: the time of the image it shows (the group's first in gallery order). */
+function formatGalleryJumpIndexCaption(entry) {
+    return formatGalleryJumpIndexTime(Number.isFinite(entry.startMs) ? entry.startMs : entry.firstMs) || `Group at ${entry.index + 1}`;
+}
+
+/** "Oct 13, 3:30 PM to 5:10 PM" (or to another day's date). */
+function formatGalleryJumpIndexSpan(entry) {
+    if (!Number.isFinite(entry.firstMs)) return `Images ${entry.index + 1} to ${entry.index + entry.groupCount}`;
+    if (!Number.isFinite(entry.lastMs) || entry.lastMs - entry.firstMs < 60 * 1000) return formatGalleryJumpIndexTime(entry.firstMs);
+    const sameDay = new Date(entry.firstMs).toDateString() === new Date(entry.lastMs).toDateString();
+    return `${formatGalleryJumpIndexTime(entry.firstMs)} to ${formatGalleryJumpIndexTime(entry.lastMs, { timeOnly: sameDay })}`;
+}
+
+function getNearestGalleryJumpIndexEntry(currentIndex = getCurrentGalleryAnchorIndex()) {
+    let nearest = null;
+    let nearestDistance = Infinity;
+    for (const entry of galleryJumpIndexEntries || []) {
+        const d = Math.abs(entry.index - currentIndex);
+        if (d < nearestDistance) {
+            nearestDistance = d;
+            nearest = entry;
+        }
+    }
+    return nearest;
+}
+
+// The details pane: the group under the pointer (or the one passed in, while jumping), else the
+// group in view. First line the group's time span, second its size and how far it is from here.
 function updateGalleryJumpIndexSummary(preferredBoundaryIndex = null) {
     if (!galleryJumpIndexSummaryEl) return;
+    const setDetail = (text) => { if (galleryJumpIndexDetailEl) galleryJumpIndexDetailEl.textContent = text; };
     if (!galleryJumpIndexEntries || galleryJumpIndexEntries.length === 0) {
-        galleryJumpIndexSummaryEl.textContent = 'No jump boundaries';
+        galleryJumpIndexSummaryEl.textContent = 'No groups';
+        setDetail('');
         return;
     }
     const currentIndex = getCurrentGalleryAnchorIndex();
-    const hasHover = Number.isFinite(galleryJumpIndexHoveredBoundaryIndex);
-    let targetBoundary = null;
-    if (Number.isFinite(preferredBoundaryIndex)) {
-        targetBoundary = galleryJumpIndexEntries.find((entry) => entry.index === preferredBoundaryIndex) || null;
-    } else if (hasHover) {
-        targetBoundary = galleryJumpIndexEntries.find((entry) => entry.index === galleryJumpIndexHoveredBoundaryIndex) || null;
-    }
-    if (!targetBoundary) {
-        targetBoundary = galleryJumpIndexEntries.find((entry) => entry.index > currentIndex) || galleryJumpIndexEntries[galleryJumpIndexEntries.length - 1];
-    }
+    const wanted = Number.isFinite(preferredBoundaryIndex) ? preferredBoundaryIndex : galleryJumpIndexHoveredBoundaryIndex;
+    const nearest = getNearestGalleryJumpIndexEntry(currentIndex);
+    const target = (Number.isFinite(wanted) && galleryJumpIndexEntries.find((entry) => entry.index === wanted)) || nearest;
+    if (!target) return;
 
-    // Default header text (no hover): current boundary information.
-    if (!hasHover && !Number.isFinite(preferredBoundaryIndex)) {
-        const currentBoundary = galleryJumpIndexEntries.reduce((best, entry) => {
-            if (!best || Math.abs(entry.index - currentIndex) < Math.abs(best.index - currentIndex)) return entry;
-            return best;
-        }, null);
-        if (currentBoundary) {
-            const boundaryTs = getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(currentBoundary.index));
-            if (Number.isFinite(boundaryTs)) {
-                const absolute = new Date(boundaryTs).toLocaleString([], {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit'
-                });
-                galleryJumpIndexSummaryEl.textContent = `${absolute} (${currentBoundary.groupCount} images)`;
-            } else {
-                galleryJumpIndexSummaryEl.textContent = `Boundary #${currentBoundary.index + 1} (${currentBoundary.groupCount} images)`;
-            }
-            return;
-        }
+    galleryJumpIndexSummaryEl.textContent = formatGalleryJumpIndexSpan(target);
+    const size = `${target.groupCount.toLocaleString()} image${target.groupCount === 1 ? '' : 's'}`;
+    const distance = target.index - currentIndex;
+    if (target === nearest || distance === 0) {
+        setDetail(`${size}, in view`);
+        return;
     }
+    const jump = formatGalleryTimeJumpDetails(
+        getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(currentIndex)),
+        getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(target.index)));
+    const away = `${Math.abs(distance).toLocaleString()} image${Math.abs(distance) === 1 ? '' : 's'} ${distance > 0 ? 'further down' : 'further up'}`;
+    // "-36 days" read as a distance: say earlier / later instead of a sign
+    const when = jump ? `, ${jump.relativeLabel.replace(/^[+-]/, '')} ${jump.relativeLabel.startsWith('-') ? 'earlier' : 'later'}` : '';
+    setDetail(`${size}, ${away}${when}`);
+}
 
-    const rawDistance = targetBoundary.index - currentIndex;
-    const sign = rawDistance >= 0 ? '+' : '-';
-    const distance = Math.abs(rawDistance);
-    const currentTs = getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(currentIndex));
-    const targetTs = getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(targetBoundary.index));
-    const jumpDetails = formatGalleryTimeJumpDetails(currentTs, targetTs);
-    if (jumpDetails) {
-        galleryJumpIndexSummaryEl.textContent = `${sign}${distance} images . ${jumpDetails.relativeLabel} (${jumpDetails.absoluteLabel})`;
-    } else {
-        galleryJumpIndexSummaryEl.textContent = `${sign}${distance} images`;
+/** Scroll a tile into the middle of the grid's own scroller only (scrollIntoView would also move
+ *  the window's ancestors and the desktop). */
+function scrollGalleryJumpIndexCardIntoView(card) {
+    if (!card) return;
+    let scroller = card.parentElement;
+    while (scroller && scroller !== galleryJumpIndexToolEl) {
+        const style = getComputedStyle(scroller);
+        if (/(auto|scroll)/.test(style.overflowY) && scroller.scrollHeight > scroller.clientHeight) break;
+        scroller = scroller.parentElement;
     }
+    if (!scroller || scroller === galleryJumpIndexToolEl) return;
+    const cardRect = card.getBoundingClientRect();
+    const boxRect = scroller.getBoundingClientRect();
+    scroller.scrollTop += (cardRect.top + cardRect.height / 2) - (boxRect.top + boxRect.height / 2);
 }
 
 function updateGalleryJumpIndexActiveCard() {
     if (!galleryJumpIndexListEl || !galleryJumpIndexEntries || galleryJumpIndexEntries.length === 0) return;
-    const currentIndex = getCurrentGalleryAnchorIndex();
-    let activeEntry = null;
-    let nearestDistance = Infinity;
-    galleryJumpIndexEntries.forEach((entry) => {
-        const d = Math.abs(entry.index - currentIndex);
-        if (d < nearestDistance) {
-            nearestDistance = d;
-            activeEntry = entry;
-        }
-    });
-    const cards = galleryJumpIndexListEl.querySelectorAll('.gallery-jump-index-card');
-    cards.forEach((card) => {
-        const idx = parseInt(card.dataset.index, 10);
-        card.classList.toggle('active-boundary', !!activeEntry && idx === activeEntry.index);
-    });
-
-    if (activeEntry && galleryJumpIndexActiveBoundaryIndex !== activeEntry.index) {
-        galleryJumpIndexActiveBoundaryIndex = activeEntry.index;
-        const activeCard = galleryJumpIndexListEl.querySelector(`.gallery-jump-index-card[data-index="${activeEntry.index}"]`);
-        if (activeCard && activeCard.scrollIntoView) {
-            activeCard.scrollIntoView({ block: 'center', behavior: 'instant' });
-        }
+    const activeEntry = getNearestGalleryJumpIndexEntry();
+    if (!activeEntry || galleryJumpIndexActiveBoundaryIndex === activeEntry.index) return;
+    // only the old and the new tile change (was a toggle over every tile on each scroll)
+    const old = galleryJumpIndexListEl.querySelector('.gallery-jump-index-card.active-boundary');
+    if (old) {
+        old.classList.remove('active-boundary');
+        old.setAttribute('aria-selected', 'false');
+    }
+    galleryJumpIndexActiveBoundaryIndex = activeEntry.index;
+    const activeCard = galleryJumpIndexListEl.querySelector(`.gallery-jump-index-card[data-index="${activeEntry.index}"]`);
+    if (activeCard) {
+        activeCard.classList.add('active-boundary');
+        activeCard.setAttribute('aria-selected', 'true');
+        scrollGalleryJumpIndexCardIntoView(activeCard);
     }
 }
 
@@ -350,17 +392,7 @@ function getGalleryJumpIndexTargetEntry(preferredEntry) {
     if (Number.isFinite(galleryJumpIndexHoveredBoundaryIndex)) {
         return galleryJumpIndexEntries.find((entry) => entry.index === galleryJumpIndexHoveredBoundaryIndex) || null;
     }
-    const currentIndex = getCurrentGalleryAnchorIndex();
-    let nearest = null;
-    let nearestDistance = Infinity;
-    galleryJumpIndexEntries.forEach((entry) => {
-        const d = Math.abs(entry.index - currentIndex);
-        if (d < nearestDistance) {
-            nearestDistance = d;
-            nearest = entry;
-        }
-    });
-    return nearest;
+    return getNearestGalleryJumpIndexEntry();
 }
 
 async function jumpGalleryJumpIndexTarget(preferredEntry) {
@@ -401,54 +433,21 @@ async function regenerateGalleryJumpIndex() {
         const maxGroupImages = getGalleryJumpIndexSelectedMaxGroupImages();
         galleryJumpIndexEntries = buildGalleryJumpIndexEntries(minTimeMs, maxGroupImages);
         galleryJumpIndexActiveBoundaryIndex = null;
-        galleryJumpIndexListEl.innerHTML = '';
-        const fragment = document.createDocumentFragment();
-        galleryJumpIndexEntries.forEach((entry) => {
+        galleryJumpIndexHoveredBoundaryIndex = null;
+        // one string for the grid (escapeHtml: utilities.js); the tile caption is the group's first
+        // time, the count under it as a second line; events are delegated from the grid
+        galleryJumpIndexListEl.innerHTML = galleryJumpIndexEntries.map((entry) => {
             const image = getGalleryImageAtFilteredIndex(entry.index);
-            if (!image) return;
-            const card = document.createElement('button');
-            card.type = 'button';
-            card.className = 'gallery-jump-index-card';
-            card.dataset.index = String(entry.index);
-            const previewSrc = getGalleryPreviewSrcForImage(image);
-            card.innerHTML = `
-                <img src="${previewSrc}" alt="" loading="lazy" />
-                <div class="gallery-jump-index-card-meta">${entry.groupCount} images</div>
-            `;
-            card.addEventListener('click', () => {
-                jumpGalleryJumpIndexTarget(entry);
-            });
-            card.addEventListener('mouseenter', () => {
-                galleryJumpIndexHoveredBoundaryIndex = entry.index;
-                updateGalleryJumpIndexSummary(entry.index);
-            });
-            card.addEventListener('mouseleave', () => {
-                galleryJumpIndexHoveredBoundaryIndex = null;
-                updateGalleryJumpIndexSummary();
-            });
-            fragment.appendChild(card);
-        });
-        galleryJumpIndexListEl.appendChild(fragment);
+            if (!image) return '';
+            const caption = formatGalleryJumpIndexCaption(entry);
+            const count = `${entry.groupCount.toLocaleString()} image${entry.groupCount === 1 ? '' : 's'}`;
+            return `<button type="button" class="gallery-jump-index-card" role="option" aria-selected="false" data-index="${entry.index}" title="${escapeHtml(formatGalleryJumpIndexSpan(entry))}">`
+                + `<img src="${escapeHtml(getGalleryPreviewSrcForImage(image) || '')}" alt="" loading="lazy" decoding="async" />`
+                + `<span class="gallery-jump-index-card-meta">${escapeHtml(caption)}</span>`
+                + `<span class="gallery-jump-index-card-count">${count}</span></button>`;
+        }).join('');
         updateGalleryJumpIndexActiveCard();
         updateGalleryJumpIndexSummary();
-
-        // Scroll the index list to the nearest boundary for current gallery position.
-        const currentIndex = getCurrentGalleryAnchorIndex();
-        let nearest = null;
-        let nearestDistance = Infinity;
-        galleryJumpIndexEntries.forEach((entry) => {
-            const d = Math.abs(entry.index - currentIndex);
-            if (d < nearestDistance) {
-                nearestDistance = d;
-                nearest = entry;
-            }
-        });
-        if (nearest) {
-            const nearestEl = galleryJumpIndexListEl.querySelector(`.gallery-jump-index-card[data-index="${nearest.index}"]`);
-            if (nearestEl && nearestEl.scrollIntoView) {
-                nearestEl.scrollIntoView({ block: 'center', behavior: 'instant' });
-            }
-        }
     } finally {
         galleryJumpIndexRegenerating = false;
         if (galleryJumpIndexRegenPending) {
@@ -465,12 +464,35 @@ function ensureGalleryJumpIndexToolWindow() {
     galleryJumpIndexToolEl = el;
     galleryJumpIndexListEl = el.querySelector('#galleryJumpIndexGrid');
     galleryJumpIndexSummaryEl = el.querySelector('#galleryJumpIndexSummary');
+    galleryJumpIndexDetailEl = el.querySelector('#galleryJumpIndexDetail');
     galleryJumpIndexMinTimeSelectedEl = el.querySelector('#galleryJumpIndexMinTimeSelected');
     galleryJumpIndexMaxGroupSelectedEl = el.querySelector('#galleryJumpIndexMaxGroupSelected');
 
     if (!galleryJumpIndexListenersInitialized) {
         const closeBtn = el.querySelector('.close-btn');
         if (closeBtn) closeBtn.addEventListener('click', () => closeModal(el));
+        const findEntry = (target) => {
+            const card = target && target.closest ? target.closest('.gallery-jump-index-card') : null;
+            if (!card) return null;
+            const index = Number(card.dataset.index);
+            return galleryJumpIndexEntries.find((entry) => entry.index === index) || null;
+        };
+        if (galleryJumpIndexListEl) {
+            galleryJumpIndexListEl.addEventListener('click', (e) => {
+                const entry = findEntry(e.target);
+                if (entry) jumpGalleryJumpIndexTarget(entry);
+            });
+            galleryJumpIndexListEl.addEventListener('mouseover', (e) => {
+                const entry = findEntry(e.target);
+                if (!entry || galleryJumpIndexHoveredBoundaryIndex === entry.index) return;
+                galleryJumpIndexHoveredBoundaryIndex = entry.index;
+                updateGalleryJumpIndexSummary(entry.index);
+            });
+            galleryJumpIndexListEl.addEventListener('mouseleave', () => {
+                galleryJumpIndexHoveredBoundaryIndex = null;
+                updateGalleryJumpIndexSummary();
+            });
+        }
         document.addEventListener('galleryUpdated', () => {
             if (galleryJumpIndexToolEl && !galleryJumpIndexToolEl.classList.contains('hidden')) {
                 regenerateGalleryJumpIndex();
@@ -503,13 +525,13 @@ function ensureGalleryJumpIndexToolWindow() {
         const maxItems = GALLERY_JUMP_INDEX_MAX_GROUP_OPTIONS.map((o) => ({ value: o.value, text: o.name }));
         // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
         contextMenu.attachPickerMenu(minBtn, {
-            anchorAlign: 'end',
+            anchorAlign: 'start',
             items: () => minItems,
             value: () => selectedGalleryJumpIndexMinTimeMs,
             onSelect: selectMin
         });
         contextMenu.attachPickerMenu(maxBtn, {
-            anchorAlign: 'end',
+            anchorAlign: 'start',
             items: () => maxItems,
             value: () => (selectedGalleryJumpIndexMaxGroupImages === Infinity ? 'none' : selectedGalleryJumpIndexMaxGroupImages),
             onSelect: selectMax
@@ -519,11 +541,11 @@ function ensureGalleryJumpIndexToolWindow() {
 
     if (galleryJumpIndexMinTimeSelectedEl) {
         const selected = GALLERY_JUMP_INDEX_MIN_TIME_OPTIONS.find((o) => o.value === selectedGalleryJumpIndexMinTimeMs);
-        galleryJumpIndexMinTimeSelectedEl.textContent = selected ? selected.name : '30m';
+        galleryJumpIndexMinTimeSelectedEl.textContent = selected ? selected.name : '30 minutes';
     }
     if (galleryJumpIndexMaxGroupSelectedEl) {
         if (selectedGalleryJumpIndexMaxGroupImages === Infinity) {
-            galleryJumpIndexMaxGroupSelectedEl.textContent = 'No max';
+            galleryJumpIndexMaxGroupSelectedEl.textContent = 'No limit';
         } else {
             galleryJumpIndexMaxGroupSelectedEl.textContent = String(selectedGalleryJumpIndexMaxGroupImages);
         }
@@ -541,8 +563,12 @@ function positionGalleryJumpIndexToolWindow() {
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
     const margin = 12;
 
-    const currentWidth = Math.round(galleryJumpIndexToolEl.getBoundingClientRect().width || 420);
-    const targetWidth = Math.max(320, Math.min(560, currentWidth));
+    // the window's own limits (data-window-min/max-width; was a fixed 320-560 that let it grow
+    // past its 420 px maximum)
+    const minWidth = Number(galleryJumpIndexToolEl.dataset.windowMinWidth) || 320;
+    const maxWidth = Number(galleryJumpIndexToolEl.dataset.windowMaxWidth) || 560;
+    const currentWidth = Math.round(galleryJumpIndexToolEl.getBoundingClientRect().width || maxWidth);
+    const targetWidth = Math.max(minWidth, Math.min(maxWidth, currentWidth));
     const targetHeight = Math.max(280, Math.min(viewportHeight - (margin * 2), Math.round(gRect.height)));
 
     // Prefer left side; if insufficient space, use right side.
@@ -555,6 +581,12 @@ function positionGalleryJumpIndexToolWindow() {
     left = Math.max(margin, Math.min(left, viewportWidth - targetWidth - margin));
     const top = Math.max(margin, Math.min(gRect.top, viewportHeight - targetHeight - margin));
 
+    // setModalPositionFromViewportRect: modalUtils.js (the desktop's top bias, the work area and the
+    // window's min / max size; hand-set offsets left the caption ~15 px above the screen's top edge)
+    if (typeof setModalPositionFromViewportRect === 'function') {
+        setModalPositionFromViewportRect(galleryJumpIndexToolEl, { left, top, width: targetWidth, height: targetHeight });
+        return;
+    }
     galleryJumpIndexToolEl.style.width = `${targetWidth}px`;
     galleryJumpIndexToolEl.style.height = `${targetHeight}px`;
     galleryJumpIndexToolEl.style.setProperty('--modal-offset-x', `${Math.round((left + (targetWidth / 2)) - (viewportWidth / 2))}px`);

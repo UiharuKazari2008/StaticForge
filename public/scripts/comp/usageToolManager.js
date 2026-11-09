@@ -220,6 +220,7 @@ class GenerationUsageToolManager {
     }
 
     sync() {
+        // one snapshot per ping: getSnapshot reads the Studio's controls (drain multiplier)
         const snap = this.getSnapshot();
         const genCount = document.getElementById('manualGenCountDisplay');
         // set*IfChanged: public/scripts/utils/domWrite.js (sync runs on every server ping)
@@ -228,17 +229,16 @@ class GenerationUsageToolManager {
         const usageEl = document.getElementById('manualGenUsagePercent');
         if (usageSplit) usageSplit.classList.toggle('hidden', !snap.isOpus);
         setTextIfChanged(usageEl, snap.isOpus ? snap.compactLabel : '');
-        this.render();
-        this.updateExternalSurfaces();
-        this.notifyExtendedUsage();
+        this.render(snap);
+        this.updateExternalSurfaces(snap);
+        this.notifyExtendedUsage({}, snap);
     }
 
     /**
      * One toast per session while remaining is over 100% (V5 launch +100% boost).
      * @param {{ forceDisplay?: boolean }} [options]
      */
-    notifyExtendedUsage(options = {}) {
-        const snap = this.getSnapshot();
+    notifyExtendedUsage(options = {}, snap = this.getSnapshot()) {
         if (!snap.isOpus || !snap.usage) return;
         if (!snap.extended) {
             this.extendedUsageToastShown = false;
@@ -267,13 +267,13 @@ class GenerationUsageToolManager {
      * Fill Anlas context-menu usage row (main menu). Call from menu loadfn.
      * @param {string} [suffix] - element id suffix ('' for the main menu)
      */
-    fillAnlasMenuUsageRow(suffix = '') {
+    fillAnlasMenuUsageRow(suffix = '', snap = null) {
         const row = document.getElementById(`contextAnlasOpusUsageRow${suffix}`);
         const valueEl = document.getElementById(`contextAnlasOpusUsage${suffix}`);
         const iconEl = document.getElementById(`contextAnlasOpusUsageIcon${suffix}`);
         if (!row || !valueEl) return;
 
-        const snap = this.getSnapshot();
+        if (!snap) snap = this.getSnapshot();
         row.classList.toggle('hidden', !snap.isOpus);
         if (!snap.isOpus) return;
 
@@ -287,17 +287,17 @@ class GenerationUsageToolManager {
         setClassNameIfChanged(iconEl, snap.iconClass);
     }
 
-    updateExternalSurfaces() {
-        this.fillDataMgmtAccountUsage();
-        this.fillAnlasMenuUsageRow('');
+    updateExternalSurfaces(snap = this.getSnapshot()) {
+        this.fillDataMgmtAccountUsage(snap);
+        this.fillAnlasMenuUsageRow('', snap);
         // walletTray.update: public/scripts/comp/walletTray.js (NovelAI V5 usage row)
         if (window.walletTray) window.walletTray.update();
     }
 
-    fillDataMgmtAccountUsage() {
+    fillDataMgmtAccountUsage(snap = null) {
         const host = document.getElementById('dataMgmtOpusUsageHost');
         if (!host) return;
-        const snap = this.getSnapshot();
+        if (!snap) snap = this.getSnapshot();
         const valueEl = document.getElementById('dataMgmtOpusUsageValue');
         const fillEl = document.getElementById('dataMgmtOpusUsageFill');
 
@@ -317,64 +317,86 @@ class GenerationUsageToolManager {
         }
     }
 
-    render() {
-        if (!this.element) return;
-        const snap = this.getSnapshot();
+    /** "1 hour 41 minutes", "3 days 4 hours": the two largest units, as Vista words durations. */
+    formatDuration(seconds) {
+        const total = Math.max(0, Math.round(Number(seconds) || 0));
+        if (total < 60) return 'less than a minute';
+        const units = [['day', 86400], ['hour', 3600], ['minute', 60]];
+        const parts = [];
+        let rest = total;
+        for (const [name, size] of units) {
+            const n = Math.floor(rest / size);
+            if (n > 0 && parts.length < 2) {
+                parts.push(`${n} ${name}${n === 1 ? '' : 's'}`);
+                rest -= n * size;
+            } else if (parts.length) {
+                break;
+            }
+        }
+        return parts.join(' ');
+    }
+
+    formatGens(value) {
+        if (value === 'Free') return 'Free (this setup does not use the meter)';
+        return Number.isFinite(value) ? `About ${value.toLocaleString()}` : '\u2014';
+    }
+
+    // The window: the meter (used share as Vista's progress bar, red when nearly empty) and the
+    // readings. Only drawn while it is open; open() draws it first. The server pushes usage about
+    // once a minute (percent left, isNegative, timeUntilNextPercent: seconds per 1% of refill).
+    render(snap = null) {
+        if (!this.element || this.element.classList.contains('hidden')) return;
+        if (!snap) snap = this.getSnapshot();
+        const byId = (id) => document.getElementById(id);
+        const fillEl = byId('generationUsageFill');
+        const barEl = byId('generationUsageBar');
+        if (!fillEl || !barEl) return;
         const recentCount = this.recentImageCount();
-        const dayCountEl = document.getElementById('generationUsageDayCount');
-        const remainingEl = document.getElementById('generationUsageRemaining');
-        const refillEl = document.getElementById('generationUsageRefill');
-        const valueEl = document.getElementById('generationUsagePercent');
-        const statusLabel = document.getElementById('generationUsageStatusLabel');
-        const fillEl = document.getElementById('generationUsageFill');
-        const comparisonEl = document.getElementById('generationUsageDayComparison');
-        if (!valueEl || !fillEl) return;
+        setTextIfChanged(byId('generationUsageDayCount'), recentCount.toLocaleString());
 
-        setTextIfChanged(dayCountEl, String(recentCount));
-
+        const set = (id, text) => setTextIfChanged(byId(id), text);
         if (!snap.isOpus || !snap.usage) {
-            setTextIfChanged(statusLabel, 'Usage');
-            setTextIfChanged(remainingEl, '—');
-            setTextIfChanged(refillEl, '—');
-            setTextIfChanged(valueEl, '—');
-            setStyleIfChanged(fillEl, 'width', '0px');
-            setClassIfChanged(fillEl, 'low', false);
-            setTextIfChanged(comparisonEl, `${recentCount} generated`);
+            set('generationUsageStatusLabel', 'Opus V5 usage');
+            set('generationUsagePercent', snap.isOpus ? 'Usage is not available right now.' : 'Not metered');
+            set('generationUsageMeterNote', snap.isOpus ? '' : 'The meter applies to Opus on V5.');
+            for (const id of ['generationUsageRemaining', 'generationUsageRefill', 'generationUsageNext', 'generationUsageFull']) set(id, '\u2014');
+            setStyleIfChanged(fillEl, 'width', '0%');
+            setClassIfChanged(barEl, 'error', false);
+            setAttrIfChanged(barEl, 'aria-valuenow', '0');
             return;
         }
 
-        setTextIfChanged(statusLabel, snap.extended ? 'Extended' : 'Usage');
-        if (remainingEl) {
-            setTextIfChanged(remainingEl, snap.extended
-                ? `${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining} (${snap.remainingPercent}%)`
-                : `${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining}`);
-        }
-        if (refillEl) {
-            setTextIfChanged(refillEl, snap.extended
-                ? 'Paused (full)'
-                : (snap.refillPaused
-                    ? 'Paused'
-                    : `${snap.refillPercent}% / day (${snap.refillGenerations === 'Free' ? 'Free' : '~' + snap.refillGenerations})`));
-        }
-        setTextIfChanged(valueEl, snap.extended
-            ? `Free +${snap.extraPercent}%`
-            : snap.compactLabel);
+        const usage = snap.usage;
+        const left = Math.max(0, Math.round(snap.remainingPercent));
+        set('generationUsageStatusLabel', snap.extended ? 'Opus V5 usage (extended)' : 'Opus V5 usage');
+        set('generationUsagePercent', snap.extended
+            ? `${left}% left (+${snap.extraPercent}% extra)`
+            : `${snap.percent}% used`);
+        set('generationUsageMeterNote', usage.isNegative ? 'Empty' : (snap.extended ? '' : `${left}% left`));
         setStyleIfChanged(fillEl, 'width', `${Math.min(100, snap.barPercent)}%`);
-        setClassIfChanged(fillEl, 'low', snap.high);
-        if (comparisonEl) {
-            setTextIfChanged(comparisonEl, snap.extended
-                ? `${recentCount} generated / extended free`
-                : (snap.refillPaused
-                    ? `${recentCount} generated / refill paused`
-                    : `${recentCount} generated / ${snap.refillGenerations === 'Free' ? 'Free' : '~' + snap.refillGenerations} refilled`));
+        setClassIfChanged(barEl, 'error', snap.high);
+        setAttrIfChanged(barEl, 'aria-valuenow', String(Math.min(100, snap.barPercent)));
+
+        set('generationUsageRemaining', usage.isNegative ? 'None (the meter is empty)' : this.formatGens(snap.remaining));
+        const perPercent = Number(usage.timeUntilNextPercent);
+        if (snap.refillPaused) {
+            set('generationUsageRefill', snap.extended ? 'Paused while above 100%' : 'Paused');
+            set('generationUsageNext', '\u2014');
+            set('generationUsageFull', left >= 100 ? 'Full' : '\u2014');
+        } else {
+            const gens = snap.refillGenerations === 'Free' ? '' : ` (about ${snap.refillGenerations.toLocaleString()} images)`;
+            set('generationUsageRefill', `${snap.refillPercent}% a day${gens}`);
+            set('generationUsageNext', perPercent > 0 ? this.formatDuration(perPercent) : '\u2014');
+            set('generationUsageFull', perPercent > 0 ? `About ${this.formatDuration(perPercent * Math.max(1, 100 - left))}` : '\u2014');
         }
     }
 
     open() {
-        this.render();
         if (!this.element) return;
         openModal(this.element);
         bringModalToFront(this.element);
+        // render skips a hidden window, so it draws once the window is shown
+        this.render();
     }
 }
 
