@@ -951,6 +951,7 @@ class PromptTextareaToolbar {
 
         // Add search mode class to show search elements
         toolbar.classList.add('search-mode');
+        this.syncFloatingToolbar(toolbar);
 
         // Character card textareas keep their values while collapsed — search them without expanding
         // (jumpToSearchResult expands only the matched card via expandCharacterPromptWithSelection)
@@ -1393,6 +1394,7 @@ class PromptTextareaToolbar {
             searchState.selectedIndex = selectedIndex < results.length - 1 ? selectedIndex + 1 : 0;
         }
 
+        if (this.followSearchResultTab(activeToolbar)) return;
         this.scheduleSearchHighlightRefresh(activeToolbar);
     }
 
@@ -1452,6 +1454,7 @@ class PromptTextareaToolbar {
             this.cancelPendingSearchWork(searchState);
             // Remove search mode class
             toolbar.classList.remove('search-mode');
+            this.syncFloatingToolbar(toolbar);
 
             // Reset search label and placeholder
             const searchLabel = toolbar.querySelector('.text-search-label');
@@ -1544,7 +1547,6 @@ class PromptTextareaToolbar {
     }
 
     shouldIncludeTextareaInSearch(textarea) {
-        const viewMode = this.getCurrentViewMode();
         const textareaId = textarea.id;
 
         // Always include character prompt textareas
@@ -1552,17 +1554,96 @@ class PromptTextareaToolbar {
             return true;
         }
 
-        // Handle main textareas based on view mode
-        if (viewMode === 'both') {
-            // Show both mode: include both prompt and UC
-            return textareaId === 'manualPrompt' || textareaId === 'manualUc' || textareaId === 'manualPromptNegative';
-        } else if (viewMode === 'uc') {
-            // UC mode: include UC and inline negative textareas
-            return textareaId === 'manualUc' || textareaId === 'manualPromptNegative';
-        } else {
-            // Prompt mode (default): only include prompt textarea
-            return textareaId === 'manualPrompt';
+        // Every main prompt area, whatever tab is showing: a match on the hidden tab switches to it
+        // (followSearchResultTab)
+        return textareaId === 'manualPrompt' || textareaId === 'manualUc' || textareaId === 'manualPromptNegative';
+    }
+
+    /**
+     * Inline search and the emphasis editor float while open: pinned over the top of the Studio's
+     * prompt column (its .scrollable-content), above the fields, so the bar stays put while the
+     * prompt scrolls or a match switches tabs. #manualModal is the containing block (it is
+     * transformed), so position: fixed is relative to the window. Other hosts keep the bar in place.
+     */
+    syncFloatingToolbar(toolbar) {
+        if (!toolbar) return;
+        const open = toolbar.classList.contains('search-mode') || toolbar.classList.contains('emphasis-mode');
+        const modal = toolbar.closest('#manualModal');
+        const scroller = modal && toolbar.closest('.scrollable-content');
+        if (!open || !scroller) {
+            if (toolbar._floatCleanup) toolbar._floatCleanup();
+            return;
         }
+        // an open bar always shows (a field's toolbar hides on blur; a tab jump opens a hidden one)
+        toolbar.classList.remove('hidden');
+        if (toolbar._floatCleanup) {
+            toolbar._floatPlace();
+            return;
+        }
+        const place = () => {
+            const m = modal.getBoundingClientRect();
+            const r = scroller.getBoundingClientRect();
+            toolbar.style.setProperty('--toolbar-float-top', `${Math.round(r.top - m.top)}px`);
+            toolbar.style.setProperty('--toolbar-float-left', `${Math.round(r.left - m.left)}px`);
+            toolbar.style.setProperty('--toolbar-float-width', `${Math.round(scroller.clientWidth)}px`);
+        };
+        const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(place) : null;
+        if (ro) ro.observe(scroller);
+        modal.addEventListener('modalResized', place);
+        place();
+        toolbar.classList.add('toolbar-floating');
+        toolbar._floatPlace = place;
+        toolbar._floatCleanup = () => {
+            if (ro) ro.disconnect();
+            modal.removeEventListener('modalResized', place);
+            toolbar.classList.remove('toolbar-floating');
+            ['--toolbar-float-top', '--toolbar-float-left', '--toolbar-float-width'].forEach((name) => toolbar.style.removeProperty(name));
+            delete toolbar._floatCleanup;
+            delete toolbar._floatPlace;
+        };
+    }
+
+    /** The Studio tab ('prompt' | 'uc') a search target lives on, or null outside the prompt tabs. */
+    promptTabForTextarea(textarea) {
+        const id = (textarea && textarea.id) || '';
+        if (id === 'manualUc' || id === 'manualPromptNegative' || /_(uc|promptNegative)$/.test(id)) return 'uc';
+        if (id === 'manualPrompt' || /_prompt$/.test(id)) return 'prompt';
+        return null;
+    }
+
+    /**
+     * The selected match is on the tab that is not showing: switch to it and carry the search bar
+     * (it lives in the hidden pane's toolbar) to the match's field, same query, same match selected.
+     * Returns the toolbar now holding the search, or null when nothing moved.
+     */
+    followSearchResultTab(toolbar) {
+        const searchState = this.searchStates.get(toolbar);
+        if (!searchState || typeof switchManualTab !== 'function') return null;
+        const result = searchState.results[searchState.selectedIndex];
+        if (!result || !result.textarea || !result.textarea.closest('#manualModal')) return null;
+        const tab = this.promptTabForTextarea(result.textarea);
+        const view = this.getCurrentViewMode();
+        if (!tab || view === 'both' || view === tab) return null;
+
+        const query = searchState.query;
+        const pick = { textarea: result.textarea, start: result.start };
+        this.closeSearch(toolbar, true);
+        // switchManualTab: public/scripts/comp/manualTabManager.js (null: no textarea focus to carry)
+        switchManualTab(tab, null);
+        this.openSearch(pick.textarea);
+        const nextToolbar = this.getToolbarFromTextarea(pick.textarea);
+        const next = nextToolbar && this.searchStates.get(nextToolbar);
+        if (!next) return null;
+        const input = next.searchElements.querySelector('.text-search-input');
+        if (input) input.value = query;
+        next.query = query;
+        this.performSearch(nextToolbar);
+        const at = next.results.findIndex((r) => r.textarea === pick.textarea && r.start === pick.start);
+        if (at >= 0) next.selectedIndex = at;
+        this.scheduleSearchHighlightRefresh(nextToolbar);
+        // the tab switch settles a frame later and takes focus with it: keep typing in the search box
+        if (input) requestAnimationFrame(() => { if (nextToolbar.classList.contains('search-mode')) input.focus(); });
+        return nextToolbar;
     }
 
     clearSearchHighlights(toolbar = null) {
@@ -1657,6 +1738,14 @@ class PromptTextareaToolbar {
         if (selectedIndex >= 0 && selectedIndex < results.length) {
             const result = results[selectedIndex];
             const textarea = result.textarea;
+
+            // A match on the tab that is not showing: show that tab first (switchManualTab:
+            // public/scripts/comp/manualTabManager.js)
+            const resultTab = textarea.closest('#manualModal') ? this.promptTabForTextarea(textarea) : null;
+            const view = this.getCurrentViewMode();
+            if (resultTab && view !== 'both' && view !== resultTab && typeof switchManualTab === 'function') {
+                switchManualTab(resultTab, null);
+            }
 
             // Now we can focus and select the text since Enter was pressed
             // Ensure the textarea is properly focused and activated
@@ -1770,6 +1859,7 @@ class PromptTextareaToolbar {
 
         // Remove search mode class to hide search elements
         activeToolbar.classList.remove('search-mode');
+        this.syncFloatingToolbar(activeToolbar);
 
         // Reset the search label
         const searchLabel = activeToolbar.querySelector('.text-search-label');
@@ -1852,13 +1942,44 @@ class PromptTextareaToolbar {
                 this.adjustEmphasis(delta, tb);
                 return;
             }
-            // startEmphasisEditing / adjustEmphasisEditing / applyEmphasisEditing:
+            // One hover is one group: applying a tick rewrites the text and moves the caret, and the
+            // next tick used to pick up whatever group (or none) the caret landed in. Put the selection
+            // back inside the group this hover started on before each later tick.
+            const pinned = chip._emphasisWheelGroup;
+            if (pinned && pinned.textarea === textarea) this.selectPinnedEmphasisGroup(textarea, pinned.id);
+            // startEmphasisEditing / adjustEmphasisEditing / applyEmphasisEditing / emphasisEditingManagedId:
             //   public/scripts/comp/emphasisEditing.js
             if (!startEmphasisEditing(textarea)) return;
             adjustEmphasisEditing(delta);
+            const caret = textarea.selectionStart;
+            const editedId = emphasisEditingManagedId;
             applyEmphasisEditing();
+            const id = editedId || this.managedEmphasisGroupIdAt(textarea, caret);
+            chip._emphasisWheelGroup = id ? { textarea, id } : null;
             this.updateEmphasisGroupChip(textarea, tb);
         }, { passive: false });
+        chip.addEventListener('mouseleave', () => {
+            chip._emphasisWheelGroup = null;
+        });
+    }
+
+    /** The managed emphasis group (id) whose span holds pos, or null. */
+    managedEmphasisGroupIdAt(textarea, pos) {
+        // listManagedEmphasisBlocks: public/scripts/comp/emphasisGroupIdCodec.js
+        const blocks = listManagedEmphasisBlocks(textarea.value || '');
+        const hit = blocks.find((b) => pos >= b.start && pos <= b.end);
+        return hit ? hit.id : null;
+    }
+
+    /** Select the inside of managed group id so startEmphasisEditing resolves that group. */
+    selectPinnedEmphasisGroup(textarea, id) {
+        const block = listManagedEmphasisBlocks(textarea.value || '').find((b) => b.id === id);
+        if (!block) return false;
+        const start = Number.isFinite(block.openEnd) ? block.openEnd : block.start;
+        const end = Number.isFinite(block.closeStart) && block.closeStart > start ? block.closeStart : block.end;
+        textarea.setSelectionRange(start, end);
+        textarea._emphasisLastCaret = start;
+        return true;
     }
 
     wireEmphasisGroupChipContextMenu(chip, toolbar) {
@@ -2341,6 +2462,7 @@ class PromptTextareaToolbar {
 
         // Add emphasis mode class to show emphasis elements
         toolbar.classList.add('emphasis-mode');
+        this.syncFloatingToolbar(toolbar);
         toolbar.classList.remove('hidden');
 
         // Initialize emphasis mode
@@ -2354,6 +2476,7 @@ class PromptTextareaToolbar {
     }
 
     initializeEmphasisMode(textarea, toolbar) {
+        this.syncFloatingToolbar(toolbar);
         // Create emphasis elements if they don't exist
         let emphasisElements = toolbar.querySelector('.toolbar-emphasis-elements');
         if (!emphasisElements) {
@@ -3432,6 +3555,7 @@ class PromptTextareaToolbar {
         }
         // Remove emphasis mode class
         toolbar.classList.remove('emphasis-mode');
+        this.syncFloatingToolbar(toolbar);
 
         if (toolbar.emphasisKeydownHandler && toolbar.emphasisKeydownContainer) {
             toolbar.emphasisKeydownContainer.removeEventListener('keydown', toolbar.emphasisKeydownHandler);

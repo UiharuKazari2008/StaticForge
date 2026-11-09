@@ -120,6 +120,7 @@ function getCharacterPromptTabNodes(characterItem) {
         btnCreative: characterItem.querySelector('.gallery-toggle-btn[data-tab="creative"]'),
         panePrompt: document.getElementById(`${id}_prompt-tab`),
         paneUc: document.getElementById(`${id}_uc-tab`),
+        paneCreative: document.getElementById(`${id}_creative-tab`),
         fieldPrompt: document.getElementById(`${id}_prompt`),
         fieldUc: document.getElementById(`${id}_uc`),
         fieldPromptNegative: document.getElementById(`${id}_promptNegative`)
@@ -145,6 +146,8 @@ function syncCharacterPromptTabs(mainTab) {
         if (nodes.btnCreative) nodes.btnCreative.classList.toggle('active', mainTab === 'creative');
         if (nodes.panePrompt) nodes.panePrompt.classList.toggle('active', mainTab === 'prompt');
         if (nodes.paneUc) nodes.paneUc.classList.toggle('active', mainTab === 'uc');
+        // the character's own line of the Creative Directive (characterPromptManager.js)
+        if (nodes.paneCreative) nodes.paneCreative.classList.toggle('active', mainTab === 'creative');
 
         if (nodes.tabsRoot) {
             nodes.tabsRoot.classList.remove('show-both');
@@ -176,6 +179,7 @@ function syncCharacterPromptTabsShowBoth() {
         if (nodes.btnCreative) nodes.btnCreative.classList.add('active');
         if (nodes.panePrompt) nodes.panePrompt.classList.add('active');
         if (nodes.paneUc) nodes.paneUc.classList.add('active');
+        if (nodes.paneCreative) nodes.paneCreative.classList.add('active');
 
         if (nodes.tabsRoot) {
             nodes.tabsRoot.classList.add('show-both');

@@ -5104,3 +5104,22 @@ div#dynamicGenerationGroup {
     pointer-events: auto !important;
 }
 
+
+/* Inline search / emphasis editor while open (promptTextareaToolbar.js syncFloatingToolbar): pinned over
+   the top of the Studio's prompt column, above the fields, until it closes. #manualModal is the
+   containing block, so the --toolbar-float-* offsets are window-relative. Solid backing (the menu
+   glass layer) so the fields scrolling underneath do not show through. */
+#manualModal .prompt-textarea-toolbar.toolbar-floating {
+    position: fixed;
+    top: var(--toolbar-float-top);
+    left: var(--toolbar-float-left);
+    width: var(--toolbar-float-width);
+    box-sizing: border-box;
+    margin: 0;
+    border-top: 0;
+    border-bottom: 1px solid var(--glass-inset-bg-5);
+    border-radius: 0 0 var(--border-radius-md) var(--border-radius-md);
+    z-index: var(--z-layer-10);
+    background: linear-gradient(var(--glass-inset-bg-5), var(--glass-inset-bg-5)), var(--glass-layer-dark-menu);
+    box-shadow: 0 4px 12px var(--shadow-primary);
+}

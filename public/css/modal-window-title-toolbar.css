@@ -1938,3 +1938,113 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
     width: 25px;
 }
 
+
+/* ---------- Tool windows (.tool-window: palettes and tools, not alerts or the boot window) ----------
+   Vista's WS_EX_TOOLWINDOW frame, measured on the VM (2026-11-09, ~/.cache/vista-vm/toolwin): the
+   caption is 2 px shorter (26 px above the client, 28 on a normal window), the corners are square
+   top and bottom, there is no caption icon (the title starts 8 px in, at the client's left edge,
+   same Segoe UI 9 pt), and each caption button is its own 17 px square, 5 px below the top edge and
+   6 px in from the right, Close in Vista's small close art (scripts/build-vista-caption-glyphs.sh,
+   static_images/window-controls/tool/). Vista shows only Close; ours keep Minimize (and Maximize)
+   as the same square, 2 px apart. */
+body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) {
+    --modal-title-chrome-height: 25px;
+    --window-caption-edge: 13px;
+    --aero-frame-radius: 0px;
+    padding-top: 25px;
+    border-radius: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-title {
+    min-height: 26px;
+    padding-left: 7px;
+    border-radius: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-title > .modal-window-title-main {
+    height: 24px;
+    min-height: 24px;
+    margin-left: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-title > .modal-window-title-main > :is(.icon-image, .icon-fa, i:first-child) {
+    display: none;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls {
+    top: 4px;
+    right: 5px;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls:has(> .close-btn, > .modal-close) {
+    gap: 2px;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls:has(> .close-btn, > .modal-close) > button {
+    align-items: center;
+    justify-content: center;
+    width: 17px;
+    min-width: 17px;
+    height: 17px;
+    min-height: 17px;
+    padding: 0;
+    border-width: 0;
+    border-image: var(--caption-face-normal) 0 fill / 0 / 0 stretch;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls:has(> .close-btn, > .modal-close) > button::before {
+    inset: 0;
+    border-width: 0;
+    border-image: var(--caption-face-hot) 0 fill / 0 / 0 stretch;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal).active-window > .modal-window-controls > button {
+    --caption-face-normal: url("/static_images/window-controls/tool/button-active-normal.png");
+    --caption-face-hot: url("/static_images/window-controls/tool/button-active-hot.png");
+    --caption-face-pressed: url("/static_images/window-controls/tool/button-active-pressed.png");
+    --caption-face-disabled: url("/static_images/window-controls/tool/button-active-disabled.png");
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal):not(.active-window) > .modal-window-controls > button {
+    --caption-face-normal: url("/static_images/window-controls/tool/button-inactive-normal.png");
+    --caption-face-hot: url("/static_images/window-controls/tool/button-inactive-hot.png");
+    --caption-face-pressed: url("/static_images/window-controls/tool/button-inactive-pressed.png");
+    --caption-face-disabled: url("/static_images/window-controls/tool/button-inactive-disabled.png");
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal).active-window > .modal-window-controls > button:is(.close-btn, .modal-close) {
+    --caption-face-normal: url("/static_images/window-controls/tool/close-active-normal.png");
+    --caption-face-hot: url("/static_images/window-controls/tool/close-active-hot.png");
+    --caption-face-pressed: url("/static_images/window-controls/tool/close-active-pressed.png");
+    --caption-face-disabled: url("/static_images/window-controls/tool/close-active-disabled.png");
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal):not(.active-window) > .modal-window-controls > button:is(.close-btn, .modal-close) {
+    --caption-face-normal: url("/static_images/window-controls/tool/close-inactive-normal.png");
+    --caption-face-hot: url("/static_images/window-controls/tool/close-inactive-hot.png");
+    --caption-face-pressed: url("/static_images/window-controls/tool/close-inactive-pressed.png");
+    --caption-face-disabled: url("/static_images/window-controls/tool/close-inactive-disabled.png");
+}
+
+/* pressed and disabled faces (the shorthands above outrank the shared swaps) */
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls:has(> .close-btn, > .modal-close) > button:active:not(:disabled)::before {
+    border-image-source: var(--caption-face-pressed);
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls:has(> .close-btn, > .modal-close) > button:disabled {
+    border-image-source: var(--caption-face-disabled);
+}
+
+/* the small glyphs: Close 7x7 at 5,5 (Vista's own), Minimize 7 px a little under the middle */
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls > button > i.fa-xmark-large {
+    width: 7px;
+    height: 7px;
+    background-image: url("/static_images/window-controls/vista-close-small.png");
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls > button > i.fa-window-minimize {
+    width: 7px;
+    height: 5px;
+    margin-top: 6px;
+    background-image: url("/static_images/window-controls/vista-minimize-small.png");
+}

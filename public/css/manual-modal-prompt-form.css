@@ -1654,3 +1654,15 @@ div#manualResolutionDropdownMenu {
 .preset-icons .uc-boxes[data-uc-level="4"] .uc-box[data-level="4"] {
     background-color: var(--text-secondary);
 }
+
+/* A character card's Directive pane (characterPromptManager.js buildCharacterDirectivePaneHtml): this
+   character's line of the Creative Directive. Only while the Creative tab is on (#manualModal
+   .creative-directive-on, manualModalManager.js updateCreativeDirectiveVisibility). */
+#manualModal:not(.creative-directive-on) .character-directive-pane.character-directive-pane {
+    display: none;
+}
+
+.character-prompt-tabs .tab-pane .character-directive-textarea {
+    min-height: 23px;
+    font-family: var(--font-quaternary);
+}

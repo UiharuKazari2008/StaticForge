@@ -4360,8 +4360,9 @@ body.desktop-mode.windows-classic-theme #manualModal .studio-menubar .naxt-menu-
     border-color: #808080 #fff #fff #808080;
 }
 
-/* Steps / Guidance / Rescale rows are custom content: in a Win32 menu (the Model menu) their label
-   starts at the text column like every other row, past the 28 px icon / check column. */
+/* Steps / Guidance / Rescale rows are custom content: in a Win32 menu (the Model menu) the row's own
+   31 px start already puts their label in the text column (vista-menus.css keeps row icons in the
+   gutter), so they take no extra indent. */
 .context-menu.context-menu-win32 .studio-scrub-row > .dataset-option-left {
-    padding-left: 28px;
+    padding-left: 0;
 }

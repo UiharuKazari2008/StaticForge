@@ -843,6 +843,11 @@ function handleEscapeAndCharacterDetailKeys(e) {
             hideCharacterAutocomplete();
             return true;
         }
+        // Autofill still open in its own window (detached mode hides #characterAutocompleteOverlay):
+        // this Esc closes it and the caret stays in the field, so leave the key to the field's handler
+        // (handleCharacterAutocompleteKeydown / isCharacterAutocompleteOverlayOpen: autocompleteUtils.js).
+        // Only an Esc with no autofill open leaves the field.
+        if (typeof isCharacterAutocompleteOverlayOpen === 'function' && isCharacterAutocompleteOverlayOpen()) return false;
         const activeElement = document.activeElement;
         if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
             const selection = window.getSelection();

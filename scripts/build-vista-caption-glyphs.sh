@@ -72,3 +72,49 @@ while read -r piece act x y w; do
     done
 done <<< "$FACES"
 echo "wrote $OUT/faces/*.png"
+
+# Tool windows (WS_EX_TOOLWINDOW, measured on the VM 2026-11-09): a separate 17x17 square button
+# 5 px from the window's top edge and 6 px from its right edge. Close: the small close background
+# (atlas 13x13 cells, 2 px 9-slice margins, 4 states, active at x 1 / inactive at x 16) stretched to
+# 17x17 and the 7x7 small glyph (x 1, y 249, 9 px cells) drawn on it at 5,5 by the CSS. Vista has
+# no small Minimize / Maximize: their faces are the small close box filled with the normal caption
+# face's middle column, under 7 px glyphs.
+mkdir -p "$OUT/tool"
+nine17() {
+    local x="$1" y="$2" out="$3" cell
+    cell="$(mktemp --suffix=.png)"
+    convert "$ATLAS" -crop "13x13+$x+$y" +repage "$cell"
+    convert -size 17x17 xc:none \
+        \( "$cell" -crop 2x2+0+0 +repage \) -geometry +0+0 -composite \
+        \( "$cell" -crop 2x2+11+0 +repage \) -geometry +15+0 -composite \
+        \( "$cell" -crop 2x2+0+11 +repage \) -geometry +0+15 -composite \
+        \( "$cell" -crop 2x2+11+11 +repage \) -geometry +15+15 -composite \
+        \( "$cell" -crop 9x2+2+0 +repage -filter Triangle -resize '13x2!' \) -geometry +2+0 -composite \
+        \( "$cell" -crop 9x2+2+11 +repage -filter Triangle -resize '13x2!' \) -geometry +2+15 -composite \
+        \( "$cell" -crop 2x9+0+2 +repage -filter Triangle -resize '2x13!' \) -geometry +0+2 -composite \
+        \( "$cell" -crop 2x9+11+2 +repage -filter Triangle -resize '2x13!' \) -geometry +15+2 -composite \
+        \( "$cell" -crop 9x9+2+2 +repage -filter Triangle -resize '13x13!' \) -geometry +2+2 -composite \
+        -strip "PNG32:$out"
+    rm -f "$cell"
+}
+k=0
+for state in normal hot pressed disabled; do
+    nine17 1 $((629 + 15 * k)) "$OUT/tool/close-active-$state.png"
+    nine17 16 $((1 + 15 * k)) "$OUT/tool/close-inactive-$state.png"
+    for act in active inactive; do
+        # the small close box at rest, inactive (1 px edge, inner highlight, clear inside; its own
+        # hot and pressed faces are red), filled with the normal caption face's middle column
+        # (glass fold, blue hot, dark pressed)
+        face="$OUT/faces/mid-$act-$state.png"
+        convert "$OUT/tool/close-inactive-normal.png" \
+            \( "$face" -crop 1x18+12+0 +repage -filter Triangle -resize '15x15!' \) -geometry +1+1 -compose DstOver -composite \
+            -compose Over -strip "PNG32:$OUT/tool/button-$act-$state.png"
+    done
+    k=$((k + 1))
+done
+convert "$ATLAS" \( -clone 0 -crop 7x7+1+249 +repage \) \( -clone 0 -crop 7x7+1+276 +repage \) \
+    -delete 0 -append -strip "PNG32:$OUT/vista-close-small.png"
+# a 7 px Minimize for the 17 px face: the 12x5 glyph's ends (3 + 4 columns), both sprite rows
+convert "$OUT/vista-minimize.png" \( -clone 0 -crop 3x10+0+0 +repage \) \( -clone 0 -crop 4x10+8+0 +repage \) \
+    -delete 0 +append -strip "PNG32:$OUT/vista-minimize-small.png"
+echo "wrote $OUT/tool/*.png, $OUT/vista-close-small.png and $OUT/vista-minimize-small.png"

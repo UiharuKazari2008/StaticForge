@@ -53,6 +53,18 @@ async function main() {
     await resolveDynagenWithWren(gr, expired, null, null, null, null);
     assert.strictEqual(compiles, 3, 'expired scene compiles a fresh context');
     assert.strictEqual(turns, 2, 'expired but unchanged context keeps the scene');
+    // A character's own directive line is part of the ask: a change re-resolves, and the job carries it
+    const charDirected = body({ compiled_prompt: cp, character_directives: [{ index: 0, name: 'Mika', directive: 'shelter under the umbrella' }] });
+    charDirected.prompt = first.prompt;
+    charDirected.text_replacements = first.text_replacements;
+    let lastJob = null;
+    const run = director.runDynagenTurn;
+    director.runDynagenTurn = async (gr2, job) => { lastJob = job; return run(gr2, job); };
+    await resolveDynagenWithWren(gr, charDirected, null, null, null, null);
+    assert.strictEqual(turns, 3, 'character directive change resolves');
+    assert.strictEqual(lastJob.reason, 'character directives changed');
+    const text = require('../modules/rentanResolver').jobMessage(lastJob);
+    assert.ok(/Character 0 \(Mika\): shelter under the umbrella/.test(text), 'job lists the character directive');
     console.log('test-rentan-cached-context: ok');
 }
 main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });

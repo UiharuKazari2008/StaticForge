@@ -1857,6 +1857,14 @@ function getStudioGenerationToggleIcons() {
     ];
 }
 
+/** Show Syntax as the prompt toolbar's emphasis chip reads it: the global choice, else the prompt field's. */
+function studioEmphasisSyntaxVisible() {
+    // getGlobalEmphasisSyntaxMode / getEmphasisSyntaxModeForTextarea: public/scripts/comp/emphasisGroupIdCodec.js
+    const mode = getGlobalEmphasisSyntaxMode();
+    if (mode) return mode === 'visible';
+    return getEmphasisSyntaxModeForTextarea(document.getElementById('manualPrompt')) === 'visible';
+}
+
 function getStudioViewMenuItems() {
     const openResult = studioPreviewListItem('open-in-window', 'Open Result in Window');
     return [
@@ -1889,6 +1897,16 @@ function getStudioViewMenuItems() {
             loadfn: (item) => {
                 const btn = document.getElementById('showBothBtn');
                 item.checked = !!(btn && (btn.dataset.state === 'on' || btn.classList.contains('active')));
+            }
+        },
+        {
+            icon: 'fas fa-brackets-curly',
+            text: 'Show Emphasis Syntax',
+            action: 'studio-show-emphasis-syntax',
+            keepMenuOpen: true,
+            showIndicator: true,
+            loadfn: (item) => {
+                item.checked = studioEmphasisSyntaxVisible();
             }
         },
         {
@@ -2565,6 +2583,11 @@ function handleImageGenerationSettingsMenuAction(action, target, item) {
             // openPhasewalkerEditor: public/scripts/comp/runCommandIndex.js
             openPhasewalkerEditor();
         });
+        return true;
+    }
+    if (action === 'studio-show-emphasis-syntax') {
+        // setGlobalEmphasisSyntaxMode: public/scripts/comp/emphasisGroupIdCodec.js (every Studio prompt field)
+        setGlobalEmphasisSyntaxMode(studioEmphasisSyntaxVisible() ? 'hidden' : 'visible');
         return true;
     }
     if (action === 'studio-weight-rack') {

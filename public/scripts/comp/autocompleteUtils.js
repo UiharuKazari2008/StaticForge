@@ -1602,6 +1602,60 @@ function measureAutofillOverlayAnchor(target) {
     };
 }
 
+// The overlay opens under the field. Near the bottom of the work area (above the taskbar) the field's
+// scrolling column grows a spacer and scrolls the field up until AUTOFILL_ROOM_PX fit below it; the
+// spacer goes when the overlay closes (removeAutofillRoomSpacers). Re-measures once after scrolling;
+// a later call finds the room and does nothing, so position updates cannot loop.
+const AUTOFILL_ROOM_PX = 220;
+
+function autofillWorkAreaBottom() {
+    // getModalWorkAreaBounds: public/scripts/comp/modalUtils.js (the desktop's area above the taskbar)
+    if (document.body.classList.contains('desktop-mode') && typeof getModalWorkAreaBounds === 'function') {
+        const area = getModalWorkAreaBounds();
+        if (area && Number.isFinite(area.bottom)) return Math.min(window.innerHeight, area.bottom);
+    }
+    return window.innerHeight;
+}
+
+function autofillScrollParent(target) {
+    for (let el = target && target.parentElement; el && el !== document.body; el = el.parentElement) {
+        const overflowY = getComputedStyle(el).overflowY;
+        if (overflowY === 'auto' || overflowY === 'scroll') return el;
+    }
+    return null;
+}
+
+function makeAutofillRoomBelow(target, m) {
+    const want = AUTOFILL_ROOM_PX + 5 + m.barH + 4;
+    let need = want - (autofillWorkAreaBottom() - m.rect.bottom);
+    if (need <= 0) return m;
+    const scroller = autofillScrollParent(target);
+    if (!scroller) return m;
+    // never push the field's top out of its column
+    need = Math.min(need, Math.max(0, m.rect.top - scroller.getBoundingClientRect().top));
+    if (need <= 0) return m;
+    const canScroll = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
+    if (canScroll < need) {
+        let spacer = scroller.querySelector(':scope > .autofill-room-spacer');
+        if (!spacer) {
+            spacer = document.createElement('div');
+            spacer.className = 'autofill-room-spacer';
+            spacer.setAttribute('aria-hidden', 'true');
+            // flex: none, or a flex column (Studio's .scrollable-content) shrinks it to nothing
+            spacer.style.flex = 'none';
+            scroller.appendChild(spacer);
+        }
+        const grown = (parseFloat(spacer.style.height) || 0) + Math.ceil(need - canScroll);
+        spacer.style.height = `${Math.min(grown, want)}px`;
+    }
+    scroller.scrollTop += need;
+    return measureAutofillOverlayAnchor(target);
+}
+
+function removeAutofillRoomSpacers() {
+    document.querySelectorAll('.autofill-room-spacer').forEach((el) => el.remove());
+}
+
 // Numbers of the last overlay box set by applyCharacterAutocompleteOverlayBox (the only writer
 // of the overlay position), so the view bar can follow it without reading the overlay back.
 let autofillOverlayBoxNumbers = null;
@@ -1617,10 +1671,11 @@ function applyCharacterAutocompleteOverlayBox(target, measured = null) {
             document.body.appendChild(bar);
         }
     }
-    const rect = m.rect;
-    const barH = m.barH;
+    const roomed = makeAutofillRoomBelow(target, m);
+    const rect = roomed.rect;
+    const barH = roomed.barH;
     const gap = 5;
-    const spaceBelow = m.innerHeight - rect.bottom - gap - barH - 4;
+    const spaceBelow = autofillWorkAreaBottom() - rect.bottom - gap - barH - 4;
     const maxHeight = Math.min(400, Math.max(80, spaceBelow), m.innerHeight * 0.6);
     const top = rect.bottom + gap + barH + 4;
     const box = {
@@ -10113,6 +10168,7 @@ function hideCharacterAutocomplete(options) {
         characterAutocompleteOverlay.classList.add('hidden');
         characterAutocompleteOverlay.classList.remove('expanded');
     }
+    removeAutofillRoomSpacers();
     hideAutofillViewBar();
 
     if (isAutofillDetachedMode() && characterAutofillToolManager && userClose) {

@@ -552,6 +552,25 @@ body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.c
     content: none;
 }
 
+/* a row's picture sits in the gutter, centred where the check box goes, out of the text flow: the
+   label starts in the text column whether the row has a picture or not (a glyph with no Vista art
+   stays hidden, vista-fa-icons.css). A checked toggle hides its picture under the check
+   (context-menu.css .has-menu-mark), so the check takes the picture's place. */
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-item {
+    position: relative;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-item > :is(i, img):first-child:not(.context-menu-submenu-arrow) {
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 16px;
+    min-width: 0;
+    height: 16px;
+    margin: 0;
+    padding: 0;
+}
+
 /* ---------- a program's Win32 menu bar (role="menubar" data-win32-menus, .naxt-menu-title) ----------
    Vista's themed menu bar as WordPad, Notepad and Registry Editor draw it on the VM: the 19 px
    MENU BARBACKGROUND band, Segoe UI 9 pt titles with 7 px each side, the hot and open title faces.

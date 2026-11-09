@@ -2299,6 +2299,7 @@ function clearManualForm() {
     if (creativeTabBtn) {
         creativeTabBtn.classList.add('hidden');
     }
+    document.getElementById('manualModal')?.classList.remove('creative-directive-on');
     if (toggleGroup) {
         toggleGroup.classList.remove('three-tabs');
     }
@@ -3022,6 +3023,11 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         if (creativeDirectiveInput && creativeDirectiveInput.value && creativeDirectiveInput.value.trim() !== '') {
             fullDynamicData.directive = creativeDirectiveInput.value.trim();
         }
+        // Each character's own line of the directive (getCharacterDirectives: characterPromptManager.js)
+        const characterDirectives = getCharacterDirectives();
+        if (characterDirectives.length > 0) {
+            fullDynamicData.character_directives = characterDirectives;
+        }
 
         // Add forced strategy if set (null means auto, so only add if explicitly set)
         const strategyValue = dynamicCarousel?.dataset.creativeDirectiveStrategy;
@@ -3738,6 +3744,9 @@ function updateCreativeDirectiveVisibility() {
         const toggleGroup = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-group');
 
         const shouldShowCreativeTab = isCreativeOn && isDynamicGenVisible;
+        // the character cards' Directive panes follow the Creative tab (manual-modal-prompt-form.css)
+        const studioModal = document.getElementById('manualModal');
+        if (studioModal) studioModal.classList.toggle('creative-directive-on', shouldShowCreativeTab);
 
         if (creativeTabBtn) {
             // Show/hide the creative tab button
@@ -4202,6 +4211,8 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         } else {
             clearCharacterPrompts();
         }
+        // Each card's line of the Creative Directive (applyCharacterDirectives: characterPromptManager.js)
+        applyCharacterDirectives(loadedDynamicGen && loadedDynamicGen.character_directives);
 
         manualBackgroundOnly = data.backgroundOnly === true
             || data.forceCharacterBoxesOff === true

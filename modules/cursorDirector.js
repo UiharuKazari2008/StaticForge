@@ -6497,6 +6497,16 @@ function dynagenControlLines(controls) {
     return lines;
 }
 
+// Studio's per-character lines of the Creative Directive (dynamic_generation.character_directives):
+// [{ index, name, directive }], index = the character's place in Characters.
+function characterDirectiveLines(rows) {
+    const list = (Array.isArray(rows) ? rows : [])
+        .filter((row) => row && typeof row.directive === 'string' && row.directive.trim())
+        .map((row) => `- Character ${Number(row.index)}${row.name ? ` (${String(row.name).trim()})` : ''}: ${row.directive.trim()}`);
+    if (!list.length) return [];
+    return ['Character directives (apply each only to that character, in their character prompt or their own dg_ expanders):', ...list];
+}
+
 // What this resolve is about: why, controls, context, and the prompt as it stands.
 // Reduced Prompt Context (#432): no prompt, only the setting; the answer is dg_ additions.
 function dynagenJobLines(job) {
@@ -6505,6 +6515,7 @@ function dynagenJobLines(job) {
     if (job.controls) lines.push(`Controls:\n- ${dynagenControlLines(job.controls).join('\n- ')}`);
     lines.push(`Context: ${JSON.stringify(job.context || null)}`);
     if (job.directive) lines.push(`Directive: ${job.directive}`);
+    lines.push(...characterDirectiveLines(job.characterDirectives));
     if (job.reducedContext) {
         lines.push(`Setting: ${job.reducedContext} (reduced context). You are not given the prompt. Write dg_ expanders only, as additions for an ${job.reducedContext} scene. Do not send prompt, uc, or characters.`);
         return lines;
@@ -8606,6 +8617,7 @@ async function handleDirectorSettingsSet(handler, ws, message) {
 }
 
 module.exports = {
+    characterDirectiveLines,
     PROJECT_NAME,
     MCP_SCOPES,
     EFFORT_MODELS,

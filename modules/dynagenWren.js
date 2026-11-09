@@ -471,6 +471,7 @@ function stampCompiled(gr, body, dg, preset, context, fields) {
         request_hash: dynagenRequestHash(dg),
         controls: rentanControls(dg),
         directive_hash: dg.directive ? generateDirectiveHash(dg.directive) : null,
+        character_directives_hash: characterDirectivesHash(dg),
         timestamp: now,
         expiresAt: fields.expiresAt || calculateDynamicExpiration(gr, context, DEFAULT_EXPIRY_MS),
         cache_locked: !!dg.cache_locked,
@@ -906,6 +907,15 @@ function watchedBlocksReason(cp, body) {
     return null;
 }
 
+// Studio's per-character directive lines; null when there are none, so older stamps still match.
+// Kept apart from directive_hash, which the legacy cache check in imageGeneration.js also compares.
+function characterDirectivesHash(dg) {
+    const rows = (Array.isArray(dg && dg.character_directives) ? dg.character_directives : [])
+        .filter((row) => row && typeof row.directive === 'string' && row.directive.trim())
+        .map((row) => [Number(row.index), row.directive.trim()]);
+    return rows.length ? generateDirectiveHash(JSON.stringify(rows)) : null;
+}
+
 function staleReason(cp, dg, body, context, now) {
     if (!cp || !cp.wren_input_hash) return isLegacyTendai(cp) ? 'pre-v1.1 Tendai stamp' : 'first Rentan turn for this prompt';
     if (dg.dyna_no_cache === true || dg.use_cache_responses === false) return 'cache is off';
@@ -914,6 +924,7 @@ function staleReason(cp, dg, body, context, now) {
     if (flipped) return `Rentan controls changed: ${flipped}`;
     if (cp.request_hash !== dynagenRequestHash(dg)) return 'Rentan toggles changed';
     if ((cp.directive_hash || null) !== (dg.directive ? generateDirectiveHash(dg.directive) : null)) return 'directive changed';
+    if ((cp.character_directives_hash || null) !== characterDirectivesHash(dg)) return 'character directives changed';
     const watched = watchedBlocksReason(cp, body);
     if (watched) return watched;
     if (cp.expiresAt && now < cp.expiresAt) return null;
@@ -951,6 +962,7 @@ function attachDeferredRentanReview(gr, body, preset, ws, handler, context) {
         context: rentanContextForWren(context),
         controls: rentanControls(dg),
         directive: dg.directive || '',
+        characterDirectives: dg.character_directives || [],
         ...rentanPromptView(body, preset, dg),
         expanders: REDUCED_SETTINGS.includes(dg.reduced_context) ? [] : dgExpandersFrom(body.text_replacements),
         onThought: (text, reasoningId) => progress({
@@ -1054,6 +1066,7 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
             context: rentanContextForWren(context),
             controls: rentanControls(dg),
             directive: dg.directive || '',
+            characterDirectives: dg.character_directives || [],
             ...rentanPromptView(body, preset, dg),
             expanders: REDUCED_SETTINGS.includes(dg.reduced_context) ? [] : (dgExpandersFrom(body.text_replacements).length
                 ? dgExpandersFrom(body.text_replacements)

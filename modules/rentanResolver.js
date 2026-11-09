@@ -50,6 +50,7 @@ const SYSTEM_PROMPT = [
     '- dg_action: only when action is on: how the character reacts to this light, air, and season, as pose tags.',
     '- dg_scene: place, composition, and any creative flourish.',
     'context.period and context.season tables are guidance: pick what fits this frame, reword it, drop the rest. A Directive is the creative ask: fold it into dg_scene and the prompt.',
+    '- Character directives: the same kind of ask for one character only (index = their place in Characters). Apply it in that character\'s prompt or a dg_ expander placed there, never to the others.',
     '',
     'EDITING THE PROMPT',
     '- You may edit the prompt, UC, and character prompts where the scene needs it: remove or reword tags that contradict the context (sunny sky at night, snow in summer, a stale place), fix broken syntax, move scene details into dg_ expanders.',
@@ -116,6 +117,7 @@ function jobMessage(job) {
     lines.push(...controlLines(j.controls));
     lines.push(`Context: ${JSON.stringify(j.context || null)}`);
     if (j.directive) lines.push(`Directive: ${j.directive}`);
+    lines.push(...director().characterDirectiveLines(j.characterDirectives));
     if (j.reducedContext) {
         // Reduced Prompt Context (#432): the model never sees the prompt.
         lines.push(`Setting: ${j.reducedContext}`);

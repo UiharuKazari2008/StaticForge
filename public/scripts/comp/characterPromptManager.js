@@ -464,6 +464,24 @@ function buildCharacterUcTabContainerHtml(characterId, ucValue, promptNegativeVa
                         </div>`;
 }
 
+function wireCharacterDirectiveField(characterId) {
+    const field = document.getElementById(`${characterId}_directive`);
+    if (!field || field.dataset.directiveWired === 'true') return;
+    field.dataset.directiveWired = 'true';
+    field.addEventListener('input', () => autoResizeTextarea(field, 23));
+}
+
+/** The card's Directive pane: this character's line of the Creative Directive (shown on the Creative tab). */
+function buildCharacterDirectivePaneHtml(characterId, active) {
+    const id = escapeHtmlAttribute(characterId);
+    return `<div class="tab-pane character-directive-pane${active ? ' active' : ''}" id="${id}_creative-tab" data-label="Directive">
+                        <div class="character-prompt-textarea-container character-directive-container">
+                            <div class="character-prompt-textarea-background"></div>
+                            <textarea id="${id}_directive" class="form-control prompt-textarea textarea-inset character-directive-textarea" rows="1" placeholder="How Rentan should handle this character..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false" data-autofill-enable="spellcheck,thesaurus"></textarea>
+                        </div>
+                    </div>`;
+}
+
 function wireCharacterPromptTextarea(textarea, blurExtra) {
     if (!textarea) return;
     addSafeEventListener(textarea, 'input', handleCharacterAutocompleteInput, 'autocomplete');
@@ -599,6 +617,7 @@ function addCharacterPrompt() {
                     <div class="tab-pane ${ucTabActive}" id="${characterId}_uc-tab" data-label="UC">
                         ${buildCharacterUcTabContainerHtml(characterId, '', '')}
                     </div>
+                    ${buildCharacterDirectivePaneHtml(characterId, mainActiveTab === 'creative')}
                 </div>
             </div>
         `;
@@ -628,6 +647,7 @@ function addCharacterPrompt() {
     if (promptNegativeField) {
         wireCharacterPromptTextarea(promptNegativeField);
     }
+    wireCharacterDirectiveField(characterId);
 
     // Add preview textarea click handler
     const previewTextarea = document.getElementById(`${characterId}_preview`);
@@ -1073,6 +1093,35 @@ function getCharacterPrompts() {
     return characterPrompts;
 }
 
+/**
+ * Per-character Creative Directive rows for Rentan (dynamic_generation.character_directives): one per
+ * character card with text, by card order. They ride on dynamic_generation, never on the character
+ * prompts NovelAI receives.
+ */
+function getCharacterDirectives() {
+    const items = characterPromptsContainer ? characterPromptsContainer.querySelectorAll('.character-prompt-item') : [];
+    const rows = [];
+    items.forEach((item, index) => {
+        const field = document.getElementById(`${item.id}_directive`);
+        const directive = field ? normalizePromptNewlines(field.value).trim() : '';
+        if (!directive) return;
+        rows.push({ index, name: item.dataset.charaName || `Character ${index + 1}`, directive });
+    });
+    return rows;
+}
+
+/** Fill the cards' directive fields from saved character_directives (by card order). */
+function applyCharacterDirectives(rows) {
+    const items = characterPromptsContainer ? characterPromptsContainer.querySelectorAll('.character-prompt-item') : [];
+    items.forEach((item, index) => {
+        const field = document.getElementById(`${item.id}_directive`);
+        if (!field) return;
+        const row = Array.isArray(rows) ? rows.find((r) => r && Number(r.index) === index) : null;
+        field.value = row && row.directive ? String(row.directive) : '';
+        autoResizeTextarea(field, 23);
+    });
+}
+
 // Character gender → main prompt subject tags (1girl / 2girls / solo); sync from /public/scripts/app.js
 const _CHAR_GENDER_GYNO_RE = /\b(gynomorph|futanari|dickgirls?|dickgirl|futa|hermaphrodit|intersex)\b/i;
 const _CHAR_GENDER_MALE_RE = /\b(1boy|2boys|[0-9]+boys?|male|males|man|men|boy|boys|shota|shotas|otoko\s+no\s+ko)\b/i;
@@ -1405,6 +1454,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                     <div class="tab-pane ${ucTabActive}" id="${characterId}_uc-tab" data-label="UC">
                         ${buildCharacterUcTabContainerHtml(characterId, character.uc || '', character.input_prompt_negative || '')}
                     </div>
+                    ${buildCharacterDirectivePaneHtml(characterId, mainActiveTab === 'creative')}
                 </div>
             </div>
         `;
@@ -1463,6 +1513,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
             }
             updateEmphasisHighlighting(promptNegativeField);
         }
+        wireCharacterDirectiveField(characterId);
 
         // Add preview textarea click handler
         const previewTextarea = document.getElementById(`${characterId}_preview`);
