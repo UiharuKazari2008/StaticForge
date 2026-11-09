@@ -612,7 +612,21 @@
         // WM never draws two separators in a row or one at an end: items left out on a condition
         // (Clear Today Background) must not leave a doubled line (#723)
         const isSep = (it) => it === '-' || !!(it && it.separator);
-        items = items.filter((it, i, all) => it && (!isSep(it) || (i > 0 && !isSep(all[i - 1]) && all.slice(i + 1).some((x) => x && !isSep(x)))));
+        const filteredItems = [];
+        let lastSep = null;
+        for (const it of items) {
+            if (!it) continue;
+            if (isSep(it)) {
+                if (filteredItems.length > 0) lastSep = it;
+            } else {
+                if (lastSep) {
+                    filteredItems.push(lastSep);
+                    lastSep = null;
+                }
+                filteredItems.push(it);
+            }
+        }
+        items = filteredItems;
         for (const item of items) {
             if (isSep(item)) {
                 pop.insertAdjacentHTML('beforeend', '<div class="wm-popup-sep" role="separator"></div>');
