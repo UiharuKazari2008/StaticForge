@@ -199,7 +199,6 @@ function initializeMaskEditor() {
     const saveBtn = document.getElementById('saveMaskBtn');
     const deleteBtn = document.getElementById('deleteMaskBtn');
     const cancelBtn = document.getElementById('cancelMaskBtn');
-    const closeBtn = document.getElementById('closeMaskEditorBtn');
     const brushSizeInput = document.getElementById('brushSize');
 
     if (brushBtn) {
@@ -240,12 +239,6 @@ function initializeMaskEditor() {
 
     if (cancelBtn) {
         cancelBtn.addEventListener('click', (e) => {
-            closeMaskEditor();
-        });
-    }
-
-    if (closeBtn) {
-        closeBtn.addEventListener('click', (e) => {
             closeMaskEditor();
         });
     }
