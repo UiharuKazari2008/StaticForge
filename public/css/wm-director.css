@@ -305,6 +305,20 @@
     color: #000;
 }
 
+/* a new chat's welcome sits on the WM panel: plain WM text and flat buttons, without the desktop
+   mascot scene's white title, its text halo and dark plate (director.css), or its chip drop shadows */
+html.ui-mobile .wm-director #directorSessionChat #directorComposerWelcome > :is(.logo-text, h3) {
+    color: #000 !important;
+    text-shadow: none !important;
+    background: none !important;
+    padding: 0 !important;
+}
+
+html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-compact > button {
+    filter: none !important;
+    box-shadow: none !important;
+}
+
 /* a new chat: her welcome over the scene, the composer at the bottom (not centred) */
 .wm-director #directorSessionChat.director-composer-center .dm-vn-layer {
     display: block;

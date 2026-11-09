@@ -277,6 +277,10 @@
             syncComposer();
             if (isCurrent()) { ws.refreshSoftKeys(); ws.syncHistory(); }
         }).observe(chat, { attributes: true, attributeFilter: ['class'] });
+        // the attachment chips (a device file read in after the picker, the Open dialog, a chip's X):
+        // Send follows whether there is anything to send
+        const chips = document.getElementById('directorAttachChips');
+        if (chips) new MutationObserver(() => { if (shown && isCurrent()) ws.refreshSoftKeys(); }).observe(chips, { childList: true });
     }
 
     // ---------------------------------------------------------------- hand-offs from other views
@@ -1323,8 +1327,21 @@
         items.push({ label: 'Computer', submenu: () => computer });
         items.push('-');
         items.push({ label: 'Attach File...', action: () => { if (d.directorAttachFileInput) d.directorAttachFileInput.click(); openComposer(); } });
+        items.push({ label: 'Attach from Device...', disabled: !d.directorAttachFileInput, action: () => { attachFromDevice(d); openComposer(); } });
         items.push({ label: 'Options', submenu: optionsItems });
         return items;
+    }
+
+    /**
+     * Attach from Device: the device's own file picker straight from the menu tap (it needs the tap's
+     * activation). Attach File... is the WM Open dialog over Dreamscape's files (wmFileDialogs.js wraps
+     * the input's click for that), so this calls the native click past the wrapper. The desktop's
+     * change listener (director.js addComputerFiles) adds the chips; the soft keys follow them (watchChat).
+     */
+    function attachFromDevice(d) {
+        const input = d && d.directorAttachFileInput;
+        if (!input) return;
+        HTMLInputElement.prototype.click.call(input);
     }
 
     /** Menu while writing (WM Messaging's compose Menu): attach, take the attachments off, Cancel. */
@@ -1332,7 +1349,8 @@
         const d = dir();
         const n = d && d.pendingAttachments ? d.pendingAttachments.length : 0;
         const items = [
-            { label: 'Attach File...', action: () => { if (d.directorAttachFileInput) d.directorAttachFileInput.click(); } }
+            { label: 'Attach File...', action: () => { if (d.directorAttachFileInput) d.directorAttachFileInput.click(); } },
+            { label: 'Attach from Device...', disabled: !(d && d.directorAttachFileInput), action: () => attachFromDevice(d) }
         ];
         if (d && d.persona !== 'xi' && d.currentSession && !isDraft(d)) {
             const prints = d.sessionPrints().slice().reverse().slice(0, 12);

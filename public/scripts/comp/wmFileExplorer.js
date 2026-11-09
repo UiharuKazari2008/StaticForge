@@ -40,6 +40,26 @@
     const ART = '/static_images/wm61/';
 
     let ws = null; // window.wmShell
+
+    // A file going into References or Notes asks what it becomes (vfsImportRouter.js) over a desktop
+    // window the phone never shows: ask in a WM message box instead (Cancel / Back skips the file).
+    if (typeof vfsImportRouter !== 'undefined' && !vfsImportRouter._wmChoice) {
+        vfsImportRouter._wmChoice = true;
+        vfsImportRouter._showImportChoice = (title, options) => {
+            const shell = window.wmShell;
+            if (!shell || typeof shell.messageBox !== 'function') return Promise.resolve(options[0] && options[0].id);
+            // WM message box buttons are one short word wide: the full choices go in the text
+            const names = options.map((o) => o.label);
+            const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : names[0];
+            return shell.messageBox({
+                title,
+                icon: 'question',
+                text: `Import this file as ${list}?`,
+                buttons: options.map((o, n) => ({ text: o.label.split(' ')[0], value: o.id, default: n === 0 })).concat({ text: 'Cancel', value: null }),
+                cancelValue: null
+            });
+        };
+    }
     // WM's wait cursor (wmShell.busy) over work the user waits for: a file opening, a folder made, renamed or deleted
     const busyOf = (fn) => (ws && typeof ws.busy === 'function' ? ws.busy(fn) : fn());
     let page = null;
@@ -890,6 +910,50 @@
         }
     }
 
+    /**
+     * Files from the device into the folder on screen (explorerApplet canUploadToPath): writable
+     * folders, plus a workspace's Pictures / Scraps / References / Notes, which import what they
+     * take (vfsImportRouter.js). Not into the phone's own volume (the files are already there).
+     */
+    function canUploadHere() {
+        if (inPhone() || readOnly()) return false;
+        const p = pathNow();
+        if (writable(p)) return true;
+        const parts = p.replace(/\/+$/, '').split('/').filter(Boolean);
+        return parts[0] === 'Workspaces' && parts.length === 3 && ['Pictures', 'Scraps', 'References', 'Notes'].includes(parts[2]);
+    }
+
+    /** Upload from Device: the device's own file picker (opened in the menu tap, which it needs), then each file in. */
+    function uploadFromDevice() {
+        if (!canUploadHere() || typeof vfsImportRouter === 'undefined') return;
+        const path = pathNow();
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.hidden = true;
+        document.body.appendChild(input);
+        const done = () => input.remove();
+        input.addEventListener('cancel', done, { once: true });
+        input.addEventListener('change', async () => {
+            const files = [...(input.files || [])];
+            done();
+            if (!files.length) return;
+            const before = new Set(items.map((i) => i.id));
+            for (const file of files) {
+                try {
+                    await busyOf(() => vfsImportRouter.routeFilesToPath(path, [file]));
+                } catch (err) {
+                    await errorBox('Error Copying File', 'copy', { name: file.name }, err);
+                }
+            }
+            if (pathNow() !== path) return;
+            await load({ keep: true });
+            const added = items.filter((i) => !before.has(i.id));
+            if (added.length) { selectOnly(added[0].id); scrollToSelection(); }
+        }, { once: true });
+        input.click();
+    }
+
     function startRename(id) {
         const i = itemById(id);
         if (!i || !canRename(i) || readOnly()) return;
@@ -1298,6 +1362,7 @@
             sendItem(sel),
             { label: 'Beam File...', disabled: true },
             { label: 'New Folder', disabled: !writable(pathNow()) || readOnly() || (inPhone() && !phoneCan('mkdir')), action: newFolder },
+            { label: 'Upload from Device...', disabled: !canUploadHere(), action: uploadFromDevice },
             { label: 'Rename', disabled: sel.length !== 1 || !canRename(sel[0]) || readOnly(), action: () => startRename(sel[0].id) },
             { label: 'Delete', disabled: !sel.length || !sel.some(canDelete) || readOnly(), action: deleteSelection },
             '-',
@@ -1314,7 +1379,8 @@
                 '-',
                 { label: 'Paste', disabled: !canPaste(), action: () => paste(false) },
                 { label: 'Paste Shortcut', disabled: !canPasteShortcut(), action: () => paste(true) },
-                { label: 'New Folder', disabled: !writable(pathNow()) || readOnly() || (inPhone() && !phoneCan('mkdir')), action: newFolder }
+                { label: 'New Folder', disabled: !writable(pathNow()) || readOnly() || (inPhone() && !phoneCan('mkdir')), action: newFolder },
+                { label: 'Upload from Device...', disabled: !canUploadHere(), action: uploadFromDevice }
             ];
         }
         const sel = selectedItems();
