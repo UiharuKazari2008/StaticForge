@@ -4923,7 +4923,9 @@ class ExplorerApplet {
                 loadGallery(true);
             }
 
-            const fromHere = dragItems.some(i => this.items.some(x => x.id === i.id));
+            // JULES: perf optimization — Set lookup O(1) instead of Array.some O(N) inside loop
+            const dragIds = new Set(dragItems.map(i => i.id));
+            const fromHere = this.items.some(x => dragIds.has(x.id));
             if (navPath === this.currentPath) {
                 await this.softRefresh();
             } else if (fromHere && operation === 'cut') {
