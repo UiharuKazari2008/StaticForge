@@ -713,3 +713,20 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"]
 body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-clear.moon-waning-gibbous { background-image: url("/static_images/vista-sidebar/weather/undocked_moon-waning-gibbous.png"); }
 body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-clear.moon-last-quarter { background-image: url("/static_images/vista-sidebar/weather/undocked_moon-last-quarter.png"); }
 body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-clear.moon-waning-crescent { background-image: url("/static_images/vista-sidebar/weather/undocked_moon-waning-crescent.png"); }
+
+/* a partly cloudy night: the gadget's moon with its partly-cloudy layer over it (vistaSidebar.js draws
+   undocked_moon-<phase> then undocked_partly-cloudy, both 264 x 194 layers), scaled like the clear
+   night above; the bare sky icon 29 is only a faint cloud on the black face */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i:is(.wi-night-alt-partly-cloudy, .wi-night-alt-cloudy)[class*="moon-"] {
+    background-image: url("/static_images/vista-sidebar/weather/undocked_partly-cloudy.png"), var(--crossover-moon);
+    background-size: 96px 71px;
+    background-position: -5px -4px;
+}
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.moon-new { --crossover-moon: url("/static_images/vista-sidebar/weather/undocked_moon-new.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.moon-waxing-crescent { --crossover-moon: url("/static_images/vista-sidebar/weather/undocked_moon-waxing-crescent.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.moon-first-quarter { --crossover-moon: url("/static_images/vista-sidebar/weather/undocked_moon-first-quarter.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.moon-waxing-gibbous { --crossover-moon: url("/static_images/vista-sidebar/weather/undocked_moon-waxing-gibbous.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.moon-full { --crossover-moon: url("/static_images/vista-sidebar/weather/undocked_moon-full.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.moon-waning-gibbous { --crossover-moon: url("/static_images/vista-sidebar/weather/undocked_moon-waning-gibbous.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.moon-last-quarter { --crossover-moon: url("/static_images/vista-sidebar/weather/undocked_moon-last-quarter.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.moon-waning-crescent { --crossover-moon: url("/static_images/vista-sidebar/weather/undocked_moon-waning-crescent.png"); }

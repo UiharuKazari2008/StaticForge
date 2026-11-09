@@ -1,120 +1,211 @@
-/* Novel tool windows — public/scripts/comp/novelManager.js */
+/* Novel tool windows - public/scripts/comp/novelManager.js, markup in app.html.
+   Light Vista owned tool windows (data-window-client="light" + .win7; push buttons, the progress bar
+   and the scrollbars are the desktop's Vista controls from vista-glass-controls.css and
+   vista-scrollbars.css):
+   - Novel Editor: Notepad's page (white, Lucida Console 10 pt, no edit frame), a dialog row on the
+     #f0f0f0 face with the story cursor and 75 x 23 push buttons 7 px from the edges and 6 px apart,
+     and Notepad's status bar (22 px, the save state, then Ln / Col in a 140 px part with the size grip,
+     as notepad-vista.css draws it).
+   - Novel Progress: a progress dialog. The status line, Vista's progress bar (15 px; 7.css's marquee
+     while the story is written), the steps in a white list box (#828790 frame) with Event Viewer's 16 px
+     level icons, and Close under a #dfdfdf line. */
+
 #novelEditorTool {
     width: 560px;
     height: 480px;
-    min-width: 480px;
-    min-height: 360px;
-}
-
-#novelProgressTool {
-    width: 400px;
-    height: 320px;
     min-width: 360px;
     min-height: 240px;
 }
 
-.novel-editor-tool > .modal-content,
-.novel-progress-tool > .modal-content {
+#novelProgressTool {
+    width: 420px;
+    height: 320px;
+    min-width: 320px;
+    min-height: 220px;
+}
+
+.novel-editor-tool > .modal-content.novel-editor-content,
+.novel-progress-tool > .modal-content.novel-progress-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     padding: 0;
     overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
+    background: #f0f0f0;
+    color: #000;
 }
 
-.novel-editor-body,
-.novel-progress-body {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    min-height: 0;
-    gap: 0.5rem;
-    padding: 0.65rem 0.75rem 0.5rem;
-    overflow: hidden;
-}
+/* ---- Novel Editor ---- */
 
-.novel-editor-tool .modal-footer {
-    flex-shrink: 0;
-    padding: 0.5rem 0.75rem 0.65rem;
-    border-top: 1px solid var(--glass-border-3, rgba(255, 255, 255, 0.08));
-}
-
-.novel-editor-meta {
-    flex-shrink: 0;
-    font-size: 0.82rem;
-    opacity: 0.85;
-}
-
-.novel-editor-textarea {
+/* an #id rule, so it outranks the desktop's edit box face (vista-glass-controls.css) */
+#novelEditorTool .novel-editor-textarea,
+#novelEditorTool .novel-editor-textarea:is(:hover, :focus, :active) {
     flex: 1 1 auto;
     min-height: 0;
     width: 100%;
-    resize: none;
-    border: 1px solid var(--glass-border-3, rgba(255, 255, 255, 0.12));
-    border-radius: var(--border-radius-sm, 6px);
-    padding: 0.55rem 0.65rem;
-    font-family: var(--font-mono, monospace);
-    font-size: 0.9rem;
-    line-height: 1.5;
-    background: rgba(0, 0, 0, 0.18);
-    color: var(--text-primary, #eee);
     box-sizing: border-box;
+    margin: 0;
+    padding: 2px 4px;
+    resize: none;
+    background: #fff;
+    border: 0;
+    border-bottom: 1px solid #a0a0a0;
+    border-image: none;
+    border-radius: 0;
+    box-shadow: none;
+    outline: none;
+    color: #000;
+    font: 10pt/1.25 "Lucida Console", Consolas, monospace;
+    tab-size: 8;
 }
 
-.novel-progress-status {
-    flex-shrink: 0;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--text-accent, #c8d4ff);
-    padding: 0.35rem 0.5rem;
-    border-radius: var(--border-radius-sm, 6px);
-    background: rgba(0, 0, 0, 0.22);
-    border-left: 3px solid var(--accent-color, #6b8cff);
+#novelEditorTool .novel-editor-textarea::placeholder {
+    color: #6d6d6d;
+    opacity: 1;
 }
 
-.novel-progress-log-shell {
+.novel-editor-tool .novel-editor-buttons {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 7px 7px 9px;
+}
+
+.novel-editor-tool .novel-editor-cursor {
     flex: 1 1 auto;
-    min-height: 0;
+    min-width: 0;
     overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.novel-progress-log-scrollable {
-    height: 100%;
+.novel-editor-tool .novel-editor-buttons > button {
+    flex: none;
+    min-width: 75px;
+    height: 23px;
+    margin: 0;
+}
+
+.novel-editor-tool .novel-editor-statusbar {
+    flex: 0 0 22px;
+    display: flex;
+    height: 22px;
+    border-top: 1px solid #d7d7d7;
+    background: #f0f0f0 url("/static_images/vista-controls/sizegrip.png") no-repeat right 2px bottom 2px;
+    white-space: nowrap;
+}
+
+.novel-editor-tool .novel-editor-statusbar-fill {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-right: 1px solid #d7d7d7;
+}
+
+.novel-editor-tool .novel-editor-statusbar-pos {
+    flex: none;
+    display: flex;
+    align-items: center;
+    width: 140px;
+    box-sizing: border-box;
+    padding: 0 18px 0 6px;
+}
+
+/* ---- Novel Progress ---- */
+
+.novel-progress-tool .novel-progress-status {
+    flex: none;
+    margin: 10px 11px 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* width: auto, or 7.css's 100% puts the bar past the right margin */
+.novel-progress-tool .novel-progress-bar[role="progressbar"] {
+    flex: none;
+    box-sizing: border-box;
+    width: auto;
+    height: 15px;
+    margin: 8px 11px 0;
+}
+
+.novel-progress-tool .novel-progress-bar[role="progressbar"]:not(.marquee) > div {
+    width: 100%;
+}
+
+.novel-progress-tool .novel-progress-bar[role="progressbar"].marquee > div {
+    display: none;
+}
+
+.novel-progress-tool .novel-progress-list {
+    flex: 1 1 auto;
+    min-height: 40px;
+    margin: 11px 11px 0;
     overflow: auto;
-    padding: 0.15rem 0.25rem 0.35rem;
+    background: #fff;
+    border: 1px solid #828790;
+    outline: none;
 }
 
-.novel-progress-log {
+.novel-progress-tool .novel-progress-log {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    padding: 1px 0;
 }
 
-.novel-progress-log-entry {
-    padding: 0.45rem 0.6rem;
-    border-radius: var(--border-radius-sm, 6px);
-    background: rgba(0, 0, 0, 0.28);
-    border-left: 3px solid rgba(255, 255, 255, 0.18);
-    font-size: 0.82rem;
-    line-height: 1.45;
-    color: var(--text-accent-tinted, #b8c0d8);
+.novel-progress-tool .novel-progress-log-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 1px 4px 2px 3px;
+    line-height: 16px;
     white-space: pre-wrap;
-    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 
-.novel-progress-log-entry.novel-progress-log-active {
-    border-left-color: var(--accent-color, #6b8cff);
+.novel-progress-tool .novel-progress-log-entry > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
 }
 
-.novel-progress-log-entry.novel-progress-log-error {
-    border-left-color: #e07070;
-    color: #ffc8c8;
+.novel-progress-tool .novel-progress-log-entry.novel-progress-log-error {
+    color: #000;
 }
 
-.novel-progress-log-entry.novel-progress-log-done {
-    border-left-color: #6bcf8a;
-    color: #d4f5de;
+.novel-progress-tool .novel-progress-footer {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 11px;
+    padding: 8px 11px 10px;
+    border-top: 1px solid #dfdfdf;
 }
+
+.novel-progress-tool .novel-progress-elapsed {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: #6d6d6d;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.novel-progress-tool .novel-progress-footer > button {
+    flex: none;
+    min-width: 75px;
+    height: 23px;
+    margin: 0;
+}
+
+/* ---- the Novels DSAP page ---- */
 
 [data-dsap="novels"] .novels-list {
     display: flex;

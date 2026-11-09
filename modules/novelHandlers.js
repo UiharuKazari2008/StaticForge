@@ -250,7 +250,7 @@ Rules:
             aiOptions.previous_response_id = metadata.last_response_id;
         }
 
-        this.publishProgress(wsServer, { phase: 'streaming', noteId, requestId, reason: 'Writing story continuation…' });
+        this.publishProgress(wsServer, { phase: 'streaming', noteId, requestId, reason: 'Writing story continuation...' });
 
         const grokResponse = await grokService.callDirectorAIWithStructuredOutput(messages, aiOptions);
         let responseContent = grokResponse.content || grokResponse.message || grokResponse;

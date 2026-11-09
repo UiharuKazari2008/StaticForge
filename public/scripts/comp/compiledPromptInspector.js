@@ -119,8 +119,12 @@ function crossoverMoonPhase() {
 }
 
 // Rentan context cards (time period, holiday, weather, hourly) for compiled_prompt.context.
-// Shared by the Reality Crossover window and the image Inspector (imagePromptInspector.js).
-function buildCompiledContextHtml(compiled) {
+// Shared by the Reality Crossover window, the image Inspector (imagePromptInspector.js) and the
+// Studio Inspector's Rentan section (textReplacementManager.js appendRentanSceneBlocks, which passes
+// { list: false }: the cards only, without the Property / Value list of readings).
+function buildCompiledContextHtml(compiled, options = {}) {
+    const withList = options.list !== false;
+    const esc = (value) => escapeHtml(String(value ?? ''));
     // Weather icon mapping function using Weather Icons
     function getWeatherIcon(condition, isNight = false) {
         if (!condition) return isNight ? '<i class="wi wi-night-clear"></i>' : '<i class="wi wi-day-sunny"></i>';
@@ -172,7 +176,8 @@ function buildCompiledContextHtml(compiled) {
         };
 
         const iconClass = iconMap[condition] || (isNight ? 'night-clear' : 'day-sunny');
-        const moon = iconClass === 'night-clear' ? ` moon-${crossoverMoonPhase()}` : '';
+        // the gadget draws tonight's moon on a clear or partly cloudy night (vistaSidebar.js)
+        const moon = /^night-(clear|alt-partly-cloudy|alt-cloudy)$/.test(iconClass) ? ` moon-${crossoverMoonPhase()}` : '';
         return `<i class="wi wi-${iconClass}${moon}"></i>`;
     }
 
@@ -254,7 +259,7 @@ function buildCompiledContextHtml(compiled) {
             const visibilityValue = useMetric ?
                 (weather.visibility !== undefined ? `${(weather.visibility / 1000).toFixed(1)} km` : null) :
                 (weather.visibility !== undefined ? `${(weather.visibility * 0.000621371).toFixed(1)} mi` : null);
-            const uvIndexValue = weather.uvIndex !== undefined ? `${weather.uvIndex} (${uvWarnings?.category || 'Unknown'})` : null;
+            const uvIndexValue = weather.uvIndex !== undefined ? `${weather.uvIndex}${uvWarnings?.category ? ` (${uvWarnings.category})` : ''}` : null;
             const heatIndexValue = heatIndex !== null ? (useMetric ? `${heatIndex}°C` : `${celsiusToFahrenheit(heatIndex)}°F`) : null;
             const windChillValue = windChill !== null ? (useMetric ? `${windChill}°C` : `${celsiusToFahrenheit(windChill)}°F`) : null;
 
@@ -361,7 +366,7 @@ function buildCompiledContextHtml(compiled) {
                     </div>
                     <div class="weather-condition-display">
                         <div class="weather-condition-icon">${weatherIcon}</div>
-                        <div class="weather-condition-text">${weatherCondition}</div>
+                        <div class="weather-condition-text">${esc(weatherCondition)}</div>
                         <div class="weather-condition-details">
                             ${humidityValue ? `<div class="weather-condition-detail"><i class="fa-solid fa-droplet"></i>${humidityValue}</div>` : ''}
                             ${windDisplay !== 'N/A' ? `<div class="weather-condition-detail"><i class="fa-solid fa-wind"></i><span class="weather-wind-speed" data-metric="${windMps !== undefined ? windMps : ''}" data-imperial="${windMph !== undefined ? windMph : ''}">${windDisplay}</span>${windDirection ? ` (${windDirection})` : ''}</div>` : ''}
@@ -371,30 +376,30 @@ function buildCompiledContextHtml(compiled) {
                     // Precipitation rate
                     if (weather.precipitation !== undefined && weather.precipitation > 0) {
                         const precipRate = useMetric ? `${weather.precipitation} mm/hr` : `${(weather.precipitation * 0.0393701).toFixed(2)} in/hr`;
-                        precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-rain"></i><span class="weather-precip-rate" data-metric="${weather.precipitation}" data-unit="mm/hr">${precipRate}</span></div>`);
+                        precipElements.push(`<div class="weather-condition-detail">Precipitation <span class="weather-precip-rate" data-metric="${weather.precipitation}" data-unit="mm/hr">${precipRate}</span></div>`);
                     }
 
                     // Rain amount
                     if (weather.rain > 0) {
                         const rainAmount = useMetric ? `${weather.rain} mm` : `${(weather.rain * 0.0393701).toFixed(2)} in`;
-                        precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-rain"></i>Rain: <span class="weather-rain-amount" data-metric="${weather.rain}" data-unit="mm">${rainAmount}</span></div>`);
+                        precipElements.push(`<div class="weather-condition-detail">Rain <span class="weather-rain-amount" data-metric="${weather.rain}" data-unit="mm">${rainAmount}</span></div>`);
                     }
 
                     // Showers amount
                     if (weather.showers > 0) {
                         const showerAmount = useMetric ? `${weather.showers} mm` : `${(weather.showers * 0.0393701).toFixed(2)} in`;
-                        precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-showers-heavy"></i>Showers: <span class="weather-showers-amount" data-metric="${weather.showers}" data-unit="mm">${showerAmount}</span></div>`);
+                        precipElements.push(`<div class="weather-condition-detail">Showers <span class="weather-showers-amount" data-metric="${weather.showers}" data-unit="mm">${showerAmount}</span></div>`);
                     }
 
                     // Snowfall amount
                     if (weather.snowfall > 0) {
                         const snowAmount = useMetric ? `${weather.snowfall} cm` : `${(weather.snowfall * 0.393701).toFixed(2)} in`;
-                        precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-snowflake"></i>Snow: <span class="weather-snow-amount" data-metric="${weather.snowfall}" data-unit="cm">${snowAmount}</span></div>`);
+                        precipElements.push(`<div class="weather-condition-detail">Snow <span class="weather-snow-amount" data-metric="${weather.snowfall}" data-unit="cm">${snowAmount}</span></div>`);
                     }
 
                     // Precipitation type - only show if there's actual precipitation
                     if (weather.precipitationType && (weather.precipitation > 0 || weather.rain > 0 || weather.showers > 0 || weather.snowfall > 0)) {
-                        precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-rain"></i>${weather.precipitationType.description || weather.precipitationType}</div>`);
+                        precipElements.push(`<div class="weather-condition-detail">${esc(crossoverLabel(weather.precipitationType.description || weather.precipitationType))}</div>`);
                     }
 
                     return precipElements.join('');
@@ -478,7 +483,8 @@ function buildCompiledContextHtml(compiled) {
                     const hourTempC = hour.temperature !== undefined && hour.temperature !== null ? hour.temperature : null;
                     const hourTempF = hourTempC !== null ? celsiusToFahrenheit(hourTempC) : null;
                     const hourTemp = hourTempC === null ? '' : (useMetric ? `${hourTempC}°C` : `${hourTempF}°F`);
-                    const timeLabel = index === 0 ? 'Now' : hourTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                    const timeLabel = index === 0 ? 'Now'
+                        : (Number.isNaN(hourTime.getTime()) ? `+${index} h` : hourTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
                     const precipMetric = hour.precipitation > 0 ? hour.precipitation : null;
                     const precipDisplay = precipMetric !== null
                         ? (useMetric ? `${precipMetric}mm` : `${(precipMetric * 0.0394).toFixed(1)}in`) : '';
@@ -502,9 +508,9 @@ function buildCompiledContextHtml(compiled) {
                     </div>
                 `).join('') : '';
 
-            const weatherList = crossoverPropList(
+            const weatherList = withList ? crossoverPropList(
                 crossoverPropGroup('Weather', weatherRows) + crossoverPropGroup('Next hours', hourlyRows)
-            );
+            ) : '';
             weatherContent = `<div class="weather-display">${mainCardHtml}${alertsHtml}${weatherList}</div>`;
         }
 
@@ -515,6 +521,14 @@ function buildCompiledContextHtml(compiled) {
         const phraseList = (value) => (Array.isArray(value)
             ? value.map((el) => (el && typeof el === 'object' ? el.text : el)).filter(Boolean).join(', ')
             : value);
+        // the same lists with their weights, "warm light (1.20)", for the period card's details
+        const biasedList = (value) => (Array.isArray(value)
+            ? value.map((el) => {
+                if (!el || typeof el !== 'object') return el;
+                const bias = Number(el.bias ?? 1);
+                return Number.isFinite(bias) ? `${el.text} (${bias.toFixed(2)})` : el.text;
+            }).filter(Boolean).join(', ')
+            : String(value));
         const seasonName = context.season && typeof context.season === 'object' ? context.season.name : context.season;
         const timeRows = [
             ['Time period', timePeriodInfo.period ? crossoverLabel(timePeriodInfo.period) : null],
@@ -676,10 +690,10 @@ function buildCompiledContextHtml(compiled) {
                         <div class="period-main-info">
                             <div class="period-title-section">
                                 <div class="period-title clickable" onclick="togglePeriodDetails(this)">
-                                    ${shortTitle}
+                                    ${esc(shortTitle)}
                                     <i class="fa-solid fa-chevron-down period-expand-icon"></i>
                                 </div>
-                                ${context.season ? `<div class="period-season-badge season-${seasonForTemplate.toLowerCase()}">${getSeasonIcon(seasonForTemplate)} ${seasonForTemplate}</div>` : ''}
+                                ${context.season ? `<div class="period-season-badge season-${esc(seasonForTemplate.toLowerCase())}">${getSeasonIcon(seasonForTemplate)} ${esc(crossoverLabel(seasonForTemplate))}</div>` : ''}
                                 ${time.hour !== undefined ? `
                                 <div class="period-title-indicators">
                                     ${context.season ? `
@@ -717,22 +731,14 @@ function buildCompiledContextHtml(compiled) {
                             ${clockTime || dateStr || locationText ? `
                             <div class="period-time-date">
                                 ${clockTime ? `<div class="period-time">${clockTime}</div>` : ''}
-                                ${dateStr ? `<div class="period-date">${dateStr}</div>` : ''}
-                                ${locationText ? `<div class="period-location"><i class="fas fa-map-marker-alt"></i> ${locationText}</div>` : ''}
+                                ${dateStr ? `<div class="period-date">${esc(dateStr)}</div>` : ''}
+                                ${locationText ? `<div class="period-location"><i class="fas fa-map-marker-alt"></i> ${esc(locationText)}</div>` : ''}
                             </div>
                             ` : ''}
                         </div>
                         <div class="period-details hidden">
-                            ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value">${Array.isArray(timePeriodInfo.lighting) ? timePeriodInfo.lighting.map(el => {
-                const text = typeof el === 'object' ? el.text : el;
-                const bias = typeof el === 'object' ? el.bias : 1.0;
-                return `${text} (${bias.toFixed(2)})`;
-            }).join(', ') : timePeriodInfo.lighting}</div></div></div>` : ''}
-                            ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value">${Array.isArray(timePeriodInfo.atmosphere) ? timePeriodInfo.atmosphere.map(el => {
-                const text = typeof el === 'object' ? el.text : el;
-                const bias = typeof el === 'object' ? el.bias : 1.0;
-                return `${text} (${bias.toFixed(2)})`;
-            }).join(', ') : timePeriodInfo.atmosphere}</div></div></div>` : ''}
+                            ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value selectable">${esc(biasedList(timePeriodInfo.lighting))}</div></div></div>` : ''}
+                            ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value selectable">${esc(biasedList(timePeriodInfo.atmosphere))}</div></div></div>` : ''}
                         </div>
                     </div>
                 </div>
@@ -745,8 +751,13 @@ function buildCompiledContextHtml(compiled) {
             const holiday = context.season.holiday;
             const holidayName = holiday.primaryHoliday?.name || 'Holiday';
             const daysUntil = holiday.primaryHoliday?.daysUntil ?? holiday.progressiveElements?.daysUntil;
-            const daysUntilText = daysUntil !== undefined && daysUntil !== null ? daysUntil : '?';
-            const daysUntilLabel = daysUntil === 0 ? 'TODAY' : daysUntil === 1 ? 'day' : 'days';
+            // "Today", "1 day", "12 days", "3 days ago"
+            let daysUntilWords = '';
+            if (daysUntil === 0) daysUntilWords = 'Today';
+            else if (typeof daysUntil === 'number') {
+                const n = Math.abs(daysUntil);
+                daysUntilWords = `${n} ${n === 1 ? 'day' : 'days'}${daysUntil < 0 ? ' ago' : ''}`;
+            }
 
             // Calculate holiday progress (0-100%)
             let holidayProgress = 50; // Default
@@ -820,14 +831,14 @@ function buildCompiledContextHtml(compiled) {
                         <div class="period-main-info">
                             <div class="period-title-section">
                                 <div class="period-title clickable" onclick="togglePeriodDetails(this)">
-                                    ${holidayName}
+                                    ${esc(holidayName)}
                                     <i class="fa-solid fa-chevron-down period-expand-icon"></i>
                                 </div>
                                 ${time.hour !== undefined ? `
                                 <div class="period-title-indicators">
                                         <div class="period-season-badge">
                                             <i class="fa-solid ${flagIconClass}"></i>
-                                            <span>${regionName}</span>
+                                            <span>${esc(regionName)}</span>
                                         </div>
                                     <div class="period-title-indicator">
                                         <div class="period-title-indicator-label">
@@ -841,17 +852,15 @@ function buildCompiledContextHtml(compiled) {
                                 </div>
                                 ` : ''}
                             </div>
-                            <div class="period-time-date">
-                                <div class="period-time" style="font-size: 1.5rem; font-weight: 600;">
-                                    ${daysUntilText} ${daysUntilLabel}
-                                </div>
-                            </div>
+                            ${daysUntilWords ? `<div class="period-time-date">
+                                <div class="period-time" style="font-size: 1.5rem; font-weight: 600;">${esc(daysUntilWords)}</div>
+                            </div>` : ''}
                         </div>
                         <div class="period-details hidden">
-                            ${atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value selectable">${atmosphere}</div></div></div>` : ''}
-                            ${decorations ? `<div class="period-detail"><i class="fa-solid fa-gifts"></i><div class="detail-content"><div class="detail-label">Decorations</div><div class="detail-value selectable">${decorations}</div></div></div>` : ''}
-                            ${colors ? `<div class="period-detail"><i class="fa-solid fa-palette"></i><div class="detail-content"><div class="detail-label">Colors</div><div class="detail-value selectable">${colors}</div></div></div>` : ''}
-                            ${activities ? `<div class="period-detail"><i class="fa-solid fa-people-group"></i><div class="detail-content"><div class="detail-label">Activities</div><div class="detail-value selectable">${activities}</div></div></div>` : ''}
+                            ${atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value selectable">${esc(phraseList(atmosphere))}</div></div></div>` : ''}
+                            ${decorations ? `<div class="period-detail"><i class="fa-solid fa-gifts"></i><div class="detail-content"><div class="detail-label">Decorations</div><div class="detail-value selectable">${esc(phraseList(decorations))}</div></div></div>` : ''}
+                            ${colors ? `<div class="period-detail"><i class="fa-solid fa-palette"></i><div class="detail-content"><div class="detail-label">Colors</div><div class="detail-value selectable">${esc(phraseList(colors))}</div></div></div>` : ''}
+                            ${activities ? `<div class="period-detail"><i class="fa-solid fa-people-group"></i><div class="detail-content"><div class="detail-label">Activities</div><div class="detail-value selectable">${esc(phraseList(activities))}</div></div></div>` : ''}
                         </div>
                     </div>
                 </div>
@@ -860,7 +869,7 @@ function buildCompiledContextHtml(compiled) {
 
         // The scene cards, then the readings (or, without weather, the time and season rows)
         contextContent = periodCardHtml + holidayCardHtmlModal
-            + (weatherContent || crossoverPropList(crossoverPropGroup('Time', timeRows)));
+            + (weatherContent || (withList ? crossoverPropList(crossoverPropGroup('Time', timeRows)) : ''));
     }
 
     return contextContent;

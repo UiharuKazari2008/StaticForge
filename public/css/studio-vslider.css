@@ -1,240 +1,227 @@
-/* Studio vSlider — approved #52 mockup chrome (reuse Weight Rack ticks / glass-slider). */
+/* Studio vSlider - public/scripts/comp/studioVSlider.js, markup in app.html.
+   Light Vista owned tool windows (data-window-client="light" + .win7). The controls are the desktop's
+   Vista common controls (vista-glass-controls.css: push buttons, combo boxes, text boxes, spin boxes,
+   the track bar thumb and groove, group boxes) and its scrollbars (vista-scrollbars.css):
+   - vSlider: each widget a group box captioned with its title, laid out with dialog margins (7 px,
+     11 px from the window edge); under the scrolling list a dialog row with 75 x 23 push buttons.
+   - Track bars: a stop is a tick mark as Vista's trackbar draws TBS_AUTOTICKS, measured on the VM's
+     WinForms TrackBar: 1 x 3 px (4 px at the ends) in #c4c4c4, 15 px under the groove's top, at the
+     thumb's centre for that position (the 11 px thumb's centre runs from 5.5 px to width - 5.5 px).
+     The stop names sit under their ticks.
+   - XY pad and star: a white sunken pad (the client edge of a list view), grid lines in #e3e3e3, the
+     default as a grey dot and the colour dialog's cross-hair as the knob; the star's shape in the
+     selection blue (#3399ff).
+   - Widget editor: a dialog form, labels left of their controls, a group box per axis. */
 
 #studioVSliderTool {
-    display: flex;
-    flex-direction: column;
-    box-sizing: border-box;
+    width: 460px;
+    height: 640px;
 }
 
-#studioVSliderTool > .modal-content {
-    padding: 8px;
-    overflow: hidden;
+#studioVSliderEditorTool {
+    width: 480px;
+    height: 600px;
+}
+
+:is(#studioVSliderTool, #studioVSliderEditorTool) > .modal-content.vslider-content {
+    display: flex;
+    flex-direction: column;
     min-height: 0;
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-#studioVSliderTool .vslider-kind {
-    font-size: 0.68rem;
-    color: var(--text-secondary);
-    font-weight: 500;
-    margin-left: 4px;
-}
-
-/* Same flex+custom-scrollbar contract as stage-results / character-db */
-#studioVSliderTool .vslider-scroll-shell {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-}
-
-#studioVSliderTool .vslider-scroll-shell:not(.has-custom-scrollbar) {
-    overflow-y: auto;
-}
-
-#studioVSliderTool .scrollable-content.studio-vslider-scrollable {
-    display: block;
-    height: 100%;
-    min-height: 0 !important;
-    overflow: auto;
-    padding: 2px 4px 8px 0;
-}
-
-#studioVSliderTool #studioVSliderList {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-#studioVSliderTool .vslider-card {
-    flex: 0 0 auto;
-    padding: 8px;
-    background: var(--glass-layer-dark-4, hsl(0 0% 0% / 35%));
-    border: 1px solid var(--glass-border-2, #444);
-    border-radius: var(--border-radius-lg);
-}
-
-#studioVSliderTool .vslider-card-title {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    margin-bottom: 8px;
-    color: var(--text-primary);
-    font-size: 0.82rem;
-    font-weight: 650;
-    text-transform: none;
-    letter-spacing: normal;
-}
-
-#studioVSliderTool .vslider-card-title .vslider-kind {
-    margin-left: 0;
-}
-
-#studioVSliderTool .vslider-axis-label {
-    color: var(--text-secondary);
-    font-size: 0.78rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    text-transform: none;
-}
-
-#studioVSliderTool .vslider-axis-label strong {
-    color: var(--text-primary);
-    font-weight: 650;
-}
-
-#studioVSliderTool .vslider-stop {
-    color: var(--primary-color);
-    font-variant-numeric: tabular-nums;
-}
-
-#studioVSliderTool .vslider-slider-row {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    --emphasis-slider-thumb-half: 11px;
-    --emphasis-slider-thumb-w: 22px;
-}
-
-#studioVSliderTool .vslider-slider-row .slider-container {
-    min-height: 28px;
-    margin: 0;
-    padding: 2px 8px;
-    flex: 1 1 auto;
-    min-width: 0;
-    background: var(--glass-layer-dark-4);
-    border: 1px solid var(--glass-border-2);
-    border-radius: var(--border-radius-lg);
-    box-shadow: none;
-    position: relative;
-    isolation: isolate;
-}
-
-#studioVSliderTool .vslider-slider-row .slider-container::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    box-shadow: inset 0 0 16px #0000008c;
-    pointer-events: none;
-    z-index: 4;
-}
-
-#studioVSliderTool .vslider-slider-row .slider-container .glass-slider {
-    flex: 1 1 auto;
-    min-width: 0;
-    width: 100%;
-    margin: 0;
-    height: 18px;
-    min-height: 18px;
     padding: 0;
-    cursor: var(--c-ew-resize);
-    background: transparent;
-    touch-action: none;
-    position: relative;
-    z-index: 5;
+    overflow: hidden;
+    background: #f0f0f0;
+    color: #000;
 }
 
-#studioVSliderTool .vslider-slider-row .slider-container .glass-slider::-webkit-slider-runnable-track {
-    height: 0;
-    background: transparent;
-    border: none;
+/* the caption's "(3 widgets)" in the caption's own font */
+:is(#studioVSliderTool, #studioVSliderEditorTool) .vslider-kind {
+    margin-left: 0;
+    color: inherit;
+    font: inherit;
 }
 
-#studioVSliderTool .vslider-slider-row .slider-container .glass-slider::-moz-range-track {
-    height: 0;
-    background: transparent;
-    border: none;
+:is(#studioVSliderTool, #studioVSliderEditorTool) .vslider-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 7px 11px 9px;
 }
 
-#studioVSliderTool .vslider-slider-row .slider-container .glass-slider::-webkit-slider-thumb,
-#studioVSliderTool .vslider-slider-row .slider-container .glass-slider::-moz-range-thumb,
-#studioVSliderTool .vslider-slider-row .slider-container .glass-slider::-ms-thumb {
-    box-sizing: border-box;
-    width: var(--emphasis-slider-thumb-w);
-    height: 20px;
-    background-color: var(--glass-layer-3);
-    background-image:
-        linear-gradient(to bottom,
-            transparent 0%,
-            transparent 25%,
-            rgba(255, 255, 255, 0.5) 25%,
-            rgba(255, 255, 255, 0.5) 75%,
-            transparent 75%,
-            transparent 100%),
-        linear-gradient(to bottom,
-            transparent 0%,
-            transparent 22%,
-            rgba(255, 255, 255, 0.22) 22%,
-            rgba(255, 255, 255, 0.22) 78%,
-            transparent 78%,
-            transparent 100%),
-        linear-gradient(to bottom,
-            transparent 0%,
-            transparent 18%,
-            rgba(255, 228, 196, 0.18) 18%,
-            rgba(255, 228, 196, 0.18) 82%,
-            transparent 82%,
-            transparent 100%);
-    background-size: 1px 100%, 2px 100%, 3px 100%;
-    background-position: center;
-    background-repeat: no-repeat;
-    box-shadow: var(--glass-shadow-3);
-    border: 1.5px solid var(--glass-border-3);
-    border-radius: var(--border-radius-md);
-    margin-top: -10px;
-    cursor: var(--c-pointer);
-}
-
-#studioVSliderTool .vslider-stop-labels {
+#studioVSliderTool .vslider-list {
     display: flex;
-    justify-content: space-between;
-    gap: 4px;
-    color: var(--text-secondary);
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: none;
+    flex-direction: column;
+    gap: 7px;
 }
 
-#studioVSliderTool .vslider-blend {
-    margin-top: 2px;
-    font-size: 0.72rem;
-    color: var(--text-secondary);
-    font-family: var(--font-secondary, ui-monospace, monospace);
-    word-break: break-word;
+/* ---- the dialog row under the list ---- */
+
+:is(#studioVSliderTool, #studioVSliderEditorTool) .vslider-footer {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 11px 10px;
+    border-top: 1px solid #dfdfdf;
 }
 
-#studioVSliderTool .vslider-blend code {
-    color: var(--primary-color);
-    font-size: 0.72rem;
+:is(#studioVSliderTool, #studioVSliderEditorTool) .vslider-footer > button {
+    flex: none;
+    min-width: 75px;
+    height: 23px;
+    margin: 0;
+    padding: 0 10px;
 }
 
-#studioVSliderTool .vslider-card .custom-dropdown {
-    width: 100%;
-}
-
-#studioVSliderTool .vslider-card .custom-dropdown-btn.hover-show.colored {
-    width: 100%;
-    justify-content: space-between;
+:is(#studioVSliderTool, #studioVSliderEditorTool) .vslider-footer-dialog {
+    justify-content: flex-end;
 }
 
 #studioVSliderTool .vslider-footer-note {
-    color: var(--text-secondary);
-    font-size: 0.78rem;
-    align-self: center;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-#studioVSliderTool .vslider-footer-note.dirty {
-    color: var(--primary-color);
+/* ---- a widget: a group box ---- */
+
+#studioVSliderTool fieldset.vslider-card {
+    min-inline-size: 0;
+    margin: 0;
+    padding: 4px 9px 9px;
+    cursor: default;
 }
 
+#studioVSliderTool fieldset.vslider-card > legend {
+    padding: 0 2px;
+    margin-left: -2px;
+    color: #000;
+    font: inherit;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#studioVSliderTool .vslider-slider-row + .vslider-slider-row {
+    margin-top: 9px;
+}
+
+#studioVSliderTool .vslider-axis-label {
+    min-height: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* the track bar: the input's own thumb and groove, the ticks and stop names under it */
+#studioVSliderTool .vslider-track {
+    position: relative;
+    margin-top: 4px;
+    padding-bottom: 2px;
+}
+
+#studioVSliderTool .vslider-track > input[type="range"] {
+    display: block;
+    width: 100%;
+    margin: 0;
+}
+
+#studioVSliderTool .vslider-ticks {
+    position: relative;
+    height: 4px;
+    margin-top: 2px;
+    pointer-events: none;
+}
+
+#studioVSliderTool .vslider-tick {
+    position: absolute;
+    top: 0;
+    width: 1px;
+    height: 3px;
+    background: #c4c4c4;
+    left: calc(5px + (100% - 11px) * var(--tick-frac, 0));
+}
+
+#studioVSliderTool .vslider-tick.is-end {
+    height: 4px;
+}
+
+#studioVSliderTool .vslider-tick.is-active {
+    background: #000;
+}
+
+#studioVSliderTool .vslider-stop-labels {
+    position: relative;
+    height: 15px;
+    margin-top: 2px;
+}
+
+#studioVSliderTool .vslider-stop-label {
+    position: absolute;
+    top: 0;
+    left: calc(5.5px + (100% - 11px) * var(--tick-frac, 0));
+    max-width: 40%;
+    transform: translateX(-50%);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#studioVSliderTool .vslider-stop-label.is-first {
+    transform: translateX(-5.5px);
+}
+
+#studioVSliderTool .vslider-stop-label.is-last {
+    transform: translateX(calc(-100% + 5.5px));
+}
+
+#studioVSliderTool .vslider-blend {
+    margin-top: 4px;
+    color: #6d6d6d;
+    overflow-wrap: anywhere;
+}
+
+#studioVSliderTool .vslider-blend-text {
+    color: #000;
+}
+
+#studioVSliderTool .vslider-blend.hidden {
+    display: none;
+}
+
+/* the drop-down list */
+#studioVSliderTool .vslider-dropdown-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 4px;
+}
+
+#studioVSliderTool .vslider-dropdown-row > select {
+    flex: 0 1 220px;
+    min-width: 120px;
+    height: 23px;
+}
+
+#studioVSliderTool .vslider-dropdown-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: #6d6d6d;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* the XY pad */
 #studioVSliderTool .vslider-pad-wrap {
     display: grid;
-    grid-template-columns: 36px 1fr 88px;
-    grid-template-rows: minmax(160px, 200px) 22px;
-    gap: 6px;
+    grid-template-columns: 22px minmax(120px, 1fr) minmax(80px, 30%);
+    grid-template-rows: 180px auto;
+    column-gap: 6px;
+    row-gap: 3px;
+    margin-top: 4px;
 }
 
 #studioVSliderTool .vslider-pad-ylabel {
@@ -244,17 +231,17 @@
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
-    color: var(--text-secondary);
-    font-size: 0.72rem;
-    font-weight: 600;
-    padding: 4px 0;
-    text-transform: none;
+    min-width: 0;
+    overflow: hidden;
 }
 
-#studioVSliderTool .vslider-pad-ylabel .axis-name {
+#studioVSliderTool .vslider-pad-ylabel > span {
     writing-mode: vertical-rl;
     transform: rotate(180deg);
-    color: var(--text-primary);
+    max-height: 33%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 #studioVSliderTool .vslider-pad-xlabel {
@@ -262,196 +249,226 @@
     grid-column: 2;
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    color: var(--text-secondary);
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: none;
+    gap: 6px;
+    white-space: nowrap;
 }
 
-#studioVSliderTool .vslider-pad-xlabel .axis-name {
-    color: var(--text-primary);
+#studioVSliderTool .vslider-pad-xlabel > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#studioVSliderTool :is(.vslider-pad-xlabel, .vslider-pad-ylabel) > .axis-name {
+    font-weight: 700;
 }
 
 #studioVSliderTool .vslider-pad-read {
     grid-row: 1;
     grid-column: 3;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 10px;
-    color: var(--text-secondary);
-    font-size: 0.72rem;
-    text-transform: none;
+    align-self: center;
+    margin: 0;
+    min-width: 0;
 }
 
-#studioVSliderTool .vslider-pad-read b {
-    color: var(--text-primary);
-    display: block;
-    font-size: 0.8rem;
+#studioVSliderTool .vslider-pad-read > dt {
+    font-weight: 400;
+    color: #6d6d6d;
 }
 
-#studioVSliderTool .vslider-pad-read .vslider-stop {
-    display: block;
+#studioVSliderTool .vslider-pad-read > dd {
+    margin: 0 0 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#studioVSliderTool :is(.vslider-stage, .vslider-star-stage) {
+    position: relative;
+    box-sizing: border-box;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px 0 #696969, inset -1px -1px 0 #e3e3e3;
+    background: #fff;
+    touch-action: none;
+    outline: none;
 }
 
 #studioVSliderTool .vslider-stage {
     grid-row: 1;
     grid-column: 2;
-    position: relative;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-secondary);
-    border-radius: var(--border-radius-sm);
     overflow: hidden;
-    cursor: var(--c-pointer);
-    touch-action: none;
+    cursor: crosshair;
+}
+
+#studioVSliderTool .vslider-stage:focus-visible {
+    outline: 1px dotted #000;
+    outline-offset: -4px;
 }
 
 #studioVSliderTool .vslider-grid {
     position: absolute;
-    inset: 0;
+    inset: 2px;
     background-image:
-        linear-gradient(to right, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
-    background-size: 20% 20%;
-    background-position: center;
+        linear-gradient(to right, #c0c0c0 1px, transparent 1px),
+        linear-gradient(to bottom, #c0c0c0 1px, transparent 1px),
+        linear-gradient(to right, #e3e3e3 1px, transparent 1px),
+        linear-gradient(to bottom, #e3e3e3 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 20% 20%, 20% 20%;
+    background-position: calc(50% + 0.5px) 0, 0 calc(50% + 0.5px), 0 0, 0 0;
+    background-repeat: no-repeat, no-repeat, repeat, repeat;
     pointer-events: none;
-}
-
-#studioVSliderTool .vslider-cross {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 50%;
-    height: 1px;
-    background: rgba(255, 255, 255, 0.12);
-    pointer-events: none;
-}
-
-#studioVSliderTool .vslider-cross.v {
-    top: 0;
-    bottom: 0;
-    left: 50%;
-    width: 1px;
-    height: auto;
-    right: auto;
 }
 
 #studioVSliderTool .vslider-median-dot {
     position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 8px;
-    height: 8px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.35);
+    background: #a0a0a0;
     transform: translate(-50%, -50%);
     pointer-events: none;
 }
 
-#studioVSliderTool .vslider-stage .character-position-pin {
+/* the colour dialog's cross-hair: four 1 x 4 px black arms round a 3 px gap */
+#studioVSliderTool .vslider-knob {
     position: absolute;
+    width: 11px;
+    height: 11px;
     transform: translate(-50%, -50%);
+    background:
+        linear-gradient(#000, #000) center top / 1px 4px no-repeat,
+        linear-gradient(#000, #000) center bottom / 1px 4px no-repeat,
+        linear-gradient(#000, #000) left center / 4px 1px no-repeat,
+        linear-gradient(#000, #000) right center / 4px 1px no-repeat;
     pointer-events: none;
-    --character-pin-color: var(--primary-color);
 }
 
+/* the star */
 #studioVSliderTool .vslider-star-stage {
-    position: relative;
-    min-height: 220px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-secondary);
-    border-radius: var(--border-radius-sm);
-    touch-action: none;
+    margin-top: 4px;
 }
 
-#studioVSliderTool .vslider-star-stage svg {
+#studioVSliderTool .vslider-star-stage > svg {
     display: block;
     width: 100%;
-    height: 220px;
-    cursor: var(--c-pointer);
+    height: 300px;
+    cursor: crosshair;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
 }
 
+#studioVSliderTool .vslider-star-ring {
+    fill: none;
+    stroke: #e3e3e3;
+}
+
+#studioVSliderTool .vslider-star-median {
+    fill: none;
+    stroke: #c0c0c0;
+    stroke-dasharray: 2 3;
+}
+
+#studioVSliderTool .vslider-star-spoke {
+    stroke: #c0c0c0;
+}
+
+#studioVSliderTool .vslider-star-poly {
+    fill: rgba(51, 153, 255, 0.2);
+    stroke: #3399ff;
+    stroke-width: 1.5;
+}
+
+#studioVSliderTool .vslider-star-dot {
+    fill: #fff;
+    stroke: #3399ff;
+    stroke-width: 1.5;
+}
+
+#studioVSliderTool .vslider-star-dot.is-median {
+    stroke: #a0a0a0;
+}
+
+#studioVSliderTool .vslider-star-name {
+    fill: #000;
+    font-size: 12px;
+}
+
+#studioVSliderTool .vslider-star-stop {
+    fill: #6d6d6d;
+    font-size: 12px;
+}
+
+/* no widgets yet */
 #studioVSliderTool .vslider-empty {
-    color: var(--text-secondary);
-    font-size: 0.82rem;
-    padding: 8px 4px;
-    text-transform: none;
     display: flex;
     flex-direction: column;
-    gap: 10px;
     align-items: flex-start;
+    gap: 7px;
 }
 
-#studioVSliderTool .vslider-empty code {
-    color: var(--text-primary);
+#studioVSliderTool .vslider-empty > p {
+    margin: 0;
 }
 
-#studioVSliderTool .vslider-card {
-    cursor: var(--c-context-menu);
+#studioVSliderTool .vslider-empty > button {
+    min-width: 75px;
+    height: 23px;
+    margin: 4px 0 0;
 }
 
-/* Editor tool */
-#studioVSliderEditorTool {
-    display: flex;
-    flex-direction: column;
-    box-sizing: border-box;
-}
+/* ---- the widget editor: a dialog form ---- */
 
-#studioVSliderEditorTool > .modal-content {
-    padding: 8px;
-    overflow: hidden;
-    min-height: 0;
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-#studioVSliderEditorTool .vslider-scroll-shell {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-}
-
-#studioVSliderEditorTool .vslider-scroll-shell:not(.has-custom-scrollbar) {
-    overflow-y: auto;
-}
-
-#studioVSliderEditorTool .scrollable-content.studio-vslider-editor-scrollable {
-    display: block;
-    height: 100%;
-    min-height: 0 !important;
-    overflow: auto;
-    padding: 2px 4px 8px 0;
-}
-
-/* Editor body uses shared form-section / form-control hover-show colored chrome */
 #studioVSliderEditorTool .vslider-editor-body {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
 }
 
-#studioVSliderEditorTool .vslider-editor-body > .form-section {
-    gap: 10px;
+#studioVSliderEditorTool .vslider-editor-form {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 9px;
+    row-gap: 7px;
 }
 
-#studioVSliderEditorTool .custom-dropdown {
+#studioVSliderEditorTool .vslider-editor-form > label {
+    margin: 0;
+    color: #000;
+    font: inherit;
+    white-space: nowrap;
+}
+
+#studioVSliderEditorTool .vslider-editor-form > :is(input, select) {
     width: 100%;
+    max-width: 260px;
+    height: 23px;
+    box-sizing: border-box;
+    margin: 0;
 }
 
-#studioVSliderEditorTool .custom-dropdown-btn {
-    width: 100%;
-    justify-content: space-between;
+#studioVSliderEditorTool .vslider-editor-form > input.vslider-editor-number {
+    max-width: 70px;
 }
 
-#studioVSliderEditorTool .vslider-editor-axis {
+#studioVSliderEditorTool fieldset.vslider-editor-group {
+    min-inline-size: 0;
+    margin: 0;
+    padding: 4px 9px 9px;
     display: flex;
     flex-direction: column;
     gap: 6px;
 }
 
-#studioVSliderEditorTool .vslider-editor-stops-label {
-    margin-top: 4px;
+#studioVSliderEditorTool fieldset.vslider-editor-group > legend {
+    padding: 0 2px;
+    margin-left: -2px;
+    color: #000;
+    font: inherit;
+}
+
+#studioVSliderEditorTool fieldset.vslider-editor-group > .vslider-editor-form {
+    margin-bottom: 3px;
 }
 
 #studioVSliderEditorTool .vslider-editor-list {
@@ -460,62 +477,55 @@
     gap: 4px;
 }
 
-#studioVSliderEditorTool .vslider-editor-list-row {
+#studioVSliderEditorTool .vslider-editor-row {
     display: grid;
-    grid-template-columns: 72px 1fr auto;
+    grid-template-columns: 70px minmax(0, 1fr) 75px;
     gap: 6px;
     align-items: center;
 }
 
-#studioVSliderEditorTool .vslider-editor-list-row.vslider-editor-option-row {
-    grid-template-columns: 1fr 1fr 1fr auto;
+#studioVSliderEditorTool .vslider-editor-row.vslider-editor-option-row {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.3fr) 75px;
 }
 
-#studioVSliderEditorTool .vslider-editor-list-row .form-control {
+#studioVSliderEditorTool .vslider-editor-row > :is(input, button) {
     width: 100%;
     min-width: 0;
+    height: 23px;
+    box-sizing: border-box;
+    margin: 0;
 }
 
-#studioVSliderEditorTool .vslider-editor-list-actions {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-top: 4px;
+#studioVSliderEditorTool .vslider-editor-head {
+    color: #6d6d6d;
+    margin-bottom: -2px;
 }
 
-/* Stop ticks (studioVSliderStopTicksHtml). Moved here from emphasis-groups-tool.css when the Weight
-   Rack went Vista; each mark uses left = thumbHalf + frac * (100% - thumbW), where the thumb
-   centre sits. */
-#studioVSliderTool .slider-ticks-container {
-    position: relative;
-    width: 100%;
+#studioVSliderEditorTool .vslider-editor-actions {
     display: flex;
     align-items: center;
-    z-index: 1;
+    gap: 6px;
+    margin-top: 2px;
 }
 
-#studioVSliderTool .slider-ticks {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    pointer-events: none;
-    z-index: 1;
-    padding: 0;
+#studioVSliderEditorTool .vslider-editor-actions > button {
+    min-width: 75px;
+    height: 23px;
+    margin: 0;
+    padding: 0 10px;
 }
 
-#studioVSliderTool .slider-tick {
-    position: absolute;
-    width: 1.5px;
-    height: 100%;
-    background-color: rgba(255, 255, 255, 0.2);
-    left: calc(var(--emphasis-slider-thumb-half) + (100% - var(--emphasis-slider-thumb-w)) * var(--tick-frac, 0));
-    transform: translateX(-50%);
+#studioVSliderEditorTool .vslider-editor-inline-label {
+    margin: 0 0 0 auto;
+    color: #000;
+    font: inherit;
 }
 
-#studioVSliderTool .slider-tick.half-height {
-    height: 50%;
-    bottom: 0;
-    top: auto;
+#studioVSliderEditorTool .vslider-editor-actions > select {
+    width: 140px;
+    height: 23px;
+}
+
+#studioVSliderTool .vslider-empty code {
+    font: inherit;
 }
