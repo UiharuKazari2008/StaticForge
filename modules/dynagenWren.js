@@ -977,7 +977,13 @@ async function resolveDynagenWithWren(gr, body, preset, ws, handler, wsServer) {
 
     const cp = dg.compiled_prompt && typeof dg.compiled_prompt === 'object' ? dg.compiled_prompt : null;
     let context = null;
-    if ((dg.context_locked || dg.locked) && cp && cp.context) {
+    // A scene still inside its expiry, with cache on and nothing changed, never looks at a fresh
+    // context (staleReason returns before contextUnchanged): reuse its own instead of compiling
+    // the sun table, weather, clothing and expiry on every print.
+    const sceneStillValid = !!(cp && cp.context && cp.wren_input_hash && !isLegacyTendai(cp)
+        && cp.expiresAt && Date.now() < cp.expiresAt
+        && staleReason(cp, dg, body, cp.context, Date.now()) === null);
+    if (sceneStillValid || ((dg.context_locked || dg.locked) && cp && cp.context)) {
         context = cp.context;
     } else {
         const clientInfo = wsServer && wsServer.clients ? wsServer.clients.get(ws) : null;
