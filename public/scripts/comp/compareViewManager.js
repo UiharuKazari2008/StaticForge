@@ -255,7 +255,10 @@ function captureCompareBaselineBeforeGeneration() {
 }
 
 function setCompareSplitPosition(percent) {
-    const parsed = Math.max(0, Math.min(100, parseInt(percent, 10) || 50));
+    // Fractional: whole percents moved the split in steps of 1% of the image (up to ~10 px off the pointer
+    // on a large preview). 0 is a real position (dragged to the left edge), not "unset".
+    const n = Number(percent);
+    const parsed = Number.isFinite(n) ? Math.round(Math.max(0, Math.min(100, n)) * 100) / 100 : 50;
     compareSplitPosition = parsed;
     const { previewContent } = getManualCompareElements();
     if (previewContent) {
@@ -1213,6 +1216,9 @@ function startComparePointerDrag(e) {
         return;
     }
 
+    // Keep the drag past the image edge (clamped to 0 / 100%): without capture, pointerleave ended it at the
+    // last position inside, short of the edge on a quick drag.
+    try { previewImage.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
     compareDragPointerId = e.pointerId;
     compareDragActive = true;
     compareDragMoved = false;
@@ -1283,8 +1289,7 @@ function updateCompareSplitFromPointer(clientX) {
         return;
     }
     const relativeX = Math.max(0, Math.min(rect.width, clientX - rect.left));
-    const percent = Math.round((relativeX / rect.width) * 100);
-    setCompareSplitPosition(percent);
+    setCompareSplitPosition((relativeX / rect.width) * 100);
     updateCompareDisplayState();
 }
 

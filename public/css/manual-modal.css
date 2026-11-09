@@ -437,7 +437,10 @@ body:not(.windows-classic-theme) .manual-preview-container::before {
     transform: translateY(0);
 }
 
-.manual-preview-content.compare-drag-split-active::after {
+/* The split line sits in the labels layer (inset 0 over the image box), so --compare-split is a share of
+   the image width, the same box the source clip-path and the pointer maths use. On .manual-preview-content
+   it was a share of the whole preview pane and drifted off the clip edge away from 50%. */
+.manual-preview-content.compare-drag-split-active .manual-preview-compare-labels::after {
     content: '';
     position: absolute;
     top: 0;
