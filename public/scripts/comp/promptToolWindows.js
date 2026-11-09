@@ -146,20 +146,35 @@
 
     // ---------- Emphasis ----------
 
+    /** What the caret is in: a weighted group (managed or N::), a brace run ({...} / [...]), or null. */
     function emphasisInfo(textarea) {
         if (!textarea || !window.promptTextareaToolbar) return null;
-        const state = promptTextareaToolbar.resolveEmphasisGroupChipState(textarea);
-        if (!state || !state.inside) return null;
-        // listManagedEmphasisBlocks: public/scripts/comp/emphasisGroupIdCodec.js
+        const value = textarea.value || '';
         const pos = textarea.selectionStart;
-        const block = listManagedEmphasisBlocks(textarea.value || '').find((b) => pos >= b.openEnd && pos <= b.closeStart);
-        const share = /%$/.test(state.label);
-        return {
-            id: block ? block.id : null,
-            text: block ? String(block.innerText || '').replace(/[​-‍⁠-⁤﻿]/g, '').trim() : '',
-            share,
-            value: share ? parseFloat(state.label) : state.weight
-        };
+        const clean = (t) => String(t || '').replace(/[\u200B-\u200D\u2060-\u2064\uFEFF]/g, '').trim();
+        const state = promptTextareaToolbar.resolveEmphasisGroupChipState(textarea);
+        if (state && state.inside) {
+            // listManagedEmphasisBlocks: public/scripts/comp/emphasisGroupIdCodec.js
+            const block = listManagedEmphasisBlocks(value).find((b) => pos >= b.openEnd && pos <= b.closeStart);
+            const share = /%$/.test(state.label);
+            return {
+                kind: 'Group',
+                id: block ? block.id : null,
+                text: block ? clean(block.innerText) : '',
+                share,
+                value: share ? parseFloat(state.label) : state.weight
+            };
+        }
+        // findBraceBlockOverlappingSelection: public/scripts/comp/emphasisSelection.js. NovelAI braces:
+        // each { is x1.05, each [ is /1.05.
+        const brace = findBraceBlockOverlappingSelection(value, pos, pos + 1) || findBraceBlockOverlappingSelection(value, pos - 1, pos);
+        if (brace) {
+            const lead = value.slice(brace.start).match(/^(\{+|\[+)/);
+            const n = lead ? lead[1].length : 0;
+            const up = lead && lead[1][0] === '{';
+            return { kind: 'Brace', id: null, text: clean(brace.innerText), share: false, value: Math.pow(1.05, up ? n : -n) };
+        }
+        return null;
     }
 
     function refreshEmphasis() {
@@ -171,21 +186,26 @@
         const set = (sel, on) => win.querySelectorAll(sel).forEach((el) => { el.disabled = !on; });
         set('[data-pew="trim-start"], [data-pew="trim-end"], [data-pew="remove"], #promptEmphasisValue', !!info);
         set('[data-pew="create"]', !info && hasSelection);
+        // one slot: Remove inside a group or brace run, Group the selection outside one
+        win.querySelector('[data-pew="remove"]').classList.toggle('hidden', !info);
+        win.querySelector('[data-pew="create"]').classList.toggle('hidden', !!info);
         const valueInput = win.querySelector('#promptEmphasisValue');
         const unit = win.querySelector('.ptw-unit');
         if (valueInput && document.activeElement !== valueInput) {
             valueInput.value = info ? (info.share ? String(Math.round(info.value)) : Number(info.value).toFixed(2)) : '';
         }
         if (unit) unit.textContent = info && info.share ? '%' : '';
-        const group = win.querySelector('.ptw-group-text');
-        if (group) group.textContent = info ? (info.text || '(group)') : '';
-        const line = win.querySelector('.ptw-context');
-        if (line) {
-            if (!studioOpen()) line.textContent = 'Open DreamStudio to edit emphasis.';
-            else if (!textarea) line.textContent = 'Click in a prompt field.';
-            else if (info) line.textContent = `Group at the caret in ${fieldLabel(textarea)}.`;
-            else if (hasSelection) line.textContent = `Emphasize the selection in ${fieldLabel(textarea)}.`;
-            else line.textContent = `The caret in ${fieldLabel(textarea)} is in no emphasis group.`;
+        const kind = win.querySelector('.ptw-kind');
+        if (kind) {
+            kind.textContent = info ? info.kind : 'None';
+            kind.dataset.kind = info ? info.kind.toLowerCase() : 'none';
+            let tip;
+            if (!studioOpen()) tip = 'Open DreamStudio to edit emphasis.';
+            else if (!textarea) tip = 'Click in a prompt field.';
+            else if (info) tip = `${info.kind} in ${fieldLabel(textarea)}: ${info.text || '(empty)'}`;
+            else if (hasSelection) tip = `No emphasis at the caret in ${fieldLabel(textarea)}; Group makes one from the selection.`;
+            else tip = `The caret in ${fieldLabel(textarea)} is in no emphasis group.`;
+            kind.title = tip;
         }
     }
 

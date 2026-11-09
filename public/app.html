@@ -3327,26 +3327,23 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content ptw-client">
-            <div class="ptw-group-row">
-                <span class="ptw-label">Group:</span>
-                <span class="ptw-group-text"></span>
-            </div>
-            <div class="ptw-value-row" title="Scroll &plusmn;0.1 &middot; Shift+scroll &plusmn;0.01">
-                <label class="ptw-label" for="promptEmphasisValue"><u>W</u>eight:</label>
-                <input type="number" id="promptEmphasisValue" step="0.1" title="Up / Down or the arrows: &plusmn;0.1 (Shift: &plusmn;0.01)" />
+        <div class="modal-content ptw-client ptw-strip">
+            <!-- one strip (Yukimi 2026-11-09): what the caret is in, its weight, then icon buttons;
+                 the details are tooltips, not words on the window -->
+            <span class="ptw-kind" title="">None</span>
+            <span class="ptw-value-row" title="Wheel, Up / Down or the arrows: &plusmn;0.1 (Shift: &plusmn;0.01)">
+                <input type="number" id="promptEmphasisValue" step="0.1" aria-label="Weight" />
                 <span class="ptw-unit"></span>
-            </div>
-            <div class="ptw-buttons">
-                <button type="button" class="btn-standard" data-pew="trim-start">Trim <u>S</u>tart</button>
-                <button type="button" class="btn-standard" data-pew="trim-end">Trim <u>E</u>nd</button>
-                <button type="button" class="btn-standard" data-pew="remove"><u>R</u>emove</button>
-                <button type="button" class="btn-standard" data-pew="create">Emphasize Se<u>l</u>ection</button>
-            </div>
-            <div class="ptw-context"></div>
+            </span>
+            <span class="ptw-tools" role="toolbar">
+                <!-- Vista has no trim or group art: Font Awesome by the icons rule's exception -->
+                <button type="button" class="ptw-tool" data-pew="trim-start" title="Trim start"><i class="fas fa-bracket-square"></i></button>
+                <button type="button" class="ptw-tool" data-pew="trim-end" title="Trim end"><i class="fas fa-bracket-square-right"></i></button>
+                <button type="button" class="ptw-tool" data-pew="remove" title="Remove emphasis"><img src="/static_images/vista-cmdbar/clear.png" alt="" width="16" height="16" /></button>
+                <button type="button" class="ptw-tool" data-pew="create" title="Group the selection"><i class="fas fa-object-group"></i></button>
+            </span>
         </div>
     </div>
-    <!-- Studio vSlider widget editor (#142): a light Vista dialog form (css/studio-vslider.css) -->
     <div id="studioVSliderEditorTool" class="modal hidden transient tool-window resizeable-window studio-vslider-editor-tool"
         data-window-client="light"
         data-window-identifier="studio-vslider-editor" data-parent-modal-id="manualModal" data-window-min-width="400"
