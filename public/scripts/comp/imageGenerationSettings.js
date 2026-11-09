@@ -2656,7 +2656,55 @@ function handleImageGenerationSettingsMenuAction(action, target, item) {
 // in place of the Studio hamburger on the desktop. Every menu reuses the hamburger's own item builders,
 // so both stay in step; the hamburger remains for the mobile layout. Vista's Win32 menu bar look and
 // dropdowns (contextMenu data-win32-menus, public/css/vista-menus.css).
-const STUDIO_MENUBAR_MENUS = ['File', 'Edit', 'Add', 'Model', 'Image', 'Tools', 'View', 'Help'];
+// Grouped by task (Yukimi 2026-11-09): Edit is the text commands, Prompt the prompt-text work, Model the
+// generation settings, Generate the print switches and stages, Rentan the scene engine.
+const STUDIO_MENUBAR_MENUS = ['File', 'Edit', 'View', 'Prompt', 'Add', 'Model', 'Generate', 'Image', 'Rentan', 'Tools', 'Help'];
+
+/** The rows of a builder's list whose labels are in texts, in the order of texts (missing ones skipped). */
+function studioPickMenuRows(rows, texts) {
+    const list = (rows || []).filter((row) => row && !row.separator);
+    return texts.map((text) => (text === '-' ? { separator: true } : list.find((row) => row.text === text)))
+        .filter(Boolean)
+        .filter((row, i, all) => !(row.separator && (i === 0 || i === all.length - 1 || all[i - 1].separator)));
+}
+
+/**
+ * Win32 menus have no section headings (Vista's own menus group with submenus): a named separator
+ * becomes a submenu holding its section, the leading section stays inline, plain separators stay.
+ */
+function studioWin32MenuSections(rows) {
+    const out = [];
+    const groups = [];
+    let current = null;
+    (rows || []).forEach((row, i) => {
+        if (row && row.separator && row.text) {
+            if (i === 0) return;
+            current = { text: row.text, submenu: [] };
+            groups.push(current);
+            return;
+        }
+        if (row && row.separator) {
+            current = null;
+            out.push(row);
+            return;
+        }
+        if (current) current.submenu.push(row);
+        else out.push(row);
+    });
+    const named = groups.filter((g) => g.submenu.length);
+    if (named.length) {
+        if (out.length && !out[out.length - 1].separator) out.push({ separator: true });
+        out.push(...named);
+    }
+    return out;
+}
+
+/** Edit's text commands work on the Studio prompt field last used (promptToolWindows.js context). */
+function studioMenuEditTarget() {
+    const active = document.activeElement;
+    if (active && active.closest && active.closest('#manualModal') && active.matches('textarea, input[type="text"]')) return active;
+    return window.promptToolWindows ? window.promptToolWindows.field() : null;
+}
 
 // The hamburger's toggle icons as checkable rows for the Model menu.
 function studioToggleRowsFromIcons() {
@@ -2673,6 +2721,7 @@ function studioToggleRowsFromIcons() {
 
 function studioMenuBarItems(menu) {
     const sep = { separator: true };
+    const section = (i) => getStudioImageGenerationSettingsMenuConfig().sections[i].items;
     if (menu === 'File') {
         return [
             ...getStudioFileMenuItems(),
@@ -2680,34 +2729,114 @@ function studioMenuBarItems(menu) {
             { icon: 'fa-regular fa-xmark-large', text: 'Close', action: 'studio-menubar-close' }
         ];
     }
-    if (menu === 'Edit') return getStudioEditMenuItems();
+    if (menu === 'Edit') {
+        const noField = () => !studioMenuEditTarget();
+        return [
+            { text: 'Undo', subtext: 'Ctrl+Z', action: 'studio-edit-undo', disabled: noField },
+            { text: 'Redo', subtext: 'Ctrl+Y', action: 'studio-edit-redo', disabled: noField },
+            sep,
+            { text: 'Cut', subtext: 'Ctrl+X', action: 'studio-edit-cut', disabled: noField },
+            { text: 'Copy', subtext: 'Ctrl+C', action: 'studio-edit-copy', disabled: noField },
+            { text: 'Paste', subtext: 'Ctrl+V', action: 'studio-edit-paste', disabled: noField },
+            { text: 'Select All', subtext: 'Ctrl+A', action: 'studio-edit-select-all', disabled: noField },
+            sep,
+            { icon: 'fas fa-magnifying-glass', text: 'Find...', subtext: 'Ctrl+F', action: 'studio-edit-find' },
+            sep,
+            ...studioPickMenuRows(getStudioEditMenuItems(), ['Copy Change JSON', 'Copy Lookback'])
+        ];
+    }
+    if (menu === 'View') {
+        return studioPickMenuRows(getStudioViewMenuItems(), [
+            'Open Result in Window', 'Clear Preview', '-', 'Show Both Prompt/UC', 'Show Emphasis Syntax',
+            'Show SmartText Window', '-', 'Transparent Background', 'Alpha Mode'
+        ]);
+    }
+    if (menu === 'Prompt') {
+        const edit = getStudioEditMenuItems();
+        const model = section(2);
+        const tools = section(1);
+        return [
+            ...studioPickMenuRows(edit, ['SmartText']),
+            { icon: 'fas fa-dial', text: 'Emphasis...', action: 'studio-edit-emphasis' },
+            ...studioPickMenuRows(tools, ['Weight Rack']),
+            ...studioPickMenuRows(edit, ['Clear Emphasis Weights', 'Reset Emphasis Group IDs']),
+            ...studioPickMenuRows(model, ['Syntax Options']),
+            sep,
+            ...studioPickMenuRows(edit, ['Convert to Lower Case', 'Remove Disabled Blocks']),
+            ...studioPickMenuRows(tools, ['Text Expanders']),
+            sep,
+            ...studioPickMenuRows(model, ['Datasets', 'Adjustments', 'UC Preset', 'NSFW Bias']),
+            sep,
+            ...studioPickMenuRows(edit, ['Apply Character Positions'])
+        ];
+    }
     if (menu === 'Add') return getStudioAddComponentMenuItems();
     if (menu === 'Model') {
-        // The hamburger's generation section, in its order, then the toggles.
-        const section = getStudioImageGenerationSettingsMenuConfig().sections[2].items;
-        const at = section.findIndex((row) => row && row.text === 'Add Component');
-        const params = section.slice(at + 1);
-        const presets = section.slice(0, Math.max(0, at - 1));
-        return [...params, sep, ...presets, sep, ...studioToggleRowsFromIcons()];
+        // The hamburger's generation section: the parameters only (prompt rows went to Prompt)
+        const rows = section(2);
+        const at = rows.findIndex((row) => row && row.text === 'Add Component');
+        return rows.slice(at + 1).filter((row) => row && row.text !== 'Syntax Options');
+    }
+    if (menu === 'Generate') {
+        return [
+            ...studioToggleRowsFromIcons(),
+            sep,
+            ...studioPickMenuRows(getStudioEditMenuItems(), ['Recent Seeds']),
+            ...studioPickMenuRows(getStudioViewMenuItems(), ['Stage Results']),
+            ...studioPickMenuRows(getStudioEditMenuItems(), ['Remove All Stages']),
+            ...studioPickMenuRows(section(1), ['Phasewalker'])
+        ];
     }
     if (menu === 'Image') {
-        const compare = getStudioImageGenerationSettingsMenuConfig().sections[0].items.find((row) => row && row.text === 'Comparison');
+        const compare = section(0).find((row) => row && row.text === 'Comparison');
         return [...getStudioImageMenuItems(), sep, compare].filter(Boolean);
     }
+    if (menu === 'Rentan') {
+        // getRentanSystemSubmenuItems: public/scripts/comp/dynamicGenerationManager.js;
+        // isDynamicGenerationEnabled: public/scripts/comp/dynamicGenerationLockState.js
+        const rentan = isDynamicGenerationEnabled()
+            ? getRentanSystemSubmenuItems()
+            : [{ text: 'Rentan is off', disabled: true }];
+        return [...rentan, sep, ...studioPickMenuRows(getStudioViewMenuItems(), ['Inspector'])];
+    }
     if (menu === 'Tools') {
-        const tools = getStudioImageGenerationSettingsMenuConfig().sections[1].items;
         return [
-            ...tools,
+            ...studioPickMenuRows(section(1), ['vSlider', 'Studio Activity']),
             sep,
             { icon: 'fas fa-wrench', text: 'Preferences', optionsfn: getStudioPreferencesMenuItems }
         ];
     }
-    if (menu === 'View') return getStudioViewMenuItems();
     if (menu === 'Help') return [{ icon: 'fas fa-circle-info', text: 'About DreamStudio', action: 'studio-about' }];
     return [];
 }
 
 function handleStudioMenuBarAction(action, target, item) {
+    if (action && action.indexOf('studio-edit-') === 0) {
+        const field = studioMenuEditTarget();
+        if (action === 'studio-edit-find') {
+            // promptToolWindows.js: the Find tool window, on the field last used
+            if (window.promptToolWindows) window.promptToolWindows.openFind(field);
+            return;
+        }
+        if (action === 'studio-edit-emphasis') {
+            if (window.promptToolWindows) window.promptToolWindows.openEmphasis(field);
+            return;
+        }
+        if (!field) return;
+        field.focus();
+        if (action === 'studio-edit-select-all') {
+            field.select();
+        } else if (action === 'studio-edit-paste') {
+            // execCommand('paste') is blocked in pages; the async clipboard asks once
+            void navigator.clipboard.readText().then((text) => {
+                field.focus();
+                document.execCommand('insertText', false, text);
+            }).catch(() => {});
+        } else {
+            document.execCommand({ 'studio-edit-undo': 'undo', 'studio-edit-redo': 'redo', 'studio-edit-cut': 'cut', 'studio-edit-copy': 'copy' }[action]);
+        }
+        return;
+    }
     if (action === 'studio-menubar-close') {
         const close = document.getElementById('closeManualModalBtn');
         if (close) close.click();
@@ -2741,7 +2870,7 @@ function wireStudioMenuBar() {
                 // flushAutofillSettingsDraftIfDirty: public/scripts/comp/autofillSettings.js
                 void flushAutofillSettingsDraftIfDirty();
             },
-            sections: [{ type: 'list', initfn: (section) => { section.items = studioMenuBarItems(menu); } }]
+            sections: [{ type: 'list', initfn: (section) => { section.items = studioWin32MenuSections(studioMenuBarItems(menu)); } }]
         });
     });
     host.replaceChildren(bar);

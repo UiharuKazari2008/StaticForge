@@ -1,0 +1,161 @@
+/* Find and Emphasis tool windows for the Studio prompt fields (public/scripts/comp/promptToolWindows.js).
+   A Vista dialog client in a tool-window frame (modal-window-title-toolbar.css .tool-window): #f0f0f0,
+   Segoe UI 9 pt, 11 px (7 DLU) margins, push buttons 88x23 stacked down the right like Notepad's Find,
+   Vista text boxes from vista-glass-controls.css. Disabled (nothing to act on) greys the controls; the
+   context line says why. */
+.modal.prompt-tool-window {
+    width: 380px;
+    height: auto;
+    min-height: 0;
+}
+
+.modal.prompt-tool-window > .modal-content.ptw-client {
+    display: grid;
+    grid-template-columns: 1fr 88px;
+    gap: 6px 10px;
+    padding: 11px;
+    background: #f0f0f0;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    border-radius: 0;
+}
+
+.ptw-client .ptw-label {
+    flex: none;
+    font: inherit;
+    color: inherit;
+    white-space: nowrap;
+}
+
+.ptw-client :is(.ptw-find-row, .ptw-group-row, .ptw-value-row) {
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.ptw-client .ptw-find-row .text-search-input {
+    flex: 1;
+    min-width: 0;
+    height: 21px;
+    padding: 0 3px;
+    font: inherit;
+}
+
+.modal.prompt-tool-window .ptw-client .ptw-count {
+    flex: none;
+    min-width: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #444;
+    font: inherit;
+    text-align: right;
+    text-shadow: none;
+}
+
+.ptw-client .ptw-buttons {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ptw-client .ptw-buttons > button,
+.ptw-client .ptw-step {
+    min-width: 0;
+    height: 23px;
+    padding: 0 6px;
+    font: inherit;
+    white-space: nowrap;
+}
+
+.ptw-client .ptw-buttons > button {
+    width: 88px;
+}
+
+/* Find's Close sits under the others; the caption Close does the same */
+.ptw-client .ptw-buttons > .text-search-close {
+    margin-top: 6px;
+}
+
+.ptw-client .ptw-group-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #000;
+}
+
+.ptw-client .ptw-value-row #promptEmphasisValue {
+    width: 64px;
+    height: 21px;
+    padding: 0 3px;
+    font: inherit;
+}
+
+.ptw-client .ptw-step {
+    width: 23px;
+    padding: 0;
+}
+
+.ptw-client .ptw-unit {
+    min-width: 10px;
+}
+
+.ptw-client .ptw-context {
+    grid-column: 1;
+    align-self: end;
+    color: #444;
+    line-height: 15px;
+}
+
+.modal.prompt-tool-window.ptw-disabled .ptw-client :is(.ptw-label, .ptw-group-text, .ptw-count) {
+    color: #6d6d6d;
+}
+
+/* Emphasis: one horizontal strip (Yukimi 2026-11-09): the group, its weight with - and +, then the
+   commands in a row, the status line under them. */
+.modal.prompt-tool-window#promptEmphasisTool {
+    width: 780px;
+}
+
+#promptEmphasisTool > .modal-content.ptw-client {
+    grid-template-columns: minmax(160px, 1fr) auto auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    gap: 6px 14px;
+}
+
+#promptEmphasisTool .ptw-client .ptw-group-row {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+#promptEmphasisTool .ptw-client .ptw-value-row {
+    grid-column: 2;
+    grid-row: 1;
+    gap: 4px;
+}
+
+#promptEmphasisTool .ptw-client .ptw-buttons {
+    grid-column: 3;
+    grid-row: 1;
+    flex-direction: row;
+    gap: 6px;
+}
+
+#promptEmphasisTool .ptw-client .ptw-buttons > button {
+    width: auto;
+    min-width: 75px;
+}
+
+#promptEmphasisTool .ptw-client .ptw-context {
+    grid-column: 1 / -1;
+    grid-row: 2;
+}

@@ -467,6 +467,7 @@
     <link rel="stylesheet" href="/css/vista-glass-controls.css">
     <link rel="stylesheet" href="/css/vista-director.css">
     <link rel="stylesheet" href="/css/vista-menus.css">
+    <link rel="stylesheet" href="/css/prompt-tool-windows.css">
     <link rel="stylesheet" href="/css/vista-explorer.css">
     <link rel="stylesheet" href="/css/vista-file-dialog.css">
     <link rel="stylesheet" href="/css/vista-photo-gallery.css">
@@ -3262,6 +3263,69 @@
     </div>
 
     <!-- Studio vSlider widget editor (#142) -->
+    <!-- Find and Emphasis tool windows for the Studio prompt fields (public/scripts/comp/promptToolWindows.js) -->
+    <div id="promptFindTool" class="modal hidden transient tool-window on-top prompt-tool-window"
+        data-window-identifier="studio-prompt-find" data-parent-modal-id="manualModal"
+        data-window-fixed-size="true" data-window-no-maximize="true" data-window-client="light" data-vista-dialog="find">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-magnifying-glass icon-fa"></i>
+                <span>Find</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-danger close-btn btn-small" title="Close" data-ptw-close>
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content ptw-client" data-search-host>
+            <div class="toolbar-search-elements ptw-find-row">
+                <label class="ptw-label" for="promptFindInput">Fi<u>n</u>d what:</label>
+                <input type="text" id="promptFindInput" class="text-search-input" autocomplete="off" spellcheck="false" />
+                <span class="text-search-match-count ptw-count">0</span>
+            </div>
+            <div class="toolbar-search-buttons ptw-buttons">
+                <button type="button" class="btn-standard text-search-next" data-dialog-primary="1">Find <u>N</u>ext</button>
+                <button type="button" class="btn-standard text-search-prev">Find <u>P</u>revious</button>
+                <button type="button" class="btn-standard text-search-select" title="Select the match in its field (Enter)">Select</button>
+                <button type="button" class="btn-standard text-search-close" data-ptw-close>Close</button>
+            </div>
+            <div class="ptw-context"></div>
+        </div>
+    </div>
+    <div id="promptEmphasisTool" class="modal hidden transient tool-window on-top prompt-tool-window"
+        data-window-identifier="studio-prompt-emphasis" data-parent-modal-id="manualModal"
+        data-window-fixed-size="true" data-window-no-maximize="true" data-window-client="light" data-vista-dialog="emphasis">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-dial icon-fa"></i>
+                <span>Emphasis</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-danger close-btn btn-small" title="Close" data-pew="close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content ptw-client">
+            <div class="ptw-group-row">
+                <span class="ptw-label">Group:</span>
+                <span class="ptw-group-text"></span>
+            </div>
+            <div class="ptw-value-row" title="Scroll &plusmn;0.1 &middot; Shift+scroll &plusmn;0.01">
+                <label class="ptw-label" for="promptEmphasisValue"><u>W</u>eight:</label>
+                <input type="number" id="promptEmphasisValue" step="0.1" title="Up / Down or the arrows: &plusmn;0.1 (Shift: &plusmn;0.01)" />
+                <span class="ptw-unit"></span>
+            </div>
+            <div class="ptw-buttons">
+                <button type="button" class="btn-standard" data-pew="trim-start">Trim <u>S</u>tart</button>
+                <button type="button" class="btn-standard" data-pew="trim-end">Trim <u>E</u>nd</button>
+                <button type="button" class="btn-standard" data-pew="remove"><u>R</u>emove</button>
+                <button type="button" class="btn-standard" data-pew="create">Emphasize Se<u>l</u>ection</button>
+            </div>
+            <div class="ptw-context"></div>
+        </div>
+    </div>
     <div id="studioVSliderEditorTool" class="modal hidden transient tool-window resizeable-window"
         data-window-identifier="studio-vslider-editor" data-parent-modal-id="manualModal" data-window-min-width="420"
         data-window-min-height="400" data-window-max-width="720" data-window-max-height="960"
@@ -8221,6 +8285,7 @@ Examples:
     <script src="scripts/comp/virtualKeyboard.js"></script>
     <script src="scripts/comp/presetTokenCount.js"></script>
     <script src="scripts/comp/promptTextareaToolbar.js"></script>
+    <script src="scripts/comp/promptToolWindows.js"></script>
     <script src="scripts/comp/assetUrlResolver.js"></script>
     <script src="scripts/comp/masterWsBridge.js"></script>
     <script src="scripts/comp/replicationGalleryBanner.js"></script>

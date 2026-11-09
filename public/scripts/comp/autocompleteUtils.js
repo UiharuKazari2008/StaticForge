@@ -1603,10 +1603,13 @@ function measureAutofillOverlayAnchor(target) {
 }
 
 // The overlay opens under the field. Near the bottom of the work area (above the taskbar) the field's
-// scrolling column grows a spacer and scrolls the field up until AUTOFILL_ROOM_PX fit below it; the
-// spacer goes when the overlay closes (removeAutofillRoomSpacers). Re-measures once after scrolling;
-// a later call finds the room and does nothing, so position updates cannot loop.
-const AUTOFILL_ROOM_PX = 220;
+// scrolling column grows a spacer and scrolls the field up until the overlay's full default height
+// fits below it (autofillOverlayFullHeight, the same cap applyCharacterAutocompleteOverlayBox uses, so
+// it never opens at a squeezed size); the spacer goes when the overlay closes (removeAutofillRoomSpacers).
+// Re-measures once after scrolling; a later call finds the room and does nothing, so updates cannot loop.
+function autofillOverlayFullHeight(innerHeight) {
+    return Math.min(400, innerHeight * 0.6);
+}
 
 function autofillWorkAreaBottom() {
     // getModalWorkAreaBounds: public/scripts/comp/modalUtils.js (the desktop's area above the taskbar)
@@ -1626,7 +1629,7 @@ function autofillScrollParent(target) {
 }
 
 function makeAutofillRoomBelow(target, m) {
-    const want = AUTOFILL_ROOM_PX + 5 + m.barH + 4;
+    const want = Math.ceil(autofillOverlayFullHeight(m.innerHeight)) + 5 + m.barH + 4;
     let need = want - (autofillWorkAreaBottom() - m.rect.bottom);
     if (need <= 0) return m;
     const scroller = autofillScrollParent(target);
@@ -1676,7 +1679,7 @@ function applyCharacterAutocompleteOverlayBox(target, measured = null) {
     const barH = roomed.barH;
     const gap = 5;
     const spaceBelow = autofillWorkAreaBottom() - rect.bottom - gap - barH - 4;
-    const maxHeight = Math.min(400, Math.max(80, spaceBelow), m.innerHeight * 0.6);
+    const maxHeight = Math.min(autofillOverlayFullHeight(m.innerHeight), Math.max(80, spaceBelow));
     const top = rect.bottom + gap + barH + 4;
     const box = {
         left: rect.left + 'px',

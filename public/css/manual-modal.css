@@ -4319,8 +4319,11 @@ body.desktop-mode #manualModal.has-studio-menubar #manualModalMenuBar {
     z-index: 4;
 }
 
+/* The full-screen editor covers the page from its top edge, where an app caption bar (installed PWA
+   title bar, the Android client's caption bar: --true-inset-top, app.css) draws over it: the menu bar
+   and the client start under that band. */
 body.desktop-mode #manualModal.has-studio-menubar:not(.windowed) #manualModalMenuBar {
-    top: 0;
+    top: var(--true-inset-top, 0px);
 }
 
 body.desktop-mode #manualModal.windowed.has-studio-menubar {
@@ -4328,7 +4331,7 @@ body.desktop-mode #manualModal.windowed.has-studio-menubar {
 }
 
 body.desktop-mode #manualModal.has-studio-menubar:not(.windowed) {
-    padding-top: 19px;
+    padding-top: calc(19px + var(--true-inset-top, 0px));
 }
 
 /* The menu bar replaces the hamburger on the desktop; the mobile layout keeps the hamburger. */

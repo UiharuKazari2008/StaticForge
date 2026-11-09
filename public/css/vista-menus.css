@@ -571,6 +571,72 @@ body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.c
     padding: 0;
 }
 
+/* the submenu arrow sits mid-row (rows align their text to the top), clear of a value before it */
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-item > .context-menu-submenu-arrow {
+    align-self: center;
+    margin-left: 9px;
+}
+
+/* a row's current value (Model > Sampler "Euler Ancestral") reads like Vista's accelerator column:
+   the menu font and colour, right-aligned before the arrow; a disabled row greys it with the rest */
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-item > .context-menu-item-value {
+    margin-left: auto;
+    padding-left: 20px;
+    font-size: 12px;
+    line-height: 16px;
+    color: inherit;
+    opacity: 1;
+    white-space: nowrap;
+}
+
+/* Steps / Guidance / Rescale: flat - and + buttons that light up like a hot menu row, the number in a
+   fixed column so every row's buttons line up; the menu font, not bold */
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .studio-scrub-row .dataset-bias-controls {
+    gap: 2px;
+    margin-left: auto;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .studio-scrub-row :is(.dataset-bias-decrease, .dataset-bias-increase) {
+    width: 17px;
+    height: 17px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    color: #000;
+    font-size: 9px;
+    transition: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .studio-scrub-row :is(.dataset-bias-decrease, .dataset-bias-increase):hover {
+    border-color: #a8d8eb;
+    background: linear-gradient(#fafdfe, #e8f5fc);
+}
+
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .studio-scrub-row :is(.dataset-bias-decrease, .dataset-bias-increase):active {
+    border-color: #6fa5c4;
+    background: linear-gradient(#e5f4fc, #c4e5f6);
+}
+
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .studio-scrub-row .dataset-bias-value {
+    width: 40px;
+    padding: 0;
+    color: #000;
+    font-size: 12px;
+    font-weight: 400;
+    text-align: center;
+}
+
+/* Win32 menus have no section headings: a named separator is a plain etched one (the Studio menu
+   bar turns its named sections into submenus, imageGenerationSettings.js studioWin32MenuSections) */
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-separator > .context-menu-separator-name {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-separator:has(> .context-menu-separator-name) {
+    border: 0;
+}
+
 /* ---------- a program's Win32 menu bar (role="menubar" data-win32-menus, .naxt-menu-title) ----------
    Vista's themed menu bar as WordPad, Notepad and Registry Editor draw it on the VM: the 19 px
    MENU BARBACKGROUND band, Segoe UI 9 pt titles with 7 px each side, the hot and open title faces.

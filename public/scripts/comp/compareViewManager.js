@@ -22,6 +22,9 @@ let compareTempHideSourceActive = false;
 let compareAltHeld = false;
 let compareShiftLeftHeld = false;
 let compareShiftRightHeld = false;
+// Android (Chrome / WebView) reports both Shifts with no code and location 0: which one is unknown.
+// Alt + Shift then peeks the source (A); another Shift press while Alt stays down flips to the result (B).
+let compareShiftUnknownSide = null;
 let compareLastShiftSide = null;
 let compareDragActive = false;
 let compareDragPointerId = null;
@@ -1498,30 +1501,42 @@ function compareViewPointerUpHandler(e) {
     endComparePointerDrag(e);
 }
 
+function compareShiftSideOf(e) {
+    if (e.code === 'ShiftLeft' || (e.key === 'Shift' && e.location === 1)) return 'left';
+    if (e.code === 'ShiftRight' || (e.key === 'Shift' && e.location === 2)) return 'right';
+    return e.key === 'Shift' ? 'unknown' : null;
+}
+
 function compareViewKeydownHandler(e) {
+    const side = compareShiftSideOf(e);
     if (e.key === 'Alt') {
         compareAltHeld = true;
-    } else if (e.code === 'ShiftLeft') {
+    } else if (side === 'left') {
         compareShiftLeftHeld = true;
         compareLastShiftSide = 'left';
-    } else if (e.code === 'ShiftRight') {
+    } else if (side === 'right') {
         compareShiftRightHeld = true;
         compareLastShiftSide = 'right';
-    } else if (e.key === 'Shift') {
-        compareShiftLeftHeld = true;
-        compareShiftRightHeld = true;
+    } else if (side === 'unknown' && !e.repeat) {
+        const next = compareAltHeld && compareShiftUnknownSide === 'left' ? 'right' : 'left';
+        compareShiftUnknownSide = next;
+        compareShiftLeftHeld = next === 'left';
+        compareShiftRightHeld = next === 'right';
+        compareLastShiftSide = next;
     }
     updateCompareShiftOverrides();
 }
 
 function compareViewKeyupHandler(e) {
+    const side = compareShiftSideOf(e);
     if (e.key === 'Alt') {
         compareAltHeld = false;
-    } else if (e.code === 'ShiftLeft') {
+        compareShiftUnknownSide = null;
+    } else if (side === 'left') {
         compareShiftLeftHeld = false;
-    } else if (e.code === 'ShiftRight') {
+    } else if (side === 'right') {
         compareShiftRightHeld = false;
-    } else if (e.key === 'Shift') {
+    } else if (side === 'unknown') {
         compareShiftLeftHeld = false;
         compareShiftRightHeld = false;
     }
@@ -1532,6 +1547,7 @@ function compareViewWindowBlurHandler() {
     compareAltHeld = false;
     compareShiftLeftHeld = false;
     compareShiftRightHeld = false;
+    compareShiftUnknownSide = null;
     compareLastShiftSide = null;
     compareTempShowSourceActive = false;
     compareTempHideSourceActive = false;
