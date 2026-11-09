@@ -76,6 +76,23 @@ const DIRECTOR_MASCOT_FACE_FALLBACK = {
     sleepy: ['neutral']
 };
 
+// The line as it was plus the new snapshot's text after the first `visible` characters (markers do
+// not count), so markers already typed stay put: feedReader's merge for snapshots that disagree.
+function directorMascotKeepMarks(oldRaw, visible, newRaw) {
+    let seen = 0;
+    let i = 0;
+    for (; i < newRaw.length && seen < visible; i++) {
+        if (newRaw[i] !== '*') seen += 1;
+    }
+    const marks = (t) => (t.match(/\*/g) || []).length;
+    // the new copy carries at least the markers the old one had: it is the cleaner one, take it whole
+    if (marks(newRaw.slice(0, i)) >= marks(oldRaw)) return newRaw;
+    const tail = newRaw.slice(i);
+    // a marker at the join belongs to the new text; drop the old copy's own trailing markers then,
+    // or "*a*" + "* b" would read as "*a** b"
+    return (tail.startsWith('*') ? oldRaw.replace(/\*+$/, '') : oldRaw) + tail;
+}
+
 // The typed part of a VN line with its emphasis already applied: **bold** and *italic* markers are
 // read as they come, the first `count` visible characters are emitted (from `start`), and open tags are
 // closed at the cut. Typing never switches between plain text and HTML, so italics do not flicker.
@@ -769,7 +786,15 @@ class DirectorMascot {
         const last = r.queue.length ? r.queue[r.queue.length - 1] : r.current;
         const plain = clean.replace(/\*+/g, '');
         if (last && last.kind === kind && (plain === last.text || plain.startsWith(last.text) || last.text.startsWith(plain))) {
-            if (plain.length > last.text.length) { last.text = plain; last.raw = clean; }
+            // Snapshots of the same line can disagree on its emphasis (a lossy partial without the
+            // * markers, then the clean copy): the line keeps the markers it has already been typed
+            // with and only takes the new tail, so typed words never flip between plain and italic.
+            if (plain.length > last.text.length) {
+                last.raw = directorMascotKeepMarks(last.raw, last.text.length, clean);
+                last.text = plain;
+            } else if (plain === last.text && (clean.match(/\*/g) || []).length > (last.raw.match(/\*/g) || []).length) {
+                last.raw = clean;
+            }
             this.startReader();
             return;
         }
