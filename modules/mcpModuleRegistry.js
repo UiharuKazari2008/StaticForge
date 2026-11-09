@@ -398,6 +398,12 @@ function getEffectiveToolsForScopes(scopes, allTools) {
     if (scopes.includes('universal')) return allTools.slice();
 
     const { modules, submodules } = parseModuleScopesFromScopes(scopes);
+    // Same membership as scopesContainModule (base = scope.split(":")[0], case-sensitive ===),
+    // built once so the tool×module loop is O(1) per check instead of O(scopes).
+    const baseScopes = new Set();
+    for (const scope of scopes) {
+        if (typeof scope === 'string') baseScopes.add(scope.split(':')[0]);
+    }
     const allowed = new Set();
 
     for (const toolName of allTools) {
@@ -411,7 +417,7 @@ function getEffectiveToolsForScopes(scopes, allTools) {
             const def = MODULE_DEFS[moduleId];
             if (!def) continue;
             // Check if module scope is present (base scope or with submodule specifier)
-            if (!scopesContainModule(scopes, def.scope)) continue;
+            if (!baseScopes.has(def.scope)) continue;
             // Check submodule filtering
             if (submodules.has(moduleId)) {
                 const requestedSubs = submodules.get(moduleId);
