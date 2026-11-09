@@ -1513,13 +1513,8 @@ class NaxtApplet {
             return;
         }
         const snapshot = this.buildBracketSnapshotFromBag();
-        // bracketGenerationApplet: public/scripts/comp/bracketGenerationApplet.js
-        if (window.bracketGenerationApplet && typeof window.bracketGenerationApplet.open === 'function') {
-            window.bracketGenerationApplet.open({ state: snapshot, autoCompile: true });
-        } else {
-            const modal = document.getElementById('bracketGenerationModal');
-            if (modal && typeof openModal === 'function') openModal(modal);
-        }
+        // openBracketGenerationApplet: public/scripts/comp/featureLoader.js (loads Phasewalker first)
+        void openBracketGenerationApplet({ state: snapshot, autoCompile: true });
     }
 
     openPhasewalkerFromBag() {
@@ -1530,13 +1525,8 @@ class NaxtApplet {
             return;
         }
         const snapshot = this.buildBracketSnapshotFromBag();
-        // bracketGenerationApplet: public/scripts/comp/bracketGenerationApplet.js
-        if (window.bracketGenerationApplet && typeof window.bracketGenerationApplet.open === 'function') {
-            window.bracketGenerationApplet.open({ state: snapshot, autoCompile: false });
-        } else {
-            const modal = document.getElementById('bracketGenerationModal');
-            if (modal && typeof openModal === 'function') openModal(modal);
-        }
+        // openBracketGenerationApplet: public/scripts/comp/featureLoader.js (loads Phasewalker first)
+        void openBracketGenerationApplet({ state: snapshot, autoCompile: false });
     }
 
     findVisibleCard(gallerySlug, tag) {

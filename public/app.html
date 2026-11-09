@@ -7710,40 +7710,17 @@ Examples:
         </div>
     </div>
 
-    <!-- Phasewalker -->
-    <div id="bracketGenerationModal" class="modal toolbar-visible hidden resizeable-window"
+    <!-- Phasewalker (bracketGenerationApplet.js, bracket-generation.css): a light Vista window with a
+         Win32 menu bar, a toolbar, Prompt / Undesired Content tabs over the stage group boxes and a
+         status bar -->
+    <div id="bracketGenerationModal" class="modal hidden resizeable-window phasewalker-window" data-window-client="light"
         data-window-identifier="phasewalker" data-window-max-width="1600" data-window-max-height="1000"
-        data-window-min-width="360" data-window-min-height="280">
+        data-window-min-width="420" data-window-min-height="320">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-layer-group icon-fa"></i>
                 <img src="/static_images/app_icons/24/vista-phasewalker.webp" srcset="/static_images/app_icons/24/vista-phasewalker.webp 1x, /static_images/app_icons/48/vista-phasewalker.webp 2x" alt="" class="icon-image" />
                 <span id="bracketGenTitleLabel">Phasewalker</span>
-            </div>
-            <div class="modal-window-title-toolbar">
-                <div id="bracketGenTabButtons" class="gallery-toggle-group two-tabs" data-active="prompt">
-                    <button type="button" class="gallery-toggle-btn active" data-tab="prompt" title="Prompt (F1)">
-                        <i class="ri-code-block"></i>
-                    </button>
-                    <button type="button" class="gallery-toggle-btn" data-tab="uc" title="Undesired Content (F2)">
-                        <i class="ri-eraser-fill"></i>
-                    </button>
-                    <div class="gallery-toggle-slider"></div>
-                </div>
-                <button type="button" id="bracketGenKeywordDropdownBtn" class="btn-secondary"
-                    title="Keyword (Alt+K to add)">
-                    <i class="fas fa-tag"></i>
-                    <span id="bracketGenKeywordSelected">No keywords</span>
-                </button>
-                <button type="button" id="bracketGenAddStepBtn" class="btn-secondary" title="Add stage (Alt+A)">
-                    <i class="fas fa-plus"></i>
-                </button>
-                <button type="button" id="bracketGenGearDropdownBtn" class="btn-secondary" title="Menu">
-                    <i class="fas fa-bars"></i>
-                </button>
-                <button type="button" id="bracketGenCompileBtn" class="btn-primary" title="Compile stages (F8)">
-                    Compile <i class="fas fa-hammer"></i>
-                </button>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -7755,9 +7732,40 @@ Examples:
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content bracket-generation-modal-content dark">
-            <div class="form-section form-section-scroll bracket-generation-steps-scroll" data-custom-scrollbar>
-                <div id="bracketStepsContainer" class="character-prompts-container"></div>
+        <div class="modal-content win7 bracket-generation-modal-content">
+            <div class="naxt-menubar phasewalker-menubar" role="menubar" data-win32-menus>
+                <button type="button" class="naxt-menu-title" data-pw-menu="file" role="menuitem">File</button>
+                <button type="button" class="naxt-menu-title" data-pw-menu="keyword" role="menuitem">Keyword</button>
+                <button type="button" class="naxt-menu-title" data-pw-menu="stage" role="menuitem">Stage</button>
+                <button type="button" class="naxt-menu-title" data-pw-menu="view" role="menuitem">View</button>
+            </div>
+            <div class="phasewalker-toolbar" role="toolbar" aria-label="Phasewalker">
+                <button type="button" data-pw-cmd="new" title="New"><span class="phasewalker-tb-icon" data-icon="new"></span></button>
+                <button type="button" data-pw-cmd="open" title="Open..."><span class="phasewalker-tb-icon" data-icon="folder"></span></button>
+                <button type="button" data-pw-cmd="save" title="Save"><span class="phasewalker-tb-icon" data-icon="save"></span></button>
+                <span class="phasewalker-tb-sep"></span>
+                <label class="phasewalker-tb-label" for="bracketGenKeywordSelect">Keyword:</label>
+                <select id="bracketGenKeywordSelect" class="phasewalker-keyword-select" title="Keyword (Alt+K adds one)"></select>
+                <span class="phasewalker-tb-sep"></span>
+                <button type="button" data-pw-cmd="add-stage" title="Add Stage (Alt+A)"><span class="phasewalker-tb-icon" data-icon="add"></span></button>
+                <span class="phasewalker-tb-sep"></span>
+                <button type="button" data-pw-cmd="compile" id="bracketGenCompileBtn" class="phasewalker-tb-text" title="Compile the stages into the Studio (F8)"><span class="phasewalker-tb-icon" data-icon="go"></span><span>Compile</span></button>
+            </div>
+            <div class="phasewalker-body">
+                <menu id="bracketGenTabButtons" class="phasewalker-tabs" role="tablist" data-active="prompt">
+                    <button type="button" role="tab" data-tab="prompt" aria-selected="true" title="Prompt (F1)">Prompt</button>
+                    <button type="button" role="tab" data-tab="uc" aria-selected="false" tabindex="-1" title="Undesired Content (F2)">Undesired Content</button>
+                </menu>
+                <div class="phasewalker-tabpanel" role="tabpanel">
+                    <div class="phasewalker-steps-scroll">
+                        <div id="bracketStepsContainer" class="phasewalker-steps"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="phasewalker-status" role="status">
+                <span id="bracketGenStatusText"></span>
+                <span id="bracketGenStatusCount"></span>
+                <span id="bracketGenStatusCompiled"></span>
             </div>
         </div>
     </div>

@@ -73,6 +73,14 @@ function bracketGenEnsureStepStateReady() {
     return false;
 }
 
+let bracketGenStepIdSeq = 0;
+/** A step id unique in this page (ids find a step's text box; rows padded, rebuilt or added later
+ *  must not reuse an id another row of the same keyword still has). */
+function bracketGenNewStepId(keyword) {
+    bracketGenStepIdSeq += 1;
+    return `pw_${Date.now().toString(36)}_${bracketGenStepIdSeq}_${keyword}`;
+}
+
 function bracketGenExpanderStageIndex(replacement) {
     if (!replacement || replacement.stages === undefined) return null;
     if (Array.isArray(replacement.stages) && replacement.stages.length > 0) {
@@ -150,21 +158,33 @@ function bracketGenMigrateSnapshot(snapshot) {
     };
 }
 
+/** A step's name as it is saved: blank when it is the default "Step N" (getStepDisplayName shows
+ *  that default for a blank name, and older files store either). */
+function bracketGenStoredStepName(name, index) {
+    const text = String(name || '').trim();
+    return text === `Step ${index + 1}` ? '' : text;
+}
+
 function bracketGenNormalizeSnapshotForCompare(snapshot) {
     if (!snapshot) return null;
     const keywords = Array.isArray(snapshot.keywords) ? [...snapshot.keywords] : [];
     const keywordSteps = {};
+    let maxSteps = 0;
     keywords.forEach((kw) => {
         keywordSteps[kw] = (snapshot.keywordSteps?.[kw] || []).map((s) => ({
             prompt: String(s.prompt || ''),
             uc: String(s.uc || '')
         }));
+        maxSteps = Math.max(maxSteps, keywordSteps[kw].length);
     });
+    const names = Array.isArray(snapshot.stepNames) ? snapshot.stepNames : [];
+    const stepNames = [];
+    for (let i = 0; i < maxSteps; i++) stepNames.push(bracketGenStoredStepName(names[i], i));
     return {
         keywords,
         useStage0: snapshot.useStage0 !== false,
         keywordSteps,
-        stepNames: (snapshot.stepNames || []).map((n) => String(n || '')),
+        stepNames,
         compareSourceStepIndex: bracketGenSanitizeCompareSourceStepIndex(snapshot, snapshot.keywordSteps)
     };
 }
@@ -185,12 +205,42 @@ function hasManagedBracketArtifacts() {
     return false;
 }
 
-function rebuildToolStateFromEditor() {
+/** The Studio's managed (Phasewalker) stage items, in pipeline order. */
+function bracketGenManagedStageItems() {
     const container = document.getElementById('pipelineStagesContainer');
-    const allStageItems = container
-        ? Array.from(container.querySelectorAll('.pipeline-stage-item'))
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('.pipeline-stage-item[data-managed="true"]'));
+}
+
+/** Where an expander's stage target points: 'base' for stage 0, 'm<k>' for the k-th managed
+ *  stage, 'x<t>' for anything else. Compile puts its stages after any stage the user already had,
+ *  so the k-th managed stage is not always pipeline stage k. */
+function bracketGenStageSlot(target, managedItems) {
+    const t = Number(target);
+    if (t === 0) return 'base';
+    const items = managedItems || bracketGenManagedStageItems();
+    const k = items.findIndex((el) => bracketGenGetPipelineStageTargetIndex(el) === t);
+    return k >= 0 ? `m${k}` : `x${t}`;
+}
+
+/** What is compiled into the Studio now: managed expanders and stage names by slot. */
+function bracketGenEditorCompiledSignature() {
+    const managedItems = bracketGenManagedStageItems();
+    const managed = typeof requestBodyReplacements !== 'undefined'
+        ? requestBodyReplacements.filter((r) => r.managed)
         : [];
-    const managedStageItems = allStageItems.filter((s) => s.dataset.managed === 'true');
+    if (!managedItems.length && !managed.length) return null;
+    const rows = managed.map((r) => `${r.name}@${bracketGenStageSlot(bracketGenExpanderStageIndex(r), managedItems)}=${bracketGenExpanderValueText(r)}`);
+    rows.sort();
+    return JSON.stringify({
+        rows,
+        base: bracketGenGetManagedStep0PhaseName(),
+        stages: managedItems.map((el) => String(el.dataset.phaseStepName || '').trim())
+    });
+}
+
+function rebuildToolStateFromEditor() {
+    const managedStageItems = bracketGenManagedStageItems();
     const managedReplacements =
         typeof requestBodyReplacements !== 'undefined'
             ? requestBodyReplacements.filter((r) => r.managed)
@@ -207,87 +257,50 @@ function rebuildToolStateFromEditor() {
     });
     const keywords = Array.from(keywordsSet).sort();
 
-    let useStage0 = true;
-    const useStage0ForMapping = managedReplacements.some((r) => bracketGenExpanderStageIndex(r) === 0);
+    // Use Stage 0 is on when a managed expander targets the base stage
+    const useStage0 = managedReplacements.some((r) => bracketGenExpanderStageIndex(r) === 0);
+    const offset = useStage0 ? 1 : 0;
 
     const keywordSteps = {};
     keywords.forEach((kw) => { keywordSteps[kw] = []; });
 
+    const valueAt = (kw, suffix, target) => {
+        const exp = managedReplacements.find(
+            (r) => r.name === `${kw}_${suffix}` && bracketGenExpanderStageIndex(r) === target
+        );
+        return exp ? bracketGenExpanderValueText(exp) : '';
+    };
     const ensureStep = (kw, stepIdx, prompt, uc) => {
         while (keywordSteps[kw].length <= stepIdx) {
-            const i = keywordSteps[kw].length;
-            keywordSteps[kw].push({ id: `bracket_${kw}_step_${i}`, prompt: '', uc: '' });
+            keywordSteps[kw].push({ id: bracketGenNewStepId(kw), prompt: '', uc: '' });
         }
         keywordSteps[kw][stepIdx].prompt = prompt;
         keywordSteps[kw][stepIdx].uc = uc;
     };
 
-    if (useStage0ForMapping) {
-        keywords.forEach((kw) => {
-            const pExp = managedReplacements.find(
-                (r) => r.name === `${kw}_P` && bracketGenExpanderStageIndex(r) === 0
-            );
-            const nExp = managedReplacements.find(
-                (r) => r.name === `${kw}_N` && bracketGenExpanderStageIndex(r) === 0
-            );
-            if (pExp || nExp) {
-                const prompt = pExp
-                    ? (Array.isArray(pExp.value) ? (pExp.value[0] || '') : (pExp.value || ''))
-                    : '';
-                const uc = nExp
-                    ? (Array.isArray(nExp.value) ? (nExp.value[0] || '') : (nExp.value || ''))
-                    : '';
-                ensureStep(kw, 0, prompt, uc);
-            }
-        });
+    if (useStage0) {
+        keywords.forEach((kw) => ensureStep(kw, 0, valueAt(kw, 'P', 0), valueAt(kw, 'N', 0)));
     }
 
-    managedStageItems.forEach((stageItem) => {
-        const stageTarget = bracketGenGetPipelineStageTargetIndex(stageItem);
-        const stepIdx = useStage0ForMapping ? stageTarget : stageTarget - 1;
-        if (stepIdx < 0) return;
-        keywords.forEach((kw) => {
-            const pExp = managedReplacements.find(
-                (r) => r.name === `${kw}_P` && bracketGenExpanderStageIndex(r) === stageTarget
-            );
-            const nExp = managedReplacements.find(
-                (r) => r.name === `${kw}_N` && bracketGenExpanderStageIndex(r) === stageTarget
-            );
-            const prompt = pExp
-                ? (Array.isArray(pExp.value) ? (pExp.value[0] || '') : (pExp.value || ''))
-                : '';
-            const uc = nExp
-                ? (Array.isArray(nExp.value) ? (nExp.value[0] || '') : (nExp.value || ''))
-                : '';
-            ensureStep(kw, stepIdx, prompt, uc);
-        });
+    managedStageItems.forEach((stageItem, ordinal) => {
+        const target = bracketGenGetPipelineStageTargetIndex(stageItem);
+        keywords.forEach((kw) => ensureStep(kw, ordinal + offset, valueAt(kw, 'P', target), valueAt(kw, 'N', target)));
     });
 
     if (managedStageItems.length === 0 && keywords.length > 0) {
         keywords.forEach((kw) => {
-            if (keywordSteps[kw].length === 0) {
-                keywordSteps[kw].push({ id: `bracket_${kw}_step_0`, prompt: '', uc: '' });
-            }
+            if (keywordSteps[kw].length === 0) ensureStep(kw, 0, '', '');
         });
     }
 
     const stepNames = [];
-    if (useStage0ForMapping) {
-        const step0Name = bracketGenGetManagedStep0PhaseName();
-        if (step0Name) {
-            stepNames[0] = step0Name;
-        }
-    }
-    managedStageItems.forEach((stageItem) => {
-        const stageTarget = bracketGenGetPipelineStageTargetIndex(stageItem);
-        const nameIdx = useStage0ForMapping ? stageTarget : stageTarget - 1;
-        if (nameIdx < 0) return;
-        const name = stageItem.dataset.phaseStepName || '';
-        while (stepNames.length <= nameIdx) stepNames.push('');
-        if (name) stepNames[nameIdx] = name;
+    if (useStage0) stepNames[0] = bracketGenGetManagedStep0PhaseName();
+    managedStageItems.forEach((stageItem, ordinal) => {
+        while (stepNames.length < ordinal + offset) stepNames.push('');
+        stepNames[ordinal + offset] = stageItem.dataset.phaseStepName || '';
     });
 
-    return { keywords, keywordSteps, stepNames, useStage0 };
+    return { keywords, keywordSteps, stepNames, useStage0, compareSourceStepIndex: null };
 }
 
 function syncManagedBracketEditorSaveFlags() {
@@ -629,11 +642,54 @@ async function validateBracketPlaceholdersBeforeGeneration(values) {
     return false;
 }
 
+/** Renaming a keyword renames its placeholders in the Studio's prompts (where they stand) and its
+ *  compiled expanders, so the prompt, the expanders and Phasewalker keep agreeing. */
+function bracketGenRenamePlaceholders(oldKeyword, newKeyword) {
+    const pairs = ['P', 'N'].map((suffix) => [`${oldKeyword}_${suffix}`, `${newKeyword}_${suffix}`]);
+    bracketGenPromptTextareas().forEach((el) => {
+        let next = el.value;
+        pairs.forEach(([from, to]) => {
+            const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            next = next.replace(new RegExp('!' + escaped + '(?![A-Za-z0-9_])', 'g'), '!' + to);
+        });
+        if (next === el.value) return;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(el, next);
+        bracketGenRefreshPromptTextarea(el);
+    });
+    if (typeof requestBodyReplacements === 'undefined') return;
+    let renamed = false;
+    requestBodyReplacements.forEach((r) => {
+        if (!r.managed) return;
+        const pair = pairs.find(([from]) => r.name === from);
+        if (pair) {
+            r.name = pair[1];
+            renamed = true;
+        }
+    });
+    if (renamed && typeof renderRequestBodyReplacementsList === 'function') {
+        renderRequestBodyReplacementsList();
+    }
+}
+
+/** Takes placeholders (!name) out of the Studio's prompts, with the comma they leave behind. */
+function bracketGenStripPlaceholders(names) {
+    const fields = bracketGenPromptTextareas();
+    names.forEach((name) => {
+        fields.forEach((el) => {
+            const next = bracketGenSubstituteToken(el.value, name, '');
+            if (next === el.value) return;
+            // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+            setTextareaValuePreservingUndo(el, next);
+            bracketGenRefreshPromptTextarea(el);
+        });
+    });
+}
+
 class BracketGenerationApplet {
     constructor() {
         this.modal = null;
         this.stepsContainer = null;
-        this.stepCounter = 0;
         this.state = {
             keywords: [],
             keywordSteps: {},
@@ -644,10 +700,10 @@ class BracketGenerationApplet {
             compareSourceStepIndex: null
         };
         this._skipCloseConfirm = false;
-        this._pendingAutoCompile = false;
         this._desktopShortcut = null;
         this._vfsFile = null;
         this._savedSnapshot = null;
+        this._chromeTimer = 0;
         this.trayEl = null;
         this.trayGlyph = null;
         this.trayMenuConfig = null;
@@ -676,30 +732,22 @@ class BracketGenerationApplet {
         this.state.keywords.forEach((kw) => {
             if (!this.state.keywordSteps[kw]) this.state.keywordSteps[kw] = [];
             while (this.state.keywordSteps[kw].length < max) {
-                const i = this.state.keywordSteps[kw].length;
-                this.state.keywordSteps[kw].push({
-                    id: `bracket_${kw}_step_${i}`,
-                    prompt: '',
-                    uc: ''
-                });
+                this.state.keywordSteps[kw].push({ id: bracketGenNewStepId(kw), prompt: '', uc: '' });
             }
         });
     }
 
-    getBracketStepHexId(index) {
-        return '0' + (index + 1).toString(16).toUpperCase();
+    /** The Studio stage a step compiles to, as the Studio's stage list numbers it ("00" is the
+     *  base image with Use Stage 0 on). */
+    getStepStageHexId(index) {
+        return '0' + this.getExpanderStageTarget(index).toString(16).toUpperCase();
     }
 
     ensureStepNamesLength() {
         const max = this.getMaxStepCount();
         if (!Array.isArray(this.state.stepNames)) this.state.stepNames = [];
-        while (this.state.stepNames.length < max) {
-            const n = this.state.stepNames.length;
-            this.state.stepNames.push(`Step ${n + 1}`);
-        }
-        if (this.state.stepNames.length > max) {
-            this.state.stepNames.length = max;
-        }
+        while (this.state.stepNames.length < max) this.state.stepNames.push('');
+        if (this.state.stepNames.length > max) this.state.stepNames.length = max;
     }
 
     getStepDisplayName(index) {
@@ -709,111 +757,88 @@ class BracketGenerationApplet {
         return `Step ${index + 1}`;
     }
 
+    /** Names are stored blank when they are the default "Step N". */
     setStepName(index, name) {
         this.ensureStepNamesLength();
         if (index < 0 || index >= this.getMaxStepCount()) return;
-        const trimmed = String(name || '').trim();
-        this.state.stepNames[index] = trimmed || `Step ${index + 1}`;
+        this.state.stepNames[index] = bracketGenStoredStepName(name, index);
         if (index === 0 && this.state.useStage0) {
-            bracketGenUpdateManagedStep0PhaseName(trimmed);
+            bracketGenUpdateManagedStep0PhaseName(this.state.stepNames[0]);
         }
     }
 
-    applyStepNameToRow(index, name) {
-        const stepItem = this.stepsContainer?.querySelector(`.bracket-gen-step-item[data-step-index="${index}"]`);
-        if (!stepItem) return;
-        const input = stepItem.querySelector('.bracket-gen-step-name-input');
-        const placeholder = stepItem.querySelector('.bracket-gen-step-name-placeholder');
-        const visible = String(name || '').trim();
-        if (input) input.value = visible;
-        if (placeholder) placeholder.textContent = visible;
+    stepNameInput(index) {
+        return this.stepsContainer?.querySelector(`.bracket-gen-step-item[data-step-index="${index}"] .bracket-gen-step-name-input`) || null;
+    }
+
+    applyStepNameToRow(index) {
+        const input = this.stepNameInput(index);
+        if (input && document.activeElement !== input) input.value = this.state.stepNames[index] || '';
+    }
+
+    /** The name compile gives a stage: the step's own name, or the prompt itself when every
+     *  keyword's prompt is the same single tag (it then becomes the step's name too). */
+    implicitPhaseName(index) {
+        const prompts = this.state.keywords.map((kw) => {
+            const steps = this.state.keywordSteps[kw] || [];
+            return index < steps.length ? steps[index].prompt : '';
+        });
+        return bracketGenImplicitPhaseNameFromPrompts(prompts);
+    }
+
+    phaseNameFor(index) {
+        this.ensureStepNamesLength();
+        return String(this.state.stepNames[index] || '').trim() || this.implicitPhaseName(index);
     }
 
     resolvePhaseNameForCompile(index) {
-        const display = this.getStepDisplayName(index);
-        const fallback = `Step ${index + 1}`;
-        if (display && display !== fallback) return display;
-        const prompts = this.state.keywords.map((kw) => {
-            const steps = this.state.keywordSteps[kw] || [];
-            const step = index < steps.length ? steps[index] : null;
-            return step ? step.prompt : '';
-        });
-        const implicit = bracketGenImplicitPhaseNameFromPrompts(prompts);
-        if (!implicit) return '';
-        this.setStepName(index, implicit);
-        this.applyStepNameToRow(index, implicit);
-        return implicit;
+        const name = this.phaseNameFor(index);
+        if (name && !String(this.state.stepNames[index] || '').trim()) {
+            this.setStepName(index, name);
+            this.applyStepNameToRow(index);
+        }
+        return name;
     }
 
+    /** Reads the name boxes into the state. Rows are matched by step id, so rows left from an
+     *  earlier session (state replaced, not rendered yet) are ignored. */
     saveStepNamesFromInputs() {
         if (!this.stepsContainer) return;
+        const steps = this.getActiveKeywordSteps();
         this.stepsContainer.querySelectorAll('.bracket-gen-step-item').forEach((item) => {
-            const idx = parseInt(item.dataset.stepIndex, 10);
-            if (!Number.isFinite(idx)) return;
+            const idx = steps.findIndex((s) => s.id === item.dataset.stepId);
+            if (idx < 0) return;
             const input = item.querySelector('.bracket-gen-step-name-input');
             if (input) this.setStepName(idx, input.value);
         });
     }
 
+    /** The managed Studio stage that a step compiled to (null for the base stage or when not compiled). */
+    managedStageItemForStep(stepIndex) {
+        const ordinal = stepIndex - (this.state.useStage0 ? 1 : 0);
+        if (ordinal < 0) return null;
+        return bracketGenManagedStageItems()[ordinal] || null;
+    }
+
+    /** A managed stage renamed in the Studio renames its step here. */
     syncStepNameFromPipelineStage(stageId, name) {
-        if (!bracketGenIsAppletActive()) return;
         const stageItem = document.getElementById(stageId);
         if (!stageItem || stageItem.dataset.managed !== 'true') return;
-        const stageTarget = bracketGenGetPipelineStageTargetIndex(stageItem);
-        if (stageTarget == null) return;
-        const nameIdx = this.state.useStage0 ? stageTarget : stageTarget - 1;
-        if (nameIdx < 0) return;
-        this.ensureStepNamesLength();
-        while (this.state.stepNames.length <= nameIdx) {
-            this.state.stepNames.push(`Step ${this.state.stepNames.length + 1}`);
-        }
-        const trimmed = String(name || '').trim();
-        this.state.stepNames[nameIdx] = trimmed || `Step ${nameIdx + 1}`;
-        const stepItem = this.stepsContainer?.querySelector(`.bracket-gen-step-item[data-step-index="${nameIdx}"]`);
-        if (stepItem) {
-            const editableRoot = stepItem.querySelector('.character-name-editable.inline-name-edit');
-            const input = stepItem.querySelector('.bracket-gen-step-name-input');
-            const placeholder = stepItem.querySelector('.bracket-gen-step-name-placeholder');
-            const visible = this.getStepDisplayName(nameIdx);
-            if (input) input.value = visible;
-            if (placeholder) placeholder.textContent = visible;
-            if (editableRoot) editableRoot.classList.remove('editing-name');
-        }
+        const ordinal = bracketGenManagedStageItems().indexOf(stageItem);
+        if (ordinal < 0) return;
+        const nameIdx = ordinal + (this.state.useStage0 ? 1 : 0);
+        if (nameIdx >= this.getMaxStepCount()) return;
+        this.setStepName(nameIdx, name);
+        this.applyStepNameToRow(nameIdx);
+        this.scheduleChrome();
     }
 
-    wireBracketGenStepNameInput(item, index) {
-        const editableRoot = item.querySelector('.character-name-editable.inline-name-edit');
-        if (!editableRoot) return;
-        // wireInlineNameEditable: public/scripts/app.js
-        wireInlineNameEditable(editableRoot, {
-            onCommit: (raw) => {
-                this.setStepName(index, raw);
-                this.syncPipelineStageNameForStepIndex(index, String(raw || '').trim());
-            },
-            onDisplaySync: (inp, place) => {
-                const visible = this.getStepDisplayName(index);
-                inp.value = visible;
-                place.textContent = visible;
-            },
-            onCancel: (inp, place) => {
-                const visible = this.getStepDisplayName(index);
-                inp.value = visible;
-                place.textContent = visible;
-            }
-        });
-    }
-
-    syncPipelineStageNameForStepIndex(stepIndex, name) {
-        const stageTarget = this.getExpanderStageTarget(stepIndex);
-        const container = document.getElementById('pipelineStagesContainer');
-        if (!container) return;
-        const all = Array.from(container.querySelectorAll('.pipeline-stage-item'));
-        const stageItem = all.find((el) => bracketGenGetPipelineStageTargetIndex(el) === stageTarget);
-        if (!stageItem || stageItem.dataset.managed !== 'true') return;
-        const trimmed = String(name || '').trim();
-        // setPipelineStageDisplayName: public/scripts/app.js
+    syncPipelineStageNameForStepIndex(stepIndex) {
+        const stageItem = this.managedStageItemForStep(stepIndex);
+        if (!stageItem) return;
+        // setPipelineStageDisplayName: public/scripts/comp/pipelineStageManager.js
         if (typeof setPipelineStageDisplayName === 'function') {
-            setPipelineStageDisplayName(stageItem.id, trimmed);
+            setPipelineStageDisplayName(stageItem.id, String(this.state.stepNames[stepIndex] || '').trim());
         }
     }
 
@@ -825,28 +850,53 @@ class BracketGenerationApplet {
 
         this.stepsContainer = document.getElementById('bracketStepsContainer');
 
-        const closeBtn = document.getElementById('closeBracketGenerationBtn');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => this.requestClose());
-        }
+        document.getElementById('closeBracketGenerationBtn')?.addEventListener('click', () => this.requestClose());
 
-        const compileBtn = document.getElementById('bracketGenCompileBtn');
-        if (compileBtn) {
-            compileBtn.addEventListener('click', () => this.compileStages());
-        }
+        this.modal.querySelector('.phasewalker-toolbar')?.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-pw-cmd]');
+            if (!btn || btn.disabled) return;
+            this.runCommand(btn.dataset.pwCmd);
+        });
 
-        const addStepBtn = document.getElementById('bracketGenAddStepBtn');
-        if (addStepBtn) {
-            addStepBtn.addEventListener('click', () => this.addStep());
-        }
+        const select = document.getElementById('bracketGenKeywordSelect');
+        select?.addEventListener('change', () => {
+            const value = select.value;
+            if (value === '__add__') {
+                select.value = this.state.activeKeyword;
+                void this.promptAddKeyword();
+                return;
+            }
+            this.selectKeyword(value);
+        });
 
-        this.setupFieldToggle();
-        this.setupKeywordMenu();
-        this.setupGearDropdown();
+        this.modal.querySelectorAll('[data-pw-menu]').forEach((btn) => this.attachMenu(btn));
+        this.setupFieldTabs();
+        this.setupStepEvents();
         this.setupStepTabNavigation();
-        this.initializeStepDragDrop();
-        this.updateKeywordDropdownLabel();
         this.wireKeyboardOverlayEntries();
+        this.updateKeywordSelect();
+    }
+
+    runCommand(cmd) {
+        switch (cmd) {
+            case 'new': void this.newDocument(); break;
+            case 'open': void this.openFromVfs(); break;
+            case 'save': void this.save(); break;
+            case 'save-as': void this.saveAsDesktop(); break;
+            case 'load-studio': this.loadFromEditor(); break;
+            case 'close': void this.requestClose(); break;
+            case 'add-keyword': void this.promptAddKeyword(); break;
+            case 'rename-keyword': void this.renameKeyword(); break;
+            case 'delete-keyword': void this.deleteKeyword(); break;
+            case 'add-stage': void this.addStep(); break;
+            case 'toggle-stage0': this.toggleUseStage0(); break;
+            case 'compile': this.compileStages(); break;
+            case 'delete-stages': void this.deleteStages(); break;
+            case 'field-prompt': this.setActiveField('prompt'); break;
+            case 'field-uc': this.setActiveField('uc'); break;
+            default:
+                if (cmd && cmd.startsWith('keyword:')) this.selectKeyword(cmd.slice(8));
+        }
     }
 
     wireKeyboardOverlayEntries() {
@@ -876,6 +926,69 @@ class BracketGenerationApplet {
         });
     }
 
+    /** The Win32 menus (contextMenu click menus on the menu bar titles), rebuilt on every open. */
+    attachMenu(btn) {
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        if (!btn || typeof contextMenu === 'undefined' || !contextMenu) return;
+        const which = btn.dataset.pwMenu;
+        const config = {
+            sections: [{ type: 'list', items: [] }],
+            beforeShow: () => { config.sections[0].items = this.buildMenuItems(which); },
+            onAction: (action) => this.runCommand(action)
+        };
+        contextMenu.attachClickMenuToElement(btn, config);
+    }
+
+    buildMenuItems(which) {
+        const hasKeyword = !!this.state.activeKeyword;
+        const editorOpen = bracketGenIsEditorOpen();
+        const compiled = hasManagedBracketArtifacts();
+        if (which === 'file') {
+            return [
+                { text: 'New', action: 'new' },
+                { text: 'Open...', action: 'open' },
+                { text: 'Save', action: 'save', disabled: !this.hasToolData() },
+                { text: 'Save As...', action: 'save-as', disabled: !this.hasToolData() },
+                { separator: true },
+                { text: 'Load from Studio', action: 'load-studio', disabled: !editorOpen || !compiled },
+                { separator: true },
+                { text: 'Close', action: 'close', subtext: 'Alt+Q' }
+            ];
+        }
+        if (which === 'keyword') {
+            const items = [
+                { text: 'Add Keyword...', action: 'add-keyword', subtext: 'Alt+K' },
+                { text: 'Rename Keyword...', action: 'rename-keyword', disabled: !hasKeyword },
+                { text: 'Delete Keyword', action: 'delete-keyword', disabled: !hasKeyword }
+            ];
+            if (this.state.keywords.length) {
+                items.push({ separator: true });
+                this.state.keywords.forEach((kw) => items.push({
+                    text: kw,
+                    action: `keyword:${kw}`,
+                    showIndicator: true,
+                    indicatorMark: 'radio',
+                    checked: kw === this.state.activeKeyword
+                }));
+            }
+            return items;
+        }
+        if (which === 'stage') {
+            return [
+                { text: 'Add Stage', action: 'add-stage', subtext: 'Alt+A' },
+                { separator: true },
+                { text: 'Use Stage 0', action: 'toggle-stage0', showIndicator: true, checked: this.state.useStage0 },
+                { separator: true },
+                { text: 'Compile', action: 'compile', subtext: 'F8', disabled: !editorOpen || !this.hasToolData() },
+                { text: 'Delete Compiled Stages', action: 'delete-stages', disabled: !compiled }
+            ];
+        }
+        return [
+            { text: 'Prompt', action: 'field-prompt', subtext: 'F1', showIndicator: true, indicatorMark: 'radio', checked: this.state.activeField === 'prompt' },
+            { text: 'Undesired Content', action: 'field-uc', subtext: 'F2', showIndicator: true, indicatorMark: 'radio', checked: this.state.activeField === 'uc' }
+        ];
+    }
+
     setupStepTabNavigation() {
         if (!this.modal || this.modal.dataset.bracketTabNavWired === 'true') return;
         this.modal.dataset.bracketTabNavWired = 'true';
@@ -887,28 +1000,17 @@ class BracketGenerationApplet {
         return overlay && !overlay.classList.contains('hidden');
     }
 
+    /** Tab in a stage's prompt box moves to the next stage's box (the prompt box keeps Tab for
+     *  autocomplete while its list is open). */
     handleStepTabKeydown(e) {
         if (!bracketGenIsAppletActive()) return;
         if (e.key !== 'Tab' || e.metaKey || e.ctrlKey || e.altKey) return;
-
         const target = e.target;
-        const reverse = e.shiftKey;
-
-        if (target.matches('textarea[data-step-id]')) {
-            if (this.bracketGenIsAutocompleteTabReserved()) return;
-            e.preventDefault();
-            e.stopPropagation();
-            this.saveStepTextareasToState();
-            this.focusAdjacentStepTextarea(target, reverse);
-            return;
-        }
-
-        if (target.matches('.bracket-gen-step-name-input')) {
-            e.preventDefault();
-            e.stopPropagation();
-            target.blur();
-            this.focusAdjacentStepNameInput(target, reverse);
-        }
+        if (!target.matches('textarea[data-step-id]')) return;
+        if (this.bracketGenIsAutocompleteTabReserved()) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.focusAdjacentStepTextarea(target, e.shiftKey);
     }
 
     focusAdjacentStepTextarea(currentTa, reverse) {
@@ -922,37 +1024,22 @@ class BracketGenerationApplet {
         const next = textareas[nextIdx];
         if (!next) return;
         next.focus();
-        next.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        next.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
 
-    focusAdjacentStepNameInput(currentInput, reverse) {
-        if (!this.stepsContainer) return;
-        const items = Array.from(this.stepsContainer.querySelectorAll('.bracket-gen-step-item'));
-        const currentItem = currentInput.closest('.bracket-gen-step-item');
-        const idx = items.indexOf(currentItem);
-        if (idx === -1 || items.length === 0) return;
-        const nextIdx = reverse
-            ? (idx > 0 ? idx - 1 : items.length - 1)
-            : (idx < items.length - 1 ? idx + 1 : 0);
-        const nextItem = items[nextIdx];
-        const nextInput = nextItem?.querySelector('.bracket-gen-step-name-input');
-        const editableRoot = nextItem?.querySelector('.character-name-editable.inline-name-edit');
-        if (!nextInput || !editableRoot) return;
-        editableRoot.classList.add('editing-name');
-        nextInput.focus();
-        nextInput.select();
-        nextInput.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-    }
-
-    setupFieldToggle() {
-        const group = document.getElementById('bracketGenTabButtons');
-        if (!group) return;
-        group.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const tab = btn.dataset.tab;
-                if (!tab) return;
-                this.setActiveField(tab === 'uc' ? 'uc' : 'prompt');
-            });
+    /** Prompt / Undesired Content: Vista tabs over the stage list. */
+    setupFieldTabs() {
+        const tabs = document.getElementById('bracketGenTabButtons');
+        if (!tabs) return;
+        tabs.addEventListener('click', (e) => {
+            const tab = e.target.closest('[role="tab"]');
+            if (tab) this.setActiveField(tab.dataset.tab === 'uc' ? 'uc' : 'prompt');
+        });
+        tabs.addEventListener('keydown', (e) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            e.preventDefault();
+            this.setActiveField(this.state.activeField === 'uc' ? 'prompt' : 'uc');
+            tabs.querySelector('[aria-selected="true"]')?.focus();
         });
     }
 
@@ -960,236 +1047,71 @@ class BracketGenerationApplet {
         if (field !== 'prompt' && field !== 'uc') return;
         this.saveStepTextareasToState();
         this.state.activeField = field;
-        const group = document.getElementById('bracketGenTabButtons');
-        if (group) {
-            group.setAttribute('data-active', field);
-            group.querySelectorAll('.gallery-toggle-btn').forEach((b) => {
-                b.classList.toggle('active', b.dataset.tab === field);
+        const tabs = document.getElementById('bracketGenTabButtons');
+        if (tabs) {
+            tabs.dataset.active = field;
+            tabs.querySelectorAll('[role="tab"]').forEach((b) => {
+                const on = b.dataset.tab === field;
+                b.setAttribute('aria-selected', on ? 'true' : 'false');
+                b.tabIndex = on ? 0 : -1;
             });
         }
         this.updateStepFieldDisplay();
     }
 
+    fieldPlaceholder() {
+        const kw = this.state.activeKeyword;
+        if (!kw) return '';
+        return this.state.activeField === 'uc'
+            ? `Undesired content for ${kw} in this stage`
+            : `Prompt for ${kw} in this stage`;
+    }
+
     updateStepFieldDisplay() {
         if (!this.stepsContainer) return;
-        const kw = this.state.activeKeyword;
         const field = this.state.activeField;
-        const fieldLabel = field === 'uc' ? 'UC' : 'Prompt';
+        const steps = this.getActiveKeywordSteps();
+        const placeholder = this.fieldPlaceholder();
         this.stepsContainer.querySelectorAll('textarea[data-step-id]').forEach((ta) => {
-            const stepId = ta.dataset.stepId;
-            const steps = this.getActiveKeywordSteps();
-            const step = steps.find((s) => s.id === stepId);
+            const step = steps.find((s) => s.id === ta.dataset.stepId);
             if (step) {
                 ta.value = step[field] || '';
-                ta.placeholder = kw
-                    ? `Enter ${fieldLabel.toLowerCase()} for ${kw}…`
-                    : 'Select a keyword…';
+                ta.placeholder = placeholder;
             }
             bracketGenRefreshPromptTextarea(ta);
         });
     }
 
-    /** Keyword picker: a click context menu on the toolbar button (like Atelier's dataset
-     *  picker), not a custom dropdown. Items are rebuilt on every open (beforeShow). */
-    setupKeywordMenu() {
-        const btn = document.getElementById('bracketGenKeywordDropdownBtn');
-        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
-        if (!btn || !contextMenu) return;
-        if (btn.dataset.phasewalkerKeywordMenuWired === 'true') return;
-        btn.dataset.phasewalkerKeywordMenuWired = 'true';
-        this.keywordClickMenuConfig = this.buildKeywordMenuConfig();
-        contextMenu.attachClickMenuToElement(btn, this.keywordClickMenuConfig);
-    }
-
-    buildKeywordMenuConfig() {
-        const applet = this;
-        return {
-            position: 'anchor',
-            anchorAlign: 'start',
-            maxHeight: 360,
-            beforeShow: () => applet.refreshKeywordMenuItems(),
-            sections: [
-                { type: 'list', items: [{ icon: 'fas fa-plus', text: 'Add Keyword', action: 'pw-add-keyword' }] },
-                { type: 'list', items: [] }
-            ],
-            onAction(action, target, item) {
-                if (action === 'pw-add-keyword') {
-                    void applet.promptAddKeyword();
-                    return;
-                }
-                if (action !== 'pw-select-keyword' || !item || typeof item.keyword !== 'string') return;
-                applet.saveStepTextareasToState();
-                applet.state.activeKeyword = item.keyword;
-                applet.updateKeywordDropdownLabel(item.keyword);
-                applet.renderSteps();
-            }
-        };
-    }
-
-    refreshKeywordMenuItems() {
-        if (!this.keywordClickMenuConfig) return;
-        const items = this.state.keywords.length === 0
-            ? [{ icon: 'fas fa-tag', text: 'No keywords', disabled: true }]
-            : this.state.keywords.map((kw) => ({
-                icon: 'fas fa-tag',
-                text: kw,
-                action: 'pw-select-keyword',
-                keyword: kw,
-                loadfn: (item) => {
-                    item.highlighted = item.keyword === this.state.activeKeyword;
-                }
-            }));
-        this.keywordClickMenuConfig.sections[1].items = items;
-    }
-
-    updateKeywordDropdownLabel(selected) {
-        const selectedEl = document.getElementById('bracketGenKeywordSelected');
-        const dropdownBtn = document.getElementById('bracketGenKeywordDropdownBtn');
-        const kw = selected || this.state.activeKeyword;
-        if (selectedEl) {
-            selectedEl.textContent = kw || 'No keywords';
+    selectKeyword(kw) {
+        if (!kw || !this.state.keywords.includes(kw) || kw === this.state.activeKeyword) {
+            this.updateKeywordSelect();
+            return;
         }
-        if (dropdownBtn) {
-            dropdownBtn.classList.toggle('bracket-gen-keyword-placeholder', !kw);
-        }
+        this.saveStepTextareasToState();
+        this.state.activeKeyword = kw;
+        this.renderSteps();
     }
 
-    setupGearDropdown() {
-        const btn = document.getElementById('bracketGenGearDropdownBtn');
-        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
-        if (!btn || !contextMenu) return;
-        if (btn.dataset.phasewalkerMenuWired === 'true') return;
-        btn.dataset.phasewalkerMenuWired = 'true';
-        contextMenu.attachClickMenuToElement(btn, this.getMenuConfig());
+    /** The toolbar's keyword combo box: the keywords, then "Add Keyword...". */
+    updateKeywordSelect() {
+        const select = document.getElementById('bracketGenKeywordSelect');
+        if (!select) return;
+        const kws = this.state.keywords;
+        const sig = JSON.stringify([kws, this.state.activeKeyword]);
+        if (select.dataset.sig === sig) return;
+        select.dataset.sig = sig;
+        select.textContent = '';
+        if (!kws.length) {
+            select.add(new Option('(none)', '', true, true));
+            select.options[0].disabled = true;
+        }
+        kws.forEach((kw) => select.add(new Option(kw, kw, false, kw === this.state.activeKeyword)));
+        select.add(new Option('Add Keyword...', '__add__'));
+        select.value = this.state.activeKeyword || '';
     }
 
     boundDocument() {
         return this._vfsFile || this._desktopShortcut || null;
-    }
-
-    getMenuConfig() {
-        const applet = this;
-        return {
-            openSubmenusOnHover: true,
-            sections: [
-                {
-                    type: 'list',
-                    title: 'File',
-                    initfn(section) {
-                        section.items = applet.buildFileMenuItems();
-                    }
-                },
-                {
-                    type: 'list',
-                    title: 'Keyword',
-                    initfn(section) {
-                        const hasKeyword = !!applet.state.activeKeyword;
-                        section.items = [
-                            {
-                                icon: 'fas fa-pen',
-                                text: 'Rename Keyword',
-                                action: 'pw-rename-keyword',
-                                disabled: !hasKeyword
-                            },
-                            {
-                                icon: 'fas fa-trash-alt',
-                                text: 'Delete Keyword',
-                                action: 'pw-delete-keyword',
-                                disabled: !hasKeyword || applet.state.keywords.length <= 1
-                            }
-                        ];
-                    }
-                },
-                {
-                    type: 'list',
-                    initfn(section) {
-                        section.items = [
-                            {
-                                icon: applet.state.useStage0 ? 'fas fa-check' : 'fas fa-square',
-                                text: 'Use Stage 0',
-                                action: 'pw-toggle-stage0'
-                            },
-                            {
-                                icon: 'fas fa-trash-alt',
-                                text: 'Delete Stages',
-                                action: 'pw-delete-stages',
-                                disabled: !hasManagedBracketArtifacts()
-                            }
-                        ];
-                    }
-                }
-            ],
-            onAction(action) {
-                applet.handleFileMenuAction(action);
-            }
-        };
-    }
-
-    buildFileMenuItems() {
-        const canSave = !!this.boundDocument();
-        const hasData = this.hasToolData();
-        return [
-            { icon: 'fa-regular fa-file', text: 'New', action: 'pw-new' },
-            { icon: 'fas fa-floppy-disk', text: 'Save', action: 'pw-save', disabled: !canSave },
-            {
-                icon: 'fa-regular fa-floppy-disk',
-                text: 'Save As',
-                disabled: !hasData,
-                optionsfn() {
-                    return [
-                        { icon: 'fas fa-desktop', text: 'Desktop', action: 'pw-save-desktop' }
-                    ];
-                }
-            },
-            { icon: 'fa-regular fa-folder-open', text: 'Open', action: 'pw-open' },
-            {
-                icon: 'fas fa-file-import',
-                text: 'Load from Studio',
-                action: 'pw-load-studio',
-                disabled: !bracketGenIsEditorOpen() || !hasManagedBracketArtifacts()
-            }
-        ];
-    }
-
-    handleFileMenuAction(action) {
-        if (action === 'pw-new') {
-            void this.newDocument();
-            return;
-        }
-        if (action === 'pw-save') {
-            void this.saveBound();
-            return;
-        }
-        if (action === 'pw-save-desktop') {
-            void this.saveAsDesktop();
-            return;
-        }
-        if (action === 'pw-open') {
-            void this.openFromVfs();
-            return;
-        }
-        if (action === 'pw-load-studio') {
-            this.loadFromEditor();
-            return;
-        }
-        if (action === 'pw-rename-keyword') {
-            void this.renameKeyword();
-            return;
-        }
-        if (action === 'pw-delete-keyword') {
-            void this.deleteKeyword();
-            return;
-        }
-        if (action === 'pw-toggle-stage0') {
-            this.state.useStage0 = !this.state.useStage0;
-            this.normalizeCompareSourceStepIndex();
-            this.renderSteps();
-            this.updateChrome();
-            return;
-        }
-        if (action === 'pw-delete-stages') {
-            void this.deleteStages();
-        }
     }
 
     suggestFileName() {
@@ -1199,20 +1121,43 @@ class BracketGenerationApplet {
         return 'Phasewalker';
     }
 
-    async newDocument() {
+    documentName() {
+        const bound = this.boundDocument();
+        return (bound && bound.name) || 'Untitled';
+    }
+
+    /** Unsaved work: a bound file with changes, or data that was never saved. */
+    hasUnsavedChanges() {
+        if (!this.hasToolData()) return false;
+        if (this.boundDocument()) return this.isShortcutDirty();
+        return true;
+    }
+
+    /** Before New / Open replace the work: "Do you want to save changes to ...?" (Save, Don't
+     *  Save, Cancel). Resolves true when the work may be replaced. */
+    async confirmDiscardChanges() {
         this.saveStepTextareasToState();
-        if (this.hasToolData()) {
-            const confirmed = await showConfirmationDialog(
-                'Clear Phasewalker?',
-                [
-                    { text: 'Clear', value: true, icon: 'fa-regular fa-file', className: 'btn-danger' },
-                    { text: 'Cancel', value: false, className: 'btn-secondary' }
-                ],
-                null,
-                { title: 'New', icon: 'fa-regular fa-file' }
-            );
-            if (!confirmed) return;
+        if (!this.hasUnsavedChanges()) return true;
+        const choice = await showConfirmationDialog(
+            `Do you want to save changes to ${escapeHtml(this.documentName())}?`,
+            [
+                { text: 'Save', value: 'save', className: 'btn-standard primary' },
+                { text: "Don't Save", value: 'discard', className: 'btn-standard' },
+                { text: 'Cancel', value: null, className: 'btn-standard' }
+            ],
+            null,
+            { title: 'Phasewalker' }
+        );
+        if (choice === 'discard') return true;
+        if (choice !== 'save') return false;
+        if (this.boundDocument()) {
+            await this.saveBound();
+            return !this.isShortcutDirty();
         }
+        return this.saveAsAndWait();
+    }
+
+    resetState() {
         this._desktopShortcut = null;
         this._vfsFile = null;
         this._savedSnapshot = null;
@@ -1222,9 +1167,12 @@ class BracketGenerationApplet {
         this.state.activeKeyword = '';
         this.state.useStage0 = true;
         this.state.compareSourceStepIndex = null;
-        this.stepCounter = 0;
+    }
+
+    async newDocument() {
+        if (!(await this.confirmDiscardChanges())) return;
+        this.resetState();
         this.renderSteps();
-        this.updateChrome();
     }
 
     bindDesktopShortcut(id, name, snapshot) {
@@ -1243,6 +1191,15 @@ class BracketGenerationApplet {
         this._desktopShortcut = null;
         this._savedSnapshot = JSON.parse(JSON.stringify(snapshot));
         this.updateChrome();
+    }
+
+    /** File > Save: the bound file, or Save As when there is none yet. */
+    async save() {
+        if (this.boundDocument()) {
+            await this.saveBound();
+            return;
+        }
+        await this.saveAsDesktop();
     }
 
     async saveBound() {
@@ -1269,7 +1226,7 @@ class BracketGenerationApplet {
             });
             this._savedSnapshot = JSON.parse(JSON.stringify(snapshot));
             this.updateChrome();
-            showGlassToast('success', null, 'Saved', false, 3000, '<i class="fas fa-floppy-disk"></i>');
+            showGlassToast('success', null, 'Saved', false, 3000);
         } catch (err) {
             console.error(err);
             showGlassToast('error', null, err.message || 'Failed to save', false, 5000);
@@ -1308,6 +1265,7 @@ class BracketGenerationApplet {
             showGlassToast('error', null, 'File browser unavailable', false, 4000);
             return;
         }
+        if (!(await this.confirmDiscardChanges())) return;
         const applet = this;
         await studioOpenFolderDialog('open-vfs', {
             startPath: phasewalkerWorkspaceDesktopPath(),
@@ -1322,21 +1280,24 @@ class BracketGenerationApplet {
         });
     }
 
+    /** "Use this phase" in Stage Results bakes one phase into the prompt and removes the compiled
+     *  stages: offer to keep the session first (a bound file saves in place). */
     async confirmSaveBeforeUnload() {
+        this.saveStepTextareasToState();
         if (!this.hasToolData()) return true;
-        if (this._vfsFile) {
+        if (this.boundDocument()) {
             if (this.isShortcutDirty()) await this.saveBound();
             return !this.isShortcutDirty();
         }
         const choice = await showConfirmationDialog(
-            'Save the Phasewalker session before unloading?',
+            'Do you want to save the Phasewalker stages before this phase replaces them?',
             [
-                { text: 'Save', value: 'save', className: 'btn-primary' },
-                { text: "Don't save", value: 'unload', className: 'btn-secondary' },
-                { text: 'Cancel', value: null, className: 'btn-secondary' }
+                { text: 'Save', value: 'save', className: 'btn-standard primary' },
+                { text: "Don't Save", value: 'unload', className: 'btn-standard' },
+                { text: 'Cancel', value: null, className: 'btn-standard' }
             ],
             null,
-            { title: 'Use this phase', icon: 'fas fa-crown' }
+            { title: 'Phasewalker' }
         );
         if (choice === 'unload') return true;
         if (choice !== 'save') return false;
@@ -1375,32 +1336,26 @@ class BracketGenerationApplet {
             if (overwrite.overwriteId) {
                 await this.writeDesktopShortcut(overwrite.overwriteId, name, data, info.workspaceId);
                 this.bindDesktopShortcut(overwrite.overwriteId, name, snapshot);
-                showGlassToast('success', null, 'Saved', false, 3000, '<i class="fas fa-floppy-disk"></i>');
-                this._unloadSaveOk = true;
-                return true;
-            }
-            if (overwrite.overwriteEntryId) {
+            } else if (overwrite.overwriteEntryId) {
                 await vfsClient.updateShortcutEntry(overwrite.overwriteEntryId, { name: name, data: data });
                 this.bindVfsFile({ id: overwrite.overwriteEntryId, name: name, path: info.path }, snapshot);
-                showGlassToast('success', null, 'Saved', false, 3000, '<i class="fas fa-floppy-disk"></i>');
-                this._unloadSaveOk = true;
-                return true;
+            } else {
+                const result = await vfsClient.createShortcut(info.path, {
+                    name: name,
+                    type: 'bracket-generation',
+                    data: data
+                }, info.workspaceId);
+                if (result && result.dest === 'desktop' && result.shortcut) {
+                    this.bindDesktopShortcut(result.shortcut.id, result.shortcut.name || name, snapshot);
+                } else if (result && result.entry) {
+                    this.bindVfsFile({
+                        id: result.entry.id,
+                        name: result.entry.display_name || name,
+                        path: result.path || info.path
+                    }, snapshot);
+                }
             }
-            const result = await vfsClient.createShortcut(info.path, {
-                name: name,
-                type: 'bracket-generation',
-                data: data
-            }, info.workspaceId);
-            if (result && result.dest === 'desktop' && result.shortcut) {
-                this.bindDesktopShortcut(result.shortcut.id, result.shortcut.name || name, snapshot);
-            } else if (result && result.entry) {
-                this.bindVfsFile({
-                    id: result.entry.id,
-                    name: result.entry.display_name || name,
-                    path: result.path || info.path
-                }, snapshot);
-            }
-            showGlassToast('success', null, 'Saved', false, 3000, '<i class="fas fa-floppy-disk"></i>');
+            showGlassToast('success', null, 'Saved', false, 3000);
             this._unloadSaveOk = true;
             return true;
         } catch (err) {
@@ -1436,9 +1391,7 @@ class BracketGenerationApplet {
             return;
         }
         if (!this.modal) this.init();
-        const manualModal = document.getElementById('manualModal');
-        const editorOpen = manualModal && !manualModal.classList.contains('hidden');
-        const opts = { state: state, autoCompile: editorOpen };
+        const opts = { state: state, autoCompile: bracketGenIsEditorOpen(), skipDiscardCheck: true };
         if (item.isVfsShortcutEntry) {
             opts.vfsFile = { id: item.id, name: item.name, path: folderPath || '' };
         } else {
@@ -1449,35 +1402,35 @@ class BracketGenerationApplet {
 
     validateKeywordName(name, currentName) {
         const trimmed = String(name || '').trim();
-        if (!trimmed) return { ok: false, error: 'Keyword name is required' };
+        if (!trimmed) return { ok: false, error: 'Type a keyword name.' };
         if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
-            return { ok: false, error: 'Invalid keyword name' };
+            return { ok: false, error: 'A keyword name can contain only letters, numbers and underscores.' };
         }
         if (trimmed.endsWith('_P') || trimmed.endsWith('_N')) {
-            return { ok: false, error: 'Keyword cannot end with _P or _N' };
+            return { ok: false, error: 'A keyword name cannot end with _P or _N.' };
         }
         if (trimmed !== currentName && this.state.keywords.includes(trimmed)) {
-            return { ok: false, error: 'Keyword already exists' };
+            return { ok: false, error: `There is already a keyword named ${trimmed}.` };
         }
         return { ok: true, name: trimmed };
     }
 
     async promptAddKeyword() {
         const name = await showInputDialog(
-            'Keyword name may contain letters, numbers, and underscores only.',
+            'Keyword name (letters, numbers and underscores):',
             '',
-            'KEYWORD',
+            '',
             [
-                { text: 'Add', value: 'ok', icon: 'fas fa-plus', className: 'btn-primary' },
-                { text: 'Cancel', value: null, className: 'btn-secondary' }
+                { text: 'OK', value: 'ok', className: 'btn-standard primary' },
+                { text: 'Cancel', value: null, className: 'btn-standard' }
             ],
             null,
-            { title: 'Add Keyword', icon: 'fas fa-tag' }
+            { title: 'Add Keyword' }
         );
         if (!name) return false;
         const validated = this.validateKeywordName(name, '');
         if (!validated.ok) {
-            showGlassToast('error', null, validated.error, false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
+            showGlassToast('error', null, validated.error, false, 4000);
             return false;
         }
         const trimmed = validated.name;
@@ -1485,38 +1438,33 @@ class BracketGenerationApplet {
         this.state.keywords.push(trimmed);
         this.state.keywordSteps[trimmed] = [];
         this.state.activeKeyword = trimmed;
-        this.updateKeywordDropdownLabel(trimmed);
         if (this.getMaxStepCount() === 0) {
-            this.addStep();
+            await this.addStep();
         } else {
             this.syncKeywordStepCounts();
             this.renderSteps();
         }
-        this.updateChrome();
         return true;
     }
 
     async renameKeyword() {
         const kw = this.state.activeKeyword;
-        if (!kw) {
-            showGlassToast('warning', null, 'No keyword selected', false, 3000);
-            return;
-        }
+        if (!kw) return;
         const name = await showInputDialog(
-            'Keyword name may contain letters, numbers, and underscores only.',
+            'Keyword name (letters, numbers and underscores):',
             kw,
-            'KEYWORD',
+            '',
             [
-                { text: 'Rename', value: 'ok', icon: 'fas fa-pen', className: 'btn-primary' },
-                { text: 'Cancel', value: null, className: 'btn-secondary' }
+                { text: 'OK', value: 'ok', className: 'btn-standard primary' },
+                { text: 'Cancel', value: null, className: 'btn-standard' }
             ],
             null,
-            { title: 'Rename Keyword', icon: 'fas fa-pen' }
+            { title: 'Rename Keyword' }
         );
         if (!name) return;
         const validated = this.validateKeywordName(name, kw);
         if (!validated.ok) {
-            showGlassToast('error', null, validated.error, false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
+            showGlassToast('error', null, validated.error, false, 4000);
             return;
         }
         const trimmed = validated.name;
@@ -1528,30 +1476,22 @@ class BracketGenerationApplet {
         this.state.keywordSteps[trimmed] = this.state.keywordSteps[kw];
         delete this.state.keywordSteps[kw];
         this.state.activeKeyword = trimmed;
-        this.updateKeywordDropdownLabel(trimmed);
+        // the Studio's !kw_P / !kw_N placeholders follow the new name, where they stand
+        bracketGenRenamePlaceholders(kw, trimmed);
         this.renderSteps();
-        this.updateChrome();
     }
 
     async deleteKeyword() {
         const kw = this.state.activeKeyword;
-        if (!kw || this.state.keywords.length === 0) {
-            showGlassToast('warning', null, 'No keyword selected', false, 3000);
-            return;
-        }
-        if (this.state.keywords.length <= 1) {
-            showGlassToast('warning', null, 'At least one keyword is required', false, 4000);
-            return;
-        }
-
+        if (!kw) return;
         const confirmed = await showConfirmationDialog(
-            `Delete keyword "${kw}" and all of its steps?`,
+            `Are you sure you want to delete the keyword ${escapeHtml(kw)} and its text in every stage?`,
             [
-                { text: 'Delete', value: true, icon: 'fas fa-trash-alt', className: 'btn-danger' },
-                { text: 'Cancel', value: false, className: 'btn-secondary' }
+                { text: 'Yes', value: true, className: 'btn-standard primary' },
+                { text: 'No', value: false, className: 'btn-standard' }
             ],
             null,
-            { title: 'Delete Keyword', icon: 'fas fa-tag' }
+            { title: 'Delete Keyword' }
         );
         if (!confirmed) return;
 
@@ -1559,29 +1499,26 @@ class BracketGenerationApplet {
         this.state.keywords = this.state.keywords.filter((k) => k !== kw);
         delete this.state.keywordSteps[kw];
         this.state.activeKeyword = this.state.keywords[0] || '';
-        this.updateKeywordDropdownLabel(this.state.activeKeyword);
+        if (!this.state.keywords.length) {
+            this.state.stepNames = [];
+            this.state.compareSourceStepIndex = null;
+        }
         this.renderSteps();
-        this.updateChrome();
     }
 
     loadFromEditor() {
         if (!bracketGenIsEditorOpen()) {
-            showGlassToast('warning', null, 'Open the editor first', false, 4000, '<i class="fas fa-edit"></i>');
+            showGlassToast('warning', null, 'Open the Studio first', false, 4000);
             return;
         }
-        if (!hasManagedBracketArtifacts()) {
-            showGlassToast('info', null, 'No managed phases in editor', false, 4000);
-            return;
-        }
-        const rebuilt = rebuildToolStateFromEditor();
+        const rebuilt = hasManagedBracketArtifacts() ? rebuildToolStateFromEditor() : null;
         if (!rebuilt) {
-            showGlassToast('warning', null, 'Could not load from editor', false, 4000);
+            showGlassToast('info', null, 'The Studio has no Phasewalker stages', false, 4000);
             return;
         }
         this.hydrateFromSnapshot(rebuilt);
         this.renderSteps();
-        this.updateChrome();
-        showGlassToast('success', null, 'Loaded from editor', false, 3000, '<i class="fas fa-file-import"></i>');
+        showGlassToast('success', null, 'Loaded from the Studio', false, 3000);
     }
 
     hasToolData() {
@@ -1593,13 +1530,44 @@ class BracketGenerationApplet {
         return !bracketGenSnapshotsEqual(this.getSnapshot(), this._savedSnapshot);
     }
 
+    /** What compiling this session would write into the Studio, in the same form as
+     *  bracketGenEditorCompiledSignature reads it back. */
+    compiledSignature() {
+        const rows = [];
+        const stages = [];
+        let base = '';
+        const start = this.state.useStage0 ? 1 : 0;
+        const max = this.getMaxStepCount();
+        for (let i = 0; i < max; i++) {
+            const slot = i < start ? 'base' : `m${i - start}`;
+            const name = this.phaseNameFor(i);
+            if (slot === 'base') base = '';
+            else stages.push(name);
+            let baseNamePending = slot === 'base' ? name : '';
+            this.state.keywords.forEach((kw) => {
+                const step = (this.state.keywordSteps[kw] || [])[i];
+                if (!step) return;
+                [['P', step.prompt], ['N', step.uc]].forEach(([suffix, value]) => {
+                    if (!bracketGenHasReplacementContent(value)) return;
+                    rows.push(`${kw}_${suffix}@${slot}=${value}`);
+                    if (baseNamePending) {
+                        base = baseNamePending;
+                        baseNamePending = '';
+                    }
+                });
+            });
+        }
+        rows.sort();
+        return JSON.stringify({ rows, base, stages });
+    }
+
     needsCompile() {
         if (!this.hasToolData()) return false;
         if (!bracketGenIsEditorOpen()) return true;
-        if (!hasManagedBracketArtifacts()) return true;
-        const editorSnap = rebuildToolStateFromEditor();
-        if (!editorSnap) return true;
-        return !bracketGenSnapshotsEqual(this.getSnapshot(), editorSnap);
+        const editor = bracketGenEditorCompiledSignature();
+        if (!editor) return true;
+        this.saveStepTextareasToState();
+        return editor !== this.compiledSignature();
     }
 
     shouldSkipCloseConfirm() {
@@ -1611,27 +1579,67 @@ class BracketGenerationApplet {
         const el = document.getElementById('bracketGenTitleLabel');
         if (!el) return;
         const bound = this.boundDocument();
-        if (bound) {
-            const name = bound.name || 'Shortcut';
-            const dirty = this.isShortcutDirty();
-            el.textContent = `Phasewalker [${name}${dirty ? '*' : ''}]`;
-        } else {
-            el.textContent = 'Phasewalker';
+        el.textContent = bound
+            ? `${bound.name || 'Untitled'}${this.isShortcutDirty() ? '*' : ''} - Phasewalker`
+            : 'Phasewalker';
+    }
+
+    /** Toolbar states and the status bar: the keyword's stage count, the keyword count and
+     *  whether the Studio has this session compiled. */
+    updateToolbarAndStatus() {
+        if (!this.modal) return;
+        const hasData = this.hasToolData();
+        const editorOpen = bracketGenIsEditorOpen();
+        const needs = this.needsCompile();
+        const setDisabled = (cmd, off) => {
+            const btn = this.modal.querySelector(`.phasewalker-toolbar [data-pw-cmd="${cmd}"]`);
+            if (btn) btn.disabled = !!off;
+        };
+        setDisabled('save', !hasData);
+        setDisabled('compile', !editorOpen || !hasData);
+        const compileBtn = document.getElementById('bracketGenCompileBtn');
+        if (compileBtn) compileBtn.classList.toggle('is-pending', editorOpen && needs);
+
+        const text = document.getElementById('bracketGenStatusText');
+        const count = document.getElementById('bracketGenStatusCount');
+        const compiled = document.getElementById('bracketGenStatusCompiled');
+        const steps = this.getMaxStepCount();
+        const kws = this.state.keywords.length;
+        if (text) {
+            text.textContent = this.state.activeKeyword
+                ? `${this.state.activeKeyword}: ${steps} stage${steps === 1 ? '' : 's'}`
+                : 'No keywords';
+        }
+        if (count) count.textContent = `${kws} keyword${kws === 1 ? '' : 's'}`;
+        if (compiled) {
+            let label = '';
+            if (hasData) {
+                if (!editorOpen) label = 'Studio closed';
+                else label = needs ? 'Not compiled' : 'Compiled';
+            }
+            compiled.textContent = label;
         }
     }
 
-    updateCompileButton() {
-        const btn = document.getElementById('bracketGenCompileBtn');
-        if (!btn) return;
-        const needs = this.needsCompile();
-        btn.classList.toggle('btn-primary', needs);
-        btn.classList.toggle('btn-secondary', !needs);
+    updateChrome() {
+        if (this._chromeTimer) {
+            clearTimeout(this._chromeTimer);
+            this._chromeTimer = 0;
+        }
+        this.updateTitleBar();
+        this.updateKeywordSelect();
+        this.updateToolbarAndStatus();
+        this.updateTrayChrome();
     }
 
-    updateChrome() {
-        this.updateTitleBar();
-        this.updateCompileButton();
-        this.updateTrayChrome();
+    /** Typing updates the chrome (title star, Compile, status, tray) once it pauses: every check
+     *  reads the Studio's stages and expanders. */
+    scheduleChrome() {
+        if (this._chromeTimer) clearTimeout(this._chromeTimer);
+        this._chromeTimer = setTimeout(() => {
+            this._chromeTimer = 0;
+            this.updateChrome();
+        }, 250);
     }
 
     formatTrayTitle() {
@@ -1644,10 +1652,14 @@ class BracketGenerationApplet {
         const kwPart = menuData.keywords.length === 1
             ? menuData.keywords[0]
             : `${menuData.keywords.length} keywords`;
-        return `Phasewalker - ${kwPart} · ${stepCount} step${stepCount === 1 ? '' : 's'}`;
+        return `Phasewalker - ${kwPart}, ${stepCount} stage${stepCount === 1 ? '' : 's'}`;
     }
 
     handleTrayMenuAction(action) {
+        if (action === 'pw-tray-open') {
+            void this.open();
+            return;
+        }
         if (action === 'pw-tray-compile') {
             this.compileStages();
             return;
@@ -1660,86 +1672,31 @@ class BracketGenerationApplet {
             void this.deleteStages();
             return;
         }
-        if (action === 'pw-tray-desktop') {
-            void this.addToDesktop();
-            return;
-        }
-        if (action === 'pw-tray-save-shortcut') {
-            void this.saveBound();
+        if (action === 'pw-tray-save') {
+            void this.save();
             return;
         }
         if (action === 'pw-tray-toggle-stage0') {
-            this.state.useStage0 = !this.state.useStage0;
-            this.normalizeCompareSourceStepIndex();
-            this.renderSteps();
-            this.updateChrome();
+            this.toggleUseStage0();
         }
     }
 
+    /** The tray icon's menu: Open first, then the commands. */
     buildTrayMenuItems() {
         const menuData = bracketGenGetStepMenuData();
-        const items = [];
-        if (!menuData) {
-            items.push({ text: 'No Phasewalker data', disabled: true });
-            return items;
-        }
-
-        const stepCount = Math.max(
-            0,
-            ...menuData.keywords.map((kw) => (menuData.keywordSteps[kw] || []).length)
-        );
-        items.push({
-            separator: true,
-            text: `${menuData.keywords.length} keyword${menuData.keywords.length === 1 ? '' : 's'} · ${stepCount} step${stepCount === 1 ? '' : 's'}`
-        });
-
-        menuData.keywords.forEach((kw) => {
-            items.push({ separator: true, text: kw });
-            const steps = menuData.keywordSteps[kw] || [];
-            if (!steps.length) {
-                items.push({ text: 'No steps', disabled: true });
-                return;
-            }
-            steps.forEach((step, index) => {
-                items.push({
-                    text: menuData.stepLabel(index),
-                    icon: 'fas fa-stairs',
-                    disabled: true
-                });
-            });
-        });
-
-        items.push({ separator: true });
-        items.push({
-            text: 'Compile',
-            icon: 'fas fa-hammer',
-            action: 'pw-tray-compile',
-            disabled: !bracketGenIsEditorOpen() || !this.hasToolData()
-        });
-        items.push({
-            text: 'Load from Studio',
-            icon: 'fas fa-file-import',
-            action: 'pw-tray-load',
-            disabled: !bracketGenIsEditorOpen() || !hasManagedBracketArtifacts()
-        });
-        items.push({
-            text: 'Delete Stages',
-            icon: 'fas fa-trash-alt',
-            action: 'pw-tray-delete',
-            disabled: !hasManagedBracketArtifacts()
-        });
-        items.push({
-            text: this.boundDocument() ? 'Save' : 'Add to Desktop',
-            icon: this.boundDocument() ? 'fas fa-save' : 'fas fa-arrow-down-left',
-            action: this.boundDocument() ? 'pw-tray-save-shortcut' : 'pw-tray-desktop',
-            disabled: this.boundDocument() ? false : !this.hasToolData()
-        });
-        items.push({
-            text: this.state.useStage0 ? 'Use Stage 0' : 'Use Stage 0 (off)',
-            icon: this.state.useStage0 ? 'fas fa-check' : 'fas fa-square',
-            action: 'pw-tray-toggle-stage0'
-        });
-        return items;
+        if (!menuData) return [{ text: 'No Phasewalker data', disabled: true }];
+        const editorOpen = bracketGenIsEditorOpen();
+        const compiled = hasManagedBracketArtifacts();
+        return [
+            { text: 'Open Phasewalker', action: 'pw-tray-open' },
+            { separator: true },
+            { text: 'Compile', action: 'pw-tray-compile', disabled: !editorOpen || !this.hasToolData() },
+            { text: 'Load from Studio', action: 'pw-tray-load', disabled: !editorOpen || !compiled },
+            { text: 'Delete Compiled Stages', action: 'pw-tray-delete', disabled: !compiled },
+            { separator: true },
+            { text: 'Save', action: 'pw-tray-save', disabled: !this.hasToolData() },
+            { text: 'Use Stage 0', action: 'pw-tray-toggle-stage0', showIndicator: true, checked: this.state.useStage0 }
+        ];
     }
 
     refreshTrayMenuItems() {
@@ -1770,7 +1727,6 @@ class BracketGenerationApplet {
         if (!this.trayEl) return;
 
         const hasData = bracketGenGetStepMenuData() !== null;
-        const appletOpen = bracketGenIsAppletActive();
         const bootPending = typeof window.isDesktopTrayBootPending === 'function'
             && window.isDesktopTrayBootPending();
 
@@ -1778,14 +1734,8 @@ class BracketGenerationApplet {
             if (!bootPending) {
                 this.trayEl.classList.remove('hidden');
             }
-            this.trayEl.classList.toggle('phasewalker-tray-applet-open', appletOpen);
         } else {
             this.trayEl.classList.add('hidden');
-            this.trayEl.classList.remove('phasewalker-tray-applet-open');
-        }
-
-        if (this.trayGlyph) {
-            this.trayGlyph.className = 'fas fa-layer-group';
         }
         this.trayEl.title = this.formatTrayTitle();
         this.reRenderTrayMenuIfOpen();
@@ -1821,7 +1771,7 @@ class BracketGenerationApplet {
             });
             this._savedSnapshot = JSON.parse(JSON.stringify(snapshot));
             this.updateChrome();
-            showGlassToast('success', null, 'Saved', false, 3000, '<i class="fas fa-floppy-disk"></i>');
+            showGlassToast('success', null, 'Saved', false, 3000);
         } catch (err) {
             console.error(err);
             showGlassToast('error', null, err.message || 'Failed to save', false, 5000);
@@ -1832,8 +1782,13 @@ class BracketGenerationApplet {
         return this.state.useStage0 ? stepIndex : stepIndex + 1;
     }
 
+    /** The pipeline stage index a step compiled to (compareViewManager.js): the base stage, or
+     *  the managed stage at the step's place among the managed stages. */
     getPipelineStageIndexForStep(stepIndex) {
-        return this.getExpanderStageTarget(stepIndex);
+        if (this.state.useStage0 && stepIndex === 0) return 0;
+        const stageItem = this.managedStageItemForStep(stepIndex);
+        const index = stageItem ? bracketGenGetPipelineStageTargetIndex(stageItem) : null;
+        return index != null ? index : this.getExpanderStageTarget(stepIndex);
     }
 
     isCompareSourceStepDisabled(stepIndex) {
@@ -1857,24 +1812,39 @@ class BracketGenerationApplet {
         if (this.isCompareSourceStepDisabled(stepIndex)) return;
         if (this.state.compareSourceStepIndex === stepIndex) {
             this.state.compareSourceStepIndex = null;
-            // clearBracketGenPhaseCompareSource: public/scripts/app.js
+            // clearBracketGenPhaseCompareSource: public/scripts/comp/compareViewManager.js
             if (typeof clearBracketGenPhaseCompareSource === 'function') {
                 clearBracketGenPhaseCompareSource();
             }
         } else {
             this.state.compareSourceStepIndex = stepIndex;
-            // tryCaptureBracketGenPhaseCompareSourceFromPreview: public/scripts/app.js
+            // tryCaptureBracketGenPhaseCompareSourceFromPreview: public/scripts/comp/compareViewManager.js
             if (typeof tryCaptureBracketGenPhaseCompareSourceFromPreview === 'function') {
                 tryCaptureBracketGenPhaseCompareSourceFromPreview();
             }
         }
-        this.renderSteps();
+        // only one stage is the source: the other check boxes clear without a re-render
+        this.stepsContainer?.querySelectorAll('.bracket-gen-compare-source').forEach((box) => {
+            box.checked = Number(box.dataset.stepIndex) === this.state.compareSourceStepIndex;
+        });
         this.updateChrome();
+    }
+
+    toggleUseStage0() {
+        this.saveStepTextareasToState();
+        this.state.useStage0 = !this.state.useStage0;
+        this.normalizeCompareSourceStepIndex();
+        this.renderSteps();
     }
 
     getSnapshot() {
         this.saveStepTextareasToState();
         this.saveStepNamesFromInputs();
+        return this.stateSnapshot();
+    }
+
+    /** The session as saved, from the state only (getSnapshot reads the text boxes first). */
+    stateSnapshot() {
         this.normalizeCompareSourceStepIndex();
         this.ensureStepNamesLength();
         return {
@@ -1891,113 +1861,86 @@ class BracketGenerationApplet {
         const migrated = bracketGenMigrateSnapshot(snapshot);
         this.state.keywords = migrated.keywords;
         this.state.keywordSteps = migrated.keywordSteps;
-        this.state.stepNames = Array.isArray(migrated.stepNames) ? [...migrated.stepNames] : [];
+        // every row gets a fresh id: saved files and MCP sessions repeat ids across loads
+        this.state.keywords.forEach((kw) => {
+            (this.state.keywordSteps[kw] || []).forEach((step) => { step.id = bracketGenNewStepId(kw); });
+        });
+        this.state.stepNames = (Array.isArray(migrated.stepNames) ? migrated.stepNames : [])
+            .map((name, i) => bracketGenStoredStepName(name, i));
         this.state.useStage0 = snapshot.useStage0 !== false;
         this.state.compareSourceStepIndex = migrated.compareSourceStepIndex ?? null;
-        this.state.activeKeyword = this.state.keywords[0] || '';
-        let maxSteps = 0;
-        this.state.keywords.forEach((kw) => {
-            const len = (this.state.keywordSteps[kw] || []).length;
-            if (len > maxSteps) maxSteps = len;
-        });
-        this.stepCounter = maxSteps;
+        if (!this.state.keywords.includes(this.state.activeKeyword)) {
+            this.state.activeKeyword = this.state.keywords[0] || '';
+        }
         this.syncKeywordStepCounts();
         this.ensureStepNamesLength();
         this.normalizeCompareSourceStepIndex();
     }
 
-    async addToDesktop() {
-        if (!desktopShortcuts) {
-            showGlassToast('error', null, 'Desktop shortcuts unavailable', false, 4000);
-            return;
-        }
-        if (!document.body.classList.contains('desktop-mode')) {
-            showGlassToast('info', null, 'Desktop mode required', false, 4000);
-            return;
-        }
-        const snapshot = this.getSnapshot();
-        const defaultLabel = this.state.keywords.length
-            ? `Phasewalker: ${this.state.keywords.join(', ')}`
-            : 'Phasewalker';
-
-        const shortcutName = await showInputDialog(
-            'Enter a name for this desktop shortcut.',
-            defaultLabel,
-            'Shortcut name',
-            [
-                { text: 'Add', value: 'ok', icon: 'fas fa-arrow-down-left', className: 'btn-primary' },
-                { text: 'Cancel', value: null, className: 'btn-secondary' }
-            ],
-            null,
-            { title: 'Add to Desktop', icon: 'fas fa-arrow-down-left' }
-        );
-        if (!shortcutName) return;
-
-        try {
-            await desktopShortcuts.addShortcut({
-                name: shortcutName,
-                type: 'bracket-generation',
-                data: { label: shortcutName, state: snapshot }
-            });
-            showGlassToast('success', null, 'Added to desktop', false, 3000, '<i class="fas fa-check"></i>');
-        } catch (err) {
-            console.error(err);
-            showGlassToast('error', null, 'Failed to add shortcut', false, 5000);
-        }
-    }
-
     async addStep() {
         if (this.state.keywords.length === 0) {
-            showGlassToast('warning', null, 'Add a keyword first', false, 4000, '<i class="fas fa-info-circle"></i>');
-            if (!(await this.promptAddKeyword())) return;
+            await this.promptAddKeyword();
+            return;
         }
         this.saveStepTextareasToState();
         this.saveStepNamesFromInputs();
         this.syncKeywordStepCounts();
-        const nextIndex = this.getMaxStepCount();
-        if (!Array.isArray(this.state.stepNames)) this.state.stepNames = [];
-        this.state.stepNames.push(`Step ${nextIndex + 1}`);
-        const baseId = `bracket_step_${this.stepCounter++}`;
         this.state.keywords.forEach((kw) => {
-            if (!this.state.keywordSteps[kw]) this.state.keywordSteps[kw] = [];
-            this.state.keywordSteps[kw].push({ id: `${baseId}_${kw}`, prompt: '', uc: '' });
+            this.state.keywordSteps[kw].push({ id: bracketGenNewStepId(kw), prompt: '', uc: '' });
         });
+        this.ensureStepNamesLength();
         this.normalizeCompareSourceStepIndex();
         this.renderSteps();
-        this.updateChrome();
+        const last = bracketGenIsAppletActive() && this.stepsContainer?.querySelector('.bracket-gen-step-item:last-child');
+        if (last) {
+            last.scrollIntoView({ block: 'nearest' });
+            last.querySelector('textarea[data-step-id]')?.focus();
+        }
     }
 
-    removeStep(stepId) {
-        const kw = this.state.activeKeyword;
-        if (!kw) return;
-        const steps = this.getActiveKeywordSteps();
-        if (this.getMaxStepCount() <= 1) {
-            showGlassToast('warning', null, 'At least one step is required', false, 3000);
-            return;
-        }
-        const removedIndex = steps.findIndex((s) => s.id === stepId);
-        if (removedIndex < 0) return;
+    removeStepAt(removedIndex) {
+        if (removedIndex < 0 || removedIndex >= this.getMaxStepCount()) return;
         this.saveStepTextareasToState();
         this.saveStepNamesFromInputs();
         this.state.keywords.forEach((k) => {
             const arr = this.state.keywordSteps[k] || [];
-            if (removedIndex < arr.length) {
-                this.state.keywordSteps[k] = arr.filter((_, i) => i !== removedIndex);
-            }
+            if (removedIndex < arr.length) arr.splice(removedIndex, 1);
         });
         if (this.state.stepNames && removedIndex < this.state.stepNames.length) {
             this.state.stepNames.splice(removedIndex, 1);
         }
-        if (this.state.compareSourceStepIndex !== null) {
-            if (removedIndex === this.state.compareSourceStepIndex) {
-                this.state.compareSourceStepIndex = null;
-            } else if (removedIndex < this.state.compareSourceStepIndex) {
-                this.state.compareSourceStepIndex -= 1;
-            }
+        const src = this.state.compareSourceStepIndex;
+        if (src !== null) {
+            if (removedIndex === src) this.state.compareSourceStepIndex = null;
+            else if (removedIndex < src) this.state.compareSourceStepIndex = src - 1;
         }
         this.normalizeCompareSourceStepIndex();
         this.renderSteps();
-        this.updateChrome();
+    }
+
+    /** Moves a stage (every keyword's text, its name and the comparison source go with it). */
+    moveStep(from, to) {
+        const max = this.getMaxStepCount();
+        if (from === to || from < 0 || to < 0 || from >= max || to >= max) return;
+        this.saveStepTextareasToState();
+        this.saveStepNamesFromInputs();
+        this.syncKeywordStepCounts();
+        const move = (arr) => {
+            const [row] = arr.splice(from, 1);
+            arr.splice(to, 0, row);
+        };
+        this.state.keywords.forEach((k) => move(this.state.keywordSteps[k]));
+        this.ensureStepNamesLength();
+        move(this.state.stepNames);
+        const src = this.state.compareSourceStepIndex;
+        if (src !== null) {
+            if (src === from) this.state.compareSourceStepIndex = to;
+            else if (from < src && to >= src) this.state.compareSourceStepIndex = src - 1;
+            else if (from > src && to <= src) this.state.compareSourceStepIndex = src + 1;
+        }
+        this.normalizeCompareSourceStepIndex();
+        this.renderSteps();
+        this.stepsContainer?.querySelector(`.bracket-gen-step-item[data-step-index="${to}"]`)?.scrollIntoView({ block: 'nearest' });
     }
 
     saveStepTextareasToState() {
@@ -2005,24 +1948,24 @@ class BracketGenerationApplet {
         const kw = this.state.activeKeyword;
         const field = this.state.activeField;
         if (!kw) return;
-        const steps = this.getActiveKeywordSteps();
-        steps.forEach((step) => {
-            const ta = this.stepsContainer.querySelector(`textarea[data-step-id="${step.id}"]`);
-            if (ta) {
-                step[field] = ta.value;
-            }
+        const byId = new Map();
+        this.stepsContainer.querySelectorAll('textarea[data-step-id]').forEach((ta) => byId.set(ta.dataset.stepId, ta));
+        this.getActiveKeywordSteps().forEach((step) => {
+            const ta = byId.get(step.id);
+            if (ta) step[field] = ta.value;
         });
     }
 
     /**
      * Append text to a Phasewalker step field (prompt or uc) for a keyword.
-     * promptTextareaContextMenu.js
+     * promptTextareaContextMenu.js, runCommandIndex.js
      */
     appendTextToStep(keyword, stepIndex, field, text) {
         const add = String(text || '').trim();
         if (!add) return false;
         const kw = String(keyword || '').trim();
         if (!kw || !this.state.keywordSteps[kw]) return false;
+        this.saveStepTextareasToState();
         this.syncKeywordStepCounts();
         const steps = this.state.keywordSteps[kw];
         const idx = Number(stepIndex);
@@ -2037,266 +1980,190 @@ class BracketGenerationApplet {
             const ta = this.stepsContainer.querySelector(`textarea[data-step-id="${step.id}"]`);
             if (ta) {
                 setTextareaValuePreservingUndo(ta, step[f]);
-                ta.dispatchEvent(new Event('input', { bubbles: true }));
-                if (typeof autoResizeTextarea === 'function') {
-                    autoResizeTextarea(ta);
-                }
+                bracketGenRefreshPromptTextarea(ta);
             }
         }
+        this.updateChrome();
         return true;
     }
 
-    syncStepTextareasFromState() {
-        if (!this.stepsContainer) return;
-        const kw = this.state.activeKeyword;
-        const field = this.state.activeField;
-        if (!kw) return;
-        this.getActiveKeywordSteps().forEach((step) => {
-            const ta = this.stepsContainer.querySelector(`textarea[data-step-id="${step.id}"]`);
-            if (ta) {
-                ta.value = step[field] || '';
-                if (typeof autoResizeTextarea === 'function') {
-                    autoResizeTextarea(ta);
-                }
+    /** One listener set for every stage box (rows are rebuilt on render). */
+    setupStepEvents() {
+        const list = this.stepsContainer;
+        if (!list || list.dataset.pwEventsWired === 'true') return;
+        list.dataset.pwEventsWired = 'true';
+        const rowIndex = (el) => {
+            const item = el.closest('.bracket-gen-step-item');
+            const idx = item ? parseInt(item.dataset.stepIndex, 10) : NaN;
+            return Number.isFinite(idx) ? idx : -1;
+        };
+        list.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-step-cmd]');
+            if (!btn || btn.disabled) return;
+            const idx = rowIndex(btn);
+            if (idx < 0) return;
+            const cmd = btn.dataset.stepCmd;
+            if (cmd === 'up') this.moveStep(idx, idx - 1);
+            else if (cmd === 'down') this.moveStep(idx, idx + 1);
+            else if (cmd === 'remove') this.removeStepAt(idx);
+        });
+        list.addEventListener('change', (e) => {
+            const target = e.target;
+            if (target.matches('.bracket-gen-compare-source')) {
+                this.toggleCompareSourceStep(rowIndex(target));
+            } else if (target.matches('.bracket-gen-step-name-input')) {
+                const idx = rowIndex(target);
+                this.setStepName(idx, target.value);
+                target.value = this.state.stepNames[idx] || '';
+                this.syncPipelineStageNameForStepIndex(idx);
+                this.updateChrome();
             }
         });
+        list.addEventListener('input', (e) => {
+            const target = e.target;
+            if (target.matches('textarea[data-step-id]')) {
+                const step = this.getActiveKeywordSteps().find((s) => s.id === target.dataset.stepId);
+                if (step) step[this.state.activeField] = target.value;
+                this.scheduleChrome();
+            } else if (target.matches('.bracket-gen-step-name-input')) {
+                this.setStepName(rowIndex(target), target.value);
+                this.scheduleChrome();
+            }
+        });
+        list.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.target.matches('.bracket-gen-step-name-input')) {
+                e.preventDefault();
+                e.target.closest('.bracket-gen-step-item')?.querySelector('textarea[data-step-id]')?.focus();
+            }
+        });
+        this.initializeStepDragDrop();
+    }
+
+    renderEmptyState(message) {
+        this.stepsContainer.innerHTML = `<p class="phasewalker-empty">${message}</p>`;
     }
 
     renderSteps() {
         if (!this.stepsContainer) return;
-        this.stepsContainer.innerHTML = '';
+        this.stepsContainer.textContent = '';
 
         if (this.state.keywords.length === 0 || !this.state.activeKeyword) {
-            this.stepsContainer.innerHTML =
-                '<p class="text-muted bracket-gen-empty-hint"><i class="fas fa-tag"></i> No keywords yet. Use the keyword menu in the title bar or press Alt+K to add one.</p>';
-            this.updateKeywordDropdownLabel();
+            this.renderEmptyState('There are no keywords. To add one, click Add Keyword on the Keyword menu.');
             this.updateChrome();
             return;
         }
 
         const steps = this.getActiveKeywordSteps();
         if (steps.length === 0) {
-            this.stepsContainer.innerHTML =
-                '<p class="text-muted bracket-gen-empty-hint">No steps for this keyword. Press Alt+A to add a stage.</p>';
-            this.updateKeywordDropdownLabel();
+            this.renderEmptyState('There are no stages. To add one, click Add Stage on the Stage menu.');
             this.updateChrome();
             return;
         }
 
-        const kw = this.state.activeKeyword;
         const field = this.state.activeField;
-        const fieldLabel = field === 'uc' ? 'UC' : 'Prompt';
+        const placeholder = this.fieldPlaceholder();
+        const count = steps.length;
         this.ensureStepNamesLength();
+        const frag = document.createDocumentFragment();
 
         steps.forEach((step, index) => {
-            const item = document.createElement('div');
-            item.className = 'character-prompt-item bracket-gen-step-item';
-            item.id = step.id;
+            const item = document.createElement('fieldset');
+            item.className = 'bracket-gen-step-item';
             item.dataset.stepId = step.id;
             item.dataset.stepIndex = String(index);
-
-            const value = step[field] || '';
-            // escapeHtml: public/scripts/comp/utilities.js
-            const stepLabel = escapeHtml(this.getStepDisplayName(index));
-            const stepHex = this.getBracketStepHexId(index);
-
+            const hex = this.getStepStageHexId(index);
+            const base = this.state.useStage0 && index === 0;
+            const sourceOff = this.isCompareSourceStepDisabled(index);
+            const sourceOn = !sourceOff && this.state.compareSourceStepIndex === index;
+            const nameId = `${step.id}_name`;
+            const sourceId = `${step.id}_source`;
+            // escapeHtml, escapeHtmlAttribute: public/scripts/comp/utilities.js
             item.innerHTML = `
-                <div class="character-prompt-tabs">
-                    <div class="tab-header">
-                        <div class="workspace-drag-handle" title="Drag to reorder">
-                            <i class="fas fa-grip-dots-vertical"></i>
-                        </div>
-                        <div class="left-controls">
-                            <div class="character-name-editable inline-name-edit">
-                                <input type="text" class="character-name-input hover-show bracket-gen-step-name-input" value="${stepLabel}" placeholder="Step ${index + 1}" title="Click to rename stage">
-                                <span class="character-name-input-placeholder bracket-gen-step-name-placeholder">${stepLabel}</span>
-                            </div>
-                            <span class="stage-hex-id" title="Step ${stepHex}">${stepHex}</span>
-                        </div>
-                        <div class="character-prompt-controls">
-                            <button type="button" class="btn-secondary btn-small toggle-btn bracket-gen-compare-source-btn${this.isCompareSourceStepDisabled(index) ? ' disabled' : ''}" data-step-index="${index}" data-state="${!this.isCompareSourceStepDisabled(index) && this.state.compareSourceStepIndex === index ? 'on' : 'off'}" title="${this.isCompareSourceStepDisabled(index) ? 'Last stage cannot be a comparison source' : 'Use this stage as comparison source when generating later stages'}"${this.isCompareSourceStepDisabled(index) ? ' disabled' : ''}>
-                                <i class="fas fa-eye-dropper"></i>
-                            </button>
-                            <button type="button" class="btn-danger btn-small bracket-gen-delete-step" data-step-id="${escapeHtmlAttribute(step.id)}" title="Remove step">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="tab-content">
-                        <div class="tab-pane active"></div>
-                    </div>
+                <legend class="bracket-gen-step-legend" title="Drag to move this stage">Stage ${hex}${base ? ' (base image)' : ''}</legend>
+                <div class="bracket-gen-step-head">
+                    <label class="bracket-gen-step-name-label" for="${escapeHtmlAttribute(nameId)}">Name:</label>
+                    <input type="text" id="${escapeHtmlAttribute(nameId)}" class="bracket-gen-step-name-input" value="${escapeHtmlAttribute(this.state.stepNames[index] || '')}" placeholder="Step ${index + 1}" maxlength="48" spellcheck="false" autocomplete="off">
+                    <span class="bracket-gen-compare-source-wrap" title="${sourceOff ? 'The last stage cannot be a comparison source' : 'Compare later stages with this stage\'s image'}">
+                        <input type="checkbox" id="${escapeHtmlAttribute(sourceId)}" class="bracket-gen-compare-source" data-step-index="${index}"${sourceOn ? ' checked' : ''}${sourceOff ? ' disabled' : ''}>
+                        <label for="${escapeHtmlAttribute(sourceId)}">Comparison source</label>
+                    </span>
+                    <span class="bracket-gen-step-tools" role="toolbar">
+                        <button type="button" data-step-cmd="up" title="Move Up"${index === 0 ? ' disabled' : ''}><span class="phasewalker-tb-icon" data-icon="move-up"></span></button>
+                        <button type="button" data-step-cmd="down" title="Move Down"${index === count - 1 ? ' disabled' : ''}><span class="phasewalker-tb-icon" data-icon="move-down"></span></button>
+                        <button type="button" data-step-cmd="remove" title="Remove Stage"${count <= 1 ? ' disabled' : ''}><span class="phasewalker-tb-icon" data-icon="delete"></span></button>
+                    </span>
                 </div>
             `;
 
-            const pane = item.querySelector('.tab-pane');
+            // createEditableTextareaContainer: public/scripts/comp/textareaUtils.js
             const container = createEditableTextareaContainer({
-                value,
+                value: step[field] || '',
                 rows: 3,
-                placeholder: kw ? `Enter ${fieldLabel.toLowerCase()} for ${kw}…` : 'Select a keyword…',
+                placeholder,
                 dataAttributes: { 'step-id': step.id }
             });
-            pane.appendChild(container);
-
+            item.appendChild(container);
             const ta = container.querySelector('textarea');
             if (ta && typeof setupEditableTextarea === 'function') {
                 setupEditableTextarea(ta);
             } else if (ta && typeof wireManualStylePromptTextarea === 'function') {
                 wireManualStylePromptTextarea(ta);
             }
-            bracketGenRefreshPromptTextarea(ta);
-
-            if (ta) {
-                ta.addEventListener('input', () => {
-                    this.saveStepTextareasToState();
-                    this.updateChrome();
-                });
-            }
-
-            item.querySelector('.bracket-gen-delete-step')?.addEventListener('click', () => {
-                this.removeStep(step.id);
-            });
-
-            item.querySelector('.bracket-gen-compare-source-btn')?.addEventListener('click', (e) => {
-                const btn = e.currentTarget;
-                if (btn.disabled || btn.classList.contains('disabled')) return;
-                const stepIndex = parseInt(btn.dataset.stepIndex, 10);
-                if (!Number.isFinite(stepIndex)) return;
-                this.toggleCompareSourceStep(stepIndex);
-            });
-
-            this.wireBracketGenStepNameInput(item, index);
-
-            this.stepsContainer.appendChild(item);
+            frag.appendChild(item);
         });
 
-        this.initializeStepDragDrop();
-        this.updateKeywordDropdownLabel();
+        this.stepsContainer.appendChild(frag);
         bracketGenRefreshAllStepTextareas(this.stepsContainer);
         this.updateChrome();
     }
 
+    /** Dragging a stage by its group box caption reorders the stages (moveStep). */
     initializeStepDragDrop() {
         const list = this.stepsContainer;
         if (!list) return;
-
-        let draggedItem = null;
-        let dragMidpoints = null;
-        let dragPendingY = null;
-        let dragRafId = null;
-
-        list.querySelectorAll('.workspace-drag-handle').forEach((handle) => {
-            if (handle.dataset.bracketDragInit === 'true') return;
-            handle.dataset.bracketDragInit = 'true';
-
-            handle.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                draggedItem = handle.closest('.bracket-gen-step-item');
-                if (!draggedItem) return;
-                draggedItem.classList.add('dragging');
-                document.body.style.userSelect = 'none';
-                dragPendingY = null;
-                if (dragRafId != null) {
-                    cancelAnimationFrame(dragRafId);
-                    dragRafId = null;
-                }
-
-                const rebuildDragMidpoints = () => {
-                    const items = Array.from(list.querySelectorAll('.bracket-gen-step-item')).filter((el) => el !== draggedItem);
-                    dragMidpoints = items.map((item) => {
-                        const r = item.getBoundingClientRect();
-                        return { item, mid: r.top + r.height / 2 };
-                    });
-                };
-                rebuildDragMidpoints();
-
-                const dragScope = new AbortController();
-                const dragSignal = dragScope.signal;
-
-                const flushBracketStepDrag = () => {
-                    dragRafId = null;
-                    if (!draggedItem || dragPendingY == null || !dragMidpoints) return;
-                    const clientY = dragPendingY;
-                    for (const entry of dragMidpoints) {
-                        if (clientY < entry.mid) {
-                            if (draggedItem.nextSibling !== entry.item) {
-                                list.insertBefore(draggedItem, entry.item);
-                                rebuildDragMidpoints();
-                            }
-                            return;
-                        }
-                    }
-                    if (list.lastElementChild !== draggedItem) {
-                        list.appendChild(draggedItem);
-                        rebuildDragMidpoints();
-                    }
-                };
-
-                const onMove = (ev) => {
-                    ev.preventDefault();
-                    if (!draggedItem) return;
-                    dragPendingY = ev.clientY;
-                    if (dragRafId == null) {
-                        dragRafId = requestAnimationFrame(flushBracketStepDrag);
-                    }
-                };
-
-                const onUp = () => {
-                    if (dragRafId != null) {
-                        cancelAnimationFrame(dragRafId);
-                        dragRafId = null;
-                        flushBracketStepDrag();
-                    }
-                    dragScope.abort();
-                    if (draggedItem) draggedItem.classList.remove('dragging');
-                    document.body.style.userSelect = '';
-                    this.saveStepTextareasToState();
-                    const kw = this.state.activeKeyword;
-                    if (!kw) {
-                        draggedItem = null;
-                        dragMidpoints = null;
-                        dragPendingY = null;
-                        return;
-                    }
-                    const order = Array.from(list.querySelectorAll('.bracket-gen-step-item')).map((el) => el.dataset.stepId);
-                    const steps = this.getActiveKeywordSteps();
-                    const prevIds = steps.map((s) => s.id);
-                    const orderIndices = order.map((id) => prevIds.indexOf(id)).filter((i) => i >= 0);
-                    const oldNames = [...(this.state.stepNames || [])];
-                    this.state.stepNames = orderIndices.map((i, pos) => oldNames[i] || `Step ${pos + 1}`);
-                    this.state.keywords.forEach((k) => {
-                        const arr = this.state.keywordSteps[k] || [];
-                        if (arr.length === prevIds.length) {
-                            this.state.keywordSteps[k] = orderIndices.map((i) => arr[i]);
-                        }
-                    });
-                    if (this.state.compareSourceStepIndex !== null && this.state.compareSourceStepIndex < prevIds.length) {
-                        const movedId = prevIds[this.state.compareSourceStepIndex];
-                        const newIdx = order.indexOf(movedId);
-                        this.state.compareSourceStepIndex = newIdx >= 0 ? newIdx : null;
-                    }
-                    this.normalizeCompareSourceStepIndex();
-                    draggedItem = null;
-                    dragMidpoints = null;
-                    dragPendingY = null;
-                    this.renderSteps();
-                };
-
-                document.addEventListener('mousemove', onMove, { signal: dragSignal });
-                document.addEventListener('mouseup', onUp, { signal: dragSignal });
+        list.addEventListener('mousedown', (e) => {
+            const legend = e.button === 0 ? e.target.closest('.bracket-gen-step-legend') : null;
+            if (!legend) return;
+            const dragged = legend.closest('.bracket-gen-step-item');
+            const from = parseInt(dragged?.dataset.stepIndex, 10);
+            if (!Number.isFinite(from)) return;
+            e.preventDefault();
+            const items = Array.from(list.querySelectorAll('.bracket-gen-step-item'));
+            const mids = items.map((el) => {
+                const r = el.getBoundingClientRect();
+                return r.top + r.height / 2;
             });
+            let to = from;
+            dragged.classList.add('dragging');
+            const scope = new AbortController();
+            document.addEventListener('mousemove', (ev) => {
+                ev.preventDefault();
+                let next = mids.findIndex((mid) => ev.clientY < mid);
+                if (next === -1) next = items.length - 1;
+                else if (next > from) next -= 1;
+                if (next === to) return;
+                to = next;
+                items.forEach((el, i) => el.classList.toggle('drop-before', i !== from && i === (to < from ? to : -1)));
+                items.forEach((el, i) => el.classList.toggle('drop-after', i !== from && i === (to > from ? to : -1)));
+            }, { signal: scope.signal });
+            document.addEventListener('mouseup', () => {
+                scope.abort();
+                items.forEach((el) => el.classList.remove('dragging', 'drop-before', 'drop-after'));
+                if (to !== from) this.moveStep(from, to);
+            }, { signal: scope.signal });
         });
     }
 
     compileStages() {
         if (!bracketGenIsEditorOpen()) {
-            showGlassToast('warning', null, 'Open the editor first', false, 4000, '<i class="fas fa-edit"></i>');
+            showGlassToast('warning', null, 'Open the Studio first', false, 4000);
             return false;
         }
         this.saveStepTextareasToState();
         this.saveStepNamesFromInputs();
         const maxSteps = this.getMaxStepCount();
         if (maxSteps === 0 || this.state.keywords.length === 0) {
-            showGlassToast('warning', null, 'Add at least one keyword and one step', false, 4000);
+            showGlassToast('warning', null, 'Add at least one keyword and one stage', false, 4000);
             return false;
         }
         if (typeof addPipelineStage !== 'function') {
@@ -2304,44 +2171,41 @@ class BracketGenerationApplet {
             return false;
         }
 
+        const previousNames = (typeof requestBodyReplacements !== 'undefined' ? requestBodyReplacements : [])
+            .filter((r) => r.managed && r.name)
+            .map((r) => r.name);
         deleteAllManagedBracketArtifacts();
+        const container = document.getElementById('pipelineStagesContainer');
 
         for (let i = 0; i < maxSteps; i++) {
-            const stageTarget = this.getExpanderStageTarget(i);
             const stepsAtIndex = (kw) => {
                 const steps = this.state.keywordSteps[kw] || [];
                 return i < steps.length ? steps[i] : null;
             };
-            const hasStepData = this.state.keywords.some((kw) => stepsAtIndex(kw));
 
             if (this.state.useStage0 && i === 0) {
-                if (hasStepData) {
-                    const phaseStepName = this.resolvePhaseNameForCompile(0);
-                    let step0NamePending = phaseStepName;
-                    this.state.keywords.forEach((kw) => {
-                        const step = stepsAtIndex(kw);
-                        if (!step) return;
-                        if (bracketGenHasReplacementContent(step.prompt)) {
-                            bracketGenPushManagedExpander(`${kw}_P`, step.prompt, 0, step0NamePending);
-                            step0NamePending = '';
-                        }
-                        if (bracketGenHasReplacementContent(step.uc)) {
-                            bracketGenPushManagedExpander(`${kw}_N`, step.uc, 0, step0NamePending);
-                            step0NamePending = '';
-                        }
-                    });
-                }
+                let step0NamePending = this.resolvePhaseNameForCompile(0);
+                this.state.keywords.forEach((kw) => {
+                    const step = stepsAtIndex(kw);
+                    if (!step) return;
+                    if (bracketGenHasReplacementContent(step.prompt)) {
+                        bracketGenPushManagedExpander(`${kw}_P`, step.prompt, 0, step0NamePending);
+                        step0NamePending = '';
+                    }
+                    if (bracketGenHasReplacementContent(step.uc)) {
+                        bracketGenPushManagedExpander(`${kw}_N`, step.uc, 0, step0NamePending);
+                        step0NamePending = '';
+                    }
+                });
                 continue;
             }
 
-            const defaultTypeLabel = this.resolvePhaseNameForCompile(i);
-            addPipelineStage('variation', { useBaseImage: false, displayName: defaultTypeLabel || undefined });
-
-            const container = document.getElementById('pipelineStagesContainer');
+            const phaseName = this.resolvePhaseNameForCompile(i);
+            addPipelineStage('variation', { useBaseImage: false, displayName: phaseName || undefined });
             const stageItem = container ? container.lastElementChild : null;
             const stageId = stageItem ? stageItem.id : null;
-            if (stageId && defaultTypeLabel && typeof setPipelineStageDisplayName === 'function') {
-                setPipelineStageDisplayName(stageId, defaultTypeLabel);
+            if (stageId && phaseName && typeof setPipelineStageDisplayName === 'function') {
+                setPipelineStageDisplayName(stageId, phaseName);
             }
             if (stageItem && typeof applyManagedPipelineStageUi === 'function') {
                 applyManagedPipelineStageUi(stageId, true);
@@ -2349,14 +2213,8 @@ class BracketGenerationApplet {
                 stageItem.dataset.managed = 'true';
                 stageItem.classList.add('managed-stage');
             }
-            if (stageItem) {
-                if (this.state.compareSourceStepIndex === i) {
-                    stageItem.dataset.bracketCompareSource = 'true';
-                } else {
-                    delete stageItem.dataset.bracketCompareSource;
-                }
-            }
-
+            // the expanders point at the stage's real place: stages the user already had come first
+            const stageTarget = (stageItem && bracketGenGetPipelineStageTargetIndex(stageItem)) || this.getExpanderStageTarget(i);
             this.state.keywords.forEach((kw) => {
                 const step = stepsAtIndex(kw);
                 if (!step) return;
@@ -2365,16 +2223,21 @@ class BracketGenerationApplet {
             });
         }
 
+        // placeholders of expanders this compile no longer writes (a deleted keyword, UC that was
+        // cleared) would reach NovelAI as literal text: take them out of the prompts
+        const nowNames = new Set(requestBodyReplacements.filter((r) => r.managed).map((r) => r.name));
+        const stale = [...new Set(previousNames)].filter((name) => !nowNames.has(name));
+        if (stale.length) bracketGenStripPlaceholders(stale);
+
         const manualPrompt = document.getElementById('manualPrompt');
         const manualUc = document.getElementById('manualUc');
         const positiveText = bracketGenCollectPositiveFields(null);
         const negativeText = bracketGenCollectNegativeFields(null);
         this.state.keywords.forEach((kw) => {
-            if (!bracketGenFieldContainsToken(positiveText, `${kw}_P`)) {
+            if (nowNames.has(`${kw}_P`) && !bracketGenFieldContainsToken(positiveText, `${kw}_P`)) {
                 bracketGenAppendPlaceholderIfMissing(manualPrompt, `${kw}_P`);
             }
-            if (bracketGenKeywordHasFieldContent(kw, 'uc', this.state.keywordSteps)
-                && !bracketGenFieldContainsToken(negativeText, `${kw}_N`)) {
+            if (nowNames.has(`${kw}_N`) && !bracketGenFieldContainsToken(negativeText, `${kw}_N`)) {
                 bracketGenAppendPlaceholderIfMissing(manualUc, `${kw}_N`);
             }
         });
@@ -2387,102 +2250,76 @@ class BracketGenerationApplet {
         if (typeof enforceManagedStageSandwichRules === 'function') {
             enforceManagedStageSandwichRules();
         }
-        if (typeof syncManagedBracketEditorSaveFlags === 'function') {
-            syncManagedBracketEditorSaveFlags();
-        }
+        syncManagedBracketEditorSaveFlags();
         if (typeof updatePipelineStagesHeaderVisibility === 'function') {
             updatePipelineStagesHeaderVisibility();
         }
 
-        showGlassToast('success', null, `Compiled ${maxSteps} phase(s)`, false, 3000, '<i class="fas fa-hammer"></i>');
+        showGlassToast('success', null, `Compiled ${maxSteps} stage${maxSteps === 1 ? '' : 's'}`, false, 3000);
         this.updateChrome();
         return true;
     }
 
-    deleteStages() {
+    async deleteStages() {
+        if (!hasManagedBracketArtifacts()) return;
+        const confirmed = await showConfirmationDialog(
+            'Are you sure you want to remove the compiled Phasewalker stages and expanders from the Studio? Their placeholders stay in the prompt.',
+            [
+                { text: 'Yes', value: true, className: 'btn-standard primary' },
+                { text: 'No', value: false, className: 'btn-standard' }
+            ],
+            null,
+            { title: 'Delete Compiled Stages' }
+        );
+        if (!confirmed) return;
         deleteAllManagedBracketArtifacts();
-        if (typeof syncManagedBracketEditorSaveFlags === 'function') {
-            syncManagedBracketEditorSaveFlags();
-        }
         this.updateChrome();
-        showGlassToast('success', null, 'Removed managed stages from editor', false, 3000, '<i class="fas fa-trash-alt"></i>');
+        showGlassToast('success', null, 'Removed the compiled stages from the Studio', false, 3000);
     }
 
     async open(options = {}) {
         if (!this.modal) this.init();
         if (!this.modal) return;
 
-        if (options.vfsFile) {
-            this._vfsFile = {
-                id: options.vfsFile.id,
-                name: options.vfsFile.name,
-                path: options.vfsFile.path || ''
-            };
-            this._desktopShortcut = null;
-            const migrated = bracketGenMigrateSnapshot(options.state);
-            this._savedSnapshot = {
-                keywords: migrated.keywords,
-                keywordSteps: JSON.parse(JSON.stringify(migrated.keywordSteps)),
-                stepNames: Array.isArray(migrated.stepNames) ? [...migrated.stepNames] : [],
-                useStage0: options.state?.useStage0 !== false,
-                compareSourceStepIndex: migrated.compareSourceStepIndex ?? null
-            };
-        } else if (options.desktopShortcut) {
-            this._desktopShortcut = {
-                id: options.desktopShortcut.id,
-                name: options.desktopShortcut.name
-            };
-            this._vfsFile = null;
-            const migrated = bracketGenMigrateSnapshot(options.state);
-            this._savedSnapshot = {
-                keywords: migrated.keywords,
-                keywordSteps: JSON.parse(JSON.stringify(migrated.keywordSteps)),
-                stepNames: Array.isArray(migrated.stepNames) ? [...migrated.stepNames] : [],
-                useStage0: options.state?.useStage0 !== false,
-                compareSourceStepIndex: migrated.compareSourceStepIndex ?? null
-            };
-        } else {
-            this._desktopShortcut = null;
-            this._vfsFile = null;
-            this._savedSnapshot = null;
-        }
-
         if (options.state) {
-            this.hydrateFromSnapshot(options.state);
-            this._pendingAutoCompile = options.autoCompile === true;
-        } else if (bracketGenIsEditorOpen() && hasManagedBracketArtifacts()) {
-            const rebuilt = rebuildToolStateFromEditor();
-            if (rebuilt) {
-                this.hydrateFromSnapshot(rebuilt);
+            // a file or the Atelier bag replacing work in an open window asks first
+            const visible = !this.modal.classList.contains('hidden');
+            if (visible && !options.skipDiscardCheck && !(await this.confirmDiscardChanges())) return;
+            if (options.vfsFile) {
+                this._vfsFile = { id: options.vfsFile.id, name: options.vfsFile.name, path: options.vfsFile.path || '' };
+                this._desktopShortcut = null;
+            } else if (options.desktopShortcut) {
+                this._desktopShortcut = { id: options.desktopShortcut.id, name: options.desktopShortcut.name };
+                this._vfsFile = null;
+            } else {
+                this._desktopShortcut = null;
+                this._vfsFile = null;
             }
-        } else {
-            this.state.useStage0 = true;
+            this.hydrateFromSnapshot(options.state);
+            this._savedSnapshot = this.boundDocument() ? this.stateSnapshot() : null;
+        } else if (!this.hasToolData() && bracketGenIsEditorOpen() && hasManagedBracketArtifacts()) {
+            const rebuilt = rebuildToolStateFromEditor();
+            if (rebuilt) this.hydrateFromSnapshot(rebuilt);
         }
 
-        if (this.state.keywords.length === 0) {
-            // Empty — user adds keyword via dropdown first
-        } else if (this.getActiveKeywordSteps().length === 0) {
-            this.addStep();
+        if (this.state.keywords.length && this.getActiveKeywordSteps().length === 0) {
+            this.syncKeywordStepCounts();
+            if (this.getMaxStepCount() === 0) {
+                this.state.keywords.forEach((kw) => this.state.keywordSteps[kw].push({ id: bracketGenNewStepId(kw), prompt: '', uc: '' }));
+            }
         }
-
         if (!this.state.activeKeyword && this.state.keywords.length) {
             this.state.activeKeyword = this.state.keywords[0];
         }
 
         this.renderSteps();
         openModal(this.modal);
-        requestAnimationFrame(() => {
-            bracketGenRefreshAllStepTextareas(this.stepsContainer);
-        });
+        requestAnimationFrame(() => bracketGenRefreshAllStepTextareas(this.stepsContainer));
 
-        this.updateChrome();
-
-        if (this._pendingAutoCompile) {
-            this._pendingAutoCompile = false;
-            if (bracketGenIsEditorOpen()) {
-                this.compileStages();
-            }
+        if (options.state && options.autoCompile === true && bracketGenIsEditorOpen()) {
+            this.compileStages();
         }
+        this.updateChrome();
     }
 
     close() {
@@ -2494,28 +2331,35 @@ class BracketGenerationApplet {
     }
 
     async requestClose() {
-        if (this._skipCloseConfirm) {
+        if (this._skipCloseConfirm || this.shouldSkipCloseConfirm()) {
             this.close();
             return;
         }
-        if (this.shouldSkipCloseConfirm()) {
+        const dirty = this.isShortcutDirty();
+        const needs = this.needsCompile() && bracketGenIsEditorOpen();
+        let message = 'The Studio does not have these stages compiled. Do you want to compile them before closing?';
+        let buttons = [
+            { text: 'Compile', value: 'compile', className: 'btn-standard primary' },
+            { text: "Don't Compile", value: 'exit', className: 'btn-standard' },
+            { text: 'Cancel', value: 'cancel', className: 'btn-standard' }
+        ];
+        if (dirty) {
+            message = `Do you want to save changes to ${escapeHtml(this.documentName())}?`;
+            buttons = [
+                { text: 'Save', value: 'save', className: 'btn-standard primary' },
+                { text: "Don't Save", value: 'exit', className: 'btn-standard' },
+                { text: 'Cancel', value: 'cancel', className: 'btn-standard' }
+            ];
+        } else if (!needs) {
             this.close();
             return;
         }
-        const choice = await showConfirmationDialog(
-            'Close Phasewalker?',
-            [
-                { text: 'Compile', value: 'compile', icon: 'fas fa-hammer', className: 'btn-primary' },
-                { text: 'Exit', value: 'exit', icon: 'fas fa-right-from-bracket', className: 'btn-secondary' },
-                { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
-            ],
-            null,
-            { title: 'Phasewalker', icon: 'fas fa-layer-group' }
-        );
+        const choice = await showConfirmationDialog(message, buttons, null, { title: 'Phasewalker' });
         if (choice === 'compile') {
-            if (this.compileStages()) {
-                this.close();
-            }
+            if (this.compileStages()) this.close();
+        } else if (choice === 'save') {
+            await this.saveBound();
+            if (!this.isShortcutDirty()) this.close();
         } else if (choice === 'exit') {
             this.close();
         }

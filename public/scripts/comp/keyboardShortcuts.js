@@ -1239,8 +1239,8 @@ function handleKeyDown(event) {
             if (shouldHandleBracketGenShortcuts && typeof bracketGenerationApplet !== 'undefined' && bracketGenerationApplet) {
                 event.preventDefault();
                 event.stopPropagation();
+                // compileStages shows its own result toast
                 bracketGenerationApplet.compileStages();
-                showShortcutActionToast('Compiled Stages');
                 break;
             }
             if (!shouldHandleManualModalActions) break;

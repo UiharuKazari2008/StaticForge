@@ -768,7 +768,8 @@
             return { ok: false, error: 'Phasewalker is not available' };
         }
         const compile = data.compile !== false && studioEditorIsOpen();
-        await openBracketGenerationApplet({ state, autoCompile: compile });
+        // skipDiscardCheck: an MCP call cannot answer Phasewalker's "save changes?" box
+        await openBracketGenerationApplet({ state, autoCompile: compile, skipDiscardCheck: true });
         // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
         showAgentSessionTrayNotice('update', data);
         const applet = bracketGenerationApplet;
@@ -807,7 +808,8 @@
         const names = snapshot.stepNames || [];
         return steps.map((step, index) => ({
             index,
-            name: names[index] || '',
+            // Phasewalker stores the default "Step N" name blank; phases still answer to it
+            name: names[index] || `Step ${index + 1}`,
             prompt: String((step && step.prompt) || '').slice(0, 180)
         }));
     }
