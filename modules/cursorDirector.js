@@ -6568,6 +6568,17 @@ function parseDynagenAnswer(text) {
     return normalizeDynagenAnswer(data);
 }
 
+// Cut a Rentan line to max characters at a word boundary, with "..." (a cut mid-word read as a typo
+// in the Reality Crossover window's Applied rows)
+function clipWords(text, max) {
+    const value = String(text || '').trim();
+    if (value.length <= max) return value;
+    const room = value.slice(0, max - 3);
+    const space = room.search(/\s\S*$/);
+    const cut = space > max * 0.6 ? room.slice(0, space) : room;
+    return `${cut.replace(/[\s,;:.\-]+$/, '')}...`;
+}
+
 function normalizeDynagenAnswer(data) {
     const expanders = (Array.isArray(data.expanders) ? data.expanders : [])
         .map((entry) => {
@@ -6575,17 +6586,17 @@ function normalizeDynagenAnswer(data) {
                 prefix: String((entry && (entry.prefix || entry.name)) || '').replace(/^!/, '').trim(),
                 value: String((entry && entry.value) || '').trim()
             };
-            const reason = String((entry && entry.reason) || '').trim().slice(0, 240);
+            const reason = clipWords(entry && entry.reason, 240);
             if (reason) out.reason = reason;
             return out;
         })
         .filter((entry) => /^dg_[a-z0-9_]+$/i.test(entry.prefix) && entry.value);
     if (!expanders.length) throw new Error('Yumiya returned no dg_ expanders');
-    const out = { expanders, summary: String(data.summary || '').slice(0, 300) };
+    const out = { expanders, summary: clipWords(data.summary, 300) };
     const applied = data.applied && typeof data.applied === 'object' && !Array.isArray(data.applied) ? data.applied : {};
     out.applied = {};
     Object.keys(applied).forEach((key) => {
-        const line = String(applied[key] || '').trim().slice(0, 240);
+        const line = clipWords(applied[key], 240);
         if (line) out.applied[key] = line;
     });
     if (typeof data.prompt === 'string' && data.prompt.trim()) out.prompt = data.prompt.trim();
