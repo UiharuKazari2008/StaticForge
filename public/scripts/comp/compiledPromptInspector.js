@@ -1,11 +1,11 @@
 /**
- * Compiled Prompt Inspector (Phase 1 — app.js refactor)
+ * Compiled Prompt Inspector: the Reality Crossover Information tool window (#compiledPromptModal),
+ * a light Vista window (css/compiled-prompt-lcd.css): Rentan's scene cards on the Sidebar Weather
+ * gadget's faces, then the readings and Rentan's record as a grouped Property / Value list.
  *
- * Modal viewer and clear handler for Rentan compiled prompts.
- * Extracted from public/scripts/app.js; originals remain until manifest removal.
- *
- * Dependencies (remain in app.js for now): dynamicCarousel, clearDynamicGenerationLockState,
- * updateDynamicGenerationToggleBtn, showGlassToast, showConfirmationDialog, openModal, closeModal.
+ * Dependencies: escapeHtml (utilities.js), showGlassToast, openModal / closeModal (modalUtils.js),
+ * toggleWeatherUnits / togglePeriodDetails / calculateSeasonProgress / getSeasonIcon
+ * (dynamicGenerationOverrides.js).
  */
 
 // Show compiled prompt modal
@@ -31,108 +31,96 @@ function showCompiledPromptModal(compiledPromptData = null) {
 
     const contextContent = buildCompiledContextHtml(compiled);
 
-    // Build reasoning section
-    let reasoningContent = '';
-    if (compiled.reasoning) {
-        reasoningContent = `<div class="reasoning-content">${compiled.reasoning}</div>`;
-    }
+    // Rentan's own record of the compile: who wrote it, when, and what it set (escapeHtml:
+    // public/scripts/comp/utilities.js). A grouped property list, as a Details tab shows one.
+    const stamp = (value) => (value ? new Date(value).toLocaleString() : null);
+    const author = compiled.source === 'agent' ? 'Agent' : 'Wren';
+    const groups = [
+        crossoverPropGroup('Rentan', [
+            [author, compiled.summary],
+            ['Created', stamp(compiled.timestamp)],
+            ['Expires', stamp(compiled.expiresAt)],
+            ['Cache', compiled.cache_locked ? 'Locked' : null],
+            ['Context', compiled.context_locked ? 'Locked' : null]
+        ]),
+        crossoverPropGroup('Expanders', (Array.isArray(compiled.dg_expanders) ? compiled.dg_expanders : [])
+            .map((entry) => [`!${entry.prefix || ''}`, entry.value])),
+        crossoverPropGroup('Applied', Object.entries(compiled.applied || {})
+            .map(([control, line]) => [crossoverLabel(control), line]))
+    ].filter(Boolean);
+    const metadataContent = groups.length ? crossoverPropList(groups.join('')) : '';
 
-    // Build metadata section using individual card elements like weather
-    let metadataContent = '';
-    // escapeHtml: public/scripts/comp/utilities.js
-    const metadataItems = [
-        { label: 'Timestamp', value: compiled.timestamp ? new Date(compiled.timestamp).toLocaleString() : null, icon: 'fa-clock' },
-        { label: 'Expires', value: compiled.expiresAt ? new Date(compiled.expiresAt).toLocaleString() : null, icon: 'fa-hourglass-half' },
-        { label: compiled.source === 'agent' ? 'Agent' : 'Wren', value: compiled.summary ? escapeHtml(compiled.summary) : null, icon: 'fa-feather' },
-        ...(Array.isArray(compiled.dg_expanders) ? compiled.dg_expanders : []).map(entry => ({
-            label: `!${escapeHtml(entry.prefix || '')}`,
-            value: entry.value ? escapeHtml(entry.value) : null,
-            icon: 'fa-wand-magic-sparkles'
-        })),
-        ...Object.entries(compiled.applied || {}).map(([control, line]) => ({
-            label: escapeHtml(control),
-            value: escapeHtml(line),
-            icon: 'fa-check'
-        }))
-    ].filter(item => item.value !== null);
+    content.innerHTML = [contextContent, metadataContent].filter(Boolean).join('')
+        || '<p class="crossover-empty">This compile has no scene or Rentan details.</p>';
 
-    if (metadataItems.length > 0) {
-        metadataContent = metadataItems.map(item => `
-            <div class="weather-detail-card">
-                <div class="weather-detail-icon">
-                    <i class="fas ${item.icon}"></i>
-                </div>
-                <div class="weather-detail-content">
-                    <div class="weather-detail-label">${item.label}</div>
-                    <div class="weather-detail-value">${item.value}</div>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    // Combine all sections
-    content.innerHTML = [
-        contextContent,
-        metadataContent
-    ].filter(section => section).join('');
-
-    // Show modal
     openModal(modal);
-
-    // Focus management for accessibility
     modal.focus();
+}
+
+// ---- property list: a white list view with Property / Value columns and Explorer group
+// headers (css/compiled-prompt-lcd.css). Values are escaped here unless passed as { html }.
+
+function crossoverLabel(key) {
+    return String(key || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function crossoverPropRow(name, value) {
+    if (value === null || value === undefined || value === '') return '';
+    const html = value && typeof value === 'object' && 'html' in value
+        ? value.html
+        : escapeHtml(typeof value === 'object' ? JSON.stringify(value) : String(value));
+    return `<div class="crossover-prop" role="row"><span class="crossover-prop-name" role="cell">${escapeHtml(String(name))}</span><span class="crossover-prop-value selectable" role="cell">${html}</span></div>`;
+}
+
+function crossoverPropGroup(title, rows) {
+    const body = rows.map(([name, value]) => crossoverPropRow(name, value)).join('');
+    if (!body) return '';
+    return `<div class="crossover-group" role="rowgroup"><div class="crossover-group-head">${escapeHtml(title)}</div>${body}</div>`;
+}
+
+function crossoverPropList(groupsHtml) {
+    if (!groupsHtml) return '';
+    return `<div class="crossover-props" role="table"><div class="crossover-props-head" role="row"><span role="columnheader">Property</span><span role="columnheader">Value</span></div>${groupsHtml}</div>`;
+}
+
+// Rentan's weather vocabulary (modules/dynamicGenerationHandlers.js mapOpenMeteoCondition) as the
+// Sidebar Weather gadget words it; code 0 is stored as "none" (a clear sky).
+const CROSSOVER_CONDITION_NAMES = {
+    none: 'Clear',
+    'clear sky': 'Clear',
+    'few clouds': 'Mostly Clear',
+    'mainly clear': 'Mostly Clear',
+    'partly cloudy': 'Partly Cloudy',
+    cloudy: 'Cloudy',
+    overcast: 'Cloudy'
+};
+
+function crossoverConditionName(condition) {
+    const key = String(condition || '').toLowerCase();
+    if (!key) return 'Unknown';
+    return CROSSOVER_CONDITION_NAMES[key] || crossoverLabel(key);
+}
+
+// The Weather gadget's face, as vistaSidebar.js picks it: black at night, else grey under cloud,
+// rain, snow, fog and storms, else blue.
+function crossoverGadgetFace(condition, isNight) {
+    if (isNight) return 'gadget-face-black';
+    if (/drizzle|rain|snow|fog|thunder|hail|showers|sleet|overcast|^cloudy$/i.test(String(condition || ''))) return 'gadget-face-gray';
+    return 'gadget-face-blue';
+}
+
+// Tonight's moon, for a clear night sky (the gadget draws the moon phase there; same formula as
+// vistaSidebar.js vsbMoonPhase)
+function crossoverMoonPhase() {
+    const phases = ['new', 'waxing-crescent', 'first-quarter', 'waxing-gibbous', 'full', 'waning-gibbous', 'last-quarter', 'waning-crescent'];
+    const days = (Date.now() - Date.UTC(2000, 0, 6, 18, 14)) / 86400000;
+    const age = ((days % 29.530588853) + 29.530588853) % 29.530588853;
+    return phases[Math.round(age / 29.530588853 * 8) % 8];
 }
 
 // Rentan context cards (time period, holiday, weather, hourly) for compiled_prompt.context.
 // Shared by the Reality Crossover window and the image Inspector (imagePromptInspector.js).
 function buildCompiledContextHtml(compiled) {
-    // Helper function to create info item with optional progress bar
-    const createInfoItem = (label, value, icon = '', className = '', progressValue = null) => {
-        // Filter out null, undefined, and invalid values
-        if (value === null || value === undefined) return '';
-
-        // Value should already be a properly formatted string from the calling code
-        // No conversion needed here - the calling code handles formatting
-        const displayValue = value;
-
-        // Check if this is a convertible unit (contains unit symbols)
-        const isConvertible = typeof displayValue === 'string' && (
-            displayValue.includes('°C') || displayValue.includes('°F') ||
-            displayValue.includes('m/s') || displayValue.includes('mph') ||
-            displayValue.includes('km') || displayValue.includes('mi') ||
-            displayValue.includes('mm/hr') || displayValue.includes('in/hr') ||
-            displayValue.includes(' mm') || displayValue.includes(' cm') || displayValue.includes(' in') ||
-            displayValue.includes(' hPa') || displayValue.includes(' inHg'));
-
-        const clickableClass = isConvertible ? 'clickable' : '';
-        const onclickAttr = isConvertible ? ' onclick="toggleWeatherUnits(event)"' : '';
-
-        // Add progress bar for percentage values
-        let progressBar = '';
-        if (progressValue !== null && progressValue >= 0 && progressValue <= 100) {
-            progressBar = `<div role="progressbar"><div style="width: ${progressValue}%"></div></div>`;
-        }
-
-        return `
-            <div class="info-item ${className}">
-                <span class="info-label">${icon} ${label}</span>
-                <span class="${clickableClass}"${onclickAttr}>${displayValue}</span>
-                ${progressBar}
-            </div>
-        `;
-    };
-
-    // Helper function to create section
-    const createSection = (title, content, icon = '', contentClass = '') => {
-        if (!content) return '';
-        return `
-            <div class="content-wrapper${contentClass}">
-                ${title ? '<label><strong>' + icon + ' ' + title + '</strong></label>' : ''}
-                ${content}
-            </div>
-        `;
-    };
-
     // Weather icon mapping function using Weather Icons
     function getWeatherIcon(condition, isNight = false) {
         if (!condition) return isNight ? '<i class="wi wi-night-clear"></i>' : '<i class="wi wi-day-sunny"></i>';
@@ -142,6 +130,7 @@ function buildCompiledContextHtml(compiled) {
         // Icons that don't change between day/night (no sun/moon influence)
         const timeNeutralIcons = {
             'overcast': 'cloudy',
+            'cloudy': 'cloudy',
             'fog': 'fog',
             'depositing rime fog': 'fog',
             'moderate snow fall': 'snow',
@@ -157,7 +146,9 @@ function buildCompiledContextHtml(compiled) {
 
         // Time-dependent icons (different for day/night)
         const iconMap = {
+            'none': isNight ? 'night-clear' : 'day-sunny',
             'clear sky': isNight ? 'night-clear' : 'day-sunny',
+            'few clouds': isNight ? 'night-alt-partly-cloudy' : 'day-sunny-overcast',
             'mainly clear': isNight ? 'night-alt-partly-cloudy' : 'day-sunny-overcast',
             'partly cloudy': `${timePrefix}-cloudy`,
             'light drizzle': `${timePrefix}-showers`,
@@ -181,7 +172,8 @@ function buildCompiledContextHtml(compiled) {
         };
 
         const iconClass = iconMap[condition] || (isNight ? 'night-clear' : 'day-sunny');
-        return `<i class="wi wi-${iconClass}"></i>`;
+        const moon = iconClass === 'night-clear' ? ` moon-${crossoverMoonPhase()}` : '';
+        return `<i class="wi wi-${iconClass}${moon}"></i>`;
     }
 
     // Unit conversion functions
@@ -214,7 +206,6 @@ function buildCompiledContextHtml(compiled) {
         const context = compiled.context;
         const weather = context.weather || {};
         const time = context.time || {};
-        let weatherItems = [];
 
         // Build modern weather section
         let weatherContent = '';
@@ -254,7 +245,7 @@ function buildCompiledContextHtml(compiled) {
                 (windMph !== undefined ? `${windMph} mph` : 'N/A');
 
             // Format all weather values as strings with proper units
-            const weatherCondition = weather.condition || 'Unknown';
+            const weatherCondition = crossoverConditionName(weather.condition);
             const comfortLevel = weather.weatherQuality?.comfortLevel || 'Unknown conditions';
             const humidityValue = weather.humidity !== undefined ? `${weather.humidity}%` : null;
             const windDirection = weather.windDirection !== undefined ? getWindDirection(weather.windDirection) : null;
@@ -360,7 +351,7 @@ function buildCompiledContextHtml(compiled) {
             }
 
             const mainCardHtml = `
-                <div class="weather-main-card ${cardBackgroundClass}">
+                <div class="weather-main-card ${cardBackgroundClass} ${crossoverGadgetFace(weather.condition, isNight)}">
                     <div class="weather-current-temp">
                         <div class="weather-temp-value">
                             <span class="weather-temp-number clickable" onclick="toggleWeatherUnits(event)" data-metric="${tempC !== undefined ? tempC : ''}" data-imperial="${tempF !== undefined ? tempF : ''}">${displayTemp !== undefined ? displayTemp : '--'}</span>
@@ -452,135 +443,87 @@ function buildCompiledContextHtml(compiled) {
                 </div>
             `;
 
-            // Helper function to create modern weather detail card
-            const createWeatherDetailCard = (label, value, icon, progressValue = null, isClickable = false, metricValue = null, imperialValue = null, unitType = null) => {
-                if (!value) return '';
-
-                const clickableClass = isClickable ? 'clickable' : '';
-                const onclickAttr = isClickable ? ' onclick="toggleWeatherUnits(event)"' : '';
-                const dataAttrs = (metricValue !== null && imperialValue !== null) ?
-                    ` data-metric="${metricValue}" data-imperial="${imperialValue}"${unitType ? ` data-unit-type="${unitType}"` : ''}` : '';
-
-                let progressBar = '';
-                if (progressValue !== null && progressValue >= 0 && progressValue <= 100) {
-                    progressBar = `<div role="progressbar"><div style="width: ${progressValue}%"></div></div>`;
-                }
-
-                return `
-                    <div class="weather-detail-card">
-                        <div class="weather-detail-icon">${icon}</div>
-                        <div class="weather-detail-content">
-                            <div class="weather-detail-label">${label}</div>
-                            <div class="weather-detail-value ${clickableClass}"${onclickAttr}${dataAttrs}>${value}</div>
-                            ${progressBar}
-                        </div>
-                    </div>
-                `;
+            // A reading for the property list; its value keeps the data-metric / data-imperial pair
+            // so toggleWeatherUnits (dynamicGenerationOverrides.js) can switch the units in place.
+            const weatherRow = (label, value, metricValue = null, imperialValue = null, unitType = null) => {
+                if (!value) return null;
+                const dataAttrs = (metricValue !== null && imperialValue !== null)
+                    ? ` data-metric="${metricValue}" data-imperial="${imperialValue}"${unitType ? ` data-unit-type="${unitType}"` : ''}`
+                    : '';
+                const clickable = dataAttrs ? ' clickable" onclick="toggleWeatherUnits(event)" title="Click to switch units' : '';
+                return [label, { html: `<span class="weather-detail-value${clickable}"${dataAttrs}>${value}</span>` }];
             };
 
-            // Build weather details grid with progress bars
-            const cloudCoveragePercent = weather.cloudCoverage !== undefined ? weather.cloudCoverage : null;
-            const visibilityPercent = weather.visibility !== undefined ? Math.min((weather.visibility / 10000) * 100, 100) : null;
-            const uvPercent = weather.uvIndex !== undefined ? Math.min((weather.uvIndex / 12) * 100, 100) : null;
-
             // Only show heat index if it differs from actual temp by 2°C or more
-            const showHeatIndex = heatIndex !== null && tempC !== undefined && Math.abs(heatIndex - tempC) >= 2;
+            const showHeatIndex = heatIndex !== null && heatIndex !== undefined && tempC !== undefined && Math.abs(heatIndex - tempC) >= 2;
+            const showWindChill = windChill !== null && windChill !== undefined && tempC !== undefined && Math.abs(windChill - tempC) >= 0.5;
 
-            const detailCards = [
-                createWeatherDetailCard('Pressure', pressureValue, '<i class="fa-solid fa-gauge"></i>', null, true, weather.pressure, weather.pressure ? weather.pressure / 33.8639 : null, 'pressure'),
-                showHeatIndex ? createWeatherDetailCard('Heat Index', heatIndexValue, '<i class="fa-solid fa-fire"></i>', null, true, heatIndex, heatIndex !== null ? celsiusToFahrenheit(heatIndex) : null, 'temperature') : null,
-                createWeatherDetailCard('Wind Chill', windChillValue, '<i class="fa-solid fa-snowflake"></i>', null, true, windChill, windChill !== null ? celsiusToFahrenheit(windChill) : null, 'temperature'),
-            ].filter(card => card);
+            const weatherRows = [
+                ['Comfort', weather.weatherQuality?.comfortLevel ? crossoverLabel(weather.weatherQuality.comfortLevel.split(' - ')[0]) : null],
+                weatherRow('Pressure', pressureValue, weather.pressure, weather.pressure ? weather.pressure / 33.8639 : null, 'pressure'),
+                showHeatIndex ? weatherRow('Heat index', heatIndexValue, heatIndex, celsiusToFahrenheit(heatIndex), 'temperature') : null,
+                showWindChill ? weatherRow('Wind chill', windChillValue, windChill, celsiusToFahrenheit(windChill), 'temperature') : null,
+                weather.windGust ? weatherRow('Wind gust', useMetric ? `${weather.windGust} m/s` : `${mpsToMph(weather.windGust)} mph`, weather.windGust, mpsToMph(weather.windGust), 'wind') : null,
+                ['Dew point', weather.dewPoint !== undefined && weather.dewPoint !== null ? (useMetric ? `${weather.dewPoint}°C` : `${celsiusToFahrenheit(weather.dewPoint)}°F`) : null],
+                ['UV index', uvIndexValue],
+                ['Sky', weather.generationCondition || null],
+                ['Source', weather.dataSource || null]
+            ].filter(Boolean);
 
-            // Add wind gust if available
-            if (weather.windGust) {
-                detailCards.push(createWeatherDetailCard('Wind Gust', useMetric ? `${weather.windGust} m/s` : `${mpsToMph(weather.windGust)} mph`, '<i class="fa-solid fa-wind"></i>', null, true, weather.windGust, mpsToMph(weather.windGust), 'wind'));
+            // Hourly forecast: one row an hour, the time then the sky, temperature and rain
+            const hourlyRows = [];
+            if (Array.isArray(weather.hourly) && weather.hourly.length > 0) {
+                weather.hourly.slice(0, 6).forEach((hour, index) => {
+                    const hourTime = new Date(hour.timestamp);
+                    const hourTempC = hour.temperature !== undefined && hour.temperature !== null ? hour.temperature : null;
+                    const hourTempF = hourTempC !== null ? celsiusToFahrenheit(hourTempC) : null;
+                    const hourTemp = hourTempC === null ? '' : (useMetric ? `${hourTempC}°C` : `${hourTempF}°F`);
+                    const timeLabel = index === 0 ? 'Now' : hourTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                    const precipMetric = hour.precipitation > 0 ? hour.precipitation : null;
+                    const precipDisplay = precipMetric !== null
+                        ? (useMetric ? `${precipMetric}mm` : `${(precipMetric * 0.0394).toFixed(1)}in`) : '';
+                    const bits = [escapeHtml(crossoverConditionName(hour.condition))];
+                    if (hourTemp) bits.push(`<span class="weather-hour-temp" data-metric="${hourTempC}" data-imperial="${hourTempF}">${hourTemp}</span>`);
+                    if (precipDisplay) bits.push(`<span class="weather-hour-precip" data-metric="${precipMetric}" data-unit="mm">${precipDisplay}</span>`);
+                    hourlyRows.push([timeLabel, { html: bits.join(', ') }]);
+                });
             }
 
-            const detailsGridHtml = detailCards.length > 0 ? `<div class="weather-details-grid">${detailCards.join('')}</div>` : '';
-
-            // Build weather alerts
-            let alertsHtml = '';
-            if (hasAlerts) {
-                alertsHtml = alerts.map((alert, index) => `
-                    <div class="weather-alert-card ${alert.severity}">
+            // Weather alerts: IE's information bar on the light client
+            const alertsHtml = hasAlerts ? alerts.map((alert) => `
+                    <div class="weather-alert-card ${escapeHtml(String(alert.severity || ''))}">
                         <div class="weather-alert-content">
-                            <div class="weather-alert-icon">
-                                ${alert.severity === 'danger' ? '<i class="fa-solid fa-triangle-exclamation"></i>' : '<i class="fa-solid fa-exclamation-triangle"></i>'}
-                            </div>
+                            <div class="weather-alert-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
                             <div class="weather-alert-text">
-                                <div class="weather-alert-title">${alert.title}</div>
-                                <div class="weather-alert-message">${alert.message}</div>
+                                <div class="weather-alert-title">${escapeHtml(String(alert.title || ''))}</div>
+                                <div class="weather-alert-message">${escapeHtml(String(alert.message || ''))}</div>
                             </div>
                         </div>
                     </div>
-                `).join('');
-            }
+                `).join('') : '';
 
-            weatherContent = `<div class="weather-display">${mainCardHtml}${detailsGridHtml}${alertsHtml}</div>`;
-        }
-
-        // Hourly forecast section - modern design
-        let hourlyHtml = '';
-        if (weather.hourly && Array.isArray(weather.hourly) && weather.hourly.length > 0) {
-            const nextHours = weather.hourly.slice(0, 6); // Show next 6 hours for compact display
-            const timePeriodInfo = context.timePeriod || {};
-            const sunriseHour = timePeriodInfo.sunriseHour;
-            const sunsetHour = timePeriodInfo.sunsetHour;
-
-            const hourlyItems = nextHours.map((hour, index) => {
-                const hourTime = new Date(hour.timestamp);
-                const hourTempC = hour.temperature !== undefined ? hour.temperature : null;
-                const hourTempF = hourTempC !== null ? celsiusToFahrenheit(hourTempC) : null;
-                const hourTemp = useMetric ?
-                    (hourTempC !== null ? `${hourTempC}°C` : 'N/A') :
-                    (hourTempF !== null ? `${hourTempF}°F` : 'N/A');
-                const timeLabel = index === 0 ? 'Now' : `${hourTime.getHours().toString().padStart(2, '0')}:00`;
-                const precipMetric = hour.precipitation > 0 ? hour.precipitation : null;
-                const precipDisplay = precipMetric !== null ?
-                    (useMetric ? `${precipMetric}mm` : `${(precipMetric * 0.0394).toFixed(1)}in`) : '';
-
-                // Determine if this hour is at night
-                const hourDecimal = hourTime.getHours() + hourTime.getMinutes() / 60;
-                let isNightHour = false;
-                if (sunriseHour !== undefined && sunsetHour !== undefined) {
-                    isNightHour = hourDecimal < sunriseHour || hourDecimal >= sunsetHour;
-                }
-
-                return `
-                    <div class="weather-hour-item">
-                        <div class="weather-hour-time">${timeLabel}</div>
-                        <div class="weather-hour-icon">${getWeatherIcon(hour.condition, isNightHour)}</div>
-                        <div class="weather-hour-temp"${hourTempC !== null ? ` data-metric="${hourTempC}" data-imperial="${hourTempF}"` : ''}>${hourTemp}</div>
-                        ${precipDisplay ? `<div class="weather-hour-precip"${precipMetric !== null ? ` data-metric="${precipMetric}" data-unit="mm"` : ''}>${precipDisplay}</div>` : ''}
-                    </div>
-                `;
-            }).join('');
-
-            hourlyHtml = `
-                <div class="weather-hourly-forecast">
-                    <div class="weather-hourly-title">
-                        <i class="fa-solid fa-clock"></i>
-                        Hourly Forecast
-                    </div>
-                    <div class="weather-hourly-grid">
-                        ${hourlyItems}
-                    </div>
-                </div>
-            `;
+            const weatherList = crossoverPropList(
+                crossoverPropGroup('Weather', weatherRows) + crossoverPropGroup('Next hours', hourlyRows)
+            );
+            weatherContent = `<div class="weather-display">${mainCardHtml}${alertsHtml}${weatherList}</div>`;
         }
 
         // Time and season information
         // timePeriod is stored at context.timePeriod, not context.time.timePeriod
         const timePeriodInfo = context.timePeriod || {};
-        const timeItems = [
-            createInfoItem('Time Period', timePeriodInfo.period, '<i class="fa-solid fa-clock"></i>'),
-            createInfoItem('Lighting', timePeriodInfo.lighting, '<i class="fa-solid fa-lightbulb"></i>'),
-            createInfoItem('Atmosphere', timePeriodInfo.atmosphere, '<i class="fa-solid fa-smog"></i>'),
-            createInfoItem('Season', context.season, '<i class="fa-solid fa-leaf"></i>'),
-            createInfoItem('Hour', time.hour !== undefined ? `${time.hour}:${String(time.minute || 0).padStart(2, '0')}` : null, '<i class="fa-solid fa-clock"></i>'),
-            createInfoItem('Timezone', time.timezone, '<i class="fa-solid fa-globe"></i>')
-        ].filter(item => item);
+        // lighting / atmosphere are [{ text, bias }] lists and season is { name, holiday, ... }
+        const phraseList = (value) => (Array.isArray(value)
+            ? value.map((el) => (el && typeof el === 'object' ? el.text : el)).filter(Boolean).join(', ')
+            : value);
+        const seasonName = context.season && typeof context.season === 'object' ? context.season.name : context.season;
+        const timeRows = [
+            ['Time period', timePeriodInfo.period ? crossoverLabel(timePeriodInfo.period) : null],
+            ['Lighting', phraseList(timePeriodInfo.lighting)],
+            ['Atmosphere', phraseList(timePeriodInfo.atmosphere)],
+            ['Season', seasonName ? crossoverLabel(seasonName) : null],
+            ['Hour', time.hour !== undefined ? `${time.hour}:${String(time.minute || 0).padStart(2, '0')}` : null],
+            ['Time zone', time.timezone]
+        ];
 
         // Create period information card
         let periodCardHtml = '';
@@ -728,7 +671,7 @@ function buildCompiledContextHtml(compiled) {
             const seasonForTemplate = typeof seasonNameForTemplate === 'string' ? seasonNameForTemplate : String(seasonNameForTemplate || '');
 
             periodCardHtml = `
-                <div class="period-info-card ${periodBgClass}">
+                <div class="period-info-card ${periodBgClass} ${timePeriodInfo.isDaytime === false ? 'gadget-face-black' : 'gadget-face-blue'}">
                     <div class="period-info-content">
                         <div class="period-main-info">
                             <div class="period-title-section">
@@ -872,7 +815,7 @@ function buildCompiledContextHtml(compiled) {
             const holidayClass = getHolidayClass(holidayName);
 
             holidayCardHtmlModal = `
-                <div class="period-info-card holiday-info-card ${holidayClass}">
+                <div class="period-info-card holiday-info-card ${holidayClass} ${context.timePeriod?.isDaytime === false ? 'gadget-face-black' : 'gadget-face-blue'}">
                     <div class="period-info-content">
                         <div class="period-main-info">
                             <div class="period-title-section">
@@ -915,23 +858,19 @@ function buildCompiledContextHtml(compiled) {
             `;
         }
 
-        // Combine weather and time content
-        if (weatherContent) {
-            contextContent = periodCardHtml + holidayCardHtmlModal + weatherContent + (hourlyHtml ? hourlyHtml : '');
-        }
-
-        // Add time and season information if no weather
-        if (!weatherContent && timeItems.length > 0) {
-            contextContent = periodCardHtml + holidayCardHtmlModal + `<div class="info-grid">${timeItems.filter(item => item).join('')}</div>`;
-        }
+        // The scene cards, then the readings (or, without weather, the time and season rows)
+        contextContent = periodCardHtml + holidayCardHtmlModal
+            + (weatherContent || crossoverPropList(crossoverPropGroup('Time', timeRows)));
     }
 
     return contextContent;
 }
 
 function wireCompiledPromptInspectorListeners() {
+    // compileToPromptsApplet.js wires the same button behind the same data-wired flag
     const closeCompiledPromptBtn = document.getElementById('closeCompiledPromptBtn');
-    if (closeCompiledPromptBtn) {
+    if (closeCompiledPromptBtn && closeCompiledPromptBtn.dataset.wired !== 'true') {
+        closeCompiledPromptBtn.dataset.wired = 'true';
         closeCompiledPromptBtn.addEventListener('click', (e) => {
             e.preventDefault();
             const modal = document.getElementById('compiledPromptModal');

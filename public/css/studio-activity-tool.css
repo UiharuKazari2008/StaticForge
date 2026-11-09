@@ -1,131 +1,310 @@
-/* Studio Activity tool window - public/scripts/comp/studioActivityTool.js */
+/* Studio Activity tool window - public/scripts/comp/studioActivityTool.js, markup in app.html.
+   A light Vista owned tool window (data-window-client="light" + .win7, vista-glass-controls.css #444)
+   laid out as Event Viewer (eventvwr.msc) shows a log, measured on the Vista VM (Nov 9 2026):
+   - the log band: flat #a0a0a0, 23 px, the log name in white Segoe UI 9pt bold, the count after it;
+   - the list: MMC's report view in a 2 px sunken client edge (#a0a0a0 / #696969 outside, #fff /
+     #e3e3e3 inside), Vista header items 24 px (HEADER IMAGE, vista-controls/header-item-*.png),
+     19 px rows, the 16 px level icon then its word, the selected row #3399ff with white text while
+     the list has focus and #f0f0f0 when it does not;
+   - the preview pane under a splitter: the event's title on #f0f0f0 over an etched line, Vista tabs
+     (General / Details) on the tab pane, the description in a sunken read-only box, then label /
+     value pairs 21 px apart.
+   Scrollbars are the desktop's Vista scrollbars (vista-scrollbars.css; no custom scrollbar here). */
+
 #studioActivityTool {
-    width: 380px;
-    height: 360px;
-    min-width: 320px;
-    min-height: 220px;
+    width: 640px;
+    height: 540px;
+    min-width: 420px;
+    min-height: 360px;
+    --studio-activity-preview-height: 220px;
 }
 
-.studio-activity-tool > .modal-content {
-    padding: 0;
-    overflow: hidden;
+.studio-activity-tool > .modal-content.studio-activity-content {
     display: flex;
     flex-direction: column;
     min-height: 0;
-}
-
-.studio-activity-body {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    min-height: 0;
-    gap: 0.45rem;
-    padding: 0.55rem 0.65rem 0.5rem;
+    padding: 0 0 4px;
     overflow: hidden;
 }
 
-.studio-activity-toolbar {
-    flex-shrink: 0;
+/* ---- the filter strip: a dialog row with the check box and Clear Log ---- */
+
+.studio-activity-tool .studio-activity-strip {
+    flex: none;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
-    font-size: 0.8rem;
+    gap: 12px;
+    padding: 6px 7px 6px 8px;
 }
 
-.studio-activity-filter {
+.studio-activity-tool .studio-activity-filter {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    cursor: var(--c-pointer);
-    opacity: 0.9;
-}
-
-.studio-activity-empty {
-    flex-shrink: 0;
-    font-size: 0.8rem;
-    opacity: 0.65;
-    padding: 0.35rem 0.25rem;
-}
-
-.studio-activity-log-shell {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-}
-
-.studio-activity-log-scrollable {
-    height: 100%;
-    overflow: auto;
-    padding: 0.1rem 0.2rem 0.3rem;
-}
-
-.studio-activity-log {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-}
-
-.studio-activity-entry {
-    border-radius: var(--border-radius-sm, 6px);
-    background: rgba(0, 0, 0, 0.28);
-    border-left: 3px solid rgba(255, 255, 255, 0.18);
-    font-size: 0.8rem;
-    line-height: 1.4;
-    color: var(--text-accent-tinted, #b8c0d8);
-}
-
-.studio-activity-entry.studio-activity-change {
-    border-left-color: var(--accent-color, #6b8cff);
-}
-
-.studio-activity-entry.studio-activity-failed {
-    border-left-color: #e07070;
-}
-
-.studio-activity-entry > summary {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.35rem 0.5rem;
-    cursor: var(--c-pointer);
-    list-style: none;
-}
-
-.studio-activity-entry > summary::-webkit-details-marker {
-    display: none;
-}
-
-.studio-activity-source {
-    flex-shrink: 0;
-    font-size: 0.72rem;
-    font-weight: 600;
-    padding: 0 0.35rem;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.08);
+    position: relative;
     white-space: nowrap;
 }
 
-.studio-activity-title {
+.studio-activity-tool .studio-activity-filter > label {
+    margin: 0;
+    font: inherit;
+    color: inherit;
+}
+
+.studio-activity-tool #studioActivityClearBtn {
+    min-width: 75px;
+    height: 23px;
+    margin: 0;
+}
+
+/* ---- the log band ---- */
+
+.studio-activity-tool .studio-activity-band {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    height: 23px;
+    margin: 0 4px 1px;
+    padding: 0 7px;
+    background: #a0a0a0;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.studio-activity-tool .studio-activity-band > span {
+    color: #fff;
+}
+
+.studio-activity-tool .studio-activity-band-name {
+    font-weight: 700;
+}
+
+.studio-activity-tool .studio-activity-band-count {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- the event list ---- */
+
+.studio-activity-tool .studio-activity-list {
     flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 60px;
+    margin: 0 4px;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px 0 #696969, inset -1px -1px 0 #e3e3e3;
+    padding: 1px;
+    background: #fff;
+    outline: none;
+    overflow: hidden;
+}
+
+/* the header scrolls sideways with the rows and stays on top (sticky) when they scroll down; a
+   narrow window gets the horizontal scrollbar, as a report view does */
+.studio-activity-tool .studio-activity-head,
+.studio-activity-tool .studio-activity-row {
+    display: grid;
+    grid-template-columns: 104px 150px 84px 84px minmax(160px, 1fr);
+    align-items: center;
+    min-width: 582px;
+}
+
+.studio-activity-tool .studio-activity-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    height: 24px;
+    background: #fff;
+}
+
+.studio-activity-tool .studio-activity-head > .studio-activity-cell {
+    box-sizing: border-box;
+    height: 24px;
+    padding: 4px 6px 0 6px;
+    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 2 0 1 fill / 0 2px 0 1px stretch;
+    color: #000;
+}
+
+.studio-activity-tool .studio-activity-head > .studio-activity-cell:last-child {
+    border-image-width: 0 0 0 1px;
+}
+
+.studio-activity-tool .studio-activity-scroll {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    background: #fff;
+}
+
+.studio-activity-tool .studio-activity-cell {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--text-primary, #eee);
 }
 
-.studio-activity-time {
-    flex-shrink: 0;
-    font-size: 0.72rem;
-    opacity: 0.6;
+.studio-activity-tool .studio-activity-row {
+    height: 19px;
+    color: #000;
+    cursor: default;
 }
 
-.studio-activity-lines {
+.studio-activity-tool .studio-activity-row > .studio-activity-cell {
+    padding: 0 6px;
+    line-height: 19px;
+}
+
+.studio-activity-tool .studio-activity-row > .studio-activity-col-level {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    padding-left: 3px;
+}
+
+.studio-activity-tool .studio-activity-row > .studio-activity-col-level > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.studio-activity-tool .studio-activity-row.is-selected {
+    background: #f0f0f0;
+}
+
+.studio-activity-tool .studio-activity-list:focus-within .studio-activity-row.is-selected {
+    background: #3399ff;
+}
+
+.studio-activity-tool .studio-activity-list:focus-within .studio-activity-row.is-selected > .studio-activity-cell {
+    color: #fff;
+}
+
+.studio-activity-tool .studio-activity-empty {
+    padding: 6px 0 0;
+    color: #000;
+    text-align: center;
+}
+
+/* ---- splitter + preview pane ---- */
+
+.studio-activity-tool .studio-activity-splitter {
+    flex: none;
+    height: 5px;
+    cursor: ns-resize;
+    touch-action: none;
+}
+
+.studio-activity-tool .studio-activity-preview {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    height: var(--studio-activity-preview-height);
+    min-height: 110px;
+    max-height: 50%;
+    margin: 0 4px;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px 0 #696969, inset -1px -1px 0 #e3e3e3;
+    padding: 1px;
+    background: #f0f0f0;
+    overflow: hidden;
+}
+
+.studio-activity-tool .studio-activity-preview-title {
+    flex: none;
+    height: 21px;
+    padding: 0 5px;
+    border-bottom: 1px solid #a0a0a0;
+    box-shadow: 0 1px 0 #fff;
+    line-height: 21px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.studio-activity-tool .studio-activity-preview-body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 8px 6px 6px 7px;
+}
+
+.studio-activity-tool .studio-activity-preview.is-empty .studio-activity-preview-body {
+    visibility: hidden;
+}
+
+.studio-activity-tool menu.studio-activity-tabs {
+    flex: none;
+}
+
+.studio-activity-tool .studio-activity-tabpanel[role="tabpanel"] {
+    flex: 1 1 auto;
+    min-height: 0;
     margin: 0;
-    padding: 0 0.6rem 0.45rem 1.6rem;
-    font-family: var(--font-mono, monospace);
-    font-size: 0.74rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* the page is the dialog inside the pane: #f0f0f0 within the pane's 1 px edge and white line */
+.studio-activity-tool .studio-activity-page {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 1px 0 0 1px;
+    background: #f0f0f0;
+    padding: 11px 10px 8px 12px;
+    overflow: auto;
+}
+
+.studio-activity-tool .studio-activity-page.hidden {
+    display: none;
+}
+
+/* the event's description: a read-only multi-line edit with a client edge */
+.studio-activity-tool .studio-activity-desc {
+    min-height: 42px;
+    max-height: 132px;
+    margin: 0 0 9px;
+    padding: 2px 4px;
+    overflow: auto;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px 0 #696969, inset -1px -1px 0 #e3e3e3;
+    background: #f0f0f0;
+    color: #000;
     white-space: pre-wrap;
-    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.studio-activity-tool .studio-activity-fields {
+    display: grid;
+    grid-template-columns: 90px minmax(0, 1fr);
+    grid-auto-rows: 21px;
+    align-items: center;
+    margin: 0;
+}
+
+.studio-activity-tool .studio-activity-fields > dt,
+.studio-activity-tool .studio-activity-fields > dd {
+    margin: 0;
+    font-weight: 400;
+    color: #000;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.studio-activity-tool .studio-activity-details {
+    font: 9pt Consolas, "Courier New", monospace;
+    color: #000;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    background: none;
+    border: 0;
 }

@@ -19,6 +19,29 @@ class ImagePromptInspectorManager {
         if (!this.template) {
             console.error('Image prompt inspector template not found');
         }
+        if (this.lifecycleWired) return;
+        this.lifecycleWired = true;
+        // A window closed some other way than its own Close (taskbar, Esc, closeModal) is let go
+        // too: the next open of the same image used to bring the hidden, closed window "to front".
+        // closeModal (modalUtils.js) announces 'closed' before it hides the window, so the check
+        // runs once it has finished.
+        document.addEventListener('staticforge:modal-lifecycle', (event) => {
+            const detail = event.detail;
+            if (!detail || detail.type !== 'closed' || !detail.id) return;
+            setTimeout(() => {
+                const instance = this.instances.get(detail.id);
+                if (instance) {
+                    if (instance.element.classList.contains('hidden')) this.removeInstance(detail.id);
+                    return;
+                }
+                this.instances.forEach((owner) => {
+                    const json = owner.jsonWindow;
+                    if (!json || json.id !== detail.id || !json.classList.contains('hidden')) return;
+                    owner.jsonWindow = null;
+                    json.remove();
+                });
+            }, 0);
+        });
     }
 
     getImageKey(image) {
@@ -1139,42 +1162,58 @@ class ImagePromptInspector {
         });
     }
 
+    // Dynamic Generation: Rentan's record of the compile as a grouped Property / Value list (the
+    // Reality Crossover window's list, css/compiled-prompt-lcd.css), then its scene cards.
     renderDynamicGeneration() {
         this.dynamic.replaceChildren();
         const dynamicGeneration = this.getDynamicGeneration();
         const compiled = dynamicGeneration.compiled_prompt || {};
+        const stamp = (value) => {
+            if (value === undefined || value === null || value === '') return null;
+            const date = new Date(typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value);
+            return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+        };
+        const locked = (value) => (value === undefined || value === null ? null : (value ? 'Locked' : 'Not locked'));
+        const groups = [];
+        groups.push(['Rentan', [
+            ['Directive', this.getDirectorPrompt()],
+            ['Written by', compiled.source ? (compiled.source === 'agent' ? 'Agent' : this.formatLabel(compiled.source)) : null],
+            ['Summary', compiled.summary],
+            ['Created', stamp(compiled.timestamp)],
+            ['Expires', stamp(compiled.expiresAt)],
+            ['Cache', locked(dynamicGeneration.cache_locked ?? compiled.cache_locked)],
+            ['Context', locked(dynamicGeneration.context_locked ?? compiled.context_locked)],
+            ['Wren session', compiled.wren_session_id],
+            ['Generated name', compiled.generated_image_name]
+        ]]);
+        groups.push(['Applied', Object.entries(compiled.applied || {}).map(([control, line]) => [this.formatLabel(control), line])]);
+
+        // the remaining switches and settings; objects (the agent, usage) get a group of their own
         const omitted = new Set([
-            'compiled_prompt', 'text_replacements', 'prompt', 'uc',
-            'character_prompts', 'characterPrompts', 'directive'
+            'compiled_prompt', 'text_replacements', 'prompt', 'uc', 'character_prompts', 'characterPrompts',
+            'directive', 'cache_locked', 'context_locked'
         ]);
-        const rows = [];
-
-        if (this.getDirectorPrompt()) rows.push(['Directive', this.getDirectorPrompt(), 'fas fa-scroll']);
-        [
-            ['Cache Locked', dynamicGeneration.cache_locked ?? compiled.cache_locked, 'fas fa-lock'],
-            ['Context Locked', dynamicGeneration.context_locked ?? compiled.context_locked, 'fas fa-lock'],
-            ['Source', compiled.source, 'fas fa-feather'],
-            ['Summary', compiled.summary, 'fas fa-quote-left'],
-            ...Object.entries(compiled.applied || {}).map(([control, line]) => [`Applied: ${this.formatLabel(control)}`, line, 'fas fa-check']),
-            ['Expires', compiled.expiresAt ? new Date(compiled.expiresAt).toLocaleString() : null, 'fas fa-hourglass-half'],
-            ['Wren Session', compiled.wren_session_id, 'fas fa-comments'],
-            ['Generated Name', compiled.generated_image_name, 'fas fa-file-signature'],
-            ['Timestamp', compiled.timestamp, 'fas fa-clock'],
-            ['Prompt Hash', compiled.prompt_hash, 'fas fa-hashtag'],
-            ['Request Hash', compiled.request_hash, 'fas fa-hashtag'],
-            ['Directive Hash', compiled.directive_hash, 'fas fa-hashtag'],
-            ['Usage', compiled.usage, 'fas fa-chart-simple']
-        ].forEach(([label, value, icon]) => {
-            if (value !== undefined && value !== null && value !== '') {
-                rows.push([label, value, icon]);
-            }
-        });
-
+        const settings = [];
         Object.entries(dynamicGeneration).forEach(([key, value]) => {
             if (omitted.has(key) || value === undefined || value === null || value === '') return;
-            if (rows.some(([label]) => label.toLowerCase().replaceAll(' ', '_') === key.toLowerCase())) return;
-            rows.push([this.formatLabel(key), value, 'fas fa-circle-info']);
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                groups.push([this.formatLabel(key), Object.entries(value).map(([k, v]) => [this.formatLabel(k), v])]);
+                return;
+            }
+            settings.push([this.formatLabel(key), value]);
         });
+        groups.push(['Settings', settings]);
+        if (compiled.usage && typeof compiled.usage === 'object') {
+            groups.push(['Usage', Object.entries(compiled.usage).map(([k, v]) => [this.formatLabel(k), v])]);
+        }
+        groups.push(['Hashes', [
+            ['Prompt', compiled.prompt_hash],
+            ['Request', compiled.request_hash],
+            ['Directive', compiled.directive_hash]
+        ]]);
+
+        const list = this.buildPropertyList(groups);
+        if (list) this.dynamic.appendChild(list);
 
         const context = compiled.context && typeof compiled.context === 'object' ? compiled.context : null;
         this.dynamicContext.replaceChildren();
@@ -1188,31 +1227,63 @@ class ImagePromptInspector {
             });
         }
 
-        const hasDynamic = rows.length > 0 || !!context;
         const section = this.dynamicSection || this.dynamic?.closest('.image-prompt-inspector-section');
-        if (section) {
-            section.classList.toggle('hidden', !hasDynamic);
-        }
-        if (!hasDynamic) {
-            return;
-        }
-
-        rows.forEach(([label, value, icon]) => {
-            this.dynamic.appendChild(this.buildInfoItem(label, value, icon));
-        });
+        if (section) section.classList.toggle('hidden', !list && !context);
     }
 
-    buildInfoItem(label, value, iconClass = 'fas fa-circle-info') {
-        const item = document.createElement('div');
-        const isComplex = value !== null && typeof value === 'object';
-        item.className = `info-item${isComplex ? ' monospace' : ''}`;
-        const labelEl = document.createElement('span');
-        labelEl.className = 'info-label';
-        labelEl.innerHTML = `<i class="${iconClass}"></i> ${escapeHtml(label)}`;
-        const valueEl = document.createElement('span');
-        valueEl.textContent = this.formatValue(value);
-        item.append(labelEl, valueEl);
-        return item;
+    // groups: [[title, [[name, value], ...]], ...]; empty values and empty groups are left out
+    buildPropertyList(groups) {
+        const table = document.createElement('div');
+        table.className = 'crossover-props';
+        table.setAttribute('role', 'table');
+        const head = document.createElement('div');
+        head.className = 'crossover-props-head';
+        head.setAttribute('role', 'row');
+        ['Property', 'Value'].forEach((text) => {
+            const cell = document.createElement('span');
+            cell.setAttribute('role', 'columnheader');
+            cell.textContent = text;
+            head.appendChild(cell);
+        });
+        table.appendChild(head);
+        groups.forEach(([title, rows]) => {
+            const kept = rows.filter(([, value]) => value !== undefined && value !== null && value !== '');
+            if (!kept.length) return;
+            const group = document.createElement('div');
+            group.className = 'crossover-group';
+            group.setAttribute('role', 'rowgroup');
+            const header = document.createElement('div');
+            header.className = 'crossover-group-head';
+            header.textContent = title;
+            group.appendChild(header);
+            kept.forEach(([name, value]) => {
+                const row = document.createElement('div');
+                row.className = 'crossover-prop';
+                row.setAttribute('role', 'row');
+                const label = document.createElement('span');
+                label.className = 'crossover-prop-name';
+                label.textContent = name;
+                const cell = document.createElement('span');
+                cell.className = 'crossover-prop-value selectable';
+                cell.textContent = this.formatPropertyValue(value);
+                row.append(label, cell);
+                group.appendChild(row);
+            });
+            table.appendChild(group);
+        });
+        return table.childElementCount > 1 ? table : null;
+    }
+
+    formatPropertyValue(value) {
+        if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+        if (value && typeof value === 'object') {
+            try {
+                return JSON.stringify(value);
+            } catch (_) {
+                return String(value);
+            }
+        }
+        return String(value);
     }
 
     renderEmpty(container, message) {
@@ -1287,10 +1358,18 @@ class ImagePromptInspector {
         }
     }
 
+    // "observeHoliday" / "cache_locked" -> "Observe holiday" / "Cache locked" (Vista's Details
+    // tab writes property names in sentence case)
     formatLabel(value) {
-        return value
-            .replaceAll('_', ' ')
-            .replace(/\b\w/g, (character) => character.toUpperCase());
+        const special = { tod: 'Time of day', dg: 'Dynamic generation', uc: 'Undesired content' };
+        const key = String(value || '');
+        if (special[key.toLowerCase()]) return special[key.toLowerCase()];
+        const words = key
+            .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+            .replace(/[_-]+/g, ' ')
+            .trim()
+            .toLowerCase();
+        return words.charAt(0).toUpperCase() + words.slice(1);
     }
 
     close() {

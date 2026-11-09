@@ -1296,11 +1296,14 @@
         </div>
     </div>
 
-    <!-- Studio Activity: public/scripts/comp/studioActivityTool.js -->
+    <!-- Studio Activity: public/scripts/comp/studioActivityTool.js. A light Vista tool window laid out
+         as Event Viewer shows a log (css/studio-activity-tool.css): the filter strip, the grey log band,
+         the event list and the preview pane with General / Details tabs. -->
     <div id="studioActivityTool" class="modal hidden transient tool-window on-top resizeable-window studio-activity-tool"
-        data-parent-modal-id="manualModal" data-window-identifier="studio-activity-tool" data-window-min-width="320"
-        data-window-min-height="220" data-window-max-width="640" data-window-max-height="800"
-        data-window-default-width="380" data-window-default-height="360" data-window-position-mode="cascade-parent">
+        data-window-client="light"
+        data-parent-modal-id="manualModal" data-window-identifier="studio-activity-tool" data-window-min-width="420"
+        data-window-min-height="360" data-window-max-width="1400" data-window-max-height="1100"
+        data-window-default-width="640" data-window-default-height="540" data-window-position-mode="cascade-parent">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-list-check icon-fa"></i>
@@ -1317,20 +1320,46 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content dark studio-activity-content">
-            <div class="modal-body studio-activity-body">
-                <div class="studio-activity-toolbar">
-                    <label class="studio-activity-filter" title="Hide MCP calls that do not touch the Studio">
-                        <input type="checkbox" id="studioActivityStudioOnly" checked /> Studio only
-                    </label>
-                    <button type="button" id="studioActivityClearBtn" class="btn-secondary btn-small" title="Clear the log">
-                        <i class="fas fa-broom"></i> Clear
-                    </button>
+        <div class="modal-content win7 studio-activity-content">
+            <div class="studio-activity-strip">
+                <span class="studio-activity-filter" title="Hide MCP calls that do not touch the Studio">
+                    <input type="checkbox" id="studioActivityStudioOnly" checked />
+                    <label for="studioActivityStudioOnly">Studio only</label>
+                </span>
+                <button type="button" id="studioActivityClearBtn" class="btn-secondary" title="Clear the log">Clear Log</button>
+            </div>
+            <div class="studio-activity-band">
+                <span class="studio-activity-band-name">Studio Activity</span>
+                <span id="studioActivityCount" class="studio-activity-band-count">0 Events</span>
+            </div>
+            <div class="studio-activity-list" tabindex="0" role="grid" aria-label="Studio events">
+                <div class="studio-activity-scroll">
+                    <div class="studio-activity-head" role="row">
+                        <span class="studio-activity-cell studio-activity-col-level" role="columnheader">Level</span>
+                        <span class="studio-activity-cell studio-activity-col-time" role="columnheader">Date and Time</span>
+                        <span class="studio-activity-cell studio-activity-col-source" role="columnheader">Source</span>
+                        <span class="studio-activity-cell studio-activity-col-user" role="columnheader">User</span>
+                        <span class="studio-activity-cell studio-activity-col-action" role="columnheader">Action</span>
+                    </div>
+                    <div id="studioActivityLog" class="studio-activity-log" role="rowgroup"></div>
+                    <div id="studioActivityEmpty" class="studio-activity-empty">There are no items to show in this view.</div>
                 </div>
-                <div id="studioActivityEmpty" class="studio-activity-empty">No changes loaded and no MCP actions yet.</div>
-                <div class="studio-activity-log-shell" data-custom-scrollbar
-                    data-scrollable-wrapper-class="studio-activity-log-scrollable">
-                    <div id="studioActivityLog" class="studio-activity-log"></div>
+            </div>
+            <div class="studio-activity-splitter" aria-hidden="true"></div>
+            <div id="studioActivityPreview" class="studio-activity-preview">
+                <div id="studioActivityPreviewTitle" class="studio-activity-preview-title"></div>
+                <div class="studio-activity-preview-body">
+                    <menu class="studio-activity-tabs" role="tablist">
+                        <button type="button" role="tab" data-tab="general" aria-selected="true">General</button>
+                        <button type="button" role="tab" data-tab="details" aria-selected="false" tabindex="-1">Details</button>
+                    </menu>
+                    <div class="studio-activity-tabpanel" role="tabpanel">
+                        <div class="studio-activity-page selectable" data-tab="general">
+                            <div id="studioActivityDesc" class="studio-activity-desc"></div>
+                            <dl id="studioActivityFields" class="studio-activity-fields"></dl>
+                        </div>
+                        <pre id="studioActivityDetails" class="studio-activity-page studio-activity-details selectable hidden" data-tab="details"></pre>
+                    </div>
                 </div>
             </div>
         </div>
@@ -4459,10 +4488,14 @@
         </div>
     </div>
 
-    <!-- Compiled Prompt Modal -->
-    <div id="compiledPromptModal" class="modal resizeable-window hidden tool-window on-top"
+    <!-- Compiled Prompt (Reality Crossover Information): public/scripts/comp/compiledPromptInspector.js.
+         A light Vista tool window (css/compiled-prompt-lcd.css): the scene cards on the Sidebar Weather
+         gadget's faces over a grouped Property / Value list. -->
+    <div id="compiledPromptModal" class="modal resizeable-window hidden tool-window on-top crossover-window"
+        data-window-client="light"
         data-parent-modal-id="manualModal" data-window-min-width="400" data-window-min-height="280"
-        data-window-max-width="1200" data-window-max-height="1000">
+        data-window-max-width="1200" data-window-max-height="1000"
+        data-window-default-width="480" data-window-default-height="680">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-magic"></i>
@@ -4477,10 +4510,8 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content dark">
-            <div class="modal-body modal-padding" id="compiledPromptContent" style="overflow-y: auto;">
-                <!-- Content will be populated by JavaScript -->
-            </div>
+        <div class="modal-content win7 crossover-content">
+            <div class="modal-body crossover-body" id="compiledPromptContent"></div>
         </div>
     </div>
 
@@ -6947,7 +6978,7 @@ Examples:
                         <h3 class="image-prompt-inspector-section-title">
                             <i class="fas fa-sparkles"></i> Dynamic Generation
                         </h3>
-                        <div id="imagePromptInspectorDynamic" class="info-grid image-prompt-inspector-dynamic selectable"></div>
+                        <div id="imagePromptInspectorDynamic" class="image-prompt-inspector-dynamic selectable"></div>
                         <div id="imagePromptInspectorDynamicContext" class="hidden"></div>
                     </section>
                 </div>

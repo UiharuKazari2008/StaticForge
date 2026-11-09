@@ -194,9 +194,11 @@ body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector-find-count
     width: 100%;
 }
 
-.image-prompt-inspector-dynamic .info-item span:last-child {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+.image-prompt-inspector-dynamic + div:not(.hidden) {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
 }
 
 /* Enable text selection and copying across text displays */
@@ -440,4 +442,37 @@ body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector .explorer-
 
 body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector .explorer-command-btn[data-inspector-action="find-close"]::after {
     content: "Close";
+}
+
+/* Text Expanders rows (textReplacementManager.js rows in view mode): Vista has no art for where an
+   expander sits or how it picks, so the glyphs become words, black on the light badges (the inline
+   colours were picked for the dark glass); the hourglass, quote, category and arrow glyphs go. */
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-lock-item :is(.text-replacement-badge-info, .text-replacement-badge-category, .reason-text) > i[class*="fa-"],
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-lock-item .text-replacement-arrow {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined :is(.badge-icon-location, .badge-icon-type, .badge-icon-status) {
+    color: #000 !important;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined :is(.badge-icon-location, .badge-icon-type) > i::before,
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-character > i::before {
+    font: 400 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined .badge-icon-location > i.ri-code-block::before { content: "Prompt"; }
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined .badge-icon-location > i.ri-eraser-fill::before { content: "UC"; }
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined .badge-icon-location > i.fa-user::before { content: "Character"; }
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined .badge-icon-location > i.fa-circle { display: none; }
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined .badge-icon-type > i.fa-arrows-rotate::before { content: "Static"; }
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined .badge-icon-type > i.fa-dice::before { content: "Random"; }
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined .badge-icon-type > i.fa-arrow-up-1-9::before { content: "Sequential"; }
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined .badge-icon-type > i.fa-flask::before { content: "NAX"; }
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined .badge-icon-type > i.fa-tag::before { content: "Other"; }
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-character > i.fa-person::before { content: "Character"; }
+
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined .badge-icon-location + .text-replacement-badge-character,
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined :is(.badge-icon-location, .text-replacement-badge-character) + .badge-icon-type {
+    margin-left: 6px;
 }

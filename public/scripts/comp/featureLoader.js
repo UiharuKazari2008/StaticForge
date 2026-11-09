@@ -92,8 +92,9 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/compiledPromptInspector.js']
     },
     image_prompt_inspector: {
-        // vista-atelier.css: the Vista menu bar
-        styles: ['css/image-prompt-inspector.css', 'css/vista-atelier.css'],
+        // vista-atelier.css: the Vista menu bar; compiled-prompt-lcd.css: the Property / Value list
+        // and the scene cards of the Dynamic Generation section
+        styles: ['css/image-prompt-inspector.css', 'css/vista-atelier.css', 'css/compiled-prompt-lcd.css'],
         scripts: ['scripts/comp/imagePromptInspector.js']
     },
     tag_sets: {

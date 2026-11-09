@@ -1619,9 +1619,9 @@ function studioChangeActionBadge(action) {
     return map[action] || action;
 }
 
-function renderStudioChangeOpRow(op) {
-    const on = op.enabled !== false;
-    const icon = on ? 'fas fa-check' : 'far fa-square';
+// Title and detail of one op, as the Apply dialog shows it; the Studio Activity log
+// (studioActivityTool.js) words its lines the same way.
+function describeStudioChangeOp(op) {
     let title = '';
     let detail = '';
     if (op.kind === 'presetName') {
@@ -1678,6 +1678,13 @@ function renderStudioChangeOpRow(op) {
             detail += ' (not in current text)';
         }
     }
+    return { title, detail, verb: studioChangeActionBadge(op.action) };
+}
+
+function renderStudioChangeOpRow(op) {
+    const on = op.enabled !== false;
+    const icon = on ? 'fas fa-check' : 'far fa-square';
+    const { title, detail } = describeStudioChangeOp(op);
     const missing = op.kind === 'chunk' && op.action === 'remove' && op.found === false;
     return `
         <div class="studio-change-row${on ? ' is-on' : ''}${missing ? ' is-missing' : ''}" data-op-key="${studioChangeEscape(op.key)}" data-state="${on ? 'on' : 'off'}">
@@ -2572,7 +2579,7 @@ async function applyStudioChangePayload(payload, options) {
         const count = appliedOps && appliedOps.count != null ? appliedOps.count : enabledOps.length;
         const extras = enabledOps.some((op) => op.kind === 'dynamicGeneration' || op.kind === 'director');
         // noteStudioActivityChange: public/scripts/comp/studioActivityTool.js
-        if (typeof noteStudioActivityChange === 'function') noteStudioActivityChange(enabledOps, { source: (options && options.source) || 'manual', title: payload.title || '', extras });
+        if (typeof noteStudioActivityChange === 'function') noteStudioActivityChange(enabledOps, { source: (options && options.source) || 'manual', title: payload.title || '', extras, unapplied: (appliedOps && appliedOps.unapplied) || [] });
         // refreshStudioTokenCounts: public/scripts/comp/presetTokenCount.js
         await refreshStudioTokenCounts();
         showGlassToast('success', 'Studio change', `Applied ${count} change${count === 1 ? '' : 's'}`, false, 2500, '<i class="fas fa-check"></i>');
@@ -2601,7 +2608,8 @@ async function applyStudioChangePayloadSilent(payload, options) {
             source: (options && options.source) || 'agent',
             actorName: (options && options.actorName) || '',
             title: payload.title || '',
-            extras
+            extras,
+            unapplied
         });
         // refreshStudioTokenCounts: public/scripts/comp/presetTokenCount.js
         await refreshStudioTokenCounts();

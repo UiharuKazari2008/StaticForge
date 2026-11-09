@@ -444,3 +444,272 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"]
     color: #000;
     opacity: 1;
 }
+
+/* ---- Reality Crossover Information (#compiledPromptModal, compiledPromptInspector.js) and the
+   Inspector's Dynamic Generation context: a light Vista tool window. The scene cards sit on the
+   Sidebar Weather gadget's faces, which the gadget itself switches: BLUE by day, BLACK at night,
+   GRAY under rain, snow, fog and storms (vista-sidebar/weather/*-base.png, 9-sliced 14 px; their
+   soft shadow is in the art). Under them, a grouped Property / Value list as Explorer's Details
+   tab draws one: white in a #828790 frame, Vista header items, group headers in #1e3287 with the
+   fading rule, 19 px rows. ---- */
+
+#compiledPromptModal {
+    width: 480px;
+    height: 680px;
+}
+
+.crossover-window > .modal-content.crossover-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.crossover-window .crossover-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    padding: 9px 10px 11px;
+    overflow: auto;
+}
+
+.crossover-window .crossover-body > .weather-display {
+    gap: 8px;
+}
+
+/* the cards clip their art (overflow: hidden), so in the scrolling column they would shrink to
+   their borders */
+.crossover-window .crossover-body > *,
+.crossover-window .crossover-body > .weather-display > * {
+    flex-shrink: 0;
+}
+
+.crossover-empty {
+    margin: 0;
+    padding: 4px 2px;
+}
+
+/* the property list (both looks; the light client adds Vista's art below) */
+.crossover-props {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.crossover-props-head,
+.crossover-prop {
+    display: grid;
+    grid-template-columns: minmax(90px, 36%) minmax(0, 1fr);
+}
+
+.crossover-props-head > span {
+    padding: 3px 6px;
+    opacity: 0.75;
+}
+
+.crossover-group-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 6px 3px;
+    font-weight: 600;
+}
+
+.crossover-group-head::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, currentColor, transparent);
+    opacity: 0.35;
+}
+
+.crossover-prop > span {
+    min-width: 0;
+    padding: 2px 6px;
+    line-height: 15px;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.crossover-prop-name {
+    padding-left: 14px !important;
+    opacity: 0.8;
+}
+
+.crossover-prop .clickable {
+    cursor: var(--c-pointer);
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .crossover-props {
+    background: #fff;
+    border-color: #828790;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .crossover-props-head {
+    height: 24px;
+    background: #fff;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .crossover-props-head > span {
+    box-sizing: border-box;
+    height: 24px;
+    padding: 4px 6px 0;
+    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 2 0 1 fill / 0 2px 0 1px stretch;
+    color: #000;
+    opacity: 1;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .crossover-group-head {
+    padding: 7px 6px 3px 6px;
+    color: #1e3287;
+    font-weight: 400;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .crossover-group-head::after {
+    background: linear-gradient(to right, #c5d0e2, transparent);
+    opacity: 1;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .crossover-prop > span {
+    color: #000;
+    opacity: 1;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .crossover-prop-name {
+    color: #6d6d6d !important;
+}
+
+/* cache-browser.css paints the readings white for its glass cards */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .crossover-prop :is(.weather-detail-value, .weather-hour-temp, .weather-hour-precip) {
+    margin: 0;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+}
+
+/* the scene cards on the gadget faces (the faces themselves follow the period card's rules) */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card:is(*, [class*="period-"], [class*="holiday-"]) {
+    width: auto;
+    background: none;
+    border: 14px solid transparent;
+    border-image: url("/static_images/vista-sidebar/weather/BLUE-base.png") 14 fill / 14px stretch;
+    border-radius: 0;
+    box-shadow: none;
+    color: #fff;
+    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    transition: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card::before,
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card::after {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-info-content {
+    padding: 2px 4px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-title {
+    color: #fff;
+    font: 300 22px/1.2 "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-time {
+    color: #fff;
+    font: 300 34px/1.1 "Segoe UI", "SegoeUI", "Noto Sans", sans-serif !important;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card :is(.period-date, .period-location, .period-title-indicator-label, .detail-label) {
+    color: #e4f1fb;
+    font-size: 9pt;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .detail-label {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 700;
+    color: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card :is(.detail-value, .period-title-indicator-value) {
+    color: #fff;
+    font-size: 9pt;
+}
+
+/* the season / region tag: plain words on the face, no pill */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-season-badge {
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    color: #e4f1fb;
+    font-size: 9pt;
+    font-weight: 400;
+}
+
+/* season / sun / light / holiday gauges: a thin white groove, the marker or fill in white */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-title-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.28);
+    border-radius: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-title-progress-bar::before {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-title-progress-bar :is(.period-progress-marker, .period-progress-fill) {
+    background: #fff;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* weather alerts: IE's information bar (its warning icon comes from vista-glass-controls.css) */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-alert-card {
+    padding: 4px 6px;
+    background: #ffffe1;
+    border: 1px solid #aca899;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-alert-card :is(.weather-alert-title, .weather-alert-message) {
+    color: #000;
+    font-size: 9pt;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-alert-card .weather-alert-title {
+    font-weight: 700;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-main-card.gadget-face-black,
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card.gadget-face-black {
+    border-image-source: url("/static_images/vista-sidebar/weather/BLACK-base.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-main-card.gadget-face-gray {
+    border-image-source: url("/static_images/vista-sidebar/weather/GRAY-base.png");
+}
+
+/* a clear night: the gadget's moon in tonight's phase (undocked_moon-*.png, the moon's 116 x 86
+   box at 13,13 of the 264 x 194 layer, scaled into the 42 x 34 sky icon) */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-clear[class*="moon-"] {
+    background-size: 96px 71px;
+    background-position: -5px -4px;
+}
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-clear.moon-new { background-image: url("/static_images/vista-sidebar/weather/undocked_moon-new.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-clear.moon-waxing-crescent { background-image: url("/static_images/vista-sidebar/weather/undocked_moon-waxing-crescent.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-clear.moon-first-quarter { background-image: url("/static_images/vista-sidebar/weather/undocked_moon-first-quarter.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-clear.moon-waxing-gibbous { background-image: url("/static_images/vista-sidebar/weather/undocked_moon-waxing-gibbous.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-clear.moon-full { background-image: url("/static_images/vista-sidebar/weather/undocked_moon-full.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-clear.moon-waning-gibbous { background-image: url("/static_images/vista-sidebar/weather/undocked_moon-waning-gibbous.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-clear.moon-last-quarter { background-image: url("/static_images/vista-sidebar/weather/undocked_moon-last-quarter.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-clear.moon-waning-crescent { background-image: url("/static_images/vista-sidebar/weather/undocked_moon-waning-crescent.png"); }
