@@ -176,13 +176,6 @@ function outputPathFor(projectRoot, filename, size, isDefault) {
     return path.join(root, String(size), filename);
 }
 
-function webPathFor(filename, size, isDefault) {
-    if (isDefault) {
-        return `${APP_ICONS_WEB_ROOT}/${filename}`;
-    }
-    return `${APP_ICONS_WEB_ROOT}/${size}/${filename}`;
-}
-
 function servedNamesForMaster(filename) {
     const stem = iconStem(filename);
     return [`${stem}.png`, `${stem}.webp`];
