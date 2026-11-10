@@ -21,6 +21,9 @@
  * two agree, else a fresh navigation); Favorites and History are layers too.
  * Home: the Grimoire homepage in the start page's layout, and the Grimoire's wiki, search and
  * documentation pages drawn here without Alchemy (see "Grimoire pages" below).
+ * Dreamscape apps (dsap: addresses: Data Management, Image Search, Control Panel, Agora ...) run
+ * here too, the desktop's own applet code in IE's page (see "Dreamscape apps" below); their phone
+ * layout is public/css/wm-dsap.css.
  * Sessions: Alchemy has a 4-session cap, so the session is closed when the app is closed (title
  * X), 60 s after the app goes behind another, and when the tab goes away.
  *
@@ -61,7 +64,6 @@
     // Zoom: IE Mobile's text sizes
     const ZOOMS = [['largest', 'Largest', 1.5], ['larger', 'Larger', 1.25], ['medium', 'Medium', 1], ['smaller', 'Smaller', 0.85], ['smallest', 'Smallest', 0.7]];
 
-    const GRIMOIRE_ONLY = 'Dreamscape apps (dsap: addresses) open on the desktop. Internet Explorer on this phone shows web pages and the Grimoire.';
     // the Grimoire's own pages (tagWikiSearchModal.js addresses), drawn here without Alchemy
     const GRIM_HOME_URL = 'edtx://en.grimoire.jp/index.dtxt';
     const RECENT_KEY = 'dreamWikiRecentPages'; // DREAMWIKI_RECENT_STORAGE_KEY, shared with the desktop Grimoire
@@ -75,7 +77,8 @@
     let els = {};
     let sub = null; // null | 'favorites' | 'history'
     let subSel = -1;
-    // pages seen here: Grimoire pages { home: true, grim, url, title } (no Alchemy) | web pages { url, title, pending }
+    // pages seen here: Grimoire pages { home: true, grim, url, title } (no Alchemy; a Dreamscape app is
+    // grim.kind 'dsap') | web pages { url, title, pending }
     const homeEntry = () => ({ home: true, grim: { kind: 'home' }, url: GRIM_HOME_URL, title: 'Grimoire' });
     let entries = [homeEntry()];
     let idx = 0;
@@ -379,12 +382,14 @@
     /** Go to a web address (typed, a favorite, a link from elsewhere). */
     function navigate(raw, title) {
         if (!raw) return;
+        // a Dreamscape app's address (dsap:, or a bare registered applet host such as data.dreamscape.jp)
+        if (dsapAddress(raw)) { openDsap(raw, title); return; }
         const url = webUrl(raw);
         if (!url) {
-            // the Grimoire's own pages show here; dsap: apps (and chrome:) are saved in the shared favorites but Alchemy cannot open them
+            // the Grimoire's own pages show here; other schemes (chrome:, a Grimoire domain with no phone page) cannot open
             const g = parseGrim(raw);
             if (g) openLocal(g, title);
-            else if (ws) ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: GRIMOIRE_ONLY });
+            else cannotOpen(raw);
             return;
         }
         pendingInspect = null;
@@ -1124,7 +1129,7 @@
     }
 
     function subRows() {
-        if (sub === 'favorites') return favorites.map((f) => ({ url: f.url, title: f.title || f.url, sub: webUrl(f.url) ? hostOf(f.url) : parseGrim(f.url) ? 'Grimoire' : 'Desktop only', icon: 'ie-favorite' }));
+        if (sub === 'favorites') return favorites.map((f) => ({ url: f.url, title: f.title || f.url, sub: dsapAddress(f.url) ? 'Dreamscape' : webUrl(f.url) ? hostOf(f.url) : parseGrim(f.url) ? 'Grimoire' : 'Desktop only', icon: 'ie-favorite' }));
         return readList(HISTORY_KEY).map((h) => ({ url: h.url, title: h.title || h.url, sub: h.at ? new Date(h.at).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric', year: '2-digit' }) : '', icon: 'ie-page' }));
     }
 
@@ -1236,7 +1241,7 @@
             title: 'Properties',
             icon: 'info',
             text: e.home
-                ? `${e.title || 'Grimoire'}\n\nAddress: ${e.url}\nLoaded by: Grimoire`
+                ? `${e.title || 'Grimoire'}\n\nAddress: ${e.url}\nLoaded by: ${e.grim.kind === 'dsap' ? 'Dreamscape' : 'Grimoire'}`
                 : `${e.title || hostOf(e.url)}\n\nAddress: ${e.url}\nSecurity: ${secure ? 'Secure (HTTPS)' : 'Not secure'}\nLoaded by: Alchemy`
         });
     }
@@ -1353,6 +1358,7 @@
         const e = entry();
         if (!e.home) return;
         if (e.grim.kind === 'home') { renderHomeLists(); return; }
+        if (e.grim.kind === 'dsap') { renderDsap(e, force); return; }
         if (localShown === e && !force) {
             // back on a page whose request is still out (the start page was shown meanwhile): its ring again
             if (!e.html && e.pending) { setGrimLoading(true); return; }
@@ -1487,6 +1493,226 @@
         else if (webUrl(abs) && new URL(abs).origin !== location.origin) navigate(abs, a.textContent.trim());
     }
 
+    // ---------------------------------------------------------------- Dreamscape apps
+
+    /**
+     * Dreamscape apps (DSAP applets, dsapRegistry.js) run here with the desktop's own code: the entry
+     * is resolved (resolveDsap), its scripts load (ensureDsapEntryReady), and activateDsapOnShell
+     * draws it into IE's page and starts its driver, the way the desktop Grimoire
+     * (tagWikiSearchModal.js navigateDsapIfMatched) does. dsapShell is the part of the Grimoire window
+     * the applets use: displayArea, the address (setAddress), history (addToHistory, from
+     * host.setUrl as the applet moves between its own pages), navigate (host.navigate: links to
+     * other applets, Grimoire pages and web pages stay in IE). Only the container and the styling
+     * (wm-dsap.css) are the phone's. The applet runs while its page is on screen; another page, or IE
+     * behind another app for a minute, stops it (deactivateDsapOnShell), and it starts again from
+     * its address. Addresses with no applet behind them (or a Grimoire domain with no phone page)
+     * get a WM notification.
+     */
+    let dsapShown = null; // the entry the running applet draws
+    let dsapLoadSeq = 0;
+    let dsapActivating = false;
+    let dsapIdleTimer = 0;
+    let dsapAddrMove = null; // { from, to }: setAddress just moved the address (host.setUrl); addToHistory may follow
+
+    const dsapApi = () => typeof window.resolveDsap === 'function' && typeof window.activateDsapOnShell === 'function';
+
+    /** A Dreamscape app's address: dsap: anything, or a bare registered applet address (data.dreamscape.jp/...). */
+    function dsapAddress(raw) {
+        const text = String(raw || '').trim();
+        if (!text || !dsapApi()) return false;
+        if (/^dsap:/i.test(text)) return true;
+        if (/^[a-z][a-z0-9+.-]*:/i.test(text) || /\s/.test(text)) return false;
+        let m = null;
+        try { m = window.resolveDsap(text); } catch (_) { m = null; }
+        return !!(m && !(typeof window.isDsapShimEntry === 'function' && window.isDsapShimEntry(m.entry)));
+    }
+
+    /** An address IE cannot show on the phone: a WM notification (no page change). */
+    function cannotOpen(raw) {
+        if (!ws) return;
+        const address = String(raw || '').trim();
+        const text = /^dsap:/i.test(address) || dsapAddress(address)
+            ? `Internet Explorer cannot find ${address}. There is no Dreamscape app at this address.`
+            : `Internet Explorer cannot open ${address} on this phone.`;
+        ws.notify({ title: 'Internet Explorer', icon: 'warning', text });
+    }
+
+    function openDsap(raw, title) {
+        closeSub();
+        let m = null;
+        try { m = dsapApi() ? window.resolveDsap(raw) : null; } catch (_) { m = null; }
+        if (!m) { cannotOpen(raw); return; }
+        if (typeof window.isDsapShimEntry === 'function' && window.isDsapShimEntry(m.entry)) {
+            // a Grimoire domain written as dsap: (dsap://en.grimoire.jp/search?q=...): its phone page if it has one
+            const g = parseGrim('edtx://' + m.normalized) || parseGrim('rdf://' + m.normalized);
+            if (g) openLocal(g, title);
+            else cannotOpen(raw);
+            return;
+        }
+        const cur = entry();
+        if (cur.home && cur.grim.kind === 'dsap' && cur.url === m.canonicalUrl) {
+            // already on it: shown again (started again if it was stopped)
+            if (dsapShown !== cur) render();
+            return;
+        }
+        pushLocal({ home: true, grim: { kind: 'dsap' }, url: m.canonicalUrl, title: title || m.entry.title || m.displayPath });
+    }
+
+    function dsapNote(text) {
+        els.dsapArea.innerHTML = `<div class="wmb-g-note">${esc(text)}</div>`;
+    }
+
+    /** Start the entry's applet on screen (again with force: Refresh). */
+    function renderDsap(e, force) {
+        if (!force && dsapShown === e && dsapShell._dsapActive) return;
+        const seq = ++dsapLoadSeq;
+        let m = null;
+        try { m = window.resolveDsap(e.url); } catch (_) { m = null; }
+        if (!m) { leaveDsap(); dsapNote(`There is no Dreamscape app at ${e.url}.`); return; }
+        // IE's busy ring while the applet's scripts load and it draws (a page load, not a wait cursor)
+        setGrimLoading(true);
+        const paint = () => (ws && typeof ws.afterPaint === 'function' ? ws.afterPaint() : Promise.resolve());
+        Promise.resolve(window.ensureDsapEntryReady(m.entry)).then((ok) => paint().then(() => ok)).then((ok) => {
+            if (seq !== dsapLoadSeq || entry() !== e) return;
+            if (!ok) throw new Error('load');
+            dsapShown = e;
+            dsapAddrMove = null;
+            dsapActivating = true;
+            let done = false;
+            try { done = window.activateDsapOnShell(dsapShell, e.url, { force: true }); } finally { dsapActivating = false; }
+            if (!done) throw new Error('activate');
+            // DSAP-SMF applets take WM's white form (wm-dsap.css), not the desktop's grey page
+            const root = dsapShell._dsapState && dsapShell._dsapState.rootEl;
+            if (root && root.classList.contains('dsap-smf')) els.dsap.style.backgroundColor = '';
+            els.dsap.scrollTop = 0;
+            renderAddress();
+            noteHistory(e.url, e.title);
+        }).catch((err) => {
+            if (seq !== dsapLoadSeq || entry() !== e) return;
+            console.warn('[wmBrowser] dsap', e.url, err);
+            leaveDsap();
+            setGrimLoading(false);
+            dsapNote('The page cannot be displayed. The Dreamscape app did not start; try Refresh.');
+        }).finally(() => {
+            if (seq === dsapLoadSeq) setGrimLoading(false);
+        });
+    }
+
+    /** Stop the applet (another page shows, or IE stayed behind another app). */
+    function leaveDsap() {
+        dsapLoadSeq++;
+        dsapAddrMove = null;
+        clearTimeout(dsapIdleTimer);
+        dsapIdleTimer = 0;
+        if (dsapShell._dsapState) {
+            try { window.deactivateDsapOnShell(dsapShell); } catch (err) { console.warn('[wmBrowser] dsap stop', err); }
+        }
+        if (dsapShown || els.dsapArea.childElementCount) els.dsapArea.innerHTML = '';
+        els.dsap.style.backgroundColor = '';
+        dsapShown = null;
+    }
+
+    /** The Grimoire window's surface as the applets use it (dsapRegistry.js createDsapHost / activateDsapOnShell). */
+    const dsapShell = {
+        displayArea: null,
+        searchBody: null,
+        _dsapState: null,
+        _dsapActive: false,
+        setAddress(o) {
+            const url = String((o && (o.displayUrl || o.url)) || '').trim();
+            if (!url || !dsapShown) return;
+            if (!dsapActivating && url !== dsapShown.url) dsapAddrMove = { from: dsapShown.url, to: url };
+            dsapShown.url = url;
+            if (entry() === dsapShown) renderAddress();
+        },
+        addToHistory(h) {
+            const url = String((h && h.url) || '').trim();
+            if (!url || !dsapShown) return;
+            const move = dsapAddrMove;
+            dsapAddrMove = null;
+            if (dsapActivating || entry() !== dsapShown) { dsapShown.url = url; return; }
+            // the applet went to another of its pages (host.setUrl): a new IE entry with the same running applet
+            if (move && move.to === url) dsapShown.url = move.from;
+            if (dsapShown.url === url) return;
+            const next = { home: true, grim: { kind: 'dsap' }, url, title: (h && h.title) || dsapShown.title };
+            entries = entries.slice(0, idx + 1);
+            entries.push(next);
+            idx = entries.length - 1;
+            dsapShown = next;
+            noteHistory(url, next.title);
+            renderAddress();
+            step();
+        },
+        updateNavigationButtons() { step(); },
+        navigate(url) { navigate(String(url || '').trim()); },
+        setNavigationLoading(on) { setGrimLoading(on); },
+        showGrimoireNavigationLoadingPage() { /* IE's busy ring */ },
+        showGrimoireNavigateErrorPage() { dsapNote('The page cannot be displayed.'); },
+        showStaticWikiSiteIndex(id) { if (id) openLocal({ kind: 'site', site: String(id) }); },
+        // links are caught once on the page (onDsapClick)
+        _interceptAllLinks() { /* onDsapClick */ }
+    };
+
+    /** Links in an applet: other applets, Grimoire pages and web pages open in IE; anchors scroll the page. */
+    function onDsapClick(e) {
+        if (e.defaultPrevented) return;
+        const a = e.target.closest && e.target.closest('a[href]');
+        if (!a || !els.dsap.contains(a) || a.hasAttribute('download')) return;
+        const href = (a.getAttribute('href') || '').trim();
+        if (!href || /^javascript:/i.test(href)) return;
+        const label = a.textContent.replace(/\s+/g, ' ').trim();
+        if (href.startsWith('#')) {
+            e.preventDefault();
+            let target = null;
+            try { target = href.length > 1 && els.dsap.querySelector('#' + CSS.escape(href.slice(1))); } catch (_) { target = null; }
+            if (target) els.dsap.scrollTop += target.getBoundingClientRect().top - els.dsap.getBoundingClientRect().top;
+            else els.dsap.scrollTop = 0;
+            return;
+        }
+        if (a.classList.contains('tag-wiki-link') && a.dataset.tagName && !a.dataset.tagName.startsWith('#')) {
+            e.preventDefault();
+            openLocal({ kind: 'wiki', tag: a.dataset.tagName });
+            return;
+        }
+        if (/^(edtx|rdf|dsap):/i.test(href) || dsapAddress(href)) { e.preventDefault(); navigate(href, label); return; }
+        let abs = null;
+        try { abs = new URL(href, location.href); } catch (_) { return; }
+        if ((abs.protocol === 'http:' || abs.protocol === 'https:') && abs.origin !== location.origin) {
+            e.preventDefault();
+            navigate(abs.href, label);
+        }
+        // same-origin links (a picture, a file) keep their own behaviour
+    }
+
+    /** Tap-and-hold in an applet: the applet's own context menu items (host.registerContextMenuItems) as a WM menu. */
+    function onDsapContextMenu(e) {
+        const host = dsapShell._dsapState && dsapShell._dsapState.host;
+        if (!host || typeof window.collectDsapHostContextMenuItems !== 'function') return;
+        let items = [];
+        try { items = window.collectDsapHostContextMenuItems(host, e.target).items || []; } catch (_) { items = []; }
+        const el = e.target;
+        const list = [];
+        items.forEach((it) => {
+            if (!it || it.separator || it.type === 'separator') { if (list.length && list[list.length - 1] !== '-') list.push('-'); return; }
+            const label = String(it.text || it.label || '').trim();
+            if (!label) return;
+            let disabled = false;
+            try { disabled = typeof it.disabled === 'function' ? !!it.disabled() : !!it.disabled; } catch (_) { disabled = false; }
+            list.push({
+                label,
+                disabled,
+                action: () => {
+                    if (typeof it.action === 'function') it.action(el, it);
+                    else window.dispatchDsapContextMenuAction(host, it.action, it, el);
+                }
+            });
+        });
+        while (list.length && list[list.length - 1] === '-') list.pop();
+        if (!list.length) return;
+        e.preventDefault();
+        ws.menuAt(e.clientX, e.clientY, list);
+    }
+
     // ---------------------------------------------------------------- rendering
 
     function renderGoButton() {
@@ -1513,8 +1739,13 @@
         page.classList.toggle('on-home', home);
         page.classList.toggle('is-full', fullScreen);
         const start = home && entry().grim.kind === 'home';
+        const app = home && entry().grim.kind === 'dsap';
         els.home.hidden = !start;
-        els.gpage.hidden = !home || start;
+        els.gpage.hidden = !home || start || app;
+        els.dsap.hidden = !app;
+        page.classList.toggle('on-dsap', app);
+        // another page on screen: the applet stops (its timers, socket listeners); Back starts it again
+        if (!app) leaveDsap();
         els.frameWrap.hidden = home;
         if (!home || entry().grim.kind === 'home') grimLoading = false;
         page.classList.toggle('is-loading', (loading && !home) || (grimLoading && home));
@@ -1528,12 +1759,10 @@
         const text = els.addr.value.trim();
         if (!text) return;
         const url = webUrl(text) || searchUrl(text);
-        if (/^(edtx|rdf|dsap):/i.test(text)) {
-            const g = parseGrim(text);
+        if (/^(edtx|rdf|dsap):/i.test(text) || dsapAddress(text)) {
             addrEditing = false;
             els.addr.blur();
-            if (g) openLocal(g);
-            else ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: GRIMOIRE_ONLY });
+            navigate(text);
             return;
         }
         if (webUrl(text)) noteTyped(url);
@@ -1574,6 +1803,7 @@
                     <div class="wmb-home-list" data-list="history" hidden></div>
                 </div>
                 <div class="wmb-gpage" hidden></div>
+                <div class="wmb-dsap form-section-scroll" hidden><div class="wmb-dsap-area"></div></div>
                 <div class="wmb-frame-wrap" hidden>
                     <div class="wmb-touch"></div>
                 </div>
@@ -1590,6 +1820,8 @@
             view: page.querySelector('.wmb-view'),
             home: page.querySelector('.wmb-home'),
             gpage: page.querySelector('.wmb-gpage'),
+            dsap: page.querySelector('.wmb-dsap'),
+            dsapArea: page.querySelector('.wmb-dsap-area'),
             frameWrap: page.querySelector('.wmb-frame-wrap'),
             touch: page.querySelector('.wmb-touch'),
             sub: page.querySelector('.wmb-sub'),
@@ -1644,6 +1876,10 @@
             input.blur();
             openLocal({ kind: 'search', q });
         });
+
+        dsapShell.displayArea = els.dsapArea;
+        els.dsap.addEventListener('click', onDsapClick);
+        els.dsap.addEventListener('contextmenu', onDsapContextMenu);
 
         els.sub.addEventListener('click', (e) => {
             const row = e.target.closest('.wmb-sub-row');
@@ -1723,6 +1959,8 @@
                 if (!settings) loadSettings().then(() => { if (onHome()) renderHomeLists(); syncAudio(); });
                 // the session was let go while away: the page comes back from its address
                 if (!onHome() && !sub && !session && !creating) { entry().pending = true; openSession(entry().url); }
+                clearTimeout(dsapIdleTimer);
+                dsapIdleTimer = 0;
                 render();
                 if (sub) renderSub();
                 syncAudio();
@@ -1736,6 +1974,9 @@
                 if (a && page && page.contains(a) && typeof a.blur === 'function') a.blur();
                 syncAudio();
                 if (session) scheduleIdleClose();
+                // a Dreamscape app behind another app stops after the same wait (it comes back from its address)
+                clearTimeout(dsapIdleTimer);
+                if (dsapShown) dsapIdleTimer = setTimeout(() => { dsapIdleTimer = 0; if (!visible) leaveDsap(); }, IDLE_CLOSE_MS);
             },
             // WM: X on the page (Smart Minimize: the page stays, and hide() lets Alchemy's session
             // go after the idle wait), ok on Favorites / History (back to the page)
@@ -1764,6 +2005,7 @@
         // web links elsewhere on the phone (Help, Messaging, Director) land here, never in desktop windows
         window.wmBrowser = {
             open(url) {
+                if (dsapAddress(url)) { ws.open(APP_ID); openDsap(url); return true; }
                 const u = webUrl(url);
                 const g = u ? null : parseGrim(url);
                 if (!u && !g) return false;
@@ -1774,7 +2016,7 @@
             },
             closeSession,
             // tests: the pages seen here and where Chromium is
-            _state: () => ({ entries: entries.map((e) => (e.home ? (e.grim.kind === 'home' ? 'home' : e.url) : e.url)), idx, idle: !!idleTimer, inspect: pendingInspect, chromeAt, chromeBase, session: session && session.id, loading, frame: !!frame, ready, viewMode, zoomKey, geometry: els.view ? geometry() : null })
+            _state: () => ({ entries: entries.map((e) => (e.home ? (e.grim.kind === 'home' ? 'home' : e.url) : e.url)), idx, dsap: dsapShell._dsapState ? dsapShell._dsapState.url : null, idle: !!idleTimer, inspect: pendingInspect, chromeAt, chromeBase, session: session && session.id, loading, frame: !!frame, ready, viewMode, zoomKey, geometry: els.view ? geometry() : null })
         };
         try {
             // featureLoader.js's global function: on the phone it opens this app
@@ -1789,26 +2031,17 @@
      * Items or a desktop shortcut showed the desktop Grimoire window: Studio hosted it as a tool page
      * whose soft keys were only Done, the IE keys and menu were gone. grimoireOpenInTab is set by
      * grimoireTabs.js when the Grimoire feature loads (after this file), so the global is a getter.
-     * Dreamscape apps (dsap:, such as NovelAI Explore from Studio) have no phone page: they get IE's
-     * own message (as typed in the address bar), not the desktop Grimoire window, which stayed open
-     * hidden behind the shell or became a Done-only tool page over Studio.
+     * Dreamscape apps (dsap:, such as NovelAI Explore from Studio, Data Management from Programs) open
+     * here as IE pages too (openDsap).
      */
-    function isDsapAddress(address) {
-        return /^dsap:/i.test(address) || (!!address && !/^(?:edtx|rdf|https?):/i.test(address) && typeof window.isDsapPseudoUrl === 'function' && !!window.isDsapPseudoUrl(address));
-    }
-
-    function dsapMessage() {
-        ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: GRIMOIRE_ONLY });
-    }
-
     function openGrimoireTarget(target) {
         const t = target || {};
         const address = String(t.url || t.address || '').trim();
-        if (isDsapAddress(address)) { dsapMessage(); return true; }
         if (window.wmBrowser.open(address)) return true;
         ws.open(APP_ID);
         const g = t.tag ? { kind: 'wiki', tag: String(t.tag) } : parseGrim(address);
         if (g && g.kind !== 'home') openLocal(g);
+        else if (address && /^[a-z][a-z0-9+.-]*:/i.test(address)) cannotOpen(address);
         else goHome();
         return true;
     }
@@ -1827,14 +2060,15 @@
             });
         } catch (_) { /* not configurable: the desktop route stays */ }
         try {
-            // dsapRegistry.js: every dsap: opener (Studio's Explore, the Director's lookback links, a
-            // standalone applet window) ends in the desktop Grimoire; on the phone they get the message
+            // dsapRegistry.js: every dsap: opener (Studio's Explore, the Director's lookback links,
+            // Programs' Data Management / Image Search / Control Panel / Agora / Novels, a standalone
+            // applet window) ends in the desktop Grimoire; on the phone they open the applet in IE
             const desktopOpenDsap = window.openDsapInGrimoire;
             if (typeof desktopOpenDsap === 'function' && !desktopOpenDsap._wmBrowser) {
                 const phoneOpenDsap = async function (url) {
                     const address = String(url || '').trim();
                     if (!address) return undefined;
-                    if (isDsapAddress(address)) { dsapMessage(); return undefined; }
+                    if (/^dsap:/i.test(address) || dsapAddress(address)) { ws.open(APP_ID); openDsap(address); return undefined; }
                     openGrimoireTarget({ address });
                     return undefined;
                 };

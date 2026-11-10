@@ -32,13 +32,14 @@
     if (window.uiShell !== 'mobile' || !root.classList.contains('ui-mobile')) return;
 
     const ART = '/static_images/wm61/';
-    const art = (name) => `${ART}${name}.png`;
-    const art2x = (name) => `${ART}${name}@2x.png`;
+    // a name starting with '/' is an image path of its own (a desktop app icon), used as is
+    const art = (name) => (String(name).startsWith('/') ? name : `${ART}${name}.png`);
+    const art2x = (name) => (String(name).startsWith('/') ? name : `${ART}${name}@2x.png`);
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
     const HD_ART = new Set(["app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-off", "status-data-on", "status-director", "status-mail", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
-    const srcset = (name) => `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
+    const srcset = (name) => String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -322,7 +323,11 @@
             });
         });
         shell.querySelector('.wm-sip').addEventListener('click', () => {
-            const input = shell.querySelector('.wm-content input:not([type=hidden]), .wm-content textarea, .wm-searchbar:not([hidden]) input');
+            // the current app's page only: a field on a hidden page must not take the keyboard
+            const app = current && apps.get(current);
+            const scope = (app && app.page) || shell.querySelector('.wm-content');
+            const input = [...scope.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([disabled]), textarea:not([disabled])')]
+                .find((el) => el.getClientRects().length) || shell.querySelector('.wm-searchbar:not([hidden]) input');
             if (input) input.focus();
         });
         document.addEventListener('click', (e) => {
@@ -869,6 +874,26 @@
         syncHistory();
     }
 
+    /**
+     * End an app (Task Manager's End Task): its hide() and onEnd() run, its page is removed (mounted
+     * afresh on the next open), and it leaves the back stack and the Start menu's strip.
+     */
+    function endApp(id) {
+        const app = apps.get(id);
+        if (!app || id === 'today' || id === 'programs' || id === 'settings') return false;
+        if (current === id) back({ app: true });
+        if (current === id) activate('today');
+        try { if (typeof app.onEnd === 'function') app.onEnd(); } catch (err) { console.warn('[wmShell] onEnd', id, err); }
+        // a page that carries desktop windows (Studio's #manualModal, the Director, hosted programs)
+        // is never removed: the windows would go with it. Those apps only leave the stack and strip.
+        if (app.page && !app.page.querySelector('.modal')) { app.page.remove(); app.page = null; }
+        for (let i = stack.length - 1; i >= 0; i--) if (stack[i] === id) stack.splice(i, 1);
+        const at = openedApps.indexOf(id);
+        if (at >= 0) openedApps.splice(at, 1);
+        syncHistory({ noPush: true });
+        return true;
+    }
+
     /** One screen back; { app: true } = the current app's page itself (a form or file dialog ending), not the picture view over it. */
     function back(opts) {
         closeMenus(true);
@@ -968,7 +993,19 @@
      * signal and a known battery always stay.
      */
     let statusFolded = [];
+    /**
+     * The title bar sheds status icons that do not fit. Measured after the next paint, once per
+     * frame: measuring in the tap forced a layout of the whole dirty page (~250 ms on a cold Studio
+     * open at 4x, #723).
+     */
+    let fitQueued = false;
     function fitStatus() {
+        if (!shell || fitQueued) return;
+        fitQueued = true;
+        afterPaint().then(() => { fitQueued = false; fitStatusNow(); });
+    }
+
+    function fitStatusNow() {
         if (!shell) return;
         const bar = shell.querySelector('.wm-titlebar');
         const el = (r) => shell.querySelector(`.wm-status-icon[data-role="${r}"]`);
@@ -1845,7 +1882,9 @@
         // new question from the last one still closing.
         const ask = window.showConfirmationDialog;
         if (typeof ask === 'function' && !ask.wmWrapped) {
-            const wrapped = function () {
+            const wrapped = function (message, options, event, config) {
+                const notice = confirmationNotice(message, options, config);
+                if (notice) return notice;
                 const result = ask.apply(this, arguments);
                 try {
                     const dlg = document.getElementById('confirmationDialog');
@@ -1862,13 +1901,138 @@
         }
     }
 
+    // ---------------------------------------------------------------- notifications
+
+    const NOTE_TYPE = { error: 'error', warning: 'warning', success: 'success' };
+
+    /**
+     * A WM notification (SHNotificationAdd): the shell's bubble, title-bar icon and tray, drawn from
+     * a toast (toastManager.js) like every other notice on the phone. Errors and warnings stay until
+     * dismissed; others time out (timeout ms, false = stay). Resolves when it is gone (Dismiss, its
+     * timeout); Hide keeps it in the tray and the promise waiting, like the box it stands for.
+     */
+    function notify({ title = 'Melaton Mobile', text = '', icon = 'info', timeout = null, buttons = null } = {}) {
+        return new Promise((resolve) => {
+            if (typeof window.showGlassToast !== 'function') { resolve(true); return; }
+            const type = NOTE_TYPE[icon] || 'info';
+            const stay = timeout === false || (timeout == null && (type === 'error' || type === 'warning'));
+            const html = escapeHtml(String(text || '').trim()).replace(/\n/g, '<br>');
+            let id = null;
+            try {
+                id = window.showGlassToast(type, escapeHtml(title), html, false, stay ? false : (timeout || 8000), null, buttons);
+            } catch (err) { console.warn('[wmShell] notify', err); }
+            if (!id) { resolve(true); return; }
+            const gone = () => { const t = document.getElementById(id); return !t || t.classList.contains('removing'); };
+            const timer = setInterval(() => { if (gone()) { clearInterval(timer); resolve(true); } }, 400);
+        });
+    }
+
+    /** Plain text of a desktop dialog's HTML message, line breaks kept. */
+    function htmlToText(html) {
+        const div = document.createElement('div');
+        div.innerHTML = String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|h\d)>/gi, '\n');
+        return div.textContent.replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+    }
+
+    /**
+     * showConfirmationDialog with one plain button (an OK notice, no form, no handler of its own) is
+     * the desktop telling the user something: on the phone a WM notification, resolving with the
+     * button's value once it is dismissed. Everything else stays the desktop dialog (a WM message box).
+     */
+    function confirmationNotice(message, options, config) {
+        if (!Array.isArray(options) || options.length !== 1) return null;
+        const opt = options[0] || {};
+        const cfg = config || {};
+        if (typeof opt.onClick === 'function' || typeof cfg.onDialogReady === 'function' || typeof cfg.resolveValue === 'function') return null;
+        if (/<(form|input|select|textarea|button|img|canvas|video|iframe)\b/i.test(String(message || ''))) return null;
+        const fa = String(cfg.icon || '');
+        const icon = /xmark|times|ban|skull|bug|bomb|circle-exclamation|exclamation-circle/.test(fa) ? 'error'
+            : /exclamation|warning/.test(fa) ? 'warning' : /check/.test(fa) ? 'success' : 'info';
+        return notify({ title: cfg.title || 'Melaton Mobile', text: htmlToText(message), icon }).then(() => opt.value);
+    }
+
+    // ---------------------------------------------------------------- the wait cursor for server work
+
+    /**
+     * A tap whose work waits on the server shows the wait cursor without each caller asking for it:
+     * a websocket request (wsClient.sendMessageWithCallback) or an /api fetch started within a moment
+     * of a tap or Enter shows it after 250 ms until the reply. Work that runs long by design (prints,
+     * upscales, Director turns, streams) is left out, and the cursor gives up after 8 s.
+     */
+    let lastTapAt = -1e9;
+    const LONG_REQUEST = /generat|^print|_print|upscale|director_(send|turn|chat|run|continue|regenerate|reply)|wren|stream|subscribe|unsubscribe|^ping$|heartbeat|telemetry|presence|keepalive/i;
+    const tapRecent = () => performance.now() - lastTapAt < 700;
+
+    function busyForRequest(p) {
+        if (!p || typeof p.then !== 'function') return;
+        busy(p.then(() => {}, () => {}), { delay: 250, timeout: 8000 });
+    }
+
+    /**
+     * window.alert in desktop code (35 calls) would show the Android / browser dialog on the phone:
+     * it is a WM notification here. confirm / prompt stay native: they must answer synchronously.
+     */
+    function routeAlert() {
+        const orig = window.alert;
+        if (typeof orig !== 'function' || orig.wmRouted) return;
+        const phoneAlert = function (message) {
+            notify({ title: 'Melaton Mobile', text: String(message == null ? '' : message), icon: 'warning' });
+        };
+        phoneAlert.wmRouted = true;
+        window.alert = phoneAlert;
+    }
+
+    function watchRequestBusy() {
+        const mark = (e) => { if (e.isTrusted) lastTapAt = performance.now(); };
+        document.addEventListener('click', mark, true);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Enter') mark(e); }, true);
+        const wrapWs = () => {
+            const c = window.wsClient;
+            if (!c || typeof c.sendMessageWithCallback !== 'function') return false;
+            if (c.wmBusyWrapped) return true;
+            const orig = c.sendMessageWithCallback;
+            c.sendMessageWithCallback = function (type) {
+                const p = orig.apply(this, arguments);
+                try { if (tapRecent() && !LONG_REQUEST.test(String(type || ''))) busyForRequest(p); } catch (_) { /* no cursor */ }
+                return p;
+            };
+            c.wmBusyWrapped = true;
+            return true;
+        };
+        if (!wrapWs()) {
+            const t = setInterval(() => { if (wrapWs()) clearInterval(t); }, 1000);
+        }
+        const f = window.fetch;
+        if (typeof f === 'function' && !f.wmBusyWrapped) {
+            const wrapped = function (input) {
+                const p = f.apply(this, arguments);
+                try {
+                    if (tapRecent()) {
+                        const url = new URL(typeof input === 'string' ? input : (input && input.url) || '', location.href);
+                        if (url.origin === location.origin && /^\/api\//.test(url.pathname) && !LONG_REQUEST.test(url.pathname)) busyForRequest(p);
+                    }
+                } catch (_) { /* no cursor */ }
+                return p;
+            };
+            wrapped.wmBusyWrapped = true;
+            window.fetch = wrapped;
+        }
+    }
+
     // ---------------------------------------------------------------- message box
 
     /**
      * WM message box; resolves with the chosen button's value. buttons: [{ text, value }].
      * icon: 'error' | 'warning' | 'info' | 'question' | null.
      */
-    function messageBox({ title = 'Melaton Mobile', text = '', icon = null, buttons = [{ text: 'ok', value: true }], cancelValue = false, input = null } = {}) {
+    function messageBox({ title = 'Melaton Mobile', text = '', icon = null, buttons = [{ text: 'ok', value: true }], cancelValue = false, input = null, modal = false } = {}) {
+        // a box with only ok tells the user something: a WM notification (bubble, title-bar icon,
+        // tray), not a modal box. Questions, edit boxes and modal: true stay message boxes.
+        if (buttons.length === 1 && !input && !modal) {
+            // resolved at once: a caller inside busy() must not hold the wait cursor until it is read
+            notify({ title, text, icon: icon || 'info' });
+            return Promise.resolve(buttons[0].value);
+        }
         return new Promise((resolve) => {
             const layer = shell.querySelector('.wm-msgbox-layer');
             const okOnly = buttons.length === 1;
@@ -3420,6 +3584,8 @@
         watchDevice();
         watchToasts();
         watchSystemSounds();
+        watchRequestBusy();
+        routeAlert();
         startBoot();
         refreshStatus();
         setInterval(refreshStatus, 2000);
@@ -3435,12 +3601,20 @@
         open,
         back,
         messageBox,
+        /** A WM notification: notify({ title, text, icon: 'info' | 'warning' | 'error' | 'success', timeout, buttons }). */
+        notify: (opts) => notify(opts || {}),
         // for apps in their own files (wmFileExplorer.js ...)
         menu: (side, items, btn) => showPopup(side, items, btn),
         dropdown: (anchor, items, align, onClose) => showDropdown(anchor, items, align, onClose),
         closeMenus: () => closeMenus(),
         /** Registered apps (id, title, icon, inStart) in registration order. */
-        listApps: () => [...apps.values()].map((a) => ({ id: a.id, title: a.title, startLabel: a.startLabel, icon: a.icon, inStart: a.inStart, sip: !!a.sip })),
+        /** End an app: its page is removed and remounted on the next open (Task Manager). */
+        endApp: (id) => endApp(id),
+        /** Apps opened this session, most recent first. */
+        openedApps: () => openedApps.slice(),
+        /** An app's page, made (mounted) without bringing the app up. */
+        pageOf: (id) => (apps.has(id) ? pageFor(apps.get(id)) : null),
+        listApps: () => [...apps.values()].map((a) => ({ id: a.id, title: a.title, startLabel: a.startLabel, icon: a.icon, inStart: a.inStart, sip: !!a.sip, programsFolder: a.programsFolder || null })),
         /** A context menu at a point (tap-and-hold), kept on screen. */
         menuAt: (x, y, items) => {
             showPopup('context', items, null);

@@ -1,0 +1,775 @@
+/*
+ * Melaton Mobile: Calendar (WM 6.1 Professional), Yozora #732. wmCalendar.js.
+ * Measured on the Device Emulator (VGA halved; ~/.cache/wm61/ref-apps/cal*.png), lengths N * --wm-px.
+ * Header 22 px tint + 1 px black rule; hour rows 17 px (1 px tint rule), working hours #ffffce, the
+ * rest #dedfde; appointments #9496e7 inside a 1 px white and 1 px black frame; the selection is a
+ * 2 px highlight frame. The form keeps Contacts' metrics (labels right-aligned to x 74, 19.5 px rows).
+ */
+
+.wm-page.wm-calendar {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+    color: #000;
+    --wcl-hour: calc(17 * var(--wm-px));
+    --wcl-appt: #9496e7;
+    --wcl-work: #ffffce;
+    --wcl-off: #dedfde;
+}
+
+.wm-calendar [hidden] {
+    display: none !important;
+}
+
+.wm-calendar .wcl-main,
+.wm-calendar .wcl-form {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-calendar button {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* ---- header ---- */
+
+.wm-calendar .wcl-head {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    height: calc(23 * var(--wm-px));
+    padding-left: calc(3 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tint);
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-calendar .wcl-hdate {
+    flex: 0 0 auto;
+    min-width: calc(78 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+}
+
+.wm-calendar .wcl-letters {
+    display: flex;
+    flex: 0 0 auto;
+    margin-left: calc(-1.25 * var(--wm-px));
+}
+
+.wm-calendar .wcl-letter {
+    /* the device's box is 11 px on a 12.7 px pitch */
+    width: calc(11 * var(--wm-px));
+    margin: 0 calc(0.85 * var(--wm-px)) !important;
+    height: calc(18 * var(--wm-px));
+    font-weight: bold;
+    font-size: calc(12 * var(--wm-px));
+    text-align: center;
+}
+
+.wm-calendar .wcl-letter.is-sun {
+    color: #f00;
+}
+
+.wm-calendar .wcl-letter.is-sat {
+    color: #00f;
+}
+
+.wm-calendar .wcl-letter.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-calendar .wcl-hbtns {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    padding-right: calc(3.5 * var(--wm-px));
+}
+
+.wm-calendar .wcl-hbtn {
+    display: block;
+    width: calc(13 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wm-calendar .wcl-hbtn img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.wm-calendar .wcl-hbtn[data-act="prev"] {
+    margin-left: calc(4 * var(--wm-px));
+}
+
+.wm-calendar .wcl-hsep {
+    width: calc(1 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    margin: 0 calc(6 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+    background: #848284;
+}
+
+.wm-calendar .wcl-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+/* ---- Agenda ---- */
+
+.wm-calendar .wcl-strip {
+    flex: 0 0 auto;
+    position: relative;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    align-items: center;
+    height: calc(18 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    font-size: calc(12 * var(--wm-px));
+    text-align: center;
+}
+
+.wm-calendar .wcl-sbar {
+    position: absolute;
+    top: calc(2.5 * var(--wm-px));
+    height: calc(11 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wcl-appt);
+    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #fff;
+    opacity: 0.9;
+}
+
+.wm-calendar .wcl-sbar.is-selected {
+    outline: calc(2 * var(--wm-px)) solid var(--wm-highlight);
+}
+
+.wm-calendar .wcl-alist {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.wm-calendar .wcl-arow {
+    box-sizing: border-box;
+    min-height: calc(33 * var(--wm-px));
+    padding: calc(0.5 * var(--wm-px)) calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #848284;
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+    cursor: default;
+}
+
+.wm-calendar .wcl-arow.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-calendar .wcl-asubj {
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-calendar .wcl-asub {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---- Day ---- */
+
+.wm-calendar .wcl-allday {
+    flex: 0 0 auto;
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-calendar .wcl-adbox {
+    box-sizing: border-box;
+    height: var(--wcl-hour);
+    margin-left: calc(16 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wcl-appt);
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-calendar .wcl-adbox.is-selected {
+    outline: calc(2 * var(--wm-px)) solid var(--wm-highlight);
+    outline-offset: calc(-2 * var(--wm-px));
+}
+
+.wm-calendar .wcl-dscroll,
+.wm-calendar .wcl-wscroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.wm-calendar .wcl-dgrid {
+    position: relative;
+}
+
+.wm-calendar .wcl-hour {
+    box-sizing: border-box;
+    height: var(--wcl-hour);
+    border-top: calc(1 * var(--wm-px)) solid var(--wm-tint);
+    background: var(--wcl-off);
+    cursor: default;
+}
+
+.wm-calendar .wcl-hour.is-work,
+.wm-calendar .wcl-whour.is-work .wcl-wcell {
+    background: var(--wcl-work);
+}
+
+.wm-calendar .wcl-hlabel {
+    display: block;
+    box-sizing: border-box;
+    width: calc(16 * var(--wm-px));
+    height: 100%;
+    padding-right: calc(2 * var(--wm-px));
+    font-weight: bold;
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(16 * var(--wm-px));
+    text-align: right;
+    pointer-events: none;
+}
+
+.wm-calendar .wcl-hour.is-picked {
+    box-shadow: inset 0 0 0 calc(2 * var(--wm-px)) var(--wm-highlight);
+}
+
+.wm-calendar .wcl-hour.is-picked .wcl-hlabel {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-calendar .wcl-dbox {
+    position: absolute;
+    box-sizing: border-box;
+    top: calc(var(--t) * var(--wcl-hour) + 1 * var(--wm-px));
+    height: calc(var(--l) * var(--wcl-hour) - 1 * var(--wm-px));
+    left: calc(16 * var(--wm-px) + (100% - 16 * var(--wm-px)) * var(--lane) / var(--lanes));
+    width: calc((100% - 16 * var(--wm-px)) / var(--lanes));
+    display: flex;
+    align-items: flex-start;
+    gap: calc(2 * var(--wm-px));
+    padding: calc(1 * var(--wm-px)) calc(2 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+    overflow: hidden;
+    cursor: default;
+}
+
+.wm-calendar .wcl-dbox.is-selected {
+    border: calc(2 * var(--wm-px)) solid var(--wm-highlight);
+}
+
+/* the busy bar at the box's left */
+.wm-calendar .wcl-dbar {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: calc(4 * var(--wm-px));
+    align-self: stretch;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wcl-appt);
+}
+
+.wm-calendar .wcl-dtext {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+/* ---- Week ---- */
+
+.wm-calendar .wcl-whead {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: calc(16 * var(--wm-px)) repeat(var(--cols), minmax(0, 1fr));
+    height: calc(18 * var(--wm-px));
+    margin-right: var(--wcl-gutter, 0px);
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tint);
+}
+
+.wm-calendar .wcl-wday {
+    border-left: calc(1 * var(--wm-px)) solid #000 !important;
+    font-size: calc(12 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-calendar .wcl-wday b {
+    font-size: calc(13 * var(--wm-px));
+}
+
+.wm-calendar .wcl-wday.is-selected {
+    background: #fff;
+}
+
+.wm-calendar .wcl-whour .wcl-hlabel {
+    padding-right: calc(1 * var(--wm-px));
+    font-size: calc(11 * var(--wm-px));
+    letter-spacing: calc(-0.3 * var(--wm-px));
+}
+
+.wm-calendar .wcl-wgrid {
+    position: relative;
+    background: #fff;
+}
+
+.wm-calendar .wcl-whour {
+    display: grid;
+    grid-template-columns: calc(16 * var(--wm-px)) repeat(var(--cols), minmax(0, 1fr));
+    height: var(--wcl-hour);
+}
+
+.wm-calendar .wcl-wcell {
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wcl-off);
+}
+
+.wm-calendar .wcl-wcell.is-picked {
+    box-shadow: inset 0 0 0 calc(2 * var(--wm-px)) var(--wm-highlight);
+}
+
+.wm-calendar .wcl-wbox {
+    position: absolute;
+    box-sizing: border-box;
+    top: calc(var(--t) * var(--wcl-hour) + 1 * var(--wm-px));
+    height: calc(var(--l) * var(--wcl-hour) - 2 * var(--wm-px));
+    left: calc(16 * var(--wm-px) + (100% - 16 * var(--wm-px)) * var(--c) / var(--cols) + 3 * var(--wm-px));
+    width: calc((100% - 16 * var(--wm-px)) / var(--cols) - 5 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wcl-appt);
+    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #fff;
+}
+
+.wm-calendar .wcl-wbox.is-selected {
+    outline: calc(2 * var(--wm-px)) solid var(--wm-highlight);
+}
+
+.wm-calendar .wcl-wdetail {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    height: calc(30 * var(--wm-px));
+    padding: calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- Month ---- */
+
+.wm-calendar .wcl-mhead {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    align-items: center;
+    height: calc(15 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tint);
+    font-weight: bold;
+    text-align: center;
+}
+
+.wm-calendar .is-sun:not(.is-today) > .wcl-mnum,
+.wm-calendar .wcl-mlet.is-sun,
+.wm-calendar .wcl-yday.is-sun:not(.is-today) {
+    color: #f00;
+}
+
+.wm-calendar .is-sat:not(.is-today) > .wcl-mnum,
+.wm-calendar .wcl-mlet.is-sat,
+.wm-calendar .wcl-yday.is-sat:not(.is-today) {
+    color: #00f;
+}
+
+.wm-calendar .wcl-mgrid {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-rows: repeat(6, minmax(0, 1fr));
+    gap: calc(1 * var(--wm-px));
+    background: #000;
+}
+
+.wm-calendar .wcl-mcell {
+    position: relative;
+    display: block;
+    min-width: 0;
+    min-height: 0;
+    background: #fff;
+    text-align: left;
+    overflow: hidden;
+}
+
+.wm-calendar .wcl-mcell.is-out {
+    background: var(--wm-tint);
+}
+
+.wm-calendar .wcl-mcell.is-selected {
+    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #ff494a;
+}
+
+.wm-calendar .wcl-mnum {
+    position: absolute;
+    top: calc(2 * var(--wm-px));
+    left: calc(2 * var(--wm-px));
+    padding: 0 calc(1 * var(--wm-px));
+    font-weight: bold;
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(12 * var(--wm-px));
+}
+
+.wm-calendar .wcl-mcell.is-today .wcl-mnum {
+    background: #000;
+    color: #fff;
+}
+
+/* appointment marks: a morning triangle at the top-left, afternoon at the bottom-right, all-day bar */
+.wm-calendar .wcl-mam,
+.wm-calendar .wcl-mpm {
+    position: absolute;
+    width: calc(7 * var(--wm-px));
+    height: calc(7 * var(--wm-px));
+    background: #000;
+}
+
+.wm-calendar .wcl-mam {
+    right: calc(2 * var(--wm-px));
+    top: calc(2 * var(--wm-px));
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+
+.wm-calendar .wcl-mpm {
+    right: calc(2 * var(--wm-px));
+    bottom: calc(2 * var(--wm-px));
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+.wm-calendar .wcl-mad {
+    position: absolute;
+    left: calc(2 * var(--wm-px));
+    right: calc(11 * var(--wm-px));
+    bottom: calc(2 * var(--wm-px));
+    height: calc(3 * var(--wm-px));
+    background: var(--wcl-appt);
+    box-shadow: 0 0 0 calc(1 * var(--wm-px)) #000;
+}
+
+/* ---- Year ---- */
+
+.wm-calendar .wcl-ygrid {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+    column-gap: calc(1 * var(--wm-px));
+    background: #000;
+    overflow: hidden;
+}
+
+.wm-calendar .wcl-ymonth {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: #fff;
+}
+
+.wm-calendar .wcl-yname {
+    flex: 0 0 auto;
+    height: calc(13 * var(--wm-px));
+    background: var(--wm-tint);
+    font-weight: bold;
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+    text-align: center;
+}
+
+.wm-calendar .wcl-ydays {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-rows: repeat(5, minmax(0, 1fr));
+    padding: 0 calc(0.5 * var(--wm-px));
+}
+
+.wm-calendar .wcl-yday {
+    font-size: calc(9 * var(--wm-px));
+    line-height: 1;
+    text-align: right;
+    padding-right: calc(0.5 * var(--wm-px)) !important;
+}
+
+.wm-calendar .wcl-yday.is-shared {
+    background: linear-gradient(to bottom right, transparent calc(50% - 0.6px), currentColor calc(50% - 0.6px), currentColor calc(50% + 0.6px), transparent calc(50% + 0.6px)) center / 70% 80% no-repeat;
+}
+
+.wm-calendar .wcl-yday.is-today {
+    background: #000;
+    color: #fff;
+}
+
+.wm-calendar .wcl-yday.is-selected:not(.is-today) {
+    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #ff494a;
+}
+
+/* ---- the appointment summary ---- */
+
+.wm-calendar .wcl-summary {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+}
+
+.wm-calendar .wcl-shead {
+    position: relative;
+    flex: 0 0 auto;
+    padding: calc(2 * var(--wm-px)) calc(26 * var(--wm-px)) calc(7 * var(--wm-px)) calc(6 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(17.5 * var(--wm-px));
+}
+
+.wm-calendar .wcl-ssubj {
+    font-weight: bold;
+    overflow-wrap: anywhere;
+}
+
+.wm-calendar .wcl-sbell img {
+    position: absolute;
+    top: calc(5 * var(--wm-px));
+    right: calc(6 * var(--wm-px));
+    width: calc(16 * var(--wm-px));
+    height: calc(14 * var(--wm-px));
+}
+
+.wm-calendar .wcl-snotes {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* ---- the form (Contacts' metrics: labels to x 74, fields from x 78, 19.5 px rows) ---- */
+
+.wm-calendar .wcl-form {
+    background: #fff;
+}
+
+.wm-calendar .wcl-fbody {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-top: calc(1 * var(--wm-px));
+}
+
+.wm-calendar .wcl-form[data-tab="notes"] .wcl-fbody,
+.wm-calendar .wcl-form[data-tab="appt"] .wcl-fnotes {
+    display: none;
+}
+
+.wm-calendar .wcl-field {
+    position: relative;
+    display: grid;
+    grid-template-columns: calc(74 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(4 * var(--wm-px));
+    align-items: end;
+    height: calc(19.5 * var(--wm-px));
+    padding-right: calc(17 * var(--wm-px));
+}
+
+.wm-calendar .wcl-flabel {
+    padding-bottom: calc(5.5 * var(--wm-px));
+    font-size: calc(11 * var(--wm-px));
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-calendar .wcl-finput,
+.wm-calendar .wcl-fval {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: calc(18 * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(2 * var(--wm-px)) calc(5 * var(--wm-px)) !important;
+    border: 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5 !important;
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    color: #000;
+    font: calc(13 * var(--wm-px)) var(--wm-font) !important;
+    line-height: calc(12 * var(--wm-px)) !important;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: text;
+    -webkit-user-select: text;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.wm-calendar .wcl-finput:focus {
+    border-bottom-color: #000 !important;
+}
+
+.wm-calendar .wcl-fval.is-static {
+    display: block;
+}
+
+/* Subject: a boxed edit field with its drop arrow inside */
+.wm-calendar .wcl-field.is-boxed .wcl-finput {
+    height: calc(20 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    padding-right: calc(16 * var(--wm-px)) !important;
+}
+
+.wm-calendar .wcl-field.is-boxed {
+    padding-right: calc(13.5 * var(--wm-px));
+}
+
+.wm-calendar .wcl-fdrop {
+    position: absolute;
+    right: calc(18 * var(--wm-px));
+    bottom: calc(6 * var(--wm-px));
+    width: 0;
+    height: 0;
+    border-left: calc(4 * var(--wm-px)) solid transparent;
+    border-right: calc(4 * var(--wm-px)) solid transparent;
+    border-top: calc(4.5 * var(--wm-px)) solid #000;
+    cursor: default;
+}
+
+.wm-calendar .wcl-fdrop::before {
+    /* a finger-sized hit area around the small arrow */
+    content: '';
+    position: absolute;
+    inset: calc(-10 * var(--wm-px)) calc(-8 * var(--wm-px)) calc(-4 * var(--wm-px));
+}
+
+.wm-calendar .wcl-field.is-boxed .wcl-fdrop {
+    right: calc(17 * var(--wm-px));
+}
+
+.wm-calendar .wcl-fdt {
+    position: relative;
+    display: grid;
+    grid-template-columns: calc(73 * var(--wm-px)) minmax(0, 1fr);
+}
+
+.wm-calendar .wcl-fdt.is-rem {
+    grid-template-columns: calc(37.5 * var(--wm-px)) minmax(0, 1fr);
+}
+
+.wm-calendar .wcl-fdt .wcl-fnum {
+    width: 100%;
+    -moz-appearance: textfield;
+}
+
+.wm-calendar .wcl-fnum::-webkit-inner-spin-button,
+.wm-calendar .wcl-fnum::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* the browser's own date / time pickers, opened from the WM text (showPicker) */
+.wm-calendar .wcl-fnative {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.wm-calendar .wcl-fnotes {
+    flex: 1 1 auto;
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+    padding: calc(4 * var(--wm-px));
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    resize: none;
+    background: #fff;
+    color: #000;
+    font: calc(13 * var(--wm-px)) / 1.35 var(--wm-font);
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* Appointment | Notes: the bottom tabs */
+.wm-calendar .wcl-ftabs {
+    flex: 0 0 auto;
+    display: flex;
+    height: calc(22 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+}
+
+.wm-calendar .wcl-ftab {
+    position: relative;
+    top: calc(-1 * var(--wm-px));
+    padding: 0 calc(5 * var(--wm-px)) !important;
+    border-right: calc(1 * var(--wm-px)) solid #000 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
+    border-top: calc(1 * var(--wm-px)) solid #000 !important;
+    font-size: calc(11 * var(--wm-px)) !important;
+}
+
+.wm-calendar .wcl-ftab.is-selected {
+    background: #fff !important;
+    border-top-color: #fff !important;
+}

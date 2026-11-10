@@ -142,6 +142,7 @@
 
     /** 32 px art for a shell icon name: its -lg pair when the ROM has one. */
     function wmLargeIcon(name) {
+        if (String(name).startsWith('/')) return { src: name, srcset: '' };
         const n = manifest && manifest[`${name}-lg`] ? `${name}-lg` : name;
         return { src: sh.art.url(n), srcset: sh.art.srcset(n) };
     }
@@ -229,16 +230,42 @@
         alchemy: ['ie', 'iexplore', 'browser', 'internet-explorer'],
         explorer: ['fileexplorer', 'file-explorer'],
         dovecote: ['messaging'],
+        'planet-switcher': ['teleport'],
         notebook: ['notes'],
+        notepad: ['notes'],
+        contacts: ['contacts'],
         director: ['director'],
-        studio: ['studio']
+        studio: ['studio'],
+        chat: ['chat'],
+        presets: ['spellbook'],
+        reference: ['reference'],
+        calculator: ['calculator'],
+        calendar: ['calendar'],
+        taskmgr: ['taskmgr'],
+        'media-player': ['windows-media'],
+        'remote-desktop': ['remote-desktop-mobile'],
+        'remote-desktop-connection': ['remote-desktop-mobile']
     };
+    // Toolbox programs that are desktop-only ideas (#732 plan): not offered on the phone
+    const TOOLBOX_SKIP = new Set(['vista-sidebar', 'snipping', 'sideshow-simulator-landscape', 'sideshow-simulator-portrait', 'welcome-center', 'perfmon', 'memories']);
+    // Yukimi, Nov 10: no lazy ports. A desktop program is offered on the phone only as a phone app of
+    // its own (MAPPED) or a page the phone already shows well; the rest (Paint, Phasewalker, Atelier,
+    // Runes ...) are not listed. Dreamscape apps (dsap:) open in Internet Explorer's mobile view.
+    const PHONE_DIRECT = new Set(['data-management', 'ispy', 'control-panel', 'explore-gallery', 'novels', 'image-search']);
+    // desktop programs whose phone version is a Settings page
+    const SETTINGS_PAGE = { alarm: 'clock' };
     const SHELL_ONLY = new Set(['today', 'programs', 'settings', 'help']);
 
     function desktopLaunchables(list) {
         try {
             /* global startMenuLaunchables, startMenuGameLaunchables */
             if (list === 'games') return typeof startMenuGameLaunchables !== 'undefined' ? startMenuGameLaunchables : [];
+            if (list === 'toolbox') {
+                /* global buildToolsSubmenuItems, isStartMenuEntryEnabled */
+                if (typeof buildToolsSubmenuItems !== 'function') return [];
+                return buildToolsSubmenuItems().filter((t) => t && !t.separator && !t.hasSubmenu && typeof t.action === 'function'
+                    && !TOOLBOX_SKIP.has(t.launchId) && (typeof isStartMenuEntryEnabled !== 'function' || isStartMenuEntryEnabled(t)));
+            }
             return typeof startMenuLaunchables !== 'undefined' ? startMenuLaunchables : [];
         } catch (_) { return []; }
     }
@@ -247,23 +274,34 @@
         const shellApps = sh.listApps();
         const have = new Set(shellApps.map((a) => a.id));
         const items = [];
+        const desktopItem = (l) => {
+            if (!l || !l.launchId || !l.text || !l.imageIcon) return;
+            const mapped = MAPPED[l.launchId];
+            if (mapped && mapped.some((id) => have.has(id))) return;
+            if (SETTINGS_PAGE[l.launchId]) { items.push({ key: `d:${l.launchId}`, label: l.text, img: appIcon(l.imageIcon), settings: SETTINGS_PAGE[l.launchId] }); return; }
+            if (!PHONE_DIRECT.has(l.launchId) && !(l.dsap || /^dsap/i.test(String(l.url || '')))) return;
+            items.push({ key: `d:${l.launchId}`, label: l.text, img: appIcon(l.imageIcon), desktop: l.text, launch: l });
+        };
+        // phone apps filed in a Programs folder (registerApp programsFolder: 'toolbox')
+        const folderApps = (f) => shellApps.filter((a) => a.inStart && a.programsFolder === f && !SHELL_ONLY.has(a.id))
+            .forEach((a) => items.push({ key: `a:${a.id}`, label: a.startLabel || a.title || a.id, img: wmLargeIcon(a.icon || 'app-programs') }));
         if (folder === 'games') {
             for (const g of desktopLaunchables('games')) {
                 if (!g || !g.text || !g.imageIcon) continue;
-                items.push({ key: `d:${g.launchId}`, label: g.text, img: appIcon(g.imageIcon), desktop: g.text });
+                // games come later (Yukimi, Nov 10): listed, not yet playable on the phone
+                items.push({ key: `d:${g.launchId}`, label: g.text, img: appIcon(g.imageIcon), desktop: g.text, game: true });
             }
+        } else if (folder === 'toolbox') {
+            folderApps('toolbox');
+            desktopLaunchables('toolbox').forEach(desktopItem);
         } else {
-            if (desktopLaunchables('games').length) items.push({ key: 'folder:games', label: 'Games', img: wmLargeIcon('app-games'), folder: true });
+            if (desktopLaunchables('games').length) items.push({ key: 'folder:games', label: 'Games', img: wmLargeIcon('app-games'), folder: 'games' });
+            if (desktopLaunchables('toolbox').length) items.push({ key: 'folder:toolbox', label: 'Toolbox', img: appIcon('vista-folder.png'), folder: 'toolbox' });
             for (const a of shellApps) {
-                if (!a.inStart || SHELL_ONLY.has(a.id)) continue;
+                if (!a.inStart || SHELL_ONLY.has(a.id) || a.programsFolder) continue;
                 items.push({ key: `a:${a.id}`, label: a.startLabel || a.title || a.id, img: wmLargeIcon(a.icon || 'app-programs') });
             }
-            for (const l of desktopLaunchables()) {
-                if (!l || !l.launchId || !l.text || !l.imageIcon) continue;
-                const mapped = MAPPED[l.launchId];
-                if (mapped && mapped.some((id) => have.has(id))) continue;
-                items.push({ key: `d:${l.launchId}`, label: l.text, img: appIcon(l.imageIcon), desktop: l.text });
-            }
+            desktopLaunchables().forEach(desktopItem);
         }
         const coll = new Intl.Collator(undefined, { sensitivity: 'base' });
         return items.sort((x, y) => (y.folder ? 1 : 0) - (x.folder ? 1 : 0) || coll.compare(x.label, y.label));
@@ -281,14 +319,14 @@
             const box = page.querySelector('.wm-icongrid');
             box.innerHTML = items.map((i) => iconCell(i)).join('');
             page.querySelector('.wm-pg-scroll').scrollTop = 0;
-            if (sh.current === 'programs') sh.setTitle(folder === 'games' ? 'Games' : 'Programs');
+            if (sh.current === 'programs') sh.setTitle(folder === 'games' ? 'Games' : folder === 'toolbox' ? 'Toolbox' : 'Programs');
         }
 
         function openItem(key) {
             const item = byKey.get(key);
             if (!item) return;
             if (item.folder) {
-                folder = 'games';
+                folder = item.folder;
                 render();
                 sh.syncHistory();
                 return;
@@ -298,7 +336,13 @@
                 return;
             }
             page.querySelectorAll('.wm-icongrid-cell.is-selected').forEach((c) => c.classList.remove('is-selected'));
-            sh.messageBox({ title: item.desktop, icon: 'info', text: `${item.desktop} is not available on Melaton Mobile yet.` });
+            if (item.settings && window.wmSettings && typeof window.wmSettings.open === 'function') {
+                window.wmSettings.open(item.settings, null, { direct: true });
+                return;
+            }
+            // a Dreamscape app page: its own route (Internet Explorer's mobile view), under the wait cursor
+            if (item.launch) { sh.busy(() => item.launch.action(), { paint: true, timeout: 15000 }); return; }
+            sh.notify({ title: item.desktop, icon: 'info', text: `${item.desktop} is not available on Melaton Mobile yet.` });
         }
 
         sh.registerApp({

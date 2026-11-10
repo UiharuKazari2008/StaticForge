@@ -99,6 +99,38 @@
         return !!(d && d._running && d.currentSession && d._runningSessionId === d.currentSession.id);
     }
 
+    // ---------------------------------------------------------------- screen size
+
+    /**
+     * The page's layout for its screen (Yozora #732), from wm-director.css's container queries:
+     * 'phone' (her scene fills the page) or 'wide' (her scene on the left, the log and the composer
+     * in a column on the right).
+     */
+    let layout = 'phone';
+    function readLayout() {
+        const host = page && page.querySelector('.wmd-host');
+        const v = host ? getComputedStyle(host).getPropertyValue('--wmd-layout').trim() : '';
+        return v === 'wide' ? 'wide' : 'phone';
+    }
+
+    function watchLayout() {
+        if (!page || typeof ResizeObserver !== 'function') return;
+        const check = () => {
+            const now = readLayout();
+            if (now === layout) return;
+            layout = now;
+            // the log is beside her now: a peek left on would hide her text box for nothing
+            const d = dir();
+            const m = d && d.mascot;
+            if (layout === 'wide' && m && m.peek && typeof m.togglePeek === 'function') m.togglePeek(false);
+            if (isCurrent()) ws.refreshSoftKeys();
+        };
+        layout = readLayout();
+        new ResizeObserver(check).observe(page);
+        // Settings > Screen changes the scale (--wm-px, so the em breakpoints) without a resize
+        if (typeof MutationObserver === 'function') new MutationObserver(check).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    }
+
     // ---------------------------------------------------------------- hosting the desktop Director
 
     /** Wrap the mascot's isHosted / layout on this instance: hidden with the app, centred on a portrait screen. */
@@ -114,22 +146,37 @@
             layout();
             if (!this.root || !this.manifest || !this.host || !this._shown || this.view !== 'mascot') return;
             if (!page || !page.contains(this.host)) return;
-            const box = this.host.getBoundingClientRect();
+            // her stage: the whole chat on a phone, the scene column on a wide screen (wm-director.css)
+            const stage = (this.root && this.root.classList && this.root.classList.contains('director-mascot-stage')) ? this.root : this.host;
+            const box = stage.getBoundingClientRect();
             if (!box.width || !box.height) return;
-            // landscape: the desktop's own staging (sized from the height, her face toward her side)
-            if (box.width > box.height) return;
             const [W, H] = this.manifest.size;
             const cam = this.camera();
             const face = Array.isArray(this.manifest.face) ? this.manifest.face : [cam[0] + cam[2] / 2, cam[1] + cam[3] * 0.2, cam[2] * 0.15];
+            if (box.width > box.height) {
+                // landscape: the desktop's own staging (sized from the height, her face toward her side).
+                // The desktop measures the whole chat; beside the log her scene is narrower, so the
+                // same staging is redone in the scene's box (unchanged numbers when they are the same box)
+                const hb = this.host.getBoundingClientRect();
+                if (Math.abs(hb.width - box.width) < 2) return;
+                const kv = (box.height * 0.11) / Math.max(1, face[2]);
+                const ax = this.manifest.anchor === 'left' ? box.width * 0.24 : box.width * 0.76;
+                const ay = box.height * 0.24;
+                this.setStyle(this.el.canvas, 'width', `${Math.round(W * kv)}px`);
+                this.setStyle(this.el.canvas, 'height', `${Math.round(H * kv)}px`);
+                this.setStyle(this.el.canvas, 'transform', `translate(${Math.round(ax - face[0] * kv)}px, ${Math.round(ay - face[1] * kv)}px)`);
+                this._k = kv;
+                return;
+            }
             // portrait: her face at the upper middle, sized from the width (the desktop sizes it from
             // the height, which on a phone put most of her off the side)
             const faceSize = Math.min(box.height * 0.1, box.width * 0.2);
             const k = faceSize / Math.max(1, face[2]);
             const px = box.width * 0.5;
             const py = box.height * 0.2;
-            this.el.canvas.style.width = `${Math.round(W * k)}px`;
-            this.el.canvas.style.height = `${Math.round(H * k)}px`;
-            this.el.canvas.style.transform = `translate(${Math.round(px - face[0] * k)}px, ${Math.round(py - face[1] * k)}px)`;
+            this.setStyle(this.el.canvas, 'width', `${Math.round(W * k)}px`);
+            this.setStyle(this.el.canvas, 'height', `${Math.round(H * k)}px`);
+            this.setStyle(this.el.canvas, 'transform', `translate(${Math.round(px - face[0] * k)}px, ${Math.round(py - face[1] * k)}px)`);
             this._k = k;
         };
         // the pager counts pages of (height - 24 px): a short box read "1/2" with nothing more to show
@@ -1311,7 +1358,8 @@
         ];
         if (vn) {
             items.push({ label: m._tab === 'card' ? 'Show Reply' : 'Report Card', disabled: !result || (!card && m._tab !== 'card'), action: () => { m.quickAction(m._tab === 'card' ? 'reply' : 'card'); after(); } });
-            items.push({ label: 'Log', checked: !!m.peek, action: () => { m.togglePeek(); after(); } });
+            // beside the log (wide screens) there is nothing to peek at
+            if (layout !== 'wide') items.push({ label: 'Log', checked: !!m.peek, action: () => { m.togglePeek(); after(); } });
         }
         if (d.persona !== 'xi') items.push({ label: 'Prints', disabled: draft || !d.sessionPrints().length, action: showPrints });
         items.push({ label: 'History', disabled: draft || !d.currentSession, action: showHistory });
@@ -1379,6 +1427,7 @@
         page.innerHTML = `
             <div class="wmd-host"></div>
             <div class="wmd-status" hidden><img src="/static_images/app_icons/director.png" alt=""><span class="wmd-status-text"></span></div>`;
+        watchLayout();
         // tap to advance: a tap on her scene (not on a control, a link, the text box's own parts or the composer)
         page.querySelector('.wmd-host').addEventListener('click', (e) => {
             if (composing) return;

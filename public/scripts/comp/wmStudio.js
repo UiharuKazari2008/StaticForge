@@ -161,9 +161,12 @@
         const holder = document.querySelector('#manualModal .model-control .control-holder');
         if (!holder || !page) return;
         const fit = () => {
-            if (!page || tab !== 'prompt' || !holder.offsetWidth) return;
+            if (!page || shownTab() !== 'prompt' || !holder.offsetWidth) return;
             const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
-            page.classList.toggle('wms-pairs', holder.offsetWidth / px >= 312);
+            const w = holder.offsetWidth / px;
+            page.classList.toggle('wms-pairs', w >= 312);
+            // a wide form (a tablet held upright, Yozora #732): every field takes half a row
+            page.classList.toggle('wms-wide', w >= 480);
         };
         fit();
         if (pairsWatched || typeof ResizeObserver !== 'function') return;
@@ -741,21 +744,58 @@
 
     // ---------------------------------------------------------------- tabs
 
+    /**
+     * The page's layout for the screen it has (Yozora #732), from wm-studio.css's container queries:
+     * 'tabs' (a phone: one page per tab), 'split' (the Print beside the form) or 'stack' (the Print
+     * under the form). With the Print always on screen the Print tab is not on the strip: a switch to
+     * it (Generate, Previous / Next Print) keeps the form page that was showing.
+     */
+    let layout = 'tabs';
+    let formTab = 'prompt'; // the last of Prompt / Images, the form page beside the Print
+    function readLayout() {
+        const host = page && page.querySelector('.wms-host');
+        const v = host ? getComputedStyle(host).getPropertyValue('--wms-layout').trim() : '';
+        return v === 'split' || v === 'stack' ? v : 'tabs';
+    }
+
+    const printBeside = () => layout !== 'tabs';
+    const shownTab = () => (tab === 'print' && printBeside() ? formTab : tab);
+    const printOnScreen = () => tab === 'print' || printBeside();
+
+    let layoutWatched = false;
+    function watchLayout() {
+        if (layoutWatched || !page || typeof ResizeObserver !== 'function') return;
+        layoutWatched = true;
+        // rotation and resizes: the container queries have already reflowed the page; the tabs follow
+        const check = () => {
+            const now = readLayout();
+            if (now === layout) return;
+            layout = now;
+            paintTab();
+            pairsLayout();
+        };
+        new ResizeObserver(check).observe(page);
+        // Settings > Screen changes the scale (--wm-px, so the em breakpoints) without a resize
+        if (typeof MutationObserver === 'function') new MutationObserver(check).observe(root, { attributes: true, attributeFilter: ['style'] });
+    }
+
     function setTab(id) {
         if (SECTIONS[id]) { showSection(id); return; }
         if (!TABS.some(([t]) => t === id)) return;
         tab = id;
+        if (id !== 'print') formTab = id;
         paintTab();
         if (isCurrent()) ws.refreshSoftKeys();
     }
 
     function paintTab() {
         if (!page) return;
-        page.dataset.tab = tab;
-        page.querySelectorAll('.wms-tabs .wm-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+        const cur = shownTab();
+        page.dataset.tab = cur;
+        page.querySelectorAll('.wms-tabs .wm-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === cur)));
         // each page starts at its top when it is switched to
-        if (paintedTab !== tab) {
-            paintedTab = tab;
+        if (paintedTab !== cur) {
+            paintedTab = cur;
             const scroll = page.querySelector('#manualModal .form-section-scroll');
             if (scroll) scroll.scrollTop = 0;
             const form = formScroller();
@@ -776,17 +816,18 @@
         const noprint = page.querySelector('.wms-noprint');
         const img = document.getElementById('manualPreviewImage');
         const hasPrint = !!(img && !img.classList.contains('hidden') && img.getAttribute('src'));
-        noprint.hidden = !(tab === 'print' && !hasPrint && !generating());
+        noprint.hidden = !(printOnScreen() && !hasPrint && !generating());
         // Images: nothing on the page (the desktop keeps its empty containers in the layout)
         const norefs = page.querySelector('.wms-norefs');
+        const images = shownTab() === 'images';
         let refs = 0;
-        if (tab === 'images') {
+        if (images) {
             ['transformationRow', 'pipelineStagesSection'].forEach((id) => {
                 const el = document.getElementById(id);
                 if (el) refs += el.getBoundingClientRect().height;
             });
         }
-        norefs.hidden = !(tab === 'images' && refs < 4);
+        norefs.hidden = !(images && refs < 4);
     }
 
     // ---------------------------------------------------------------- generate
@@ -1094,7 +1135,10 @@
         contextMenu._wmStudioPatched = true;
         const open = contextMenu._openMenu.bind(contextMenu);
         contextMenu._openMenu = function (event, target, trigger, isTouch, isProxyEvent) {
-            if (!isCurrent() || !target || !page || !page.contains(target)) return open(event, target, trigger, isTouch, isProxyEvent);
+            // Studio's page, or a desktop app hosted by wmHost.js (it uses this same WM menu proxy)
+            const inStudio = isCurrent() && target && page && page.contains(target);
+            const inHost = !!(target && window.wmHost && typeof window.wmHost.owns === 'function' && window.wmHost.owns(target));
+            if (!inStudio && !inHost) return open(event, target, trigger, isTouch, isProxyEvent);
             const config = trigger === 'click'
                 ? (this.clickMenuConfigs && this.clickMenuConfigs[target.dataset.clickMenu])
                 : (this.configs && this.configs[target.dataset.contextMenu]);
@@ -1220,7 +1264,7 @@
     }
 
     /** The window's caption: its title bar's own text first (not the toolbar beside it), else a header. */
-    function windowTitle(win) {
+    function windowTitle(win, fallback = 'Studio') {
         const sels = [
             ':scope > .modal-window-title .modal-window-title-main span',
             ':scope > .modal-window-title .modal-window-title-main',
@@ -1233,7 +1277,7 @@
             const text = t && t.textContent.replace(/\s+/g, ' ').trim();
             if (text) return text;
         }
-        return 'Studio';
+        return fallback;
     }
 
     // ---------------------------------------------------------------- a tool page's soft keys
@@ -1403,6 +1447,8 @@
     function routeWindow(el) {
         if (!isToolCandidate(el)) return;
         if (isCurrent() && studioOpen()) { unnotify(el); hostTool(el); }
+        // anywhere else the window is its own WM app (wmHost.js); without it, a notification
+        else if (window.wmHost && typeof window.wmHost.take === 'function' && window.wmHost.take(el)) unnotify(el);
         else notifyBehind(el);
     }
 
@@ -1583,7 +1629,7 @@
         // a character or text overlay added from Menu > Add or the Add row: shown where it lands
         const onAdded = (muts) => {
             paintEmpty();
-            if (!shown || tab !== 'prompt' || Date.now() - addAt > 2000) return;
+            if (!shown || shownTab() !== 'prompt' || Date.now() - addAt > 2000) return;
             const added = muts.flatMap((mu) => Array.from(mu.addedNodes)).filter((n) => n.nodeType === 1).pop();
             if (!added) return;
             addAt = 0;
@@ -1665,6 +1711,16 @@
             const b = e.target.closest('.wm-tab');
             if (b) setTab(b.dataset.tab);
         });
+        layout = readLayout();
+        watchLayout();
+        // a field typed in: on a short page (a landscape phone, keyboard up) the tab strip steps aside
+        const typing = (e) => {
+            const t = e.target;
+            const on = e.type === 'focusin' && !!t && /^(TEXTAREA|INPUT)$/.test(t.tagName) && !!t.closest('#manualModal') && !/^(checkbox|radio|range|button|submit|file|color)$/.test(t.type || '');
+            if (page.classList.contains('wms-typing') !== on) page.classList.toggle('wms-typing', on);
+        };
+        page.addEventListener('focusin', typing);
+        page.addEventListener('focusout', typing);
         // the Director button (Studio's docked Director, hidden here) opens the Director app
         page.addEventListener('click', (e) => {
             if (!e.target.closest || !e.target.closest('#directorBtn')) return;
@@ -1696,7 +1752,7 @@
         }, true);
         // a tap on the finished print opens it in the picture view
         page.addEventListener('click', (e) => {
-            if (tab !== 'print' || !e.target.closest) return;
+            if (!printOnScreen() || !e.target.closest) return;
             if (!e.target.closest('#manualPreviewImage, .manual-preview-image-container-inner')) return;
             if (!printName()) return;
             e.preventDefault();
@@ -1785,6 +1841,16 @@
             setTimeout(() => clearInterval(t), 60000);
         }
     }
+
+    // shared with wmHost.js (desktop apps hosted as WM apps): the same menu and drop-down proxies
+    window.wmStudioKit = {
+        wmItemsFromConfig: (config, target, flat) => wmItemsFromConfig(config, target, flat),
+        dropLoneHeading: (items) => dropLoneHeading(items),
+        proxyDropdown: (btn) => proxyDropdown(btn),
+        windowTitle: (win, fallback) => windowTitle(win, fallback),
+        armMenuHide: (fn) => armMenuHide(fn),
+        menuInContent: (x, y, items) => menuInContent(x, y, items)
+    };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

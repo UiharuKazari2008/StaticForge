@@ -1,0 +1,186 @@
+/*
+ * Melaton Mobile: Reference (the reference image cache as WM 6.1 Pictures & Videos), Yozora #732.
+ * wmReference.js. The grid is wm-shell.css's .wm-pv-* (cells 61 px, pictures in 68 x 53); the
+ * details page is Contacts' card look. Lengths N * --wm-px.
+ */
+
+.wm-reference {
+    font-size: calc(12 * var(--wm-px));
+}
+
+.wm-reference [hidden] {
+    display: none !important;
+}
+
+.wm-reference .wrf-gridview,
+.wm-reference .wrf-details,
+.wm-reference .wrf-picture {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-reference .wrf-ws {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.wm-reference .wrf-ws-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-reference .wrf-mode {
+    flex: 0 0 auto;
+}
+
+.wm-reference .wrf-cell {
+    position: relative;
+    -webkit-touch-callout: none;
+    user-select: none;
+}
+
+/* a precise reference (C / S / CS) or a vibe (V): a small tag in the cell's corner */
+.wm-reference .wrf-tag {
+    position: absolute;
+    right: calc(2 * var(--wm-px));
+    bottom: calc(2 * var(--wm-px));
+    min-width: calc(9 * var(--wm-px));
+    padding: 0 calc(2 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    color: #000;
+    font: bold calc(9 * var(--wm-px)) / calc(10 * var(--wm-px)) var(--wm-font);
+    text-align: center;
+    pointer-events: none;
+}
+
+.wm-reference .wrf-lock {
+    position: absolute;
+    left: calc(2 * var(--wm-px));
+    bottom: calc(2 * var(--wm-px));
+    width: calc(7 * var(--wm-px));
+    height: calc(6 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #ffd84a;
+    pointer-events: none;
+}
+
+.wm-reference .wrf-lock::before {
+    content: '';
+    position: absolute;
+    left: calc(1 * var(--wm-px));
+    bottom: 100%;
+    width: calc(3 * var(--wm-px));
+    height: calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-bottom: 0;
+}
+
+.wm-reference .wm-photos-empty {
+    text-align: center;
+    padding-top: calc(80 * var(--wm-px));
+}
+
+/* ---- details (Contacts' card: name band, picture, label / value rows) ---- */
+
+.wm-reference .wrf-details {
+    background: #fff;
+}
+
+.wm-reference .wrf-card-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    min-height: calc(20 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    font-weight: bold;
+}
+
+.wm-reference .wrf-card-head img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wm-reference .wrf-card-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-reference .wrf-card-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.wm-reference .wrf-card-picbtn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: calc(150 * var(--wm-px));
+    padding: calc(4 * var(--wm-px)) !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5 !important;
+    box-sizing: border-box;
+    background: color-mix(in srgb, #fff 55%, var(--wm-tint)) !important;
+}
+
+.wm-reference .wrf-card-pic {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+.wm-reference .wrf-crow {
+    display: grid;
+    grid-template-columns: calc(74 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(4 * var(--wm-px));
+    align-items: center;
+    min-height: calc(19 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6;
+}
+
+.wm-reference .wrf-clabel {
+    text-align: right;
+    color: #555;
+    white-space: nowrap;
+}
+
+.wm-reference .wrf-cvalue {
+    overflow-wrap: anywhere;
+}
+
+/* the picture alone, fitted on black (a tap or ok returns) */
+.wm-reference .wrf-picture {
+    align-items: center;
+    justify-content: center;
+    background: #000;
+}
+
+.wm-reference .wrf-picture img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+/* landscape: the details picture beside the rows */
+@media (orientation: landscape) {
+    .wm-reference .wrf-card-body {
+        display: grid;
+        grid-template-columns: minmax(0, 45%) minmax(0, 1fr);
+        align-content: start;
+    }
+
+    .wm-reference .wrf-card-picbtn {
+        height: calc(140 * var(--wm-px));
+        border-right: calc(1 * var(--wm-px)) solid #a5a5a5 !important;
+    }
+}

@@ -650,6 +650,8 @@
 .wm-studio #manualModal .prompt-tabs .tab-header {
     display: flex !important;
     flex-wrap: wrap;
+    /* the desktop's flex-end put Prompt | Undesired at the right when the row wraps (a 320 px phone) */
+    justify-content: flex-start !important;
     align-items: center;
     gap: calc(3 * var(--wm-px));
     margin: 0 0 calc(4 * var(--wm-px)) !important;
@@ -2465,3 +2467,234 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
     color: #404040 !important;
     -webkit-text-fill-color: #404040 !important;
 }
+
+/* ======================================================================
+ * Screen size (Yozora #732): Studio reflows for the screen it gets, as WM 6.1 forms do for QVGA,
+ * VGA, WVGA, square and landscape screens. The app's page is a size container; its conditions are
+ * in em, which a container query resolves against the page's own font (12 WM px), so 40em is
+ * 480 WM px at any scale (touch 1.5, Settings > Screen).
+ *   phone (portrait, narrow landscape): the tabbed form as drawn for the A53.
+ *   split (40em and wider, not tall): the Prompt / Images form on the left, the Print beside it on
+ *     the right; the tab strip holds Prompt and Images only (wmStudio.js reads --wms-layout).
+ *   stack (30em+ wide, 45em+ tall, tall shape: a tablet held upright): the Print under the form.
+ *   short (under 20em tall: a landscape phone): the prompt field follows the page's height, and
+ *     while a field is typed in (wms-typing) the tab strip steps aside for the keyboard.
+ * The Print pane is position: fixed inside #manualModal, whose layout containment makes it the
+ * containing block, so it stays put while the form scrolls beside it.
+ * ====================================================================== */
+.wm-studio {
+    container: wms / size;
+}
+
+.wm-studio > * {
+    --wms-layout: tabs;
+}
+
+@container wms (min-width: 40em) and (aspect-ratio >= 3 / 4) {
+    .wm-studio > * {
+        --wms-layout: split;
+        /* about square prints at the page's height, between a third and a half of the width */
+        --wms-print-w: clamp(36cqw, calc(100cqh - 44 * var(--wm-px)), 46cqw);
+    }
+}
+
+@container wms (min-width: 30em) and (min-height: 45em) and (aspect-ratio < 3 / 4) {
+    .wm-studio > * {
+        --wms-layout: stack;
+        --wms-print-h: clamp(30cqh, calc(100cqw - 20 * var(--wm-px)), 44cqh);
+    }
+}
+
+/* both: the Print pane is always on screen, whatever page the tabs show */
+@container wms ((min-width: 40em) and (aspect-ratio >= 3 / 4)) or ((min-width: 30em) and (min-height: 45em) and (aspect-ratio < 3 / 4)) {
+    .wm-studio[data-tab] #manualModal #manualPanelSection#manualPanelSection {
+        display: flex !important;
+        position: fixed !important;
+        z-index: 2;
+        box-sizing: border-box;
+    }
+
+    .wm-studio > .wms-tabs .wm-tab[data-tab="print"] {
+        display: none !important;
+    }
+
+    .wm-studio.wms-generating .wms-wait {
+        display: block;
+        position: absolute;
+        z-index: 4;
+        width: calc(32 * var(--wm-px));
+        height: calc(32 * var(--wm-px));
+        pointer-events: none;
+        background: center / contain no-repeat image-set(url('/static_images/wm61/wait-0.png') 1x, url('/static_images/wm61/wait-0@2x.png') 2x, url('/static_images/wm61/wait-0@4x.png') 4x);
+        animation: wms-wait 1.44s steps(1) infinite;
+    }
+}
+
+@container wms (min-width: 40em) and (aspect-ratio >= 3 / 4) {
+    .wm-studio #manualForm {
+        margin-right: var(--wms-print-w) !important;
+    }
+
+    .wm-studio[data-tab] #manualModal #manualPanelSection#manualPanelSection {
+        inset: 0 0 0 auto !important;
+        width: var(--wms-print-w) !important;
+        border-left: calc(1 * var(--wm-px)) solid #000 !important;
+    }
+
+    .wm-studio .wms-noprint {
+        left: auto;
+        width: var(--wms-print-w);
+    }
+
+    .wm-studio .wms-norefs {
+        right: var(--wms-print-w);
+    }
+
+    .wm-studio.wms-generating .wms-wait {
+        left: calc(100% - var(--wms-print-w) / 2 - 16 * var(--wm-px));
+        top: calc(45% - 16 * var(--wm-px));
+    }
+}
+
+@container wms (min-width: 30em) and (min-height: 45em) and (aspect-ratio < 3 / 4) {
+    .wm-studio #manualForm {
+        margin-bottom: var(--wms-print-h) !important;
+    }
+
+    .wm-studio[data-tab] #manualModal #manualPanelSection#manualPanelSection {
+        inset: auto 0 0 0 !important;
+        height: var(--wms-print-h) !important;
+        border-top: calc(1 * var(--wm-px)) solid #000 !important;
+    }
+
+    .wm-studio .wms-noprint {
+        top: auto;
+        bottom: calc(var(--wms-print-h) / 2 + 20 * var(--wm-px));
+    }
+
+    .wm-studio.wms-generating .wms-wait {
+        left: calc(50% - 16 * var(--wm-px));
+        top: auto;
+        bottom: calc(var(--wms-print-h) / 2 - 6 * var(--wm-px));
+    }
+}
+
+/* short pages (a landscape phone): the prompt field takes what the page leaves under the prompt
+ * tabs and over its status strip, never less than four lines */
+@container wms (max-height: 30em) {
+    .wm-studio #manualModal :is(#manualPrompt, #manualUc, #manualPromptNegative, #creativeDirectiveInput) {
+        height: clamp(calc(60 * var(--wm-px)), calc(100cqh - 76 * var(--wm-px)), calc(150 * var(--wm-px))) !important;
+        min-height: calc(60 * var(--wm-px)) !important;
+    }
+}
+
+/* typing on a short page: the keyboard leaves a strip, the tab strip gives its row to the field */
+@container wms (max-height: 20em) {
+    .wm-studio.wms-typing > .wms-tabs {
+        display: none !important;
+    }
+
+    .wm-studio.wms-typing #manualModal :is(#manualPrompt, #manualUc, #manualPromptNegative, #creativeDirectiveInput) {
+        height: max(calc(40 * var(--wm-px)), calc(100cqh - 30 * var(--wm-px))) !important;
+        min-height: calc(40 * var(--wm-px)) !important;
+    }
+}
+
+/* wide forms (wmStudio.js wms-wide, 480 WM px and more: a tablet held upright): every field takes
+ * half a row of the paired grid */
+.wm-studio.wms-wide.wms-pairs[data-tab="prompt"] #manualModal .model-control .control-holder {
+    grid-auto-flow: row dense;
+}
+
+.wm-studio.wms-wide.wms-pairs[data-tab="prompt"] #manualModal .model-control .control-holder > .form-row > .form-group:is(*, #manualModelGroup) {
+    grid-template-columns: subgrid !important;
+    grid-column: auto / span 2;
+}
+
+.wm-studio.wms-wide.wms-pairs[data-tab="prompt"] #manualModal .model-control .control-holder > .control-row-lockcontrols > .form-group {
+    grid-column: auto / span 2;
+}
+
+/* ======================================================================
+ * WM glyphs for the desktop toolbar's Font Awesome icons (Yozora #723 left-open, #732): the
+ * re-hosted prompt strip, badge row, Settings and character rows drew FA's web glyphs. WM 6.1's
+ * ROM has no crown, pilcrow or feather, so these are our own 11 x 11 black pixel glyphs in WM's
+ * toolbar style (a pixel-grid SVG, crisp at 1x and 2x and up, sized N * --wm-px like the rest);
+ * the token-free tick is the ROM's menu check; Director and Add are text buttons (WM toolbars
+ * label their buttons); $ and the lambda are type in the WM font. nai- glyphs (Anlas, dice,
+ * upscale) are NovelAI's own marks and stay.
+ * ====================================================================== */
+.wm-studio #manualModal i:is(.fa-crown, .fa-paragraph, .fa-feather, .fa-clock, .fa-calendar, .fa-cloud-sun, .fa-map-marker-alt, .fa-leaf, .fa-tshirt, .fa-running, .fa-brush, .fa-shield, .fa-hashtag, .fa-align-left, .fa-clone, .fa-location-crosshairs, .fa-arrows-up-down-left-right, .fa-equals, .fa-arrow-alt-square-up) {
+    display: inline-block !important;
+    flex: 0 0 auto;
+    width: calc(11 * var(--wm-px)) !important;
+    height: calc(11 * var(--wm-px)) !important;
+    margin: 0 !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    vertical-align: middle;
+    color: transparent !important;
+    -webkit-text-fill-color: transparent !important;
+    background: var(--wms-glyph) center / 100% 100% no-repeat !important;
+    text-shadow: none !important;
+    filter: none !important;
+}
+
+.wm-studio #manualModal i:is(.fa-crown, .fa-paragraph, .fa-feather, .fa-clock, .fa-calendar, .fa-cloud-sun, .fa-map-marker-alt, .fa-leaf, .fa-tshirt, .fa-running, .fa-brush, .fa-shield, .fa-hashtag, .fa-align-left, .fa-clone, .fa-location-crosshairs, .fa-arrows-up-down-left-right, .fa-equals, .fa-arrow-alt-square-up)::before,
+.wm-studio #manualModal i:is(.fa-crown, .fa-paragraph, .fa-feather, .fa-clock, .fa-calendar, .fa-cloud-sun, .fa-map-marker-alt, .fa-leaf, .fa-tshirt, .fa-running, .fa-brush, .fa-shield, .fa-hashtag, .fa-align-left, .fa-clone, .fa-location-crosshairs, .fa-arrows-up-down-left-right, .fa-equals, .fa-arrow-alt-square-up)::after {
+    content: none !important;
+    display: none !important;
+}
+
+.wm-studio #manualModal i.fa-crown { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M1 1h1v1h-1zM5 1h1v1h-1zM9 1h1v1h-1zM1 2h2v1h-2zM4 2h3v1h-3zM8 2h2v1h-2zM1 3h9v1h-9zM1 4h9v1h-9zM1 5h9v1h-9zM2 6h7v1h-7zM2 8h7v1h-7zM2 9h7v1h-7z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-paragraph { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M3 0h6v1h-6zM2 1h4v1h-4zM7 1h1v1h-1zM1 2h5v1h-5zM7 2h1v1h-1zM1 3h5v1h-5zM7 3h1v1h-1zM2 4h4v1h-4zM7 4h1v1h-1zM3 5h3v1h-3zM7 5h1v1h-1zM5 6h1v1h-1zM7 6h1v1h-1zM5 7h1v1h-1zM7 7h1v1h-1zM5 8h1v1h-1zM7 8h1v1h-1zM4 9h2v1h-2zM7 9h2v1h-2z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-feather { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M9 0h2v1h-2zM7 1h4v1h-4zM6 2h4v1h-4zM5 3h5v1h-5zM4 4h5v1h-5zM3 5h1v1h-1zM5 5h3v1h-3zM3 6h4v1h-4zM2 7h1v1h-1zM4 7h2v1h-2zM2 8h2v1h-2zM1 9h1v1h-1zM0 10h1v1h-1z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-clock { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M3 0h5v1h-5zM2 1h1v1h-1zM8 1h1v1h-1zM1 2h1v1h-1zM5 2h1v1h-1zM9 2h1v1h-1zM0 3h1v1h-1zM5 3h1v1h-1zM10 3h1v1h-1zM0 4h1v1h-1zM5 4h1v1h-1zM10 4h1v1h-1zM0 5h1v1h-1zM5 5h3v1h-3zM10 5h1v1h-1zM0 6h1v1h-1zM10 6h1v1h-1zM0 7h1v1h-1zM10 7h1v1h-1zM1 8h1v1h-1zM9 8h1v1h-1zM2 9h1v1h-1zM8 9h1v1h-1zM3 10h5v1h-5z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-calendar { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M2 0h1v1h-1zM8 0h1v1h-1zM0 1h11v1h-11zM0 2h11v1h-11zM0 3h1v1h-1zM10 3h1v1h-1zM0 4h1v1h-1zM2 4h1v1h-1zM4 4h1v1h-1zM6 4h1v1h-1zM8 4h1v1h-1zM10 4h1v1h-1zM0 5h1v1h-1zM10 5h1v1h-1zM0 6h1v1h-1zM2 6h1v1h-1zM4 6h1v1h-1zM6 6h1v1h-1zM8 6h1v1h-1zM10 6h1v1h-1zM0 7h1v1h-1zM10 7h1v1h-1zM0 8h1v1h-1zM2 8h1v1h-1zM4 8h1v1h-1zM6 8h1v1h-1zM8 8h1v1h-1zM10 8h1v1h-1zM0 9h1v1h-1zM10 9h1v1h-1zM0 10h11v1h-11z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-cloud-sun { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M7 0h1v1h-1zM4 1h1v1h-1zM7 1h1v1h-1zM10 1h1v1h-1zM5 2h5v1h-5zM4 3h2v1h-2zM9 3h1v1h-1zM2 4h4v1h-4zM9 4h2v1h-2zM1 5h1v1h-1zM6 5h1v1h-1zM9 5h1v1h-1zM0 6h1v1h-1zM7 6h3v1h-3zM0 7h1v1h-1zM10 7h1v1h-1zM0 8h1v1h-1zM10 8h1v1h-1zM1 9h9v1h-9z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-map-marker-alt { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M3 0h5v1h-5zM2 1h1v1h-1zM8 1h1v1h-1zM1 2h1v1h-1zM5 2h1v1h-1zM9 2h1v1h-1zM1 3h1v1h-1zM4 3h3v1h-3zM9 3h1v1h-1zM1 4h1v1h-1zM5 4h1v1h-1zM9 4h1v1h-1zM2 5h1v1h-1zM8 5h1v1h-1zM2 6h1v1h-1zM8 6h1v1h-1zM3 7h1v1h-1zM7 7h1v1h-1zM4 8h1v1h-1zM6 8h1v1h-1zM5 9h1v1h-1z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-leaf { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M8 0h3v1h-3zM5 1h6v1h-6zM3 2h4v1h-4zM9 2h2v1h-2zM2 3h3v1h-3zM8 3h1v1h-1zM10 3h1v1h-1zM1 4h2v1h-2zM7 4h1v1h-1zM10 4h1v1h-1zM1 5h1v1h-1zM6 5h1v1h-1zM9 5h2v1h-2zM1 6h1v1h-1zM5 6h1v1h-1zM8 6h2v1h-2zM1 7h1v1h-1zM4 7h1v1h-1zM6 7h3v1h-3zM2 8h2v1h-2zM5 8h2v1h-2zM1 9h1v1h-1zM3 9h3v1h-3zM0 10h1v1h-1z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-tshirt { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M2 0h3v1h-3zM6 0h3v1h-3zM1 1h2v1h-2zM4 1h3v1h-3zM8 1h2v1h-2zM0 2h2v1h-2zM9 2h2v1h-2zM0 3h1v1h-1zM10 3h1v1h-1zM0 4h3v1h-3zM8 4h3v1h-3zM2 5h1v1h-1zM8 5h1v1h-1zM2 6h1v1h-1zM8 6h1v1h-1zM2 7h1v1h-1zM8 7h1v1h-1zM2 8h1v1h-1zM8 8h1v1h-1zM2 9h7v1h-7z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-running { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M6 0h2v1h-2zM6 1h2v1h-2zM4 2h3v1h-3zM3 3h1v1h-1zM5 3h3v1h-3zM2 4h1v1h-1zM5 4h1v1h-1zM8 4h1v1h-1zM5 5h1v1h-1zM4 6h1v1h-1zM6 6h1v1h-1zM3 7h1v1h-1zM7 7h1v1h-1zM2 8h1v1h-1zM7 8h1v1h-1zM1 9h1v1h-1zM8 9h1v1h-1z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-brush { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M9 0h2v1h-2zM8 1h3v1h-3zM7 2h3v1h-3zM6 3h3v1h-3zM5 4h3v1h-3zM4 5h3v1h-3zM3 6h1v1h-1zM5 6h1v1h-1zM2 7h3v1h-3zM1 8h4v1h-4zM0 9h5v1h-5zM0 10h3v1h-3z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-shield { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h9v1h-9zM1 1h1v1h-1zM9 1h1v1h-1zM1 2h1v1h-1zM9 2h1v1h-1zM1 3h1v1h-1zM9 3h1v1h-1zM1 4h1v1h-1zM9 4h1v1h-1zM1 5h1v1h-1zM9 5h1v1h-1zM2 6h1v1h-1zM8 6h1v1h-1zM2 7h1v1h-1zM8 7h1v1h-1zM3 8h1v1h-1zM7 8h1v1h-1zM4 9h1v1h-1zM6 9h1v1h-1zM5 10h1v1h-1z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-hashtag { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M3 0h1v1h-1zM7 0h1v1h-1zM3 1h1v1h-1zM7 1h1v1h-1zM0 2h11v1h-11zM3 3h1v1h-1zM7 3h1v1h-1zM2 4h1v1h-1zM6 4h1v1h-1zM2 5h1v1h-1zM6 5h1v1h-1zM0 6h11v1h-11zM2 7h1v1h-1zM6 7h1v1h-1zM2 8h1v1h-1zM6 8h1v1h-1z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-align-left { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M0 1h9v1h-9zM0 3h6v1h-6zM0 5h9v1h-9zM0 7h6v1h-6zM0 9h9v1h-9z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-clone { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M3 0h7v1h-7zM3 1h1v1h-1zM9 1h1v1h-1zM3 2h1v1h-1zM9 2h1v1h-1zM0 3h7v1h-7zM9 3h1v1h-1zM0 4h1v1h-1zM6 4h1v1h-1zM9 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM9 5h1v1h-1zM0 6h1v1h-1zM6 6h5v1h-5zM0 7h1v1h-1zM6 7h1v1h-1zM0 8h7v1h-7z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-location-crosshairs { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M5 0h1v1h-1zM3 1h5v1h-5zM2 2h1v1h-1zM5 2h1v1h-1zM8 2h1v1h-1zM1 3h1v1h-1zM9 3h1v1h-1zM1 4h1v1h-1zM5 4h1v1h-1zM9 4h1v1h-1zM0 5h4v1h-4zM5 5h1v1h-1zM7 5h4v1h-4zM1 6h1v1h-1zM5 6h1v1h-1zM9 6h1v1h-1zM1 7h1v1h-1zM9 7h1v1h-1zM2 8h1v1h-1zM5 8h1v1h-1zM8 8h1v1h-1zM3 9h5v1h-5zM5 10h1v1h-1z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-arrows-up-down-left-right { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M5 0h1v1h-1zM4 1h3v1h-3zM5 2h1v1h-1zM1 3h1v1h-1zM5 3h1v1h-1zM9 3h1v1h-1zM0 4h2v1h-2zM5 4h1v1h-1zM9 4h2v1h-2zM0 5h11v1h-11zM0 6h2v1h-2zM5 6h1v1h-1zM9 6h2v1h-2zM1 7h1v1h-1zM5 7h1v1h-1zM9 7h1v1h-1zM5 8h1v1h-1zM4 9h3v1h-3zM5 10h1v1h-1z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-equals { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M1 3h9v1h-9zM1 7h9v1h-9z'/%3E%3C/svg%3E"); }
+.wm-studio #manualModal i.fa-arrow-alt-square-up { --wms-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h11v1h-11zM0 1h1v1h-1zM5 1h1v1h-1zM10 1h1v1h-1zM0 2h1v1h-1zM4 2h3v1h-3zM10 2h1v1h-1zM0 3h1v1h-1zM3 3h5v1h-5zM10 3h1v1h-1zM0 4h1v1h-1zM2 4h7v1h-7zM10 4h1v1h-1zM0 5h1v1h-1zM4 5h3v1h-3zM10 5h1v1h-1zM0 6h1v1h-1zM4 6h3v1h-3zM10 6h1v1h-1zM0 7h1v1h-1zM4 7h3v1h-3zM10 7h1v1h-1zM0 8h1v1h-1zM4 8h3v1h-3zM10 8h1v1h-1zM0 9h1v1h-1zM10 9h1v1h-1zM0 10h11v1h-11z'/%3E%3C/svg%3E"); }
+
+/* Director | Add: text buttons, as WM's toolbar labels (the words are their ::after) */
+.wm-studio #manualModal .prompt-tabs .extra-buttons :is(#directorBtn, #addItemDropdownBtn) > i {
+    display: none !important;
+}
+
+/* the token-free tick: WM's menu check (7 x 7 ROM art) */
+.wm-studio #manualModal #manualTokenFreeIcon.fa-check,
+.wm-studio #manualModal i.fa-check {
+    display: inline-block !important;
+    width: calc(7 * var(--wm-px)) !important;
+    height: calc(7 * var(--wm-px)) !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    vertical-align: middle;
+    color: transparent !important;
+    background: center / 100% 100% no-repeat image-set(url('/static_images/wm61/menu-check.png') 1x, url('/static_images/wm61/menu-check@2x.png') 2x, url('/static_images/wm61/menu-check@4x.png') 4x) !important;
+}
+
+.wm-studio #manualModal i.fa-check::before,
+.wm-studio #manualModal i.fa-check::after {
+    content: none !important;
+    display: none !important;
+}
+
+/* $ (paid requests) and the lambda (text replacement lock): type in the WM font */
+.wm-studio #manualModal i:is(.fa-dollar-sign, .fa-lambda)::before {
+    font: bold calc(12 * var(--wm-px)) / 1 var(--wm-font) !important;
+    -webkit-font-smoothing: auto;
+}
+
+.wm-studio #manualModal i.fa-dollar-sign::before { content: '$' !important; }
+.wm-studio #manualModal i.fa-lambda::before { content: '\3BB' !important; font-weight: normal !important; }

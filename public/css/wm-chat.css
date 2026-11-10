@@ -1,0 +1,362 @@
+/*
+ * Melaton Mobile: Chat (WM 6.1 Text Messages / Windows Live Messenger look), Yozora #732. wmChat.js.
+ * Measured on the Device Emulator (VGA, 2x halved, Nov 10 2026); lengths are N * --wm-px like
+ * wm-shell.css. The folder bar is Pictures & Videos' .wm-pv-bar.
+ */
+
+.wm-chat {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: #fff;
+    color: #000;
+    font-size: calc(12 * var(--wm-px));
+}
+
+.wm-chat [hidden] {
+    display: none !important;
+}
+
+.wm-chat .wch-listview,
+.wm-chat .wch-convview,
+.wm-chat .wch-newview {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---- list (Text Messages) ---- */
+
+.wm-chat .wch-folder {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.wm-chat .wch-folder-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-chat .wch-sort {
+    flex: 0 0 auto;
+}
+
+/* the list field: the theme's white-to-tint gradient, as Text Messages' empty Inbox */
+.wm-chat .wch-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+}
+
+/* two-line rows (Outlook Mobile: 15 + 15 px and a 1 px #848284 rule); the persona's picture in the
+ * icon column, 26 px so the face reads */
+.wm-chat .wch-row {
+    display: grid;
+    grid-template-columns: calc(31 * var(--wm-px)) minmax(0, 1fr) auto;
+    grid-template-rows: calc(15 * var(--wm-px)) calc(15 * var(--wm-px));
+    align-items: center;
+    padding: calc(1 * var(--wm-px)) calc(3 * var(--wm-px)) calc(1 * var(--wm-px)) 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #848284;
+    white-space: nowrap;
+    cursor: default;
+    -webkit-touch-callout: none;
+    user-select: none;
+    content-visibility: auto;
+    contain-intrinsic-size: auto calc(30 * var(--wm-px));
+}
+
+.wm-chat .wch-row.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-chat .wch-pic {
+    grid-row: 1 / 3;
+    grid-column: 1;
+    width: calc(26 * var(--wm-px));
+    height: calc(26 * var(--wm-px));
+    margin-left: calc(2 * var(--wm-px));
+    object-fit: cover;
+    object-position: center 20%;
+    border: calc(1 * var(--wm-px)) solid #848284;
+    box-sizing: border-box;
+    background: #fff;
+    pointer-events: none;
+}
+
+.wm-chat .wch-name,
+.wm-chat .wch-last {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-chat .wch-name {
+    grid-row: 1;
+    grid-column: 2;
+    font-weight: bold;
+}
+
+.wm-chat .wch-date {
+    grid-row: 1;
+    grid-column: 3;
+    padding-left: calc(6 * var(--wm-px));
+}
+
+.wm-chat .wch-last {
+    grid-row: 2;
+    grid-column: 2 / 4;
+}
+
+.wm-chat .wch-empty {
+    margin: 0;
+    padding: calc(100 * var(--wm-px)) calc(8 * var(--wm-px)) 0;
+    text-align: center;
+    line-height: calc(15 * var(--wm-px));
+}
+
+/* status line: 1 px black rule, 19 px tint, "Chat  3 Items." from x 2 */
+.wm-chat .wch-status {
+    flex: 0 0 auto;
+    height: calc(19 * var(--wm-px));
+    line-height: calc(19 * var(--wm-px));
+    padding: 0 calc(2 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tint);
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* ---- conversation ---- */
+
+/* Messenger's band: white to pale pink, 1 px #B5CFDE rule; the persona's picture and name */
+.wm-chat .wch-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    min-height: calc(34 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px)) 0 calc(2 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #b5cfde;
+    background: linear-gradient(to bottom, #fff 0%, #f7f3f7 40%, #f7ebef 100%);
+    box-sizing: border-box;
+}
+
+.wm-chat .wch-head-pic {
+    flex: 0 0 auto;
+    width: calc(30 * var(--wm-px));
+    height: calc(30 * var(--wm-px));
+    object-fit: cover;
+    object-position: center 20%;
+    border: calc(1 * var(--wm-px)) solid #848284;
+    box-sizing: border-box;
+    background: #fff;
+}
+
+.wm-chat .wch-head-text {
+    min-width: 0;
+}
+
+.wm-chat .wch-head-name {
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-chat .wch-head-sub {
+    font-size: calc(11 * var(--wm-px));
+    color: #636563;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-chat .wch-head-sub:empty {
+    display: none;
+}
+
+/* the thread, oldest first: "Name:" in bold over the text; the persona's lines on the list tint */
+.wm-chat .wch-history {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: #fff;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.wm-chat .wch-entry {
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) calc(3 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6;
+    line-height: calc(15 * var(--wm-px));
+    overflow-wrap: anywhere;
+    -webkit-touch-callout: none;
+}
+
+.wm-chat .wch-entry.is-them {
+    background: color-mix(in srgb, #fff 55%, var(--wm-tint));
+}
+
+.wm-chat .wch-who {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: calc(6 * var(--wm-px));
+}
+
+.wm-chat .wch-entry.is-them .wch-who b {
+    color: var(--wm-highlight);
+}
+
+.wm-chat .wch-at {
+    flex: 0 0 auto;
+    font-size: calc(11 * var(--wm-px));
+    color: #848284;
+}
+
+.wm-chat .wch-says {
+    white-space: pre-wrap;
+}
+
+.wm-chat .wch-act,
+.wm-chat .wch-sfx {
+    font-style: italic;
+    color: #636563;
+    white-space: pre-wrap;
+}
+
+.wm-chat .wch-typing {
+    color: #848284;
+    letter-spacing: calc(2 * var(--wm-px));
+}
+
+.wm-chat .wch-none {
+    margin: 0;
+    padding: calc(40 * var(--wm-px)) calc(8 * var(--wm-px)) 0;
+    text-align: center;
+    color: #636563;
+}
+
+.wm-chat .wch-none:empty {
+    display: none;
+}
+
+.wm-chat .wch-more {
+    display: block;
+    width: 100%;
+    height: calc(20 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6 !important;
+    color: var(--wm-highlight) !important;
+    font-weight: bold;
+    text-align: center;
+}
+
+/* Messenger's compose panel: 38 px; a 48 px white column with the buddy glyph (or the user's own
+ * picture), the box with a 1 px #0082FF top and left edge on the pale pink field */
+.wm-chat .wch-compose {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    min-height: calc(38 * var(--wm-px));
+    background: #fff;
+}
+
+.wm-chat .wch-me {
+    flex: 0 0 calc(48 * var(--wm-px));
+    background: url('/static_images/wm61/chat-buddy.png') center / calc(24 * var(--wm-px)) calc(20 * var(--wm-px)) no-repeat;
+    background-image: image-set(url('/static_images/wm61/chat-buddy.png') 1x, url('/static_images/wm61/chat-buddy@2x.png') 2x);
+}
+
+.wm-chat .wch-me.has-photo {
+    background-size: calc(30 * var(--wm-px)) calc(30 * var(--wm-px));
+}
+
+.wm-chat .wch-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    box-sizing: border-box;
+    min-height: calc(38 * var(--wm-px));
+    margin: 0;
+    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px));
+    border: 0;
+    border-top: calc(1 * var(--wm-px)) solid #0082ff;
+    border-left: calc(1 * var(--wm-px)) solid #0082ff;
+    border-radius: 0;
+    outline: none;
+    resize: none;
+    background: linear-gradient(to bottom, #fff7ff 0%, #f7f3f7 40%, #efebef 100%);
+    color: #000;
+    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font);
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* ---- new chat form ---- */
+
+.wm-chat .wch-newview {
+    background: #fff;
+}
+
+.wm-chat .wch-form-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.wm-chat .wch-form-pic {
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    margin-bottom: calc(6 * var(--wm-px));
+}
+
+.wm-chat .wch-form-pic img {
+    flex: 0 0 auto;
+    width: calc(48 * var(--wm-px));
+    height: calc(48 * var(--wm-px));
+    object-fit: cover;
+    object-position: center 20%;
+    border: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-chat .wch-form-pic > div {
+    min-width: 0;
+}
+
+.wm-chat .wch-form-file {
+    margin-bottom: calc(4 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-chat .wch-area {
+    display: block;
+    height: auto;
+    min-height: calc(46 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    resize: none;
+    line-height: calc(14 * var(--wm-px));
+}
+
+.wm-chat .wch-form .wm-combo {
+    width: 100%;
+}
+
+/* landscape and wide screens: the thread reads in a column, not across the whole screen */
+@media (min-aspect-ratio: 4/3) {
+    .wm-chat .wch-entry {
+        padding-left: calc(8 * var(--wm-px));
+        padding-right: calc(8 * var(--wm-px));
+    }
+
+    .wm-chat .wch-empty,
+    .wm-chat .wch-none {
+        padding-top: calc(40 * var(--wm-px));
+    }
+}

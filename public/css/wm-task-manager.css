@@ -1,0 +1,112 @@
+/*
+ * Melaton Mobile: Task Manager (WM 6.1 Professional), Yozora #732. wmTaskManager.js.
+ * Measured on the Device Emulator (VGA halved; ~/.cache/wm61/ref-apps/taskmgr*.png): header 18 px
+ * (17 px tint + 1 px black rule), column rules 2 px black, Mem ends 5 px before its rule, CPU 6 px
+ * from the right; rows 18 px bold on white, icon 16 px at x 3, text at x 20.
+ */
+
+.wm-page.wm-task-manager {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+}
+
+.wm-task-manager .wtm-head,
+.wm-task-manager .wtm-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) calc(55 * var(--wm-px)) calc(48 * var(--wm-px));
+    align-items: center;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.wm-task-manager .wtm-head {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    height: calc(18 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tint);
+}
+
+.wm-task-manager .wtm-head > span {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+.wm-task-manager .wtm-h-name {
+    padding-left: calc(6 * var(--wm-px));
+    border-right: calc(2 * var(--wm-px)) solid #000;
+}
+
+.wm-task-manager .wtm-h-mem {
+    justify-content: flex-end;
+    padding-right: calc(5 * var(--wm-px));
+    border-right: calc(2 * var(--wm-px)) solid #000;
+}
+
+.wm-task-manager .wtm-h-cpu {
+    justify-content: flex-end;
+    padding-right: calc(6 * var(--wm-px));
+}
+
+.wm-task-manager .wtm-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.wm-task-manager .wtm-row {
+    grid-template-columns: calc(20 * var(--wm-px)) minmax(0, 1fr) calc(55 * var(--wm-px)) calc(48 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    cursor: default;
+    -webkit-touch-callout: none;
+}
+
+.wm-task-manager .wtm-row.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-task-manager .wtm-ico img {
+    display: block;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin-left: calc(3 * var(--wm-px));
+    object-fit: contain;
+    pointer-events: none;
+}
+
+/* the device draws a selected row's icon through a 50 % checker of the highlight */
+.wm-task-manager .wtm-row.is-selected .wtm-ico {
+    position: relative;
+}
+
+.wm-task-manager .wtm-row.is-selected .wtm-ico::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: calc(3 * var(--wm-px));
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    background: repeating-conic-gradient(var(--wm-highlight) 0 25%, transparent 0 50%) 0 0 / calc(2 * var(--wm-px)) calc(2 * var(--wm-px));
+}
+
+.wm-task-manager .wtm-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: calc(4 * var(--wm-px));
+}
+
+.wm-task-manager .wtm-mem {
+    text-align: right;
+    padding-right: calc(7 * var(--wm-px));
+}
+
+.wm-task-manager .wtm-cpu {
+    text-align: right;
+    padding-right: calc(6 * var(--wm-px));
+}

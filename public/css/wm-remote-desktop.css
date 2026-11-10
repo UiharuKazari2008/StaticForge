@@ -1,0 +1,285 @@
+/*
+ * Melaton Mobile: Remote Desktop Mobile (WM 6.1 Professional), Yozora #732. wmRemoteDesktop.js.
+ * One phone app for the desktop's Remote Desktop Manager and Remote Desktop Connection.
+ * Lengths are N * --wm-px at WM's 1x (QVGA) metrics like wm-shell.css; the form controls are
+ * wm-programs.css's (.wm-form, .wm-form-row, .wm-edit, .wm-combo-edit, .wm-check, .wm-tabs).
+ *
+ * Connect screen: "Status:" line, Computer (editable combo) / User name / Password / Domain rows,
+ * Save password. Options: Display and Resources tabs at the bottom. Session: the remote screen
+ * (Guacamole's own client in a same-origin frame) under a touch layer that pans, zooms and clicks;
+ * Full Screen hides the title bar and the soft keys (html.wrd-full while this app is current).
+ */
+
+.wm-page.wm-rdm {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: #fff;
+    color: #000;
+}
+
+.wm-page.wm-rdm[hidden] {
+    display: none !important;
+}
+
+.wm-rdm .wrd-layer {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-rdm .wrd-layer[hidden] {
+    display: none !important;
+}
+
+.wm-rdm .wrd-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ---- connect screen ---- */
+.wm-rdm .wrd-connect {
+    padding-top: calc(6 * var(--wm-px));
+}
+
+/* "Status: Not connected": bold label, the state after it, one line above the fields */
+.wm-rdm .wrd-status {
+    display: flex;
+    gap: calc(4 * var(--wm-px));
+    min-height: calc(16 * var(--wm-px));
+    margin: 0 0 calc(6 * var(--wm-px));
+    padding-left: calc(2 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+}
+
+.wm-rdm .wrd-status b {
+    flex: 0 0 auto;
+}
+
+.wm-rdm .wrd-status span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.wm-rdm .wrd-connect .wm-form-row {
+    grid-template-columns: calc(60 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(6 * var(--wm-px));
+    margin-bottom: calc(4 * var(--wm-px));
+}
+
+/* the desktop's autocomplete.css (input[type="text"], 3 px radius) outranks .wm-edit: WM's edit
+   boxes are square */
+.wm-rdm .wm-edit {
+    border-radius: 0;
+}
+
+.wm-rdm .wrd-connect .wm-form-row > label {
+    text-align: left;
+}
+
+.wm-rdm .wm-edit:disabled {
+    border-color: #a5a6a5;
+    background: #fff;
+    color: #a5a6a5;
+}
+
+.wm-rdm .wrd-connect .wm-form-row > label.is-disabled {
+    color: #a5a6a5;
+}
+
+/* Save password sits under the edit boxes, lined up with them */
+.wm-rdm .wrd-save {
+    margin: calc(2 * var(--wm-px)) 0 0 calc(66 * var(--wm-px));
+}
+
+/* ---- Options (Display, Resources) ---- */
+.wm-rdm .wrd-options .wm-form {
+    padding-top: calc(8 * var(--wm-px));
+}
+
+.wm-rdm .wrd-options .wm-form-row {
+    grid-template-columns: calc(44 * var(--wm-px)) minmax(0, 1fr);
+    margin-bottom: calc(6 * var(--wm-px));
+}
+
+.wm-rdm .wrd-options .wm-form-row > label,
+.wm-rdm .wrd-options .wm-form-row > .wm-form-label {
+    text-align: left;
+}
+
+.wm-rdm .wrd-options .wm-check {
+    margin-bottom: calc(4 * var(--wm-px));
+}
+
+.wm-rdm .wrd-note {
+    margin: calc(6 * var(--wm-px)) 0 0;
+    color: #000;
+}
+
+/* ---- session ---- */
+.wm-rdm .wrd-session {
+    position: relative;
+    background: #000;
+}
+
+.wm-rdm .wrd-viewport {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #000;
+    touch-action: none;
+}
+
+/* the frame keeps its layout while the connection is being made (Guacamole connects only once its
+   client area has a size), unseen until the session is up */
+.wm-rdm .wrd-session.is-pending .wrd-viewport {
+    visibility: hidden;
+}
+
+.wm-rdm .wrd-frame {
+    position: absolute;
+    left: 0;
+    top: 0;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    background: #000;
+    transform-origin: 0 0;
+    pointer-events: none;
+}
+
+/* Guacamole's own pages (the connection's credentials form) take taps until the session is up */
+.wm-rdm .wrd-session.is-passthrough .wrd-frame {
+    pointer-events: auto;
+}
+
+.wm-rdm .wrd-touch {
+    position: absolute;
+    inset: 0;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.wm-rdm .wrd-session.is-passthrough .wrd-touch {
+    display: none;
+}
+
+/* tap-and-hold: WM's ring of dots grows round the finger before the right click */
+.wm-rdm .wrd-hold {
+    position: absolute;
+    width: calc(30 * var(--wm-px));
+    height: calc(30 * var(--wm-px));
+    margin: calc(-15 * var(--wm-px)) 0 0 calc(-15 * var(--wm-px));
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, #e00 0 6%, transparent 0 12.5%, #e00 0 18.5%, transparent 0 25%, #e00 0 31%, transparent 0 37.5%, #e00 0 43.5%, transparent 0 50%, #e00 0 56%, transparent 0 62.5%, #e00 0 68.5%, transparent 0 75%, #e00 0 81%, transparent 0 87.5%, #e00 0 93.5%, transparent 0);
+    -webkit-mask: radial-gradient(circle, transparent 0 58%, #000 60% 72%, transparent 74%);
+    mask: radial-gradient(circle, transparent 0 58%, #000 60% 72%, transparent 74%);
+    clip-path: polygon(50% 50%, 50% 0, 50% 0);
+    pointer-events: none;
+}
+
+.wm-rdm .wrd-hold.is-running {
+    animation: wrd-hold var(--wrd-hold-ms, 600ms) linear forwards;
+}
+
+@keyframes wrd-hold {
+    0% { clip-path: polygon(50% 50%, 50% 0, 50% 0, 50% 0, 50% 0, 50% 0, 50% 0); }
+    25% { clip-path: polygon(50% 50%, 50% 0, 100% 0, 100% 50%, 100% 50%, 100% 50%, 100% 50%); }
+    50% { clip-path: polygon(50% 50%, 50% 0, 100% 0, 100% 100%, 50% 100%, 50% 100%, 50% 100%); }
+    75% { clip-path: polygon(50% 50%, 50% 0, 100% 0, 100% 100%, 0 100%, 0 50%, 0 50%); }
+    100% { clip-path: polygon(50% 50%, 50% 0, 100% 0, 100% 100%, 0 100%, 0 0, 50% 0); }
+}
+
+/* Reconnecting: a WM box over the greyed screen, the attempt counted under the text */
+.wm-rdm .wrd-banner {
+    position: absolute;
+    left: calc(10 * var(--wm-px));
+    right: calc(10 * var(--wm-px));
+    top: 50%;
+    transform: translateY(-50%);
+    padding: calc(6 * var(--wm-px)) calc(8 * var(--wm-px)) calc(8 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    color: #000;
+    line-height: calc(14 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-rdm .wrd-banner[hidden] {
+    display: none;
+}
+
+.wm-rdm .wrd-banner b {
+    display: block;
+    margin-bottom: calc(4 * var(--wm-px));
+}
+
+.wm-rdm .wrd-session.is-dimmed .wrd-viewport::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+}
+
+/* the phone keyboard's target while typing into the session: on screen (some keyboards ignore
+   off-screen fields) but invisible */
+.wm-rdm .wrd-ime {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    resize: none;
+    font-size: 16px;
+    pointer-events: none;
+}
+
+/* Full Screen: the remote screen takes the whole display; a small tab in the corner (and the back
+   key) brings the bars back */
+html.ui-mobile.wrd-full[data-wm-app="remote-desktop-mobile"] #wmShell > .wm-titlebar,
+html.ui-mobile.wrd-full[data-wm-app="remote-desktop-mobile"] #wmShell > .wm-softkeys {
+    display: none !important;
+}
+
+.wm-rdm .wrd-restore {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: calc(26 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    margin: 0;
+    padding: 0 !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    background: var(--wm-tint) !important;
+    opacity: 0.75;
+}
+
+.wm-rdm .wrd-restore::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(10 * var(--wm-px));
+    height: calc(6 * var(--wm-px));
+    margin: calc(-3 * var(--wm-px)) 0 0 calc(-5 * var(--wm-px));
+    background: #000;
+    clip-path: polygon(0 100%, 50% 0, 100% 100%);
+}
+
+.wm-rdm .wrd-restore[hidden] {
+    display: none;
+}

@@ -1,0 +1,233 @@
+/*
+ * Melaton Mobile: Spellbook (the presets, laid out as WM 6.1 Contacts), Yozora #732. wmSpellbook.js.
+ * Metrics are Contacts' (Device Emulator VGA, 2x halved; wm-notes.css); lengths N * --wm-px.
+ */
+
+.wm-spellbook {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+    color: #000;
+    font-size: calc(12 * var(--wm-px));
+}
+
+.wm-spellbook [hidden] {
+    display: none !important;
+}
+
+.wm-spellbook .wsb-listview,
+.wm-spellbook .wsb-details {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* "Enter a name..." box: 20 px, 1 px black frame, 3 px in, on the tab-strip tint (26 px band) */
+.wm-spellbook .wsb-searchbar {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    height: calc(26 * var(--wm-px));
+    padding: calc(3 * var(--wm-px));
+    background: var(--wm-tab-strip);
+}
+
+.wm-spellbook .wsb-search {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    height: calc(20 * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    outline: none;
+    background: #fff;
+    color: #000;
+    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+    -webkit-appearance: none;
+    appearance: none;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.wm-spellbook .wsb-search::placeholder {
+    color: #000;
+    opacity: 1;
+}
+
+.wm-spellbook .wsb-search::-webkit-search-cancel-button {
+    display: none;
+}
+
+/* letter tabs: 17 px, nine cells split by 1 px rules */
+.wm-spellbook .wsb-tabs {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    height: calc(17 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-spellbook .wsb-tab {
+    min-width: 0;
+    border-left: calc(1 * var(--wm-px)) solid #000 !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    line-height: calc(16 * var(--wm-px)) !important;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-spellbook .wsb-tab:first-child {
+    border-left: 0 !important;
+}
+
+.wm-spellbook .wsb-tab.is-selected {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text) !important;
+}
+
+.wm-spellbook .wsb-nomatch {
+    flex: 0 0 auto;
+    padding: calc(1 * var(--wm-px)) calc(8 * var(--wm-px));
+    min-height: calc(26 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+    font-weight: bold;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+.wm-spellbook .wsb-scroll,
+.wm-spellbook .wsb-card-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* rows 28 px: the icon at x 7, the bold name at x 30, the model and size under it */
+.wm-spellbook .wsb-row {
+    display: grid;
+    grid-template-columns: calc(30 * var(--wm-px)) minmax(0, 1fr);
+    grid-template-rows: calc(13 * var(--wm-px)) calc(14 * var(--wm-px));
+    height: calc(28 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    box-sizing: border-box;
+    cursor: default;
+    -webkit-touch-callout: none;
+    user-select: none;
+    white-space: nowrap;
+    content-visibility: auto;
+    contain-intrinsic-size: auto calc(28 * var(--wm-px));
+}
+
+.wm-spellbook .wsb-row.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-spellbook .wsb-ico {
+    grid-row: 1 / 3;
+    align-self: center;
+}
+
+.wm-spellbook .wsb-ico img {
+    display: block;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin-left: calc(7 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-spellbook .wsb-name {
+    align-self: end;
+    line-height: calc(13 * var(--wm-px));
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-spellbook .wsb-sub {
+    line-height: calc(14 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-spellbook .wsb-note {
+    margin: 0;
+    padding: calc(100 * var(--wm-px)) calc(8 * var(--wm-px)) 0;
+    text-align: center;
+}
+
+/* ---- details: Contacts' card (white, the name band, label / value rows) ---- */
+
+.wm-spellbook .wsb-details {
+    background: #fff;
+}
+
+.wm-spellbook .wsb-card-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    min-height: calc(20 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    font-weight: bold;
+}
+
+.wm-spellbook .wsb-card-head img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wm-spellbook .wsb-card-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* label | value rows, 19 px with a grey rule, the labels right-aligned to x 74 (Contacts' form) */
+.wm-spellbook .wsb-crow {
+    display: grid;
+    grid-template-columns: calc(74 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(4 * var(--wm-px));
+    align-items: center;
+    min-height: calc(19 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6;
+}
+
+.wm-spellbook .wsb-clabel {
+    text-align: right;
+    color: #555;
+    white-space: nowrap;
+}
+
+.wm-spellbook .wsb-cvalue {
+    overflow-wrap: anywhere;
+}
+
+.wm-spellbook .wsb-card-sub {
+    padding: calc(6 * var(--wm-px)) calc(4 * var(--wm-px)) calc(2 * var(--wm-px));
+    font-weight: bold;
+}
+
+.wm-spellbook .wsb-card-prompt {
+    padding: 0 calc(4 * var(--wm-px)) calc(8 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.wm-spellbook .wsb-card-prompt.is-empty {
+    color: #848284;
+}

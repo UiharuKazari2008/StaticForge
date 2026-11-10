@@ -4495,6 +4495,550 @@
       ],
       "notes": "Settings applet icon: Melaton Update (Windows Update analogue). The ROM's Windows flag over the globe is replaced by the Melaton emblem (melaton-flat, saturated, 1px shadow) on a redrawn sphere (copyright rule). @4x: up4/run.js.",
       "source": "public/static_images/melaton/melaton-flat-256.png"
+    },
+    "app-windows-media": {
+      "1x": {
+        "source": "wmplayer.exe ico_2001 16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "wmplayer.exe ico_2001 32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media (#732 wmMedia.js)."
+    },
+    "app-windows-media-lg": {
+      "1x": {
+        "source": "wmplayer.exe ico_2001 32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "wmplayer.exe ico_2001 64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "notes": "Windows Media, Programs grid (#732)."
+    },
+    "cal-prev": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          13,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bmp_11063 (26 px cell, key #c0c0c0)",
+        "size": [
+          26,
+          32
+        ]
+      },
+      "notes": "Calendar header (#732 wmCalendar.js)."
+    },
+    "cal-next": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          13,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bmp_11063 (26 px cell, key #c0c0c0)",
+        "size": [
+          26,
+          32
+        ]
+      },
+      "notes": "Calendar header (#732 wmCalendar.js)."
+    },
+    "cal-today": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          13,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bmp_11063 (26 px cell, key #c0c0c0)",
+        "size": [
+          26,
+          32
+        ]
+      },
+      "notes": "Calendar header (#732 wmCalendar.js)."
+    },
+    "cal-bell": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          14
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bmp_11029 cell 0 (key #ff0000)",
+        "size": [
+          32,
+          28
+        ]
+      },
+      "notes": "Calendar summary reminder bell (#732)."
+    },
+    "wmp-search": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 0 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-disc": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 1 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-music": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 2 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-artist": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 3 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-genre": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 4 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-playlist": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 5 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-radio": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 6 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-tv-folder": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 7 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-video": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 8 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-burn": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 9 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-tv": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 10 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-webpage": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 11 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-back": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 12 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-forward": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 13 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-stop": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 14 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-refresh": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 15 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-home": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 16 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-favorite": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 17 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-add": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 18 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-delete": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 19 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-up": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 20 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-down": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 21 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-properties": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 22 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-folder": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 23 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-error": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 24 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "wmp-play": {
+      "1x": {
+        "source": "wmploc.dll bmp_1001 cell 25 (key #ff00ff)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "nearest 2x of the 1x (the ROM has no 192-dpi wmploc)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "Windows Media Library icons (#732 wmMedia.js)."
     }
   },
   "notDelivered": {

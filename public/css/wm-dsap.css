@@ -1,0 +1,629 @@
+/*
+ * Melaton Mobile: Dreamscape apps (DSAP applets) in Internet Explorer, Yozora #732 (parent #709).
+ * wmBrowser.js runs the desktop's applet code in IE's page (.wm-browser .wmb-dsap); this file is
+ * the phone layout: one column, touch-sized rows, nothing wider than the page.
+ * Applets in the DSAP-SMF frame (Data Management, Image Search, Control Panel, Novels, Security
+ * Center ...: .dsap-smf) take WM 6.1's form look, as Settings pages and the hosted desktop programs
+ * do (wm-studio-tools.css idioms): Tahoma 12 px black on white, the page title in bold with a rule
+ * under it, tabs as a scrolling WM tab strip, group headers as bold labels over a rule, tint push
+ * buttons with a 1 px black frame, 20 px edit boxes and combos. Applets that copy a web site's own
+ * look (Agora, NovelAI's Explore) keep it, as IE shows any site, and only get the phone layout.
+ * Phones only: every rule sits under .wm-browser .wmb-dsap.
+ */
+.wm-browser .wmb-dsap {
+    position: absolute;
+    inset: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    height: auto;
+    padding: 0;
+    /* white; an applet with a dark page of its own (Novels, Agora) keeps the desktop's baseBackground,
+       which activateDsapOnShell paints inline (wmBrowser.js clears it for DSAP-SMF applets) */
+    background: #fff;
+    color: #000;
+    touch-action: pan-x pan-y;
+}
+
+.wm-browser .wmb-dsap[hidden] {
+    display: none;
+}
+
+.wm-browser .wmb-dsap-area {
+    min-height: 100%;
+}
+
+.wm-browser .wmb-dsap .wmb-g-note {
+    padding: calc(8 * var(--wm-px)) calc(5 * var(--wm-px));
+    font: calc(12 * var(--wm-px)) / 1.3 var(--wm-font);
+}
+
+/* ---------------------------------------------------------------- every applet: the phone layout */
+
+.wm-browser .wmb-dsap [data-dsap] {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0 !important;
+    width: auto !important;
+    margin: 0 !important;
+    overflow-wrap: anywhere;
+}
+
+.wm-browser .wmb-dsap [data-dsap] * {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.wm-browser .wmb-dsap [data-dsap] :is(img, video, canvas, svg) {
+    max-width: 100%;
+    height: auto;
+}
+
+/* side-by-side panes stack */
+.wm-browser .wmb-dsap [data-dsap] :is([class*="-layout"], [class*="-columns"], [class*="-split"], [class*="-two-col"], [class*="-cols"]):not(table):not(tr):not(td) {
+    flex-direction: column !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.wm-browser .wmb-dsap [data-dsap] :is([class*="-left"], [class*="-right"], [class*="-sidebar"], [class*="-aside"], [class*="-main"]):not(table):not(tr):not(td):not(th):not(button):not(i):not(span) {
+    width: auto !important;
+    flex: 0 0 auto !important;
+    float: none !important;
+}
+
+/* tables: cells wrap; a data table wider than the page scrolls sideways inside itself */
+.wm-browser .wmb-dsap [data-dsap] :is(td, th) {
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.wm-browser .wmb-dsap [data-dsap] table:is(.sec-data-table, .dsap-smf-table, [class*="-data-table"], [class*="-list-table"]) {
+    display: block;
+    width: 100% !important;
+    /* the cells keep their rules; no frame around the empty space beside a narrow table */
+    border: 0 !important;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+}
+
+.wm-browser .wmb-dsap [data-dsap] table:is(.sec-data-table, .dsap-smf-table, [class*="-data-table"], [class*="-list-table"]) :is(thead, tbody, tfoot, tr, td, th) {
+    max-width: none;
+}
+
+.wm-browser .wmb-dsap [data-dsap] table:is(.sec-data-table, .dsap-smf-table, [class*="-data-table"], [class*="-list-table"]) :is(td, th) {
+    overflow-wrap: normal;
+    white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- DSAP-SMF applets: WM's form */
+
+.wm-browser .wmb-dsap .dsap-smf[data-dsap] {
+    --dsap-smf-font-size: calc(12 * var(--wm-px));
+    --dsap-smf-font-size-sm: calc(11 * var(--wm-px));
+    --dsap-smf-font-size-xs: calc(10 * var(--wm-px));
+    padding: 0 0 calc(10 * var(--wm-px)) !important;
+    border: 0 !important;
+    background: #fff !important;
+    color: #000;
+    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf *:not(i):not([class*="fa-"]) {
+    font-family: var(--wm-font) !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf :is(div, p, span, td, th, label, li, a, button, input, select, textarea, h1, h2, h3, h4, small) {
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
+}
+
+.wm-browser .wmb-dsap .dsap-smf :is(small, .dsap-smf-small, [class*="-hint"], [class*="-muted"], [class*="-meta"]) {
+    font-size: calc(11 * var(--wm-px)) !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf a {
+    color: #0000ff;
+}
+
+/* the page title: bold, in the highlight colour, a rule under it (WM's Settings pages) */
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-header {
+    display: block;
+    width: 100% !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
+    background: #fff !important;
+    color: #000 !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-header :is(tbody, tr) {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-header td {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    height: auto !important;
+    min-height: calc(24 * var(--wm-px));
+    padding: calc(3 * var(--wm-px)) calc(5 * var(--wm-px)) !important;
+    border: 0 !important;
+    background: transparent !important;
+    color: var(--wm-title, #004a19) !important;
+    font-weight: bold !important;
+    font-size: calc(13 * var(--wm-px)) !important;
+    white-space: nowrap;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-header td.dsap-smf-header-branch {
+    flex: 0 1 auto;
+    width: auto !important;
+    overflow: hidden;
+}
+
+/* the page name on the right gives way first on a narrow screen */
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-header td.dsap-smf-header-tool {
+    flex: 1 1 0;
+    justify-content: flex-end;
+    overflow: hidden;
+    width: auto !important;
+    color: #000 !important;
+    font-weight: normal !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    text-align: right;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-header td * {
+    color: inherit !important;
+    font-size: inherit !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-header :is(img, svg, .dsap-smf-header-logo) {
+    width: calc(16 * var(--wm-px)) !important;
+    height: calc(16 * var(--wm-px)) !important;
+    flex: 0 0 auto;
+    margin: 0 !important;
+}
+
+/* a dark logo mark on the white title row */
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-header .dsap-smf-header-logo {
+    filter: brightness(0) !important;
+}
+
+/* tabs: WM's tab strip (tint, 1 px black frames, the selected tab white and open to the page),
+   scrolling sideways when they do not fit */
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav),
+.wm-browser .wmb-dsap .dsap-smf .omega-dsap-detail-subtabbar {
+    display: block;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: calc(3 * var(--wm-px)) calc(3 * var(--wm-px)) 0 !important;
+    border: 0 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
+    background: var(--wm-tab-strip) !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav)::-webkit-scrollbar {
+    display: none;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) :is(tbody, tr) {
+    display: flex;
+    gap: calc(2 * var(--wm-px));
+    width: max-content;
+    min-width: 100%;
+    max-width: none;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td,
+.wm-browser .wmb-dsap .dsap-smf .omega-dsap-detail-subtabbar .omega-dsap-tab {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    justify-content: center;
+    gap: calc(4 * var(--wm-px));
+    flex: 0 0 auto;
+    width: auto !important;
+    max-width: none;
+    height: auto !important;
+    min-height: calc(26 * var(--wm-px));
+    margin: 0 0 calc(-1 * var(--wm-px)) !important;
+    padding: 0 calc(8 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-bottom: 0 !important;
+    border-radius: 0 !important;
+    background: var(--wm-tint) !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    font-weight: normal !important;
+    white-space: nowrap;
+    overflow: visible;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td:empty,
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td.dsap-smf-tab-auto {
+    display: none !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td :is(br) {
+    display: none;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td *,
+.wm-browser .wmb-dsap .dsap-smf .omega-dsap-detail-subtabbar .omega-dsap-tab * {
+    display: inline;
+    margin: 0 !important;
+    color: #000 !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    white-space: nowrap;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td i {
+    font-size: calc(11 * var(--wm-px)) !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td:is(.active, .dsap-smf-tab-active, .sec-tab.active),
+.wm-browser .wmb-dsap .dsap-smf .omega-dsap-detail-subtabbar .omega-dsap-tab.active {
+    position: relative;
+    z-index: 1;
+    padding-bottom: calc(1 * var(--wm-px)) !important;
+    background: #fff !important;
+    font-weight: bold !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td:is(.active, .dsap-smf-tab-active) * {
+    font-weight: bold !important;
+}
+
+/* the context bar under the tabs (Workspace: Global / This, counts) */
+.wm-browser .wmb-dsap .dsap-smf :is(.omega-dsap-contextbar, .dsap-smf-contextbar) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    margin: 0 !important;
+    padding: calc(3 * var(--wm-px)) calc(5 * var(--wm-px)) !important;
+    border: 0 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #a0a0a0 !important;
+    background: #fff !important;
+    color: #000 !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf :is(.omega-dsap-contextbar, .dsap-smf-contextbar) * {
+    color: #000 !important;
+}
+
+/* the page body: WM's 5 px margins */
+.wm-browser .wmb-dsap .dsap-smf[data-dsap] > :not(table):not(style) {
+    margin-left: calc(5 * var(--wm-px)) !important;
+    margin-right: calc(5 * var(--wm-px)) !important;
+}
+
+/* group headers: a bold label over a rule */
+.wm-browser .wmb-dsap .dsap-smf :is([class*="-section-hdr"], .data-mgmt-panel-hdr) {
+    display: block;
+    margin: calc(8 * var(--wm-px)) 0 calc(3 * var(--wm-px)) !important;
+    padding: 0 0 calc(1 * var(--wm-px)) !important;
+    border: 0 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    color: var(--wm-title, #004a19) !important;
+    font-weight: bold !important;
+    min-height: 0 !important;
+    height: auto !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf :is([class*="-section-hdr"], .data-mgmt-panel-hdr) * {
+    color: inherit !important;
+}
+
+/* status boxes (ok / error lines) */
+.wm-browser .wmb-dsap .dsap-smf :is(.dsap-smf-statusbox, .quips-dsap-statusbox, .sec-dsap-statusbox) {
+    margin: calc(3 * var(--wm-px)) 0 !important;
+    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #a0a0a0 !important;
+    border-radius: 0 !important;
+}
+
+/* number tiles (Fixed / Paid / Total Anlas, Role / Connectivity ...): two or three to a row, the
+   label over the value */
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) {
+    display: block;
+    width: 100% !important;
+    margin: calc(3 * var(--wm-px)) 0 !important;
+    border: 0 !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) tbody {
+    display: block;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) tr {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(calc(90 * var(--wm-px)), 1fr));
+    gap: 0;
+    padding: calc(1 * var(--wm-px)) 0 0 calc(1 * var(--wm-px));
+    background: #fff;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) td {
+    display: block;
+    width: auto !important;
+    margin: calc(-1 * var(--wm-px)) 0 0 calc(-1 * var(--wm-px)) !important;
+    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #a0a0a0 !important;
+    background: #fff !important;
+    text-align: left !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) td :is(br) {
+    display: none;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) td > * {
+    display: block;
+    margin: 0 !important;
+    padding: 0 !important;
+    text-align: left !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf :is(.dsap-smf-stat-label, .omega-dsap-stat-label) {
+    color: #404040 !important;
+    font-weight: normal !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf :is(.dsap-smf-stat-value, .omega-dsap-stat-value) {
+    font-weight: bold !important;
+}
+
+/* key / value tables: grey label cells off, WM's label: value rows */
+.wm-browser .wmb-dsap .dsap-smf table:not(.dsap-smf-header):not(.dsap-smf-tabbar):not(.sec-dsap-nav):not(.dsap-smf-stats):not(.omega-dsap-stats) {
+    width: 100% !important;
+    border-collapse: collapse;
+    border-color: #a0a0a0 !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:not(.dsap-smf-header):not(.dsap-smf-tabbar):not(.sec-dsap-nav):not(.dsap-smf-stats):not(.omega-dsap-stats) :is(td, th) {
+    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px)) !important;
+    border-color: #a0a0a0 !important;
+    color: #000;
+    vertical-align: middle;
+}
+
+.wm-browser .wmb-dsap .dsap-smf table:not(.dsap-smf-header):not(.dsap-smf-tabbar):not(.sec-dsap-nav):not(.dsap-smf-stats):not(.omega-dsap-stats) th {
+    background: var(--wm-tab-strip) !important;
+    color: #000 !important;
+    font-weight: bold !important;
+    text-align: left;
+}
+
+/* push buttons: WM's tint button, 1 px black frame; a pressed / lit toggle in the highlight colour */
+.wm-browser .wmb-dsap .dsap-smf button:not(.wmb-keep),
+.wm-browser .wmb-dsap .dsap-smf :is(.dsap-smf-btn, input[type="button"], input[type="submit"]) {
+    box-sizing: border-box !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: calc(4 * var(--wm-px));
+    min-width: calc(24 * var(--wm-px)) !important;
+    height: auto !important;
+    min-height: calc(24 * var(--wm-px)) !important;
+    margin: calc(1 * var(--wm-px));
+    padding: 0 calc(7 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: var(--wm-tint) !important;
+    box-shadow: none !important;
+    outline: none !important;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    font-weight: normal !important;
+    text-shadow: none !important;
+    filter: none !important;
+    transform: none !important;
+    transition: none !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf button:not(.wmb-keep) :is(i, span, svg) {
+    color: inherit !important;
+    -webkit-text-fill-color: currentColor !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf button:not(.wmb-keep) i {
+    font-size: calc(11 * var(--wm-px)) !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf button:not(.wmb-keep):disabled {
+    color: #808080 !important;
+    -webkit-text-fill-color: #808080 !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf :is(button.active, button[aria-pressed="true"], button.selected, button.is-active, button[data-active="true"]):not(.wmb-keep),
+.wm-browser .wmb-dsap .dsap-smf button:not(.wmb-keep):active:not(:disabled) {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text, #fff) !important;
+    -webkit-text-fill-color: var(--wm-highlight-text, #fff) !important;
+}
+
+/* edit boxes */
+.wm-browser .wmb-dsap .dsap-smf :is(input[type="text"], input[type="number"], input[type="search"], input[type="url"], input[type="email"], input[type="password"], input[type="date"], input:not([type]), textarea) {
+    box-sizing: border-box !important;
+    max-width: 100%;
+    min-height: calc(24 * var(--wm-px)) !important;
+    height: auto;
+    /* horizontal padding stays the applet's (a search glass sits in it) */
+    padding-top: 0;
+    padding-bottom: 0;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    outline: none !important;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf textarea {
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
+    resize: vertical;
+}
+
+.wm-browser .wmb-dsap .dsap-smf :is(input, textarea)::placeholder {
+    color: #808080 !important;
+    -webkit-text-fill-color: #808080 !important;
+}
+
+/* combo boxes */
+.wm-browser .wmb-dsap .dsap-smf select {
+    box-sizing: border-box !important;
+    max-width: 100%;
+    min-height: calc(24 * var(--wm-px)) !important;
+    padding: 0 calc(16 * var(--wm-px)) 0 calc(3 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    color: #000 !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    background:
+        linear-gradient(to top right, transparent 50%, #000 50%) right calc(4.5 * var(--wm-px)) center / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to top left, transparent 50%, #000 50%) right calc(0.5 * var(--wm-px) + 2 * var(--wm-px) - 2 * var(--wm-px)) center / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(#000, #000) right calc(13 * var(--wm-px)) top 0 / calc(1 * var(--wm-px)) 100% no-repeat,
+        linear-gradient(var(--wm-tab-strip), var(--wm-tab-strip)) right 0 top 0 / calc(13 * var(--wm-px)) 100% no-repeat,
+        #fff !important;
+}
+
+/* check boxes and radio buttons: 13 px, 1 px black */
+.wm-browser .wmb-dsap .dsap-smf :is(input[type="checkbox"], input[type="radio"]) {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    flex: 0 0 auto;
+    box-sizing: border-box !important;
+    width: calc(13 * var(--wm-px)) !important;
+    height: calc(13 * var(--wm-px)) !important;
+    margin: 0 calc(4 * var(--wm-px)) 0 0 !important;
+    padding: 0 !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff center / 100% 100% no-repeat !important;
+    box-shadow: none !important;
+    vertical-align: middle;
+}
+
+.wm-browser .wmb-dsap .dsap-smf input[type="checkbox"]:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11'%3E%3Cpath d='M2 5.2 4.3 7.5 9 2.8' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E") !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf input[type="radio"] {
+    border-radius: 50% !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf input[type="radio"]:checked {
+    background-image: radial-gradient(circle, #000 0 calc(2.5 * var(--wm-px)), transparent calc(2.5 * var(--wm-px) + 0.5px)) !important;
+}
+
+/* trackbars: WM's slider, a sunken channel and a tint thumb with a 1 px black frame */
+.wm-browser .wmb-dsap .dsap-smf input[type="range"] {
+    accent-color: var(--wm-highlight);
+    outline: none !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf input[type="range"]::-webkit-slider-thumb {
+    width: calc(10 * var(--wm-px)) !important;
+    background: var(--wm-tint) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+}
+
+/* Image Search's value sliders (the value written in the channel) */
+.wm-browser .wmb-dsap .dsap-smf .omega-dsap-slider-wrap {
+    flex: 1 1 100%;
+    max-width: none;
+}
+
+.wm-browser .wmb-dsap .dsap-smf .omega-dsap-slider-track {
+    height: calc(22 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf .omega-dsap-slider-input {
+    height: calc(22 * var(--wm-px));
+    min-height: 0 !important;
+    border: 0 !important;
+    padding: 0 !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf .omega-dsap-slider-input::-webkit-slider-thumb {
+    height: calc(20 * var(--wm-px)) !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf .omega-dsap-slider-value {
+    color: #000 !important;
+}
+
+/* settings tables (a label and its controls on each row): in portrait the label stands over its
+   controls, so the controls get the page's width */
+@media (orientation: portrait) {
+    .wm-browser .wmb-dsap .dsap-smf table:is([class*="settings-table"], [class*="setting-table"], [class*="form-table"]),
+    .wm-browser .wmb-dsap .dsap-smf table:is([class*="settings-table"], [class*="setting-table"], [class*="form-table"]) :is(tbody, tr, td, th) {
+        display: block;
+        width: auto !important;
+    }
+
+    .wm-browser .wmb-dsap .dsap-smf table:is([class*="settings-table"], [class*="setting-table"], [class*="form-table"]) tr {
+        padding: calc(3 * var(--wm-px)) 0 !important;
+        border-bottom: calc(1 * var(--wm-px)) solid #d0d0d0;
+    }
+
+    .wm-browser .wmb-dsap .dsap-smf table:is([class*="settings-table"], [class*="setting-table"], [class*="form-table"]) :is(td, th) {
+        padding: calc(1 * var(--wm-px)) calc(2 * var(--wm-px)) !important;
+        border: 0 !important;
+        background: none !important;
+    }
+}
+
+/* toolbars and button rows wrap */
+.wm-browser .wmb-dsap .dsap-smf :is(.dsap-smf-toolbar, [class*="-toolbar"], [class*="-actions"], [class*="-buttons"], [class*="-btn-row"]):not(table, thead, tbody, tr, td, th, button, span, i) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    height: auto !important;
+    padding: calc(2 * var(--wm-px)) 0 !important;
+    border: 0 !important;
+    background: none !important;
+}
+
+/* the desktop's custom drop-down lists open as a white WM list */
+.wm-browser .wmb-dsap .dsap-smf .custom-dropdown-menu {
+    max-width: calc(100vw - 10 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+}
+
+/* a very narrow screen: the page name on the right (it repeats the selected tab) goes */
+@media (max-width: 340px) {
+    .wm-browser .wmb-dsap .dsap-smf table.dsap-smf-header td.dsap-smf-header-tool {
+        display: none !important;
+    }
+}
+
+/* ---------------------------------------------------------------- landscape: a little more on a row */
+
+@media (orientation: landscape) {
+    .wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) tr {
+        grid-template-columns: repeat(auto-fit, minmax(calc(110 * var(--wm-px)), 1fr));
+    }
+}

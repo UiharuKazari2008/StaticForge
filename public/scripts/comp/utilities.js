@@ -196,7 +196,7 @@ function escapeHtml(text) {
 
 function escapeHtmlAttribute(text) {
     if (text == null) return '';
-    return text.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return String(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /**

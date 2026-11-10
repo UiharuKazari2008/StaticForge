@@ -128,6 +128,22 @@
     overflow: hidden;
 }
 
+/* a phone page 900 px and wider (tablets, a Fold opened sideways) met the desktop window's wide
+   container query (director.css: director-window 900px), which forced the session list open as a
+   static left pane with !important and told director.js so (--director-static-sessions): the
+   desktop pane next to her scene. The Sessions page is Menu > Sessions here. */
+.wm-director #directorWindow #directorSessionList.director-session-overlay {
+    display: none !important;
+}
+
+.wm-director #directorWindow .director-container {
+    --director-static-sessions: 0;
+}
+
+.wm-director #directorWindow .director-content {
+    flex-direction: column;
+}
+
 /* ---- her scene: the room fills the page (cover), she stands at the middle ---- */
 .wm-director #directorSessionChat.director-mascot-view {
     background-position: center !important;
@@ -346,9 +362,12 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
 /* her scene with the log hidden: the log's rows are not laid out (~490 ms of layout on every open
  * at 4x throttle, and director.js's scroll reads after each render forced it again, Yozora #723).
  * The box keeps its space (the composer stays put); Menu > Log lays the rows out and scrolls to the
- * bottom (directorMascot.js togglePeek). Not content-visibility: scroll reads force locked content. */
-.wm-director #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden:not(.dm-log-peek) .director-chat-messages-container > * {
-    display: none !important;
+ * bottom (directorMascot.js togglePeek). Not content-visibility: scroll reads force locked content.
+ * Wide screens show the log beside her scene (Screen size, below), so there the rows stay. */
+@container wmd not ((min-width: 40em) and (aspect-ratio >= 3 / 4)) {
+    .wm-director #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden:not(.dm-log-peek) .director-chat-messages-container > * {
+        display: none !important;
+    }
 }
 
 /* ---- status (Director not loaded yet) ---- */
@@ -1079,8 +1098,9 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
     display: none;
 }
 
-/* landscape: room for the growth chip beside the others (the desktop's HUD row) */
-@media (orientation: landscape) {
+/* landscape: room for the growth chip beside the others (the desktop's HUD row); beside the log
+   (wide, below) only where her scene keeps that room */
+@container wmd ((orientation: landscape) and (width < 40em)) or (width >= 60em) {
     .wm-director .dm-vn-layer .dm-hud-grow {
         display: flex;
     }
@@ -1136,4 +1156,184 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
 /* the frame before her first show after a load (wmDirector.js show): bars and the wait cursor only */
 .wm-director.wmd-prepaint > .wmd-host {
     display: none !important;
+}
+
+/* ======================================================================
+ * Screen size (Yozora #732): the app's page is a size container; its conditions are in em, which a
+ * container query resolves against the page's own font (12 WM px), so 40em is 480 WM px at any scale.
+ *   phone (portrait; a small landscape phone): her scene fills the page, as drawn for the A53.
+ *   wide (40em and wider, not tall: landscape phones, foldables, tablets on their side): her scene on
+ *     the left, the log and the composer in a WM column on the right. #directorSessionChat becomes a
+ *     two-column grid; the stage and the VN layer (absolutely placed) take the scene's grid area, so
+ *     her text box, bubbles and HUD stay in the scene, and wmDirector.js stages her in the scene's
+ *     box (the desktop measures the whole chat). wmDirector.js reads --wmd-layout.
+ *   tall (big portrait: a tablet held upright): her scene as on a phone; her text box and the log
+ *     keep a readable width in the middle.
+ * ====================================================================== */
+.wm-director {
+    container: wmd / size;
+}
+
+.wm-director .wmd-host {
+    --wmd-layout: phone;
+}
+
+@container wmd (min-width: 40em) and (aspect-ratio >= 3 / 4) {
+    .wm-director .wmd-host {
+        --wmd-layout: wide;
+        --wmd-log-w: clamp(calc(200 * var(--wm-px)), 40cqw, calc(400 * var(--wm-px)));
+    }
+
+    html.ui-mobile .wm-director #directorSessionChat.director-mascot-view {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) var(--wmd-log-w);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+    }
+
+    /* her room centred on the scene, not on the whole page */
+    html.ui-mobile .wm-director #directorSessionChat.director-mascot-on.director-mascot-view {
+        background-position: calc(50% - var(--wmd-log-w) / 2) center !important;
+        background-size: auto 100% !important;
+    }
+
+    /* both lines named: an absolutely placed grid item's auto line is the container's edge */
+    .wm-director #directorSessionChat.director-mascot-view > :is(.director-mascot-stage, .dm-vn-layer) {
+        grid-column: 1 / 2;
+        grid-row: 1 / -1;
+    }
+
+    .wm-director #directorSessionChat.director-mascot-view > #directorWorkspaceBanner {
+        grid-column: 2;
+        grid-row: 1;
+        position: relative;
+        z-index: 7;
+    }
+
+    /* the log column: a white WM page with a 1 px rule between it and her scene */
+    html.ui-mobile .wm-director #directorSessionChat.director-mascot-on.director-mascot-view :is(.director-chat-messages-container, #directorTaskList) {
+        align-self: stretch !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        margin: 0 !important;
+        border: 0 !important;
+        border-left: calc(1 * var(--wm-px)) solid #000 !important;
+        border-radius: 0 !important;
+        background: #fff !important;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+    }
+
+    html.ui-mobile .wm-director #directorSessionChat.director-mascot-on.director-mascot-view #directorTaskList {
+        grid-column: 2;
+        grid-row: 2;
+        border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
+    }
+
+    html.ui-mobile .wm-director #directorSessionChat.director-mascot-on.director-mascot-view .director-chat-messages-container {
+        grid-column: 2;
+        grid-row: 3;
+        min-height: 0;
+        padding-bottom: 0 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+        animation: none !important;
+    }
+
+    /* the log is on screen beside her: its animations run (the rows are laid out: the rule that
+       drops them is for phones only, above) */
+    html.ui-mobile .wm-director #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden:not(.dm-log-peek) .director-chat-messages-container :is(*, *::before, *::after) {
+        animation-play-state: running;
+    }
+
+    /* the composer: always at the foot of the column (WM Messaging's conversation view) */
+    html.ui-mobile .wm-director #directorSessionChat.director-mascot-view #directorComposer {
+        display: block !important;
+        grid-column: 2;
+        grid-row: 4;
+        position: relative !important;
+        left: auto !important;
+        right: auto !important;
+        bottom: auto !important;
+        border-left: calc(1 * var(--wm-px)) solid #000 !important;
+    }
+
+    html.ui-mobile .wm-director #directorSessionChat.director-mascot-view #directorChatInput {
+        max-height: 40cqh !important;
+    }
+
+    /* her text box keeps its place at the foot of the scene (the desktop lifts it over the composer,
+       which is in the column now) */
+    html.ui-mobile .wm-director .dm-vn-layer .dm-dialog.dm-result {
+        bottom: 28px !important;
+    }
+
+    /* the queued-message label sits over the scene, not the column */
+    .wm-director .wmd-queue {
+        max-width: calc(100% - var(--wmd-log-w) - 12px);
+    }
+}
+
+/* the Messages view (Menu > Options > Messages) and the log over her scene on big screens: a
+ * readable line, the rows in the middle of the page */
+@container wmd (min-width: 40em) {
+    html.ui-mobile .wm-director #directorSessionChat:not(.director-mascot-view) .director-chat-messages-container {
+        padding-inline: max(0px, calc((100cqw - 480 * var(--wm-px)) / 2)) !important;
+    }
+}
+
+@container wmd (min-width: 36em) and (aspect-ratio < 3 / 4) {
+    html.ui-mobile .wm-director #directorSessionChat.director-mascot-view .director-chat-messages-container,
+    html.ui-mobile .wm-director #directorSessionChat.director-mascot-view #directorTaskList {
+        width: min(calc(100% - 12px), calc(480 * var(--wm-px))) !important;
+        align-self: center !important;
+    }
+
+    .wm-director .dm-vn-layer .dm-dialog {
+        left: max(6px, calc(50% - 320 * var(--wm-px))) !important;
+        right: max(6px, calc(50% - 320 * var(--wm-px))) !important;
+    }
+
+    html.ui-mobile .wm-director #directorSessionChat #directorComposer {
+        left: max(0px, calc(50% - 320 * var(--wm-px))) !important;
+        right: max(0px, calc(50% - 320 * var(--wm-px))) !important;
+        border-left: calc(1 * var(--wm-px)) solid #000 !important;
+        border-right: calc(1 * var(--wm-px)) solid #000 !important;
+    }
+}
+
+/* short pages (a landscape phone, about 360 px or less of scene): the desktop's text box (at least
+ * 160 px, up to 55% of the scene) covered her whole. It takes the side she does not stand on, a
+ * smaller type and at most half the scene; the pager pages the rest (tap the text) */
+@container wmd (max-height: 20em) and (orientation: landscape) {
+    .wm-director .dm-vn-layer .dm-dialog {
+        min-height: 0;
+        max-height: 52% !important;
+        padding: 12px 12px 10px 14px;
+        font-size: 12.5px;
+        line-height: 1.38;
+    }
+
+    .wm-director .dm-vn-layer .dm-dialog[data-tab="reply"] .dm-dialog-body {
+        min-height: 0;
+    }
+
+    .wm-director .dm-vn-layer[data-side="left"] .dm-dialog {
+        left: 40% !important;
+        right: 6px !important;
+    }
+
+    .wm-director .dm-vn-layer[data-side="right"] .dm-dialog {
+        left: 6px !important;
+        right: 40% !important;
+    }
+
+    .wm-director .dm-vn-layer .dm-dialog-head {
+        top: -12px;
+    }
+
+    .wm-director .dm-vn-layer .dm-dialog-name {
+        font-size: 12px;
+        padding: 2px 12px;
+    }
 }

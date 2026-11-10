@@ -1164,6 +1164,20 @@
         sessionDisconnected,
         sessionReconnecting,
         isOpen: () => !!main,
+        // Melaton Mobile's Remote Desktop Mobile (wmRemoteDesktop.js) shares the computer names,
+        // their protocols, the User name and mstsc's words; it draws its own WM screens
+        shared: {
+            parseComputer,
+            readHistory,
+            readProtocols,
+            remember,
+            credentialDomain,
+            sessionEndText,
+            userName: () => readSetting(USER_KEY, ''),
+            setUserName: (v) => writeSetting(USER_KEY, String(v || '')),
+            text: TEXT,
+            sessionText: SESSION_TEXT
+        },
         _test: { parseComputer, readHistory, askCredentials, showError }
     };
     root.remoteDesktopConnection = api;

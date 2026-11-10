@@ -6,16 +6,17 @@
  * into WM's white form: Tahoma 12 px black text, 20 px edit boxes and combos with a 1 px black
  * frame, tint push buttons, 13 px check boxes, trackbars, list rows in the highlight colour, a tool
  * strip for the title bar's own toolbar (SmartText's search, Phasewalker's keywords), WM scroll
- * bars (no glass thumbs). The footer buttons are the page's soft keys / Menu (wmStudio.js
- * toolKeys), so the footers go. Every rule sits under .wm-studio .wms-tool-host (phones only).
+ * bars (no glass thumbs). Desktop programs hosted as WM apps (wmHost.js, .wm-host .wmh-host) share
+ * these rules. The footer buttons are the page's soft keys / Menu (wmStudio.js
+ * toolKeys), so the footers go. Every rule sits under :is(.wm-studio .wms-tool-host, .wm-host .wmh-host) (phones only).
  */
 
 /* ---- the whole page: WM's font and black on white, no glass ---- */
-.wm-studio .wms-tool-host > .modal.modal {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal.modal {
     padding: 0 !important;
 }
 
-.wm-studio .wms-tool-host > .modal {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal {
     font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
     color: #000 !important;
     --text-primary: #000;
@@ -23,7 +24,7 @@
     --text-muted: #606060;
 }
 
-.wm-studio .wms-tool-host > .modal :is(div, span, p, label, li, td, th, dt, dd, a, h1, h2, h3, h4, h5, h6, small, strong, em, b, legend, summary, figcaption, code, pre, kbd, button, input, textarea, select, option):not(.icon-fa):not([class*="fa-"]):not([class*="nai-"]) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(div, span, p, label, li, td, th, dt, dd, a, h1, h2, h3, h4, h5, h6, small, strong, em, b, legend, summary, figcaption, code, pre, kbd, button, input, textarea, select, option):not(.icon-fa):not([class*="fa-"]):not([class*="nai-"]) {
     font-family: var(--wm-font) !important;
     font-size: calc(12 * var(--wm-px)) !important;
     letter-spacing: normal !important;
@@ -31,24 +32,24 @@
     text-shadow: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(div, span, p, label, li, td, th, dt, dd, h1, h2, h3, h4, h5, h6, small, strong, em, b, legend, summary, figcaption, code, pre, kbd) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(div, span, p, label, li, td, th, dt, dd, h1, h2, h3, h4, h5, h6, small, strong, em, b, legend, summary, figcaption, code, pre, kbd) {
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
     opacity: 1;
 }
 
-.wm-studio .wms-tool-host > .modal :is(h1, h2, h3, h4, h5, h6, strong, b, legend, th) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(h1, h2, h3, h4, h5, h6, strong, b, legend, th) {
     font-weight: bold !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(code, pre, kbd) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(code, pre, kbd) {
     font-family: 'Courier New', monospace !important;
     background: none !important;
     border: 0 !important;
     padding: 0 !important;
 }
 
-.wm-studio .wms-tool-host > .modal a {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal a {
     color: #0000ff !important;
     -webkit-text-fill-color: #0000ff !important;
     text-decoration: underline;
@@ -56,12 +57,12 @@
 
 /* glass panels, cards and their glows: plain white with a grey rule where the desktop drew a box
  * (colour marks - swatches, dots, previews, progress fills - keep their own paint) */
-.wm-studio .wms-tool-host > .modal :where(div, section, article, header, footer, aside, nav, ul, ol, li, form, fieldset, table, thead, tbody, tr, td, th, p, span, label):where(:not([style*="background"])):where(:not([class*="color"]):not([class*="swatch"]):not([class*="dot"]):not([class*="thumb"]):not([class*="preview"]):not([class*="progress"]):not([class*="fill"]):not([class*="badge"]):not([class*="image"]):not([class*="img"]):not([class*="avatar"]):not([class*="icon"])) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :where(div, section, article, header, footer, aside, nav, ul, ol, li, form, fieldset, table, thead, tbody, tr, td, th, p, span, label):where(:not([style*="background"])):where(:not([class*="color"]):not([class*="swatch"]):not([class*="dot"]):not([class*="thumb"]):not([class*="preview"]):not([class*="progress"]):not([class*="fill"]):not([class*="badge"]):not([class*="image"]):not([class*="img"]):not([class*="avatar"]):not([class*="icon"])) {
     background-color: transparent !important;
     background-image: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(div, section, article, header, footer, aside, nav, ul, ol, li, form, fieldset, table, span, label, p, img, canvas) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(div, section, article, header, footer, aside, nav, ul, ol, li, form, fieldset, table, span, label, p, img, canvas) {
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -69,28 +70,28 @@
     filter: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(div, section, article, header, footer, aside, ul, li, fieldset, table, td, th) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(div, section, article, header, footer, aside, ul, li, fieldset, table, td, th) {
     border-color: #a0a0a0 !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(div, span, li, section)::before,
-.wm-studio .wms-tool-host > .modal :is(div, span, li, section)::after {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(div, span, li, section)::before,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(div, span, li, section)::after {
     box-shadow: none !important;
     backdrop-filter: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal > .modal-content {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal > .modal-content {
     padding: calc(5 * var(--wm-px)) !important;
     box-sizing: border-box;
 }
 
-.wm-studio .wms-tool-host > .modal :is(.modal-body, .modal-content > .modal-body) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.modal-body, .modal-content > .modal-body) {
     padding: 0 !important;
     margin: 0 !important;
 }
 
 /* ---- the title bar's own toolbar as a WM tool strip under the title (the caption is the WM title) ---- */
-.wm-studio .wms-tool-host > .modal.modal > .modal-window-title.modal-window-title:has(> .modal-window-title-toolbar > :not(.hidden)) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal.modal > .modal-window-title.modal-window-title:has(> .modal-window-title-toolbar > :not(.hidden)) {
     display: flex !important;
     position: static !important;
     flex: 0 0 auto;
@@ -112,11 +113,11 @@
     cursor: default !important;
 }
 
-.wm-studio .wms-tool-host > .modal > .modal-window-title > .modal-window-title-main {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal > .modal-window-title > .modal-window-title-main {
     display: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal > .modal-window-title > .modal-window-title-toolbar {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal > .modal-window-title > .modal-window-title-toolbar {
     display: flex !important;
     flex: 1 1 auto;
     flex-wrap: wrap;
@@ -134,7 +135,7 @@
     transform: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal > .modal-window-title :is(.button-group, .toolbar-group, [class*="search-group"]) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal > .modal-window-title :is(.button-group, .toolbar-group, [class*="search-group"]) {
     display: flex !important;
     flex: 1 1 auto;
     gap: 0 !important;
@@ -146,12 +147,12 @@
 }
 
 /* ---- the footers: their buttons are the soft keys and Menu (wmStudio.js toolKeys) ---- */
-.wm-studio .wms-tool-host > .modal :is(.modal-footer, .modal-footer-colored, .character-position-footer, .modal-actions, .dialog-buttons) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.modal-footer, .modal-footer-colored, .character-position-footer, .modal-actions, .dialog-buttons) {
     display: none !important;
 }
 
 /* ---- push buttons: WM's tint button, 1 px black, black text; a lit toggle in the highlight colour ---- */
-.wm-studio .wms-tool-host > .modal button:not(.wms-keep) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal button:not(.wms-keep) {
     box-sizing: border-box !important;
     display: inline-flex;
     align-items: center;
@@ -178,13 +179,13 @@
     transition: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal button:not(.wms-keep)::before,
-.wm-studio .wms-tool-host > .modal button:not(.wms-keep)::after {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal button:not(.wms-keep)::before,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal button:not(.wms-keep)::after {
     box-shadow: none !important;
     background-image: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal button:not(.wms-keep) :is(i, span, svg) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal button:not(.wms-keep) :is(i, span, svg) {
     color: inherit !important;
     -webkit-text-fill-color: currentColor !important;
     fill: currentColor;
@@ -193,30 +194,30 @@
     opacity: 1 !important;
 }
 
-.wm-studio .wms-tool-host > .modal button:not(.wms-keep) i {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal button:not(.wms-keep) i {
     font-size: calc(11 * var(--wm-px)) !important;
 }
 
-.wm-studio .wms-tool-host > .modal button:not(.wms-keep):disabled,
-.wm-studio .wms-tool-host > .modal button:not(.wms-keep).disabled {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal button:not(.wms-keep):disabled,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal button:not(.wms-keep).disabled {
     color: #808080 !important;
     -webkit-text-fill-color: #808080 !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(button.active, button[aria-pressed="true"], button[data-state="on"], button.selected):not(.wms-keep),
-.wm-studio .wms-tool-host > .modal button:not(.wms-keep):active:not(:disabled) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(button.active, button[aria-pressed="true"], button[data-state="on"], button.selected):not(.wms-keep),
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal button:not(.wms-keep):active:not(:disabled) {
     background: var(--wm-highlight) !important;
     color: var(--wm-highlight-text, #fff) !important;
     -webkit-text-fill-color: var(--wm-highlight-text, #fff) !important;
 }
 
 /* window chrome buttons that live inside the content (the desktop's own minimise / close) */
-.wm-studio .wms-tool-host > .modal :is(.close-btn, .minimize-btn, .modal-work-area-maximize, .resize-handle) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.close-btn, .minimize-btn, .modal-work-area-maximize, .resize-handle) {
     display: none !important;
 }
 
 /* ---- edit boxes ---- */
-.wm-studio .wms-tool-host > .modal :is(input[type="text"], input[type="number"], input[type="search"], input[type="url"], input[type="email"], input[type="password"], input:not([type]), textarea, .form-control:not(select)) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(input[type="text"], input[type="number"], input[type="search"], input[type="url"], input[type="email"], input[type="password"], input:not([type]), textarea, .form-control:not(select)) {
     box-sizing: border-box !important;
     min-height: calc(20 * var(--wm-px)) !important;
     height: auto;
@@ -236,24 +237,24 @@
     -webkit-user-select: text;
 }
 
-.wm-studio .wms-tool-host > .modal textarea {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal textarea {
     padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
     resize: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(input, textarea)::placeholder {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(input, textarea)::placeholder {
     color: #808080 !important;
     -webkit-text-fill-color: #808080 !important;
     opacity: 1;
 }
 
-.wm-studio .wms-tool-host > .modal :is(input, textarea):disabled {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(input, textarea):disabled {
     color: #808080 !important;
     -webkit-text-fill-color: #808080 !important;
 }
 
 /* ---- combo boxes (native selects and the desktop drop-down buttons) ---- */
-.wm-studio .wms-tool-host > .modal select {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal select {
     box-sizing: border-box !important;
     min-height: calc(20 * var(--wm-px)) !important;
     height: calc(20 * var(--wm-px)) !important;
@@ -273,7 +274,7 @@
         #fff !important;
 }
 
-.wm-studio .wms-tool-host > .modal .custom-dropdown-btn:not(.wms-keep) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .custom-dropdown-btn:not(.wms-keep) {
     position: relative;
     justify-content: flex-start !important;
     padding: 0 calc(16 * var(--wm-px)) 0 calc(3 * var(--wm-px)) !important;
@@ -283,7 +284,7 @@
     overflow: hidden;
 }
 
-.wm-studio .wms-tool-host > .modal .custom-dropdown-btn:not(.wms-keep)::after {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .custom-dropdown-btn:not(.wms-keep)::after {
     content: '' !important;
     display: block !important;
     position: absolute;
@@ -301,17 +302,17 @@
     transform: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal .custom-dropdown-btn > :is(i.dropdown-arrow, .fa-chevron-down, .fa-caret-down) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .custom-dropdown-btn > :is(i.dropdown-arrow, .fa-chevron-down, .fa-caret-down) {
     display: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal .custom-dropdown-menu.wms-dd-proxied {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .custom-dropdown-menu.wms-dd-proxied {
     visibility: hidden !important;
     pointer-events: none !important;
 }
 
 /* ---- check boxes and radio buttons: 13 px, 1 px black (WM's button class) ---- */
-.wm-studio .wms-tool-host > .modal :is(input[type="checkbox"], input[type="radio"]) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(input[type="checkbox"], input[type="radio"]) {
     appearance: none !important;
     -webkit-appearance: none !important;
     flex: 0 0 auto;
@@ -330,29 +331,29 @@
     vertical-align: middle;
 }
 
-.wm-studio .wms-tool-host > .modal input[type="checkbox"]:checked {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal input[type="checkbox"]:checked {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11'%3E%3Cpath d='M2 5.2 4.3 7.5 9 2.8' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E") !important;
 }
 
-.wm-studio .wms-tool-host > .modal input[type="radio"] {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal input[type="radio"] {
     border-radius: 50% !important;
 }
 
-.wm-studio .wms-tool-host > .modal input[type="radio"]:checked {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal input[type="radio"]:checked {
     background-image: radial-gradient(circle, #000 0 calc(2.5 * var(--wm-px)), transparent calc(2.5 * var(--wm-px) + 0.5px)) !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(input[type="checkbox"], input[type="radio"])::before,
-.wm-studio .wms-tool-host > .modal :is(input[type="checkbox"], input[type="radio"])::after {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(input[type="checkbox"], input[type="radio"])::before,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(input[type="checkbox"], input[type="radio"])::after {
     display: none !important;
 }
 
 /* the desktop's switch toggles (a track and a knob drawn on a checkbox's label) */
-.wm-studio .wms-tool-host > .modal :is(.toggle-switch, .switch) :is(.slider, .toggle-slider, .switch-slider) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.toggle-switch, .switch) :is(.slider, .toggle-slider, .switch-slider) {
     display: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(.toggle-switch, .switch) input {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.toggle-switch, .switch) input {
     position: static !important;
     opacity: 1 !important;
     width: calc(13 * var(--wm-px)) !important;
@@ -360,7 +361,7 @@
 }
 
 /* ---- trackbars: WM's slider, a sunken 4 px channel and a tint thumb ---- */
-.wm-studio .wms-tool-host > .modal input[type="range"] {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal input[type="range"] {
     appearance: none !important;
     -webkit-appearance: none !important;
     box-sizing: border-box;
@@ -376,7 +377,7 @@
     accent-color: var(--wm-highlight);
 }
 
-.wm-studio .wms-tool-host > .modal input[type="range"]::-webkit-slider-runnable-track {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal input[type="range"]::-webkit-slider-runnable-track {
     height: calc(4 * var(--wm-px)) !important;
     border: calc(1 * var(--wm-px)) solid #000 !important;
     border-radius: 0 !important;
@@ -384,7 +385,7 @@
     box-shadow: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal input[type="range"]::-webkit-slider-thumb {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none !important;
     width: calc(9 * var(--wm-px)) !important;
     height: calc(18 * var(--wm-px)) !important;
@@ -395,25 +396,25 @@
     box-shadow: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal input[type="range"]:active::-webkit-slider-thumb {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal input[type="range"]:active::-webkit-slider-thumb {
     background: var(--wm-highlight);
 }
 
 /* ---- list rows: a selected / current row in the highlight colour, white text ---- */
-.wm-studio .wms-tool-host > .modal :is(li, tr, [role="option"], [role="row"], [class*="-item"], [class*="-row"]):is(.selected, .active, .is-selected, .is-active, [aria-selected="true"]):not(button) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(li, tr, [role="option"], [role="row"], [class*="-item"], [class*="-row"]):is(.selected, .active, .is-selected, .is-active, [aria-selected="true"]):not(button) {
     background: var(--wm-highlight) !important;
 }
 
 /* the rows' text: named row classes, never [class*=] here. An attribute substring test on an
  * ancestor makes every class change anywhere in the page restyle the whole subtree under it
  * (Yozora #723: ~150 ms per class toggle at 4x throttle, every phone app paid it) */
-.wm-studio .wms-tool-host > .modal :is(li, tr, [role="option"], [role="row"], .autocomplete-item, .character-autocomplete-item, .preset-autocomplete-item, .config-editor-tree-item, .config-editor-row, .config-editor-checkpoint-row, .text-replacement-lock-item, .dic-item, .dic-ci-item, .character-db-row, .tag-wiki-result-item, .vibe-manager-gallery-item, .request-item, .chat-session-item, .notebook-note-item, .word-lookup-word-row):is(.selected, .active, .is-selected, .is-active, [aria-selected="true"]):not(button) :is(div, span, p, label, td, small, strong, b, i) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(li, tr, [role="option"], [role="row"], .autocomplete-item, .character-autocomplete-item, .preset-autocomplete-item, .config-editor-tree-item, .config-editor-row, .config-editor-checkpoint-row, .text-replacement-lock-item, .dic-item, .dic-ci-item, .character-db-row, .tag-wiki-result-item, .vibe-manager-gallery-item, .request-item, .chat-session-item, .notebook-note-item, .word-lookup-word-row):is(.selected, .active, .is-selected, .is-active, [aria-selected="true"]):not(button) :is(div, span, p, label, td, small, strong, b, i) {
     color: var(--wm-highlight-text, #fff) !important;
     -webkit-text-fill-color: var(--wm-highlight-text, #fff) !important;
 }
 
 /* ---- tab strips inside a tool (the desktop's toggle groups): WM tabs ---- */
-.wm-studio .wms-tool-host > .modal .gallery-toggle-group {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .gallery-toggle-group {
     display: flex !important;
     gap: 0 !important;
     padding: 0 !important;
@@ -421,48 +422,48 @@
     background: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal .gallery-toggle-slider {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .gallery-toggle-slider {
     display: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal .gallery-toggle-group > .gallery-toggle-btn + .gallery-toggle-btn {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .gallery-toggle-group > .gallery-toggle-btn + .gallery-toggle-btn {
     border-left: 0 !important;
 }
 
 /* ---- WM scroll bars: the desktop's glass thumb overlay goes, the scroller shows WM's bar ---- */
-.wm-studio .wms-tool-host > .modal .custom-scrollbar {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .custom-scrollbar {
     display: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(.scrollable-content, .form-section-scroll, .has-custom-scrollbar) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.scrollable-content, .form-section-scroll, .has-custom-scrollbar) {
     scrollbar-width: auto !important;
     overscroll-behavior: contain;
 }
 
-.wm-studio .wms-tool-host > .modal ::-webkit-scrollbar {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal ::-webkit-scrollbar {
     display: block !important;
     width: calc(13 * var(--wm-px)) !important;
     height: calc(13 * var(--wm-px)) !important;
 }
 
-.wm-studio .wms-tool-host > .modal ::-webkit-scrollbar-track {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal ::-webkit-scrollbar-track {
     background: #fff;
     border-left: calc(1 * var(--wm-px)) solid #000;
 }
 
-.wm-studio .wms-tool-host > .modal ::-webkit-scrollbar-thumb {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal ::-webkit-scrollbar-thumb {
     background: var(--wm-tab-strip);
     border: calc(1 * var(--wm-px)) solid #000;
     border-right: 0;
     border-radius: 0;
 }
 
-.wm-studio .wms-tool-host > .modal ::-webkit-scrollbar-corner {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal ::-webkit-scrollbar-corner {
     background: #fff;
 }
 
 /* ---- empty states and hints: black, normal weight, left (WM's "No items" text) ---- */
-.wm-studio .wms-tool-host > .modal :is([class*="empty"], [class*="placeholder"], [class*="hint"], .no-results) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is([class*="empty"], [class*="placeholder"], [class*="hint"], .no-results) {
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
     font-style: normal !important;
@@ -470,7 +471,7 @@
 }
 
 /* rows of buttons (tool bars, action rows) wrap at 360 px instead of running off the page */
-.wm-studio .wms-tool-host > .modal :is([class*="toolbar"], [class*="actions"], [class*="header"], [class*="controls"], [class*="command-set"], [class*="button-group"], .button-row, .btn-row):not(.modal-window-title-toolbar) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is([class*="toolbar"], [class*="actions"], [class*="header"], [class*="controls"], [class*="command-set"], [class*="button-group"], .button-row, .btn-row):not(.modal-window-title-toolbar) {
     flex-wrap: wrap !important;
     row-gap: calc(3 * var(--wm-px)) !important;
     max-width: 100%;
@@ -480,7 +481,7 @@
 }
 
 /* ---- progress bars / meters: WM's 1 px black frame, the highlight colour as the fill ---- */
-.wm-studio .wms-tool-host > .modal :is([class*="progress-bar"], [class*="meter-bar"], [class*="usage-bar"], .progress):not(input) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is([class*="progress-bar"], [class*="meter-bar"], [class*="usage-bar"], .progress):not(input) {
     box-sizing: border-box;
     height: calc(12 * var(--wm-px)) !important;
     min-height: 0 !important;
@@ -491,7 +492,7 @@
     overflow: hidden;
 }
 
-.wm-studio .wms-tool-host > .modal :is([class*="progress-fill"], :is(.progress-bar, .file-progress-bar, .loading-progress-bar, .token-progress-bar, .lcd-progress-bar) > [class*="fill"], [class*="meter-fill"], .progress > .progress-bar-inner) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is([class*="progress-fill"], :is(.progress-bar, .file-progress-bar, .loading-progress-bar, .token-progress-bar, .lcd-progress-bar) > [class*="fill"], [class*="meter-fill"], .progress > .progress-bar-inner) {
     height: 100% !important;
     border-radius: 0 !important;
     background: var(--wm-highlight) !important;
@@ -499,21 +500,21 @@
 }
 
 /* WM edit boxes and field labels are plain weight */
-.wm-studio .wms-tool-host > .modal :is(input, textarea, select, label) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(input, textarea, select, label) {
     font-weight: normal !important;
 }
 
 /* ---- SmartText: WM list rows; the source column wraps under the name instead of running off ---- */
-.wm-studio .wms-tool-host > #characterAutofillTool .character-autocomplete-list {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool .character-autocomplete-list {
     overflow-x: hidden !important;
 }
 
-.wm-studio .wms-tool-host > #characterAutofillTool .character-autocomplete-item {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool .character-autocomplete-item {
     border-color: #c0c0c0 !important;
     padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
 }
 
-.wm-studio .wms-tool-host > #characterAutofillTool .character-info-row {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool .character-info-row {
     display: flex !important;
     flex-wrap: wrap !important;
     align-items: center;
@@ -521,14 +522,14 @@
     min-width: 0;
 }
 
-.wm-studio .wms-tool-host > #characterAutofillTool .character-name {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool .character-name {
     flex: 1 1 auto;
     min-width: 0;
     font-weight: bold !important;
     overflow-wrap: anywhere;
 }
 
-.wm-studio .wms-tool-host > #characterAutofillTool .character-copyright {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool .character-copyright {
     flex: 0 1 auto;
     margin-left: auto;
     min-width: 0;
@@ -540,7 +541,7 @@
 }
 
 /* the desktop's badges, smaller: 10 px in a 1 px frame, their hues kept */
-.wm-studio .wms-tool-host > #characterAutofillTool :is(.badge, .match-type-badge, .tag-category-badge) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool :is(.badge, .match-type-badge, .tag-category-badge) {
     display: inline-block !important;
     margin: 0 calc(2 * var(--wm-px)) !important;
     padding: 0 calc(2 * var(--wm-px)) !important;
@@ -554,7 +555,7 @@
 }
 
 /* the results line under the list: one WM status row */
-.wm-studio .wms-tool-host > #characterAutofillTool .search-status-display {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool .search-status-display {
     display: flex !important;
     flex-wrap: wrap !important;
     align-items: center;
@@ -565,7 +566,7 @@
 }
 
 /* the view bar (type filter, ranking) over the list: a WM tool strip */
-.wm-studio .wms-tool-host > #characterAutofillTool #characterAutocompleteViewBar {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool #characterAutocompleteViewBar {
     margin: 0 !important;
     padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
     border: 0 !important;
@@ -577,42 +578,42 @@
 }
 
 /* captions drawn over a picture (Stage Results' "Stage 0 - Base", Saved) stay white on the image */
-.wm-studio .wms-tool-host > .modal :is(.gallery-item-overlay, .image-overlay, .caption-overlay) :is(div, span, p, small, strong) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.gallery-item-overlay, .image-overlay, .caption-overlay) :is(div, span, p, small, strong) {
     color: #fff !important;
     -webkit-text-fill-color: #fff !important;
     text-shadow: 0 0 calc(2 * var(--wm-px)) #000, 0 0 calc(1 * var(--wm-px)) #000 !important;
 }
 
 /* Properties: the parameter cells wrap in rows (Steps, Guidance, Rescale ran into each other) */
-.wm-studio .wms-tool-host > .modal .blueprint-info .form-row {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .blueprint-info .form-row {
     display: flex !important;
     flex-wrap: wrap !important;
     gap: calc(4 * var(--wm-px)) calc(10 * var(--wm-px)) !important;
     align-items: flex-start !important;
 }
 
-.wm-studio .wms-tool-host > .modal .blueprint-info .form-row > .form-group {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .blueprint-info .form-row > .form-group {
     flex: 0 0 auto !important;
     min-width: calc(48 * var(--wm-px)) !important;
     width: auto !important;
     margin: 0 !important;
 }
 
-.wm-studio .wms-tool-host > .modal .blueprint-info .form-row > .form-group > label {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .blueprint-info .form-row > .form-group > label {
     color: #404040 !important;
     -webkit-text-fill-color: #404040 !important;
 }
 
 /* a read-only prompt box: the field is the frame (no second, taller frame round it) */
-.wm-studio .wms-tool-host > .modal .prompt-textarea-emphasis-wrap {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .prompt-textarea-emphasis-wrap {
     height: auto !important;
     min-height: 0 !important;
     border: 0 !important;
     padding: 0 !important;
 }
 
-.wm-studio .wms-tool-host > .modal .prompt-textarea-container.image-prompt-inspector-prompt,
-.wm-studio .wms-tool-host > .modal [class*="image-prompt-inspector-p"].prompt-textarea-container {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .prompt-textarea-container.image-prompt-inspector-prompt,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal [class*="image-prompt-inspector-p"].prompt-textarea-container {
     height: auto !important;
     min-height: 0 !important;
     border: 0 !important;
@@ -620,7 +621,7 @@
 }
 
 /* badge lists (Properties' forge data) wrap inside the page */
-.wm-studio .wms-tool-host > .modal :is(.badge-list, .meta-value) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.badge-list, .meta-value) {
     display: flex !important;
     flex-wrap: wrap !important;
     gap: calc(3 * var(--wm-px)) !important;
@@ -628,51 +629,51 @@
     min-width: 0 !important;
 }
 
-.wm-studio .wms-tool-host > .modal .blueprint-info .form-row > .form-group:has(.badge-list) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .blueprint-info .form-row > .form-group:has(.badge-list) {
     flex: 1 1 100% !important;
     min-width: 0 !important;
 }
 
-.wm-studio .wms-tool-host > .modal .blueprint-info .form-row > .form-group > label {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .blueprint-info .form-row > .form-group > label {
     text-align: left !important;
     justify-content: flex-start !important;
 }
 
-.wm-studio .wms-tool-host > .modal [class*="scroll-shell"] {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal [class*="scroll-shell"] {
     overflow-x: hidden !important;
 }
 
 /* expander badges (where it lives, how it expands): their coloured glyphs on the row, no white tile */
-.wm-studio .wms-tool-host > .modal .text-replacement-badge {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .text-replacement-badge {
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
 }
 
-.wm-studio .wms-tool-host > .modal .text-replacement-badge :is(span, i) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .text-replacement-badge :is(span, i) {
     filter: brightness(0.55) saturate(1.6) !important;
 }
 
 /* vSlider cards: a WM group (bold title, a rule under it), no glass */
-.wm-studio .wms-tool-host > .modal .vslider-card {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .vslider-card {
     margin: 0 0 calc(6 * var(--wm-px)) !important;
     padding: calc(3 * var(--wm-px)) 0 calc(6 * var(--wm-px)) !important;
     border: 0 !important;
     border-bottom: calc(1 * var(--wm-px)) solid #c0c0c0 !important;
 }
 
-.wm-studio .wms-tool-host > .modal :is(.slider-ticks-container, .slider-container) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.slider-ticks-container, .slider-container) {
     background: none !important;
     border: 0 !important;
 }
 
 /* the view bar's two combos share the row at 360 px: their text ends in an ellipsis, not a cut */
-.wm-studio .wms-tool-host > #characterAutofillTool #characterAutocompleteViewBar :is(button, .custom-dropdown-btn) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool #characterAutocompleteViewBar :is(button, .custom-dropdown-btn) {
     min-width: 0 !important;
     overflow: hidden !important;
 }
 
-.wm-studio .wms-tool-host > #characterAutofillTool #characterAutocompleteViewBar :is(button, .custom-dropdown-btn) > span {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool #characterAutocompleteViewBar :is(button, .custom-dropdown-btn) > span {
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;

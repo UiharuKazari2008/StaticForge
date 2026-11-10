@@ -764,3 +764,10 @@
     width: calc(110 * var(--wm-px));
     height: calc(54 * var(--wm-px));
 }
+
+/* the desktop's autocomplete.css input[type="text"] (3 px radius) outranks .wm-edit: WM edit boxes
+ * are square everywhere on the phone */
+html.ui-mobile #wmShell input.wm-edit,
+html.ui-mobile #wmShell .wm-edit {
+    border-radius: 0;
+}

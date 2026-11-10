@@ -1,0 +1,172 @@
+/*
+ * Melaton Mobile: Calculator (WM 6.1 Professional), Yozora #732. wmCalculator.js.
+ * Measured on the Device Emulator (VGA halved; ~/.cache/wm61/ref-apps/calc*.png), lengths N * --wm-px:
+ * top row at y 9: memory box 22 x 26, 5 px, display (rest), 5 px, back key 25 wide; keys from y 54,
+ * 35 px circles, 39 px apart (6 columns over 234 px), rows 45 px apart. GDI drawing: 1 px black,
+ * no gradients. Digits blue #295dad, C / memory / operators #840000; pressed = black, white glyph.
+ * Lines are one VGA pixel (half a 1x pixel), as GDI drew them on the VGA device.
+ * Landscape and short screens: the rows close up and the keys shrink to fit (never scroll).
+ */
+
+.wm-page.wm-calculator {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+    font-family: var(--wm-font);
+    font-weight: bold;
+}
+
+.wm-calculator .wmc-top {
+    flex: 0 0 auto;
+    display: flex;
+    gap: calc(5 * var(--wm-px));
+    height: calc(26 * var(--wm-px));
+    margin: calc(9 * var(--wm-px)) calc(5 * var(--wm-px)) 0;
+}
+
+.wm-calculator .wmc-mem,
+.wm-calculator .wmc-display,
+.wm-calculator .wmc-back {
+    box-sizing: border-box;
+    height: 100%;
+    border: max(1px, calc(0.5 * var(--wm-px))) solid #000;
+    background: #fff;
+}
+
+.wm-calculator .wmc-mem {
+    flex: 0 0 calc(22 * var(--wm-px));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #840000;
+    font-size: calc(17 * var(--wm-px));
+}
+
+.wm-calculator .wmc-display {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 calc(2 * var(--wm-px)) 0 calc(2 * var(--wm-px));
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: calc(18.5 * var(--wm-px));
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-calculator .wmc-back {
+    flex: 0 0 calc(25 * var(--wm-px));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* the dark red block arrow (device: 28 x 24 at 2x) */
+.wm-calculator .wmc-back-arrow {
+    width: calc(14 * var(--wm-px));
+    height: calc(12 * var(--wm-px));
+    background: #840000;
+    clip-path: polygon(0 50%, 50% 0, 50% 30%, 100% 30%, 100% 70%, 50% 70%, 50% 100%);
+}
+
+.wm-calculator .wmc-back.is-down {
+    background: #000;
+}
+
+.wm-calculator .wmc-back.is-down .wmc-back-arrow {
+    background: #fff;
+}
+
+/* 6 x 4: cells 39 wide from x 3 (circle centres at 22.5 + 39n), rows 45 */
+.wm-calculator .wmc-keys {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(0, calc(45 * var(--wm-px))));
+    align-content: start;
+    padding: calc(19 * var(--wm-px)) calc(3 * var(--wm-px)) 0;
+}
+
+.wm-calculator .wmc-cell {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 0;
+    min-width: 0;
+}
+
+.wm-calculator .wmc-key {
+    box-sizing: border-box;
+    height: min(calc(35 * var(--wm-px)), 100%);
+    aspect-ratio: 1;
+    max-width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+    border: max(1px, calc(0.5 * var(--wm-px))) solid #000;
+    border-radius: 50%;
+    background: #fff;
+    color: #295dad;
+    font: bold calc(17 * var(--wm-px)) / 1 var(--wm-font);
+    white-space: nowrap;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.wm-calculator .wmc-key.is-d {
+    font-size: calc(24 * var(--wm-px));
+}
+
+.wm-calculator .wmc-key.is-f {
+    color: #840000;
+}
+
+.wm-calculator .wmc-key span {
+    pointer-events: none;
+}
+
+/* the square root sign with its bar */
+.wm-calculator .wmc-key.is-sqrt span {
+    display: inline-flex;
+    align-items: flex-start;
+}
+
+.wm-calculator .wmc-key.is-sqrt i {
+    width: calc(9 * var(--wm-px));
+    margin-top: calc(1 * var(--wm-px));
+    border-top: calc(1.5 * var(--wm-px)) solid currentColor;
+}
+
+.wm-calculator .wmc-key.is-down {
+    background: #000;
+    color: #fff;
+}
+
+/* landscape (short content): a tighter top margin, the rows share what is left */
+@media (orientation: landscape) and (max-height: 500px) {
+    .wm-calculator .wmc-top {
+        margin-top: calc(5 * var(--wm-px));
+    }
+
+    .wm-calculator .wmc-keys {
+        padding-top: calc(6 * var(--wm-px));
+        grid-template-rows: repeat(4, minmax(0, 1fr));
+        padding-bottom: calc(4 * var(--wm-px));
+    }
+
+    .wm-calculator .wmc-cell {
+        align-items: center;
+    }
+}

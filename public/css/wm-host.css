@@ -1,0 +1,427 @@
+/*
+ * Melaton Mobile: desktop programs hosted as WM apps (wmHost.js, Yozora #732). The window fills the
+ * app's page with no frame (caption = WM title, footer buttons = soft keys / Menu); its content takes
+ * WM's white form look from wm-studio-tools.css (shared rules under .wm-host .wmh-host). Phones only.
+ */
+.wm-page.wm-host {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+}
+
+.wm-host .wmh-host {
+    position: absolute;
+    inset: 0;
+}
+
+.wm-host .wmh-host > .modal {
+    position: absolute !important;
+    inset: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    translate: none !important;
+    scale: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    animation: none !important;
+    transition: none !important;
+    z-index: auto !important;
+    display: flex !important;
+    flex-direction: column;
+    overflow: auto !important;
+    background: #fff !important;
+    color: #000;
+    contain: layout paint;
+}
+
+.wm-host .wmh-host > .modal::before,
+.wm-host .wmh-host > .modal::after,
+.wm-host .wmh-host > .modal > .modal-focus-overlay,
+.wm-host .wmh-host > .modal > .modal-window-controls,
+.wm-host .wmh-host > .modal > .resize-handle,
+.wm-host .wmh-host > .modal .resize-handle {
+    display: none !important;
+}
+
+/* the caption is the WM title: the desktop title bar goes unless it carries a toolbar or menu bar
+ * (then wm-studio-tools.css draws it as a WM tool strip) */
+.wm-host .wmh-host > .modal > .modal-window-title:not(:has(> .modal-window-title-toolbar > :not(.hidden))) {
+    display: none !important;
+}
+
+/* a sub-page under the one opened from it */
+.wm-host .wmh-host > .modal[data-wmh-under] {
+    display: none !important;
+}
+
+.wm-host .wmh-host > .modal > .modal-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    font-family: var(--wm-font);
+    overflow: auto;
+}
+
+/* the footer buttons are the soft keys and Menu */
+.wm-host .wmh-host > .modal :is(.modal-footer, .modal-footer-colored, .modal-actions, .dialog-buttons, .dialog-footer, .vista-dialog-buttons, .wizard-buttons) {
+    display: none !important;
+}
+
+/* the picture view shows over the content pane: the hosted window hides with it */
+html.ui-mobile[data-wm-viewer] .wm-host .wmh-host > .modal {
+    visibility: hidden !important;
+}
+
+/* ---- Teleport (wmTeleport.js): the planet switcher as an early-2009 phone 3D carousel ----
+ * Black star field (canvas), glossy planet orbs on a 3D ring over a mirrored floor, the name and
+ * page dots under it. Our own art: CSS gradients only. */
+.wm-page.wm-teleport {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #000;
+    color: #fff;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    --wmt-size: 140px;
+}
+
+.wm-teleport .wmt-stars {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* the glossy floor the planets stand on: a dark mirror with a horizon glow */
+.wm-teleport .wmt-floor {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(46% + var(--wmt-size) * 0.55);
+    bottom: 0;
+    background:
+        linear-gradient(to bottom, rgba(120, 150, 255, 0.28) 0, rgba(60, 80, 160, 0.12) calc(2 * var(--wm-px)), rgba(10, 14, 30, 0.75) 30%, #000 100%);
+    border-top: calc(1 * var(--wm-px)) solid rgba(170, 195, 255, 0.45);
+    pointer-events: none;
+}
+
+.wm-teleport .wmt-stage {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 46%;
+    height: 0;
+    perspective: calc(var(--wmt-size) * 2.4);
+    perspective-origin: 50% 0;
+    transition: transform 520ms ease-out, opacity 520ms ease-out;
+}
+
+.wm-teleport.is-opening .wmt-stage {
+    transform: scale(0.55);
+    opacity: 0;
+    transition: none;
+}
+
+.wm-teleport .wmt-ring {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform-style: preserve-3d;
+}
+
+.wm-teleport .wmt-planet {
+    position: absolute;
+    left: calc(var(--wmt-size) / -2);
+    top: calc(var(--wmt-size) / -2);
+    width: var(--wmt-size);
+    height: var(--wmt-size);
+    will-change: transform, opacity;
+}
+
+/* the orb: the workspace's pictures in a sphere, rimmed in its colour, floor reflection under it */
+.wm-teleport .wmt-orb {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--wmt-color) 70%, #fff), var(--wmt-color) 55%, color-mix(in srgb, var(--wmt-color) 40%, #000));
+    box-shadow:
+        0 0 0 calc(2 * var(--wm-px)) color-mix(in srgb, var(--wmt-color) 80%, #fff),
+        0 0 calc(10 * var(--wm-px)) calc(1 * var(--wm-px)) color-mix(in srgb, var(--wmt-color) 60%, transparent);
+    -webkit-box-reflect: below calc(var(--wmt-size) * 0.06) linear-gradient(to bottom, transparent 58%, rgba(255, 255, 255, 0.32));
+    transform: translateZ(0);
+}
+
+.wm-teleport .wmt-slide {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 1600ms ease;
+}
+
+.wm-teleport .wmt-slide.is-on {
+    opacity: 1;
+}
+
+.wm-teleport .wmt-slide:not([src]) {
+    visibility: hidden;
+}
+
+/* sphere shading: dark limb, a touch of the planet colour */
+.wm-teleport .wmt-shade {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 42% 38%, transparent 38%, rgba(0, 0, 0, 0.25) 62%, rgba(0, 0, 0, 0.72) 100%);
+    box-shadow: inset 0 0 calc(var(--wmt-size) * 0.08) color-mix(in srgb, var(--wmt-color) 70%, transparent);
+}
+
+/* the specular highlight: the bright glass cap of the period's orbs */
+.wm-teleport .wmt-gloss {
+    position: absolute;
+    left: 14%;
+    top: 5%;
+    width: 72%;
+    height: 46%;
+    border-radius: 50%;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.12) 70%, rgba(255, 255, 255, 0));
+}
+
+.wm-teleport .wmt-planet.is-current .wmt-orb {
+    box-shadow:
+        0 0 0 calc(3 * var(--wm-px)) #fff,
+        0 0 calc(16 * var(--wm-px)) calc(3 * var(--wm-px)) color-mix(in srgb, var(--wmt-color) 80%, #fff);
+}
+
+/* loading the workspace: the centred orb pulses */
+.wm-teleport .wmt-planet.is-loading .wmt-orb {
+    animation: wmt-pulse 900ms ease-in-out infinite;
+}
+
+@keyframes wmt-pulse {
+    0%, 100% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.08); filter: brightness(1.35); }
+}
+
+/* arriving: the orb fills the screen and everything fades to black */
+.wm-teleport .wmt-planet.is-arriving .wmt-orb {
+    animation: none;
+    transform: scale(7);
+    transition: transform 900ms ease-in;
+}
+
+.wm-teleport .wmt-fade {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 700ms ease-in 250ms;
+}
+
+.wm-teleport.is-arriving .wmt-fade {
+    opacity: 1;
+}
+
+.wm-teleport.is-arriving .wmt-caption {
+    opacity: 0;
+    transition: opacity 250ms;
+}
+
+/* the caption under the ring: name, count, current mark, page dots */
+.wm-teleport .wmt-caption {
+    position: absolute;
+    left: calc(8 * var(--wm-px));
+    right: calc(8 * var(--wm-px));
+    bottom: calc(10 * var(--wm-px));
+    text-align: center;
+    font-family: var(--wm-font);
+    text-shadow: 0 calc(1 * var(--wm-px)) calc(2 * var(--wm-px)) #000;
+    pointer-events: none;
+}
+
+.wm-teleport .wmt-name {
+    font-size: calc(16 * var(--wm-px));
+    line-height: calc(20 * var(--wm-px));
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-teleport .wmt-count {
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+    color: #c8d2f0;
+    min-height: calc(14 * var(--wm-px));
+}
+
+.wm-teleport .wmt-note {
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+    font-weight: bold;
+    color: #9fd0ff;
+    min-height: calc(14 * var(--wm-px));
+}
+
+.wm-teleport .wmt-dots {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: calc(4 * var(--wm-px));
+    margin-top: calc(6 * var(--wm-px));
+}
+
+.wm-teleport .wmt-dots > span {
+    width: calc(5 * var(--wm-px));
+    height: calc(5 * var(--wm-px));
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.wm-teleport .wmt-dots > span.is-on {
+    background: #fff;
+    box-shadow: 0 0 calc(4 * var(--wm-px)) #9fd0ff;
+}
+
+/* portrait: the upright ring, no floor or reflections (the planet below would sit in them); the
+ * lower planets fade out behind the caption */
+.wm-teleport.is-vertical .wmt-stage {
+    top: 42%;
+}
+
+.wm-teleport.is-vertical .wmt-floor {
+    display: none;
+}
+
+.wm-teleport.is-vertical .wmt-orb {
+    -webkit-box-reflect: none;
+}
+
+.wm-teleport.is-vertical .wmt-caption {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: calc(28 * var(--wm-px)) calc(8 * var(--wm-px)) calc(10 * var(--wm-px));
+    background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.85) calc(26 * var(--wm-px)), #000);
+}
+
+/* short landscape screens: the ring sits higher, the caption beside the dots stays small */
+@media (orientation: landscape) and (max-height: 500px) {
+    .wm-teleport .wmt-stage { top: 40%; }
+    .wm-teleport .wmt-floor { top: calc(40% + var(--wmt-size) * 0.55); }
+    .wm-teleport .wmt-caption { bottom: calc(4 * var(--wm-px)); }
+    .wm-teleport .wmt-dots { margin-top: calc(2 * var(--wm-px)); }
+}
+
+/* ---- Vista property-sheet dialogs (tbp-*: controls placed in dialog units) reflowed as a WM form:
+ * one column in tab order, labels over their fields, groups as section headings ---- */
+.wm-host .wmh-host > .modal > .modal-content:has(> .tbp-ctl, > .tbp-pane, > div > .tbp-pane) {
+    display: flex !important;
+    flex-direction: column;
+    gap: calc(4 * var(--wm-px));
+    padding: calc(5 * var(--wm-px)) !important;
+}
+
+.wm-host .wmh-host > .modal :is(.tbp-pane, .tbp-page, .tbp-group, .tbp-group-label, .tbp-ctl, .tbp-tabs) {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+}
+
+.wm-host .wmh-host > .modal :is(.tbp-pane, .tbp-page, .tbp-static, .tbp-check, .tbp-group, .tbp-tabs) {
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+}
+
+.wm-host .wmh-host > .modal .tbp-page:not([hidden]) {
+    display: flex !important;
+    flex-direction: column;
+    gap: calc(4 * var(--wm-px));
+}
+
+.wm-host .wmh-host > .modal .tbp-page[hidden] {
+    display: none !important;
+}
+
+.wm-host .wmh-host > .modal .tbp-pane {
+    border: 0 !important;
+    padding: 0 !important;
+}
+
+/* a group box: WM's section heading (bold, a rule under it) */
+.wm-host .wmh-host > .modal .tbp-group {
+    border: 0 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
+    margin-top: calc(4 * var(--wm-px));
+    padding: 0 !important;
+}
+
+.wm-host .wmh-host > .modal .tbp-group-label {
+    display: block;
+    padding: 0 !important;
+    background: none !important;
+    font-weight: bold !important;
+}
+
+.wm-host .wmh-host > .modal :is(input.tbp-ctl, select.tbp-ctl, .tbp-ctl.rdc-combo) {
+    width: 100% !important;
+    box-sizing: border-box;
+}
+
+.wm-host .wmh-host > .modal .tbp-ctl.tbp-button {
+    align-self: flex-start;
+    width: auto !important;
+    min-width: calc(60 * var(--wm-px));
+}
+
+.wm-host .wmh-host > .modal .tbp-tabs {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 0;
+}
+
+/* the footer buttons placed loose in the content are the soft keys / Menu */
+.wm-host .wmh-host > .modal > .modal-content > :is(button.tbp-button.rdc-foot, button[data-dialog-footer]) {
+    display: none !important;
+}
+
+/* Remote Desktop Connection: the banner is the WM title's job */
+.wm-host .wmh-host > #remoteDesktopConnectionModal :is(.rdc-banner, .rdc-banner-line) {
+    display: none !important;
+}
+
+.wm-host .wmh-host > .modal .tbp-static {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+}
+
+/* WM draws no keyboard accelerators: the underlined letter is plain text */
+.wm-host .wmh-host > .modal :is(.tbp-ctl, .tbp-group-label, .tbp-tab) u {
+    display: inline !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    text-decoration: none !important;
+}

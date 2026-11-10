@@ -1,0 +1,274 @@
+/*
+ * Melaton Mobile: Windows Media (WM 6.1 Professional's Windows Media Player 10 Mobile), Yozora #732.
+ * wmMedia.js. The Now Playing skin is laid out in the skin file's own VGA units (--wmp-u, set by the
+ * script so the skin fits the screen); the Library and Now Playing list are WM lists measured on the
+ * Device Emulator (VGA halved; ~/.cache/wm61/ref-apps/wmp*.png): 24 px tint header, 17 px rows, icon
+ * 16 px at x 3, text 13 px regular at x 20, only the text highlighted; the list toolbar 24 px.
+ */
+
+.wm-page.wm-media {
+    overflow: hidden !important;
+    background: #101410;
+    color: #000;
+}
+
+.wm-media > div {
+    position: absolute;
+    inset: 0;
+    display: none;
+}
+
+.wm-media[data-layer="skin"] > .wmp-np {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+}
+
+.wm-media[data-layer="library"] > .wmp-lib,
+.wm-media[data-layer="queue"] > .wmp-queue {
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+}
+
+.wm-media button {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* ---- the skin ---- */
+
+.wm-media .wmp-skin {
+    position: relative;
+    flex: 0 0 auto;
+    background: var(--bg) 0 0 / 100% 100% no-repeat;
+    font-family: Tahoma, var(--wm-font);
+    color: #fff;
+}
+
+.wm-media .wmp-skin > * {
+    position: absolute;
+    box-sizing: border-box;
+}
+
+.wm-media .wmp-art {
+    overflow: hidden;
+}
+
+.wm-media .wmp-video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+}
+
+.wm-media .wmp-marquee,
+.wm-media .wmp-status,
+.wm-media .wmp-time,
+.wm-media .wmp-vol {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1;
+}
+
+.wm-media .wmp-marquee {
+    display: block;
+    font-weight: bold;
+    line-height: calc(33 * var(--wmp-u));
+}
+
+.wm-media .is-landscape .wmp-marquee {
+    line-height: calc(26 * var(--wmp-u));
+}
+
+.wm-media .wmp-status {
+    display: block;
+    line-height: calc(26 * var(--wmp-u));
+}
+
+.wm-media .wmp-vol {
+    justify-content: flex-end;
+}
+
+.wm-media .wmp-ratings {
+    background-repeat: no-repeat;
+    background-size: var(--rw) 100%;
+    background-position: 0 0;
+}
+
+.wm-media .wmp-seek {
+    cursor: default;
+}
+
+.wm-media .wmp-thumb {
+    position: absolute;
+    top: 0;
+    left: calc(var(--p, 0) * (100% - 40 * var(--wmp-u)));
+    background-repeat: no-repeat;
+    background-size: var(--tw) 100%;
+    background-position: 0 0;
+    pointer-events: none;
+}
+
+.wm-media .wmp-seek.is-disabled .wmp-thumb {
+    background-position: calc(-80 * var(--wmp-u)) 0;
+}
+
+/* a button is the skin itself; pushed / pause / disabled come from the strips at its offset */
+.wm-media .wmp-btn {
+    background-repeat: no-repeat;
+}
+
+.wm-media .wmp-btn.is-down,
+.wm-media .wmp-btn.is-on {
+    background-image: var(--pushed);
+    background-size: var(--pw) var(--ph);
+    background-position: var(--px) 0;
+}
+
+.wm-media .wmp-btn.is-pause {
+    background-image: var(--pushed);
+    background-size: var(--pw) var(--ph);
+    background-position: var(--px2) 0;
+}
+
+.wm-media .wmp-btn.is-pause.is-down {
+    background-position: var(--px3) 0;
+}
+
+.wm-media .wmp-btn.is-disabled {
+    background-image: var(--disabled);
+    background-size: var(--dw) var(--dh);
+    background-position: var(--px) 0;
+}
+
+/* ---- Library and Now Playing list ---- */
+
+.wm-media .wmp-lhead {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: calc(24 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px));
+    background: var(--wm-tint);
+    font-size: calc(13 * var(--wm-px));
+    white-space: nowrap;
+}
+
+.wm-media .wmp-lsel,
+.wm-media .wmp-lback {
+    display: flex;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    height: 100%;
+    min-width: 0;
+    font-size: calc(13 * var(--wm-px)) !important;
+}
+
+.wm-media .wmp-lsel > span:not(.wmp-larrow) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-media .wmp-lhead img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    flex: 0 0 auto;
+}
+
+.wm-media .wmp-larrow {
+    flex: 0 0 auto;
+    width: 0;
+    height: 0;
+    margin: calc(2 * var(--wm-px)) 0 0 calc(2 * var(--wm-px));
+    border-left: calc(3.5 * var(--wm-px)) solid transparent;
+    border-right: calc(3.5 * var(--wm-px)) solid transparent;
+    border-top: calc(3.5 * var(--wm-px)) solid #000;
+}
+
+.wm-media .wmp-llist,
+.wm-media .wmp-qlist {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-top: calc(1 * var(--wm-px));
+}
+
+.wm-media .wmp-lrow {
+    display: flex;
+    align-items: center;
+    gap: calc(1 * var(--wm-px));
+    height: calc(17 * var(--wm-px));
+    padding-left: calc(3 * var(--wm-px));
+    font-size: calc(13 * var(--wm-px));
+    white-space: nowrap;
+    cursor: default;
+}
+
+.wm-media .wmp-lrow img {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-media .wmp-lrow span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0 calc(2 * var(--wm-px));
+    line-height: calc(17 * var(--wm-px));
+}
+
+.wm-media .wmp-lrow.is-selected span {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-media .wmp-lrow.is-current span {
+    font-weight: bold;
+}
+
+.wm-media .wmp-qbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    height: calc(24 * var(--wm-px));
+    padding-left: calc(2 * var(--wm-px));
+    background: var(--wm-tint);
+}
+
+.wm-media .wmp-qtool {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(25 * var(--wm-px));
+    height: 100%;
+}
+
+.wm-media .wmp-qtool[data-t="props"] {
+    margin-left: calc(5 * var(--wm-px));
+}
+
+.wm-media .wmp-qtool img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-media .wmp-qtool:disabled img {
+    filter: grayscale(1) brightness(1.15);
+    opacity: 0.55;
+}

@@ -2526,8 +2526,8 @@ async function deleteCacheImage(cacheImage) {
 // Reference Manager Functions
 
 function showCacheManagerModal() {
-    // Disable on mobile displays
-    if (window.innerWidth <= 577) {
+    // Disable on narrow desktop displays (Melaton Mobile hosts it as a WM app: wmHost.js)
+    if (window.innerWidth <= 577 && window.uiShell !== 'mobile') {
         return false;
     }
     
