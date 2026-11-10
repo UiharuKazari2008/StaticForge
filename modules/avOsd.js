@@ -1135,7 +1135,7 @@ async function drain(b) {
 /** The current view (QuickCast polls it for the remote's LCD line). */
 async function view(target, cabinetId) {
     const b = await resolveBox(target, cabinetId);
-    return b.view || { box: { id: b.id, name: boxName(b), kind: b.kind }, open: b.open, info: b.info };
+    return b.view || emit(b); // emit builds the full unit identity (maker, model, theme) for the panel
 }
 
 /** For avOsdHttp: an OSD page subscribes to its box. */
