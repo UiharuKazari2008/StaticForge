@@ -170,6 +170,7 @@
                         <div class="qc-bus qc-xbus qc-ctl"><span class="qc-bus-label">CABINET CONTROL <small class="qc-ctl-dev"></small></span><div class="qc-ctl-body"><p class="qc-ctl-none">Pick a cabinet.</p></div></div>
                         <div class="qc-bus qc-vbus"><span class="qc-bus-label">VIDEO</span><div class="qc-vkeys"><span class="qc-bus-none">-</span></div></div>
                         <div class="qc-side-keys">
+                            <button type="button" class="qc-bk k-white" data-qc="remote" title="The boxes' on-screen menus: D-pad remote">REMOTE</button>
                             <button type="button" class="qc-bk k-white" data-qc="chat">LIVE CHAT</button>
                             <button type="button" class="qc-bk k-white" data-qc="settings">SETTINGS</button>
                         </div>
@@ -277,6 +278,7 @@
                 case 'settings': this.settingsWin('broadcast'); break;
                 case 'encoder': this.settingsWin('encoder'); break;
                 case 'chat': this.chatWin(); break;
+                case 'remote': this.remoteWin(); break;
                 case 'updatetitle': await this.updateLiveTitle(); break;
                 case 'togglesrcs': this.showSources(!this.sourcesShown); break;
                 case 'launch':
@@ -1111,6 +1113,62 @@
         }
 
         /** Live Chat: its own resizable window; messages twice a second from the server's reader. */
+        /**
+         * The box remote: the menus are drawn by the box itself, in its video output (avOsd.js), the way a
+         * hardware mixer draws its OSD; this is only the remote. The monitor shows the cabinet's picture
+         * (its NDI feed on the satellite), so the cabinet OSD is seen there; the satellite OSD sits on the
+         * satellite's program output.
+         */
+        remoteWin() {
+            const open = [...this.children].find((c) => c.kind === 'remote');
+            if (open) { call('bringModalToFront', open.modal); return; }
+            const key = (k, label, cls) => `<button type="button" class="qc-rk ${cls || ''}" data-rk="${k}">${label}</button>`;
+            const w = this.openWin({
+                kind: 'remote', title: 'Remote - QuickCast', width: 250, height: 430, cls: 'qc-remotewin',
+                body: `<div class="qc-rm">
+                    <div class="qc-rm-sel"><button type="button" class="qc-rsel" data-target="cab">CABINET MUX</button><button type="button" class="qc-rsel" data-target="sat">SATELLITE</button></div>
+                    <div class="qc-rm-lcd"><b class="qc-rm-unit">-</b><span class="qc-rm-page">OSD OFF</span></div>
+                    <div class="qc-rm-row">${key('menu', 'MENU')}${key('diag', 'DIAG')}${key('info', 'INFO')}</div>
+                    <div class="qc-rm-pad">${key('up', '&#9650;', 'is-up')}${key('left', '&#9664;', 'is-left')}${key('ok', 'OK', 'is-ok')}${key('right', '&#9654;', 'is-right')}${key('down', '&#9660;', 'is-down')}</div>
+                    <div class="qc-rm-row">${key('exit', 'EXIT', 'is-exit')}</div>
+                    <div class="qc-rm-note">Menus show on the box's video output.</div>
+                </div>`,
+                buttons: []
+            });
+            w.kind = 'remote';
+            const m = w.modal;
+            let target = this.remoteTarget || 'cab';
+            const lcd = (v, err) => {
+                m.querySelector('.qc-rm-unit').textContent = v && v.box ? v.box.name : target === 'sat' ? 'SATELLITE ENCODER' : (this.cabinet ? 'CABINET MUX' : 'PICK A CABINET');
+                const p = v && v.open && v.page ? `${v.page.title}${v.page.rows && v.page.rows.length ? ` \u203a ${(v.page.rows[v.page.cursor - (v.page.first || 0)] || {}).label || ''}` : ''}` : v && v.info ? 'INFO STRIP' : 'OSD OFF';
+                m.querySelector('.qc-rm-page').textContent = err || (v && v.toast) || p;
+                m.classList.toggle('qc-rm-err', !!err);
+            };
+            const sel = () => {
+                m.querySelectorAll('.qc-rsel').forEach((b) => b.classList.toggle('is-on', b.dataset.target === target));
+                lcd(null);
+                void this.send('quickcast_osd_view', { target, cabinet: this.cabinet || '' }).then((v) => lcd(v)).catch((e) => lcd(null, e.message));
+            };
+            const press = async (k) => {
+                if (target === 'cab' && !this.cabinet) { lcd(null, 'Pick a cabinet first'); return; }
+                const b = m.querySelector(`[data-rk="${k}"]`);
+                if (b) { b.classList.add('is-press'); setTimeout(() => b.classList.remove('is-press'), 120); }
+                try { lcd(await this.send('quickcast_osd_key', { target, cabinet: this.cabinet || '', key: k })); } catch (e) { lcd(null, e.message); }
+            };
+            m.querySelectorAll('.qc-rsel').forEach((b) => b.addEventListener('click', () => { target = b.dataset.target; this.remoteTarget = target; sel(); }));
+            m.querySelectorAll('[data-rk]').forEach((b) => b.addEventListener('click', () => void press(b.dataset.rk)));
+            const keymap = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok', Escape: 'exit', m: 'menu', d: 'diag', i: 'info' };
+            m.addEventListener('keydown', (e) => {
+                const k = keymap[e.key];
+                if (!k || e.target.closest('input, textarea')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                void press(k);
+            });
+            m.tabIndex = -1;
+            sel();
+        }
+
         chatWin() {
             const open = [...this.children].find((c) => c.kind === 'chat');
             if (open) { call('bringModalToFront', open.modal); return; }

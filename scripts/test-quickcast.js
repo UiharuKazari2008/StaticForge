@@ -134,8 +134,20 @@ wss.on('connection', (ws) => {
             case 'GetInputAudioTracks': data = { inputAudioTracks: { 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, ...audio[q.inputName].tracks } }; break;
             case 'GetInputMute': data = { inputMuted: audio[q.inputName].muted }; break;
             case 'SetInputMute': audio[q.inputName].muted = q.inputMuted; break;
-            case 'GetInputSettings': data = { inputKind: 'ndi_source', inputSettings: q.inputName === 'PLAYLAND-GAU-EAST' ? { ndi_source_name: 'FAKE-MUX (Mux Output 1)' } : {} }; break;
+            case 'GetInputSettings':
+                if (q.inputName === 'AV OSD Overlay' && !obs.osdInput) { ok = false; break; }
+                data = { inputKind: 'ndi_source', inputSettings: q.inputName === 'PLAYLAND-GAU-EAST' ? { ndi_source_name: 'FAKE-MUX (Mux Output 1)' } : q.inputName === 'AV OSD Overlay' ? obs.osdInput.inputSettings : {} };
+                break;
             case 'GetSourceActive': data = { videoActive: true, videoShowing: true }; break;
+            // box OSD (avOsd.js): the overlay scene, its browser source, nesting it on program
+            case 'CreateScene': obs.scenes.push(q.sceneName); items[q.sceneName] = []; break;
+            case 'CreateInput': obs.osdInput = q; items[q.sceneName].push({ sourceName: q.inputName, sourceType: 'OBS_SOURCE_TYPE_INPUT', inputKind: q.inputKind, sceneItemEnabled: true, sceneItemId: 900 }); break;
+            case 'SetInputSettings': obs.osdSet = q; break;
+            case 'GetCurrentProgramScene': data = { currentProgramSceneName: obs.program }; break;
+            case 'CreateSceneItem': (items[q.sceneName] = items[q.sceneName] || []).push({ sourceName: q.sourceName, sourceType: 'OBS_SOURCE_TYPE_SCENE', sceneItemEnabled: q.sceneItemEnabled !== false, sceneItemId: 777, sceneItemIndex: (items[q.sceneName] || []).length }); data = { sceneItemId: 777 }; break;
+            case 'SetSceneItemIndex': break;
+            case 'SetSceneItemEnabled': (items[q.sceneName] || []).forEach((i) => { if (i.sceneItemId === q.sceneItemId) i.sceneItemEnabled = q.sceneItemEnabled; }); break;
+            case 'GetInputList': data = { inputs: [{ inputName: 'PLAYLAND-GAU-EAST', inputKind: 'ndi_source' }, { inputName: 'Mic', inputKind: 'wasapi_input_capture' }] }; break;
             case 'GetSourceScreenshot': data = { imageData: `data:image/jpg;base64,FAKE-${q.sourceName}-${q.imageWidth}` }; break;
             case 'SetStreamServiceSettings': obs.service = q; break;
             case 'StartStream':
@@ -282,6 +294,35 @@ async function main() {
     await new Promise((res) => setTimeout(res, 300));
     st = await qc.status({ cabinet: 'nost' });
     assert.match(st.diag.input.note, /no NDI feed/, 'a scene without an NDI source has no mux to check');
+
+    // box OSD: MENU on the satellite puts the overlay on top of program; EXIT takes it off
+    obs.program = 'Chuni';
+    let v = await qc.osd.press('sat', '', 'menu');
+    assert.strictEqual(v.open, true);
+    assert.strictEqual(v.page.title, 'MAIN MENU');
+    assert.ok(obs.osdInput && obs.osdInput.inputKind === 'browser_source', 'the OSD browser source is created on the box');
+    assert.match(obs.osdInput.inputSettings.url, /\/av-osd\/sat\?k=[\w-]{20,}$/);
+    const nested = items.Chuni.find((i) => i.sourceName === 'AV OSD');
+    assert.ok(nested && nested.sceneItemEnabled, 'the OSD scene is nested on program, shown');
+    v = await qc.osd.press('sat', '', 'down');
+    assert.strictEqual(v.page.cursor, 1);
+    v = await qc.osd.press('sat', '', 'up');
+    v = await qc.osd.press('sat', '', 'ok');
+    assert.strictEqual(v.page.title, 'INPUT ASSIGNMENT');
+    assert.ok(v.page.rows.some((r) => /PLAYLAND-GAU-EAST/.test(r.label) && r.type === 'NDI'), 'NDI inputs are listed with their port type');
+    v = await qc.osd.press('sat', '', 'exit');
+    assert.strictEqual(v.page.title, 'MAIN MENU');
+    v = await qc.osd.press('sat', '', 'exit');
+    assert.strictEqual(v.open, false);
+    assert.strictEqual(nested.sceneItemEnabled, false, 'closing hides the OSD layer');
+    await assert.rejects(qc.osd.press('sat', '', 'reboot'), /Unknown key/);
+    const tok = new URL(obs.osdInput.inputSettings.url).searchParams.get('k');
+    assert.ok(qc.osd.checkToken('sat', tok));
+    assert.ok(!qc.osd.checkToken('sat', 'x'.repeat(tok.length)), 'a wrong token is refused');
+    assert.ok(!qc.osd.checkToken('mux-FAKE-MUX', tok), 'a token only opens its own box');
+    assert.strictEqual(fs.statSync(path.join(dir, 'osd.json')).mode & 0o777, 0o600);
+    const lag = qc.osd.bestLag([0, 0, 0, 9, 9, 9, 3, 3, 8, 8, 8, 1, 1, 1, 6, 6], [0, 9, 9, 9, 3, 3, 8, 8, 8, 1, 1, 1, 6, 6, 6, 6], 4);
+    assert.ok(Math.abs(lag.lag - 2) < 0.3 && lag.score > 0.9, 'a camera 2 samples behind reads +2');
 
     // go live without a key is refused before OBS is touched
     await assert.rejects(qc.goLive('chuni'), /stream key/);

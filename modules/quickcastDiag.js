@@ -474,6 +474,31 @@ function verdict(input, output) {
     return { state: pick.state, stage: pick.id, text: `${where[pick.id] || pick.label}: ${pick.state === 'bad' ? 'failing' : 'struggling'} (${pick.value})` };
 }
 
+// ------------------------------------------------------------------ for the box OSD (avOsd.js)
+
+/** The NDI machine (mux PC) that feeds a cabinet's scene on Ruiko, or ''. */
+async function machineForCabinet(cabinetId) {
+    const cabinet = deps.readConfig().cabinets.find((c) => c.id === cabinetId);
+    if (!cabinet) return '';
+    await deps.ruiko.connect();
+    const inputs = await scanFeed(cabinet.scene);
+    const ndi = inputs.find((f) => f.ndiName);
+    return ndi ? splitNdi(ndi.ndiName).machine : '';
+}
+
+/** An obs-websocket link to a mux PC (kept open while asked), with its target. */
+async function muxLink(machine) {
+    const m = askMux(machine);
+    if (m.resolving) await m.resolving;
+    if (!m.target) throw Object.assign(new Error(m.error || `${machine} has no address`), { code: 'QUICKCAST_MUX' });
+    if (!m.link) m.link = deps.makeLink(() => m.target, machine);
+    await m.link.connect();
+    return { link: m.link, target: m.target };
+}
+
+const lastDiag = new Map(); // cabinetId -> the last diagnose() result
+function lastFor(cabinetId) { return lastDiag.get(cabinetId || '') || null; }
+
 /** From status(), with its Ruiko read and GetStats: { input, output, verdict } for the cabinet. */
 function diagnose(st, stats, cabinetId) {
     if (!deps) return null;
@@ -483,7 +508,9 @@ function diagnose(st, stats, cabinetId) {
     let input;
     try { input = inputRow(cabinet, feed, st.video ? st.video.fps : 0); } catch (e) { input = { source: '', stages: [], note: e.message }; }
     const output = outputRow(st, stats || {}, cabinet, feed);
-    return { columns: COLUMNS, input, output, verdict: verdict(input, output) };
+    const res = { columns: COLUMNS, input, output, verdict: verdict(input, output) };
+    lastDiag.set(cabinetId || '', res);
+    return res;
 }
 
-module.exports = { init, diagnose, splitNdi, lockRatio, COLUMNS, _Window: Window, _muxes: muxes, _feeds: feeds };
+module.exports = { init, diagnose, splitNdi, lockRatio, COLUMNS, machineForCabinet, muxLink, lastFor, _Window: Window, _muxes: muxes, _feeds: feeds };

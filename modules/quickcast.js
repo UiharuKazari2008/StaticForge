@@ -35,6 +35,7 @@ const WebSocket = require('ws');
 const yt = require('./quickcastYoutube');
 const xlink = require('./xlink');
 const diag = require('./quickcastDiag');
+const avOsd = require('./avOsd');
 
 const DATA_DIR = process.env.QUICKCAST_DATA_DIR || path.join(__dirname, '..', '.cache', 'packages', '.data', 'quickcast');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
@@ -52,7 +53,9 @@ const DEFAULTS = {
     ],
     launch: { ssh: 'ruiko', task: '\\AmusementVISION\\QuickCast OBS', stopTask: '\\AmusementVISION\\QuickCast OBS Stop' },
     // cabinet mixer / muxer PCs by NDI machine name, for the INPUT diagnostics row (quickcastDiag)
-    muxes: { 'PLG-EAST-1': { host: '192.168.100.16', port: 4455, password: '' } }
+    muxes: { 'PLG-EAST-1': { host: '192.168.100.16', port: 4455, password: '' } },
+    // where the boxes' OSD browser sources load the OSD page from (avOsd.js): this server on the LAN
+    osd: { baseUrl: 'http://192.168.100.250:9220' }
 };
 
 const CONNECT_TIMEOUT_MS = 4000;
@@ -85,6 +88,7 @@ function readConfig() {
             .filter((c) => c && c.id && c.scene)
             .map((c) => ({ id: String(c.id), name: String(c.name || c.id), scene: String(c.scene), icon: String(c.icon || c.id), short: String(c.short || c.name || c.id).slice(0, 3).toUpperCase(), xlink: c.xlink === false ? '' : String(c.xlink || c.id) })),
         launch: { ...DEFAULTS.launch, ...(raw.launch || {}) },
+        osd: { ...DEFAULTS.osd, ...(raw.osd && typeof raw.osd === 'object' ? raw.osd : {}) },
         muxes: { ...DEFAULTS.muxes, ...(raw.muxes && typeof raw.muxes === 'object' ? raw.muxes : {}) }
     };
     configCache = st ? { mtimeMs: st.mtimeMs, data, raw } : null;
@@ -184,6 +188,12 @@ class ObsLink {
                     done(null);
                 } else if (msg.op === 5) {
                     this.onEvent(d.eventType, d.eventData || {});
+                } else if (msg.op === 9) { // RequestBatchResponse
+                    const p = this.pending.get(d.requestId);
+                    if (!p) return;
+                    this.pending.delete(d.requestId);
+                    clearTimeout(p.timer);
+                    p.resolve(d.results || []);
                 } else if (msg.op === 7) {
                     const p = this.pending.get(d.requestId);
                     if (!p) return;
@@ -227,6 +237,21 @@ class ObsLink {
             const timer = setTimeout(() => { this.pending.delete(requestId); reject(fail(`OBS did not answer ${requestType}`, 'QUICKCAST_OBS_TIMEOUT')); }, timeoutMs || REQUEST_TIMEOUT_MS);
             this.pending.set(requestId, { resolve, reject, timer });
             try { this.ws.send(JSON.stringify({ op: 6, d: { requestType, requestId, requestData: requestData || {} } })); } catch (e) { clearTimeout(timer); this.pending.delete(requestId); reject(e); }
+        });
+    }
+
+    /** A request batch (op 8). executionType 2 = SerialFrame: requests run on OBS's render ticks and
+     *  { requestType: 'Sleep', requestData: { sleepFrames } } waits whole frames, so samples are taken on
+     *  the box's own frame clock whatever the network does. Resolves the per-request results. */
+    async batch(requests, opts = {}) {
+        await this.connect();
+        const requestId = `qcb${++this.seq}`;
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => { this.pending.delete(requestId); reject(fail('OBS did not finish the request batch', 'QUICKCAST_OBS_TIMEOUT')); }, opts.timeoutMs || 30000);
+            this.pending.set(requestId, { resolve, reject, timer });
+            try {
+                this.ws.send(JSON.stringify({ op: 8, d: { requestId, haltOnFailure: !!opts.haltOnFailure, executionType: opts.executionType == null ? 2 : opts.executionType, requests } }));
+            } catch (e) { clearTimeout(timer); this.pending.delete(requestId); reject(e); }
         });
     }
 
@@ -274,6 +299,23 @@ class ObsLink {
 
 const link = new ObsLink();
 diag.init({ ruiko: link, readConfig, makeLink: (target, label) => new ObsLink({ target, label, events: 0 }) });
+avOsd.init({
+    ruiko: link, diag, readConfig, dataDir: DATA_DIR,
+    // on air = the satellite is streaming and (for a mux box) its cabinet's scene is on program
+    onAir: async (b) => {
+        if (!link.online) return false;
+        const st = await link.request('GetStreamStatus', {}, 3000).catch(() => ({}));
+        if (!st.outputActive) return false;
+        if (b.kind === 'satellite') return true;
+        const pg = (await link.request('GetCurrentProgramScene', {}, 3000).catch(() => ({}))).currentProgramSceneName;
+        for (const c of readConfig().cabinets) {
+            if (c.scene !== pg) continue;
+            const m = await diag.machineForCabinet(c.id).catch(() => '');
+            if (m && m === b.machine) return true;
+        }
+        return false;
+    }
+});
 let leaseTimer = null;
 let launching = null;        // Promise while OBS is being started
 let launchStartedAt = 0;
@@ -849,4 +891,4 @@ function info() {
     return { host: cfg.obs.host, port: cfg.obs.port, profile: cfg.profile, collection: cfg.collection, server: cfg.youtube.server, launchTask: cfg.launch.task };
 }
 
-module.exports = { status, preview, prepare, goLive, stop, launch, powerOff, setKey, info, getEncoder, setEncoder, cabinetControls, cabinetAction, setMute, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };
+module.exports = { osd: avOsd, status, preview, prepare, goLive, stop, launch, powerOff, setKey, info, getEncoder, setEncoder, cabinetControls, cabinetAction, setMute, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };

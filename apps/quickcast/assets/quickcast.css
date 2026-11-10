@@ -405,3 +405,28 @@
 .qc-xcol-game .qc-xgame span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qc-deck .qc-xs { font-size: 9px; font-weight: normal; letter-spacing: 0; }
 .qc-ctl { border-top: 0; background: none; }
+
+/* box remote: the OSD itself is drawn by the box in its video output (avOsd.js) */
+.qc-remotewin .modal-content { background: #1b1d21; }
+.qc-rm { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 12px 12px; background: linear-gradient(#34373d, #1e2024); border-radius: 18px 18px 30px 30px; box-shadow: inset 0 1px 0 rgba(255,255,255,.1), inset 0 -2px 6px rgba(0,0,0,.6); margin: 6px; }
+.qc-rm-sel { display: flex; gap: 3px; width: 100%; }
+.qc-window .qc-rsel { flex: 1; height: 22px; border: 1px solid #0b0c0e; border-radius: 3px; background: linear-gradient(#41454c, #2d3035); color: #9aa1ab; font: bold 9px Arial, sans-serif; letter-spacing: 1px; }
+.qc-window .qc-rsel.is-on { background: rgb(255, 150, 40); color: #2a1300; box-shadow: inset 0 0 6px rgba(255,255,255,.45); }
+.qc-rm-lcd { display: flex; flex-direction: column; width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid #000; border-radius: 3px; background: #1d3a1f; box-shadow: inset 0 1px 4px rgba(0,0,0,.8); color: #9cff9c; font: 11px 'Lucida Console', 'Courier New', monospace; }
+.qc-rm-lcd b { font-weight: normal; color: #d6ffd6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qc-rm-lcd span { min-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qc-rm-err .qc-rm-lcd { background: #3a1d1d; color: #ffb0a8; }
+.qc-rm-row { display: flex; gap: 8px; }
+.qc-window .qc-rk { width: 56px; height: 26px; border: 1px solid #08090a; border-radius: 13px; background: linear-gradient(#4a4e56, #2b2e33); box-shadow: inset 0 1px 0 rgba(255,255,255,.15), 0 2px 2px rgba(0,0,0,.6); color: #e2e6ea; font: bold 10px Arial, sans-serif; letter-spacing: 1px; }
+.qc-window .qc-rk:active, .qc-window .qc-rk.is-press { transform: translateY(1px); box-shadow: inset 0 1px 3px rgba(0,0,0,.7); }
+.qc-window .qc-rk.is-exit { width: 80px; background: linear-gradient(#5a3a3a, #3a2323); }
+.qc-rm-pad { display: grid; grid-template-columns: 50px 56px 50px; grid-template-rows: 44px 56px 44px; gap: 2px; place-items: center; width: 168px; height: 156px; border-radius: 50%; background: radial-gradient(circle, #2a2d32 40%, #1a1c20 70%); box-shadow: inset 0 2px 5px rgba(0,0,0,.7), 0 1px 0 rgba(255,255,255,.08); }
+.qc-window .qc-rm-pad .qc-rk { width: 46px; height: 40px; border-radius: 8px; font-size: 13px; }
+.qc-window .qc-rm-pad .qc-rk.is-up { grid-area: 1 / 2; }
+.qc-window .qc-rm-pad .qc-rk.is-left { grid-area: 2 / 1; }
+.qc-window .qc-rm-pad .qc-rk.is-ok { grid-area: 2 / 2; width: 54px; height: 54px; border-radius: 50%; background: linear-gradient(#3a6db4, #1f467f); font-size: 12px; }
+.qc-window .qc-rm-pad .qc-rk.is-right { grid-area: 2 / 3; }
+.qc-window .qc-rm-pad .qc-rk.is-down { grid-area: 3 / 2; }
+.qc-rm-note { color: #7d848e; font-size: 9px; text-align: center; }
+.qc-side-keys { gap: 2px; }
+.qc-side-keys .qc-bk { height: 21px; font-size: 9px; }

@@ -2763,6 +2763,8 @@ apocryphaSite.registerRoutes(app, { globalResources });
 require('./modules/mailExchangeHttp').registerRoutes(app, { authMiddleware, globalResources });
 require('./modules/dovecoteMailboxWebhookHttp').registerRoutes(app, { authMiddleware, globalResources });
 require('./modules/dovecoteMailboxNotifyHttp').registerRoutes(app, { authMiddleware, globalResources });
+// AmusementVISION box OSD pages for the boxes' own OBS browser sources (token per box, no login; #734)
+require('./modules/avOsdHttp').registerRoutes(app);
 app.get('/.login.jpg', (req, res) => {
     const sprite = resolveLoginSpritePath();
     if (!sprite) {
