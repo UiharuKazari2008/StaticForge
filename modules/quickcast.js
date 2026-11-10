@@ -31,6 +31,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const WebSocket = require('ws');
+const yt = require('./quickcastYoutube');
 
 const DATA_DIR = process.env.QUICKCAST_DATA_DIR || path.join(__dirname, '..', '.cache', 'packages', '.data', 'quickcast');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
@@ -96,6 +97,8 @@ function writeRawConfig(raw) {
     try { fs.chmodSync(CONFIG_FILE, 0o600); } catch (_) { /* best effort */ }
     configCache = null;
 }
+
+yt.init({ read: readRawConfig, write: writeRawConfig });
 
 function fail(message, code) {
     const err = new Error(message);
@@ -413,7 +416,8 @@ async function status() {
         cabinets: cfg.cabinets.map((c) => ({ id: c.id, name: c.name, scene: c.scene, icon: c.icon, short: c.short, present: false })),
         key: { set: !!cfg.youtube.streamKey, hint: keyHint(cfg.youtube.streamKey) },
         watchUrl: cfg.youtube.watchUrl || '',
-        want: { profile: cfg.profile, collection: cfg.collection }
+        want: { profile: cfg.profile, collection: cfg.collection },
+        youtube: { account: yt.account(), last: yt.lastSettings(), broadcast: yt.broadcastInfo() }
     };
     if (!link.online) {
         if (launching || Date.now() - lastTry < 2000) return base;
@@ -533,7 +537,7 @@ async function prepare(cabinetId, confirmed) {
 }
 
 /** Go live with the cabinet: stream key into the QuickCast profile, scene on program, Start Streaming. */
-async function goLive(cabinetId) {
+async function goLive(cabinetId, settings) {
     const c = cabinetOf(cabinetId);
     const cfg = readConfig();
     if (!cfg.youtube.streamKey) throw fail('No YouTube stream key is set (Stream > Stream Key...)', 'QUICKCAST_NO_KEY');
@@ -554,6 +558,10 @@ async function goLive(cabinetId) {
         });
         const scenes = await link.request('GetSceneList');
         if (scenes.currentProgramSceneName !== c.scene) await link.request('SetCurrentProgramScene', { sceneName: c.scene });
+        // signed in: a new broadcast with the title etc., bound to the key's stream; else just remember them
+        let broadcast = null;
+        if (yt.account().signedIn) broadcast = await yt.prepareBroadcast(cfg.youtube.streamKey, settings);
+        else if (settings) await yt.saveSettings(settings);
         const started = link.waitFor('StreamStateChanged', (d) => d.outputState === 'OBS_WEBSOCKET_OUTPUT_STARTED' || d.outputState === 'OBS_WEBSOCKET_OUTPUT_STOPPED', START_WAIT_MS);
         await link.request('StartStream');
         const ev = await started;
@@ -564,7 +572,7 @@ async function goLive(cabinetId) {
                 : 'OBS did not start streaming within 15 seconds', 'QUICKCAST_START_FAILED');
         }
         lastBytes = null;
-        return { ok: true, cabinet: c.id };
+        return { ok: true, cabinet: c.id, broadcast };
     });
 }
 
@@ -578,7 +586,110 @@ async function stop() {
         await stopped;
         const after = await link.request('GetStreamStatus');
         if (after.outputActive) throw fail('OBS is still streaming', 'QUICKCAST_STOP_FAILED');
+        void yt.endBroadcast();
         return { ok: true };
+    });
+}
+
+// ------------------------------------------------------------------ encoder settings
+
+const ENC_FILE = '$env:APPDATA\\obs-studio\\basic\\profiles\\';
+const HEIGHTS = { 720: 1280, 900: 1600, 1080: 1920, 1440: 2560 };
+const AUDIO_RATES = [96, 128, 160, 192, 256, 320];
+
+/** PowerShell on Ruiko over SSH (the script is base64 UTF-16, so nothing in it needs quoting). */
+function ps(script, timeoutMs) {
+    const enc = Buffer.from(script, 'utf16le').toString('base64');
+    return sshRun(`powershell -NoProfile -NonInteractive -EncodedCommand ${enc}`, timeoutMs || 30000);
+}
+
+function profileDir() {
+    const name = readConfig().profile;
+    if (!/^[\w .-]+$/.test(name)) throw fail('The profile name is not valid', 'QUICKCAST_NO_PROFILE');
+    return `${ENC_FILE}${name}`;
+}
+
+async function streamTrack() {
+    try {
+        const t = await link.request('GetProfileParameter', { parameterCategory: 'AdvOut', parameterName: 'TrackIndex' });
+        return String(t.parameterValue || t.defaultParameterValue || '1');
+    } catch (_) { return '1'; }
+}
+
+/** The QuickCast profile's encoder: video bitrate / rate control (streamEncoder.json on Ruiko), audio
+ *  bitrate (the stream track's), output resolution and fps. */
+async function getEncoder() {
+    await ensureObs(false);
+    await ensureProfile();
+    const r = await ps(`Get-Content -Raw -LiteralPath "${profileDir()}\\streamEncoder.json"`);
+    let enc = {};
+    try { enc = JSON.parse(r.out.trim().replace(/^﻿/, '')); } catch (_) { enc = {}; }
+    const track = await streamTrack();
+    const ab = await link.request('GetProfileParameter', { parameterCategory: 'AdvOut', parameterName: `Track${track}Bitrate` }).catch(() => ({}));
+    const v = await link.request('GetVideoSettings');
+    return {
+        bitrate: Number(enc.bitrate) || 2500,
+        rateControl: String(enc.rate_control || 'CBR'),
+        audioBitrate: Number(ab.parameterValue || ab.defaultParameterValue) || 160,
+        height: v.outputHeight,
+        fps: v.fpsDenominator ? Math.round(v.fpsNumerator / v.fpsDenominator) : 0,
+        heights: Object.keys(HEIGHTS).map(Number),
+        audioRates: AUDIO_RATES
+    };
+}
+
+/** Change the encoder (not while streaming): written into the profile, then the profile is reloaded
+ *  (switched away and back) so OBS picks the new streamEncoder.json up for sure. */
+async function setEncoder(o) {
+    const bitrate = Math.round(Number(o.bitrate));
+    if (!(bitrate >= 500 && bitrate <= 51000)) throw fail('Video bitrate must be 500 - 51,000 kb/s', 'QUICKCAST_BAD_ENCODER');
+    const rc = o.rateControl === 'VBR' ? 'VBR' : 'CBR';
+    const height = Number(o.height);
+    if (!HEIGHTS[height]) throw fail('Unknown resolution', 'QUICKCAST_BAD_ENCODER');
+    const fps = Number(o.fps);
+    if (fps !== 30 && fps !== 60) throw fail('FPS must be 30 or 60', 'QUICKCAST_BAD_ENCODER');
+    const audio = Number(o.audioBitrate);
+    if (!AUDIO_RATES.includes(audio)) throw fail('Unknown audio bitrate', 'QUICKCAST_BAD_ENCODER');
+    return exclusive('applying the encoder settings', async () => {
+        await ensureObs(true);
+        const st = await link.request('GetStreamStatus');
+        if (st.outputActive) throw fail('Stop the stream before changing the encoder', 'QUICKCAST_LIVE');
+        const rec = await link.request('GetRecordStatus').catch(() => ({}));
+        if (rec.outputActive) throw fail('OBS is recording; stop the recording on Ruiko first', 'QUICKCAST_RECORDING');
+        await ensureProfile();
+        const dir = profileDir();
+        const w = await ps(`$f = "${dir}\\streamEncoder.json"
+$j = @{}
+if (Test-Path -LiteralPath $f) { $o = Get-Content -Raw -LiteralPath $f | ConvertFrom-Json; $o.PSObject.Properties | % { $j[$_.Name] = $_.Value } }
+$j['bitrate'] = ${bitrate}
+$j['rate_control'] = '${rc}'
+$j['max_bitrate'] = ${rc === 'VBR' ? Math.round(bitrate * 1.5) : bitrate}
+[IO.File]::WriteAllText($f, ($j | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
+'written'`);
+        if (!/written/.test(w.out)) throw fail(`Could not write the encoder settings on Ruiko: ${(w.err || w.out).trim().slice(0, 200)}`, 'QUICKCAST_ENCODER');
+        const track = await streamTrack();
+        await link.request('SetProfileParameter', { parameterCategory: 'AdvOut', parameterName: `Track${track}Bitrate`, parameterValue: String(audio) });
+        // resolution / fps: into the profile always; live only when no output holds the video (DistroAV's
+        // always-on NDI Main Output does), else they apply the next time OBS starts
+        const v = await link.request('GetVideoSettings');
+        let videoPending = false;
+        if (v.outputHeight !== height || Math.round(v.fpsNumerator / (v.fpsDenominator || 1)) !== fps) {
+            const params = [['OutputCX', String(HEIGHTS[height])], ['OutputCY', String(height)], ['FPSType', '0'], ['FPSCommon', String(fps)]];
+            for (const [name, value] of params) await link.request('SetProfileParameter', { parameterCategory: 'Video', parameterName: name, parameterValue: value });
+            try {
+                await link.request('SetVideoSettings', { outputWidth: HEIGHTS[height], outputHeight: height, fpsNumerator: fps, fpsDenominator: 1 });
+            } catch (e) { if (/output is active/i.test(e.message)) videoPending = true; else throw e; }
+        }
+        // reload the profile so the encoder settings are read again
+        const prof = await link.request('GetProfileList');
+        const other = (prof.profiles || []).find((p) => p !== readConfig().profile);
+        if (other) {
+            let changed = link.waitFor('CurrentProfileChanged', (d) => d.profileName === other, SWITCH_WAIT_MS);
+            await link.request('SetCurrentProfile', { profileName: other }, SWITCH_WAIT_MS);
+            await changed;
+            await ensureProfile();
+        }
+        return { ok: true, videoPending, encoder: await getEncoder() };
     });
 }
 
@@ -616,4 +727,4 @@ function info() {
     return { host: cfg.obs.host, port: cfg.obs.port, profile: cfg.profile, collection: cfg.collection, server: cfg.youtube.server, launchTask: cfg.launch.task };
 }
 
-module.exports = { status, preview, prepare, goLive, stop, launch, setKey, info, _link: link, _readConfig: readConfig, DATA_DIR };
+module.exports = { status, preview, prepare, goLive, stop, launch, setKey, info, getEncoder, setEncoder, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };

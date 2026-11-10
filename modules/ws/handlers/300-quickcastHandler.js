@@ -34,9 +34,20 @@ function registerPackets(handlersCtx) {
     packet('quickcast_status', async () => quickcast.status(), 'Failed to read OBS');
     packet('quickcast_preview', async (d) => quickcast.preview(String(d.cabinet || ''), d.width), 'No preview');
     packet('quickcast_prepare', async (d) => quickcast.prepare(String(d.cabinet || ''), !!d.confirmed), 'Could not get the cabinet ready');
-    packet('quickcast_golive', async (d) => quickcast.goLive(String(d.cabinet || '')), 'Could not go live');
+    packet('quickcast_golive', async (d) => quickcast.goLive(String(d.cabinet || ''), d.settings && typeof d.settings === 'object' ? d.settings : undefined), 'Could not go live');
     packet('quickcast_stop', async () => quickcast.stop(), 'Could not stop the stream');
     packet('quickcast_launch', async () => quickcast.launch(), 'Could not start OBS');
+    packet('quickcast_encoder', async () => quickcast.getEncoder(), 'Could not read the encoder settings');
+    packet('quickcast_setencoder', async (d) => quickcast.setEncoder(d), 'Could not change the encoder settings');
+    const yt = quickcast.youtube;
+    packet('quickcast_yt_account', async () => ({ account: yt.account(), last: yt.lastSettings(), signIn: yt.signInState() }), 'Could not read the YouTube account');
+    packet('quickcast_yt_credentials', async (d) => yt.setCredentials(d), 'Could not save the YouTube credentials');
+    packet('quickcast_yt_signin', async () => yt.signInStart(), 'Could not start the YouTube sign-in');
+    packet('quickcast_yt_signin_state', async () => ({ signIn: yt.signInState(), account: yt.account() }), 'Could not read the sign-in');
+    packet('quickcast_yt_signout', async () => yt.signOut(), 'Could not sign out');
+    packet('quickcast_yt_settings', async (d) => yt.saveSettings(d), 'Could not save the broadcast settings');
+    packet('quickcast_chat', async (d) => yt.chatRead(d.since), 'Could not read the live chat');
+    packet('quickcast_chat_send', async (d) => yt.chatSend(d.text), 'Could not send the message');
     packet('quickcast_setkey', async (d) => quickcast.setKey(d.key, d.watchUrl), 'Could not save the stream key');
 }
 

@@ -12,6 +12,46 @@ const { WebSocketServer } = require('ws');
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'quickcast-test-'));
 process.env.QUICKCAST_DATA_DIR = dir;
+process.env.QUICKCAST_DEVICE_MIN_S = '0.05';
+process.env.QUICKCAST_CHAT_MIN_MS = '50';
+const http = require('http');
+
+// fake Google OAuth + YouTube Data API
+const g = { polls: 0, broadcasts: [], bound: [], videos: [], sent: [], transitions: [] };
+const google = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c) => { raw += c; });
+    req.on('end', () => {
+        const u = new URL(req.url, 'http://x');
+        const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+        const form = new URLSearchParams(raw);
+        const authed = req.headers.authorization === 'Bearer at-1';
+        if (u.pathname === '/device/code') return send(200, { device_code: 'dev-1', user_code: 'ABCD-EFGH', verification_url: 'https://www.google.com/device', expires_in: 1800, interval: 0.05 });
+        if (u.pathname === '/token') {
+            if (form.get('grant_type') === 'refresh_token') return send(200, { access_token: 'at-1', expires_in: 3600 });
+            if (++g.polls < 2) return send(428, { error: 'authorization_pending' });
+            return send(200, { access_token: 'at-1', refresh_token: 'rt-1', expires_in: 3600 });
+        }
+        const yt = u.pathname.replace(/^\/yt/, '');
+        if (!authed && !(u.searchParams.get('key') === 'AIzaFakeKeyFakeKeyFakeKey123')) return send(401, { error: { message: 'no auth', errors: [{ reason: 'authError' }] } });
+        if (yt === '/channels') return send(200, { items: [{ id: 'UCfakechannelfakechannel', snippet: { title: 'Kamisato Tadashi' } }] });
+        if (yt === '/liveStreams') return send(200, { items: [{ id: 'stream-9', cdn: { ingestionInfo: { streamName: 'abcd-efgh-ijkl-mnop-qrst' } } }] });
+        if (yt === '/liveBroadcasts' && req.method === 'POST') { const b = JSON.parse(raw); g.broadcasts.push(b); return send(200, { id: 'vid-1', snippet: { ...b.snippet, liveChatId: 'chat-1' } }); }
+        if (yt === '/liveBroadcasts/bind') { g.bound.push([u.searchParams.get('id'), u.searchParams.get('streamId')]); return send(200, {}); }
+        if (yt === '/liveBroadcasts/transition') { g.transitions.push(u.searchParams.get('broadcastStatus')); return send(200, {}); }
+        if (yt === '/videos' && req.method === 'PUT') { g.videos.push(JSON.parse(raw)); return send(200, {}); }
+        if (yt === '/liveChat/messages' && req.method === 'GET') {
+            const page = u.searchParams.get('pageToken');
+            const items = page ? [] : [
+                { id: 'm1', snippet: { type: 'textMessageEvent', publishedAt: new Date().toISOString(), displayMessage: 'hello <b>' }, authorDetails: { displayName: 'viewer', isChatModerator: true } },
+                { id: 'm2', snippet: { type: 'superChatEvent', publishedAt: new Date().toISOString(), displayMessage: 'gg', superChatDetails: { amountDisplayString: '\u00a5500' } }, authorDetails: { displayName: 'fan' } }
+            ];
+            return send(200, { items, nextPageToken: 'p2', pollingIntervalMillis: 60 });
+        }
+        if (yt === '/liveChat/messages' && req.method === 'POST') { const b = JSON.parse(raw); g.sent.push(b.snippet.textMessageDetails.messageText); return send(200, { id: 'm3', snippet: { type: 'textMessageEvent', publishedAt: new Date().toISOString(), displayMessage: b.snippet.textMessageDetails.messageText } }); }
+        return send(404, { error: { message: `fake: ${req.method} ${yt}` } });
+    });
+});
 const PASSWORD = 'fake-ws-pass';
 
 const obs = {
@@ -106,6 +146,9 @@ wss.on('connection', (ws) => {
 async function main() {
     await new Promise((r) => wss.on('listening', r));
     const port = wss.address().port;
+    await new Promise((r) => google.listen(0, '127.0.0.1', r));
+    process.env.QUICKCAST_GOOGLE_BASE = `http://127.0.0.1:${google.address().port}`;
+    process.env.QUICKCAST_YT_BASE = `http://127.0.0.1:${google.address().port}/yt`;
     // ssh to a host that cannot exist, so a launch attempt fails fast instead of reaching Ruiko
     fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ obs: { host: '127.0.0.1', port, password: PASSWORD }, launch: { ssh: 'quickcast-test.invalid' } }));
     const qc = require('../modules/quickcast');
@@ -205,6 +248,49 @@ async function main() {
     assert.strictEqual(obs.streaming, false);
     assert.ok((await qc.stop()).already);
 
+    // ---- YouTube: credentials, sign-in, broadcast with the title, chat
+    const y = qc.youtube;
+    assert.throws(() => y.setCredentials({ clientId: 'nope' }), /googleusercontent/);
+    y.setCredentials({ apiKey: 'AIzaFakeKeyFakeKeyFakeKey123', clientId: '123-abc.apps.googleusercontent.com', clientSecret: 'GOCSPX-fakesecret' });
+    assert.deepStrictEqual(y.account(), { apiKey: true, client: true, clientId: '123-\u2026', signedIn: false, channel: '', channelId: '' });
+    const si = await y.signInStart();
+    assert.strictEqual(si.userCode, 'ABCD-EFGH');
+    for (let i = 0; i < 100 && y.signInState().state === 'waiting'; i++) await new Promise((res) => setTimeout(res, 20));
+    assert.strictEqual(y.signInState().state, 'done');
+    assert.strictEqual(y.account().channel, 'Kamisato Tadashi');
+    st = await qc.status();
+    assert.ok(!JSON.stringify(st).includes('GOCSPX') && !JSON.stringify(st).includes('rt-1') && !JSON.stringify(st).includes('AIzaFake'), 'no secrets in status');
+    await assert.rejects(qc.goLive('chuni', { title: '' }), /title is empty/);
+    r = await qc.goLive('chuni', { title: 'Chunithm After Dark', privacy: 'unlisted' });
+    assert.ok(r.ok && r.broadcast && r.broadcast.id === 'vid-1');
+    assert.strictEqual(g.broadcasts[0].snippet.title, 'Chunithm After Dark');
+    assert.strictEqual(g.broadcasts[0].status.privacyStatus, 'unlisted');
+    assert.strictEqual(g.broadcasts[0].contentDetails.enableAutoStart, true);
+    assert.deepStrictEqual(g.bound[0], ['vid-1', 'stream-9']);
+    assert.strictEqual(y.lastSettings().title, 'Chunithm After Dark', 'the title pre-fills next time');
+    st = await qc.status();
+    assert.strictEqual(st.youtube.broadcast.watchUrl, 'https://www.youtube.com/watch?v=vid-1');
+    // chat
+    let c = y.chatRead(0);
+    for (let i = 0; i < 50 && !c.messages.length; i++) { await new Promise((res) => setTimeout(res, 20)); c = y.chatRead(0); }
+    assert.deepStrictEqual(c.messages.map((m) => [m.author, m.text, m.mod, m.amount]), [['viewer', 'hello <b>', true, ''], ['fan', 'gg', false, '\u00a5500']]);
+    assert.strictEqual(c.canReply, true);
+    await y.chatSend('thanks for watching');
+    assert.deepStrictEqual(g.sent, ['thanks for watching']);
+    c = y.chatRead(2);
+    assert.deepStrictEqual(c.messages.map((m) => [m.text, m.owner]), [['thanks for watching', true]]);
+    await assert.rejects(y.chatSend('x'.repeat(201)), /200 characters/);
+    // live title change
+    r = await y.saveSettings({ title: 'New title', applyLive: true });
+    assert.ok(r.updatedLive);
+    assert.strictEqual(g.videos[g.videos.length - 1].snippet.title, 'New title');
+    await qc.stop();
+    await new Promise((res) => setTimeout(res, 50));
+    assert.deepStrictEqual(g.transitions, ['complete']);
+    y.signOut();
+    assert.strictEqual(y.account().signedIn, false);
+    y._chat.leaseAt = 0;
+
     // a rejected key: OBS stops at once -> a clear failure
     qc.setKey('bad-key-1234');
     await assert.rejects(qc.goLive('chuni'), /could not connect to YouTube/);
@@ -235,6 +321,7 @@ async function main() {
     console.log('quickcast: all checks passed');
     qc._link.close();
     wss.close();
+    google.close();
     fs.rmSync(dir, { recursive: true, force: true });
     process.exit(0);
 }

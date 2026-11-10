@@ -8,6 +8,11 @@
  *   Monitor    a screenshot of the cabinet's scene twice a second (what goes on air)
  *   VU meter   what the stream hears with that scene on: stereo master + every source, peak hold
  *   Checks     OBS, scene, profile, stream key, picture, sound; GO LIVE asks only when one is not green
+ *   Title      the YouTube title (pre-filled with the last one); signed in to YouTube, GO LIVE creates the
+ *              broadcast with it, and while live Update changes the live video's title
+ *   Settings   Broadcast (title, description, privacy, category, latency, DVR), Encoder (video / audio
+ *              bitrate, rate control, resolution, fps), Account (stream key, API key, Google sign-in)
+ *   Chat       the live chat, with a reply box when signed in
  *
  * Every request goes through the server (quickcast_* packets, modules/quickcast.js), which talks to
  * obs-websocket and holds the YouTube stream key. The key never comes back to the client.
@@ -107,6 +112,12 @@
                         <div class="qc-link"><span class="qc-lamp"></span><span class="qc-link-text">OBS: OFFLINE</span></div>
                         <div class="qc-tally"><span class="qc-tally-text">OFF AIR</span><span class="qc-tc">--:--:--</span></div>
                     </div>
+                    <div class="qc-titlebar">
+                        <label class="qc-title-label" for="qcTitleInput">TITLE</label>
+                        <input type="text" id="qcTitleInput" class="qc-title" maxlength="100" spellcheck="true" placeholder="Stream title">
+                        <button type="button" class="qc-tb qc-title-update" data-qc="updatetitle" title="Change the live video's title now">UPDATE</button>
+                        <span class="qc-yt"><span class="qc-yt-dot"></span><span class="qc-yt-text">YouTube: not signed in</span></span>
+                    </div>
                     <div class="qc-main">
                         <div class="qc-cabs"><div class="qc-head">CABINET</div><div class="qc-cablist"></div></div>
                         <div class="qc-centre">
@@ -147,6 +158,10 @@
                             <span class="qc-chk" data-chk="audio"><i></i>Sound</span>
                         </div>
                         <span class="qc-fill"></span>
+                        <div class="qc-side-keys">
+                            <button type="button" class="qc-tb" data-qc="chat">LIVE CHAT</button>
+                            <button type="button" class="qc-tb" data-qc="settings">SETTINGS</button>
+                        </div>
                         <button type="button" class="qc-key qc-go" data-qc="golive" disabled><span class="qc-key-dot"></span>GO LIVE</button>
                         <button type="button" class="qc-key qc-stop" data-qc="stop" disabled><span class="qc-key-sq"></span>STOP</button>
                     </div>
@@ -171,6 +186,14 @@
                 });
             });
             q('.qc-close').addEventListener('click', () => this.app.exit(), sig);
+            const title = q('.qc-title');
+            title.addEventListener('input', () => { this.titleDirty = true; this.render(); }, sig);
+            title.addEventListener('keydown', (ev) => {
+                if (ev.key !== 'Enter') return;
+                ev.preventDefault();
+                if (this.st && this.st.stream && this.st.stream.active) void this.command('updatetitle'); else void this.saveTitle();
+            }, sig);
+            title.addEventListener('change', () => { if (!(this.st && this.st.stream && this.st.stream.active)) void this.saveTitle(); }, sig);
             doc.addEventListener('staticforge:modal-lifecycle', (e) => {
                 if (e && e.detail && e.detail.id === m.id && e.detail.type === 'closed') this.app.exit();
             }, sig);
@@ -209,7 +232,10 @@
                     { text: 'Go Live', action: 'golive', disabled: live || !this.canGo() },
                     { text: 'Stop Stream', action: 'stop', disabled: !live },
                     { separator: true },
-                    { text: 'Stream Key...', action: 'key' },
+                    { text: 'Broadcast Settings...', action: 'settings' },
+                    { text: 'Encoder Settings...', action: 'encoder' },
+                    { text: 'Stream Key and YouTube Account...', action: 'key' },
+                    { text: 'Live Chat', action: 'chat' },
                     { text: 'Start OBS on Ruiko', action: 'launch', disabled: online },
                     { text: 'Open Watch Page', action: 'watch', disabled: !(this.st && this.st.watchUrl) }];
                 case 'help': return [{ text: 'About QuickCast...', action: 'about' }];
@@ -222,7 +248,11 @@
                 case 'exit': this.app.exit(); break;
                 case 'golive': await this.goLive(); break;
                 case 'stop': await this.stopStream(); break;
-                case 'key': this.keyWin(); break;
+                case 'key': this.settingsWin('account'); break;
+                case 'settings': this.settingsWin('broadcast'); break;
+                case 'encoder': this.settingsWin('encoder'); break;
+                case 'chat': this.chatWin(); break;
+                case 'updatetitle': await this.updateLiveTitle(); break;
                 case 'launch': await this.run('Starting OBS on Ruiko...', 'quickcast_launch', {}); break;
                 case 'watch': if (this.st && this.st.watchUrl) root.open(this.st.watchUrl, '_blank', 'noopener'); break;
                 case 'about': this.about(); break;
@@ -407,6 +437,20 @@
                 e.title = tips[k];
             });
 
+            // title, YouTube account
+            const yt = st.youtube || { account: {}, last: {} };
+            const ti = q('.qc-title');
+            if (!this.titleDirty && doc.activeElement !== ti && ti.value !== (yt.last.title || '')) ti.value = yt.last.title || '';
+            const signed = !!yt.account.signedIn;
+            this.modal.classList.toggle('qc-yt-on', signed);
+            q('.qc-yt-text').textContent = signed ? `YouTube: ${yt.account.channel || 'signed in'}` : yt.account.apiKey ? 'YouTube: API key only' : 'YouTube: not signed in';
+            q('.qc-yt').title = signed ? 'GO LIVE creates a broadcast with this title and settings' : 'Not signed in: the title and settings in YouTube Studio apply. Sign in under Settings > Account.';
+            ti.disabled = false;
+            ti.title = signed ? 'The YouTube title. Enter saves it (while live: changes the live title).' : 'Saved for the next stream. Sign in to YouTube (Settings > Account) so QuickCast can set it.';
+            const tu = q('.qc-title-update');
+            tu.hidden = !(live && signed);
+            tu.disabled = !!this.busy || !ti.value.trim();
+
             // keys
             q('.qc-go').disabled = live || !this.canGo();
             q('.qc-go').title = live ? 'Already on air' : this.busy ? this.busy : !cab ? 'Pick a cabinet first' : !st.key.set ? 'Set the YouTube stream key first (Stream > Stream Key...)' : st.obs.state === 'launching' ? 'OBS is starting on Ruiko' : online && !cab.present ? `The scene "${cab.scene}" is missing from OBS` : `Go live on YouTube with ${cab.name}`;
@@ -501,8 +545,10 @@
             if (c.audio !== 'ok') warn.push(`- No sound: nothing above ${AUDIO_OK_DB} dB in the last 3 seconds.`);
             if (c.obs !== 'ok') warn.push('- OBS is not running yet: it starts on Ruiko first.');
             if (warn.length && !await this.ask(`Go live with ${cab.name} anyway?\n\n${warn.join('\n')}`)) return;
-            const r = await this.run(`Going live with ${cab.name}...`, 'quickcast_golive', { cabinet: cab.id });
-            if (r && r.ok) this.flash(`${cab.name} is live on YouTube.`);
+            const title = this.el('.qc-title').value.trim();
+            if (st.youtube && st.youtube.account.signedIn && !title) { await this.box('Enter a stream title first.', 'warning'); return; }
+            const r = await this.run(`Going live with ${cab.name}...`, 'quickcast_golive', { cabinet: cab.id, settings: title ? { title } : undefined });
+            if (r && r.ok) { this.titleDirty = false; this.flash(`${cab.name} is live on YouTube${r.broadcast ? `: ${r.broadcast.title}` : ''}.`); }
         }
 
         async stopStream() {
@@ -518,12 +564,14 @@
         openWin(o) {
             const id = `melatonQuickCastWin-${++this.winSeq}`;
             const m = doc.createElement('div');
-            m.className = `modal hidden on-top qc-window qc-child ${o.cls || ''}`;
+            m.className = `modal hidden ${o.resizable ? 'resizeable-window' : 'on-top'} qc-window qc-child ${o.cls || ''}`;
             m.id = id;
             m.dataset.windowIdentifier = `melatonQuickCast-${o.kind}`;
-            m.dataset.windowRestorePosition = 'false';
-            m.dataset.windowRestoreSize = 'false';
-            m.dataset.windowFixedSize = 'true';
+            m.dataset.windowRestorePosition = o.resizable ? 'true' : 'false';
+            m.dataset.windowRestoreSize = o.resizable ? 'true' : 'false';
+            if (!o.resizable) m.dataset.windowFixedSize = 'true';
+            if (o.height) { m.style.height = `${o.height}px`; m.dataset.windowDefaultHeight = String(o.height); m.dataset.windowMinHeight = '300'; }
+            if (o.resizable) { m.dataset.windowDefaultWidth = String(o.width); m.dataset.windowMinWidth = '300'; }
             m.dataset.windowClient = 'light';
             m.dataset.iconOwnerId = this.modal.id;
             m.dataset.parentModalId = this.modal.id;
@@ -537,7 +585,7 @@
                 <div class="modal-window-controls"><button type="button" class="btn-danger close-btn btn-small qc-x" title="Close"><i class="fa-regular fa-xmark-large"></i></button></div>
                 <div class="modal-content qc-client"><div class="qc-root qc-form">
                     <div class="qc-form-body">${o.body}</div>
-                    <div class="qc-form-btns">${(o.buttons || []).map((b) => `<button type="button" class="qc-btn${b.def ? ' is-def' : ''}" data-v="${esc(b.value)}">${esc(b.text)}</button>`).join('')}</div>
+                    <div class="qc-form-btns"${(o.buttons || []).length ? '' : ' hidden'}>${(o.buttons || []).map((b) => `<button type="button" class="qc-btn${b.def ? ' is-def' : ''}" data-v="${esc(b.value)}">${esc(b.text)}</button>`).join('')}</div>
                 </div></div>`;
             doc.body.appendChild(m);
             const ctl = new AbortController();
@@ -545,6 +593,7 @@
             const w = {
                 modal: m,
                 val: (s) => { const e = m.querySelector(s); return e ? e.value.trim() : ''; },
+                busy: (on) => { m.querySelectorAll('.qc-form-btns button').forEach((b) => { b.disabled = on; }); },
                 close: () => {
                     if (closed) return;
                     closed = true;
@@ -563,7 +612,7 @@
                 if (o.onButton && await o.onButton(b.dataset.v, w)) w.close();
             }, { signal: ctl.signal });
             m.addEventListener('keydown', (ev) => {
-                if (ev.key === 'Escape') { ev.stopPropagation(); w.close(); }
+                if (ev.key === 'Escape' && !o.resizable) { ev.stopPropagation(); w.close(); }
                 if (ev.key === 'Enter' && ev.target.matches('input')) { const d = m.querySelector('.qc-form-btns .is-def'); if (d) { ev.preventDefault(); d.click(); } }
             }, { signal: ctl.signal });
             doc.addEventListener('staticforge:modal-lifecycle', (e) => {
@@ -575,30 +624,255 @@
                 const r = m.getBoundingClientRect();
                 const p = this.modal.getBoundingClientRect();
                 call('setModalOffsetsFromViewportTopLeft', m, Math.max(0, Math.round(p.left + (p.width - r.width) / 2)), Math.max(0, Math.round(p.top + (p.height - r.height) / 2)));
-                const f = m.querySelector('input');
+                const f = m.querySelector('input:not([type=checkbox])');
                 if (f) f.focus({ preventScroll: true });
             });
             return w;
         }
 
-        keyWin() {
-            const st = this.st || { key: {}, watchUrl: '' };
-            this.openWin({
-                kind: 'key', title: 'Stream Key', width: 440,
-                body: `<p>The persistent stream key from YouTube Studio (Go live &gt; Stream &gt; Stream key). It is kept on the Dreamscape server and written into OBS's QuickCast profile when you go live. Turn on Auto-start for that key so YouTube goes live as soon as OBS connects.</p>
-                    <label class="qc-field"><span>Stream key</span><input type="password" class="qc-k" autocomplete="off" spellcheck="false" placeholder="${st.key.set ? `Saved: ${esc(st.key.hint)} (leave blank to keep)` : 'xxxx-xxxx-xxxx-xxxx-xxxx'}"></label>
-                    <label class="qc-field"><span>Watch page (optional)</span><input type="text" class="qc-u" spellcheck="false" value="${esc(st.watchUrl || '')}" placeholder="https://www.youtube.com/@channel/live"></label>`,
-                buttons: [{ text: 'Save', value: 'save', def: true }, { text: 'Cancel', value: 'cancel' }],
-                onButton: async (v, w) => {
-                    if (v !== 'save') return false;
-                    const key = w.val('.qc-k');
-                    try {
-                        await this.send('quickcast_setkey', { key: key || undefined, watchUrl: w.val('.qc-u') });
-                    } catch (err) { await this.box(err.message, 'error'); return false; }
-                    this.flash('Stream settings saved.');
-                    return true;
-                }
+        async saveTitle() {
+            const t = this.el('.qc-title').value.trim();
+            if (!t) return;
+            try { await this.send('quickcast_yt_settings', { title: t }); this.titleDirty = false; } catch (err) { this.flash(err.message); }
+        }
+
+        async updateLiveTitle() {
+            const t = this.el('.qc-title').value.trim();
+            if (!t) return;
+            this.setBusy('Changing the live title...');
+            try {
+                const r = await this.send('quickcast_yt_settings', { title: t, applyLive: true });
+                this.titleDirty = false;
+                this.setBusy('');
+                this.flash(r.updatedLive ? 'The live title is changed.' : 'Saved for the next stream.');
+            } catch (err) { this.setBusy(''); await this.box(err.message, 'error'); }
+        }
+
+        /** Broadcast Settings: Broadcast | Encoder | Account tabs. */
+        settingsWin(tab) {
+            const open = [...this.children].find((c) => c.kind === 'settings');
+            if (open) { open.showTab(tab); call('bringModalToFront', open.modal); return; }
+            const CATS = [['20', 'Gaming'], ['24', 'Entertainment'], ['10', 'Music'], ['22', 'People & Blogs'], ['28', 'Science & Technology'], ['1', 'Film & Animation']];
+            const opt = (list, v) => list.map(([k, t]) => `<option value="${esc(k)}"${String(k) === String(v) ? ' selected' : ''}>${esc(t)}</option>`).join('');
+            const w = this.openWin({
+                kind: 'settings', title: 'Broadcast Settings', width: 560, cls: 'qc-settings',
+                body: `<div class="qc-tabs"><button type="button" class="qc-tab" data-tab="broadcast">Broadcast</button><button type="button" class="qc-tab" data-tab="encoder">Encoder</button><button type="button" class="qc-tab" data-tab="account">Account</button></div>
+                    <div class="qc-pane" data-pane="broadcast"><p class="qc-dim qc-loading">Loading...</p></div>
+                    <div class="qc-pane" data-pane="encoder"><p class="qc-dim qc-loading">Reading OBS on Ruiko...</p></div>
+                    <div class="qc-pane" data-pane="account"><p class="qc-dim qc-loading">Loading...</p></div>`,
+                buttons: [{ text: 'Apply', value: 'apply', def: true }, { text: 'Close', value: 'cancel' }],
+                onButton: async (v) => { if (v === 'apply') await apply(); return false; }
             });
+            w.kind = 'settings';
+            const m = w.modal;
+            const pane = (n) => m.querySelector(`[data-pane="${n}"]`);
+            w.showTab = (n) => {
+                w.tab = n;
+                m.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('is-on', b.dataset.tab === n));
+                m.querySelectorAll('[data-pane]').forEach((p) => { p.hidden = p.dataset.pane !== n; });
+                if (n === 'encoder' && !w.encLoaded) void loadEncoder();
+            };
+            m.addEventListener('click', (ev) => { const b = ev.target.closest('[data-tab]'); if (b) w.showTab(b.dataset.tab); });
+
+            const fillBroadcast = (last) => {
+                pane('broadcast').innerHTML = `
+                    <label class="qc-field"><span>Title</span><input type="text" class="qc-s-title" maxlength="100" value="${esc(last.title)}"></label>
+                    <label class="qc-field"><span>Description</span><textarea class="qc-s-desc" rows="5" maxlength="5000">${esc(last.description)}</textarea></label>
+                    <div class="qc-grid">
+                        <label class="qc-field"><span>Privacy</span><select class="qc-s-priv">${opt([['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']], last.privacy)}</select></label>
+                        <label class="qc-field"><span>Category</span><select class="qc-s-cat">${opt(CATS, last.categoryId)}</select></label>
+                        <label class="qc-field"><span>Latency</span><select class="qc-s-lat">${opt([['normal', 'Normal'], ['low', 'Low'], ['ultraLow', 'Ultra-low']], last.latency)}</select></label>
+                    </div>
+                    <label class="qc-check"><input type="checkbox" class="qc-s-dvr"${last.dvr ? ' checked' : ''}> DVR (viewers can rewind)</label>
+                    <label class="qc-check"><input type="checkbox" class="qc-s-kids"${last.madeForKids ? ' checked' : ''}> Made for kids</label>
+                    <p class="qc-dim">Used for the next GO LIVE when QuickCast is signed in to YouTube. While live, Apply also changes the live title, description and category (privacy, latency and DVR apply next time).</p>`;
+            };
+            const fillAccount = (a, signIn) => {
+                const st = this.st || { key: {} };
+                pane('account').innerHTML = `
+                    <div class="qc-group"><b>Stream key</b>
+                        <p>The persistent key from YouTube Studio (Go live &gt; Stream &gt; Stream key). Kept on the Dreamscape server and written into OBS's QuickCast profile when you go live.</p>
+                        <label class="qc-field"><span>Stream key</span><input type="password" class="qc-a-key" autocomplete="off" spellcheck="false" placeholder="${st.key.set ? `Saved: ${esc(st.key.hint)} (blank keeps it)` : 'xxxx-xxxx-xxxx-xxxx-xxxx'}"></label>
+                        <label class="qc-field"><span>Watch page (optional)</span><input type="text" class="qc-a-url" spellcheck="false" value="${esc(st.watchUrl || '')}" placeholder="https://www.youtube.com/@channel/live"></label>
+                    </div>
+                    <div class="qc-group"><b>YouTube API</b>
+                        <p>From your Google Cloud project (the StickerBoard one is fine) with YouTube Data API v3 on. The API key reads chat; the OAuth client (type <i>TVs and Limited Input devices</i>) lets QuickCast set the title and reply in chat. Blank keeps a saved value.</p>
+                        <label class="qc-field"><span>API key ${a.apiKey ? '(saved)' : ''}</span><input type="password" class="qc-a-api" autocomplete="off" spellcheck="false" placeholder="${a.apiKey ? 'Saved (blank keeps it)' : 'AIza...'}"></label>
+                        <div class="qc-grid2">
+                            <label class="qc-field"><span>OAuth client ID ${a.client ? '(saved)' : ''}</span><input type="text" class="qc-a-cid" autocomplete="off" spellcheck="false" placeholder="${a.clientId ? esc(a.clientId) : '....apps.googleusercontent.com'}"></label>
+                            <label class="qc-field"><span>OAuth client secret</span><input type="password" class="qc-a-csec" autocomplete="off" spellcheck="false" placeholder="${a.client ? 'Saved (blank keeps it)' : 'GOCSPX-...'}"></label>
+                        </div>
+                        <label class="qc-field"><span>Channel ID (only for reading chat without sign-in)</span><input type="text" class="qc-a-ch" spellcheck="false" placeholder="${a.channelId ? esc(a.channelId) : 'UC...'}"></label>
+                    </div>
+                    <div class="qc-group qc-signin"><b>Google sign-in</b>
+                        <div class="qc-signin-row"><span class="qc-signin-state">${a.signedIn ? `Signed in: <b>${esc(a.channel || 'YouTube channel')}</b>` : a.client ? 'Not signed in.' : 'Save the OAuth client first.'}</span>
+                        <span class="qc-fill"></span>
+                        ${a.signedIn ? '<button type="button" class="qc-btn" data-act="signout">Sign Out</button>' : `<button type="button" class="qc-btn" data-act="signin"${a.client ? '' : ' disabled'}>Sign In...</button>`}</div>
+                        <div class="qc-code" hidden></div>
+                    </div>`;
+                if (signIn && signIn.state === 'waiting') showCode(signIn);
+            };
+            const showCode = (si) => {
+                const c = pane('account').querySelector('.qc-code');
+                if (!c) return;
+                c.hidden = false;
+                c.innerHTML = `On any device, open <a href="${esc(si.url)}" target="_blank" rel="noopener">${esc(si.url.replace(/^https?:\/\//, ''))}</a> and enter<div class="qc-usercode">${esc(si.userCode)}</div><span class="qc-dim">Waiting for Google...</span>`;
+            };
+            const loadAccount = async () => {
+                try {
+                    const r = await this.send('quickcast_yt_account', {});
+                    fillAccount(r.account, r.signIn);
+                    if (!w.bcLoaded) { fillBroadcast(r.last); w.bcLoaded = true; }
+                } catch (err) { pane('account').innerHTML = `<p class="qc-bad">${esc(err.message)}</p>`; }
+            };
+            const loadEncoder = async () => {
+                w.encLoaded = true;
+                try {
+                    const e = await this.send('quickcast_encoder', {});
+                    pane('encoder').innerHTML = `
+                        <div class="qc-grid">
+                            <label class="qc-field"><span>Video bitrate (kb/s)</span><input type="number" class="qc-e-br" min="500" max="51000" step="500" value="${e.bitrate}"></label>
+                            <label class="qc-field"><span>Rate control</span><select class="qc-e-rc">${opt([['CBR', 'CBR (constant)'], ['VBR', 'VBR (variable)']], e.rateControl)}</select></label>
+                            <label class="qc-field"><span>Audio bitrate (kb/s)</span><select class="qc-e-ab">${opt(e.audioRates.map((n) => [n, String(n)]), e.audioBitrate)}</select></label>
+                            <label class="qc-field"><span>Resolution</span><select class="qc-e-h">${opt(e.heights.map((h) => [h, `${h}p`]), e.height)}</select></label>
+                            <label class="qc-field"><span>Frame rate</span><select class="qc-e-fps">${opt([[30, '30 fps'], [60, '60 fps']], e.fps)}</select></label>
+                        </div>
+                        <div class="qc-presets"><span class="qc-dim">YouTube suggests:</span>
+                            <button type="button" class="qc-btn" data-preset="720,30,4000">720p30 4 Mb</button>
+                            <button type="button" class="qc-btn" data-preset="1080,30,8000">1080p30 8 Mb</button>
+                            <button type="button" class="qc-btn" data-preset="1080,60,12000">1080p60 12 Mb</button>
+                            <button type="button" class="qc-btn" data-preset="1440,60,24000">1440p60 24 Mb</button></div>
+                        <p class="qc-dim">NVENC on Ruiko, the QuickCast profile. Not while live. Ruiko's upload must carry the bitrate with room to spare; watch CONGESTION and DROPPED once live.</p>`;
+                    pane('encoder').addEventListener('click', (ev) => {
+                        const b = ev.target.closest('[data-preset]');
+                        if (!b) return;
+                        const [h, f, br] = b.dataset.preset.split(',');
+                        pane('encoder').querySelector('.qc-e-h').value = h;
+                        pane('encoder').querySelector('.qc-e-fps').value = f;
+                        pane('encoder').querySelector('.qc-e-br').value = br;
+                    });
+                } catch (err) { w.encLoaded = false; pane('encoder').innerHTML = `<p class="qc-bad">${esc(err.message)}</p><p class="qc-dim">OBS must be running on Ruiko to read the encoder.</p>`; }
+            };
+            pane('account').addEventListener('click', async (ev) => {
+                const b = ev.target.closest('[data-act]');
+                if (!b) return;
+                if (b.dataset.act === 'signout') {
+                    if (!await this.ask('Sign QuickCast out of YouTube?')) return;
+                    await this.send('quickcast_yt_signout', {}).catch(() => {});
+                    void loadAccount();
+                    return;
+                }
+                b.disabled = true;
+                try {
+                    const si = await this.send('quickcast_yt_signin', {});
+                    showCode(si);
+                    const poll = async () => {
+                        if (!m.isConnected) return;
+                        const r = await this.send('quickcast_yt_signin_state', {}).catch(() => null);
+                        if (!r || r.signIn.state === 'waiting') { setTimeout(poll, 3000); return; }
+                        if (r.signIn.state === 'failed') await this.box(`YouTube sign-in failed: ${r.signIn.error}`, 'error');
+                        else this.flash(`Signed in to YouTube${r.account.channel ? `: ${r.account.channel}` : ''}.`);
+                        void loadAccount();
+                    };
+                    setTimeout(poll, 3000);
+                } catch (err) { b.disabled = false; await this.box(err.message, 'error'); }
+            });
+
+            const val = (sel) => { const e = m.querySelector(sel); return e ? e.value.trim() : ''; };
+            const apply = async () => {
+                const live = !!(this.st && this.st.stream && this.st.stream.active);
+                try {
+                    if (w.tab === 'broadcast') {
+                        if (!m.querySelector('.qc-s-title')) return;
+                        const r = await this.send('quickcast_yt_settings', {
+                            title: val('.qc-s-title'), description: m.querySelector('.qc-s-desc').value, privacy: val('.qc-s-priv'), categoryId: val('.qc-s-cat'),
+                            latency: val('.qc-s-lat'), dvr: m.querySelector('.qc-s-dvr').checked, madeForKids: m.querySelector('.qc-s-kids').checked, applyLive: live
+                        });
+                        this.titleDirty = false;
+                        this.el('.qc-title').value = r.last.title;
+                        this.flash(r.updatedLive ? 'Broadcast settings saved and the live video updated.' : 'Broadcast settings saved for the next stream.');
+                    } else if (w.tab === 'encoder') {
+                        if (!m.querySelector('.qc-e-br')) return;
+                        if (live) { await this.box('Stop the stream before changing the encoder.', 'warning'); return; }
+                        w.busy(true);
+                        this.setBusy('Applying the encoder settings on Ruiko...');
+                        let r;
+                        try {
+                            r = await this.send('quickcast_setencoder', { bitrate: Number(val('.qc-e-br')), rateControl: val('.qc-e-rc'), audioBitrate: Number(val('.qc-e-ab')), height: Number(val('.qc-e-h')), fps: Number(val('.qc-e-fps')) });
+                        } finally { this.setBusy(''); w.busy(false); }
+                        if (r.videoPending) await this.box('Bitrates are set. The new resolution / frame rate is saved in the QuickCast profile and applies the next time OBS starts on Ruiko: an always-on output (NDI Main Output) keeps OBS\'s video busy until then.', 'info');
+                        else this.flash('Encoder settings applied.');
+                    } else if (w.tab === 'account') {
+                        const key = val('.qc-a-key');
+                        await this.send('quickcast_setkey', { key: key || undefined, watchUrl: val('.qc-a-url') });
+                        const cred = { apiKey: val('.qc-a-api') || undefined, clientId: val('.qc-a-cid') || undefined, clientSecret: val('.qc-a-csec') || undefined, channelId: val('.qc-a-ch') || undefined };
+                        if (Object.values(cred).some(Boolean)) await this.send('quickcast_yt_credentials', cred);
+                        this.flash('Account settings saved.');
+                        void loadAccount();
+                    }
+                } catch (err) { await this.box(err.message, 'error'); }
+            };
+            w.showTab(tab || 'broadcast');
+            void loadAccount();
+        }
+
+        /** Live Chat: its own resizable window; messages twice a second from the server's reader. */
+        chatWin() {
+            const open = [...this.children].find((c) => c.kind === 'chat');
+            if (open) { call('bringModalToFront', open.modal); return; }
+            const w = this.openWin({
+                kind: 'chat', title: 'Live Chat - QuickCast', width: 380, height: 560, resizable: true, cls: 'qc-chatwin',
+                body: `<div class="qc-chat-head"><span class="qc-chat-state">Connecting...</span><span class="qc-fill"></span><button type="button" class="qc-tb qc-chat-pop" title="Open the video on YouTube" disabled>WATCH</button></div>
+                    <div class="qc-chat-list"></div>
+                    <div class="qc-chat-send"><input type="text" class="qc-chat-input" maxlength="200" placeholder="Say something..." spellcheck="true"><button type="button" class="qc-btn is-def qc-chat-go">Send</button></div>`,
+                buttons: []
+            });
+            w.kind = 'chat';
+            const m = w.modal;
+            const list = m.querySelector('.qc-chat-list');
+            const input = m.querySelector('.qc-chat-input');
+            const go = m.querySelector('.qc-chat-go');
+            let since = 0;
+            let watch = '';
+            const row = (x) => {
+                const d = new Date(x.at);
+                const badge = x.owner ? '<i class="qc-cb is-owner">OWNER</i>' : x.mod ? '<i class="qc-cb is-mod">MOD</i>' : x.member ? '<i class="qc-cb is-mem">MEMBER</i>' : '';
+                return `<div class="qc-msg${x.amount ? ' is-paid' : ''}${x.owner ? ' is-own' : ''}"><span class="qc-msg-time">${pad(d.getHours())}:${pad(d.getMinutes())}</span>${x.avatar ? `<img class="qc-msg-av" src="${esc(x.avatar)}" alt="" width="20" height="20" referrerpolicy="no-referrer">` : ''}<span class="qc-msg-body"><b class="qc-msg-name">${esc(x.author)}</b>${badge}${x.amount ? `<i class="qc-cb is-paid">${esc(x.amount)}</i>` : ''} <span class="qc-msg-text">${esc(x.text)}</span></span></div>`;
+            };
+            const pollChat = async () => {
+                if (!m.isConnected || this.app.signal.aborted) return;
+                try {
+                    const r = await this.send('quickcast_chat', { since });
+                    const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+                    if (r.messages.length) {
+                        list.querySelector('.qc-chat-empty')?.remove();
+                        list.insertAdjacentHTML('beforeend', r.messages.map(row).join(''));
+                        while (list.children.length > 300) list.firstElementChild.remove();
+                        if (atEnd || since === 0) list.scrollTop = list.scrollHeight;
+                    } else if (!list.children.length) list.innerHTML = '<div class="qc-chat-empty">No messages yet.</div>';
+                    since = r.seq;
+                    m.querySelector('.qc-chat-state').textContent = r.problem ? r.problem : !r.canRead ? 'Set up YouTube in Settings > Account' : r.broadcast ? r.broadcast.title : 'Live chat';
+                    m.classList.toggle('qc-chat-err', !!r.problem || !r.canRead);
+                    input.disabled = !r.canReply;
+                    go.disabled = !r.canReply;
+                    input.placeholder = r.canReply ? 'Say something...' : 'Sign in to YouTube to reply (Settings > Account)';
+                    watch = r.broadcast ? r.broadcast.watchUrl : (this.st && this.st.watchUrl) || '';
+                    m.querySelector('.qc-chat-pop').disabled = !watch;
+                } catch (err) { m.querySelector('.qc-chat-state').textContent = err.message; }
+                setTimeout(pollChat, 1000);
+            };
+            const sendIt = async () => {
+                const t = input.value.trim();
+                if (!t || go.disabled) return;
+                go.disabled = true;
+                try { await this.send('quickcast_chat_send', { text: t }); input.value = ''; } catch (err) { await this.box(err.message, 'error'); }
+                go.disabled = false;
+                input.focus();
+            };
+            go.addEventListener('click', () => void sendIt());
+            input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); void sendIt(); } });
+            m.querySelector('.qc-chat-pop').addEventListener('click', () => { if (watch) root.open(watch, '_blank', 'noopener'); });
+            void pollChat();
         }
 
         about() {
