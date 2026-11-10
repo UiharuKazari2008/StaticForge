@@ -383,6 +383,12 @@ async function main() {
     await until(() => qc.osd._boxes.get('sat').view && qc.osd._boxes.get('sat').view.strip);
     assert.ok(qc.osd._boxes.get('sat').view.strip, 'STATUS shows after a scene switch');
     assert.strictEqual(qc.osd._boxes.get('sat').view.strip.program, 'Chuni');
+    // the unit's own boot scenes are not takes: no STATUS flash
+    await new Promise((res) => setTimeout(res, 5200));
+    qc.osd._boxes.get('sat').strip = null;
+    emit('CurrentProgramSceneChanged', { sceneName: 'INIT' });
+    await new Promise((res) => setTimeout(res, 400));
+    assert.ok(!qc.osd._boxes.get('sat').strip, 'no STATUS flash on a boot scene');
 
     const lag = qc.osd.bestLag([0, 0, 0, 9, 9, 9, 3, 3, 8, 8, 8, 1, 1, 1, 6, 6], [0, 9, 9, 9, 3, 3, 8, 8, 8, 1, 1, 1, 6, 6, 6, 6], 4);
     assert.ok(Math.abs(lag.lag - 2) < 0.3 && lag.score > 0.9, 'a camera 2 samples behind reads +2');

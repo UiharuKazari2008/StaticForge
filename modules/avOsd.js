@@ -948,19 +948,70 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * Any alarm holds the self-test screen for osd.alarmHoldS seconds (default 10, counting down) before
  * the unit goes to program, so whoever is watching the output sees it.
  */
+/**
+ * Wait until a unit's video is reaching the satellite (up to 90 s):
+ *   cabinet mixer: its NDI output is active and its frame count moves
+ *   satellite: the cabinet feed on its program carries a picture (NDI receive)
+ */
+async function waitVideoUp(b, link) {
+    const until = Date.now() + 90000;
+    let last = -1;
+    while (Date.now() < until && b.post) {
+        try {
+            if (b.kind === 'cabinet') {
+                const outs = ((await link.request('GetOutputList', {}, 3000)).outputs || []).filter((o) => o.outputKind === 'ndi_output');
+                const o = outs.find((x) => x.outputActive);
+                if (o) {
+                    const st = await link.request('GetOutputStatus', { outputName: o.outputName }, 3000);
+                    const f = st.outputTotalFrames || 0;
+                    if (st.outputActive && last >= 0 && f > last) return true;
+                    last = f;
+                }
+            } else {
+                const pgm = (await link.request('GetCurrentProgramScene', {}, 3000)).currentProgramSceneName;
+                const items = (await link.request('GetSceneItemList', { sceneName: pgm }, 3000)).sceneItems || [];
+                const walk = async (list) => {
+                    for (const it of list) {
+                        if (!it.sceneItemEnabled) continue;
+                        if (it.isGroup) { if (await walk((await link.request('GetGroupSceneItemList', { sceneName: it.sourceName }, 3000)).sceneItems || [])) return true; continue; }
+                        if (it.inputKind === 'ndi_source' && (it.sceneItemTransform || {}).sourceWidth > 0) return true;
+                    }
+                    return false;
+                };
+                if (await walk(items)) return true;
+            }
+        } catch (_) { /* coming up */ }
+        await sleep(1000);
+    }
+    return false;
+}
+
 async function powerOn(boxId, opts = {}) {
     const b = boxes.get(boxId) || box(boxId);
     if (b.post) return b.lastPost;
     if (b.kind === 'satellite' && await deps.onAir(b).catch(() => false)) return null; // never over a live broadcast
     const cfg = deps.readConfig().osd || {};
     const holdS = Math.max(0, Math.min(120, Number(cfg.alarmHoldS) || 10));
+    // The boot splash goes up at once and stays until the unit's video is really reaching the satellite
+    // (its NDI is sending, plus BOOT_AFTER_NDI_MS), so the splash is seen downstream. Splash and test card
+    // cover whatever the unit's own boot macros switch underneath (INIT, SysTest, program).
+    const manual = opts.reason === 'manual' || opts.reason === 'retest';
+    const sysScene = '';
     b.post = { phase: 'boot', text: b.kind === 'satellite' ? 'Starting...' : 'SYSTEM START', reason: opts.reason || 'power', items: [], alarms: 0 };
     emit(b);
+    let link;
+    try { ({ link } = await linkOf(b)); } catch (e) { b.post = null; emit(b); return null; }
     try { await placeOverlay(b); } catch (_) { /* unit still coming up */ }
     emit(b);
-    await sleep(3000);
-    let link;
-    try { ({ link } = await linkOf(b)); } catch (e) { b.post = null; return null; }
+    if (manual) await sleep(3000);
+    else {
+        b.post.text = b.kind === 'satellite' ? 'Connecting to downstream device...' : 'STARTING VIDEO OUTPUT';
+        emit(b);
+        await waitVideoUp(b, link);
+        b.post.text = b.kind === 'satellite' ? 'Starting...' : 'SYSTEM START';
+        emit(b);
+        await sleep(BOOT_AFTER_NDI_MS);
+    }
     // boot values from flash: each saved camera's format and proc amp
     const cams = flashFor(b.id);
     if (Object.keys(cams).length) {
@@ -968,6 +1019,7 @@ async function powerOn(boxId, opts = {}) {
         emit(b);
         for (const [name, v] of Object.entries(cams)) { try { await flashApply(link, name, v); } catch (_) { /* a missing camera is the self test's to report */ } }
     }
+    if (!b.post) return null;
     b.post.phase = 'test';
     b.post.text = 'POWER ON SELF TEST';
     emit(b);
@@ -1121,7 +1173,7 @@ function emit(b) {
     }
     // the STATUS box: while INFO is on, or for a few seconds after a scene switch
     if ((b.info || Date.now() < (b.infoFlashUntil || 0)) && b.strip) out.strip = b.strip;
-    if (b.post) out.post = { ...b.post, holdLeft: b.post.holdUntil ? Math.max(0, Math.ceil((b.post.holdUntil - Date.now()) / 1000)) : 0 };
+    if (b.post && !b.post.hidden) out.post = { ...b.post, holdLeft: b.post.holdUntil ? Math.max(0, Math.ceil((b.post.holdUntil - Date.now()) / 1000)) : 0 };
     b.view = out;
     for (const res of b.subs) { try { res.write(`data: ${JSON.stringify(out)}\n\n`); } catch (_) { b.subs.delete(res); } }
     return out;
@@ -1142,6 +1194,8 @@ function toast(b, text, head, sub) { b.toast = text; b.toastHead = head || ''; b
  * the engine's ScreenshotSaved event shows it too (with the file name).
  */
 const SHOT_RE = /screen ?shot|^sysinfo-ss/i;
+const BOOT_AFTER_NDI_MS = 5000;                  // the splash stays this long after the unit's video is up
+const BOOT_SCENE_RE = /^(init|sys ?test|boot)$/i; // a unit's own boot scenes: no STATUS flash on these takes
 const INFO_FLASH_MS = 5000;
 function hookUnit(b, link) {
     if (link._avosdHooked) return;
@@ -1152,6 +1206,7 @@ function hookUnit(b, link) {
             // the STATUS box shows for INFO_FLASH_MS
             void (async () => {
                 await placeOverlay(b).catch(() => {});
+                if (b.post || BOOT_SCENE_RE.test(String(data.sceneName || ''))) return; // the boot sequence, not a take
                 await buildStrip(b);
                 b.infoFlashUntil = Date.now() + INFO_FLASH_MS;
                 emit(b);
