@@ -1,7 +1,10 @@
 // Lightweight client performance sampling persisted through the authenticated WebSocket.
 
 const CLIENT_PERF_SAMPLE_INTERVAL_MS = 60000;
-const CLIENT_PERF_FRAME_WINDOW_MS = 5000;
+// Each rAF in the window forces a full main-thread frame (style + paint) on a page that otherwise
+// animates on the compositor only, so the window itself was load: 1 s (~60 frames) is enough for
+// the average and p95 (Fold7: 5 s windows tripled main-thread time while open).
+const CLIENT_PERF_FRAME_WINDOW_MS = 1000;
 const CLIENT_PERF_TYPING_FLUSH_DELAY_MS = 2000;
 const CLIENT_PERF_QUEUE_LIMIT = 20;
 const CLIENT_PERF_SAMPLE_BUILD_MEASURE = 'staticforge:client-perf-sample-build';
