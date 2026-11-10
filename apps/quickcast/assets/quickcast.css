@@ -552,7 +552,7 @@
 /* 1U rack unit face: ears, logo + model over the dot-matrix display, keys, indicator block */
 .qc-remotewin { min-width: 1010px; }
 .qc-fp-face { flex-direction: row; align-items: center; gap: 14px; height: 128px; padding: 0; background: linear-gradient(#34373d, #24272c 40%, #1b1d21); border-radius: 2px; }
-.qc-fp-face[data-theme="takao"] { background: linear-gradient(#2f2f33, #1a1a1d); border-top: 2px solid #ff00b4; }
+.qc-fp-face[data-theme="takao"] { background: linear-gradient(#2f2f33, #1a1a1d); border-top: 2px solid #0055ff; }
 .qc-fp-face[data-theme="amuvision"] { background: linear-gradient(#25292f, #15181c); border-top: 2px solid #0055ff; }
 .qc-fp-ear { display: flex; flex-direction: column; justify-content: space-around; align-self: stretch; width: 22px; flex: none; background: linear-gradient(90deg, #3b3e44, #2a2c30); box-shadow: inset -1px 0 0 #000; }
 .qc-fp-ear:last-child { box-shadow: inset 1px 0 0 #000; }

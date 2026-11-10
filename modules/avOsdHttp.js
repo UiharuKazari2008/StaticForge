@@ -20,7 +20,7 @@ const PAGE = `<!doctype html>
  *   amuvision  AmuVISION Satellite iSVE-20D: black card, thin / bold wordmark, blue status bar at the foot
  * Sized from the output height (1 u = 1/1080), so 720p and 1080p units draw the same OSD. */
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
-:root { --u: calc(100vh / 1080); --acc: #ff00b4; --acc-ink: #fff; --ok: #3ee07a; --warn: #ffc23a; --bad: #ff4b4b; }
+:root { --u: calc(100vh / 1080); --acc: #0055ff; --acc-ink: #fff; --ok: #3ee07a; --warn: #ffc23a; --bad: #ff4b4b; }
 body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #fff; }
 body.t-amuvision { --acc: #0055ff; }
 #osd { position: absolute; inset: 0; display: none; }
@@ -96,6 +96,8 @@ body.t-takao .m-logo { height: calc(32 * var(--u)); }
 #osd .row .bar2 { background: #22303f; }
 #osd .row.nav .v::after { content: ' \\25B6'; color: #8ea4c2; }
 #osd .row.sel.nav .v::after { color: #0a1220; }
+#osd .row.head { height: calc(30 * var(--u)); padding-top: calc(6 * var(--u)); font-size: calc(17 * var(--u)); color: #8ea4c2; letter-spacing: calc(3 * var(--u)); border-bottom: calc(1 * var(--u)) solid #2a3a54; }
+#osd .row.head.sel { background: none; color: #8ea4c2; }
 .m-hint { min-height: calc(30 * var(--u)); padding: calc(4 * var(--u)) calc(18 * var(--u)) 0; font-size: calc(20 * var(--u)); color: #ffd54a; }
 .m-ft { display: flex; flex-wrap: wrap; gap: calc(4 * var(--u)) calc(24 * var(--u)); padding: calc(10 * var(--u)) calc(18 * var(--u)); border-top: calc(2 * var(--u)) solid #3a4a64; font-size: calc(17 * var(--u)); color: #8ea4c2; }
 .m-ft b { color: #e8eef6; font-weight: normal; }
@@ -153,6 +155,8 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 #gms.ok i { background: #3ee07a; clip-path: circle(50%); }
 #gms b { display: block; font-size: calc(24 * var(--u)); }
 #gms span { display: block; font-size: calc(18 * var(--u)); color: #aaa; }
+/* magenta belongs to the TAKAO system test card only (it is a test card colour), never the menus */
+body.t-takao #card:not(.ph-fault) .bar { background: #ff00b4; }
 #off { position: absolute; right: calc(40 * var(--u)); top: calc(100 * var(--u)); display: none; padding: calc(10 * var(--u)) calc(18 * var(--u)); background: #900; font-size: calc(22 * var(--u)); font-weight: bold; }
 </style></head>
 <body class="t-takao">

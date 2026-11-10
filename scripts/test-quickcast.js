@@ -80,6 +80,9 @@ const items = {
     'Overlay Group': [{ sourceName: 'Cue Monitor', sourceType: 'OBS_SOURCE_TYPE_INPUT', sceneItemEnabled: true }],
     WACCA: [{ sourceName: 'NDI WACCA', sourceType: 'OBS_SOURCE_TYPE_INPUT', sceneItemEnabled: true }]
 };
+// every fake scene item gets its own id (as in OBS)
+let fakeItemId = 1;
+Object.values(items).forEach((list) => list.forEach((it) => { if (it.sceneItemId == null) it.sceneItemId = fakeItemId++; }));
 const audio = {
     'PLAYLAND-GAU-EAST': { muted: false, monitor: 'OBS_MONITORING_TYPE_NONE', tracks: { 6: true } },
     'Waiting Music': { muted: true, monitor: 'OBS_MONITORING_TYPE_NONE', tracks: { 6: true } },
@@ -338,7 +341,19 @@ async function main() {
     st = await qc.status({ cabinet: 'wacca' });
     assert.strictEqual(st.faults.length, 0, 'a cabinet that does not use the dead feed is not locked');
     v = await qc.osd.press('sat', '', 'menu');
-    assert.match(v.page.title, /ALARMS/, 'MENU on a faulted unit opens the ALARMS page');
+    assert.strictEqual(v.page.title, 'MAIN MENU', 'MENU always opens MAIN');
+    assert.match(v.page.rows[0].label, /ALARMS/);
+    assert.match(v.page.rows[0].value, /1 ACTIVE/);
+    v = await qc.osd.press('sat', '', 'ok');
+    assert.strictEqual(v.page.title, 'ALARMS');
+    // bypass the missing input: switched off where it shows, no longer an active alarm; OK again restores
+    v = await qc.osd.press('sat', '', 'ok');
+    const eastItem = items['Chuni'].find((i) => i.sourceName === 'PLAYLAND-GAU-EAST');
+    assert.strictEqual(eastItem.sceneItemEnabled, false, 'a bypassed input is switched off in its scene');
+    assert.strictEqual(qc.osd.faults().length, 0, 'a bypassed input is not an active alarm');
+    v = await qc.osd.press('sat', '', 'ok');
+    assert.strictEqual(eastItem.sceneItemEnabled, true, 'OK again puts it back');
+    assert.strictEqual(qc.osd.faults().length, 1);
     for (let i = 0; i < 6 && !/OVERRIDE/.test((v.page.rows[v.page.cursor - v.page.first] || {}).label || ''); i++) v = await qc.osd.press('sat', '', 'down');
     v = await qc.osd.press('sat', '', 'ok');
     assert.strictEqual(qc.osd.faults()[0].overridden, true, 'a technician override clears the lock');

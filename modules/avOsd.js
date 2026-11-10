@@ -246,7 +246,7 @@ const PAGES = {
         return {
             title: 'MAIN MENU',
             rows: [
-                { id: 'alarms', label: 'ALARMS', kind: 'nav', value: b.fault ? `${b.fault.items.length} ACTIVE${b.fault.overridden ? ' (OVR)' : ''}` : 'NONE', state: b.fault ? (b.fault.overridden ? 'warn' : 'bad') : 'ok', blink: !!(b.fault && !b.fault.overridden) },
+                (() => { const act = b.fault ? b.fault.items.filter((i) => !i.bypass).length : 0; const byp = b.fault ? b.fault.items.length - act : 0; return { id: 'alarms', label: 'ALARMS', kind: 'nav', value: act ? `${act} ACTIVE${b.fault.overridden ? ' (OVR)' : ''}` : byp ? `${byp} BYPASSED` : 'NONE', state: act ? (b.fault.overridden ? 'warn' : 'bad') : byp ? 'warn' : 'ok', blink: !!(act && !b.fault.overridden) }; })(),
                 { id: 'inputs', label: 'INPUT ASSIGNMENT', kind: 'nav', value: '' },
                 { id: 'timing', label: 'TIMING / SYNC', kind: 'nav', value: '' },
                 { id: 'cameras', label: 'CAMERA CONTROL', kind: 'nav', value: '' },
@@ -346,7 +346,12 @@ const PAGES = {
                 ]
             };
         }
-        const rows = f.items.map((x, i) => ({ id: `f:${i}`, label: x.label, type: x.type, kind: 'info', value: x.detail, state: f.overridden ? 'warn' : 'bad', blink: !f.overridden }));
+        // OK on an alarm bypasses the input: it is switched off in every scene that shows it (and back on)
+        const rows = f.items.map((x, i) => ({
+            id: `f:${i}`, label: x.label, type: x.type, kind: 'action',
+            value: x.bypass ? 'BYPASSED' : x.detail, state: x.bypass ? 'warn' : f.overridden ? 'warn' : 'bad', blink: !x.bypass && !f.overridden,
+            hint: x.bypass ? `OK: put ${x.label} back in its ${x.bypass.length} scene${x.bypass.length === 1 ? '' : 's'}` : `OK: bypass ${x.label} (switch it off in the scenes that show it)`
+        }));
         rows.push({ id: 'f:retest', label: 'RE-RUN SELF TEST', kind: 'action', value: '', hint: 'After fixing the source: test again; a clean test clears the fault' });
         rows.push({ id: 'f:override', label: f.overridden ? 'OVERRIDDEN (AIRING WITH FAULT)' : 'OVERRIDE: AIR WITH FAULT', kind: 'action', value: f.overridden ? 'ON' : '', state: f.overridden ? 'warn' : '', hint: 'Technician only: clears the DO NOT AIR lock without fixing the fault' });
         rows.push({ id: 'inputs', label: 'INPUT ASSIGNMENT', kind: 'nav', value: '' });
@@ -381,7 +386,15 @@ const PAGES = {
                 { id: `amp:gamma:${name}`, label: 'GAMMA / EXPOSURE', kind: 'adjust', value: amp.gamma.toFixed(2), bar: pct(amp.gamma, -3, 3), hint: 'Lifts or lowers the mid tones like an exposure trim \u2014 \u25c4\u25ba' },
                 { id: `amp:saturation:${name}`, label: 'SATURATION', kind: 'adjust', value: amp.saturation.toFixed(2), bar: pct(amp.saturation, -1, 3), hint: 'Proc amp \u2014 \u25c4\u25ba' },
                 { id: `amp:hue_shift:${name}`, label: 'HUE', kind: 'adjust', value: `${Math.round(amp.hue_shift)}\u00b0`, bar: pct(amp.hue_shift, -180, 180), hint: 'Proc amp \u2014 \u25c4\u25ba' },
-                { id: `amp:reset:${name}`, label: 'PROC AMP RESET', kind: 'action', value: '', hint: 'OK sets the proc amp back to unity' }
+                { id: `amp:reset:${name}`, label: 'PROC AMP RESET', kind: 'action', value: '', hint: 'OK sets the proc amp back to unity' },
+                (() => {
+                    const saved = flashFor(b.id)[name];
+                    return { id: `csave:${name}`, label: 'SAVE TO FLASH', kind: 'action', value: saved ? `SAVED ${new Date(saved.at).toTimeString().slice(0, 5)}` : 'NOT SAVED', state: saved ? 'ok' : '', hint: 'OK stores this format and proc amp as the boot values (applied at every power on / reset)' };
+                })(),
+                (() => {
+                    const saved = flashFor(b.id)[name];
+                    return { id: `cboot:${name}`, label: 'BOOT VALUES', kind: 'action', value: saved ? [saved.resolution, saved.fpsText].filter(Boolean).join(' ') || 'PROC AMP' : '-', hint: saved ? 'OK loads the boot values now (CLEAR with \u25c4)' : 'Nothing stored yet' };
+                })()
             ],
             hint: 'Format on the camera; proc amp in the mixer'
         };
@@ -432,18 +445,81 @@ const PAGES = {
         return { title: 'VIDEO CLOCK', rows };
     },
 
-    async diag(b) {
+    /** DIAGNOSTICS: read live from the unit (clock, frame times, drops, load), then the pipeline stages. */
+    async diag(b, link) {
+        const [st, v] = await Promise.all([link.request('GetStats'), link.request('GetVideoSettings')]);
+        const fps = v.fpsDenominator ? v.fpsNumerator / v.fpsDenominator : 0;
+        const budget = fps ? 1000 / fps : 0;
+        const now = Date.now();
+        let stream = null;
+        if (b.kind === 'satellite') { try { stream = await link.request('GetStreamStatus'); } catch (_) { stream = null; } }
+        // deltas against the previous read of this page (every ~2 s while it is shown)
+        const cur = { at: now, rs: st.renderSkippedFrames || 0, rt: st.renderTotalFrames || 0, os: st.outputSkippedFrames || 0, ot: st.outputTotalFrames || 0, ns: stream ? stream.outputSkippedFrames || 0 : 0, nt: stream ? stream.outputTotalFrames || 0 : 0, nb: stream ? stream.outputBytes || 0 : 0 };
+        const prev = b.diagPrev && now - b.diagPrev.at < 15000 && cur.rt >= b.diagPrev.rt ? b.diagPrev : null;
+        b.diagPrev = cur;
+        const pct = (a, t) => (t > 0 ? Math.round((a / t) * 1000) / 10 : 0);
+        const recent = (k1, k2) => (prev ? pct(cur[k1] - prev[k1], cur[k2] - prev[k2]) : null);
+        const lvl = (p) => (p == null ? '' : p >= 2 ? 'bad' : p >= 0.5 ? 'warn' : 'ok');
+        const bar = (frac, state) => ({ from: 0, width: Math.max(1, Math.min(100, frac * 100)), color: state === 'bad' ? '#ff4b4b' : state === 'warn' ? '#ffc23a' : '#3ee07a' });
+        const head = (label) => ({ id: `h:${label}`, label, kind: 'head', value: '' });
         const rows = [];
-        const all = deps.readConfig().cabinets.map((c) => c.id);
-        let pick = null;
-        for (const cab of all) {
-            const d = deps.diag.lastFor(cab);
-            if (!d) continue;
-            if (b.kind === 'satellite') { pick = d.output; break; }
-            if (d.input && d.input.source === b.machine) { pick = d.input; break; }
+        // CLOCK
+        rows.push(head('CLOCK'));
+        rows.push({ id: 'dg:target', label: 'TARGET', kind: 'info', value: `${v.outputWidth}x${v.outputHeight} ${fps ? fps.toFixed(2) : '-'} FPS` });
+        const act = round1(st.activeFps || 0);
+        const clkSt = fps && act < fps * 0.97 ? 'bad' : 'ok';
+        rows.push({ id: 'dg:run', label: 'RUNNING', kind: 'info', value: `${act} FPS`, state: clkSt, blink: clkSt === 'bad', bar: bar(fps ? act / fps : 0, clkSt) });
+        const pick = (() => {
+            for (const cab of deps.readConfig().cabinets.map((c) => c.id)) {
+                const d = deps.diag.lastFor(cab);
+                if (!d) continue;
+                if (b.kind === 'satellite') return d.output;
+                if (d.input && d.input.source === b.machine) return d.input;
+            }
+            return null;
+        })();
+        const stage = (id) => pick && (pick.stages || []).find((x) => x.id === id);
+        const lock = stage(b.kind === 'satellite' ? 'rx' : 'lock');
+        if (lock) rows.push({ id: 'dg:lock', label: b.kind === 'satellite' ? 'NDI INPUT' : 'LOCK TO SATELLITE', kind: 'info', value: lock.value, state: lock.state === 'ok' ? 'ok' : lock.state === 'bad' ? 'bad' : lock.state === 'warn' ? 'warn' : '', blink: lock.blink });
+        // FRAME TIMES & DROPS
+        rows.push(head('FRAME TIMES & DROPS'));
+        const ft = round1(st.averageFrameRenderTime || 0);
+        const ftSt = budget && ft > budget * 0.95 ? 'bad' : budget && ft > budget * 0.8 ? 'warn' : 'ok';
+        rows.push({ id: 'dg:ft', label: 'FRAME TIME', kind: 'info', value: `${ft} / ${round1(budget)} MS`, state: ftSt, bar: bar(budget ? ft / budget : 0, ftSt) });
+        const rr = recent('rs', 'rt');
+        rows.push({ id: 'dg:rd', label: 'RENDER DROPS', kind: 'info', value: `${cur.rs} (${pct(cur.rs, cur.rt)}%)${rr != null ? ` NOW ${rr}%` : ''}`, state: lvl(rr != null ? rr : pct(cur.rs, cur.rt)), blink: (rr || 0) >= 2 });
+        const er = recent('os', 'ot');
+        rows.push({ id: 'dg:ed', label: 'ENCODE DROPS', kind: 'info', value: `${cur.os} (${pct(cur.os, cur.ot)}%)${er != null ? ` NOW ${er}%` : ''}`, state: lvl(er != null ? er : pct(cur.os, cur.ot)), blink: (er || 0) >= 2 });
+        if (stream && stream.outputActive) {
+            const nr = recent('ns', 'nt');
+            rows.push({ id: 'dg:nd', label: 'NETWORK DROPS', kind: 'info', value: `${cur.ns} (${pct(cur.ns, cur.nt)}%)${nr != null ? ` NOW ${nr}%` : ''}`, state: lvl(nr != null ? nr : pct(cur.ns, cur.nt)), blink: (nr || 0) >= 2 });
         }
-        for (const s of (pick && pick.stages) || []) rows.push({ id: `d:${s.id}`, label: s.label, kind: 'info', value: s.value, state: s.state === 'ok' ? 'ok' : s.state === 'bad' ? 'bad' : s.state === 'warn' ? 'warn' : '', blink: s.blink, detail: String(s.detail || '').split('\n')[0] });
-        return { title: 'DIAGNOSTICS', rows: rows.length ? rows : [{ id: 'none', label: 'No readings yet (open QuickCast with this box\'s cabinet)', kind: 'info', value: '' }] };
+        // ENCODER / LOAD
+        rows.push(head('ENCODER / LOAD'));
+        const cpu = round1(st.cpuUsage || 0);
+        const cpuSt = cpu > 85 ? 'bad' : cpu > 60 ? 'warn' : 'ok';
+        rows.push({ id: 'dg:cpu', label: 'CPU LOAD', kind: 'info', value: `${cpu}%`, state: cpuSt, bar: bar(cpu / 100, cpuSt) });
+        rows.push({ id: 'dg:lag', label: 'ENCODER LAG', kind: 'info', value: `${er != null ? er : pct(cur.os, cur.ot)}%`, state: lvl(er != null ? er : pct(cur.os, cur.ot)) });
+        if (b.kind === 'satellite') {
+            if (stream && stream.outputActive) {
+                const kbps = prev && cur.nb >= prev.nb ? Math.round(((cur.nb - prev.nb) * 8) / (now - prev.at)) : null;
+                rows.push({ id: 'dg:kbps', label: 'UPLINK BITRATE', kind: 'info', value: kbps == null ? '...' : `${kbps.toLocaleString('en-US')} KB/S` });
+                const cg = Math.round((stream.outputCongestion || 0) * 100);
+                rows.push({ id: 'dg:cong', label: 'CONGESTION', kind: 'info', value: `${cg}%`, state: cg > 60 ? 'bad' : cg > 25 ? 'warn' : 'ok', bar: bar(cg / 100, cg > 60 ? 'bad' : cg > 25 ? 'warn' : 'ok') });
+            } else rows.push({ id: 'dg:air', label: 'UPLINK', kind: 'info', value: 'OFF AIR' });
+        } else {
+            const ndi = stage('ndiout');
+            if (ndi) rows.push({ id: 'dg:ndi', label: 'NDI OUTPUT', kind: 'info', value: ndi.value, state: ndi.state === 'ok' ? 'ok' : ndi.state === 'bad' ? 'bad' : ndi.state === 'warn' ? 'warn' : '', blink: ndi.blink });
+            const ln = stage('link');
+            if (ln) rows.push({ id: 'dg:link', label: 'GMS LINK', kind: 'info', value: ln.value, state: ln.state === 'ok' ? 'ok' : ln.state === 'bad' ? 'bad' : ln.state === 'warn' ? 'warn' : '' });
+        }
+        rows.push({ id: 'dg:mem', label: 'MEMORY', kind: 'info', value: `${Math.round(st.memoryUsage || 0)} MB` });
+        // PIPELINE
+        if (pick && pick.stages && pick.stages.length) {
+            rows.push(head('PIPELINE'));
+            for (const x of pick.stages) rows.push({ id: `d:${x.id}`, label: x.label, kind: 'info', value: x.value, state: x.state === 'ok' ? 'ok' : x.state === 'bad' ? 'bad' : x.state === 'warn' ? 'warn' : '', blink: x.blink });
+        }
+        return { title: 'DIAGNOSTICS', rows, hint: 'Drops: total since the engine started, NOW = the last 2 s' };
     },
 
     async system(b, link, frame, target) {
@@ -496,6 +572,55 @@ async function listOpts(link, inputName, prop) {
         const r = await link.request('GetInputPropertiesListPropertyItems', { inputName, propertyName: prop });
         return (r.propertyItems || []).filter((o) => o.itemEnabled !== false).map((o) => ({ value: o.itemValue, text: String(o.itemName || o.itemValue) }));
     } catch (_) { return []; }
+}
+
+/** Switch an input off wherever it is on (scenes and groups); returns where, for putting it back. */
+async function bypassInput(link, inputName) {
+    const done = [];
+    const scenes = ((await link.request('GetSceneList')).scenes || []).map((x) => x.sceneName).filter((n) => n !== OVERLAY_SCENE);
+    const visit = async (name, group) => {
+        const items = (await link.request(group ? 'GetGroupSceneItemList' : 'GetSceneItemList', { sceneName: name }).catch(() => ({}))).sceneItems || [];
+        for (const it of items) {
+            if (it.isGroup) { await visit(it.sourceName, true); continue; }
+            if (it.sourceName === inputName && it.sceneItemEnabled) {
+                await link.request('SetSceneItemEnabled', { sceneName: name, sceneItemId: it.sceneItemId, sceneItemEnabled: false });
+                done.push({ scene: name, id: it.sceneItemId });
+            }
+        }
+    };
+    for (const n of scenes) await visit(n, false);
+    return done;
+}
+
+// ------------------------------------------------------------------ camera flash (boot values)
+
+function flashFile() { return path.join(deps.dataDir, 'camera-flash.json'); }
+function flashAll() { try { return JSON.parse(fs.readFileSync(flashFile(), 'utf8')) || {}; } catch (_) { return {}; } }
+function flashFor(boxId) { return flashAll()[boxId] || {}; }
+function flashWrite(boxId, cams) {
+    const all = flashAll();
+    if (Object.keys(cams).length) all[boxId] = cams; else delete all[boxId];
+    fs.mkdirSync(deps.dataDir, { recursive: true });
+    fs.writeFileSync(flashFile(), JSON.stringify(all, null, 2));
+}
+
+/** Store a camera's current format and proc amp as its boot values. */
+async function flashSave(b, link, inputName) {
+    const set = (await link.request('GetInputSettings', { inputName })).inputSettings || {};
+    const amp = await procAmp(link, inputName);
+    const rates = await listOpts(link, inputName, 'frame_interval');
+    const fr = rates.find((o) => String(o.value) === String(set.frame_interval));
+    const cams = flashFor(b.id);
+    cams[inputName] = { at: Date.now(), res_type: set.res_type, resolution: set.resolution || '', frame_interval: set.frame_interval, fpsText: fr ? fr.text : '', amp };
+    flashWrite(b.id, cams);
+}
+
+/** Apply a camera's boot values (format on the device, proc amp in the mixer). */
+async function flashApply(link, inputName, v) {
+    const format = {};
+    if (Number(v.res_type) === 1) { format.res_type = 1; if (v.resolution) format.resolution = v.resolution; if (v.frame_interval != null) format.frame_interval = v.frame_interval; }
+    if (Object.keys(format).length) await link.request('SetInputSettings', { inputName, inputSettings: format, overlay: true });
+    if (v.amp) await setProcAmp(link, inputName, v.amp);
 }
 
 async function delayOf(link, inputName) {
@@ -763,6 +888,13 @@ async function powerOn(boxId, opts = {}) {
     await sleep(3000);
     let link;
     try { ({ link } = await linkOf(b)); } catch (e) { b.post = null; return null; }
+    // boot values from flash: each saved camera's format and proc amp
+    const cams = flashFor(b.id);
+    if (Object.keys(cams).length) {
+        b.post.text = 'LOADING CAMERA SETTINGS';
+        emit(b);
+        for (const [name, v] of Object.entries(cams)) { try { await flashApply(link, name, v); } catch (_) { /* a missing camera is the self test's to report */ } }
+    }
     b.post.phase = 'test';
     b.post.text = 'POWER ON SELF TEST';
     emit(b);
@@ -908,6 +1040,7 @@ function emit(b) {
         else {
             const rows = page.rows || [];
             f.cursor = Math.max(0, Math.min(f.cursor || 0, rows.length - 1));
+            while (rows[f.cursor] && rows[f.cursor].kind === 'head' && f.cursor < rows.length - 1) f.cursor++; // never rest on a heading
             const first = Math.max(0, Math.min(f.cursor - Math.floor(PAGE_ROWS / 2), rows.length - PAGE_ROWS));
             out.page = { id: f.page, title: page.title, crumbs: b.stack.map((x) => x.page), hint: (rows[f.cursor] && rows[f.cursor].hint) || page.hint || '', cursor: f.cursor, first, total: rows.length, rows: rows.slice(first, first + PAGE_ROWS) };
             if (f.error) out.page.error = f.error;
@@ -932,7 +1065,7 @@ function toast(b, text) { b.toast = text; b.toastAt = Date.now(); }
 async function onKey(b, key) {
     const { link } = await linkOf(b);
     if (key === 'menu') {
-        if (b.open) { b.open = false; b.stack = []; b.pending.clear(); } else { b.open = true; b.stack = b.fault && !b.fault.overridden ? [{ page: 'main', cursor: 0 }, { page: 'alarms', cursor: 0, title: 'ALARMS' }] : [{ page: 'main', cursor: 0 }]; }
+        if (b.open) { b.open = false; b.stack = []; b.pending.clear(); } else { b.open = true; b.stack = [{ page: 'main', cursor: 0 }]; /* always MAIN: ALARMS is its first item */ }
         return;
     }
     if (key === 'info') { b.info = !b.info; return; }
@@ -969,6 +1102,20 @@ async function onKey(b, key) {
         await setProcAmp(link, inputName, amp);
         return;
     }
+    if (row.id.startsWith('csave:') && key === 'ok') {
+        const inputName = row.id.slice(6);
+        await flashSave(b, link, inputName);
+        toast(b, `${inputName}: saved to flash (boot values)`);
+        return;
+    }
+    if (row.id.startsWith('cboot:')) {
+        const inputName = row.id.slice(6);
+        const cams = flashFor(b.id);
+        if (!cams[inputName]) return;
+        if (key === 'left') { delete cams[inputName]; flashWrite(b.id, cams); toast(b, `${inputName}: boot values cleared`); return; }
+        if (key === 'ok') { await flashApply(link, inputName, cams[inputName]); toast(b, `${inputName}: boot values loaded`); }
+        return;
+    }
     if (row.id.startsWith('cres:') || row.id.startsWith('cfps:')) {
         const isRes = row.id.startsWith('cres:');
         const inputName = row.id.slice(5);
@@ -987,6 +1134,20 @@ async function onKey(b, key) {
             await link.request('SetInputSettings', { inputName, inputSettings: { res_type: 1, [prop]: v }, overlay: true });
             toast(b, `${inputName}: ${isRes ? v : (opts.find((o) => String(o.value) === String(v)) || {}).text || v}`);
         }
+        return;
+    }
+    if (/^f:\d+$/.test(row.id) && key === 'ok' && b.fault) {
+        const it = b.fault.items[Number(row.id.slice(2))];
+        if (!it) return;
+        if (it.bypass) {
+            for (const x of it.bypass) await link.request('SetSceneItemEnabled', { sceneName: x.scene, sceneItemId: x.id, sceneItemEnabled: true }).catch(() => {});
+            toast(b, `${it.label}: back in ${it.bypass.length} scene${it.bypass.length === 1 ? '' : 's'}`);
+            delete it.bypass;
+        } else {
+            it.bypass = await bypassInput(link, it.label);
+            toast(b, it.bypass.length ? `${it.label}: bypassed in ${it.bypass.length} scene${it.bypass.length === 1 ? '' : 's'}` : `${it.label}: not on any scene`);
+        }
+        saveFault(b);
         return;
     }
     if (row.id === 'f:retest' && key === 'ok') { b.open = false; b.stack = []; void powerOn(b.id, { reason: 'retest' }); return; }
@@ -1121,7 +1282,10 @@ async function drain(b) {
             const f = b.open ? frame(b) : null;
             if (NAV_ONLY.has(key) && f && f.cache) {
                 const n = Math.max(1, (f.rows || []).length);
-                f.cursor = key === 'up' ? (f.cursor + n - 1) % n : (f.cursor + 1) % n;
+                for (let i = 0; i < n; i++) {
+                    f.cursor = key === 'up' ? (f.cursor + n - 1) % n : (f.cursor + 1) % n;
+                    if (!f.rows[f.cursor] || f.rows[f.cursor].kind !== 'head') break; // section headings are not selectable
+                }
                 resolve(emit(b));
                 continue;
             }
@@ -1191,7 +1355,11 @@ setInterval(() => {
 function faults() {
     const out = [];
     for (const id of Object.keys(loadFaults())) if (validId(id)) box(id);
-    for (const b of boxes.values()) if (b.fault) out.push({ unit: boxName(b), box: b.id, kind: b.kind, machine: b.machine, at: b.fault.at, items: b.fault.items, overridden: !!b.fault.overridden });
+    for (const b of boxes.values()) {
+        if (!b.fault) continue;
+        const items = b.fault.items.filter((i) => !i.bypass); // a bypassed input is not an active alarm
+        if (items.length) out.push({ unit: boxName(b), box: b.id, kind: b.kind, machine: b.machine, at: b.fault.at, items, overridden: !!b.fault.overridden });
+    }
     return out;
 }
 
