@@ -622,3 +622,10 @@ canvas.qc-fp-dm { display: block; width: 360px; height: 81px; padding: 4px 6px; 
 .qc-fp-face.is-test-red .qc-led i { background: #ff2a2a !important; box-shadow: 0 0 6px #ff2a2a !important; }
 .qc-fp-face.is-test-green .qc-led i { background: #3bff6e !important; box-shadow: 0 0 6px #3bff6e !important; }
 .qc-fp-face.is-test-amber .qc-led i { background: #ffb020 !important; box-shadow: 0 0 6px #ffb020 !important; }
+
+/* maker mark and model as separate elements, like a real front panel badge */
+.qc-fp-badge { display: flex; align-items: flex-end; gap: 12px; min-height: 26px; }
+.qc-fp-logo { height: 22px; }
+.qc-fp-face[data-theme="amuvision"] .qc-fp-logo { height: 20px; }
+.qc-fp-model { color: #e8eaee; font: bold 13px Arial, Helvetica, sans-serif; letter-spacing: .5px; }
+.qc-fp-type { margin-left: auto; color: var(--qc-dim); font: bold 8px Arial, sans-serif; letter-spacing: 1.5px; text-transform: uppercase; }

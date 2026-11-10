@@ -82,8 +82,9 @@ body.t-amuvision .foot { display: none; }
 #osd.on { display: block; }
 .m-box { position: absolute; left: calc(110 * var(--u)); top: calc(110 * var(--u)); width: calc(940 * var(--u)); background: rgba(4, 8, 16, .9); border: calc(3 * var(--u)) solid #c9d3df; box-shadow: 0 0 0 calc(3 * var(--u)) #000, calc(10 * var(--u)) calc(10 * var(--u)) 0 rgba(0,0,0,.45); font-family: 'Lucida Console', 'Consolas', 'Courier New', monospace; -webkit-font-smoothing: none; }
 .m-hd { display: flex; align-items: center; gap: calc(16 * var(--u)); height: calc(58 * var(--u)); padding: 0 calc(18 * var(--u)); background: var(--acc); border-bottom: calc(3 * var(--u)) solid #c9d3df; }
-.m-logo { height: calc(34 * var(--u)); width: auto; image-rendering: pixelated; }
-body.t-takao .m-logo { height: calc(44 * var(--u)); }
+.m-logo { height: calc(30 * var(--u)); width: auto; }
+body.t-takao .m-logo { height: calc(32 * var(--u)); }
+.m-model { font-size: calc(24 * var(--u)); font-weight: bold; color: #fff; font-family: Arial, Helvetica, sans-serif; }
 .m-unit { margin-left: auto; font-size: calc(22 * var(--u)); color: #fff; letter-spacing: calc(2 * var(--u)); text-shadow: calc(2 * var(--u)) calc(2 * var(--u)) 0 rgba(0,0,0,.5); }
 .m-ttl { display: flex; align-items: baseline; justify-content: space-between; height: calc(52 * var(--u)); padding: 0 calc(18 * var(--u)); border-bottom: calc(2 * var(--u)) solid #3a4a64; font-size: calc(30 * var(--u)); letter-spacing: calc(3 * var(--u)); line-height: calc(52 * var(--u)); }
 .m-ttl small { font-size: calc(17 * var(--u)); color: #8ea4c2; letter-spacing: 0; }
@@ -104,8 +105,9 @@ body.t-takao .m-logo { height: calc(44 * var(--u)); }
 #card { position: absolute; inset: 0; display: none; background: #000; }
 #card.on { display: block; }
 #card .bar b { text-transform: uppercase; }
-#card .clogo { display: block; width: calc(460 * var(--u)); height: auto; }
+#card .clogo { display: block; width: calc(404 * var(--u)); height: auto; }
 body.t-amuvision #card .clogo { width: calc(562 * var(--u)); }
+body.t-amuvision #card .sub { width: calc(562 * var(--u)); justify-content: flex-end; }
 #card .press { position: absolute; left: calc(96 * var(--u)); top: calc(790 * var(--u)); font-size: calc(24 * var(--u)); font-weight: bold; }
 #card .fmt { position: absolute; left: calc(96 * var(--u)); top: calc(830 * var(--u)); font-size: calc(20 * var(--u)); color: #9a9a9a; }
 #card .tiles { position: absolute; left: calc(1088 * var(--u)); top: calc(118 * var(--u)); display: grid; grid-template-columns: repeat(2, calc(386 * var(--u))); grid-auto-rows: calc(218 * var(--u)); gap: calc(18 * var(--u)) calc(18 * var(--u)); }
@@ -155,14 +157,14 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 </style></head>
 <body class="t-takao">
 <div id="osd"><div class="m-box">
-<div class="m-hd"><img class="m-logo" id="mlogo" alt=""><span class="m-unit" id="unit"></span></div>
+<div class="m-hd"><img class="m-logo" id="mlogo" alt=""><span class="m-model" id="mmodel"></span><span class="m-unit" id="unit"></span></div>
 <div class="m-ttl"><span id="title"></span><small id="crumbs"></small></div>
 <div class="m-rows" id="rows"></div>
 <div class="m-hint" id="hint"></div>
 <div class="m-ft"><span><b>&#9650;&#9660;</b> SELECT</span><span><b>&#9668;&#9658;</b> ADJUST</span><span><b>OK</b> ENTER</span><span><b>EXIT</b> BACK</span><span><b>DIAG</b> DIAG</span><span><b>INFO</b> STATUS</span></div>
 </div></div>
 <div id="card"><div class="bar"><i></i><i></i><b id="cstat"></b></div>
-<div class="brand"><img class="clogo" id="clogo" alt=""></div>
+<div class="brand"><img class="clogo" id="clogo" alt=""><div class="sub"><span id="ctype"></span><span id="cmodel"></span></div></div>
 <div class="press" id="cpress">Press and hold &ldquo;DIAG&rdquo; button to modify settings</div><div class="fmt" id="cfmt"></div>
 <div class="tiles" id="tiles"></div><div class="ver"><em>Amusement<b>VISION</b></em><br><span id="cver"></span></div></div>
 <div id="strip"></div><div id="toast"></div><div id="off"></div>
@@ -178,6 +180,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
     var art = '/av-osd-art/' + (bx.theme === 'amuvision' ? 'amuvision' : 'takao') + '.png';
     if ($('mlogo').getAttribute('src') !== art) $('mlogo').setAttribute('src', art);
     $('unit').textContent = bx.name || '';
+    $('mmodel').textContent = bx.model || '';
     var p = v.page;
     var show = !!(v.open && p);
     $('osd').className = show ? 'on' + (show && !wasOpen ? ' drawin' : '') : '';
@@ -234,6 +237,8 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
     }
     var cart = '/av-osd-art/' + (u.theme === 'amuvision' ? 'amuvision' : 'takao') + '.png';
     if ($('clogo').getAttribute('src') !== cart) $('clogo').setAttribute('src', cart);
+    $('ctype').textContent = u.theme === 'amuvision' ? (u.type || '') + ' // ' + (u.model || '') : (u.type || '');
+    $('cmodel').textContent = u.theme === 'amuvision' ? '' : (u.model || '');
     $('cstat').textContent = c.error ? c.error : (c.status || '');
     $('cfmt').textContent = c.format ? (u.name || '') + '  -  OUTPUT ' + c.format : (u.name || '');
     $('cver').textContent = ['SW: ' + (u.sw || '-'), 'HW: ' + (u.hw || '-'), 'AMV: ' + (u.fw || '-')].join(' - ');

@@ -1229,7 +1229,7 @@
                     <div class="qc-fp-face">
                         <span class="qc-fp-ear"><i></i><i></i></span>
                         <div class="qc-fp-disp">
-                            <div class="qc-fp-badge"><img class="qc-fp-logo" alt=""><span class="qc-fp-maker" hidden></span><span class="qc-fp-model" hidden></span></div>
+                            <div class="qc-fp-badge"><img class="qc-fp-logo" alt=""><span class="qc-fp-model"></span><span class="qc-fp-type"></span></div>
                             <canvas class="qc-fp-dm" width="360" height="81"></canvas>
                         </div>
                         <div class="qc-fp-ctl">
@@ -1257,7 +1257,9 @@
                     const logo = m.querySelector('.qc-fp-logo');
                     const art = `${A}/unit-${v.box.theme === 'amuvision' ? 'amuvision' : 'takao'}.png`;
                     if (logo.getAttribute('src') !== art) logo.setAttribute('src', art);
-                    logo.alt = [v.box.maker, v.box.line, v.box.model].filter(Boolean).join(' ');
+                    logo.alt = [v.box.maker, v.box.line].filter(Boolean).join(' ');
+                    m.querySelector('.qc-fp-model').textContent = v.box.model || '';
+                    m.querySelector('.qc-fp-type').textContent = v.box.type || '';
                     m.querySelector('.qc-fp-face').dataset.theme = v.box.theme || '';
                 }
                 if (resetting) return; // the panel is running its reset / lamp test
@@ -1276,7 +1278,7 @@
                 const mix = (row.stages || []).find((x) => x.id === (target === 'sat' ? 'render' : 'mixer'));
                 const pgm = target === 'sat' ? st.program : row.program;
                 const onAir = target === 'sat' && st.stream && st.stream.active;
-                dm(`${unit}${onAir ? ' ON AIR' : ''}`, pgm ? `PGM ${pgm}` : (v && v.info ? 'STATUS STRIP ON' : 'READY'), [clk && clk.value, mix && mix.value.replace(/\s*\u00b7\s*/, ' ')].filter(Boolean).join(' '));
+                dm(`${unit}${onAir ? ' ON AIR' : ''}`, pgm ? `PGM ${pgm}` : (v && v.info ? 'STATUS STRIP ON' : 'READY'), [clk && clk.value, mix && mix.value.replace(/\s*fps\s*\u00b7\s*/i, 'FPS ').replace(/\s*ms$/i, 'MS')].filter(Boolean).join(' '));
             };
             // POWER / ALARM leds from the window's status: power = control link to the unit; alarm = a latched
             // self-test fault (blinks), or a failing pipeline stage on that unit (steady)
