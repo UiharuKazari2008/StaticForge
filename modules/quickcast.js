@@ -32,6 +32,7 @@ const path = require('path');
 const { execFile } = require('child_process');
 const WebSocket = require('ws');
 const yt = require('./quickcastYoutube');
+const xlink = require('./xlink');
 
 const DATA_DIR = process.env.QUICKCAST_DATA_DIR || path.join(__dirname, '..', '.cache', 'packages', '.data', 'quickcast');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
@@ -45,7 +46,7 @@ const DEFAULTS = {
         { id: 'chuni', name: 'Chunithm', scene: 'Chuni', icon: 'chuni', short: 'CHU' },
         { id: 'wacca', name: 'WACCA', scene: 'WACCA', icon: 'wacca', short: 'WAC' },
         { id: 'nost', name: 'Nostalgia', scene: 'Nosta', icon: 'nost', short: 'NOS' },
-        { id: 'h2h', name: 'Chunithm H2H', scene: 'Chuni H2H', icon: 'h2h', short: 'H2H' }
+        { id: 'h2h', name: 'Chunithm H2H', scene: 'Chuni H2H', icon: 'h2h', short: 'H2H', xlink: 'chuni' }
     ],
     launch: { ssh: 'ruiko', task: '\\AmusementVISION\\QuickCast OBS' }
 };
@@ -78,7 +79,7 @@ function readConfig() {
         youtube: { ...DEFAULTS.youtube, ...(raw.youtube || {}) },
         cabinets: (Array.isArray(raw.cabinets) && raw.cabinets.length ? raw.cabinets : DEFAULTS.cabinets)
             .filter((c) => c && c.id && c.scene)
-            .map((c) => ({ id: String(c.id), name: String(c.name || c.id), scene: String(c.scene), icon: String(c.icon || c.id), short: String(c.short || c.name || c.id).slice(0, 3).toUpperCase() })),
+            .map((c) => ({ id: String(c.id), name: String(c.name || c.id), scene: String(c.scene), icon: String(c.icon || c.id), short: String(c.short || c.name || c.id).slice(0, 3).toUpperCase(), xlink: c.xlink === false ? '' : String(c.xlink || c.id) })),
         launch: { ...DEFAULTS.launch, ...(raw.launch || {}) }
     };
     configCache = st ? { mtimeMs: st.mtimeMs, data, raw } : null;
@@ -451,6 +452,7 @@ async function status() {
             if (!lastBytes || now - lastBytes.at > 1500) lastBytes = { bytes: stream.outputBytes, at: now, kbps };
             else kbps = lastBytes.kbps || kbps;
         } else lastBytes = null;
+        base.youtube.live = yt.viewers(!!stream.outputActive);
         base.stream = {
             active: !!stream.outputActive,
             reconnecting: !!stream.outputReconnecting,
@@ -693,6 +695,61 @@ $j['max_bitrate'] = ${rc === 'VBR' ? Math.round(bitrate * 1.5) : bitrate}
     });
 }
 
+// ------------------------------------------------------------------ XLink cabinet controls
+
+// Only these XLink items are reachable from QuickCast (matched by their menu.json text)
+const XL_VIDEO = /vision\s*control/i;
+const XL_POWER = /^power\s*switch$/i;
+const XL_GAME = /^game\s*select$/i;
+const XL_RESET = /reset\s*encoder/i;
+
+function findItem(items, re) {
+    const i = (items || []).findIndex((it) => re.test(it.text || ''));
+    return i < 0 ? null : { i, it: items[i] };
+}
+
+/** The cabinet's video / encoder, power and game controls from its XLink device (menu.json). */
+async function cabinetControls(cabinetId, force) {
+    const c = cabinetOf(cabinetId);
+    if (!c.xlink) return { cabinet: c.id, available: false };
+    let snap;
+    try { snap = await xlink.device(c.xlink, { force: !!force }); } catch (e) {
+        if (e.code === 'XLINK_NO_DEVICE' || e.code === 'XLINK_NO_MENU') return { cabinet: c.id, available: false };
+        throw e;
+    }
+    const v = findItem(snap.items, XL_VIDEO);
+    const p = findItem(snap.items, XL_POWER);
+    const g = findItem(snap.items, XL_GAME);
+    const reset = v ? findItem(v.it.children, XL_RESET) : null;
+    const st = (x) => (x && x.status ? { text: x.status.text, color: x.status.color, failed: !!x.status.failed } : null);
+    const row = (t) => (t || []).map((b, n) => ({ n, label: /^auto$/i.test(b.label) ? 'GAME' : b.label, active: !!b.active, bg: b.bg || '', color: b.color || '' }));
+    return {
+        cabinet: c.id,
+        available: true,
+        device: { key: snap.key, name: snap.name, status: st(snap) },
+        video: v && v.it.toggle ? { path: [v.i], buttons: row(v.it.toggle), status: st(v.it), resetPath: reset ? [v.i, reset.i] : null } : null,
+        power: p && p.it.toggle ? { path: [p.i], buttons: row(p.it.toggle), status: st(p.it), warning: p.it.warning } : null,
+        game: g ? { path: [g.i], status: st(g.it), warning: g.it.warning, options: (g.it.children || []).map((ch, j) => ({ path: [g.i, j], text: ch.text })).filter((o) => o.text) } : null,
+        polledAt: snap.polledAt
+    };
+}
+
+/** Press one of those controls. XLink's own warnings come back as { confirm } until confirmed. */
+async function cabinetAction(req) {
+    const c = cabinetOf(String(req.cabinet || ''));
+    if (!c.xlink) throw fail('This cabinet has no XLink device', 'QUICKCAST_NO_XLINK');
+    const pth = Array.isArray(req.path) ? req.path.map(Number) : [];
+    const snap = await xlink.device(c.xlink, {});
+    const top = snap.items[pth[0]];
+    const ok = top && (
+        (pth.length === 1 && req.op === 'toggle' && (XL_VIDEO.test(top.text) || XL_POWER.test(top.text)))
+        || (pth.length === 2 && req.op === 'send' && ((XL_VIDEO.test(top.text) && top.children[pth[1]] && XL_RESET.test(top.children[pth[1]].text)) || XL_GAME.test(top.text))));
+    if (!ok) throw fail('QuickCast can only use the video, encoder, power and game controls', 'QUICKCAST_XLINK_DENIED');
+    const r = await xlink.action({ device: c.xlink, path: pth, op: req.op, value: req.value, confirmed: !!req.confirmed });
+    if (r.confirm) return { confirm: r.confirm };
+    return { ok: r.ok, failure: r.failure, controls: await cabinetControls(c.id) };
+}
+
 /** Start OBS on Ruiko without picking a cabinet. */
 async function launch() {
     touch();
@@ -727,4 +784,4 @@ function info() {
     return { host: cfg.obs.host, port: cfg.obs.port, profile: cfg.profile, collection: cfg.collection, server: cfg.youtube.server, launchTask: cfg.launch.task };
 }
 
-module.exports = { status, preview, prepare, goLive, stop, launch, setKey, info, getEncoder, setEncoder, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };
+module.exports = { status, preview, prepare, goLive, stop, launch, setKey, info, getEncoder, setEncoder, cabinetControls, cabinetAction, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };

@@ -37,6 +37,8 @@ function registerPackets(handlersCtx) {
     packet('quickcast_golive', async (d) => quickcast.goLive(String(d.cabinet || ''), d.settings && typeof d.settings === 'object' ? d.settings : undefined), 'Could not go live');
     packet('quickcast_stop', async () => quickcast.stop(), 'Could not stop the stream');
     packet('quickcast_launch', async () => quickcast.launch(), 'Could not start OBS');
+    packet('quickcast_cabinet', async (d) => quickcast.cabinetControls(String(d.cabinet || ''), !!d.force), 'Could not read the cabinet');
+    packet('quickcast_cabinet_action', async (d) => quickcast.cabinetAction({ cabinet: d.cabinet, path: d.path, op: String(d.op || ''), value: d.value, confirmed: !!d.confirmed }), 'The cabinet did not accept the command');
     packet('quickcast_encoder', async () => quickcast.getEncoder(), 'Could not read the encoder settings');
     packet('quickcast_setencoder', async (d) => quickcast.setEncoder(d), 'Could not change the encoder settings');
     const yt = quickcast.youtube;

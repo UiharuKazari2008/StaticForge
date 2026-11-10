@@ -13,6 +13,10 @@ const { WebSocketServer } = require('ws');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'quickcast-test-'));
 process.env.QUICKCAST_DATA_DIR = dir;
 process.env.QUICKCAST_DEVICE_MIN_S = '0.05';
+// a fake XLink menu.json + cabinet on loopback: never the real cabinets
+const xdir = fs.mkdtempSync(path.join(os.tmpdir(), 'quickcast-xlink-'));
+process.env.XLINK_DATA_DIR = xdir;
+const cab = { power: 'Active', game: 'Verse', hits: [] };
 process.env.QUICKCAST_CHAT_MIN_MS = '50';
 const http = require('http');
 
@@ -147,6 +151,27 @@ async function main() {
     await new Promise((r) => wss.on('listening', r));
     const port = wss.address().port;
     await new Promise((r) => google.listen(0, '127.0.0.1', r));
+    const cabSrv = http.createServer((req, res) => {
+        cab.hits.push(req.url);
+        let body = '';
+        if (req.url === '/power') body = cab.power;
+        else if (req.url === '/game_power') body = cab.power === 'Active' ? 'Enabled' : 'Disabled';
+        else if (req.url === '/select/game') body = cab.game;
+        else if (req.url.startsWith('/power/')) { cab.power = { on: 'Active', standby: 'Standby', off: 'Power Off' }[req.url.slice(7)]; body = 'OK'; }
+        else if (req.url.startsWith('/select/game/')) { cab.game = decodeURIComponent(req.url.slice(13)); body = 'OK'; }
+        else body = 'OK';
+        res.end(body);
+    });
+    await new Promise((r) => cabSrv.listen(0, '127.0.0.1', r));
+    const C = `http://127.0.0.1:${cabSrv.address().port}`;
+    const rp = [['Standby', 'Standby', 'orange'], ['Active', 'On', 'green'], ['Power Off', 'Off', 'white']];
+    fs.writeFileSync(path.join(xdir, 'menu.json'), JSON.stringify({ devices: { chuni: { name: 'Chunithm', status: `${C}/power`, replace: rp, items: [
+        { text: 'VISION Control', toggle: [{ text: 'AUTO', url: `${C}/v/auto` }, { text: 'V-BLK', url: `${C}/v/blank` }], children: [{ text: 'Auto-Select View', url: `${C}/v/auto` }, { text: 'Reset Encoder', url: `${C}/v/reset` }] },
+        { text: 'Power Switch', status: `${C}/power`, replace: rp, warning: { header: 'System Active', message: 'Sessions will be interrupted', check: `${C}/game_power`, match: 'Enabled' },
+            toggle: [{ text: 'I', url: `${C}/power/on`, match: [{ str: 'On' }] }, { text: 'STB', url: `${C}/power/standby`, match: [{ str: 'Standby' }] }, { text: 'O', url: `${C}/power/off` }] },
+        { text: 'Game Select', status: `${C}/select/game`, children: [{ text: 'Verse', url: `${C}/select/game/Verse` }, { text: 'Luminous Plus', url: `${C}/select/game/Luminous%20Plus` }] },
+        { text: 'Maintenance', children: [{ text: 'Reboot MCU', url: `${C}/reboot` }] }
+    ] } } }));
     process.env.QUICKCAST_GOOGLE_BASE = `http://127.0.0.1:${google.address().port}`;
     process.env.QUICKCAST_YT_BASE = `http://127.0.0.1:${google.address().port}/yt`;
     // ssh to a host that cannot exist, so a launch attempt fails fast instead of reaching Ruiko
@@ -297,6 +322,33 @@ async function main() {
     assert.deepStrictEqual(y.account().channels, []);
     y._chat.leaseAt = 0;
 
+    // ---- XLink cabinet control: video / encoder, power (with XLink's warning), game; nothing else
+    let x = await qc.cabinetControls('h2h');
+    assert.strictEqual(x.device.key, 'chuni', 'H2H uses the Chunithm cabinet');
+    assert.deepStrictEqual(x.video.buttons.map((b) => b.label), ['GAME', 'V-BLK']);
+    assert.deepStrictEqual(x.video.resetPath, [0, 1]);
+    assert.deepStrictEqual(x.power.buttons.map((b) => [b.label, b.active]), [['I', true], ['STB', false], ['O', false]]);
+    assert.strictEqual(x.game.status.text, 'Verse');
+    assert.deepStrictEqual(x.game.options.map((o) => o.text), ['Verse', 'Luminous Plus']);
+    assert.strictEqual((await qc.cabinetControls('wacca')).available, false, 'no XLink device for WACCA in this menu');
+    await assert.rejects(qc.cabinetAction({ cabinet: 'chuni', path: [3, 0], op: 'send' }), /only use/);
+    await assert.rejects(qc.cabinetAction({ cabinet: 'chuni', path: [0, 0], op: 'send' }), /only use/, 'only Reset Encoder under VISION Control');
+    let xa = await qc.cabinetAction({ cabinet: 'chuni', path: [0], op: 'toggle', value: 1 });
+    assert.ok(xa.ok && cab.hits.includes('/v/blank'));
+    xa = await qc.cabinetAction({ cabinet: 'chuni', path: [0, 1], op: 'send' });
+    assert.ok(xa.ok && cab.hits.includes('/v/reset'));
+    xa = await qc.cabinetAction({ cabinet: 'chuni', path: [1], op: 'toggle', value: 1 });
+    assert.strictEqual(xa.confirm.header, 'System Active', "XLink's own warning comes back first");
+    assert.strictEqual(cab.power, 'Active');
+    xa = await qc.cabinetAction({ cabinet: 'chuni', path: [1], op: 'toggle', value: 1, confirmed: true });
+    assert.ok(xa.ok);
+    assert.strictEqual(cab.power, 'Standby');
+    assert.deepStrictEqual(xa.controls.power.buttons.map((b) => b.active), [false, true, false]);
+    xa = await qc.cabinetAction({ cabinet: 'chuni', path: [2, 1], op: 'send' });
+    assert.strictEqual(cab.game, 'Luminous Plus');
+    assert.ok(!cab.hits.includes('/reboot'));
+    cabSrv.close();
+
     // a rejected key: OBS stops at once -> a clear failure
     qc.setKey('bad-key-1234');
     await assert.rejects(qc.goLive('chuni'), /could not connect to YouTube/);
@@ -329,6 +381,7 @@ async function main() {
     wss.close();
     google.close();
     fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(xdir, { recursive: true, force: true });
     process.exit(0);
 }
 

@@ -345,6 +345,31 @@ function broadcastInfo() {
     return b.id ? { id: b.id, title: b.title, watchUrl: `https://www.youtube.com/watch?v=${b.videoId}`, shortUrl: `https://youtu.be/${b.videoId}`, studioUrl: `https://studio.youtube.com/video/${b.videoId}/livestreaming` } : null;
 }
 
+// ------------------------------------------------------------------ live viewers
+
+const liveStats = { videoId: '', viewers: null, likes: null, at: 0, pending: null };
+
+/** Concurrent viewers of QuickCast's broadcast, refreshed every 30 s while asked (1 unit). Never waits. */
+function viewers(active) {
+    const b = broadcastInfo();
+    if (!active || !b) return null;
+    if (liveStats.videoId !== b.id) Object.assign(liveStats, { videoId: b.id, viewers: null, likes: null, at: 0 });
+    if (!liveStats.pending && Date.now() - liveStats.at > 30000) {
+        liveStats.at = Date.now();
+        liveStats.pending = api('GET', 'videos', { auth: 'read', query: { part: 'liveStreamingDetails,statistics', id: b.id } })
+            .then((r) => {
+                const it = r.items && r.items[0];
+                if (!it) return;
+                const cv = it.liveStreamingDetails && it.liveStreamingDetails.concurrentViewers;
+                liveStats.viewers = cv == null ? 0 : Number(cv) || 0;
+                liveStats.likes = it.statistics && it.statistics.likeCount != null ? Number(it.statistics.likeCount) : null;
+            })
+            .catch(() => {})
+            .finally(() => { liveStats.pending = null; });
+    }
+    return { viewers: liveStats.viewers, likes: liveStats.likes, at: liveStats.at };
+}
+
 // ------------------------------------------------------------------ live chat
 
 const chat = {
@@ -474,6 +499,6 @@ async function chatSend(text) {
 
 module.exports = {
     init, account, setCredentials, signInStart, signInState, signOut, refreshProfile, selectAccount,
-    lastSettings, saveSettings, prepareBroadcast, endBroadcast, broadcastInfo,
+    lastSettings, saveSettings, prepareBroadcast, endBroadcast, broadcastInfo, viewers,
     chatRead, chatSend, PRIVACY, LATENCY, _chat: chat
 };

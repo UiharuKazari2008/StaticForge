@@ -36,14 +36,15 @@ Every field is optional:
 | `youtube.token`, `youtube.channel` | written by the sign-in |
 | `youtube.last` | the broadcast settings that pre-fill the next stream: `title, description, privacy, categoryId, latency, dvr, madeForKids` |
 | `youtube.broadcast` | QuickCast's current broadcast `{ id, videoId, liveChatId, title, createdAt }` |
-| `cabinets` | `[{ id, name, scene, icon, short }]` (`short`: the 3-letter badge): Chunithm / Chuni, WACCA / WACCA, Nostalgia / Nosta, Chunithm H2H / Chuni H2H |
+| `youtube.accounts` | every signed-in channel `{ <channelId>: { channel, token } }`; `token` / `channel` are the active one |
+| `cabinets` | `[{ id, name, scene, icon, short, xlink }]` (`short`: the 3-letter badge; `xlink`: the XLink device key, default the id, H2H uses `chuni`, `false` for none): Chunithm / Chuni, WACCA / WACCA, Nostalgia / Nosta, Chunithm H2H / Chuni H2H |
 | `launch.ssh`, `launch.task` | `ruiko`, `\AmusementVISION\QuickCast OBS` |
 
 ## Packets
 
 | Request type | Fields | Reply `data` |
 |---|---|---|
-| `quickcast_status` | - | `{ busy, obs: { state: online/offline/launching, version, error, launchingFor }, cabinets: [{ id, name, scene, icon, short, present }], key: { set, hint }, watchUrl, want: { profile, collection }, collection, profile, program, programCabinet, stream: { active, reconnecting, timecode, durationMs, congestion (%), kbps, skipped, frames }, video: { base, output, fps, activeFps, cpu, renderSkipped, renderTotal }, inputs: [{ name, muted, mag[], peak[] }], master: { mag: [L, R], peak: [L, R] } }`. Levels are dBFS (-100 = silence), peaks since the last read. Inputs are what the stream hears with the program scene: its enabled items (nested scenes and groups too) and the global audio devices, less monitor-only inputs and inputs off the stream track. Polled ~5 Hz; keeps the OBS connection open (closed 60 s after the last poll). |
+| `quickcast_status` | - | `{ busy, obs: { state: online/offline/launching, version, error, launchingFor }, cabinets: [{ id, name, scene, icon, short, present }], key: { set, hint }, watchUrl, want: { profile, collection }, collection, profile, program, programCabinet, stream: { active, reconnecting, timecode, durationMs, congestion (%), kbps, skipped, frames }, video: { base, output, fps, activeFps, cpu, renderSkipped, renderTotal }, inputs: [{ name, muted, mag[], peak[] }], master: { mag: [L, R], peak: [L, R] }, youtube: { account, last, broadcast: { id, title, watchUrl, shortUrl, studioUrl }, live: { viewers, likes, at } } }`. `live` (concurrent viewers) is read every 30 s while streaming. Levels are dBFS (-100 = silence), peaks since the last read. Inputs are what the stream hears with the program scene: its enabled items (nested scenes and groups too) and the global audio devices, less monitor-only inputs and inputs off the stream track. Polled ~5 Hz; keeps the OBS connection open (closed 60 s after the last poll). |
 | `quickcast_preview` | `cabinet`, `width` (160-1280, default 640) | `{ cabinet, image: "data:image/jpg;base64,...", at }`: the cabinet's scene, rendered by OBS |
 | `quickcast_prepare` | `cabinet`, `confirmed` | Starts OBS when needed, switches to the collection and the profile (never while streaming; the profile not while recording), puts the scene on program. While live, a scene change without `confirmed` returns `{ needsConfirm: true }`. Else `{ ok, cabinet, steps: ['collection', 'profile', 'scene'], live }`. |
 | `quickcast_golive` | `cabinet`, `settings` (optional, e.g. `{ title }`) | Key into the profile's stream service, scene on program; signed in to YouTube: a new broadcast with the settings (auto start / stop) bound to the key's stream; then StartStream, waiting up to 15 s for OBS. `{ ok, cabinet, broadcast }` / `{ ok, already }`. Refused without a key, or while recording in another profile. |
@@ -56,10 +57,14 @@ Every field is optional:
 | `quickcast_yt_credentials` | `apiKey`, `clientId`, `clientSecret`, `channelId` (omit to keep, `-` clears) | `{ ok, account }` |
 | `quickcast_yt_signin` | - | Starts Google's device flow: `{ userCode, url, expiresAt }`; the server polls Google |
 | `quickcast_yt_signin_state` | - | `{ signIn: { state: none/waiting/done/failed, userCode, url, error }, account }` |
-| `quickcast_yt_signout` | - | Forgets the tokens and the broadcast |
+| `quickcast_yt_signout` | `all` | Signs the active channel out (another saved one becomes active), or every channel |
 | `quickcast_yt_settings` | `title`, `description`, `privacy`, `categoryId`, `latency`, `dvr`, `madeForKids`, `applyLive` | Saves `last`; with `applyLive` while QuickCast's broadcast exists, also `videos.update` (title, description, category). `{ ok, last, updatedLive }` |
 | `quickcast_chat` | `since` (seq) | `{ messages: [{ seq, id, at, type, text, author, avatar, owner, mod, member, verified, amount }], seq, problem, nextInMs, canReply, canRead, broadcast }`. Polling keeps the server's chat reader running (20 s lease); it reads at YouTube's pollingIntervalMillis, at least 5 s apart. |
 | `quickcast_chat_send` | `text` (1-200 chars) | Posts to the live chat as the signed-in channel. `{ ok }` |
+| `quickcast_cabinet` | `cabinet`, `force` | The cabinet's XLink controls from its menu.json device (modules/xlink.js snapshot, cached 4 s): `{ cabinet, available, device: { key, name, status }, video: { path, buttons: [{ n, label, active }], resetPath }, power: { path, buttons, status, warning }, game: { path, status, warning, options: [{ path, text }] } }`. Matched by item text: VISION Control (AUTO shown as GAME), its Reset Encoder child, Power Switch, Game Select. |
+| `quickcast_cabinet_action` | `cabinet`, `path`, `op` (`toggle`/`send`), `value`, `confirmed` | Only those controls (anything else: `QUICKCAST_XLINK_DENIED`), through `xlink.action`, so XLink's own warnings come back first as `{ confirm: { header, message, ok } }`. Else `{ ok, failure, controls }`. |
+| `quickcast_yt_profile` | `force` | Refreshes the active channel's profile (every 10 min at most unless forced): `{ account }` with `profile: { id, title, handle, avatar, subscribers, videos }` and `channels[]` |
+| `quickcast_yt_select` | `channelId` | Makes another signed-in channel the active one |
 | `quickcast_info` | - | `{ host, port, profile, collection, server, launchTask }` |
 
 Quota (10,000 units a day by default): a go-live ~150 units, a chat read 5, a reply 50.
