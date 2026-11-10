@@ -606,10 +606,18 @@ async function listOpts(link, inputName, prop) {
 
 const XL_RISKY = /power|shutdown|shut down|reboot|flush|takeover|maintenance|dispense|eject|wake|standby|reset/i;
 
+/**
+ * The cabinet's XLink menu for the XLINK page. Only the first read waits: after that the page draws from
+ * the last menu at once and a fresh one is fetched in the background (XLink status reads are slow HTTP
+ * calls to the cabinet, and keys must never queue behind them).
+ */
 async function xlinkMenu(b, force) {
-    if (!force && b.xlMenu && Date.now() - b.xlMenuAt < 4000) return b.xlMenu;
-    b.xlMenu = await deps.xlinkMenu(b.cabinet, !!force);
-    b.xlMenuAt = Date.now();
+    const fresh = () => deps.xlinkMenu(b.cabinet, !!force).then((m) => { b.xlMenu = m; b.xlMenuAt = Date.now(); return m; });
+    if (force || !b.xlMenu) return fresh();
+    if (Date.now() - b.xlMenuAt > 4000 && !b.xlFetching) {
+        b.xlFetching = true;
+        fresh().catch(() => {}).finally(() => { b.xlFetching = false; });
+    }
     return b.xlMenu;
 }
 
