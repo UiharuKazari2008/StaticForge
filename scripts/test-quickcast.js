@@ -311,9 +311,8 @@ async function main() {
     assert.ok(nested && nested.sceneItemEnabled, 'the OSD scene is nested on program, shown');
     v = await qc.osd.press('sat', '', 'down');
     assert.strictEqual(v.page.cursor, 1);
-    v = await qc.osd.press('sat', '', 'up');
     v = await qc.osd.press('sat', '', 'ok');
-    assert.strictEqual(v.page.title, 'INPUT ASSIGNMENT');
+    assert.strictEqual(v.page.title, 'INPUT ASSIGNMENT', 'ALARMS is first, INPUT ASSIGNMENT next');
     assert.ok(v.page.rows.some((r) => /PLAYLAND-GAU-EAST/.test(r.label) && r.type === 'NDI'), 'NDI inputs are listed with their port type');
     v = await qc.osd.press('sat', '', 'exit');
     assert.strictEqual(v.page.title, 'MAIN MENU');
@@ -339,7 +338,7 @@ async function main() {
     st = await qc.status({ cabinet: 'wacca' });
     assert.strictEqual(st.faults.length, 0, 'a cabinet that does not use the dead feed is not locked');
     v = await qc.osd.press('sat', '', 'menu');
-    assert.match(v.page.title, /FAULT/, 'MENU on a faulted unit opens the FAULT page');
+    assert.match(v.page.title, /ALARMS/, 'MENU on a faulted unit opens the ALARMS page');
     for (let i = 0; i < 6 && !/OVERRIDE/.test((v.page.rows[v.page.cursor - v.page.first] || {}).label || ''); i++) v = await qc.osd.press('sat', '', 'down');
     v = await qc.osd.press('sat', '', 'ok');
     assert.strictEqual(qc.osd.faults()[0].overridden, true, 'a technician override clears the lock');

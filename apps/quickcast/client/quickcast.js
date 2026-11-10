@@ -43,7 +43,7 @@
         M: [17, 27, 21, 21, 17, 17, 17], N: [17, 17, 25, 21, 19, 17, 17], O: [14, 17, 17, 17, 17, 17, 14], P: [30, 17, 17, 30, 16, 16, 16],
         Q: [14, 17, 17, 17, 21, 18, 13], R: [30, 17, 17, 30, 20, 18, 17], S: [15, 16, 16, 14, 1, 1, 30], T: [31, 4, 4, 4, 4, 4, 4],
         U: [17, 17, 17, 17, 17, 17, 14], V: [17, 17, 17, 17, 17, 10, 4], W: [17, 17, 17, 21, 21, 21, 10], X: [17, 17, 10, 4, 10, 17, 17],
-        Y: [17, 17, 17, 10, 4, 4, 4], Z: [31, 1, 2, 4, 8, 16, 31], '►': [16, 24, 28, 30, 28, 24, 16], '◄': [1, 3, 7, 15, 7, 3, 1]
+        Y: [17, 17, 17, 10, 4, 4, 4], Z: [31, 1, 2, 4, 8, 16, 31], '►': [16, 24, 28, 30, 28, 24, 16], '█': [31, 31, 31, 31, 31, 31, 31], '◄': [1, 3, 7, 15, 7, 3, 1]
     };
     const DM_COLS = 20;
     const DM_ROWS = 3;
@@ -933,7 +933,7 @@
                 const o = c.game.options[n];
                 req = { path: o.path, op: 'send' };
             } else return;
-            if (ask && !await this.ask(ask)) return;
+            if (ask && !await this.ask(ask)) return false;
             this.ctlBusy = true;
             this.renderControls();
             try {
@@ -941,14 +941,16 @@
                 let r = await this.send('quickcast_cabinet_action', { cabinet: this.cabinet, ...req, confirmed: kind === 'video' || kind === 'game' });
                 if (r.confirm) {
                     const v = await this.box(`${r.confirm.header}\n\n${r.confirm.message}`, 'warning', [{ text: r.confirm.ok || 'OK', value: 'yes', className: 'btn-standard' }, { text: 'Cancel', value: null, className: 'btn-standard primary' }]);
-                    if (v !== 'yes') return;
+                    if (v !== 'yes') return false;
                     r = await this.send('quickcast_cabinet_action', { cabinet: this.cabinet, ...req, confirmed: true });
                 }
                 if (r.controls) this.controls = r.controls;
-                if (r.ok === false) await this.box(`${name} did not accept the command.\n\n${r.failure || ''}`, 'error');
-                else this.flash(`${name}: done.`);
+                if (r.ok === false) { await this.box(`${name} did not accept the command.\n\n${r.failure || ''}`, 'error'); return false; }
+                this.flash(`${name}: done.`);
+                return true;
             } catch (err) {
                 await this.box(err.message, 'error');
+                return false;
             } finally {
                 this.ctlBusy = false;
                 this.renderControls();
@@ -1221,18 +1223,18 @@
             //   POWER / ALARM leds | gap | MENU  | D-pad | EXIT
             //   RESET              | gap | INFO  | D-pad | DIAG
             const w = this.openWin({
-                kind: 'remote', title: 'Remote Front Panel', width: 1010, height: 200, cls: 'qc-remotewin',
+                kind: 'remote', title: 'Remote Front Panel', width: 1120, height: 200, cls: 'qc-remotewin',
                 body: `<div class="qc-fp">
                     <div class="qc-fp-sel"><button type="button" class="qc-bk qc-rsel k-white" data-target="cab">CABINET MIXER</button><button type="button" class="qc-bk qc-rsel k-white" data-target="sat">SATELLITE</button></div>
                     <div class="qc-fp-face">
                         <span class="qc-fp-ear"><i></i><i></i></span>
                         <div class="qc-fp-disp">
-                            <div class="qc-fp-badge"><b class="qc-fp-maker">-</b><span class="qc-fp-model"></span></div>
+                            <div class="qc-fp-badge"><img class="qc-fp-logo" alt=""><span class="qc-fp-maker" hidden></span><span class="qc-fp-model" hidden></span></div>
                             <canvas class="qc-fp-dm" width="360" height="81"></canvas>
                         </div>
                         <div class="qc-fp-ctl">
                             <div class="qc-fp-leds"><span class="qc-led" data-led="power"><i></i>POWER</span><span class="qc-led" data-led="alarm"><i></i>ALARM</span></div>
-                            <div class="qc-fp-btns"><button type="button" class="qc-fp-reset" data-rk="reset" title="Reset the unit">RESET</button><button type="button" class="qc-fp-reset qc-fp-pwr" data-rk="power" title="Encoder engine power">PWR</button></div>
+                            <div class="qc-fp-btns"><button type="button" class="qc-bk qc-fp-key k-red qc-fp-reset" data-rk="reset" title="Reset the unit">RESET</button><button type="button" class="qc-bk qc-fp-key k-green qc-fp-pwr" data-rk="power" title="Encoder engine power">PWR</button></div>
                             <span class="qc-fp-gap"></span>
                             ${key('menu', 'MENU', 'k-amber qc-fp-menu')}${key('info', 'INFO', 'k-white qc-fp-info')}
                             <div class="qc-rm-pad">${key('up', '&#9650;', 'is-up k-white')}${key('left', '&#9664;', 'is-left k-white')}${key('ok', 'OK', 'is-ok k-blue')}${key('right', '&#9654;', 'is-right k-white')}${key('down', '&#9660;', 'is-down k-white')}</div>
@@ -1252,10 +1254,13 @@
             const lcd = (v, err) => {
                 const unit = v && v.box ? v.box.name : target === 'sat' ? this.satName() : (this.cabinet ? 'CABINET MIXER' : 'NO CABINET');
                 if (v && v.box) {
-                    m.querySelector('.qc-fp-maker').textContent = [v.box.maker, v.box.line].filter(Boolean).join(' ');
-                    m.querySelector('.qc-fp-model').textContent = [v.box.model, v.box.type].filter(Boolean).join('  ');
+                    const logo = m.querySelector('.qc-fp-logo');
+                    const art = `${A}/unit-${v.box.theme === 'amuvision' ? 'amuvision' : 'takao'}.png`;
+                    if (logo.getAttribute('src') !== art) logo.setAttribute('src', art);
+                    logo.alt = [v.box.maker, v.box.line, v.box.model].filter(Boolean).join(' ');
                     m.querySelector('.qc-fp-face').dataset.theme = v.box.theme || '';
                 }
+                if (resetting) return; // the panel is running its reset / lamp test
                 dmColor = '#ffb02e';
                 if (err) { dmColor = '#ff5a3a'; dm(unit, 'ERROR', err); return; }
                 if (v && v.toast) { dm(unit, v.toast.slice(0, 20), v.toast.slice(20, 40)); return; }
@@ -1265,12 +1270,22 @@
                     dm(v.page.title, `\u25ba${r.label || ''}`, r.value ? `  ${r.value}` : '');
                     return;
                 }
-                dm(unit, v && v.info ? 'STATUS STRIP ON' : 'READY', '');
+                const st = this.st || {};
+                const row = (target === 'sat' ? (st.diag && st.diag.output) : (st.diag && st.diag.input)) || {};
+                const clk = (row.stages || []).find((x) => x.id === 'clock');
+                const mix = (row.stages || []).find((x) => x.id === (target === 'sat' ? 'render' : 'mixer'));
+                const pgm = target === 'sat' ? st.program : row.program;
+                const onAir = target === 'sat' && st.stream && st.stream.active;
+                dm(`${unit}${onAir ? ' ON AIR' : ''}`, pgm ? `PGM ${pgm}` : (v && v.info ? 'STATUS STRIP ON' : 'READY'), [clk && clk.value, mix && mix.value.replace(/\s*\u00b7\s*/, ' ')].filter(Boolean).join(' '));
             };
             // POWER / ALARM leds from the window's status: power = control link to the unit; alarm = a latched
             // self-test fault (blinks), or a failing pipeline stage on that unit (steady)
+            let resetting = false;
+            let lastView = null;
             const leds = () => {
                 if (!m.isConnected) return;
+                if (resetting) { setTimeout(leds, 500); return; }
+                if (lastView === null || !(lastView.open || lastView.post || lastView.toast)) lcd(lastView);
                 const st = this.st || {};
                 const d = st.diag || {};
                 const sat = target === 'sat';
@@ -1302,14 +1317,14 @@
                 if (ind.dataset.html !== html) { ind.dataset.html = html; ind.innerHTML = html; }
                 const pwr = m.querySelector('.qc-fp-pwr');
                 pwr.hidden = !sat;
-                pwr.classList.toggle('is-lit', sat && linkSt === 'online');
+                pwr.classList.toggle('is-on', sat && linkSt === 'online');
                 pwr.title = sat ? (linkSt === 'online' ? `Shut down ${this.satName()}'s encoder engine` : `Start ${this.satName()}'s encoder engine`) : '';
                 setTimeout(leds, 500);
             };
             const sel = () => {
                 m.querySelectorAll('.qc-rsel').forEach((b) => { b.classList.toggle('is-on', b.dataset.target === target); b.classList.toggle('k-orange', b.dataset.target === target); b.classList.toggle('k-white', b.dataset.target !== target); });
                 lcd(null);
-                void this.send('quickcast_osd_view', { target, cabinet: this.cabinet || '' }).then((v) => lcd(v)).catch((e) => lcd(null, e.message));
+                void this.send('quickcast_osd_view', { target, cabinet: this.cabinet || '' }).then((v) => { lastView = v; lcd(v); }).catch((e) => lcd(null, e.message));
             };
             // one key on the wire at a time, plus at most one waiting: a held key never piles up
             let inFlight = false;
@@ -1320,16 +1335,41 @@
                 if (b) { b.classList.add('is-on'); setTimeout(() => b.classList.remove('is-on'), 110); }
                 if (inFlight) { next = k; return; }
                 inFlight = true;
-                try { lcd(await this.send('quickcast_osd_key', { target, cabinet: this.cabinet || '', key: k })); } catch (e) { lcd(null, e.message); }
+                try { lastView = await this.send('quickcast_osd_key', { target, cabinet: this.cabinet || '', key: k }); lcd(lastView); } catch (e) { lcd(null, e.message); }
                 inFlight = false;
                 if (next) { const n = next; next = null; void press(n); }
             };
             m.querySelectorAll('.qc-rsel').forEach((b) => b.addEventListener('click', () => { target = b.dataset.target; this.remoteTarget = target; sel(); }));
             m.querySelectorAll('[data-rk]').forEach((b) => b.addEventListener('click', () => {
-                if (b.dataset.rk === 'reset') void this.unitReset(target);
+                if (b.dataset.rk === 'reset') void this.unitReset(target).then((done) => { if (done) void panelReset(); });
                 else if (b.dataset.rk === 'power') void this.command(this.st && this.st.obs && this.st.obs.state === 'online' ? 'obsoff' : 'obson');
                 else void press(b.dataset.rk);
             }));
+            // a hardware reset of the panel itself: everything dark, then the lamp / display test, then boot
+            const panelReset = async () => {
+                if (resetting) return;
+                resetting = true;
+                const face = m.querySelector('.qc-fp-face');
+                const cv = m.querySelector('.qc-fp-dm');
+                const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+                face.classList.add('is-dark');
+                drawDotMatrix(cv, ['', '', ''], '#000');
+                await wait(1200);
+                face.classList.remove('is-dark');
+                face.classList.add('is-lamptest');
+                const full = '\u2588'.repeat(DM_COLS);
+                drawDotMatrix(cv, [full, full, full], '#ffb02e');
+                await wait(900);
+                for (const c of ['is-test-red', 'is-test-green', 'is-test-amber']) { face.classList.add(c); await wait(350); face.classList.remove(c); }
+                face.classList.remove('is-lamptest');
+                const u = lastView && lastView.box ? lastView.box : {};
+                drawDotMatrix(cv, [[u.maker, u.model].filter(Boolean).join(' ') || 'NETWORK VIDEO MIXER', 'BOOTING...', ''], '#ffb02e');
+                await wait(1500);
+                drawDotMatrix(cv, [[u.maker, u.model].filter(Boolean).join(' '), 'SELF TEST', ''], '#ffb02e');
+                await wait(1200);
+                resetting = false;
+                lcd(lastView);
+            };
             leds();
             const keymap = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok', Escape: 'exit', m: 'menu', d: 'diag', i: 'info' };
             m.addEventListener('keydown', (e) => {
@@ -1352,14 +1392,14 @@
                 if (!this.cabinet) { await this.box('Take a cabinet first.', 'info'); return; }
                 if (!this.controls || this.controls.cabinet !== this.cabinet) await this.loadControls(true);
                 if (!this.controls || !this.controls.video || !this.controls.video.resetPath) { await this.box('This cabinet\'s mixer has no reset control in XLink.', 'warning'); return; }
-                await this.xlinkPress('reset');
-                return;
+                return this.xlinkPress('reset');
             }
             const live = !!(this.st && this.st.stream && this.st.stream.active);
-            if (live) { await this.box('On air: end the broadcast before resetting the satellite.', 'warning'); return; }
-            if (!await this.ask(`Reset ${this.satName()}?\n\nIts encoder engine shuts down and starts again (boot screen and self test).`)) return;
+            if (live) { await this.box('On air: end the broadcast before resetting the satellite.', 'warning'); return false; }
+            if (!await this.ask(`Reset ${this.satName()}?\n\nIts encoder engine shuts down and starts again (boot screen and self test).`)) return false;
             await this.run(`Resetting ${this.satName()}...`, 'quickcast_obs_off', {});
-            await this.run(`Starting ${this.satName()}...`, 'quickcast_launch', {});
+            void this.run(`Starting ${this.satName()}...`, 'quickcast_launch', {});
+            return true;
         }
 
         chatWin() {

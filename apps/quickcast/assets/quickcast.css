@@ -566,3 +566,59 @@ canvas.qc-fp-dm { display: block; width: 360px; height: 81px; padding: 4px 6px; 
 .qc-fp-ctl { flex: none; width: 420px; }
 .qc-fp-ind { display: grid; grid-template-columns: repeat(2, auto); gap: 6px 12px; flex: 1; align-content: center; padding: 0; }
 .qc-fp-ind .qc-led { flex-direction: row; gap: 5px; }
+
+/* ---- broadcast-grade backlit keycaps (switcher reference photo, Nov 10) ----
+ * Square translucent caps with depth: idle = soft white backlight behind a frosted cap, dark legend;
+ * lit (is-on) = the key's colour at full backlight with a glow; disabled = unlit grey cap. */
+.qc-window .qc-root .qc-bk {
+    border: 1px solid #000;
+    border-radius: 3px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .55) 0%, rgba(255, 255, 255, .12) 38%, rgba(0, 0, 0, .1) 100%), rgb(178, 183, 190);
+    color: #23262b;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, .35);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .5), inset 0 -3px 0 rgba(0, 0, 0, .22), 0 2px 0 #08090a, 0 3px 5px rgba(0, 0, 0, .65), 0 0 6px rgba(220, 228, 240, .18);
+    transition: none;
+}
+.qc-window .qc-root .qc-bk:hover:not(:disabled) { background: linear-gradient(180deg, rgba(255, 255, 255, .62) 0%, rgba(255, 255, 255, .16) 38%, rgba(0, 0, 0, .08) 100%), rgb(196, 201, 208); color: #15171a; }
+.qc-window .qc-root .qc-bk:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .45), inset 0 -1px 0 rgba(0, 0, 0, .2), 0 0 0 #08090a, 0 1px 2px rgba(0, 0, 0, .6); }
+.qc-window .qc-root .qc-bk.is-on {
+    background: linear-gradient(180deg, rgba(255, 255, 255, .6) 0%, rgba(255, 255, 255, .15) 40%, rgba(0, 0, 0, .06) 100%), rgb(var(--k));
+    color: #fff;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, .45);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .55), inset 0 -3px 0 rgba(0, 0, 0, .2), 0 2px 0 #08090a, 0 3px 5px rgba(0, 0, 0, .6), 0 0 14px rgba(var(--k), .75), 0 0 28px rgba(var(--k), .3);
+}
+.qc-window .qc-root .qc-bk.k-white.is-on { background: linear-gradient(180deg, #fff 0%, #f1f4f8 45%, #d7dce3 100%); color: #111; text-shadow: none; box-shadow: inset 0 0 0 1px #fff, inset 0 -3px 0 rgba(0,0,0,.15), 0 2px 0 #08090a, 0 3px 5px rgba(0,0,0,.6), 0 0 16px rgba(255,255,255,.7); }
+.qc-window .qc-root .qc-bk:disabled { background: linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(0, 0, 0, .15)), #3a3d42; color: rgba(255, 255, 255, .32); text-shadow: none; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08), inset 0 -3px 0 rgba(0, 0, 0, .3), 0 2px 0 #08090a, 0 3px 4px rgba(0, 0, 0, .6); }
+.qc-window .qc-root .qc-bk.is-on:disabled { background: linear-gradient(180deg, rgba(255, 255, 255, .5) 0%, rgba(255, 255, 255, .12) 40%, rgba(0, 0, 0, .08) 100%), rgb(var(--k)); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .5), inset 0 -3px 0 rgba(0, 0, 0, .2), 0 2px 0 #08090a, 0 0 14px rgba(var(--k), .7); }
+/* the armed LIVE key keeps its hard on / off blink on the new caps */
+@keyframes qc-armed {
+    0% { background: linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,.1) 40%, rgba(0,0,0,.08)), rgb(200, 34, 38); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.45), 0 2px 0 #08090a, 0 0 12px rgba(232,46,50,.6); }
+    50% { background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(0,0,0,.15)), #3a3d42; color: rgba(255,170,170,.55); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08), 0 2px 0 #08090a; }
+}
+.qc-window .qc-root .qc-key.qc-bk { border-radius: 4px; }
+.qc-window .qc-root .qc-xgame.qc-bk { color: #1a1d22; }
+.qc-cab-tally { color: inherit; }
+
+/* front panel, Nov 10 rev: the unit's own logo over the display, backlit caps, an indicator block that fits */
+.qc-remotewin { min-width: 1120px; }
+.qc-fp-logo { display: block; height: 30px; width: auto; }
+.qc-fp-face[data-theme="amuvision"] .qc-fp-logo { height: 26px; }
+.qc-fp-badge { min-height: 30px; align-items: flex-end; }
+.qc-fp-ctl { width: 392px; grid-template-columns: 96px 4px 64px 104px 64px; column-gap: 10px; }
+.qc-fp-ctl .qc-rm-pad { grid-template-columns: repeat(3, 32px); grid-template-rows: repeat(3, 30px); gap: 3px; }
+.qc-window .qc-root .qc-fp-ctl .qc-rm-pad .qc-rk.qc-bk { width: 32px; height: 30px; font-size: 11px; }
+.qc-window .qc-root .qc-fp-ctl > .qc-rk.qc-bk { width: 64px; height: 32px; font: bold 10px Arial, sans-serif; letter-spacing: 1px; }
+.qc-fp-btns { gap: 6px; }
+.qc-window .qc-root .qc-fp-key.qc-bk { width: 44px; height: 28px; padding: 0; border-radius: 3px; font: bold 8px Arial, sans-serif; letter-spacing: 1px; }
+.qc-window .qc-root .qc-fp-reset.qc-bk:active { color: #fff; }
+.qc-fp-ind { grid-template-columns: repeat(2, max-content); gap: 5px 14px; flex: 1; min-width: 0; }
+.qc-fp-ind .qc-led { flex-direction: row; gap: 5px; white-space: nowrap; font-size: 8px; }
+.qc-fp-ind .qc-led i { width: 8px; height: 8px; flex: none; }
+/* reset: everything dark, then the lamp / display test */
+.qc-fp-face.is-dark .qc-led i { background: #1a1212 !important; box-shadow: inset 0 1px 2px #000, 0 0 0 1px #000 !important; animation: none !important; }
+.qc-fp-face.is-dark .qc-bk { background: #26282c !important; color: rgba(255,255,255,.12) !important; box-shadow: inset 0 0 0 1px rgba(255,255,255,.05), 0 2px 0 #08090a !important; }
+.qc-fp-face.is-lamptest .qc-led i { background: #fff !important; box-shadow: 0 0 6px #fff, 0 0 0 1px #000 !important; animation: none !important; }
+.qc-fp-face.is-lamptest .qc-bk { background: linear-gradient(180deg, #fff, #e9edf2) !important; color: #000 !important; box-shadow: 0 2px 0 #08090a, 0 0 14px rgba(255,255,255,.75) !important; }
+.qc-fp-face.is-test-red .qc-led i { background: #ff2a2a !important; box-shadow: 0 0 6px #ff2a2a !important; }
+.qc-fp-face.is-test-green .qc-led i { background: #3bff6e !important; box-shadow: 0 0 6px #3bff6e !important; }
+.qc-fp-face.is-test-amber .qc-led i { background: #ffb020 !important; box-shadow: 0 0 6px #ffb020 !important; }

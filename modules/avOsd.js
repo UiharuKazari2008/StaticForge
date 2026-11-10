@@ -246,6 +246,7 @@ const PAGES = {
         return {
             title: 'MAIN MENU',
             rows: [
+                { id: 'alarms', label: 'ALARMS', kind: 'nav', value: b.fault ? `${b.fault.items.length} ACTIVE${b.fault.overridden ? ' (OVR)' : ''}` : 'NONE', state: b.fault ? (b.fault.overridden ? 'warn' : 'bad') : 'ok', blink: !!(b.fault && !b.fault.overridden) },
                 { id: 'inputs', label: 'INPUT ASSIGNMENT', kind: 'nav', value: '' },
                 { id: 'timing', label: 'TIMING / SYNC', kind: 'nav', value: '' },
                 { id: 'cameras', label: 'CAMERA CONTROL', kind: 'nav', value: '' },
@@ -333,15 +334,24 @@ const PAGES = {
         return { title: 'INPUT FRAME RATES', rows, hint: `Box clock ${fpsText(v.fpsNumerator, v.fpsDenominator)} fps: an input can show at most that` };
     },
 
-    async fault(b) {
+    async alarms(b) {
         const f = b.fault;
-        if (!f) return { title: 'NO FAULT', rows: [{ id: 'none', label: 'Self test passed: no fault latched', kind: 'info', value: '', state: 'ok' }] };
-        const rows = f.items.map((x, i) => ({ id: `f:${i}`, label: x.label, type: x.type, kind: 'info', value: x.detail, state: 'bad', blink: true }));
+        const last = b.lastPost ? new Date(b.lastPost.at).toTimeString().slice(0, 8) : '';
+        if (!f) {
+            return {
+                title: 'ALARMS',
+                rows: [
+                    { id: 'none', label: 'NO ACTIVE ALARMS', kind: 'info', value: last ? `TESTED ${last}` : '', state: 'ok' },
+                    { id: 'f:retest', label: 'RUN SELF TEST', kind: 'action', value: '', hint: 'Boot screen and power-on self test on this unit\'s output' }
+                ]
+            };
+        }
+        const rows = f.items.map((x, i) => ({ id: `f:${i}`, label: x.label, type: x.type, kind: 'info', value: x.detail, state: f.overridden ? 'warn' : 'bad', blink: !f.overridden }));
         rows.push({ id: 'f:retest', label: 'RE-RUN SELF TEST', kind: 'action', value: '', hint: 'After fixing the source: test again; a clean test clears the fault' });
         rows.push({ id: 'f:override', label: f.overridden ? 'OVERRIDDEN (AIRING WITH FAULT)' : 'OVERRIDE: AIR WITH FAULT', kind: 'action', value: f.overridden ? 'ON' : '', state: f.overridden ? 'warn' : '', hint: 'Technician only: clears the DO NOT AIR lock without fixing the fault' });
         rows.push({ id: 'inputs', label: 'INPUT ASSIGNMENT', kind: 'nav', value: '' });
         rows.push({ id: 'cameras', label: 'CAMERA CONTROL', kind: 'nav', value: '' });
-        return { title: 'FAULT \u2014 DO NOT AIR', rows, hint: 'Fix the source (cable, device, port), then RE-RUN SELF TEST' };
+        return { title: 'ALARMS', rows, hint: `Self test ${new Date(f.at).toTimeString().slice(0, 8)}: fix the source (cable, device, port), then RE-RUN SELF TEST` };
     },
 
     async cameras(b, link) {
@@ -859,7 +869,7 @@ async function powerOn(boxId, opts = {}) {
 function frame(b) { return b.stack[b.stack.length - 1]; }
 
 /** Pages whose numbers move on their own and are re-read while shown. */
-const LIVE_PAGES = new Set(['clock', 'diag', 'system', 'audio', 'align', 'fpsm', 'fault']);
+const LIVE_PAGES = new Set(['clock', 'diag', 'system', 'audio', 'align', 'fpsm', 'alarms']);
 
 /** Read the top page from the box (OBS round trips) into its frame's cache. */
 async function buildPage(b) {
@@ -922,11 +932,11 @@ function toast(b, text) { b.toast = text; b.toastAt = Date.now(); }
 async function onKey(b, key) {
     const { link } = await linkOf(b);
     if (key === 'menu') {
-        if (b.open) { b.open = false; b.stack = []; b.pending.clear(); } else { b.open = true; b.stack = b.fault && !b.fault.overridden ? [{ page: 'main', cursor: 0 }, { page: 'fault', cursor: 0, title: 'FAULT' }] : [{ page: 'main', cursor: 0 }]; }
+        if (b.open) { b.open = false; b.stack = []; b.pending.clear(); } else { b.open = true; b.stack = b.fault && !b.fault.overridden ? [{ page: 'main', cursor: 0 }, { page: 'alarms', cursor: 0, title: 'ALARMS' }] : [{ page: 'main', cursor: 0 }]; }
         return;
     }
     if (key === 'info') { b.info = !b.info; return; }
-    if (key === 'diag') { if (!b.open) b.open = true; b.stack = [{ page: 'main', cursor: 6 }, { page: 'diag', cursor: 0 }]; return; }
+    if (key === 'diag') { if (!b.open) b.open = true; b.stack = [{ page: 'main', cursor: 7 }, { page: 'diag', cursor: 0 }]; return; }
     if (!b.open) { if (key === 'exit' && b.info) b.info = false; return; }
     const f = frame(b);
     if (key === 'exit') {

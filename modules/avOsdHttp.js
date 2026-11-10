@@ -77,10 +77,35 @@ body.t-amuvision .foot { display: none; }
 #strip.on { display: flex; }
 #strip span { color: rgba(255,255,255,.75); font-weight: normal; }
 #strip b { color: #fff; }
+/* the menu: a hardware OSD box (framed, monospace, solid selection bar); the unit's colour on the header */
+#osd { position: absolute; inset: 0; display: none; }
+#osd.on { display: block; }
+.m-box { position: absolute; left: calc(110 * var(--u)); top: calc(110 * var(--u)); width: calc(940 * var(--u)); background: rgba(4, 8, 16, .9); border: calc(3 * var(--u)) solid #c9d3df; box-shadow: 0 0 0 calc(3 * var(--u)) #000, calc(10 * var(--u)) calc(10 * var(--u)) 0 rgba(0,0,0,.45); font-family: 'Lucida Console', 'Consolas', 'Courier New', monospace; -webkit-font-smoothing: none; }
+.m-hd { display: flex; align-items: center; gap: calc(16 * var(--u)); height: calc(58 * var(--u)); padding: 0 calc(18 * var(--u)); background: var(--acc); border-bottom: calc(3 * var(--u)) solid #c9d3df; }
+.m-logo { height: calc(34 * var(--u)); width: auto; image-rendering: pixelated; }
+body.t-takao .m-logo { height: calc(44 * var(--u)); }
+.m-unit { margin-left: auto; font-size: calc(22 * var(--u)); color: #fff; letter-spacing: calc(2 * var(--u)); text-shadow: calc(2 * var(--u)) calc(2 * var(--u)) 0 rgba(0,0,0,.5); }
+.m-ttl { display: flex; align-items: baseline; justify-content: space-between; height: calc(52 * var(--u)); padding: 0 calc(18 * var(--u)); border-bottom: calc(2 * var(--u)) solid #3a4a64; font-size: calc(30 * var(--u)); letter-spacing: calc(3 * var(--u)); line-height: calc(52 * var(--u)); }
+.m-ttl small { font-size: calc(17 * var(--u)); color: #8ea4c2; letter-spacing: 0; }
+.m-rows { padding: calc(6 * var(--u)) 0; min-height: calc(42 * 6 * var(--u)); }
+#osd .row { height: calc(42 * var(--u)); padding: 0 calc(18 * var(--u)); font-size: calc(25 * var(--u)); font-weight: normal; }
+#osd .row .v { color: #9fe3b0; max-width: 58%; }
+#osd .row.sel { background: #ffd54a; color: #0a1220; }
+#osd .row.sel .v, #osd .row.sel .t { color: #0a1220; border-color: #0a1220; }
+#osd .row .bar2 { background: #22303f; }
+#osd .row.nav .v::after { content: ' \\25B6'; color: #8ea4c2; }
+#osd .row.sel.nav .v::after { color: #0a1220; }
+.m-hint { min-height: calc(30 * var(--u)); padding: calc(4 * var(--u)) calc(18 * var(--u)) 0; font-size: calc(20 * var(--u)); color: #ffd54a; }
+.m-ft { display: flex; flex-wrap: wrap; gap: calc(4 * var(--u)) calc(24 * var(--u)); padding: calc(10 * var(--u)) calc(18 * var(--u)); border-top: calc(2 * var(--u)) solid #3a4a64; font-size: calc(17 * var(--u)); color: #8ea4c2; }
+.m-ft b { color: #e8eef6; font-weight: normal; }
+.drawin .m-box { animation: wipe-down 0.2s steps(7, end) both; }
+.drawin .m-hd { animation: wipe-x 0.2s steps(8, end) 0.15s both; }
 /* live cards (?card=): the unit's own system test card / standby slate, drawn live */
 #card { position: absolute; inset: 0; display: none; background: #000; }
 #card.on { display: block; }
 #card .bar b { text-transform: uppercase; }
+#card .clogo { display: block; width: calc(460 * var(--u)); height: auto; }
+body.t-amuvision #card .clogo { width: calc(562 * var(--u)); }
 #card .press { position: absolute; left: calc(96 * var(--u)); top: calc(790 * var(--u)); font-size: calc(24 * var(--u)); font-weight: bold; }
 #card .fmt { position: absolute; left: calc(96 * var(--u)); top: calc(830 * var(--u)); font-size: calc(20 * var(--u)); color: #9a9a9a; }
 #card .tiles { position: absolute; left: calc(1088 * var(--u)); top: calc(118 * var(--u)); display: grid; grid-template-columns: repeat(2, calc(386 * var(--u))); grid-auto-rows: calc(218 * var(--u)); gap: calc(18 * var(--u)) calc(18 * var(--u)); }
@@ -115,7 +140,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 .drawin .card { animation: wipe-down 0.18s steps(6, end) both; }
 .drawin .brand { animation: pop 0.01s steps(1, end) 0.2s both; }
 .drawin .crumbs, .drawin .hint, .drawin .keys, .drawin .foot { animation: pop 0.01s steps(1, end) 0.3s both; }
-.rows.paint .row, .rows.paint .more { animation: pop 0.01s steps(1, end) both; }
+.m-rows.paint .row, .m-rows.paint .more { animation: pop 0.01s steps(1, end) both; }
 #card.drawin .tiles .tile { animation: pop 0.01s steps(1, end) both; }
 /* XLink GMS link lost: a corner OSD in the unit's style */
 #gms { position: absolute; right: calc(40 * var(--u)); top: calc(40 * var(--u)); display: none; align-items: center; gap: calc(16 * var(--u)); padding: calc(14 * var(--u)) calc(22 * var(--u)); background: rgba(0,0,0,.88); border-left: calc(8 * var(--u)) solid var(--acc); }
@@ -129,14 +154,15 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 #off { position: absolute; right: calc(40 * var(--u)); top: calc(100 * var(--u)); display: none; padding: calc(10 * var(--u)) calc(18 * var(--u)); background: #900; font-size: calc(22 * var(--u)); font-weight: bold; }
 </style></head>
 <body class="t-takao">
-<div id="osd"><div class="card"></div><div class="bar"><i></i><i></i><b id="title"></b></div>
-<div class="brand"><div class="logo" id="logo"></div><div class="rule"><i></i><i></i><i></i></div><div class="sub"><span id="type"></span><span id="model"></span></div></div>
-<div class="crumbs" id="crumbs"></div><div class="rows" id="rows"></div>
-<div class="hint" id="hint"></div>
-<div class="keys"><span><b>&#9650;&#9660;</b>SELECT</span><span><b>&#9668;&#9658;</b>ADJUST</span><span><b>OK</b>ENTER</span><span><b>EXIT</b>BACK</span><span><b>DIAG</b>DIAGNOSTICS</span><span><b>INFO</b>STATUS</span></div>
-<div class="foot"><em>Amusement<b>VISION</b></em><br><span id="unit"></span></div></div>
+<div id="osd"><div class="m-box">
+<div class="m-hd"><img class="m-logo" id="mlogo" alt=""><span class="m-unit" id="unit"></span></div>
+<div class="m-ttl"><span id="title"></span><small id="crumbs"></small></div>
+<div class="m-rows" id="rows"></div>
+<div class="m-hint" id="hint"></div>
+<div class="m-ft"><span><b>&#9650;&#9660;</b> SELECT</span><span><b>&#9668;&#9658;</b> ADJUST</span><span><b>OK</b> ENTER</span><span><b>EXIT</b> BACK</span><span><b>DIAG</b> DIAG</span><span><b>INFO</b> STATUS</span></div>
+</div></div>
 <div id="card"><div class="bar"><i></i><i></i><b id="cstat"></b></div>
-<div class="brand"><div class="logo" id="clogo"></div><div class="rule"><i></i><i></i><i></i></div><div class="sub"><span id="ctype"></span><span id="cmodel"></span></div></div>
+<div class="brand"><img class="clogo" id="clogo" alt=""></div>
 <div class="press" id="cpress">Press and hold &ldquo;DIAG&rdquo; button to modify settings</div><div class="fmt" id="cfmt"></div>
 <div class="tiles" id="tiles"></div><div class="ver"><em>Amusement<b>VISION</b></em><br><span id="cver"></span></div></div>
 <div id="strip"></div><div id="toast"></div><div id="off"></div>
@@ -149,11 +175,9 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
   function draw(v) {
     var bx = v.box || {};
     document.body.className = 't-' + (bx.theme === 'amuvision' ? 'amuvision' : 'takao');
-    if (bx.theme === 'amuvision') $('logo').innerHTML = esc(bx.maker || 'AmuVISION').replace('VISION', '<span>VISION</span>') + ' <b>' + esc(bx.line || '') + '</b>';
-    else $('logo').textContent = (bx.maker || 'TAKAO').toUpperCase();
-    $('type').textContent = bx.theme === 'amuvision' ? (bx.type || '') + ' // ' + (bx.model || '') : (bx.type || '');
-    $('model').textContent = bx.theme === 'amuvision' ? '' : (bx.model || '');
-    $('unit').textContent = (bx.name || '') + (bx.model ? '  -  ' + bx.model : '');
+    var art = '/av-osd-art/' + (bx.theme === 'amuvision' ? 'amuvision' : 'takao') + '.png';
+    if ($('mlogo').getAttribute('src') !== art) $('mlogo').setAttribute('src', art);
+    $('unit').textContent = bx.name || '';
     var p = v.page;
     var show = !!(v.open && p);
     $('osd').className = show ? 'on' + (show && !wasOpen ? ' drawin' : '') : '';
@@ -208,10 +232,8 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
       cardShown = ck;
       setTimeout(function () { $('card').classList.remove('drawin'); }, 900);
     }
-    if (u.theme === 'amuvision') $('clogo').innerHTML = esc(u.maker || 'AmuVISION') + ' <b>' + esc(u.line || '') + '</b>';
-    else $('clogo').textContent = (u.maker || 'TAKAO').toUpperCase();
-    $('ctype').textContent = u.theme === 'amuvision' ? (u.type || '') + ' // ' + (u.model || '') : (u.type || '');
-    $('cmodel').textContent = u.theme === 'amuvision' ? '' : (u.model || '');
+    var cart = '/av-osd-art/' + (u.theme === 'amuvision' ? 'amuvision' : 'takao') + '.png';
+    if ($('clogo').getAttribute('src') !== cart) $('clogo').setAttribute('src', cart);
     $('cstat').textContent = c.error ? c.error : (c.status || '');
     $('cfmt').textContent = c.format ? (u.name || '') + '  -  OUTPUT ' + c.format : (u.name || '');
     $('cver').textContent = ['SW: ' + (u.sw || '-'), 'HW: ' + (u.hw || '-'), 'AMV: ' + (u.fw || '-')].join(' - ');
@@ -256,6 +278,14 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 </script></body></html>`;
 
 function registerRoutes(app) {
+    // the units' own logos (cropped from their boot / system test cards) for the OSD pages: public, fixed list
+    const UNIT_ART = { takao: 'unit-takao.png', amuvision: 'unit-amuvision.png' };
+    app.get('/av-osd-art/:name.png', (req, res) => {
+        const f = UNIT_ART[String(req.params.name || '')];
+        if (!f) return res.status(404).end();
+        res.set('Cache-Control', 'public, max-age=86400');
+        res.sendFile(require('path').join(__dirname, '..', 'apps', 'quickcast', 'assets', f));
+    });
     // QuickCast REALTIME preview: MJPEG for a one-time ticket from quickcast_live_ticket (admin websocket)
     app.get('/quickcast/live/:ticket', (req, res) => {
         res.set('X-Robots-Tag', 'noindex');
