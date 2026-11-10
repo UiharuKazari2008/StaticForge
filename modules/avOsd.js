@@ -302,7 +302,7 @@ const PAGES = {
         const all = {
             title: 'MAIN MENU',
             rows: [
-                (() => { const act = b.fault ? b.fault.items.filter((i) => !i.bypass).length : 0; const byp = b.fault ? b.fault.items.length - act : 0; return { id: 'alarms', label: 'ALARMS', kind: 'nav', value: act ? `${act} ACTIVE${b.fault.overridden ? ' (OVR)' : ''}` : byp ? `${byp} BYPASSED` : 'NONE', state: act ? (b.fault.overridden ? 'warn' : 'bad') : byp ? 'warn' : 'ok', blink: !!(act && !b.fault.overridden) }; })(),
+                (() => { const act = (b.fault ? b.fault.items.filter((i) => !i.bypass).length : 0) + (b.nosig ? 1 : 0); const byp = b.fault ? b.fault.items.length - act : 0; return { id: 'alarms', label: 'ALARMS', kind: 'nav', value: act ? `${act} ACTIVE${b.fault && b.fault.overridden ? ' (OVR)' : ''}` : byp ? `${byp} BYPASSED` : 'NONE', state: act ? (b.fault && b.fault.overridden && !b.nosig ? 'warn' : 'bad') : byp ? 'warn' : 'ok', blink: !!(act && !(b.fault && b.fault.overridden)) }; })(),
                 { id: 'inputs', label: 'INPUT ASSIGNMENT', kind: 'nav', value: '' },
                 { id: 'timing', label: 'TIMING / SYNC', kind: 'nav', value: '' },
                 { id: 'cameras', label: 'CAMERA CONTROL', kind: 'nav', value: '' },
@@ -439,22 +439,24 @@ const PAGES = {
 
     async alarms(b) {
         const f = b.fault;
+        const live = b.nosig ? [{ id: 'nv', label: `NO VIDEO: ${b.nosig.input}`, kind: 'info', value: b.nosig.cabinet ? `CABINET ${b.nosig.cabinet.toUpperCase()}` : 'SYNCING', state: 'bad' }] : [];
         const last = b.lastPost ? new Date(b.lastPost.at).toTimeString().slice(0, 8) : '';
         if (!f) {
             return {
                 title: 'ALARMS',
                 rows: [
-                    { id: 'none', label: 'NO ACTIVE ALARMS', kind: 'info', value: last ? `TESTED ${last}` : '', state: 'ok' },
+                    ...live,
+                    ...(live.length ? [] : [{ id: 'none', label: 'NO ACTIVE ALARMS', kind: 'info', value: last ? `TESTED ${last}` : '', state: 'ok' }]),
                     { id: 'f:retest', label: 'RUN SELF TEST', kind: 'action', value: '', hint: 'Boot screen and power-on self test on this unit\'s output' }
                 ]
             };
         }
         // OK on an alarm bypasses the input: it is switched off in every scene that shows it (and back on)
-        const rows = f.items.map((x, i) => ({
+        const rows = [...live, ...f.items.map((x, i) => ({
             id: `f:${i}`, label: x.label, type: x.type, kind: 'action',
             value: x.bypass ? 'BYPASSED' : x.detail, state: x.bypass ? 'warn' : f.overridden ? 'warn' : 'bad', blink: !x.bypass && !f.overridden,
             hint: x.bypass ? `OK: put ${x.label} back in its ${x.bypass.length} scene${x.bypass.length === 1 ? '' : 's'}` : `OK: bypass ${x.label} (switch it off in the scenes that show it)`
-        }));
+        }))];
         rows.push({ id: 'f:retest', label: 'RE-RUN SELF TEST', kind: 'action', value: '', hint: 'After fixing the source: test again; a clean test clears the fault' });
         rows.push({ id: 'f:override', label: f.overridden ? 'OVERRIDDEN (AIRING WITH FAULT)' : 'OVERRIDE: AIR WITH FAULT', kind: 'action', value: f.overridden ? 'ON' : '', state: f.overridden ? 'warn' : '', hint: 'Technician only: clears the DO NOT AIR lock without fixing the fault' });
         rows.push({ id: 'inputs', label: 'INPUT ASSIGNMENT', kind: 'nav', value: '' });

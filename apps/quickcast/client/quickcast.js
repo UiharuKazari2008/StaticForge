@@ -1293,7 +1293,7 @@
                 if (err) { dmColor = '#ff5a3a'; dm(unit, 'ERROR', err); return; }
                 if (v && v.toast) { dm(unit, v.toast.slice(0, 20), v.toast.slice(20, 40)); return; }
                 if (v && v.powerOff) { dmColor = '#a03a2a'; dm(unit, 'POWER OFF', ''); return; }
-                if (v && v.nosig && !(v.open && v.page)) { dmColor = '#ff5a3a'; dm(unit, 'NO INPUT SIGNAL', `SYNC ${v.nosig.machine || ''}`.slice(0, 20)); return; }
+                if (v && v.nosig && !(v.open && v.page)) { dmColor = '#ff5a3a'; dm(unit, 'ALARM NO VIDEO', `${v.nosig.input || ''}`.slice(0, 20)); return; }
                 if (v && v.standby && !(v.open && v.page)) { dmColor = '#ffb028'; dm(unit, v.standby.phase === 'boot' ? 'STANDBY BOOT...' : 'STANDBY MODE', ''); return; }
                 if (v && v.post) { if (v.post.phase === 'fault') dmColor = '#ff5a3a'; dm(v.post.phase === 'fault' ? 'FAULT - DO NOT AIR' : 'SELF TEST', (v.post.text || '').slice(0, 20), (v.post.text || '').slice(20, 40)); return; }
                 if (v && v.open && v.page) {
@@ -1335,7 +1335,8 @@
                 pw.className = `qc-led ${lastView && lastView.powerOff && !sat ? 'is-red' : lastView && lastView.standby && !sat ? 'is-amber' : linkSt === 'online' ? 'is-green' : linkSt === 'launching' || linkSt === 'stopping' ? 'is-amber is-blink' : linkSt === 'offline' ? 'is-red' : ''}`;
                 const al = m.querySelector('[data-led="alarm"]');
                 const inStandby = !!(lastView && (lastView.standby || lastView.powerOff) && !sat);
-                al.className = `qc-led ${inStandby ? '' : fault ? 'is-red is-blink' : bad ? 'is-red' : ''}`; // no alarm states in standby
+                const noVideo = !!(lastView && lastView.nosig && sat);
+                al.className = `qc-led ${inStandby ? '' : fault ? 'is-red is-blink' : bad || noVideo ? 'is-red' : ''}`; // no alarm states in standby
                 m.classList.toggle('qc-fp-sat', sat);
                 // the unit's own indicators: each pipeline stage it owns, plus the satellite's air / uplink lamps
                 const stg = (id) => (rowSt.stages || []).find((x) => x.id === id);
