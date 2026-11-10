@@ -439,7 +439,7 @@ const PAGES = {
 
     async alarms(b) {
         const f = b.fault;
-        const live = b.nosig ? [{ id: 'nv', label: `NO VIDEO: ${b.nosig.input}`, kind: 'info', value: b.nosig.cabinet ? `CABINET ${b.nosig.cabinet.toUpperCase()}` : 'SYNCING', state: 'bad' }] : [];
+        const live = b.nosig ? [{ id: 'nv', label: `LOS: ${b.nosig.input} (FROZEN)`, kind: 'info', value: b.nosig.cabinet ? `CABINET ${b.nosig.cabinet.toUpperCase()}` : 'SYNCING', state: 'bad' }] : [];
         const last = b.lastPost ? new Date(b.lastPost.at).toTimeString().slice(0, 8) : '';
         if (!f) {
             return {

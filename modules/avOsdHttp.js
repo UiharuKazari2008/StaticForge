@@ -166,6 +166,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 #nosig .hw-hd { background: #b00000; }
 #nosig b { color: #ff6b5e !important; letter-spacing: calc(4 * var(--u)) !important; }
 #nosig .hw-sub { max-width: calc(620 * var(--u)); }
+#nosig .nsf { color: #ffc23a; }
 .nsync { position: relative; display: block; height: calc(10 * var(--u)); margin: calc(10 * var(--u)) 0 calc(4 * var(--u)); border: calc(2 * var(--u)) solid #3a4a64; overflow: hidden; }
 .nsync i { position: absolute; top: 0; bottom: 0; width: 18%; background: #ffc23a; animation: nscan 1.6s steps(16, end) infinite; }
 @keyframes nscan { 0% { left: -18%; } 100% { left: 100%; } }
@@ -205,7 +206,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 <div class="brand"><img class="clogo" id="clogo" alt=""><div class="sub"><span id="ctype"></span><span id="cmodel"></span></div></div>
 <div class="press" id="cpress">Press and hold &ldquo;DIAG&rdquo; button to modify settings</div><div class="fmt" id="cfmt"></div>
 <div class="tiles" id="tiles"></div><div class="ver"><em>Amusement<b>VISION</b></em><br><span id="cver"></span></div></div>
-<div id="nosig" class="hw"><div class="hw-hd">ALARM</div><div class="hw-bd"><b>NO VIDEO</b><span class="hw-sub" id="nsh"></span><span class="nsync"><i></i></span><span class="hw-sub" id="nss"></span></div></div>
+<div id="nosig" class="hw"><div class="hw-hd">ALARM</div><div class="hw-bd"><b>LOSS OF SIGNAL</b><span class="hw-sub nsf">FROZEN FRAME: LAST PICTURE HELD</span><span class="hw-sub" id="nsh"></span><span class="nsync"><i></i></span><span class="hw-sub" id="nss"></span></div></div>
 <div id="sby" class="hw"><div class="hw-hd" id="sbyh"></div><div class="hw-bd"><b id="sbyb"></b><span class="sbbar"><i></i></span><span class="hw-sub" id="sbys"></span></div></div>
 <div id="strip" class="hw"><div class="hw-hd" id="striph">STATUS</div><div class="hw-bd hw-grid" id="stripb"></div></div><div id="toast" class="hw"><div class="hw-hd" id="toasth">SYSTEM</div><div class="hw-bd"><b id="toastb"></b><span class="hw-sub" id="toasts"></span></div></div><div id="off" class="hw"><div class="hw-hd">UNIT OFFLINE</div><div class="hw-bd"><b>NO CONTROL LINK</b><span class="hw-sub" id="offs"></span></div></div>
 <div id="gms" class="hw"><div class="hw-hd" id="gmsh">XLINK GMS</div><div class="hw-bd"><b id="gmst"></b><span class="hw-sub" id="gmss"></span></div></div>

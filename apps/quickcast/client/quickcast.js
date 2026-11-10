@@ -1293,7 +1293,7 @@
                 if (err) { dmColor = '#ff5a3a'; dm(unit, 'ERROR', err); return; }
                 if (v && v.toast) { dm(unit, v.toast.slice(0, 20), v.toast.slice(20, 40)); return; }
                 if (v && v.powerOff) { dmColor = '#a03a2a'; dm(unit, 'POWER OFF', ''); return; }
-                if (v && v.nosig && !(v.open && v.page)) { dmColor = '#ff5a3a'; dm(unit, 'ALARM NO VIDEO', `${v.nosig.input || ''}`.slice(0, 20)); return; }
+                if (v && v.nosig && !(v.open && v.page)) { dmColor = '#ff5a3a'; dm(unit, 'ALARM LOS FROZEN', `${v.nosig.input || ''}`.slice(0, 20)); return; }
                 if (v && v.standby && !(v.open && v.page)) { dmColor = '#ffb028'; dm(unit, v.standby.phase === 'boot' ? 'STANDBY BOOT...' : 'STANDBY MODE', ''); return; }
                 if (v && v.post) { if (v.post.phase === 'fault') dmColor = '#ff5a3a'; dm(v.post.phase === 'fault' ? 'FAULT - DO NOT AIR' : 'SELF TEST', (v.post.text || '').slice(0, 20), (v.post.text || '').slice(20, 40)); return; }
                 if (v && v.open && v.page) {
