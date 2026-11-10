@@ -445,10 +445,19 @@ The chat's task list renders in `#directorTaskList`, above the messages inside `
 | `fast` | Optional. When true and the model has a fast variant, the turn uses it |
 | `model` | Model family id from `director_get_models` for that engine, such as `grok-4.7` or `moonshotai/kimi-k3` |
 | `reportReview` | Optional. `{ messageId, scores: ["hit"\|"partial"\|"miss", ...] }`: the user's rescore of that assistant message's report card, one score per item. The server saves it as `data.report.review` and puts the changed items ahead of `content` in the turn (`content` may be empty). The client sends it from the card's Submit, or with the next message when the card was rescored but not submitted. See [Turn report](#server--client-director_turn_report). |
+| `mascot` | Optional. `{ stage, points, nextAt }`: the persona mascot's grown stage and the distance to the next one, from `directorMascot.js` `growthState()` (`behaviour.growth` in the persona's manifest, points counted from this chat's report cards). The turn prompt then carries the voice direction for that one stage (`modules/directorPersonaVoice.js`); an unknown stage is dropped and she speaks from stage 1. See [Persona voice and growth](#persona-voice-and-growth). |
 
 **Success response:** `director_send_message_response`
 
 A send on an engine whose provider has Obliterated Memories marks the chat Kabuki (`memoryStore: "obliterated"`). A Kabuki chat sent on any other engine is refused with `KABUKI_ENGINE`.
+
+### Persona voice and growth
+
+Who she is, and how far she has grown, live in `modules/directorPersonaVoice.js` (`PERSONA_VOICES`): one direction block per persona (Yumiya for `wren`, Chiyo for `kabuki`) and one voice paragraph per growth stage.
+
+- **The stage.** `public/static_images/director-mascots/<persona>/manifest.json` `behaviour.growth` gives the order and the point thresholds (`wren`: `base` 0, `bigger` 20; `kabuki`: `base` 0, `bigger` 20, `bigger2` 50). `directorMascot.js` counts the open chat's report cards (hit 1, partial 0.5, miss -0.5, never below 0) and picks the stage; the client sends it as `mascot {stage, points, nextAt}` on `director_send_message`.
+- **The turn prompt.** `buildPrompt` adds the direction, the stage paragraph for that one stage, how many points are left before the next ("she is close, restless, working for the next point" at 5 or less), and the rule that the stage comes from report cards and never from her mood. An unknown stage, or an older client that sends no `mascot`, is dropped: she speaks from stage 1 and cannot claim to have grown.
+- **The ladder.** Each stage up is her more heated, more engaged, and more ready to amp the picture up: the bolder wording, the next step said out loud, the print pushed past what they asked. A low stage still means restraint. The voice never changes what a print actually shows (hard rule 2).
 
 ### `director_abort`
 

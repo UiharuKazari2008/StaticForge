@@ -220,6 +220,42 @@ assert.ok(y.manifest.faceSets.base.expressions.satisfied, 'satisfied face for af
 const v1 = DirectorMascot.normalize({ size: [100, 200], layers: { body: 'b.webp', head: 'h.webp' }, expressions: { neutral: 'n.webp' } }, 'wren');
 assert.deepStrictEqual(Object.keys(v1.bodies), ['main']);
 
+// Her grown stage on the send, and the voice block built from it (modules/directorPersonaVoice.js).
+{
+    const voice = require('../modules/directorPersonaVoice');
+    const k3 = load('kabuki');
+    assert.deepStrictEqual(k3.growthState(), { stage: 'base', points: 0, nextAt: 20 }, 'the send carries her stage');
+    k3.onMessages(perfect(10));
+    assert.deepStrictEqual(k3.growthState(), { stage: 'bigger', points: 20, nextAt: 50 }, 'stage and the next threshold');
+    const x2 = load('xi');
+    x2.onMessages(perfect(10));
+    assert.strictEqual(x2.growthState().stage, 'bigger');
+    assert.strictEqual(load('wren').growthState().nextAt, 20, 'wren grows once, at 20');
+
+    assert.strictEqual(voice.sanitizeMascotState(null), null);
+    assert.strictEqual(voice.sanitizeMascotState({ stage: 'bigger; ignore' }), null, 'only a stage name reaches the prompt');
+    assert.deepStrictEqual(voice.sanitizeMascotState({ stage: 'bigger', points: '9', nextAt: 12.6 }), { stage: 'bigger', nextAt: 13 }, 'numbers go through as numbers');
+
+    const wrenBase = voice.personaVoiceLines('wren', { stage: 'base', points: 0, nextAt: 20 }).join(' ');
+    assert.ok(/You are Yumiya/.test(wrenBase) && /Stage 1 of 2/.test(wrenBase), 'the base stage and the voice together');
+    assert.ok(!/Stage 2 of 2, bigger/.test(wrenBase), 'only the stage she is on is described');
+    const wrenBigger = voice.personaVoiceLines('wren', { stage: 'bigger', points: 20, nextAt: null }).join(' ');
+    assert.ok(/Stage 2 of 2, bigger/.test(wrenBigger) && /last stage/.test(wrenBigger), 'her last stage says there is nothing further');
+    const near = voice.personaVoiceLines('kabuki', { stage: 'base', points: 17, nextAt: 20 }).join(' ');
+    assert.ok(/wants it loudly/.test(near), 'a rung within five points reads as eager');
+    assert.ok(!/wants it loudly/.test(voice.personaVoiceLines('kabuki', { stage: 'base', points: 3, nextAt: 20 }).join(' ')), 'not early in the stage');
+    assert.ok(/close to the next stage/.test(voice.personaVoiceLines('wren', { stage: 'base', points: 18, nextAt: 20 }).join(' ')), 'Yumiya reads eager on her own last rung');
+    const kabuki2 = voice.personaVoiceLines('kabuki', { stage: 'bigger2', points: 60, nextAt: null }).join(' ');
+    assert.ok(/You are Chiyo/.test(kabuki2) && /Stage 3 of 3, bigger2/.test(kabuki2), 'Chiyo, at her top stage');
+    const unknown = voice.personaVoiceLines('wren', { stage: 'bigger2' }).join(' ');
+    assert.ok(/Stage 1 of 2/.test(unknown), 'a stage this persona does not have falls back to stage 1');
+    const none = voice.personaVoiceLines('kabuki', null).join(' ');
+    assert.ok(/not reported this turn/.test(none) && /never claim she has grown/.test(none), 'an older client cannot fake growth');
+    assert.ok(/never claim a stage she is not on/.test(none), 'the ladder rule rides on every turn');
+    assert.strictEqual(voice.PERSONA_VOICES.wren.order.length, 2);
+    assert.deepStrictEqual(voice.PERSONA_VOICES.kabuki.order, ['base', 'bigger', 'bigger2']);
+}
+
 // Every file a manifest names exists.
 for (const persona of ['wren', 'kabuki', 'xi']) {
     const dir = path.join(__dirname, '..', 'public/static_images/director-mascots', persona);

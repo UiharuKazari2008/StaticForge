@@ -1512,6 +1512,21 @@ class DirectorMascot {
         this.cue({ expression: 'surprised', holdMs: 1200 });
     }
 
+    // Her grown stage and how far the next one is. director.js stamps it on the send as `mascot`, and
+    // the turn prompt then speaks from that stage (modules/directorPersonaVoice.js).
+    growthState() {
+        const st = this.stageState;
+        if (!st || !st.stage) return null;
+        const g = this.manifest ? directorMascotGrowth(this.manifest) : { order: [], points: [] };
+        const at = Math.max(0, g.order.indexOf(st.stage));
+        const nextAt = g.points[at + 1];
+        return {
+            stage: st.stage,
+            points: Number(this.growthPoints) || 0,
+            nextAt: Number.isFinite(nextAt) ? nextAt : null
+        };
+    }
+
     // Test hook: the stage machine state without the DOM.
     debugState() {
         const st = this.stageState || {};

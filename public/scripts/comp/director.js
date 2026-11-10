@@ -7897,6 +7897,13 @@ class Director {
         if (row) row.remove();
     }
 
+    // Her growth stage rides on the send, so the turn prompt speaks from where she actually is
+    // (directorMascot.js growthState; modules/directorPersonaVoice.js reads it server side).
+    mascotGrowthState() {
+        const state = this.mascot && typeof this.mascot.growthState === 'function' ? this.mascot.growthState() : null;
+        return state || undefined;
+    }
+
     async sendMessage(presetContent) {
         const fromPreset = typeof presetContent === 'string';
         const typed = fromPreset ? '' : (this.directorChatInput ? this.directorChatInput.value : '').trim();
@@ -8065,6 +8072,7 @@ class Director {
                 type: 'director_send_message',
                 requestId: Date.now().toString(),
                 persona: this.persona || 'wren',
+                mascot: this.mascotGrowthState(),
                 sessionId: this.currentSession.id,
                 content: typedContent,
                 reportReview: reportReview || undefined,
