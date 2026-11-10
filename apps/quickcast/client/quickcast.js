@@ -168,8 +168,8 @@
                             <button type="button" class="qc-bk k-white" data-qc="chat">LIVE CHAT</button>
                             <button type="button" class="qc-bk k-white" data-qc="settings">SETTINGS</button>
                         </div>
-                        <button type="button" class="qc-bk qc-key qc-go k-green" data-qc="golive" disabled><span class="qc-key-dot"></span>GO LIVE</button>
-                        <button type="button" class="qc-bk qc-key qc-stop k-red" data-qc="stop" disabled><span class="qc-key-sq"></span>STOP</button>
+                        <button type="button" class="qc-bk qc-key qc-go k-red" data-qc="golive" disabled><span class="qc-key-dot"></span>GO LIVE</button>
+                        <button type="button" class="qc-bk qc-key qc-stop k-white" data-qc="stop" disabled><span class="qc-key-sq"></span>STOP</button>
                     </div>
                     <div class="qc-status"><span class="qc-st-main">Ready</span><span class="qc-st-obs">-</span><span class="qc-st-time">-</span></div>
                 </div></div>`;
@@ -397,7 +397,7 @@
             const sig = st.cabinets.map((c) => `${c.id}:${c.present}`).join('|');
             if (list.dataset.sig !== sig) {
                 list.dataset.sig = sig;
-                list.innerHTML = st.cabinets.map((c) => `<button type="button" class="qc-bk qc-cab k-green" data-cab="${esc(c.id)}">
+                list.innerHTML = st.cabinets.map((c) => `<button type="button" class="qc-bk qc-cab k-white" data-cab="${esc(c.id)}">
                     <span class="qc-cab-badge qc-b-${esc(c.icon)}">${esc(c.short)}</span>
                     <span class="qc-cab-text"><b>${esc(c.name)}</b><small>Scene: ${esc(c.scene)}${online && !c.present ? ' (missing)' : ''}</small></span>
                     <span class="qc-cab-tally"></span></button>`).join('');
@@ -410,7 +410,7 @@
                 // switcher tally: the picked cabinet is lit green (PVW), the one on air red (PGM)
                 const pgm = live && st.programCabinet === b.dataset.cab;
                 b.classList.toggle('k-red', pgm);
-                b.classList.toggle('k-green', !pgm && b.dataset.cab === this.cabinet);
+                b.classList.toggle('k-orange', !pgm && b.dataset.cab === this.cabinet);
                 b.classList.toggle('k-white', !pgm && b.dataset.cab !== this.cabinet);
                 b.classList.toggle('is-on', pgm || b.dataset.cab === this.cabinet);
                 b.querySelector('.qc-cab-tally').textContent = pgm ? 'PGM' : b.dataset.cab === this.cabinet ? 'PVW' : '';
@@ -500,8 +500,10 @@
 
             // keys
             q('.qc-go').disabled = live || !this.canGo();
-            q('.qc-go').classList.toggle('is-on', !q('.qc-go').disabled);
-            q('.qc-stop').classList.toggle('is-on', live);
+            // GO LIVE: a slow dull red flash while armed (ready, not live), solid red only on air
+            q('.qc-go').classList.toggle('is-armed', !live && !q('.qc-go').disabled);
+            q('.qc-go').classList.toggle('is-on', live);
+            q('.qc-stop').classList.toggle('is-on', false);
             q('.qc-go').title = live ? 'Already on air' : this.busy ? this.busy : !cab ? 'Pick a cabinet first' : !st.key.set ? 'Set the YouTube stream key first (Stream > Stream Key...)' : st.obs.state === 'launching' ? 'OBS is starting on Ruiko' : online && !cab.present ? `The scene "${cab.scene}" is missing from OBS` : `Go live on YouTube with ${cab.name}`;
             q('.qc-stop').disabled = !live || !!this.busy;
             q('.qc-st-obs').textContent = online ? `${st.collection || '-'} / ${st.profile || '-'} / ${st.program || '-'}` : (st.obs.error || 'OBS offline');

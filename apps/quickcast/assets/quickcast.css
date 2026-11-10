@@ -275,38 +275,45 @@
 .qc-srcs-hidden .qc-srcs { flex: none; }
 .qc-srcs-hidden .qc-monitor { max-height: calc(100% - 96px); }
 
-/* ---- backlit switcher keys (TriCaster-style): a dim tinted cap when off, lit and glowing when on.
-   --k is the key's colour (r, g, b): green = preview / ready, red = program / on air, amber, blue, white ---- */
+/* ---- backlit switcher keys (TriCaster-style), flat matte plastic caps: a dark tinted cap when off,
+   an evenly lit cap with a soft backlight bleed when on. --k is the colour (r, g, b):
+   orange = preview (picked), red = program / on air, green, amber, blue, white ---- */
 .qc-bk { --k: 200, 205, 212; }
-.qc-bk.k-green { --k: 47, 214, 92; }
-.qc-bk.k-red { --k: 245, 44, 50; }
-.qc-bk.k-amber { --k: 255, 176, 40; }
-.qc-bk.k-blue { --k: 60, 150, 255; }
-.qc-bk.k-white { --k: 215, 222, 232; }
+.qc-bk.k-green { --k: 52, 200, 96; }
+.qc-bk.k-red { --k: 232, 46, 50; }
+.qc-bk.k-orange { --k: 255, 128, 24; }
+.qc-bk.k-amber { --k: 246, 178, 44; }
+.qc-bk.k-blue { --k: 64, 146, 245; }
+.qc-bk.k-white { --k: 214, 220, 228; }
 .qc-window .qc-root .qc-bk {
     position: relative;
-    border: 1px solid #040405;
-    border-radius: 4px;
-    background: linear-gradient(180deg, rgba(var(--k), .2), rgba(var(--k), .07) 55%, rgba(var(--k), .12)), #121316;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .09), inset 0 0 0 1px rgba(var(--k), .22), inset 0 -2px 3px rgba(0, 0, 0, .45), 0 2px 2px rgba(0, 0, 0, .7);
-    color: rgba(var(--k), .85);
+    border: 1px solid #050506;
+    border-radius: 3px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .025), rgba(0, 0, 0, .06)), rgba(var(--k), .11);
+    background-color: #17181b;
+    box-shadow: inset 0 0 0 1px rgba(var(--k), .14), 0 1px 0 rgba(255, 255, 255, .04), 0 1px 2px rgba(0, 0, 0, .7);
+    color: rgba(var(--k), .72);
     text-shadow: none;
     font-weight: bold;
-    transition: background .08s, box-shadow .08s, color .08s;
+    transition: background-color .1s, box-shadow .1s, color .1s;
 }
-.qc-window .qc-root .qc-bk:hover:not(:disabled) { background: linear-gradient(180deg, rgba(var(--k), .3), rgba(var(--k), .12) 55%, rgba(var(--k), .18)), #16181b; color: rgb(var(--k)); }
+.qc-window .qc-root .qc-bk:hover:not(:disabled) { background: linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(0, 0, 0, .06)), rgba(var(--k), .17); background-color: #1a1b1e; color: rgba(var(--k), .9); }
 .qc-window .qc-root .qc-bk.is-on {
-    border-color: rgba(var(--k), .95);
-    background: radial-gradient(120% 90% at 50% 30%, rgba(255, 255, 255, .62) 0%, rgba(var(--k), 1) 42%, rgba(var(--k), .82) 100%);
-    box-shadow: 0 0 12px rgba(var(--k), .7), 0 0 3px rgba(var(--k), 1), inset 0 1px 0 rgba(255, 255, 255, .55), inset 0 -3px 5px rgba(0, 0, 0, .22);
+    border-color: rgba(0, 0, 0, .85);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, .08)), rgb(var(--k));
+    box-shadow: inset 0 0 6px rgba(255, 255, 255, .28), inset 0 0 0 1px rgba(255, 255, 255, .18), 0 0 7px rgba(var(--k), .45), 0 1px 2px rgba(0, 0, 0, .7);
     color: #fff;
-    text-shadow: 0 0 5px rgba(255, 255, 255, .55), 0 1px 1px rgba(0, 0, 0, .45);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, .35);
 }
-.qc-window .qc-root .qc-bk:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(0, 0, 0, .55), 0 0 6px rgba(var(--k), .35); }
-.qc-window .qc-root .qc-bk:disabled { background: linear-gradient(180deg, rgba(var(--k), .07), rgba(var(--k), .03)), #111214; color: rgba(var(--k), .3); box-shadow: inset 0 0 0 1px rgba(var(--k), .08), 0 2px 2px rgba(0, 0, 0, .7); }
-.qc-window .qc-root .qc-bk.is-on:disabled { color: #fff; opacity: .9; }
-.qc-is-live .qc-stop.is-on { animation: qc-pgm 1.6s ease-in-out infinite; }
-@keyframes qc-pgm { 50% { box-shadow: 0 0 20px rgba(245, 44, 50, .95), 0 0 4px rgba(245, 44, 50, 1), inset 0 1px 0 rgba(255, 255, 255, .55); } }
+.qc-window .qc-root .qc-bk:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .55); }
+.qc-window .qc-root .qc-bk:disabled { background: rgba(var(--k), .05); background-color: #141517; color: rgba(var(--k), .28); box-shadow: inset 0 0 0 1px rgba(var(--k), .06), 0 1px 2px rgba(0, 0, 0, .7); }
+.qc-window .qc-root .qc-bk.is-on:disabled { background: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, .08)), rgb(var(--k)); color: #fff; }
+/* GO LIVE armed: a slow, dull red breathing, never fully lit until on air */
+.qc-window .qc-root .qc-go.is-armed { animation: qc-armed 2.6s ease-in-out infinite; color: rgba(255, 190, 190, .9); }
+@keyframes qc-armed {
+    0%, 100% { background-color: #17181b; box-shadow: inset 0 0 0 1px rgba(232, 46, 50, .18), 0 1px 2px rgba(0, 0, 0, .7); }
+    50% { background-color: #5c1416; box-shadow: inset 0 0 8px rgba(232, 46, 50, .45), inset 0 0 0 1px rgba(232, 46, 50, .35), 0 1px 2px rgba(0, 0, 0, .7); }
+}
 
 /* cabinet keys as a switcher bus */
 .qc-window .qc-root .qc-cab.qc-bk { height: 46px; padding: 0 8px; text-align: left; }
