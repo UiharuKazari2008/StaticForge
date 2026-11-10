@@ -356,6 +356,10 @@ const PAGES = {
                 return { id: pathKey, xl: 'toggle', label: n.text, kind: 'pick', value: n.toggle.map((o, k) => (k === pend ? `[${o.label || '-'}]` : o.label || '-') + (o.active ? '*' : '')).join(' '), changed: pend !== act, hint: `${st ? `${st}  ` : ''}\u25c4\u25ba choose, OK apply` };
             }
             if (n.kind === 'button') return { id: pathKey, xl: 'button', label: n.text, kind: 'action', value: st || 'OK', hint: 'OK sends' };
+            if (n.kind === 'slider') {
+                const lvl = Number(String(st).replace(/[^0-9.]/g, ''));
+                return { id: pathKey, xl: 'slider', label: n.text, kind: 'adjust', value: st ? `${st}${n.append || ''}` : '-', bar: Number.isFinite(lvl) ? { from: 0, width: Math.max(1, Math.min(100, lvl)), color: '#3ea0ff' } : null, hint: `\u25c4\u25ba 5 %${(n.children || []).length ? ', OK presets' : ''}` };
+            }
             return { id: pathKey, xl: 'info', label: n.text, kind: 'info', value: st };
         });
         const c = b.xlConfirm && Date.now() < b.xlConfirm.until ? b.xlConfirm : null;
@@ -630,6 +634,8 @@ async function xlinkRun(b, path, op, value, label) {
         toast(b, `PRESS OK AGAIN: ${label}`, 'XLINK');
         return;
     }
+    toast(b, `SENDING: ${label}`, 'XLINK');
+    emit(b);
     const r = await deps.xlinkDo({ cabinet: b.cabinet, path, op, value, confirmed: !!(c && c.xlinkWarned) || !!c });
     if (r.confirm && !c) {
         b.xlConfirm = { key: pathKey, until: Date.now() + 5000, msg: `${r.confirm.header}: ${r.confirm.message}`.slice(0, 60), xlinkWarned: true };
@@ -638,7 +644,7 @@ async function xlinkRun(b, path, op, value, label) {
     }
     b.xlConfirm = null;
     if (r.menu) { b.xlMenu = r.menu; b.xlMenuAt = Date.now(); }
-    toast(b, r.ok === false ? `FAILED: ${label}` : `${label}: DONE`, 'XLINK', r.failure || '');
+    toast(b, r.ok === false ? `FAILED: ${label}` : `${label}: DONE`, 'XLINK', r.ok === false ? `CABINET ANSWERED ${r.code || 'NOTHING'}${r.failure ? `: ${r.failure}` : ''}`.slice(0, 90) : '');
 }
 
 /** Switch an input off wherever it is on (scenes and groups); returns where, for putting it back. */
@@ -1216,6 +1222,15 @@ async function onKey(b, key) {
             if (key === 'ok') {
                 await xlinkRun(b, path, 'toggle', cur, `${n.text} ${n.toggle[cur].label || ''}`.trim());
                 if (!b.xlConfirm) b.pending.delete(row.id);
+            }
+            return;
+        }
+        if (row.xl === 'slider') {
+            if (key === 'ok' && (n.children || []).length) { b.stack.push({ page: 'xlink', path, cursor: 0, title: row.label }); return; }
+            if (dir) {
+                const cur = Number(String((n.status && n.status.text) || '').replace(/[^0-9.]/g, ''));
+                const next = Math.max(0, Math.min(100, Math.round((Number.isFinite(cur) ? cur : 50) / 5) * 5 + dir * 5));
+                await xlinkRun(b, path, 'slider', next, `${n.text} ${next}%`);
             }
             return;
         }

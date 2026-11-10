@@ -915,9 +915,12 @@ async function cabinetAction(req) {
         (pth.length === 1 && req.op === 'toggle' && (XL_VIDEO.test(top.text) || XL_POWER.test(top.text)))
         || (pth.length === 2 && req.op === 'send' && ((XL_VIDEO.test(top.text) && top.children[pth[1]] && XL_RESET.test(top.children[pth[1]].text)) || XL_GAME.test(top.text))));
     if (!ok) throw fail('QuickCast can only use the video, encoder, power and game controls', 'QUICKCAST_XLINK_DENIED');
-    const r = await xlink.action({ device: c.xlink, path: pth, op: req.op, value: req.value, confirmed: !!req.confirmed });
+    const t0 = Date.now();
+    let r;
+    try { r = await xlink.action({ device: c.xlink, path: pth, op: req.op, value: req.value, confirmed: !!req.confirmed }); } catch (e) { logXlink('control', c, { path: pth, op: req.op, value: req.value }, null, t0); throw e; }
+    logXlink('control', c, { path: pth, op: req.op, value: req.value }, r, t0);
     if (r.confirm) return { confirm: r.confirm };
-    return { ok: r.ok, failure: r.failure, controls: await cabinetControls(c.id) };
+    return { ok: r.ok, code: r.code, failure: r.failure, controls: await cabinetControls(c.id) };
 }
 
 /**
@@ -933,12 +936,20 @@ async function cabinetXlinkMenu(cabinetId, force) {
         throw e;
     }
     const strip = (it) => ({
-        text: it.text, kind: it.kind, warning: !!it.warning,
+        text: it.text, kind: it.kind, warning: !!it.warning, append: it.append || '',
         status: it.status ? { text: it.status.text, color: it.status.color, failed: !!it.status.failed } : null,
         toggle: it.toggle ? it.toggle.map((b) => ({ label: b.label, active: !!b.active })) : null,
         children: (it.children || []).map(strip)
     });
     return { cabinet: c.id, available: true, device: { key: snap.key, name: snap.name, status: snap.status ? { text: snap.status.text, color: snap.status.color } : null }, items: snap.items.map(strip), polledAt: snap.polledAt };
+}
+
+/** One log line per cabinet command VisionCaster sends (so a "nothing happened" can be traced). */
+function logXlink(what, c, req, r, t0) {
+    const sent = (r && r.log || []).find((l) => l.verb === 'SEND' || l.verb === 'SET');
+    const where = sent ? String(sent.url).replace(/^[^/]*/, '') : '';
+    const res = !r ? 'ERROR' : r.confirm ? `WARNING ${r.confirm.header}` : r.ok ? `OK ${sent ? sent.code : ''}` : `FAILED ${sent ? sent.code : ''} ${String(r.failure || '').slice(0, 80)}`;
+    console.log(`[visioncaster] ${what} ${c.id} path ${JSON.stringify(req.path)} ${req.op}${req.value != null ? ` ${req.value}` : ''} -> ${res}${where ? ` (${where})` : ''} ${Date.now() - t0} ms`);
 }
 
 /** Run any XLink item of the cabinet (send / toggle / slider); XLink's own warnings come back as { confirm }. */
@@ -947,9 +958,13 @@ async function cabinetXlinkDo(req) {
     if (!c.xlink) throw fail('This cabinet has no XLink device', 'QUICKCAST_NO_XLINK');
     const pth = Array.isArray(req.path) ? req.path.map(Number) : [];
     const op = ['send', 'toggle', 'slider'].includes(req.op) ? req.op : 'send';
-    const r = await xlink.action({ device: c.xlink, path: pth, op, value: req.value, confirmed: !!req.confirmed });
+    const t0 = Date.now();
+    let r;
+    try { r = await xlink.action({ device: c.xlink, path: pth, op, value: req.value, confirmed: !!req.confirmed }); } catch (e) { logXlink('xlink', c, { path: pth, op, value: req.value }, null, t0); throw e; }
+    logXlink('xlink', c, { path: pth, op, value: req.value }, r, t0);
     if (r.confirm) return { confirm: r.confirm };
-    return { ok: r.ok, failure: r.failure, menu: await cabinetXlinkMenu(c.id, true) };
+    // xlink.action already re-read the device: answer with that, never a second full read
+    return { ok: r.ok, code: r.code, failure: r.failure, menu: await cabinetXlinkMenu(c.id, false) };
 }
 
 /** Start OBS on Ruiko without picking a cabinet. */
