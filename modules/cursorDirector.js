@@ -3735,6 +3735,36 @@ function persistToolBody(folder, payloadId, body) {
     } catch (_err) { /* the live copy still answers the glasses button */ }
 }
 
+// Pictures a tool row saw or made (#735): served image paths in the result (NAX previews, chat images,
+// Explore copies) and gallery files named by image tools. Read from the raw text, since stored results can
+// be cut off mid-JSON. The client shows them as thumbnails on the row; server-local paths never match.
+const TOOL_ROW_IMAGE_MAX = 4;
+const TOOL_ROW_IMAGE_PATH = /"((?:\/(?:naxCache|images|previews|static_images)\/)[^"\\]{1,400}?\.(?:png|jpe?g|webp|gif|avif))"/gi;
+const TOOL_ROW_GALLERY_TOOLS = new Set([
+    'get_generated_image', 'show_chat_image', 'read_image_metadata', 'upscale_image', 'expand_image',
+    'generate_image', 'await_generation_job', 'print_studio', 'remove_background'
+]);
+const TOOL_ROW_GALLERY_FILE = /"(?:filename|filenames|newFilename|outputFilename)"\s*:\s*(?:\[\s*)?"([^"\\/]{1,300}\.(?:png|jpe?g|webp))"/gi;
+
+function toolRowImages(name, args, result) {
+    const out = [];
+    const add = (src) => {
+        if (!src || src.includes('..') || out.includes(src) || out.length >= TOOL_ROW_IMAGE_MAX) return;
+        out.push(src);
+    };
+    const text = String(result || '');
+    if (/^Error:/.test(text)) return out;
+    for (const m of text.matchAll(TOOL_ROW_IMAGE_PATH)) add(m[1]);
+    const tool = String(name || '').replace(/^mcp__[^_]+(?:_[^_]+)*?__/, '');
+    if (TOOL_ROW_GALLERY_TOOLS.has(tool)) {
+        for (const source of [text, String(args || '')]) {
+            for (const m of source.matchAll(TOOL_ROW_GALLERY_FILE)) add(`/images/${encodeURIComponent(m[1])}`);
+            if (out.length) break;
+        }
+    }
+    return out;
+}
+
 function parkToolBodies(sessionId, rows, persistDir) {
     (rows || []).forEach((row) => {
         if (!row || row.type !== 'tool') return;
@@ -3743,6 +3773,11 @@ function parkToolBodies(sessionId, rows, persistDir) {
         if (!args && !result) return;
         if (!row.payloadId) row.payloadId = crypto.randomBytes(6).toString('hex');
         row.hasPayload = true;
+        if (result && row._imagesFrom !== result.length) {
+            row._imagesFrom = result.length;
+            const images = toolRowImages(row.name, args, result);
+            if (images.length) row.images = images; else delete row.images;
+        }
         const body = {
             args,
             result,
@@ -3793,6 +3828,7 @@ function publicTraceRow(row) {
     delete copy._closed;
     delete copy._partial;
     delete copy._diffHash;
+    delete copy._imagesFrom;
     // Parameters stay on the server. The client gets a glasses button, not the body.
     if (copy.type === 'tool' || copy.hasDiff) {
         delete copy.args;
@@ -8740,6 +8776,7 @@ module.exports = {
     finishRentan,
     startRentanReviewTurn,
     _test: {
+        toolRowImages,
         turnWorkMode,
         boostedEffort,
         turnModeLines,

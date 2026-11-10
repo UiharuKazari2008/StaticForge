@@ -236,6 +236,7 @@ class DirectorMascot {
             </div>
             <button type="button" class="dm-peek-close hidden" title="Close the log (Esc)">Back to her</button>
             <div class="dm-result dm-dialog hidden" data-tab="reply">
+                <i class="dm-dialog-edge" aria-hidden="true"></i>
                 <div class="dm-dialog-head">
                     <span class="dm-dialog-name"></span>
                     <div class="dm-dialog-tabs" role="tablist">
@@ -402,6 +403,19 @@ class DirectorMascot {
         if (Math.abs(want - current) > 1) this.host.style.setProperty('--dm-composer-space', `${want}px`);
     }
 
+    // Inline custom property on the stage, written only when it changes: an unchanged write still
+    // invalidates the stage's style and costs a frame (#735).
+    setVar(name, value) {
+        const cache = this._vars || (this._vars = new Map());
+        if (cache.get(name) === value && this.root.style.getPropertyValue(name) === value) return;
+        cache.set(name, value);
+        this.root.style.setProperty(name, value);
+    }
+
+    setStyle(el, prop, value) {
+        if (el && el.style[prop] !== value) el.style[prop] = value;
+    }
+
     layout() {
         // not shown: nothing to measure (applyView lays her out again when she shows)
         if (!this.root || !this.manifest || !this.host || !this._shown) return;
@@ -415,9 +429,9 @@ class DirectorMascot {
         // Home (centred bar): she stands at the bottom of the chat area behind the bar and shows more of herself.
         const home = this.host.classList.contains('director-composer-center');
         this.root.classList.toggle('dm-home', home);
-        this.root.style.setProperty('--dm-bottom', home ? '0px' : `${Math.max(0, Math.round(hostBox.bottom - barBox.top))}px`);
-        this.root.style.setProperty('--dm-left', `${Math.max(inset, Math.round(barBox.left - hostBox.left) + inset)}px`);
-        this.root.style.setProperty('--dm-right', `${Math.max(inset, Math.round(hostBox.right - barBox.right) + inset)}px`);
+        this.setVar('--dm-bottom', home ? '0px' : `${Math.max(0, Math.round(hostBox.bottom - barBox.top))}px`);
+        this.setVar('--dm-left', `${Math.max(inset, Math.round(barBox.left - hostBox.left) + inset)}px`);
+        this.setVar('--dm-right', `${Math.max(inset, Math.round(hostBox.right - barBox.right) + inset)}px`);
         const areaH = home ? Math.round(hostBox.height) : Math.max(0, Math.round(barBox.top - hostBox.top));
         const areaW = home ? Math.round(hostBox.width * 0.9) : Math.max(0, Math.round(barBox.width) - inset * 2);
         const [W, H] = this.manifest.size;
@@ -432,20 +446,20 @@ class DirectorMascot {
             const kv = (Hh * 0.11) / Math.max(1, face[2]);
             const px = this.manifest.anchor === 'left' ? Wh * 0.24 : Wh * 0.76;
             const py = Hh * 0.24;
-            this.root.style.setProperty('--dm-bottom', '0px');
-            this.root.style.setProperty('--dm-left', '0px');
-            this.root.style.setProperty('--dm-right', '0px');
-            this.root.style.setProperty('--dm-w', `${Math.round(Wh)}px`);
-            this.root.style.setProperty('--dm-h', `${Math.round(Hh)}px`);
-            this.root.style.setProperty('--dm-drop', '0px');
-            this.el.canvas.style.width = `${Math.round(W * kv)}px`;
-            this.el.canvas.style.height = `${Math.round(H * kv)}px`;
-            this.el.canvas.style.transform = `translate(${Math.round(px - face[0] * kv)}px, ${Math.round(py - face[1] * kv)}px)`;
+            this.setVar('--dm-bottom', '0px');
+            this.setVar('--dm-left', '0px');
+            this.setVar('--dm-right', '0px');
+            this.setVar('--dm-w', `${Math.round(Wh)}px`);
+            this.setVar('--dm-h', `${Math.round(Hh)}px`);
+            this.setVar('--dm-drop', '0px');
+            this.setStyle(this.el.canvas, 'width', `${Math.round(W * kv)}px`);
+            this.setStyle(this.el.canvas, 'height', `${Math.round(H * kv)}px`);
+            this.setStyle(this.el.canvas, 'transform', `translate(${Math.round(px - face[0] * kv)}px, ${Math.round(py - face[1] * kv)}px)`);
             this._k = kv;
             this.root.dataset.anchor = this.manifest.anchor === 'left' ? 'left' : 'right';
             this.root.classList.remove('dm-narrow');
             const [vx, vy] = this.manifest.headPivot || [W / 2, H * 0.4];
-            this.el.head.style.transformOrigin = `${(vx / W) * 100}% ${(vy / H) * 100}%`;
+            this.setStyle(this.el.head, 'transformOrigin', `${(vx / W) * 100}% ${(vy / H) * 100}%`);
             return;
         }
         const share = home ? 0.9 : 0.62;   // messages view: idle drops below the bar edge (--dm-drop)
@@ -470,16 +484,16 @@ class DirectorMascot {
             : (this.manifest.peekRatio || 0.4);
         const peek = !vn && !this.working && !home ? (1 - shoulders) * h : 0;
         this._k = k;
-        this.root.style.setProperty('--dm-w', `${Math.round(w)}px`);
-        this.root.style.setProperty('--dm-h', `${Math.round(h)}px`);
-        this.root.style.setProperty('--dm-drop', `${Math.round(peek)}px`);
-        this.el.canvas.style.width = `${Math.round(W * k)}px`;
-        this.el.canvas.style.height = `${Math.round(H * k)}px`;
-        this.el.canvas.style.transform = `translate(${-Math.round(cam[0] * k)}px, ${-Math.round(cam[1] * k)}px)`;
+        this.setVar('--dm-w', `${Math.round(w)}px`);
+        this.setVar('--dm-h', `${Math.round(h)}px`);
+        this.setVar('--dm-drop', `${Math.round(peek)}px`);
+        this.setStyle(this.el.canvas, 'width', `${Math.round(W * k)}px`);
+        this.setStyle(this.el.canvas, 'height', `${Math.round(H * k)}px`);
+        this.setStyle(this.el.canvas, 'transform', `translate(${-Math.round(cam[0] * k)}px, ${-Math.round(cam[1] * k)}px)`);
         this.root.dataset.anchor = this.manifest.anchor === 'left' ? 'left' : 'right';
         this.root.classList.toggle('dm-narrow', areaW < 360);
         const [px, py] = this.manifest.headPivot || [W / 2, H * 0.4];
-        this.el.head.style.transformOrigin = `${(px / W) * 100}% ${(py / H) * 100}%`;
+        this.setStyle(this.el.head, 'transformOrigin', `${(px / W) * 100}% ${(py / H) * 100}%`);
     }
 
     // Re-measure every frame for a moment (the bar slides between the centred home and the bottom).
@@ -1247,6 +1261,9 @@ class DirectorMascot {
     }
 
     setWorking(on) {
+        // Every stream update says "working" (#735): when nothing changed, the re-layout (forced reflow,
+        // inline style writes, chrome placement) only cost a frame per update all turn long.
+        if (!!on === !!this.working && this.root && this.root.dataset.state === (on ? 'working' : 'idle')) return;
         const now = Date.now();
         if (on && !this.working) {
             this.working = true;

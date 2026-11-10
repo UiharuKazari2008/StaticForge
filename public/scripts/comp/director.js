@@ -6157,6 +6157,7 @@ class Director {
         }
         messageDiv.appendChild(header);
         messageDiv.appendChild(body);
+        if (kind === 'tool') this.syncToolRowImages(messageDiv, row);
         this.attachMessageMenu(messageDiv);
         return messageDiv;
     }
@@ -7354,6 +7355,7 @@ class Director {
         if (row.hasPayload || row.hasDiff || row.args || row.result || row.payloadId || row.diffId) extras += 'g';
         if (row.name === 'apply_studio_changes' && row.replay) extras += 'a';
         if (row.detail || (row.text && row.text !== 'tool')) extras += 't';
+        if (Array.isArray(row.images) && row.images.length) extras += 'i';
         return extras;
     }
 
@@ -7398,9 +7400,57 @@ class Director {
             const badge = el.querySelector('.director-request-type-badge');
             setDirectorText(badge, this.prettyToolLabel(row));
             setDirectorText(el.querySelector('.director-tool-detail'), row.detail || '');
+            this.syncToolRowImages(el, row);
             return true;
         }
         return false;
+    }
+
+    // Pictures the tool saw or made (row.images from modules/cursorDirector.js toolRowImages, #735): small
+    // thumbnails under the row. Gallery files use the Studio WebP preview and open in the image viewer;
+    // NAX previews and other pictures open the tool's parameters and result.
+    syncToolRowImages(el, row) {
+        const list = Array.isArray(row && row.images) ? row.images.filter((src) => typeof src === 'string' && src.startsWith('/')) : [];
+        const key = list.join('\n');
+        let strip = el.querySelector('.director-tool-images');
+        if ((strip ? strip.dataset.key : '') === key) return;
+        if (!list.length) { if (strip) strip.remove(); return; }
+        if (!strip) {
+            strip = document.createElement('div');
+            strip.className = 'director-tool-images';
+            // Beside the content, not in it: a folded tool row hides its content, the pictures stay.
+            el.appendChild(strip);
+        }
+        strip.dataset.key = key;
+        strip.replaceChildren();
+        list.forEach((src) => {
+            const gallery = /^\/images\/([^?#/]+)$/.exec(src);
+            const filename = gallery ? decodeURIComponent(gallery[1]) : '';
+            const thumb = document.createElement('img');
+            thumb.className = 'director-tool-image';
+            thumb.loading = 'lazy';
+            thumb.decoding = 'async';
+            thumb.alt = filename || 'Tool picture';
+            thumb.title = filename || src.split('/').pop().replace(/%20/g, ' ');
+            // studioPreviewDisplayUrl: public/scripts/comp/assetUrlResolver.js
+            const shown = gallery && typeof studioPreviewDisplayUrl === 'function' ? studioPreviewDisplayUrl(src) : src;
+            // A gallery preview that is not made yet falls back to the file; a picture that is gone (deleted
+            // NAX preview) leaves the row instead of a broken image.
+            let fellBack = shown === src;
+            thumb.addEventListener('error', () => {
+                if (!fellBack) { fellBack = true; thumb.src = src; return; }
+                // Hidden, not removed: the strip keeps its key, so a later patch of the row does not retry it.
+                thumb.hidden = true;
+                if (!strip.querySelector('img:not([hidden])')) strip.hidden = true;
+            });
+            thumb.src = shown;
+            thumb.addEventListener('click', (event) => {
+                event.stopPropagation();
+                if (filename && typeof this.openSessionImage === 'function') this.openSessionImage(filename);
+                else this.openToolPayload(row);
+            });
+            strip.appendChild(thumb);
+        });
     }
 
     ensureTraceRowMarkdown(row) {

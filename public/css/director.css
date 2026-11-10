@@ -931,6 +931,29 @@ body #directorSessionList #directorPersonaGroup .gallery-toggle-btn:not(.active)
     display: none;
 }
 
+/* Pictures a tool saw or made (director.js syncToolRowImages, #735): thumbnails under the row, folded or not. */
+.director-tool-images {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.director-tool-image {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: var(--border-radius-sm, 3px);
+    border: 1px solid var(--glass-border-4);
+    background: var(--bg-secondary);
+    cursor: var(--c-pointer);
+}
+
+.director-message.tool.expanded .director-tool-image {
+    width: 128px;
+    height: 128px;
+}
+
 .director-message.thinking.expanded .director-message-content,
 .director-message.tool.expanded .director-message-content {
     display: block;
@@ -3126,6 +3149,16 @@ html.disable-blur .director-attach-chip {
     flex: 0 0 auto;
 }
 
+/* Actions (icon + label) sit together on the left; an attached item's remove button keeps the far end. */
+#directorAttachDropdownMenu .custom-dropdown-option {
+    justify-content: flex-start;
+    gap: var(--spacing-sm, 8px);
+}
+
+#directorAttachDropdownMenu .custom-dropdown-option > span + button {
+    margin-left: auto;
+}
+
 #directorAttachDropdownMenu .custom-dropdown-option > span {
     display: inline-flex;
     align-items: center;
@@ -3751,6 +3784,12 @@ html.disable-blur .director-attach-chip {
     z-index: 4;
 }
 
+/* An open composer menu (attachments) opens up over her VN text box (z 6), so the bar rises above it
+   while the menu shows (#735). */
+#directorSessionChat.director-mascot-on #directorComposer:has(.custom-dropdown-menu:not(.hidden)) {
+    z-index: 7;
+}
+
 /* Buttons she would cover (quick starts, attachment chips) go under the input bar while she shows. */
 #directorSessionChat.director-mascot-on #directorComposer {
     display: flex;
@@ -3826,6 +3865,19 @@ html.disable-blur .director-attach-chip {
 .director-mascot-stage .dm-blink.dm-on,
 .director-mascot-stage .dm-mouth.dm-on {
     opacity: 1;
+}
+
+/* Layers (#735): the parts that flip often (mouth every 120 ms while she talks, blinks, expression swaps,
+   the body crossfade) each get their own compositor layer, so a flip is an opacity change on the GPU.
+   Sharing one layer, each flip re-rastered the whole rig from her full-size art. The rig and head carry
+   the breathe and sway, so they stay promoted between action one-shots. Art and motion are unchanged. */
+.director-mascot-rig,
+.director-mascot-stage .dm-head {
+    will-change: transform;
+}
+
+.director-mascot-stage :is(.dm-face, .dm-blink, .dm-mouth, .dm-body-prev) {
+    will-change: opacity;
 }
 
 .director-mascot-rig {
@@ -4451,6 +4503,14 @@ body #directorSessionChat.director-mascot-on.director-mascot-view #directorCompo
 body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden .director-chat-messages-container {
     visibility: hidden;
     pointer-events: none;
+}
+
+/* The log under her scene is visibility: hidden, which still ticks its animations (typing dots, row
+   entries, button pulses) every frame (#735): hold them until it shows again. */
+body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden:not(.dm-log-peek) .director-chat-messages-container *,
+body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden:not(.dm-log-peek) .director-chat-messages-container *::after,
+body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden:not(.dm-log-peek) .director-chat-messages-container *::before {
+    animation-play-state: paused;
 }
 
 .dm-vn-layer {
@@ -5094,11 +5154,27 @@ body #directorContainer.dm-vn-on #directorSessionChat .director-chat-input {
 .dm-vn-layer .dm-dialog-working i:nth-child(2) { animation-delay: 0.2s; }
 .dm-vn-layer .dm-dialog-working i:nth-child(3) { animation-delay: 0.4s; margin-right: 3px; }
 
-.dm-vn-layer .dm-dialog[data-mode="live"]::before {
+/* Live edge (#735): a pre-brightened copy of the frame ring sits between ::before and ::after and only its
+   opacity pulses, so the compositor runs it. Animating filter on ::before repainted the frame every frame
+   and kept the page drawing at full rate through a whole turn. */
+.dm-vn-layer .dm-dialog-edge {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    clip-path: polygon(22px 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%, 0 22px);
+    background: linear-gradient(90deg, var(--dm-teal), var(--dm-line) 40%, var(--dm-track));
+    filter: brightness(1.25);
+    opacity: 0;
+    pointer-events: none;
+    display: none;
+}
+
+.dm-vn-layer .dm-dialog[data-mode="live"] .dm-dialog-edge {
+    display: block;
     animation: dm-live-edge 2.2s ease-in-out infinite;
 }
 
-@keyframes dm-live-edge { 50% { filter: drop-shadow(0 8px 20px hsl(205 50% 15% / 35%)) brightness(1.25); } }
+@keyframes dm-live-edge { 50% { opacity: 1; } }
 
 .dm-vn-layer .dm-dialog-live:empty::before {
     content: '\2026';

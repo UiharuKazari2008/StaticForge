@@ -3956,6 +3956,7 @@ async function loadNaxSearchPreviews(globalResources, nax, items, limit) {
     if (!gen || typeof nax.getTagFilename !== 'function') return { images: [], shown: [] };
     const images = [];
     const shown = [];
+    const urls = [];
     for (const item of items) {
         if (images.length >= limit) break;
         const filename = nax.getTagFilename(item.gallerySlug, item.tag);
@@ -3965,9 +3966,11 @@ async function loadNaxSearchPreviews(globalResources, nax, items, limit) {
         try {
             images.push(await resizeImageForGrok(abs));
             shown.push(item.tag);
+            // The Director log shows the same pictures on the tool row (#735).
+            urls.push(`/naxCache/${encodeURIComponent(item.gallerySlug)}/${encodeURIComponent(filename)}`);
         } catch (_) { /* skip a preview that will not decode */ }
     }
-    return { images, shown };
+    return { images, shown, urls };
 }
 
 const LOOKBACK_TYPES = new Set(['img', 'note', 'wiki', 'swiki', 'wimg', 'sel', 'page', 'ref']);
@@ -8115,9 +8118,9 @@ async function callTool(globalResources, req, name, args) {
         const nax = resolveNaxModule(globalResources);
         const result = searchNaxTags(nax, input);
         if (result.success && input.preview === true && result.items.length) {
-            const { images, shown } = await loadNaxSearchPreviews(globalResources, nax, result.items, NAX_SEARCH_PREVIEW_MAX);
+            const { images, shown, urls } = await loadNaxSearchPreviews(globalResources, nax, result.items, NAX_SEARCH_PREVIEW_MAX);
             if (images.length) {
-                return mcpImageResult({ ...result, previewTags: shown }, images);
+                return mcpImageResult({ ...result, previewTags: shown, previewUrls: urls }, images);
             }
             result.previewTags = [];
             result.next = `No preview file is cached for these hits yet. ${result.next}`;
