@@ -80,7 +80,7 @@ body.t-amuvision .foot { display: none; }
 /* the menu: a hardware OSD box (framed, monospace, solid selection bar); the unit's colour on the header */
 #osd { position: absolute; inset: 0; display: none; }
 #osd.on { display: block; }
-.m-box { position: absolute; left: calc(110 * var(--u)); top: calc(110 * var(--u)); width: calc(940 * var(--u)); background: rgba(4, 8, 16, .9); border: calc(3 * var(--u)) solid #c9d3df; box-shadow: 0 0 0 calc(3 * var(--u)) #000, calc(10 * var(--u)) calc(10 * var(--u)) 0 rgba(0,0,0,.45); font-family: 'Lucida Console', 'Consolas', 'Courier New', monospace; -webkit-font-smoothing: none; }
+.m-box { position: absolute; left: calc(110 * var(--u)); top: calc(110 * var(--u)); width: calc(940 * var(--u)); background: #04080f; border: calc(3 * var(--u)) solid #c9d3df; box-shadow: 0 0 0 calc(3 * var(--u)) #000, calc(10 * var(--u)) calc(10 * var(--u)) 0 rgba(0,0,0,.45); font-family: 'Lucida Console', 'Consolas', 'Courier New', monospace; -webkit-font-smoothing: none; }
 .m-hd { display: flex; align-items: center; gap: calc(16 * var(--u)); height: calc(58 * var(--u)); padding: 0 calc(18 * var(--u)); background: var(--acc); border-bottom: calc(3 * var(--u)) solid #c9d3df; }
 .m-logo { height: calc(30 * var(--u)); width: auto; }
 body.t-takao .m-logo { height: calc(32 * var(--u)); }
@@ -147,7 +147,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 .m-rows.paint .row, .m-rows.paint .more { animation: pop 0.01s steps(1, end) both; }
 #card.drawin .tiles .tile { animation: pop 0.01s steps(1, end) both; }
 /* XLink GMS link lost: a corner OSD in the unit's style */
-#gms { position: absolute; right: calc(40 * var(--u)); top: calc(40 * var(--u)); display: none; align-items: center; gap: calc(16 * var(--u)); padding: calc(14 * var(--u)) calc(22 * var(--u)); background: rgba(0,0,0,.88); border-left: calc(8 * var(--u)) solid var(--acc); }
+#gms { position: absolute; right: calc(40 * var(--u)); top: calc(40 * var(--u)); display: none; align-items: center; gap: calc(16 * var(--u)); padding: calc(14 * var(--u)) calc(22 * var(--u)); background: #000; border-left: calc(8 * var(--u)) solid var(--acc); }
 #gms.on { display: flex; animation: wipe-x 0.2s steps(6, end) both; }
 #gms.lost { border-left-color: #e00; }
 #gms i { width: calc(34 * var(--u)); height: calc(30 * var(--u)); background: #ffc23a; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
@@ -263,7 +263,7 @@ body.t-takao #card:not(.ph-fault) .bar { background: #ff00b4; }
     es = new EventSource(location.pathname.replace(/\\/$/, '') + '/events' + location.search);
     es.onopen = function () { backoff = 1000; lastMsg = Date.now(); };
     es.onmessage = function (e) { lastMsg = Date.now(); try { var d = JSON.parse(e.data); if (d.beat) return; if (isCard) { if (d.card) drawCard(d); } else draw(d); } catch (_) {} };
-    es.onerror = function () { if (es.readyState === 2) { setTimeout(connect, backoff); backoff = Math.min(backoff * 2, 15000); } };
+    es.onerror = function () { if (es.readyState === 2) { setTimeout(connect, backoff); backoff = Math.min(backoff * 2, 5000); } };
   }
   connect();
   // XLink GMS (this server) link watch: the unit draws its own "communication lost" OSD when the stream is
