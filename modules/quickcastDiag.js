@@ -520,4 +520,16 @@ function diagnose(st, stats, cabinetId) {
     return res;
 }
 
-module.exports = { onUnitRestart, init, diagnose, splitNdi, lockRatio, COLUMNS, machineForCabinet, muxLink, lastFor, _Window: Window, _muxes: muxes, _feeds: feeds };
+/**
+ * Is a mixer's NDI really transmitting? (The satellite's NDI source keeps the last frame when it stops.)
+ * { known } false when the machine has no control link configured; else { online, ndiActive, fps }.
+ */
+function muxHealth(machine) {
+    const m = muxes.get(machine);
+    if (!m || !m.target) return { known: false };
+    const o = m.ndiOut;
+    const fps = m.win.rate('ndiFrames');
+    return { known: true, online: !!m.stats && !m.timeouts, ndiActive: !!(o && o.outputActive), fps: fps == null ? null : Math.round(fps * 10) / 10, at: m.lastSample };
+}
+
+module.exports = { muxHealth, onUnitRestart, init, diagnose, splitNdi, lockRatio, COLUMNS, machineForCabinet, muxLink, lastFor, _Window: Window, _muxes: muxes, _feeds: feeds };

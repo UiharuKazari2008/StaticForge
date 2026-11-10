@@ -1810,6 +1810,18 @@ function unitState(machine) {
 }
 
 const ndiNames = new Map(); // satellite input -> ndi_source_name
+const freeze = new Map();   // satellite input -> { last, same }
+
+/** A feed with no mixer to ask: a tiny still every tick; the same picture for 3 ticks (~6 s) = stalled. */
+async function frozen(link, inputName) {
+    let img = '';
+    try { img = (await link.request('GetSourceScreenshot', { sourceName: inputName, imageFormat: 'jpg', imageWidth: 32, imageHeight: 18, imageCompressionQuality: 90 }, 3000)).imageData || ''; } catch (_) { return false; }
+    const st = freeze.get(inputName) || { last: '', same: 0 };
+    st.same = img && img === st.last ? st.same + 1 : 0;
+    st.last = img;
+    freeze.set(inputName, st);
+    return st.same >= 3;
+}
 /**
  * The satellite watches the cabinet feed on its program: no picture (NDI not arriving / not synced) =
  * a persistent NO VIDEO SIGNAL overlay showing it trying to sync, until the picture returns.
@@ -1830,7 +1842,9 @@ async function signalTick(b) {
     };
     await walk(pgm, false, 0);
     let next = null;
-    if (found.length && !found.some((f) => f.width > 0)) {
+    if (found.length) {
+        // DistroAV keeps showing the LAST frame when the sender stops, so a size is no proof of signal:
+        // ask the sending mixer (its link, NDI output, frame count), else watch for a frozen picture
         const f = found[0];
         if (!ndiNames.has(f.name)) {
             try { ndiNames.set(f.name, String(((await link.request('GetInputSettings', { inputName: f.name }, 3000)).inputSettings || {}).ndi_source_name || '')); } catch (_) { ndiNames.set(f.name, ''); }
@@ -1838,7 +1852,13 @@ async function signalTick(b) {
         const feed = ndiNames.get(f.name);
         const machine = (/^(.*?)\s*\(/.exec(feed) || [])[1] || feed;
         const us = unitState(machine);
-        next = { input: f.name, feed, machine, since: (b.nosig && b.nosig.input === f.name) ? b.nosig.since : Date.now(), cabinet: us.powerOff ? 'off' : us.standby ? 'standby' : us.booting ? 'booting' : '' };
+        let lost = !found.some((x) => x.width > 0) || us.powerOff;
+        if (!lost) {
+            const h = deps.diag.muxHealth ? deps.diag.muxHealth(machine) : { known: false };
+            if (h.known) lost = !h.online || !h.ndiActive || (h.fps != null && h.fps < 1);
+            else lost = await frozen(link, f.name);
+        }
+        if (lost) next = { input: f.name, feed, machine, since: (b.nosig && b.nosig.input === f.name) ? b.nosig.since : Date.now(), cabinet: us.powerOff ? 'off' : us.standby ? 'standby' : us.booting ? 'booting' : '' };
     }
     const changed = JSON.stringify(next && { ...next, since: 0 }) !== JSON.stringify(b.nosig && { ...b.nosig, since: 0 });
     b.nosig = next;
