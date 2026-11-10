@@ -33,6 +33,12 @@ Successful replies usually use:
 
 Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors).
 
+## AI provider and streaming
+
+Chat personas run on DeepInfra (`modules/aiServices/deepInfraChatService.js`, Yozora #736; Grok is no longer used). The provider row and key are the DeepInfra entry of `customModelProviders` (config.json row, secure.config.json `customModelProviders.keys[]`). Model: config `chatModel`, else that row's `defaultModel` (`deepseek-ai/DeepSeek-V4.1-Flash` today); provider id: config `chatProvider` (default `deepinfra`). `chatSendImages: true` sends the character picture and viewer avatar (needs a vision model); off by default, the persona prompt carries the image's generation tags instead. Each turn resends the history from chat.db (no server-side conversation state). Sessions stored with the old `grok` provider switch to DeepInfra on first use. A `create_chat_session` `model` is honoured only when it is a DeepInfra-style id (`org/model`, not `grok*`). App options send the chat model as `chatModel` (and, for older clients, as `defaultGrokModel`).
+
+With `chat_streaming_enabled`, persona setup and each send push `chat_streaming_start`, then `chat_streaming_update` (`events`: complete event objects as they arrive, `fullResponse`), then `chat_streaming_complete` (`finalResponse`, `usage`). On every failure the server sends `chat_message_response` with `data.success: false`, `data.error`, then `chat_streaming_complete` with `error` and no `requestId`, so no client is left waiting on typing dots. A failed persona setup also stores an `Error: ...` assistant row; the chat stays and the first send sets the persona up again.
+
 ## Read-only restrictions
 
 Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveOperation()` return `READONLY_RESTRICTED` for `userType: "readonly"` sessions.

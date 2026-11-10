@@ -2,6 +2,44 @@
 const fs = require('fs');
 const path = require('path');
 
+// Chat personas run on DeepInfra (AIServiceManager.getChatService(), Yozora #736). Clients still
+// send provider 'grok' and a grok-* model from older builds; those are ignored.
+function chatServiceFor(handler) {
+    return handler.globalResources.getAiServiceManager().getChatService();
+}
+
+function chatModelFromClient(handler, clientModel) {
+    const wanted = typeof clientModel === 'string' ? clientModel.trim() : '';
+    if (wanted && !/^grok/i.test(wanted) && wanted.includes('/')) return wanted;
+    return chatServiceFor(handler).getDefaultModel();
+}
+
+// Every failure after chat_streaming_start must end the stream, or the desktop chat keeps its
+// typing dots forever: chat_streaming_complete (with error, no requestId so the send request is
+// not resolved as a success) after chat_message_response success:false.
+function sendChatFailure(handler, ws, chatId, errorMessage, requestId, errorResponse) {
+    handler.sendToClient(ws, {
+        type: 'chat_message_response',
+        ...(requestId ? { requestId } : {}),
+        data: {
+            success: false,
+            chatId,
+            error: errorMessage,
+            response: errorResponse || null
+        },
+        timestamp: new Date().toISOString()
+    });
+    if (chatStreamingEnabled(handler)) {
+        handler.sendToClient(ws, {
+            type: 'chat_streaming_complete',
+            chatId,
+            finalResponse: '',
+            usage: null,
+            error: errorMessage
+        });
+    }
+}
+
 function chatStreamingEnabled(handler) {
     return !!handler.globalResources.getConfig()?.chat_streaming_enabled;
 }
@@ -74,8 +112,8 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
         const sessionData = {
             chat_name: characterName || null,
             filename: filename,
-            provider: 'grok',
-            model: clientModel || handler.globalResources.getGrokService().getDefaultGrokModel(),
+            provider: chatServiceFor(handler).getProviderId(),
+            model: chatModelFromClient(handler, clientModel),
             character_name: characterName || null,
             text_context_info: textContextInfo || null,
             text_viewer_info: textViewerInfo || null,
@@ -217,25 +255,26 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
             );
 
             let aiResponse;
-            console.log('🤖 Using Grok service for initial persona establishment');
+            const chatService = chatServiceFor(handler);
             const sessionData = {
                 id: chatId,
-                provider: 'grok',
-                model: (session && session.model) || handler.globalResources.getGrokService().getDefaultGrokModel(),
+                provider: chatService.getProviderId(),
+                model: chatService.modelForSession(session),
                 verbosity_level: verbosityLevel || 3
             };
-            const chat = await handler.globalResources.getGrokService().createPersonaChatSession(sessionData, personaSettings, systemPrompt);
+            console.log(`🤖 Using ${sessionData.provider} (${sessionData.model}) for initial persona establishment`);
+            const chat = await chatService.createPersonaChatSession(sessionData, personaSettings, systemPrompt);
 
             // Establish persona with image
             if (personaImage) {
-                console.log('🎭 Establishing Grok persona with image');
+                console.log('🎭 Establishing persona from image');
                 console.log('🖼️ Persona image size:', personaImage.base64.length, 'characters');
                 console.log('📝 User prompt length:', userPrompt.length);
                 console.log('👤 Viewer avatar:', viewerAvatar ? 'Yes' : 'No');
 
                 // Establish persona using streaming if enabled
                 if (chatStreamingEnabled(handler)) {
-                    console.log('📡 Streaming enabled for Grok persona establishment');
+                    console.log('📡 Streaming enabled for persona establishment');
                     // Send initial streaming message (no requestId for streaming events)
                     handler.sendToClient(ws, {
                         type: 'chat_streaming_start',
@@ -243,7 +282,7 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
                         message: 'Establishing persona...'
                     });
 
-                    aiResponse = await handler.globalResources.getGrokService().establishPersonaStreaming(chat, personaImage, userPrompt, viewerAvatar, (chunk, fullResponse, extractedEvents) => {
+                    aiResponse = await chatService.establishPersonaStreaming(chat, personaImage, userPrompt, viewerAvatar, (chunk, fullResponse, extractedEvents) => {
                         // Send streaming update with extracted events (no requestId for streaming events)
                         handler.sendToClient(ws, {
                             type: 'chat_streaming_update',
@@ -253,14 +292,13 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
                         });
                     });
                 } else {
-                    console.log('📡 Streaming disabled for Grok persona establishment');
-                    aiResponse = await handler.globalResources.getGrokService().establishPersona(chat, personaImage, userPrompt, viewerAvatar);
+                    console.log('📡 Streaming disabled for persona establishment');
+                    aiResponse = await chatService.establishPersona(chat, personaImage, userPrompt, viewerAvatar);
                 }
 
                 // Persona establishment creates an initial character introduction response
                 // Parse and send it to the client instead of a generic greeting
                 console.log('✅ Persona established, parsing initial response');
-                console.log(`🧵 Persona establishment response_id: ${chat.lastResponseId || 'not set'}`);
 
                 // Use the persona establishment response as the initial message
                 // Don't send "> START SEQUENCE" - the persona response IS the initial greeting
@@ -268,7 +306,7 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
                 console.log('❌ No persona image available, skipping persona establishment');
                 // Only send greeting if persona establishment was skipped
                 if (chatStreamingEnabled(handler)) {
-                    console.log('📡 Streaming enabled for Grok initial response');
+                    console.log('📡 Streaming enabled for initial response');
                     // Send streaming start for initial message
                     handler.sendToClient(ws, {
                         type: 'chat_streaming_start',
@@ -277,18 +315,18 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
                         message: 'Generating initial response...'
                     });
 
-                    aiResponse = await handler.globalResources.getGrokService().continueConversationStreaming(chat, '> START SEQUENCE', (chunk, fullResponse) => {
-                        // Send streaming update
+                    aiResponse = await chatService.continueConversationStreaming(chat, '> START SEQUENCE', (chunk, fullResponse, extractedEvents) => {
+                        // Send streaming update with extracted events
                         handler.sendToClient(ws, {
                             type: 'chat_streaming_update',
                             requestId: message.requestId,
                             chatId: chatId,
-                            chunk: chunk,
+                            events: extractedEvents || [],
                             fullResponse: fullResponse
                         });
                     });
                 } else {
-                    aiResponse = await handler.globalResources.getGrokService().continueConversation(chat, '> START SEQUENCE');
+                    aiResponse = await chatService.continueConversation(chat, '> START SEQUENCE');
                 }
             }
 
@@ -422,8 +460,21 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
 
         } catch (initialGenError) {
             console.error('❌ Error during initial persona establishment:', initialGenError);
-            // Don't fail the chat creation, just log the error
-            // The user can still send messages manually
+            // The chat stays (the user can still send); the error row shows why the greeting is
+            // missing, and the stream is always ended so no client waits on typing dots.
+            const errorText = (initialGenError && initialGenError.message) || 'Persona setup failed';
+            const errorResponse = {
+                actions: [],
+                sfx: [],
+                reply: ['I could not wake up just now. Try sending a message.'],
+                appendMemory: [],
+                scene: '',
+                appendMind: []
+            };
+            try {
+                await handler.globalResources.getChatDatabase().addChatMessage(chatId, 'assistant', 'Error: ' + errorText, JSON.stringify(errorResponse));
+            } catch (_) { /* the failure message below still goes out */ }
+            sendChatFailure(handler, ws, chatId, errorText, null, errorResponse);
         }
     } catch (error) {
         console.error('❌ Error creating chat session:', error);
@@ -786,19 +837,11 @@ async function handleSendChatMessage(handler, ws, message, clientInfo, wsServer)
                 appendMind: []
             };
 
-            await handler.globalResources.getChatDatabase().addChatMessage(chatId, 'assistant', 'Error: ' + aiError.message, JSON.stringify(errorResponse));
+            try {
+                await handler.globalResources.getChatDatabase().addChatMessage(chatId, 'assistant', 'Error: ' + aiError.message, JSON.stringify(errorResponse));
+            } catch (_) { /* the failure message below still goes out */ }
 
-            handler.sendToClient(ws, {
-                type: 'chat_message_response',
-                requestId: message.requestId,
-                data: {
-                    success: false,
-                    chatId: chatId,
-                    error: aiError.message,
-                    response: errorResponse
-                },
-                timestamp: new Date().toISOString()
-            });
+            sendChatFailure(handler, ws, chatId, aiError.message, message.requestId, errorResponse);
         }
 
     } catch (error) {

@@ -1,7 +1,11 @@
 /**
  * Unified SI Service Manager
- * Manages all SI services with database persistence and prompt separation
+ * Manages all SI services with database persistence and prompt separation.
+ * Chat personas run on DeepInfra (aiServices/deepInfraChatService.js, Yozora #736); sessions
+ * stored with the old 'grok' provider move to DeepInfra the first time they are used.
  */
+
+const DeepInfraChatService = require('./aiServices/deepInfraChatService');
 
 class AIServiceManager {
     constructor(globalResources = null) {
@@ -9,6 +13,7 @@ class AIServiceManager {
             throw new Error('AIServiceManager requires globalResources instance and shoudl only be instantiated by globalResources.js');
         }
         this.globalResources = globalResources;
+        this.chatService = new DeepInfraChatService(globalResources);
         this.activeServices = new Map(); // chatId -> service instance
         this.serviceTimeouts = new Map(); // chatId -> timeout
         this.SERVICE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
@@ -27,6 +32,11 @@ class AIServiceManager {
         } catch (error) {
             console.error('❌ Error loading existing sessions:', error);
         }
+    }
+
+    /** The chat persona service (DeepInfra). */
+    getChatService() {
+        return this.chatService;
     }
 
     /**
@@ -60,20 +70,8 @@ class AIServiceManager {
             sessionData.filename
         );
 
-        // Create SI service instance based on provider
-        let aiService;
-        if (sessionData.provider === 'grok') {
-            aiService = await this.globalResources.getGrokService().createPersonaChatSession(sessionData, personaSettings, systemPrompt);
-            
-            // Restore last response ID from database for Responses API
-            const conversationData = await this.globalResources.getChatDatabase().getConversationData(chatId);
-            if (conversationData && conversationData.response_id) {
-                aiService.lastResponseId = conversationData.response_id;
-                console.log(`🔄 Restored previous response ID for ${chatId}: ${conversationData.response_id}`);
-            }
-        } else {
-            throw new Error(`Unsupported chat provider: ${sessionData.provider}`);
-        }
+        // Every provider (old 'grok' rows too) runs on the DeepInfra chat service
+        const aiService = await this.chatService.createPersonaChatSession(sessionData, personaSettings, systemPrompt);
 
         // Store service in memory
         const serviceInfo = {
@@ -121,15 +119,7 @@ class AIServiceManager {
         const serviceInfo = await this.getOrCreateService(chatId);
         console.log(`🎭 Establishing persona for ${chatId}`);
         
-        if (serviceInfo.sessionData.provider === 'grok') {
-            if (onStreamUpdate) {
-                await this.globalResources.getGrokService().establishPersonaStreaming(serviceInfo.aiService, personaImage, userPrompt, viewerAvatar, onStreamUpdate);
-            } else {
-                await this.globalResources.getGrokService().establishPersona(serviceInfo.aiService, personaImage, userPrompt, viewerAvatar);
-            }
-        } else {
-            throw new Error(`Unsupported chat provider: ${serviceInfo.sessionData.provider}`);
-        }
+        await this.chatService.establishPersona(serviceInfo.aiService, personaImage, userPrompt, viewerAvatar, onStreamUpdate);
 
         serviceInfo.lastUsed = Date.now();
     }
@@ -147,16 +137,7 @@ class AIServiceManager {
         // Add user message to database
         await this.globalResources.getChatDatabase().addChatMessage(chatId, 'user', message);
 
-        let response;
-        if (serviceInfo.sessionData.provider === 'grok') {
-            if (onStreamUpdate) {
-                response = await this.globalResources.getGrokService().continueConversationStreaming(serviceInfo.aiService, message, onStreamUpdate);
-            } else {
-                response = await this.globalResources.getGrokService().continueConversation(serviceInfo.aiService, message);
-            }
-        } else {
-            throw new Error(`Unsupported chat provider: ${serviceInfo.sessionData.provider}`);
-        }
+        const response = await this.chatService.continueConversation(serviceInfo.aiService, message, onStreamUpdate);
 
         // Clean up expired messages periodically
         if (Math.random() < 0.1) { // 10% chance to clean up on each request
