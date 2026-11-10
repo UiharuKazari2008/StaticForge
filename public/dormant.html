@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dreamscape</title>
+<!-- Where a hidden Dreamscape page in the Android app goes when a newer one took over (#735,
+     scripts/utils/androidOrphanGuard.js): no scripts, images or sockets left running. If this page is
+     ever shown again, it reopens the workspace. -->
+<style>html, body { margin: 0; height: 100%; background: #000; }</style>
+<script>
+(function () {
+    function wake() {
+        if (document.visibilityState === 'visible') location.replace('/app');
+    }
+    document.addEventListener('visibilitychange', wake);
+    wake();
+})();
+</script>
+</head>
+<body></body>
+</html>
