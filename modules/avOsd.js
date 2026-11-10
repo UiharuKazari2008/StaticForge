@@ -107,12 +107,14 @@ function box(id) {
 }
 
 async function linkOf(b) {
+    let r;
     if (b.kind === 'satellite') {
         await deps.ruiko.connect();
         const o = deps.readConfig().obs;
-        return { link: deps.ruiko, target: { host: o.host, port: Number(o.port) || 4455 } };
-    }
-    return deps.diag.muxLink(b.machine);
+        r = { link: deps.ruiko, target: { host: o.host, port: Number(o.port) || 4455 } };
+    } else r = await deps.diag.muxLink(b.machine);
+    hookUnit(b, r.link);
+    return r;
 }
 
 const machineCache = new Map(); // cabinetId -> { machine, at }
@@ -1031,7 +1033,7 @@ async function buildStrip(b) {
 /** Build the view from what is cached (no OBS round trip) and push it to the box's OSD page. */
 function emit(b) {
     const u = deps.unitInfo(boxName(b), b.kind === 'satellite' ? 'satellite' : 'mux');
-    const out = { box: { id: b.id, name: boxName(b), kind: b.kind, maker: u.maker, line: u.line, model: u.model, type: u.kind, theme: u.theme, sw: u.sw, hw: u.hw, fw: u.fw }, ui: u.theme, open: b.open, info: b.info, toast: Date.now() - b.toastAt < 4000 ? b.toast : '', rev: ++b.rev, at: Date.now() };
+    const out = { toastHead: Date.now() - b.toastAt < 4000 ? b.toastHead || '' : '', toastSub: Date.now() - b.toastAt < 4000 ? b.toastSub || '' : '', box: { id: b.id, name: boxName(b), kind: b.kind, maker: u.maker, line: u.line, model: u.model, type: u.kind, theme: u.theme, sw: u.sw, hw: u.hw, fw: u.fw }, ui: u.theme, open: b.open, info: b.info, toast: Date.now() - b.toastAt < 4000 ? b.toast : '', rev: ++b.rev, at: Date.now() };
     if (b.offline) out.offline = b.offline;
     const f = b.open ? frame(b) : null;
     if (f) {
@@ -1060,7 +1062,35 @@ async function render(b) {
     return emit(b);
 }
 
-function toast(b, text) { b.toast = text; b.toastAt = Date.now(); }
+function toast(b, text, head, sub) { b.toast = text; b.toastHead = head || ''; b.toastSub = sub || ''; b.toastAt = Date.now(); }
+
+/**
+ * The unit's own screenshot notice, drawn as a hardware OSD box: when its "SysInfo-Screenshot" overlay
+ * (an image group) is switched on, it is switched straight off again and the OSD shows the notice;
+ * the engine's ScreenshotSaved event shows it too (with the file name).
+ */
+const SHOT_RE = /screen ?shot|^sysinfo-ss/i;
+function hookUnit(b, link) {
+    if (link._avosdHooked) return;
+    link._avosdHooked = true;
+    link.listeners.add((type, data) => {
+        if (type === 'ScreenshotSaved') {
+            const file = String(data.savedScreenshotPath || '').split(/[\\/]/).pop();
+            toast(b, 'IMAGE SAVED TO DISK', 'SCREENSHOT', file);
+            void placeOverlay(b).catch(() => {}).then(() => emit(b));
+            return;
+        }
+        if (type !== 'SceneItemEnableStateChanged' || !data.sceneItemEnabled) return;
+        void (async () => {
+            const items = (await link.request('GetSceneItemList', { sceneName: data.sceneName }).catch(() => link.request('GetGroupSceneItemList', { sceneName: data.sceneName })).catch(() => ({}))).sceneItems || [];
+            const it = items.find((x) => x.sceneItemId === data.sceneItemId);
+            if (!it || !SHOT_RE.test(it.sourceName)) return;
+            await link.request('SetSceneItemEnabled', { sceneName: data.sceneName, sceneItemId: data.sceneItemId, sceneItemEnabled: false }).catch(() => {});
+            toast(b, 'IMAGE SAVED TO DISK', 'SCREENSHOT', '');
+            emit(b);
+        })().catch(() => {});
+    });
+}
 
 async function onKey(b, key) {
     const { link } = await linkOf(b);

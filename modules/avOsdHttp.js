@@ -71,12 +71,6 @@ body.t-amuvision .sub { justify-content: flex-end; width: auto; }
 body.t-amuvision .hint { top: calc(905 * var(--u)); }
 body.t-amuvision .keys { top: calc(940 * var(--u)); }
 body.t-amuvision .foot { display: none; }
-#toast { position: absolute; right: calc(40 * var(--u)); bottom: calc(120 * var(--u)); display: none; padding: calc(14 * var(--u)) calc(28 * var(--u)); background: var(--acc); color: var(--acc-ink); font-size: calc(26 * var(--u)); font-weight: bold; white-space: nowrap; }
-#toast.on { display: block; }
-#strip { position: absolute; left: 0; right: 0; bottom: 0; height: calc(64 * var(--u)); display: none; align-items: center; gap: calc(36 * var(--u)); padding: 0 calc(28 * var(--u)); background: var(--acc); font-size: calc(22 * var(--u)); font-weight: bold; }
-#strip.on { display: flex; }
-#strip span { color: rgba(255,255,255,.75); font-weight: normal; }
-#strip b { color: #fff; }
 /* the menu: a hardware OSD box (framed, monospace, solid selection bar); the unit's colour on the header */
 #osd { position: absolute; inset: 0; display: none; }
 #osd.on { display: block; }
@@ -146,18 +140,26 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 .drawin .crumbs, .drawin .hint, .drawin .keys, .drawin .foot { animation: pop 0.01s steps(1, end) 0.3s both; }
 .m-rows.paint .row, .m-rows.paint .more { animation: pop 0.01s steps(1, end) both; }
 #card.drawin .tiles .tile { animation: pop 0.01s steps(1, end) both; }
-/* XLink GMS link lost: a corner OSD in the unit's style */
-#gms { position: absolute; right: calc(40 * var(--u)); top: calc(40 * var(--u)); display: none; align-items: center; gap: calc(16 * var(--u)); padding: calc(14 * var(--u)) calc(22 * var(--u)); background: #000; border-left: calc(8 * var(--u)) solid var(--acc); }
-#gms.on { display: flex; animation: wipe-x 0.2s steps(6, end) both; }
-#gms.lost { border-left-color: #e00; }
-#gms i { width: calc(34 * var(--u)); height: calc(30 * var(--u)); background: #ffc23a; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-#gms.lost i { animation: bl 0.8s steps(1, end) infinite; }
-#gms.ok i { background: #3ee07a; clip-path: circle(50%); }
-#gms b { display: block; font-size: calc(24 * var(--u)); }
-#gms span { display: block; font-size: calc(18 * var(--u)); color: #aaa; }
-/* magenta belongs to the TAKAO system test card only (it is a test card colour), never the menus */
-body.t-takao #card:not(.ph-fault) .bar { background: #ff00b4; }
-#off { position: absolute; right: calc(40 * var(--u)); top: calc(100 * var(--u)); display: none; padding: calc(10 * var(--u)) calc(18 * var(--u)); background: #900; font-size: calc(22 * var(--u)); font-weight: bold; }
+/* notices (XLink GMS link, toasts, screenshot) as hardware OSD boxes: solid, framed, monospace */
+.hw { position: absolute; display: none; min-width: calc(520 * var(--u)); background: #04080f; border: calc(3 * var(--u)) solid #c9d3df; box-shadow: 0 0 0 calc(3 * var(--u)) #000, calc(8 * var(--u)) calc(8 * var(--u)) 0 rgba(0,0,0,.45); font-family: 'Lucida Console', 'Consolas', 'Courier New', monospace; -webkit-font-smoothing: none; }
+.hw.on { display: block; animation: wipe-down 0.16s steps(5, end) both; }
+.hw-hd { padding: calc(6 * var(--u)) calc(16 * var(--u)); background: var(--acc); border-bottom: calc(3 * var(--u)) solid #c9d3df; color: #fff; font-size: calc(18 * var(--u)); letter-spacing: calc(3 * var(--u)); }
+.hw-bd { padding: calc(12 * var(--u)) calc(16 * var(--u)); }
+.hw-bd b { display: block; font-weight: normal; font-size: calc(26 * var(--u)); color: #fff; letter-spacing: calc(1 * var(--u)); white-space: nowrap; }
+/* INFO: the unit's status as a hardware OSD box (key / value rows) */
+#strip { left: calc(40 * var(--u)); bottom: calc(40 * var(--u)); }
+.hw-grid { display: grid; grid-template-columns: max-content max-content; gap: calc(4 * var(--u)) calc(28 * var(--u)); font-size: calc(22 * var(--u)); }
+.hw-grid span { color: #8ea4c2; }
+.hw-grid b { font-size: calc(22 * var(--u)) !important; color: #9fe3b0 !important; }
+#off { right: calc(40 * var(--u)); top: calc(160 * var(--u)); }
+#off .hw-hd { background: #c00; }
+.hw-sub { display: block; margin-top: calc(4 * var(--u)); font-size: calc(17 * var(--u)); color: #8ea4c2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(760 * var(--u)); }
+#gms { right: calc(40 * var(--u)); top: calc(40 * var(--u)); }
+#gms.lost .hw-hd { background: #c00; }
+#gms.lost b { color: #ff6b5e; animation: bl 0.8s steps(1, end) infinite; }
+#gms.ok .hw-hd { background: #1a8a3a; }
+#gms.ok b { color: #6bf08a; }
+#toast { right: calc(40 * var(--u)); bottom: calc(60 * var(--u)); left: auto; transform: none; padding: 0; white-space: normal; }
 </style></head>
 <body class="t-takao">
 <div id="osd"><div class="m-box">
@@ -171,8 +173,8 @@ body.t-takao #card:not(.ph-fault) .bar { background: #ff00b4; }
 <div class="brand"><img class="clogo" id="clogo" alt=""><div class="sub"><span id="ctype"></span><span id="cmodel"></span></div></div>
 <div class="press" id="cpress">Press and hold &ldquo;DIAG&rdquo; button to modify settings</div><div class="fmt" id="cfmt"></div>
 <div class="tiles" id="tiles"></div><div class="ver"><em>Amusement<b>VISION</b></em><br><span id="cver"></span></div></div>
-<div id="strip"></div><div id="toast"></div><div id="off"></div>
-<div id="gms"><i></i><div><b id="gmst"></b><span id="gmss"></span></div></div>
+<div id="strip" class="hw"><div class="hw-hd" id="striph">STATUS</div><div class="hw-bd hw-grid" id="stripb"></div></div><div id="toast" class="hw"><div class="hw-hd" id="toasth">SYSTEM</div><div class="hw-bd"><b id="toastb"></b><span class="hw-sub" id="toasts"></span></div></div><div id="off" class="hw"><div class="hw-hd">UNIT OFFLINE</div><div class="hw-bd"><b>NO CONTROL LINK</b><span class="hw-sub" id="offs"></span></div></div>
+<div id="gms" class="hw"><div class="hw-hd" id="gmsh">XLINK GMS</div><div class="hw-bd"><b id="gmst"></b><span class="hw-sub" id="gmss"></span></div></div>
 <script>
 (function () {
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
@@ -222,12 +224,18 @@ body.t-takao #card:not(.ph-fault) .bar { background: #ff00b4; }
       $('cpress').innerHTML = po.phase === 'fault' ? '<b class="dna">DO NOT AIR</b><br>CALL A TECHNICIAN &mdash; press MENU to service this unit' : po.phase === 'boot' ? '' : po.phase === 'pass' ? 'All sources OK' : 'Checking every source...';
     } else if (!isCard) { $('card').className = ''; cardShown = ''; }
     var s = v.info && v.strip;
-    $('strip').className = s ? 'on' : '';
-    if (s) $('strip').innerHTML = '<b>' + esc(bx.name) + '</b><span>FMT</span><b>' + esc(s.format) + '</b><span>RUN</span><b>' + esc(s.fps) + ' fps</b><span>FRAME</span><b>' + esc(s.frame) + ' ms</b><span>CPU</span><b>' + esc(s.cpu) + '%</b><span>PGM</span><b>' + esc(s.program) + '</b><span>IP</span><b>' + esc(s.addr) + '</b>';
-    $('toast').className = v.toast ? 'on' : '';
-    $('toast').textContent = v.toast || '';
-    $('off').style.display = v.offline && (v.open || v.info) ? 'block' : 'none';
-    $('off').textContent = v.offline || '';
+    $('strip').className = s ? 'hw on' : 'hw';
+    if (s) {
+      $('striph').textContent = 'STATUS  ' + (bx.name || '');
+      $('stripb').innerHTML = [['FORMAT', s.format], ['RUNNING', s.fps + ' FPS'], ['FRAME TIME', s.frame + ' MS'], ['CPU', s.cpu + ' %'], ['PROGRAM', s.program], ['ADDRESS', s.addr]]
+        .map(function (r) { return '<span>' + r[0] + '</span><b>' + esc(String(r[1] == null ? '-' : r[1]).toUpperCase()) + '</b>'; }).join('');
+    }
+    $('toast').className = v.toast ? 'hw on' : 'hw';
+    $('toasth').textContent = v.toastHead || 'SYSTEM';
+    $('toastb').textContent = String(v.toast || '').toUpperCase();
+    $('toasts').textContent = v.toastSub || '';
+    $('off').className = v.offline && (v.open || v.info) ? 'hw on' : 'hw';
+    $('offs').textContent = String(v.offline || '').toUpperCase();
   }
   function drawCard(c) {
     var u = c.unit || {};
@@ -278,10 +286,10 @@ body.t-takao #card:not(.ph-fault) .bar { background: #ff00b4; }
   }, 1000);
   function showGms(lost) {
     clearTimeout(gmsT);
-    $('gms').className = 'on' + (lost ? ' lost' : ' ok');
-    $('gmst').textContent = lost ? 'XLINK GMS: COMMUNICATION LOST' : 'XLINK GMS: COMMUNICATION RESTORED';
-    $('gmss').textContent = lost ? 'Retrying...  Local operation continues' : '';
-    if (!lost) gmsT = setTimeout(function () { $('gms').className = ''; }, 4000);
+    $('gms').className = 'hw on' + (lost ? ' lost' : ' ok');
+    $('gmst').textContent = lost ? 'COMMUNICATION LOST' : 'COMMUNICATION RESTORED';
+    $('gmss').textContent = lost ? 'RETRYING...  LOCAL OPERATION CONTINUES' : 'REMOTE CONTROL AVAILABLE';
+    if (!lost) gmsT = setTimeout(function () { $('gms').className = 'hw'; }, 4000);
   }
 })();
 </script></body></html>`;

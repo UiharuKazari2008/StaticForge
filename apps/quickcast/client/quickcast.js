@@ -1234,7 +1234,7 @@
                         </div>
                         <div class="qc-fp-ctl">
                             <div class="qc-fp-leds"><span class="qc-led" data-led="power"><i></i>POWER</span><span class="qc-led" data-led="alarm"><i></i>ALARM</span></div>
-                            <div class="qc-fp-btns"><button type="button" class="qc-bk qc-fp-key k-red qc-fp-reset" data-rk="reset" title="Reset the unit">RESET</button><button type="button" class="qc-bk qc-fp-key k-green qc-fp-pwr" data-rk="power" title="Encoder engine power">PWR</button></div>
+                            <div class="qc-fp-btns"><button type="button" class="qc-bk qc-fp-key k-red qc-fp-reset" data-rk="reset" title="Reset the unit">RESET</button><button type="button" class="qc-bk qc-fp-key k-green qc-fp-pwr" data-rk="power" title="Encoder engine power">PWR</button><button type="button" class="qc-bk qc-fp-key k-blue qc-fp-xl" data-rk="xlink" title="The cabinet's XLink controls (power, volume, ...) on this panel">XLINK</button></div>
                             <span class="qc-fp-gap"></span>
                             ${key('menu', 'MENU', 'k-amber qc-fp-menu')}${key('info', 'INFO', 'k-white qc-fp-info')}
                             <div class="qc-rm-pad">${key('up', '&#9650;', 'is-up k-white')}${key('left', '&#9664;', 'is-left k-white')}${key('ok', 'OK', 'is-ok k-blue')}${key('right', '&#9654;', 'is-right k-white')}${key('down', '&#9660;', 'is-down k-white')}</div>
@@ -1287,7 +1287,7 @@
             const leds = () => {
                 if (!m.isConnected) return;
                 if (resetting) { setTimeout(leds, 500); return; }
-                if (lastView === null || !(lastView.open || lastView.post || lastView.toast)) lcd(lastView);
+                if (!xl && (lastView === null || !(lastView.open || lastView.post || lastView.toast))) lcd(lastView);
                 const st = this.st || {};
                 const d = st.diag || {};
                 const sat = target === 'sat';
@@ -1319,6 +1319,8 @@
                 if (ind.dataset.html !== html) { ind.dataset.html = html; ind.innerHTML = html; }
                 const pwr = m.querySelector('.qc-fp-pwr');
                 pwr.hidden = !sat;
+                m.querySelector('.qc-fp-xl').hidden = sat;
+                m.querySelector('.qc-fp-xl').classList.toggle('is-on', !!xl);
                 pwr.classList.toggle('is-on', sat && linkSt === 'online');
                 pwr.title = sat ? (linkSt === 'online' ? `Shut down ${this.satName()}'s encoder engine` : `Start ${this.satName()}'s encoder engine`) : '';
                 setTimeout(leds, 500);
@@ -1332,6 +1334,10 @@
             let inFlight = false;
             let next = null;
             const press = async (k) => {
+                if (xl) {
+                    if (['up', 'down', 'left', 'right', 'ok', 'exit'].includes(k)) { await xlKey(k); return; }
+                    xl = null; m.classList.remove('qc-fp-xlmode'); // MENU / INFO / DIAG go to the unit
+                }
                 if (target === 'cab' && !this.cabinet) { lcd(null, 'Take a cabinet first'); return; }
                 const b = m.querySelector(`[data-rk="${k}"]`);
                 if (b) { b.classList.add('is-on'); setTimeout(() => b.classList.remove('is-on'), 110); }
@@ -1341,12 +1347,84 @@
                 inFlight = false;
                 if (next) { const n = next; next = null; void press(n); }
             };
-            m.querySelectorAll('.qc-rsel').forEach((b) => b.addEventListener('click', () => { target = b.dataset.target; this.remoteTarget = target; sel(); }));
+            m.querySelectorAll('.qc-rsel').forEach((b) => b.addEventListener('click', () => { target = b.dataset.target; this.remoteTarget = target; xl = null; m.classList.remove('qc-fp-xlmode'); sel(); }));
             m.querySelectorAll('[data-rk]').forEach((b) => b.addEventListener('click', () => {
                 if (b.dataset.rk === 'reset') void this.unitReset(target).then((done) => { if (done) void panelReset(); });
+                else if (b.dataset.rk === 'xlink') { if (xl) void xlKey('xlink'); else void xlOpen(); }
                 else if (b.dataset.rk === 'power') void this.command(this.st && this.st.obs && this.st.obs.state === 'online' ? 'obsoff' : 'obson');
                 else void press(b.dataset.rk);
             }));
+            // ---- XLINK mode: the cabinet's XLink menu on this panel's display, driven by the D-pad ----
+            let xl = null; // { menu, path: [folder indexes], idx, choice, note }
+            const RISKY = /power|shutdown|shut down|reboot|flush|takeover|maintenance|dispense|eject|wake|standby|reset/i;
+            const xlList = () => { let list = xl.menu.items; for (const i of xl.path) list = (list[i] && list[i].children) || []; return list; };
+            const xlNode = () => xlList()[xl.idx] || null;
+            const xlTitle = () => { let list = xl.menu.items; let t = xl.menu.device.name; for (const i of xl.path) { t = list[i].text; list = list[i].children || []; } return t; };
+            const xlActive = (n) => (n && n.toggle ? Math.max(0, n.toggle.findIndex((o) => o.active)) : 0);
+            const xlRender = () => {
+                const m2 = this.modal && m;
+                if (!m2) return;
+                const n = xlNode();
+                dmColor = '#5fd0ff';
+                if (!n) { dm(`XLINK ${xlTitle()}`, 'NO ITEMS', ''); return; }
+                let l3 = '';
+                if (xl.note) l3 = xl.note;
+                else if (n.kind === 'toggle') l3 = n.toggle.map((o, i) => (i === xl.choice ? `[${o.label || '-'}]` : ` ${o.label || '-'} `) + (o.active ? '*' : '')).join('');
+                else if (n.kind === 'folder') l3 = `${n.children.length} ITEMS  OK OPENS`;
+                else if (n.kind === 'button') l3 = n.status && n.status.text ? n.status.text : 'OK SENDS';
+                else if (n.kind === 'slider') l3 = 'SLIDER: XLINK CONSOLE';
+                else l3 = (n.status && n.status.text) || '';
+                dm(`XLINK ${xlTitle()}`.slice(0, 20), `\u25ba${n.text}${n.status && n.status.text && n.kind === 'toggle' ? ` ${n.status.text}` : ''}`, l3);
+            };
+            const xlRun = async (n, op, value) => {
+                const pathTo = [...xl.path, xl.idx];
+                // risky items ask first (as the deck does for power), then XLink's own warning
+                let anc = n.text;
+                { let list = xl.menu.items; for (const i of xl.path) { anc += ` ${list[i].text}`; list = list[i].children || []; } }
+                if (RISKY.test(anc) && !await this.ask(`${xl.menu.device.name}: ${n.text}${op === 'toggle' ? ` \u2192 ${n.toggle[value].label}` : ''}?`)) return;
+                xl.note = 'SENDING...';
+                xlRender();
+                try {
+                    let r = await this.send('quickcast_xlink_do', { cabinet: this.cabinet, path: pathTo, op, value });
+                    if (r.confirm) {
+                        const ok = await this.box(`${r.confirm.header}\n\n${r.confirm.message}`, 'warning', [{ text: r.confirm.ok || 'OK', value: 'yes', className: 'btn-standard' }, { text: 'Cancel', value: null, className: 'btn-standard primary' }]);
+                        if (ok !== 'yes') { xl.note = 'CANCELLED'; xlRender(); return; }
+                        r = await this.send('quickcast_xlink_do', { cabinet: this.cabinet, path: pathTo, op, value, confirmed: true });
+                    }
+                    if (r.menu && r.menu.available) xl.menu = r.menu;
+                    xl.note = r.ok === false ? `FAILED ${r.failure || ''}`.slice(0, 20) : 'DONE';
+                    const n2 = xlNode();
+                    xl.choice = xlActive(n2);
+                } catch (e) { xl.note = `ERROR ${e.message}`.slice(0, 20); }
+                xlRender();
+                setTimeout(() => { if (xl) { xl.note = ''; xlRender(); } }, 1500);
+            };
+            const xlKey = async (k) => {
+                if (k === 'xlink' || (k === 'exit' && !xl.path.length)) { xl = null; m.classList.remove('qc-fp-xlmode'); lcd(lastView); return; }
+                const list = xlList();
+                const n = xlNode();
+                xl.note = '';
+                if (k === 'up' || k === 'down') { const len = Math.max(1, list.length); xl.idx = (xl.idx + (k === 'up' ? len - 1 : 1)) % len; xl.choice = xlActive(xlNode()); xlRender(); return; }
+                if (k === 'exit') { xl.idx = xl.path.pop(); xl.choice = xlActive(xlNode()); xlRender(); return; }
+                if (!n) return;
+                if ((k === 'left' || k === 'right') && n.kind === 'toggle') { const len = n.toggle.length; xl.choice = (xl.choice + (k === 'left' ? len - 1 : 1)) % len; xlRender(); return; }
+                if ((k === 'ok' || k === 'right') && n.kind === 'folder') { xl.path.push(xl.idx); xl.idx = 0; xl.choice = xlActive(xlNode()); xlRender(); return; }
+                if (k === 'ok' && n.kind === 'toggle') { await xlRun(n, 'toggle', xl.choice); return; }
+                if (k === 'ok' && n.kind === 'button') { await xlRun(n, 'send'); }
+            };
+            const xlOpen = async () => {
+                if (target === 'sat') return;
+                if (!this.cabinet) { lcd(null, 'Take a cabinet first'); return; }
+                try {
+                    const menu = await this.send('quickcast_xlink_menu', { cabinet: this.cabinet });
+                    if (!menu.available) { lcd(null, 'NO XLINK DEVICE'); return; }
+                    xl = { menu, path: [], idx: 0, choice: 0, note: '' };
+                    xl.choice = xlActive(xlNode());
+                    m.classList.add('qc-fp-xlmode');
+                    xlRender();
+                } catch (e) { lcd(null, e.message); }
+            };
+
             // a hardware reset of the panel itself: everything dark, then the lamp / display test, then boot
             const panelReset = async () => {
                 if (resetting) return;
@@ -1373,7 +1451,7 @@
                 lcd(lastView);
             };
             leds();
-            const keymap = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok', Escape: 'exit', m: 'menu', d: 'diag', i: 'info' };
+            const keymap = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok', Escape: 'exit', m: 'menu', d: 'diag', i: 'info', x: 'xlink' };
             m.addEventListener('keydown', (e) => {
                 const k = keymap[e.key];
                 if (!k || e.target.closest('input, textarea')) return;
@@ -1381,6 +1459,7 @@
                 e.stopPropagation();
                 if (e.repeat && k !== 'up' && k !== 'down' && k !== 'left' && k !== 'right') return; // only the D-pad repeats
                 if (e.repeat && inFlight) return;
+                if (k === 'xlink') { if (xl) void xlKey('xlink'); else void xlOpen(); return; }
                 void press(k);
             });
             m.tabIndex = -1;

@@ -72,7 +72,7 @@ const AUDIO_SET_TTL_MS = 5000;
 const NOT_READY_WAIT_MS = 45000;
 const METER_WINDOW_MS = 300; // meter readings kept for every reader (~20 Hz events)
 // obs-websocket EventSubscription: General | Config | Scenes | Inputs | Outputs | SceneItems, + InputVolumeMeters
-const EVENTS = 1 | 2 | 4 | 8 | 64 | 128 | (1 << 16);
+const EVENTS = 1 | 2 | 4 | 8 | 64 | 128 | (1 << 10) | (1 << 16); // + Ui (ScreenshotSaved, for the OSD)
 
 // ------------------------------------------------------------------ config
 
@@ -312,7 +312,7 @@ class ObsLink {
 }
 
 const link = new ObsLink();
-diag.init({ ruiko: link, readConfig, makeLink: (target, label) => new ObsLink({ target, label, events: 0 }) });
+diag.init({ ruiko: link, readConfig, makeLink: (target, label) => new ObsLink({ target, label, events: 128 | (1 << 10) }) /* SceneItems + Ui: the unit's screenshot notice */ });
 diag.onUnitRestart((machine) => void avOsd.powerOn(`mux-${machine}`, { reason: 'reset' }).catch(() => {}));
 avOsd.init({
     ruiko: link, diag, readConfig, dataDir: DATA_DIR, unitModel: (n) => unitModel(n), unitInfo: (n, r) => unitInfo(n, r), satelliteName: () => satelliteName(),
@@ -919,6 +919,38 @@ async function cabinetAction(req) {
     return { ok: r.ok, failure: r.failure, controls: await cabinetControls(c.id) };
 }
 
+/**
+ * The cabinet's whole XLink menu for the front panel's XLINK key: the item tree (text, kind, toggle
+ * options with the active one, status, warning flag, children), without the endpoint URLs.
+ */
+async function cabinetXlinkMenu(cabinetId, force) {
+    const c = cabinetOf(cabinetId);
+    if (!c.xlink) return { cabinet: c.id, available: false };
+    let snap;
+    try { snap = await xlink.device(c.xlink, { force: !!force }); } catch (e) {
+        if (e.code === 'XLINK_NO_DEVICE' || e.code === 'XLINK_NO_MENU') return { cabinet: c.id, available: false };
+        throw e;
+    }
+    const strip = (it) => ({
+        text: it.text, kind: it.kind, warning: !!it.warning,
+        status: it.status ? { text: it.status.text, color: it.status.color, failed: !!it.status.failed } : null,
+        toggle: it.toggle ? it.toggle.map((b) => ({ label: b.label, active: !!b.active })) : null,
+        children: (it.children || []).map(strip)
+    });
+    return { cabinet: c.id, available: true, device: { key: snap.key, name: snap.name, status: snap.status ? { text: snap.status.text, color: snap.status.color } : null }, items: snap.items.map(strip), polledAt: snap.polledAt };
+}
+
+/** Run any XLink item of the cabinet (send / toggle / slider); XLink's own warnings come back as { confirm }. */
+async function cabinetXlinkDo(req) {
+    const c = cabinetOf(String(req.cabinet || ''));
+    if (!c.xlink) throw fail('This cabinet has no XLink device', 'QUICKCAST_NO_XLINK');
+    const pth = Array.isArray(req.path) ? req.path.map(Number) : [];
+    const op = ['send', 'toggle', 'slider'].includes(req.op) ? req.op : 'send';
+    const r = await xlink.action({ device: c.xlink, path: pth, op, value: req.value, confirmed: !!req.confirmed });
+    if (r.confirm) return { confirm: r.confirm };
+    return { ok: r.ok, failure: r.failure, menu: await cabinetXlinkMenu(c.id, true) };
+}
+
 /** Start OBS on Ruiko without picking a cabinet. */
 async function launch() {
     touch();
@@ -990,4 +1022,4 @@ function info() {
     return { host: cfg.obs.host, port: cfg.obs.port, profile: cfg.profile, collection: cfg.collection, server: cfg.youtube.server, launchTask: cfg.launch.task };
 }
 
-module.exports = { liveTicket, liveStream, osd: avOsd, status, preview, prepare, goLive, stop, launch, powerOff, setKey, info, getEncoder, setEncoder, cabinetControls, cabinetAction, setMute, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };
+module.exports = { cabinetXlinkMenu, cabinetXlinkDo, liveTicket, liveStream, osd: avOsd, status, preview, prepare, goLive, stop, launch, powerOff, setKey, info, getEncoder, setEncoder, cabinetControls, cabinetAction, setMute, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };

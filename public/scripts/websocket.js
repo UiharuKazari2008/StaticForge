@@ -680,6 +680,8 @@ class BannerManager {
             'quickcast_cabinet': 'Cabinet Controls',
             'quickcast_cabinet_action': 'Cabinet Control',
             'quickcast_osd_key': 'Remote Key',
+            'quickcast_xlink_menu': 'Cabinet XLink Menu',
+            'quickcast_xlink_do': 'Cabinet XLink Control',
             'quickcast_osd_view': 'Remote Display',
             'quickcast_live_ticket': 'Realtime Preview',
             'quickcast_yt_account': 'YouTube Account',

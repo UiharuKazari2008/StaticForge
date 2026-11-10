@@ -185,7 +185,7 @@ muxWss.on('connection', (ws) => {
     ws.send(JSON.stringify({ op: 0, d: { obsWebSocketVersion: '5.4.2', rpcVersion: 1 } }));
     ws.on('message', (buf) => {
         const msg = JSON.parse(buf.toString());
-        if (msg.op === 1) { assert.strictEqual(msg.d.eventSubscriptions, 0, 'a mux link subscribes to no events'); ws.send(JSON.stringify({ op: 2, d: { negotiatedRpcVersion: 1 } })); return; }
+        if (msg.op === 1) { assert.strictEqual(msg.d.eventSubscriptions, 128 | 1024, 'a mux link subscribes to scene items + ui only'); ws.send(JSON.stringify({ op: 2, d: { negotiatedRpcVersion: 1 } })); return; }
         if (msg.op !== 6) return;
         const { requestType: t, requestId, requestData: q = {} } = msg.d;
         mux.calls.push(t);
@@ -527,6 +527,20 @@ async function main() {
     xa = await qc.cabinetAction({ cabinet: 'chuni', path: [2, 1], op: 'send' });
     assert.strictEqual(cab.game, 'Luminous Plus');
     assert.ok(!cab.hits.includes('/reboot'));
+    // front panel XLINK key: the whole menu (no endpoint URLs), any item, XLink's own warnings first
+    const xm = await qc.cabinetXlinkMenu('chuni', true);
+    assert.strictEqual(xm.available, true);
+    assert.deepStrictEqual(xm.items.map((i) => i.text), ['VISION Control', 'Power Switch', 'Game Select', 'Maintenance']);
+    assert.strictEqual(xm.items[1].kind, 'toggle');
+    assert.ok(xm.items[1].toggle.some((o) => o.active), 'toggle options carry the active one');
+    assert.strictEqual(xm.items[3].kind, 'folder');
+    assert.ok(!JSON.stringify(xm).includes('http://'), 'no endpoint URLs reach the client');
+    let xd = await qc.cabinetXlinkDo({ cabinet: 'chuni', path: [3, 0], op: 'send' });
+    assert.ok(xd.ok && cab.hits.includes('/reboot'), 'any XLink item runs from the panel');
+    assert.ok(xd.menu && xd.menu.available, 'the refreshed menu comes back');
+    xd = await qc.cabinetXlinkDo({ cabinet: 'chuni', path: [1], op: 'toggle', value: 0 });
+    assert.ok(xd.confirm || xd.ok, 'power: XLink warning or done');
+    assert.strictEqual((await qc.cabinetXlinkMenu('nost')).available, false, 'a cabinet without an XLink device');
     cabSrv.close();
 
     // a rejected key: OBS stops at once -> a clear failure
