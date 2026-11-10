@@ -532,6 +532,7 @@
 
             // pipeline diagnostics: output (Ruiko) row, input (cabinet mux) row, verdict
             this.renderDiag(st);
+            this.litVideoBus();
 
             // meters
             if (st.master) {
@@ -909,6 +910,31 @@
             bus.dataset.sig = sig;
             bus.innerHTML = v ? keys(v, 'video', 'qc-vk') : '<span class="qc-bus-none">NO VIDEO CONTROL</span>'; // RESET is on the unit's front panel
             bus.querySelectorAll('button').forEach((b) => { b.disabled = !!this.ctlBusy; });
+            this.litVideoBus();
+        }
+
+        /**
+         * Light the VIDEO bus key for the cabinet mixer's current state: XLink's own report when it has one,
+         * else the mixer's program scene (a cleared / blank / break scene = V-BLK, anything else = GAME).
+         * The bus label carries the mixer's program scene.
+         */
+        litVideoBus() {
+            const c = this.controls;
+            const v = c && c.cabinet === this.cabinet && c.video;
+            const st = this.st || {};
+            const pgm = st.diag && st.diag.input && st.diag.input.program;
+            const label = this.el('.qc-vbus .qc-bus-label');
+            if (label) label.innerHTML = pgm ? `VIDEO <small>PGM ${esc(pgm)}</small>` : 'VIDEO';
+            if (!v) return;
+            let on = v.buttons.findIndex((b) => b.active);
+            if (on < 0 && pgm) {
+                const blank = /clear|blank|break|v-?blk|black|standby/i.test(pgm);
+                on = v.buttons.findIndex((b) => (blank ? /v-?blk|blank/i : /game|auto/i).test(b.label));
+            }
+            this.el('.qc-vkeys').querySelectorAll('[data-xl="video"]').forEach((k) => {
+                const lit = Number(k.dataset.n) === on;
+                k.classList.toggle('is-on', lit);
+            });
         }
 
         /** Press a cabinet control: power and RESET ENC are confirmed (then XLink's own warning); video and game switch at once. */

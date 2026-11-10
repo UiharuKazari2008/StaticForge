@@ -102,8 +102,8 @@ body.t-takao .m-logo { height: calc(32 * var(--u)); }
 #card.on { display: block; }
 #card .bar b { text-transform: uppercase; }
 #card .clogo { display: block; width: calc(404 * var(--u)); height: auto; }
-body.t-amuvision #card .clogo { width: calc(562 * var(--u)); }
-body.t-amuvision #card .sub { width: calc(562 * var(--u)); justify-content: flex-end; }
+body.t-amuvision #card .clogo { width: calc(366 * var(--u)); }
+body.t-amuvision #card .sub { width: auto; justify-content: flex-start; }
 #card .press { position: absolute; left: calc(96 * var(--u)); top: calc(790 * var(--u)); font-size: calc(24 * var(--u)); font-weight: bold; }
 #card .fmt { position: absolute; left: calc(96 * var(--u)); top: calc(830 * var(--u)); font-size: calc(20 * var(--u)); color: #9a9a9a; }
 #card .tiles { position: absolute; left: calc(1088 * var(--u)); top: calc(118 * var(--u)); display: grid; grid-template-columns: repeat(2, calc(386 * var(--u))); grid-auto-rows: calc(218 * var(--u)); gap: calc(18 * var(--u)) calc(18 * var(--u)); }
