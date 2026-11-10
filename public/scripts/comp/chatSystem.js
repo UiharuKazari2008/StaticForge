@@ -266,7 +266,8 @@ class ChatSystem {
         this.pendingChatId = null;
         
         try {
-            const defaultGrok = window.optionsData?.defaultGrokModel || 'grok-4-fast-reasoning';
+            // Chat runs on DeepInfra (Yozora #736 / #738); null lets the server use its chatModel.
+            const chatModel = window.optionsData?.chatModel || null;
             const chatData = {
                 filename: this.currentFilename,
                 characterName: document.getElementById('chatName').value || null,
@@ -274,8 +275,8 @@ class ChatSystem {
                 textViewerInfo: document.getElementById('chatViewerContext').value || null,
                 storyContext: document.getElementById('chatStoryContext').value || null,
                 verbosityLevel: parseInt(document.getElementById('chatVerbosityHidden').value, 10) || 3,
-                provider: 'grok',
-                model: defaultGrok
+                provider: 'deepinfra',
+                model: chatModel
             };
             
             // Open chat interface modal BEFORE sending request so we can receive streaming events

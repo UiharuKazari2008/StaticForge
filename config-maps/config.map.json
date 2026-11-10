@@ -31,12 +31,57 @@
     },
     {
       "path": [
-        "defaultGrokModel"
+        "chatModel"
       ],
       "type": "string",
-      "label": "Default Grok Model",
+      "label": "Chat Model",
       "editorType": "input",
-      "description": "Default model ID for Grok chat requests. When empty, grokService falls back to grok-4-fast-reasoning and the native xAI path / quips fall back to grok-4.3."
+      "description": "Model id for Chat personas (modules/aiServices/deepInfraChatService.js), e.g. deepseek-ai/DeepSeek-V4.1-Flash. When empty, the chat provider row's defaultModel is used. Also the Novel Editor model when novelModel is empty."
+    },
+    {
+      "path": [
+        "chatProvider"
+      ],
+      "type": "string",
+      "label": "Chat Provider",
+      "editorType": "input",
+      "description": "customModelProviders id that runs Chat personas. Default deepinfra."
+    },
+    {
+      "path": [
+        "chatSendImages"
+      ],
+      "type": "boolean",
+      "label": "Chat Sends Images",
+      "editMode": "inline",
+      "description": "Send the character picture and viewer avatar to the chat model (needs a vision model as chatModel). Default off: the persona prompt carries the picture's generation tags."
+    },
+    {
+      "path": [
+        "novelModel"
+      ],
+      "type": "string",
+      "label": "Novel Editor Model",
+      "editorType": "input",
+      "description": "Model id for Novel Editor Generate / Refine (modules/novelHandlers.js). When empty: chatModel, else the provider row's defaultModel."
+    },
+    {
+      "path": [
+        "novelVisionModel"
+      ],
+      "type": "string",
+      "label": "Novel Editor Vision Model",
+      "editorType": "input",
+      "description": "Vision model id (e.g. Qwen/Qwen3-VL-30B-A3B-Instruct on DeepInfra) used when a note has a picture; the picture is then sent as an image. When empty (default), the picture is described by its generation prompt as text."
+    },
+    {
+      "path": [
+        "novelProvider"
+      ],
+      "type": "string",
+      "label": "Novel Editor Provider",
+      "editorType": "input",
+      "description": "customModelProviders id for the Novel Editor. When empty: chatProvider, else deepinfra."
     },
     {
       "path": [
@@ -107,7 +152,7 @@
       "type": "string",
       "label": "User-Agent",
       "editorType": "input",
-      "description": "User-Agent for some outbound HTTP calls (Grok service and dynamic-generation fetches). When empty, each call site uses its own fallback (StaticForge/1.1a or a browser UA)."
+      "description": "User-Agent for some outbound HTTP calls (dynamic-generation fetches). When empty, each call site uses its own fallback (StaticForge/1.1a or a browser UA)."
     },
     {
       "path": [
@@ -861,26 +906,6 @@
       "label": "Count Check Interval (hours)",
       "required": true,
       "description": "Hours between count-based auto-update evaluations (1\u201324). Default 4."
-    },
-    {
-      "path": [
-        "generationQuips",
-        "maintainQuipSession"
-      ],
-      "type": "boolean",
-      "label": "Maintain Quip Session",
-      "editMode": "inline",
-      "description": "Reuse the same Grok session across quip generation runs. Default true."
-    },
-    {
-      "path": [
-        "generationQuips",
-        "breakQuipSessionAt128k"
-      ],
-      "type": "boolean",
-      "label": "Break Session at 128k",
-      "editMode": "inline",
-      "description": "Start a fresh session when context nears 128k tokens. Default true."
     },
     {
       "path": [

@@ -8464,7 +8464,7 @@ async function createDirectorSessionWithImage(cacheImage) {
     try {
         // Show confirmation dialog with regular and HD options
         const result = await showConfirmationDialog(
-            `Create a new director session with this image using Grok 4?`,
+            `Create a new Director session with this image?`,
             [
                 { text: 'Create (MAX)', value: 'hd', className: 'btn-primary', icon: 'fas fa-high-definition' },
                 { text: 'Create', value: 'regular', className: 'btn-secondary' },
@@ -8496,7 +8496,6 @@ async function createDirectorSessionWithImage(cacheImage) {
             window.wsClient.send({
                 type: 'director_create_session',
                 requestId: Date.now().toString(),
-                model: 'grok-4',
                 maxResolution: isHdMode,
                 highReason: isHdMode,
                 imageFilename: imageFilename

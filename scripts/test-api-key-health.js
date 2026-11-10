@@ -147,7 +147,7 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
         assert.strictEqual(state('novelai'), 'ok');
         assert.strictEqual(state('exa'), 'ok', 'Exa: validation error after the key check means the key works');
         assert.strictEqual(state('openweather'), 'warn');
-        assert.strictEqual(state('grok'), 'unchecked', 'xAI is stored and not probed');
+        assert.ok(!summaries.some((s) => s.id === 'grok'), 'a leftover grok key is not a service any more (#738)');
         assert.strictEqual(state('google'), 'unchecked', 'Google is stored and not probed');
         assert.strictEqual(health.checksService('grok'), false);
         assert.strictEqual(health.checksService('google'), false);

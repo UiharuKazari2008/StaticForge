@@ -2,6 +2,7 @@
 
 // #347: Grok dynagen system message and tool loop are gone.
 // Context, weather, holiday, expiration, and legacy Tendai reads stay.
+// #738: grokService itself is gone.
 
 const assert = require('assert');
 const fs = require('fs');
@@ -9,7 +10,6 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const handlers = require('../modules/dynamicGenerationHandlers');
-const GrokService = require('../modules/aiServices/grokService');
 const wren = require('../modules/dynagenWren');
 
 function read(rel) {
@@ -29,17 +29,8 @@ assert.ok(handlerSource.includes('function calculateDynamicExpiration'));
 assert.ok(handlerSource.includes('function compileWeatherHistoryReport'));
 assert.ok(handlerSource.includes('function detectSeasonalHolidays'));
 
-const grokSource = read('modules/aiServices/grokService.js');
-assert.equal(grokSource.includes('getAllToolDefinitions'), false);
-assert.equal(grokSource.includes('handleValidateTextReplacement'), false);
-assert.equal(grokSource.includes('dynamicGenerationSchema'), false);
-assert.ok(grokSource.includes('async callDirectorAIWithStructuredOutput'));
-assert.ok(grokSource.includes('Grok dynagen tool loop was removed (#347)'));
-
-const grok = new GrokService({});
-assert.equal(grok.getAllToolDefinitions, undefined);
-assert.equal(typeof grok.callDirectorAIWithStructuredOutput, 'function');
-assert.equal(typeof grok.callDirectorAIWithCompletion, 'function');
+assert.equal(fs.existsSync(path.join(ROOT, 'modules/aiServices/grokService.js')), false);
+assert.equal(fs.existsSync(path.join(ROOT, 'modules/aiServices/xaiNativeService.js')), false);
 
 function logger() {
     return { verbose() {}, detailed() {}, warn() {}, normal() {}, error() {}, shouldLog() { return false; } };
@@ -53,8 +44,6 @@ const gr = {
 };
 
 (async () => {
-    await assert.rejects(() => grok.executeTool(), /Grok dynagen tool loop was removed/);
-
     const core = await handlers.processDynamicGenerationCore(gr, { directive: 'nope' }, { marker: true }, 'prompt', 'uc');
     assert.equal(core.success, true);
     assert.equal(core.noop, true);

@@ -3,7 +3,6 @@ class ApiKeyManager {
         this.globalResources = globalResources;
         this.ENV_FALLBACKS = {
             novelai: 'NOVELAI_API_KEY',
-            grok: 'GROK_API_KEY',
             openai: 'OPENAI_API_KEY',
             google: 'GOOGLE_API_KEY',
             openweather: 'OPENWEATHER_API_KEY',
@@ -20,12 +19,6 @@ class ApiKeyManager {
                 label: 'NovelAI',
                 description: 'Core image generation, upscaling, and vibe encoding',
                 icon: 'nai-anla',
-                requiresRestart: true
-            },
-            grok: {
-                label: 'Grok (xAI)',
-                description: 'Director + persona chat orchestration',
-                icon: 'xai-icon',
                 requiresRestart: true
             },
             openai: {
@@ -48,7 +41,7 @@ class ApiKeyManager {
             },
             exa: {
                 label: 'Exa Search',
-                description: 'Web search enrichment for Grok tools',
+                description: 'Web search enrichment for AI tools',
                 icon: 'fas fa-magnifying-glass',
                 requiresRestart: false
             },
@@ -76,7 +69,7 @@ class ApiKeyManager {
 
         // Tripwire / circuit-breaker: block outbound calls after repeated admin-fixable
         // API errors (bad request / auth) until an admin unlocks or swaps the key.
-        this.TRIPWIRE_SERVICES = new Set(['novelai', 'grok']);
+        this.TRIPWIRE_SERVICES = new Set(['novelai']);
         this.TRIPWIRE_STATUSES = new Set([400, 401, 402, 403]);
         this.TRIPWIRE_THRESHOLD = 3; // consecutive qualifying failures before locking
         this.serviceLocks = new Map(); // service -> lock record
@@ -346,7 +339,7 @@ class ApiKeyManager {
                 selectedName: selectedKey?.name || (keys.length ? `Key ${selectedIndex + 1}` : null),
                 selectedFingerprint: selectedKey ? this.maskKey(selectedKey.apiKey) : null,
                 missingKeys: keys.length === 0,
-                // modules/apiKeyHealth.js — false for google and grok: no probe, no status dot.
+                // modules/apiKeyHealth.js — false for google: no probe, no status dot.
                 statusCheck: require('./apiKeyHealth').checksService(service),
                 lock: this.getServiceLock(service),
                 keys: keys.map((key, index) => {

@@ -106,7 +106,7 @@ Top-level `ok` is always `true` when the WS handler succeeds (app config loaded)
 | `queue_status` | number | Queue state (0 idle, 1 processing, 2 blocked) |
 | `image_count` | number | Total generated image count |
 | `activeWorkspace` | object\|null | `{ id, data }` for session workspace |
-| `defaultGrokModel` | string | Default Grok model id |
+| `chatModel` | string\|null | Chat persona model id on DeepInfra (config `chatModel`, else the provider default). `defaultGrokModel` is no longer sent (Yozora #738). |
 
 ---
 

@@ -7,7 +7,6 @@
 const path = require('path');
 const crypto = require('crypto');
 const nekoaijs = require('nekoai-js');
-const OpenAI = require('openai');
 const SpellChecker = require('./spellChecker');
 const WordLookupService = require('./wordLookupService');
 const t5TokenizerService = require('./t5-tokenizer-service');
@@ -22,8 +21,6 @@ const FavoritesManager = require('./favorites');
 const MemoryManager = require('./memoryManager');
 const PromptManager = require('./promptManager');
 const AIServiceManager = require('./aiServiceManager');
-const GrokService = require('./aiServices/grokService');
-const XaiNativeService = require('./aiServices/xaiNativeService');
 const WorkspaceManager = require('./workspace');
 const Queue = require('./queue');
 const { normalizeNovelAiSubscription } = require('./novelAiSubscription');
@@ -129,8 +126,6 @@ class GlobalResources {
         this.memoryManager = null;
         this.promptManager = null;
         this.aiServiceManager = null;
-        this.grokService = null;
-        this.xaiNativeService = null;
 
         // Workspace module (exports functions)
         this.workspace = null;
@@ -165,7 +160,6 @@ class GlobalResources {
         // Client registry (shared services like API clients)
         this.clients = new Map();
         this.novelAiClient = null;
-        this.grokClient = null;
         this.apiKeyManager = null; // Will be initialized after configs are loaded
         this.applicationAuthManager = null;
         this.applicationAuthEarlyMiddleware = null;
@@ -272,10 +266,7 @@ class GlobalResources {
             memoryManager: false,
             promptManager: false,
             aiServiceManager: false,
-            grokService: false,
-            xaiNativeService: false,
             novelAiClient: false,
-            grokClient: false,
             workspace: false,
             queue: false,
             metadataDatabase: false,
@@ -1317,17 +1308,6 @@ class GlobalResources {
                 this.aiServiceManager.cleanupAllServices();
             });
 
-            // Grok service (instantiate class with globalResources)
-            this.grokService = new GrokService(this);
-            this.initializationProgress.grokService = true;
-            console.log('✓ Grok service ready');
-
-            // Native xAI service (for smaller tasks, using @ai-sdk/xai directly)
-            // Separate from the main GrokService so we can use native streaming + web search tools
-            // without disturbing the Responses API flows used for persona chat + Director.
-            this.xaiNativeService = new XaiNativeService(this);
-            this.initializationProgress.xaiNativeService = true;
-            console.log('✓ xAI Native service ready (for small tasks / quips / streaming + web search)');
         } catch (error) {
             console.error('  ❌ Failed to load singleton managers:', error);
             throw error;
@@ -2617,7 +2597,7 @@ class GlobalResources {
     }
 
     /**
-     * Store a shared client instance (e.g., NovelAI, Grok)
+     * Store a shared client instance (e.g., NovelAI)
      * @param {string} name
      * @param {any} client
      */
@@ -2716,7 +2696,7 @@ class GlobalResources {
 
     /**
      * Whether an external service is currently tripwire-locked.
-     * @param {string} service - e.g. 'novelai', 'grok'
+     * @param {string} service - e.g. 'novelai'
      */
     isServiceLocked(service) {
         return !!(this.apiKeyManager && this.apiKeyManager.isServiceLocked(service));
@@ -2725,7 +2705,7 @@ class GlobalResources {
     /**
      * Run an external API call behind the tripwire. Fast-fails when the service is
      * locked, records success/failure outcomes, and re-throws the original error.
-     * @param {string} service - e.g. 'novelai', 'grok'
+     * @param {string} service - e.g. 'novelai'
      * @param {Function} fn - async function that performs the API call
      */
     async guardServiceCall(service, fn) {
@@ -3034,60 +3014,6 @@ class GlobalResources {
         }
     }
 
-    getGrokClient() {
-        if (this.grokClient) {
-            return this.grokClient;
-        }
-        return this.createGrokClient();
-    }
-
-    getGrokService() {
-        if (!this.initialized) {
-            throw new Error('Global resources not initialized - call initialize() first');
-        }
-        return this.grokService;
-    }
-
-    /**
-     * Get the native @ai-sdk/xai service (for smaller utility tasks).
-     * Supports streaming and native xAI web_search / x_search tools.
-     * This is intentionally separate from the main GrokService (OpenAI SDK + Responses API).
-     */
-    getXaiNativeService() {
-        if (!this.initialized) {
-            throw new Error('Global resources not initialized - call initialize() first');
-        }
-        return this.xaiNativeService;
-    }
-
-
-    refreshGrokClient() {
-        this.grokClient = null;
-        this.clients.delete('grok');
-        return this.createGrokClient();
-    }
-
-    createGrokClient() {
-        try {
-            const apiKey = this.apiKeyManager.getActiveApiKey('grok');
-            if (!apiKey) {
-                console.warn('⚠️ Grok API key not found. Add one to secure.config.json or set GROK_API_KEY.');
-                return null;
-            }
-            const client = new OpenAI({
-                apiKey,
-                baseURL: 'https://api.x.ai/v1'
-            });
-            this.grokClient = client;
-            this.setClient('grok', client);
-            return client;
-        } catch (error) {
-            console.error('❌ Failed to create Grok client:', error.message);
-            this.grokClient = null;
-            this.clients.delete('grok');
-            return null;
-        }
-    }
 
     /**
      * Check if resources are initialized
@@ -3122,7 +3048,7 @@ class GlobalResources {
     }
 
     /**
-     * Initialize master API clients (NovelAI, Grok, etc.)
+     * Initialize master API clients (NovelAI, etc.)
      */
     async initializeMasterClients() {
         const missingKeys = [];
@@ -3152,31 +3078,6 @@ class GlobalResources {
             missingKeys.push('NovelAI');
         }
 
-        // Initialize Grok client
-        try {
-            const grokKey = this.apiKeyManager.getActiveApiKey('grok');
-            if (grokKey) {
-                this.grokClient = this.createGrokClient();
-                if (this.grokClient) {
-                    console.log('✓ xAI Grok client ready');
-                    this.initializationProgress.grokClient = true;
-                    // Register restart handler
-                    // No need to update anything - grokService uses getGrokClient() which always returns current client
-                    this.registerClientRestartHandler('grok', async (client) => {
-                        console.log('🔄 Grok client reinitialized with selected API key.');
-                        return !!client;
-                    });
-                } else {
-                    missingKeys.push('Grok');
-                }
-            } else {
-                missingKeys.push('Grok');
-            }
-        } catch (error) {
-            console.error('    ❌ Failed to initialize Grok client:', error.message);
-            missingKeys.push('Grok');
-        }
-
         // Report missing keys
         if (missingKeys.length > 0) {
             console.log(`    ⚠️  Missing API keys for: ${missingKeys.join(', ')}`);
@@ -3186,7 +3087,7 @@ class GlobalResources {
 
     /**
      * Register a restart handler for a client
-     * @param {string} serviceId - Service identifier (e.g., 'novelai', 'grok')
+     * @param {string} serviceId - Service identifier (e.g., 'novelai')
      * @param {Function} handler - Async function that receives the new client instance
      */
     registerClientRestartHandler(serviceId, handler) {
@@ -3201,8 +3102,6 @@ class GlobalResources {
             let client;
             if (serviceId === 'novelai') {
                 client = this.refreshNovelAiClient();
-            } else if (serviceId === 'grok') {
-                client = this.refreshGrokClient();
             } else {
                 client = this.getClient(serviceId);
             }

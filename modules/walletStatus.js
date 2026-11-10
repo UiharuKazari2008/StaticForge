@@ -15,7 +15,7 @@
 //                unlock_api_service) and keys Security Center's check refused (apiKeyHealth);
 //                local state, so it is read on every request instead of cached
 //
-// Grok is left out of keys (it is being retired). OpenAI is left out: it gives API keys no balance (/dashboard/billing/credit_grants answers 403
+// OpenAI is left out: it gives API keys no balance (/dashboard/billing/credit_grants answers 403
 // "must be made with a session key"), and work is moving to TokenRouter anyway.
 //
 // getWalletStatus(gr, { refresh, fresh }) -> { fetchedAt, cursor, claude, tokenrouter, runpod, custom, keys };
@@ -32,7 +32,7 @@ const REQUEST_TIMEOUT_MS = 12000;
 // Same rule as Security Center's Login button (securityCenterDsapApplet.js loginNeeded), plus a
 // profile with no saved credentials at all.
 const LOGIN_NEEDED_RE = /expired|not logged|login|unauthorized|no credentials/i;
-const KEY_SKIP_SERVICES = new Set(['grok']);
+const KEY_SKIP_SERVICES = new Set();
 
 let snapshot = null;
 let inflight = null;
@@ -316,7 +316,7 @@ function keyStatus(gr) {
     } catch (_) { /* key checks not available */ }
     Object.keys(statuses).forEach((service) => {
         if (KEY_SKIP_SERVICES.has(service)) return;
-        // modules/apiKeyHealth.js — google and grok are not probed, so a stale cache row is not an alert.
+        // modules/apiKeyHealth.js — google is not probed, so a stale cache row is not an alert.
         if (!require('./apiKeyHealth').checksService(service)) return;
         const keys = typeof manager.getServiceKeys === 'function' ? manager.getServiceKeys(service) : [];
         (statuses[service] || []).forEach((row) => {

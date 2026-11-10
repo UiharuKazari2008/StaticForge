@@ -6,7 +6,7 @@
 // the key) in .cache/api-key-health.json. Opening Security Center only reads
 // this cache. A check runs when a key is added or edited, and at boot for keys
 // that were never checked or whose last check could not reach the service.
-// google and grok have no probe: stored keys are not checked and get no dot.
+// google has no probe: stored keys are not checked and get no dot.
 
 const fs = require('fs');
 const path = require('path');

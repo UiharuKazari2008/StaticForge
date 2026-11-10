@@ -700,7 +700,6 @@ class ConfigManager {
                     autofillRanking: JSON.parse(JSON.stringify(DEFAULT_AUTOFILL_RANKING)),
                     selectedApiKeys: {
                         novelai: 0,
-                        grok: 0,
                         openai: 0,
                         google: 0,
                         openweather: 0,

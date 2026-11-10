@@ -269,16 +269,25 @@ Additional response/push types from handler:
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
-| `noteId` | Optional |
+| `noteId` | Required (a note with `note_kind: "novel"`) |
+| `mode` | `generate` (default) or `refine` |
+| `selection` | Refine: the passage to replace |
+| `directive` | Creative directive; else the note's `directive_snapshot` |
+| `filename` | Picture to write from; else the note's latest linked picture |
+| `compiledPrompts` | String or `{ input_prompt, input_uc, input_prompt_negative, character_prompts[] }`; when empty the server reads the picture's prompt from the metadata DB |
+| `resumeAdvancement` | `true` moves `story_cursor_line` to the end of the new text |
 
 **Validation errors:**
 - Note ID is required
 
-**Success response:** `novel_generate_response`
+**Success response:** `novel_generate_response` (`{ success, started, noteId }`), then the work runs in the background.
 
 Additional response/push types from handler:
-- `novel_generate_complete`
+- `novel_progress` (broadcast): `{ phase: starting | streaming | completion | error, noteId, requestId, reason }`. `completion.reason` is the model's one-line `reason`.
+- `novel_generate_complete`: `{ success, note, append_text, response_id, model }` or `{ success: false, error }`
 - `novel_updated`
+
+**Model (Yozora #738):** runs on DeepInfra (`modules/novelHandlers.js`), not Grok. Provider: config `novelProvider`, else `chatProvider`, else `deepinfra` (the `customModelProviders` row and key). Model: config `novelModel`, else `chatModel`, else the provider row's `defaultModel`. There is no server-side conversation state: every call resends the whole story, directive and picture prompt, and asks for a JSON object (`append_text`, `resolved_blocks`, `reason`; refine: `refined_text`, `reason`). The picture is sent as its generation prompt (text) unless config `novelVisionModel` names a vision model (for example `Qwen/Qwen3-VL-30B-A3B-Instruct`); then that model gets the picture itself. `metadata.last_response_id` is cleared.
 
 **Push side effects:**
 - `novel_updated`

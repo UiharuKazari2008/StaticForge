@@ -100,7 +100,7 @@ const NOW = Date.now();
     assert.strictEqual((await wallet.getWalletStatus(gr, { fresh: true })).claude.fiveHour.percent, 40, 'fresh collects a new snapshot');
     assert.deepStrictEqual(status.keys, { locks: [], failed: [] });
 
-    // Service keys: tripwire locks (Grok left out) and keys the Security Center check refused
+    // Service keys: tripwire locks and keys the Security Center check refused
     const health = require('../modules/apiKeyHealth');
     fs.writeFileSync(process.env.API_KEY_HEALTH_CACHE, JSON.stringify({ version: 1, entries: {
         [health._test.fingerprint('tokenrouter', 'managementKey', 'tr-mgmt')]: { state: 'fail', message: 'Management key refused', checkedAt: '2026-10-12T10:00:00.000Z' },
@@ -108,8 +108,8 @@ const NOW = Date.now();
     } }));
     const keyGr = {
         getApiKeyManager: () => ({
-            SERVICE_METADATA: { novelai: { label: 'NovelAI' }, grok: { label: 'Grok (xAI)' }, tokenrouter: { label: 'TokenRouter', secondary: { field: 'managementKey' } } },
-            TRIPWIRE_SERVICES: new Set(['novelai', 'grok']),
+            SERVICE_METADATA: { novelai: { label: 'NovelAI' }, tokenrouter: { label: 'TokenRouter', secondary: { field: 'managementKey' } } },
+            TRIPWIRE_SERVICES: new Set(['novelai']),
             getServiceLock: (svc) => ({ service: svc, locked: true, failureCount: 3, lastStatus: 401, lastMessage: 'Unauthorized', lockedAt: 1700 }),
             getServiceKeys: (svc) => (svc === 'tokenrouter' ? [{ name: 'Main', apiKey: 'tr-key', managementKey: 'tr-mgmt' }] : svc === 'novelai' ? [{ name: 'NAI', apiKey: 'pst-ok' }] : [])
         })

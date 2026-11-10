@@ -747,8 +747,8 @@
             textViewerInfo: d.viewer.trim() || null,
             storyContext: d.story.trim() || null,
             verbosityLevel: parseInt(d.verbosity, 10) || 3,
-            provider: 'grok',
-            model: (window.optionsData && window.optionsData.defaultGrokModel) || 'grok-4-fast-reasoning'
+            provider: 'deepinfra',
+            model: (window.optionsData && window.optionsData.chatModel) || null
         };
         // the conversation opens at once: the persona's first words stream in while it is made
         creating = true;

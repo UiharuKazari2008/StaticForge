@@ -166,25 +166,6 @@
     },
     {
       "path": [
-        "grok",
-        "useWebSearch"
-      ],
-      "type": "boolean",
-      "label": "Grok Web Search",
-      "editMode": "inline"
-    },
-    {
-      "path": [
-        "grok",
-        "_tagWikiCollectionId"
-      ],
-      "type": "string",
-      "label": "Tag Wiki Collection ID",
-      "editorType": "input",
-      "description": "Grok collection ID for tag wiki RAG"
-    },
-    {
-      "path": [
         "runpod",
         "esrganWorkerId"
       ],

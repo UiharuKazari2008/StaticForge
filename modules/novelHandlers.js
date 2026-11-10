@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
-const { z } = require('zod');
+const customModelProviders = require('./customModelProviders');
 const {
     normalizeNovelMetadata,
     MAX_NOVEL_UNDO_STACK
@@ -13,19 +13,59 @@ const {
     generateNovelNoteName
 } = require('./novelIntentBlocks');
 
-const NovelGenerateSchema = z.object({
-    append_text: z.string().describe('New story prose to append after existing content. Expand any {user intent} blocks into vivid prose matching tone and style.'),
-    resolved_blocks: z.array(z.object({
-        original: z.string(),
-        resolved: z.string()
-    })).nullable().describe('Mappings for {intent} blocks that were expanded, or null if none'),
-    reason: z.string().nullable().describe('Brief reasoning for the continuation, or null')
-});
+// Novel Editor Generate / Refine on DeepInfra (Yozora #738; Yukimi Nov 10 2026: "we do not use
+// grok anymore for anything"). DeepInfra is OpenAI-compatible chat completions with no
+// server-side conversation state, so every call resends the whole story, the directive and the
+// picture's generation prompt (the old xAI previous_response_id chain is gone). The reply is a
+// JSON object (response_format json_object, the tokenRouterBridge.chatCompletion pattern; a
+// model that refuses it gets the call again without it and the reply is parsed leniently).
+// Provider: config novelProvider, else chatProvider, else 'deepinfra' (customModelProviders row
+// and key). Model: config novelModel, else chatModel, else the provider row's defaultModel.
+// Picture: no DeepInfra vision model is configured in this repo, so by default the picture is
+// described by its generation prompt as text. Set config novelVisionModel (a vision model id,
+// e.g. Qwen/Qwen3-VL-30B-A3B-Instruct) to send the picture itself to that model instead.
+const NOVEL_MAX_TOKENS = 8000;
+const NOVEL_TIMEOUT_MS = 300000;
 
-const NovelRefineSchema = z.object({
-    refined_text: z.string().describe('Refined replacement text for the selected passage'),
-    reason: z.string().nullable().describe('Brief reasoning, or null')
-});
+const NOVEL_GENERATE_FORMAT = [
+    '',
+    'Output format (strict): reply with ONLY one JSON object, no markdown and no text outside it:',
+    '{"append_text": string (new story prose to append after the existing content; expand any {user intent} blocks into vivid prose matching tone and style),',
+    ' "resolved_blocks": [{"original": string, "resolved": string}] or null (the {intent} blocks you expanded),',
+    ' "reason": string or null (one short sentence on what the continuation does)}'
+].join('\n');
+
+const NOVEL_REFINE_FORMAT = [
+    '',
+    'Output format (strict): reply with ONLY one JSON object, no markdown and no text outside it:',
+    '{"refined_text": string (the refined replacement for the selected passage), "reason": string or null (one short sentence)}'
+].join('\n');
+
+function parseNovelReply(text) {
+    let clean = String(text || '').trim();
+    clean = clean.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    try {
+        const parsed = JSON.parse(clean);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch (_) { /* try the outer braces */ }
+    const start = clean.indexOf('{');
+    const end = clean.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+        try {
+            const parsed = JSON.parse(clean.slice(start, end + 1).replace(/,(\s*[}\]])/g, '$1'));
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+        } catch (_) { /* fall through */ }
+    }
+    return null;
+}
+
+function normalizeResolvedBlocks(value) {
+    if (!Array.isArray(value)) return null;
+    const blocks = value
+        .filter((b) => b && typeof b.original === 'string' && typeof b.resolved === 'string')
+        .map((b) => ({ original: b.original, resolved: b.resolved }));
+    return blocks.length ? blocks : null;
+}
 
 class NovelHandlers {
     constructor(globalResources) {
@@ -34,6 +74,97 @@ class NovelHandlers {
 
     getNotesDb() {
         return this.globalResources.getNotesDatabase();
+    }
+
+    readConfig(key) {
+        try { return this.globalResources.getConfig({ path: key }); } catch (_) { return undefined; }
+    }
+
+    configText(key) {
+        return String(this.readConfig(key) || '').trim();
+    }
+
+    getNovelProviderId() {
+        return (this.configText('novelProvider') || this.configText('chatProvider') || 'deepinfra').toLowerCase();
+    }
+
+    // config novelModel, else chatModel, else the provider row's defaultModel, else the preset default.
+    getNovelModel() {
+        const configured = this.configText('novelModel') || this.configText('chatModel');
+        if (configured) return configured;
+        const row = customModelProviders.lookup(this.globalResources, this.getNovelProviderId());
+        if (row && row.defaultModel) return row.defaultModel;
+        const preset = customModelProviders.PRESETS.find((item) => item.id === 'deepinfra');
+        return (preset && preset.defaultModel) || 'deepseek-ai/DeepSeek-V4.1-Flash';
+    }
+
+    // Empty unless configured: the picture is then sent as its generation prompt (text).
+    getNovelVisionModel() {
+        return this.configText('novelVisionModel');
+    }
+
+    // Generation prompt of a picture from the metadata DB, for when the client sent none.
+    async compiledPromptsForImage(filename) {
+        if (!filename) return '';
+        try {
+            const metadataDb = this.globalResources.getMetadataDatabase();
+            if (!metadataDb || typeof metadataDb.getCachedMetadata !== 'function') return '';
+            const row = await metadataDb.getCachedMetadata(filename);
+            const meta = (row && row.metadata) || {};
+            const forge = meta.forge_data || {};
+            const dg = meta.dynamic_generation || forge.dynamic_generation || {};
+            const compiled = dg.compiled_prompt || {};
+            const chars = forge.allCharacters || meta.characterPrompts || compiled.character_prompts || [];
+            return this.formatCompiledPrompts({
+                input_prompt: forge.input_prompt || meta.prompt || meta.input_prompt || compiled.prompt || '',
+                input_uc: forge.input_uc || meta.uc || meta.input_uc || compiled.uc || '',
+                input_prompt_negative: forge.input_prompt_negative || meta.input_prompt_negative || '',
+                character_prompts: Array.isArray(chars) ? chars.map((c) => (typeof c === 'string' ? { prompt: c } : c)) : []
+            });
+        } catch (_) {
+            return '';
+        }
+    }
+
+    // One JSON chat-completions call on the configured provider. Resolves { text, reasoning, id, model }.
+    async callNovelModel(messages, model) {
+        const provider = customModelProviders.requireReady(this.globalResources, this.getNovelProviderId());
+        const body = {
+            model,
+            messages,
+            max_tokens: NOVEL_MAX_TOKENS,
+            stream: false,
+            response_format: { type: 'json_object' }
+        };
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const res = await fetch(provider.chatUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${provider.apiKey}` },
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(NOVEL_TIMEOUT_MS)
+            });
+            customModelProviders.noteRateLimit(provider.id, res.headers);
+            customModelProviders.noteKeyResult(provider.id, provider.apiKey, res.status);
+            const text = await res.text();
+            if (res.ok) {
+                const json = JSON.parse(text);
+                const message = (json.choices && json.choices[0] && json.choices[0].message) || {};
+                return {
+                    text: typeof message.content === 'string' ? message.content : '',
+                    reasoning: message.reasoning_content || message.reasoning || '',
+                    id: json.id || null,
+                    model
+                };
+            }
+            if (res.status === 400 && body.response_format && /response_format|json/i.test(text)) {
+                delete body.response_format;
+                continue;
+            }
+            const error = new Error(`${provider.name} novel request failed (HTTP ${res.status})${text ? `: ${text.slice(0, 300)}` : ''}`);
+            error.status = res.status;
+            throw error;
+        }
+        throw new Error(`${provider.name} refused every novel request shape`);
     }
 
     publishProgress(wsServer, payload) {
@@ -98,7 +229,15 @@ class NovelHandlers {
         ].join('\n');
     }
 
-    buildGenerateSystemPrompt(settings) {
+    buildGenerateSystemPrompt(settings, mode = 'generate', pictureAsText = false) {
+        const picture = pictureAsText
+            ? '\n\nThe picture is given as the generation prompt it was drawn from (NovelAI tags); imagine the scene from it.'
+            : '';
+        const format = mode === 'refine' ? NOVEL_REFINE_FORMAT : NOVEL_GENERATE_FORMAT;
+        return this.buildGenerateSystemPromptBody(settings) + picture + '\n' + format;
+    }
+
+    buildGenerateSystemPromptBody(settings) {
         return `You are a vivid literary novelist continuing an illustrated story.
 
 Write rich, sensory prose that advances the narrative based on the generated image and prompts provided.
@@ -208,58 +347,51 @@ Rules:
             ? compiledPrompts
             : this.formatCompiledPrompts(compiledPrompts);
 
+        const visionModel = imageBuffer ? this.getNovelVisionModel() : '';
+        const model = visionModel || this.getNovelModel();
+        const pictureAsText = !!imageFilename && !visionModel;
+        let promptText = compiledText;
+        if (!promptText && imageFilename) promptText = await this.compiledPromptsForImage(imageFilename);
         const userText = this.buildUserPrompt({
             content: note.content,
             directive: directive || metadata.directive_snapshot,
-            compiledPrompts: compiledText,
+            compiledPrompts: promptText,
             mode,
             selection
         });
-
-        const userContent = [];
-        if (imageBuffer) {
-            userContent.push({
-                type: 'input_image',
-                image_url: `data:image/jpeg;base64,${imageBuffer.toString('base64')}`
-            });
-        }
-        userContent.push({ type: 'input_text', text: userText });
-
+        const userMessage = visionModel
+            ? {
+                role: 'user',
+                content: [
+                    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBuffer.toString('base64')}` } },
+                    { type: 'text', text: userText }
+                ]
+            }
+            : { role: 'user', content: userText };
         const messages = [
-            {
-                role: 'system',
-                content: [{ type: 'input_text', text: this.buildGenerateSystemPrompt(settings) }]
-            },
-            { role: 'user', content: userContent }
+            { role: 'system', content: this.buildGenerateSystemPrompt(settings, mode, pictureAsText) },
+            userMessage
         ];
-
-        const grokService = this.globalResources.getGrokService();
-        const schema = mode === 'refine' ? NovelRefineSchema : NovelGenerateSchema;
-        const aiOptions = {
-            model: grokService.getDefaultGrokModel(),
-            timeout: 300000,
-            store: true,
-            responseSchema: schema,
-            toolLoops: 1,
-            extractKeys: ['reason', 'append_text'],
-            ws,
-            handler: { sendGenerationProgress: (_, reqId, data) => this.publishProgress(wsServer, { ...data, noteId, requestId: reqId || requestId }) },
-            requestId
-        };
-        if (metadata.last_response_id) {
-            aiOptions.previous_response_id = metadata.last_response_id;
-        }
 
         this.publishProgress(wsServer, { phase: 'streaming', noteId, requestId, reason: 'Writing story continuation...' });
 
-        const grokResponse = await grokService.callDirectorAIWithStructuredOutput(messages, aiOptions);
-        let responseContent = grokResponse.content || grokResponse.message || grokResponse;
-        if (typeof responseContent === 'string') {
-            try {
-                responseContent = JSON.parse(responseContent);
-            } catch {
-                responseContent = { append_text: responseContent };
-            }
+        const result = await this.callNovelModel(messages, model);
+        const parsed = parseNovelReply(result.text);
+        let responseContent;
+        if (parsed) {
+            responseContent = parsed;
+        } else if (mode === 'refine') {
+            responseContent = { refined_text: String(result.text || '').trim() };
+        } else {
+            responseContent = { append_text: String(result.text || '').trim() };
+        }
+        responseContent.resolved_blocks = normalizeResolvedBlocks(responseContent.resolved_blocks);
+        if (typeof responseContent.append_text !== 'string') responseContent.append_text = responseContent.append_text ? String(responseContent.append_text) : '';
+        if (mode !== 'refine' && !responseContent.append_text.trim()) {
+            throw new Error('The model returned no story text.');
+        }
+        if (mode === 'refine' && !String(responseContent.refined_text || '').trim()) {
+            throw new Error('The model returned no refined text.');
         }
 
         let newContent = note.content || '';
@@ -279,7 +411,8 @@ Rules:
         }
 
         if (directive) metadata.directive_snapshot = directive;
-        metadata.last_response_id = grokResponse.responseId || grokResponse.id || metadata.last_response_id;
+        // No server-side conversation state on DeepInfra: nothing to chain the next call to.
+        metadata.last_response_id = null;
         if (shouldAdvanceStory) {
             metadata.story_cursor_line = countStoryLines(newContent);
         }
@@ -301,7 +434,8 @@ Rules:
             success: true,
             note: await notesDb.getNote(noteId),
             append_text: responseContent.append_text,
-            response_id: grokResponse.responseId
+            response_id: result.id,
+            model: result.model
         };
     }
 

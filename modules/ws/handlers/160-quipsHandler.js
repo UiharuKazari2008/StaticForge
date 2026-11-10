@@ -147,13 +147,12 @@ async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServe
                 data: activeWorkspaceData
             } : null
         };
-        // Chat runs on DeepInfra (Yozora #736). Older clients read defaultGrokModel as the chat model.
+        // Chat runs on DeepInfra (Yozora #736 / #738): the chat model id clients send back.
         try {
             options.chatModel = handlersCtx.globalResources.getAiServiceManager().getChatService().getDefaultModel();
         } catch (_) {
             options.chatModel = null;
         }
-        options.defaultGrokModel = options.chatModel;
 
         // lean (web desktop): the logon gets what it uses; wildcards and expander counts come
         // with get_app_options_chunk, and the workspace is id + name (its files load with the

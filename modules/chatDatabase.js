@@ -192,7 +192,7 @@ async function createChatSession(sessionData) {
                 sessionData.story_context,
                 sessionData.verbosity_level,
                 sessionData.model, // Use model as chat_model for backward compatibility
-                'grok' // Only Grok is supported now
+                'deepinfra' // Chat runs on DeepInfra (Yozora #736 / #738); old 'grok' rows still load
             ];
         } else {
             // Use new schema only
