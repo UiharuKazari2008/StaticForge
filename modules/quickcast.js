@@ -991,33 +991,58 @@ let stopping = false;
  * (taskkill without /F, run in the logged-on session: a taskkill over SSH cannot reach OBS's window).
  * Refused while streaming or recording.
  */
+/**
+ * Satellite power off, like the hardware: its SHUTDOWN screen goes up on its output, a live broadcast is
+ * ended (stream stopped, YouTube broadcast completed), recording / replay buffer / virtual camera are
+ * stopped, the outputs get FLUSH_MS to drain, then the Ruiko stop task closes OBS (graceful, forced after
+ * 12 s if a prompt or the tray keeps it open).
+ */
+const FLUSH_MS = 5000;
 async function powerOff() {
     return exclusive('shutting down the encoder engine', async () => {
         touch();
-        if (link.online) {
-            const [st, rec] = await Promise.all([link.request('GetStreamStatus'), link.request('GetRecordStatus').catch(() => ({}))]);
-            if (st.outputActive) throw fail('On air: end the broadcast before shutting the engine down', 'QUICKCAST_LIVE');
-            if (rec.outputActive) throw fail(`${satelliteName()} is recording: stop the recording before shutting the engine down`, 'QUICKCAST_RECORDING');
-        }
-        const list = await sshRun('tasklist /FI "IMAGENAME eq obs64.exe" /NH');
-        if (list.ok && !/obs64\.exe/i.test(list.out)) { link.close(); return { ok: true, already: true }; }
-        const task = readConfig().launch.stopTask;
-        if (!/^[\\\w .-]+$/.test(task)) throw fail('The stop task name is not valid', 'QUICKCAST_LAUNCH');
+        const step = (text, done) => avOsd.shutdownStep('sat', text, done);
         stopping = true;
         try {
+            if (link.online) {
+                step('SHUTDOWN REQUESTED');
+                const st = await link.request('GetStreamStatus').catch(() => ({}));
+                if (st.outputActive) {
+                    step('ENDING BROADCAST');
+                    await link.request('StopStream').catch(() => {});
+                    await link.waitFor('StreamStateChanged', (d) => !d.outputActive, 15000);
+                    try { await yt.endBroadcast(); } catch (_) { /* YouTube ends it itself */ }
+                }
+                step('STOPPING RECORDING');
+                const rec = await link.request('GetRecordStatus').catch(() => ({}));
+                if (rec.outputActive) { await link.request('StopRecord').catch(() => {}); await link.waitFor('RecordStateChanged', (d) => !d.outputActive, 15000); }
+                const rb = await link.request('GetReplayBufferStatus').catch(() => ({}));
+                if (rb.outputActive) await link.request('StopReplayBuffer').catch(() => {});
+                const vc = await link.request('GetVirtualCamStatus').catch(() => ({}));
+                if (vc.outputActive) await link.request('StopVirtualCam').catch(() => {});
+                step('FLUSHING OUTPUTS');
+                await new Promise((res) => setTimeout(res, FLUSH_MS));
+                step('POWERING DOWN');
+                await new Promise((res) => setTimeout(res, 1500)); // the last OSD frame reaches the outputs
+            }
+            const list = await sshRun('tasklist /FI "IMAGENAME eq obs64.exe" /NH');
+            if (list.ok && !/obs64\.exe/i.test(list.out)) { link.close(); return { ok: true, already: true }; }
+            const task = readConfig().launch.stopTask;
+            if (!/^[\\\w .-]+$/.test(task)) throw fail('The stop task name is not valid', 'QUICKCAST_LAUNCH');
             const r = await sshRun(`schtasks /Run /TN "${task}"`);
             if (!r.ok || !/SUCCESS/i.test(r.out)) throw fail(`Could not shut down ${satelliteName()}'s encoder engine: ${(r.err || r.out).trim().slice(0, 200)}`, 'QUICKCAST_LAUNCH');
-            const until = Date.now() + 30000;
+            const until = Date.now() + 40000;
             for (;;) {
                 await new Promise((res) => setTimeout(res, 1500));
                 const l = await sshRun('tasklist /FI "IMAGENAME eq obs64.exe" /NH');
                 if (l.ok && !/obs64\.exe/i.test(l.out)) break;
-                if (Date.now() > until) throw fail(`${satelliteName()}'s encoder engine is still running after 30 s (a prompt on its console may be waiting)`, 'QUICKCAST_LAUNCH');
+                if (Date.now() > until) throw fail(`${satelliteName()}'s encoder engine is still running after 40 s`, 'QUICKCAST_LAUNCH');
             }
             link.close();
             lastTry = Date.now() + 3000; // no reconnect attempt while it winds down
+            console.log(`[visioncaster] satellite ${satelliteName()} powered off`);
             return { ok: true };
-        } finally { stopping = false; }
+        } finally { stopping = false; step('', true); }
     });
 }
 

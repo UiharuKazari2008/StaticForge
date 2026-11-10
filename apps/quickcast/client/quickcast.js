@@ -350,7 +350,7 @@
                 case 'launch':
                 case 'obson': await this.run(`Starting ${this.satName()}'s encoder engine...`, 'quickcast_launch', {}); break;
                 case 'obsoff':
-                    if (!await this.ask(`Shut down ${this.satName()}'s encoder engine?\n\nIts outputs (and the NDI feeds it sends) stop too. Bring it back with ENGINE ON or by taking a cabinet.`)) break;
+                    if (!await this.ask(`Power off ${this.satName()}?${this.st && this.st.stream && this.st.stream.active ? '\n\nYOU ARE ON AIR: the broadcast is ended first.' : ''}\n\nIt shows its shutdown screen, stops the stream and recordings, flushes its outputs, then powers down. Bring it back with PWR or by taking a cabinet.`)) break;
                     await this.run(`Shutting down ${this.satName()}'s encoder engine...`, 'quickcast_obs_off', {});
                     break;
                 case 'watch': if (this.streamUrl()) root.open(this.streamUrl(), '_blank', 'noopener'); break;
@@ -1292,6 +1292,7 @@
                 dmColor = '#ffb02e';
                 if (err) { dmColor = '#ff5a3a'; dm(unit, 'ERROR', err); return; }
                 if (v && v.toast) { dm(unit, v.toast.slice(0, 20), v.toast.slice(20, 40)); return; }
+                if (v && v.shutdown) { dmColor = '#ffc23a'; const st = v.shutdown.steps || []; dm(unit, 'SHUTTING DOWN', st[st.length - 1] || ''); return; }
                 if (v && v.powerOff) { dmColor = '#a03a2a'; dm(unit, 'POWER OFF', ''); return; }
                 if (v && v.nosig && !(v.open && v.page)) { dmColor = '#ff5a3a'; dm(unit, 'ALARM LOS FROZEN', `${v.nosig.input || ''}`.slice(0, 20)); return; }
                 if (v && v.standby && !(v.open && v.page)) { dmColor = '#ffb028'; dm(unit, v.standby.phase === 'boot' ? 'STANDBY BOOT...' : 'STANDBY MODE', ''); return; }

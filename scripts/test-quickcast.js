@@ -400,6 +400,16 @@ async function main() {
     await qc.osd._signalTick(qc.osd._boxes.get('sat'));
     assert.strictEqual(qc.osd._boxes.get('sat').nosig, null, 'picture back -> overlay gone');
 
+    // satellite power off: SHUTDOWN screen, a live stream ended first, outputs flushed, then the power-down task
+    obs.streaming = true;
+    const seen = [];
+    const spy = setInterval(() => { const vw = qc.osd._boxes.get('sat').view; if (vw && vw.shutdown) seen.push(...vw.shutdown.steps); }, 100);
+    await assert.rejects(qc.powerOff(), /shut down|Could not/, 'no Ruiko in the test: the power-down task itself fails');
+    clearInterval(spy);
+    assert.strictEqual(obs.streaming, false, 'the live stream is stopped before powering down');
+    assert.ok(seen.includes('ENDING BROADCAST') && seen.includes('FLUSHING OUTPUTS') && seen.includes('POWERING DOWN'), `shutdown steps shown: ${[...new Set(seen)].join(', ')}`);
+    assert.ok(!qc.osd._boxes.get('sat').view.shutdown, 'the SHUTDOWN screen comes down at the end');
+
     // a take on the unit (program scene change) flashes the STATUS box on its output
     emit('CurrentProgramSceneChanged', { sceneName: 'Chuni' });
     await until(() => qc.osd._boxes.get('sat').view && qc.osd._boxes.get('sat').view.strip);

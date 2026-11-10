@@ -1316,6 +1316,7 @@ function emit(b) {
     if (b.standby) out.standby = { phase: b.standby.phase, since: b.standby.since };
     if (b.powerOff) out.powerOff = true;
     if (b.nosig) out.nosig = b.nosig;
+    if (b.shutdown) out.shutdown = { steps: b.shutdown.steps.slice(-6), at: b.shutdown.at };
     if (b.post && !b.post.hidden) out.post = { ...b.post, holdLeft: b.post.holdUntil ? Math.max(0, Math.ceil((b.post.holdUntil - Date.now()) / 1000)) : 0 };
     b.view = out;
     for (const res of b.subs) { try { res.write(`data: ${JSON.stringify(out)}\n\n`); } catch (_) { b.subs.delete(res); } }
@@ -1924,4 +1925,13 @@ function alignFor(machine) {
     return { cam: sel.cam || '', ref: sel.ref || '', running: !!b.align.running, offMs: r && r.offMs != null ? r.offMs : null, score: r ? r.score : null, text: r ? r.text : b.align.error || '' };
 }
 
-module.exports = { _signalTick: signalTick, unitState, noteCabinet, faults, powerOn, subscribeCard, alignFor, init, press, view, subscribe, checkToken, PORTS, bestLag, _boxes: boxes, OVERLAY_SCENE, OVERLAY_INPUT, DELAY_FILTER };
+/** The satellite's SHUTDOWN screen: each step of a power off (done=true takes it down). */
+function shutdownStep(boxId, text, done) {
+    const b = box(boxId);
+    if (done) { b.shutdown = null; emit(b); return; }
+    if (!b.shutdown) b.shutdown = { steps: [], at: Date.now() };
+    if (text) b.shutdown.steps.push(text);
+    emit(b);
+}
+
+module.exports = { shutdownStep, _signalTick: signalTick, unitState, noteCabinet, faults, powerOn, subscribeCard, alignFor, init, press, view, subscribe, checkToken, PORTS, bestLag, _boxes: boxes, OVERLAY_SCENE, OVERLAY_INPUT, DELAY_FILTER };

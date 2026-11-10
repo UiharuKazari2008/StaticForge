@@ -170,6 +170,11 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 .nsync { position: relative; display: block; height: calc(10 * var(--u)); margin: calc(10 * var(--u)) 0 calc(4 * var(--u)); border: calc(2 * var(--u)) solid #3a4a64; overflow: hidden; }
 .nsync i { position: absolute; top: 0; bottom: 0; width: 18%; background: #ffc23a; animation: nscan 1.6s steps(16, end) infinite; }
 @keyframes nscan { 0% { left: -18%; } 100% { left: 100%; } }
+/* power off: the SHUTDOWN screen, a hardware OSD box in the middle of the output, one line per step */
+#sdn { left: 50%; top: 50%; transform: translate(-50%, -50%); min-width: calc(760 * var(--u)); }
+#sdn .hw-hd { background: #6a0000; }
+#sdn b { text-align: center; color: #ffc23a !important; font-size: calc(44 * var(--u)) !important; letter-spacing: calc(8 * var(--u)) !important; }
+#sdn .hw-sub { white-space: pre-line; max-width: none; }
 /* STANDBY: the low-power image's screen, a hardware OSD box in the middle of the output */
 #sby { left: calc(40 * var(--u)); top: calc(40 * var(--u)); min-width: calc(420 * var(--u)); }
 #sby.boot { left: 50%; top: 50%; transform: translate(-50%, -50%); min-width: calc(760 * var(--u)); }
@@ -207,6 +212,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 <div class="press" id="cpress">Press and hold &ldquo;DIAG&rdquo; button to modify settings</div><div class="fmt" id="cfmt"></div>
 <div class="tiles" id="tiles"></div><div class="ver"><em>Amusement<b>VISION</b></em><br><span id="cver"></span></div></div>
 <div id="nosig" class="hw"><div class="hw-hd">ALARM</div><div class="hw-bd"><b>LOSS OF SIGNAL</b><span class="hw-sub nsf">FROZEN FRAME: LAST PICTURE HELD</span><span class="hw-sub" id="nsh"></span><span class="nsync"><i></i></span><span class="hw-sub" id="nss"></span></div></div>
+<div id="sdn" class="hw"><div class="hw-hd" id="sdnh">SHUTDOWN</div><div class="hw-bd"><b>SHUTTING DOWN</b><span class="hw-sub" id="sdns"></span><span class="hw-sub">DO NOT REMOVE POWER</span></div></div>
 <div id="sby" class="hw"><div class="hw-hd" id="sbyh"></div><div class="hw-bd"><b id="sbyb"></b><span class="sbbar"><i></i></span><span class="hw-sub" id="sbys"></span></div></div>
 <div id="strip" class="hw"><div class="hw-hd" id="striph">STATUS</div><div class="hw-bd hw-grid" id="stripb"></div></div><div id="toast" class="hw"><div class="hw-hd" id="toasth">SYSTEM</div><div class="hw-bd"><b id="toastb"></b><span class="hw-sub" id="toasts"></span></div></div><div id="off" class="hw"><div class="hw-hd">UNIT OFFLINE</div><div class="hw-bd"><b>NO CONTROL LINK</b><span class="hw-sub" id="offs"></span></div></div>
 <div id="gms" class="hw"><div class="hw-hd" id="gmsh">XLINK GMS</div><div class="hw-bd"><b id="gmst"></b><span class="hw-sub" id="gmss"></span></div></div>
@@ -268,6 +274,12 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
       $('cpress').innerHTML = po.phase === 'fault' ? '<b class="dna">DO NOT AIR</b><br>CALL A TECHNICIAN &mdash; press MENU to service this unit' : po.phase === 'boot' ? '' : po.phase === 'pass' ? 'All sources OK' : 'Checking every source...';
     } else if (!isCard) { $('card').className = ''; cardShown = ''; }
     if (!(v.standby && !v.post && !(v.open && p))) $('sby').className = 'hw';
+    var sd = v.shutdown;
+    $('sdn').className = sd ? 'hw on' : 'hw';
+    if (sd) {
+      $('sdnh').textContent = 'SHUTDOWN  ' + (bx.name || '');
+      $('sdns').textContent = (sd.steps || []).map(function (t, i, a) { return (i === a.length - 1 ? '> ' : '  ') + t + (i < a.length - 1 ? '  OK' : '...'); }).join('\\n');
+    }
     var ns = v.nosig;
     $('nosig').className = ns && !(v.open && p) ? 'hw on' : 'hw';
     if (ns) {
