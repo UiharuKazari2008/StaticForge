@@ -79,6 +79,16 @@ function checkToken(boxId, k) {
     return crypto.timingSafeEqual(Buffer.from(k), Buffer.from(want));
 }
 
+// ------------------------------------------------------------------ latched faults survive restarts
+
+function faultFile() { return path.join(deps.dataDir, 'faults.json'); }
+function loadFaults() { try { return JSON.parse(fs.readFileSync(faultFile(), 'utf8')) || {}; } catch (_) { return {}; } }
+function saveFault(b) {
+    const all = loadFaults();
+    if (b.fault) all[b.id] = b.fault; else delete all[b.id];
+    try { fs.mkdirSync(deps.dataDir, { recursive: true }); fs.writeFileSync(faultFile(), JSON.stringify(all, null, 2)); } catch (_) { /* best effort */ }
+}
+
 // ------------------------------------------------------------------ boxes
 
 const boxes = new Map(); // id -> box
@@ -90,7 +100,7 @@ function box(id) {
     if (!validId(id)) throw fail('Unknown box', 'AVOSD_BOX');
     let b = boxes.get(id);
     if (!b) {
-        b = { id, kind: id === 'sat' ? 'satellite' : 'cabinet', machine: id === 'sat' ? '' : id.slice(4), open: false, info: false, stack: [], toast: '', toastAt: 0, rev: 0, subs: new Set(), view: null, pending: new Map(), busy: false };
+        b = { fault: loadFaults()[id] || null, id, kind: id === 'sat' ? 'satellite' : 'cabinet', machine: id === 'sat' ? '' : id.slice(4), open: false, info: false, stack: [], toast: '', toastAt: 0, rev: 0, subs: new Set(), view: null, pending: new Map(), busy: false };
         boxes.set(id, b);
     }
     return b;
@@ -106,6 +116,19 @@ async function linkOf(b) {
 }
 
 const machineCache = new Map(); // cabinetId -> { machine, at }
+
+/** First contact with a unit after a server start: a stale OSD layer left on (menu state is not kept
+ *  across restarts) is taken off its program. */
+async function settle(b) {
+    if (b.settled) return;
+    b.settled = true;
+    try {
+        // once per server start: reload the unit's OSD page (it may be an older build, or a dead stream)
+        const { link } = await linkOf(b);
+        await link.request('PressInputPropertiesButton', { inputName: OVERLAY_INPUT, propertyName: 'refreshnocache' }).catch(() => {});
+        await placeOverlay(b);
+    } catch (_) { /* unit offline */ }
+}
 
 /** The box a QuickCast remote is pointed at: the satellite, or the mux PC feeding a cabinet. */
 async function resolveBox(target, cabinetId) {
@@ -150,13 +173,19 @@ async function ensureOverlay(b, link) {
 
 /** Show or hide the OSD layer on top of the box's program scene. */
 async function placeOverlay(b) {
-    const want = b.open || b.info || !!b.post;
+    // the OSD layer is resident on the unit's program (transparent when idle), so the unit can still draw
+    // its own "XLink GMS communication lost" OSD when this server is unreachable
+    const want = true;
     const { link } = await linkOf(b);
     if (want) await ensureOverlay(b, link);
     const program = (await link.request('GetCurrentProgramScene')).currentProgramSceneName;
     if (!program || program === OVERLAY_SCENE) return;
     const items = (await link.request('GetSceneItemList', { sceneName: program })).sceneItems || [];
     const it = items.find((i) => i.sourceName === OVERLAY_SCENE);
+    if (want && (!it || !it.sceneItemEnabled)) {
+        // a page that lost its stream (server restarted) would draw nothing: reload it as the layer comes up
+        await link.request('PressInputPropertiesButton', { inputName: OVERLAY_INPUT, propertyName: 'refreshnocache' }).catch(() => {});
+    }
     if (want) {
         let id = it && it.sceneItemId;
         if (!id) id = (await link.request('CreateSceneItem', { sceneName: program, sourceName: OVERLAY_SCENE, sceneItemEnabled: true })).sceneItemId;
@@ -386,9 +415,10 @@ const PAGES = {
         const rows = [
             { id: 'fps', label: 'FRAME RATE', kind: 'pick', value: `${fpsText(show[0], show[1])} fps`, changed: !!pend && (pend[0] !== cur[0] || pend[1] !== cur[1]), hint: '◄► choose, OK apply' },
             { id: 'res', label: 'RESOLUTION', kind: 'info', value: `${v.outputWidth}x${v.outputHeight}` },
-            { id: 'active', label: 'RUNNING', kind: 'info', value: `${round1(st.activeFps || 0)} fps`, state: st.activeFps < (cur[0] / cur[1]) * 0.97 ? 'bad' : '' }
+            { id: 'active', label: 'RUNNING', kind: 'info', value: `${round1(st.activeFps || 0)} fps`, state: st.activeFps < (cur[0] / cur[1]) * 0.97 ? 'bad' : 'ok', blink: st.activeFps < (cur[0] / cur[1]) * 0.97, bar: { from: 0, width: Math.min(100, ((st.activeFps || 0) / (cur[0] / cur[1])) * 100), color: st.activeFps < (cur[0] / cur[1]) * 0.97 ? '#ff4b4b' : '#3ee07a' } },
+            { id: 'ftime', label: 'FRAME TIME', kind: 'info', value: `${round1(st.averageFrameRenderTime || 0)} / ${round1(1000 / (cur[0] / cur[1]))} ms`, bar: { from: 0, width: Math.min(100, ((st.averageFrameRenderTime || 0) / (1000 / (cur[0] / cur[1]))) * 100), color: (st.averageFrameRenderTime || 0) > (900 / (cur[0] / cur[1])) ? '#ffc23a' : '#3ee07a' } }
         ];
-        if (b.kind === 'cabinet') rows.push({ id: 'lock', label: 'LOCK TO SATELLITE', kind: 'info', value: sat == null ? '-' : lock ? `${lock} LOCKED` : `NO LOCK (${fpsText(sat * 1000, 1000)})`, state: sat != null && !lock ? 'bad' : '', blink: sat != null && !lock });
+        if (b.kind === 'cabinet') rows.push({ id: 'lock', label: 'LOCK TO SATELLITE', kind: 'info', value: sat == null ? '-' : lock ? `${lock} LOCKED` : `NO LOCK (${fpsText(sat * 1000, 1000)})`, state: sat != null && !lock ? 'bad' : sat != null ? 'ok' : '', blink: sat != null && !lock, bar: sat == null ? null : { from: 0, width: 100, color: lock ? '#3ee07a' : '#ff4b4b' } });
         return { title: 'VIDEO CLOCK', rows };
     },
 
@@ -712,8 +742,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  */
 async function powerOn(boxId, opts = {}) {
     const b = boxes.get(boxId) || box(boxId);
-    if (b.post && !b.post.latched) return b.lastPost;
-    b.post = null;
+    if (b.post) return b.lastPost;
     if (b.kind === 'satellite' && await deps.onAir(b).catch(() => false)) return null; // never over a live broadcast
     const cfg = deps.readConfig().osd || {};
     const holdS = Math.max(0, Math.min(120, Number(cfg.alarmHoldS) || 10));
@@ -770,8 +799,12 @@ async function powerOn(boxId, opts = {}) {
                 const cur = ((await link.request('GetInputSettings', { inputName: inp.inputName }).catch(() => ({}))).inputSettings || {})[port.prop];
                 if (opts2.length && cur && !opts2.some((o) => o.value === cur)) { it.state = 'alarm'; it.detail = audio ? 'AUDIO DEVICE MISSING' : 'DEVICE MISSING'; }
             }
-            if (it.state === 'ok' && video && !sizes.has(inp.inputName)) { it.state = 'alarm'; it.detail = 'NO SIGNAL LOCK'; }
-            if (it.state === 'ok' && video && CAMERA_KINDS.has(inp.inputKind) && sizes.has(inp.inputName)) {
+            // LOCK only for inputs that are active: a capture not in the current layout idles (0x0) by design
+            let active = true;
+            if (video) { try { active = !!(await link.request('GetSourceActive', { sourceName: inp.inputName })).videoActive; } catch (_) { active = true; } }
+            if (it.state === 'ok' && video && !active) it.detail = 'STANDBY';
+            else if (it.state === 'ok' && video && !sizes.has(inp.inputName)) { it.state = 'alarm'; it.detail = 'NO SIGNAL LOCK'; }
+            if (it.state === 'ok' && video && active && CAMERA_KINDS.has(inp.inputKind) && sizes.has(inp.inputName)) {
                 // frame rate on the unit's clock, about 1 s of frames
                 const frames = Math.round(unitFps);
                 const reqs = [];
@@ -796,17 +829,21 @@ async function powerOn(boxId, opts = {}) {
     b.post.alarms = alarms.length;
     b.lastPost = { at: Date.now(), alarms: alarms.length, items };
     if (alarms.length) {
-        // a failed self test is a latched FAULT: the unit keeps the fault card on its output (DO NOT AIR)
-        // until a technician enters its menu and re-tests clean or overrides; VisionCaster locks LIVE
+        // a failed self test latches a FAULT (front panel ALARM, the FAULT menu page) until a technician clears it
         b.fault = { at: Date.now(), items: alarms.map((x) => ({ label: x.label, type: x.type, detail: x.detail, cabs: x.cabs || null })), overridden: false, reason: b.post.reason };
         b.post.phase = 'fault';
         b.post.text = `FAULT: ${alarms[0].label} ${alarms[0].detail}${alarms.length > 1 ? ` (+${alarms.length - 1})` : ''}`;
-        b.post.holdUntil = 0;
-        b.post.latched = true;
+        // advisory: the card holds for osd.alarmHoldS (counting down) and hands back to program; the fault
+        // stays latched on the front panel ALARM led and the unit's FAULT menu page
+        b.post.holdUntil = Date.now() + holdS * 1000;
+        saveFault(b);
+        while (b.post && Date.now() < b.post.holdUntil) { emit(b); await sleep(1000); }
+        b.post = null;
         emit(b);
         return b.lastPost;
     }
     b.fault = null;
+    saveFault(b);
     b.post.phase = 'pass';
     b.post.text = 'SELF TEST PASSED';
     emit(b);
@@ -852,7 +889,7 @@ async function buildStrip(b) {
 /** Build the view from what is cached (no OBS round trip) and push it to the box's OSD page. */
 function emit(b) {
     const u = deps.unitInfo(boxName(b), b.kind === 'satellite' ? 'satellite' : 'mux');
-    const out = { box: { id: b.id, name: boxName(b), kind: b.kind, maker: u.maker, line: u.line, model: u.model, type: u.kind, theme: u.theme }, ui: u.theme, open: b.open, info: b.info, toast: Date.now() - b.toastAt < 4000 ? b.toast : '', rev: ++b.rev, at: Date.now() };
+    const out = { box: { id: b.id, name: boxName(b), kind: b.kind, maker: u.maker, line: u.line, model: u.model, type: u.kind, theme: u.theme, sw: u.sw, hw: u.hw, fw: u.fw }, ui: u.theme, open: b.open, info: b.info, toast: Date.now() - b.toastAt < 4000 ? b.toast : '', rev: ++b.rev, at: Date.now() };
     if (b.offline) out.offline = b.offline;
     const f = b.open ? frame(b) : null;
     if (f) {
@@ -945,11 +982,12 @@ async function onKey(b, key) {
     if (row.id === 'f:retest' && key === 'ok') { b.open = false; b.stack = []; void powerOn(b.id, { reason: 'retest' }); return; }
     if (row.id === 'f:override' && key === 'ok' && b.fault) {
         b.fault.overridden = !b.fault.overridden;
-        if (b.fault.overridden && b.post && b.post.latched) b.post = null;
+        saveFault(b);
+        if (b.fault.overridden && b.post) b.post = null;
         toast(b, b.fault.overridden ? 'FAULT OVERRIDDEN: airing with a known fault' : 'Fault lock restored');
         return;
     }
-    if (row.id === 's:post' && key === 'ok') { void powerOn(b.id, { reason: 'manual' }); return; }
+    if (row.id === 's:post' && key === 'ok') { b.open = false; b.stack = []; b.pending.clear(); void powerOn(b.id, { reason: 'manual' }); return; }
     if (row.id.startsWith('port:')) {
         const inp = (await portInputs(link)).find((i) => i.inputName === name);
         if (!inp) return;
@@ -1056,6 +1094,7 @@ const NAV_ONLY = new Set(['up', 'down']);
 async function press(target, cabinetId, key) {
     if (!KEYS.has(key)) throw fail('Unknown key', 'AVOSD_KEY');
     const b = await resolveBox(target, cabinetId);
+    if (!b.settled) await settle(b);
     if (!b.queue) b.queue = [];
     if (b.queue.length >= 2) return b.view || emit(b);
     return new Promise((resolve) => {
@@ -1109,6 +1148,15 @@ function subscribe(boxId, k, res) {
 }
 
 // keep an open OSD's numbers fresh (levels, clock, diagnostics) while something shows it
+// keep the resident OSD layer on each known unit's current program (the program can change under it)
+setInterval(() => {
+    for (const b of boxes.values()) {
+        if (b.busy || b.placing || !b.settled) continue;
+        b.placing = true;
+        placeOverlay(b).catch(() => {}).finally(() => { b.placing = false; });
+    }
+}, 10000).unref();
+
 // keep an open OSD's moving numbers fresh (clock, diagnostics, levels), and the layer on the program
 // scene if the box's program changed under it; never while keys are being worked
 let tick = 0;
@@ -1132,6 +1180,7 @@ setInterval(() => {
 /** Latched self-test faults: [{ unit, box, kind, at, items, overridden }] (VisionCaster locks LIVE on them). */
 function faults() {
     const out = [];
+    for (const id of Object.keys(loadFaults())) if (validId(id)) box(id);
     for (const b of boxes.values()) if (b.fault) out.push({ unit: boxName(b), box: b.id, kind: b.kind, machine: b.machine, at: b.fault.at, items: b.fault.items, overridden: !!b.fault.overridden });
     return out;
 }

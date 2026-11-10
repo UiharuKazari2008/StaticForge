@@ -326,7 +326,7 @@ function inputRow(cabinet, feed, satFps) {
             + (odd.length ? '\n\nA capture at a rate that does not divide into the mux rate (59.94 into 60, 25 into 30) repeats or drops frames unevenly and slides against the other inputs.' : '')
             + (buffered.length ? '\n\nBuffering on = the mixer holds frames to smooth them: smoother, but that input runs behind the others.' : '')
         : `No capture inputs on "${m.program}"`;
-    const capVal = !caps.length ? 'NONE' : dead.length ? `${dead.length} NO SIGNAL` : odd.length ? `${odd.length} FPS MISMATCH` : buffered.length ? `${buffered.length} BUFFERED` : `${caps.length} LIVE`;
+    const capVal = !caps.length ? 'NONE' : dead.length ? `${dead[0].name.toUpperCase()} NO SIGNAL${dead.length > 1 ? ` +${dead.length - 1}` : ''}` : odd.length ? `${odd.length} FPS MISMATCH` : buffered.length ? `${buffered.length} BUFFERED` : `${caps.length} LIVE`;
 
     // MIXER (render)
     const rLag = w.share('renderSkipped', 'renderTotal');

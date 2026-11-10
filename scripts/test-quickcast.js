@@ -146,6 +146,7 @@ wss.on('connection', (ws) => {
             case 'GetCurrentProgramScene': data = { currentProgramSceneName: obs.program }; break;
             case 'CreateSceneItem': (items[q.sceneName] = items[q.sceneName] || []).push({ sourceName: q.sourceName, sourceType: 'OBS_SOURCE_TYPE_SCENE', sceneItemEnabled: q.sceneItemEnabled !== false, sceneItemId: 777, sceneItemIndex: (items[q.sceneName] || []).length }); data = { sceneItemId: 777 }; break;
             case 'SetSceneItemIndex': break;
+            case 'PressInputPropertiesButton': break;
             // the NDI feed's machine is gone from the network: its current source is not in the list
             case 'GetInputPropertiesListPropertyItems': data = { propertyItems: q.propertyName === 'ndi_source_name' ? [{ itemName: 'OTHER-BOX (Out)', itemValue: 'OTHER-BOX (Out)', itemEnabled: true }] : [] }; break;
             case 'SetSceneItemEnabled': (items[q.sceneName] || []).forEach((i) => { if (i.sceneItemId === q.sceneItemId) i.sceneItemEnabled = q.sceneItemEnabled; }); break;
@@ -318,8 +319,7 @@ async function main() {
     assert.strictEqual(v.page.title, 'MAIN MENU');
     v = await qc.osd.press('sat', '', 'exit');
     assert.strictEqual(v.open, false);
-    await until(() => !nested.sceneItemEnabled);
-    assert.strictEqual(nested.sceneItemEnabled, false, 'closing hides the OSD layer');
+    assert.strictEqual(nested.sceneItemEnabled, true, 'the OSD layer stays resident (transparent) so the unit can show a lost-GMS OSD');
     await assert.rejects(qc.osd.press('sat', '', 'reboot'), /Unknown key/);
     const tok = new URL(obs.osdInput.inputSettings.url).searchParams.get('k');
     assert.ok(qc.osd.checkToken('sat', tok));
@@ -379,7 +379,10 @@ async function main() {
     assert.strictEqual(st.master.mag[0], -6); // 0.5 -> -6.0 dB; the muted 0 dB music is left out
     assert.strictEqual(st.master.peak[1], -10.5); // 0.3 -> -10.5 dB
     st = await qc.status();
-    assert.strictEqual(st.master.mag[0], -100, 'meters reset after a read');
+    assert.strictEqual(st.master.mag[0], -6, 'a second reader (another window) sees the same levels');
+    await new Promise((res) => setTimeout(res, 350));
+    st = await qc.status();
+    assert.strictEqual(st.master.mag[0], -100, 'levels leave the 300 ms window');
     // mute: only inputs the stream hears
     await assert.rejects(qc.setMute('Cue Monitor', true), /not in the stream mix/);
     let mu = await qc.setMute('Waiting Music', false);

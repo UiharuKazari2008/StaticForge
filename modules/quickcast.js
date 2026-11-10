@@ -70,6 +70,7 @@ const SWITCH_WAIT_MS = 20000;
 const START_WAIT_MS = 15000;
 const AUDIO_SET_TTL_MS = 5000;
 const NOT_READY_WAIT_MS = 45000;
+const METER_WINDOW_MS = 300; // meter readings kept for every reader (~20 Hz events)
 // obs-websocket EventSubscription: General | Config | Scenes | Inputs | Outputs | SceneItems, + InputVolumeMeters
 const EVENTS = 1 | 2 | 4 | 8 | 64 | 128 | (1 << 16);
 
@@ -269,11 +270,10 @@ class ObsLink {
             for (const inp of data.inputs || []) {
                 const lv = Array.isArray(inp.inputLevelsMul) ? inp.inputLevelsMul : [];
                 let m = this.meters.get(inp.inputName);
-                if (!m) { m = { mag: [], peak: [], at: now }; this.meters.set(inp.inputName, m); }
-                lv.forEach((ch, i) => {
-                    m.mag[i] = Math.max(m.mag[i] || 0, Number(ch[0]) || 0);
-                    m.peak[i] = Math.max(m.peak[i] || 0, Number(ch[1]) || 0);
-                });
+                if (!m) { m = { hist: [], at: now }; this.meters.set(inp.inputName, m); }
+                // a short history, read by every client without clearing (several windows share it)
+                m.hist.push({ at: now, mag: lv.map((ch) => Number(ch[0]) || 0), peak: lv.map((ch) => Number(ch[1]) || 0) });
+                while (m.hist.length && now - m.hist[0].at > METER_WINDOW_MS) m.hist.shift();
                 m.channels = lv.length;
                 m.at = now;
             }
@@ -292,14 +292,20 @@ class ObsLink {
         });
     }
 
-    /** The meters since the last read (peaks), then reset. */
+    /** The meters over the last METER_WINDOW_MS (maxima), shared by every reader: nothing is reset. */
     takeMeters() {
         const out = new Map();
         const now = Date.now();
         for (const [name, m] of this.meters) {
             if (now - m.at > 2000) { this.meters.delete(name); continue; }
-            out.set(name, { mag: m.mag.slice(0, m.channels || m.mag.length), peak: m.peak.slice(0, m.channels || m.peak.length) });
-            m.mag = []; m.peak = [];
+            const n = m.channels || 0;
+            const mag = new Array(n).fill(0);
+            const peak = new Array(n).fill(0);
+            for (const h of m.hist) {
+                if (now - h.at > METER_WINDOW_MS) continue;
+                for (let i = 0; i < n; i++) { mag[i] = Math.max(mag[i], h.mag[i] || 0); peak[i] = Math.max(peak[i], h.peak[i] || 0); }
+            }
+            out.set(name, { mag, peak });
         }
         return out;
     }
@@ -467,15 +473,6 @@ const round1 = (n) => Math.round(n * 10) / 10;
 function keyHint(key) {
     const k = String(key || '');
     return k ? `••••-${k.slice(-4)}` : '';
-}
-
-/** Latched, not overridden self-test faults on the units a cabinet's broadcast goes through. */
-async function chainFaults(cabinetId) {
-    const all = avOsd.faults().filter((f) => !f.overridden);
-    if (!all.length) return [];
-    let machine = '';
-    try { machine = await diag.machineForCabinet(cabinetId); } catch (_) { machine = ''; }
-    return all.map((f) => scopeFault(f, cabinetId, machine)).filter(Boolean);
 }
 
 /** A fault as it bears on one cabinet: satellite alarms only for inputs that cabinet uses (or global ones). */
@@ -702,9 +699,7 @@ async function goLive(cabinetId, settings) {
     const c = cabinetOf(cabinetId);
     const cfg = readConfig();
     if (!cfg.youtube.streamKey) throw fail('No uplink key is set (Stream > Uplink Key...)', 'QUICKCAST_NO_KEY');
-    // a unit in the chain with a latched self-test fault: DO NOT AIR until a technician clears it
-    const blocking = await chainFaults(c.id);
-    if (blocking.length) throw fail(`DO NOT AIR: ${blocking.map((f) => `${f.unit} ${f.items.map((i) => `${i.label} ${i.detail}`).join(', ')}`).join('; ')}. A technician must clear it in the unit's menu (MENU on the remote).`, 'QUICKCAST_UNIT_FAULT');
+    // self-test faults on the chain are advisory (the client lists them before LIVE); they never block
     return exclusive('going live', async () => {
         await ensureObs(true);
         const st = await link.request('GetStreamStatus');

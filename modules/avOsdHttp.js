@@ -105,6 +105,27 @@ body.t-amuvision .foot { display: none; }
 @keyframes fbar { 50% { background: #500; } }
 #card .tile.bad { background: linear-gradient(#5a1414, #2e0a0a); outline: calc(3 * var(--u)) solid #d00; }
 #card .tile em.al { color: #ff9a8f; font-weight: bold; }
+/* draw-in, the way hardware OSDs paint: stepped, never faded */
+@keyframes wipe-x { 0% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 0 0 0); } }
+@keyframes wipe-up { 0% { clip-path: inset(100% 0 0 0); } 100% { clip-path: inset(0 0 0 0); } }
+@keyframes wipe-down { 0% { clip-path: inset(0 0 100% 0); } 100% { clip-path: inset(0 0 0 0); } }
+@keyframes pop { 0% { visibility: hidden; } 100% { visibility: visible; } }
+.drawin .bar { animation: wipe-x 0.24s steps(8, end) both; }
+body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
+.drawin .card { animation: wipe-down 0.18s steps(6, end) both; }
+.drawin .brand { animation: pop 0.01s steps(1, end) 0.2s both; }
+.drawin .crumbs, .drawin .hint, .drawin .keys, .drawin .foot { animation: pop 0.01s steps(1, end) 0.3s both; }
+.rows.paint .row, .rows.paint .more { animation: pop 0.01s steps(1, end) both; }
+#card.drawin .tiles .tile { animation: pop 0.01s steps(1, end) both; }
+/* XLink GMS link lost: a corner OSD in the unit's style */
+#gms { position: absolute; right: calc(40 * var(--u)); top: calc(40 * var(--u)); display: none; align-items: center; gap: calc(16 * var(--u)); padding: calc(14 * var(--u)) calc(22 * var(--u)); background: rgba(0,0,0,.88); border-left: calc(8 * var(--u)) solid var(--acc); }
+#gms.on { display: flex; animation: wipe-x 0.2s steps(6, end) both; }
+#gms.lost { border-left-color: #e00; }
+#gms i { width: calc(34 * var(--u)); height: calc(30 * var(--u)); background: #ffc23a; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+#gms.lost i { animation: bl 0.8s steps(1, end) infinite; }
+#gms.ok i { background: #3ee07a; clip-path: circle(50%); }
+#gms b { display: block; font-size: calc(24 * var(--u)); }
+#gms span { display: block; font-size: calc(18 * var(--u)); color: #aaa; }
 #off { position: absolute; right: calc(40 * var(--u)); top: calc(100 * var(--u)); display: none; padding: calc(10 * var(--u)) calc(18 * var(--u)); background: #900; font-size: calc(22 * var(--u)); font-weight: bold; }
 </style></head>
 <body class="t-takao">
@@ -119,10 +140,12 @@ body.t-amuvision .foot { display: none; }
 <div class="press" id="cpress">Press and hold &ldquo;DIAG&rdquo; button to modify settings</div><div class="fmt" id="cfmt"></div>
 <div class="tiles" id="tiles"></div><div class="ver"><em>Amusement<b>VISION</b></em><br><span id="cver"></span></div></div>
 <div id="strip"></div><div id="toast"></div><div id="off"></div>
+<div id="gms"><i></i><div><b id="gmst"></b><span id="gmss"></span></div></div>
 <script>
 (function () {
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   var $ = function (id) { return document.getElementById(id); };
+  var wasOpen = false, lastPage = '', cardShown = '';
   function draw(v) {
     var bx = v.box || {};
     document.body.className = 't-' + (bx.theme === 'amuvision' ? 'amuvision' : 'takao');
@@ -132,7 +155,13 @@ body.t-amuvision .foot { display: none; }
     $('model').textContent = bx.theme === 'amuvision' ? '' : (bx.model || '');
     $('unit').textContent = (bx.name || '') + (bx.model ? '  -  ' + bx.model : '');
     var p = v.page;
-    $('osd').className = v.open && p ? 'on' : '';
+    var show = !!(v.open && p);
+    $('osd').className = show ? 'on' + (show && !wasOpen ? ' drawin' : '') : '';
+    if (show && !wasOpen) setTimeout(function () { $('osd').classList.remove('drawin'); }, 700);
+    var pageKey = p ? p.id + '|' + (p.crumbs || []).join('>') : '';
+    var newPage = show && pageKey !== lastPage;
+    wasOpen = show;
+    lastPage = show ? pageKey : '';
     if (v.open && p) {
       $('title').textContent = p.loading ? (p.title || '') + '...' : (p.title || '');
       $('crumbs').textContent = (p.crumbs || []).slice(0, -1).map(function (c) { return c.toUpperCase(); }).join('  >  ');
@@ -146,15 +175,21 @@ body.t-amuvision .foot { display: none; }
       if (rest > 0) html += '<div class="more">&#9660; ' + rest + ' MORE</div>';
       if (p.error) html += '<div class="row bad"><span class="l">' + esc(p.error) + '</span></div>';
       $('rows').innerHTML = html;
+      // a new page paints row by row (25 ms a line); cursor moves repaint nothing
+      if (newPage) {
+        $('rows').classList.add('paint');
+        Array.prototype.forEach.call($('rows').children, function (r, i) { r.style.animationDelay = (0.12 + i * 0.025) + 's'; });
+        setTimeout(function () { $('rows').classList.remove('paint'); }, 900);
+      }
       $('hint').textContent = p.hint || '';
     }
     // power on: boot screen, self test, and the latched FAULT card (hidden while the menu is open)
     if (v.post && !(v.open && p)) {
       var po = v.post;
-      drawCard({ card: 'post', unit: { name: bx.name, maker: bx.maker, line: bx.line, model: bx.model, type: bx.type, theme: bx.theme, sw: '', hw: '', fw: '' }, status: po.text, tiles: (po.items || []).map(function (x) { return { n: x.n, name: x.label, type: x.type, ok: x.state !== 'alarm', size: x.detail, alarm: x.state === 'alarm' ? x.detail : '' }; }) });
-      $('card').className = 'on post ph-' + po.phase;
+      drawCard({ card: 'post', phase: po.phase, unit: { name: bx.name, maker: bx.maker, line: bx.line, model: bx.model, type: bx.type, theme: bx.theme, sw: bx.sw, hw: bx.hw, fw: bx.fw }, status: po.text + (po.holdLeft ? '  (' + po.holdLeft + ')' : ''), tiles: (po.items || []).map(function (x) { return { n: x.n, name: x.label, type: x.type, ok: x.state !== 'alarm', size: x.detail, alarm: x.state === 'alarm' ? x.detail : '' }; }) });
+      $('card').className = 'on post ph-' + po.phase + ($('card').classList.contains('drawin') ? ' drawin' : '');
       $('cpress').innerHTML = po.phase === 'fault' ? '<b class="dna">DO NOT AIR</b><br>CALL A TECHNICIAN &mdash; press MENU to service this unit' : po.phase === 'boot' ? '' : po.phase === 'pass' ? 'All sources OK' : 'Checking every source...';
-    } else if (!isCard) $('card').className = '';
+    } else if (!isCard) { $('card').className = ''; cardShown = ''; }
     var s = v.info && v.strip;
     $('strip').className = s ? 'on' : '';
     if (s) $('strip').innerHTML = '<b>' + esc(bx.name) + '</b><span>FMT</span><b>' + esc(s.format) + '</b><span>RUN</span><b>' + esc(s.fps) + ' fps</b><span>FRAME</span><b>' + esc(s.frame) + ' ms</b><span>CPU</span><b>' + esc(s.cpu) + '%</b><span>PGM</span><b>' + esc(s.program) + '</b><span>IP</span><b>' + esc(s.addr) + '</b>';
@@ -167,7 +202,12 @@ body.t-amuvision .foot { display: none; }
     var u = c.unit || {};
     var slate = c.card === 'slate';
     document.body.className = 't-' + (u.theme === 'amuvision' ? 'amuvision' : 'takao');
-    $('card').className = 'on' + (slate ? ' slate' : '');
+    var ck = c.card + (c.phase || '');
+    $('card').className = 'on' + (slate ? ' slate' : '') + (ck !== cardShown ? ' drawin' : '');
+    if (ck !== cardShown) {
+      cardShown = ck;
+      setTimeout(function () { $('card').classList.remove('drawin'); }, 900);
+    }
     if (u.theme === 'amuvision') $('clogo').innerHTML = esc(u.maker || 'AmuVISION') + ' <b>' + esc(u.line || '') + '</b>';
     else $('clogo').textContent = (u.maker || 'TAKAO').toUpperCase();
     $('ctype').textContent = u.theme === 'amuvision' ? (u.type || '') + ' // ' + (u.model || '') : (u.type || '');
@@ -179,13 +219,39 @@ body.t-amuvision .foot { display: none; }
     var html = '';
     for (var i = 0; i < 8; i++) {
       var x = t[i];
-      html += x ? '<div class="tile' + (x.ok ? ' ok' : ' bad') + '"><b>IN ' + x.n + '</b><span>' + esc(x.name) + ' &middot; ' + esc(x.type) + '</span>' + (x.ok ? '<em>' + esc(x.size) + '</em>' : '<em class="al">' + esc(x.alarm || 'NO SIGNAL') + '</em><i class="w"></i>') + '</div>' : '<div class="tile"><span>NOT FITTED</span></div>';
+      html += x ? '<div style="animation-delay:' + (0.25 + i * 0.06) + 's" class="tile' + (x.ok ? ' ok' : ' bad') + '"><b>IN ' + x.n + '</b><span>' + esc(x.name) + ' &middot; ' + esc(x.type) + '</span>' + (x.ok ? '<em>' + esc(x.size) + '</em>' : '<em class="al">' + esc(x.alarm || 'NO SIGNAL') + '</em><i class="w"></i>') + '</div>' : '<div class="tile"><span>NOT FITTED</span></div>';
     }
     $('tiles').innerHTML = html;
   }
   var isCard = /[?&]card=/.test(location.search);
-  var es = new EventSource(location.pathname.replace(/\\/$/, '') + '/events' + location.search);
-  es.onmessage = function (e) { try { var d = JSON.parse(e.data); if (isCard) { if (d.card) drawCard(d); } else draw(d); } catch (_) {} };
+  // the event stream, kept alive by hand: EventSource gives up for good on an error status (a server
+  // restart answers 502/503 for a moment), so reconnect with backoff, and reload if nothing for 60 s
+  var es = null, backoff = 1000, lastMsg = Date.now();
+  function connect() {
+    if (es) { try { es.close(); } catch (_) {} }
+    es = new EventSource(location.pathname.replace(/\\/$/, '') + '/events' + location.search);
+    es.onopen = function () { backoff = 1000; lastMsg = Date.now(); };
+    es.onmessage = function (e) { lastMsg = Date.now(); try { var d = JSON.parse(e.data); if (d.beat) return; if (isCard) { if (d.card) drawCard(d); } else draw(d); } catch (_) {} };
+    es.onerror = function () { if (es.readyState === 2) { setTimeout(connect, backoff); backoff = Math.min(backoff * 2, 15000); } };
+  }
+  connect();
+  // XLink GMS (this server) link watch: the unit draws its own "communication lost" OSD when the stream is
+  // gone for 6 s (heartbeat every 15 s, so 40 s of silence counts too). Never reloads: a reload with the
+  // server down would put the browser's error page on the unit's output.
+  var gmsLost = false, gmsT = null;
+  setInterval(function () {
+    var down = !es || es.readyState !== 1 || Date.now() - lastMsg > 40000;
+    if (down && !gmsLost && Date.now() - lastMsg > 6000) { gmsLost = true; showGms(true); }
+    if (!down && gmsLost) { gmsLost = false; showGms(false); }
+    if (es && es.readyState === 1 && Date.now() - lastMsg > 40000) connect();
+  }, 1000);
+  function showGms(lost) {
+    clearTimeout(gmsT);
+    $('gms').className = 'on' + (lost ? ' lost' : ' ok');
+    $('gmst').textContent = lost ? 'XLINK GMS: COMMUNICATION LOST' : 'XLINK GMS: COMMUNICATION RESTORED';
+    $('gmss').textContent = lost ? 'Retrying...  Local operation continues' : '';
+    if (!lost) gmsT = setTimeout(function () { $('gms').className = ''; }, 4000);
+  }
 })();
 </script></body></html>`;
 
@@ -209,7 +275,7 @@ function registerRoutes(app) {
             ? avOsd.subscribeCard(String(req.params.box || ''), String(req.query.k || ''), card, String(req.query.cab || ''), res)
             : avOsd.subscribe(String(req.params.box || ''), String(req.query.k || ''), res);
         if (!off) { res.end(); return; }
-        const beat = setInterval(() => { try { res.write(': beat\n\n'); } catch (_) { /* closed */ } }, 15000);
+        const beat = setInterval(() => { try { res.write('data: {"beat":1}\n\n'); } catch (_) { /* closed */ } }, 15000);
         req.on('close', () => { clearInterval(beat); off(); });
     });
 }

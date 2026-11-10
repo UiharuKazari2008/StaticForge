@@ -25,6 +25,56 @@
     const doc = document;
     const A = '/melaton-apps/quickcast/assets';
     const VERSION = '1.0.0734';
+    // 5x7 dot-matrix font (character LCD / VFD style): 7 rows of 5 bits, MSB = left column
+    const DM_FONT = {
+        ' ': [0, 0, 0, 0, 0, 0, 0], '!': [4, 4, 4, 4, 0, 0, 4], '"': [10, 10, 0, 0, 0, 0, 0], '#': [10, 31, 10, 10, 10, 31, 10],
+        '%': [24, 25, 2, 4, 8, 19, 3], '&': [12, 18, 20, 8, 21, 18, 13], "'": [4, 4, 0, 0, 0, 0, 0], '(': [2, 4, 8, 8, 8, 4, 2],
+        ')': [8, 4, 2, 2, 2, 4, 8], '*': [0, 4, 21, 14, 21, 4, 0], '+': [0, 4, 4, 31, 4, 4, 0], ',': [0, 0, 0, 0, 12, 4, 8],
+        '-': [0, 0, 0, 31, 0, 0, 0], '.': [0, 0, 0, 0, 0, 12, 12], '/': [0, 1, 2, 4, 8, 16, 0], ':': [0, 12, 12, 0, 12, 12, 0],
+        ';': [0, 12, 12, 0, 12, 4, 8], '<': [2, 4, 8, 16, 8, 4, 2], '=': [0, 0, 31, 0, 31, 0, 0], '>': [8, 4, 2, 1, 2, 4, 8],
+        '?': [14, 17, 1, 2, 4, 0, 4], '@': [14, 17, 1, 13, 21, 21, 14], '[': [14, 8, 8, 8, 8, 8, 14], ']': [14, 2, 2, 2, 2, 2, 14],
+        '_': [0, 0, 0, 0, 0, 0, 31], '|': [4, 4, 4, 4, 4, 4, 4],
+        0: [14, 17, 19, 21, 25, 17, 14], 1: [4, 12, 4, 4, 4, 4, 14], 2: [14, 17, 1, 2, 4, 8, 31], 3: [31, 2, 4, 2, 1, 17, 14],
+        4: [2, 6, 10, 18, 31, 2, 2], 5: [31, 16, 30, 1, 1, 17, 14], 6: [6, 8, 16, 30, 17, 17, 14], 7: [31, 1, 2, 4, 8, 8, 8],
+        8: [14, 17, 17, 14, 17, 17, 14], 9: [14, 17, 17, 15, 1, 2, 12],
+        A: [14, 17, 17, 17, 31, 17, 17], B: [30, 17, 17, 30, 17, 17, 30], C: [14, 17, 16, 16, 16, 17, 14], D: [28, 18, 17, 17, 17, 18, 28],
+        E: [31, 16, 16, 30, 16, 16, 31], F: [31, 16, 16, 30, 16, 16, 16], G: [14, 17, 16, 23, 17, 17, 15], H: [17, 17, 17, 31, 17, 17, 17],
+        I: [14, 4, 4, 4, 4, 4, 14], J: [7, 2, 2, 2, 2, 18, 12], K: [17, 18, 20, 24, 20, 18, 17], L: [16, 16, 16, 16, 16, 16, 31],
+        M: [17, 27, 21, 21, 17, 17, 17], N: [17, 17, 25, 21, 19, 17, 17], O: [14, 17, 17, 17, 17, 17, 14], P: [30, 17, 17, 30, 16, 16, 16],
+        Q: [14, 17, 17, 17, 21, 18, 13], R: [30, 17, 17, 30, 20, 18, 17], S: [15, 16, 16, 14, 1, 1, 30], T: [31, 4, 4, 4, 4, 4, 4],
+        U: [17, 17, 17, 17, 17, 17, 14], V: [17, 17, 17, 17, 17, 10, 4], W: [17, 17, 17, 21, 21, 21, 10], X: [17, 17, 10, 4, 10, 17, 17],
+        Y: [17, 17, 17, 10, 4, 4, 4], Z: [31, 1, 2, 4, 8, 16, 31], '►': [16, 24, 28, 30, 28, 24, 16], '◄': [1, 3, 7, 15, 7, 3, 1]
+    };
+    const DM_COLS = 20;
+    const DM_ROWS = 3;
+    /** Draw up to 3 lines on a dot-matrix canvas: every character cell is 5x7 dots, unlit dots glow faintly. */
+    const drawDotMatrix = (cv, lines, color) => {
+        const P = 3; // dot pitch (px)
+        const cw = 6;
+        const ch = 9;
+        const W = DM_COLS * cw * P;
+        const H = DM_ROWS * ch * P;
+        if (cv.width !== W) { cv.width = W; cv.height = H; }
+        const g = cv.getContext('2d');
+        g.fillStyle = '#060402';
+        g.fillRect(0, 0, W, H);
+        for (let r = 0; r < DM_ROWS; r++) {
+            const text = String(lines[r] || '').toUpperCase().padEnd(DM_COLS).slice(0, DM_COLS);
+            for (let c = 0; c < DM_COLS; c++) {
+                const glyph = DM_FONT[text[c]] || DM_FONT['?'];
+                for (let y = 0; y < 7; y++) {
+                    for (let x = 0; x < 5; x++) {
+                        const on = (glyph[y] >> (4 - x)) & 1;
+                        g.fillStyle = on ? color : 'rgba(255, 150, 30, 0.07)';
+                        g.beginPath();
+                        g.arc((c * cw + x) * P + P / 2, (r * ch + y + 1) * P + P / 2, P * 0.42, 0, Math.PI * 2);
+                        g.fill();
+                    }
+                }
+            }
+        }
+    };
+
     // 7-segment LCD digits (broadcast gear clocks): lit segments over dim ghost segments
     const SEG = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', '-': 'g', ' ': '' };
     const SEG_PATH = {
@@ -73,7 +123,8 @@
         constructor(fill, tick) { this.fill = fill; this.tick = tick; this.v = -100; this.pk = -100; this.pkAt = 0; this.t = 0; }
         set(mag, peak) {
             const now = performance.now();
-            if (mag > this.v) this.v = mag;
+            const lvl = Math.max(mag, peak); // the bar shows peak level like a broadcast PPM
+            if (lvl > this.v) this.v = lvl;
             if (peak > this.pk || now - this.pkAt > PEAK_HOLD_MS) { this.pk = Math.max(peak, mag); this.pkAt = now; }
         }
         frame(now) {
@@ -81,7 +132,7 @@
             this.t = now;
             this.v = Math.max(-100, this.v - DECAY_DB_S * dt);
             if (now - this.pkAt > PEAK_HOLD_MS) this.pk = Math.max(this.v, this.pk - DECAY_DB_S * 2 * dt);
-            const p = meterPct(this.v);
+            const p = meterPct(this.v); // v follows the PEAK level (PPM-style), the tick holds the highest
             this.fill.style.setProperty('--qc-lv', `${p}%`);
             if (this.tick) {
                 this.tick.style.setProperty('--qc-pk', `${meterPct(this.pk)}%`);
@@ -143,7 +194,6 @@
                         <div class="qc-tally"><span class="qc-tally-text">OFF AIR</span><span class="qc-tc qc-lcd" title="Time on air">${segs('--:--:--')}</span></div>
                         <div class="qc-todbox" title="Time of day"><em>TOD</em><span class="qc-tod qc-lcd">${segs('--:--:--')}</span></div>
                     </div>
-                    <div class="qc-fault" hidden><b>UNIT FAULT &mdash; DO NOT AIR</b><span class="qc-fault-text"></span><small>Call a technician: REMOTE &gt; MENU on the unit</small></div>
                     <div class="qc-titlebar">
                         <label class="qc-title-label" for="qcTitleInput">TITLE</label>
                         <input type="text" id="qcTitleInput" class="qc-title" maxlength="100" spellcheck="true" placeholder="Stream title">
@@ -164,19 +214,10 @@
                                 <div class="qc-drow" data-row="output"><span class="qc-drow-h"><em>OUTPUT</em><b>SATELLITE</b><small class="qc-drow-src">RUIKO</small></span><div class="qc-dcells"></div></div>
                                 <div class="qc-drow" data-row="input"><span class="qc-drow-h"><em>INPUT</em><b>CABINET</b><small class="qc-drow-src">-</small></span><div class="qc-dcells"></div></div>
                                 <div class="qc-dverdict is-off"><i></i><span class="qc-dverdict-text">-</span></div>
-                                <div class="qc-dsync" hidden></div>
                             </div>
                             <div class="qc-srcs"><div class="qc-head qc-srcs-head">INPUTS ON AIR <small>(program audio mix)</small><button type="button" class="qc-mini qc-srcs-tog" data-qc="togglesrcs" title="Show or hide the source list">HIDE</button></div><div class="qc-srclist"></div></div>
                         </div>
                         <div class="qc-side">
-                        <div class="qc-sat">
-                            <div class="qc-head">SATELLITE ENCODER <small class="qc-sat-name">-</small></div>
-                            <div class="qc-sat-body">
-                                <div class="qc-link"><span class="qc-lamp"></span><span class="qc-link-text">LINK DOWN</span></div>
-                                <div class="qc-sat-host">-</div>
-                                <div class="qc-sat-pwr"><span class="qc-xl">ENGINE</span><button type="button" class="qc-bk qc-xk k-green" data-qc="obson" title="Start the satellite's encoder engine">ON</button><button type="button" class="qc-bk qc-xk k-red" data-qc="obsoff" title="Shut down the satellite's encoder engine">OFF</button></div>
-                            </div>
-                        </div>
                         <div class="qc-vu">
                             <div class="qc-head">AUDIO</div>
                             <div class="qc-vu-body">
@@ -193,12 +234,12 @@
                         <div class="qc-bus qc-xbus qc-ctl"><span class="qc-bus-label">CABINET CONTROL <small class="qc-ctl-dev"></small></span><div class="qc-ctl-body"><p class="qc-ctl-none">Pick a cabinet.</p></div></div>
                         <div class="qc-bus qc-vbus"><span class="qc-bus-label">VIDEO</span><div class="qc-vkeys"><span class="qc-bus-none">-</span></div></div>
                         <div class="qc-side-keys">
-                            <button type="button" class="qc-bk k-white" data-qc="remote" title="The boxes' on-screen menus: D-pad remote">REMOTE</button>
+                            <button type="button" class="qc-bk k-white" data-qc="remote" title="Remote front panel of a unit: its display, LEDs and controls">FRONT PANEL</button>
                             <button type="button" class="qc-bk k-white" data-qc="chat">LIVE CHAT</button>
                             <button type="button" class="qc-bk k-white" data-qc="settings">SETTINGS</button>
                         </div>
                         <button type="button" class="qc-bk qc-key qc-go k-red" data-qc="golive" disabled title="Go live">LIVE</button>
-                        <button type="button" class="qc-bk qc-key qc-stop k-white" data-qc="stop" disabled title="Stop the stream" aria-label="Stop"><span class="qc-key-sq"></span></button>
+                        <button type="button" class="qc-bk qc-key qc-stop k-orange" data-qc="stop" disabled title="Stop the stream" aria-label="Stop"><span class="qc-key-sq"></span></button>
                     </div>
                     <div class="qc-status"><span class="qc-st-main">Ready</span><span class="qc-checks">
                         <span class="qc-chk" data-chk="obs"><i></i>LINK</span><span class="qc-chk" data-chk="scene"><i></i>PGM</span><span class="qc-chk" data-chk="profile"><i></i>PRESET</span><span class="qc-chk" data-chk="key"><i></i>UPLINK</span><span class="qc-chk" data-chk="auth"><i></i>AUTH</span><span class="qc-chk" data-chk="video"><i></i>VIDEO</span><span class="qc-chk" data-chk="audio"><i></i>AUDIO</span>
@@ -362,7 +403,8 @@
                 this.render();
                 setTimeout(poll, STATUS_MS);
             };
-            this.pvRate = PV_RATES.some((r) => r.id === lsGet('visioncaster.pvRate', '2')) ? lsGet('visioncaster.pvRate', '2') : '2';
+            // REALTIME by default; a lower rate is remembered when chosen
+            this.pvRate = PV_RATES.some((r) => r.id === lsGet('visioncaster.pvRate', 'rt')) ? lsGet('visioncaster.pvRate', 'rt') : 'rt';
             this.rtFor = '';
             const pic = () => this.el('.qc-pic');
             const stopRt = () => { if (this.rtFor) { this.rtFor = ''; pic().removeAttribute('src'); } };
@@ -445,21 +487,6 @@
             if (live && st.programCabinet && !this.busy) this.cabinet = st.programCabinet;
 
             // link lamp, tally
-            const linkText = st.obs.state === 'launching' ? `ENGINE STARTING (${Math.round(st.obs.launchingFor / 1000)} s)` : online ? 'LINK OK' : 'LINK DOWN';
-            q('.qc-link-text').textContent = st.obs.state === 'stopping' ? 'ENGINE SHUTDOWN' : linkText;
-            // satellite server pane: host, OBS power keys
-            const sat = st.satellite || { name: 'SATELLITE', host: '' };
-            q('.qc-sat-name').textContent = String(sat.name || '').toUpperCase();
-            q('.qc-sat-host').textContent = [sat.model, sat.host].filter(Boolean).join(' \u00b7 ') || '-';
-            q('.qc-sat-host').title = sat.model ? `${sat.name}: ${sat.model}, control ${sat.host}` : sat.host;
-            const pwrOn = q('[data-qc="obson"]');
-            const pwrOff = q('[data-qc="obsoff"]');
-            const changing = st.obs.state === 'launching' || st.obs.state === 'stopping';
-            pwrOn.classList.toggle('is-on', online || st.obs.state === 'launching');
-            pwrOff.classList.toggle('is-on', !online && !changing);
-            pwrOn.disabled = !!this.busy || online || changing;
-            pwrOff.disabled = !!this.busy || !online || changing || live;
-            pwrOff.title = live ? 'End the broadcast first' : `Shut down ${sat.name}'s encoder engine`;
             this.modal.classList.toggle('qc-is-online', online);
             this.modal.classList.toggle('qc-is-launching', st.obs.state === 'launching');
             this.modal.classList.toggle('qc-is-live', live);
@@ -475,8 +502,7 @@
             if (list.dataset.sig !== sig) {
                 list.dataset.sig = sig;
                 list.innerHTML = st.cabinets.map((c) => `<button type="button" class="qc-bk qc-cab k-white" data-cab="${esc(c.id)}" title="${esc(c.name)}: scene ${esc(c.scene)}${online && !c.present ? ' (missing)' : ''}">
-                    <span class="qc-cab-badge qc-b-${esc(c.icon)}">${esc(c.short)}</span>
-                    <span class="qc-cab-text"><b>${esc(c.name)}</b></span>
+                    <span class="qc-cab-label">${esc(String(c.short || c.name).slice(0, 4).toUpperCase())}</span>
                     <span class="qc-cab-tally"></span></button>`).join('');
             }
             list.querySelectorAll('[data-cab]').forEach((b) => {
@@ -571,23 +597,20 @@
             // latched self-test faults on the units in this chain: banner, LIVE locked
             const faults = st.faults || [];
             const lock = faults.filter((f) => !f.overridden);
-            const fb = q('.qc-fault');
-            fb.hidden = !faults.length;
-            fb.classList.toggle('is-over', faults.length > 0 && !lock.length);
-            q('.qc-fault b').innerHTML = lock.length ? 'UNIT FAULT &mdash; DO NOT AIR' : 'UNIT FAULT OVERRIDDEN';
-            q('.qc-fault-text').textContent = faults.map((f) => `${f.unit}: ${f.items.map((i) => `${i.label} ${i.detail}`).join(', ')}`).join('  |  ');
+            // (no banner: the fault shows on the unit's self-test card and its front panel ALARM led)
+            this.faultLock = lock;
 
             // keys
-            q('.qc-go').disabled = live || !this.canGo() || lock.length > 0;
+            q('.qc-go').disabled = live || !this.canGo();
             // LIVE: an on / off flash while armed (ready, not live), solid red only on air
             q('.qc-go').classList.toggle('is-armed', !live && !q('.qc-go').disabled);
             q('.qc-go').classList.toggle('is-on', live);
             // transport STOP: lit while stopped (not live), dark while on air until pressed
             q('.qc-stop').classList.toggle('is-on', !live);
-            q('.qc-go').title = lock.length && !live ? `Locked: ${lock.map((f) => f.unit).join(', ')} failed self test. A technician must clear it (REMOTE > MENU).` : live ? 'Already on air' : this.busy ? this.busy : !cab ? 'Take a cabinet first' : !st.key.set ? 'Set the uplink key first (Stream > Uplink Key...)' : st.obs.state === 'launching' ? `${this.satName()}'s encoder engine is starting` : online && !cab.present ? `The layout "${cab.scene}" is missing on ${this.satName()}` : `Take ${cab.name} to air on YouTube`;
+            q('.qc-go').title = live ? 'Already on air' : this.busy ? this.busy : !cab ? 'Take a cabinet first' : !st.key.set ? 'Set the uplink key first (Stream > Uplink Key...)' : st.obs.state === 'launching' ? `${this.satName()}'s encoder engine is starting` : online && !cab.present ? `The layout "${cab.scene}" is missing on ${this.satName()}` : `Take ${cab.name} to air on YouTube`;
             q('.qc-stop').disabled = !live || !!this.busy;
             q('.qc-st-obs').textContent = online ? `PGM ${st.program || '-'} \u00b7 PRESET ${st.profile || '-'}` : (st.obs.error || 'Satellite offline');
-            if (!this.busy && !this.flashT) q('.qc-st-main').textContent = live ? `Live: ${cab ? cab.name : st.program}` : 'Ready';
+            if (!this.busy && !this.flashT) q('.qc-st-main').textContent = live ? `Live: ${cab ? cab.name : st.program}` : lock.length ? `Advisory: ${lock.map((f) => f.unit).join(', ')} failed self test (front panel ALARM)` : 'Ready';
         }
 
         showSources(on) {
@@ -641,44 +664,12 @@
             const online = st.obs && st.obs.state === 'online';
             rowOf('output', d && d.output, online ? '...' : 'No link to the satellite encoder');
             rowOf('input', d && d.input, !this.cabinet ? 'Take a cabinet to check its mixer' : online ? '...' : 'Needs the satellite link to find the cabinet feed');
-            this.renderSync(d && d.input);
             const v = (d && d.verdict) || { state: 'off', text: online ? '' : 'Satellite offline' };
             const vb = q('.qc-dverdict');
             vb.className = `qc-dverdict is-${v.state}`;
             vb.querySelector('.qc-dverdict-text').textContent = v.text ? `DIAG: ${v.text}` : 'DIAG: -';
             const bad = v.stage && [...(d.input.stages || []), ...(d.output.stages || [])].find((x) => x.id === v.stage);
             vb.title = bad ? bad.detail : 'Hover a stage for its numbers. Signal order: cabinet capture > mixer > NDI out > link > satellite NDI RX > render > encoder > network > YouTube.';
-        }
-
-        /**
-         * INPUT TIMING: per cabinet capture, how far behind the others it runs. Bars: the delay set on it
-         * (0-500 ms), buffering (holds frames), its frame rate against the mixer's, and the last AUTO ALIGN
-         * offset of the camera against the game (centred on 0, +/-250 ms).
-         */
-        renderSync(input) {
-            const box = this.el('.qc-dsync');
-            const caps = (input && input.captures) || [];
-            box.hidden = !caps.length;
-            if (!caps.length) return;
-            const al = input.align;
-            const mixFps = input.fps || 0;
-            const fits = (a, b) => Math.abs(a / b - Math.round(a / b)) < 0.0002;
-            const rows = caps.map((c) => {
-                const late = (c.delayMs || 0) + (c.buffering === 'on' ? 100 : 0); // buffering holds ~ several frames
-                const fpsBad = c.fps && mixFps && !fits(mixFps, c.fps) && !fits(c.fps, mixFps);
-                const off = al && al.offMs != null && al.cam === c.name ? al.offMs : null;
-                const offBar = off == null ? '' : `<s class="qc-sb-off${Math.abs(off) > 40 ? ' is-bad' : Math.abs(off) > 17 ? ' is-warn' : ''}" style="left:${off >= 0 ? 50 : Math.max(0, 50 + off / 5)}%;width:${Math.max(1, Math.min(50, Math.abs(off) / 5))}%"></s>`;
-                return `<div class="qc-sr${!c.width ? ' is-dead' : ''}" title="${esc(c.name)}: ${c.width}x${c.height}${c.fps ? `, ${c.fps} fps set` : ''}, delay ${c.delayMs || 0} ms, buffering ${c.buffering || 'n/a'}${c.syncMs ? `, audio ${c.syncMs} ms` : ''}${off != null ? `, camera ${off > 0 ? 'late' : 'early'} ${Math.abs(off)} ms at the last align` : ''}">
-                    <span class="qc-sr-n">${esc(c.name)}</span>
-                    <span class="qc-sb" title="Delay set on this input"><s style="width:${Math.min(100, late / 5)}%"></s></span><b class="qc-sr-v">${late} ms</b>
-                    <span class="qc-sr-tag${c.buffering === 'on' ? ' is-on' : ''}">BUF</span>
-                    <span class="qc-sr-tag${fpsBad ? ' is-bad' : c.fps ? ' is-ok' : ''}">${c.fps ? `${c.fps}` : '--'}</span>
-                    <span class="qc-sb qc-sb-c" title="Last AUTO ALIGN: camera against the game"><i></i>${offBar}</span><b class="qc-sr-v">${off == null ? '-' : `${off > 0 ? '+' : ''}${off} ms`}</b>
-                </div>`;
-            }).join('');
-            const head = `<div class="qc-sr qc-sr-h"><span class="qc-sr-n">INPUT TIMING</span><span class="qc-sb-h">DELAY</span><b class="qc-sr-v"></b><span class="qc-sr-tag">BUF</span><span class="qc-sr-tag">FPS</span><span class="qc-sb-h">CAM vs GAME${al && al.running ? ' (MEASURING)' : ''}</span><b class="qc-sr-v"></b></div>`;
-            const html = head + rows;
-            if (box.dataset.html !== html) { box.dataset.html = html; box.innerHTML = html; }
         }
 
         renderSources(inputs) {
@@ -768,6 +759,8 @@
             if (c.video !== 'ok') warn.push('- No picture: the preview is black, flat or missing.');
             if (c.audio !== 'ok') warn.push(`- No sound: nothing above ${AUDIO_OK_DB} dB in the last 3 seconds.`);
             if (c.obs !== 'ok') warn.push(`- ${this.satName()}'s encoder engine is not running yet: it starts first.`);
+            // self-test faults are advisory: listed here, never a lock
+            (this.faultLock || []).forEach((f) => warn.push(`- ${f.unit} failed its self test: ${f.items.map((i) => `${i.label} ${i.detail}`).join(', ')}.`));
             if (warn.length && !await this.ask(`Go live with ${cab.name} anyway?\n\n${warn.join('\n')}`)) return;
             const title = this.el('.qc-title').value.trim();
             if (st.youtube && st.youtube.account.signedIn && !title) { await this.box('Enter a stream title first.', 'warning'); return; }
@@ -914,7 +907,7 @@
             const sig = v ? JSON.stringify([c.cabinet, v.buttons, !!v.resetPath, !!this.ctlBusy]) : '';
             if (bus.dataset.sig === sig && bus.children.length) return;
             bus.dataset.sig = sig;
-            bus.innerHTML = v ? `${keys(v, 'video', 'qc-vk')}${v.resetPath ? '<button type="button" class="qc-bk qc-vk qc-vreset k-blue" data-xl="reset" title="Reset the cabinet\'s video encoder">RESET<br>ENC</button>' : ''}` : '<span class="qc-bus-none">NO VIDEO CONTROL</span>';
+            bus.innerHTML = v ? keys(v, 'video', 'qc-vk') : '<span class="qc-bus-none">NO VIDEO CONTROL</span>'; // RESET is on the unit's front panel
             bus.querySelectorAll('button').forEach((b) => { b.disabled = !!this.ctlBusy; });
         }
 
@@ -1224,14 +1217,29 @@
             const open = [...this.children].find((c) => c.kind === 'remote');
             if (open) { call('bringModalToFront', open.modal); return; }
             const key = (k, label, cls) => `<button type="button" class="qc-bk qc-rk ${cls || 'k-white'}" data-rk="${k}">${label}</button>`;
+            // the unit's front panel, as on the box: dot-matrix display, then
+            //   POWER / ALARM leds | gap | MENU  | D-pad | EXIT
+            //   RESET              | gap | INFO  | D-pad | DIAG
             const w = this.openWin({
-                kind: 'remote', title: 'Remote', width: 300, height: 300, cls: 'qc-remotewin',
-                body: `<div class="qc-rm">
-                    <div class="qc-rm-sel"><button type="button" class="qc-bk qc-rsel k-white" data-target="cab">CABINET MUX</button><button type="button" class="qc-bk qc-rsel k-white" data-target="sat">SATELLITE</button></div>
-                    <div class="qc-rm-lcd"><b class="qc-rm-unit">-</b><span class="qc-rm-page">OSD OFF</span></div>
-                    <div class="qc-rm-main">
-                        <div class="qc-rm-fn">${key('menu', 'MENU', 'k-amber')}${key('diag', 'DIAG', 'k-white')}${key('info', 'INFO', 'k-white')}${key('exit', 'EXIT', 'k-white')}</div>
-                        <div class="qc-rm-pad">${key('up', '&#9650;', 'is-up k-white')}${key('left', '&#9664;', 'is-left k-white')}${key('ok', 'OK', 'is-ok k-blue')}${key('right', '&#9654;', 'is-right k-white')}${key('down', '&#9660;', 'is-down k-white')}</div>
+                kind: 'remote', title: 'Remote Front Panel', width: 1010, height: 200, cls: 'qc-remotewin',
+                body: `<div class="qc-fp">
+                    <div class="qc-fp-sel"><button type="button" class="qc-bk qc-rsel k-white" data-target="cab">CABINET MIXER</button><button type="button" class="qc-bk qc-rsel k-white" data-target="sat">SATELLITE</button></div>
+                    <div class="qc-fp-face">
+                        <span class="qc-fp-ear"><i></i><i></i></span>
+                        <div class="qc-fp-disp">
+                            <div class="qc-fp-badge"><b class="qc-fp-maker">-</b><span class="qc-fp-model"></span></div>
+                            <canvas class="qc-fp-dm" width="360" height="81"></canvas>
+                        </div>
+                        <div class="qc-fp-ctl">
+                            <div class="qc-fp-leds"><span class="qc-led" data-led="power"><i></i>POWER</span><span class="qc-led" data-led="alarm"><i></i>ALARM</span></div>
+                            <div class="qc-fp-btns"><button type="button" class="qc-fp-reset" data-rk="reset" title="Reset the unit">RESET</button><button type="button" class="qc-fp-reset qc-fp-pwr" data-rk="power" title="Encoder engine power">PWR</button></div>
+                            <span class="qc-fp-gap"></span>
+                            ${key('menu', 'MENU', 'k-amber qc-fp-menu')}${key('info', 'INFO', 'k-white qc-fp-info')}
+                            <div class="qc-rm-pad">${key('up', '&#9650;', 'is-up k-white')}${key('left', '&#9664;', 'is-left k-white')}${key('ok', 'OK', 'is-ok k-blue')}${key('right', '&#9654;', 'is-right k-white')}${key('down', '&#9660;', 'is-down k-white')}</div>
+                            ${key('exit', 'EXIT', 'k-white qc-fp-exit')}${key('diag', 'DIAG', 'k-white qc-fp-diag')}
+                        </div>
+                        <div class="qc-fp-ind"></div>
+                        <span class="qc-fp-ear"><i></i><i></i></span>
                     </div>
                 </div>`,
                 buttons: []
@@ -1239,11 +1247,64 @@
             w.kind = 'remote';
             const m = w.modal;
             let target = this.remoteTarget || 'cab';
+            let dmColor = '#ffb02e';
+            const dm = (l1, l2, l3) => drawDotMatrix(m.querySelector('.qc-fp-dm'), [l1, l2, l3], dmColor);
             const lcd = (v, err) => {
-                m.querySelector('.qc-rm-unit').textContent = v && v.box ? v.box.name : target === 'sat' ? 'SATELLITE ENCODER' : (this.cabinet ? 'CABINET MUX' : 'PICK A CABINET');
-                const p = v && v.open && v.page ? `${v.page.title}${v.page.rows && v.page.rows.length ? ` \u203a ${(v.page.rows[v.page.cursor - (v.page.first || 0)] || {}).label || ''}` : ''}` : v && v.info ? 'INFO STRIP' : 'OSD OFF';
-                m.querySelector('.qc-rm-page').textContent = err || (v && v.toast) || p;
-                m.classList.toggle('qc-rm-err', !!err);
+                const unit = v && v.box ? v.box.name : target === 'sat' ? this.satName() : (this.cabinet ? 'CABINET MIXER' : 'NO CABINET');
+                if (v && v.box) {
+                    m.querySelector('.qc-fp-maker').textContent = [v.box.maker, v.box.line].filter(Boolean).join(' ');
+                    m.querySelector('.qc-fp-model').textContent = [v.box.model, v.box.type].filter(Boolean).join('  ');
+                    m.querySelector('.qc-fp-face').dataset.theme = v.box.theme || '';
+                }
+                dmColor = '#ffb02e';
+                if (err) { dmColor = '#ff5a3a'; dm(unit, 'ERROR', err); return; }
+                if (v && v.toast) { dm(unit, v.toast.slice(0, 20), v.toast.slice(20, 40)); return; }
+                if (v && v.post) { if (v.post.phase === 'fault') dmColor = '#ff5a3a'; dm(v.post.phase === 'fault' ? 'FAULT - DO NOT AIR' : 'SELF TEST', (v.post.text || '').slice(0, 20), (v.post.text || '').slice(20, 40)); return; }
+                if (v && v.open && v.page) {
+                    const r = (v.page.rows || [])[v.page.cursor - (v.page.first || 0)] || {};
+                    dm(v.page.title, `\u25ba${r.label || ''}`, r.value ? `  ${r.value}` : '');
+                    return;
+                }
+                dm(unit, v && v.info ? 'STATUS STRIP ON' : 'READY', '');
+            };
+            // POWER / ALARM leds from the window's status: power = control link to the unit; alarm = a latched
+            // self-test fault (blinks), or a failing pipeline stage on that unit (steady)
+            const leds = () => {
+                if (!m.isConnected) return;
+                const st = this.st || {};
+                const d = st.diag || {};
+                const sat = target === 'sat';
+                const rowSt = (sat ? d.output : d.input) || {};
+                const linkSt = sat ? (st.obs && st.obs.state) : ((rowSt.stages || []).some((x) => x.id === 'mixer') ? 'online' : (rowSt.stages || []).some((x) => x.id === 'link' && x.state === 'bad') ? 'offline' : 'unknown');
+                const machine = rowSt.source;
+                const fault = (st.faults || []).find((f) => (sat ? f.kind === 'satellite' : f.machine === machine) && !f.overridden);
+                const bad = (rowSt.stages || []).some((x) => x.state === 'bad');
+                const pw = m.querySelector('[data-led="power"]');
+                pw.className = `qc-led ${linkSt === 'online' ? 'is-green' : linkSt === 'launching' || linkSt === 'stopping' ? 'is-amber is-blink' : linkSt === 'offline' ? 'is-red' : ''}`;
+                const al = m.querySelector('[data-led="alarm"]');
+                al.className = `qc-led ${fault ? 'is-red is-blink' : bad ? 'is-red' : ''}`;
+                m.classList.toggle('qc-fp-sat', sat);
+                // the unit's own indicators: each pipeline stage it owns, plus the satellite's air / uplink lamps
+                const stg = (id) => (rowSt.stages || []).find((x) => x.id === id);
+                const tone = (x) => (!x ? '' : x.state === 'ok' ? 'is-green' : x.state === 'warn' ? 'is-amber' : x.state === 'bad' ? 'is-red' : '') + (x && x.blink ? ' is-blink' : '');
+                const live = !!(st.stream && st.stream.active);
+                const lamps = sat ? [
+                    ['ON AIR', live ? (st.stream.reconnecting ? 'is-red is-blink' : 'is-red') : ''],
+                    ['UPLINK', !st.key || !st.key.set ? 'is-red' : live ? (st.stream.reconnecting ? 'is-amber is-blink' : 'is-green') : 'is-amber'],
+                    ['NDI RX', tone(stg('rx'))], ['CLOCK', tone(stg('clock'))], ['RENDER', tone(stg('render'))],
+                    ['ENCODE', tone(stg('encoder'))], ['NETWORK', tone(stg('network'))], ['YOUTUBE', tone(stg('youtube'))]
+                ] : [
+                    ['SIGNAL', tone(stg('capture'))], ['CLOCK', tone(stg('clock'))], ['MIXER', tone(stg('mixer'))],
+                    ['NDI OUT', tone(stg('ndiout'))], ['LINK', tone(stg('link'))], ['LOCK', tone(stg('lock'))]
+                ];
+                const ind = m.querySelector('.qc-fp-ind');
+                const html = lamps.map(([n, c]) => `<span class="qc-led ${c}"><i></i>${n}</span>`).join('');
+                if (ind.dataset.html !== html) { ind.dataset.html = html; ind.innerHTML = html; }
+                const pwr = m.querySelector('.qc-fp-pwr');
+                pwr.hidden = !sat;
+                pwr.classList.toggle('is-lit', sat && linkSt === 'online');
+                pwr.title = sat ? (linkSt === 'online' ? `Shut down ${this.satName()}'s encoder engine` : `Start ${this.satName()}'s encoder engine`) : '';
+                setTimeout(leds, 500);
             };
             const sel = () => {
                 m.querySelectorAll('.qc-rsel').forEach((b) => { b.classList.toggle('is-on', b.dataset.target === target); b.classList.toggle('k-orange', b.dataset.target === target); b.classList.toggle('k-white', b.dataset.target !== target); });
@@ -1264,7 +1325,12 @@
                 if (next) { const n = next; next = null; void press(n); }
             };
             m.querySelectorAll('.qc-rsel').forEach((b) => b.addEventListener('click', () => { target = b.dataset.target; this.remoteTarget = target; sel(); }));
-            m.querySelectorAll('[data-rk]').forEach((b) => b.addEventListener('click', () => void press(b.dataset.rk)));
+            m.querySelectorAll('[data-rk]').forEach((b) => b.addEventListener('click', () => {
+                if (b.dataset.rk === 'reset') void this.unitReset(target);
+                else if (b.dataset.rk === 'power') void this.command(this.st && this.st.obs && this.st.obs.state === 'online' ? 'obsoff' : 'obson');
+                else void press(b.dataset.rk);
+            }));
+            leds();
             const keymap = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok', Escape: 'exit', m: 'menu', d: 'diag', i: 'info' };
             m.addEventListener('keydown', (e) => {
                 const k = keymap[e.key];
@@ -1277,6 +1343,23 @@
             });
             m.tabIndex = -1;
             sel();
+        }
+
+        /** Front panel RESET: a cabinet mixer resets through XLink (VISION Control > Reset Encoder); the
+         *  satellite restarts its encoder engine (refused on air). Both ask first. */
+        async unitReset(target) {
+            if (target !== 'sat') {
+                if (!this.cabinet) { await this.box('Take a cabinet first.', 'info'); return; }
+                if (!this.controls || this.controls.cabinet !== this.cabinet) await this.loadControls(true);
+                if (!this.controls || !this.controls.video || !this.controls.video.resetPath) { await this.box('This cabinet\'s mixer has no reset control in XLink.', 'warning'); return; }
+                await this.xlinkPress('reset');
+                return;
+            }
+            const live = !!(this.st && this.st.stream && this.st.stream.active);
+            if (live) { await this.box('On air: end the broadcast before resetting the satellite.', 'warning'); return; }
+            if (!await this.ask(`Reset ${this.satName()}?\n\nIts encoder engine shuts down and starts again (boot screen and self test).`)) return;
+            await this.run(`Resetting ${this.satName()}...`, 'quickcast_obs_off', {});
+            await this.run(`Starting ${this.satName()}...`, 'quickcast_launch', {});
         }
 
         chatWin() {

@@ -77,12 +77,14 @@ Quota (10,000 units a day by default): a go-live ~150 units, a chat read 5, a re
 One prepare / go-live / stop / encoder change runs at a time; another gets `QUICKCAST_BUSY`.
 
 
-`quickcast_status` also carries `satellite: { name, model, kind, host }`, `diag: { columns, input, output, verdict }` (modules/quickcastDiag.js: the cabinet mixer and satellite pipeline rows; `input.captures[]`, `input.align`) and `faults: [{ unit, box, kind, machine, at, items: [{ label, type, detail, cabs }], overridden }]`: latched self-test faults on the units this cabinet goes through. `quickcast_golive` refuses with `QUICKCAST_UNIT_FAULT` while one is not overridden.
+The window's preview runs REALTIME (`quickcast_live_ticket`) by default; OFF / 1 / 2 / 5 fps use `quickcast_preview`. Timing / clock bars live in the units' own OSD (TIMING, VIDEO CLOCK), not in the window.
+
+`quickcast_status` also carries `satellite: { name, model, kind, host }`, `diag: { columns, input, output, verdict }` (modules/quickcastDiag.js: the cabinet mixer and satellite pipeline rows; `input.captures[]`, `input.align`) and `faults: [{ unit, box, kind, machine, at, items: [{ label, type, detail, cabs }], overridden }]`: latched self-test faults on the units this cabinet goes through. They are advisory: the client lists them before LIVE; going live is never refused for them.
 
 ### Units, OSD and self test
 
 - Each unit draws its menus in its own video output: browser source "AV OSD Overlay" in scene "AV OSD" (nested on top of program only while needed), page `GET /av-osd/<box>?k=<token>` with events at `/av-osd/<box>/events` (Server-Sent Events). Tokens are per unit in `osd.json` (0600). `?card=systest` / `?card=slate&cab=<id>` draw the live System Test card / standby slate (installed from the unit's SYSTEM page as "AV Live Card" / "AV Live Slate <cab>").
-- Power on / reset (the satellite's engine start, a mixer whose frame counter restarts) runs the boot screen and power-on self test: device PRESENT, video LOCK, camera RATE on the unit's clock, for inputs enabled somewhere. Any alarm latches a FAULT (DO NOT AIR card on the unit's output) until a technician re-tests clean or overrides in the unit's menu.
+- Power on / reset (the satellite's engine start, a mixer whose frame counter restarts) runs the boot screen and power-on self test: device PRESENT, video LOCK, camera RATE on the unit's clock, for inputs enabled somewhere. Any alarm latches a FAULT, shown on the unit's self-test card (DO NOT AIR) and its front panel ALARM led, until a technician re-tests clean or overrides in the unit's menu. Advisory: it does not block LIVE.
 - Config: `satellite: { name }`, `units: { "<NAME>": { maker, line, model, kind, theme, sw, hw, fw } }` (defaults: satellite = AmuVISION Satellite iSVE-20D, mixers = TAKAO iUHD-4DX), `muxes: { "<NDI machine>": { host, port, password } }`, `osd: { baseUrl, alarmHoldS }`.
 
 ## Test
