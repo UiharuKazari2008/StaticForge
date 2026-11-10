@@ -668,3 +668,6 @@ canvas.qc-fp-dm { display: block; width: 360px; height: 81px; padding: 4px 6px; 
 .qc-fp-ctl .qc-rm-pad [data-rk="ok"] { border-radius: 50% !important; }
 /* the dark / lamp-test states still win on rubber keys */
 .qc-fp-face.is-dark .qc-fp-ctl .qc-rk.qc-bk, .qc-fp-face.is-dark .qc-fp-key.qc-bk { filter: brightness(.35); }
+/* control block: RESET + XLINK (cabinet) or RESET + PWR (satellite) fit in the first column; nothing overlaps the LEDs */
+.qc-fp-ctl { width: 384px; grid-template-columns: 100px 4px 64px 104px 64px; }
+.qc-fp-ind { margin-left: 8px; }
