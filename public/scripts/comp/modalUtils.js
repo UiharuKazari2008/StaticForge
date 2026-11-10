@@ -7671,9 +7671,11 @@ let startMenuSearchSeq = 0;
 let startMenuSearchEntries = [];
 let startMenuEls = null;
 
+let startMenuFinePointerMql = null;
 function startMenuHasFinePointer() {
     if (!window.matchMedia) return true;
-    return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    if (!startMenuFinePointerMql) startMenuFinePointerMql = window.matchMedia('(hover: hover) and (pointer: fine)');
+    return startMenuFinePointerMql.matches;
 }
 
 function startMenuLabel(item) {

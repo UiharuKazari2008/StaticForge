@@ -1,3 +1,12 @@
+// One cached list: a matchMedia() call per render made a new MediaQueryList every keystroke
+// (and the Android app's pointer shim keeps every one it hands out, with two listeners each).
+let autocompleteFinePointerMql = null;
+function autocompleteHasFinePointer() {
+    if (!window.matchMedia) return true;
+    if (!autocompleteFinePointerMql) autocompleteFinePointerMql = window.matchMedia('(pointer: fine)');
+    return autocompleteFinePointerMql.matches;
+}
+
 // Overlay and list elements 
 const characterAutocompleteOverlay = document.getElementById('characterAutocompleteOverlay');
 const characterAutocompleteList = document.querySelector('.character-autocomplete-list');
@@ -8245,7 +8254,7 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
 
     // Force expansion on mobile or when no mouse input is available (e.g. touch only)
     const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) ||
-        (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
+        !autocompleteHasFinePointer();
 
     if (isMobile) {
         autocompleteExpanded = true;
@@ -8427,7 +8436,7 @@ function updateAutocompleteDisplayImmediate(results, target) {
 
     // Force expansion on mobile or when no mouse input is available (e.g. touch only)
     const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) ||
-        (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
+        !autocompleteHasFinePointer();
 
     if (isMobile) {
         autocompleteExpanded = true;
@@ -8573,7 +8582,7 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
     const autofillConfig = getAutofillConfig(target);
     // Force expansion on mobile or when no mouse input is available (e.g. touch only)
     const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) ||
-        (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
+        !autocompleteHasFinePointer();
 
     if (isMobile) {
         autocompleteExpanded = true;
