@@ -300,6 +300,8 @@ async function main() {
     let v = await qc.osd.press('sat', '', 'menu');
     assert.strictEqual(v.open, true);
     assert.strictEqual(v.page.title, 'MAIN MENU');
+    const until = async (fn, ms = 3000) => { const t = Date.now() + ms; while (!fn() && Date.now() < t) await new Promise((r) => setTimeout(r, 25)); return fn(); };
+    await until(() => obs.osdInput && items.Chuni.some((i) => i.sourceName === 'AV OSD' && i.sceneItemEnabled));
     assert.ok(obs.osdInput && obs.osdInput.inputKind === 'browser_source', 'the OSD browser source is created on the box');
     assert.match(obs.osdInput.inputSettings.url, /\/av-osd\/sat\?k=[\w-]{20,}$/);
     const nested = items.Chuni.find((i) => i.sourceName === 'AV OSD');
@@ -314,6 +316,7 @@ async function main() {
     assert.strictEqual(v.page.title, 'MAIN MENU');
     v = await qc.osd.press('sat', '', 'exit');
     assert.strictEqual(v.open, false);
+    await until(() => !nested.sceneItemEnabled);
     assert.strictEqual(nested.sceneItemEnabled, false, 'closing hides the OSD layer');
     await assert.rejects(qc.osd.press('sat', '', 'reboot'), /Unknown key/);
     const tok = new URL(obs.osdInput.inputSettings.url).searchParams.get('k');
@@ -336,7 +339,7 @@ async function main() {
     r = await qc.prepare('wacca');
     assert.deepStrictEqual(r.steps, ['scene']);
     assert.strictEqual(obs.program, 'WACCA');
-    await assert.rejects(qc.prepare('h2h'), /missing from OBS/);
+    await assert.rejects(qc.prepare('h2h'), /missing on RUIKO/);
 
     // meters: only what the stream hears (enabled items, groups, global mic; not monitor-only, not off-track)
     await qc.prepare('chuni');

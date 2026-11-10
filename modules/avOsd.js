@@ -105,15 +105,21 @@ async function linkOf(b) {
     return deps.diag.muxLink(b.machine);
 }
 
+const machineCache = new Map(); // cabinetId -> { machine, at }
+
 /** The box a QuickCast remote is pointed at: the satellite, or the mux PC feeding a cabinet. */
 async function resolveBox(target, cabinetId) {
     if (target === 'sat') return box('sat');
-    const machine = await deps.diag.machineForCabinet(cabinetId);
+    const hit = machineCache.get(cabinetId);
+    let machine = hit && Date.now() - hit.at < 30000 ? hit.machine : '';
+    if (!machine) { machine = await deps.diag.machineForCabinet(cabinetId); machineCache.set(cabinetId, { machine, at: Date.now() }); }
     if (!machine) throw fail('This cabinet\'s scene on the satellite has no NDI feed, so there is no mux box to control', 'AVOSD_NOMUX');
     return box(`mux-${machine}`);
 }
 
-function boxName(b) { return b.kind === 'satellite' ? 'SATELLITE ENCODER' : `AV-MUX ${b.machine}`; }
+/** The unit's own name, as on the panels (the satellite's configured name, a mux PC's NDI machine name). */
+function boxName(b) { return b.kind === 'satellite' ? deps.satelliteName() : b.machine.toUpperCase(); }
+function boxModel(b) { try { return deps.unitModel(boxName(b)) || ''; } catch (_) { return ''; } }
 
 // ------------------------------------------------------------------ the overlay on the box's OBS
 
@@ -188,11 +194,18 @@ async function videoInputs(link) {
     return list.filter((i) => VIDEO_KINDS.has(i.inputKind) && i.inputName !== OVERLAY_INPUT);
 }
 
+const optCache = new Map(); // link label + input -> { at, opts }: device lists change rarely, and ask slowly
+
 async function portOptions(link, inp) {
     const prop = PORTS[inp.inputKind].prop;
+    const ck = `${link.label}|${inp.inputName}`;
+    const c = optCache.get(ck);
+    if (c && Date.now() - c.at < 30000) return c.opts;
     try {
         const r = await link.request('GetInputPropertiesListPropertyItems', { inputName: inp.inputName, propertyName: prop });
-        return (r.propertyItems || []).filter((o) => o.itemEnabled !== false).map((o) => ({ value: o.itemValue, text: String(o.itemName || o.itemValue || '-') }));
+        const opts = (r.propertyItems || []).filter((o) => o.itemEnabled !== false).map((o) => ({ value: o.itemValue, text: String(o.itemName || o.itemValue || '-') }));
+        optCache.set(ck, { at: Date.now(), opts });
+        return opts;
     } catch (_) { return []; }
 }
 
@@ -218,12 +231,16 @@ const PAGES = {
 
     async inputs(b, link) {
         const ins = await portInputs(link);
+        const got = await Promise.all(ins.map((inp) => Promise.all([
+            link.request('GetInputSettings', { inputName: inp.inputName }).catch(() => ({ inputSettings: {} })),
+            portOptions(link, inp)
+        ])));
         const rows = [];
         for (let n = 0; n < ins.length; n++) {
             const inp = ins[n];
             const prop = PORTS[inp.inputKind].prop;
-            const set = (await link.request('GetInputSettings', { inputName: inp.inputName }).catch(() => ({ inputSettings: {} }))).inputSettings || {};
-            const opts = await portOptions(link, inp);
+            const set = got[n][0].inputSettings || {};
+            const opts = got[n][1];
             const cur = set[prop];
             const pend = b.pending.get(`port:${inp.inputName}`);
             const show = pend != null ? pend : cur;
@@ -248,8 +265,9 @@ const PAGES = {
             const f = await delayOf(link, inp.inputName);
             let sync = null;
             try { sync = (await link.request('GetInputAudioSyncOffset', { inputName: inp.inputName })).inputAudioSyncOffset; } catch (_) { sync = null; }
-            rows.push({ id: `delay:${inp.inputName}`, label: `${inp.inputName} VIDEO`, kind: 'adjust', value: `${f} ms`, hint: 'Video delay — ◄► 10 ms' });
-            if (sync != null) rows.push({ id: `sync:${inp.inputName}`, label: `${inp.inputName} AUDIO`, kind: 'adjust', value: `${sync > 0 ? '+' : ''}${sync} ms`, hint: 'Audio sync offset — ◄► 10 ms' });
+            // bars: video delay on a 0..500 ms scale; audio sync centred on zero (-250..+250 ms)
+            rows.push({ id: `delay:${inp.inputName}`, label: `${inp.inputName} VIDEO`, kind: 'adjust', value: `${f} ms`, bar: { from: 0, width: Math.min(100, f / 5), color: f ? '#ffc23a' : '#555' }, hint: 'Video delay — ◄► 10 ms' });
+            if (sync != null) rows.push({ id: `sync:${inp.inputName}`, label: `${inp.inputName} AUDIO`, kind: 'adjust', value: `${sync > 0 ? '+' : ''}${sync} ms`, bar: { from: sync >= 0 ? 50 : Math.max(0, 50 + sync / 5), width: Math.max(1, Math.min(50, Math.abs(sync) / 5)), color: sync ? '#3ea0ff' : '#555' }, hint: 'Audio sync offset — ◄► 10 ms' });
         }
         return { title: 'TIMING / SYNC', rows: rows.length > 2 ? rows : [{ id: 'none', label: 'No video inputs', kind: 'info', value: '' }], hint: 'Delay the early input so camera and game line up' };
     },
@@ -351,14 +369,17 @@ const PAGES = {
             title: 'SYSTEM INFORMATION',
             rows: [
                 { id: 's:name', label: 'UNIT', kind: 'info', value: boxName(b) },
+                { id: 's:model', label: 'MODEL', kind: 'info', value: boxModel(b) || '-' },
+                { id: 's:role', label: 'TYPE', kind: 'info', value: (deps.unitInfo(boxName(b), b.kind === 'satellite' ? 'satellite' : 'mux').kind || '').toUpperCase() },
                 { id: 's:addr', label: 'ADDRESS', kind: 'info', value: `${target.host}:${target.port}` },
-                { id: 's:obs', label: 'ENGINE', kind: 'info', value: `OBS ${ver.obsVersion} / WS ${ver.obsWebSocketVersion}` },
+                { id: 's:obs', label: 'ENGINE', kind: 'info', value: `ENGINE ${ver.obsVersion} / CTRL ${ver.obsWebSocketVersion}` },
                 { id: 's:os', label: 'PLATFORM', kind: 'info', value: String(ver.platformDescription || ver.platform || '-').slice(0, 34) },
                 { id: 's:fmt', label: 'FORMAT', kind: 'info', value: `${v.outputWidth}x${v.outputHeight} ${fpsText(v.fpsNumerator, v.fpsDenominator)}` },
                 { id: 's:cpu', label: 'CPU', kind: 'info', value: `${round1(st.cpuUsage || 0)} %` },
                 { id: 's:mem', label: 'MEMORY', kind: 'info', value: `${Math.round(st.memoryUsage || 0)} MB` },
                 { id: 's:disk', label: 'DISK FREE', kind: 'info', value: `${round1((st.availableDiskSpace || 0) / 1024)} GB` },
-                { id: 's:render', label: 'FRAME TIME', kind: 'info', value: `${round1(st.averageFrameRenderTime || 0)} ms` }
+                { id: 's:render', label: 'FRAME TIME', kind: 'info', value: `${round1(st.averageFrameRenderTime || 0)} ms` },
+                { id: 's:card', label: b.kind === 'satellite' ? 'LIVE STANDBY SLATES' : 'LIVE SYSTEM TEST CARD', kind: 'action', value: b.cardInstalled ? 'INSTALLED' : 'OK = INSTALL', state: b.cardInstalled ? 'ok' : '', hint: b.kind === 'satellite' ? 'Draws the standby slates behind each cabinet feed live (status bar shows the real link state)' : 'Draws the SysTest card live (real hardware I/O tiles and status)' }
             ]
         };
     }
@@ -494,34 +515,172 @@ async function measureFps(b, link) {
     return out;
 }
 
+// ------------------------------------------------------------------ live cards (replace the unit's image cards)
+
+const CARD_INPUT = 'AV Live Card';
+
+/**
+ * Put the live cards where the units show their image cards:
+ *   mux unit: scene "SysTest" (the system test card) gets a full-frame "AV Live Card" browser source on top
+ *   satellite: every group holding the standby slate image behind a cabinet's NDI feed gets an
+ *              "AV Live Slate <cabinet>" just above that image (the feed still covers it when it arrives)
+ * The image cards stay underneath, untouched. Returns how many places got a card.
+ */
+async function installCards(b, link) {
+    const base = overlayUrl(b);
+    const v = await link.request('GetVideoSettings');
+    const size = { width: v.baseWidth || 1920, height: v.baseHeight || 1080 };
+    const css = 'html, body { background: transparent !important; margin: 0; overflow: hidden; }';
+    const scenes = ((await link.request('GetSceneList')).scenes || []).map((x) => x.sceneName);
+    let n = 0;
+    const put = async (sceneName, inputName, url, aboveIndex) => {
+        let exists = true;
+        try { await link.request('GetInputSettings', { inputName }); } catch (_) { exists = false; }
+        const settings = { url, ...size, css, shutdown: false, restart_when_active: false, reroute_audio: false };
+        let id;
+        if (!exists) id = (await link.request('CreateInput', { sceneName, inputName, inputKind: 'browser_source', inputSettings: settings, sceneItemEnabled: true })).sceneItemId;
+        else {
+            await link.request('SetInputSettings', { inputName, inputSettings: settings, overlay: true });
+            const items = (await link.request(scenes.includes(sceneName) ? 'GetSceneItemList' : 'GetGroupSceneItemList', { sceneName })).sceneItems || [];
+            const it = items.find((i) => i.sourceName === inputName);
+            id = it ? it.sceneItemId : (await link.request('CreateSceneItem', { sceneName, sourceName: inputName, sceneItemEnabled: true })).sceneItemId;
+        }
+        if (aboveIndex != null) await link.request('SetSceneItemIndex', { sceneName, sceneItemId: id, sceneItemIndex: aboveIndex + 1 }).catch(() => {});
+        n++;
+    };
+    if (b.kind === 'cabinet') {
+        const sys = scenes.find((x) => /^sys ?test$/i.test(x));
+        if (sys) {
+            const items = (await link.request('GetSceneItemList', { sceneName: sys })).sceneItems || [];
+            await put(sys, CARD_INPUT, `${base}&card=systest`, items.length - 1);
+        }
+    } else {
+        for (const c of deps.readConfig().cabinets) {
+            const sceneItems = (await link.request('GetSceneItemList', { sceneName: c.scene }).catch(() => ({}))).sceneItems || [];
+            for (const g of sceneItems.filter((i) => i.isGroup)) {
+                const gi = (await link.request('GetGroupSceneItemList', { sceneName: g.sourceName }).catch(() => ({}))).sceneItems || [];
+                const slate = gi.find((i) => i.inputKind === 'image_source' && /boot|wait|slate|standby/i.test(i.sourceName));
+                const ndi = gi.find((i) => i.inputKind === 'ndi_source');
+                if (!slate || !ndi) continue;
+                await put(g.sourceName, `AV Live Slate ${c.short || c.id}`, `${base}&card=slate&cab=${encodeURIComponent(c.id)}`, slate.sceneItemIndex);
+            }
+        }
+    }
+    return n;
+}
+
+/** The data a live card draws, refreshed while a card page is subscribed. */
+async function cardData(b, card, cabId) {
+    const u = deps.unitInfo(boxName(b), b.kind === 'satellite' ? 'satellite' : 'mux');
+    const out = { card, unit: { name: boxName(b), maker: u.maker, line: u.line, model: u.model, type: u.kind, theme: u.theme, sw: u.sw || '', hw: u.hw || '', fw: u.fw || '' }, at: Date.now() };
+    if (card === 'slate') {
+        const d = deps.diag.lastFor(cabId);
+        const rx = d && d.output && d.output.stages.find((x) => x.id === 'rx');
+        const src = d && d.input && d.input.source;
+        out.feed = src || '';
+        out.ok = !!(rx && rx.state === 'ok');
+        out.status = out.ok ? `Receiving ${src || 'downstream device'}` : `Connecting to downstream device${src ? ` ${src}` : ''}...`;
+        return out;
+    }
+    // systest: the unit's video inputs as hardware I/O tiles, with their signal
+    const { link } = await linkOf(b);
+    const [ins, v, sc] = await Promise.all([videoInputs(link), link.request('GetVideoSettings'), link.request('GetSceneList')]);
+    const sizes = new Map();
+    for (const s of (sc.scenes || []).slice(0, 24)) {
+        const items = (await link.request('GetSceneItemList', { sceneName: s.sceneName }).catch(() => ({}))).sceneItems || [];
+        for (const it of items) { const t = it.sceneItemTransform || {}; if (t.sourceWidth && !sizes.has(it.sourceName)) sizes.set(it.sourceName, `${t.sourceWidth}x${t.sourceHeight}`); }
+    }
+    const hw = ins.filter((i) => PORTS[i.inputKind] && i.inputKind !== 'ndi_source').slice(0, 8);
+    out.tiles = hw.map((i, n) => ({ n: n + 1, name: i.inputName, type: PORTS[i.inputKind].type, size: sizes.get(i.inputName) || '', ok: sizes.has(i.inputName) }));
+    const dead = out.tiles.filter((t) => !t.ok);
+    out.status = !out.tiles.length ? 'PREPARING HARDWARE I/O' : dead.length ? `INPUT ${dead[0].n} NO SIGNAL${dead.length > 1 ? ` (+${dead.length - 1})` : ''}` : 'HARDWARE I/O READY';
+    out.ok = out.tiles.length > 0 && !dead.length;
+    out.format = `${v.outputWidth}x${v.outputHeight}p${fpsText(v.fpsNumerator, v.fpsDenominator)}`;
+    return out;
+}
+
+function subscribeCard(boxId, k, card, cabId, res) {
+    if (!validId(boxId) || !checkToken(boxId, k) || !['systest', 'slate'].includes(card)) return false;
+    const b = box(boxId);
+    if (!b.cardSubs) b.cardSubs = new Map();
+    b.cardSubs.set(res, { card, cab: String(cabId || '') });
+    return () => b.cardSubs.delete(res);
+}
+
+setInterval(() => {
+    for (const b of boxes.values()) {
+        if (!b.cardSubs || !b.cardSubs.size || b.cardBusy) continue;
+        b.cardBusy = true;
+        (async () => {
+            for (const [res, sub] of b.cardSubs) {
+                let data;
+                try { data = await cardData(b, sub.card, sub.cab); } catch (e) { data = { card: sub.card, error: e.message }; }
+                try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch (_) { b.cardSubs.delete(res); }
+            }
+        })().catch(() => {}).finally(() => { b.cardBusy = false; });
+    }
+}, 2000).unref();
+
 // ------------------------------------------------------------------ view + keys
 
 function frame(b) { return b.stack[b.stack.length - 1]; }
 
-async function render(b) {
-    const out = { box: { id: b.id, name: boxName(b), kind: b.kind }, open: b.open, info: b.info, toast: Date.now() - b.toastAt < 4000 ? b.toast : '', rev: ++b.rev, at: Date.now() };
-    let target = null;
-    let link = null;
-    try { ({ link, target } = await linkOf(b)); } catch (e) { out.offline = e.message; }
-    if (b.open && link) {
-        const f = frame(b);
-        try {
-            const page = await PAGES[f.page](b, link, f, target);
-            f.cursor = Math.max(0, Math.min(f.cursor || 0, page.rows.length - 1));
-            const first = Math.max(0, Math.min(f.cursor - Math.floor(PAGE_ROWS / 2), page.rows.length - PAGE_ROWS));
-            out.page = { id: f.page, title: page.title, crumbs: b.stack.map((x) => x.page), hint: (page.rows[f.cursor] && page.rows[f.cursor].hint) || page.hint || '', cursor: f.cursor, first, total: page.rows.length, rows: page.rows.slice(first, first + PAGE_ROWS) };
-            f.rows = page.rows;
-        } catch (e) { out.page = { id: f.page, title: f.page.toUpperCase(), rows: [], error: e.message }; }
+/** Pages whose numbers move on their own and are re-read while shown. */
+const LIVE_PAGES = new Set(['clock', 'diag', 'system', 'audio', 'align', 'fpsm']);
+
+/** Read the top page from the box (OBS round trips) into its frame's cache. */
+async function buildPage(b) {
+    const f = frame(b);
+    if (!f) return;
+    let link;
+    let target;
+    try { ({ link, target } = await linkOf(b)); b.offline = ''; } catch (e) { b.offline = e.message; return; }
+    try {
+        const page = await PAGES[f.page](b, link, f, target);
+        if (frame(b) !== f) return; // the operator moved on meanwhile
+        f.cache = page;
+        f.rows = page.rows;
+        f.error = '';
+        f.at = Date.now();
+    } catch (e) { f.error = e.message; }
+}
+
+async function buildStrip(b) {
+    try {
+        const { link, target } = await linkOf(b);
+        const [v, st, pg] = await Promise.all([link.request('GetVideoSettings'), link.request('GetStats'), link.request('GetCurrentProgramScene')]);
+        b.strip = { unit: boxName(b), format: `${v.outputHeight}p${fpsText(v.fpsNumerator, v.fpsDenominator)}`, fps: round1(st.activeFps || 0), cpu: round1(st.cpuUsage || 0), frame: round1(st.averageFrameRenderTime || 0), program: pg.currentProgramSceneName, addr: target ? target.host : '' };
+    } catch (_) { b.strip = null; }
+}
+
+/** Build the view from what is cached (no OBS round trip) and push it to the box's OSD page. */
+function emit(b) {
+    const u = deps.unitInfo(boxName(b), b.kind === 'satellite' ? 'satellite' : 'mux');
+    const out = { box: { id: b.id, name: boxName(b), kind: b.kind, maker: u.maker, line: u.line, model: u.model, type: u.kind, theme: u.theme }, ui: u.theme, open: b.open, info: b.info, toast: Date.now() - b.toastAt < 4000 ? b.toast : '', rev: ++b.rev, at: Date.now() };
+    if (b.offline) out.offline = b.offline;
+    const f = b.open ? frame(b) : null;
+    if (f) {
+        const page = f.cache;
+        if (!page) out.page = { id: f.page, title: f.title || f.page.toUpperCase(), crumbs: b.stack.map((x) => x.page), rows: [], loading: true, cursor: 0, first: 0, total: 0, hint: 'Reading...' };
+        else {
+            const rows = page.rows || [];
+            f.cursor = Math.max(0, Math.min(f.cursor || 0, rows.length - 1));
+            const first = Math.max(0, Math.min(f.cursor - Math.floor(PAGE_ROWS / 2), rows.length - PAGE_ROWS));
+            out.page = { id: f.page, title: page.title, crumbs: b.stack.map((x) => x.page), hint: (rows[f.cursor] && rows[f.cursor].hint) || page.hint || '', cursor: f.cursor, first, total: rows.length, rows: rows.slice(first, first + PAGE_ROWS) };
+            if (f.error) out.page.error = f.error;
+        }
     }
-    if (b.info && link) {
-        try {
-            const [v, st, pg] = await Promise.all([link.request('GetVideoSettings'), link.request('GetStats'), link.request('GetCurrentProgramScene')]);
-            out.strip = { format: `${v.outputHeight}p${fpsText(v.fpsNumerator, v.fpsDenominator)}`, fps: round1(st.activeFps || 0), cpu: round1(st.cpuUsage || 0), frame: round1(st.averageFrameRenderTime || 0), program: pg.currentProgramSceneName, addr: target ? target.host : '' };
-        } catch (_) { out.strip = null; }
-    }
+    if (b.info && b.strip) out.strip = b.strip;
     b.view = out;
     for (const res of b.subs) { try { res.write(`data: ${JSON.stringify(out)}\n\n`); } catch (_) { b.subs.delete(res); } }
     return out;
+}
+
+/** Full refresh: page and strip from the box, then emit. */
+async function render(b) {
+    if (b.open) await buildPage(b);
+    if (b.info) await buildStrip(b);
+    return emit(b);
 }
 
 function toast(b, text) { b.toast = text; b.toastAt = Date.now(); }
@@ -542,7 +701,7 @@ async function onKey(b, key) {
         if (!b.stack.length) b.open = false;
         return;
     }
-    if (!f.rows) await render(b);
+    if (!f.cache) await buildPage(b);
     const rows = f.rows || [];
     const row = rows[f.cursor || 0];
     if (key === 'up') { f.cursor = (f.cursor + rows.length - 1) % Math.max(1, rows.length); return; }
@@ -550,7 +709,7 @@ async function onKey(b, key) {
     if (!row) return;
     const name = row.id.slice(row.id.indexOf(':') + 1);
     const dir = key === 'left' ? -1 : key === 'right' ? 1 : 0;
-    if (row.kind === 'nav' && key === 'ok') { b.stack.push({ page: row.id, cursor: 0 }); return; }
+    if (row.kind === 'nav' && key === 'ok') { b.stack.push({ page: row.id, cursor: 0, title: row.label }); return; }
     if (row.id.startsWith('port:')) {
         const inp = (await portInputs(link)).find((i) => i.inputName === name);
         if (!inp) return;
@@ -599,6 +758,12 @@ async function onKey(b, key) {
             .finally(() => { void render(b).catch(() => {}); });
         return;
     }
+    if (row.id === 's:card' && key === 'ok') {
+        const n = await installCards(b, link);
+        b.cardInstalled = n > 0;
+        toast(b, n ? `Live card installed in ${n} place${n === 1 ? '' : 's'}` : 'Nowhere to install: no SysTest scene / standby slate found');
+        return;
+    }
     if (row.id.startsWith('delay:') && dir) { const ms = await setDelay(link, name, (await delayOf(link, name)) + dir * 10); toast(b, `${name} video delay ${ms} ms`); return; }
     if (row.id.startsWith('sync:') && dir) {
         const cur = (await link.request('GetInputAudioSyncOffset', { inputName: name })).inputAudioSyncOffset || 0;
@@ -633,7 +798,7 @@ async function onKey(b, key) {
                 await link.request('SetProfileParameter', { parameterCategory: 'Video', parameterName: 'FPSType', parameterValue: '2' }).catch(() => {});
                 await link.request('SetProfileParameter', { parameterCategory: 'Video', parameterName: 'FPSNum', parameterValue: String(n) }).catch(() => {});
                 await link.request('SetProfileParameter', { parameterCategory: 'Video', parameterName: 'FPSDen', parameterValue: String(d) }).catch(() => {});
-                toast(b, `${fpsText(n, d)} fps saved: applies when OBS restarts (outputs active)`);
+                toast(b, `${fpsText(n, d)} fps stored: takes effect when the engine restarts (outputs active)`);
             }
         }
     }
@@ -641,19 +806,51 @@ async function onKey(b, key) {
 
 const KEYS = new Set(['up', 'down', 'left', 'right', 'ok', 'menu', 'diag', 'info', 'exit']);
 
-/** A remote key press for a box: returns the view (also pushed to the box's OSD page). */
+const NAV_ONLY = new Set(['up', 'down']);
+
+/**
+ * A remote key press for a box. Keys are queued per box and run in order; a full queue drops the press
+ * (a held key never replays for seconds after release). Up / down move on the cached page with no OBS
+ * round trip; the OSD layer is only placed when the menu or strip opens or closes.
+ */
 async function press(target, cabinetId, key) {
     if (!KEYS.has(key)) throw fail('Unknown key', 'AVOSD_KEY');
     const b = await resolveBox(target, cabinetId);
-    if (b.busy) return b.view || render(b);
-    b.busy = true;
-    try {
-        const wasUp = b.open || b.info;
-        try { await onKey(b, key); } catch (e) { toast(b, `ERROR: ${e.message}`); }
-        const up = b.open || b.info;
-        if (up !== wasUp || up) { try { await placeOverlay(b); } catch (e) { toast(b, `OSD layer: ${e.message}`); } }
-        return await render(b);
-    } finally { b.busy = false; }
+    if (!b.queue) b.queue = [];
+    if (b.queue.length >= 2) return b.view || emit(b);
+    return new Promise((resolve) => {
+        b.queue.push({ key, resolve });
+        if (!b.worker) b.worker = drain(b).finally(() => { b.worker = null; });
+    });
+}
+
+async function drain(b) {
+    while (b.queue.length) {
+        const { key, resolve } = b.queue.shift();
+        b.busy = true;
+        try {
+            const f = b.open ? frame(b) : null;
+            if (NAV_ONLY.has(key) && f && f.cache) {
+                const n = Math.max(1, (f.rows || []).length);
+                f.cursor = key === 'up' ? (f.cursor + n - 1) % n : (f.cursor + 1) % n;
+                resolve(emit(b));
+                continue;
+            }
+            const wasUp = b.open || b.info;
+            const depth = b.stack.length;
+            try { await onKey(b, key); } catch (e) { toast(b, `ERROR: ${e.message}`); }
+            const up = b.open || b.info;
+            // show the change on the unit at once (a new page shows its title while it reads), read the
+            // page, answer the remote, and only then place / remove the OSD layer (the slow part)
+            emit(b);
+            const top = b.open ? frame(b) : null;
+            const needPage = top && (!top.cache || b.stack.length !== depth || !NAV_ONLY.has(key));
+            if (needPage && !(key === 'exit' && top.cache)) await buildPage(b);
+            if (b.info && !b.strip) await buildStrip(b);
+            resolve(emit(b));
+            if (up !== wasUp) { try { await placeOverlay(b); } catch (e) { toast(b, `OSD layer: ${e.message}`); } emit(b); }
+        } finally { b.busy = false; }
+    }
 }
 
 /** The current view (QuickCast polls it for the remote's LCD line). */
@@ -672,8 +869,33 @@ function subscribe(boxId, k, res) {
 }
 
 // keep an open OSD's numbers fresh (levels, clock, diagnostics) while something shows it
+// keep an open OSD's moving numbers fresh (clock, diagnostics, levels), and the layer on the program
+// scene if the box's program changed under it; never while keys are being worked
+let tick = 0;
 setInterval(() => {
-    for (const b of boxes.values()) if ((b.open || b.info) && !b.busy) void render(b).catch(() => {});
-}, 1500).unref();
+    tick++;
+    for (const b of boxes.values()) {
+        if (!(b.open || b.info) || b.busy || b.refreshing || (b.queue && b.queue.length)) continue;
+        const f = b.open ? frame(b) : null;
+        const live = f && LIVE_PAGES.has(f.page);
+        if (!live && !b.info && tick % 3) continue;
+        b.refreshing = true;
+        (async () => {
+            if (live) await buildPage(b);
+            if (b.info) await buildStrip(b);
+            if (tick % 3 === 0) await placeOverlay(b).catch(() => {});
+            emit(b);
+        })().catch(() => {}).finally(() => { b.refreshing = false; });
+    }
+}, 2000).unref();
 
-module.exports = { init, press, view, subscribe, checkToken, PORTS, bestLag, _boxes: boxes, OVERLAY_SCENE, OVERLAY_INPUT, DELAY_FILTER };
+/** The last AUTO ALIGN result on a mux unit (for VisionCaster's timing bars), or null. */
+function alignFor(machine) {
+    const b = boxes.get(`mux-${machine}`);
+    if (!b || !b.align) return null;
+    const sel = b.alignSel || {};
+    const r = b.align.result;
+    return { cam: sel.cam || '', ref: sel.ref || '', running: !!b.align.running, offMs: r && r.offMs != null ? r.offMs : null, score: r ? r.score : null, text: r ? r.text : b.align.error || '' };
+}
+
+module.exports = { subscribeCard, alignFor, init, press, view, subscribe, checkToken, PORTS, bestLag, _boxes: boxes, OVERLAY_SCENE, OVERLAY_INPUT, DELAY_FILTER };

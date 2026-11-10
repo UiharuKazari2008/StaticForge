@@ -36,6 +36,7 @@ function registerPackets(handlersCtx) {
     packet('quickcast_prepare', async (d) => quickcast.prepare(String(d.cabinet || ''), !!d.confirmed), 'Could not get the cabinet ready');
     packet('quickcast_golive', async (d) => quickcast.goLive(String(d.cabinet || ''), d.settings && typeof d.settings === 'object' ? d.settings : undefined), 'Could not go live');
     packet('quickcast_stop', async () => quickcast.stop(), 'Could not stop the stream');
+    packet('quickcast_live_ticket', async (d) => quickcast.liveTicket(String(d.cabinet || ''), d.width), 'No realtime preview');
     packet('quickcast_obs_off', async () => quickcast.powerOff(), 'Could not close OBS');
     // box OSD remote (avOsd.js): target 'sat' (satellite) or 'cab' (the mux PC feeding `cabinet`)
     packet('quickcast_osd_key', async (d) => quickcast.osd.press(d.target === 'sat' ? 'sat' : 'cab', String(d.cabinet || ''), String(d.key || '')), 'The box did not take the key');

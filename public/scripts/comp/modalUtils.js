@@ -6663,8 +6663,8 @@ function buildToolsSubmenuItems() {
         // PayPass Operator: openCreditIC, the arcade's IC card / credit system, admins (Yozora #721; apps/paypass, a system package)
         { launchId: 'paypass', icon: 'fas fa-credit-card', imageIcon: 'paypass.png', text: 'PayPass Operator', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'paypass' }) },
         // XLink Operator Console: the arcade cabinets' control menu, admins (Yozora #719; apps/xlink, a system package)
-        // QuickCast: one-click YouTube live for a cabinet through OBS on Ruiko, admins (Yozora #734; apps/quickcast, a system package)
-        { launchId: 'quickcast', icon: 'fas fa-tower-broadcast', imageIcon: 'quickcast.png', text: 'QuickCast', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'quickcast' }) },
+        // VisionCaster (was QuickCast): video mixer remote for the cabinet mixers and the satellite encoder, and one-touch YouTube live, admins (Yozora #734; apps/quickcast, a system package)
+        { launchId: 'quickcast', icon: 'fas fa-tower-broadcast', imageIcon: 'quickcast.png', text: 'VisionCaster', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'quickcast' }) },
         { launchId: 'xlink', icon: 'fas fa-joystick', imageIcon: 'xlink.png', text: 'XLink Operator Console', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'xlink' }) },
         // Accessories > WordPad (Yozora #632; apps/wordpad, a system package)
         { launchId: 'wordpad', icon: 'fas fa-file-word', imageIcon: 'vista-wordpad.png', text: 'WordPad', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'wordpad' }) },
@@ -7796,7 +7796,7 @@ const START_MENU_PACKAGE_APPS = [
 ];
 // Other publishers' program folders, the same way (Yozora #719: the AmusementVISION suite's XLink)
 const START_MENU_VENDOR_FOLDERS = [
-    { folderId: 'amusementvision-2024', text: 'AmusementVISION 2024', apps: [['paypass', 'PayPass Operator'], ['quickcast', 'QuickCast'], ['xlink', 'XLink Operator Console']] }
+    { folderId: 'amusementvision-2024', text: 'AmusementVISION 2024', apps: [['paypass', 'PayPass Operator'], ['quickcast', 'VisionCaster'], ['xlink', 'XLink Operator Console']] }
 ];
 const START_MENU_PACKAGE_IDS = new Set(START_MENU_PACKAGE_APPS.concat(...START_MENU_VENDOR_FOLDERS.map((f) => f.apps)).map((pair) => pair[0]));
 

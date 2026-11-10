@@ -47,7 +47,7 @@
 .qc-is-live .qc-tally { background: linear-gradient(#ff3b3f, #b80f14); box-shadow: 0 0 14px rgba(232, 38, 43, .7), inset 0 1px 0 rgba(255, 255, 255, .35); }
 .qc-is-live .qc-tally-text, .qc-is-live .qc-tc { color: #fff; text-shadow: 0 1px 1px rgba(0, 0, 0, .5); }
 .qc-is-reconnecting .qc-tally { animation: qc-blink 1s steps(2) infinite; }
-@keyframes qc-blink { 50% { opacity: .45; } }
+@keyframes qc-blink { 50% { opacity: .3; } }
 
 /* ---- main: cabinets | monitor | meters ---- */
 .qc-main { display: flex; flex: 1; min-height: 0; gap: 1px; background: var(--qc-line); }
@@ -341,10 +341,11 @@
 .qc-window .qc-root .qc-bk:disabled { background: rgba(var(--k), .05); background-color: #141517; color: rgba(var(--k), .28); box-shadow: inset 0 0 0 1px rgba(var(--k), .06), 0 1px 2px rgba(0, 0, 0, .7); }
 .qc-window .qc-root .qc-bk.is-on:disabled { background: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, .08)), rgb(var(--k)); color: #fff; }
 /* GO LIVE armed: a slow, dull red breathing, never fully lit until on air */
-.qc-window .qc-root .qc-go.is-armed { animation: qc-armed 2.6s ease-in-out infinite; color: rgba(255, 190, 190, .9); }
+.qc-window .qc-root .qc-go.is-armed { animation: qc-armed 1.2s steps(1, end) infinite; }
+/* armed: a hard on / off blink of the lamp at half brightness, like a switcher key waiting to be taken */
 @keyframes qc-armed {
-    0%, 100% { background-color: #17181b; box-shadow: inset 0 0 0 1px rgba(232, 46, 50, .18), 0 1px 2px rgba(0, 0, 0, .7); }
-    50% { background-color: #5c1416; box-shadow: inset 0 0 8px rgba(232, 46, 50, .45), inset 0 0 0 1px rgba(232, 46, 50, .35), 0 1px 2px rgba(0, 0, 0, .7); }
+    0% { background: rgb(150, 30, 33); color: #ffd6d6; box-shadow: inset 0 0 6px rgba(255, 120, 120, .35), 0 1px 2px rgba(0, 0, 0, .7); }
+    50% { background: #17181b; color: rgba(255, 190, 190, .55); box-shadow: inset 0 0 0 1px rgba(232, 46, 50, .18), 0 1px 2px rgba(0, 0, 0, .7); }
 }
 
 /* cabinet keys as a switcher bus */
@@ -406,27 +407,76 @@
 .qc-deck .qc-xs { font-size: 9px; font-weight: normal; letter-spacing: 0; }
 .qc-ctl { border-top: 0; background: none; }
 
-/* box remote: the OSD itself is drawn by the box in its video output (avOsd.js) */
-.qc-remotewin .modal-content { background: #1b1d21; }
-.qc-rm { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 12px 12px; background: linear-gradient(#34373d, #1e2024); border-radius: 18px 18px 30px 30px; box-shadow: inset 0 1px 0 rgba(255,255,255,.1), inset 0 -2px 6px rgba(0,0,0,.6); margin: 6px; }
-.qc-rm-sel { display: flex; gap: 3px; width: 100%; }
-.qc-window .qc-rsel { flex: 1; height: 22px; border: 1px solid #0b0c0e; border-radius: 3px; background: linear-gradient(#41454c, #2d3035); color: #9aa1ab; font: bold 9px Arial, sans-serif; letter-spacing: 1px; }
-.qc-window .qc-rsel.is-on { background: rgb(255, 150, 40); color: #2a1300; box-shadow: inset 0 0 6px rgba(255,255,255,.45); }
-.qc-rm-lcd { display: flex; flex-direction: column; width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid #000; border-radius: 3px; background: #1d3a1f; box-shadow: inset 0 1px 4px rgba(0,0,0,.8); color: #9cff9c; font: 11px 'Lucida Console', 'Courier New', monospace; }
-.qc-rm-lcd b { font-weight: normal; color: #d6ffd6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* box remote: a boxy control panel (the OSD itself is drawn by the box in its video output, avOsd.js) */
+.qc-remotewin .modal-content { background: var(--qc-bg1); }
+.qc-rm { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+.qc-rm-sel { display: flex; gap: 4px; }
+.qc-window .qc-root .qc-rsel.qc-bk { flex: 1; height: 24px; font: bold 9px Arial, sans-serif; letter-spacing: 1px; }
+.qc-rm-lcd { display: flex; flex-direction: column; padding: 4px 8px; border: 1px solid #000; background: #0b1a0d; box-shadow: var(--qc-well); color: #8dff8d; font: 11px 'Lucida Console', 'Courier New', monospace; }
+.qc-rm-lcd b { font-weight: normal; color: #c9ffc9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qc-rm-lcd span { min-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.qc-rm-err .qc-rm-lcd { background: #3a1d1d; color: #ffb0a8; }
-.qc-rm-row { display: flex; gap: 8px; }
-.qc-window .qc-rk { width: 56px; height: 26px; border: 1px solid #08090a; border-radius: 13px; background: linear-gradient(#4a4e56, #2b2e33); box-shadow: inset 0 1px 0 rgba(255,255,255,.15), 0 2px 2px rgba(0,0,0,.6); color: #e2e6ea; font: bold 10px Arial, sans-serif; letter-spacing: 1px; }
-.qc-window .qc-rk:active, .qc-window .qc-rk.is-press { transform: translateY(1px); box-shadow: inset 0 1px 3px rgba(0,0,0,.7); }
-.qc-window .qc-rk.is-exit { width: 80px; background: linear-gradient(#5a3a3a, #3a2323); }
-.qc-rm-pad { display: grid; grid-template-columns: 50px 56px 50px; grid-template-rows: 44px 56px 44px; gap: 2px; place-items: center; width: 168px; height: 156px; border-radius: 50%; background: radial-gradient(circle, #2a2d32 40%, #1a1c20 70%); box-shadow: inset 0 2px 5px rgba(0,0,0,.7), 0 1px 0 rgba(255,255,255,.08); }
-.qc-window .qc-rm-pad .qc-rk { width: 46px; height: 40px; border-radius: 8px; font-size: 13px; }
-.qc-window .qc-rm-pad .qc-rk.is-up { grid-area: 1 / 2; }
-.qc-window .qc-rm-pad .qc-rk.is-left { grid-area: 2 / 1; }
-.qc-window .qc-rm-pad .qc-rk.is-ok { grid-area: 2 / 2; width: 54px; height: 54px; border-radius: 50%; background: linear-gradient(#3a6db4, #1f467f); font-size: 12px; }
-.qc-window .qc-rm-pad .qc-rk.is-right { grid-area: 2 / 3; }
-.qc-window .qc-rm-pad .qc-rk.is-down { grid-area: 3 / 2; }
-.qc-rm-note { color: #7d848e; font-size: 9px; text-align: center; }
+.qc-rm-err .qc-rm-lcd { background: #1f0b0b; color: #ff9a8f; }
+.qc-rm-main { display: flex; gap: 10px; align-items: stretch; }
+.qc-rm-fn { display: grid; grid-template-columns: 1fr; gap: 4px; width: 78px; }
+.qc-window .qc-root .qc-rm-fn .qc-rk.qc-bk { height: 100%; min-height: 30px; font: bold 10px Arial, sans-serif; letter-spacing: 1px; }
+.qc-rm-pad { display: grid; flex: 1; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 44px); gap: 4px; padding: 6px; border: 1px solid var(--qc-line); background: var(--qc-bg0); box-shadow: var(--qc-well); }
+.qc-window .qc-root .qc-rm-pad .qc-rk.qc-bk { width: 100%; height: 100%; padding: 0; font: bold 13px Arial, sans-serif; }
+.qc-window .qc-root .qc-rm-pad .qc-rk.is-up { grid-area: 1 / 2; }
+.qc-window .qc-root .qc-rm-pad .qc-rk.is-left { grid-area: 2 / 1; }
+.qc-window .qc-root .qc-rm-pad .qc-rk.is-ok { grid-area: 2 / 2; font-size: 12px; letter-spacing: 1px; }
+.qc-window .qc-root .qc-rm-pad .qc-rk.is-right { grid-area: 2 / 3; }
+.qc-window .qc-root .qc-rm-pad .qc-rk.is-down { grid-area: 3 / 2; }
 .qc-side-keys { gap: 2px; }
 .qc-side-keys .qc-bk { height: 21px; font-size: 9px; }
+
+/* 7-segment LCD clocks */
+.qc-lcd { display: inline-flex; align-items: center; gap: 1px; padding: 2px 4px; background: #0a0b0c; border: 1px solid #000; box-shadow: inset 0 1px 3px rgba(0, 0, 0, .9); line-height: 0; }
+.qc-seg { width: 9px; height: 15px; }
+.qc-seg-c { width: 3px; }
+.qc-seg .off { fill: rgba(255, 176, 40, .07); }
+.qc-seg .on { fill: #ffb028; filter: drop-shadow(0 0 2px rgba(255, 160, 30, .7)); }
+.qc-tc.qc-lcd { margin-top: 3px; }
+.qc-tc .qc-seg { width: 8px; height: 13px; }
+.qc-tc .qc-seg .on { fill: #ff4b4f; filter: drop-shadow(0 0 2px rgba(255, 60, 60, .7)); }
+.qc-tc .qc-seg .off { fill: rgba(255, 70, 70, .08); }
+.qc-is-live .qc-tc.qc-lcd { background: #200304; }
+.qc-is-live .qc-tc .qc-seg .on { fill: #fff2f2; filter: drop-shadow(0 0 3px rgba(255, 255, 255, .8)); }
+.qc-tod.qc-lcd { margin-top: 2px; }
+/* LIVE / STOP transport keys */
+.qc-window .qc-root .qc-key.qc-go.qc-bk { width: 130px; letter-spacing: 4px; }
+.qc-window .qc-root .qc-key.qc-stop.qc-bk { width: 64px; }
+.qc-window .qc-root .qc-stop .qc-key-sq { width: 16px; height: 16px; }
+/* every blink is a hard on / off, never a fade */
+.qc-dc.is-blink em i { animation-timing-function: steps(1, end); }
+
+/* readiness lamps as status bar panes */
+.qc-status .qc-checks { display: flex; gap: 0; padding: 0; margin: 0; font-size: 10px; }
+.qc-status .qc-chk { gap: 5px; padding: 0 7px; border-right: 1px solid var(--qc-line); font: bold 9px Arial, sans-serif; letter-spacing: 1px; }
+.qc-status .qc-chk i { width: 8px; height: 8px; border-radius: 1px; }
+.qc-status .qc-chk.is-off i { background: #2a2c30; box-shadow: inset 0 1px 1px #000; }
+.qc-status .qc-chk.is-bad i { animation: qc-blink 1s steps(1, end) infinite; }
+.qc-status .qc-st-obs { max-width: 26%; }
+
+/* preview rate keys on the monitor */
+.qc-pvrate { position: absolute; right: 6px; bottom: 6px; display: flex; gap: 2px; padding: 2px; background: rgba(0, 0, 0, .55); }
+.qc-window .qc-root .qc-pvk.qc-bk { width: 26px; height: 18px; padding: 0; font: bold 9px Arial, sans-serif; letter-spacing: 0; }
+.qc-pv-rt .qc-mon-age { color: #ff6b6b; }
+
+/* INPUT TIMING bars under the diagnostics */
+.qc-dsync { display: flex; flex-direction: column; background: var(--qc-bg0); padding: 2px 0; }
+.qc-sr { display: grid; grid-template-columns: 150px 1fr 54px 32px 44px 1fr 58px; align-items: center; gap: 6px; height: 16px; padding: 0 8px; font: 10px 'Lucida Console', 'Courier New', monospace; color: #cfd6dd; }
+.qc-sr-h { color: #6f7782; font: bold 8px Arial, sans-serif; letter-spacing: 1.5px; }
+.qc-sr-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qc-sr.is-dead .qc-sr-n { color: #ff8a80; }
+.qc-sr-v { text-align: right; font-weight: normal; color: #9fe3b0; }
+.qc-sb { position: relative; height: 7px; background: #24272c; box-shadow: inset 0 1px 1px #000; }
+.qc-sb > s { position: absolute; left: 0; top: 0; bottom: 0; background: #ffb020; }
+.qc-sb-c > i { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: #6f7782; }
+.qc-sb-c > s.qc-sb-off { background: #49d46a; }
+.qc-sb-c > s.qc-sb-off.is-warn { background: #ffb020; }
+.qc-sb-c > s.qc-sb-off.is-bad { background: #ff3b30; animation: qc-blink 0.8s steps(1, end) infinite; }
+.qc-sr-tag { text-align: center; font: bold 8px Arial, sans-serif; letter-spacing: 1px; color: #4a5058; border: 1px solid #2e3237; }
+.qc-sr-tag.is-on { color: #1a1000; background: #ffb020; border-color: #ffb020; }
+.qc-sr-tag.is-ok { color: #9fe3b0; }
+.qc-sr-tag.is-bad { color: #fff; background: #c41e1e; border-color: #c41e1e; animation: qc-blink 0.8s steps(1, end) infinite; }
+.qc-sb-h { font: bold 8px Arial, sans-serif; letter-spacing: 1.5px; }

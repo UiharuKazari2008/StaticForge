@@ -276,13 +276,13 @@ function inputRow(cabinet, feed, satFps) {
     const { machine, stream } = splitNdi(ndi.ndiName);
     const m = askMux(machine);
     const source = machine;
-    const sourceDetail = `NDI "${ndi.ndiName}" (Ruiko source "${ndi.name}")${m.target ? `, OBS at ${m.target.host}:${m.target.port}` : ''}`;
+    const sourceDetail = `NDI "${ndi.ndiName}" (satellite input "${ndi.name}")${m.target ? `, control ${m.target.host}:${m.target.port}` : ''}`;
     if (!m.target) return { source, sourceDetail, stages: [], note: m.resolving ? `Finding ${machine}...` : m.error };
     if (!m.stats) {
         const st = m.timeouts ? 'bad' : 'wait';
         return {
             source, sourceDetail,
-            stages: [stage('link', 'LINK', st, m.timeouts ? 'NO ANSWER' : '...', m.timeouts ? `${machine}'s OBS (${m.target.host}:${m.target.port}) is not answering: ${m.error}. The mux PC may be off, OBS closed, or its websocket server off.` : 'Connecting')],
+            stages: [stage('link', 'LINK', st, m.timeouts ? 'NO ANSWER' : '...', m.timeouts ? `${machine} (control ${m.target.host}:${m.target.port}) is not answering: ${m.error}. The unit may be powered off, or its mixer engine not running.` : 'Connecting')],
             note: ''
         };
     }
@@ -317,7 +317,7 @@ function inputRow(cabinet, feed, satFps) {
         ? `Capture inputs on ${machine}'s program scene "${m.program}" (mux runs ${round1(fps)} fps):\n${caps.map(capLine).join('\n')}`
             + (dead.length ? '\n\nA 0x0 input has no signal: check its cable, the device, or that the game PC outputs video.' : '')
             + (odd.length ? '\n\nA capture at a rate that does not divide into the mux rate (59.94 into 60, 25 into 30) repeats or drops frames unevenly and slides against the other inputs.' : '')
-            + (buffered.length ? '\n\nBuffering on = OBS holds frames to smooth them: smoother, but that input runs behind the others.' : '')
+            + (buffered.length ? '\n\nBuffering on = the mixer holds frames to smooth them: smoother, but that input runs behind the others.' : '')
         : `No capture inputs on "${m.program}"`;
     const capVal = !caps.length ? 'NONE' : dead.length ? `${dead.length} NO SIGNAL` : odd.length ? `${odd.length} FPS MISMATCH` : buffered.length ? `${buffered.length} BUFFERED` : `${caps.length} LIVE`;
 
@@ -342,14 +342,14 @@ function inputRow(cabinet, feed, satFps) {
     if (cpu > 85) ndiState = worst(ndiState, 'warn');
     const ndiDrift = !!(o && o.outputActive && ndiFps != null && fps && w.span() >= 4000 && Math.abs(ndiFps - fps) > fps * 0.05);
     const ndiVal = !o ? 'NO OUTPUT' : !o.outputActive ? 'STOPPED' : `${ndiFps == null ? '-' : round1(ndiFps)} fps`;
-    const ndiDetail = !o ? `${machine} has no NDI output (DistroAV)` : `${m.ndiOutName}${stream ? ` ("${stream}")` : ''}: ${o.outputActive ? 'sending' : 'stopped'}, ${ndiFps == null ? '-' : round1(ndiFps)} fps; ${oLag == null ? '-' : `${oLag}%`} of frames skipped for output (encoding) lag; OBS CPU ${cpu}%.`
+    const ndiDetail = !o ? `${machine} has no NDI output` : `${m.ndiOutName}${stream ? ` ("${stream}")` : ''}: ${o.outputActive ? 'sending' : 'stopped'}, ${ndiFps == null ? '-' : round1(ndiFps)} fps; ${oLag == null ? '-' : `${oLag}%`} of frames skipped for output (encoding) lag; OBS CPU ${cpu}%.`
         + (ndiState === 'ok' ? '' : '\n\nOutput lag = the mux PC cannot encode NDI fast enough (CPU), or its output was stopped.');
 
     // LINK
     const avg = m.rtt.length ? Math.round(m.rtt.reduce((a, b) => a + b, 0) / m.rtt.length) : 0;
     const max = m.rtt.length ? Math.max(...m.rtt) : 0;
     const linkState = m.timeouts ? 'bad' : max > 250 ? 'warn' : avg > 60 ? 'warn' : 'ok';
-    const linkDetail = `${machine}'s OBS answers in ${avg} ms on average (worst ${max} ms) from the Dreamscape server.${m.timeouts ? ` ${m.timeouts} missed: ${m.error}` : ''}`
+    const linkDetail = `${machine}'s control port answers in ${avg} ms on average (worst ${max} ms) from the Dreamscape server.${m.timeouts ? ` ${m.timeouts} missed: ${m.error}` : ''}`
         + (linkState === 'ok' ? '' : avg >= 100
             ? `\n\nOn the same LAN an answer should take a few ms. A steady ${avg} ms means a full queue: a link between ${machine} and Ruiko is saturated. NDI needs about 100 Mb/s at 1080p30 and 150 Mb/s at 1080p60, so a 100 Mb/s port, cable, switch, powerline or Wi-Fi hop fills up, delays everything and drops NDI packets (stutter on Ruiko). Check ${machine}'s link speed (Task Manager > Performance > Ethernet) is 1 Gbps.`
             : '\n\nSlow answers on the LAN usually mean a busy mux PC, a bad cable / switch port, or Wi-Fi.');

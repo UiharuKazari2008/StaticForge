@@ -25,12 +25,40 @@
     const doc = document;
     const A = '/melaton-apps/quickcast/assets';
     const VERSION = '1.0.0734';
+    // 7-segment LCD digits (broadcast gear clocks): lit segments over dim ghost segments
+    const SEG = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', '-': 'g', ' ': '' };
+    const SEG_PATH = {
+        a: 'M2 1h8l-1.5 1.5h-5z', b: 'M10.5 1.5v8l-1.5-1v-5.5z', c: 'M10.5 10.5v8l-1.5-1.5v-5.5z', d: 'M2 19h8l-1.5-1.5h-5z',
+        e: 'M1.5 10.5v8l1.5-1.5v-5.5z', f: 'M1.5 1.5v8l1.5-1v-5.5z', g: 'M2.5 10l1.5-1h4l1.5 1-1.5 1h-4z'
+    };
+    const segChar = (ch) => {
+        if (ch === ':') return '<svg class="qc-seg qc-seg-c" viewBox="0 0 4 20" aria-hidden="true"><rect class="on" x="1" y="5.5" width="2" height="2"/><rect class="on" x="1" y="12.5" width="2" height="2"/></svg>';
+        if (ch === '.') return '<svg class="qc-seg qc-seg-c" viewBox="0 0 4 20" aria-hidden="true"><rect class="on" x="1" y="17" width="2" height="2"/></svg>';
+        const lit = SEG[ch] == null ? '' : SEG[ch];
+        return `<svg class="qc-seg" viewBox="0 0 12 20" aria-hidden="true">${Object.keys(SEG_PATH).map((k) => `<path class="${lit.includes(k) ? 'on' : 'off'}" d="${SEG_PATH[k]}"/>`).join('')}</svg>`;
+    };
+    const segs = (text) => String(text).split('').map(segChar).join('');
+    const setSegs = (el, text) => {
+        if (!el || el.dataset.text === text) return;
+        el.dataset.text = text;
+        el.innerHTML = segs(text);
+        el.setAttribute('aria-label', text);
+    };
+    const checksAuthTip = (st) => {
+        const a = st.youtube && st.youtube.account;
+        if (a && a.signedIn) return `Signed in to YouTube as ${(a.profile && a.profile.title) || a.channel || 'a channel'}: VisionCaster makes the broadcast`;
+        return a && a.apiKey ? 'YouTube API key only: chat can be read; sign in (Settings > Account) to set titles and reply' : 'Not signed in to YouTube: YouTube Studio\'s settings apply';
+    };
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
     const pad = (n) => String(n).padStart(2, '0');
     const clock = (t) => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
     const STATUS_MS = 200;
     const PREVIEW_MS = 500;
+    // preview rates: frames a second from still grabs, or RT = a realtime MJPEG stream
+    const PV_RATES = [{ id: 'off', label: 'OFF', fps: 0 }, { id: '1', label: '1', fps: 1 }, { id: '2', label: '2', fps: 2 }, { id: '5', label: '5', fps: 5 }, { id: 'rt', label: 'RT', fps: 0 }];
+    const lsGet = (k, d) => { try { const v = root.localStorage.getItem(k); return v == null ? d : v; } catch (_) { return d; } };
+    const lsSet = (k, v) => { try { root.localStorage.setItem(k, v); } catch (_) { /* private mode */ } };
     const METER_MIN = -60;
     const DECAY_DB_S = 24;      // meter fall-back, PPM-like
     const PEAK_HOLD_MS = 1500;
@@ -97,9 +125,9 @@
             m.style.width = `${Math.min(1160, root.innerWidth - 40)}px`;
             m.style.height = `${Math.min(620, root.innerHeight - 60)}px`;
             m.setAttribute('role', 'dialog');
-            m.setAttribute('aria-label', 'QuickCast');
+            m.setAttribute('aria-label', 'VisionCaster');
             m.innerHTML = `
-                <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${A}/quickcast-16.png" alt=""><span>QuickCast - Live Broadcast Launcher</span></div></div>
+                <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${A}/quickcast-16.png" alt=""><span>VisionCaster - Video Mixer Remote</span></div></div>
                 <div class="modal-focus-overlay"></div>
                 <div class="modal-window-controls">
                     <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
@@ -111,9 +139,9 @@
                         <div class="qc-brand"><img class="qc-avlogo" src="${A}/amusementvision-logo.png" alt="AmusementVISION" width="252" height="36"><span class="qc-brand-sub"><span class="qc-word">QUICK<b>CAST</b></span><small>Live Broadcast Launcher</small></span></div>
                         <span class="qc-fill"></span>
                         <button type="button" class="qc-yt"><span class="qc-yt-dot"></span><img class="qc-yt-av" alt="" width="34" height="34" referrerpolicy="no-referrer" hidden><span class="qc-yt-names"><span class="qc-yt-text">YouTube: not signed in</span><small class="qc-yt-sub"></small><small class="qc-yt-live"></small></span><span class="qc-yt-arrow"></span></button>
-                        <button type="button" class="qc-tb qc-copy" data-qc="copyurl" hidden title="Copy the stream's YouTube link">COPY STREAM URL</button>
-                        <div class="qc-tally"><span class="qc-tally-text">OFF AIR</span><span class="qc-tc">--:--:--</span></div>
-                        <div class="qc-todbox" title="Time of day"><em>TOD</em><b class="qc-tod">--:--:--</b></div>
+                        <button type="button" class="qc-tb qc-copy" data-qc="copyurl" hidden title="Copy the broadcast's YouTube watch link">COPY WATCH LINK</button>
+                        <div class="qc-tally"><span class="qc-tally-text">OFF AIR</span><span class="qc-tc qc-lcd" title="Time on air">${segs('--:--:--')}</span></div>
+                        <div class="qc-todbox" title="Time of day"><em>TOD</em><span class="qc-tod qc-lcd">${segs('--:--:--')}</span></div>
                     </div>
                     <div class="qc-titlebar">
                         <label class="qc-title-label" for="qcTitleInput">TITLE</label>
@@ -127,6 +155,7 @@
                                 <div class="qc-noimg">NO SIGNAL</div>
                                 <div class="qc-mon-tag"><span class="qc-mon-kind">PREVIEW</span><span class="qc-mon-name"></span></div>
                                 <div class="qc-mon-age"></div>
+                                <div class="qc-pvrate" title="Preview frame rate: lower it when you are not watching, RT (realtime stream) when hunting a problem">${PV_RATES.map((r) => `<button type="button" class="qc-bk qc-pvk k-white" data-pv="${r.id}">${r.label}</button>`).join('')}</div>
                                 <div class="qc-mon-busy"><span class="qc-spin"></span><span class="qc-mon-busy-text"></span></div>
                             </div>
                             <div class="qc-diag">
@@ -134,24 +163,17 @@
                                 <div class="qc-drow" data-row="output"><span class="qc-drow-h"><em>OUTPUT</em><b>SATELLITE</b><small class="qc-drow-src">RUIKO</small></span><div class="qc-dcells"></div></div>
                                 <div class="qc-drow" data-row="input"><span class="qc-drow-h"><em>INPUT</em><b>CABINET</b><small class="qc-drow-src">-</small></span><div class="qc-dcells"></div></div>
                                 <div class="qc-dverdict is-off"><i></i><span class="qc-dverdict-text">-</span></div>
+                                <div class="qc-dsync" hidden></div>
                             </div>
-                            <div class="qc-srcs"><div class="qc-head qc-srcs-head">SOURCES ON AIR <small>(stream mix with this scene on program)</small><button type="button" class="qc-mini qc-srcs-tog" data-qc="togglesrcs" title="Show or hide the source list">HIDE</button></div><div class="qc-srclist"></div></div>
+                            <div class="qc-srcs"><div class="qc-head qc-srcs-head">INPUTS ON AIR <small>(program audio mix)</small><button type="button" class="qc-mini qc-srcs-tog" data-qc="togglesrcs" title="Show or hide the source list">HIDE</button></div><div class="qc-srclist"></div></div>
                         </div>
                         <div class="qc-side">
                         <div class="qc-sat">
-                            <div class="qc-head">SATELLITE SERVER <small class="qc-sat-name">RUIKO</small></div>
+                            <div class="qc-head">SATELLITE ENCODER <small class="qc-sat-name">-</small></div>
                             <div class="qc-sat-body">
-                                <div class="qc-link"><span class="qc-lamp"></span><span class="qc-link-text">OBS: OFFLINE</span></div>
+                                <div class="qc-link"><span class="qc-lamp"></span><span class="qc-link-text">LINK DOWN</span></div>
                                 <div class="qc-sat-host">-</div>
-                                <div class="qc-sat-pwr"><span class="qc-xl">OBS</span><button type="button" class="qc-bk qc-xk k-green" data-qc="obson" title="Start OBS on the satellite server">ON</button><button type="button" class="qc-bk qc-xk k-red" data-qc="obsoff" title="Close OBS on the satellite server">OFF</button></div>
-                                <div class="qc-checks">
-                                    <span class="qc-chk" data-chk="obs"><i></i>OBS</span>
-                                    <span class="qc-chk" data-chk="scene"><i></i>Scene</span>
-                                    <span class="qc-chk" data-chk="profile"><i></i>Profile</span>
-                                    <span class="qc-chk" data-chk="key"><i></i>Stream key</span>
-                                    <span class="qc-chk" data-chk="video"><i></i>Picture</span>
-                                    <span class="qc-chk" data-chk="audio"><i></i>Sound</span>
-                                </div>
+                                <div class="qc-sat-pwr"><span class="qc-xl">ENGINE</span><button type="button" class="qc-bk qc-xk k-green" data-qc="obson" title="Start the satellite's encoder engine">ON</button><button type="button" class="qc-bk qc-xk k-red" data-qc="obsoff" title="Shut down the satellite's encoder engine">OFF</button></div>
                             </div>
                         </div>
                         <div class="qc-vu">
@@ -174,10 +196,12 @@
                             <button type="button" class="qc-bk k-white" data-qc="chat">LIVE CHAT</button>
                             <button type="button" class="qc-bk k-white" data-qc="settings">SETTINGS</button>
                         </div>
-                        <button type="button" class="qc-bk qc-key qc-go k-red" data-qc="golive" disabled><span class="qc-key-dot"></span>GO LIVE</button>
-                        <button type="button" class="qc-bk qc-key qc-stop k-white" data-qc="stop" disabled><span class="qc-key-sq"></span>STOP</button>
+                        <button type="button" class="qc-bk qc-key qc-go k-red" data-qc="golive" disabled title="Go live">LIVE</button>
+                        <button type="button" class="qc-bk qc-key qc-stop k-white" data-qc="stop" disabled title="Stop the stream" aria-label="Stop"><span class="qc-key-sq"></span></button>
                     </div>
-                    <div class="qc-status"><span class="qc-st-main">Ready</span><span class="qc-st-obs">-</span><span class="qc-st-time">-</span></div>
+                    <div class="qc-status"><span class="qc-st-main">Ready</span><span class="qc-checks">
+                        <span class="qc-chk" data-chk="obs"><i></i>LINK</span><span class="qc-chk" data-chk="scene"><i></i>PGM</span><span class="qc-chk" data-chk="profile"><i></i>PRESET</span><span class="qc-chk" data-chk="key"><i></i>UPLINK</span><span class="qc-chk" data-chk="auth"><i></i>AUTH</span><span class="qc-chk" data-chk="video"><i></i>VIDEO</span><span class="qc-chk" data-chk="audio"><i></i>AUDIO</span>
+                    </span><span class="qc-st-obs">-</span><span class="qc-st-time">-</span></div>
                 </div></div>`;
             doc.body.appendChild(m);
             this.modal = m;
@@ -237,7 +261,7 @@
             requestAnimationFrame(place);
             setTimeout(place, 60);
             if (root.programFaults && root.programFaults.registerProgram) {
-                root.programFaults.registerProgram(m.id, { name: 'QuickCast', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'quickcast' }) });
+                root.programFaults.registerProgram(m.id, { name: 'VisionCaster', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'quickcast' }) });
             }
         }
 
@@ -254,17 +278,17 @@
             switch (name) {
                 case 'file': return [{ text: 'Exit', action: 'exit' }];
                 case 'stream': return [
-                    { text: 'Go Live', action: 'golive', disabled: live || !this.canGo() },
-                    { text: 'Stop Stream', action: 'stop', disabled: !live },
+                    { text: 'Take to Air', action: 'golive', disabled: live || !this.canGo() },
+                    { text: 'End Broadcast', action: 'stop', disabled: !live },
                     { separator: true },
                     { text: 'Broadcast Settings...', action: 'settings' },
                     { text: 'Encoder Settings...', action: 'encoder' },
-                    { text: 'Stream Key and YouTube Account...', action: 'key' },
+                    { text: 'Uplink Key and YouTube Account...', action: 'key' },
                     { text: 'Live Chat', action: 'chat' },
-                    { text: 'Start OBS on Ruiko', action: 'launch', disabled: online },
-                    { text: 'Copy Stream URL', action: 'copyurl', disabled: !this.streamUrl() },
+                    { text: 'Start Satellite Engine', action: 'launch', disabled: online },
+                    { text: 'Copy Watch Link', action: 'copyurl', disabled: !this.streamUrl() },
                     { text: 'Open Watch Page', action: 'watch', disabled: !this.streamUrl() }];
-                case 'help': return [{ text: 'About QuickCast...', action: 'about' }];
+                case 'help': return [{ text: 'About VisionCaster...', action: 'about' }];
                 default: return [];
             }
         }
@@ -282,10 +306,10 @@
                 case 'updatetitle': await this.updateLiveTitle(); break;
                 case 'togglesrcs': this.showSources(!this.sourcesShown); break;
                 case 'launch':
-                case 'obson': await this.run('Starting OBS on the satellite server...', 'quickcast_launch', {}); break;
+                case 'obson': await this.run(`Starting ${this.satName()}'s encoder engine...`, 'quickcast_launch', {}); break;
                 case 'obsoff':
-                    if (!await this.ask('Switch OBS off on the satellite server (Ruiko)?\n\nOBS closes; the NDI feeds it sends stop too. Turn it back on with OBS ON or by picking a cabinet.')) break;
-                    await this.run('Closing OBS on the satellite server...', 'quickcast_obs_off', {});
+                    if (!await this.ask(`Shut down ${this.satName()}'s encoder engine?\n\nIts outputs (and the NDI feeds it sends) stop too. Bring it back with ENGINE ON or by taking a cabinet.`)) break;
+                    await this.run(`Shutting down ${this.satName()}'s encoder engine...`, 'quickcast_obs_off', {});
                     break;
                 case 'watch': if (this.streamUrl()) root.open(this.streamUrl(), '_blank', 'noopener'); break;
                 case 'copyurl': await this.copyUrl(); break;
@@ -300,7 +324,7 @@
             let r = await root.wsClient.sendMessage(type, data || {}, false);
             if (r && r.data !== undefined) r = r.data;
             if (r && r.error) {
-                const err = new Error(r.error.details || r.error.message || 'QuickCast error');
+                const err = new Error(r.error.details || r.error.message || 'VisionCaster error');
                 err.code = r.error.code;
                 throw err;
             }
@@ -337,30 +361,57 @@
                 this.render();
                 setTimeout(poll, STATUS_MS);
             };
+            this.pvRate = PV_RATES.some((r) => r.id === lsGet('visioncaster.pvRate', '2')) ? lsGet('visioncaster.pvRate', '2') : '2';
+            this.rtFor = '';
+            const pic = () => this.el('.qc-pic');
+            const stopRt = () => { if (this.rtFor) { this.rtFor = ''; pic().removeAttribute('src'); } };
             const shot = async () => {
-                if (sig.aborted) return;
+                if (sig.aborted) { stopRt(); return; }
                 const c = this.cabinet;
                 const st = this.st;
                 const cab = st && st.cabinets.find((x) => x.id === c);
-                if (c && st && st.obs.state === 'online' && cab && cab.present && !doc.hidden) {
+                const ready = c && st && st.obs.state === 'online' && cab && cab.present && !doc.hidden;
+                const rate = PV_RATES.find((r) => r.id === this.pvRate) || PV_RATES[2];
+                if (rate.id !== 'rt' || !ready || this.rtFor !== c) stopRt();
+                if (ready && rate.id === 'rt') {
+                    if (this.rtFor !== c) {
+                        try {
+                            const t = await this.send('quickcast_live_ticket', { cabinet: c, width: 960 });
+                            this.rtFor = c;
+                            pic().src = t.url;
+                            this.previewFor = c;
+                            this.previewAt = 0;
+                        } catch (_) { this.previewFor = ''; }
+                    }
+                } else if (ready && rate.fps) {
                     try {
                         const r = await this.send('quickcast_preview', { cabinet: c, width: 640 });
-                        if (r.cabinet === this.cabinet && r.image) {
-                            this.el('.qc-pic').src = r.image;
+                        if (r.cabinet === this.cabinet && r.image && this.pvRate !== 'rt') {
+                            pic().src = r.image;
                             this.previewFor = r.cabinet;
                             this.previewAt = r.at;
                         }
                     } catch (_) { this.previewFor = ''; }
-                } else this.previewFor = '';
-                setTimeout(shot, PREVIEW_MS);
+                } else if (!ready) this.previewFor = ''; // OFF keeps the last frame on the monitor
+                this.shotT = setTimeout(shot, rate.fps ? 1000 / rate.fps : 500);
             };
+            this.setPvRate = (id) => {
+                this.pvRate = id;
+                lsSet('visioncaster.pvRate', id);
+                this.modal.querySelectorAll('.qc-pvk').forEach((b) => { const on = b.dataset.pv === id; b.classList.toggle('is-on', on); b.classList.toggle('k-orange', on && id !== 'rt'); b.classList.toggle('k-red', on && id === 'rt'); b.classList.toggle('k-white', !on); });
+                this.modal.classList.toggle('qc-pv-off', id === 'off');
+                this.modal.classList.toggle('qc-pv-rt', id === 'rt');
+                clearTimeout(this.shotT);
+                void shot();
+            };
+            this.modal.querySelectorAll('.qc-pvk').forEach((b) => b.addEventListener('click', () => this.setPvRate(b.dataset.pv)));
             const ctl = async () => {
                 if (sig.aborted) return;
                 if (this.cabinet && !doc.hidden && !this.ctlBusy) await this.loadControls(false);
                 setTimeout(ctl, 6000);
             };
             void poll();
-            void shot();
+            this.setPvRate(this.pvRate);
             setTimeout(ctl, 800);
             const frame = (now) => {
                 if (sig.aborted) return;
@@ -373,9 +424,9 @@
             requestAnimationFrame(frame);
             const tick = setInterval(() => {
                 this.el('.qc-st-time').textContent = clock(Date.now());
-                this.el('.qc-tod').textContent = clock(Date.now());
+                setSegs(this.el('.qc-tod'), clock(Date.now()));
                 const age = this.previewAt ? Math.round((Date.now() - this.previewAt) / 100) / 10 : null;
-                this.el('.qc-mon-age').textContent = this.previewFor && age != null ? `${clock(this.previewAt)}  (${age.toFixed(1)} s)` : '';
+                this.el('.qc-mon-age').textContent = this.pvRate === 'rt' && this.rtFor ? 'REALTIME' : this.pvRate === 'off' ? 'PREVIEW HELD' : this.previewFor && age != null ? `${clock(this.previewAt)}  (${age.toFixed(1)} s)` : '';
             }, 250);
             sig.addEventListener('abort', () => clearInterval(tick));
         }
@@ -393,12 +444,13 @@
             if (live && st.programCabinet && !this.busy) this.cabinet = st.programCabinet;
 
             // link lamp, tally
-            const linkText = st.obs.state === 'launching' ? `OBS: STARTING (${Math.round(st.obs.launchingFor / 1000)} s)` : online ? `OBS ${st.obs.version ? `WS ${st.obs.version}` : ''}: ONLINE` : 'OBS: OFFLINE';
-            q('.qc-link-text').textContent = st.obs.state === 'stopping' ? 'OBS: CLOSING' : linkText;
+            const linkText = st.obs.state === 'launching' ? `ENGINE STARTING (${Math.round(st.obs.launchingFor / 1000)} s)` : online ? 'LINK OK' : 'LINK DOWN';
+            q('.qc-link-text').textContent = st.obs.state === 'stopping' ? 'ENGINE SHUTDOWN' : linkText;
             // satellite server pane: host, OBS power keys
-            const sat = st.satellite || { name: 'Ruiko', host: '' };
+            const sat = st.satellite || { name: 'SATELLITE', host: '' };
             q('.qc-sat-name').textContent = String(sat.name || '').toUpperCase();
-            q('.qc-sat-host').textContent = sat.host ? `obs-websocket ${sat.host}` : '-';
+            q('.qc-sat-host').textContent = [sat.model, sat.host].filter(Boolean).join(' \u00b7 ') || '-';
+            q('.qc-sat-host').title = sat.model ? `${sat.name}: ${sat.model}, control ${sat.host}` : sat.host;
             const pwrOn = q('[data-qc="obson"]');
             const pwrOff = q('[data-qc="obsoff"]');
             const changing = st.obs.state === 'launching' || st.obs.state === 'stopping';
@@ -406,13 +458,13 @@
             pwrOff.classList.toggle('is-on', !online && !changing);
             pwrOn.disabled = !!this.busy || online || changing;
             pwrOff.disabled = !!this.busy || !online || changing || live;
-            pwrOff.title = live ? 'Stop the stream first' : 'Close OBS on the satellite server';
+            pwrOff.title = live ? 'End the broadcast first' : `Shut down ${sat.name}'s encoder engine`;
             this.modal.classList.toggle('qc-is-online', online);
             this.modal.classList.toggle('qc-is-launching', st.obs.state === 'launching');
             this.modal.classList.toggle('qc-is-live', live);
             this.modal.classList.toggle('qc-is-reconnecting', live && st.stream.reconnecting);
             q('.qc-tally-text').textContent = live ? (st.stream.reconnecting ? 'RECONNECTING' : 'ON AIR') : 'OFF AIR';
-            q('.qc-tc').textContent = live ? String(st.stream.timecode).slice(0, 8) : '--:--:--';
+            setSegs(q('.qc-tc'), live ? String(st.stream.timecode).slice(0, 8) : '--:--:--');
             if (this.wasLive && !live && !this.busy) this.flash('The stream has ended.');
             this.wasLive = live;
 
@@ -449,7 +501,7 @@
             this.modal.classList.toggle('qc-pic-air', !!onAirPic);
             const hasPic = !!(this.previewFor && this.previewFor === this.cabinet);
             this.modal.classList.toggle('qc-has-pic', hasPic);
-            q('.qc-noimg').textContent = !online ? (st.obs.state === 'launching' ? 'STARTING OBS' : 'OBS OFFLINE') : !cab ? 'PICK A CABINET' : 'NO SIGNAL';
+            q('.qc-noimg').textContent = !online ? (st.obs.state === 'launching' ? 'ENGINE STARTING' : 'SATELLITE OFFLINE') : !cab ? 'TAKE A CABINET' : 'NO SIGNAL';
 
             // pipeline diagnostics: output (Ruiko) row, input (cabinet mux) row, verdict
             this.renderDiag(st);
@@ -471,15 +523,17 @@
                 profile: !online ? 'off' : st.profile === st.want.profile ? 'ok' : 'wait',
                 key: st.key.set ? 'ok' : 'bad',
                 video: !online || !cab ? 'off' : picOk ? 'ok' : hasPic ? 'warn' : 'bad',
-                audio: !online || !st.master ? 'off' : sound ? 'ok' : 'warn'
+                audio: !online || !st.master ? 'off' : sound ? 'ok' : 'warn',
+                auth: st.youtube && st.youtube.account && st.youtube.account.signedIn ? 'ok' : st.youtube && st.youtube.account && st.youtube.account.apiKey ? 'warn' : 'off'
             };
             const tips = {
-                obs: online ? `OBS on Ruiko is connected${st.obs.version ? ` (obs-websocket ${st.obs.version})` : ''}` : st.obs.state === 'launching' ? 'Starting OBS on Ruiko...' : `OBS is not connected${st.obs.error ? `: ${st.obs.error}` : ''}. Pick a cabinet to start it.`,
+                obs: online ? `Control link to ${this.satName()} is up` : st.obs.state === 'launching' ? `${this.satName()}'s encoder engine is starting...` : `No control link to ${this.satName()}${st.obs.error ? `: ${st.obs.error}` : ''}. Take a cabinet to start its engine.`,
                 scene: cab ? (st.programCabinet === cab.id ? `"${cab.scene}" is on program` : `"${cab.scene}" goes on program when you pick the cabinet or go live`) : 'Pick a cabinet',
-                profile: st.profile === st.want.profile ? `OBS uses the ${st.want.profile} profile` : `OBS switches from "${st.profile || '-'}" to the ${st.want.profile} profile on Go Live`,
-                key: st.key.set ? `YouTube stream key ${st.key.hint}` : 'No YouTube stream key: Stream > Stream Key...',
-                video: picOk ? 'The picture has content' : hasPic ? 'The picture is black or one flat colour' : 'No picture from OBS yet',
-                audio: sound ? 'Sound in the last 3 seconds' : `Nothing above ${AUDIO_OK_DB} dB in the last 3 seconds`
+                profile: st.profile === st.want.profile ? `Output preset ${st.want.profile} loaded` : `The output preset changes from "${st.profile || '-'}" to ${st.want.profile} on LIVE`,
+                key: st.key.set ? `Uplink key ${st.key.hint}` : 'No uplink key: Stream > Uplink Key...',
+                video: picOk ? 'Video present' : hasPic ? 'Video is black or one flat colour' : 'No video from the satellite yet',
+                audio: sound ? 'Sound in the last 3 seconds' : `Nothing above ${AUDIO_OK_DB} dB in the last 3 seconds`,
+                auth: checksAuthTip(st)
             };
             this.checks = checks;
             Object.entries(checks).forEach(([k, s]) => {
@@ -508,20 +562,21 @@
             const copy = q('.qc-copy');
             copy.hidden = !(live && this.streamUrl());
             ti.disabled = false;
-            ti.title = signed ? 'The YouTube title. Enter saves it (while live: changes the live title).' : 'Saved for the next stream. Sign in to YouTube (Settings > Account) so QuickCast can set it.';
+            ti.title = signed ? 'The YouTube title. Enter saves it (while live: changes the live title).' : 'Saved for the next stream. Sign in to YouTube (Settings > Account) so VisionCaster can set it.';
             const tu = q('.qc-title-update');
             tu.hidden = !(live && signed);
             tu.disabled = !!this.busy || !ti.value.trim();
 
             // keys
             q('.qc-go').disabled = live || !this.canGo();
-            // GO LIVE: a slow dull red flash while armed (ready, not live), solid red only on air
+            // LIVE: an on / off flash while armed (ready, not live), solid red only on air
             q('.qc-go').classList.toggle('is-armed', !live && !q('.qc-go').disabled);
             q('.qc-go').classList.toggle('is-on', live);
-            q('.qc-stop').classList.toggle('is-on', false);
-            q('.qc-go').title = live ? 'Already on air' : this.busy ? this.busy : !cab ? 'Pick a cabinet first' : !st.key.set ? 'Set the YouTube stream key first (Stream > Stream Key...)' : st.obs.state === 'launching' ? 'OBS is starting on Ruiko' : online && !cab.present ? `The scene "${cab.scene}" is missing from OBS` : `Go live on YouTube with ${cab.name}`;
+            // transport STOP: lit while stopped (not live), dark while on air until pressed
+            q('.qc-stop').classList.toggle('is-on', !live);
+            q('.qc-go').title = live ? 'Already on air' : this.busy ? this.busy : !cab ? 'Take a cabinet first' : !st.key.set ? 'Set the uplink key first (Stream > Uplink Key...)' : st.obs.state === 'launching' ? `${this.satName()}'s encoder engine is starting` : online && !cab.present ? `The layout "${cab.scene}" is missing on ${this.satName()}` : `Take ${cab.name} to air on YouTube`;
             q('.qc-stop').disabled = !live || !!this.busy;
-            q('.qc-st-obs').textContent = online ? `${st.collection || '-'} / ${st.profile || '-'} / ${st.program || '-'}` : (st.obs.error || 'OBS offline');
+            q('.qc-st-obs').textContent = online ? `PGM ${st.program || '-'} \u00b7 PRESET ${st.profile || '-'}` : (st.obs.error || 'Satellite offline');
             if (!this.busy && !this.flashT) q('.qc-st-main').textContent = live ? `Live: ${cab ? cab.name : st.program}` : 'Ready';
         }
 
@@ -574,14 +629,46 @@
                 });
             };
             const online = st.obs && st.obs.state === 'online';
-            rowOf('output', d && d.output, online ? '...' : 'OBS on Ruiko is not connected');
-            rowOf('input', d && d.input, !this.cabinet ? 'Pick a cabinet to check its mux PC' : online ? '...' : 'Needs OBS on Ruiko to find the cabinet feed');
-            const v = (d && d.verdict) || { state: 'off', text: online ? '' : 'OBS offline' };
+            rowOf('output', d && d.output, online ? '...' : 'No link to the satellite encoder');
+            rowOf('input', d && d.input, !this.cabinet ? 'Take a cabinet to check its mixer' : online ? '...' : 'Needs the satellite link to find the cabinet feed');
+            this.renderSync(d && d.input);
+            const v = (d && d.verdict) || { state: 'off', text: online ? '' : 'Satellite offline' };
             const vb = q('.qc-dverdict');
             vb.className = `qc-dverdict is-${v.state}`;
             vb.querySelector('.qc-dverdict-text').textContent = v.text ? `DIAG: ${v.text}` : 'DIAG: -';
             const bad = v.stage && [...(d.input.stages || []), ...(d.output.stages || [])].find((x) => x.id === v.stage);
-            vb.title = bad ? bad.detail : 'Hover a stage for its numbers. Signal order: cabinet capture > mixer > NDI out > link > Ruiko NDI RX > render > encoder > network > YouTube.';
+            vb.title = bad ? bad.detail : 'Hover a stage for its numbers. Signal order: cabinet capture > mixer > NDI out > link > satellite NDI RX > render > encoder > network > YouTube.';
+        }
+
+        /**
+         * INPUT TIMING: per cabinet capture, how far behind the others it runs. Bars: the delay set on it
+         * (0-500 ms), buffering (holds frames), its frame rate against the mixer's, and the last AUTO ALIGN
+         * offset of the camera against the game (centred on 0, +/-250 ms).
+         */
+        renderSync(input) {
+            const box = this.el('.qc-dsync');
+            const caps = (input && input.captures) || [];
+            box.hidden = !caps.length;
+            if (!caps.length) return;
+            const al = input.align;
+            const mixFps = input.fps || 0;
+            const fits = (a, b) => Math.abs(a / b - Math.round(a / b)) < 0.0002;
+            const rows = caps.map((c) => {
+                const late = (c.delayMs || 0) + (c.buffering === 'on' ? 100 : 0); // buffering holds ~ several frames
+                const fpsBad = c.fps && mixFps && !fits(mixFps, c.fps) && !fits(c.fps, mixFps);
+                const off = al && al.offMs != null && al.cam === c.name ? al.offMs : null;
+                const offBar = off == null ? '' : `<s class="qc-sb-off${Math.abs(off) > 40 ? ' is-bad' : Math.abs(off) > 17 ? ' is-warn' : ''}" style="left:${off >= 0 ? 50 : Math.max(0, 50 + off / 5)}%;width:${Math.max(1, Math.min(50, Math.abs(off) / 5))}%"></s>`;
+                return `<div class="qc-sr${!c.width ? ' is-dead' : ''}" title="${esc(c.name)}: ${c.width}x${c.height}${c.fps ? `, ${c.fps} fps set` : ''}, delay ${c.delayMs || 0} ms, buffering ${c.buffering || 'n/a'}${c.syncMs ? `, audio ${c.syncMs} ms` : ''}${off != null ? `, camera ${off > 0 ? 'late' : 'early'} ${Math.abs(off)} ms at the last align` : ''}">
+                    <span class="qc-sr-n">${esc(c.name)}</span>
+                    <span class="qc-sb" title="Delay set on this input"><s style="width:${Math.min(100, late / 5)}%"></s></span><b class="qc-sr-v">${late} ms</b>
+                    <span class="qc-sr-tag${c.buffering === 'on' ? ' is-on' : ''}">BUF</span>
+                    <span class="qc-sr-tag${fpsBad ? ' is-bad' : c.fps ? ' is-ok' : ''}">${c.fps ? `${c.fps}` : '--'}</span>
+                    <span class="qc-sb qc-sb-c" title="Last AUTO ALIGN: camera against the game"><i></i>${offBar}</span><b class="qc-sr-v">${off == null ? '-' : `${off > 0 ? '+' : ''}${off} ms`}</b>
+                </div>`;
+            }).join('');
+            const head = `<div class="qc-sr qc-sr-h"><span class="qc-sr-n">INPUT TIMING</span><span class="qc-sb-h">DELAY</span><b class="qc-sr-v"></b><span class="qc-sr-tag">BUF</span><span class="qc-sr-tag">FPS</span><span class="qc-sb-h">CAM vs GAME${al && al.running ? ' (MEASURING)' : ''}</span><b class="qc-sr-v"></b></div>`;
+            const html = head + rows;
+            if (box.dataset.html !== html) { box.dataset.html = html; box.innerHTML = html; }
         }
 
         renderSources(inputs) {
@@ -657,7 +744,7 @@
             this.renderControls();
             void this.loadControls(false);
             this.render();
-            const text = st && st.obs.state !== 'online' ? 'Starting OBS on Ruiko...' : live ? `Switching the stream to ${cab.name}...` : `Getting ${cab.name} ready...`;
+            const text = st && st.obs.state !== 'online' ? `Starting ${this.satName()}'s encoder engine...` : live ? `Switching the stream to ${cab.name}...` : `Getting ${cab.name} ready...`;
             const r = await this.run(text, 'quickcast_prepare', { cabinet: id, confirmed: live });
             if (r && r.ok) this.flash(`${cab.name} is ready${r.steps && r.steps.length ? ` (${r.steps.join(', ')} switched)` : ''}.`);
         }
@@ -670,7 +757,7 @@
             const warn = [];
             if (c.video !== 'ok') warn.push('- No picture: the preview is black, flat or missing.');
             if (c.audio !== 'ok') warn.push(`- No sound: nothing above ${AUDIO_OK_DB} dB in the last 3 seconds.`);
-            if (c.obs !== 'ok') warn.push('- OBS is not running yet: it starts on Ruiko first.');
+            if (c.obs !== 'ok') warn.push(`- ${this.satName()}'s encoder engine is not running yet: it starts first.`);
             if (warn.length && !await this.ask(`Go live with ${cab.name} anyway?\n\n${warn.join('\n')}`)) return;
             const title = this.el('.qc-title').value.trim();
             if (st.youtube && st.youtube.account.signedIn && !title) { await this.box('Enter a stream title first.', 'warning'); return; }
@@ -688,10 +775,14 @@
 
         // ---------------------------------------------------------------- windows
 
+        /** The satellite unit's name, as on its panel. */
+        satName() { return (this.st && this.st.satellite && this.st.satellite.name) || 'SATELLITE'; }
+
         openWin(o) {
             const id = `melatonQuickCastWin-${++this.winSeq}`;
             const m = doc.createElement('div');
-            m.className = `modal hidden ${o.resizable ? 'resizeable-window' : 'on-top'} qc-window qc-child ${o.cls || ''}`;
+            // QuickCast's own panels (remote, chat, settings) are tool windows of the main window
+            m.className = `modal hidden ${o.resizable ? 'resizeable-window' : 'on-top'} tool-window qc-window qc-child ${o.cls || ''}`;
             m.id = id;
             m.dataset.windowIdentifier = `melatonQuickCast-${o.kind}`;
             m.dataset.windowRestorePosition = o.resizable ? 'true' : 'false';
@@ -886,7 +977,7 @@
                 t.remove();
             }
             const b = this.el('.qc-copy');
-            if (ok) { b.textContent = 'COPIED!'; b.classList.add('is-done'); setTimeout(() => { b.textContent = 'COPY STREAM URL'; b.classList.remove('is-done'); }, 1500); this.flash(`Copied ${url}`); } else await this.box(`Copy this link:\n\n${url}`, 'info');
+            if (ok) { b.textContent = 'COPIED!'; b.classList.add('is-done'); setTimeout(() => { b.textContent = 'COPY WATCH LINK'; b.classList.remove('is-done'); }, 1500); this.flash(`Copied ${url}`); } else await this.box(`Copy this link:\n\n${url}`, 'info');
         }
 
         /** The channel chip's menu: saved channels (switch), add one, sign out, account settings. */
@@ -908,7 +999,7 @@
                 this.settingsWin('account');
                 setTimeout(() => { const w = [...this.children].find((c) => c.kind === 'settings'); const b = w && w.modal.querySelector('[data-act="signin"]'); if (b && !b.disabled) b.click(); }, 800);
             } else if (act === 'out') {
-                if (await this.ask(`Sign QuickCast out of ${a.profile ? a.profile.title : 'this channel'}?`)) await this.send('quickcast_yt_signout', {}).catch((e) => this.box(e.message, 'error'));
+                if (await this.ask(`Sign VisionCaster out of ${a.profile ? a.profile.title : 'this channel'}?`)) await this.send('quickcast_yt_signout', {}).catch((e) => this.box(e.message, 'error'));
             } else if (String(act).startsWith('ch:')) {
                 try { await this.send('quickcast_yt_select', { channelId: act.slice(3) }); await this.send('quickcast_yt_profile', {}); this.flash('Channel switched.'); } catch (e) { await this.box(e.message, 'error'); }
             }
@@ -942,7 +1033,7 @@
                 kind: 'settings', title: 'Broadcast Settings', width: 560, cls: 'qc-settings',
                 body: `<div class="qc-tabs"><button type="button" class="qc-tab" data-tab="broadcast">Broadcast</button><button type="button" class="qc-tab" data-tab="encoder">Encoder</button><button type="button" class="qc-tab" data-tab="account">Account</button></div>
                     <div class="qc-pane" data-pane="broadcast"><p class="qc-dim qc-loading">Loading...</p></div>
-                    <div class="qc-pane" data-pane="encoder"><p class="qc-dim qc-loading">Reading OBS on Ruiko...</p></div>
+                    <div class="qc-pane" data-pane="encoder"><p class="qc-dim qc-loading">Reading the satellite encoder...</p></div>
                     <div class="qc-pane" data-pane="account"><p class="qc-dim qc-loading">Loading...</p></div>`,
                 buttons: [{ text: 'Apply', value: 'apply', def: true }, { text: 'Close', value: 'cancel' }],
                 onButton: async (v) => { if (v === 'apply') await apply(); return false; }
@@ -969,18 +1060,18 @@
                     </div>
                     <label class="qc-check"><input type="checkbox" class="qc-s-dvr"${last.dvr ? ' checked' : ''}> DVR (viewers can rewind)</label>
                     <label class="qc-check"><input type="checkbox" class="qc-s-kids"${last.madeForKids ? ' checked' : ''}> Made for kids</label>
-                    <p class="qc-dim">Used for the next GO LIVE when QuickCast is signed in to YouTube. While live, Apply also changes the live title, description and category (privacy, latency and DVR apply next time).</p>`;
+                    <p class="qc-dim">Used for the next LIVE when VisionCaster is signed in to YouTube. While live, Apply also changes the live title, description and category (privacy, latency and DVR apply next time).</p>`;
             };
             const fillAccount = (a, signIn) => {
                 const st = this.st || { key: {} };
                 pane('account').innerHTML = `
                     <div class="qc-group"><b>Stream key</b>
-                        <p>The persistent key from YouTube Studio (Go live &gt; Stream &gt; Stream key). Kept on the Dreamscape server and written into OBS's QuickCast profile when you go live.</p>
+                        <p>The persistent key from YouTube Studio (Go live &gt; Stream &gt; Stream key). Kept on the Dreamscape server and loaded into the satellite encoder's uplink when you go live.</p>
                         <label class="qc-field"><span>Stream key</span><input type="password" class="qc-a-key" autocomplete="off" spellcheck="false" placeholder="${st.key.set ? `Saved: ${esc(st.key.hint)} (blank keeps it)` : 'xxxx-xxxx-xxxx-xxxx-xxxx'}"></label>
                         <label class="qc-field"><span>Watch page (optional)</span><input type="text" class="qc-a-url" spellcheck="false" value="${esc(st.watchUrl || '')}" placeholder="https://www.youtube.com/@channel/live"></label>
                     </div>
                     <div class="qc-group"><b>YouTube API</b>
-                        <p>From your Google Cloud project (the StickerBoard one is fine) with YouTube Data API v3 on. The API key reads chat; the OAuth client (type <i>TVs and Limited Input devices</i>) lets QuickCast set the title and reply in chat. Blank keeps a saved value.</p>
+                        <p>From your Google Cloud project (the StickerBoard one is fine) with YouTube Data API v3 on. The API key reads chat; the OAuth client (type <i>TVs and Limited Input devices</i>) lets VisionCaster set the title and reply in chat. Blank keeps a saved value.</p>
                         <label class="qc-field"><span>API key ${a.apiKey ? '(saved)' : ''}</span><input type="password" class="qc-a-api" autocomplete="off" spellcheck="false" placeholder="${a.apiKey ? 'Saved (blank keeps it)' : 'AIza...'}"></label>
                         <div class="qc-grid2">
                             <label class="qc-field"><span>OAuth client ID ${a.client ? '(saved)' : ''}</span><input type="text" class="qc-a-cid" autocomplete="off" spellcheck="false" placeholder="${a.clientId ? esc(a.clientId) : '....apps.googleusercontent.com'}"></label>
@@ -1031,7 +1122,7 @@
                             <button type="button" class="qc-btn" data-preset="1080,30,8000">1080p30 8 Mb</button>
                             <button type="button" class="qc-btn" data-preset="1080,60,12000">1080p60 12 Mb</button>
                             <button type="button" class="qc-btn" data-preset="1440,60,24000">1440p60 24 Mb</button></div>
-                        <p class="qc-dim">NVENC on Ruiko, the QuickCast profile. Not while live. Ruiko's upload must carry the bitrate with room to spare; watch CONGESTION and DROPPED once live.</p>`;
+                        <p class="qc-dim">The satellite's hardware encoder (NVENC). Not while live. The uplink must carry the bitrate with room to spare; watch NETWORK in the OUTPUT row once live.</p>`;
                     pane('encoder').addEventListener('click', (ev) => {
                         const b = ev.target.closest('[data-preset]');
                         if (!b) return;
@@ -1040,7 +1131,7 @@
                         pane('encoder').querySelector('.qc-e-fps').value = f;
                         pane('encoder').querySelector('.qc-e-br').value = br;
                     });
-                } catch (err) { w.encLoaded = false; pane('encoder').innerHTML = `<p class="qc-bad">${esc(err.message)}</p><p class="qc-dim">OBS must be running on Ruiko to read the encoder.</p>`; }
+                } catch (err) { w.encLoaded = false; pane('encoder').innerHTML = `<p class="qc-bad">${esc(err.message)}</p><p class="qc-dim">The satellite\'s encoder engine must be running to read the encoder.</p>`; }
             };
             pane('account').addEventListener('click', async (ev) => {
                 const b = ev.target.closest('[data-act]');
@@ -1050,7 +1141,7 @@
                     try {
                         await this.send('quickcast_yt_select', { channelId: b.dataset.ch });
                         if (b.dataset.act === 'signout') {
-                            if (!await this.ask('Sign QuickCast out of this channel?')) { void loadAccount(); return; }
+                            if (!await this.ask('Sign VisionCaster out of this channel?')) { void loadAccount(); return; }
                             await this.send('quickcast_yt_signout', {});
                         }
                         await this.send('quickcast_yt_profile', {}).catch(() => {});
@@ -1091,12 +1182,12 @@
                         if (!m.querySelector('.qc-e-br')) return;
                         if (live) { await this.box('Stop the stream before changing the encoder.', 'warning'); return; }
                         w.busy(true);
-                        this.setBusy('Applying the encoder settings on Ruiko...');
+                        this.setBusy(`Loading the encoder settings into ${this.satName()}...`);
                         let r;
                         try {
                             r = await this.send('quickcast_setencoder', { bitrate: Number(val('.qc-e-br')), rateControl: val('.qc-e-rc'), audioBitrate: Number(val('.qc-e-ab')), height: Number(val('.qc-e-h')), fps: Number(val('.qc-e-fps')) });
                         } finally { this.setBusy(''); w.busy(false); }
-                        if (r.videoPending) await this.box('Bitrates are set. The new resolution / frame rate is saved in the QuickCast profile and applies the next time OBS starts on Ruiko: an always-on output (NDI Main Output) keeps OBS\'s video busy until then.', 'info');
+                        if (r.videoPending) await this.box(`Bitrates are set. The new resolution / frame rate is stored in ${this.satName()}'s output preset and takes effect the next time its encoder engine starts: an always-on output (NDI) holds the video pipeline until then.`, 'info');
                         else this.flash('Encoder settings applied.');
                     } else if (w.tab === 'account') {
                         const key = val('.qc-a-key');
@@ -1122,16 +1213,16 @@
         remoteWin() {
             const open = [...this.children].find((c) => c.kind === 'remote');
             if (open) { call('bringModalToFront', open.modal); return; }
-            const key = (k, label, cls) => `<button type="button" class="qc-rk ${cls || ''}" data-rk="${k}">${label}</button>`;
+            const key = (k, label, cls) => `<button type="button" class="qc-bk qc-rk ${cls || 'k-white'}" data-rk="${k}">${label}</button>`;
             const w = this.openWin({
-                kind: 'remote', title: 'Remote - QuickCast', width: 250, height: 430, cls: 'qc-remotewin',
+                kind: 'remote', title: 'Remote', width: 300, height: 300, cls: 'qc-remotewin',
                 body: `<div class="qc-rm">
-                    <div class="qc-rm-sel"><button type="button" class="qc-rsel" data-target="cab">CABINET MUX</button><button type="button" class="qc-rsel" data-target="sat">SATELLITE</button></div>
+                    <div class="qc-rm-sel"><button type="button" class="qc-bk qc-rsel k-white" data-target="cab">CABINET MUX</button><button type="button" class="qc-bk qc-rsel k-white" data-target="sat">SATELLITE</button></div>
                     <div class="qc-rm-lcd"><b class="qc-rm-unit">-</b><span class="qc-rm-page">OSD OFF</span></div>
-                    <div class="qc-rm-row">${key('menu', 'MENU')}${key('diag', 'DIAG')}${key('info', 'INFO')}</div>
-                    <div class="qc-rm-pad">${key('up', '&#9650;', 'is-up')}${key('left', '&#9664;', 'is-left')}${key('ok', 'OK', 'is-ok')}${key('right', '&#9654;', 'is-right')}${key('down', '&#9660;', 'is-down')}</div>
-                    <div class="qc-rm-row">${key('exit', 'EXIT', 'is-exit')}</div>
-                    <div class="qc-rm-note">Menus show on the box's video output.</div>
+                    <div class="qc-rm-main">
+                        <div class="qc-rm-fn">${key('menu', 'MENU', 'k-amber')}${key('diag', 'DIAG', 'k-white')}${key('info', 'INFO', 'k-white')}${key('exit', 'EXIT', 'k-white')}</div>
+                        <div class="qc-rm-pad">${key('up', '&#9650;', 'is-up k-white')}${key('left', '&#9664;', 'is-left k-white')}${key('ok', 'OK', 'is-ok k-blue')}${key('right', '&#9654;', 'is-right k-white')}${key('down', '&#9660;', 'is-down k-white')}</div>
+                    </div>
                 </div>`,
                 buttons: []
             });
@@ -1145,15 +1236,22 @@
                 m.classList.toggle('qc-rm-err', !!err);
             };
             const sel = () => {
-                m.querySelectorAll('.qc-rsel').forEach((b) => b.classList.toggle('is-on', b.dataset.target === target));
+                m.querySelectorAll('.qc-rsel').forEach((b) => { b.classList.toggle('is-on', b.dataset.target === target); b.classList.toggle('k-orange', b.dataset.target === target); b.classList.toggle('k-white', b.dataset.target !== target); });
                 lcd(null);
                 void this.send('quickcast_osd_view', { target, cabinet: this.cabinet || '' }).then((v) => lcd(v)).catch((e) => lcd(null, e.message));
             };
+            // one key on the wire at a time, plus at most one waiting: a held key never piles up
+            let inFlight = false;
+            let next = null;
             const press = async (k) => {
-                if (target === 'cab' && !this.cabinet) { lcd(null, 'Pick a cabinet first'); return; }
+                if (target === 'cab' && !this.cabinet) { lcd(null, 'Take a cabinet first'); return; }
                 const b = m.querySelector(`[data-rk="${k}"]`);
-                if (b) { b.classList.add('is-press'); setTimeout(() => b.classList.remove('is-press'), 120); }
+                if (b) { b.classList.add('is-on'); setTimeout(() => b.classList.remove('is-on'), 110); }
+                if (inFlight) { next = k; return; }
+                inFlight = true;
                 try { lcd(await this.send('quickcast_osd_key', { target, cabinet: this.cabinet || '', key: k })); } catch (e) { lcd(null, e.message); }
+                inFlight = false;
+                if (next) { const n = next; next = null; void press(n); }
             };
             m.querySelectorAll('.qc-rsel').forEach((b) => b.addEventListener('click', () => { target = b.dataset.target; this.remoteTarget = target; sel(); }));
             m.querySelectorAll('[data-rk]').forEach((b) => b.addEventListener('click', () => void press(b.dataset.rk)));
@@ -1163,6 +1261,8 @@
                 if (!k || e.target.closest('input, textarea')) return;
                 e.preventDefault();
                 e.stopPropagation();
+                if (e.repeat && k !== 'up' && k !== 'down' && k !== 'left' && k !== 'right') return; // only the D-pad repeats
+                if (e.repeat && inFlight) return;
                 void press(k);
             });
             m.tabIndex = -1;
@@ -1173,7 +1273,7 @@
             const open = [...this.children].find((c) => c.kind === 'chat');
             if (open) { call('bringModalToFront', open.modal); return; }
             const w = this.openWin({
-                kind: 'chat', title: 'Live Chat - QuickCast', width: 380, height: 560, resizable: true, cls: 'qc-chatwin',
+                kind: 'chat', title: 'Live Chat', width: 380, height: 560, resizable: true, cls: 'qc-chatwin',
                 body: `<div class="qc-chat-head"><span class="qc-chat-state">Connecting...</span><span class="qc-fill"></span><button type="button" class="qc-tb qc-chat-pop" title="Open the video on YouTube" disabled>WATCH</button></div>
                     <div class="qc-chat-list"></div>
                     <div class="qc-chat-send"><input type="text" class="qc-chat-input" maxlength="200" placeholder="Say something..." spellcheck="true"><button type="button" class="qc-btn is-def qc-chat-go">Send</button></div>`,
@@ -1229,8 +1329,8 @@
 
         about() {
             this.openWin({
-                kind: 'about', title: 'About QuickCast', width: 380,
-                body: `<div class="qc-about"><img src="${A}/quickcast-48.png" alt="" width="48" height="48"><div><b>QuickCast</b><br>Live Broadcast Launcher<br>Version ${VERSION}<br>AmusementVISION 2024<br><br>Encoder: OBS Studio on Ruiko${this.st && this.st.obs.version ? `<br>obs-websocket ${esc(this.st.obs.version)}` : ''}</div></div>`,
+                kind: 'about', title: 'About VisionCaster', width: 380,
+                body: `<div class="qc-about"><img src="${A}/quickcast-48.png" alt="" width="48" height="48"><div><b>VisionCaster</b><br>Video Mixer Remote<br>Version ${VERSION}<br>AmusementVISION 2024<br><br>Satellite: ${esc(this.satName())}${this.st && this.st.satellite && this.st.satellite.model ? `<br>${esc(this.st.satellite.model)}` : ''}</div></div>`,
                 buttons: [{ text: 'OK', value: 'cancel', def: true }]
             });
         }
@@ -1238,7 +1338,7 @@
         /** Melaton's message box, titled with the program. */
         async box(text, kind, buttons) {
             const icon = kind === 'error' ? 'fas fa-circle-xmark' : kind === 'warning' ? 'fas fa-triangle-exclamation' : 'fas fa-circle-info';
-            return call('showConfirmationDialog', `<p>${esc(text).replace(/\n/g, '<br>')}</p>`, buttons || [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'QuickCast', icon, width: 400 });
+            return call('showConfirmationDialog', `<p>${esc(text).replace(/\n/g, '<br>')}</p>`, buttons || [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'VisionCaster', icon, width: 400 });
         }
 
         async ask(text) {

@@ -54,6 +54,10 @@ const DEFAULTS = {
     launch: { ssh: 'ruiko', task: '\\AmusementVISION\\QuickCast OBS', stopTask: '\\AmusementVISION\\QuickCast OBS Stop' },
     // cabinet mixer / muxer PCs by NDI machine name, for the INPUT diagnostics row (quickcastDiag)
     muxes: { 'PLG-EAST-1': { host: '192.168.100.16', port: 4455, password: '' } },
+    // the boxes as hardware units: the satellite's unit name, and per unit (by name) overrides of
+    // { maker, line, model, kind, theme } over UNIT_DEFAULTS
+    satellite: { name: 'RUIKO' },
+    units: {},
     // where the boxes' OSD browser sources load the OSD page from (avOsd.js): this server on the LAN
     osd: { baseUrl: 'http://192.168.100.250:9220' }
 };
@@ -88,6 +92,8 @@ function readConfig() {
             .filter((c) => c && c.id && c.scene)
             .map((c) => ({ id: String(c.id), name: String(c.name || c.id), scene: String(c.scene), icon: String(c.icon || c.id), short: String(c.short || c.name || c.id).slice(0, 3).toUpperCase(), xlink: c.xlink === false ? '' : String(c.xlink || c.id) })),
         launch: { ...DEFAULTS.launch, ...(raw.launch || {}) },
+        satellite: { ...DEFAULTS.satellite, ...(raw.satellite && typeof raw.satellite === 'object' ? raw.satellite : {}) },
+        units: { ...(raw.units && typeof raw.units === 'object' ? raw.units : {}) },
         osd: { ...DEFAULTS.osd, ...(raw.osd && typeof raw.osd === 'object' ? raw.osd : {}) },
         muxes: { ...DEFAULTS.muxes, ...(raw.muxes && typeof raw.muxes === 'object' ? raw.muxes : {}) }
     };
@@ -129,7 +135,7 @@ class ObsLink {
      *  machine in errors; opts.events is the EventSubscription mask (0 for a stats-only link). */
     constructor(opts = {}) {
         this.target = opts.target || (() => readConfig().obs);
-        this.label = opts.label || 'Ruiko';
+        this.fixedLabel = opts.label || ''; // a mux unit's name; the satellite's comes from config
         this.events = opts.events == null ? EVENTS : opts.events;
         this.ws = null;
         this.ready = null;      // Promise while connecting / connected
@@ -140,6 +146,8 @@ class ObsLink {
         this.meters = new Map(); // inputName -> { mag: [], peak: [], at }
         this.lastError = '';
     }
+
+    get label() { return this.fixedLabel || satelliteName(); }
 
     get online() { return !!(this.ws && this.ws.readyState === WebSocket.OPEN && this.identified); }
 
@@ -155,7 +163,7 @@ class ObsLink {
                 clearTimeout(timer);
                 if (err) { this.lastError = err.message; this.close(); reject(err); } else { this.lastError = ''; resolve(); }
             };
-            const timer = setTimeout(() => done(fail(`OBS is not answering on ${this.label} (not running?)`, 'QUICKCAST_OBS_TIMEOUT')), CONNECT_TIMEOUT_MS);
+            const timer = setTimeout(() => done(fail(`${this.label} is not answering (encoder engine off?)`, 'QUICKCAST_OBS_TIMEOUT')), CONNECT_TIMEOUT_MS);
             let ws;
             try {
                 ws = new WebSocket(`ws://${cfg.host}:${Number(cfg.port) || 4455}`, 'obswebsocket.json', { handshakeTimeout: CONNECT_TIMEOUT_MS, maxPayload: 64 * 1024 * 1024 });
@@ -163,10 +171,10 @@ class ObsLink {
             this.ws = ws;
             ws.on('error', (e) => {
                 const refused = e && (e.code === 'ECONNREFUSED' || e.code === 'EHOSTUNREACH' || e.code === 'ETIMEDOUT');
-                done(fail(refused ? `OBS is not running on ${this.label}` : `OBS connection failed: ${e.message}`, refused ? 'QUICKCAST_OBS_DOWN' : 'QUICKCAST_OBS_ERROR'));
+                done(fail(refused ? `${this.label}'s engine is not running` : `Control link to ${this.label} failed: ${e.message}`, refused ? 'QUICKCAST_OBS_DOWN' : 'QUICKCAST_OBS_ERROR'));
             });
             ws.on('close', (code, reason) => {
-                done(fail(code === 4009 ? 'OBS refused the websocket password' : 'OBS closed the connection', code === 4009 ? 'QUICKCAST_OBS_AUTH' : 'QUICKCAST_OBS_DOWN'));
+                done(fail(code === 4009 ? `${this.label} refused the control password` : `${this.label} closed the control link`, code === 4009 ? 'QUICKCAST_OBS_AUTH' : 'QUICKCAST_OBS_DOWN'));
                 if (this.ws === ws) this.close();
                 void reason;
             });
@@ -214,7 +222,7 @@ class ObsLink {
         this.ready = null;
         this.identified = false;
         this.meters.clear();
-        for (const [, p] of this.pending) { clearTimeout(p.timer); p.reject(fail('OBS connection closed', 'QUICKCAST_OBS_DOWN')); }
+        for (const [, p] of this.pending) { clearTimeout(p.timer); p.reject(fail('The control link closed', 'QUICKCAST_OBS_DOWN')); }
         this.pending.clear();
         if (ws) { try { ws.terminate(); } catch (_) { /* gone */ } }
     }
@@ -234,7 +242,7 @@ class ObsLink {
         await this.connect();
         const requestId = `qc${++this.seq}`;
         return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => { this.pending.delete(requestId); reject(fail(`OBS did not answer ${requestType}`, 'QUICKCAST_OBS_TIMEOUT')); }, timeoutMs || REQUEST_TIMEOUT_MS);
+            const timer = setTimeout(() => { this.pending.delete(requestId); reject(fail(`${this.label} did not answer (${requestType})`, 'QUICKCAST_OBS_TIMEOUT')); }, timeoutMs || REQUEST_TIMEOUT_MS);
             this.pending.set(requestId, { resolve, reject, timer });
             try { this.ws.send(JSON.stringify({ op: 6, d: { requestType, requestId, requestData: requestData || {} } })); } catch (e) { clearTimeout(timer); this.pending.delete(requestId); reject(e); }
         });
@@ -247,7 +255,7 @@ class ObsLink {
         await this.connect();
         const requestId = `qcb${++this.seq}`;
         return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => { this.pending.delete(requestId); reject(fail('OBS did not finish the request batch', 'QUICKCAST_OBS_TIMEOUT')); }, opts.timeoutMs || 30000);
+            const timer = setTimeout(() => { this.pending.delete(requestId); reject(fail(`${this.label} did not finish the measurement`, 'QUICKCAST_OBS_TIMEOUT')); }, opts.timeoutMs || 30000);
             this.pending.set(requestId, { resolve, reject, timer });
             try {
                 this.ws.send(JSON.stringify({ op: 8, d: { requestId, haltOnFailure: !!opts.haltOnFailure, executionType: opts.executionType == null ? 2 : opts.executionType, requests } }));
@@ -300,7 +308,7 @@ class ObsLink {
 const link = new ObsLink();
 diag.init({ ruiko: link, readConfig, makeLink: (target, label) => new ObsLink({ target, label, events: 0 }) });
 avOsd.init({
-    ruiko: link, diag, readConfig, dataDir: DATA_DIR,
+    ruiko: link, diag, readConfig, dataDir: DATA_DIR, unitModel: (n) => unitModel(n), unitInfo: (n, r) => unitInfo(n, r), satelliteName: () => satelliteName(),
     // on air = the satellite is streaming and (for a mux box) its cabinet's scene is on program
     onAir: async (b) => {
         if (!link.online) return false;
@@ -358,13 +366,13 @@ function launchObs() {
         if (!already) {
             if (!/^[\\\w .-]+$/.test(task)) throw fail('The launch task name is not valid', 'QUICKCAST_LAUNCH');
             const r = await sshRun(`schtasks /Run /TN "${task}"`);
-            if (!r.ok || !/SUCCESS/i.test(r.out)) throw fail(`Could not start OBS on Ruiko: ${(r.err || r.out).trim().slice(0, 200)}`, 'QUICKCAST_LAUNCH');
+            if (!r.ok || !/SUCCESS/i.test(r.out)) throw fail(`Could not start ${satelliteName()}'s encoder engine: ${(r.err || r.out).trim().slice(0, 200)}`, 'QUICKCAST_LAUNCH');
         }
         const until = Date.now() + LAUNCH_WAIT_MS;
         for (;;) {
             try { await link.connect(); return true; } catch (e) {
                 if (e.code === 'QUICKCAST_OBS_AUTH') throw e;
-                if (Date.now() > until) throw fail(already ? 'OBS is running on Ruiko but its websocket server does not answer (Tools > WebSocket Server Settings)' : 'OBS did not come up on Ruiko within a minute', 'QUICKCAST_LAUNCH');
+                if (Date.now() > until) throw fail(already ? `${satelliteName()}'s encoder engine is running but its control port does not answer` : `${satelliteName()}'s encoder engine did not come up within a minute`, 'QUICKCAST_LAUNCH');
             }
             await new Promise((r) => setTimeout(r, 1000));
         }
@@ -388,7 +396,7 @@ async function ensureCollection() {
     const want = readConfig().collection;
     const r = await link.request('GetSceneCollectionList');
     if (r.currentSceneCollectionName === want) return false;
-    if (!(r.sceneCollections || []).includes(want)) throw fail(`OBS has no scene collection "${want}"`, 'QUICKCAST_NO_COLLECTION');
+    if (!(r.sceneCollections || []).includes(want)) throw fail(`${satelliteName()} has no layout set "${want}"`, 'QUICKCAST_NO_COLLECTION');
     const changed = link.waitFor('CurrentSceneCollectionChanged', (d) => d.sceneCollectionName === want, SWITCH_WAIT_MS);
     await link.request('SetCurrentSceneCollection', { sceneCollectionName: want }, SWITCH_WAIT_MS);
     await changed;
@@ -399,7 +407,7 @@ async function ensureProfile() {
     const want = readConfig().profile;
     const r = await link.request('GetProfileList');
     if (r.currentProfileName === want) return false;
-    if (!(r.profiles || []).includes(want)) throw fail(`OBS has no profile "${want}"`, 'QUICKCAST_NO_PROFILE');
+    if (!(r.profiles || []).includes(want)) throw fail(`${satelliteName()} has no output preset "${want}"`, 'QUICKCAST_NO_PROFILE');
     const changed = link.waitFor('CurrentProfileChanged', (d) => d.profileName === want, SWITCH_WAIT_MS);
     await link.request('SetCurrentProfile', { profileName: want }, SWITCH_WAIT_MS);
     await changed;
@@ -467,7 +475,7 @@ async function status(opts = {}) {
     const cfg = readConfig();
     const base = {
         busy,
-        satellite: { name: 'Ruiko', host: `${cfg.obs.host}:${Number(cfg.obs.port) || 4455}` },
+        satellite: { name: satelliteName(), model: unitModel(satelliteName()), kind: unitInfo(satelliteName(), 'satellite').kind, host: `${cfg.obs.host}:${Number(cfg.obs.port) || 4455}` },
         obs: { state: launching ? 'launching' : stopping ? 'stopping' : 'offline', version: link.version, error: link.lastError, launchingFor: launching ? Date.now() - launchStartedAt : 0 },
         cabinets: cfg.cabinets.map((c) => ({ id: c.id, name: c.name, scene: c.scene, icon: c.icon, short: c.short, present: false })),
         key: { set: !!cfg.youtube.streamKey, hint: keyHint(cfg.youtube.streamKey) },
@@ -551,6 +559,7 @@ async function status(opts = {}) {
         base.youtube.health = yt.streamHealth(!!stream.outputActive);
         const pick = cfg.cabinets.some((c) => c.id === opts.cabinet) ? opts.cabinet : base.programCabinet;
         try { base.diag = diag.diagnose(base, stats, pick); } catch (_) { base.diag = null; }
+        if (base.diag && base.diag.input && base.diag.input.source) base.diag.input.align = avOsd.alignFor(base.diag.input.source);
     } catch (e) {
         base.obs.error = e.message;
         if (!link.online) base.obs.state = 'offline';
@@ -558,10 +567,80 @@ async function status(opts = {}) {
     return base;
 }
 
+// ------------------------------------------------------------------ units (the boxes as hardware)
+
+/**
+ * The hardware each unit is, as its own boot / system-test cards show it (Nov 10): the satellite is an
+ * AmuVISION Satellite iSVE-20D (Ruiko's waiting slate), the cabinet mixers are TAKAO iUHD-4DX network
+ * video mixers (PLG-EAST-1's SysTest card). config.units[name] overrides per unit.
+ */
+const UNIT_DEFAULTS = {
+    satellite: { maker: 'AmuVISION', model: 'iSVE-20D', line: 'Satellite', kind: 'Network Video Mixer', theme: 'amuvision' },
+    mux: { maker: 'TAKAO', model: 'iUHD-4DX', line: '', kind: 'Network Video Mixer', theme: 'takao', sw: '4.07', hw: '2.0', fw: '3.0-934f21a4' }
+};
+
+function unitInfo(name, role) {
+    const key = String(name || '').toUpperCase();
+    const cfg = readConfig();
+    const set = Object.keys(cfg.units).find((k) => k.toUpperCase() === key);
+    const d = UNIT_DEFAULTS[role === 'satellite' ? 'satellite' : 'mux'];
+    const u = { ...d, ...(set ? cfg.units[set] : {}) };
+    return { sw: String(u.sw || ''), hw: String(u.hw || ''), fw: String(u.fw || ''), name: key, maker: String(u.maker || ''), model: String(u.model || ''), line: String(u.line || ''), kind: String(u.kind || ''), theme: String(u.theme || d.theme), full: [u.maker, u.line, u.model].filter(Boolean).join(' ') };
+}
+
+function unitModel(name) { return unitInfo(name, String(name || '').toUpperCase() === satelliteName() ? 'satellite' : 'mux').full; }
+
+function satelliteName() { return String(readConfig().satellite.name || 'SATELLITE').toUpperCase(); }
+
+// ------------------------------------------------------------------ realtime preview (MJPEG)
+
+const liveTickets = new Map(); // ticket -> { cabinet, width, at, res }
+const LIVE_FPS_MAX = 25;
+
+/**
+ * REALTIME preview: a one-time ticket (minted over the admin-checked websocket) for an MJPEG stream of
+ * the cabinet's scene at /quickcast/live/<ticket>. A browser <img> plays MJPEG natively; RTSP would need
+ * a transcoder. Frames come from OBS on Ruiko (never a mux PC), as fast as it answers up to 25 fps.
+ */
+function liveTicket(cabinetId, width) {
+    const c = cabinetOf(cabinetId);
+    for (const [t, x] of liveTickets) if (!x.res && Date.now() - x.at > 30000) liveTickets.delete(t);
+    const ticket = crypto.randomBytes(18).toString('base64url');
+    liveTickets.set(ticket, { cabinet: c.id, width: Math.max(160, Math.min(1280, Number(width) || 640)), at: Date.now(), res: null });
+    return { ticket, url: `/quickcast/live/${ticket}` };
+}
+
+async function liveStream(ticket, req, res) {
+    const t = liveTickets.get(String(ticket || ''));
+    if (!t || t.res) { res.status(404).end(); return; }
+    t.res = res;
+    const boundary = 'qcframe';
+    res.writeHead(200, { 'Content-Type': `multipart/x-mixed-replace; boundary=${boundary}`, 'Cache-Control': 'no-store', Connection: 'close', 'X-Accel-Buffering': 'no' });
+    let open = true;
+    req.on('close', () => { open = false; liveTickets.delete(ticket); });
+    const scene = cabinetOf(t.cabinet).scene;
+    while (open) {
+        const t0 = Date.now();
+        touch();
+        try {
+            if (!link.online) await link.connect();
+            const r = await link.request('GetSourceScreenshot', { sourceName: scene, imageFormat: 'jpg', imageWidth: t.width, imageCompressionQuality: 70 }, 5000);
+            const buf = Buffer.from(String(r.imageData || '').replace(/^data:image\/\w+;base64,/, ''), 'base64');
+            if (!open) break;
+            res.write(`--${boundary}\r\nContent-Type: image/jpeg\r\nContent-Length: ${buf.length}\r\n\r\n`);
+            res.write(buf);
+            res.write('\r\n');
+        } catch (_) { await new Promise((r) => setTimeout(r, 1000)); }
+        const wait = 1000 / LIVE_FPS_MAX - (Date.now() - t0);
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    }
+    try { res.end(); } catch (_) { /* gone */ }
+}
+
 /** A JPEG of the cabinet's scene (what goes on air with it), as a data URL. */
 async function preview(cabinetId, width) {
     touch();
-    if (!link.online) throw fail('OBS is not connected', 'QUICKCAST_OBS_DOWN');
+    if (!link.online) throw fail(`No control link to ${satelliteName()}`, 'QUICKCAST_OBS_DOWN');
     const c = cabinetOf(cabinetId);
     const w = Math.max(160, Math.min(1280, Number(width) || 640));
     const r = await link.request('GetSourceScreenshot', { sourceName: c.scene, imageFormat: 'jpg', imageWidth: w, imageCompressionQuality: 72 });
@@ -585,7 +664,7 @@ async function prepare(cabinetId, confirmed) {
             if (!rec.outputActive && await ensureProfile()) steps.push('profile');
         }
         const scenes = await link.request('GetSceneList');
-        if (!(scenes.scenes || []).some((s) => s.sceneName === c.scene)) throw fail(`The scene "${c.scene}" is missing from OBS`, 'QUICKCAST_NO_SCENE');
+        if (!(scenes.scenes || []).some((s) => s.sceneName === c.scene)) throw fail(`The layout "${c.scene}" is missing on ${satelliteName()}`, 'QUICKCAST_NO_SCENE');
         if (scenes.currentProgramSceneName !== c.scene) {
             if (st.outputActive && !confirmed) return { needsConfirm: true, live: true, cabinet: c.id };
             await link.request('SetCurrentProgramScene', { sceneName: c.scene });
@@ -609,7 +688,7 @@ async function goLive(cabinetId, settings) {
         const prof = await link.request('GetProfileList');
         if (prof.currentProfileName !== cfg.profile) {
             const rec = await link.request('GetRecordStatus').catch(() => ({}));
-            if (rec.outputActive) throw fail(`OBS is recording in the "${prof.currentProfileName}" profile. Stop the recording on Ruiko first.`, 'QUICKCAST_RECORDING');
+            if (rec.outputActive) throw fail(`${satelliteName()} is recording in the "${prof.currentProfileName}" preset. Stop the recording first.`, 'QUICKCAST_RECORDING');
             await ensureProfile();
         }
         await link.request('SetStreamServiceSettings', {
@@ -628,8 +707,8 @@ async function goLive(cabinetId, settings) {
         const after = await link.request('GetStreamStatus');
         if (!after.outputActive) {
             throw fail(ev && ev.outputState === 'OBS_WEBSOCKET_OUTPUT_STOPPED'
-                ? 'OBS could not connect to YouTube. Check the stream key and Ruiko\'s network (OBS shows the reason on Ruiko).'
-                : 'OBS did not start streaming within 15 seconds', 'QUICKCAST_START_FAILED');
+                ? `${satelliteName()} could not connect to YouTube. Check the uplink key and the satellite's network (the reason shows on its console).`
+                : `${satelliteName()} did not go on air within 15 seconds`, 'QUICKCAST_START_FAILED');
         }
         lastBytes = null;
         return { ok: true, cabinet: c.id, broadcast };
@@ -645,7 +724,7 @@ async function stop() {
         await link.request('StopStream');
         await stopped;
         const after = await link.request('GetStreamStatus');
-        if (after.outputActive) throw fail('OBS is still streaming', 'QUICKCAST_STOP_FAILED');
+        if (after.outputActive) throw fail(`${satelliteName()} is still on air`, 'QUICKCAST_STOP_FAILED');
         void yt.endBroadcast();
         return { ok: true };
     });
@@ -715,7 +794,7 @@ async function setEncoder(o) {
         const st = await link.request('GetStreamStatus');
         if (st.outputActive) throw fail('Stop the stream before changing the encoder', 'QUICKCAST_LIVE');
         const rec = await link.request('GetRecordStatus').catch(() => ({}));
-        if (rec.outputActive) throw fail('OBS is recording; stop the recording on Ruiko first', 'QUICKCAST_RECORDING');
+        if (rec.outputActive) throw fail(`${satelliteName()} is recording; stop the recording first`, 'QUICKCAST_RECORDING');
         await ensureProfile();
         const dir = profileDir();
         const w = await ps(`$f = "${dir}\\streamEncoder.json"
@@ -726,7 +805,7 @@ $j['rate_control'] = '${rc}'
 $j['max_bitrate'] = ${rc === 'VBR' ? Math.round(bitrate * 1.5) : bitrate}
 [IO.File]::WriteAllText($f, ($j | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
 'written'`);
-        if (!/written/.test(w.out)) throw fail(`Could not write the encoder settings on Ruiko: ${(w.err || w.out).trim().slice(0, 200)}`, 'QUICKCAST_ENCODER');
+        if (!/written/.test(w.out)) throw fail(`Could not load the encoder settings into ${satelliteName()}: ${(w.err || w.out).trim().slice(0, 200)}`, 'QUICKCAST_ENCODER');
         const track = await streamTrack();
         await link.request('SetProfileParameter', { parameterCategory: 'AdvOut', parameterName: `Track${track}Bitrate`, parameterValue: String(audio) });
         // resolution / fps: into the profile always; live only when no output holds the video (DistroAV's
@@ -756,7 +835,7 @@ $j['max_bitrate'] = ${rc === 'VBR' ? Math.round(bitrate * 1.5) : bitrate}
 /** Mute / unmute one of the inputs the stream hears (only those: the program scene's audio set). */
 async function setMute(name, muted) {
     touch();
-    if (!link.online) throw fail('OBS is not connected', 'QUICKCAST_OBS_DOWN');
+    if (!link.online) throw fail(`No control link to ${satelliteName()}`, 'QUICKCAST_OBS_DOWN');
     const scenes = await link.request('GetSceneList');
     const inputs = await audioInputsFor(scenes.currentProgramSceneName);
     if (!inputs.some((i) => i.name === name)) throw fail('That source is not in the stream mix', 'QUICKCAST_NO_INPUT');
@@ -836,12 +915,12 @@ let stopping = false;
  * Refused while streaming or recording.
  */
 async function powerOff() {
-    return exclusive('closing OBS', async () => {
+    return exclusive('shutting down the encoder engine', async () => {
         touch();
         if (link.online) {
             const [st, rec] = await Promise.all([link.request('GetStreamStatus'), link.request('GetRecordStatus').catch(() => ({}))]);
-            if (st.outputActive) throw fail('OBS is streaming: STOP the stream before switching OBS off', 'QUICKCAST_LIVE');
-            if (rec.outputActive) throw fail('OBS is recording on Ruiko: stop the recording before switching OBS off', 'QUICKCAST_RECORDING');
+            if (st.outputActive) throw fail('On air: end the broadcast before shutting the engine down', 'QUICKCAST_LIVE');
+            if (rec.outputActive) throw fail(`${satelliteName()} is recording: stop the recording before shutting the engine down`, 'QUICKCAST_RECORDING');
         }
         const list = await sshRun('tasklist /FI "IMAGENAME eq obs64.exe" /NH');
         if (list.ok && !/obs64\.exe/i.test(list.out)) { link.close(); return { ok: true, already: true }; }
@@ -850,13 +929,13 @@ async function powerOff() {
         stopping = true;
         try {
             const r = await sshRun(`schtasks /Run /TN "${task}"`);
-            if (!r.ok || !/SUCCESS/i.test(r.out)) throw fail(`Could not close OBS on Ruiko: ${(r.err || r.out).trim().slice(0, 200)}`, 'QUICKCAST_LAUNCH');
+            if (!r.ok || !/SUCCESS/i.test(r.out)) throw fail(`Could not shut down ${satelliteName()}'s encoder engine: ${(r.err || r.out).trim().slice(0, 200)}`, 'QUICKCAST_LAUNCH');
             const until = Date.now() + 30000;
             for (;;) {
                 await new Promise((res) => setTimeout(res, 1500));
                 const l = await sshRun('tasklist /FI "IMAGENAME eq obs64.exe" /NH');
                 if (l.ok && !/obs64\.exe/i.test(l.out)) break;
-                if (Date.now() > until) throw fail('OBS is still open on Ruiko after 30 s (a dialog on its screen may be asking something)', 'QUICKCAST_LAUNCH');
+                if (Date.now() > until) throw fail(`${satelliteName()}'s encoder engine is still running after 30 s (a prompt on its console may be waiting)`, 'QUICKCAST_LAUNCH');
             }
             link.close();
             lastTry = Date.now() + 3000; // no reconnect attempt while it winds down
@@ -891,4 +970,4 @@ function info() {
     return { host: cfg.obs.host, port: cfg.obs.port, profile: cfg.profile, collection: cfg.collection, server: cfg.youtube.server, launchTask: cfg.launch.task };
 }
 
-module.exports = { osd: avOsd, status, preview, prepare, goLive, stop, launch, powerOff, setKey, info, getEncoder, setEncoder, cabinetControls, cabinetAction, setMute, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };
+module.exports = { liveTicket, liveStream, osd: avOsd, status, preview, prepare, goLive, stop, launch, powerOff, setKey, info, getEncoder, setEncoder, cabinetControls, cabinetAction, setMute, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };

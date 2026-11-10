@@ -654,6 +654,45 @@ class BannerManager {
             'check_updates': 'Check Updates',
             'version_check': 'Version Check',
 
+            // XLink Operator Console / PayPass Operator (AmusementVISION)
+            'xlink_devices': 'XLink Devices',
+            'xlink_device': 'XLink Status',
+            'xlink_action': 'XLink Control',
+            'xlink_save': 'Save XLink Menu',
+            'paypass_overview': 'PayPass Overview',
+            'paypass_customer': 'PayPass Customer',
+            'paypass_action': 'PayPass Action',
+            'paypass_wait': 'PayPass Card Wait',
+
+            // QuickCast (AmusementVISION, #734)
+            'quickcast_info': 'QuickCast Setup',
+            'quickcast_status': 'QuickCast Status',
+            'quickcast_preview': 'QuickCast Preview',
+            'quickcast_prepare': 'Cue Cabinet',
+            'quickcast_golive': 'Go Live',
+            'quickcast_stop': 'Stop Stream',
+            'quickcast_launch': 'Start Satellite OBS',
+            'quickcast_obs_off': 'Close Satellite OBS',
+            'quickcast_setkey': 'Save Stream Key',
+            'quickcast_encoder': 'Read Encoder',
+            'quickcast_setencoder': 'Save Encoder',
+            'quickcast_mute': 'Mute Source',
+            'quickcast_cabinet': 'Cabinet Controls',
+            'quickcast_cabinet_action': 'Cabinet Control',
+            'quickcast_osd_key': 'Remote Key',
+            'quickcast_osd_view': 'Remote Display',
+            'quickcast_live_ticket': 'Realtime Preview',
+            'quickcast_yt_account': 'YouTube Account',
+            'quickcast_yt_credentials': 'YouTube Credentials',
+            'quickcast_yt_signin': 'YouTube Sign-in',
+            'quickcast_yt_signin_state': 'YouTube Sign-in Check',
+            'quickcast_yt_signout': 'YouTube Sign-out',
+            'quickcast_yt_profile': 'YouTube Channel',
+            'quickcast_yt_select': 'Switch Channel',
+            'quickcast_yt_settings': 'Broadcast Settings',
+            'quickcast_chat': 'Live Chat',
+            'quickcast_chat_send': 'Send Chat Message',
+
             // Replication (client to server)
             'replication_status': 'Replication Status',
             'replication_sync_begin': 'Begin Replication Sync',
@@ -880,6 +919,16 @@ class WebSocketClient {
         'replication_delegation_status',
         // Sidebar live feed (Yozora #653): resubscribed on gadget changes, not user work
         'sidebar_live_subscribe',
+        // QuickCast (#734): polled several times a second while its window is open
+        'quickcast_status',
+        'quickcast_preview',
+        'quickcast_cabinet',
+        'quickcast_chat',
+        'quickcast_osd_view',
+        'quickcast_yt_signin_state',
+        // XLink status refresh and PayPass's card-wait long poll
+        'xlink_device',
+        'paypass_wait',
     ]);
 
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
