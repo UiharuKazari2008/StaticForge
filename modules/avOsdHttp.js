@@ -96,6 +96,15 @@ body.t-amuvision .foot { display: none; }
 #card .ver em b { font-weight: bold; }
 #card.slate .brand { left: calc(200 * var(--u)); top: calc(500 * var(--u)); }
 #card.slate .press, #card.slate .tiles, #card.slate .ver, #card.slate .fmt { display: none; }
+#card.post .brand { left: calc(96 * var(--u)); top: calc(420 * var(--u)); }
+#card.post.ph-boot .tiles, #card.post.ph-boot .press, #card.post.ph-boot .fmt { display: none; }
+#card.post.ph-boot .brand { left: calc(200 * var(--u)); top: calc(500 * var(--u)); }
+#card.post .press { top: calc(640 * var(--u)); font-size: calc(26 * var(--u)); line-height: 1.5; }
+#card .press .dna { display: inline-block; margin-bottom: calc(6 * var(--u)); padding: calc(6 * var(--u)) calc(18 * var(--u)); background: #d00; color: #fff; font-size: calc(54 * var(--u)); letter-spacing: calc(4 * var(--u)); animation: bl 0.8s steps(1, end) infinite; }
+#card.ph-fault .bar { background: #d00; animation: fbar 0.8s steps(1, end) infinite; }
+@keyframes fbar { 50% { background: #500; } }
+#card .tile.bad { background: linear-gradient(#5a1414, #2e0a0a); outline: calc(3 * var(--u)) solid #d00; }
+#card .tile em.al { color: #ff9a8f; font-weight: bold; }
 #off { position: absolute; right: calc(40 * var(--u)); top: calc(100 * var(--u)); display: none; padding: calc(10 * var(--u)) calc(18 * var(--u)); background: #900; font-size: calc(22 * var(--u)); font-weight: bold; }
 </style></head>
 <body class="t-takao">
@@ -107,7 +116,7 @@ body.t-amuvision .foot { display: none; }
 <div class="foot"><em>Amusement<b>VISION</b></em><br><span id="unit"></span></div></div>
 <div id="card"><div class="bar"><i></i><i></i><b id="cstat"></b></div>
 <div class="brand"><div class="logo" id="clogo"></div><div class="rule"><i></i><i></i><i></i></div><div class="sub"><span id="ctype"></span><span id="cmodel"></span></div></div>
-<div class="press">Press and hold &ldquo;DIAG&rdquo; button to modify settings</div><div class="fmt" id="cfmt"></div>
+<div class="press" id="cpress">Press and hold &ldquo;DIAG&rdquo; button to modify settings</div><div class="fmt" id="cfmt"></div>
 <div class="tiles" id="tiles"></div><div class="ver"><em>Amusement<b>VISION</b></em><br><span id="cver"></span></div></div>
 <div id="strip"></div><div id="toast"></div><div id="off"></div>
 <script>
@@ -139,6 +148,13 @@ body.t-amuvision .foot { display: none; }
       $('rows').innerHTML = html;
       $('hint').textContent = p.hint || '';
     }
+    // power on: boot screen, self test, and the latched FAULT card (hidden while the menu is open)
+    if (v.post && !(v.open && p)) {
+      var po = v.post;
+      drawCard({ card: 'post', unit: { name: bx.name, maker: bx.maker, line: bx.line, model: bx.model, type: bx.type, theme: bx.theme, sw: '', hw: '', fw: '' }, status: po.text, tiles: (po.items || []).map(function (x) { return { n: x.n, name: x.label, type: x.type, ok: x.state !== 'alarm', size: x.detail, alarm: x.state === 'alarm' ? x.detail : '' }; }) });
+      $('card').className = 'on post ph-' + po.phase;
+      $('cpress').innerHTML = po.phase === 'fault' ? '<b class="dna">DO NOT AIR</b><br>CALL A TECHNICIAN &mdash; press MENU to service this unit' : po.phase === 'boot' ? '' : po.phase === 'pass' ? 'All sources OK' : 'Checking every source...';
+    } else if (!isCard) $('card').className = '';
     var s = v.info && v.strip;
     $('strip').className = s ? 'on' : '';
     if (s) $('strip').innerHTML = '<b>' + esc(bx.name) + '</b><span>FMT</span><b>' + esc(s.format) + '</b><span>RUN</span><b>' + esc(s.fps) + ' fps</b><span>FRAME</span><b>' + esc(s.frame) + ' ms</b><span>CPU</span><b>' + esc(s.cpu) + '%</b><span>PGM</span><b>' + esc(s.program) + '</b><span>IP</span><b>' + esc(s.addr) + '</b>';
@@ -163,7 +179,7 @@ body.t-amuvision .foot { display: none; }
     var html = '';
     for (var i = 0; i < 8; i++) {
       var x = t[i];
-      html += x ? '<div class="tile' + (x.ok ? ' ok' : '') + '"><b>IN ' + x.n + '</b><span>' + esc(x.name) + ' &middot; ' + esc(x.type) + '</span>' + (x.ok ? '<em>' + esc(x.size) + '</em>' : '<i class="w"></i>') + '</div>' : '<div class="tile"><span>NOT FITTED</span></div>';
+      html += x ? '<div class="tile' + (x.ok ? ' ok' : ' bad') + '"><b>IN ' + x.n + '</b><span>' + esc(x.name) + ' &middot; ' + esc(x.type) + '</span>' + (x.ok ? '<em>' + esc(x.size) + '</em>' : '<em class="al">' + esc(x.alarm || 'NO SIGNAL') + '</em><i class="w"></i>') + '</div>' : '<div class="tile"><span>NOT FITTED</span></div>';
     }
     $('tiles').innerHTML = html;
   }

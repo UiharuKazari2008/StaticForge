@@ -43,6 +43,8 @@ const CAPTURE_KINDS = new Set([
 ]);
 
 let deps = null; // { makeLink(target, label), ruiko: ObsLink, readConfig() }
+let restartHook = null;
+function onUnitRestart(fn) { restartHook = fn; }
 
 const round1 = (n) => Math.round(n * 10) / 10;
 const pct = (a, b) => (b > 0 ? round1((a / b) * 100) : 0);
@@ -219,6 +221,11 @@ async function sampleMux(m) {
         if (Date.now() - m.lastScan > MUX_SCAN_MS) await scanMux(m);
         let out = null;
         if (m.ndiOutName) { try { out = await link.requestOnce('GetOutputStatus', { outputName: m.ndiOutName }, MUX_TIMEOUT_MS); } catch (_) { out = null; } }
+        // a unit that came back up (its frame counter restarted, or the link was down): power-on self test
+        if (restartHook && ((m.stats && (stats.renderTotalFrames || 0) < (m.stats.renderTotalFrames || 0)) || (m.wasDown && (stats.renderTotalFrames || 0) < 60 * 120))) {
+            try { restartHook(m.machine); } catch (_) { /* hook's own problem */ }
+        }
+        m.wasDown = false;
         m.stats = stats;
         m.ndiOut = out;
         m.win.add({
@@ -231,7 +238,7 @@ async function sampleMux(m) {
     } catch (e) {
         m.timeouts++;
         m.error = e.message;
-        if (!link.online) { m.win.reset(); m.stats = null; }
+        if (!link.online) { m.win.reset(); m.stats = null; m.wasDown = true; }
     }
 }
 
@@ -513,4 +520,4 @@ function diagnose(st, stats, cabinetId) {
     return res;
 }
 
-module.exports = { init, diagnose, splitNdi, lockRatio, COLUMNS, machineForCabinet, muxLink, lastFor, _Window: Window, _muxes: muxes, _feeds: feeds };
+module.exports = { onUnitRestart, init, diagnose, splitNdi, lockRatio, COLUMNS, machineForCabinet, muxLink, lastFor, _Window: Window, _muxes: muxes, _feeds: feeds };

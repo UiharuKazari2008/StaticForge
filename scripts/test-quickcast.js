@@ -146,6 +146,8 @@ wss.on('connection', (ws) => {
             case 'GetCurrentProgramScene': data = { currentProgramSceneName: obs.program }; break;
             case 'CreateSceneItem': (items[q.sceneName] = items[q.sceneName] || []).push({ sourceName: q.sourceName, sourceType: 'OBS_SOURCE_TYPE_SCENE', sceneItemEnabled: q.sceneItemEnabled !== false, sceneItemId: 777, sceneItemIndex: (items[q.sceneName] || []).length }); data = { sceneItemId: 777 }; break;
             case 'SetSceneItemIndex': break;
+            // the NDI feed's machine is gone from the network: its current source is not in the list
+            case 'GetInputPropertiesListPropertyItems': data = { propertyItems: q.propertyName === 'ndi_source_name' ? [{ itemName: 'OTHER-BOX (Out)', itemValue: 'OTHER-BOX (Out)', itemEnabled: true }] : [] }; break;
             case 'SetSceneItemEnabled': (items[q.sceneName] || []).forEach((i) => { if (i.sceneItemId === q.sceneItemId) i.sceneItemEnabled = q.sceneItemEnabled; }); break;
             case 'GetInputList': data = { inputs: [{ inputName: 'PLAYLAND-GAU-EAST', inputKind: 'ndi_source' }, { inputName: 'Mic', inputKind: 'wasapi_input_capture' }] }; break;
             case 'GetSourceScreenshot': data = { imageData: `data:image/jpg;base64,FAKE-${q.sourceName}-${q.imageWidth}` }; break;
@@ -324,11 +326,30 @@ async function main() {
     assert.ok(!qc.osd.checkToken('sat', 'x'.repeat(tok.length)), 'a wrong token is refused');
     assert.ok(!qc.osd.checkToken('mux-FAKE-MUX', tok), 'a token only opens its own box');
     assert.strictEqual(fs.statSync(path.join(dir, 'osd.json')).mode & 0o777, 0o600);
+    // power-on self test on the satellite: the NDI feed's device is missing -> latched FAULT, LIVE locked
+    const post = await qc.osd.powerOn('sat', { reason: 'test' });
+    assert.strictEqual(post.alarms, 1);
+    assert.ok(post.items.some((i) => i.label === 'PLAYLAND-GAU-EAST' && i.state === 'alarm' && /DEVICE MISSING/.test(i.detail)));
+    let fl = qc.osd.faults();
+    assert.strictEqual(fl.length, 1);
+    assert.strictEqual(fl[0].overridden, false);
+    st = await qc.status({ cabinet: 'chuni' });
+    assert.strictEqual(st.faults.length, 1, 'status carries the chain\'s faults');
+    assert.deepStrictEqual(fl[0].items[0].cabs, ['chuni'], 'a satellite alarm belongs to the cabinets using that input');
+    st = await qc.status({ cabinet: 'wacca' });
+    assert.strictEqual(st.faults.length, 0, 'a cabinet that does not use the dead feed is not locked');
+    v = await qc.osd.press('sat', '', 'menu');
+    assert.match(v.page.title, /FAULT/, 'MENU on a faulted unit opens the FAULT page');
+    for (let i = 0; i < 6 && !/OVERRIDE/.test((v.page.rows[v.page.cursor - v.page.first] || {}).label || ''); i++) v = await qc.osd.press('sat', '', 'down');
+    v = await qc.osd.press('sat', '', 'ok');
+    assert.strictEqual(qc.osd.faults()[0].overridden, true, 'a technician override clears the lock');
+    await qc.osd.press('sat', '', 'menu');
+
     const lag = qc.osd.bestLag([0, 0, 0, 9, 9, 9, 3, 3, 8, 8, 8, 1, 1, 1, 6, 6], [0, 9, 9, 9, 3, 3, 8, 8, 8, 1, 1, 1, 6, 6, 6, 6], 4);
     assert.ok(Math.abs(lag.lag - 2) < 0.3 && lag.score > 0.9, 'a camera 2 samples behind reads +2');
 
     // go live without a key is refused before OBS is touched
-    await assert.rejects(qc.goLive('chuni'), /stream key/);
+    await assert.rejects(qc.goLive('chuni'), /uplink key/);
     await assert.rejects(qc.prepare('nope'), /Unknown cabinet/);
 
     // prepare: collection, profile, scene

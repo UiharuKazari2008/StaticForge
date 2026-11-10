@@ -480,3 +480,12 @@
 .qc-sr-tag.is-ok { color: #9fe3b0; }
 .qc-sr-tag.is-bad { color: #fff; background: #c41e1e; border-color: #c41e1e; animation: qc-blink 0.8s steps(1, end) infinite; }
 .qc-sb-h { font: bold 8px Arial, sans-serif; letter-spacing: 1.5px; }
+
+/* latched unit fault: DO NOT AIR */
+.qc-fault { display: flex; align-items: center; gap: 12px; height: 26px; padding: 0 10px; background: #b80f14; color: #fff; animation: qc-fault 0.8s steps(1, end) infinite; }
+.qc-fault[hidden] { display: none; }
+.qc-fault b { font: 900 12px 'Arial Black', Arial, sans-serif; letter-spacing: 2px; white-space: nowrap; }
+.qc-fault-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: bold 11px Arial, sans-serif; }
+.qc-fault small { opacity: .85; white-space: nowrap; }
+.qc-fault.is-over { background: #7a4a00; animation: none; }
+@keyframes qc-fault { 50% { background: #3d0405; } }

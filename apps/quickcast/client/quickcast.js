@@ -143,6 +143,7 @@
                         <div class="qc-tally"><span class="qc-tally-text">OFF AIR</span><span class="qc-tc qc-lcd" title="Time on air">${segs('--:--:--')}</span></div>
                         <div class="qc-todbox" title="Time of day"><em>TOD</em><span class="qc-tod qc-lcd">${segs('--:--:--')}</span></div>
                     </div>
+                    <div class="qc-fault" hidden><b>UNIT FAULT &mdash; DO NOT AIR</b><span class="qc-fault-text"></span><small>Call a technician: REMOTE &gt; MENU on the unit</small></div>
                     <div class="qc-titlebar">
                         <label class="qc-title-label" for="qcTitleInput">TITLE</label>
                         <input type="text" id="qcTitleInput" class="qc-title" maxlength="100" spellcheck="true" placeholder="Stream title">
@@ -567,14 +568,23 @@
             tu.hidden = !(live && signed);
             tu.disabled = !!this.busy || !ti.value.trim();
 
+            // latched self-test faults on the units in this chain: banner, LIVE locked
+            const faults = st.faults || [];
+            const lock = faults.filter((f) => !f.overridden);
+            const fb = q('.qc-fault');
+            fb.hidden = !faults.length;
+            fb.classList.toggle('is-over', faults.length > 0 && !lock.length);
+            q('.qc-fault b').innerHTML = lock.length ? 'UNIT FAULT &mdash; DO NOT AIR' : 'UNIT FAULT OVERRIDDEN';
+            q('.qc-fault-text').textContent = faults.map((f) => `${f.unit}: ${f.items.map((i) => `${i.label} ${i.detail}`).join(', ')}`).join('  |  ');
+
             // keys
-            q('.qc-go').disabled = live || !this.canGo();
+            q('.qc-go').disabled = live || !this.canGo() || lock.length > 0;
             // LIVE: an on / off flash while armed (ready, not live), solid red only on air
             q('.qc-go').classList.toggle('is-armed', !live && !q('.qc-go').disabled);
             q('.qc-go').classList.toggle('is-on', live);
             // transport STOP: lit while stopped (not live), dark while on air until pressed
             q('.qc-stop').classList.toggle('is-on', !live);
-            q('.qc-go').title = live ? 'Already on air' : this.busy ? this.busy : !cab ? 'Take a cabinet first' : !st.key.set ? 'Set the uplink key first (Stream > Uplink Key...)' : st.obs.state === 'launching' ? `${this.satName()}'s encoder engine is starting` : online && !cab.present ? `The layout "${cab.scene}" is missing on ${this.satName()}` : `Take ${cab.name} to air on YouTube`;
+            q('.qc-go').title = lock.length && !live ? `Locked: ${lock.map((f) => f.unit).join(', ')} failed self test. A technician must clear it (REMOTE > MENU).` : live ? 'Already on air' : this.busy ? this.busy : !cab ? 'Take a cabinet first' : !st.key.set ? 'Set the uplink key first (Stream > Uplink Key...)' : st.obs.state === 'launching' ? `${this.satName()}'s encoder engine is starting` : online && !cab.present ? `The layout "${cab.scene}" is missing on ${this.satName()}` : `Take ${cab.name} to air on YouTube`;
             q('.qc-stop').disabled = !live || !!this.busy;
             q('.qc-st-obs').textContent = online ? `PGM ${st.program || '-'} \u00b7 PRESET ${st.profile || '-'}` : (st.obs.error || 'Satellite offline');
             if (!this.busy && !this.flashT) q('.qc-st-main').textContent = live ? `Live: ${cab ? cab.name : st.program}` : 'Ready';

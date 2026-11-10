@@ -150,7 +150,7 @@ async function ensureOverlay(b, link) {
 
 /** Show or hide the OSD layer on top of the box's program scene. */
 async function placeOverlay(b) {
-    const want = b.open || b.info;
+    const want = b.open || b.info || !!b.post;
     const { link } = await linkOf(b);
     if (want) await ensureOverlay(b, link);
     const program = (await link.request('GetCurrentProgramScene')).currentProgramSceneName;
@@ -219,6 +219,7 @@ const PAGES = {
             rows: [
                 { id: 'inputs', label: 'INPUT ASSIGNMENT', kind: 'nav', value: '' },
                 { id: 'timing', label: 'TIMING / SYNC', kind: 'nav', value: '' },
+                { id: 'cameras', label: 'CAMERA CONTROL', kind: 'nav', value: '' },
                 { id: 'audio', label: 'AUDIO LEVELS', kind: 'nav', value: '' },
                 { id: 'scene', label: 'SCENE / LAYOUT', kind: 'nav', value: '' },
                 { id: 'clock', label: 'VIDEO CLOCK', kind: 'nav', value: '' },
@@ -303,6 +304,50 @@ const PAGES = {
         return { title: 'INPUT FRAME RATES', rows, hint: `Box clock ${fpsText(v.fpsNumerator, v.fpsDenominator)} fps: an input can show at most that` };
     },
 
+    async fault(b) {
+        const f = b.fault;
+        if (!f) return { title: 'NO FAULT', rows: [{ id: 'none', label: 'Self test passed: no fault latched', kind: 'info', value: '', state: 'ok' }] };
+        const rows = f.items.map((x, i) => ({ id: `f:${i}`, label: x.label, type: x.type, kind: 'info', value: x.detail, state: 'bad', blink: true }));
+        rows.push({ id: 'f:retest', label: 'RE-RUN SELF TEST', kind: 'action', value: '', hint: 'After fixing the source: test again; a clean test clears the fault' });
+        rows.push({ id: 'f:override', label: f.overridden ? 'OVERRIDDEN (AIRING WITH FAULT)' : 'OVERRIDE: AIR WITH FAULT', kind: 'action', value: f.overridden ? 'ON' : '', state: f.overridden ? 'warn' : '', hint: 'Technician only: clears the DO NOT AIR lock without fixing the fault' });
+        rows.push({ id: 'inputs', label: 'INPUT ASSIGNMENT', kind: 'nav', value: '' });
+        rows.push({ id: 'cameras', label: 'CAMERA CONTROL', kind: 'nav', value: '' });
+        return { title: 'FAULT \u2014 DO NOT AIR', rows, hint: 'Fix the source (cable, device, port), then RE-RUN SELF TEST' };
+    },
+
+    async cameras(b, link) {
+        const cams = (await link.request('GetInputList')).inputs.filter((i) => CAMERA_KINDS.has(i.inputKind) && i.inputName !== OVERLAY_INPUT);
+        const rows = cams.map((c) => ({ id: `cam:${c.inputName}`, label: c.inputName, kind: 'nav', value: PORTS[c.inputKind] ? PORTS[c.inputKind].type : '' }));
+        return { title: 'CAMERA CONTROL', rows: rows.length ? rows : [{ id: 'none', label: 'No cameras on this unit', kind: 'info', value: '' }] };
+    },
+
+    async cam(b, link, f) {
+        const name = f.arg;
+        const set = (await link.request('GetInputSettings', { inputName: name })).inputSettings || {};
+        const amp = await procAmp(link, name);
+        const res = await listOpts(link, name, 'resolution');
+        const fpsList = await listOpts(link, name, 'frame_interval');
+        const pend = (k) => b.pending.get(`${k}:${name}`);
+        const curRes = pend('res') != null ? pend('res') : set.resolution;
+        const curFi = pend('fi') != null ? pend('fi') : set.frame_interval;
+        const fiText = (fi) => { const o = fpsList.find((x) => String(x.value) === String(fi)); return o ? o.text : fi > 0 ? `${Math.round(1e9 / fi) / 100} fps` : 'DEVICE DEFAULT'; };
+        const pct = (v, lo, hi) => ({ from: 0, width: Math.max(1, Math.min(100, ((v - lo) / (hi - lo)) * 100)), color: '#3ea0ff' });
+        return {
+            title: name.toUpperCase(),
+            rows: [
+                { id: `cres:${name}`, label: 'RESOLUTION', kind: 'pick', value: curRes || 'DEVICE DEFAULT', changed: pend('res') != null && pend('res') !== set.resolution, hint: res.length ? '\u25c4\u25ba choose, OK apply (the camera re-locks)' : 'The device lists no formats' },
+                { id: `cfps:${name}`, label: 'FRAME RATE', kind: 'pick', value: fiText(curFi), changed: pend('fi') != null && String(pend('fi')) !== String(set.frame_interval), hint: fpsList.length ? '\u25c4\u25ba choose, OK apply' : 'The device lists no rates' },
+                { id: `amp:brightness:${name}`, label: 'BRIGHTNESS', kind: 'adjust', value: amp.brightness.toFixed(2), bar: pct(amp.brightness, -1, 1), hint: 'Proc amp \u2014 \u25c4\u25ba' },
+                { id: `amp:contrast:${name}`, label: 'CONTRAST', kind: 'adjust', value: amp.contrast.toFixed(2), bar: pct(amp.contrast, -2, 2), hint: 'Proc amp \u2014 \u25c4\u25ba' },
+                { id: `amp:gamma:${name}`, label: 'GAMMA / EXPOSURE', kind: 'adjust', value: amp.gamma.toFixed(2), bar: pct(amp.gamma, -3, 3), hint: 'Lifts or lowers the mid tones like an exposure trim \u2014 \u25c4\u25ba' },
+                { id: `amp:saturation:${name}`, label: 'SATURATION', kind: 'adjust', value: amp.saturation.toFixed(2), bar: pct(amp.saturation, -1, 3), hint: 'Proc amp \u2014 \u25c4\u25ba' },
+                { id: `amp:hue_shift:${name}`, label: 'HUE', kind: 'adjust', value: `${Math.round(amp.hue_shift)}\u00b0`, bar: pct(amp.hue_shift, -180, 180), hint: 'Proc amp \u2014 \u25c4\u25ba' },
+                { id: `amp:reset:${name}`, label: 'PROC AMP RESET', kind: 'action', value: '', hint: 'OK sets the proc amp back to unity' }
+            ],
+            hint: 'Format on the camera; proc amp in the mixer'
+        };
+    },
+
     async audio(b, link) {
         const list = (await link.request('GetInputList')).inputs || [];
         const rows = [];
@@ -379,11 +424,39 @@ const PAGES = {
                 { id: 's:mem', label: 'MEMORY', kind: 'info', value: `${Math.round(st.memoryUsage || 0)} MB` },
                 { id: 's:disk', label: 'DISK FREE', kind: 'info', value: `${round1((st.availableDiskSpace || 0) / 1024)} GB` },
                 { id: 's:render', label: 'FRAME TIME', kind: 'info', value: `${round1(st.averageFrameRenderTime || 0)} ms` },
+                { id: 's:post', label: 'RUN SELF TEST', kind: 'action', value: b.post ? 'RUNNING' : b.lastPost ? `${b.lastPost.alarms ? `${b.lastPost.alarms} ALARM` : 'PASSED'}` : '', state: b.lastPost ? (b.lastPost.alarms ? 'bad' : 'ok') : '', hint: 'Boot screen and power-on self test now (the unit shows it on its output)' },
                 { id: 's:card', label: b.kind === 'satellite' ? 'LIVE STANDBY SLATES' : 'LIVE SYSTEM TEST CARD', kind: 'action', value: b.cardInstalled ? 'INSTALLED' : 'OK = INSTALL', state: b.cardInstalled ? 'ok' : '', hint: b.kind === 'satellite' ? 'Draws the standby slates behind each cabinet feed live (status bar shows the real link state)' : 'Draws the SysTest card live (real hardware I/O tiles and status)' }
             ]
         };
     }
 };
+
+const CAMERA_KINDS = new Set(['dshow_input', 'av_capture_input', 'av_capture_input_v2', 'v4l2_input']);
+const AMP_FILTER = 'AV Proc Amp';
+const AMP_STEP = { brightness: [0.02, -1, 1], contrast: [0.05, -2, 2], gamma: [0.05, -3, 3], saturation: [0.05, -1, 3], hue_shift: [2, -180, 180] };
+
+async function procAmp(link, inputName) {
+    const amp = { brightness: 0, contrast: 0, gamma: 0, saturation: 0, hue_shift: 0 };
+    try {
+        const f = await link.request('GetSourceFilter', { sourceName: inputName, filterName: AMP_FILTER });
+        Object.keys(amp).forEach((k) => { if (f.filterSettings && f.filterSettings[k] != null) amp[k] = Number(f.filterSettings[k]) || 0; });
+    } catch (_) { /* no proc amp yet: unity */ }
+    return amp;
+}
+
+async function setProcAmp(link, inputName, settings) {
+    let has = true;
+    try { await link.request('GetSourceFilter', { sourceName: inputName, filterName: AMP_FILTER }); } catch (_) { has = false; }
+    if (!has) await link.request('CreateSourceFilter', { sourceName: inputName, filterName: AMP_FILTER, filterKind: 'color_filter_v2', filterSettings: settings });
+    else await link.request('SetSourceFilterSettings', { sourceName: inputName, filterName: AMP_FILTER, filterSettings: settings, overlay: true });
+}
+
+async function listOpts(link, inputName, prop) {
+    try {
+        const r = await link.request('GetInputPropertiesListPropertyItems', { inputName, propertyName: prop });
+        return (r.propertyItems || []).filter((o) => o.itemEnabled !== false).map((o) => ({ value: o.itemValue, text: String(o.itemName || o.itemValue) }));
+    } catch (_) { return []; }
+}
 
 async function delayOf(link, inputName) {
     try {
@@ -621,12 +694,135 @@ setInterval(() => {
     }
 }, 2000).unref();
 
+// ------------------------------------------------------------------ power on: boot screen + self test
+
+const AUDIO_KINDS = new Set(['wasapi_input_capture', 'wasapi_output_capture', 'wasapi_process_output_capture', 'dshow_input']);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Power on / reset of a unit: its boot screen, then the power-on self test, drawn full-frame on its
+ * own output (the OSD layer). Checks, per source:
+ *   PRESENT  the device / port it is assigned is still listed by the unit (a missing USB camera, audio
+ *            interface or NDI feed fails here)
+ *   LOCK     video inputs carry a picture (a capture with no signal, e.g. HDMI desktop capture not
+ *            locking, reports 0x0)
+ *   RATE     cameras / captures run near their set rate on the unit's own clock (unstable or low)
+ * Any alarm holds the self-test screen for osd.alarmHoldS seconds (default 10, counting down) before
+ * the unit goes to program, so whoever is watching the output sees it.
+ */
+async function powerOn(boxId, opts = {}) {
+    const b = boxes.get(boxId) || box(boxId);
+    if (b.post && !b.post.latched) return b.lastPost;
+    b.post = null;
+    if (b.kind === 'satellite' && await deps.onAir(b).catch(() => false)) return null; // never over a live broadcast
+    const cfg = deps.readConfig().osd || {};
+    const holdS = Math.max(0, Math.min(120, Number(cfg.alarmHoldS) || 10));
+    b.post = { phase: 'boot', text: b.kind === 'satellite' ? 'Starting...' : 'SYSTEM START', reason: opts.reason || 'power', items: [], alarms: 0 };
+    emit(b);
+    try { await placeOverlay(b); } catch (_) { /* unit still coming up */ }
+    emit(b);
+    await sleep(3000);
+    let link;
+    try { ({ link } = await linkOf(b)); } catch (e) { b.post = null; return null; }
+    b.post.phase = 'test';
+    b.post.text = 'POWER ON SELF TEST';
+    emit(b);
+    const items = [];
+    const add = (it) => { items.push(it); b.post.items = items.slice(0, 8); emit(b); };
+    try {
+        const list = ((await link.request('GetInputList')).inputs || []).filter((i) => i.inputName !== OVERLAY_INPUT && !/^AV Live/.test(i.inputName));
+        const v = await link.request('GetVideoSettings');
+        const unitFps = v.fpsDenominator ? v.fpsNumerator / v.fpsDenominator : 30;
+        // where each input is enabled (scenes, groups) and its size there (a capture with no signal is 0x0)
+        const sizes = new Map();
+        const usedIn = new Map(); // input -> Set of top-level scenes
+        const sc = ((await link.request('GetSceneList')).scenes || []).filter((x) => x.sceneName !== OVERLAY_SCENE);
+        const walk = async (top, name, group, depth) => {
+            if (depth > 4) return;
+            const its = (await link.request(group ? 'GetGroupSceneItemList' : 'GetSceneItemList', { sceneName: name }).catch(() => ({}))).sceneItems || [];
+            for (const it of its) {
+                if (!it.sceneItemEnabled) continue;
+                if (it.isGroup) { await walk(top, it.sourceName, true, depth + 1); continue; }
+                if (!usedIn.has(it.sourceName)) usedIn.set(it.sourceName, new Set());
+                usedIn.get(it.sourceName).add(top);
+                const t = it.sceneItemTransform || {};
+                if (t.sourceWidth) sizes.set(it.sourceName, t.sourceWidth);
+            }
+        };
+        for (const x of sc.slice(0, 24)) await walk(x.sceneName, x.sceneName, false, 0);
+        // on the satellite, an input belongs to the cabinets whose layouts use it (a dead feed only
+        // locks those cabinets); global audio devices belong to all
+        const cabScenes = deps.readConfig().cabinets.map((c) => ({ id: c.id, scene: c.scene }));
+        const specials = new Set();
+        try { const sp = await link.request('GetSpecialInputs'); Object.values(sp || {}).forEach((x) => { if (x) specials.add(x); }); } catch (_) { /* older engine */ }
+        let n = 0;
+        for (const inp of list) {
+            const port = PORTS[inp.inputKind];
+            const video = VIDEO_KINDS.has(inp.inputKind) && inp.inputKind !== 'ffmpeg_source' && inp.inputKind !== 'window_capture' && inp.inputKind !== 'game_capture';
+            const audio = AUDIO_KINDS.has(inp.inputKind) && !video;
+            if (!port && !video) continue;
+            if (!usedIn.has(inp.inputName) && !specials.has(inp.inputName)) continue; // not wired to anything
+            n++;
+            const it = { n, label: inp.inputName, type: port ? port.type : 'VIDEO', state: 'ok', detail: 'OK' };
+            if (b.kind === 'satellite' && !specials.has(inp.inputName)) it.cabs = cabScenes.filter((c) => usedIn.get(inp.inputName).has(c.scene)).map((c) => c.id);
+            if (port) {
+                const opts2 = await portOptions(link, inp);
+                const cur = ((await link.request('GetInputSettings', { inputName: inp.inputName }).catch(() => ({}))).inputSettings || {})[port.prop];
+                if (opts2.length && cur && !opts2.some((o) => o.value === cur)) { it.state = 'alarm'; it.detail = audio ? 'AUDIO DEVICE MISSING' : 'DEVICE MISSING'; }
+            }
+            if (it.state === 'ok' && video && !sizes.has(inp.inputName)) { it.state = 'alarm'; it.detail = 'NO SIGNAL LOCK'; }
+            if (it.state === 'ok' && video && CAMERA_KINDS.has(inp.inputKind) && sizes.has(inp.inputName)) {
+                // frame rate on the unit's clock, about 1 s of frames
+                const frames = Math.round(unitFps);
+                const reqs = [];
+                for (let i = 0; i < frames; i++) reqs.push({ requestType: 'GetSourceScreenshot', requestData: { sourceName: inp.inputName, imageFormat: 'jpg', imageWidth: 32, imageHeight: 18, imageCompressionQuality: 80 } }, { requestType: 'Sleep', requestData: { sleepFrames: 1 } });
+                try {
+                    const res = await link.batch(reqs, { executionType: 2, timeoutMs: 15000 });
+                    const shots = res.filter((r) => r.requestType === 'GetSourceScreenshot' && r.requestStatus && r.requestStatus.result).map((r) => r.responseData.imageData);
+                    let ch = 0;
+                    for (let i = 1; i < shots.length; i++) if (shots[i] !== shots[i - 1]) ch++;
+                    const got = shots.length > 5 ? Math.round((ch / (shots.length - 1)) * unitFps) : null;
+                    const set = ((await link.request('GetInputSettings', { inputName: inp.inputName }).catch(() => ({}))).inputSettings || {});
+                    const want = Number(set.res_type) === 1 && Number(set.frame_interval) > 0 ? Math.min(unitFps, 1e7 / Number(set.frame_interval)) : unitFps;
+                    if (got != null && ch >= 3 && got < want * 0.8) { it.state = 'alarm'; it.detail = `RATE ${got}/${Math.round(want)} FPS`; } else if (ch < 3) it.detail = 'OK (NO MOTION)';
+                    else it.detail = `OK ${got} FPS`;
+                } catch (_) { it.detail = 'OK (RATE NOT MEASURED)'; }
+            }
+            add(it);
+        }
+    } catch (e) { add({ n: 0, label: 'SELF TEST', type: '', state: 'alarm', detail: e.message.slice(0, 60) }); }
+    const alarms = items.filter((x) => x.state === 'alarm');
+    b.post.items = (alarms.length ? [...alarms, ...items.filter((x) => x.state !== 'alarm')] : items).slice(0, 8);
+    b.post.alarms = alarms.length;
+    b.lastPost = { at: Date.now(), alarms: alarms.length, items };
+    if (alarms.length) {
+        // a failed self test is a latched FAULT: the unit keeps the fault card on its output (DO NOT AIR)
+        // until a technician enters its menu and re-tests clean or overrides; VisionCaster locks LIVE
+        b.fault = { at: Date.now(), items: alarms.map((x) => ({ label: x.label, type: x.type, detail: x.detail, cabs: x.cabs || null })), overridden: false, reason: b.post.reason };
+        b.post.phase = 'fault';
+        b.post.text = `FAULT: ${alarms[0].label} ${alarms[0].detail}${alarms.length > 1 ? ` (+${alarms.length - 1})` : ''}`;
+        b.post.holdUntil = 0;
+        b.post.latched = true;
+        emit(b);
+        return b.lastPost;
+    }
+    b.fault = null;
+    b.post.phase = 'pass';
+    b.post.text = 'SELF TEST PASSED';
+    emit(b);
+    await sleep(Math.max(2000, holdS * 0));
+    b.post = null;
+    try { await placeOverlay(b); } catch (_) { /* gone */ }
+    emit(b);
+    return b.lastPost;
+}
+
 // ------------------------------------------------------------------ view + keys
 
 function frame(b) { return b.stack[b.stack.length - 1]; }
 
 /** Pages whose numbers move on their own and are re-read while shown. */
-const LIVE_PAGES = new Set(['clock', 'diag', 'system', 'audio', 'align', 'fpsm']);
+const LIVE_PAGES = new Set(['clock', 'diag', 'system', 'audio', 'align', 'fpsm', 'fault']);
 
 /** Read the top page from the box (OBS round trips) into its frame's cache. */
 async function buildPage(b) {
@@ -671,6 +867,7 @@ function emit(b) {
         }
     }
     if (b.info && b.strip) out.strip = b.strip;
+    if (b.post) out.post = { ...b.post, holdLeft: b.post.holdUntil ? Math.max(0, Math.ceil((b.post.holdUntil - Date.now()) / 1000)) : 0 };
     b.view = out;
     for (const res of b.subs) { try { res.write(`data: ${JSON.stringify(out)}\n\n`); } catch (_) { b.subs.delete(res); } }
     return out;
@@ -688,11 +885,11 @@ function toast(b, text) { b.toast = text; b.toastAt = Date.now(); }
 async function onKey(b, key) {
     const { link } = await linkOf(b);
     if (key === 'menu') {
-        if (b.open) { b.open = false; b.stack = []; b.pending.clear(); } else { b.open = true; b.stack = [{ page: 'main', cursor: 0 }]; }
+        if (b.open) { b.open = false; b.stack = []; b.pending.clear(); } else { b.open = true; b.stack = b.fault && !b.fault.overridden ? [{ page: 'main', cursor: 0 }, { page: 'fault', cursor: 0, title: 'FAULT' }] : [{ page: 'main', cursor: 0 }]; }
         return;
     }
     if (key === 'info') { b.info = !b.info; return; }
-    if (key === 'diag') { if (!b.open) b.open = true; b.stack = [{ page: 'main', cursor: 5 }, { page: 'diag', cursor: 0 }]; return; }
+    if (key === 'diag') { if (!b.open) b.open = true; b.stack = [{ page: 'main', cursor: 6 }, { page: 'diag', cursor: 0 }]; return; }
     if (!b.open) { if (key === 'exit' && b.info) b.info = false; return; }
     const f = frame(b);
     if (key === 'exit') {
@@ -709,7 +906,50 @@ async function onKey(b, key) {
     if (!row) return;
     const name = row.id.slice(row.id.indexOf(':') + 1);
     const dir = key === 'left' ? -1 : key === 'right' ? 1 : 0;
-    if (row.kind === 'nav' && key === 'ok') { b.stack.push({ page: row.id, cursor: 0, title: row.label }); return; }
+    if (row.kind === 'nav' && key === 'ok') {
+        if (row.id.startsWith('cam:')) { b.stack.push({ page: 'cam', arg: row.id.slice(4), cursor: 0, title: row.label }); return; }
+        b.stack.push({ page: row.id, cursor: 0, title: row.label });
+        return;
+    }
+    if (row.id.startsWith('amp:')) {
+        const [, k, ...rest] = row.id.split(':');
+        const inputName = rest.join(':');
+        if (k === 'reset') { if (key === 'ok') { await setProcAmp(link, inputName, { brightness: 0, contrast: 0, gamma: 0, saturation: 0, hue_shift: 0 }); toast(b, `${inputName}: proc amp at unity`); } return; }
+        if (!dir) return;
+        const amp = await procAmp(link, inputName);
+        const [step, lo, hi] = AMP_STEP[k];
+        amp[k] = Math.round(Math.max(lo, Math.min(hi, amp[k] + dir * step)) * 1000) / 1000;
+        await setProcAmp(link, inputName, amp);
+        return;
+    }
+    if (row.id.startsWith('cres:') || row.id.startsWith('cfps:')) {
+        const isRes = row.id.startsWith('cres:');
+        const inputName = row.id.slice(5);
+        const prop = isRes ? 'resolution' : 'frame_interval';
+        const pk = `${isRes ? 'res' : 'fi'}:${inputName}`;
+        const opts = await listOpts(link, inputName, prop);
+        const set = (await link.request('GetInputSettings', { inputName })).inputSettings || {};
+        if (dir && opts.length) {
+            const cur = b.pending.has(pk) ? b.pending.get(pk) : set[prop];
+            const i = opts.findIndex((o) => String(o.value) === String(cur));
+            b.pending.set(pk, opts[(i + dir + opts.length) % opts.length].value);
+        } else if (key === 'ok' && b.pending.has(pk)) {
+            const v = b.pending.get(pk);
+            b.pending.delete(pk);
+            // custom format (res_type 1) so the chosen resolution / rate is what the camera runs
+            await link.request('SetInputSettings', { inputName, inputSettings: { res_type: 1, [prop]: v }, overlay: true });
+            toast(b, `${inputName}: ${isRes ? v : (opts.find((o) => String(o.value) === String(v)) || {}).text || v}`);
+        }
+        return;
+    }
+    if (row.id === 'f:retest' && key === 'ok') { b.open = false; b.stack = []; void powerOn(b.id, { reason: 'retest' }); return; }
+    if (row.id === 'f:override' && key === 'ok' && b.fault) {
+        b.fault.overridden = !b.fault.overridden;
+        if (b.fault.overridden && b.post && b.post.latched) b.post = null;
+        toast(b, b.fault.overridden ? 'FAULT OVERRIDDEN: airing with a known fault' : 'Fault lock restored');
+        return;
+    }
+    if (row.id === 's:post' && key === 'ok') { void powerOn(b.id, { reason: 'manual' }); return; }
     if (row.id.startsWith('port:')) {
         const inp = (await portInputs(link)).find((i) => i.inputName === name);
         if (!inp) return;
@@ -889,6 +1129,13 @@ setInterval(() => {
     }
 }, 2000).unref();
 
+/** Latched self-test faults: [{ unit, box, kind, at, items, overridden }] (VisionCaster locks LIVE on them). */
+function faults() {
+    const out = [];
+    for (const b of boxes.values()) if (b.fault) out.push({ unit: boxName(b), box: b.id, kind: b.kind, machine: b.machine, at: b.fault.at, items: b.fault.items, overridden: !!b.fault.overridden });
+    return out;
+}
+
 /** The last AUTO ALIGN result on a mux unit (for VisionCaster's timing bars), or null. */
 function alignFor(machine) {
     const b = boxes.get(`mux-${machine}`);
@@ -898,4 +1145,4 @@ function alignFor(machine) {
     return { cam: sel.cam || '', ref: sel.ref || '', running: !!b.align.running, offMs: r && r.offMs != null ? r.offMs : null, score: r ? r.score : null, text: r ? r.text : b.align.error || '' };
 }
 
-module.exports = { subscribeCard, alignFor, init, press, view, subscribe, checkToken, PORTS, bestLag, _boxes: boxes, OVERLAY_SCENE, OVERLAY_INPUT, DELAY_FILTER };
+module.exports = { faults, powerOn, subscribeCard, alignFor, init, press, view, subscribe, checkToken, PORTS, bestLag, _boxes: boxes, OVERLAY_SCENE, OVERLAY_INPUT, DELAY_FILTER };

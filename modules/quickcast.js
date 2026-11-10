@@ -307,6 +307,7 @@ class ObsLink {
 
 const link = new ObsLink();
 diag.init({ ruiko: link, readConfig, makeLink: (target, label) => new ObsLink({ target, label, events: 0 }) });
+diag.onUnitRestart((machine) => void avOsd.powerOn(`mux-${machine}`, { reason: 'reset' }).catch(() => {}));
 avOsd.init({
     ruiko: link, diag, readConfig, dataDir: DATA_DIR, unitModel: (n) => unitModel(n), unitInfo: (n, r) => unitInfo(n, r), satelliteName: () => satelliteName(),
     // on air = the satellite is streaming and (for a mux box) its cabinet's scene is on program
@@ -370,7 +371,7 @@ function launchObs() {
         }
         const until = Date.now() + LAUNCH_WAIT_MS;
         for (;;) {
-            try { await link.connect(); return true; } catch (e) {
+            try { await link.connect(); if (!already) setTimeout(() => void avOsd.powerOn('sat', { reason: 'power' }).catch(() => {}), 1500); return true; } catch (e) {
                 if (e.code === 'QUICKCAST_OBS_AUTH') throw e;
                 if (Date.now() > until) throw fail(already ? `${satelliteName()}'s encoder engine is running but its control port does not answer` : `${satelliteName()}'s encoder engine did not come up within a minute`, 'QUICKCAST_LAUNCH');
             }
@@ -468,6 +469,24 @@ function keyHint(key) {
     return k ? `••••-${k.slice(-4)}` : '';
 }
 
+/** Latched, not overridden self-test faults on the units a cabinet's broadcast goes through. */
+async function chainFaults(cabinetId) {
+    const all = avOsd.faults().filter((f) => !f.overridden);
+    if (!all.length) return [];
+    let machine = '';
+    try { machine = await diag.machineForCabinet(cabinetId); } catch (_) { machine = ''; }
+    return all.map((f) => scopeFault(f, cabinetId, machine)).filter(Boolean);
+}
+
+/** A fault as it bears on one cabinet: satellite alarms only for inputs that cabinet uses (or global ones). */
+function scopeFault(f, cabinetId, machine) {
+    if (f.kind === 'satellite') {
+        const items = f.items.filter((i) => !i.cabs || !i.cabs.length || i.cabs.includes(cabinetId));
+        return items.length ? { ...f, items } : null;
+    }
+    return machine && f.machine === machine ? f : null;
+}
+
 /** Everything the client shows, one read per poll (~8 Hz). Never throws for an offline OBS.
  *  opts.cabinet: the picked cabinet, for the pipeline diagnostics (default: the one on program). */
 async function status(opts = {}) {
@@ -560,6 +579,9 @@ async function status(opts = {}) {
         const pick = cfg.cabinets.some((c) => c.id === opts.cabinet) ? opts.cabinet : base.programCabinet;
         try { base.diag = diag.diagnose(base, stats, pick); } catch (_) { base.diag = null; }
         if (base.diag && base.diag.input && base.diag.input.source) base.diag.input.align = avOsd.alignFor(base.diag.input.source);
+        // latched self-test faults on the satellite and this cabinet's mixer (LIVE locks on them)
+        const mux = base.diag && base.diag.input && base.diag.input.source;
+        base.faults = avOsd.faults().map((f) => scopeFault(f, pick, mux)).filter(Boolean);
     } catch (e) {
         base.obs.error = e.message;
         if (!link.online) base.obs.state = 'offline';
@@ -679,7 +701,10 @@ async function prepare(cabinetId, confirmed) {
 async function goLive(cabinetId, settings) {
     const c = cabinetOf(cabinetId);
     const cfg = readConfig();
-    if (!cfg.youtube.streamKey) throw fail('No YouTube stream key is set (Stream > Stream Key...)', 'QUICKCAST_NO_KEY');
+    if (!cfg.youtube.streamKey) throw fail('No uplink key is set (Stream > Uplink Key...)', 'QUICKCAST_NO_KEY');
+    // a unit in the chain with a latched self-test fault: DO NOT AIR until a technician clears it
+    const blocking = await chainFaults(c.id);
+    if (blocking.length) throw fail(`DO NOT AIR: ${blocking.map((f) => `${f.unit} ${f.items.map((i) => `${i.label} ${i.detail}`).join(', ')}`).join('; ')}. A technician must clear it in the unit's menu (MENU on the remote).`, 'QUICKCAST_UNIT_FAULT');
     return exclusive('going live', async () => {
         await ensureObs(true);
         const st = await link.request('GetStreamStatus');

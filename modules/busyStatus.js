@@ -316,6 +316,9 @@ function attachExpress(app) {
         if (req.path === '/gadget-stream') return next();
         // a remote browser window's audio (grimoireBrowserBridge.js) stays open as long as the window does
         if (/^\/api\/grimoire-browser\/sessions\/[a-f0-9]{32}\/audio$/.test(req.path)) return next();
+        // VisionCaster (#734): the units' OSD / live card event streams (avOsdHttp.js) stay open as long as
+        // the units run, and the realtime preview MJPEG as long as someone watches: they just reconnect
+        if (req.method === 'GET' && (/^\/av-osd\/[^/]+\/events$/.test(req.path) || /^\/quickcast\/live\/[^/]+$/.test(req.path))) return next();
         // the log viewer's live tail (web_server.js `${logPath}/stream`) stays open while the viewer is
         if (req.method === 'GET' && /^\/[^/]+\/stream$/.test(req.path) && req.query && req.query.source) return next();
         const id = beginHttp(req);

@@ -1,7 +1,7 @@
-# WebSocket: QuickCast (OBS live launcher)
+# WebSocket: VisionCaster (video mixer remote, was QuickCast)
 
 Server handler: `modules/ws/handlers/300-quickcastHandler.js` (logic in `modules/quickcast.js`).
-Client: `apps/quickcast/client/quickcast.js` (Melaton system package `apps/quickcast`, Start > AmusementVISION 2024 > QuickCast). Yozora #734.
+Client: `apps/quickcast/client/quickcast.js` (Melaton system package `apps/quickcast`, Start > AmusementVISION 2024 > VisionCaster; ids, packet names and the data dir keep "quickcast"). Yozora #734.
 
 One-click YouTube live for an arcade cabinet through OBS Studio on Ruiko. The server talks to obs-websocket v5
 (`ws://192.168.100.12:4455`). The client names a cabinet id from the config, never a scene or a request type.
@@ -67,10 +67,23 @@ Every field is optional:
 | `quickcast_yt_profile` | `force` | Refreshes the active channel's profile (every 10 min at most unless forced): `{ account }` with `profile: { id, title, handle, avatar, subscribers, videos }` and `channels[]` |
 | `quickcast_yt_select` | `channelId` | Makes another signed-in channel the active one |
 | `quickcast_info` | - | `{ host, port, profile, collection, server, launchTask }` |
+| `quickcast_obs_off` | - | Shuts the satellite's encoder engine down with the on-demand task `launch.stopTask` (taskkill without /F in the logged-on session). Refused while on air or recording. `{ ok }` / `{ ok, already }` |
+| `quickcast_live_ticket` | `cabinet`, `width` | `{ ticket, url }`: a one-time ticket for the REALTIME preview, an MJPEG stream of the cabinet's layout at `GET /quickcast/live/<ticket>` (up to 25 fps, from the satellite only) |
+| `quickcast_osd_key` | `target` (`sat` / `cab`), `cabinet`, `key` (`up down left right ok menu diag info exit`) | A remote key for the unit (modules/avOsd.js). Keys queue per unit; a backlog over 2 is dropped. Returns the OSD view `{ box: { id, name, maker, line, model, type, theme }, open, info, page: { title, crumbs, rows[], cursor, first, total, hint }, strip, post, toast }` |
+| `quickcast_osd_view` | `target`, `cabinet` | The unit's current OSD view (for the remote's display) |
 
 Quota (10,000 units a day by default): a go-live ~150 units, a chat read 5, a reply 50.
 
 One prepare / go-live / stop / encoder change runs at a time; another gets `QUICKCAST_BUSY`.
+
+
+`quickcast_status` also carries `satellite: { name, model, kind, host }`, `diag: { columns, input, output, verdict }` (modules/quickcastDiag.js: the cabinet mixer and satellite pipeline rows; `input.captures[]`, `input.align`) and `faults: [{ unit, box, kind, machine, at, items: [{ label, type, detail, cabs }], overridden }]`: latched self-test faults on the units this cabinet goes through. `quickcast_golive` refuses with `QUICKCAST_UNIT_FAULT` while one is not overridden.
+
+### Units, OSD and self test
+
+- Each unit draws its menus in its own video output: browser source "AV OSD Overlay" in scene "AV OSD" (nested on top of program only while needed), page `GET /av-osd/<box>?k=<token>` with events at `/av-osd/<box>/events` (Server-Sent Events). Tokens are per unit in `osd.json` (0600). `?card=systest` / `?card=slate&cab=<id>` draw the live System Test card / standby slate (installed from the unit's SYSTEM page as "AV Live Card" / "AV Live Slate <cab>").
+- Power on / reset (the satellite's engine start, a mixer whose frame counter restarts) runs the boot screen and power-on self test: device PRESENT, video LOCK, camera RATE on the unit's clock, for inputs enabled somewhere. Any alarm latches a FAULT (DO NOT AIR card on the unit's output) until a technician re-tests clean or overrides in the unit's menu.
+- Config: `satellite: { name }`, `units: { "<NAME>": { maker, line, model, kind, theme, sw, hw, fw } }` (defaults: satellite = AmuVISION Satellite iSVE-20D, mixers = TAKAO iUHD-4DX), `muxes: { "<NDI machine>": { host, port, password } }`, `osd: { baseUrl, alarmHoldS }`.
 
 ## Test
 
