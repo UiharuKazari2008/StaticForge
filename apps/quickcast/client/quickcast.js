@@ -136,7 +136,7 @@
                 <div class="modal-content qc-client"><div class="qc-root">
                     <div class="qc-menubar"><span data-qc-menu="file"><u>F</u>ile</span><span data-qc-menu="stream"><u>S</u>tream</span><span data-qc-menu="help"><u>H</u>elp</span></div>
                     <div class="qc-band">
-                        <div class="qc-brand"><img class="qc-avlogo" src="${A}/amusementvision-logo.png" alt="AmusementVISION" width="252" height="36"><span class="qc-brand-sub"><span class="qc-word">QUICK<b>CAST</b></span><small>Live Broadcast Launcher</small></span></div>
+                        <div class="qc-brand"><img class="qc-avlogo" src="${A}/amusementvision-logo.png" alt="AmusementVISION" width="252" height="36"><span class="qc-brand-sub"><span class="qc-word">VISION<b>CASTER</b></span><small>Video Mixer Remote</small></span></div>
                         <span class="qc-fill"></span>
                         <button type="button" class="qc-yt"><span class="qc-yt-dot"></span><img class="qc-yt-av" alt="" width="34" height="34" referrerpolicy="no-referrer" hidden><span class="qc-yt-names"><span class="qc-yt-text">YouTube: not signed in</span><small class="qc-yt-sub"></small><small class="qc-yt-live"></small></span><span class="qc-yt-arrow"></span></button>
                         <button type="button" class="qc-tb qc-copy" data-qc="copyurl" hidden title="Copy the broadcast's YouTube watch link">COPY WATCH LINK</button>

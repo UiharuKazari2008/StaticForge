@@ -489,3 +489,7 @@
 .qc-fault small { opacity: .85; white-space: nowrap; }
 .qc-fault.is-over { background: #7a4a00; animation: none; }
 @keyframes qc-fault { 50% { background: #3d0405; } }
+
+.qc-dsync { max-height: 70px; overflow-y: auto; }
+.qc-sat .qc-head { white-space: nowrap; overflow: hidden; }
+.qc-sat .qc-head small { float: none; margin-left: 6px; }
