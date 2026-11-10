@@ -695,6 +695,18 @@ $j['max_bitrate'] = ${rc === 'VBR' ? Math.round(bitrate * 1.5) : bitrate}
     });
 }
 
+/** Mute / unmute one of the inputs the stream hears (only those: the program scene's audio set). */
+async function setMute(name, muted) {
+    touch();
+    if (!link.online) throw fail('OBS is not connected', 'QUICKCAST_OBS_DOWN');
+    const scenes = await link.request('GetSceneList');
+    const inputs = await audioInputsFor(scenes.currentProgramSceneName);
+    if (!inputs.some((i) => i.name === name)) throw fail('That source is not in the stream mix', 'QUICKCAST_NO_INPUT');
+    await link.request('SetInputMute', { inputName: name, inputMuted: !!muted });
+    audioSet.at = 0;
+    return { ok: true, name, muted: !!muted };
+}
+
 // ------------------------------------------------------------------ XLink cabinet controls
 
 // Only these XLink items are reachable from QuickCast (matched by their menu.json text)
@@ -784,4 +796,4 @@ function info() {
     return { host: cfg.obs.host, port: cfg.obs.port, profile: cfg.profile, collection: cfg.collection, server: cfg.youtube.server, launchTask: cfg.launch.task };
 }
 
-module.exports = { status, preview, prepare, goLive, stop, launch, setKey, info, getEncoder, setEncoder, cabinetControls, cabinetAction, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };
+module.exports = { status, preview, prepare, goLive, stop, launch, setKey, info, getEncoder, setEncoder, cabinetControls, cabinetAction, setMute, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };

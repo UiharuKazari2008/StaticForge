@@ -133,6 +133,7 @@ wss.on('connection', (ws) => {
             case 'GetInputAudioMonitorType': if (audio[q.inputName]) data = { monitorType: audio[q.inputName].monitor }; else ok = false; break;
             case 'GetInputAudioTracks': data = { inputAudioTracks: { 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, ...audio[q.inputName].tracks } }; break;
             case 'GetInputMute': data = { inputMuted: audio[q.inputName].muted }; break;
+            case 'SetInputMute': audio[q.inputName].muted = q.inputMuted; break;
             case 'GetSourceScreenshot': data = { imageData: `data:image/jpg;base64,FAKE-${q.sourceName}-${q.imageWidth}` }; break;
             case 'SetStreamServiceSettings': obs.service = q; break;
             case 'StartStream':
@@ -223,6 +224,12 @@ async function main() {
     assert.strictEqual(st.master.peak[1], -10.5); // 0.3 -> -10.5 dB
     st = await qc.status();
     assert.strictEqual(st.master.mag[0], -100, 'meters reset after a read');
+    // mute: only inputs the stream hears
+    await assert.rejects(qc.setMute('Cue Monitor', true), /not in the stream mix/);
+    let mu = await qc.setMute('Waiting Music', false);
+    assert.deepStrictEqual(mu, { ok: true, name: 'Waiting Music', muted: false });
+    assert.strictEqual(audio['Waiting Music'].muted, false);
+    await qc.setMute('Waiting Music', true);
 
     // preview
     const pv = await qc.preview('chuni', 4000);

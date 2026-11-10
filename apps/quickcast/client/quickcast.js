@@ -77,6 +77,7 @@
             this.winSeq = 0;
             this.wasLive = false;
             try { this.cabinet = root.localStorage.getItem(LS_KEY) || ''; } catch (_) { this.cabinet = ''; }
+            try { this.sourcesShown = root.localStorage.getItem('quickcast.sources') !== 'hidden'; } catch (_) { this.sourcesShown = true; }
             this.build();
             this.loop();
         }
@@ -107,12 +108,13 @@
                 <div class="modal-content qc-client"><div class="qc-root">
                     <div class="qc-menubar"><span data-qc-menu="file"><u>F</u>ile</span><span data-qc-menu="stream"><u>S</u>tream</span><span data-qc-menu="help"><u>H</u>elp</span></div>
                     <div class="qc-band">
-                        <div class="qc-brand"><img class="qc-avlogo" src="${A}/amusementvision-logo.png" alt="AmusementVISION" width="137" height="40"><span class="qc-brand-sub"><span class="qc-word">QUICK<b>CAST</b></span><small>Live Broadcast Launcher</small></span></div>
+                        <div class="qc-brand"><img class="qc-avlogo" src="${A}/amusementvision-logo.png" alt="AmusementVISION" width="252" height="36"><span class="qc-brand-sub"><span class="qc-word">QUICK<b>CAST</b></span><small>Live Broadcast Launcher</small></span></div>
                         <span class="qc-fill"></span>
                         <button type="button" class="qc-yt"><span class="qc-yt-dot"></span><img class="qc-yt-av" alt="" width="34" height="34" referrerpolicy="no-referrer" hidden><span class="qc-yt-names"><span class="qc-yt-text">YouTube: not signed in</span><small class="qc-yt-sub"></small><small class="qc-yt-live"></small></span><span class="qc-yt-arrow"></span></button>
                         <button type="button" class="qc-tb qc-copy" data-qc="copyurl" hidden title="Copy the stream's YouTube link">COPY STREAM URL</button>
                         <div class="qc-link"><span class="qc-lamp"></span><span class="qc-link-text">OBS: OFFLINE</span></div>
                         <div class="qc-tally"><span class="qc-tally-text">OFF AIR</span><span class="qc-tc">--:--:--</span></div>
+                        <div class="qc-todbox" title="Time of day"><em>TOD</em><b class="qc-tod">--:--:--</b></div>
                     </div>
                     <div class="qc-titlebar">
                         <label class="qc-title-label" for="qcTitleInput">TITLE</label>
@@ -139,7 +141,7 @@
                                 <span><em>CONGESTION</em><b class="qc-i-cong">-</b></span>
                                 <span><em>PROFILE</em><b class="qc-i-prof">-</b></span>
                             </div>
-                            <div class="qc-srcs"><div class="qc-head">SOURCES ON AIR <small>(stream mix with this scene on program)</small></div><div class="qc-srclist"></div></div>
+                            <div class="qc-srcs"><div class="qc-head qc-srcs-head">SOURCES ON AIR <small>(stream mix with this scene on program)</small><button type="button" class="qc-mini qc-srcs-tog" data-qc="togglesrcs" title="Show or hide the source list">HIDE</button></div><div class="qc-srclist"></div></div>
                         </div>
                         <div class="qc-vu">
                             <div class="qc-head">AUDIO</div>
@@ -161,12 +163,13 @@
                             <span class="qc-chk" data-chk="audio"><i></i>Sound</span>
                         </div>
                         <span class="qc-fill"></span>
+                        <div class="qc-bus qc-vbus"><span class="qc-bus-label">VIDEO</span><div class="qc-vkeys"><span class="qc-bus-none">-</span></div></div>
                         <div class="qc-side-keys">
-                            <button type="button" class="qc-tb" data-qc="chat">LIVE CHAT</button>
-                            <button type="button" class="qc-tb" data-qc="settings">SETTINGS</button>
+                            <button type="button" class="qc-bk k-white" data-qc="chat">LIVE CHAT</button>
+                            <button type="button" class="qc-bk k-white" data-qc="settings">SETTINGS</button>
                         </div>
-                        <button type="button" class="qc-key qc-go" data-qc="golive" disabled><span class="qc-key-dot"></span>GO LIVE</button>
-                        <button type="button" class="qc-key qc-stop" data-qc="stop" disabled><span class="qc-key-sq"></span>STOP</button>
+                        <button type="button" class="qc-bk qc-key qc-go k-green" data-qc="golive" disabled><span class="qc-key-dot"></span>GO LIVE</button>
+                        <button type="button" class="qc-bk qc-key qc-stop k-red" data-qc="stop" disabled><span class="qc-key-sq"></span>STOP</button>
                     </div>
                     <div class="qc-status"><span class="qc-st-main">Ready</span><span class="qc-st-obs">-</span><span class="qc-st-time">-</span></div>
                 </div></div>`;
@@ -207,6 +210,11 @@
             title.addEventListener('change', () => { if (!(this.st && this.st.stream && this.st.stream.active)) void this.saveTitle(); }, sig);
             doc.addEventListener('staticforge:modal-lifecycle', (e) => {
                 if (e && e.detail && e.detail.id === m.id && e.detail.type === 'closed') this.app.exit();
+            }, sig);
+            this.showSources(this.sourcesShown);
+            q('.qc-srclist').addEventListener('click', (ev) => {
+                const b = ev.target.closest('[data-mute]');
+                if (b && !b.disabled) void this.toggleMute(Number(b.dataset.mute), b);
             }, sig);
             this.master = [0, 1].map((ch) => new Bar(q(`.qc-bar[data-ch="${ch}"] .qc-bar-fill`), q(`.qc-bar[data-ch="${ch}"] .qc-bar-pk`)));
             q('.qc-pic').addEventListener('load', () => this.checkPicture(), sig);
@@ -265,6 +273,7 @@
                 case 'encoder': this.settingsWin('encoder'); break;
                 case 'chat': this.chatWin(); break;
                 case 'updatetitle': await this.updateLiveTitle(); break;
+                case 'togglesrcs': this.showSources(!this.sourcesShown); break;
                 case 'launch': await this.run('Starting OBS on Ruiko...', 'quickcast_launch', {}); break;
                 case 'watch': if (this.streamUrl()) root.open(this.streamUrl(), '_blank', 'noopener'); break;
                 case 'copyurl': await this.copyUrl(); break;
@@ -352,6 +361,7 @@
             requestAnimationFrame(frame);
             const tick = setInterval(() => {
                 this.el('.qc-st-time').textContent = clock(Date.now());
+                this.el('.qc-tod').textContent = clock(Date.now());
                 const age = this.previewAt ? Math.round((Date.now() - this.previewAt) / 100) / 10 : null;
                 this.el('.qc-mon-age').textContent = this.previewFor && age != null ? `${clock(this.previewAt)}  (${age.toFixed(1)} s)` : '';
             }, 250);
@@ -387,7 +397,7 @@
             const sig = st.cabinets.map((c) => `${c.id}:${c.present}`).join('|');
             if (list.dataset.sig !== sig) {
                 list.dataset.sig = sig;
-                list.innerHTML = st.cabinets.map((c) => `<button type="button" class="qc-cab" data-cab="${esc(c.id)}">
+                list.innerHTML = st.cabinets.map((c) => `<button type="button" class="qc-bk qc-cab k-green" data-cab="${esc(c.id)}">
                     <span class="qc-cab-badge qc-b-${esc(c.icon)}">${esc(c.short)}</span>
                     <span class="qc-cab-text"><b>${esc(c.name)}</b><small>Scene: ${esc(c.scene)}${online && !c.present ? ' (missing)' : ''}</small></span>
                     <span class="qc-cab-tally"></span></button>`).join('');
@@ -397,6 +407,13 @@
                 b.classList.toggle('is-sel', b.dataset.cab === this.cabinet);
                 b.classList.toggle('is-pgm', !!c && st.programCabinet === c.id);
                 b.classList.toggle('is-air', live && st.programCabinet === b.dataset.cab);
+                // switcher tally: the picked cabinet is lit green (PVW), the one on air red (PGM)
+                const pgm = live && st.programCabinet === b.dataset.cab;
+                b.classList.toggle('k-red', pgm);
+                b.classList.toggle('k-green', !pgm && b.dataset.cab === this.cabinet);
+                b.classList.toggle('k-white', !pgm && b.dataset.cab !== this.cabinet);
+                b.classList.toggle('is-on', pgm || b.dataset.cab === this.cabinet);
+                b.querySelector('.qc-cab-tally').textContent = pgm ? 'PGM' : b.dataset.cab === this.cabinet ? 'PVW' : '';
                 b.disabled = !!this.busy || (online && !!c && !c.present);
             });
 
@@ -483,13 +500,36 @@
 
             // keys
             q('.qc-go').disabled = live || !this.canGo();
+            q('.qc-go').classList.toggle('is-on', !q('.qc-go').disabled);
+            q('.qc-stop').classList.toggle('is-on', live);
             q('.qc-go').title = live ? 'Already on air' : this.busy ? this.busy : !cab ? 'Pick a cabinet first' : !st.key.set ? 'Set the YouTube stream key first (Stream > Stream Key...)' : st.obs.state === 'launching' ? 'OBS is starting on Ruiko' : online && !cab.present ? `The scene "${cab.scene}" is missing from OBS` : `Go live on YouTube with ${cab.name}`;
             q('.qc-stop').disabled = !live || !!this.busy;
             q('.qc-st-obs').textContent = online ? `${st.collection || '-'} / ${st.profile || '-'} / ${st.program || '-'}` : (st.obs.error || 'OBS offline');
             if (!this.busy && !this.flashT) q('.qc-st-main').textContent = live ? `Live: ${cab ? cab.name : st.program}` : 'Ready';
         }
 
+        showSources(on) {
+            this.sourcesShown = !!on;
+            this.modal.classList.toggle('qc-srcs-hidden', !on);
+            this.el('.qc-srcs-tog').textContent = on ? 'HIDE' : 'SHOW';
+            try { root.localStorage.setItem('quickcast.sources', on ? 'shown' : 'hidden'); } catch (_) { /* private mode */ }
+        }
+
+        async toggleMute(n, btn) {
+            const inp = this.inputs && this.inputs[n];
+            if (!inp) return;
+            const live = !!(this.st && this.st.stream && this.st.stream.active);
+            if (!inp.muted && live && !await this.ask(`Mute "${inp.name}" on the live stream?`)) return;
+            btn.disabled = true;
+            try {
+                await this.send('quickcast_mute', { name: inp.name, muted: !inp.muted });
+                this.flash(`${inp.name} ${inp.muted ? 'unmuted' : 'muted'}.`);
+            } catch (err) { await this.box(err.message, 'error'); }
+            btn.disabled = false;
+        }
+
         renderSources(inputs) {
+            this.inputs = inputs;
             const list = this.el('.qc-srclist');
             // an input OBS sends no meter for has no audio at all (a browser overlay): dimmed, not hidden
             const sig = inputs.map((i) => `${i.name}:${i.muted}:${i.mag.length > 0}`).join('|');
@@ -499,7 +539,8 @@
                 list.innerHTML = inputs.length ? ordered.map(({ i, n }) => `<div class="qc-src${i.muted ? ' is-muted' : ''}${i.mag.length ? '' : ' is-silent'}" data-src="${n}">
                     <span class="qc-src-name" title="${esc(i.name)}">${esc(i.name)}</span>
                     <span class="qc-hbar"><span class="qc-bar-fill"></span><span class="qc-bar-pk"></span></span>
-                    <span class="qc-src-state">${i.muted ? 'MUTED' : i.mag.length ? '' : 'NO AUDIO'}</span></div>`).join('')
+                    <span class="qc-src-state">${i.muted ? 'MUTED' : i.mag.length ? '' : 'NO AUDIO'}</span>
+                    ${i.mag.length || i.muted ? `<button type="button" class="qc-bk qc-mute k-red${i.muted ? ' is-on' : ''}" data-mute="${n}" title="${i.muted ? 'Unmute' : 'Mute'} ${esc(i.name)}">MUTE</button>` : '<span class="qc-mute-none"></span>'}</div>`).join('')
                     : '<div class="qc-src-none">No audio sources in this scene.</div>';
                 this.inputBars = new Map();
                 inputs.forEach((i, n) => {
@@ -680,21 +721,22 @@
             const c = this.controls;
             const dev = this.el('.qc-ctl-dev');
             if (!c || !c.available || c.cabinet !== this.cabinet || !this.cabinet) body.dataset.sig = '';
+            if (!c || !c.available || c.cabinet !== this.cabinet) this.renderVideoBus(null);
             if (!this.cabinet) { body.innerHTML = '<p class="qc-ctl-none">Pick a cabinet.</p>'; dev.textContent = ''; return; }
             if (!c || c.cabinet !== this.cabinet) { body.innerHTML = `<p class="qc-ctl-none">${this.ctlError ? esc(this.ctlError) : 'Reading XLink...'}</p>`; return; }
             if (!c.available) { body.innerHTML = '<p class="qc-ctl-none">No XLink device for this cabinet.</p>'; dev.textContent = ''; return; }
             dev.textContent = `XLink: ${c.device.name}`;
             const lamp = (s) => (s ? `<span class="qc-xs" style="${s.color ? `--qc-xs:${esc(s.color)}` : ''}">${esc(s.text)}</span>` : '');
-            const keys = (sec, kind) => sec.buttons.map((b) => `<button type="button" class="qc-xk${b.active ? ' is-on' : ''}${/v-?blk/i.test(b.label) ? ' is-blk' : ''}" data-xl="${kind}" data-n="${b.n}" title="${esc(b.label)}">${esc(b.label)}</button>`).join('');
+            const tone = (kind, label) => (kind === 'power' ? (label === 'I' ? 'k-green' : label === 'O' ? 'k-red' : 'k-amber') : /v-?blk/i.test(label) ? 'k-amber' : 'k-green');
+            const keys = (sec, kind, cls) => sec.buttons.map((b) => `<button type="button" class="qc-bk ${cls || 'qc-xk'} ${tone(kind, b.label)}${b.active ? ' is-on' : ''}" data-xl="${kind}" data-n="${b.n}" title="${esc(b.label)}">${esc(b.label)}</button>`).join('');
+            this.renderVideoBus(c, keys);
             const sigNow = JSON.stringify([c.video, c.power, c.game && c.game.status, this.ctlBusy]);
             this.modal.classList.toggle('qc-ctl-busy', !!this.ctlBusy);
             if (body.dataset.sig === sigNow && body.querySelector('.qc-xrow')) return;
             body.dataset.sig = sigNow;
             body.innerHTML = `
-                ${c.video ? `<div class="qc-xrow"><span class="qc-xl">VIDEO</span><span class="qc-xkeys">${keys(c.video, 'video')}</span></div>
-                    ${c.video.resetPath ? '<div class="qc-xrow"><span class="qc-xl"></span><button type="button" class="qc-xk qc-xwide" data-xl="reset">RESET ENCODER</button></div>' : ''}` : ''}
                 ${c.power ? `<div class="qc-xrow"><span class="qc-xl">POWER</span><span class="qc-xkeys">${keys(c.power, 'power')}</span></div><div class="qc-xrow qc-xstat"><span class="qc-xl"></span>${lamp(c.power.status)}</div>` : ''}
-                ${c.game ? `<div class="qc-xrow"><span class="qc-xl">GAME</span><button type="button" class="qc-xk qc-xwide qc-xgame" data-xl="game"><span>${esc(c.game.status ? c.game.status.text : 'Select...')}</span><i></i></button></div>` : ''}`;
+                ${c.game ? `<div class="qc-xrow"><span class="qc-xl">GAME</span><button type="button" class="qc-bk qc-xk qc-xwide qc-xgame k-blue" data-xl="game"><span>${esc(c.game.status ? c.game.status.text : 'Select...')}</span><i></i></button></div>` : ''}`;
             body.querySelectorAll('.qc-xk').forEach((b) => { b.disabled = !!this.ctlBusy; });
             const gb = body.querySelector('[data-xl="game"]');
             if (gb && root.contextMenu && root.contextMenu.attachPickerMenu) {
@@ -709,6 +751,17 @@
                     onSelect: (v) => void this.xlinkPress('game', Number(v))
                 });
             }
+        }
+
+        /** The deck's VIDEO bus: big backlit GAME / V-BLK (Nostalgia PAN / NBT / V-BLK) keys and RESET ENC. */
+        renderVideoBus(c, keys) {
+            const bus = this.el('.qc-vkeys');
+            const v = c && c.video;
+            const sig = v ? JSON.stringify([c.cabinet, v.buttons, !!v.resetPath, !!this.ctlBusy]) : '';
+            if (bus.dataset.sig === sig && bus.children.length) return;
+            bus.dataset.sig = sig;
+            bus.innerHTML = v ? `${keys(v, 'video', 'qc-vk')}${v.resetPath ? '<button type="button" class="qc-bk qc-vk qc-vreset k-blue" data-xl="reset" title="Reset the cabinet\'s video encoder">RESET<br>ENC</button>' : ''}` : '<span class="qc-bus-none">NO VIDEO CONTROL</span>';
+            bus.querySelectorAll('button').forEach((b) => { b.disabled = !!this.ctlBusy; });
         }
 
         /** Press a cabinet control: QuickCast asks first for power, game and (while live) video, then XLink's own warning. */
