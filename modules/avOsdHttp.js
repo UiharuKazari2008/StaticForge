@@ -161,6 +161,16 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 .hw-hd { padding: calc(6 * var(--u)) calc(16 * var(--u)); background: var(--acc); border-bottom: calc(3 * var(--u)) solid #c9d3df; color: #fff; font-size: calc(18 * var(--u)); letter-spacing: calc(3 * var(--u)); }
 .hw-bd { padding: calc(12 * var(--u)) calc(16 * var(--u)); }
 .hw-bd b { display: block; font-weight: normal; font-size: calc(26 * var(--u)); color: #fff; letter-spacing: calc(1 * var(--u)); white-space: nowrap; }
+/* satellite: the cabinet feed has no picture: a persistent full-frame overlay while it tries to sync */
+#nosig { position: absolute; inset: 0; display: none; background: #000; }
+#nosig.on { display: block; }
+#nsb { left: 50%; top: 50%; transform: translate(-50%, -50%); min-width: calc(820 * var(--u)); animation: none; }
+#nsb .hw-hd { background: #6a0000; }
+#nsb b { text-align: center; color: #ff6b5e !important; font-size: calc(48 * var(--u)) !important; letter-spacing: calc(8 * var(--u)) !important; animation: bl 1s steps(1, end) infinite; }
+#nsb .hw-sub { text-align: center; max-width: none; margin-top: calc(10 * var(--u)); }
+.nsync { position: relative; display: block; height: calc(14 * var(--u)); margin: calc(14 * var(--u)) calc(20 * var(--u)) 0; border: calc(2 * var(--u)) solid #3a4a64; overflow: hidden; }
+.nsync i { position: absolute; top: 0; bottom: 0; width: 18%; background: #ffc23a; animation: nscan 1.6s steps(16, end) infinite; }
+@keyframes nscan { 0% { left: -18%; } 100% { left: 100%; } }
 /* STANDBY: the low-power image's screen, a hardware OSD box in the middle of the output */
 #sby { left: calc(40 * var(--u)); top: calc(40 * var(--u)); min-width: calc(420 * var(--u)); }
 #sby.boot { left: 50%; top: 50%; transform: translate(-50%, -50%); min-width: calc(760 * var(--u)); }
@@ -197,6 +207,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 <div class="brand"><img class="clogo" id="clogo" alt=""><div class="sub"><span id="ctype"></span><span id="cmodel"></span></div></div>
 <div class="press" id="cpress">Press and hold &ldquo;DIAG&rdquo; button to modify settings</div><div class="fmt" id="cfmt"></div>
 <div class="tiles" id="tiles"></div><div class="ver"><em>Amusement<b>VISION</b></em><br><span id="cver"></span></div></div>
+<div id="nosig"><div class="hw on" id="nsb"><div class="hw-hd" id="nsh">INPUT</div><div class="hw-bd"><b>NO VIDEO SIGNAL</b><span class="nsync"><i></i></span><span class="hw-sub" id="nss"></span></div></div></div>
 <div id="sby" class="hw"><div class="hw-hd" id="sbyh"></div><div class="hw-bd"><b id="sbyb"></b><span class="sbbar"><i></i></span><span class="hw-sub" id="sbys"></span></div></div>
 <div id="strip" class="hw"><div class="hw-hd" id="striph">STATUS</div><div class="hw-bd hw-grid" id="stripb"></div></div><div id="toast" class="hw"><div class="hw-hd" id="toasth">SYSTEM</div><div class="hw-bd"><b id="toastb"></b><span class="hw-sub" id="toasts"></span></div></div><div id="off" class="hw"><div class="hw-hd">UNIT OFFLINE</div><div class="hw-bd"><b>NO CONTROL LINK</b><span class="hw-sub" id="offs"></span></div></div>
 <div id="gms" class="hw"><div class="hw-hd" id="gmsh">XLINK GMS</div><div class="hw-bd"><b id="gmst"></b><span class="hw-sub" id="gmss"></span></div></div>
@@ -258,6 +269,12 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
       $('cpress').innerHTML = po.phase === 'fault' ? '<b class="dna">DO NOT AIR</b><br>CALL A TECHNICIAN &mdash; press MENU to service this unit' : po.phase === 'boot' ? '' : po.phase === 'pass' ? 'All sources OK' : 'Checking every source...';
     } else if (!isCard) { $('card').className = ''; cardShown = ''; }
     if (!(v.standby && !v.post && !(v.open && p))) $('sby').className = 'hw';
+    var ns = v.nosig;
+    $('nosig').className = ns && !(v.open && p) ? 'on' : '';
+    if (ns) {
+      $('nsh').textContent = 'INPUT  ' + (ns.input || '') + (ns.feed ? '  (' + ns.feed + ')' : '');
+      $('nss').textContent = ns.cabinet === 'off' ? 'CABINET ' + (ns.machine || '') + ' IS POWERED OFF' : ns.cabinet === 'standby' ? 'CABINET ' + (ns.machine || '') + ' IS IN STANDBY' : ns.cabinet === 'booting' ? (ns.machine || '') + ' IS STARTING UP...' : 'SYNCING TO ' + (ns.machine || 'THE SOURCE') + '...';
+    }
     var s = v.strip; // sent while INFO is on, or briefly after a scene switch
     $('strip').className = s ? 'hw on' : 'hw';
     if (s) {

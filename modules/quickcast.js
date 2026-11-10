@@ -579,6 +579,13 @@ async function status(opts = {}) {
         try { base.diag = diag.diagnose(base, stats, pick); } catch (_) { base.diag = null; }
         if (base.diag && base.diag.input && base.diag.input.source) base.diag.input.align = avOsd.alignFor(base.diag.input.source);
         if (base.diag && base.diag.input && base.diag.input.source && pick) avOsd.noteCabinet(base.diag.input.source, pick);
+        if (base.diag && base.diag.input && base.diag.input.source) {
+            const us = avOsd.unitState(base.diag.input.source);
+            if (us.powerOff) {
+                base.diag.input = { source: base.diag.input.source, sourceDetail: base.diag.input.sourceDetail, stages: [], note: 'Cabinet powered off (XLink power O): the mixer is off' };
+                base.diag.verdict = { state: 'off', text: 'Cabinet powered off' };
+            } else if (us.standby) base.diag.verdict = { state: 'off', text: 'Cabinet in standby (low power image)' };
+        }
         // latched self-test faults on the satellite and this cabinet's mixer (LIVE locks on them)
         const mux = base.diag && base.diag.input && base.diag.input.source;
         base.faults = avOsd.faults().map((f) => scopeFault(f, pick, mux)).filter(Boolean);

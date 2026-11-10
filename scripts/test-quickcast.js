@@ -79,7 +79,7 @@ const items = {
         { sourceName: 'Overlay Group', sourceType: 'OBS_SOURCE_TYPE_INPUT', sceneItemEnabled: true, isGroup: true }
     ],
     'Overlay Group': [{ sourceName: 'Cue Monitor', sourceType: 'OBS_SOURCE_TYPE_INPUT', sceneItemEnabled: true }],
-    WACCA: [{ sourceName: 'NDI WACCA', sourceType: 'OBS_SOURCE_TYPE_INPUT', sceneItemEnabled: true }]
+    WACCA: [{ sourceName: 'NDI WACCA', sourceType: 'OBS_SOURCE_TYPE_INPUT', inputKind: 'ndi_source', sceneItemEnabled: true, sceneItemTransform: { sourceWidth: 0, sourceHeight: 0 } }]
 };
 // every fake scene item gets its own id (as in OBS)
 let fakeItemId = 1;
@@ -389,6 +389,16 @@ async function main() {
     assert.ok(v.standby, 'the view carries the standby state');
     await qc.osd.press('sat', '', 'menu');
     qc.osd._boxes.get('sat').standby = null;
+
+    // satellite input sync: a feed without picture on program = a persistent NO VIDEO SIGNAL overlay
+    obs.program = 'WACCA';
+    await qc.osd._signalTick(qc.osd._boxes.get('sat'));
+    assert.ok(qc.osd._boxes.get('sat').nosig, 'no picture from the NDI feed -> NO VIDEO SIGNAL');
+    assert.strictEqual(qc.osd._boxes.get('sat').nosig.input, 'NDI WACCA');
+    assert.ok(qc.osd._boxes.get('sat').view.nosig, 'drawn on the satellite output');
+    obs.program = 'Chuni';
+    await qc.osd._signalTick(qc.osd._boxes.get('sat'));
+    assert.strictEqual(qc.osd._boxes.get('sat').nosig, null, 'picture back -> overlay gone');
 
     // a take on the unit (program scene change) flashes the STATUS box on its output
     emit('CurrentProgramSceneChanged', { sceneName: 'Chuni' });

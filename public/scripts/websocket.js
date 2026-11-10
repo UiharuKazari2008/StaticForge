@@ -677,7 +677,7 @@ class BannerManager {
             'quickcast_encoder': 'Read Encoder',
             'quickcast_setencoder': 'Save Encoder',
             'quickcast_mute': 'Mute Source',
-            'quickcast_cabinet': 'Cabinet Controls',
+            'quickcast_cabinet': 'Cabinet Status',
             'quickcast_cabinet_action': 'Cabinet Control',
             'quickcast_osd_key': 'Remote Key',
             'quickcast_xlink_menu': 'Cabinet XLink Menu',

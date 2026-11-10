@@ -1099,7 +1099,7 @@ async function waitVideoUp(b, link) {
 
 async function powerOn(boxId, opts = {}) {
     const b = boxes.get(boxId) || box(boxId);
-    if (b.standby) return null; // the standby image is not fully loaded: no self test until power on
+    if (b.standby || b.powerOff) return null; // standby image / powered off: no self test until power on
     if (b.post) return b.lastPost;
     if (b.kind === 'satellite' && await deps.onAir(b).catch(() => false)) return null; // never over a live broadcast
     const cfg = deps.readConfig().osd || {};
@@ -1312,6 +1312,8 @@ function emit(b) {
     // the STATUS box: while INFO is on, or for a few seconds after a scene switch
     if ((b.info || Date.now() < (b.infoFlashUntil || 0)) && b.strip) out.strip = b.strip;
     if (b.standby) out.standby = { phase: b.standby.phase, since: b.standby.since };
+    if (b.powerOff) out.powerOff = true;
+    if (b.nosig) out.nosig = b.nosig;
     if (b.post && !b.post.hidden) out.post = { ...b.post, holdLeft: b.post.holdUntil ? Math.max(0, Math.ceil((b.post.holdUntil - Date.now()) / 1000)) : 0 };
     b.view = out;
     for (const res of b.subs) { try { res.write(`data: ${JSON.stringify(out)}\n\n`); } catch (_) { b.subs.delete(res); } }
@@ -1724,6 +1726,19 @@ async function standbyTick(b) {
         power = p && p.status ? String(p.status.text || '') : '';
     } catch (_) { return; }
     if (!power) return;
+    // power OFF: the mixer is off (no output, no control link): not an error, no alarms, no self test
+    const off = /power ?off|^off$/i.test(power);
+    if (off) {
+        b.powerSeen = power;
+        if (!b.powerOff) { b.powerOff = true; b.standby = null; b.post = null; emit(b); }
+        return;
+    }
+    if (b.powerOff) {
+        b.powerOff = false;
+        emit(b);
+        // back on from OFF: a full boot (or the standby image, handled below)
+        if (!/standby/i.test(power)) { void powerOn(b.id, { reason: 'power' }).catch(() => {}); }
+    }
     const stby = /standby/i.test(power);
     const first = b.powerSeen == null;
     b.powerSeen = power;
@@ -1786,6 +1801,57 @@ setInterval(() => {
     }
 }, 5000).unref();
 
+// ------------------------------------------------------------------ satellite: input sync overlay
+
+/** A mixer unit's power state by NDI machine name (for the satellite's NO SIGNAL overlay and the INPUT row). */
+function unitState(machine) {
+    const b = boxes.get(`mux-${machine}`);
+    return b ? { powerOff: !!b.powerOff, standby: !!b.standby, booting: !!(b.post && b.post.phase === 'boot') } : {};
+}
+
+const ndiNames = new Map(); // satellite input -> ndi_source_name
+/**
+ * The satellite watches the cabinet feed on its program: no picture (NDI not arriving / not synced) =
+ * a persistent NO VIDEO SIGNAL overlay showing it trying to sync, until the picture returns.
+ */
+async function signalTick(b) {
+    const link = deps.ruiko;
+    if (!link.online) return;
+    const pgm = (await link.request('GetCurrentProgramScene', {}, 3000)).currentProgramSceneName;
+    const found = [];
+    const walk = async (name, group, depth) => {
+        if (depth > 3) return;
+        const items = (await link.request(group ? 'GetGroupSceneItemList' : 'GetSceneItemList', { sceneName: name }, 3000).catch(() => ({}))).sceneItems || [];
+        for (const it of items) {
+            if (!it.sceneItemEnabled) continue;
+            if (it.isGroup) await walk(it.sourceName, true, depth + 1);
+            else if (it.inputKind === 'ndi_source') found.push({ name: it.sourceName, width: (it.sceneItemTransform || {}).sourceWidth || 0 });
+        }
+    };
+    await walk(pgm, false, 0);
+    let next = null;
+    if (found.length && !found.some((f) => f.width > 0)) {
+        const f = found[0];
+        if (!ndiNames.has(f.name)) {
+            try { ndiNames.set(f.name, String(((await link.request('GetInputSettings', { inputName: f.name }, 3000)).inputSettings || {}).ndi_source_name || '')); } catch (_) { ndiNames.set(f.name, ''); }
+        }
+        const feed = ndiNames.get(f.name);
+        const machine = (/^(.*?)\s*\(/.exec(feed) || [])[1] || feed;
+        const us = unitState(machine);
+        next = { input: f.name, feed, machine, since: (b.nosig && b.nosig.input === f.name) ? b.nosig.since : Date.now(), cabinet: us.powerOff ? 'off' : us.standby ? 'standby' : us.booting ? 'booting' : '' };
+    }
+    const changed = JSON.stringify(next && { ...next, since: 0 }) !== JSON.stringify(b.nosig && { ...b.nosig, since: 0 });
+    b.nosig = next;
+    if (changed) emit(b);
+}
+
+if (process.env.QUICKCAST_SUPERVISE !== '0') setInterval(() => {
+    const b = boxes.get('sat');
+    if (!b || b.sigBusy) return;
+    b.sigBusy = true;
+    signalTick(b).catch(() => {}).finally(() => { b.sigBusy = false; });
+}, 2000).unref();
+
 // keep the resident OSD layer on each known unit's current program (the program can change under it)
 setInterval(() => {
     for (const b of boxes.values()) {
@@ -1820,7 +1886,7 @@ function faults() {
     const out = [];
     for (const id of Object.keys(loadFaults())) if (validId(id)) box(id);
     for (const b of boxes.values()) {
-        if (!b.fault || b.standby) continue; // standby is not fully loaded: no alarm states
+        if (!b.fault || b.standby || b.powerOff) continue; // standby / off: not fully loaded, no alarm states
         const items = b.fault.items.filter((i) => !i.bypass); // a bypassed input is not an active alarm
         if (items.length) out.push({ unit: boxName(b), box: b.id, kind: b.kind, machine: b.machine, at: b.fault.at, items, overridden: !!b.fault.overridden });
     }
@@ -1836,4 +1902,4 @@ function alignFor(machine) {
     return { cam: sel.cam || '', ref: sel.ref || '', running: !!b.align.running, offMs: r && r.offMs != null ? r.offMs : null, score: r ? r.score : null, text: r ? r.text : b.align.error || '' };
 }
 
-module.exports = { noteCabinet, faults, powerOn, subscribeCard, alignFor, init, press, view, subscribe, checkToken, PORTS, bestLag, _boxes: boxes, OVERLAY_SCENE, OVERLAY_INPUT, DELAY_FILTER };
+module.exports = { _signalTick: signalTick, unitState, noteCabinet, faults, powerOn, subscribeCard, alignFor, init, press, view, subscribe, checkToken, PORTS, bestLag, _boxes: boxes, OVERLAY_SCENE, OVERLAY_INPUT, DELAY_FILTER };

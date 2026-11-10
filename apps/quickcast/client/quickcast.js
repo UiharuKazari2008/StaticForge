@@ -1292,6 +1292,8 @@
                 dmColor = '#ffb02e';
                 if (err) { dmColor = '#ff5a3a'; dm(unit, 'ERROR', err); return; }
                 if (v && v.toast) { dm(unit, v.toast.slice(0, 20), v.toast.slice(20, 40)); return; }
+                if (v && v.powerOff) { dmColor = '#a03a2a'; dm(unit, 'POWER OFF', ''); return; }
+                if (v && v.nosig && !(v.open && v.page)) { dmColor = '#ff5a3a'; dm(unit, 'NO INPUT SIGNAL', `SYNC ${v.nosig.machine || ''}`.slice(0, 20)); return; }
                 if (v && v.standby && !(v.open && v.page)) { dmColor = '#ffb028'; dm(unit, v.standby.phase === 'boot' ? 'STANDBY BOOT...' : 'STANDBY MODE', ''); return; }
                 if (v && v.post) { if (v.post.phase === 'fault') dmColor = '#ff5a3a'; dm(v.post.phase === 'fault' ? 'FAULT - DO NOT AIR' : 'SELF TEST', (v.post.text || '').slice(0, 20), (v.post.text || '').slice(20, 40)); return; }
                 if (v && v.open && v.page) {
@@ -1330,9 +1332,9 @@
                 const fault = (st.faults || []).find((f) => (sat ? f.kind === 'satellite' : f.machine === machine) && !f.overridden);
                 const bad = (rowSt.stages || []).some((x) => x.state === 'bad');
                 const pw = m.querySelector('[data-led="power"]');
-                pw.className = `qc-led ${lastView && lastView.standby && !sat ? 'is-amber' : linkSt === 'online' ? 'is-green' : linkSt === 'launching' || linkSt === 'stopping' ? 'is-amber is-blink' : linkSt === 'offline' ? 'is-red' : ''}`;
+                pw.className = `qc-led ${lastView && lastView.powerOff && !sat ? 'is-red' : lastView && lastView.standby && !sat ? 'is-amber' : linkSt === 'online' ? 'is-green' : linkSt === 'launching' || linkSt === 'stopping' ? 'is-amber is-blink' : linkSt === 'offline' ? 'is-red' : ''}`;
                 const al = m.querySelector('[data-led="alarm"]');
-                const inStandby = !!(lastView && lastView.standby && !sat);
+                const inStandby = !!(lastView && (lastView.standby || lastView.powerOff) && !sat);
                 al.className = `qc-led ${inStandby ? '' : fault ? 'is-red is-blink' : bad ? 'is-red' : ''}`; // no alarm states in standby
                 m.classList.toggle('qc-fp-sat', sat);
                 // the unit's own indicators: each pipeline stage it owns, plus the satellite's air / uplink lamps
@@ -1349,7 +1351,7 @@
                     ['NDI OUT', tone(stg('ndiout'))], ['LINK', tone(stg('link'))], ['LOCK', tone(stg('lock'))]
                 ];
                 // standby: the low-power image runs no pipeline, so the unit's stage leds are dark
-                if (lastView && lastView.standby && !sat) lamps.forEach((l) => { l[1] = ''; });
+                if (lastView && (lastView.standby || lastView.powerOff) && !sat) lamps.forEach((l) => { l[1] = ''; });
                 const ind = m.querySelector('.qc-fp-ind');
                 const html = lamps.map(([n, c]) => `<span class="qc-led ${c}"><i></i>${n}</span>`).join('');
                 if (ind.dataset.html !== html) { ind.dataset.html = html; ind.innerHTML = html; }
