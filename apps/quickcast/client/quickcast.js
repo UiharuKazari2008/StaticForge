@@ -109,6 +109,7 @@
                     <div class="qc-band">
                         <div class="qc-brand"><span class="qc-word">QUICK<b>CAST</b></span><small>AmusementVISION Live Broadcast Launcher</small></div>
                         <span class="qc-fill"></span>
+                        <button type="button" class="qc-tb qc-copy" data-qc="copyurl" hidden title="Copy the stream's YouTube link">COPY STREAM URL</button>
                         <div class="qc-link"><span class="qc-lamp"></span><span class="qc-link-text">OBS: OFFLINE</span></div>
                         <div class="qc-tally"><span class="qc-tally-text">OFF AIR</span><span class="qc-tc">--:--:--</span></div>
                     </div>
@@ -116,7 +117,7 @@
                         <label class="qc-title-label" for="qcTitleInput">TITLE</label>
                         <input type="text" id="qcTitleInput" class="qc-title" maxlength="100" spellcheck="true" placeholder="Stream title">
                         <button type="button" class="qc-tb qc-title-update" data-qc="updatetitle" title="Change the live video's title now">UPDATE</button>
-                        <span class="qc-yt"><span class="qc-yt-dot"></span><span class="qc-yt-text">YouTube: not signed in</span></span>
+                        <button type="button" class="qc-yt"><span class="qc-yt-dot"></span><img class="qc-yt-av" alt="" width="22" height="22" referrerpolicy="no-referrer" hidden><span class="qc-yt-names"><span class="qc-yt-text">YouTube: not signed in</span><small class="qc-yt-sub"></small></span><span class="qc-yt-arrow"></span></button>
                     </div>
                     <div class="qc-main">
                         <div class="qc-cabs"><div class="qc-head">CABINET</div><div class="qc-cablist"></div></div>
@@ -185,6 +186,12 @@
                     sections: [{ type: 'list', initfn: (s) => { s.items = this.menu(t.dataset.qcMenu); } }]
                 });
             });
+            if (root.contextMenu) {
+                root.contextMenu.attachClickMenuToElement(q('.qc-yt'), {
+                    onAction: (a) => void this.channelAction(a),
+                    sections: [{ type: 'list', initfn: (sec) => { sec.items = this.channelItems(); } }]
+                });
+            } else q('.qc-yt').addEventListener('click', () => this.settingsWin('account'), sig);
             q('.qc-close').addEventListener('click', () => this.app.exit(), sig);
             const title = q('.qc-title');
             title.addEventListener('input', () => { this.titleDirty = true; this.render(); }, sig);
@@ -237,7 +244,8 @@
                     { text: 'Stream Key and YouTube Account...', action: 'key' },
                     { text: 'Live Chat', action: 'chat' },
                     { text: 'Start OBS on Ruiko', action: 'launch', disabled: online },
-                    { text: 'Open Watch Page', action: 'watch', disabled: !(this.st && this.st.watchUrl) }];
+                    { text: 'Copy Stream URL', action: 'copyurl', disabled: !this.streamUrl() },
+                    { text: 'Open Watch Page', action: 'watch', disabled: !this.streamUrl() }];
                 case 'help': return [{ text: 'About QuickCast...', action: 'about' }];
                 default: return [];
             }
@@ -254,7 +262,8 @@
                 case 'chat': this.chatWin(); break;
                 case 'updatetitle': await this.updateLiveTitle(); break;
                 case 'launch': await this.run('Starting OBS on Ruiko...', 'quickcast_launch', {}); break;
-                case 'watch': if (this.st && this.st.watchUrl) root.open(this.st.watchUrl, '_blank', 'noopener'); break;
+                case 'watch': if (this.streamUrl()) root.open(this.streamUrl(), '_blank', 'noopener'); break;
+                case 'copyurl': await this.copyUrl(); break;
                 case 'about': this.about(); break;
                 default: break;
             }
@@ -443,8 +452,17 @@
             if (!this.titleDirty && doc.activeElement !== ti && ti.value !== (yt.last.title || '')) ti.value = yt.last.title || '';
             const signed = !!yt.account.signedIn;
             this.modal.classList.toggle('qc-yt-on', signed);
-            q('.qc-yt-text').textContent = signed ? `YouTube: ${yt.account.channel || 'signed in'}` : yt.account.apiKey ? 'YouTube: API key only' : 'YouTube: not signed in';
-            q('.qc-yt').title = signed ? 'GO LIVE creates a broadcast with this title and settings' : 'Not signed in: the title and settings in YouTube Studio apply. Sign in under Settings > Account.';
+            const prof = yt.account.profile;
+            q('.qc-yt-text').textContent = signed ? (prof ? prof.title : yt.account.channel || 'Signed in') : yt.account.apiKey ? 'YouTube: API key only' : 'YouTube: not signed in';
+            q('.qc-yt-sub').textContent = signed && prof ? [prof.handle, prof.subscribers == null ? '' : `${prof.subscribers.toLocaleString('en-US')} subscribers`].filter(Boolean).join(' \u00b7 ') : '';
+            const av = q('.qc-yt-av');
+            const avUrl = signed && prof && prof.avatar ? prof.avatar : '';
+            if (av.dataset.src !== avUrl) { av.dataset.src = avUrl; if (avUrl) av.src = avUrl; else av.removeAttribute('src'); }
+            av.hidden = !avUrl;
+            q('.qc-yt').title = signed ? 'The channel GO LIVE streams to. Click to switch or add a channel.' : 'Not signed in: the title and settings in YouTube Studio apply. Click to sign in.';
+            if (signed && !this.profileAsked) { this.profileAsked = true; void this.send('quickcast_yt_profile', {}).catch(() => {}); }
+            const copy = q('.qc-copy');
+            copy.hidden = !(live && this.streamUrl());
             ti.disabled = false;
             ti.title = signed ? 'The YouTube title. Enter saves it (while live: changes the live title).' : 'Saved for the next stream. Sign in to YouTube (Settings > Account) so QuickCast can set it.';
             const tu = q('.qc-title-update');
@@ -630,6 +648,59 @@
             return w;
         }
 
+        /** The link viewers open: QuickCast's broadcast, else the saved watch page, else the channel's /live. */
+        streamUrl() {
+            const st = this.st;
+            if (!st) return '';
+            const yt = st.youtube || {};
+            if (yt.broadcast && yt.broadcast.shortUrl) return yt.broadcast.shortUrl;
+            if (st.watchUrl) return st.watchUrl;
+            const p = yt.account && yt.account.profile;
+            return p ? (p.handle ? `https://www.youtube.com/${p.handle}/live` : `https://www.youtube.com/channel/${p.id}/live`) : '';
+        }
+
+        async copyUrl() {
+            const url = this.streamUrl();
+            if (!url) return;
+            let ok = false;
+            try { await root.navigator.clipboard.writeText(url); ok = true; } catch (_) {
+                const t = doc.createElement('textarea');
+                t.value = url;
+                t.style.cssText = 'position:fixed;left:-9999px';
+                doc.body.appendChild(t);
+                t.select();
+                try { ok = doc.execCommand('copy'); } catch (__) { ok = false; }
+                t.remove();
+            }
+            const b = this.el('.qc-copy');
+            if (ok) { b.textContent = 'COPIED!'; b.classList.add('is-done'); setTimeout(() => { b.textContent = 'COPY STREAM URL'; b.classList.remove('is-done'); }, 1500); this.flash(`Copied ${url}`); } else await this.box(`Copy this link:\n\n${url}`, 'info');
+        }
+
+        /** The channel chip's menu: saved channels (switch), add one, sign out, account settings. */
+        channelItems() {
+            const a = (this.st && this.st.youtube && this.st.youtube.account) || {};
+            const live = !!(this.st && this.st.stream && this.st.stream.active);
+            const items = (a.channels || []).map((c) => ({ text: `${c.active ? '\u2713 ' : ''}${c.title}`, subtext: c.handle || '', action: `ch:${c.id}`, disabled: c.active || live }));
+            if (items.length) items.push({ separator: true });
+            items.push({ text: 'Add Channel...', action: 'add', disabled: !a.client || live });
+            if (a.signedIn) items.push({ text: 'Sign Out of This Channel', action: 'out', disabled: live });
+            items.push({ separator: true }, { text: 'Account Settings...', action: 'acct' });
+            return items;
+        }
+
+        async channelAction(act) {
+            const a = (this.st && this.st.youtube && this.st.youtube.account) || {};
+            if (act === 'acct') this.settingsWin('account');
+            else if (act === 'add') {
+                this.settingsWin('account');
+                setTimeout(() => { const w = [...this.children].find((c) => c.kind === 'settings'); const b = w && w.modal.querySelector('[data-act="signin"]'); if (b && !b.disabled) b.click(); }, 800);
+            } else if (act === 'out') {
+                if (await this.ask(`Sign QuickCast out of ${a.profile ? a.profile.title : 'this channel'}?`)) await this.send('quickcast_yt_signout', {}).catch((e) => this.box(e.message, 'error'));
+            } else if (String(act).startsWith('ch:')) {
+                try { await this.send('quickcast_yt_select', { channelId: act.slice(3) }); await this.send('quickcast_yt_profile', {}); this.flash('Channel switched.'); } catch (e) { await this.box(e.message, 'error'); }
+            }
+        }
+
         async saveTitle() {
             const t = this.el('.qc-title').value.trim();
             if (!t) return;
@@ -704,10 +775,14 @@
                         </div>
                         <label class="qc-field"><span>Channel ID (only for reading chat without sign-in)</span><input type="text" class="qc-a-ch" spellcheck="false" placeholder="${a.channelId ? esc(a.channelId) : 'UC...'}"></label>
                     </div>
-                    <div class="qc-group qc-signin"><b>Google sign-in</b>
-                        <div class="qc-signin-row"><span class="qc-signin-state">${a.signedIn ? `Signed in: <b>${esc(a.channel || 'YouTube channel')}</b>` : a.client ? 'Not signed in.' : 'Save the OAuth client first.'}</span>
-                        <span class="qc-fill"></span>
-                        ${a.signedIn ? '<button type="button" class="qc-btn" data-act="signout">Sign Out</button>' : `<button type="button" class="qc-btn" data-act="signin"${a.client ? '' : ' disabled'}>Sign In...</button>`}</div>
+                    <div class="qc-group qc-signin"><b>YouTube channels</b>
+                        ${(a.channels || []).map((c) => `<div class="qc-prof${c.active ? ' is-active' : ''}">
+                            ${c.avatar ? `<img class="qc-prof-av" src="${esc(c.avatar)}" alt="" width="40" height="40" referrerpolicy="no-referrer">` : '<span class="qc-prof-av"></span>'}
+                            <span class="qc-prof-text"><b>${esc(c.title)}</b><small>${esc(c.handle || c.id)}</small><small>${c.subscribers == null ? 'Subscribers hidden' : `${c.subscribers.toLocaleString('en-US')} subscribers`} \u00b7 ${c.videos.toLocaleString('en-US')} videos</small></span>
+                            <span class="qc-fill"></span>
+                            ${c.active ? '<span class="qc-prof-on">STREAMS HERE</span>' : `<button type="button" class="qc-btn" data-act="select" data-ch="${esc(c.id)}">Use</button>`}
+                            <button type="button" class="qc-btn" data-act="signout" data-ch="${esc(c.id)}">Sign Out</button></div>`).join('') || `<p>${a.client ? 'No channel signed in.' : 'Save the OAuth client first.'}</p>`}
+                        <div class="qc-signin-row"><span class="qc-dim">Google asks which channel (brand accounts too) when you add one.</span><span class="qc-fill"></span><button type="button" class="qc-btn" data-act="signin"${a.client ? '' : ' disabled'}>Add Channel...</button></div>
                         <div class="qc-code" hidden></div>
                     </div>`;
                 if (signIn && signIn.state === 'waiting') showCode(signIn);
@@ -720,6 +795,7 @@
             };
             const loadAccount = async () => {
                 try {
+                    await this.send('quickcast_yt_profile', {}).catch(() => {});
                     const r = await this.send('quickcast_yt_account', {});
                     fillAccount(r.account, r.signIn);
                     if (!w.bcLoaded) { fillBroadcast(r.last); w.bcLoaded = true; }
@@ -756,9 +832,16 @@
             pane('account').addEventListener('click', async (ev) => {
                 const b = ev.target.closest('[data-act]');
                 if (!b) return;
-                if (b.dataset.act === 'signout') {
-                    if (!await this.ask('Sign QuickCast out of YouTube?')) return;
-                    await this.send('quickcast_yt_signout', {}).catch(() => {});
+                if (b.dataset.act === 'select' || b.dataset.act === 'signout') {
+                    if (this.st && this.st.stream && this.st.stream.active) { await this.box('Stop the stream before changing channels.', 'warning'); return; }
+                    try {
+                        await this.send('quickcast_yt_select', { channelId: b.dataset.ch });
+                        if (b.dataset.act === 'signout') {
+                            if (!await this.ask('Sign QuickCast out of this channel?')) { void loadAccount(); return; }
+                            await this.send('quickcast_yt_signout', {});
+                        }
+                        await this.send('quickcast_yt_profile', {}).catch(() => {});
+                    } catch (err) { await this.box(err.message, 'error'); }
                     void loadAccount();
                     return;
                 }

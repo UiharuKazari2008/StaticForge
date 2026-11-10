@@ -44,7 +44,9 @@ function registerPackets(handlersCtx) {
     packet('quickcast_yt_credentials', async (d) => yt.setCredentials(d), 'Could not save the YouTube credentials');
     packet('quickcast_yt_signin', async () => yt.signInStart(), 'Could not start the YouTube sign-in');
     packet('quickcast_yt_signin_state', async () => ({ signIn: yt.signInState(), account: yt.account() }), 'Could not read the sign-in');
-    packet('quickcast_yt_signout', async () => yt.signOut(), 'Could not sign out');
+    packet('quickcast_yt_signout', async (d) => yt.signOut(!!d.all), 'Could not sign out');
+    packet('quickcast_yt_profile', async (d) => ({ account: await yt.refreshProfile(!!d.force) }), 'Could not read the channel profile');
+    packet('quickcast_yt_select', async (d) => yt.selectAccount(String(d.channelId || '')), 'Could not switch the channel');
     packet('quickcast_yt_settings', async (d) => yt.saveSettings(d), 'Could not save the broadcast settings');
     packet('quickcast_chat', async (d) => yt.chatRead(d.since), 'Could not read the live chat');
     packet('quickcast_chat_send', async (d) => yt.chatSend(d.text), 'Could not send the message');

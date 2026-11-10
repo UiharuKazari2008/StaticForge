@@ -71,7 +71,11 @@ async function accessToken() {
         if (r.body.error === 'invalid_grant') save((yy) => { yy.token = {}; });
         throw fail(`YouTube sign-in expired, sign in again (${r.body.error_description || r.body.error || r.status})`, 'QUICKCAST_YT_SIGNIN');
     }
-    save((yy) => { yy.token = { ...yy.token, accessToken: r.body.access_token, expiresAt: Date.now() + (Number(r.body.expires_in) || 3600) * 1000 }; });
+    save((yy) => {
+        yy.token = { ...yy.token, accessToken: r.body.access_token, expiresAt: Date.now() + (Number(r.body.expires_in) || 3600) * 1000 };
+        const cur = yy.channel && yy.accounts && yy.accounts[yy.channel.id];
+        if (cur) cur.token = yy.token;
+    });
     return r.body.access_token;
 }
 
@@ -133,9 +137,14 @@ async function pollSignIn(p, o) {
         if (r.status === 200 && r.body.refresh_token) {
             save((y) => { y.token = { refreshToken: r.body.refresh_token, accessToken: r.body.access_token, expiresAt: Date.now() + (Number(r.body.expires_in) || 3600) * 1000 }; });
             try {
-                const ch = await api('GET', 'channels', { query: { part: 'snippet', mine: 'true' } });
-                const c = ch.items && ch.items[0];
-                save((y) => { y.channel = c ? { id: c.id, title: c.snippet.title } : { id: '', title: '' }; });
+                const prof = await fetchProfile();
+                save((y) => {
+                    y.channel = prof;
+                    y.accounts = y.accounts || {};
+                    if (prof.id) y.accounts[prof.id] = { channel: prof, token: y.token };
+                    y.broadcast = {};
+                });
+                chat.reset('');
             } catch (e) { p.error = e.message; }
             p.state = 'done';
             return;
@@ -154,10 +163,63 @@ function signInState() {
     return p ? { state: p.state, userCode: p.userCode, url: p.url, error: p.error, expiresAt: p.expiresAt } : { state: 'none' };
 }
 
-function signOut() {
+/** The signed-in channel's public profile: name, handle, avatar, subscribers, videos. */
+async function fetchProfile() {
+    const ch = await api('GET', 'channels', { query: { part: 'snippet,statistics', mine: 'true' } });
+    const c = ch.items && ch.items[0];
+    if (!c) return { id: '', title: '' };
+    const th = (c.snippet.thumbnails && (c.snippet.thumbnails.medium || c.snippet.thumbnails.default)) || {};
+    const st = c.statistics || {};
+    return {
+        id: c.id,
+        title: c.snippet.title,
+        handle: c.snippet.customUrl || '',
+        avatar: th.url || '',
+        subscribers: st.hiddenSubscriberCount ? null : Number(st.subscriberCount) || 0,
+        videos: Number(st.videoCount) || 0,
+        views: Number(st.viewCount) || 0,
+        at: Date.now()
+    };
+}
+
+/** The active channel's profile, refreshed when older than 10 minutes (1 quota unit). */
+async function refreshProfile(force) {
+    const { y } = yt();
+    if (!(y.token && y.token.refreshToken)) return account();
+    const cur = y.channel || {};
+    if (!force && cur.at && Date.now() - cur.at < 600000 && cur.avatar !== undefined) return account();
+    const prof = await fetchProfile();
+    save((yy) => {
+        yy.channel = prof;
+        yy.accounts = yy.accounts || {};
+        if (prof.id) yy.accounts[prof.id] = { channel: prof, token: yy.token };
+    });
+    return account();
+}
+
+/** Make a saved channel the active one (its own sign-in). Not while QuickCast's broadcast is live. */
+function selectAccount(channelId) {
+    const { y } = yt();
+    const a = y.accounts && y.accounts[channelId];
+    if (!a) throw fail('That channel is not signed in', 'QUICKCAST_YT_SIGNIN');
+    save((yy) => { yy.token = a.token; yy.channel = a.channel; yy.broadcast = {}; });
+    chat.reset('');
+    return { ok: true, account: account() };
+}
+
+/** Sign out the active channel (another saved one becomes active), or every channel with all. */
+function signOut(all) {
     pendingSignIn = null;
-    save((y) => { y.token = {}; y.channel = {}; y.broadcast = {}; });
-    return { ok: true };
+    save((y) => {
+        const id = y.channel && y.channel.id;
+        if (all) y.accounts = {}; else if (y.accounts && id) delete y.accounts[id];
+        const next = Object.values(y.accounts || {})[0];
+        y.token = next ? next.token : {};
+        y.channel = next ? next.channel : {};
+        y.broadcast = {};
+    });
+    chat.reset('');
+    return { ok: true, account: account() };
 }
 
 /** API key / OAuth client: blank keeps, '-' clears. */
@@ -180,7 +242,11 @@ function setCredentials({ apiKey, clientId, clientSecret, channelId }) {
 
 function account() {
     const { y } = yt();
+    const c = y.channel || {};
+    const pub = (ch) => ({ id: ch.id, title: ch.title, handle: ch.handle || '', avatar: ch.avatar || '', subscribers: ch.subscribers == null ? null : ch.subscribers, videos: ch.videos || 0 });
     return {
+        profile: c.id ? pub(c) : null,
+        channels: Object.values(y.accounts || {}).map((a) => ({ ...pub(a.channel), active: a.channel.id === c.id })),
         apiKey: !!y.apiKey,
         client: !!(y.oauth && y.oauth.clientId && y.oauth.clientSecret),
         clientId: y.oauth && y.oauth.clientId ? `${String(y.oauth.clientId).split('-')[0]}-…` : '',
@@ -276,7 +342,7 @@ async function endBroadcast() {
 function broadcastInfo() {
     const { y } = yt();
     const b = y.broadcast || {};
-    return b.id ? { id: b.id, title: b.title, watchUrl: `https://www.youtube.com/watch?v=${b.videoId}`, studioUrl: `https://studio.youtube.com/video/${b.videoId}/livestreaming` } : null;
+    return b.id ? { id: b.id, title: b.title, watchUrl: `https://www.youtube.com/watch?v=${b.videoId}`, shortUrl: `https://youtu.be/${b.videoId}`, studioUrl: `https://studio.youtube.com/video/${b.videoId}/livestreaming` } : null;
 }
 
 // ------------------------------------------------------------------ live chat
@@ -407,7 +473,7 @@ async function chatSend(text) {
 }
 
 module.exports = {
-    init, account, setCredentials, signInStart, signInState, signOut,
+    init, account, setCredentials, signInStart, signInState, signOut, refreshProfile, selectAccount,
     lastSettings, saveSettings, prepareBroadcast, endBroadcast, broadcastInfo,
     chatRead, chatSend, PRIVACY, LATENCY, _chat: chat
 };

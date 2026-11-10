@@ -34,7 +34,7 @@ const google = http.createServer((req, res) => {
         }
         const yt = u.pathname.replace(/^\/yt/, '');
         if (!authed && !(u.searchParams.get('key') === 'AIzaFakeKeyFakeKeyFakeKey123')) return send(401, { error: { message: 'no auth', errors: [{ reason: 'authError' }] } });
-        if (yt === '/channels') return send(200, { items: [{ id: 'UCfakechannelfakechannel', snippet: { title: 'Kamisato Tadashi' } }] });
+        if (yt === '/channels') return send(200, { items: [{ id: 'UCfakechannelfakechannel', snippet: { title: 'Kamisato Tadashi', customUrl: '@rhythmgamer', thumbnails: { default: { url: 'https://yt3.example/a.jpg' } } }, statistics: { subscriberCount: '425', videoCount: '28' } }] });
         if (yt === '/liveStreams') return send(200, { items: [{ id: 'stream-9', cdn: { ingestionInfo: { streamName: 'abcd-efgh-ijkl-mnop-qrst' } } }] });
         if (yt === '/liveBroadcasts' && req.method === 'POST') { const b = JSON.parse(raw); g.broadcasts.push(b); return send(200, { id: 'vid-1', snippet: { ...b.snippet, liveChatId: 'chat-1' } }); }
         if (yt === '/liveBroadcasts/bind') { g.bound.push([u.searchParams.get('id'), u.searchParams.get('streamId')]); return send(200, {}); }
@@ -252,12 +252,16 @@ async function main() {
     const y = qc.youtube;
     assert.throws(() => y.setCredentials({ clientId: 'nope' }), /googleusercontent/);
     y.setCredentials({ apiKey: 'AIzaFakeKeyFakeKeyFakeKey123', clientId: '123-abc.apps.googleusercontent.com', clientSecret: 'GOCSPX-fakesecret' });
-    assert.deepStrictEqual(y.account(), { apiKey: true, client: true, clientId: '123-\u2026', signedIn: false, channel: '', channelId: '' });
+    assert.deepStrictEqual(y.account(), { profile: null, channels: [], apiKey: true, client: true, clientId: '123-\u2026', signedIn: false, channel: '', channelId: '' });
     const si = await y.signInStart();
     assert.strictEqual(si.userCode, 'ABCD-EFGH');
     for (let i = 0; i < 100 && y.signInState().state === 'waiting'; i++) await new Promise((res) => setTimeout(res, 20));
     assert.strictEqual(y.signInState().state, 'done');
     assert.strictEqual(y.account().channel, 'Kamisato Tadashi');
+    assert.deepStrictEqual(y.account().profile, { id: 'UCfakechannelfakechannel', title: 'Kamisato Tadashi', handle: '@rhythmgamer', avatar: 'https://yt3.example/a.jpg', subscribers: 425, videos: 28 });
+    assert.deepStrictEqual(y.account().channels.map((c) => [c.id, c.active]), [['UCfakechannelfakechannel', true]]);
+    assert.ok(!JSON.stringify(y.account()).includes('rt-1'), 'no tokens in the account');
+    assert.throws(() => y.selectAccount('UCnope'), /not signed in/);
     st = await qc.status();
     assert.ok(!JSON.stringify(st).includes('GOCSPX') && !JSON.stringify(st).includes('rt-1') && !JSON.stringify(st).includes('AIzaFake'), 'no secrets in status');
     await assert.rejects(qc.goLive('chuni', { title: '' }), /title is empty/);
@@ -270,6 +274,7 @@ async function main() {
     assert.strictEqual(y.lastSettings().title, 'Chunithm After Dark', 'the title pre-fills next time');
     st = await qc.status();
     assert.strictEqual(st.youtube.broadcast.watchUrl, 'https://www.youtube.com/watch?v=vid-1');
+    assert.strictEqual(st.youtube.broadcast.shortUrl, 'https://youtu.be/vid-1');
     // chat
     let c = y.chatRead(0);
     for (let i = 0; i < 50 && !c.messages.length; i++) { await new Promise((res) => setTimeout(res, 20)); c = y.chatRead(0); }
@@ -289,6 +294,7 @@ async function main() {
     assert.deepStrictEqual(g.transitions, ['complete']);
     y.signOut();
     assert.strictEqual(y.account().signedIn, false);
+    assert.deepStrictEqual(y.account().channels, []);
     y._chat.leaseAt = 0;
 
     // a rejected key: OBS stops at once -> a clear failure
