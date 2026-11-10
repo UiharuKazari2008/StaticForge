@@ -564,6 +564,9 @@ function buildPrompt(chat, userText, files, clientId, options) {
     if (options && options.memoryStore === 'obliterated') {
         lines.push('Memory store: Obliterated Memories. list_memories, search_memories, get_memory, and save_memory use that shared store. It is not the Studio memory database. Do not pass a Studio model filter.');
     }
+    if (options && options.sessionRestarted) {
+        lines.push(`This chat had earlier turns, but their Claude session was lost, so they are not in your context. If the request depends on them, read the chat log in ${path.join(chatsDir(), chat.id)} (index.json in ${layout().root} holds the messages) or ask with request_form.`);
+    }
     if (options && options.ageTool === false) {
         lines.push('lookup_character_age is turned off for this engine. Do not call it.');
     }
@@ -947,7 +950,7 @@ function consumeClaudeStreamLine(line, state) {
     if (evt.type === 'result') {
         state.finished = true;
         if (evt.is_error) {
-            state.error = (typeof evt.result === 'string' && evt.result) || 'Claude run failed';
+            state.error = claudeResultError(evt);
         } else if (typeof evt.result === 'string' && evt.result.trim() && !state.text) {
             state.text = evt.result.trim();
         }
@@ -960,6 +963,15 @@ function consumeClaudeStreamLine(line, state) {
             }
         }
     }
+}
+
+// An error result keeps its reason in errors[] (e.g. "No conversation found with
+// session ID: ...") and often has no result string; show that, not a bare failure.
+function claudeResultError(evt) {
+    if (typeof evt.result === 'string' && evt.result.trim()) return evt.result.trim();
+    const errors = Array.isArray(evt.errors) ? evt.errors.map((item) => String(item || '').trim()).filter(Boolean) : [];
+    if (errors.length) return `Claude run failed: ${errors.join('; ')}`.slice(0, 800);
+    return evt.subtype ? `Claude run failed (${evt.subtype})` : 'Claude run failed';
 }
 
 function consumeXiStreamLine(runtime, line, state) {
@@ -1440,6 +1452,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
             let cursorId = null;
             let claudeSessionId = null;
             let claudeFirstTurn = false;
+            let sessionRestarted = false;
             if (runtime === 'cursor') {
                 cursorId = chat.cursorId;
                 const cursorAccountAuthStore = require('./cursorAccountAuthStore');
@@ -1455,6 +1468,13 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
             } else {
                 claudeFirstTurn = !chat.claudeSessionId;
                 claudeSessionId = chat.claudeSessionId || crypto.randomUUID();
+                // Chats from before the persistent Claude config dir lost their session
+                // file with the run home. --resume would fail, so start it fresh.
+                if (!claudeFirstTurn && !fs.existsSync(xiLaunch.claudeSessionFile(layout().root, workspacePath(gr), claudeSessionId))) {
+                    claudeFirstTurn = true;
+                    claudeSessionId = crypto.randomUUID();
+                    sessionRestarted = true;
+                }
                 chat.claudeSessionId = claudeSessionId;
             }
             const round = director._test.roundModelRecord(
@@ -1475,7 +1495,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 ? customProviders.memoryStoreForEngine(gr, runtime)
                 : '';
             const ageTool = !customProviders.isEngine(runtime) || customProviders.ageToolEnabled(gr, runtime);
-            const prompt = buildPrompt(chat, userText, files, clientId, { memoryStore, ageTool });
+            const prompt = buildPrompt(chat, userText, files, clientId, { memoryStore, ageTool, sessionRestarted });
             writeIndex(index);
             return { prompt, cursorId, claudeSessionId, claudeFirstTurn, model: chat.model, name: chat.name, round, runtime };
         });

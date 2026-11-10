@@ -27,7 +27,9 @@ const JAIL_ENV_KEYS = [
     'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL',
     'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL',
     'CLAUDE_CODE_SUBAGENT_MODEL', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
-    'MAX_MCP_OUTPUT_TOKENS'
+    'MAX_MCP_OUTPUT_TOKENS',
+    // Claude state that outlives the per-turn run home (claudeConfigDir).
+    'CLAUDE_CONFIG_DIR'
 ];
 const JAIL_ENV_ALLOW = new Set(JAIL_ENV_KEYS);
 
@@ -82,6 +84,23 @@ function resolveHomeAccess(options) {
     const underHome = cwd === home || cwd.startsWith(home + path.sep);
     if (underHome && !insideDir(projectDir, cwd)) return cwd;
     return path.join(home, '.cache', 'dreamscape-xi');
+}
+
+// Claude Code keeps sessions under $CLAUDE_CONFIG_DIR/projects/<cwd slug>/<id>.jsonl.
+// The run home is new on every turn and removed after it, so the config dir lives
+// in the home-access dir (already bound read-write). Without it every --resume
+// fails with "No conversation found with session ID".
+function claudeConfigDir(homeAccessDir) {
+    return path.join(homeAccessDir, 'claude-config');
+}
+
+// The project slug Claude Code uses for a cwd: every non-alphanumeric becomes '-'.
+function claudeProjectSlug(projectDir) {
+    return path.resolve(projectDir).replace(/[^a-zA-Z0-9]/g, '-');
+}
+
+function claudeSessionFile(homeAccessDir, projectDir, sessionId) {
+    return path.join(claudeConfigDir(homeAccessDir), 'projects', claudeProjectSlug(projectDir), `${sessionId}.jsonl`);
 }
 
 function sanitizeAccountId(accountId) {
@@ -330,12 +349,18 @@ function buildLaunch(options) {
         jailConfig = `${JAIL_HOME}/.config/cursor`;
     }
 
+    const keptEnv = {};
+    if (usesClaudeCli(runtime)) {
+        const configDir = claudeConfigDir(homeAccessDir);
+        fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
+        keptEnv.CLAUDE_CONFIG_DIR = configDir;
+    }
     const env = jailEnv({
         jailHome: JAIL_HOME,
         jailConfig,
         projectDir,
         lang: opts.lang,
-        extraEnv: opts.extraEnv
+        extraEnv: Object.assign(keptEnv, opts.extraEnv || {})
     });
     if (jailConfig && process.env.CURSOR_CONFIG_DIR && env.CURSOR_CONFIG_DIR === process.env.CURSOR_CONFIG_DIR) {
         throw new Error('Xi launch reused the inherited CURSOR_CONFIG_DIR');
@@ -455,5 +480,7 @@ module.exports = {
     usesClaudeCli,
     buildLaunch,
     spawnLaunch,
-    hostSpawnEnv
+    hostSpawnEnv,
+    claudeConfigDir,
+    claudeSessionFile
 };
