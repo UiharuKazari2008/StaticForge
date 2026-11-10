@@ -1678,6 +1678,7 @@ async function standbyTick(b) {
     const stby = /standby/i.test(power);
     const first = b.powerSeen == null;
     b.powerSeen = power;
+    if (stby) await hideOldOverlays(b).catch(() => {}); // again each tick: the unit's macros may bring them back
     if (stby && !b.standby) {
         if (!b.settled) await settle(b);
         b.standby = { phase: first ? 'hold' : 'boot', since: Date.now() };
@@ -1686,11 +1687,48 @@ async function standbyTick(b) {
         if (!first) setTimeout(() => { if (b.standby) { b.standby.phase = 'hold'; emit(b); } }, STANDBY_BOOT_MS);
     } else if (!stby && b.standby) {
         b.standby = null;
+        await restoreOldOverlays(b).catch(() => {});
         emit(b);
         if (/active|on|startup/i.test(power)) void powerOn(b.id, { reason: 'power' }).catch(() => {}); // the main image boots
     }
 }
 const STANDBY_BOOT_MS = 3000;
+
+/**
+ * The unit's old image overlays for standby ("Overlay": the STANDBY MODE bar / XLink strip / footer,
+ * "Overlay Info": sys-info image + CabInfo cards) are switched off on its program while it is in standby,
+ * so the cabinet's screen shows with only the hardware STANDBY tag; they are put back on power on.
+ */
+const OLD_OVERLAY_RE = /^(overlay|overlay info|sys-?info|scene ?info.*|bg)$/i; // incl. "BG": the STANDBY MODE frame (top bar, footer)
+function hiddenFile() { return path.join(deps.dataDir, 'standby-hidden.json'); }
+function hiddenLoad(id) { try { return (JSON.parse(fs.readFileSync(hiddenFile(), 'utf8')) || {})[id] || []; } catch (_) { return []; } }
+function hiddenSave(id, list) {
+    let all = {};
+    try { all = JSON.parse(fs.readFileSync(hiddenFile(), 'utf8')) || {}; } catch (_) { all = {}; }
+    if (list.length) all[id] = list; else delete all[id];
+    try { fs.writeFileSync(hiddenFile(), JSON.stringify(all, null, 2)); } catch (_) { /* best effort */ }
+}
+async function hideOldOverlays(b) {
+    const { link } = await linkOf(b);
+    const pgm = (await link.request('GetCurrentProgramScene')).currentProgramSceneName;
+    const items = (await link.request('GetSceneItemList', { sceneName: pgm })).sceneItems || [];
+    if (!b.standbyHidden) b.standbyHidden = hiddenLoad(b.id);
+    for (const it of items) {
+        if (!it.sceneItemEnabled || !OLD_OVERLAY_RE.test(it.sourceName)) continue;
+        if (it.inputKind && it.inputKind !== 'image_source' && !it.isGroup) continue;
+        await link.request('SetSceneItemEnabled', { sceneName: pgm, sceneItemId: it.sceneItemId, sceneItemEnabled: false });
+        b.standbyHidden.push({ scene: pgm, id: it.sceneItemId });
+    }
+    hiddenSave(b.id, b.standbyHidden);
+}
+async function restoreOldOverlays(b) {
+    const list = b.standbyHidden && b.standbyHidden.length ? b.standbyHidden : hiddenLoad(b.id);
+    b.standbyHidden = [];
+    hiddenSave(b.id, []);
+    if (!list.length) return;
+    const { link } = await linkOf(b);
+    for (const x of list) await link.request('SetSceneItemEnabled', { sceneName: x.scene, sceneItemId: x.id, sceneItemEnabled: true }).catch(() => {});
+}
 
 setInterval(() => {
     for (const b of boxes.values()) if (b.kind === 'cabinet' && b.cabinet && !b.standbyBusy) {

@@ -132,7 +132,7 @@ body.t-amuvision #card .sub { width: auto; justify-content: flex-start; }
 #card.slate .brand { left: calc(200 * var(--u)); top: calc(500 * var(--u)); }
 #card.slate .press, #card.slate .tiles, #card.slate .ver, #card.slate .fmt { display: none; }
 #card.post .brand { left: calc(96 * var(--u)); top: calc(420 * var(--u)); }
-#card.post.ph-boot .tiles, #card.post.ph-boot .press, #card.post.ph-boot .fmt { display: none; }
+#card.post.ph-boot .tiles, #card.post.ph-boot .press, #card.post.ph-boot .fmt, #card.post.ph-boot .bar { display: none; }
 #card.post.ph-boot .brand { left: calc(200 * var(--u)); top: calc(500 * var(--u)); }
 #card.post .press { top: calc(640 * var(--u)); font-size: calc(26 * var(--u)); line-height: 1.5; }
 #card .press .dna { display: inline-block; margin-bottom: calc(6 * var(--u)); padding: calc(6 * var(--u)) calc(18 * var(--u)); background: #d00; color: #fff; font-size: calc(54 * var(--u)); letter-spacing: calc(4 * var(--u)); animation: bl 0.8s steps(1, end) infinite; }
@@ -161,6 +161,15 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 .hw-hd { padding: calc(6 * var(--u)) calc(16 * var(--u)); background: var(--acc); border-bottom: calc(3 * var(--u)) solid #c9d3df; color: #fff; font-size: calc(18 * var(--u)); letter-spacing: calc(3 * var(--u)); }
 .hw-bd { padding: calc(12 * var(--u)) calc(16 * var(--u)); }
 .hw-bd b { display: block; font-weight: normal; font-size: calc(26 * var(--u)); color: #fff; letter-spacing: calc(1 * var(--u)); white-space: nowrap; }
+/* STANDBY: the low-power image's screen, a hardware OSD box in the middle of the output */
+#sby { left: calc(40 * var(--u)); top: calc(40 * var(--u)); min-width: calc(420 * var(--u)); }
+#sby.boot { left: 50%; top: 50%; transform: translate(-50%, -50%); min-width: calc(760 * var(--u)); }
+#sby .hw-hd { background: #6a4a00; }
+#sby b { color: #ffb028 !important; font-size: calc(34 * var(--u)) !important; letter-spacing: calc(8 * var(--u)) !important; }
+#sby .hw-sub { max-width: calc(560 * var(--u)); white-space: normal; }
+#sby .sbbar { display: none; margin: calc(12 * var(--u)) auto 0; }
+#sby.boot .sbbar { display: block; }
+#sby.boot b { font-size: calc(28 * var(--u)) !important; letter-spacing: calc(3 * var(--u)) !important; animation: bl 0.6s steps(1, end) infinite; }
 /* INFO: the unit's status as a hardware OSD box (key / value rows) */
 #strip { left: calc(40 * var(--u)); bottom: calc(40 * var(--u)); }
 .hw-grid { display: grid; grid-template-columns: max-content max-content; gap: calc(4 * var(--u)) calc(28 * var(--u)); font-size: calc(22 * var(--u)); }
@@ -188,6 +197,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 <div class="brand"><img class="clogo" id="clogo" alt=""><div class="sub"><span id="ctype"></span><span id="cmodel"></span></div></div>
 <div class="press" id="cpress">Press and hold &ldquo;DIAG&rdquo; button to modify settings</div><div class="fmt" id="cfmt"></div>
 <div class="tiles" id="tiles"></div><div class="ver"><em>Amusement<b>VISION</b></em><br><span id="cver"></span></div></div>
+<div id="sby" class="hw"><div class="hw-hd" id="sbyh"></div><div class="hw-bd"><b id="sbyb"></b><span class="sbbar"><i></i></span><span class="hw-sub" id="sbys"></span></div></div>
 <div id="strip" class="hw"><div class="hw-hd" id="striph">STATUS</div><div class="hw-bd hw-grid" id="stripb"></div></div><div id="toast" class="hw"><div class="hw-hd" id="toasth">SYSTEM</div><div class="hw-bd"><b id="toastb"></b><span class="hw-sub" id="toasts"></span></div></div><div id="off" class="hw"><div class="hw-hd">UNIT OFFLINE</div><div class="hw-bd"><b>NO CONTROL LINK</b><span class="hw-sub" id="offs"></span></div></div>
 <div id="gms" class="hw"><div class="hw-hd" id="gmsh">XLINK GMS</div><div class="hw-bd"><b id="gmst"></b><span class="hw-sub" id="gmss"></span></div></div>
 <script>
@@ -198,7 +208,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
   function draw(v) {
     var bx = v.box || {};
     document.body.className = 't-' + (bx.theme === 'amuvision' ? 'amuvision' : 'takao');
-    var art = '/av-osd-art/' + (bx.theme === 'amuvision' ? 'amuvision' : 'takao') + '.png';
+    var art = '/av-osd-art/' + (bx.theme === 'amuvision' ? 'amuvision' : 'takao') + '.png?v=3';
     if ($('mlogo').getAttribute('src') !== art) $('mlogo').setAttribute('src', art);
     $('unit').textContent = bx.name || '';
     $('mmodel').textContent = bx.model || '';
@@ -233,10 +243,12 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
     }
     // standby: the low-power image's boot flash, then the held STANDBY screen (the menu still opens over it)
     if (v.standby && !v.post && !(v.open && p)) {
-      drawCard({ card: 'standby', phase: 'sb-' + v.standby.phase, unit: { name: bx.name, maker: bx.maker, line: bx.line, model: bx.model, type: bx.type, theme: bx.theme, sw: bx.sw, hw: bx.hw, fw: bx.fw }, status: v.standby.phase === 'boot' ? 'LOADING STANDBY IMAGE' : 'STANDBY', tiles: [] });
-      $('card').className = 'on standby sb-' + v.standby.phase + ($('card').classList.contains('drawin') ? ' drawin' : '');
-      $('cpress').innerHTML = v.standby.phase === 'boot' ? 'STANDBY FIRMWARE<br><span class="sbbar"><i></i></span>' : '<b class="sbt">STANDBY</b><br>LOW POWER MODE &middot; OUTPUT HELD<br><span class="sbs">POWER ON FROM THE CABINET (XLINK) TO START</span>';
-      $('cfmt').textContent = bx.name || '';
+      $('card').className = '';
+      cardShown = '';
+      $('sby').className = 'hw on' + (v.standby.phase === 'boot' ? ' boot' : '');
+      $('sbyh').textContent = (bx.name || '') + '  ' + (bx.model || '');
+      $('sbyb').textContent = v.standby.phase === 'boot' ? 'LOADING STANDBY IMAGE' : 'STANDBY';
+      $('sbys').textContent = v.standby.phase === 'boot' ? '' : 'LOW POWER MODE - OUTPUT HELD';
     } else
     // power on: boot screen, self test, and the latched FAULT card (hidden while the menu is open)
     if (v.post && !(v.open && p)) {
@@ -245,6 +257,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
       $('card').className = 'on post ph-' + po.phase + ($('card').classList.contains('drawin') ? ' drawin' : '');
       $('cpress').innerHTML = po.phase === 'fault' ? '<b class="dna">DO NOT AIR</b><br>CALL A TECHNICIAN &mdash; press MENU to service this unit' : po.phase === 'boot' ? '' : po.phase === 'pass' ? 'All sources OK' : 'Checking every source...';
     } else if (!isCard) { $('card').className = ''; cardShown = ''; }
+    if (!(v.standby && !v.post && !(v.open && p))) $('sby').className = 'hw';
     var s = v.strip; // sent while INFO is on, or briefly after a scene switch
     $('strip').className = s ? 'hw on' : 'hw';
     if (s) {
@@ -269,7 +282,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
       cardShown = ck;
       setTimeout(function () { $('card').classList.remove('drawin'); }, 900);
     }
-    var cart = '/av-osd-art/' + (u.theme === 'amuvision' ? 'amuvision' : 'takao') + '.png';
+    var cart = '/av-osd-art/' + (u.theme === 'amuvision' ? 'amuvision' : 'takao') + '.png?v=3';
     if ($('clogo').getAttribute('src') !== cart) $('clogo').setAttribute('src', cart);
     $('ctype').textContent = u.theme === 'amuvision' ? (u.type || '') + ' // ' + (u.model || '') : (u.type || '');
     $('cmodel').textContent = u.theme === 'amuvision' ? '' : (u.model || '');
@@ -331,7 +344,7 @@ function registerRoutes(app) {
     app.get('/av-osd-art/:name.png', (req, res) => {
         const f = UNIT_ART[String(req.params.name || '')];
         if (!f) return res.status(404).end();
-        res.set('Cache-Control', 'public, max-age=86400');
+        res.set('Cache-Control', 'no-cache'); // revalidated, so a recut logo reaches the units at once
         res.sendFile(require('path').join(__dirname, '..', 'apps', 'quickcast', 'assets', f));
     });
     // QuickCast REALTIME preview: MJPEG for a one-time ticket from quickcast_live_ticket (admin websocket)

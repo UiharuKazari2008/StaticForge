@@ -1347,6 +1347,8 @@
                     ['SIGNAL', tone(stg('capture'))], ['CLOCK', tone(stg('clock'))], ['MIXER', tone(stg('mixer'))],
                     ['NDI OUT', tone(stg('ndiout'))], ['LINK', tone(stg('link'))], ['LOCK', tone(stg('lock'))]
                 ];
+                // standby: the low-power image runs no pipeline, so the unit's stage leds are dark
+                if (lastView && lastView.standby && !sat) lamps.forEach((l) => { l[1] = ''; });
                 const ind = m.querySelector('.qc-fp-ind');
                 const html = lamps.map(([n, c]) => `<span class="qc-led ${c}"><i></i>${n}</span>`).join('');
                 if (ind.dataset.html !== html) { ind.dataset.html = html; ind.innerHTML = html; }
