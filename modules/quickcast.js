@@ -315,6 +315,7 @@ const link = new ObsLink();
 diag.init({ ruiko: link, readConfig, makeLink: (target, label) => new ObsLink({ target, label, events: 4 | 128 | (1 << 10) }) /* Scenes + SceneItems + Ui: status on a take, screenshot notice */ });
 diag.onUnitRestart((machine) => void avOsd.powerOn(`mux-${machine}`, { reason: 'reset' }).catch(() => {}));
 avOsd.init({
+    keepAlive: () => touch(),
     xlinkMenu: (cab, force) => cabinetXlinkMenu(cab, force), xlinkDo: (req) => cabinetXlinkDo(req),
     ruiko: link, diag, readConfig, dataDir: DATA_DIR, unitModel: (n) => unitModel(n), unitInfo: (n, r) => unitInfo(n, r), satelliteName: () => satelliteName(),
     // on air = the satellite is streaming and (for a mux box) its cabinet's scene is on program

@@ -51,7 +51,55 @@ const VIDEO_KINDS = new Set(['dshow_input', 'av_capture_input', 'av_capture_inpu
 
 let deps = null; // { ruiko: ObsLink, diag, readConfig, dataDir }
 
-function init(d) { deps = d; }
+function init(d) {
+    deps = d;
+    // the units run like hardware whether or not anyone has VisionCaster open
+    if (process.env.QUICKCAST_SUPERVISE !== '0') {
+        setTimeout(() => void supervise(), 5000).unref();
+        setInterval(() => void supervise(), SUPERVISE_MS).unref();
+    }
+}
+
+/**
+ * The unit supervisor, always running on the server (not in VisionCaster): keeps the satellite and every
+ * configured cabinet's mixer connected and watched, so the OSD layer, the boot splash + self test after a
+ * reset (the mixer's frame counter restarting), standby from the cabinet's power state, the screenshot /
+ * info card takeovers and the GMS link all work with no client open.
+ */
+const SUPERVISE_MS = 15000;
+const supCab = new Map(); // cabinetId -> { machine, at }
+let supervising = false;
+async function supervise() {
+    if (supervising || !deps) return;
+    supervising = true;
+    try {
+        if (deps.keepAlive) deps.keepAlive(); // the satellite's control link stays open
+        const sat = box('sat');
+        try {
+            await deps.ruiko.connect();
+            if (!sat.settled) await settle(sat); else hookUnit(sat, deps.ruiko);
+        } catch (_) { /* satellite engine off: retried next round */ }
+        const seen = new Set();
+        for (const c of deps.readConfig().cabinets) {
+            let hit = supCab.get(c.id);
+            if (!hit || Date.now() - hit.at > 300000) {
+                let machine = '';
+                try { machine = await deps.diag.machineForCabinet(c.id); } catch (_) { machine = ''; }
+                hit = { machine, at: Date.now() };
+                supCab.set(c.id, hit);
+            }
+            const m = hit.machine;
+            if (!m || seen.has(m)) continue;
+            seen.add(m);
+            const b = box(`mux-${m}`);
+            if (!b.cabinet) b.cabinet = c.id;
+            try {
+                await deps.diag.muxLink(m); // also samples it: a restarted mixer gets its boot splash + self test
+                if (!b.settled) await settle(b);
+            } catch (_) { /* mixer off: retried next round */ }
+        }
+    } finally { supervising = false; }
+}
 
 // ------------------------------------------------------------------ tokens
 

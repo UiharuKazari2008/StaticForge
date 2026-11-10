@@ -12,6 +12,7 @@ const { WebSocketServer } = require('ws');
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'quickcast-test-'));
 process.env.QUICKCAST_DATA_DIR = dir;
+process.env.QUICKCAST_SUPERVISE = '0'; // the always-on unit supervisor stays off in tests (they drive units themselves)
 process.env.QUICKCAST_DEVICE_MIN_S = '0.05';
 // a fake XLink menu.json + cabinet on loopback: never the real cabinets
 const xdir = fs.mkdtempSync(path.join(os.tmpdir(), 'quickcast-xlink-'));
