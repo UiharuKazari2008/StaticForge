@@ -430,9 +430,20 @@ function mcpLaunchEnv() {
     };
 }
 
+// Yozora runs on the host unless config xi.sandbox is true (then the old bubblewrap launch).
+function xiSandboxed() {
+    try {
+        const cfg = boundGr && boundGr.getConfig && boundGr.getConfig();
+        return !!(cfg && cfg.xi && cfg.xi.sandbox === true);
+    } catch (_) {
+        return false;
+    }
+}
+
 function launchPlan(agentArgs, options) {
     const opts = options || {};
     return xiLaunch.buildLaunch({
+        sandbox: opts.sandbox !== undefined ? opts.sandbox : xiSandboxed(),
         projectDir: opts.projectDir || workspacePath(boundGr),
         homeAccessDir: opts.homeAccessDir || layout().root,
         agentArgs: agentArgs || [],
@@ -534,15 +545,15 @@ function directorClientId(clientInfo, message) {
 function xiIdentityLine(runtime) {
     if (customProviders.isEngine(runtime)) {
         const name = customProviders.displayName(boundGr, runtime);
-        return `You are Yozora, the host Claude Code agent for this repo, running through ${name}. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail.`;
+        return `You are Yozora, the host Claude Code agent for this repo, running through ${name}. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail: you run on the host with the same access as a host Claude Code session.`;
     }
     if (runtime === 'tokenrouter') {
-        return 'You are Yozora, the host Claude Code agent for this repo, running through TokenRouter. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail.';
+        return 'You are Yozora, the host Claude Code agent for this repo, running through TokenRouter. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail: you run on the host with the same access as a host Claude Code session.';
     }
     if (runtime === 'claude') {
-        return 'You are Yozora, the host Claude Code agent for this repo. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail.';
+        return 'You are Yozora, the host Claude Code agent for this repo. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail: you run on the host with the same access as a host Claude Code session.';
     }
-    return 'You are Yozora, the host Cursor agent for this repo. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail.';
+    return 'You are Yozora, the host Cursor agent for this repo. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail: you run on the host with the same access as a host Claude Code session.';
 }
 
 function buildPrompt(chat, userText, files, clientId, options) {
@@ -1470,7 +1481,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 claudeSessionId = chat.claudeSessionId || crypto.randomUUID();
                 // Chats from before the persistent Claude config dir lost their session
                 // file with the run home. --resume would fail, so start it fresh.
-                if (!claudeFirstTurn && !fs.existsSync(xiLaunch.claudeSessionFile(layout().root, workspacePath(gr), claudeSessionId))) {
+                if (!claudeFirstTurn && !fs.existsSync(xiLaunch.claudeSessionPath({ sandbox: xiSandboxed(), homeAccessDir: layout().root, projectDir: workspacePath(gr), sessionId: claudeSessionId }))) {
                     claudeFirstTurn = true;
                     claudeSessionId = crypto.randomUUID();
                     sessionRestarted = true;

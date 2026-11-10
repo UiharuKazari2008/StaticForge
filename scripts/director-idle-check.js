@@ -118,7 +118,8 @@ function xiRuns(opts = {}) {
         const pid = Number(meta && meta.pid);
         if (!Number.isFinite(pid) || pid <= 1 || skip.has(pid)) continue;
         const st = procStat(procRoot, pid);
-        if (!st || !AGENT_COMMS.has(st.comm)) continue;
+        // A host Claude run is the versioned binary (comm "2.1.322"); a sandboxed run's pid is bwrap.
+        if (!st || !(AGENT_COMMS.has(st.comm) || st.comm === 'bwrap' || /^\d+\.\d+\.\d+$/.test(st.comm))) continue;
         live.push({ pid, sessionId: meta.sessionId || null, name: meta.name || null, startedAt: meta.startedAt || null });
     }
     return live;

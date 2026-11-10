@@ -274,9 +274,144 @@ function refuseWholeHome(dir) {
     }
 }
 
+// Yozora on the host (Yukimi, 2026-11-10: "yozora should not be sandboxed, it is
+// almost on the same level as you"). No bubblewrap: the real HOME, so ~/.claude
+// (config, sessions, auto memory), ~/.secrets, ~/.pm2, git and ssh are the same
+// ones a host Claude Code session uses. The environment is still built from
+// scratch: nothing from the Dreamscape process (Cursor variables, its secrets)
+// is inherited, and credentials stay off argv (read from their files by sh).
+function hostEnvFor(spec) {
+    const home = spec.homeDir;
+    const lang = spec.lang || process.env.LANG || 'C.UTF-8';
+    const pathDirs = [path.join(home, '.local', 'bin'), '/usr/local/bin', '/usr/bin', '/bin'];
+    String(process.env.PATH || '').split(path.delimiter).forEach((dir) => {
+        if (dir && !pathDirs.includes(dir)) pathDirs.push(dir);
+    });
+    const user = (() => { try { return os.userInfo().username; } catch (_) { return 'kanmi'; } })();
+    const env = {
+        HOME: home,
+        PATH: pathDirs.join(path.delimiter),
+        LANG: lang,
+        LC_ALL: process.env.LC_ALL || lang,
+        USER: user,
+        LOGNAME: user,
+        SHELL: '/bin/bash',
+        PWD: spec.projectDir,
+        TERM: 'dumb',
+        NO_COLOR: '1',
+        NO_OPEN_BROWSER: '1',
+        GIT_TERMINAL_PROMPT: '0',
+        PM2_HOME: path.join(home, '.pm2')
+    };
+    if (process.env.XDG_RUNTIME_DIR) env.XDG_RUNTIME_DIR = process.env.XDG_RUNTIME_DIR;
+    if (spec.cursorConfig) env.CURSOR_CONFIG_DIR = spec.cursorConfig;
+    const extra = spec.extraEnv || {};
+    Object.keys(extra).forEach((key) => {
+        if (!JAIL_ENV_ALLOW.has(key) || ['HOME', 'PATH', 'PWD', 'CLAUDE_CONFIG_DIR', 'CURSOR_CONFIG_DIR'].includes(key)) return;
+        if (key.startsWith('CURSOR_') || key.startsWith('VSCODE_')) return;
+        if (extra[key] == null || extra[key] === '') return;
+        env[key] = String(extra[key]);
+    });
+    return env;
+}
+
+function buildHostLaunch(opts, runtime) {
+    const homeDir = path.resolve(opts.homeDir || os.homedir());
+    const projectDir = path.resolve(opts.projectDir || defaultProjectDir());
+    if (!fs.existsSync(projectDir) || !fs.statSync(projectDir).isDirectory()) {
+        const error = new Error('Xi project directory does not exist');
+        error.code = 'PROJECT_MISSING';
+        throw error;
+    }
+    const homeAccessDir = path.resolve(resolveHomeAccess({ homeAccessDir: opts.homeAccessDir, projectDir, cwd: opts.cwd, homeDir }));
+    fs.mkdirSync(homeAccessDir, { recursive: true });
+    const custom = !!(opts.command && opts.command.length);
+    let bin = null;
+    if (!custom) {
+        if (usesClaudeCli(runtime)) {
+            bin = opts.agentBin || director().findClaude();
+            if (!bin) {
+                const error = new Error(runtime === 'claude'
+                    ? 'Claude Code is not installed on this host'
+                    : 'Claude Code is not installed on this host, and this engine runs on it');
+                error.code = 'CLAUDE_MISSING';
+                throw error;
+            }
+        } else {
+            bin = opts.agentBin || director().findAgent();
+            if (!bin) {
+                const error = new Error('Cursor is not installed on this host');
+                error.code = 'CURSOR_MISSING';
+                throw error;
+            }
+        }
+    }
+    const runHome = prepareRunHome(opts);
+    let credential = { accountId: null, auth: {}, keyFile: null, storedKey: '' };
+    let authFile = null;
+    let cursorConfig = null;
+    let tokenFile = null;
+    if (runtime === 'claude') {
+        tokenFile = resolveClaudeTokenFile(opts);
+        if (!fs.existsSync(tokenFile)) {
+            const error = new Error('Claude OAuth token file is missing (run `claude setup-token`)');
+            error.code = 'CLAUDE_TOKEN_MISSING';
+            throw error;
+        }
+    } else if (!usesClaudeCli(runtime)) {
+        // The Xi Cursor account stays in its own config dir, apart from the host's ~/.config/cursor.
+        credential = loadActiveCredential(opts);
+        cursorConfig = path.join(runHome, '.config', 'cursor');
+        authFile = seedConfig(cursorConfig, credential);
+    }
+    const env = hostEnvFor({ homeDir, projectDir, lang: opts.lang, cursorConfig, extraEnv: opts.extraEnv });
+    assertNoInheritedCursor(env);
+    let command = custom
+        ? opts.command.map((part) => String(part))
+        : [bin].concat(opts.agentArgs || []).map((part) => String(part));
+    const quote = (file) => `'${String(file).replace(/'/g, `'\\''`)}'`;
+    if (credential.keyFile) {
+        command = ['/bin/sh', '-c', `CURSOR_API_KEY="$(cat ${quote(credential.keyFile)})"; export CURSOR_API_KEY; exec "$@"`, 'xi-launch'].concat(command);
+    }
+    if (tokenFile) {
+        command = ['/bin/sh', '-c', `CLAUDE_CODE_OAUTH_TOKEN="$(cat ${quote(tokenFile)})"; export CLAUDE_CODE_OAUTH_TOKEN; exec "$@"`, 'xi-claude-launch'].concat(command);
+    }
+    const secrets = secretValues(credential.auth);
+    if (credential.storedKey) secrets.push(credential.storedKey);
+    assertSecretsOffArgv(command, secrets);
+    return {
+        bin: command[0],
+        args: command.slice(1),
+        env,
+        hostEnv: env,
+        sandbox: false,
+        runHome,
+        runtime,
+        accountId: credential.accountId,
+        authFile,
+        apiKeyMount: credential.keyFile || null,
+        tokenMount: tokenFile,
+        jailHome: homeDir,
+        jailConfig: cursorConfig,
+        projectDir,
+        homeAccessDir
+    };
+}
+
+// Where a Claude CLI session file lives for this launch mode.
+function claudeSessionPath(opts) {
+    const o = opts || {};
+    const projectDir = o.projectDir || defaultProjectDir();
+    if (o.sandbox === false) {
+        return path.join(o.homeDir || os.homedir(), '.claude', 'projects', claudeProjectSlug(projectDir), `${o.sessionId}.jsonl`);
+    }
+    return claudeSessionFile(o.homeAccessDir, projectDir, o.sessionId);
+}
+
 function buildLaunch(options) {
     const opts = options || {};
     const runtime = sanitizeLaunchRuntime(opts.runtime);
+    if (opts.sandbox === false) return buildHostLaunch(opts, runtime);
     const bwrapBin = opts.bwrapBin || director().findBwrap();
     if (!bwrapBin) {
         const error = new Error('bubblewrap (bwrap) is not installed on this host');
@@ -482,5 +617,6 @@ module.exports = {
     spawnLaunch,
     hostSpawnEnv,
     claudeConfigDir,
-    claudeSessionFile
+    claudeSessionFile,
+    claudeSessionPath
 };
