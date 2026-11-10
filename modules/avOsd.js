@@ -316,7 +316,7 @@ const PAGES = {
         };
         if (!b.standby) return all;
         // the low-power standby image: diagnostics and configuration only; full power on for the rest
-        const keep = new Set(['alarms', 'inputs', 'clock', 'diag', 'system']);
+        const keep = new Set(['inputs', 'clock', 'diag', 'system']); // no ALARMS: nothing is checked in standby
         return {
             title: 'STANDBY MENU',
             rows: [...all.rows.filter((r) => keep.has(r.id)), { id: 'sb:note', label: 'MORE AFTER FULL POWER ON', kind: 'info', value: 'XLINK > POWER' }],
@@ -1099,6 +1099,7 @@ async function waitVideoUp(b, link) {
 
 async function powerOn(boxId, opts = {}) {
     const b = boxes.get(boxId) || box(boxId);
+    if (b.standby) return null; // the standby image is not fully loaded: no self test until power on
     if (b.post) return b.lastPost;
     if (b.kind === 'satellite' && await deps.onAir(b).catch(() => false)) return null; // never over a live broadcast
     const cfg = deps.readConfig().osd || {};
@@ -1395,7 +1396,7 @@ async function onKey(b, key) {
         b.stack = [{ page: 'xlink', path: [], cursor: 0, title: 'XLINK' }];
         return;
     }
-    if (key === 'diag') { if (!b.open) b.open = true; b.stack = [{ page: 'main', cursor: b.standby ? 3 : 7 }, { page: 'diag', cursor: 0 }]; return; }
+    if (key === 'diag') { if (!b.open) b.open = true; b.stack = [{ page: 'main', cursor: b.standby ? 2 : 7 }, { page: 'diag', cursor: 0 }]; return; }
     if (!b.open) { if (key === 'exit' && b.info) b.info = false; return; }
     const f = frame(b);
     if (key === 'exit') {
@@ -1819,7 +1820,7 @@ function faults() {
     const out = [];
     for (const id of Object.keys(loadFaults())) if (validId(id)) box(id);
     for (const b of boxes.values()) {
-        if (!b.fault) continue;
+        if (!b.fault || b.standby) continue; // standby is not fully loaded: no alarm states
         const items = b.fault.items.filter((i) => !i.bypass); // a bypassed input is not an active alarm
         if (items.length) out.push({ unit: boxName(b), box: b.id, kind: b.kind, machine: b.machine, at: b.fault.at, items, overridden: !!b.fault.overridden });
     }

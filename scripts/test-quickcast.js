@@ -383,7 +383,9 @@ async function main() {
     qc.osd._boxes.get('sat').standby = { phase: 'hold', since: Date.now() };
     v = await qc.osd.press('sat', '', 'menu');
     assert.strictEqual(v.page.title, 'STANDBY MENU');
-    assert.deepStrictEqual(v.page.rows.map((r) => r.id), ['alarms', 'inputs', 'clock', 'diag', 'system', 'sb:note']);
+    assert.deepStrictEqual(v.page.rows.map((r) => r.id), ['inputs', 'clock', 'diag', 'system', 'sb:note'], 'no ALARMS in standby');
+    assert.strictEqual(qc.osd.faults().filter((f) => f.box === 'sat').length, 0, 'no alarm states while in standby');
+    assert.strictEqual(await qc.osd.powerOn('sat', { reason: 'manual' }), null, 'no self test in standby');
     assert.ok(v.standby, 'the view carries the standby state');
     await qc.osd.press('sat', '', 'menu');
     qc.osd._boxes.get('sat').standby = null;
