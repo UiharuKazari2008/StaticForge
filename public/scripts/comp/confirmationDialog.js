@@ -64,10 +64,11 @@ function handleConfirmationDialogKeydown(e) {
         const res = currentResolve;
         const opts = confirmationDialogKeydownOptionsRef;
         const inputRef = confirmationDialogKeydownInputRef;
-        hideConfirmationDialog();
-        if (res) {
-            res(inputRef != null ? null : getConfirmationCancelResolveValue(opts));
-        }
+        // answer only once the dialog has finished closing: a caller that opens the next dialog right
+        // away would otherwise have it hidden (and its answer cleared) by this close finishing late
+        void hideConfirmationDialog().then(() => {
+            if (res) res(inputRef != null ? null : getConfirmationCancelResolveValue(opts));
+        });
         return;
     }
 
@@ -215,12 +216,10 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
 
             // Close button handler
             const closeBtn = confirmationDialog.querySelector('.close-btn');
-            closeBtn.addEventListener('click', () => {
-                hideConfirmationDialog();
-                if (currentResolve) {
-                    currentResolve(null);
-                    currentResolve = null;
-                }
+            closeBtn.addEventListener('click', async () => {
+                const res = currentResolve;
+                await hideConfirmationDialog();
+                if (res) res(null);
             });
         }
 
@@ -315,10 +314,9 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
                     const resolved = typeof config.resolveValue === 'function'
                         ? config.resolveValue(option.value, confirmationDialog)
                         : option.value;
-                    hideConfirmationDialog();
-                    if (res) {
-                        res(resolved);
-                    }
+                    void hideConfirmationDialog().then(() => {
+                        if (res) res(resolved);
+                    });
                 });
 
                 controlsEl.appendChild(button);
@@ -338,10 +336,9 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
             newCloseBtnElement.addEventListener('click', () => {
                 const res = currentResolve;
                 const cancelValue = getConfirmationCancelResolveValue(options);
-                hideConfirmationDialog();
-                if (res) {
-                    res(cancelValue);
-                }
+                void hideConfirmationDialog().then(() => {
+                    if (res) res(cancelValue);
+                });
             });
         }
 
@@ -698,10 +695,9 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
                     e.preventDefault();
                     const inputValue = input.value.trim();
                     const res = currentResolve;
-                    hideConfirmationDialog();
-                    if (res) {
-                        res(option.value ? inputValue : null);
-                    }
+                    void hideConfirmationDialog().then(() => {
+                        if (res) res(option.value ? inputValue : null);
+                    });
                 });
 
                 controlsEl.appendChild(button);
@@ -717,10 +713,9 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
             newInputCloseBtnElement.addEventListener('click', () => {
                 const res = currentResolve;
                 const cancelValue = getConfirmationCancelResolveValue(options);
-                hideConfirmationDialog();
-                if (res) {
-                    res(cancelValue);
-                }
+                void hideConfirmationDialog().then(() => {
+                    if (res) res(cancelValue);
+                });
             });
         }
 
