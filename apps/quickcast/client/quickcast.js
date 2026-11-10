@@ -1309,7 +1309,7 @@
                     ['ON AIR', live ? (st.stream.reconnecting ? 'is-red is-blink' : 'is-red') : ''],
                     ['UPLINK', !st.key || !st.key.set ? 'is-red' : live ? (st.stream.reconnecting ? 'is-amber is-blink' : 'is-green') : 'is-amber'],
                     ['NDI RX', tone(stg('rx'))], ['CLOCK', tone(stg('clock'))], ['RENDER', tone(stg('render'))],
-                    ['ENCODE', tone(stg('encoder'))], ['NETWORK', tone(stg('network'))], ['YOUTUBE', tone(stg('youtube'))]
+                    ['ENCODE', tone(stg('encoder'))], ['NETWORK', tone(stg('network'))], ['BROADCAST', tone(stg('youtube'))]
                 ] : [
                     ['SIGNAL', tone(stg('capture'))], ['CLOCK', tone(stg('clock'))], ['MIXER', tone(stg('mixer'))],
                     ['NDI OUT', tone(stg('ndiout'))], ['LINK', tone(stg('link'))], ['LOCK', tone(stg('lock'))]

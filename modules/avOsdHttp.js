@@ -223,7 +223,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
       $('card').className = 'on post ph-' + po.phase + ($('card').classList.contains('drawin') ? ' drawin' : '');
       $('cpress').innerHTML = po.phase === 'fault' ? '<b class="dna">DO NOT AIR</b><br>CALL A TECHNICIAN &mdash; press MENU to service this unit' : po.phase === 'boot' ? '' : po.phase === 'pass' ? 'All sources OK' : 'Checking every source...';
     } else if (!isCard) { $('card').className = ''; cardShown = ''; }
-    var s = v.info && v.strip;
+    var s = v.strip; // sent while INFO is on, or briefly after a scene switch
     $('strip').className = s ? 'hw on' : 'hw';
     if (s) {
       $('striph').textContent = 'STATUS  ' + (bx.name || '');

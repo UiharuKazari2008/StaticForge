@@ -312,7 +312,7 @@ class ObsLink {
 }
 
 const link = new ObsLink();
-diag.init({ ruiko: link, readConfig, makeLink: (target, label) => new ObsLink({ target, label, events: 128 | (1 << 10) }) /* SceneItems + Ui: the unit's screenshot notice */ });
+diag.init({ ruiko: link, readConfig, makeLink: (target, label) => new ObsLink({ target, label, events: 4 | 128 | (1 << 10) }) /* Scenes + SceneItems + Ui: status on a take, screenshot notice */ });
 diag.onUnitRestart((machine) => void avOsd.powerOn(`mux-${machine}`, { reason: 'reset' }).catch(() => {}));
 avOsd.init({
     ruiko: link, diag, readConfig, dataDir: DATA_DIR, unitModel: (n) => unitModel(n), unitInfo: (n, r) => unitInfo(n, r), satelliteName: () => satelliteName(),

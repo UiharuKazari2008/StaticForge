@@ -1048,7 +1048,8 @@ function emit(b) {
             if (f.error) out.page.error = f.error;
         }
     }
-    if (b.info && b.strip) out.strip = b.strip;
+    // the STATUS box: while INFO is on, or for a few seconds after a scene switch
+    if ((b.info || Date.now() < (b.infoFlashUntil || 0)) && b.strip) out.strip = b.strip;
     if (b.post) out.post = { ...b.post, holdLeft: b.post.holdUntil ? Math.max(0, Math.ceil((b.post.holdUntil - Date.now()) / 1000)) : 0 };
     b.view = out;
     for (const res of b.subs) { try { res.write(`data: ${JSON.stringify(out)}\n\n`); } catch (_) { b.subs.delete(res); } }
@@ -1070,10 +1071,23 @@ function toast(b, text, head, sub) { b.toast = text; b.toastHead = head || ''; b
  * the engine's ScreenshotSaved event shows it too (with the file name).
  */
 const SHOT_RE = /screen ?shot|^sysinfo-ss/i;
+const INFO_FLASH_MS = 5000;
 function hookUnit(b, link) {
     if (link._avosdHooked) return;
     link._avosdHooked = true;
     link.listeners.add((type, data) => {
+        if (type === 'CurrentProgramSceneChanged') {
+            // like a hardware mixer showing its status on a take: the layer follows the new program, then
+            // the STATUS box shows for INFO_FLASH_MS
+            void (async () => {
+                await placeOverlay(b).catch(() => {});
+                await buildStrip(b);
+                b.infoFlashUntil = Date.now() + INFO_FLASH_MS;
+                emit(b);
+                setTimeout(() => emit(b), INFO_FLASH_MS + 50);
+            })().catch(() => {});
+            return;
+        }
         if (type === 'ScreenshotSaved') {
             const file = String(data.savedScreenshotPath || '').split(/[\\/]/).pop();
             toast(b, 'IMAGE SAVED TO DISK', 'SCREENSHOT', file);

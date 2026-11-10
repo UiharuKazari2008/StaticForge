@@ -185,7 +185,7 @@ muxWss.on('connection', (ws) => {
     ws.send(JSON.stringify({ op: 0, d: { obsWebSocketVersion: '5.4.2', rpcVersion: 1 } }));
     ws.on('message', (buf) => {
         const msg = JSON.parse(buf.toString());
-        if (msg.op === 1) { assert.strictEqual(msg.d.eventSubscriptions, 128 | 1024, 'a mux link subscribes to scene items + ui only'); ws.send(JSON.stringify({ op: 2, d: { negotiatedRpcVersion: 1 } })); return; }
+        if (msg.op === 1) { assert.strictEqual(msg.d.eventSubscriptions, 4 | 128 | 1024, 'a mux link subscribes to scenes, scene items and ui only'); ws.send(JSON.stringify({ op: 2, d: { negotiatedRpcVersion: 1 } })); return; }
         if (msg.op !== 6) return;
         const { requestType: t, requestId, requestData: q = {} } = msg.d;
         mux.calls.push(t);
@@ -358,6 +358,12 @@ async function main() {
     v = await qc.osd.press('sat', '', 'ok');
     assert.strictEqual(qc.osd.faults()[0].overridden, true, 'a technician override clears the lock');
     await qc.osd.press('sat', '', 'menu');
+
+    // a take on the unit (program scene change) flashes the STATUS box on its output
+    emit('CurrentProgramSceneChanged', { sceneName: 'Chuni' });
+    await until(() => qc.osd._boxes.get('sat').view && qc.osd._boxes.get('sat').view.strip);
+    assert.ok(qc.osd._boxes.get('sat').view.strip, 'STATUS shows after a scene switch');
+    assert.strictEqual(qc.osd._boxes.get('sat').view.strip.program, 'Chuni');
 
     const lag = qc.osd.bestLag([0, 0, 0, 9, 9, 9, 3, 3, 8, 8, 8, 1, 1, 1, 6, 6], [0, 9, 9, 9, 3, 3, 8, 8, 8, 1, 1, 1, 6, 6, 6, 6], 4);
     assert.ok(Math.abs(lag.lag - 2) < 0.3 && lag.score > 0.9, 'a camera 2 samples behind reads +2');

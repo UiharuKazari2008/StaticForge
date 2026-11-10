@@ -15,7 +15,7 @@
  *           RENDER   Ruiko's render lag
  *           ENCODER  frames skipped for encoding lag
  *           NETWORK  frames dropped on the RTMPS connection, congestion, bitrate
- *           YOUTUBE  YouTube's ingest health (signed in, QuickCast's own broadcast)
+ *           BROADCAST YouTube's ingest health (signed in, VisionCaster's own broadcast)
  *
  * Percentages are over the last WINDOW_MS. A mux is only asked while the QuickCast window polls, at
  * most every MUX_SAMPLE_MS, and only cheap requests (GetStats, GetOutputStatus, scene item lists):
@@ -450,17 +450,17 @@ function outputRow(st, stats, cabinet, feed) {
             + (nState === 'ok' ? '' : '\n\nNetwork drops = Ruiko\'s upload cannot carry the bitrate: lower the bitrate, check the uplink, or other uploads on the line.')));
     }
 
-    // YOUTUBE
+    // BROADCAST (YouTube ingest)
     const h = st.youtube && st.youtube.health;
-    if (!live) out.push(stage('youtube', 'YOUTUBE', 'off', 'IDLE', 'Not streaming'));
-    else if (!h) out.push(stage('youtube', 'YOUTUBE', 'off', '-', 'Sign in (Settings > Account) so QuickCast makes the broadcast and can read YouTube\'s ingest health'));
+    if (!live) out.push(stage('youtube', 'BROADCAST', 'off', 'IDLE', 'Not streaming'));
+    else if (!h) out.push(stage('youtube', 'BROADCAST', 'off', '-', 'Sign in (Settings > Account) so VisionCaster makes the broadcast and can read YouTube\'s ingest health'));
     else {
         const map = { good: 'ok', ok: 'ok', bad: 'warn', noData: 'bad' };
         const ys = h.error ? 'wait' : map[h.status] || 'wait';
         const issues = (h.issues || []).filter((i) => i.severity !== 'info');
-        out.push(stage('youtube', 'YOUTUBE', issues.some((i) => i.severity === 'error') ? 'bad' : issues.length ? worst(ys, 'warn') : ys,
+        out.push(stage('youtube', 'BROADCAST', issues.some((i) => i.severity === 'error') ? 'bad' : issues.length ? worst(ys, 'warn') : ys,
             (h.status || '...').toUpperCase(),
-            `YouTube ingest health: ${h.status || 'not read yet'}${h.error ? ` (${h.error})` : ''}${(h.issues || []).length ? `\n${h.issues.map((i) => `${i.severity}: ${i.description || i.reason || i.type}`).join('\n')}` : ''}`));
+            `Broadcast (YouTube ingest) health: ${h.status || 'not read yet'}${h.error ? ` (${h.error})` : ''}${(h.issues || []).length ? `\n${h.issues.map((i) => `${i.severity}: ${i.description || i.reason || i.type}`).join('\n')}` : ''}`));
     }
     return { source: 'RUIKO', stages: out, note: '' };
 }
@@ -472,7 +472,7 @@ function verdict(input, output) {
     const where = {
         capture: 'Capture on the cabinet', mixer: 'The cabinet\'s mixer (rendering)', ndiout: 'The cabinet\'s NDI encoder', link: 'Network to the cabinet',
         clock: 'Frame clock', lock: 'Cabinet / satellite frame lock',
-        rx: 'NDI transport to Ruiko', render: 'Ruiko\'s rendering', encoder: 'Ruiko\'s hardware encoder', network: 'Network from Ruiko to YouTube', youtube: 'YouTube ingest', format: 'Format'
+        rx: 'NDI transport to the satellite', render: 'The satellite\'s rendering', encoder: 'The satellite\'s hardware encoder', network: 'Uplink from the satellite', youtube: 'Broadcast (YouTube ingest)', format: 'Format'
     };
     if (!pick) {
         const waiting = chain.some((s) => s.state === 'wait');
