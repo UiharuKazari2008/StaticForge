@@ -1,0 +1,14 @@
+{
+    "id": "quickcast",
+    "version": "1.0.734",
+    "title": "QuickCast",
+    "publisher": "AmusementVISION",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "quickcast",
+    "icon": "assets/quickcast-48.png",
+    "client": {
+        "entry": "client/quickcast.js",
+        "styles": ["assets/quickcast.css"]
+    }
+}

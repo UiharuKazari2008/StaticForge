@@ -1,0 +1,635 @@
+/**
+ * QuickCast (Yozora #734): the AmusementVISION live launcher. Pick a cabinet, look at its picture and
+ * its audio, press GO LIVE: OBS on Ruiko streams it to YouTube. STOP ends the stream.
+ *
+ *   Cabinets   the Remote Play scenes (config.json on the server); picking one starts OBS on Ruiko when
+ *              it is closed, switches OBS to the Remote Play collection and the QuickCast profile, and
+ *              puts the cabinet's scene on program (while live: asks first, it changes the stream)
+ *   Monitor    a screenshot of the cabinet's scene twice a second (what goes on air)
+ *   VU meter   what the stream hears with that scene on: stereo master + every source, peak hold
+ *   Checks     OBS, scene, profile, stream key, picture, sound; GO LIVE asks only when one is not green
+ *
+ * Every request goes through the server (quickcast_* packets, modules/quickcast.js), which talks to
+ * obs-websocket and holds the YouTube stream key. The key never comes back to the client.
+ *
+ *   melatonApps.define('quickcast', start)
+ */
+(function (root) {
+    'use strict';
+
+    const doc = document;
+    const A = '/melaton-apps/quickcast/assets';
+    const VERSION = '1.0.0734';
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
+    const pad = (n) => String(n).padStart(2, '0');
+    const clock = (t) => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+    const STATUS_MS = 200;
+    const PREVIEW_MS = 500;
+    const METER_MIN = -60;
+    const DECAY_DB_S = 24;      // meter fall-back, PPM-like
+    const PEAK_HOLD_MS = 1500;
+    const AUDIO_OK_DB = -50;    // a sound above this in the last 3 s counts as "sound"
+    const SCALE = [0, -6, -12, -18, -24, -30, -40, -50, -60];
+    const LS_KEY = 'quickcast.cabinet';
+
+    const meterPct = (db) => Math.max(0, Math.min(100, ((Math.max(METER_MIN, db) - METER_MIN) / -METER_MIN) * 100));
+
+    /** A falling bar with a peak-hold tick: set() with fresh readings, frame() every animation frame. */
+    class Bar {
+        constructor(fill, tick) { this.fill = fill; this.tick = tick; this.v = -100; this.pk = -100; this.pkAt = 0; this.t = 0; }
+        set(mag, peak) {
+            const now = performance.now();
+            if (mag > this.v) this.v = mag;
+            if (peak > this.pk || now - this.pkAt > PEAK_HOLD_MS) { this.pk = Math.max(peak, mag); this.pkAt = now; }
+        }
+        frame(now) {
+            const dt = this.t ? (now - this.t) / 1000 : 0;
+            this.t = now;
+            this.v = Math.max(-100, this.v - DECAY_DB_S * dt);
+            if (now - this.pkAt > PEAK_HOLD_MS) this.pk = Math.max(this.v, this.pk - DECAY_DB_S * 2 * dt);
+            const p = meterPct(this.v);
+            this.fill.style.setProperty('--qc-lv', `${p}%`);
+            if (this.tick) {
+                this.tick.style.setProperty('--qc-pk', `${meterPct(this.pk)}%`);
+                this.tick.classList.toggle('is-hot', this.pk > -6);
+                this.tick.style.opacity = this.pk > METER_MIN ? '1' : '0';
+            }
+        }
+    }
+
+    class QuickCast {
+        constructor(app) {
+            this.app = app;
+            this.st = null;
+            this.cabinet = '';
+            this.busy = '';
+            this.lastSound = 0;
+            this.video = null;     // { ok, at } from the last preview
+            this.previewFor = '';
+            this.inputBars = new Map();
+            this.children = new Set();
+            this.winSeq = 0;
+            this.wasLive = false;
+            try { this.cabinet = root.localStorage.getItem(LS_KEY) || ''; } catch (_) { this.cabinet = ''; }
+            this.build();
+            this.loop();
+        }
+
+        // ---------------------------------------------------------------- the main window
+
+        build() {
+            const m = doc.createElement('div');
+            m.className = 'modal hidden resizeable-window qc-window';
+            m.dataset.windowIdentifier = 'melatonQuickCast';
+            m.dataset.windowClient = 'light';
+            m.dataset.taskbarIcon = `${A}/quickcast-32.png`;
+            m.dataset.windowDefaultWidth = '940';
+            m.dataset.windowDefaultHeight = '620';
+            m.dataset.windowMinWidth = '800';
+            m.dataset.windowMinHeight = '540';
+            m.style.width = '940px';
+            m.style.height = `${Math.min(620, root.innerHeight - 60)}px`;
+            m.setAttribute('role', 'dialog');
+            m.setAttribute('aria-label', 'QuickCast');
+            m.innerHTML = `
+                <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${A}/quickcast-16.png" alt=""><span>QuickCast - Live Broadcast Launcher</span></div></div>
+                <div class="modal-focus-overlay"></div>
+                <div class="modal-window-controls">
+                    <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
+                    <button type="button" class="btn-danger close-btn btn-small qc-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+                </div>
+                <div class="modal-content qc-client"><div class="qc-root">
+                    <div class="qc-menubar"><span data-qc-menu="file"><u>F</u>ile</span><span data-qc-menu="stream"><u>S</u>tream</span><span data-qc-menu="help"><u>H</u>elp</span></div>
+                    <div class="qc-band">
+                        <div class="qc-brand"><span class="qc-word">QUICK<b>CAST</b></span><small>AmusementVISION Live Broadcast Launcher</small></div>
+                        <span class="qc-fill"></span>
+                        <div class="qc-link"><span class="qc-lamp"></span><span class="qc-link-text">OBS: OFFLINE</span></div>
+                        <div class="qc-tally"><span class="qc-tally-text">OFF AIR</span><span class="qc-tc">--:--:--</span></div>
+                    </div>
+                    <div class="qc-main">
+                        <div class="qc-cabs"><div class="qc-head">CABINET</div><div class="qc-cablist"></div></div>
+                        <div class="qc-centre">
+                            <div class="qc-monitor">
+                                <img class="qc-pic" alt="">
+                                <div class="qc-noimg">NO SIGNAL</div>
+                                <div class="qc-mon-tag"><span class="qc-mon-kind">PREVIEW</span><span class="qc-mon-name"></span></div>
+                                <div class="qc-mon-age"></div>
+                                <div class="qc-mon-busy"><span class="qc-spin"></span><span class="qc-mon-busy-text"></span></div>
+                            </div>
+                            <div class="qc-info">
+                                <span><em>OUTPUT</em><b class="qc-i-out">-</b></span>
+                                <span><em>FPS</em><b class="qc-i-fps">-</b></span>
+                                <span><em>BITRATE</em><b class="qc-i-kbps">-</b></span>
+                                <span><em>DROPPED</em><b class="qc-i-drop">-</b></span>
+                                <span><em>CONGESTION</em><b class="qc-i-cong">-</b></span>
+                                <span><em>PROFILE</em><b class="qc-i-prof">-</b></span>
+                            </div>
+                            <div class="qc-srcs"><div class="qc-head">SOURCES ON AIR <small>(stream mix with this scene on program)</small></div><div class="qc-srclist"></div></div>
+                        </div>
+                        <div class="qc-vu">
+                            <div class="qc-head">AUDIO</div>
+                            <div class="qc-vu-body">
+                                <div class="qc-scale">${SCALE.map((d) => `<i style="bottom:${meterPct(d)}%">${d}</i>`).join('')}</div>
+                                <div class="qc-ch"><div class="qc-bar" data-ch="0"><span class="qc-bar-fill"></span><span class="qc-bar-pk"></span></div><b>L</b></div>
+                                <div class="qc-ch"><div class="qc-bar" data-ch="1"><span class="qc-bar-fill"></span><span class="qc-bar-pk"></span></div><b>R</b></div>
+                            </div>
+                            <div class="qc-vu-db">-inf dB</div>
+                        </div>
+                    </div>
+                    <div class="qc-deck">
+                        <div class="qc-checks">
+                            <span class="qc-chk" data-chk="obs"><i></i>OBS</span>
+                            <span class="qc-chk" data-chk="scene"><i></i>Scene</span>
+                            <span class="qc-chk" data-chk="profile"><i></i>Profile</span>
+                            <span class="qc-chk" data-chk="key"><i></i>Stream key</span>
+                            <span class="qc-chk" data-chk="video"><i></i>Picture</span>
+                            <span class="qc-chk" data-chk="audio"><i></i>Sound</span>
+                        </div>
+                        <span class="qc-fill"></span>
+                        <button type="button" class="qc-key qc-go" data-qc="golive" disabled><span class="qc-key-dot"></span>GO LIVE</button>
+                        <button type="button" class="qc-key qc-stop" data-qc="stop" disabled><span class="qc-key-sq"></span>STOP</button>
+                    </div>
+                    <div class="qc-status"><span class="qc-st-main">Ready</span><span class="qc-st-obs">-</span><span class="qc-st-time">-</span></div>
+                </div></div>`;
+            doc.body.appendChild(m);
+            this.modal = m;
+            const q = (s) => m.querySelector(s);
+            this.el = q;
+            const sig = { signal: this.app.signal };
+            m.addEventListener('click', (ev) => {
+                const b = ev.target.closest('[data-qc]');
+                if (b && !b.disabled && m.contains(b)) void this.command(b.dataset.qc);
+                const c = ev.target.closest('[data-cab]');
+                if (c && !c.disabled) void this.pick(c.dataset.cab);
+            }, sig);
+            m.querySelectorAll('[data-qc-menu]').forEach((t) => {
+                if (!root.contextMenu) return;
+                root.contextMenu.attachClickMenuToElement(t, {
+                    onAction: (a) => void this.command(a),
+                    sections: [{ type: 'list', initfn: (s) => { s.items = this.menu(t.dataset.qcMenu); } }]
+                });
+            });
+            q('.qc-close').addEventListener('click', () => this.app.exit(), sig);
+            doc.addEventListener('staticforge:modal-lifecycle', (e) => {
+                if (e && e.detail && e.detail.id === m.id && e.detail.type === 'closed') this.app.exit();
+            }, sig);
+            this.master = [0, 1].map((ch) => new Bar(q(`.qc-bar[data-ch="${ch}"] .qc-bar-fill`), q(`.qc-bar[data-ch="${ch}"] .qc-bar-pk`)));
+            q('.qc-pic').addEventListener('load', () => this.checkPicture(), sig);
+            m.id = 'melatonQuickCastModal';
+            call('openModal', m);
+            m.classList.remove('hidden');
+            let placed = false;
+            const place = () => {
+                if (placed || m.hasAttribute('data-window-position-restored')) return;
+                placed = true;
+                const r = m.getBoundingClientRect();
+                call('setModalOffsetsFromViewportTopLeft', m, Math.max(0, Math.round((root.innerWidth - r.width) / 2)), Math.max(0, Math.round((root.innerHeight - 35 - r.height) / 2)));
+            };
+            requestAnimationFrame(place);
+            setTimeout(place, 60);
+            if (root.programFaults && root.programFaults.registerProgram) {
+                root.programFaults.registerProgram(m.id, { name: 'QuickCast', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'quickcast' }) });
+            }
+        }
+
+        destroy() {
+            this.children.forEach((c) => c.close());
+            try { call('closeModal', this.modal); } catch (_) { /* gone */ }
+            const m = this.modal;
+            setTimeout(() => m.remove(), 400);
+        }
+
+        menu(name) {
+            const live = !!(this.st && this.st.stream && this.st.stream.active);
+            const online = !!(this.st && this.st.obs.state === 'online');
+            switch (name) {
+                case 'file': return [{ text: 'Exit', action: 'exit' }];
+                case 'stream': return [
+                    { text: 'Go Live', action: 'golive', disabled: live || !this.canGo() },
+                    { text: 'Stop Stream', action: 'stop', disabled: !live },
+                    { separator: true },
+                    { text: 'Stream Key...', action: 'key' },
+                    { text: 'Start OBS on Ruiko', action: 'launch', disabled: online },
+                    { text: 'Open Watch Page', action: 'watch', disabled: !(this.st && this.st.watchUrl) }];
+                case 'help': return [{ text: 'About QuickCast...', action: 'about' }];
+                default: return [];
+            }
+        }
+
+        async command(a) {
+            switch (a) {
+                case 'exit': this.app.exit(); break;
+                case 'golive': await this.goLive(); break;
+                case 'stop': await this.stopStream(); break;
+                case 'key': this.keyWin(); break;
+                case 'launch': await this.run('Starting OBS on Ruiko...', 'quickcast_launch', {}); break;
+                case 'watch': if (this.st && this.st.watchUrl) root.open(this.st.watchUrl, '_blank', 'noopener'); break;
+                case 'about': this.about(); break;
+                default: break;
+            }
+        }
+
+        // ---------------------------------------------------------------- server
+
+        async send(type, data) {
+            let r = await root.wsClient.sendMessage(type, data || {}, false);
+            if (r && r.data !== undefined) r = r.data;
+            if (r && r.error) {
+                const err = new Error(r.error.details || r.error.message || 'QuickCast error');
+                err.code = r.error.code;
+                throw err;
+            }
+            return r;
+        }
+
+        /** One long operation with the monitor's busy band; failures in a message box. */
+        async run(text, type, data) {
+            this.setBusy(text);
+            try {
+                return await this.send(type, data);
+            } catch (err) {
+                await this.box(err.message, 'error');
+                return null;
+            } finally {
+                this.setBusy('');
+            }
+        }
+
+        setBusy(text) {
+            this.busy = text;
+            this.modal.classList.toggle('qc-is-busy', !!text);
+            this.el('.qc-mon-busy-text').textContent = text;
+            this.el('.qc-st-main').textContent = text || 'Ready';
+            this.render();
+        }
+
+        loop() {
+            const sig = this.app.signal;
+            const poll = async () => {
+                if (sig.aborted) return;
+                try { this.st = await this.send('quickcast_status', {}); } catch (_) { /* keep the last */ }
+                if (sig.aborted) return;
+                this.render();
+                setTimeout(poll, STATUS_MS);
+            };
+            const shot = async () => {
+                if (sig.aborted) return;
+                const c = this.cabinet;
+                const st = this.st;
+                const cab = st && st.cabinets.find((x) => x.id === c);
+                if (c && st && st.obs.state === 'online' && cab && cab.present && !doc.hidden) {
+                    try {
+                        const r = await this.send('quickcast_preview', { cabinet: c, width: 640 });
+                        if (r.cabinet === this.cabinet && r.image) {
+                            this.el('.qc-pic').src = r.image;
+                            this.previewFor = r.cabinet;
+                            this.previewAt = r.at;
+                        }
+                    } catch (_) { this.previewFor = ''; }
+                } else this.previewFor = '';
+                setTimeout(shot, PREVIEW_MS);
+            };
+            void poll();
+            void shot();
+            const frame = (now) => {
+                if (sig.aborted) return;
+                this.master.forEach((b) => b.frame(now));
+                this.inputBars.forEach((b) => b.frame(now));
+                const db = Math.max(this.master[0].v, this.master[1].v);
+                this.el('.qc-vu-db').textContent = db > -99 ? `${db.toFixed(1)} dB` : '-inf dB';
+                requestAnimationFrame(frame);
+            };
+            requestAnimationFrame(frame);
+            const tick = setInterval(() => {
+                this.el('.qc-st-time').textContent = clock(Date.now());
+                const age = this.previewAt ? Math.round((Date.now() - this.previewAt) / 100) / 10 : null;
+                this.el('.qc-mon-age').textContent = this.previewFor && age != null ? `${clock(this.previewAt)}  (${age.toFixed(1)} s)` : '';
+            }, 250);
+            sig.addEventListener('abort', () => clearInterval(tick));
+        }
+
+        // ---------------------------------------------------------------- render
+
+        render() {
+            const st = this.st;
+            if (!st) return;
+            const q = this.el;
+            const online = st.obs.state === 'online';
+            const live = !!(st.stream && st.stream.active);
+            // first status: follow OBS's program scene when it is a cabinet and nothing is remembered
+            if (!this.cabinet && st.programCabinet) this.cabinet = st.programCabinet;
+            if (live && st.programCabinet && !this.busy) this.cabinet = st.programCabinet;
+
+            // link lamp, tally
+            const linkText = st.obs.state === 'launching' ? `OBS: STARTING (${Math.round(st.obs.launchingFor / 1000)} s)` : online ? `OBS ${st.obs.version ? `WS ${st.obs.version}` : ''}: ONLINE` : 'OBS: OFFLINE';
+            q('.qc-link-text').textContent = linkText;
+            this.modal.classList.toggle('qc-is-online', online);
+            this.modal.classList.toggle('qc-is-launching', st.obs.state === 'launching');
+            this.modal.classList.toggle('qc-is-live', live);
+            this.modal.classList.toggle('qc-is-reconnecting', live && st.stream.reconnecting);
+            q('.qc-tally-text').textContent = live ? (st.stream.reconnecting ? 'RECONNECTING' : 'ON AIR') : 'OFF AIR';
+            q('.qc-tc').textContent = live ? String(st.stream.timecode).slice(0, 8) : '--:--:--';
+            if (this.wasLive && !live && !this.busy) this.flash('The stream has ended.');
+            this.wasLive = live;
+
+            // cabinets
+            const list = q('.qc-cablist');
+            const sig = st.cabinets.map((c) => `${c.id}:${c.present}`).join('|');
+            if (list.dataset.sig !== sig) {
+                list.dataset.sig = sig;
+                list.innerHTML = st.cabinets.map((c) => `<button type="button" class="qc-cab" data-cab="${esc(c.id)}">
+                    <span class="qc-cab-badge qc-b-${esc(c.icon)}">${esc(c.short)}</span>
+                    <span class="qc-cab-text"><b>${esc(c.name)}</b><small>Scene: ${esc(c.scene)}${online && !c.present ? ' (missing)' : ''}</small></span>
+                    <span class="qc-cab-tally"></span></button>`).join('');
+            }
+            list.querySelectorAll('[data-cab]').forEach((b) => {
+                const c = st.cabinets.find((x) => x.id === b.dataset.cab);
+                b.classList.toggle('is-sel', b.dataset.cab === this.cabinet);
+                b.classList.toggle('is-pgm', !!c && st.programCabinet === c.id);
+                b.classList.toggle('is-air', live && st.programCabinet === b.dataset.cab);
+                b.disabled = !!this.busy || (online && !!c && !c.present);
+            });
+
+            // monitor
+            const cab = st.cabinets.find((c) => c.id === this.cabinet);
+            q('.qc-mon-name').textContent = cab ? cab.name : 'Pick a cabinet';
+            const onAirPic = live && cab && st.programCabinet === cab.id;
+            q('.qc-mon-kind').textContent = onAirPic ? 'ON AIR' : 'PREVIEW';
+            this.modal.classList.toggle('qc-pic-air', !!onAirPic);
+            const hasPic = !!(this.previewFor && this.previewFor === this.cabinet);
+            this.modal.classList.toggle('qc-has-pic', hasPic);
+            q('.qc-noimg').textContent = !online ? (st.obs.state === 'launching' ? 'STARTING OBS' : 'OBS OFFLINE') : !cab ? 'PICK A CABINET' : 'NO SIGNAL';
+
+            // info
+            const v = st.video;
+            q('.qc-i-out').textContent = v ? `${v.output.split('x')[1]}p${Math.round(v.fps)}` : '-';
+            q('.qc-i-out').title = v ? `Base ${v.base}, output ${v.output} at ${v.fps} fps` : '';
+            q('.qc-i-fps').textContent = v ? `${v.activeFps}` : '-';
+            q('.qc-i-kbps').textContent = live ? `${st.stream.kbps.toLocaleString('en-US')} kb/s` : '-';
+            q('.qc-i-drop').textContent = live ? `${st.stream.skipped} / ${st.stream.frames}` : '-';
+            q('.qc-i-cong').textContent = live ? `${st.stream.congestion}%` : '-';
+            q('.qc-i-prof').textContent = st.profile || '-';
+            q('.qc-i-cong').classList.toggle('is-bad', live && st.stream.congestion > 25);
+            q('.qc-i-drop').classList.toggle('is-bad', live && st.stream.frames > 0 && st.stream.skipped / st.stream.frames > 0.01);
+
+            // meters
+            if (st.master) {
+                this.master[0].set(st.master.mag[0], st.master.peak[0]);
+                this.master[1].set(st.master.mag[1], st.master.peak[1]);
+                if (Math.max(st.master.peak[0], st.master.peak[1]) > AUDIO_OK_DB) this.lastSound = Date.now();
+            }
+            this.renderSources(st.inputs || []);
+
+            // checks
+            const picOk = hasPic && this.video && this.video.ok;
+            const sound = Date.now() - this.lastSound < 3000;
+            const checks = {
+                obs: online ? 'ok' : st.obs.state === 'launching' ? 'wait' : 'bad',
+                scene: !online || !cab ? 'off' : !cab.present ? 'bad' : st.programCabinet === cab.id ? 'ok' : 'wait',
+                profile: !online ? 'off' : st.profile === st.want.profile ? 'ok' : 'wait',
+                key: st.key.set ? 'ok' : 'bad',
+                video: !online || !cab ? 'off' : picOk ? 'ok' : hasPic ? 'warn' : 'bad',
+                audio: !online || !st.master ? 'off' : sound ? 'ok' : 'warn'
+            };
+            const tips = {
+                obs: online ? `OBS on Ruiko is connected${st.obs.version ? ` (obs-websocket ${st.obs.version})` : ''}` : st.obs.state === 'launching' ? 'Starting OBS on Ruiko...' : `OBS is not connected${st.obs.error ? `: ${st.obs.error}` : ''}. Pick a cabinet to start it.`,
+                scene: cab ? (st.programCabinet === cab.id ? `"${cab.scene}" is on program` : `"${cab.scene}" goes on program when you pick the cabinet or go live`) : 'Pick a cabinet',
+                profile: st.profile === st.want.profile ? `OBS uses the ${st.want.profile} profile` : `OBS switches from "${st.profile || '-'}" to the ${st.want.profile} profile on Go Live`,
+                key: st.key.set ? `YouTube stream key ${st.key.hint}` : 'No YouTube stream key: Stream > Stream Key...',
+                video: picOk ? 'The picture has content' : hasPic ? 'The picture is black or one flat colour' : 'No picture from OBS yet',
+                audio: sound ? 'Sound in the last 3 seconds' : `Nothing above ${AUDIO_OK_DB} dB in the last 3 seconds`
+            };
+            this.checks = checks;
+            Object.entries(checks).forEach(([k, s]) => {
+                const e = q(`[data-chk="${k}"]`);
+                e.className = `qc-chk is-${s}`;
+                e.title = tips[k];
+            });
+
+            // keys
+            q('.qc-go').disabled = live || !this.canGo();
+            q('.qc-go').title = live ? 'Already on air' : this.busy ? this.busy : !cab ? 'Pick a cabinet first' : !st.key.set ? 'Set the YouTube stream key first (Stream > Stream Key...)' : st.obs.state === 'launching' ? 'OBS is starting on Ruiko' : online && !cab.present ? `The scene "${cab.scene}" is missing from OBS` : `Go live on YouTube with ${cab.name}`;
+            q('.qc-stop').disabled = !live || !!this.busy;
+            q('.qc-st-obs').textContent = online ? `${st.collection || '-'} / ${st.profile || '-'} / ${st.program || '-'}` : (st.obs.error || 'OBS offline');
+            if (!this.busy && !this.flashT) q('.qc-st-main').textContent = live ? `Live: ${cab ? cab.name : st.program}` : 'Ready';
+        }
+
+        renderSources(inputs) {
+            const list = this.el('.qc-srclist');
+            // an input OBS sends no meter for has no audio at all (a browser overlay): dimmed, not hidden
+            const sig = inputs.map((i) => `${i.name}:${i.muted}:${i.mag.length > 0}`).join('|');
+            if (list.dataset.sig !== sig) {
+                list.dataset.sig = sig;
+                const ordered = inputs.map((i, n) => ({ i, n })).sort((a, b) => (b.i.mag.length > 0) - (a.i.mag.length > 0) || a.i.muted - b.i.muted);
+                list.innerHTML = inputs.length ? ordered.map(({ i, n }) => `<div class="qc-src${i.muted ? ' is-muted' : ''}${i.mag.length ? '' : ' is-silent'}" data-src="${n}">
+                    <span class="qc-src-name" title="${esc(i.name)}">${esc(i.name)}</span>
+                    <span class="qc-hbar"><span class="qc-bar-fill"></span><span class="qc-bar-pk"></span></span>
+                    <span class="qc-src-state">${i.muted ? 'MUTED' : i.mag.length ? '' : 'NO AUDIO'}</span></div>`).join('')
+                    : '<div class="qc-src-none">No audio sources in this scene.</div>';
+                this.inputBars = new Map();
+                inputs.forEach((i, n) => {
+                    const row = list.querySelector(`[data-src="${n}"]`);
+                    this.inputBars.set(i.name, new Bar(row.querySelector('.qc-bar-fill'), row.querySelector('.qc-bar-pk')));
+                });
+            }
+            inputs.forEach((i) => {
+                const b = this.inputBars.get(i.name);
+                if (b && i.mag.length) b.set(Math.max(...i.mag), Math.max(...i.peak));
+            });
+        }
+
+        /** A black or flat picture is not a signal: luma spread over a 32x18 copy. */
+        checkPicture() {
+            const img = this.el('.qc-pic');
+            try {
+                const c = this.cv || (this.cv = doc.createElement('canvas'));
+                c.width = 32; c.height = 18;
+                const g = c.getContext('2d', { willReadFrequently: true });
+                g.drawImage(img, 0, 0, 32, 18);
+                const d = g.getImageData(0, 0, 32, 18).data;
+                let sum = 0; let sq = 0; const n = d.length / 4;
+                for (let i = 0; i < d.length; i += 4) { const y = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]; sum += y; sq += y * y; }
+                const mean = sum / n;
+                const sd = Math.sqrt(Math.max(0, sq / n - mean * mean));
+                this.video = { ok: sd > 6 || mean > 24, at: Date.now() };
+            } catch (_) { this.video = { ok: true, at: Date.now() }; }
+        }
+
+        canGo() {
+            const st = this.st;
+            if (!st || this.busy || !this.cabinet || !st.key.set || st.obs.state === 'launching') return false;
+            const cab = st.cabinets.find((c) => c.id === this.cabinet);
+            if (!cab) return false;
+            return st.obs.state !== 'online' || cab.present;
+        }
+
+        flash(t) {
+            const s = this.el('.qc-st-main');
+            s.textContent = t;
+            clearTimeout(this.flashT);
+            this.flashT = setTimeout(() => { this.flashT = null; }, 5000);
+        }
+
+        // ---------------------------------------------------------------- commands
+
+        async pick(id) {
+            if (this.busy) return;
+            const st = this.st;
+            const live = !!(st && st.stream && st.stream.active);
+            const cab = st && st.cabinets.find((c) => c.id === id);
+            if (!cab) return;
+            if (live && st.programCabinet !== id) {
+                if (!await this.ask(`Switch the live stream to ${cab.name}?\n\nViewers see ${cab.name} at once.`)) return;
+            }
+            this.cabinet = id;
+            try { root.localStorage.setItem(LS_KEY, id); } catch (_) { /* private mode */ }
+            this.previewFor = '';
+            this.render();
+            const text = st && st.obs.state !== 'online' ? 'Starting OBS on Ruiko...' : live ? `Switching the stream to ${cab.name}...` : `Getting ${cab.name} ready...`;
+            const r = await this.run(text, 'quickcast_prepare', { cabinet: id, confirmed: live });
+            if (r && r.ok) this.flash(`${cab.name} is ready${r.steps && r.steps.length ? ` (${r.steps.join(', ')} switched)` : ''}.`);
+        }
+
+        async goLive() {
+            if (!this.canGo()) return;
+            const st = this.st;
+            const cab = st.cabinets.find((c) => c.id === this.cabinet);
+            const c = this.checks || {};
+            const warn = [];
+            if (c.video !== 'ok') warn.push('- No picture: the preview is black, flat or missing.');
+            if (c.audio !== 'ok') warn.push(`- No sound: nothing above ${AUDIO_OK_DB} dB in the last 3 seconds.`);
+            if (c.obs !== 'ok') warn.push('- OBS is not running yet: it starts on Ruiko first.');
+            if (warn.length && !await this.ask(`Go live with ${cab.name} anyway?\n\n${warn.join('\n')}`)) return;
+            const r = await this.run(`Going live with ${cab.name}...`, 'quickcast_golive', { cabinet: cab.id });
+            if (r && r.ok) this.flash(`${cab.name} is live on YouTube.`);
+        }
+
+        async stopStream() {
+            const st = this.st;
+            if (!st || !st.stream || !st.stream.active) return;
+            if (!await this.ask(`Stop the live stream?\n\nOn air for ${String(st.stream.timecode).slice(0, 8)}. YouTube ends the broadcast.`)) return;
+            const r = await this.run('Stopping the stream...', 'quickcast_stop', {});
+            if (r && r.ok) this.flash('The stream has stopped.');
+        }
+
+        // ---------------------------------------------------------------- windows
+
+        openWin(o) {
+            const id = `melatonQuickCastWin-${++this.winSeq}`;
+            const m = doc.createElement('div');
+            m.className = `modal hidden on-top qc-window qc-child ${o.cls || ''}`;
+            m.id = id;
+            m.dataset.windowIdentifier = `melatonQuickCast-${o.kind}`;
+            m.dataset.windowRestorePosition = 'false';
+            m.dataset.windowRestoreSize = 'false';
+            m.dataset.windowFixedSize = 'true';
+            m.dataset.windowClient = 'light';
+            m.dataset.iconOwnerId = this.modal.id;
+            m.dataset.parentModalId = this.modal.id;
+            m.dataset.taskbarIcon = `${A}/quickcast-32.png`;
+            if (o.width) m.style.width = `${o.width}px`;
+            m.setAttribute('role', 'dialog');
+            m.setAttribute('aria-label', o.title);
+            m.innerHTML = `
+                <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${A}/quickcast-16.png" alt=""><span>${esc(o.title)}</span></div></div>
+                <div class="modal-focus-overlay"></div>
+                <div class="modal-window-controls"><button type="button" class="btn-danger close-btn btn-small qc-x" title="Close"><i class="fa-regular fa-xmark-large"></i></button></div>
+                <div class="modal-content qc-client"><div class="qc-root qc-form">
+                    <div class="qc-form-body">${o.body}</div>
+                    <div class="qc-form-btns">${(o.buttons || []).map((b) => `<button type="button" class="qc-btn${b.def ? ' is-def' : ''}" data-v="${esc(b.value)}">${esc(b.text)}</button>`).join('')}</div>
+                </div></div>`;
+            doc.body.appendChild(m);
+            const ctl = new AbortController();
+            let closed = false;
+            const w = {
+                modal: m,
+                val: (s) => { const e = m.querySelector(s); return e ? e.value.trim() : ''; },
+                close: () => {
+                    if (closed) return;
+                    closed = true;
+                    ctl.abort();
+                    this.children.delete(w);
+                    try { call('closeModal', m); } catch (_) { /* gone */ }
+                    setTimeout(() => m.remove(), 400);
+                }
+            };
+            this.children.add(w);
+            m.addEventListener('click', async (ev) => {
+                if (ev.target.closest('.qc-x')) { w.close(); return; }
+                const b = ev.target.closest('[data-v]');
+                if (!b || b.disabled) return;
+                if (b.dataset.v === 'cancel') { w.close(); return; }
+                if (o.onButton && await o.onButton(b.dataset.v, w)) w.close();
+            }, { signal: ctl.signal });
+            m.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Escape') { ev.stopPropagation(); w.close(); }
+                if (ev.key === 'Enter' && ev.target.matches('input')) { const d = m.querySelector('.qc-form-btns .is-def'); if (d) { ev.preventDefault(); d.click(); } }
+            }, { signal: ctl.signal });
+            doc.addEventListener('staticforge:modal-lifecycle', (e) => {
+                if (e && e.detail && e.detail.id === id && e.detail.type === 'closed') w.close();
+            }, { signal: ctl.signal });
+            call('openModal', m);
+            m.classList.remove('hidden');
+            requestAnimationFrame(() => {
+                const r = m.getBoundingClientRect();
+                const p = this.modal.getBoundingClientRect();
+                call('setModalOffsetsFromViewportTopLeft', m, Math.max(0, Math.round(p.left + (p.width - r.width) / 2)), Math.max(0, Math.round(p.top + (p.height - r.height) / 2)));
+                const f = m.querySelector('input');
+                if (f) f.focus({ preventScroll: true });
+            });
+            return w;
+        }
+
+        keyWin() {
+            const st = this.st || { key: {}, watchUrl: '' };
+            this.openWin({
+                kind: 'key', title: 'Stream Key', width: 440,
+                body: `<p>The persistent stream key from YouTube Studio (Go live &gt; Stream &gt; Stream key). It is kept on the Dreamscape server and written into OBS's QuickCast profile when you go live. Turn on Auto-start for that key so YouTube goes live as soon as OBS connects.</p>
+                    <label class="qc-field"><span>Stream key</span><input type="password" class="qc-k" autocomplete="off" spellcheck="false" placeholder="${st.key.set ? `Saved: ${esc(st.key.hint)} (leave blank to keep)` : 'xxxx-xxxx-xxxx-xxxx-xxxx'}"></label>
+                    <label class="qc-field"><span>Watch page (optional)</span><input type="text" class="qc-u" spellcheck="false" value="${esc(st.watchUrl || '')}" placeholder="https://www.youtube.com/@channel/live"></label>`,
+                buttons: [{ text: 'Save', value: 'save', def: true }, { text: 'Cancel', value: 'cancel' }],
+                onButton: async (v, w) => {
+                    if (v !== 'save') return false;
+                    const key = w.val('.qc-k');
+                    try {
+                        await this.send('quickcast_setkey', { key: key || undefined, watchUrl: w.val('.qc-u') });
+                    } catch (err) { await this.box(err.message, 'error'); return false; }
+                    this.flash('Stream settings saved.');
+                    return true;
+                }
+            });
+        }
+
+        about() {
+            this.openWin({
+                kind: 'about', title: 'About QuickCast', width: 380,
+                body: `<div class="qc-about"><img src="${A}/quickcast-48.png" alt="" width="48" height="48"><div><b>QuickCast</b><br>Live Broadcast Launcher<br>Version ${VERSION}<br>AmusementVISION 2024<br><br>Encoder: OBS Studio on Ruiko${this.st && this.st.obs.version ? `<br>obs-websocket ${esc(this.st.obs.version)}` : ''}</div></div>`,
+                buttons: [{ text: 'OK', value: 'cancel', def: true }]
+            });
+        }
+
+        /** Melaton's message box, titled with the program. */
+        async box(text, kind, buttons) {
+            const icon = kind === 'error' ? 'fas fa-circle-xmark' : kind === 'warning' ? 'fas fa-triangle-exclamation' : 'fas fa-circle-info';
+            return call('showConfirmationDialog', `<p>${esc(text).replace(/\n/g, '<br>')}</p>`, buttons || [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'QuickCast', icon, width: 400 });
+        }
+
+        async ask(text) {
+            const v = await this.box(text, 'warning', [{ text: 'Yes', value: 'yes', className: 'btn-standard' }, { text: 'No', value: null, className: 'btn-standard primary' }]);
+            return v === 'yes';
+        }
+    }
+
+    let running = null;
+
+    function start(app) {
+        if (running) { call('bringModalToFront', running.modal); app.exit(); return; }
+        const p = new QuickCast(app);
+        running = p;
+        app.onExit(() => { if (running === p) running = null; p.destroy(); });
+    }
+
+    root.melatonQuickCast = { start, _running: () => running };
+    if (typeof melatonApps !== 'undefined') melatonApps.define('quickcast', start); // eslint-disable-line no-undef
+})(typeof window !== 'undefined' ? window : globalThis);
