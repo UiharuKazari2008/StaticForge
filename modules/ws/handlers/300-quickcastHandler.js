@@ -31,11 +31,12 @@ function registerPackets(handlersCtx) {
     };
 
     packet('quickcast_info', async () => quickcast.info(), 'Failed to read QuickCast');
-    packet('quickcast_status', async () => quickcast.status(), 'Failed to read OBS');
+    packet('quickcast_status', async (d) => quickcast.status({ cabinet: String((d && d.cabinet) || '') }), 'Failed to read OBS');
     packet('quickcast_preview', async (d) => quickcast.preview(String(d.cabinet || ''), d.width), 'No preview');
     packet('quickcast_prepare', async (d) => quickcast.prepare(String(d.cabinet || ''), !!d.confirmed), 'Could not get the cabinet ready');
     packet('quickcast_golive', async (d) => quickcast.goLive(String(d.cabinet || ''), d.settings && typeof d.settings === 'object' ? d.settings : undefined), 'Could not go live');
     packet('quickcast_stop', async () => quickcast.stop(), 'Could not stop the stream');
+    packet('quickcast_obs_off', async () => quickcast.powerOff(), 'Could not close OBS');
     packet('quickcast_launch', async () => quickcast.launch(), 'Could not start OBS');
     packet('quickcast_mute', async (d) => quickcast.setMute(String(d.name || ''), !!d.muted), 'Could not mute the source');
     packet('quickcast_cabinet', async (d) => quickcast.cabinetControls(String(d.cabinet || ''), !!d.force), 'Could not read the cabinet');

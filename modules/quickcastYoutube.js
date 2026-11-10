@@ -326,7 +326,7 @@ async function prepareBroadcast(streamKey, settings) {
     try {
         await api('PUT', 'videos', { query: { part: 'snippet' }, body: { id: b.id, snippet: { title: s.title, description: s.description, categoryId: s.categoryId } } });
     } catch (_) { /* the category is cosmetic */ }
-    const bc = { id: b.id, videoId: b.id, liveChatId: (b.snippet && b.snippet.liveChatId) || '', title: s.title, createdAt: Date.now() };
+    const bc = { id: b.id, videoId: b.id, streamId: stream.id, liveChatId: (b.snippet && b.snippet.liveChatId) || '', title: s.title, createdAt: Date.now() };
     save((y) => { y.broadcast = bc; });
     chat.reset(bc.liveChatId);
     return bc;
@@ -343,6 +343,35 @@ function broadcastInfo() {
     const { y } = yt();
     const b = y.broadcast || {};
     return b.id ? { id: b.id, title: b.title, watchUrl: `https://www.youtube.com/watch?v=${b.videoId}`, shortUrl: `https://youtu.be/${b.videoId}`, studioUrl: `https://studio.youtube.com/video/${b.videoId}/livestreaming` } : null;
+}
+
+// ------------------------------------------------------------------ ingest health
+
+const health = { streamId: '', status: '', issues: [], at: 0, pending: null, error: '' };
+
+/** YouTube's ingest health of the broadcast's stream (liveStreams status.healthStatus, 1 unit),
+ *  refreshed every 30 s while live. null when QuickCast did not make the broadcast. Never waits. */
+function streamHealth(active) {
+    const { y } = yt();
+    const b = y.broadcast || {};
+    if (!active || !b.streamId || !account().signedIn) return null;
+    if (health.streamId !== b.streamId) Object.assign(health, { streamId: b.streamId, status: '', issues: [], at: 0, error: '' });
+    if (!health.pending && Date.now() - health.at > 30000) {
+        health.at = Date.now();
+        health.pending = api('GET', 'liveStreams', { query: { part: 'status', id: b.streamId } })
+            .then((r) => {
+                const it = r.items && r.items[0];
+                const hs = (it && it.status && it.status.healthStatus) || {};
+                health.status = String(hs.status || (it ? 'noData' : ''));
+                health.issues = (hs.configurationIssues || []).slice(0, 5).map((c) => ({
+                    type: String(c.type || ''), severity: String(c.severity || ''), reason: String(c.reason || ''), description: String(c.description || '').slice(0, 300)
+                }));
+                health.error = '';
+            })
+            .catch((e) => { health.error = e.message; })
+            .finally(() => { health.pending = null; });
+    }
+    return { status: health.status, issues: health.issues, at: health.at, error: health.error };
 }
 
 // ------------------------------------------------------------------ live viewers
@@ -499,6 +528,6 @@ async function chatSend(text) {
 
 module.exports = {
     init, account, setCredentials, signInStart, signInState, signOut, refreshProfile, selectAccount,
-    lastSettings, saveSettings, prepareBroadcast, endBroadcast, broadcastInfo, viewers,
+    lastSettings, saveSettings, prepareBroadcast, endBroadcast, broadcastInfo, viewers, streamHealth,
     chatRead, chatSend, PRIVACY, LATENCY, _chat: chat
 };

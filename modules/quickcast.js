@@ -16,7 +16,8 @@
  *   config.json   { obs: { host, port, password }, profile, collection,
  *                   youtube: { streamKey, server, watchUrl },
  *                   cabinets: [{ id, name, scene, icon, short }],
- *                   launch: { ssh, task } }      every field optional (DEFAULTS below)
+ *                   launch: { ssh, task },
+ *                   muxes: { "<NDI machine>": { host, port, password } } }   every field optional (DEFAULTS below)
  *
  * When OBS is not running, prepare() starts it with the on-demand Ruiko task launch.task (no logon
  * trigger; Yukimi OK'd it), run over SSH (launch.ssh, a Host in ~/.ssh/config).
@@ -33,6 +34,7 @@ const { execFile } = require('child_process');
 const WebSocket = require('ws');
 const yt = require('./quickcastYoutube');
 const xlink = require('./xlink');
+const diag = require('./quickcastDiag');
 
 const DATA_DIR = process.env.QUICKCAST_DATA_DIR || path.join(__dirname, '..', '.cache', 'packages', '.data', 'quickcast');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
@@ -48,7 +50,9 @@ const DEFAULTS = {
         { id: 'nost', name: 'Nostalgia', scene: 'Nosta', icon: 'nost', short: 'NOS' },
         { id: 'h2h', name: 'Chunithm H2H', scene: 'Chuni H2H', icon: 'h2h', short: 'H2H', xlink: 'chuni' }
     ],
-    launch: { ssh: 'ruiko', task: '\\AmusementVISION\\QuickCast OBS' }
+    launch: { ssh: 'ruiko', task: '\\AmusementVISION\\QuickCast OBS', stopTask: '\\AmusementVISION\\QuickCast OBS Stop' },
+    // cabinet mixer / muxer PCs by NDI machine name, for the INPUT diagnostics row (quickcastDiag)
+    muxes: { 'PLG-EAST-1': { host: '192.168.100.16', port: 4455, password: '' } }
 };
 
 const CONNECT_TIMEOUT_MS = 4000;
@@ -80,7 +84,8 @@ function readConfig() {
         cabinets: (Array.isArray(raw.cabinets) && raw.cabinets.length ? raw.cabinets : DEFAULTS.cabinets)
             .filter((c) => c && c.id && c.scene)
             .map((c) => ({ id: String(c.id), name: String(c.name || c.id), scene: String(c.scene), icon: String(c.icon || c.id), short: String(c.short || c.name || c.id).slice(0, 3).toUpperCase(), xlink: c.xlink === false ? '' : String(c.xlink || c.id) })),
-        launch: { ...DEFAULTS.launch, ...(raw.launch || {}) }
+        launch: { ...DEFAULTS.launch, ...(raw.launch || {}) },
+        muxes: { ...DEFAULTS.muxes, ...(raw.muxes && typeof raw.muxes === 'object' ? raw.muxes : {}) }
     };
     configCache = st ? { mtimeMs: st.mtimeMs, data, raw } : null;
     return data;
@@ -116,7 +121,12 @@ function cabinetOf(id) {
 // ------------------------------------------------------------------ obs-websocket client
 
 class ObsLink {
-    constructor() {
+    /** opts.target() -> { host, port, password } (default: config.obs, OBS on Ruiko); opts.label names the
+     *  machine in errors; opts.events is the EventSubscription mask (0 for a stats-only link). */
+    constructor(opts = {}) {
+        this.target = opts.target || (() => readConfig().obs);
+        this.label = opts.label || 'Ruiko';
+        this.events = opts.events == null ? EVENTS : opts.events;
         this.ws = null;
         this.ready = null;      // Promise while connecting / connected
         this.pending = new Map();
@@ -131,7 +141,7 @@ class ObsLink {
 
     connect() {
         if (this.ready) return this.ready;
-        const cfg = readConfig().obs;
+        const cfg = this.target();
         this.identified = false;
         this.ready = new Promise((resolve, reject) => {
             let settled = false;
@@ -141,7 +151,7 @@ class ObsLink {
                 clearTimeout(timer);
                 if (err) { this.lastError = err.message; this.close(); reject(err); } else { this.lastError = ''; resolve(); }
             };
-            const timer = setTimeout(() => done(fail('OBS is not answering on Ruiko (not running?)', 'QUICKCAST_OBS_TIMEOUT')), CONNECT_TIMEOUT_MS);
+            const timer = setTimeout(() => done(fail(`OBS is not answering on ${this.label} (not running?)`, 'QUICKCAST_OBS_TIMEOUT')), CONNECT_TIMEOUT_MS);
             let ws;
             try {
                 ws = new WebSocket(`ws://${cfg.host}:${Number(cfg.port) || 4455}`, 'obswebsocket.json', { handshakeTimeout: CONNECT_TIMEOUT_MS, maxPayload: 64 * 1024 * 1024 });
@@ -149,7 +159,7 @@ class ObsLink {
             this.ws = ws;
             ws.on('error', (e) => {
                 const refused = e && (e.code === 'ECONNREFUSED' || e.code === 'EHOSTUNREACH' || e.code === 'ETIMEDOUT');
-                done(fail(refused ? 'OBS is not running on Ruiko' : `OBS connection failed: ${e.message}`, refused ? 'QUICKCAST_OBS_DOWN' : 'QUICKCAST_OBS_ERROR'));
+                done(fail(refused ? `OBS is not running on ${this.label}` : `OBS connection failed: ${e.message}`, refused ? 'QUICKCAST_OBS_DOWN' : 'QUICKCAST_OBS_ERROR'));
             });
             ws.on('close', (code, reason) => {
                 done(fail(code === 4009 ? 'OBS refused the websocket password' : 'OBS closed the connection', code === 4009 ? 'QUICKCAST_OBS_AUTH' : 'QUICKCAST_OBS_DOWN'));
@@ -162,7 +172,7 @@ class ObsLink {
                 const d = msg.d || {};
                 if (msg.op === 0) { // Hello
                     this.version = d.obsWebSocketVersion || '';
-                    const ident = { rpcVersion: 1, eventSubscriptions: EVENTS };
+                    const ident = { rpcVersion: 1, eventSubscriptions: this.events };
                     if (d.authentication) {
                         const pw = String(cfg.password || '');
                         const secret = crypto.createHash('sha256').update(pw + d.authentication.salt).digest('base64');
@@ -263,6 +273,7 @@ class ObsLink {
 }
 
 const link = new ObsLink();
+diag.init({ ruiko: link, readConfig, makeLink: (target, label) => new ObsLink({ target, label, events: 0 }) });
 let leaseTimer = null;
 let launching = null;        // Promise while OBS is being started
 let launchStartedAt = 0;
@@ -407,13 +418,15 @@ function keyHint(key) {
     return k ? `••••-${k.slice(-4)}` : '';
 }
 
-/** Everything the client shows, one read per poll (~8 Hz). Never throws for an offline OBS. */
-async function status() {
+/** Everything the client shows, one read per poll (~8 Hz). Never throws for an offline OBS.
+ *  opts.cabinet: the picked cabinet, for the pipeline diagnostics (default: the one on program). */
+async function status(opts = {}) {
     touch();
     const cfg = readConfig();
     const base = {
         busy,
-        obs: { state: launching ? 'launching' : 'offline', version: link.version, error: link.lastError, launchingFor: launching ? Date.now() - launchStartedAt : 0 },
+        satellite: { name: 'Ruiko', host: `${cfg.obs.host}:${Number(cfg.obs.port) || 4455}` },
+        obs: { state: launching ? 'launching' : stopping ? 'stopping' : 'offline', version: link.version, error: link.lastError, launchingFor: launching ? Date.now() - launchStartedAt : 0 },
         cabinets: cfg.cabinets.map((c) => ({ id: c.id, name: c.name, scene: c.scene, icon: c.icon, short: c.short, present: false })),
         key: { set: !!cfg.youtube.streamKey, hint: keyHint(cfg.youtube.streamKey) },
         watchUrl: cfg.youtube.watchUrl || '',
@@ -493,6 +506,9 @@ async function status() {
             return { name: inp.name, muted: inp.muted, mag: mag.map(round1), peak: peak.map(round1) };
         });
         base.master = { mag: master.mag.map(round1), peak: master.peak.map(round1) };
+        base.youtube.health = yt.streamHealth(!!stream.outputActive);
+        const pick = cfg.cabinets.some((c) => c.id === opts.cabinet) ? opts.cabinet : base.programCabinet;
+        try { base.diag = diag.diagnose(base, stats, pick); } catch (_) { base.diag = null; }
     } catch (e) {
         base.obs.error = e.message;
         if (!link.online) base.obs.state = 'offline';
@@ -770,6 +786,43 @@ async function launch() {
     return { ok: true };
 }
 
+let stopping = false;
+
+/**
+ * OBS POWER OFF on the satellite: close OBS gracefully with the on-demand Ruiko task launch.stopTask
+ * (taskkill without /F, run in the logged-on session: a taskkill over SSH cannot reach OBS's window).
+ * Refused while streaming or recording.
+ */
+async function powerOff() {
+    return exclusive('closing OBS', async () => {
+        touch();
+        if (link.online) {
+            const [st, rec] = await Promise.all([link.request('GetStreamStatus'), link.request('GetRecordStatus').catch(() => ({}))]);
+            if (st.outputActive) throw fail('OBS is streaming: STOP the stream before switching OBS off', 'QUICKCAST_LIVE');
+            if (rec.outputActive) throw fail('OBS is recording on Ruiko: stop the recording before switching OBS off', 'QUICKCAST_RECORDING');
+        }
+        const list = await sshRun('tasklist /FI "IMAGENAME eq obs64.exe" /NH');
+        if (list.ok && !/obs64\.exe/i.test(list.out)) { link.close(); return { ok: true, already: true }; }
+        const task = readConfig().launch.stopTask;
+        if (!/^[\\\w .-]+$/.test(task)) throw fail('The stop task name is not valid', 'QUICKCAST_LAUNCH');
+        stopping = true;
+        try {
+            const r = await sshRun(`schtasks /Run /TN "${task}"`);
+            if (!r.ok || !/SUCCESS/i.test(r.out)) throw fail(`Could not close OBS on Ruiko: ${(r.err || r.out).trim().slice(0, 200)}`, 'QUICKCAST_LAUNCH');
+            const until = Date.now() + 30000;
+            for (;;) {
+                await new Promise((res) => setTimeout(res, 1500));
+                const l = await sshRun('tasklist /FI "IMAGENAME eq obs64.exe" /NH');
+                if (l.ok && !/obs64\.exe/i.test(l.out)) break;
+                if (Date.now() > until) throw fail('OBS is still open on Ruiko after 30 s (a dialog on its screen may be asking something)', 'QUICKCAST_LAUNCH');
+            }
+            link.close();
+            lastTry = Date.now() + 3000; // no reconnect attempt while it winds down
+            return { ok: true };
+        } finally { stopping = false; }
+    });
+}
+
 const KEY_RE = /^[A-Za-z0-9_-]{8,128}$/;
 
 /** Save the YouTube stream key (and optionally the watch URL). The key is never read back. */
@@ -796,4 +849,4 @@ function info() {
     return { host: cfg.obs.host, port: cfg.obs.port, profile: cfg.profile, collection: cfg.collection, server: cfg.youtube.server, launchTask: cfg.launch.task };
 }
 
-module.exports = { status, preview, prepare, goLive, stop, launch, setKey, info, getEncoder, setEncoder, cabinetControls, cabinetAction, setMute, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };
+module.exports = { status, preview, prepare, goLive, stop, launch, powerOff, setKey, info, getEncoder, setEncoder, cabinetControls, cabinetAction, setMute, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };

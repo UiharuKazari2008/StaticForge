@@ -85,11 +85,43 @@
 .qc-spin { width: 12px; height: 12px; border: 2px solid rgba(240, 166, 55, .3); border-top-color: var(--qc-amber); border-radius: 50%; animation: qc-spin .8s linear infinite; }
 @keyframes qc-spin { to { transform: rotate(360deg); } }
 
-.qc-info { display: flex; flex: none; gap: 1px; margin: 6px 8px 0; border: 1px solid var(--qc-line); background: var(--qc-line); }
-.qc-info span { display: flex; flex-direction: column; flex: 1; min-width: 0; padding: 3px 6px; background: var(--qc-bg0); }
-.qc-info em { color: var(--qc-dim); font: normal 9px Arial, sans-serif; letter-spacing: 1px; }
-.qc-info b { color: #9fe3b0; font: bold 11px 'Lucida Console', 'Courier New', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.qc-info b.is-bad { color: #ff7a7a; }
+/* pipeline diagnostics: OUTPUT (satellite) and INPUT (cabinet mux) rows of stage cells, then a verdict */
+.qc-diag { display: flex; flex-direction: column; flex: none; gap: 1px; margin: 6px 8px 0; border: 1px solid var(--qc-line); background: var(--qc-line); }
+.qc-drow { display: flex; min-height: 30px; background: var(--qc-bg0); }
+.qc-drow-h { display: flex; flex-direction: column; justify-content: center; flex: none; width: 74px; padding: 2px 6px; border-right: 1px solid var(--qc-line); background: rgba(255, 255, 255, 0.03); cursor: default; }
+.qc-drow-h em { color: var(--qc-dim); font: normal 9px Arial, sans-serif; letter-spacing: 1px; }
+.qc-drow-h b { color: #cfd6dd; font: bold 9px Arial, sans-serif; letter-spacing: 1px; }
+.qc-drow-h small { color: #9fc4ea; font: bold 9px 'Lucida Console', 'Courier New', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qc-dcells { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); flex: 1; min-width: 0; gap: 1px; background: var(--qc-line); }
+.qc-dcells > .qc-dnote { grid-column: 1 / -1; display: flex; align-items: center; background: var(--qc-bg0); }
+.qc-dcols { min-height: 0; }
+.qc-dcols .qc-dcells span { padding: 1px 6px; background: #0b0c0e; color: #6f7782; font: bold 8px Arial, sans-serif; letter-spacing: 1.5px; }
+.qc-dcols .qc-drow-h { padding: 0; background: #0b0c0e; }
+.qc-dc.is-empty { background: #0d0e10; }
+/* timing / clock faults flash like a mixer's sync alarm */
+.qc-dc.is-blink em i { animation: qc-dblink 0.8s steps(1, end) infinite; }
+.qc-dc.is-blink b { animation: qc-dblink-t 0.8s steps(1, end) infinite; }
+@keyframes qc-dblink { 50% { background: #3a3f45; box-shadow: none; } }
+@keyframes qc-dblink-t { 50% { opacity: 0.35; } }
+.qc-dc { display: flex; flex-direction: column; justify-content: center; flex: 1; min-width: 0; padding: 2px 6px; background: var(--qc-bg0); cursor: default; }
+.qc-dc em { display: flex; align-items: center; gap: 4px; color: var(--qc-dim); font: normal 9px Arial, sans-serif; letter-spacing: 1px; white-space: nowrap; }
+.qc-dc em i, .qc-dverdict i { flex: none; width: 7px; height: 7px; border-radius: 1px; background: #3a3f45; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5); }
+.qc-dc b { color: #cfd6dd; font: bold 11px 'Lucida Console', 'Courier New', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qc-dc.is-ok em i, .qc-dverdict.is-ok i { background: #49d46a; box-shadow: 0 0 4px rgba(73, 212, 106, 0.7); }
+.qc-dc.is-ok b { color: #9fe3b0; }
+.qc-dc.is-warn em i, .qc-dverdict.is-warn i { background: #ffb020; box-shadow: 0 0 4px rgba(255, 176, 32, 0.7); }
+.qc-dc.is-warn b { color: #ffcf70; }
+.qc-dc.is-bad em i, .qc-dverdict.is-bad i { background: #ff3b30; box-shadow: 0 0 5px rgba(255, 59, 48, 0.8); }
+.qc-dc.is-bad { background: #2a1212; }
+.qc-dc.is-bad b { color: #ff8a80; }
+.qc-dc.is-wait em i, .qc-dverdict.is-wait i { background: #6a7f96; }
+.qc-dc.is-off b { color: var(--qc-dim); }
+.qc-dnote { align-self: stretch; padding: 0 8px; color: var(--qc-dim); font: 11px Tahoma, Arial, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qc-dverdict { display: flex; align-items: center; gap: 6px; height: 18px; padding: 0 8px; background: var(--qc-bg0); color: var(--qc-dim); font: bold 10px 'Lucida Console', 'Courier New', monospace; cursor: default; }
+.qc-dverdict-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qc-dverdict.is-ok { color: #9fe3b0; }
+.qc-dverdict.is-warn { color: #ffcf70; }
+.qc-dverdict.is-bad { color: #ff8a80; background: #2a1212; }
 
 .qc-srcs { display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 6px 8px 8px; border: 1px solid var(--qc-line); background: var(--qc-bg0); }
 .qc-srclist { flex: 1; min-height: 0; overflow: auto; padding: 3px 0; }
@@ -341,3 +373,35 @@
 .qc-tod { margin-top: 2px; color: #ffbe45; font: bold 15px/1 'Lucida Console', 'Courier New', monospace; text-shadow: 0 0 6px rgba(255, 176, 40, .55); }
 .qc-window .qc-root .qc-mute.qc-bk { width: 54px; height: 17px; flex: none; padding: 0; font: bold 9px Arial, sans-serif; letter-spacing: 1px; }
 .qc-mute-none { width: 54px; flex: none; }
+
+/* Nov 10 layout: cabinet TAKE keys and CABINET CONTROL on the deck, a SATELLITE SERVER pane over the VU */
+.qc-side { display: flex; flex-direction: column; width: 178px; flex: none; gap: 1px; background: var(--qc-line); }
+.qc-side .qc-vu { width: auto; flex: 1; min-height: 0; }
+.qc-sat { flex: none; background: var(--qc-bg1); }
+.qc-sat .qc-head small { float: right; color: #9fc4ea; font-weight: bold; letter-spacing: 1px; }
+.qc-sat-body { display: flex; flex-direction: column; gap: 5px; padding: 6px 8px 8px; }
+.qc-sat .qc-link { justify-content: flex-start; width: 100%; box-sizing: border-box; }
+.qc-sat-host { color: var(--qc-dim); font: 10px 'Lucida Console', 'Courier New', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qc-sat-pwr { display: flex; align-items: center; gap: 4px; }
+.qc-sat-pwr .qc-xl { width: 30px; }
+.qc-window .qc-root .qc-sat-pwr .qc-xk.qc-bk { flex: 1; height: 24px; }
+.qc-sat .qc-checks { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 6px; margin-top: 2px; font-size: 10px; }
+
+.qc-cbus .qc-bus-label small, .qc-xbus .qc-bus-label small { color: var(--qc-dim); font-weight: normal; letter-spacing: 0; }
+.qc-deck .qc-cablist { flex-direction: row; gap: 4px; padding: 0; overflow: visible; }
+.qc-window .qc-root .qc-deck .qc-cab { flex-direction: column; justify-content: center; gap: 2px; width: 66px; height: 46px; padding: 2px 3px; }
+.qc-deck .qc-cab-badge { width: 26px; height: 18px; font-size: 9px; }
+.qc-deck .qc-cab-text { align-items: center; max-width: 100%; }
+.qc-deck .qc-cab-text b { font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px; }
+.qc-deck .qc-cab-tally { top: 2px; right: 3px; font-size: 7px; }
+.qc-xbus { min-width: 0; }
+.qc-xbus .qc-ctl-body { display: flex; align-items: flex-end; gap: 8px; height: 46px; padding: 0; }
+.qc-xbus .qc-ctl-none { margin: 0; align-self: center; font-size: 10px; }
+.qc-xcol { display: flex; flex-direction: column; justify-content: flex-end; gap: 3px; }
+.qc-xcol .qc-xl { width: auto; display: flex; align-items: center; gap: 6px; }
+.qc-xcol .qc-xkeys { flex: none; }
+.qc-window .qc-root .qc-xcol .qc-xk.qc-bk { width: 34px; flex: none; height: 28px; }
+.qc-window .qc-root .qc-xcol-game .qc-xgame.qc-bk { width: 130px; height: 28px; }
+.qc-xcol-game .qc-xgame span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qc-deck .qc-xs { font-size: 9px; font-weight: normal; letter-spacing: 0; }
+.qc-ctl { border-top: 0; background: none; }

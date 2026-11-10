@@ -72,7 +72,7 @@ const obs = {
 };
 const items = {
     Chuni: [
-        { sourceName: 'PLAYLAND-GAU-EAST', sourceType: 'OBS_SOURCE_TYPE_INPUT', sceneItemEnabled: true },
+        { sourceName: 'PLAYLAND-GAU-EAST', sourceType: 'OBS_SOURCE_TYPE_INPUT', inputKind: 'ndi_source', sceneItemEnabled: true, sceneItemTransform: { sourceWidth: 1920, sourceHeight: 1080 } },
         { sourceName: 'Waiting Music', sourceType: 'OBS_SOURCE_TYPE_INPUT', sceneItemEnabled: true },
         { sourceName: 'Hidden Clip', sourceType: 'OBS_SOURCE_TYPE_INPUT', sceneItemEnabled: false },
         { sourceName: 'Overlay Group', sourceType: 'OBS_SOURCE_TYPE_INPUT', sceneItemEnabled: true, isGroup: true }
@@ -134,6 +134,8 @@ wss.on('connection', (ws) => {
             case 'GetInputAudioTracks': data = { inputAudioTracks: { 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, ...audio[q.inputName].tracks } }; break;
             case 'GetInputMute': data = { inputMuted: audio[q.inputName].muted }; break;
             case 'SetInputMute': audio[q.inputName].muted = q.inputMuted; break;
+            case 'GetInputSettings': data = { inputKind: 'ndi_source', inputSettings: q.inputName === 'PLAYLAND-GAU-EAST' ? { ndi_source_name: 'FAKE-MUX (Mux Output 1)' } : {} }; break;
+            case 'GetSourceActive': data = { videoActive: true, videoShowing: true }; break;
             case 'GetSourceScreenshot': data = { imageData: `data:image/jpg;base64,FAKE-${q.sourceName}-${q.imageWidth}` }; break;
             case 'SetStreamServiceSettings': obs.service = q; break;
             case 'StartStream':
@@ -148,8 +150,53 @@ wss.on('connection', (ws) => {
     });
 });
 
+// a cabinet mixer / muxer PC (no websocket password): a 59.94 fps camera in a 60 fps mix, a capture card
+// with no signal, rendering lag, and an NDI output sending 60 fps
+const mux = { frames: 0, render: 0, skipped: 0, calls: [] };
+const muxT0 = Date.now();
+const muxItems = {
+    Show: [
+        { sourceName: 'Overhead Cam', inputKind: 'dshow_input', sceneItemEnabled: true, sceneItemTransform: { sourceWidth: 1280, sourceHeight: 720 } },
+        { sourceName: 'Game Card', inputKind: 'dshow_input', sceneItemEnabled: true, sceneItemTransform: { sourceWidth: 0, sourceHeight: 0 } },
+        { sourceName: 'Off Cam', inputKind: 'dshow_input', sceneItemEnabled: false, sceneItemTransform: { sourceWidth: 0, sourceHeight: 0 } },
+        { sourceName: 'Logo', inputKind: 'image_source', sceneItemEnabled: true, sceneItemTransform: { sourceWidth: 0, sourceHeight: 0 } }
+    ]
+};
+const muxWss = new WebSocketServer({ host: '127.0.0.1', port: 0, handleProtocols: (p) => (p.has('obswebsocket.json') ? 'obswebsocket.json' : false) });
+muxWss.on('connection', (ws) => {
+    ws.send(JSON.stringify({ op: 0, d: { obsWebSocketVersion: '5.4.2', rpcVersion: 1 } }));
+    ws.on('message', (buf) => {
+        const msg = JSON.parse(buf.toString());
+        if (msg.op === 1) { assert.strictEqual(msg.d.eventSubscriptions, 0, 'a mux link subscribes to no events'); ws.send(JSON.stringify({ op: 2, d: { negotiatedRpcVersion: 1 } })); return; }
+        if (msg.op !== 6) return;
+        const { requestType: t, requestId, requestData: q = {} } = msg.d;
+        mux.calls.push(t);
+        let data = {};
+        let ok = true;
+        switch (t) {
+            case 'GetStats':
+                // counters at a real 60 fps clock: 10% of rendered frames skipped
+                mux.frames = Math.round((Date.now() - muxT0) * 0.06); mux.render = mux.frames; mux.skipped = Math.round(mux.frames / 10);
+                data = { activeFps: 54, cpuUsage: 12, averageFrameRenderTime: 16.4, renderSkippedFrames: mux.skipped, renderTotalFrames: mux.render, outputSkippedFrames: 0, outputTotalFrames: mux.frames };
+                break;
+            case 'GetOutputList': data = { outputs: [{ outputName: 'NDI Main Output', outputKind: 'ndi_output', outputActive: true }, { outputName: 'adv_file_output', outputKind: 'ffmpeg_muxer', outputActive: false }] }; break;
+            case 'GetOutputStatus': data = { outputActive: true, outputTotalFrames: Math.round((Date.now() - muxT0) * 0.06), outputSkippedFrames: 0 }; break;
+            case 'GetVideoSettings': data = { fpsNumerator: 60, fpsDenominator: 1, baseWidth: 1920, baseHeight: 1080, outputWidth: 1920, outputHeight: 1080 }; break;
+            case 'GetCurrentProgramScene': data = { currentProgramSceneName: 'Show' }; break;
+            case 'GetSceneItemList': data = { sceneItems: muxItems[q.sceneName] || [] }; break;
+            case 'GetInputSettings': data = { inputSettings: q.inputName === 'Overhead Cam' ? { res_type: 1, frame_interval: 166833, buffering: 1 } : {} }; break;
+            case 'GetSourceFilterList': data = { filters: q.sourceName === 'Overhead Cam' ? [{ filterKind: 'async_delay_filter', filterEnabled: true, filterSettings: { delay_ms: 120 } }] : [] }; break;
+            case 'GetInputAudioSyncOffset': data = { inputAudioSyncOffset: 0 }; break;
+            case 'GetSourceScreenshot': throw new Error('diagnostics must never take screenshots on a mux PC');
+            default: ok = false;
+        }
+        ws.send(JSON.stringify({ op: 7, d: { requestType: t, requestId, requestStatus: { result: ok, code: ok ? 100 : 600 }, responseData: data } }));
+    });
+});
+
 async function main() {
     await new Promise((r) => wss.on('listening', r));
+    if (!muxWss.address()) await new Promise((r) => muxWss.on('listening', r));
     const port = wss.address().port;
     await new Promise((r) => google.listen(0, '127.0.0.1', r));
     const cabSrv = http.createServer((req, res) => {
@@ -176,7 +223,7 @@ async function main() {
     process.env.QUICKCAST_GOOGLE_BASE = `http://127.0.0.1:${google.address().port}`;
     process.env.QUICKCAST_YT_BASE = `http://127.0.0.1:${google.address().port}/yt`;
     // ssh to a host that cannot exist, so a launch attempt fails fast instead of reaching Ruiko
-    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ obs: { host: '127.0.0.1', port, password: PASSWORD }, launch: { ssh: 'quickcast-test.invalid' } }));
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ obs: { host: '127.0.0.1', port, password: PASSWORD }, launch: { ssh: 'quickcast-test.invalid' }, muxes: { 'FAKE-MUX': { host: '127.0.0.1', port: muxWss.address().port } } }));
     const qc = require('../modules/quickcast');
     const { validateManifest } = require('../modules/melatonPackageStore');
 
@@ -191,6 +238,50 @@ async function main() {
     assert.ok(st.cabinets.every((c) => !c.present), 'no cabinet outside the Remote Play collection');
     assert.strictEqual(st.key.set, false);
     assert.strictEqual(st.video.fps, 60);
+
+    // pipeline diagnostics: the cabinet's feed on Ruiko names its mux PC, which is read for stats only
+    for (let i = 0; i < 8; i++) { st = await qc.status({ cabinet: 'chuni' }); await new Promise((res) => setTimeout(res, 450)); }
+    const dg = st.diag;
+    assert.strictEqual(dg.input.source, 'FAKE-MUX');
+    const stIn = Object.fromEntries(dg.input.stages.map((x) => [x.id, x]));
+    assert.deepStrictEqual(Object.keys(stIn), ['capture', 'clock', 'mixer', 'ndiout', 'link', 'lock']);
+    assert.deepStrictEqual(dg.input.stages.map((x) => x.col), [0, 1, 2, 3, 4, 5], 'input stages fill the shared columns');
+    assert.strictEqual(stIn.lock.value, '1:1 LOCKED');
+    assert.strictEqual(stIn.capture.blink, true, 'a 59.94 fps camera in a 60 fps mix blinks');
+    assert.strictEqual(stIn.clock.state, 'warn', '54 of 60 fps: the mux is not holding its clock');
+    assert.strictEqual(stIn.clock.blink, true);
+    const diag = require('../modules/quickcastDiag');
+    assert.strictEqual(diag.lockRatio(30, 60), '1:2');
+    assert.strictEqual(diag.lockRatio(60, 60), '1:1');
+    assert.strictEqual(diag.lockRatio(120, 60), '2:1');
+    assert.strictEqual(diag.lockRatio(59.94, 60), null, '59.94 into 60 cannot lock');
+    assert.strictEqual(diag.lockRatio(30000 / 1001, 60000 / 1001), '1:2');
+    assert.strictEqual(diag.lockRatio(25, 60), null);
+    assert.strictEqual(stIn.capture.state, 'bad', 'a 0x0 capture has no signal');
+    assert.match(stIn.capture.detail, /Game Card.*NO SIGNAL/);
+    assert.match(stIn.capture.detail, /Overhead Cam.*59\.94 fps target.*buffering on.*video delay 120 ms.*does not fit 60 fps/);
+    assert.ok(!/Off Cam|Logo/.test(stIn.capture.detail), 'hidden items and non-captures are left out');
+    assert.strictEqual(stIn.mixer.state, 'bad', '10% render lag at 54 of 60 fps');
+    assert.match(stIn.mixer.detail, /(9\.\d|10(\.\d)?)% of frames skipped for rendering lag/);
+    assert.strictEqual(stIn.ndiout.state, 'ok');
+    assert.strictEqual(stIn.link.state, 'ok');
+    const cam = dg.input.captures.find((c) => c.name === 'Overhead Cam');
+    assert.deepStrictEqual([cam.fps, cam.buffering, cam.delayMs], [59.94, 'on', 120]);
+    const stOut = Object.fromEntries(dg.output.stages.map((x) => [x.id, x]));
+    assert.deepStrictEqual(Object.keys(stOut), ['rx', 'clock', 'render', 'encoder', 'network', 'youtube']);
+    assert.deepStrictEqual(dg.output.stages.map((x) => x.col), [0, 1, 2, 3, 4, 5], 'output stages line up under the input ones');
+    assert.deepStrictEqual(dg.columns, ['SOURCE', 'CLOCK', 'PROCESS', 'ENCODE', 'TRANSPORT', 'DESTINATION']);
+    assert.strictEqual(stOut.rx.state, 'ok');
+    assert.strictEqual(stOut.rx.value, '1920x1080');
+    assert.strictEqual(stOut.encoder.state, 'off', 'not streaming');
+    assert.strictEqual(dg.verdict.stage, 'capture', 'the first failing stage in signal order');
+    assert.strictEqual(dg.verdict.state, 'bad');
+    assert.ok(!mux.calls.includes('GetSourceScreenshot'));
+    st = await qc.status({ cabinet: 'nost' });
+    assert.match(st.diag.input.note, /Looking for/, 'the feed is scanned in the background, never waited on');
+    await new Promise((res) => setTimeout(res, 300));
+    st = await qc.status({ cabinet: 'nost' });
+    assert.match(st.diag.input.note, /no NDI feed/, 'a scene without an NDI source has no mux to check');
 
     // go live without a key is refused before OBS is touched
     await assert.rejects(qc.goLive('chuni'), /stream key/);
@@ -386,6 +477,7 @@ async function main() {
     console.log('quickcast: all checks passed');
     qc._link.close();
     wss.close();
+    muxWss.close();
     google.close();
     fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(xdir, { recursive: true, force: true });

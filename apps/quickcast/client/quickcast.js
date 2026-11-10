@@ -92,9 +92,9 @@
             m.dataset.taskbarIcon = `${A}/quickcast-32.png`;
             m.dataset.windowDefaultWidth = '940';
             m.dataset.windowDefaultHeight = '620';
-            m.dataset.windowMinWidth = '800';
+            m.dataset.windowMinWidth = '980';
             m.dataset.windowMinHeight = '540';
-            m.style.width = '940px';
+            m.style.width = `${Math.min(1160, root.innerWidth - 40)}px`;
             m.style.height = `${Math.min(620, root.innerHeight - 60)}px`;
             m.setAttribute('role', 'dialog');
             m.setAttribute('aria-label', 'QuickCast');
@@ -112,7 +112,6 @@
                         <span class="qc-fill"></span>
                         <button type="button" class="qc-yt"><span class="qc-yt-dot"></span><img class="qc-yt-av" alt="" width="34" height="34" referrerpolicy="no-referrer" hidden><span class="qc-yt-names"><span class="qc-yt-text">YouTube: not signed in</span><small class="qc-yt-sub"></small><small class="qc-yt-live"></small></span><span class="qc-yt-arrow"></span></button>
                         <button type="button" class="qc-tb qc-copy" data-qc="copyurl" hidden title="Copy the stream's YouTube link">COPY STREAM URL</button>
-                        <div class="qc-link"><span class="qc-lamp"></span><span class="qc-link-text">OBS: OFFLINE</span></div>
                         <div class="qc-tally"><span class="qc-tally-text">OFF AIR</span><span class="qc-tc">--:--:--</span></div>
                         <div class="qc-todbox" title="Time of day"><em>TOD</em><b class="qc-tod">--:--:--</b></div>
                     </div>
@@ -122,9 +121,6 @@
                         <button type="button" class="qc-tb qc-title-update" data-qc="updatetitle" title="Change the live video's title now">UPDATE</button>
                     </div>
                     <div class="qc-main">
-                        <div class="qc-cabs"><div class="qc-head">CABINET</div><div class="qc-cablist"></div>
-                            <div class="qc-ctl"><div class="qc-head">CABINET CONTROL <small class="qc-ctl-dev"></small></div><div class="qc-ctl-body"><p class="qc-ctl-none">Pick a cabinet.</p></div></div>
-                        </div>
                         <div class="qc-centre">
                             <div class="qc-monitor">
                                 <img class="qc-pic" alt="">
@@ -133,15 +129,30 @@
                                 <div class="qc-mon-age"></div>
                                 <div class="qc-mon-busy"><span class="qc-spin"></span><span class="qc-mon-busy-text"></span></div>
                             </div>
-                            <div class="qc-info">
-                                <span><em>OUTPUT</em><b class="qc-i-out">-</b></span>
-                                <span><em>FPS</em><b class="qc-i-fps">-</b></span>
-                                <span><em>BITRATE</em><b class="qc-i-kbps">-</b></span>
-                                <span><em>DROPPED</em><b class="qc-i-drop">-</b></span>
-                                <span><em>CONGESTION</em><b class="qc-i-cong">-</b></span>
-                                <span><em>PROFILE</em><b class="qc-i-prof">-</b></span>
+                            <div class="qc-diag">
+                                <div class="qc-drow qc-dcols"><span class="qc-drow-h"></span><div class="qc-dcells">${['SOURCE', 'CLOCK', 'PROCESS', 'ENCODE', 'TRANSPORT', 'DESTINATION'].map((c) => `<span>${c}</span>`).join('')}</div></div>
+                                <div class="qc-drow" data-row="output"><span class="qc-drow-h"><em>OUTPUT</em><b>SATELLITE</b><small class="qc-drow-src">RUIKO</small></span><div class="qc-dcells"></div></div>
+                                <div class="qc-drow" data-row="input"><span class="qc-drow-h"><em>INPUT</em><b>CABINET</b><small class="qc-drow-src">-</small></span><div class="qc-dcells"></div></div>
+                                <div class="qc-dverdict is-off"><i></i><span class="qc-dverdict-text">-</span></div>
                             </div>
                             <div class="qc-srcs"><div class="qc-head qc-srcs-head">SOURCES ON AIR <small>(stream mix with this scene on program)</small><button type="button" class="qc-mini qc-srcs-tog" data-qc="togglesrcs" title="Show or hide the source list">HIDE</button></div><div class="qc-srclist"></div></div>
+                        </div>
+                        <div class="qc-side">
+                        <div class="qc-sat">
+                            <div class="qc-head">SATELLITE SERVER <small class="qc-sat-name">RUIKO</small></div>
+                            <div class="qc-sat-body">
+                                <div class="qc-link"><span class="qc-lamp"></span><span class="qc-link-text">OBS: OFFLINE</span></div>
+                                <div class="qc-sat-host">-</div>
+                                <div class="qc-sat-pwr"><span class="qc-xl">OBS</span><button type="button" class="qc-bk qc-xk k-green" data-qc="obson" title="Start OBS on the satellite server">ON</button><button type="button" class="qc-bk qc-xk k-red" data-qc="obsoff" title="Close OBS on the satellite server">OFF</button></div>
+                                <div class="qc-checks">
+                                    <span class="qc-chk" data-chk="obs"><i></i>OBS</span>
+                                    <span class="qc-chk" data-chk="scene"><i></i>Scene</span>
+                                    <span class="qc-chk" data-chk="profile"><i></i>Profile</span>
+                                    <span class="qc-chk" data-chk="key"><i></i>Stream key</span>
+                                    <span class="qc-chk" data-chk="video"><i></i>Picture</span>
+                                    <span class="qc-chk" data-chk="audio"><i></i>Sound</span>
+                                </div>
+                            </div>
                         </div>
                         <div class="qc-vu">
                             <div class="qc-head">AUDIO</div>
@@ -152,17 +163,11 @@
                             </div>
                             <div class="qc-vu-db">-inf dB</div>
                         </div>
+                        </div>
                     </div>
                     <div class="qc-deck">
-                        <div class="qc-checks">
-                            <span class="qc-chk" data-chk="obs"><i></i>OBS</span>
-                            <span class="qc-chk" data-chk="scene"><i></i>Scene</span>
-                            <span class="qc-chk" data-chk="profile"><i></i>Profile</span>
-                            <span class="qc-chk" data-chk="key"><i></i>Stream key</span>
-                            <span class="qc-chk" data-chk="video"><i></i>Picture</span>
-                            <span class="qc-chk" data-chk="audio"><i></i>Sound</span>
-                        </div>
-                        <span class="qc-fill"></span>
+                        <div class="qc-bus qc-cbus"><span class="qc-bus-label">CABINET <small>TAKE</small></span><div class="qc-cablist"></div></div>
+                        <div class="qc-bus qc-xbus qc-ctl"><span class="qc-bus-label">CABINET CONTROL <small class="qc-ctl-dev"></small></span><div class="qc-ctl-body"><p class="qc-ctl-none">Pick a cabinet.</p></div></div>
                         <div class="qc-bus qc-vbus"><span class="qc-bus-label">VIDEO</span><div class="qc-vkeys"><span class="qc-bus-none">-</span></div></div>
                         <div class="qc-side-keys">
                             <button type="button" class="qc-bk k-white" data-qc="chat">LIVE CHAT</button>
@@ -274,7 +279,12 @@
                 case 'chat': this.chatWin(); break;
                 case 'updatetitle': await this.updateLiveTitle(); break;
                 case 'togglesrcs': this.showSources(!this.sourcesShown); break;
-                case 'launch': await this.run('Starting OBS on Ruiko...', 'quickcast_launch', {}); break;
+                case 'launch':
+                case 'obson': await this.run('Starting OBS on the satellite server...', 'quickcast_launch', {}); break;
+                case 'obsoff':
+                    if (!await this.ask('Switch OBS off on the satellite server (Ruiko)?\n\nOBS closes; the NDI feeds it sends stop too. Turn it back on with OBS ON or by picking a cabinet.')) break;
+                    await this.run('Closing OBS on the satellite server...', 'quickcast_obs_off', {});
+                    break;
                 case 'watch': if (this.streamUrl()) root.open(this.streamUrl(), '_blank', 'noopener'); break;
                 case 'copyurl': await this.copyUrl(); break;
                 case 'about': this.about(); break;
@@ -320,7 +330,7 @@
             const sig = this.app.signal;
             const poll = async () => {
                 if (sig.aborted) return;
-                try { this.st = await this.send('quickcast_status', {}); } catch (_) { /* keep the last */ }
+                try { this.st = await this.send('quickcast_status', { cabinet: this.cabinet || '' }); } catch (_) { /* keep the last */ }
                 if (sig.aborted) return;
                 this.render();
                 setTimeout(poll, STATUS_MS);
@@ -382,7 +392,19 @@
 
             // link lamp, tally
             const linkText = st.obs.state === 'launching' ? `OBS: STARTING (${Math.round(st.obs.launchingFor / 1000)} s)` : online ? `OBS ${st.obs.version ? `WS ${st.obs.version}` : ''}: ONLINE` : 'OBS: OFFLINE';
-            q('.qc-link-text').textContent = linkText;
+            q('.qc-link-text').textContent = st.obs.state === 'stopping' ? 'OBS: CLOSING' : linkText;
+            // satellite server pane: host, OBS power keys
+            const sat = st.satellite || { name: 'Ruiko', host: '' };
+            q('.qc-sat-name').textContent = String(sat.name || '').toUpperCase();
+            q('.qc-sat-host').textContent = sat.host ? `obs-websocket ${sat.host}` : '-';
+            const pwrOn = q('[data-qc="obson"]');
+            const pwrOff = q('[data-qc="obsoff"]');
+            const changing = st.obs.state === 'launching' || st.obs.state === 'stopping';
+            pwrOn.classList.toggle('is-on', online || st.obs.state === 'launching');
+            pwrOff.classList.toggle('is-on', !online && !changing);
+            pwrOn.disabled = !!this.busy || online || changing;
+            pwrOff.disabled = !!this.busy || !online || changing || live;
+            pwrOff.title = live ? 'Stop the stream first' : 'Close OBS on the satellite server';
             this.modal.classList.toggle('qc-is-online', online);
             this.modal.classList.toggle('qc-is-launching', st.obs.state === 'launching');
             this.modal.classList.toggle('qc-is-live', live);
@@ -397,9 +419,9 @@
             const sig = st.cabinets.map((c) => `${c.id}:${c.present}`).join('|');
             if (list.dataset.sig !== sig) {
                 list.dataset.sig = sig;
-                list.innerHTML = st.cabinets.map((c) => `<button type="button" class="qc-bk qc-cab k-white" data-cab="${esc(c.id)}">
+                list.innerHTML = st.cabinets.map((c) => `<button type="button" class="qc-bk qc-cab k-white" data-cab="${esc(c.id)}" title="${esc(c.name)}: scene ${esc(c.scene)}${online && !c.present ? ' (missing)' : ''}">
                     <span class="qc-cab-badge qc-b-${esc(c.icon)}">${esc(c.short)}</span>
-                    <span class="qc-cab-text"><b>${esc(c.name)}</b><small>Scene: ${esc(c.scene)}${online && !c.present ? ' (missing)' : ''}</small></span>
+                    <span class="qc-cab-text"><b>${esc(c.name)}</b></span>
                     <span class="qc-cab-tally"></span></button>`).join('');
             }
             list.querySelectorAll('[data-cab]').forEach((b) => {
@@ -427,17 +449,8 @@
             this.modal.classList.toggle('qc-has-pic', hasPic);
             q('.qc-noimg').textContent = !online ? (st.obs.state === 'launching' ? 'STARTING OBS' : 'OBS OFFLINE') : !cab ? 'PICK A CABINET' : 'NO SIGNAL';
 
-            // info
-            const v = st.video;
-            q('.qc-i-out').textContent = v ? `${v.output.split('x')[1]}p${Math.round(v.fps)}` : '-';
-            q('.qc-i-out').title = v ? `Base ${v.base}, output ${v.output} at ${v.fps} fps` : '';
-            q('.qc-i-fps').textContent = v ? `${v.activeFps}` : '-';
-            q('.qc-i-kbps').textContent = live ? `${st.stream.kbps.toLocaleString('en-US')} kb/s` : '-';
-            q('.qc-i-drop').textContent = live ? `${st.stream.skipped} / ${st.stream.frames}` : '-';
-            q('.qc-i-cong').textContent = live ? `${st.stream.congestion}%` : '-';
-            q('.qc-i-prof').textContent = st.profile || '-';
-            q('.qc-i-cong').classList.toggle('is-bad', live && st.stream.congestion > 25);
-            q('.qc-i-drop').classList.toggle('is-bad', live && st.stream.frames > 0 && st.stream.skipped / st.stream.frames > 0.01);
+            // pipeline diagnostics: output (Ruiko) row, input (cabinet mux) row, verdict
+            this.renderDiag(st);
 
             // meters
             if (st.master) {
@@ -530,6 +543,45 @@
             btn.disabled = false;
         }
 
+        renderDiag(st) {
+            const q = (sel) => this.modal.querySelector(sel);
+            const d = st.diag || null;
+            const rowOf = (name, data, fallback) => {
+                const row = q(`.qc-drow[data-row="${name}"]`);
+                const cells = row.querySelector('.qc-dcells');
+                const stages = data && data.stages && data.stages.length ? data.stages : null;
+                row.querySelector('.qc-drow-src').textContent = (data && data.source) || (name === 'output' ? 'RUIKO' : '-');
+                row.querySelector('.qc-drow-h').title = (data && data.sourceDetail) || '';
+                if (!stages) {
+                    if (cells.dataset.ids !== '') { cells.dataset.ids = ''; cells.innerHTML = '<span class="qc-dnote"></span>'; }
+                    cells.querySelector('.qc-dnote').textContent = (data && data.note) || fallback;
+                    return;
+                }
+                // six fixed slots (the shared columns), so matching parts of both rows sit one above the other
+                if (cells.dataset.ids !== 'grid') {
+                    cells.dataset.ids = 'grid';
+                    cells.innerHTML = [0, 1, 2, 3, 4, 5].map((i) => `<span class="qc-dc is-off" data-col="${i}"><em><i></i><span></span></em><b></b></span>`).join('');
+                }
+                const byCol = new Map(stages.map((x) => [x.col, x]));
+                cells.querySelectorAll('[data-col]').forEach((c) => {
+                    const x = byCol.get(Number(c.dataset.col));
+                    c.className = x ? `qc-dc is-${x.state}${x.blink ? ' is-blink' : ''}` : 'qc-dc is-empty';
+                    c.querySelector('em span').textContent = x ? x.label : '';
+                    c.querySelector('b').textContent = x ? x.value || '-' : '';
+                    c.title = x ? x.detail || '' : '';
+                });
+            };
+            const online = st.obs && st.obs.state === 'online';
+            rowOf('output', d && d.output, online ? '...' : 'OBS on Ruiko is not connected');
+            rowOf('input', d && d.input, !this.cabinet ? 'Pick a cabinet to check its mux PC' : online ? '...' : 'Needs OBS on Ruiko to find the cabinet feed');
+            const v = (d && d.verdict) || { state: 'off', text: online ? '' : 'OBS offline' };
+            const vb = q('.qc-dverdict');
+            vb.className = `qc-dverdict is-${v.state}`;
+            vb.querySelector('.qc-dverdict-text').textContent = v.text ? `DIAG: ${v.text}` : 'DIAG: -';
+            const bad = v.stage && [...(d.input.stages || []), ...(d.output.stages || [])].find((x) => x.id === v.stage);
+            vb.title = bad ? bad.detail : 'Hover a stage for its numbers. Signal order: cabinet capture > mixer > NDI out > link > Ruiko NDI RX > render > encoder > network > YouTube.';
+        }
+
         renderSources(inputs) {
             this.inputs = inputs;
             const list = this.el('.qc-srclist');
@@ -596,9 +648,6 @@
             const live = !!(st && st.stream && st.stream.active);
             const cab = st && st.cabinets.find((c) => c.id === id);
             if (!cab) return;
-            if (live && st.programCabinet !== id) {
-                if (!await this.ask(`Switch the live stream to ${cab.name}?\n\nViewers see ${cab.name} at once.`)) return;
-            }
             this.cabinet = id;
             try { root.localStorage.setItem(LS_KEY, id); } catch (_) { /* private mode */ }
             this.previewFor = '';
@@ -734,11 +783,11 @@
             this.renderVideoBus(c, keys);
             const sigNow = JSON.stringify([c.video, c.power, c.game && c.game.status, this.ctlBusy]);
             this.modal.classList.toggle('qc-ctl-busy', !!this.ctlBusy);
-            if (body.dataset.sig === sigNow && body.querySelector('.qc-xrow')) return;
+            if (body.dataset.sig === sigNow && body.querySelector('.qc-xcol')) return;
             body.dataset.sig = sigNow;
             body.innerHTML = `
-                ${c.power ? `<div class="qc-xrow"><span class="qc-xl">POWER</span><span class="qc-xkeys">${keys(c.power, 'power')}</span></div><div class="qc-xrow qc-xstat"><span class="qc-xl"></span>${lamp(c.power.status)}</div>` : ''}
-                ${c.game ? `<div class="qc-xrow"><span class="qc-xl">GAME</span><button type="button" class="qc-bk qc-xk qc-xwide qc-xgame k-blue" data-xl="game"><span>${esc(c.game.status ? c.game.status.text : 'Select...')}</span><i></i></button></div>` : ''}`;
+                ${c.power ? `<div class="qc-xcol"><span class="qc-xl">POWER ${lamp(c.power.status)}</span><span class="qc-xkeys">${keys(c.power, 'power')}</span></div>` : ''}
+                ${c.game ? `<div class="qc-xcol qc-xcol-game"><span class="qc-xl">GAME</span><button type="button" class="qc-bk qc-xk qc-xwide qc-xgame k-blue" data-xl="game"><span>${esc(c.game.status ? c.game.status.text : 'Select...')}</span><i></i></button></div>` : ''}`;
             body.querySelectorAll('.qc-xk').forEach((b) => { b.disabled = !!this.ctlBusy; });
             const gb = body.querySelector('[data-xl="game"]');
             if (gb && root.contextMenu && root.contextMenu.attachPickerMenu) {
@@ -766,7 +815,7 @@
             bus.querySelectorAll('button').forEach((b) => { b.disabled = !!this.ctlBusy; });
         }
 
-        /** Press a cabinet control: QuickCast asks first for power, game and (while live) video, then XLink's own warning. */
+        /** Press a cabinet control: power and RESET ENC are confirmed (then XLink's own warning); video and game switch at once. */
         async xlinkPress(kind, n) {
             const c = this.controls;
             if (!c || this.ctlBusy) return;
@@ -777,7 +826,6 @@
             if (kind === 'video') {
                 const b = c.video.buttons[n];
                 req = { path: c.video.path, op: 'toggle', value: n };
-                if (live) ask = `Switch ${name}'s video to ${b.label}?\n\nYou are live: viewers see the change.`;
             } else if (kind === 'reset') {
                 req = { path: c.video.resetPath, op: 'send' };
                 ask = `Reset ${name}'s video encoder?${live ? '\n\nYou are live: the picture drops out for a few seconds.' : ''}`;
@@ -788,13 +836,13 @@
             } else if (kind === 'game') {
                 const o = c.game.options[n];
                 req = { path: o.path, op: 'send' };
-                ask = `Switch ${name} to ${o.text}?`;
             } else return;
             if (ask && !await this.ask(ask)) return;
             this.ctlBusy = true;
             this.renderControls();
             try {
-                let r = await this.send('quickcast_cabinet_action', { cabinet: this.cabinet, ...req });
+                // power and RESET ENC ask first (above, plus XLink's own warnings); video and game switch at once
+                let r = await this.send('quickcast_cabinet_action', { cabinet: this.cabinet, ...req, confirmed: kind === 'video' || kind === 'game' });
                 if (r.confirm) {
                     const v = await this.box(`${r.confirm.header}\n\n${r.confirm.message}`, 'warning', [{ text: r.confirm.ok || 'OK', value: 'yes', className: 'btn-standard' }, { text: 'Cancel', value: null, className: 'btn-standard primary' }]);
                     if (v !== 'yes') return;
