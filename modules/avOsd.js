@@ -129,6 +129,10 @@ async function settle(b) {
         const { link } = await linkOf(b);
         await link.request('PressInputPropertiesButton', { inputName: OVERLAY_INPUT, propertyName: 'refreshnocache' }).catch(() => {});
         await placeOverlay(b);
+        if (b.kind === 'cabinet' && !b.cardInstalled) {
+            // the unit's own SysTest scene shows OUR test card (the same port grid), never a second test
+            try { b.cardInstalled = (await installCards(b, link)) > 0; } catch (_) { /* no SysTest scene */ }
+        }
     } catch (_) { /* unit offline */ }
 }
 
@@ -247,7 +251,7 @@ async function portOptions(link, inp) {
  *         toggle (OK flips), action (OK runs), info (read only). */
 const PAGES = {
     async main(b) {
-        return {
+        const all = {
             title: 'MAIN MENU',
             rows: [
                 (() => { const act = b.fault ? b.fault.items.filter((i) => !i.bypass).length : 0; const byp = b.fault ? b.fault.items.length - act : 0; return { id: 'alarms', label: 'ALARMS', kind: 'nav', value: act ? `${act} ACTIVE${b.fault.overridden ? ' (OVR)' : ''}` : byp ? `${byp} BYPASSED` : 'NONE', state: act ? (b.fault.overridden ? 'warn' : 'bad') : byp ? 'warn' : 'ok', blink: !!(act && !b.fault.overridden) }; })(),
@@ -262,32 +266,51 @@ const PAGES = {
             ],
             hint: b.kind === 'satellite' ? 'Satellite encoder settings' : 'Cabinet mixer settings'
         };
+        if (!b.standby) return all;
+        // the low-power standby image: diagnostics and configuration only; full power on for the rest
+        const keep = new Set(['alarms', 'inputs', 'clock', 'diag', 'system']);
+        return {
+            title: 'STANDBY MENU',
+            rows: [...all.rows.filter((r) => keep.has(r.id)), { id: 'sb:note', label: 'MORE AFTER FULL POWER ON', kind: 'info', value: 'XLINK > POWER' }],
+            hint: 'Standby image: diagnostics and configuration only'
+        };
     },
 
+    /** INPUT ASSIGNMENT: the 8 hardware ports (and the logical inputs linked to each), then audio / network inputs. */
     async inputs(b, link) {
-        const ins = await portInputs(link);
-        const got = await Promise.all(ins.map((inp) => Promise.all([
+        const pm = await portMap(link);
+        const rows = [{ id: 'h:ports', label: 'HARDWARE PORTS', kind: 'head', value: '' }];
+        for (const p of pm.ports) {
+            if (!p.fitted) { rows.push({ id: `pp:${p.port}`, label: p.port, kind: 'info', value: 'NOT FITTED' }); continue; }
+            const inp = { inputName: p.input, inputKind: p.kind };
+            const opts = await portOptions(link, inp);
+            const pend = b.pending.get(`pp:${p.port}`);
+            const show = pend != null ? pend : p.device;
+            const o = opts.find((x) => x.value === show);
+            const missing = opts.length && p.device && !opts.some((x) => x.value === p.device);
+            rows.push({
+                id: `pp:${p.port}`, label: `${p.port}${p.users.length ? `  ${p.users.join(' / ')}` : ''}`, kind: 'pick', type: PORTS[p.kind].type,
+                value: o ? o.text : missing ? 'DEVICE MISSING' : show ? String(show) : '(none)', state: missing ? 'bad' : '', changed: pend != null && pend !== p.device,
+                hint: opts.length ? `◄► choose, OK assign (moves ${p.users.length ? p.users.join(', ') : 'the port'} too)` : 'No devices listed by this port'
+            });
+        }
+        // everything else that takes a device or feed (audio interfaces, NDI feeds, inputs not on a port)
+        const others = (await portInputs(link)).filter((i) => !pm.linked.has(i.inputName));
+        if (others.length) rows.push({ id: 'h:other', label: 'AUDIO / NETWORK / OTHER', kind: 'head', value: '' });
+        const got = await Promise.all(others.map((inp) => Promise.all([
             link.request('GetInputSettings', { inputName: inp.inputName }).catch(() => ({ inputSettings: {} })),
             portOptions(link, inp)
         ])));
-        const rows = [];
-        for (let n = 0; n < ins.length; n++) {
-            const inp = ins[n];
+        others.forEach((inp, n) => {
             const prop = PORTS[inp.inputKind].prop;
-            const set = got[n][0].inputSettings || {};
+            const cur = (got[n][0].inputSettings || {})[prop];
             const opts = got[n][1];
-            const cur = set[prop];
             const pend = b.pending.get(`port:${inp.inputName}`);
             const show = pend != null ? pend : cur;
             const o = opts.find((x) => x.value === show);
-            rows.push({
-                id: `port:${inp.inputName}`, label: `IN${String(n + 1).padStart(2, '0')} ${inp.inputName}`, kind: 'pick',
-                value: o ? o.text : show ? String(show) : '(none)', type: PORTS[inp.inputKind].type,
-                changed: pend != null && pend !== cur, options: opts.length,
-                hint: opts.length ? `${PORTS[inp.inputKind].type} port — ◄► choose, OK assign` : 'No ports listed by this input'
-            });
-        }
-        return { title: 'INPUT ASSIGNMENT', rows: rows.length ? rows : [{ id: 'none', label: 'No assignable inputs', kind: 'info', value: '' }], hint: 'Each logical input takes one hardware port / feed' };
+            rows.push({ id: `port:${inp.inputName}`, label: inp.inputName, kind: 'pick', type: PORTS[inp.inputKind].type, value: o ? o.text : show ? String(show) : '(none)', changed: pend != null && pend !== cur, hint: opts.length ? '◄► choose, OK assign' : 'No devices listed' });
+        });
+        return { title: 'INPUT ASSIGNMENT', rows, hint: 'Ports carry the logical inputs that share their device' };
     },
 
     async timing(b, link) {
@@ -647,6 +670,35 @@ async function xlinkRun(b, path, op, value, label) {
     toast(b, r.ok === false ? `FAILED: ${label}` : `${label}: DONE`, 'XLINK', r.ok === false ? `CABINET ANSWERED ${r.code || 'NOTHING'}${r.failure ? `: ${r.failure}` : ''}`.slice(0, 90) : '');
 }
 
+// ------------------------------------------------------------------ hardware ports (4 HDMI + 4 UVI)
+
+/**
+ * The unit's physical inputs: inputs named HDMI1-4 / UVI1-4 are the ports; every other video input that
+ * uses the same capture device (or the same display) is a logical input linked to that port
+ * (e.g. UVI1 = "Chun Overhead", HDMI1 = "Chun Game"). Ports not set up on the unit are NOT FITTED.
+ */
+const PORT_NAME_RE = /^(HDMI|UVI)\s*([1-4])$/i;
+const PORT_ORDER = ['HDMI1', 'HDMI2', 'HDMI3', 'HDMI4', 'UVI1', 'UVI2', 'UVI3', 'UVI4'];
+const deviceOf = (inp, set) => { const pt = PORTS[inp.inputKind]; return pt ? String((set || {})[pt.prop] || '') : ''; };
+
+async function portMap(link) {
+    const list = ((await link.request('GetInputList')).inputs || []).filter((i) => i.inputName !== OVERLAY_INPUT && !/^AV Live/.test(i.inputName));
+    const video = list.filter((i) => VIDEO_KINDS.has(i.inputKind) && PORTS[i.inputKind] && i.inputKind !== 'ndi_source');
+    const settings = new Map();
+    await Promise.all(video.map(async (i) => { settings.set(i.inputName, ((await link.request('GetInputSettings', { inputName: i.inputName }).catch(() => ({}))).inputSettings) || {}); }));
+    const ports = [];
+    for (const name of PORT_ORDER) {
+        const inp = video.find((i) => { const m = PORT_NAME_RE.exec(i.inputName); return m && `${m[1].toUpperCase()}${m[2]}` === name; });
+        if (!inp) { ports.push({ port: name, type: name.slice(0, -1), fitted: false, users: [] }); continue; }
+        const dev = deviceOf(inp, settings.get(inp.inputName));
+        const users = dev ? video.filter((i) => i !== inp && !PORT_NAME_RE.test(i.inputName) && deviceOf(i, settings.get(i.inputName)) === dev).map((i) => i.inputName) : [];
+        ports.push({ port: name, type: name.slice(0, -1), fitted: true, input: inp.inputName, kind: inp.inputKind, device: dev, users });
+    }
+    const linked = new Map(); // logical input -> port
+    ports.forEach((p) => { if (p.fitted) { linked.set(p.input, p.port); p.users.forEach((u) => linked.set(u, p.port)); } });
+    return { ports, linked, settings };
+}
+
 /** Switch an input off wherever it is on (scenes and groups); returns where, for putting it back. */
 async function bypassInput(link, inputName) {
     const done = [];
@@ -901,11 +953,22 @@ async function cardData(b, card, cabId) {
         const items = (await link.request('GetSceneItemList', { sceneName: s.sceneName }).catch(() => ({}))).sceneItems || [];
         for (const it of items) { const t = it.sceneItemTransform || {}; if (t.sourceWidth && !sizes.has(it.sourceName)) sizes.set(it.sourceName, `${t.sourceWidth}x${t.sourceHeight}`); }
     }
-    const hw = ins.filter((i) => PORTS[i.inputKind] && i.inputKind !== 'ndi_source').slice(0, 8);
-    out.tiles = hw.map((i, n) => ({ n: n + 1, name: i.inputName, type: PORTS[i.inputKind].type, size: sizes.get(i.inputName) || '', ok: sizes.has(i.inputName) }));
-    const dead = out.tiles.filter((t) => !t.ok);
-    out.status = !out.tiles.length ? 'PREPARING HARDWARE I/O' : dead.length ? `INPUT ${dead[0].n} NO SIGNAL${dead.length > 1 ? ` (+${dead.length - 1})` : ''}` : 'HARDWARE I/O READY';
-    out.ok = out.tiles.length > 0 && !dead.length;
+    void ins;
+    const pm = await portMap(link);
+    const act = async (name) => { try { return !!(await link.request('GetSourceActive', { sourceName: name })).videoActive; } catch (_) { return false; } };
+    out.tiles = [];
+    for (let n = 0; n < pm.ports.length; n++) {
+        const p = pm.ports[n];
+        if (!p.fitted) { out.tiles.push({ n: n + 1, port: p.port, fitted: false }); continue; }
+        const names = [p.input, ...p.users];
+        let live = null;
+        for (const nm of names) if (await act(nm)) { live = nm; break; }
+        const size = live ? sizes.get(live) || '' : '';
+        out.tiles.push({ n: n + 1, port: p.port, fitted: true, users: p.users, state: live ? (size ? 'live' : 'alarm') : 'standby', ok: !live || !!size, detail: live ? (size || 'NO SIGNAL') : 'STANDBY' });
+    }
+    const dead = out.tiles.filter((t) => t.fitted && !t.ok);
+    out.status = dead.length ? `${dead[0].port} NO SIGNAL${dead.length > 1 ? ` (+${dead.length - 1})` : ''}` : b.fault && b.fault.items.some((i) => !i.bypass) ? `ALARM: ${b.fault.items.find((i) => !i.bypass).label}` : 'HARDWARE I/O READY';
+    out.ok = !dead.length;
     out.format = `${v.outputWidth}x${v.outputHeight}p${fpsText(v.fpsNumerator, v.fpsDenominator)}`;
     return out;
 }
@@ -1051,6 +1114,8 @@ async function powerOn(boxId, opts = {}) {
         const cabScenes = deps.readConfig().cabinets.map((c) => ({ id: c.id, scene: c.scene }));
         const specials = new Set();
         try { const sp = await link.request('GetSpecialInputs'); Object.values(sp || {}).forEach((x) => { if (x) specials.add(x); }); } catch (_) { /* older engine */ }
+        let pm = { ports: [], linked: new Map() };
+        try { pm = await portMap(link); } catch (_) { /* no ports */ }
         let n = 0;
         for (const inp of list) {
             const port = PORTS[inp.inputKind];
@@ -1059,7 +1124,8 @@ async function powerOn(boxId, opts = {}) {
             if (!port && !video) continue;
             if (!usedIn.has(inp.inputName) && !specials.has(inp.inputName)) continue; // not wired to anything
             n++;
-            const it = { n, label: inp.inputName, type: port ? port.type : 'VIDEO', state: 'ok', detail: 'OK' };
+            const it = { n, label: inp.inputName, type: port ? port.type : 'VIDEO', state: 'ok', detail: 'OK', port: pm.linked.get(inp.inputName) || '' };
+            if (it.port && it.port !== inp.inputName) it.label = `${inp.inputName} (${it.port})`;
             if (b.kind === 'satellite' && !specials.has(inp.inputName)) it.cabs = cabScenes.filter((c) => usedIn.get(inp.inputName).has(c.scene)).map((c) => c.id);
             if (port) {
                 const opts2 = await portOptions(link, inp);
@@ -1093,6 +1159,17 @@ async function powerOn(boxId, opts = {}) {
     } catch (e) { add({ n: 0, label: 'SELF TEST', type: '', state: 'alarm', detail: e.message.slice(0, 60) }); }
     const alarms = items.filter((x) => x.state === 'alarm');
     b.post.items = (alarms.length ? [...alarms, ...items.filter((x) => x.state !== 'alarm')] : items).slice(0, 8);
+    // the card's grid: the 8 hardware ports, each with the logical inputs linked to it (audio is not a port)
+    try {
+        const pm2 = await portMap(link);
+        b.post.tiles = pm2.ports.map((p, i) => {
+            if (!p.fitted) return { n: i + 1, port: p.port, fitted: false };
+            const mine = items.filter((x) => x.port === p.port);
+            const bad = mine.find((x) => x.state === 'alarm');
+            const live = mine.find((x) => /^OK/.test(x.detail));
+            return { n: i + 1, port: p.port, fitted: true, users: p.users, ok: !bad, state: bad ? 'alarm' : live ? 'live' : 'standby', detail: bad ? bad.detail : live ? live.detail : 'STANDBY' };
+        });
+    } catch (_) { b.post.tiles = null; }
     b.post.alarms = alarms.length;
     b.lastPost = { at: Date.now(), alarms: alarms.length, items };
     if (alarms.length) {
@@ -1149,7 +1226,19 @@ async function buildStrip(b) {
     try {
         const { link, target } = await linkOf(b);
         const [v, st, pg] = await Promise.all([link.request('GetVideoSettings'), link.request('GetStats'), link.request('GetCurrentProgramScene')]);
-        b.strip = { unit: boxName(b), format: `${v.outputHeight}p${fpsText(v.fpsNumerator, v.fpsDenominator)}`, fps: round1(st.activeFps || 0), cpu: round1(st.cpuUsage || 0), frame: round1(st.averageFrameRenderTime || 0), program: pg.currentProgramSceneName, addr: target ? target.host : '' };
+        let game = '';
+        let net = '';
+        if (b.cabinet) {
+            try {
+                const xm = b.xlMenu || await xlinkMenu(b);
+                const find = (re) => (xm.items || []).find((x) => re.test(x.text));
+                const g = find(/game select/i);
+                const n = find(/network/i);
+                game = g && g.status ? g.status.text : '';
+                net = n && n.toggle ? (n.toggle.find((o) => o.active) || {}).label || '' : n && n.status ? n.status.text : '';
+            } catch (_) { /* no XLink */ }
+        }
+        b.strip = { game, net, unit: boxName(b), format: `${v.outputHeight}p${fpsText(v.fpsNumerator, v.fpsDenominator)}`, fps: round1(st.activeFps || 0), cpu: round1(st.cpuUsage || 0), frame: round1(st.averageFrameRenderTime || 0), program: pg.currentProgramSceneName, addr: target ? target.host : '' };
     } catch (_) { b.strip = null; }
 }
 
@@ -1173,6 +1262,7 @@ function emit(b) {
     }
     // the STATUS box: while INFO is on, or for a few seconds after a scene switch
     if ((b.info || Date.now() < (b.infoFlashUntil || 0)) && b.strip) out.strip = b.strip;
+    if (b.standby) out.standby = { phase: b.standby.phase, since: b.standby.since };
     if (b.post && !b.post.hidden) out.post = { ...b.post, holdLeft: b.post.holdUntil ? Math.max(0, Math.ceil((b.post.holdUntil - Date.now()) / 1000)) : 0 };
     b.view = out;
     for (const res of b.subs) { try { res.write(`data: ${JSON.stringify(out)}\n\n`); } catch (_) { b.subs.delete(res); } }
@@ -1197,6 +1287,7 @@ const SHOT_RE = /screen ?shot|^sysinfo-ss/i;
 const BOOT_AFTER_NDI_MS = 5000;                  // the splash stays this long after the unit's video is up
 const BOOT_SCENE_RE = /^(init|sys ?test|boot)$/i; // a unit's own boot scenes: no STATUS flash on these takes
 const INFO_FLASH_MS = 5000;
+const INFO_CARD_RE = /^scene ?info/i; // the unit's old image info card group ("SceneInfo - Chuni ALLS")
 function hookUnit(b, link) {
     if (link._avosdHooked) return;
     link._avosdHooked = true;
@@ -1224,7 +1315,17 @@ function hookUnit(b, link) {
         void (async () => {
             const items = (await link.request('GetSceneItemList', { sceneName: data.sceneName }).catch(() => link.request('GetGroupSceneItemList', { sceneName: data.sceneName })).catch(() => ({}))).sceneItems || [];
             const it = items.find((x) => x.sceneItemId === data.sceneItemId);
-            if (!it || !SHOT_RE.test(it.sourceName)) return;
+            if (!it) return;
+            if (INFO_CARD_RE.test(it.sourceName)) {
+                // the unit's old image info card: off again, the hardware STATUS box instead
+                await link.request('SetSceneItemEnabled', { sceneName: data.sceneName, sceneItemId: data.sceneItemId, sceneItemEnabled: false }).catch(() => {});
+                await buildStrip(b);
+                b.infoFlashUntil = Date.now() + INFO_FLASH_MS;
+                emit(b);
+                setTimeout(() => emit(b), INFO_FLASH_MS + 50);
+                return;
+            }
+            if (!SHOT_RE.test(it.sourceName)) return;
             await link.request('SetSceneItemEnabled', { sceneName: data.sceneName, sceneItemId: data.sceneItemId, sceneItemEnabled: false }).catch(() => {});
             toast(b, 'IMAGE SAVED TO DISK', 'SCREENSHOT', '');
             emit(b);
@@ -1246,7 +1347,7 @@ async function onKey(b, key) {
         b.stack = [{ page: 'xlink', path: [], cursor: 0, title: 'XLINK' }];
         return;
     }
-    if (key === 'diag') { if (!b.open) b.open = true; b.stack = [{ page: 'main', cursor: 7 }, { page: 'diag', cursor: 0 }]; return; }
+    if (key === 'diag') { if (!b.open) b.open = true; b.stack = [{ page: 'main', cursor: b.standby ? 3 : 7 }, { page: 'diag', cursor: 0 }]; return; }
     if (!b.open) { if (key === 'exit' && b.info) b.info = false; return; }
     const f = frame(b);
     if (key === 'exit') {
@@ -1369,6 +1470,25 @@ async function onKey(b, key) {
         return;
     }
     if (row.id === 's:post' && key === 'ok') { b.open = false; b.stack = []; b.pending.clear(); void powerOn(b.id, { reason: 'manual' }); return; }
+    if (row.id.startsWith('pp:')) {
+        const pm = await portMap(link);
+        const p = pm.ports.find((x) => x.port === row.id.slice(3));
+        if (!p || !p.fitted) return;
+        const opts = await portOptions(link, { inputName: p.input, inputKind: p.kind });
+        if (!opts.length) return;
+        const cur = b.pending.has(row.id) ? b.pending.get(row.id) : p.device;
+        if (dir) { const i = opts.findIndex((o) => o.value === cur); b.pending.set(row.id, opts[(i + dir + opts.length) % opts.length].value); return; }
+        if (key === 'ok' && b.pending.has(row.id)) {
+            const v = b.pending.get(row.id);
+            b.pending.delete(row.id);
+            const prop = PORTS[p.kind].prop;
+            // the port and every logical input linked to it move together
+            for (const name of [p.input, ...p.users]) await link.request('SetInputSettings', { inputName: name, inputSettings: { [prop]: v }, overlay: true }).catch(() => {});
+            const o = opts.find((x) => x.value === v);
+            toast(b, `${p.port} ← ${o ? o.text : v}`, 'INPUT ASSIGNMENT', p.users.length ? `ALSO ${p.users.join(', ')}` : '');
+        }
+        return;
+    }
     if (row.id.startsWith('port:')) {
         const inp = (await portInputs(link)).find((i) => i.inputName === name);
         if (!inp) return;
@@ -1532,6 +1652,53 @@ function subscribe(boxId, k, res) {
 }
 
 // keep an open OSD's numbers fresh (levels, clock, diagnostics) while something shows it
+// ------------------------------------------------------------------ standby (the low-power boot image)
+
+/** VisionCaster tells a mixer unit which cabinet it serves (its XLink device: power state, XLINK page). */
+function noteCabinet(machine, cabinetId) {
+    if (!machine || !cabinetId) return;
+    const b = box(`mux-${machine}`);
+    b.cabinet = cabinetId;
+}
+
+/**
+ * The cabinet's power state drives the unit like firmware: Standby = it boots its second, low-power image
+ * (a short boot flash), which only holds the output active and shows the STANDBY screen; back to power
+ * on = a real boot (splash until NDI is sending, then the self test).
+ */
+async function standbyTick(b) {
+    if (b.kind !== 'cabinet' || !b.cabinet) return;
+    let power = '';
+    try {
+        const xm = await xlinkMenu(b);
+        const p = (xm.items || []).find((x) => /power switch/i.test(x.text));
+        power = p && p.status ? String(p.status.text || '') : '';
+    } catch (_) { return; }
+    if (!power) return;
+    const stby = /standby/i.test(power);
+    const first = b.powerSeen == null;
+    b.powerSeen = power;
+    if (stby && !b.standby) {
+        if (!b.settled) await settle(b);
+        b.standby = { phase: first ? 'hold' : 'boot', since: Date.now() };
+        await placeOverlay(b).catch(() => {});
+        emit(b);
+        if (!first) setTimeout(() => { if (b.standby) { b.standby.phase = 'hold'; emit(b); } }, STANDBY_BOOT_MS);
+    } else if (!stby && b.standby) {
+        b.standby = null;
+        emit(b);
+        if (/active|on|startup/i.test(power)) void powerOn(b.id, { reason: 'power' }).catch(() => {}); // the main image boots
+    }
+}
+const STANDBY_BOOT_MS = 3000;
+
+setInterval(() => {
+    for (const b of boxes.values()) if (b.kind === 'cabinet' && b.cabinet && !b.standbyBusy) {
+        b.standbyBusy = true;
+        standbyTick(b).catch(() => {}).finally(() => { b.standbyBusy = false; });
+    }
+}, 5000).unref();
+
 // keep the resident OSD layer on each known unit's current program (the program can change under it)
 setInterval(() => {
     for (const b of boxes.values()) {
@@ -1582,4 +1749,4 @@ function alignFor(machine) {
     return { cam: sel.cam || '', ref: sel.ref || '', running: !!b.align.running, offMs: r && r.offMs != null ? r.offMs : null, score: r ? r.score : null, text: r ? r.text : b.align.error || '' };
 }
 
-module.exports = { faults, powerOn, subscribeCard, alignFor, init, press, view, subscribe, checkToken, PORTS, bestLag, _boxes: boxes, OVERLAY_SCENE, OVERLAY_INPUT, DELAY_FILTER };
+module.exports = { noteCabinet, faults, powerOn, subscribeCard, alignFor, init, press, view, subscribe, checkToken, PORTS, bestLag, _boxes: boxes, OVERLAY_SCENE, OVERLAY_INPUT, DELAY_FILTER };

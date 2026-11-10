@@ -101,6 +101,18 @@ body.t-takao .m-logo { height: calc(32 * var(--u)); }
 #card { position: absolute; inset: 0; display: none; background: #000; }
 #card.on { display: block; }
 #card .bar b { text-transform: uppercase; }
+/* standby: the second, low-power image (no I/O grid; a dim, held screen) */
+#card.standby .tiles, #card.standby .ver { display: none; }
+#card.standby .brand { left: calc(96 * var(--u)); top: calc(380 * var(--u)); }
+#card.standby .press { top: calc(560 * var(--u)); font-size: calc(24 * var(--u)); line-height: 1.6; color: #aaa; }
+#card.standby .press .sbt { color: #ffb028; font-size: calc(64 * var(--u)); letter-spacing: calc(8 * var(--u)); }
+#card.standby .press .sbs { font-size: calc(18 * var(--u)); color: #666; }
+body #card.standby .bar { background: #3a2a00; }
+#card.standby .bar b { color: #ffb028; }
+#card.sb-boot .bar b { animation: bl 0.6s steps(1, end) infinite; }
+#card .sbbar { display: inline-block; width: calc(420 * var(--u)); height: calc(18 * var(--u)); border: calc(2 * var(--u)) solid #666; }
+#card .sbbar i { display: block; height: 100%; background: #ffb028; animation: sbload 3s steps(12, end) both; }
+@keyframes sbload { from { width: 0; } to { width: 100%; } }
 #card .clogo { display: block; width: calc(404 * var(--u)); height: auto; }
 body.t-amuvision #card .clogo { width: calc(366 * var(--u)); }
 body.t-amuvision #card .sub { width: auto; justify-content: flex-start; }
@@ -126,6 +138,9 @@ body.t-amuvision #card .sub { width: auto; justify-content: flex-start; }
 #card .press .dna { display: inline-block; margin-bottom: calc(6 * var(--u)); padding: calc(6 * var(--u)) calc(18 * var(--u)); background: #d00; color: #fff; font-size: calc(54 * var(--u)); letter-spacing: calc(4 * var(--u)); animation: bl 0.8s steps(1, end) infinite; }
 #card.ph-fault .bar { background: #d00; animation: fbar 0.8s steps(1, end) infinite; }
 @keyframes fbar { 50% { background: #500; } }
+#card .tile.nf { background: #141414; color: #555; }
+#card .tile.nf b { color: #666; }
+#card .tile.sb em { color: #8ea4c2; }
 #card .tile.bad { background: linear-gradient(#5a1414, #2e0a0a); outline: calc(3 * var(--u)) solid #d00; }
 #card .tile em.al { color: #ff9a8f; font-weight: bold; }
 /* draw-in, the way hardware OSDs paint: stepped, never faded */
@@ -216,10 +231,17 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
       }
       $('hint').textContent = p.hint || '';
     }
+    // standby: the low-power image's boot flash, then the held STANDBY screen (the menu still opens over it)
+    if (v.standby && !v.post && !(v.open && p)) {
+      drawCard({ card: 'standby', phase: 'sb-' + v.standby.phase, unit: { name: bx.name, maker: bx.maker, line: bx.line, model: bx.model, type: bx.type, theme: bx.theme, sw: bx.sw, hw: bx.hw, fw: bx.fw }, status: v.standby.phase === 'boot' ? 'LOADING STANDBY IMAGE' : 'STANDBY', tiles: [] });
+      $('card').className = 'on standby sb-' + v.standby.phase + ($('card').classList.contains('drawin') ? ' drawin' : '');
+      $('cpress').innerHTML = v.standby.phase === 'boot' ? 'STANDBY FIRMWARE<br><span class="sbbar"><i></i></span>' : '<b class="sbt">STANDBY</b><br>LOW POWER MODE &middot; OUTPUT HELD<br><span class="sbs">POWER ON FROM THE CABINET (XLINK) TO START</span>';
+      $('cfmt').textContent = bx.name || '';
+    } else
     // power on: boot screen, self test, and the latched FAULT card (hidden while the menu is open)
     if (v.post && !(v.open && p)) {
       var po = v.post;
-      drawCard({ card: 'post', phase: po.phase, unit: { name: bx.name, maker: bx.maker, line: bx.line, model: bx.model, type: bx.type, theme: bx.theme, sw: bx.sw, hw: bx.hw, fw: bx.fw }, status: po.text + (po.holdLeft ? '  (' + po.holdLeft + ')' : ''), tiles: (po.items || []).map(function (x) { return { n: x.n, name: x.label, type: x.type, ok: x.state !== 'alarm', size: x.detail, alarm: x.state === 'alarm' ? x.detail : '' }; }) });
+      drawCard({ card: 'post', phase: po.phase, unit: { name: bx.name, maker: bx.maker, line: bx.line, model: bx.model, type: bx.type, theme: bx.theme, sw: bx.sw, hw: bx.hw, fw: bx.fw }, status: po.text + (po.holdLeft ? '  (' + po.holdLeft + ')' : ''), tiles: po.tiles || (po.items || []).filter(function (x) { return x.type !== 'AUDIO IN' && x.type !== 'AUDIO OUT'; }).map(function (x) { return { n: x.n, name: x.label, type: x.type, ok: x.state !== 'alarm', size: x.detail, alarm: x.state === 'alarm' ? x.detail : '' }; }) });
       $('card').className = 'on post ph-' + po.phase + ($('card').classList.contains('drawin') ? ' drawin' : '');
       $('cpress').innerHTML = po.phase === 'fault' ? '<b class="dna">DO NOT AIR</b><br>CALL A TECHNICIAN &mdash; press MENU to service this unit' : po.phase === 'boot' ? '' : po.phase === 'pass' ? 'All sources OK' : 'Checking every source...';
     } else if (!isCard) { $('card').className = ''; cardShown = ''; }
@@ -227,7 +249,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
     $('strip').className = s ? 'hw on' : 'hw';
     if (s) {
       $('striph').textContent = 'STATUS  ' + (bx.name || '');
-      $('stripb').innerHTML = [['FORMAT', s.format], ['RUNNING', s.fps + ' FPS'], ['FRAME TIME', s.frame + ' MS'], ['CPU', s.cpu + ' %'], ['PROGRAM', s.program], ['ADDRESS', s.addr]]
+      $('stripb').innerHTML = [['PROGRAM', s.program], ['FORMAT', s.format], ['RUNNING', s.fps + ' FPS'], ['FRAME TIME', s.frame + ' MS'], ['CPU', s.cpu + ' %']].concat(s.game ? [['GAME', s.game]] : []).concat(s.net ? [['NETWORK', s.net]] : []).concat([['ADDRESS', s.addr]])
         .map(function (r) { return '<span>' + r[0] + '</span><b>' + esc(String(r[1] == null ? '-' : r[1]).toUpperCase()) + '</b>'; }).join('');
     }
     $('toast').className = v.toast ? 'hw on' : 'hw';
@@ -258,7 +280,16 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
     var html = '';
     for (var i = 0; i < 8; i++) {
       var x = t[i];
-      html += x ? '<div style="animation-delay:' + (0.25 + i * 0.06) + 's" class="tile' + (x.ok ? ' ok' : ' bad') + '"><b>IN ' + x.n + '</b><span>' + esc(x.name) + ' &middot; ' + esc(x.type) + '</span>' + (x.ok ? '<em>' + esc(x.size) + '</em>' : '<em class="al">' + esc(x.alarm || 'NO SIGNAL') + '</em><i class="w"></i>') + '</div>' : '<div class="tile"><span>NOT FITTED</span></div>';
+      var delay = 'style="animation-delay:' + (0.25 + i * 0.06) + 's"';
+      if (!x) { html += '<div ' + delay + ' class="tile nf"><b>-</b><span>NOT FITTED</span></div>'; continue; }
+      if (x.port) {
+        // a hardware port: its name, the logical inputs linked to it, its state
+        if (!x.fitted) { html += '<div ' + delay + ' class="tile nf"><b>' + esc(x.port) + '</b><span>NOT FITTED</span></div>'; continue; }
+        var cls = x.state === 'alarm' ? ' bad' : x.state === 'live' ? ' ok' : ' sb';
+        html += '<div ' + delay + ' class="tile' + cls + '"><b>' + esc(x.port) + '</b><span>' + esc((x.users && x.users.length ? x.users.join(' / ') : 'NO LOGICAL INPUT')) + '</span>' + (x.state === 'alarm' ? '<em class="al">' + esc(x.detail || 'NO SIGNAL') + '</em><i class="w"></i>' : '<em>' + esc(x.detail || '') + '</em>') + '</div>';
+        continue;
+      }
+      html += '<div ' + delay + ' class="tile' + (x.ok ? ' ok' : ' bad') + '"><b>IN ' + x.n + '</b><span>' + esc(x.name) + ' &middot; ' + esc(x.type) + '</span>' + (x.ok ? '<em>' + esc(x.size) + '</em>' : '<em class="al">' + esc(x.alarm || 'NO SIGNAL') + '</em><i class="w"></i>') + '</div>';
     }
     $('tiles').innerHTML = html;
   }

@@ -1292,6 +1292,7 @@
                 dmColor = '#ffb02e';
                 if (err) { dmColor = '#ff5a3a'; dm(unit, 'ERROR', err); return; }
                 if (v && v.toast) { dm(unit, v.toast.slice(0, 20), v.toast.slice(20, 40)); return; }
+                if (v && v.standby && !(v.open && v.page)) { dmColor = '#ffb028'; dm(unit, v.standby.phase === 'boot' ? 'STANDBY BOOT...' : 'STANDBY', 'LOW POWER MODE'); return; }
                 if (v && v.post) { if (v.post.phase === 'fault') dmColor = '#ff5a3a'; dm(v.post.phase === 'fault' ? 'FAULT - DO NOT AIR' : 'SELF TEST', (v.post.text || '').slice(0, 20), (v.post.text || '').slice(20, 40)); return; }
                 if (v && v.open && v.page) {
                     if (v.page.id === 'xlink') dmColor = '#5fd0ff';
@@ -1314,6 +1315,11 @@
             const leds = () => {
                 if (!m.isConnected) return;
                 if (resetting) { setTimeout(leds, 500); return; }
+                // follow the unit's own state (standby, self test, faults) even when no key is pressed
+                if (!inFlight && Date.now() - (this.fpViewAt || 0) > 3000 && (target === 'sat' || this.cabinet)) {
+                    this.fpViewAt = Date.now();
+                    void this.send('quickcast_osd_view', { target, cabinet: this.cabinet || '' }).then((v) => { if (!inFlight) lastView = v; }).catch(() => {});
+                }
                 if (lastView === null || !(lastView.open || lastView.post || lastView.toast)) lcd(lastView);
                 const st = this.st || {};
                 const d = st.diag || {};
@@ -1324,7 +1330,7 @@
                 const fault = (st.faults || []).find((f) => (sat ? f.kind === 'satellite' : f.machine === machine) && !f.overridden);
                 const bad = (rowSt.stages || []).some((x) => x.state === 'bad');
                 const pw = m.querySelector('[data-led="power"]');
-                pw.className = `qc-led ${linkSt === 'online' ? 'is-green' : linkSt === 'launching' || linkSt === 'stopping' ? 'is-amber is-blink' : linkSt === 'offline' ? 'is-red' : ''}`;
+                pw.className = `qc-led ${lastView && lastView.standby && !sat ? 'is-amber' : linkSt === 'online' ? 'is-green' : linkSt === 'launching' || linkSt === 'stopping' ? 'is-amber is-blink' : linkSt === 'offline' ? 'is-red' : ''}`;
                 const al = m.querySelector('[data-led="alarm"]');
                 al.className = `qc-led ${fault ? 'is-red is-blink' : bad ? 'is-red' : ''}`;
                 m.classList.toggle('qc-fp-sat', sat);

@@ -577,6 +577,7 @@ async function status(opts = {}) {
         const pick = cfg.cabinets.some((c) => c.id === opts.cabinet) ? opts.cabinet : base.programCabinet;
         try { base.diag = diag.diagnose(base, stats, pick); } catch (_) { base.diag = null; }
         if (base.diag && base.diag.input && base.diag.input.source) base.diag.input.align = avOsd.alignFor(base.diag.input.source);
+        if (base.diag && base.diag.input && base.diag.input.source && pick) avOsd.noteCabinet(base.diag.input.source, pick);
         // latched self-test faults on the satellite and this cabinet's mixer (LIVE locks on them)
         const mux = base.diag && base.diag.input && base.diag.input.source;
         base.faults = avOsd.faults().map((f) => scopeFault(f, pick, mux)).filter(Boolean);

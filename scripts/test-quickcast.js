@@ -378,6 +378,15 @@ async function main() {
     v = await qc.osd.press('cab', 'chuni', 'xlink');
     assert.strictEqual(v.open, false, 'XLINK again closes it');
 
+    // standby image: a reduced diagnostic / configuration menu
+    qc.osd._boxes.get('sat').standby = { phase: 'hold', since: Date.now() };
+    v = await qc.osd.press('sat', '', 'menu');
+    assert.strictEqual(v.page.title, 'STANDBY MENU');
+    assert.deepStrictEqual(v.page.rows.map((r) => r.id), ['alarms', 'inputs', 'clock', 'diag', 'system', 'sb:note']);
+    assert.ok(v.standby, 'the view carries the standby state');
+    await qc.osd.press('sat', '', 'menu');
+    qc.osd._boxes.get('sat').standby = null;
+
     // a take on the unit (program scene change) flashes the STATUS box on its output
     emit('CurrentProgramSceneChanged', { sceneName: 'Chuni' });
     await until(() => qc.osd._boxes.get('sat').view && qc.osd._boxes.get('sat').view.strip);
