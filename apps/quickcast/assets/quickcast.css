@@ -687,3 +687,5 @@ canvas.qc-fp-dm { display: block; width: 360px; height: 81px; padding: 4px 6px; 
 }
 .qc-fp-ctl .qc-rm-pad .qc-rk.qc-bk, .qc-fp-ctl .qc-rm-pad [data-rk="ok"] { border-radius: 2px !important; }
 .qc-vbus .qc-bus-label small { color: var(--qc-dim); font-weight: normal; letter-spacing: 0; }
+
+.qc-fp-xl .qc-fp-xlogo { display: block; margin: 0 auto; width: 36px; height: auto; filter: drop-shadow(0 -1px 0 rgba(0,0,0,.4)); pointer-events: none; }

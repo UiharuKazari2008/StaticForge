@@ -139,7 +139,9 @@ async function resolveBox(target, cabinetId) {
     let machine = hit && Date.now() - hit.at < 30000 ? hit.machine : '';
     if (!machine) { machine = await deps.diag.machineForCabinet(cabinetId); machineCache.set(cabinetId, { machine, at: Date.now() }); }
     if (!machine) throw fail('This cabinet\'s scene on the satellite has no NDI feed, so there is no mux box to control', 'AVOSD_NOMUX');
-    return box(`mux-${machine}`);
+    const b = box(`mux-${machine}`);
+    if (cabinetId) b.cabinet = cabinetId; // its XLink device (front panel XLINK)
+    return b;
 }
 
 /** The unit's own name, as on the panels (the satellite's configured name, a mux PC's NDI machine name). */
@@ -334,6 +336,30 @@ const PAGES = {
         }
         if (m.error) rows.push({ id: 'fm:err', label: m.error, kind: 'info', value: '', state: 'bad' });
         return { title: 'INPUT FRAME RATES', rows, hint: `Box clock ${fpsText(v.fpsNumerator, v.fpsDenominator)} fps: an input can show at most that` };
+    },
+
+    /** XLINK: the cabinet's XLink menu (power, volume, ...) drawn on the unit's own output. */
+    async xlink(b, link, f) {
+        if (!b.cabinet) return { title: 'XLINK', rows: [{ id: 'none', label: 'NO CABINET FOR THIS UNIT', kind: 'info', value: '' }] };
+        const menu = await xlinkMenu(b);
+        if (!menu.available) return { title: 'XLINK', rows: [{ id: 'none', label: 'NO XLINK DEVICE', kind: 'info', value: '' }] };
+        let list = menu.items;
+        const crumbs = [menu.device.name];
+        for (const i of f.path || []) { crumbs.push(list[i].text); list = list[i].children || []; }
+        const rows = list.map((n, i) => {
+            const pathKey = `xl:${[...(f.path || []), i].join('.')}`;
+            const st = n.status && n.status.text ? n.status.text : '';
+            if (n.kind === 'folder') return { id: `${pathKey}`, xl: 'folder', label: n.text, kind: 'nav', value: st };
+            if (n.kind === 'toggle') {
+                const act = Math.max(0, n.toggle.findIndex((o) => o.active));
+                const pend = b.pending.has(pathKey) ? b.pending.get(pathKey) : act;
+                return { id: pathKey, xl: 'toggle', label: n.text, kind: 'pick', value: n.toggle.map((o, k) => (k === pend ? `[${o.label || '-'}]` : o.label || '-') + (o.active ? '*' : '')).join(' '), changed: pend !== act, hint: `${st ? `${st}  ` : ''}\u25c4\u25ba choose, OK apply` };
+            }
+            if (n.kind === 'button') return { id: pathKey, xl: 'button', label: n.text, kind: 'action', value: st || 'OK', hint: 'OK sends' };
+            return { id: pathKey, xl: 'info', label: n.text, kind: 'info', value: st };
+        });
+        const c = b.xlConfirm && Date.now() < b.xlConfirm.until ? b.xlConfirm : null;
+        return { title: `XLINK  ${crumbs.slice(-1)[0]}`.toUpperCase(), rows: rows.length ? rows : [{ id: 'none', label: 'NO ITEMS', kind: 'info', value: '' }], hint: c ? `OK AGAIN: ${c.msg}` : 'Cabinet controls (XLink GMS)' };
     },
 
     async alarms(b) {
@@ -574,6 +600,37 @@ async function listOpts(link, inputName, prop) {
         const r = await link.request('GetInputPropertiesListPropertyItems', { inputName, propertyName: prop });
         return (r.propertyItems || []).filter((o) => o.itemEnabled !== false).map((o) => ({ value: o.itemValue, text: String(o.itemName || o.itemValue) }));
     } catch (_) { return []; }
+}
+
+// ------------------------------------------------------------------ XLINK on the unit OSD
+
+const XL_RISKY = /power|shutdown|shut down|reboot|flush|takeover|maintenance|dispense|eject|wake|standby|reset/i;
+
+async function xlinkMenu(b, force) {
+    if (!force && b.xlMenu && Date.now() - b.xlMenuAt < 4000) return b.xlMenu;
+    b.xlMenu = await deps.xlinkMenu(b.cabinet, !!force);
+    b.xlMenuAt = Date.now();
+    return b.xlMenu;
+}
+
+/** Run an XLink item from the OSD. Risky items and XLink's own warnings need a second OK (5 s), shown in the hint. */
+async function xlinkRun(b, path, op, value, label) {
+    const pathKey = `${path.join('.')}|${op}|${value}`;
+    const c = b.xlConfirm && b.xlConfirm.key === pathKey && Date.now() < b.xlConfirm.until ? b.xlConfirm : null;
+    if (!c && XL_RISKY.test(label)) {
+        b.xlConfirm = { key: pathKey, until: Date.now() + 5000, msg: `${label}` };
+        toast(b, `PRESS OK AGAIN: ${label}`, 'XLINK');
+        return;
+    }
+    const r = await deps.xlinkDo({ cabinet: b.cabinet, path, op, value, confirmed: !!(c && c.xlinkWarned) || !!c });
+    if (r.confirm && !c) {
+        b.xlConfirm = { key: pathKey, until: Date.now() + 5000, msg: `${r.confirm.header}: ${r.confirm.message}`.slice(0, 60), xlinkWarned: true };
+        toast(b, `PRESS OK AGAIN: ${r.confirm.header}`, 'XLINK', r.confirm.message);
+        return;
+    }
+    b.xlConfirm = null;
+    if (r.menu) { b.xlMenu = r.menu; b.xlMenuAt = Date.now(); }
+    toast(b, r.ok === false ? `FAILED: ${label}` : `${label}: DONE`, 'XLINK', r.failure || '');
 }
 
 /** Switch an input off wherever it is on (scenes and groups); returns where, for putting it back. */
@@ -1003,7 +1060,7 @@ async function powerOn(boxId, opts = {}) {
 function frame(b) { return b.stack[b.stack.length - 1]; }
 
 /** Pages whose numbers move on their own and are re-read while shown. */
-const LIVE_PAGES = new Set(['clock', 'diag', 'system', 'audio', 'align', 'fpsm', 'alarms']);
+const LIVE_PAGES = new Set(['clock', 'diag', 'system', 'audio', 'align', 'fpsm', 'alarms', 'xlink']);
 
 /** Read the top page from the box (OBS round trips) into its frame's cache. */
 async function buildPage(b) {
@@ -1113,6 +1170,13 @@ async function onKey(b, key) {
         return;
     }
     if (key === 'info') { b.info = !b.info; return; }
+    if (key === 'xlink') {
+        const top = b.open ? frame(b) : null;
+        if (top && top.page === 'xlink') { b.open = false; b.stack = []; b.pending.clear(); return; }
+        b.open = true;
+        b.stack = [{ page: 'xlink', path: [], cursor: 0, title: 'XLINK' }];
+        return;
+    }
     if (key === 'diag') { if (!b.open) b.open = true; b.stack = [{ page: 'main', cursor: 7 }, { page: 'diag', cursor: 0 }]; return; }
     if (!b.open) { if (key === 'exit' && b.info) b.info = false; return; }
     const f = frame(b);
@@ -1130,6 +1194,30 @@ async function onKey(b, key) {
     if (!row) return;
     const name = row.id.slice(row.id.indexOf(':') + 1);
     const dir = key === 'left' ? -1 : key === 'right' ? 1 : 0;
+    if (row.xl) {
+        const path = row.id.slice(3).split('.').map(Number);
+        if (row.xl === 'folder' && (key === 'ok' || key === 'right')) { b.stack.push({ page: 'xlink', path, cursor: 0, title: row.label }); return; }
+        const menu = await xlinkMenu(b);
+        let n = { children: menu.items };
+        for (const i of path) n = (n.children || [])[i];
+        if (!n) return;
+        if (row.xl === 'toggle') {
+            const act = Math.max(0, n.toggle.findIndex((o) => o.active));
+            const cur = b.pending.has(row.id) ? b.pending.get(row.id) : act;
+            if (dir) { b.pending.set(row.id, (cur + dir + n.toggle.length) % n.toggle.length); b.xlConfirm = null; return; }
+            if (key === 'ok') {
+                await xlinkRun(b, path, 'toggle', cur, `${n.text} ${n.toggle[cur].label || ''}`.trim());
+                if (!b.xlConfirm) b.pending.delete(row.id);
+            }
+            return;
+        }
+        if (row.xl === 'button' && key === 'ok') {
+            let anc = '';
+            { let l = menu.items; for (const i of path.slice(0, -1)) { anc += `${l[i].text} `; l = l[i].children || []; } }
+            await xlinkRun(b, path, 'send', undefined, `${anc}${n.text}`.trim());
+        }
+        return;
+    }
     if (row.kind === 'nav' && key === 'ok') {
         if (row.id.startsWith('cam:')) { b.stack.push({ page: 'cam', arg: row.id.slice(4), cursor: 0, title: row.label }); return; }
         b.stack.push({ page: row.id, cursor: 0, title: row.label });
@@ -1297,7 +1385,7 @@ async function onKey(b, key) {
     }
 }
 
-const KEYS = new Set(['up', 'down', 'left', 'right', 'ok', 'menu', 'diag', 'info', 'exit']);
+const KEYS = new Set(['up', 'down', 'left', 'right', 'ok', 'menu', 'diag', 'info', 'exit', 'xlink']);
 
 const NAV_ONLY = new Set(['up', 'down']);
 

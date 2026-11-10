@@ -359,6 +359,25 @@ async function main() {
     assert.strictEqual(qc.osd.faults()[0].overridden, true, 'a technician override clears the lock');
     await qc.osd.press('sat', '', 'menu');
 
+    // XLINK on a cabinet unit's OSD: the cabinet's XLink menu drawn by the unit, driven by the remote
+    v = await qc.osd.press('cab', 'chuni', 'xlink');
+    assert.match(v.page.title, /^XLINK/);
+    assert.deepStrictEqual(v.page.rows.map((r) => r.label), ['VISION Control', 'Power Switch', 'Game Select', 'Maintenance']);
+    assert.match(v.page.rows[1].value, /\[.*\]/, 'a toggle shows its options with the chosen one bracketed');
+    v = await qc.osd.press('cab', 'chuni', 'down');
+    v = await qc.osd.press('cab', 'chuni', 'right');
+    const hitsBefore = cab.hits.length;
+    v = await qc.osd.press('cab', 'chuni', 'ok');
+    assert.strictEqual(cab.hits.filter((h) => h.startsWith('/power/')).length, cab.hits.slice(0, hitsBefore).filter((h) => h.startsWith('/power/')).length, 'power needs a second OK');
+    assert.match(v.toast, /OK AGAIN/);
+    for (let i = 0; i < 2; i++) v = await qc.osd.press('cab', 'chuni', 'down');
+    v = await qc.osd.press('cab', 'chuni', 'ok');
+    assert.match(v.page.title, /MAINTENANCE/, 'OK opens an XLink folder');
+    v = await qc.osd.press('cab', 'chuni', 'exit');
+    assert.match(v.page.title, /^XLINK/);
+    v = await qc.osd.press('cab', 'chuni', 'xlink');
+    assert.strictEqual(v.open, false, 'XLINK again closes it');
+
     // a take on the unit (program scene change) flashes the STATUS box on its output
     emit('CurrentProgramSceneChanged', { sceneName: 'Chuni' });
     await until(() => qc.osd._boxes.get('sat').view && qc.osd._boxes.get('sat').view.strip);
