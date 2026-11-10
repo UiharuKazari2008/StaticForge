@@ -322,22 +322,45 @@
         return out;
     }
 
+    // the last pictures each workspace got (kept across opens: a reopen, or an open while the server
+    // connection is down, shows them at once)
+    const sampleCache = new Map();
+    let retryTimer = null;
+
     async function loadSamples() {
         const gen = ++loadGen;
-        let samples = {};
+        clearTimeout(retryTimer);
+        // what we already have first
+        if (sampleCache.size) applySamples(Object.fromEntries(sampleCache), true);
+        let samples = null;
         try {
             const c = window.wsClient;
             if (c && c.isConnected() && typeof c.getWorkspacePreviewSamples === 'function') {
                 const res = await Promise.race([
                     c.getWorkspacePreviewSamples(planets.map((p) => p.ws.id), 8, 256),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000))
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000))
                 ]);
-                samples = (res && res.samples) || (res && res.data && res.data.samples) || {};
+                samples = (res && res.samples) || (res && res.data && res.data.samples) || null;
             }
-        } catch (_) { samples = {}; }
-        if (gen !== loadGen) return;
+        } catch (_) { samples = null; }
+        if (gen !== loadGen || !shown) return;
+        if (!samples) {
+            // not connected (a server restart, the phone's link), slow or failed: ask again while open
+            retryTimer = setTimeout(() => { if (shown && gen === loadGen) loadSamples(); }, 3000);
+            if (!sampleCache.size) applySamples({}, false);
+            return;
+        }
+        Object.entries(samples).forEach(([id, v]) => sampleCache.set(id, v));
+        applySamples(samples, false);
+    }
+
+    function applySamples(samples, cached) {
         for (const p of planets) {
             const s = samples[p.ws.id];
+            // a fresh answer for a planet already showing these pictures keeps its slide
+            if (!cached && s && p.samplesFrom === s) continue;
+            if (s) p.samplesFrom = s;
+            else if (p.images.length) continue;
             let list = [];
             if (Array.isArray(s)) list = normalize(s);
             else if (s && typeof s === 'object') {
@@ -349,6 +372,15 @@
                     if (fav[k] && !list.includes(fav[k])) list.push(fav[k]);
                 }
                 if (Number.isFinite(Number(s.imageCount)) && s.imageCount >= 0) p.imageCount = s.imageCount;
+            }
+            if (!list.length && p.ws.id === activeId()) {
+                // the workspace on screen: the gallery the phone already has loaded
+                try {
+                    /* global allImages */
+                    const loaded = Array.isArray(window.originalAllImages) && window.originalAllImages.length ? window.originalAllImages
+                        : (typeof allImages !== 'undefined' && Array.isArray(allImages) ? allImages : []);
+                    list = normalize(loaded.filter((it) => it && (it.preview || it.base)).slice(0, 10));
+                } catch (_) { /* not loaded */ }
             }
             if (!list.length) {
                 try {
@@ -606,6 +638,7 @@
                 starsStop();
                 musicStop();
                 loadGen++;
+                clearTimeout(retryTimer);
             },
             softKeys() {
                 return {
