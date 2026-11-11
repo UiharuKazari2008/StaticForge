@@ -1380,14 +1380,13 @@
             page.innerHTML = `<div class="wm-set-scroll"><div class="wm-icongrid" role="list">${items.map((i) => iconCell(i)).join('')}</div></div>${tabsHtml(SET_TABS, gridTab)}`;
             bindGrid(page.querySelector('.wm-icongrid'), openPage);
             page.querySelectorAll('.wm-tab').forEach((t) => t.addEventListener('click', () => { gridTab = t.dataset.tab; renderGrid(); }));
-            if (sh.current === 'settings') refreshTitleKind();
+            if (sh.current === 'settings') { sh.setTitle('Settings'); refreshTitleKind(); }
         }
 
         function renderPage() {
             const { def, tab, draft, tabs } = open;
-            // WM: an applet started by a program carries its own name in the title bar; from the
-            // Settings grid the title stays Settings with the page name as the header
-            if (sh.current === 'settings') sh.setTitle(open.direct ? def.label : 'Settings');
+            // the open applet's name in the title bar, from the grid or started by a program (Yukimi, Nov 10)
+            if (sh.current === 'settings') sh.setTitle(def.label);
             page.innerHTML = `<div class="wm-form-hdr">${esc(def.label)}</div><div class="wm-set-scroll"><div class="wm-form"></div></div>${tabs.length ? tabsHtml(tabs, tab) : ''}`;
             const el = page.querySelector('.wm-form');
             const api = { rerender: () => { if (open && open.draft === draft) renderPage(); }, tab };
