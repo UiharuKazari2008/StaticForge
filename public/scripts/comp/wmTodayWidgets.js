@@ -375,6 +375,11 @@
     async function newDirectorSession(p) {
         const inst = window.directorInstance;
         open('director');
+        // the Director app's own New Session (its pages cleared, the composer up) once it is in front
+        const app = window.wmDirectorApp;
+        if (app && typeof app.newSessionWith === 'function') {
+            try { await app.newSessionWith(p); return; } catch (err) { console.warn('[wmTodayWidgets] new session', err); }
+        }
         if (!inst) return;
         try {
             if (inst.persona !== p && typeof inst.setPersona === 'function') await sh.busy(() => inst.setPersona(p), { paint: true });

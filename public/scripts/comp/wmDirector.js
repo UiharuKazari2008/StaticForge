@@ -538,7 +538,9 @@
         });
     }
 
-    window.wmDirectorApp = { attach: attachItems, handOff };
+    // newSessionWith(persona): the menu's New Session for that persona (her selected first), as the
+    // 6.5 home screen's Director pages start one (wmTodayWidgets.js); the app must be in front
+    window.wmDirectorApp = { attach: attachItems, handOff, newSessionWith: async (p) => { if (p) await switchPersona(p); await newSession(); } };
 
     // ---------------------------------------------------------------- composer
 
