@@ -1652,8 +1652,11 @@
      * The title bar / tray glyph for a notification: WM 6.1's white glyphs only (a reminder is
      * notify.dll's bell, anything else the speech bubble, shellres 4673), never a colour icon.
      */
+    // the icon follows the notification's kind (Yukimi, Nov 10): an error or a warning shows WM-style
+    // white glyphs of its own, a reminder the clock, anything else the speech bubble
+    const NOTE_KIND_ICON = { error: 'status-error', warning: 'status-warning', reminder: 'status-reminder' };
     function noteIcon(n) {
-        return artImageSet(n && n.type === 'reminder' ? 'status-reminder' : 'status-notify-many');
+        return artImageSet((n && NOTE_KIND_ICON[n.type]) || 'status-notify-many');
     }
 
     const STATUS_APP_LABEL = { mail: 'Messages', prints: 'Prints', director: 'Director', update: 'Updates', latency: 'High Latency' };
@@ -1663,7 +1666,13 @@
         const icon = shell.querySelector('[data-role="notify"]');
         const count = notes.length + statusFolded.length;
         icon.hidden = !count;
-        if (count > 1) {
+        // the most serious pending kind shows, also with several waiting
+        const worst = notes.find((n) => n.type === 'error') || notes.find((n) => n.type === 'warning');
+        if (count > 1 && worst) {
+            delete icon.dataset.icon;
+            icon.style.backgroundImage = noteIcon(worst);
+            icon.setAttribute('aria-label', `${count} notifications, ${worst.type === 'error' ? 'an error' : 'a warning'} among them`);
+        } else if (count > 1) {
             icon.dataset.icon = 'notify-many';
             icon.style.backgroundImage = '';
             icon.setAttribute('aria-label', `${count} notifications`);
@@ -3094,6 +3103,9 @@
             let raw = null;
             try { raw = localStorage.getItem('wmTodayItems'); list = JSON.parse(raw || 'null'); } catch (_) { list = null; }
             const off = new Set();
+            // a widget that ships switched off (defaultOn: false) stays off until Settings turns it on
+            const saved = new Set(Array.isArray(list) ? list.map((it) => it && it.id) : []);
+            todayWidgets.forEach((w) => { if (w.defaultOn === false && !saved.has(w.id)) off.add(w.id); });
             if (Array.isArray(list)) {
                 list.forEach((it) => { if (it && it.id && it.on === false) off.add(it.id); });
                 if (raw !== itemsKey) {
@@ -4360,7 +4372,7 @@
          */
         registerTodayItem: (w) => registerTodayItem(w),
         /** Today rows from apps: [{ id, label }] (Settings > Today > Items). */
-        listTodayItems: () => todayWidgets.map((w) => ({ id: w.id, label: w.label || w.id })),
+        listTodayItems: () => todayWidgets.map((w) => ({ id: w.id, label: w.label || w.id, defaultOn: w.defaultOn !== false })),
         /** A Today row's options: defs (Settings > Today > Items > Options...), and a stored value. */
         todayOptionDefs: (id) => todayOptionDefs(id),
         todayOption: (id, key) => todayOption(id, key),

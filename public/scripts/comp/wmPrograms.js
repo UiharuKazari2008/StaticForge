@@ -286,6 +286,18 @@
     const PHONE_DIRECT = new Set(['data-management', 'ispy', 'control-panel', 'explore-gallery', 'novels', 'image-search']);
     // desktop programs whose phone version is a Settings page
     const SETTINGS_PAGE = { alarm: 'clock' };
+    // Yukimi, Nov 10: no Toolbox folder; what belongs in Settings is there (WM 6.1 keeps Task
+    // Manager under Settings > System). These apps and desktop programs leave Programs.
+    const IN_SETTINGS_APPS = new Set(['taskmgr', 'accounts']);
+    const IN_SETTINGS_DESKTOP = new Set(['alarm', 'control-panel', 'data-management', 'taskmgr']);
+    const openDsap = (url) => { try { if (typeof window.openDsapInGrimoire === 'function') window.openDsapInGrimoire(url); } catch (err) { console.warn('Settings: open', url, err); } };
+    // Settings grid items that open an app (not a Settings page)
+    const SETTINGS_LINKS = [
+        { id: 'link-taskmgr', tab: 'system', label: 'Task Manager', icon: 'app-task-manager', app: 'taskmgr' },
+        { id: 'link-server-manager', tab: 'system', label: 'Server Manager', icon: 'app-control-panel', open: () => openDsap('dsap://dreamscape.jp/') },
+        { id: 'link-data-management', tab: 'system', label: 'Data Management', icon: 'app-data-management', open: () => openDsap('dsap://data.dreamscape.jp/') },
+        { id: 'link-accounts', tab: 'personal', label: 'Accounts', icon: 'app-accounts', app: 'accounts' }
+    ];
     const SHELL_ONLY = new Set(['today', 'programs', 'settings', 'help']);
 
     function desktopLaunchables(list) {
@@ -310,7 +322,7 @@
             if (!l || !l.launchId || !l.text || !l.imageIcon) return;
             const mapped = MAPPED[l.launchId];
             if (mapped && mapped.some((id) => have.has(id))) return;
-            if (SETTINGS_PAGE[l.launchId]) { items.push({ key: `d:${l.launchId}`, label: l.text, img: appIcon(l.imageIcon), settings: SETTINGS_PAGE[l.launchId] }); return; }
+            if (IN_SETTINGS_DESKTOP.has(l.launchId)) return;
             if (!PHONE_DIRECT.has(l.launchId) && !(l.dsap || /^dsap/i.test(String(l.url || '')))) return;
             items.push({ key: `d:${l.launchId}`, label: l.text, img: appIcon(l.imageIcon), desktop: l.text, launch: l });
         };
@@ -323,17 +335,15 @@
                 // games come later (Yukimi, Nov 10): listed, not yet playable on the phone
                 items.push({ key: `d:${g.launchId}`, label: g.text, img: appIcon(g.imageIcon), desktop: g.text, game: true });
             }
-        } else if (folder === 'toolbox') {
-            folderApps('toolbox');
-            desktopLaunchables('toolbox').forEach(desktopItem);
         } else {
             if (desktopLaunchables('games').length) items.push({ key: 'folder:games', label: 'Games', img: wmLargeIcon('app-games'), folder: 'games' });
-            if (desktopLaunchables('toolbox').length) items.push({ key: 'folder:toolbox', label: 'Toolbox', img: appIcon('vista-folder.png'), folder: 'toolbox' });
+            // no Toolbox folder: its programs sit here with the rest
             for (const a of shellApps) {
-                if (!a.inStart || SHELL_ONLY.has(a.id) || a.programsFolder) continue;
+                if (!a.inStart || SHELL_ONLY.has(a.id) || IN_SETTINGS_APPS.has(a.id) || (a.programsFolder && a.programsFolder !== 'toolbox')) continue;
                 items.push({ key: `a:${a.id}`, label: a.startLabel || a.title || a.id, img: wmLargeIcon(a.icon || 'app-programs') });
             }
             desktopLaunchables().forEach(desktopItem);
+            desktopLaunchables('toolbox').forEach(desktopItem);
         }
         const coll = new Intl.Collator(undefined, { sensitivity: 'base' });
         return items.sort((x, y) => (y.folder ? 1 : 0) - (x.folder ? 1 : 0) || coll.compare(x.label, y.label));
@@ -435,7 +445,7 @@
         const out = [];
         const seen = new Set();
         // the shell's rows and the rows apps add (wmShell.registerTodayItem: Accounts ...)
-        const rows = TODAY_ROWS.concat(sh && typeof sh.listTodayItems === 'function' ? sh.listTodayItems().map((w) => [w.id, w.label]) : []);
+        const rows = TODAY_ROWS.concat(sh && typeof sh.listTodayItems === 'function' ? sh.listTodayItems().map((w) => [w.id, w.label, w.defaultOn]) : []);
         if (Array.isArray(saved)) {
             for (const r of saved) {
                 const def = r && rows.find(([id]) => id === r.id);
@@ -444,7 +454,7 @@
                 out.push({ id: def[0], label: def[1], on: r.on !== false });
             }
         }
-        for (const [id, label] of rows) if (!seen.has(id)) out.push({ id, label, on: true });
+        for (const [id, label, defaultOn] of rows) if (!seen.has(id)) out.push({ id, label, on: defaultOn !== false });
         return out;
     }
 
@@ -1331,7 +1341,10 @@
 
         function renderGrid() {
             if (!page) return;
+            const have = new Set(sh.listApps().map((a) => a.id));
+            const links = SETTINGS_LINKS.filter((l) => l.tab === gridTab && (!l.app || have.has(l.app)));
             const items = pagesFor(gridTab).map((p) => ({ key: p.id, label: p.label, img: { src: sh.art.url(p.icon), srcset: sh.art.srcset(p.icon) } }))
+                .concat(links.map((l) => ({ key: l.id, label: l.label, img: { src: sh.art.url(l.icon), srcset: sh.art.srcset(l.icon) } })))
                 .sort((a, b) => a.label.localeCompare(b.label));
             page.innerHTML = `<div class="wm-set-scroll"><div class="wm-icongrid" role="list">${items.map((i) => iconCell(i)).join('')}</div></div>${tabsHtml(SET_TABS, gridTab)}`;
             bindGrid(page.querySelector('.wm-icongrid'), openPage);
@@ -1357,6 +1370,12 @@
         }
 
         function openPage(id, tab, opts) {
+            const link = SETTINGS_LINKS.find((l) => l.id === id);
+            if (link) {
+                page.querySelectorAll('.wm-icongrid-cell.is-selected').forEach((c) => c.classList.remove('is-selected'));
+                if (link.app) sh.open(link.app); else if (link.open) link.open();
+                return true;
+            }
             const def = PAGES.find((p) => p.id === id);
             if (!def || !safeAvailable(def)) return false;
             const exts = extsFor(def);

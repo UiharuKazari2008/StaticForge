@@ -2716,7 +2716,8 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
 }
 
 /* the two dice (Yukimi, Nov 10): New seed (rollSeedBtn) keeps NovelAI's dice; Random Prompt
- * (randomPromptToggleBtn, a toggle) is a shuffle glyph of our own so the two read apart */
+ * (randomPromptToggleBtn, a toggle) is a boxed question mark of our own (a clearer glyph than the
+ * first shuffle) so the two read apart */
 .wm-studio #manualModal #randomPromptToggleBtn .nai-dice {
     display: inline-block !important;
     width: calc(11 * var(--wm-px)) !important;
@@ -2726,7 +2727,7 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
     vertical-align: middle;
     color: transparent !important;
     -webkit-text-fill-color: transparent !important;
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M8 2h1v1h-1zM0 3h3v1h-3zM6 3h5v1h-5zM3 4h1v1h-1zM5 4h1v1h-1zM8 4h1v1h-1zM4 5h1v1h-1zM3 6h1v1h-1zM5 6h1v1h-1zM8 6h1v1h-1zM0 7h3v1h-3zM6 7h5v1h-5zM8 8h1v1h-1z'/%3E%3C/svg%3E") center / 100% 100% no-repeat !important;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h11v1h-11zM0 1h1v1h-1zM10 1h1v1h-1zM0 2h1v1h-1zM4 2h3v1h-3zM10 2h1v1h-1zM0 3h1v1h-1zM3 3h1v1h-1zM7 3h1v1h-1zM10 3h1v1h-1zM0 4h1v1h-1zM7 4h1v1h-1zM10 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM10 5h1v1h-1zM0 6h1v1h-1zM5 6h1v1h-1zM10 6h1v1h-1zM0 7h1v1h-1zM10 7h1v1h-1zM0 8h1v1h-1zM5 8h1v1h-1zM10 8h1v1h-1zM0 9h1v1h-1zM10 9h1v1h-1zM0 10h11v1h-11z'/%3E%3C/svg%3E") center / 100% 100% no-repeat !important;
 }
 
 .wm-studio #manualModal #randomPromptToggleBtn .nai-dice::before,
@@ -2867,4 +2868,66 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge:is(.full-model-badge, .curated-badge, .legacy-badge, .legacy-furry-badge) {
     color: #fff !important;
     -webkit-text-fill-color: #fff !important;
+}
+
+/* ---- the band, compact (Yukimi, Nov 10: Steps / Guidance / Rescale narrower, more on a row; the
+ * lock buttons in the grid, not loose under it; folding Settings shrinks the band to its header) ---- */
+@container wms (min-width: 40em) and (aspect-ratio >= 3 / 4) and (min-height: 40em) {
+    .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder.control-holder {
+        grid-template-columns: repeat(auto-fill, minmax(calc(158 * var(--wm-px)), 1fr)) !important;
+        grid-auto-flow: row !important;
+        column-gap: calc(8 * var(--wm-px)) !important;
+        row-gap: calc(3 * var(--wm-px)) !important;
+    }
+
+    .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder.control-holder > .form-row > .form-group.form-group {
+        grid-column: auto / span 1 !important;
+        grid-template-columns: none !important;
+        display: flex !important;
+        /* the desktop's groups stack label over field (column): one row here */
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        gap: calc(4 * var(--wm-px));
+        min-width: 0;
+        height: auto !important;
+    }
+
+    .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder.control-holder > .form-row > .form-group.form-group > label {
+        flex: 0 0 calc(60 * var(--wm-px));
+        width: auto !important;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder.control-holder > .form-row > .form-group.form-group > :not(label) {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    /* the wide fields take two cells */
+    .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder.control-holder > :is(.control-row-model, .control-row-resolution, .control-row-sampler, .control-row-seed) > .form-group.form-group {
+        grid-column: auto / span 2 !important;
+    }
+
+    /* the lock buttons: a cell of their own after Seed, no label */
+    .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder.control-holder > .control-row-lockcontrols > .form-group.form-group > label {
+        display: none !important;
+    }
+
+    .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder.control-holder > .control-row-seed > .form-group.form-group {
+        order: 20;
+    }
+
+    .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder.control-holder > .control-row-lockcontrols > .form-group.form-group {
+        order: 21;
+        justify-content: flex-start;
+    }
+
+    /* folded: the band is its header only, the form and the Print take the room */
+    .wm-studio.wms-fold-settings > * {
+        --wms-band-h: calc(28 * var(--wm-px));
+    }
 }
