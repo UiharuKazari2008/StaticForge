@@ -11,6 +11,7 @@ const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 // Every keyed TokenRouter request goes through the account's rate-limit queue (#418).
 const gate = require('./tokenRouterGate');
 
@@ -362,6 +363,37 @@ function toolDefinitions(tools, names) {
         });
 }
 
+// Deferred tools: the CLI offers only tools loaded through ToolSearch and lists the rest by
+// name in text. OpenAI-style hosts that constrain tool names to the offered list (DeepInfra:
+// a call to an unloaded tool came out as the nearest offered one, apply_studio_changes ->
+// get_studio_state with its own arguments) then run the wrong tool silently. Offer every listed
+// name as a stub so the call reaches the CLI under its real name, which answers "load it first".
+const DEFERRED_NAME = /\bmcp__[A-Za-z0-9-]+__[A-Za-z0-9_-]+/g;
+const MAX_DEFERRED_STUBS = 300;
+function deferredToolStubs(body, offered) {
+    const have = new Set((Array.isArray(body.tools) ? body.tools : []).map((tool) => tool && tool.name));
+    if (!have.has('ToolSearch')) return [];
+    const texts = [systemText(body.system)];
+    (Array.isArray(body.messages) ? body.messages : []).forEach((message) => {
+        if (!message || message.role !== 'user') return;
+        if (typeof message.content === 'string') texts.push(message.content);
+        else if (Array.isArray(message.content)) message.content.forEach((block) => { if (block && block.type === 'text') texts.push(block.text || ''); });
+    });
+    const found = new Set();
+    texts.forEach((text) => { (String(text).match(DEFERRED_NAME) || []).forEach((name) => { if (!have.has(name)) found.add(name); }); });
+    const taken = new Set(offered.map((tool) => tool.function.name));
+    return Array.from(found).slice(0, MAX_DEFERRED_STUBS)
+        .filter((name) => name.length <= 64 && !taken.has(name))
+        .map((name) => ({
+            type: 'function',
+            function: {
+                name,
+                description: `Not loaded yet. Load it first with ToolSearch (query "select:${name}"), then call it with its real arguments.`,
+                parameters: { type: 'object', properties: {}, additionalProperties: true }
+            }
+        }));
+}
+
 // options: { model, effort, stream, noImages, noReasoningContent, noEffort, noMaxTokens }
 function toOpenAIRequest(body, options) {
     const opts = options || {};
@@ -389,6 +421,7 @@ function toOpenAIRequest(body, options) {
     if (typeof body.top_p === 'number') request.top_p = body.top_p;
     if (Array.isArray(body.stop_sequences) && body.stop_sequences.length) request.stop = body.stop_sequences.slice(0, 4);
     const tools = toolDefinitions(body.tools, names);
+    tools.push(...deferredToolStubs(body, tools));
     if (tools.length) {
         request.tools = tools;
         const choice = toolChoice(body.tool_choice, names);
@@ -1080,11 +1113,28 @@ function relaxerApplies(key, request) {
     return false;
 }
 
+// Temporary tool-call capture (#735 Director tool substitution): on while the flag file exists.
+// Writes the offered tool names, raw upstream tool_calls deltas and the tool_use blocks sent on.
+const CAPTURE_DIR = path.join(os.homedir(), '.cache', 'dreamscape-director', 'bridge-capture');
+function captureOpen(body, run) {
+    try {
+        if (!fs.existsSync(path.join(CAPTURE_DIR, 'on'))) return null;
+        const file = path.join(CAPTURE_DIR, `${Date.now()}-${crypto.randomBytes(3).toString('hex')}.jsonl`);
+        const last = (Array.isArray(body.messages) ? body.messages : []).slice(-2).map((m) => ({
+            role: m.role,
+            blocks: Array.isArray(m.content) ? m.content.map((b) => b.type === 'tool_use' ? `tool_use:${b.name}` : b.type === 'tool_result' ? 'tool_result' : b.type) : 'text'
+        }));
+        const write = (o) => { try { fs.appendFileSync(file, JSON.stringify(o) + '\n'); } catch (_) { /* capture only */ } };
+        write({ k: 'req', t: Date.now(), provider: run.providerId, model: run.model, tools: (body.tools || []).map((x) => x && x.name), last });
+        return write;
+    } catch (_) { return null; }
+}
+
 function writeEvent(res, name, data) {
     res.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-async function relayStream(upstream, res, translator, abort) {
+async function relayStream(upstream, res, translator, abort, capture) {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
     translator.start().forEach(([name, data]) => writeEvent(res, name, data));
     let idle = null;
@@ -1108,6 +1158,11 @@ async function relayStream(upstream, res, translator, abort) {
             failed = upstreamMessage(JSON.stringify(json), 'stream error');
             return;
         }
+        if (capture) {
+            const choice = json.choices && json.choices[0];
+            const delta = choice && choice.delta;
+            if ((delta && delta.tool_calls) || (choice && choice.finish_reason)) capture({ k: 'up', tool_calls: delta && delta.tool_calls, finish: choice.finish_reason || undefined });
+        }
         translator.chunk(json).forEach(([name, data]) => writeEvent(res, name, data));
     };
     try {
@@ -1129,8 +1184,13 @@ async function relayStream(upstream, res, translator, abort) {
     if (failed) {
         writeEvent(res, 'error', { type: 'error', error: { type: 'api_error', message: failed } });
     } else {
-        translator.finish().forEach(([name, data]) => writeEvent(res, name, data));
+        translator.finish().forEach(([name, data]) => {
+            if (capture && name === 'content_block_start' && data.content_block && data.content_block.type === 'tool_use') capture({ k: 'down', name: data.content_block.name });
+            if (capture && name === 'content_block_delta' && data.delta && data.delta.type === 'input_json_delta') capture({ k: 'downArgs', bytes: data.delta.partial_json.length, head: data.delta.partial_json.slice(0, 200) });
+            writeEvent(res, name, data);
+        });
     }
+    if (capture) capture({ k: 'end', failed: failed || undefined });
     res.end();
 }
 
@@ -1157,7 +1217,7 @@ async function handleMessages(req, res) {
     }
     const names = toolNames(body.tools);
     if (stream) {
-        await relayStream(upstream, res, new StreamTranslator(body.model, names), abort);
+        await relayStream(upstream, res, new StreamTranslator(body.model, names), abort, captureOpen(body, run));
         return;
     }
     sendJson(res, 200, toAnthropicMessage(await upstream.json(), body.model, names));
