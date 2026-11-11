@@ -164,3 +164,14 @@ html.ui-mobile .wm-today-row[data-row="tasks"] .wm-today-text { white-space: pre
 
 html.ui-mobile .wm-notify[data-wm-paint="zoom"] { visibility: hidden; }
 html.ui-mobile .wm-notify[data-wm-paint="frame"] > .wm-notify-body > * { visibility: hidden; }
+
+/* ---- message box, first paint (wmShell.js messageBox): 6.1 the empty outline; 6.5 the first text
+ * line only (14.5-unit line pitch), the buttons right under it ---- */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msgbox[data-wm-paint="first"] > * {
+    visibility: hidden;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox[data-wm-paint="first"] .wm-msgbox-text {
+    max-height: calc(14.5 * var(--wm-px));
+    overflow: hidden;
+}

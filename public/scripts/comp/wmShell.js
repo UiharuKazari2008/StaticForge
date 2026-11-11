@@ -3728,6 +3728,11 @@
                 }
             }
             layer.hidden = false;
+            // the first paint (recorded): 6.1 an empty outline, 6.5 the first text line only with
+            // the buttons right under it; whole a tick later (wm-stage.css)
+            const painted = layer.querySelector('.wm-msgbox');
+            painted.dataset.wmPaint = 'first';
+            setTimeout(() => { delete painted.dataset.wmPaint; }, STAGE_TICK);
             // WM: the title bar's corner goes empty while a message box is up
             refreshTitleAction();
             // MessageBeep by the icon (none: MB_OK, the default beep); an edit box with no icon is a
