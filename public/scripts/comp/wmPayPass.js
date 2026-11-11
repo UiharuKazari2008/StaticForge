@@ -86,14 +86,18 @@
         if (!pos || !data.pos.some((p) => p.mac === pos)) pos = data.pos[0] ? data.pos[0].mac : '';
     }
 
+    let offlineNoted = false; // a background refresh failed: noted once until the server answers again
+
     async function refresh(opts = {}) {
         try {
             if (opts.quiet) await load();
             else await sh.busy(load, { paint: true });
+            offlineNoted = false;
         } catch (err) {
             online = false;
             const text = `The PayPass server could not be reached.\n\n${(err && err.message) || ''}`.trim();
-            if (opts.quiet) { if (!data) sh.notify({ title: TITLE, icon: 'error', text }); } else await box(text, 'error');
+            // a background refresh: one notification per outage, not one every few seconds
+            if (opts.quiet) { if (!offlineNoted) { offlineNoted = true; sh.notify({ title: TITLE, icon: 'error', text, asNote: true }); } } else await box(text, 'error');
         }
         renderMain();
         const t = top();
@@ -906,6 +910,28 @@
         }, 5000);
     }
 
+    let firstLoading = false;
+    async function firstLoad() {
+        if (firstLoading) return;
+        firstLoading = true;
+        if (page) page.classList.add('is-loading');
+        try {
+            await sh.busy(load, { paint: true, timeout: 20000 });
+        } catch (err) {
+            firstLoading = false;
+            online = false;
+            await sh.messageBox({ title: TITLE, icon: 'error', modal: true, text: `PayPass Operator cannot start: the PayPass server could not be reached.\n\n${(err && err.message) || ''}`.trim() });
+            if (typeof sh.endApp === 'function') sh.endApp(APP_ID); else sh.back();
+            return;
+        }
+        firstLoading = false;
+        if (page) page.classList.remove('is-loading');
+        if (!shown) return;
+        renderMain();
+        renderLayer();
+        startTimer();
+    }
+
     function register() {
         sh = window.wmShell;
         if (!sh || typeof sh.registerApp !== 'function') return;
@@ -916,13 +942,15 @@
             startLabel: 'PayPass Operator',
             icon: ICON,
             inStart: 'programs',
-            programsFolder: 'toolbox',
+            programsFolder: 'amusementvision',
             sip: true,
             mount,
             show() {
                 shown = true;
+                // the first open loads behind the wait cursor; no server: one dialog, then the app closes
+                if (!data) { void firstLoad(); return; }
                 renderLayer();
-                if (!data || Date.now() - loadedAt > 30000) void refresh({ quiet: !!data });
+                if (Date.now() - loadedAt > 30000) void refresh({ quiet: true });
                 startTimer();
             },
             hide() {

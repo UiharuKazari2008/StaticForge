@@ -291,6 +291,20 @@
     const IN_SETTINGS_APPS = new Set(['taskmgr', 'accounts']);
     const IN_SETTINGS_DESKTOP = new Set(['alarm', 'control-panel', 'data-management', 'taskmgr']);
     const openDsap = (url) => { try { if (typeof window.openDsapInGrimoire === 'function') window.openDsapInGrimoire(url); } catch (err) { console.warn('Settings: open', url, err); } };
+    // Programs folders (Yukimi, Nov 10): the Dreamscape suite in one folder, the AmusementVISION
+    // operator apps in another (as the desktop's program folders); apps name theirs with
+    // programsFolder, the suite's are listed here
+    const PROGRAM_FOLDERS = {
+        dreamscape: { label: 'Dreamscape', icon: () => appIcon('dreamscape-logo.png') },
+        amusementvision: { label: 'AmusementVISION', icon: () => wmLargeIcon('app-xlink') }
+    };
+    const DREAMSCAPE_APPS = new Set(['studio', 'director', 'spellcaster', 'phasewalker', 'atelier', 'reference', 'characters', 'expanders', 'spellbook', 'emotion', 'teleport', 'chat']);
+    const DREAMSCAPE_DESKTOP = new Set(['explore-gallery', 'novels', 'ispy', 'image-search']);
+    // WM 6.1 art for desktop entries the phone lists as they are (the dsap apps)
+    const DESKTOP_WM_ART = { 'explore-gallery': 'app-agora', novels: 'app-novels', ispy: 'app-image-search', 'image-search': 'app-image-search', 'data-management': 'app-data-management', 'control-panel': 'app-control-panel', import: 'app-import' };
+    const appFolder = (a) => (a.programsFolder && a.programsFolder !== 'toolbox' ? a.programsFolder : (DREAMSCAPE_APPS.has(a.id) ? 'dreamscape' : null));
+    const desktopFolder = (l) => (DREAMSCAPE_DESKTOP.has(l.launchId) ? 'dreamscape' : null);
+
     // Settings grid items that open an app (not a Settings page)
     const SETTINGS_LINKS = [
         { id: 'link-taskmgr', tab: 'system', label: 'Task Manager', icon: 'app-task-manager', app: 'taskmgr' },
@@ -324,10 +338,12 @@
             if (mapped && mapped.some((id) => have.has(id))) return;
             if (IN_SETTINGS_DESKTOP.has(l.launchId)) return;
             if (!PHONE_DIRECT.has(l.launchId) && !(l.dsap || /^dsap/i.test(String(l.url || '')))) return;
-            items.push({ key: `d:${l.launchId}`, label: l.text, img: appIcon(l.imageIcon), desktop: l.text, launch: l });
+            if ((desktopFolder(l) || null) !== (folder || null)) return;
+            const art = DESKTOP_WM_ART[l.launchId];
+            items.push({ key: `d:${l.launchId}`, label: l.text, img: art ? wmLargeIcon(art) : appIcon(l.imageIcon), desktop: l.text, launch: l });
         };
         // phone apps filed in a Programs folder (registerApp programsFolder: 'toolbox')
-        const folderApps = (f) => shellApps.filter((a) => a.inStart && a.programsFolder === f && !SHELL_ONLY.has(a.id))
+        const folderApps = (f) => shellApps.filter((a) => a.inStart && appFolder(a) === f && !SHELL_ONLY.has(a.id) && !IN_SETTINGS_APPS.has(a.id))
             .forEach((a) => items.push({ key: `a:${a.id}`, label: a.startLabel || a.title || a.id, img: wmLargeIcon(a.icon || 'app-programs') }));
         if (folder === 'games') {
             for (const g of desktopLaunchables('games')) {
@@ -335,11 +351,16 @@
                 // games come later (Yukimi, Nov 10): listed, not yet playable on the phone
                 items.push({ key: `d:${g.launchId}`, label: g.text, img: appIcon(g.imageIcon), desktop: g.text, game: true });
             }
+        } else if (PROGRAM_FOLDERS[folder]) {
+            folderApps(folder);
+            desktopLaunchables().forEach(desktopItem);
+            desktopLaunchables('toolbox').forEach(desktopItem);
         } else {
             if (desktopLaunchables('games').length) items.push({ key: 'folder:games', label: 'Games', img: wmLargeIcon('app-games'), folder: 'games' });
+            for (const [id, f] of Object.entries(PROGRAM_FOLDERS)) items.push({ key: `folder:${id}`, label: f.label, img: f.icon(), folder: id });
             // no Toolbox folder: its programs sit here with the rest
             for (const a of shellApps) {
-                if (!a.inStart || SHELL_ONLY.has(a.id) || IN_SETTINGS_APPS.has(a.id) || (a.programsFolder && a.programsFolder !== 'toolbox')) continue;
+                if (!a.inStart || SHELL_ONLY.has(a.id) || IN_SETTINGS_APPS.has(a.id) || appFolder(a)) continue;
                 items.push({ key: `a:${a.id}`, label: a.startLabel || a.title || a.id, img: wmLargeIcon(a.icon || 'app-programs') });
             }
             desktopLaunchables().forEach(desktopItem);
@@ -361,7 +382,7 @@
             const box = page.querySelector('.wm-icongrid');
             box.innerHTML = items.map((i) => iconCell(i)).join('');
             page.querySelector('.wm-pg-scroll').scrollTop = 0;
-            if (sh.current === 'programs') sh.setTitle(folder === 'games' ? 'Games' : folder === 'toolbox' ? 'Toolbox' : 'Programs');
+            if (sh.current === 'programs') sh.setTitle(folder === 'games' ? 'Games' : PROGRAM_FOLDERS[folder] ? PROGRAM_FOLDERS[folder].label : 'Programs');
         }
 
         function openItem(key) {

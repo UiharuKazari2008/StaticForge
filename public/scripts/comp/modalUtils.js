@@ -7796,6 +7796,7 @@ const START_MENU_PACKAGE_APPS = [
     ['naxt', 'Atelier'],
     ['explore-gallery', 'Agora'],
     ['novels', 'Novels'],
+    ['ispy', 'Image Search'],
     ['character-db', 'Characters'],
     ['expanders', 'Expanders'],
     ['presets', 'Spellbook']

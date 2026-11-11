@@ -521,3 +521,8 @@
         flex-wrap: wrap;
     }
 }
+
+/* the first open, while the overview loads behind the wait cursor: nothing drawn yet */
+.wm-page.is-loading > * {
+    visibility: hidden;
+}
