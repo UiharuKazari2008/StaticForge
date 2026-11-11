@@ -2211,6 +2211,25 @@ class DirectorMascot {
         }
     }
 
+    // A zero-size marker at her mouth on the head layer: where it is on screen is where her mouth is,
+    // through every transform of the rig (onPrint aims at it each frame).
+    mouthProbe(mouth) {
+        const head = this.el && this.el.head;
+        const size = this.manifest && this.manifest.size;
+        if (!head || !Array.isArray(size) || !Array.isArray(mouth)) return null;
+        let probe = head.querySelector(':scope > .dm-mouth-probe');
+        if (!probe) {
+            probe = document.createElement('i');
+            probe.className = 'dm-mouth-probe';
+            probe.setAttribute('aria-hidden', 'true');
+            probe.style.cssText = 'position:absolute;width:0;height:0;pointer-events:none;';
+            head.appendChild(probe);
+        }
+        probe.style.left = `${(mouth[0] / size[0]) * 100}%`;
+        probe.style.top = `${(mouth[1] / size[1]) * 100}%`;
+        return probe;
+    }
+
     // A finished print: a polaroid of it drifts in from the prints strip and she eats it (#742): her
     // mouth opens as it comes close, it goes in, she chews, swallows, and her belly answers (the stage's
     // printed body, a jiggle). A masked or gesturing pose drops first: she eats with her own mouth.
@@ -2290,20 +2309,58 @@ class DirectorMascot {
             return;
         }
         // From the strip: it starts at the thumbnail's size, lifts out, arcs over to her face and goes
-        // into her mouth edge first (squeezed flat as it passes her lips).
+        // into her mouth edge first (squeezed flat as it passes her lips). The flight is anchored to
+        // her (Yukimi 2026-11-11): every frame aims at where her mouth is now (a probe on her head
+        // layer, so her sway, nods, breathing and the lean-in all carry it), and it lands in her mouth
+        // whatever she is doing. Transform and opacity of one small card: no layout of hers is touched.
         const startScale = fromStrip ? Math.max(0.2, Math.min(1, fromBox.width / w)) : 0.6;
-        const arcX = fromStrip ? sx + (tx - sx) * 0.45 : sx + (tx - sx) * 0.3;
-        const arcY = Math.min(sy, ty) - stage.height * 0.06;
-        const nearX = tx + (left ? 1 : -1) * w * 0.34;
-        const anim = card.animate([
-            { transform: `${place(sx, fromStrip ? sy : sy + 40)} rotate(0deg) scale(${startScale})`, opacity: fromStrip ? 1 : 0 },
-            { transform: `${place(fromStrip ? sx + (left ? -12 : 12) : sx, sy)} rotate(${tilt}deg) scale(1)`, opacity: 1, offset: 0.18 },
-            { transform: `${place(arcX, arcY)} rotate(${tilt / 2}deg) scale(0.9)`, opacity: 1, offset: 0.45 },
-            { transform: `${place(nearX, ty - 4)} rotate(${-tilt}deg) scale(0.42)`, opacity: 1, offset: 0.76 },
-            { transform: `${place(tx, ty)} rotate(${-tilt * 2}deg) scale(0.2, 0.14)`, opacity: 1, offset: 0.92 },
-            { transform: `${place(tx, ty)} rotate(${-tilt * 2}deg) scale(0.05, 0.02)`, opacity: 0 }
-        ], { duration: DURATION, easing: 'ease-in-out', fill: 'forwards' });
-        anim.onfinish = swallow;
+        const probe = this.mouthProbe(mouth);
+        const aim = () => {
+            const box = probe && probe.isConnected ? probe.getBoundingClientRect() : null;
+            if (!box || (!box.left && !box.top)) return [tx, ty];
+            if (fromStrip) return [box.left, box.top];
+            const now = this.root.getBoundingClientRect();
+            return [box.left - now.left, box.top - now.top];
+        };
+        const path = (mx, my) => {
+            const arcX = fromStrip ? sx + (mx - sx) * 0.45 : sx + (mx - sx) * 0.3;
+            const arcY = Math.min(sy, my) - stage.height * 0.06;
+            const nearX = mx + (left ? 1 : -1) * w * 0.34;
+            // [offset, x, y, rotate, scaleX, scaleY, opacity]
+            return [
+                [0, sx, fromStrip ? sy : sy + 40, 0, startScale, startScale, fromStrip ? 1 : 0],
+                [0.18, fromStrip ? sx + (left ? -12 : 12) : sx, sy, tilt, 1, 1, 1],
+                [0.45, arcX, arcY, tilt / 2, 0.9, 0.9, 1],
+                [0.76, nearX, my - 4, -tilt, 0.42, 0.42, 1],
+                [0.92, mx, my, -tilt * 2, 0.2, 0.14, 1],
+                [1, mx, my, -tilt * 2, 0.05, 0.02, 0]
+            ];
+        };
+        const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+        const started = performance.now();
+        let done = false;
+        const finish = () => { if (done) return; done = true; swallow(); };
+        const step = (now) => {
+            if (done) return;
+            if (!card.isConnected) { finish(); return; }
+            const raw = Math.max(0, Math.min(1, (now - started) / DURATION));
+            const t = ease(raw);
+            const [mx, my] = aim();
+            const keys = path(mx, my);
+            let i = 1;
+            while (i < keys.length - 1 && t > keys[i][0]) i++;
+            const from0 = keys[i - 1]; const to = keys[i];
+            const f = Math.max(0, Math.min(1, (t - from0[0]) / Math.max(0.0001, to[0] - from0[0])));
+            const v = (n) => from0[n] + (to[n] - from0[n]) * f;
+            card.style.transform = `${place(v(1), v(2))} rotate(${v(3).toFixed(2)}deg) scale(${v(4).toFixed(3)}, ${v(5).toFixed(3)})`;
+            card.style.opacity = v(6).toFixed(3);
+            if (raw < 1) requestAnimationFrame(step);
+            else finish();
+        };
+        step(started);
+        requestAnimationFrame(step);
+        // a tab that stops drawing mid-flight still swallows
+        this.later(finish, DURATION + 900);
         this.cue({ expression: 'surprised', holdMs: DURATION * 0.5 });
         // her mouth opens while the print is still on its way, and she leans in to take it
         this.later(() => {

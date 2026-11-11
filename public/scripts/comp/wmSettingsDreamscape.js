@@ -379,7 +379,7 @@
 
     // ---- Phone (#732): this device's Director options (wmDirector.js wmDirectorPhonePrefs, localStorage)
     const PHONE_KEY = 'wmDirectorPhone';
-    const PHONE_DEFAULTS = { allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, wideLog: false };
+    const PHONE_DEFAULTS = { allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, wideLog: false, wideSolo: false };
     function phoneRead() {
         const api = window.wmDirectorPhonePrefs;
         if (api && typeof api.get === 'function') return api.get();
@@ -399,7 +399,8 @@
         ['openPrints', 'Open new prints in the picture view'],
         ['notifyTurns', 'Notify me when a turn ends in the background'],
         ['printStrip', 'Show prints under her text box'],
-        ['wideLog', 'Show the log beside her on wide screens']
+        ['wideLog', 'Show the log beside her on wide screens'],
+        ['wideSolo', 'Show only her on wide screens']
     ];
 
     function dirRenderPhone(el, st) {
@@ -408,7 +409,7 @@
             ${ui.check('allowStudio', PHONE_ROWS[0][1], p.allowStudio)}
             ${ui.note('Off: she makes pictures on the server, and uses Studio only while it is already open.')}
             ${PHONE_ROWS.slice(1).map(([k, label]) => ui.check(k, label, p[k])).join('')}
-            ${ui.note('Wide screens show her prints beside her. Menu > Log shows the log there instead.')}`;
+            ${ui.note('Wide screens show her prints beside her. Menu > Log shows the log there instead. Only her: no column at all.')}`;
         PHONE_ROWS.forEach(([k]) => {
             const box = el.querySelector(`input[name="${k}"]`);
             if (box) box.addEventListener('change', () => { p[k] = box.checked; });

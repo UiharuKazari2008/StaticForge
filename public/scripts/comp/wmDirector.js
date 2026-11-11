@@ -98,9 +98,11 @@
      *   notifyTurns   a turn that ends while the app is in the background raises a notification
      *   printStrip    her prints as a strip under the text box (the desktop's prints sidebar)
      *   wideLog       wide screens show the log beside her (off: the prints gallery column)
+     *   wideSolo      wide screens show only her: no column, the page behaves as a big phone (Menu > Log
+     *                 lays the log over her, Reply opens the composer at the bottom)
      */
     const PREF_KEY = 'wmDirectorPhone';
-    const PREF_DEFAULTS = Object.freeze({ allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, wideLog: false });
+    const PREF_DEFAULTS = Object.freeze({ allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, wideLog: false, wideSolo: false });
     let prefCache = null;
     function prefs() {
         if (prefCache) return prefCache;
@@ -163,10 +165,12 @@
         return v === 'wide' ? 'wide' : 'phone';
     }
 
+    let recheckLayout = () => {};
     function watchLayout() {
         if (!page || typeof ResizeObserver !== 'function') return;
         const check = () => {
             const now = readLayout();
+            if (page.dataset.wmdLayout !== now) page.dataset.wmdLayout = now;
             if (now === layout) return;
             layout = now;
             // the log is beside her now: a peek left on would hide her text box for nothing
@@ -179,6 +183,8 @@
             if (isCurrent()) { ws.refreshSoftKeys(); ws.syncHistory(); }
         };
         layout = readLayout();
+        page.dataset.wmdLayout = layout;
+        recheckLayout = check;
         new ResizeObserver(check).observe(page);
         // Settings > Screen changes the scale (--wm-px, so the em breakpoints) without a resize
         if (typeof MutationObserver === 'function') new MutationObserver(check).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
@@ -194,9 +200,10 @@
         // she holds no layers while the app is in the background (applyView releases them). A phone never
         // shows the desktop window, so outside the app's page (after a reload reopened it under BODY) she is hidden too.
         m.isHosted = () => !!(shown && page && page.contains(m.host));
-        const layout = m.layout.bind(m);
+        // (not named layout: that is this file's phone / wide state, read by the wrappers below)
+        const stageHer = m.layout.bind(m);
         m.layout = function () {
-            layout();
+            stageHer();
             if (!this.root || !this.manifest || !this.host || !this._shown || this.view !== 'mascot') return;
             if (!page || !page.contains(this.host)) return;
             // her stage: the whole chat on a phone, the scene column on a wide screen (wm-director.css)
@@ -1155,6 +1162,11 @@
         const vn = !!(m && typeof m.vnBubbles === 'function' && m.vnBubbles() && m.host && page.contains(m.host));
         const items = sessionPrintList(d);
         const pending = !!(d && d._imagePending === true && d.currentSession && !isDraft(d));
+        // only her on wide screens: the wide rules stand down (wm-director.css), so the layout is read again
+        if (page.classList.contains('wmd-solo') !== !!p.wideSolo) {
+            page.classList.toggle('wmd-solo', !!p.wideSolo);
+            recheckLayout();
+        }
         page.classList.toggle('wmd-vn', vn);
         page.classList.toggle('wmd-strip-on', vn && p.printStrip && (items.length > 0 || pending));
         page.classList.toggle('wmd-gallery-on', vn && !p.wideLog && !!(d && d.persona !== 'xi'));
@@ -1788,7 +1800,8 @@
         const p = prefs();
         items.push('-',
             { label: 'Prints Strip', checked: !!p.printStrip, disabled: layout === 'wide' && !p.wideLog, action: () => { setPrefs({ printStrip: !p.printStrip }); paintPrints(); after(); } },
-            { label: 'Log Beside Her (wide screens)', checked: !!p.wideLog, action: () => { setPrefs({ wideLog: !p.wideLog }); setLogCol(false); paintPrints(); after(); } });
+            { label: 'Log Beside Her (wide screens)', checked: !!p.wideLog, disabled: !!p.wideSolo, action: () => { setPrefs({ wideLog: !p.wideLog }); setLogCol(false); paintPrints(); after(); } },
+            { label: 'Only Her (wide screens)', checked: !!p.wideSolo, action: () => { setPrefs({ wideSolo: !p.wideSolo }); setLogCol(false); paintPrints(); after(); } });
         items.push(...toolRows(['Show', 'Send on Enter']));
         // the model the next turn runs on (the desktop header's picker): Engine, Model, Thinking, Context, Fast
         const model = wmRows([d.engineMenuItem(), ...d.modelPrefItems()], null, run);

@@ -297,7 +297,7 @@
     box-sizing: border-box !important;
     margin: 0 !important;
     padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
-    font: calc(12 * var(--wm-px)) / 1.3 var(--wm-font) !important;
+    font: var(--wm-fs) / 1.3 var(--wm-font) !important;
     color: #000 !important;
     background: #fff !important;
     border: calc(1 * var(--wm-px)) solid #000 !important;
@@ -380,7 +380,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     justify-content: center;
     gap: calc(8 * var(--wm-px));
     background: #fff;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     z-index: 20;
 }
 
@@ -402,7 +402,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     flex-direction: column;
     background: #fff;
     color: #000;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     overflow: hidden;
 }
 
@@ -438,7 +438,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     border-radius: 0;
     background: #fff;
     color: #000;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     text-align: left;
     box-sizing: border-box;
 }
@@ -507,7 +507,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
 
 .wm-director .wmd-empty {
     margin: calc(8 * var(--wm-px));
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     color: #000;
     text-align: center;
 }
@@ -585,7 +585,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     border-radius: 0;
     background: #fff;
     color: #000;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     text-align: left;
     box-sizing: border-box;
 }
@@ -615,7 +615,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     overscroll-behavior: contain;
     background: #fff;
     color: #000;
-    font: calc(12 * var(--wm-px)) / 1.35 var(--wm-font);
+    font: var(--wm-fs) / 1.35 var(--wm-font);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     user-select: text;
@@ -678,7 +678,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     border-radius: 0 !important;
     box-shadow: none !important;
     background: #fff !important;
-    font: calc(12 * var(--wm-px)) / 1.35 var(--wm-font);
+    font: var(--wm-fs) / 1.35 var(--wm-font);
 }
 
 /* the header: WM's form header (bold, highlight colour, 1 px black rule) and a plain line under it */
@@ -690,7 +690,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
 
 .wm-director .wmd-page-inspector #directorToolInspector .dti-instruction {
     color: var(--wm-highlight);
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     font-weight: bold;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -737,7 +737,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     border-radius: 0;
     background: transparent;
     color: #000;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     line-height: calc(21 * var(--wm-px));
 }
 
@@ -968,7 +968,7 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop {
     overflow-x: hidden;
     overflow-y: auto;
     text-align: left;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     white-space: nowrap;
 }
 
@@ -979,7 +979,7 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item {
     background: transparent !important;
     box-shadow: none !important;
     color: var(--wm-menu-text) !important;
-    font: bold calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: bold var(--wm-fs) var(--wm-font) !important;
     min-height: 0 !important;
 }
 
@@ -1179,30 +1179,30 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
 }
 
 @container wmd (min-width: 40em) and (aspect-ratio >= 3 / 4) {
-    .wm-director .wmd-host {
+    .wm-director:not(.wmd-solo) .wmd-host {
         --wmd-layout: wide;
         --wmd-log-w: clamp(calc(200 * var(--wm-px)), 40cqw, calc(400 * var(--wm-px)));
     }
 
-    html.ui-mobile .wm-director #directorSessionChat.director-mascot-view {
+    html.ui-mobile .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-view {
         display: grid !important;
         grid-template-columns: minmax(0, 1fr) var(--wmd-log-w);
         grid-template-rows: auto auto minmax(0, 1fr) auto;
     }
 
     /* her room centred on the scene, not on the whole page */
-    html.ui-mobile .wm-director #directorSessionChat.director-mascot-on.director-mascot-view {
+    html.ui-mobile .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-on.director-mascot-view {
         background-position: calc(50% - var(--wmd-log-w) / 2) center !important;
         background-size: auto 100% !important;
     }
 
     /* both lines named: an absolutely placed grid item's auto line is the container's edge */
-    .wm-director #directorSessionChat.director-mascot-view > :is(.director-mascot-stage, .dm-vn-layer) {
+    .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-view > :is(.director-mascot-stage, .dm-vn-layer) {
         grid-column: 1 / 2;
         grid-row: 1 / -1;
     }
 
-    .wm-director #directorSessionChat.director-mascot-view > #directorWorkspaceBanner {
+    .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-view > #directorWorkspaceBanner {
         grid-column: 2;
         grid-row: 1;
         position: relative;
@@ -1210,7 +1210,7 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
     }
 
     /* the log column: a white WM page with a 1 px rule between it and her scene */
-    html.ui-mobile .wm-director #directorSessionChat.director-mascot-on.director-mascot-view :is(.director-chat-messages-container, #directorTaskList) {
+    html.ui-mobile .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-on.director-mascot-view :is(.director-chat-messages-container, #directorTaskList) {
         align-self: stretch !important;
         width: auto !important;
         min-width: 0 !important;
@@ -1224,13 +1224,13 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
         backdrop-filter: none !important;
     }
 
-    html.ui-mobile .wm-director #directorSessionChat.director-mascot-on.director-mascot-view #directorTaskList {
+    html.ui-mobile .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-on.director-mascot-view #directorTaskList {
         grid-column: 2;
         grid-row: 2;
         border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
     }
 
-    html.ui-mobile .wm-director #directorSessionChat.director-mascot-on.director-mascot-view .director-chat-messages-container {
+    html.ui-mobile .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-on.director-mascot-view .director-chat-messages-container {
         grid-column: 2;
         grid-row: 3;
         min-height: 0;
@@ -1242,12 +1242,12 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
 
     /* the log is on screen beside her: its animations run (the rows are laid out: the rule that
        drops them is for phones only, above) */
-    html.ui-mobile .wm-director #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden:not(.dm-log-peek) .director-chat-messages-container :is(*, *::before, *::after) {
+    html.ui-mobile .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden:not(.dm-log-peek) .director-chat-messages-container :is(*, *::before, *::after) {
         animation-play-state: running;
     }
 
     /* the composer: always at the foot of the column (WM Messaging's conversation view) */
-    html.ui-mobile .wm-director #directorSessionChat.director-mascot-view #directorComposer {
+    html.ui-mobile .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-view #directorComposer {
         display: block !important;
         grid-column: 2;
         grid-row: 4;
@@ -1258,7 +1258,7 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
         border-left: calc(1 * var(--wm-px)) solid #000 !important;
     }
 
-    html.ui-mobile .wm-director #directorSessionChat.director-mascot-view #directorChatInput {
+    html.ui-mobile .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-view #directorChatInput {
         max-height: 40cqh !important;
     }
 
@@ -1266,7 +1266,7 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
        the desktop lifted it over the composer, which is in the column now) */
 
     /* the queued-message label sits over the scene, not the column */
-    .wm-director .wmd-queue {
+    .wm-director:not(.wmd-solo) .wmd-queue {
         max-width: calc(100% - var(--wmd-log-w) - 12px);
     }
 }
@@ -1493,21 +1493,21 @@ html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-sm
 }
 
 @container wmd (min-width: 40em) and (aspect-ratio >= 3 / 4) {
-    .wm-director #directorSessionChat.director-mascot-view > .wmd-dock {
+    .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-view > .wmd-dock {
         grid-column: 1 / 2;
         grid-row: 1 / -1;
     }
 
     /* the strip's prints are in the gallery column */
-    .wm-director.wmd-gallery-on .wmd-strip {
+    .wm-director:not(.wmd-solo).wmd-gallery-on .wmd-strip {
         display: none !important;
     }
 
-    html.ui-mobile .wm-director.wmd-gallery-on:not(.wmd-log-col) #directorSessionChat.director-mascot-on.director-mascot-view :is(.director-chat-messages-container, #directorTaskList) {
+    html.ui-mobile .wm-director:not(.wmd-solo).wmd-gallery-on:not(.wmd-log-col) #directorSessionChat.director-mascot-on.director-mascot-view :is(.director-chat-messages-container, #directorTaskList) {
         display: none !important;
     }
 
-    html.ui-mobile .wm-director.wmd-gallery-on:not(.wmd-log-col) #directorSessionChat.director-mascot-view > .wmd-gallery {
+    html.ui-mobile .wm-director:not(.wmd-solo).wmd-gallery-on:not(.wmd-log-col) #directorSessionChat.director-mascot-view > .wmd-gallery {
         display: flex;
         flex-direction: column;
         grid-column: 2;
@@ -1516,10 +1516,10 @@ html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-sm
         border-left: calc(1 * var(--wm-px)) solid #000;
         background: #fff;
         color: #000;
-        font: calc(12 * var(--wm-px)) var(--wm-font);
+        font: var(--wm-fs) var(--wm-font);
     }
 
-    .wm-director .wmd-gallery-hdr {
+    .wm-director:not(.wmd-solo) .wmd-gallery-hdr {
         flex: 0 0 auto;
         padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
         border-bottom: calc(1 * var(--wm-px)) solid #000;
@@ -1527,7 +1527,7 @@ html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-sm
         font-weight: bold;
     }
 
-    .wm-director .wmd-gallery-grid {
+    .wm-director:not(.wmd-solo) .wmd-gallery-grid {
         flex: 1 1 auto;
         min-height: 0;
         display: grid;
@@ -1540,7 +1540,7 @@ html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-sm
         overscroll-behavior: contain;
     }
 
-    .wm-director .wmd-gallery .wmd-thumb {
+    .wm-director:not(.wmd-solo) .wmd-gallery .wmd-thumb {
         width: auto;
         height: auto;
         aspect-ratio: 1;
@@ -1549,21 +1549,21 @@ html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-sm
         box-shadow: none;
     }
 
-    .wm-director .wmd-gallery .wmd-thumb img {
+    .wm-director:not(.wmd-solo) .wmd-gallery .wmd-thumb img {
         border: calc(1 * var(--wm-px)) solid #000;
         box-sizing: border-box;
     }
 
-    .wm-director .wmd-gallery .wmd-thumb:active {
+    .wm-director:not(.wmd-solo) .wmd-gallery .wmd-thumb:active {
         background: var(--wm-highlight);
     }
 
-    .wm-director .wmd-gallery .wmd-thumb.is-pending {
+    .wm-director:not(.wmd-solo) .wmd-gallery .wmd-thumb.is-pending {
         border: calc(1 * var(--wm-px)) solid #000;
         background: #fff url('/static_images/wm61/wait-0.png') center / calc(24 * var(--wm-px)) no-repeat;
     }
 
-    .wm-director .wmd-gallery .wmd-empty {
+    .wm-director:not(.wmd-solo) .wmd-gallery .wmd-empty {
         grid-column: 1 / -1;
     }
 }
@@ -2199,9 +2199,10 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
 }
 
 /* ---- the log over her scene (Menu > Log): a paper scroll in the tray, under a gold rod.
- *      Wide screens keep the log as the WM column beside her. ---- */
-@container wmd not ((min-width: 40em) and (aspect-ratio >= 3 / 4)) {
-    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container {
+ *      Wide screens keep the log as the WM column beside her: wmDirector.js writes the layout it
+ *      reads (phone, or wide) on the page as data-wmd-layout; "Only Her" on a wide screen is phone. ---- */
+@media screen {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container {
         --mk-n: 11px;
         position: relative;
         isolation: isolate;
@@ -2225,7 +2226,7 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
     }
 
     /* the lacquer, one step inside the gold rim */
-    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container::before {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container::before {
         --mk-n: 11.5px;
         content: '';
         position: absolute;
@@ -2245,7 +2246,7 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
     }
 
     /* the rod the paper hangs from */
-    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container::after {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container::after {
         content: 'Log';
         position: absolute;
         left: 5px;
@@ -2262,34 +2263,34 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
         pointer-events: none;
     }
 
-    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content {
         background: linear-gradient(90deg, transparent 9px, rgba(200, 50, 30, 0.5) 9px 10px, transparent 10px), var(--mk-paper);
         box-shadow: inset 0 4px 5px rgba(60, 30, 10, 0.35);
     }
 
-    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages {
         padding-left: 14px;
         padding-top: 12px;
     }
 
     /* a thin gold thumb down the paper's edge */
-    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar {
         width: 7px;
         height: 0;
     }
 
-    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-track {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-track {
         border-left: 1px solid var(--mk-rule);
         background: rgba(120, 90, 40, 0.1);
     }
 
-    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-thumb {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-thumb {
         border: 1px solid #8a5f14;
         border-radius: 0;
         background: var(--mk-gold-flat);
     }
 
-    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-button {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-button {
         display: none;
     }
 }
@@ -2808,34 +2809,34 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-me
 }
 
 /* over her scene (Menu > Log) the monitor hangs under the beam like her text box */
-@container wmd not ((min-width: 40em) and (aspect-ratio >= 3 / 4)) {
-    html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container {
+@media screen {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container {
         padding: 12px 6px 1px !important;
         border: 0 !important;
         background: var(--sh-verm) 0 0 / 100% 6px no-repeat, var(--sh-fire) !important;
         clip-path: var(--sh-torii);
     }
 
-    html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content {
         background: linear-gradient(var(--sh-shu), var(--sh-shu)) 0 0 / 100% 1.5px no-repeat, repeating-linear-gradient(0deg, rgba(127, 208, 255, 0.045) 0 1px, transparent 1px 3px), linear-gradient(#141c58, #06081c);
         box-shadow: inset 0 0 14px rgba(74, 168, 255, 0.45);
     }
 
-    html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar {
         width: 7px;
         height: 0;
     }
 
-    html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-track {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-track {
         background: rgba(127, 208, 255, 0.08);
     }
 
-    html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-thumb {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-thumb {
         border-radius: 0;
         background: var(--sh-fire);
     }
 
-    html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-button {
+    html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-button {
         display: none;
     }
 }
