@@ -1817,6 +1817,8 @@
             softKeys,
             // WM: X on Studio, ok on a tool page (as its Done soft key)
             titleKind: () => (tools.length ? 'ok' : 'close'),
+            // a print being made: X asks (it can be minimized instead and keep printing)
+            closeQuestion: () => (generating() ? 'A print is still being made. Close Studio?' : null),
             // X closes Studio the desktop's way (File > Close: hideManualModal); its fields stay as they are
             onTitleClose() {
                 releaseAll();

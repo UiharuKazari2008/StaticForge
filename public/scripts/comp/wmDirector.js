@@ -1557,6 +1557,11 @@
             // WM: X on the conversation and its lists (Smart Minimize), ok on the reply composer
             // (closes it, the text stays), as Messaging's new message, and on the pages that stand
             // for the desktop's windows (Prints, History, the inspector, text)
+            // a turn under way: X asks (Minimize keeps the app; the turn goes on either way)
+            closeQuestion: () => {
+                const st = window.directorInstance && window.directorInstance._status;
+                return st && st.running ? 'The Director is still working on a turn. Close the Director?' : null;
+            },
             titleKind: () => {
                 const t = top();
                 if (t) return t.corner || 'ok';

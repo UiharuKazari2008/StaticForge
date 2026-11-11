@@ -267,6 +267,50 @@ html.ui-mobile[data-wm-app="today"][data-wm-boot="reveal"] #wmShell {
     height: 100%;
 }
 
+/* Settings > Screen > Camera > Black bezel (#735): the screen starts below a black band as tall as
+ * the camera area, with the maker's logo printed on it as on a phone's front glass. <body> becomes
+ * the box every fixed layer (the shell, dialogs, the viewer, toasts) is placed in. */
+html.ui-mobile[data-wm-camera="bezel"] {
+    --wm-bezel-h: max(calc(var(--camera-hole-top, 0px) + var(--camera-hole-height, 0px) + 6px), calc(18 * var(--wm-px)));
+    background: #000;
+}
+
+html.ui-mobile[data-wm-camera="bezel"] body {
+    position: fixed;
+    inset: var(--wm-bezel-h) 0 0 0;
+    contain: layout;
+    overflow: hidden;
+}
+
+html.ui-mobile[data-wm-camera="bezel"]::before,
+html.ui-mobile[data-wm-camera="bezel"]::after {
+    content: '';
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: var(--wm-bezel-h);
+    z-index: 2147483647;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-camera="bezel"]::before {
+    background: #000;
+}
+
+html.ui-mobile[data-wm-camera="bezel"]::after {
+    background: image-set(url('/static_images/xyridian/xyridian-wordmark-white-512.png') 1x, url('/static_images/xyridian/xyridian-wordmark-white.png') 2x) center / auto 40% no-repeat;
+    opacity: 0.55;
+}
+
+/* tray icons that do not fit right of the camera, left of it in the same order and pitch */
+.wm-status-left {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+}
+
 /* Icons on a 21 px pitch (16 px + 5 px), ending 6 px before the ok / X button. WM keeps the
  * button's place when an app has none, so the icons do not move; on Today they end at x 209
  * (emulator 2x: cells 262 / 304 / 346 / 386 on Today, 308 / 350 / 392 + button at 436 in apps). */
@@ -1716,7 +1760,35 @@ html.ui-mobile[data-wm-boot="splash"] .wm-splash {
     color: #f88800;
 }
 
+/* The maker's boot logo before the splash (#735): Xyridian centred on black, as an old smartphone */
+.wm-oem {
+    position: absolute;
+    inset: 0;
+    z-index: 31;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+}
+
+.wm-oem img {
+    width: 62%;
+    max-width: 420px;
+    height: auto;
+    animation: wm-oem-in 0.4s ease-out both;
+}
+
+@keyframes wm-oem-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+html.ui-mobile[data-wm-boot="oem"] .wm-oem {
+    display: flex;
+}
+
 /* nothing else shows while the splash is up */
+html.ui-mobile[data-wm-boot="oem"] body > #toastContainer,
 html.ui-mobile[data-wm-boot="splash"] body > #toastContainer,
 html.ui-mobile[data-wm-boot="install"] body > #toastContainer {
     display: none !important;
@@ -1890,7 +1962,7 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
     display: flex !important;
     align-items: center;
     justify-content: center;
-    height: calc(61 * var(--wm-px));
+    height: calc(61 * var(--wm-px) * var(--wm-pv-k, 1));
     padding: 0 !important;
     border: 0 !important;
     border-right: calc(1 * var(--wm-px)) solid #bdbebd !important;
@@ -1903,8 +1975,8 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
 
 .wm-pv-cell img {
     display: block;
-    max-width: calc(68 * var(--wm-px));
-    max-height: calc(53 * var(--wm-px));
+    max-width: calc(68 * var(--wm-px) * var(--wm-pv-k, 1));
+    max-height: calc(53 * var(--wm-px) * var(--wm-pv-k, 1));
     width: auto;
     height: auto;
     object-fit: contain;
@@ -2338,4 +2410,142 @@ html.ui-mobile[data-wm-titlebar="glossy"] .wm-softkeys {
  * takes a tap (the soft keys are blank meanwhile) */
 html.ui-mobile[data-wm-dialog] #wmShell {
     pointer-events: none;
+}
+
+/* ---- Pictures & Videos tool strip under the folder bar (Yukimi, Nov 10): search field, Jump to
+ * Top, Visual Index, thumbnail size - / + ---- */
+.wm-pv-tools {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+}
+
+.wm-pv-tools .wm-pv-q {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: calc(20 * var(--wm-px));
+    border-radius: 0;
+}
+
+.wm-pv-tool {
+    flex: 0 0 auto;
+    min-width: calc(22 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    padding: 0 calc(5 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: var(--wm-tint) !important;
+    color: #000 !important;
+    font: calc(12 * var(--wm-px)) / 1 var(--wm-font);
+}
+
+.wm-pv-tool:active {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text, #fff) !important;
+}
+
+/* Go To: its two parts' headings */
+.wm-pv-index-head {
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+    color: #000;
+}
+
+.wm-pv-index-note {
+    margin: calc(4 * var(--wm-px));
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    color: #000;
+}
+
+/* ---- Visual Index (the desktop's Jump Index): gap / group combos, the group's span, cards ---- */
+.wm-page.wm-pvx {
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    color: #000;
+    overflow: hidden;
+}
+
+.wm-pvx-bar {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px));
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+}
+
+.wm-pvx-sum {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) calc(3 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font);
+}
+
+.wm-pvx-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(96 * var(--wm-px)), 1fr));
+    align-content: start;
+    gap: calc(4 * var(--wm-px));
+    padding: calc(4 * var(--wm-px));
+}
+
+.wm-pvx-card {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    padding: calc(2 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #bdbebd !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    text-align: left;
+    min-width: 0;
+}
+
+.wm-pvx-card.is-selected {
+    background: var(--wm-highlight) !important;
+    border-color: #000 !important;
+    color: var(--wm-highlight-text, #fff) !important;
+}
+
+.wm-pvx-pic {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    background: #000;
+    overflow: hidden;
+}
+
+.wm-pvx-pic img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+}
+
+.wm-pvx-cap {
+    margin-top: calc(2 * var(--wm-px));
+    font: calc(11 * var(--wm-px)) / calc(13 * var(--wm-px)) var(--wm-font);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-pvx-n {
+    font: bold calc(11 * var(--wm-px)) / calc(13 * var(--wm-px)) var(--wm-font);
 }

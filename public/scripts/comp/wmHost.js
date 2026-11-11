@@ -269,9 +269,11 @@
             || Array.from(win.querySelectorAll('button')).find((b) => /^\s*(cancel|close)\s*$/i.test(b.textContent || ''));
         if (btn) btn.click();
         else if (typeof window.closeModal === 'function') { try { window.closeModal(win); } catch (_) { /* below */ } }
-        // a window that keeps itself open after its close is let go anyway (closeModal's fallback is 600 ms)
+        // a window that keeps itself open after its close is let go anyway (closeModal's fallback is
+        // 600 ms), unless it is asking (its own "save changes?" dialog): then its answer decides
+        const asking = () => { const d = document.getElementById('confirmationDialog'); return !!(d && !d.classList.contains('hidden')); };
         setTimeout(() => {
-            if (!byWin.has(win)) return;
+            if (!byWin.has(win) || asking()) return;
             if (!win.classList.contains('hidden')) win.classList.add('hidden');
             release(win);
         }, 1000);

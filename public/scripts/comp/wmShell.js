@@ -527,7 +527,7 @@
      */
     function titleKindNow() {
         const boot = root.dataset.wmBoot;
-        if (boot === 'splash' || boot === 'install') return boot === 'install' ? bootTitleKind : null;
+        if (boot === 'oem' || boot === 'splash' || boot === 'install') return boot === 'install' ? bootTitleKind : null;
         if (modalUp()) return null;
         if (viewerActive && !viewerClosing) return 'ok';
         if (!current || current === 'today') return null;
@@ -567,10 +567,28 @@
         // screen goes back, keeping the app.
         if (kind === 'close' && app && current !== 'today') {
             const id = current;
-            if (typeof app.onTitleClose === 'function') {
-                try { app.onTitleClose(); } catch (err) { console.warn('[wmShell] onTitleClose', id, err); }
-            }
-            if (!endApp(id)) back();
+            const close = () => {
+                if (typeof app.onTitleClose === 'function') {
+                    try { app.onTitleClose(); } catch (err) { console.warn('[wmShell] onTitleClose', id, err); }
+                }
+                if (!endApp(id)) back();
+            };
+            // an app with work under way asks first (closeQuestion(): its text, or null); it can
+            // also be minimized and left running, the Start menu brings it back
+            let question = null;
+            try { question = typeof app.closeQuestion === 'function' ? app.closeQuestion() : null; } catch (_) { question = null; }
+            if (!question) { close(); return; }
+            messageBox({
+                title: app.title || 'Melaton Mobile',
+                icon: 'question',
+                text: question,
+                buttons: [{ text: 'Close', value: 'close', default: true }, { text: 'Minimize', value: 'min' }, { text: 'Cancel', value: null }],
+                cancelValue: null
+            }).then((v) => {
+                if (current !== id) return;
+                if (v === 'close') close();
+                else if (v === 'min') back();
+            });
             return;
         }
         back();
@@ -1026,41 +1044,62 @@
     function applyCameraHole(bar) {
         const title = bar.querySelector('.wm-title');
         const status = bar.querySelector('.wm-status');
+        let left = bar.querySelector('.wm-status-left');
         let gap = bar.querySelector('.wm-cutout-gap');
+        // icons back on the right in their WM order before every fit
+        if (!status._wmOrder) status._wmOrder = Array.from(status.querySelectorAll('.wm-status-icon'));
+        if (left && left.firstElementChild) status.prepend(...status._wmOrder.filter((i) => i.parentElement === left));
         const style = document.documentElement.style;
         const v = (n) => parseFloat(style.getPropertyValue(n)) || 0;
         const hole = { left: v('--camera-hole-left'), top: v('--camera-hole-top'), width: v('--camera-hole-width'), height: v('--camera-hole-height') };
+        // the bezel option puts the camera above the screen: nothing to keep clear in the bar
+        const bezel = root.dataset.wmCamera === 'bezel';
         const br = bar.getBoundingClientRect();
         const tl = title.getBoundingClientRect().left;
         const pad = 3 * (parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1);
-        const inBar = hole.width > 0 && hole.height > 0 && hole.top < br.bottom && hole.top + hole.height > br.top
+        const inBar = !bezel && hole.width > 0 && hole.height > 0 && hole.top < br.bottom && hole.top + hole.height > br.top
             && hole.left - pad > tl && hole.left + hole.width < br.right;
         if (!inBar) {
             if (gap) gap.remove();
+            if (left) left.remove();
             title.style.flex = '';
             status.style.marginLeft = '';
             return;
+        }
+        if (!left) {
+            left = document.createElement('div');
+            left.className = 'wm-status-left';
+            title.after(left);
         }
         if (!gap) {
             gap = document.createElement('div');
             gap.className = 'wm-cutout-gap';
             gap.setAttribute('aria-hidden', 'true');
-            title.after(gap);
+            left.after(gap);
         }
-        title.style.flex = `0 0 ${Math.max(0, hole.left - pad - tl)}px`;
         gap.style.width = `${hole.width + 2 * pad}px`;
         status.style.marginLeft = 'auto';
+        // what does not fit right of the camera moves left of it, keeping the order (first icons first)
+        const room = br.right - (hole.left + hole.width + pad);
+        const shown = () => status._wmOrder.filter((i) => i.parentElement === status && !i.hidden);
+        while (status.getBoundingClientRect().width > room && shown().length > 1) {
+            const first = shown()[0];
+            // hidden icons before it go along, so each side keeps WM's order when one appears
+            status._wmOrder.slice(0, status._wmOrder.indexOf(first) + 1).forEach((i) => { if (i.parentElement === status) left.append(i); });
+        }
+        const lw = left.firstElementChild ? left.getBoundingClientRect().width : 0;
+        title.style.flex = `0 0 ${Math.max(0, hole.left - pad - tl - lw)}px`;
     }
 
     function fitStatusNow() {
         if (!shell) return;
         const bar = shell.querySelector('.wm-titlebar');
-        applyCameraHole(bar);
         const el = (r) => shell.querySelector(`.wm-status-icon[data-role="${r}"]`);
         const fits = () => bar.scrollWidth <= bar.clientWidth + 1;
         ['roaming', 'volume', ...STATUS_APP_ROLES].forEach((r) => el(r).classList.remove('wm-shed'));
         statusFolded = [];
         paintNotifyIcon();
+        applyCameraHole(bar);
         if (fits()) return;
         if (!el('roaming').hidden) { el('roaming').classList.add('wm-shed'); if (fits()) return; }
         const apps = STATUS_APP_ROLES.filter((r) => !el(r).hidden);
@@ -2757,61 +2796,42 @@
             const b = document.querySelector('#galleryWindow .gallery-toggle-group .gallery-toggle-btn.active');
             return b ? b.dataset.view : 'images';
         };
+        // the toolbar's search field (static, Yukimi Nov 10): typing follows the desktop gallery search
+        // (fileSearchInput), Enter runs it, an emptied field or Clear Search ends it
+        const searchTarget = () => document.getElementById('fileSearchInput');
+        const pvInput = () => { const pg = apps.get('gallery') && apps.get('gallery').page; return pg ? pg.querySelector('.wm-pv-q') : null; };
+        function runSearch(q) {
+            const t = searchTarget();
+            if (!t) return;
+            if (!String(q || '').trim()) { setSearch(false); return; }
+            searchSubmitted = true;
+            t.value = q;
+            t.dispatchEvent(new Event('input', { bubbles: true }));
+            t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        }
         const setSearch = (on) => {
-            if (!searchBar) {
-                searchBar = document.createElement('div');
-                searchBar.className = 'wm-searchbar';
-                searchBar.hidden = true;
-                searchBar.innerHTML = '<input type="search" enterkeyhint="search" autocomplete="off" aria-label="Search pictures">';
-                const input = searchBar.querySelector('input');
-                const target = () => document.getElementById('fileSearchInput');
-                input.addEventListener('input', () => {
-                    const t = target();
-                    if (!t) return;
-                    t.value = input.value;
-                    t.dispatchEvent(new Event('input', { bubbles: true }));
-                });
-                input.addEventListener('keydown', (e) => {
-                    const t = target();
-                    if (!t) return;
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        searchSubmitted = true;
-                        t.value = input.value;
-                        t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-                        input.blur();
-                    } else if (e.key === 'Escape') {
-                        e.preventDefault();
-                        setSearch(false);
-                    }
-                });
-                shell.appendChild(searchBar);
-            }
-            searchBar.hidden = !on;
-            root.dataset.wmSearch = on ? '1' : '0';
+            const input = pvInput();
             if (on) {
-                searchBar.querySelector('input').focus();
-            } else {
-                // Cancel always ends the search, also after the box was cleared by hand: emptying
-                // the box resets fileSearch's query but keeps the filtered results on screen
-                // (fileSearch.clearSearch restores the unfiltered gallery)
-                searchBar.querySelector('input').value = '';
-                const t = document.getElementById('fileSearchInput');
-                const fs = window.fileSearch;
-                const active = searchSubmitted || !!((fs && fs.currentQuery) || (t && t.value));
-                searchSubmitted = false;
-                if (t) t.value = '';
-                if (active) {
-                    if (fs && typeof fs.clearSearch === 'function') fs.clearSearch(true, true);
-                    else if (t) t.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-                // clearSearch reloads the gallery without applyFilteredImages: the grid drops the
-                // results itself
-                searchResults = null;
-                const page = apps.get('gallery') && apps.get('gallery').page;
-                if (page) renderGrid(page, true);
+                if (input) input.focus();
+                return;
             }
-            renderSoftKeys();
+            // ending always clears, also after the box was emptied by hand: emptying the box resets
+            // fileSearch's query but keeps the filtered results (fileSearch.clearSearch restores all)
+            if (input) input.value = '';
+            const t = searchTarget();
+            const fs = window.fileSearch;
+            const active = searchSubmitted || !!((fs && fs.currentQuery) || (t && t.value)) || !!searchResults;
+            searchSubmitted = false;
+            if (t) t.value = '';
+            if (active) {
+                if (fs && typeof fs.clearSearch === 'function') fs.clearSearch(true, true);
+                else if (t) t.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            // clearSearch reloads the gallery without applyFilteredImages: the grid drops the results itself
+            searchResults = null;
+            const page = apps.get('gallery') && apps.get('gallery').page;
+            if (page) renderGrid(page, true);
+            if (current === 'gallery') renderSoftKeys();
         };
         // ---- Pictures & Videos (WM 6.1, measured on the emulator, 2x halved): folder bar 22 px
         // (tint, 1 px black rule) with the folder ("My Pictures") and sort ("Date") drop-downs; a
@@ -2826,7 +2846,13 @@
         let sortBy = 'date';
         let selectedName = null;
         const SORTS = [['name', 'Name'], ['date', 'Date'], ['size', 'Size']];
-        const CHUNK = 60; // cells per content-visibility block
+        const CHUNK = 60; // about this many cells per content-visibility block (a whole number of rows)
+        // Thumbnail size (Yukimi, Nov 10: a density control): the WM cell (80 px column, 61 px row,
+        // picture in 68 x 53) times k. Stored per device.
+        const PV_SIZES = [['small', 'Small', 0.75], ['medium', 'Medium', 1], ['large', 'Large', 1.5], ['xlarge', 'Extra Large', 2], ['huge', 'Huge', 3]];
+        const PV_SIZE_KEY = 'wmPvSize';
+        let pvSize = (() => { try { const v = localStorage.getItem(PV_SIZE_KEY); return PV_SIZES.some(([k]) => k === v) ? v : 'medium'; } catch (_) { return 'medium'; } })();
+        const pvK = () => (PV_SIZES.find(([k]) => k === pvSize) || PV_SIZES[1])[2];
 
         // Gallery search never filters allImages: fileSearch hands its results (relevance order)
         // to applyFilteredImages(images, indices); ([], []) = nothing found, (all, null) = cleared.
@@ -2878,13 +2904,14 @@
             return out;
         }
 
-        /** Columns of 80 px (3 at least); true when the count changed. A hidden page keeps its own. */
+        /** Columns of 80 px x the thumbnail size (2 at least); true when the count changed. A hidden page keeps its own. */
         function layoutGrid(page) {
             const scroller = page.querySelector('.wm-pv-scroll');
             const w = (scroller && scroller.clientWidth) || page.clientWidth;
             if (!w) return false;
             const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
-            const cols = Math.max(3, Math.floor(w / (80 * px)));
+            page.style.setProperty('--wm-pv-k', String(pvK()));
+            const cols = Math.max(2, Math.floor(w / (80 * px * pvK())));
             const prev = page.style.getPropertyValue('--wm-pv-cols');
             page.style.setProperty('--wm-pv-cols', String(cols));
             return prev !== String(cols);
@@ -2910,7 +2937,7 @@
             if (!g) return;
             gridRest = null;
             let add = '';
-            for (; g.next < g.total; g.next += CHUNK) add += g.chunkHtml(g.next);
+            for (; g.next < g.total; g.next += g.size) add += g.chunkHtml(g.next);
             g.box.insertAdjacentHTML('beforeend', add);
             if (gridMore) { gridMore.disconnect(); gridMore = null; }
         }
@@ -2933,10 +2960,12 @@
             const box = page.querySelector('.wm-pv-grid');
             const cols = Number(page.style.getPropertyValue('--wm-pv-cols')) || 3;
             const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+            // a block is whole rows: 60 cells in 7 columns left a gap after every block (Fold7)
+            const size = cols * Math.max(1, Math.round(CHUNK / cols));
             const chunkHtml = (i) => {
-                const part = list.slice(i, i + CHUNK);
-                // the block's real height before it renders (content-visibility): rows of 61 px
-                const est = Math.round(Math.ceil(part.length / cols) * 61 * px);
+                const part = list.slice(i, i + size);
+                // the block's real height before it renders (content-visibility): rows of 61 px x k
+                const est = Math.round(Math.ceil(part.length / cols) * 61 * px * pvK());
                 let html = `<div class="wm-pv-chunk" style="contain-intrinsic-size:auto ${est}px">`;
                 for (const item of part) {
                     const name = nameOf(item);
@@ -2948,16 +2977,16 @@
             // The screen's blocks now, the rest after the first paint in small batches: building all
             // of a large gallery (1,600+ cells) in the tap took over a second on a phone (#723).
             // Up to the scroll anchor's block when the grid is redrawn while scrolled.
-            let now = 2 * CHUNK;
+            let now = 2 * size;
             if (anchor) {
                 const at = list.findIndex((it) => nameOf(it) === anchor.name);
-                if (at >= 0) now = Math.max(now, (Math.floor(at / CHUNK) + 2) * CHUNK);
+                if (at >= 0) now = Math.max(now, (Math.floor(at / size) + 2) * size);
             }
             let html = '';
-            for (let i = 0; i < Math.min(now, list.length); i += CHUNK) html += chunkHtml(i);
+            for (let i = 0; i < Math.min(now, list.length); i += size) html += chunkHtml(i);
             box.innerHTML = html;
             const token = ++gridToken;
-            gridRest = now < list.length ? { token, box, next: now, total: list.length, chunkHtml } : null;
+            gridRest = now < list.length ? { token, box, next: now, total: list.length, chunkHtml, size } : null;
             // Later blocks as the list nears its end, not all of them up front: a 20,000-picture
             // gallery left ~40k nodes in the page for good, and every new print rebuilt and appended
             // all 333 blocks again (Fold7, #735). A jump further down still uses flushGrid().
@@ -2968,7 +2997,7 @@
                     if (!g || g.token !== token) { if (gridMore) gridMore.disconnect(); return; }
                     if (!entries.some((e) => e.isIntersecting)) return;
                     let add = '';
-                    for (let n = 0; n < 2 && g.next < g.total; n++, g.next += CHUNK) add += g.chunkHtml(g.next);
+                    for (let n = 0; n < 2 && g.next < g.total; n++, g.next += g.size) add += g.chunkHtml(g.next);
                     g.box.insertAdjacentHTML('beforeend', add);
                     gridMore.disconnect();
                     if (g.next < g.total) gridMore.observe(g.box.lastElementChild); else { gridRest = null; gridMore = null; }
@@ -3128,39 +3157,202 @@
             return !searchResults && sortBy === 'date';
         }
 
-        function goToMenu(page) {
-            if (!canGoToDate()) return [{ label: 'Sort by Date first', disabled: true }];
-            return monthsOf(galleryList()).map((m) => ({ label: `${m.label} (${m.count})`, action: () => jumpToIndex(page, m.index) }));
+        function setSize(page, k) {
+            if (!PV_SIZES.some(([x]) => x === k) || k === pvSize) return;
+            pvSize = k;
+            try { localStorage.setItem(PV_SIZE_KEY, k); } catch (_) { /* storage off */ }
+            layoutGrid(page);
+            renderGrid(page, true);
+        }
+
+        function stepSize(page, dir) {
+            const i = PV_SIZES.findIndex(([x]) => x === pvSize);
+            const next = PV_SIZES[Math.max(0, Math.min(PV_SIZES.length - 1, i + dir))];
+            setSize(page, next[0]);
         }
 
         function workspaceSubmenu() {
             return workspaceItems();
         }
 
-        // Visual Index: the desktop's jump index as a WM list, one row per month with its first
-        // picture and count; a row goes back to the grid at that month
+        /** Back to the grid at a picture of the list (Go To, Visual Index). */
+        function goBackTo(i) {
+            back();
+            const gpage = apps.get('gallery').page;
+            if (gpage) setTimeout(() => jumpToIndex(gpage, i), 30);
+        }
+
+        // Go To (Yukimi, Nov 10: this list in place of the Go To submenus): a date (one row per month
+        // with its first picture and count; date order only) and a position (every tenth of the list)
         registerApp({
-            id: 'pv-index',
+            id: 'pv-goto',
+            title: 'Go To',
+            icon: 'app-pictures',
+            titleAction: 'ok',
+            mount(gp) {
+                gp.classList.add('wm-pv-index');
+                gp.addEventListener('click', (e) => {
+                    const row = e.target.closest('[data-index]');
+                    if (row) goBackTo(Number(row.dataset.index));
+                });
+            },
+            show(gp) {
+                const list = galleryList();
+                if (!list.length) { gp.innerHTML = '<p class="wm-photos-empty">No pictures</p>'; return; }
+                const row = (i, item, label, count) => `<button type="button" class="wm-pv-index-row" data-index="${i}"><img src="${escapeHtml(previewUrl(item))}" alt="" loading="lazy" decoding="async"><span class="wm-pv-index-label">${escapeHtml(label)}</span><span class="wm-pv-index-count">${escapeHtml(String(count))}</span></button>`;
+                let html = '<div class="wm-pv-index-head">Date</div>';
+                html += canGoToDate()
+                    ? monthsOf(list).map((m) => row(m.index, m.item, m.label, m.count)).join('')
+                    : '<p class="wm-pv-index-note">Sort by Date to go to a date.</p>';
+                html += '<div class="wm-pv-index-head">Position</div>';
+                const seen = new Set();
+                for (let pct = 0; pct <= 100; pct += 10) {
+                    const i = Math.min(list.length - 1, Math.round((pct / 100) * (list.length - 1)));
+                    if (seen.has(i)) continue;
+                    seen.add(i);
+                    html += row(i, list[i], `Picture ${(i + 1).toLocaleString()} of ${list.length.toLocaleString()}`, `${pct}%`);
+                }
+                gp.innerHTML = html;
+            },
+            softKeys() { return { left: null, right: null }; }
+        });
+
+        // Visual Index: the desktop's Jump Index (galleryJumpIndex.js): the list split into groups at
+        // gaps in time (a minimum gap, a maximum group size), each group a card with its first picture,
+        // its time and count. Tap a card for its span, tap it again (or Go To) to jump there.
+        const VI_GAP_KEY = 'wmPvIndexGap';
+        const VI_MAX_KEY = 'wmPvIndexGroup';
+        const viGapOptions = () => { try { if (typeof GALLERY_JUMP_INDEX_MIN_TIME_OPTIONS !== 'undefined') return GALLERY_JUMP_INDEX_MIN_TIME_OPTIONS; } catch (_) { /* below */ } return [{ value: 1800000, name: '30 minutes' }]; };
+        const viMaxOptions = () => { try { if (typeof GALLERY_JUMP_INDEX_MAX_GROUP_OPTIONS !== 'undefined') return GALLERY_JUMP_INDEX_MAX_GROUP_OPTIONS; } catch (_) { /* below */ } return [{ value: 100, name: '100' }]; };
+        const lsNum = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (_) { return d; } };
+        let viGap = Number(lsNum(VI_GAP_KEY, 30 * 60 * 1000)) || 30 * 60 * 1000;
+        let viMax = lsNum(VI_MAX_KEY, '100');
+        let viEntries = [];
+        let viPicked = null;
+
+        function viStamp(item) {
+            try { if (typeof getGalleryImageTimestampMs === 'function') { const t = getGalleryImageTimestampMs(item); if (Number.isFinite(t)) return t; } } catch (_) { /* below */ }
+            return itemTime(item) || null;
+        }
+
+        /** The desktop's grouping (buildGalleryJumpIndexEntries) over the phone's list. */
+        function viGroups(list) {
+            const n = list.length;
+            if (!n) return [];
+            const minMs = viGap;
+            const maxGroup = viMax === 'none' ? Infinity : Number(viMax) || 100;
+            const MIN_GROUP = (typeof GALLERY_JUMP_INDEX_MIN_GROUP_IMAGES !== 'undefined') ? GALLERY_JUMP_INDEX_MIN_GROUP_IMAGES : 9;
+            const ts = new Array(n);
+            const out = [{ index: 0 }];
+            let start = 0;
+            let startTs = ts[0] = viStamp(list[0]);
+            let prev = startTs;
+            for (let i = 1; i < n; i++) {
+                const t = ts[i] = viStamp(list[i]);
+                const size = i - start;
+                const enough = size >= MIN_GROUP;
+                const byTime = enough && startTs !== null && t !== null && Math.abs(t - startTs) >= minMs;
+                const bySize = Number.isFinite(maxGroup) && size >= maxGroup;
+                const byJump = enough && prev !== null && t !== null && Math.abs(t - prev) >= minMs;
+                if (byTime || bySize || byJump) { start = i; startTs = t; out.push({ index: i }); }
+                prev = t;
+            }
+            for (let g = 0; g < out.length; g++) {
+                const a = out[g].index;
+                const b = g < out.length - 1 ? out[g + 1].index : n;
+                out[g].groupCount = Math.max(1, b - a);
+                let first = null;
+                let last = null;
+                for (let k = a; k < b; k++) { const t = ts[k]; if (t == null) continue; if (first === null || t < first) first = t; if (last === null || t > last) last = t; }
+                out[g].firstMs = first;
+                out[g].lastMs = last;
+                out[g].startMs = ts[a];
+                out[g].item = list[a];
+            }
+            return out;
+        }
+
+        const viCaption = (e) => { try { if (typeof formatGalleryJumpIndexCaption === 'function') return formatGalleryJumpIndexCaption(e); } catch (_) { /* below */ } return e.startMs ? new Date(e.startMs).toLocaleString() : `Group at ${e.index + 1}`; };
+        const viSpan = (e) => { try { if (typeof formatGalleryJumpIndexSpan === 'function') return formatGalleryJumpIndexSpan(e); } catch (_) { /* below */ } return viCaption(e); };
+
+        /** The group the grid is showing now (nearest start before the first cell on screen). */
+        function viHere() {
+            const gpage = apps.get('gallery').page;
+            const a = gpage && gridAnchor(gpage);
+            const list = galleryList();
+            const at = a ? list.findIndex((it) => (it.filename || it.original) === a.name) : 0;
+            let best = viEntries[0] || null;
+            for (const e of viEntries) if (e.index <= Math.max(0, at)) best = e;
+            return best;
+        }
+
+        function viPaint(vp) {
+            const gap = viGapOptions().find((o) => Number(o.value) === viGap);
+            const max = viMaxOptions().find((o) => String(o.value) === String(viMax));
+            vp.querySelector('[data-k="gap"] span').textContent = gap ? gap.name : '30 minutes';
+            vp.querySelector('[data-k="max"] span').textContent = max ? max.name : String(viMax);
+            const e = viPicked;
+            const list = galleryList();
+            vp.querySelector('.wm-pvx-sum').innerHTML = e
+                ? `<b>${escapeHtml(viSpan(e))}</b><span>${e.groupCount.toLocaleString()} pictures, from picture ${(e.index + 1).toLocaleString()} of ${list.length.toLocaleString()}</span>`
+                : `<b>${viEntries.length.toLocaleString()} groups</b><span>${list.length.toLocaleString()} pictures</span>`;
+            vp.querySelectorAll('.wm-pvx-card.is-selected').forEach((c) => c.classList.remove('is-selected'));
+            if (e) { const c = vp.querySelector(`.wm-pvx-card[data-index="${e.index}"]`); if (c) c.classList.add('is-selected'); }
+            renderSoftKeys();
+        }
+
+        function viBuild(vp) {
+            viEntries = viGroups(galleryList());
+            viPicked = viHere();
+            const grid = vp.querySelector('.wm-pvx-grid');
+            grid.innerHTML = viEntries.map((e) => `<button type="button" class="wm-pvx-card" data-index="${e.index}"><span class="wm-pvx-pic"><img src="${escapeHtml(previewUrl(e.item))}" alt="" loading="lazy" decoding="async" draggable="false"></span><span class="wm-pvx-cap">${escapeHtml(viCaption(e))}</span><span class="wm-pvx-n">${e.groupCount.toLocaleString()}</span></button>`).join('') || '<p class="wm-photos-empty">No pictures</p>';
+            viPaint(vp);
+            const sel = grid.querySelector('.wm-pvx-card.is-selected');
+            if (sel) sel.scrollIntoView({ block: 'center' });
+        }
+
+        registerApp({
+            id: 'pv-vindex',
             title: 'Visual Index',
             icon: 'app-pictures',
             titleAction: 'ok',
-            mount(ipage) {
-                ipage.classList.add('wm-pv-index');
-                ipage.addEventListener('click', (e) => {
-                    const row = e.target.closest('[data-index]');
-                    if (!row) return;
-                    const i = Number(row.dataset.index);
-                    back();
-                    const gpage = apps.get('gallery').page;
-                    if (gpage) setTimeout(() => jumpToIndex(gpage, i), 30);
+            mount(vp) {
+                vp.classList.add('wm-pvx');
+                vp.innerHTML = `
+                    <div class="wm-pvx-bar">
+                        <label>Gap</label><button type="button" class="wm-combo" data-k="gap"><span></span></button>
+                        <label>Group</label><button type="button" class="wm-combo" data-k="max"><span></span></button>
+                    </div>
+                    <div class="wm-pvx-sum"></div>
+                    <div class="wm-pvx-grid"></div>`;
+                vp.querySelector('.wm-pvx-bar').addEventListener('click', (ev) => {
+                    const b = ev.target.closest('[data-k]');
+                    if (!b) return;
+                    ev.stopPropagation();
+                    const opts = b.dataset.k === 'gap' ? viGapOptions() : viMaxOptions();
+                    showDropdown(b, opts.map((o) => ({
+                        label: o.name,
+                        radio: b.dataset.k === 'gap' ? Number(o.value) === viGap : String(o.value) === String(viMax),
+                        action: () => {
+                            if (b.dataset.k === 'gap') { viGap = Number(o.value); try { localStorage.setItem(VI_GAP_KEY, String(viGap)); } catch (_) { /* off */ } }
+                            else { viMax = String(o.value); try { localStorage.setItem(VI_MAX_KEY, viMax); } catch (_) { /* off */ } }
+                            busy(() => viBuild(vp), { paint: true });
+                        }
+                    })));
+                });
+                vp.querySelector('.wm-pvx-grid').addEventListener('click', (ev) => {
+                    const c = ev.target.closest('.wm-pvx-card');
+                    if (!c) return;
+                    const e = viEntries.find((x) => x.index === Number(c.dataset.index));
+                    if (!e) return;
+                    if (viPicked === e) { goBackTo(e.index); return; }
+                    viPicked = e;
+                    viPaint(vp);
                 });
             },
-            show(ipage) {
-                const months = monthsOf(galleryList());
-                ipage.innerHTML = months.map((m) => `<button type="button" class="wm-pv-index-row" data-index="${m.index}"><img src="${escapeHtml(previewUrl(m.item))}" alt="" loading="lazy" decoding="async"><span class="wm-pv-index-label">${escapeHtml(m.label)}</span><span class="wm-pv-index-count">${m.count}</span></button>`).join('') || '<p class="wm-photos-empty">No pictures</p>';
-            },
+            show(vp) { busy(() => viBuild(vp), { paint: true }); },
             softKeys() {
-                return { left: null, right: null };
+                return { left: { label: 'Go To', disabled: !viPicked, action: () => viPicked && goBackTo(viPicked.index) }, right: null };
             }
         });
 
@@ -3173,11 +3365,9 @@
             id: 'gallery',
             /** Run a gallery search (Today's Live Search box): the search bar shows the query. */
             search(q) {
-                setSearch(true);
-                const input = searchBar.querySelector('input');
-                input.value = q;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-                input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+                const input = pvInput();
+                if (input) input.value = q;
+                runSearch(q);
             },
             title: 'Pictures & Videos',
             icon: 'app-pictures',
@@ -3189,7 +3379,29 @@
                         <button type="button" class="wm-pv-folder" aria-haspopup="menu">${imgTag('app-pictures')}<span></span><i class="wm-pv-arrow"></i></button>
                         <button type="button" class="wm-pv-sort" aria-haspopup="menu"><span></span><i class="wm-pv-arrow"></i></button>
                     </div>
+                    <div class="wm-pv-tools" role="toolbar">
+                        <input type="search" class="wm-pv-q wm-edit" enterkeyhint="search" autocomplete="off" placeholder="Search" aria-label="Search pictures">
+                        <button type="button" class="wm-pv-tool" data-act="top" title="Jump to Top">Top</button>
+                        <button type="button" class="wm-pv-tool" data-act="index" title="Visual Index">Index</button>
+                        <button type="button" class="wm-pv-tool" data-act="smaller" title="Smaller pictures" aria-label="Smaller pictures">-</button>
+                        <button type="button" class="wm-pv-tool" data-act="larger" title="Larger pictures" aria-label="Larger pictures">+</button>
+                    </div>
                     <div class="wm-pv-scroll"><div class="wm-pv-grid"></div><p class="wm-photos-empty" hidden>No pictures</p></div>`;
+                const q = page.querySelector('.wm-pv-q');
+                q.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); runSearch(q.value); q.blur(); }
+                    else if (e.key === 'Escape') { e.preventDefault(); setSearch(false); q.blur(); }
+                });
+                // the field's own clear (x) or an emptied field ends the search
+                q.addEventListener('search', () => { if (!q.value) setSearch(false); });
+                q.addEventListener('input', () => { if (!q.value && searchResults) setSearch(false); });
+                page.querySelector('.wm-pv-tools').addEventListener('click', (e) => {
+                    const b = e.target.closest('.wm-pv-tool');
+                    if (!b) return;
+                    if (b.dataset.act === 'top') page.querySelector('.wm-pv-scroll').scrollTop = 0;
+                    else if (b.dataset.act === 'index') open('pv-vindex');
+                    else stepSize(page, b.dataset.act === 'larger' ? 1 : -1);
+                });
                 page.querySelector('.wm-pv-grid').addEventListener('click', (e) => {
                     const cell = e.target.closest('.wm-pv-cell');
                     if (!cell) return;
@@ -3237,11 +3449,8 @@
             hide() {
                 clearInterval(gridTimer);
                 gridTimer = null;
-                if (searchBar && !searchBar.hidden) setSearch(false);
             },
             softKeys() {
-                const searching = !!(searchBar && !searchBar.hidden);
-                if (searching) return { left: { label: 'Cancel', action: () => setSearch(false) }, right: null };
                 const page = this.page;
                 return {
                     left: { label: 'View', disabled: !selectedName, action: () => viewPicture(selectedName) },
@@ -3251,9 +3460,11 @@
                         // Show, Set as Today Background..., Go To, Tools; here what Dreamscape has
                         menu: () => [
                             { label: 'Search...', action: () => setSearch(true) },
+                            ...(searchResults ? [{ label: 'Clear Search', action: () => setSearch(false) }] : []),
                             { label: 'Jump to Top', action: () => { page.querySelector('.wm-pv-scroll').scrollTop = 0; } },
-                            { label: 'Go To', submenu: () => goToMenu(page) },
-                            { label: 'Visual Index', disabled: !canGoToDate(), action: () => open('pv-index') },
+                            { label: 'Go To...', action: () => open('pv-goto') },
+                            { label: 'Visual Index', action: () => open('pv-vindex') },
+                            { label: 'Thumbnail Size', submenu: () => PV_SIZES.map(([k, label]) => ({ label, radio: pvSize === k, action: () => setSize(page, k) })) },
                             { label: 'Reload', action: reloadGallery },
                             '-',
                             { label: 'Switch Workspace', submenu: workspaceSubmenu },
@@ -3480,7 +3691,7 @@
     // A first install or an update download is wceload's screen instead ("Installing x.cab ..."
     // with the segmented bar and the wait cursor, then "x was successfully installed on your
     // device." with ok). Here: splash until the page's startup finishes, the installer while the
-    // service worker downloads the app, then Today. html[data-wm-boot] = splash | install | done.
+    // service worker downloads the app, then Today. html[data-wm-boot] = oem | splash | install | done.
     const BOOT_MIN_SPLASH_MS = 1600;
     const BOOT_MAX_SPLASH_MS = 25000;
     const INSTALLED_KEY = 'melatonMobileInstalled';
@@ -3494,7 +3705,19 @@
         return installKind === 'update' ? 'Melaton Mobile update' : 'Melaton Mobile';
     }
 
+    // The phone's own boot logo before Melaton Mobile's splash, as an old smartphone shows its maker
+    // first (#735). The Android app draws it on its native cover at a cold start, so the page plays it
+    // only in a browser (no Android bridge; older app builds skip it rather than show it after their cover).
+    const OEM_LOGO_MS = 1800;
+    let oemUntil = 0;
+
     function buildBootLayers() {
+        const oem = document.createElement('div');
+        oem.className = 'wm-oem';
+        oem.setAttribute('aria-label', 'Xyridian');
+        oem.innerHTML = '<img src="/static_images/xyridian/xyridian-logo-color-512.png" srcset="/static_images/xyridian/xyridian-logo-color-512.png 1x, /static_images/xyridian/xyridian-logo-color.png 2x" alt="" draggable="false">';
+        shell.appendChild(oem);
+
         const splash = document.createElement('div');
         splash.className = 'wm-splash';
         splash.setAttribute('aria-label', 'Melaton Mobile is starting');
@@ -3654,6 +3877,12 @@
             try { sessionStorage.setItem(INSTALL_DONE_KEY, installKind); } catch (_) { /* storage off */ }
             return;
         }
+        if (root.dataset.wmBoot === 'oem') {
+            if (Date.now() < oemUntil) return;
+            setBoot('splash');
+            bootStart = Date.now(); // the splash keeps its own minimum after the maker's logo
+            return;
+        }
         const ready = !!(ws && ws.initializationCompleted);
         const elapsed = Date.now() - bootStart;
         if ((ready && elapsed >= BOOT_MIN_SPLASH_MS) || elapsed >= BOOT_MAX_SPLASH_MS) {
@@ -3667,7 +3896,12 @@
     function startBoot() {
         buildBootLayers();
         bootStart = Date.now();
-        setBoot('splash');
+        if (!window.AndroidDisplay && !window.AndroidCaption) {
+            oemUntil = bootStart + OEM_LOGO_MS;
+            setBoot('oem');
+        } else {
+            setBoot('splash');
+        }
         bootTimer = setInterval(bootTick, 200);
     }
 
@@ -3703,6 +3937,7 @@
         document.addEventListener('wmSettingsChange', () => {
             applyTodayBackground(true);
             applyStartButton();
+            fitStatus(); // Screen > Camera moves the title bar's camera gap
             const today = apps.get('today');
             if (today && today.page) today.refresh();
         });

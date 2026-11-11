@@ -1314,6 +1314,9 @@
             // WM: X on the connect screen and the session (Smart Minimize: the session keeps running),
             // ok on Options
             titleKind: () => (view === 'options' ? 'ok' : 'close'),
+            // X with a session up asks (Minimize keeps it connected); Close disconnects
+            closeQuestion: () => (session && session.connected ? `Disconnect from ${session.name}?` : null),
+            onTitleClose() { if (session) disconnect(); },
             onTitleOk: () => (view === 'options' ? closeOptions() : false),
             historyDepth: () => (view === 'options' ? 1 : view === 'session' ? 1 + (full ? 1 : 0) : 0),
             onBack() {
