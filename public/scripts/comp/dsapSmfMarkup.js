@@ -194,10 +194,10 @@ function dsapSmfBuildDreamscapeHomeHtml() {
 
     return `${dsapSmfBuildRootOpen('dreamscape-home')}
 ${dsapSmfBuildHeader({ branchTitle: DSAP_SMF_BRANCH_DREAMSCAPE, toolTitle: 'Home' })}
-${dsapSmfBuildSectionHdr('Control Panel')}
+${dsapSmfBuildSectionHdr('Server Manager')}
 <table class="dsap-smf-home-table" cellspacing="0" cellpadding="6" width="100%" border="0">
   ${rows}
 </table>
-<p class="dsap-smf-home-foot">Control Panel</p>
+<p class="dsap-smf-home-foot">Server Manager</p>
 ${dsapSmfBuildRootClose()}`;
 }

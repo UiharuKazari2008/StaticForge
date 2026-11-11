@@ -1890,6 +1890,23 @@ html.ui-mobile[data-wm-boot="install"] .wm-page {
     transform: translate(-50%, -50%);
 }
 
+/* the boot's wait wheel (WM 6.1: a few seconds into the splash until Today has filled in): the
+ * same 32 px cursor, centred, over the splash and Today */
+.wm-boot-wait {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 32;
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.wm-boot-wait[hidden] {
+    display: none !important;
+}
+
 .wm-installer-done {
     padding: calc(5 * var(--wm-px)) calc(8 * var(--wm-px));
     font-size: calc(12 * var(--wm-px));
@@ -2581,3 +2598,34 @@ html.ui-mobile #confirmationDialog .modal-window-title > .wm-title-action {
     align-self: center !important;
     margin: 0 !important;
 }
+
+/* the desktop's dialog drawn as a WM message box: WM's icon at the left of its text, as in the
+ * message box (msgbox-question / warning / error / info, 24 x 24 at 1x) */
+html.ui-mobile #confirmationDialog #confirmationMessage > .wm-cd-icon {
+    float: left;
+    width: calc(24 * var(--wm-px));
+    height: calc(24 * var(--wm-px));
+    margin: 0 calc(10 * var(--wm-px)) calc(4 * var(--wm-px)) 0;
+}
+
+html.ui-mobile #confirmationDialog #confirmationMessage::after {
+    content: '';
+    display: block;
+    clear: both;
+}
+
+/* the tool strip's Top and Visual Index buttons: 11 x 11 black glyphs in WM's toolbar style
+ * (our own art): an arrow up to a bar, a grid of pictures */
+.wm-pv-tool.wm-pv-glyph::before {
+    content: '';
+    display: block;
+    width: calc(11 * var(--wm-px));
+    height: calc(11 * var(--wm-px));
+    margin: auto;
+    background: currentColor;
+    -webkit-mask: var(--wm-pv-glyph) center / 100% 100% no-repeat;
+    mask: var(--wm-pv-glyph) center / 100% 100% no-repeat;
+}
+
+.wm-pv-tool[data-act="top"] { --wm-pv-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h11v1h-11zM0 1h11v1h-11zM5 3h1v1h-1zM4 4h3v1h-3zM3 5h5v1h-5zM2 6h7v1h-7zM4 7h3v1h-3zM4 8h3v1h-3zM4 9h3v1h-3zM4 10h3v1h-3z'/%3E%3C/svg%3E"); }
+.wm-pv-tool[data-act="index"] { --wm-pv-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h4v1h-4zM6 0h4v1h-4zM1 1h1v1h-1zM4 1h1v1h-1zM6 1h1v1h-1zM9 1h1v1h-1zM1 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM9 2h1v1h-1zM1 3h4v1h-4zM6 3h4v1h-4zM1 5h4v1h-4zM6 5h4v1h-4zM1 6h1v1h-1zM4 6h1v1h-1zM6 6h1v1h-1zM9 6h1v1h-1zM1 7h1v1h-1zM4 7h1v1h-1zM6 7h1v1h-1zM9 7h1v1h-1zM1 8h4v1h-4zM6 8h4v1h-4z'/%3E%3C/svg%3E"); }

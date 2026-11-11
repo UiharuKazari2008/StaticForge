@@ -1075,10 +1075,22 @@
      * as the camera area; none when the camera is away from the edges. A turned phone moves the
      * camera to a side, so the top band goes and a side band comes (#735).
      */
+    /** Screen > Camera > Only in portrait: a turned phone (wider than tall) ignores the camera. */
+    function cameraIgnoredNow() {
+        let only = false;
+        try { only = localStorage.getItem('wmCameraPortraitOnly') === '1'; } catch (_) { /* storage off */ }
+        return only && window.innerWidth > window.innerHeight;
+    }
+
     function syncBezel() {
         const style = root.style;
         const v = (n) => parseFloat(style.getPropertyValue(n)) || 0;
         const h = { left: v('--camera-hole-left'), top: v('--camera-hole-top'), width: v('--camera-hole-width'), height: v('--camera-hole-height') };
+        if (cameraIgnoredNow()) {
+            ['--wm-bezel-top', '--wm-bezel-left', '--wm-bezel-right'].forEach((n) => style.setProperty(n, '0px'));
+            if (root.dataset.wmBezelEdge !== 'none') root.dataset.wmBezelEdge = 'none';
+            return;
+        }
         const margin = 6;
         const near = 64;
         let edge = 'none';
@@ -1110,7 +1122,7 @@
         const br = bar.getBoundingClientRect();
         const tl = title.getBoundingClientRect().left;
         const pad = 3 * (parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1);
-        const inBar = !bezel && hole.width > 0 && hole.height > 0 && hole.top < br.bottom && hole.top + hole.height > br.top
+        const inBar = !bezel && !cameraIgnoredNow() && hole.width > 0 && hole.height > 0 && hole.top < br.bottom && hole.top + hole.height > br.top
             && hole.left - pad > tl && hole.left + hole.width < br.right;
         if (!inBar) {
             if (gap) gap.remove();
@@ -2119,6 +2131,17 @@
                         }
                     }
                 } catch (_) { /* no corner */ }
+                // WM's message box icon by the dialog's own icon (a question unless it says otherwise)
+                try {
+                    const dlg = document.getElementById('confirmationDialog');
+                    const msg = dlg && dlg.querySelector('#confirmationMessage');
+                    if (msg && !msg.querySelector(':scope > .wm-cd-icon')) {
+                        const fa = (dlg.querySelector('.modal-window-title-main i') || {}).className || '';
+                        const kind = /xmark|times|ban|skull|bug|bomb|circle-exclamation|exclamation-circle/.test(fa) ? 'error'
+                            : /exclamation|warning/.test(fa) ? 'warning' : /info|check/.test(fa) ? 'info' : 'question';
+                        msg.insertAdjacentHTML('afterbegin', imgTag(`msgbox-${kind}`).replace('<img ', '<img class="wm-cd-icon" '));
+                    }
+                } catch (_) { /* no icon */ }
                 try {
                     const dlg = document.getElementById('confirmationDialog');
                     const icon = (dlg && dlg.querySelector('.modal-window-title-main i') || {}).className || '';
@@ -2148,6 +2171,8 @@
         // WM: what answers the user's own action (a tap a moment ago, or work under the wait cursor)
         // is a message box; a notification is for what arrives on its own
         if (!asNote && !buttons && answersUser()) {
+            // a routine "done" for the user's own action needs nothing: the result is on screen
+            if (NOTE_TYPE[icon] === 'success') return Promise.resolve(true);
             return messageBox({ title, text, icon: NOTE_TYPE[icon] === 'success' ? 'info' : (icon || 'info'), modal: true });
         }
         return new Promise((resolve) => {
@@ -3530,8 +3555,8 @@
                     </div>
                     <div class="wm-pv-tools" role="toolbar">
                         <input type="search" class="wm-pv-q wm-edit" enterkeyhint="search" autocomplete="off" placeholder="Search" aria-label="Search pictures">
-                        <button type="button" class="wm-pv-tool" data-act="top" title="Jump to Top">Top</button>
-                        <button type="button" class="wm-pv-tool" data-act="index" title="Visual Index">Index</button>
+                        <button type="button" class="wm-pv-tool wm-pv-glyph" data-act="top" title="Jump to Top" aria-label="Jump to Top"></button>
+                        <button type="button" class="wm-pv-tool wm-pv-glyph" data-act="index" title="Visual Index" aria-label="Visual Index"></button>
                         <button type="button" class="wm-pv-tool" data-act="smaller" title="Smaller pictures" aria-label="Smaller pictures">-</button>
                         <button type="button" class="wm-pv-tool" data-act="larger" title="Larger pictures" aria-label="Larger pictures">+</button>
                     </div>
@@ -3848,6 +3873,8 @@
     let bootStart = 0;
     let bootTimer = null;
     let waitTimer = null;
+    let bootWaitDelay = null;
+    const BOOT_WAIT_DELAY_MS = 2500;
     let installKind = null;
 
     function installNoun() {
@@ -3899,13 +3926,45 @@
             </div>
             <img class="wm-installer-wait" alt="" draggable="false">`;
         shell.querySelector('.wm-content').appendChild(inst);
+
+        // WM's wait wheel on the splash once the shell starts loading, until Today is up
+        const wait = document.createElement('img');
+        wait.className = 'wm-boot-wait';
+        wait.alt = '';
+        wait.draggable = false;
+        wait.hidden = true;
+        shell.appendChild(wait);
     }
 
     function setBoot(phase) {
         if (root.dataset.wmBoot === phase) return;
         root.dataset.wmBoot = phase;
-        clearInterval(waitTimer);
-        waitTimer = null;
+        const bootWait = shell.querySelector('.wm-boot-wait');
+        // the wheel stays from the splash through Today's fill-in (reveal) until done
+        if (!(phase === 'reveal' && bootWait && !bootWait.hidden)) {
+            clearInterval(waitTimer);
+            waitTimer = null;
+            if (bootWait) bootWait.hidden = true;
+        }
+        clearTimeout(bootWaitDelay);
+        bootWaitDelay = null;
+        if (phase === 'splash' && bootWait) {
+            // WM 6.1: the splash alone at first, then the wait wheel a few seconds in while the
+            // shell loads, until Today is drawn (the splash ends at finishBoot)
+            bootWaitDelay = setTimeout(() => {
+                bootWaitDelay = null;
+                if (root.dataset.wmBoot !== 'splash') return;
+                let frame = 0;
+                const tick = () => {
+                    bootWait.src = art(`wait-${frame}`);
+                    bootWait.srcset = srcset(`wait-${frame}`);
+                    frame = (frame + 1) % 16;
+                };
+                tick();
+                bootWait.hidden = false;
+                waitTimer = setInterval(tick, 90);
+            }, BOOT_WAIT_DELAY_MS);
+        }
         if (phase === 'install') {
             closeMenus();
             setTitle('Start');
@@ -4086,6 +4145,7 @@
         document.addEventListener('wmSettingsChange', () => {
             applyTodayBackground(true);
             applyStartButton();
+            syncBezel();
             fitStatus(); // Screen > Camera moves the title bar's camera gap
             const today = apps.get('today');
             if (today && today.page) today.refresh();

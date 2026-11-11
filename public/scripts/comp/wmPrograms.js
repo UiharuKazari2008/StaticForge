@@ -42,7 +42,8 @@
         startSource: 'wmStartSource',
         startText: 'wmStartText',
         startIcon: 'wmStartIcon',
-        camera: 'wmCamera'
+        camera: 'wmCamera',
+        cameraPortraitOnly: 'wmCameraPortraitOnly'
     };
     const SCALES = [1, 1.25, 1.5, 1.75, 2];
     const MELATON_EMBLEM = '/static_images/melaton/melaton-white-256.png';
@@ -915,7 +916,7 @@
         {
             id: 'screen', tab: 'system', label: 'Screen', icon: 'set-screen',
             tabs: [['textsize', 'Text Size'], ['camera', 'Camera'], ['fullscreen', 'Full Screen']],
-            init: () => ({ scale: currentScale(), camera: cameraStyle(), bars: systemBars() }),
+            init: () => ({ scale: currentScale(), camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars() }),
             render(el, tab, d) {
                 if (tab === 'fullscreen') {
                     if (!d.bars) {
@@ -934,8 +935,11 @@
                     el.innerHTML = `<p>Choose how the screen handles the camera at the top of the display.</p>
                         <div class="wm-form-gap"></div>
                         ${radio('wmCamera', 'clear', 'Keep the title bar clear of the camera', d.camera === 'clear')}
-                        ${radio('wmCamera', 'bezel', 'Black bezel above the screen', d.camera === 'bezel')}`;
+                        ${radio('wmCamera', 'bezel', 'Black bezel above the screen', d.camera === 'bezel')}
+                        <div class="wm-form-gap"></div>
+                        ${check('wmCameraPortraitOnly', 'Only in portrait (a turned phone uses the whole screen)', d.portraitOnly)}`;
                     el.querySelectorAll('input[name="wmCamera"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) d.camera = r.value; }));
+                    el.querySelector('input[name="wmCameraPortraitOnly"]').addEventListener('change', (e) => { d.portraitOnly = e.target.checked; });
                     return;
                 }
                 const n = SCALES.length;
@@ -984,6 +988,10 @@
                 const bars = systemBars();
                 if (d.bars && bars && (d.bars.hideStatus !== bars.hideStatus || d.bars.hideNavigation !== bars.hideNavigation)) {
                     try { window.AndroidDisplay.setSystemBars(!!d.bars.hideStatus, !!d.bars.hideNavigation); } catch (_) { /* older app */ }
+                }
+                if (d.portraitOnly !== (lsGet(K.cameraPortraitOnly) === '1')) {
+                    lsSet(K.cameraPortraitOnly, d.portraitOnly ? '1' : null);
+                    keys.push(K.cameraPortraitOnly);
                 }
                 if (d.camera !== cameraStyle()) {
                     lsSet(K.camera, d.camera === 'bezel' ? 'bezel' : null);

@@ -7792,6 +7792,10 @@ const START_MENU_PACKAGE_APPS = [
     ['spellbook', 'Spellcaster'],
     ['reference', 'Reference'],
     ['bracket-generation', 'Phasewalker'],
+    // Yukimi, Nov 10: Atelier, Agora (NovelAI Explore, a dsap app) and Novels belong to the suite too
+    ['naxt', 'Atelier'],
+    ['explore-gallery', 'Agora'],
+    ['novels', 'Novels'],
     ['character-db', 'Characters'],
     ['expanders', 'Expanders'],
     ['presets', 'Spellbook']

@@ -62,11 +62,12 @@ function registerDreamscapeHomeDsap() {
             };
         },
         menuEntry: {
+            // not the desktop's Control Panel: the server's administration home (Yukimi, Nov 10)
             launchId: 'control-panel',
             icon: 'fas fa-gauge',
-            imageIcon: 'vista-control-panel.png',
-            text: 'Control Panel',
-            fullName: 'Control Panel',
+            imageIcon: 'server-manager.png',
+            text: 'Server Manager',
+            fullName: 'Dreamscape Server Manager',
             appMenu: false,
             startMenu: true,
             startMenuIndex: 5,
