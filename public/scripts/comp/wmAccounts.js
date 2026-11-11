@@ -13,9 +13,10 @@
  *              (the flyout's own sessionStorage list), else Status.
  *   soft keys  Refresh | Menu (Alerts, Status, the selected item's action: Log In, Unlock, Open
  *              NovelAI). Service keys stay on the desktop (Control Panel has no phone page).
- *   Today      registerTodayItem 'accounts' after the NovelAI row; option Show: 'all' = the
- *              balances (alerts counted first), 'notices' = the alerts only (first one named), the
- *              row hidden without any; tap opens the app.
+ *   Today      registerTodayItem 'accounts' block after Calendar: a table Account | Balance | Status
+ *              (NovelAI Anlas included); option Show: 'all' = every account, 'notices' = only the
+ *              accounts with alerts or warnings, hidden without any; tap opens the app.
+ *              Styles: public/css/wm-today-widgets.css (.wac-today-*).
  *
  * The desktop tray does not run on phones (systemTrayManager is desktop only), so this file asks
  * for wallet_status once connected and every 5 minutes while the page is visible. Styles:
@@ -44,6 +45,7 @@
     let fetching = null;
     let current = { rows: [], alerts: [] };
     let todayCache = { at: 0, show: '', text: '' };
+    let rowsCache = { at: 0, show: '', rows: null }; // Today's block
 
     const esc = (s) => sh.escapeHtml(s);
 
@@ -92,6 +94,7 @@
                 fetching = null;
                 lastFetch = Date.now();
                 todayCache.at = 0;
+                rowsCache.at = 0;
                 render();
             });
         return fetching;
@@ -355,6 +358,78 @@
         return text;
     }
 
+    /**
+     * Today's Accounts block (Yukimi Nov 10: "better designed with columns"): a compact WM table,
+     * Account | Balance | Status, one line per account (the flyout's rows): the balance column holds
+     * NovelAI's Anlas (fixed + paid, optionsData.balance.totalCredits) or the account's Balance
+     * figure, the status column a small status light and the account's alert, else its usage figure.
+     * Show 'notices' keeps only the accounts with an alert or a warning light (hidden when none).
+     */
+    const shortLabel = (label) => (label === 'V5 usage' ? 'V5' : label === 'Usage' ? '' : label === 'API' ? 'API' : label);
+
+    function todayBalance(row) {
+        for (const side of rowSides(row)) {
+            if (side.label === 'Anlas') {
+                const b = window.optionsData && window.optionsData.balance;
+                const total = b && Number(b.totalCredits);
+                if (Number.isFinite(total) && total >= 0) return `${total.toLocaleString()} Anlas`;
+                return side.summary || '';
+            }
+            if (side.label === 'Balance' && side.value && side.value !== '-') return side.value;
+        }
+        return '';
+    }
+
+    function todayStatus(row, alerts) {
+        const a = alerts.find((x) => String(x.id || '').startsWith(`${row.key}:`));
+        if (a && row.dot !== 'ok') return a.title;
+        for (const side of rowSides(row)) {
+            if (side.label === 'Anlas' || side.label === 'Balance') continue;
+            const lab = shortLabel(side.label);
+            if (side.bars) return side.summary || side.bars.map((x) => `${x.caption} ${x.value}`).join(', ');
+            if (side.value && side.value !== '-') return lab ? `${lab} ${side.value}` : side.value;
+        }
+        return a ? a.title : (row.value || DOT_TITLES[row.dot] || '');
+    }
+
+    function todayRows() {
+        const show = todayShow();
+        const { rows, alerts } = readModel();
+        let out = rows.map((row) => ({ name: row.name, balance: todayBalance(row), status: todayStatus(row, alerts), level: row.dot || 'ok', key: row.key }));
+        if (show === 'notices') {
+            out = out.filter((r) => r.level === 'warn' || r.level === 'bad' || alerts.some((a) => String(a.id || '').startsWith(`${r.key}:`)));
+            // alerts no row carries (service keys ...): their own line
+            alerts.filter((a) => !rows.some((row) => String(a.id || '').startsWith(`${row.key}:`)))
+                .forEach((a) => out.push({ name: a.service || 'Accounts', balance: '', status: a.title, level: a.level === 'critical' ? 'bad' : 'warn', key: a.id }));
+        }
+        return out;
+    }
+
+    let todayKey = '';
+    function renderToday(el) {
+        const now = Date.now();
+        const show = todayShow();
+        if (now - rowsCache.at >= TODAY_CACHE_MS || rowsCache.show !== show || !rowsCache.rows) rowsCache = { at: now, show, rows: todayRows() };
+        const rows = rowsCache.rows;
+        if (!rows.length) return false;
+        if (!el.dataset.wacToday) {
+            el.dataset.wacToday = '1';
+            el.classList.add('wac-today');
+            el.setAttribute('role', 'button');
+            el.tabIndex = 0;
+            el.addEventListener('click', () => {
+                if (current.alerts.length) tab = 'alerts';
+                sh.open(APP_ID, { fromStart: true });
+            });
+        }
+        const html = '<div class="wac-today-head"><span>Account</span><span>Balance</span><span>Status</span></div>'
+            + rows.map((r) => `<div class="wac-today-row"><span class="wac-today-name">${esc(r.name)}</span>`
+                + `<span class="wac-today-bal">${esc(r.balance)}</span>`
+                + `<span class="wac-today-st"><i class="wac-today-light is-${esc(r.level)}" title="${esc(DOT_TITLES[r.level] || '')}"></i>${esc(r.status)}</span></div>`).join('');
+        if (html !== todayKey) { todayKey = html; el.innerHTML = html; }
+        return true;
+    }
+
     // ---------------------------------------------------------------- wiring
 
     let wsWired = false;
@@ -403,14 +478,9 @@
             sh.registerTodayItem({
                 id: APP_ID,
                 label: 'Accounts',
-                icon: 'app-accounts',
-                after: 'novelai',
+                after: 'calendar',
                 options: [{ key: 'show', label: 'Show', choices: [['all', 'Balances for all accounts'], ['notices', 'Notices only']], value: 'all' }],
-                text: todayText,
-                onTap() {
-                    if (current.alerts.length) tab = 'alerts';
-                    sh.open(APP_ID, { fromStart: true });
-                }
+                render: renderToday
             });
         }
         startPolling();

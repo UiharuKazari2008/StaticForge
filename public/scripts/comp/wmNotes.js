@@ -197,6 +197,7 @@
         let folder = stored(FOLDER_KEY) || 'active'; // 'active' | '*' | a workspace id
         let editing = null; // { noteId|null, workspaceId, name, original, saving: the save in flight }
         let pending = null; // a note to open once the app is shown
+        const newestCache = { at: 0, ws: null, value: null, list: null, busy: false }; // Today's Notes item
 
         const isCurrent = () => !!(ws && ws.current === APP_ID);
         const folderWs = () => (folder === 'active' ? activeWs() : folder);
@@ -700,6 +701,31 @@
                 if (editing) { saveEditing().catch(() => {}); editing = null; }
                 pending = { noteId, workspaceId, name };
                 ws.open(APP_ID);
+            },
+            /**
+             * Today's Notes row (wmTodayWidgets.js): the newest note of the active workspace
+             * ({ name, noteId, workspaceId, modifiedAt } or false), null before the first answer;
+             * listed again after 2 minutes or a workspace switch.
+             */
+            newest() {
+                const wsId = activeWs();
+                if (!newestCache.busy && vfs() && (newestCache.ws !== wsId || Date.now() - newestCache.at > 120000)) {
+                    newestCache.busy = true;
+                    let ok = false;
+                    listWorkspace(wsId).then((list) => {
+                        ok = true;
+                        const slim = list.map((i) => ({ name: i.name, noteId: i.noteId, workspaceId: i.workspaceId, modifiedAt: i.modifiedAt }));
+                        const top = slim.reduce((a, b) => ((Number(b.modifiedAt) || 0) > (Number(a && a.modifiedAt) || 0) ? b : a), null);
+                        newestCache.value = top || false;
+                        newestCache.list = slim;
+                    }).catch(() => { if (newestCache.ws !== wsId) { newestCache.value = null; newestCache.list = null; } /* else keeps the last answer */ }).finally(() => { newestCache.busy = false; newestCache.at = ok ? Date.now() : Date.now() - 105000; newestCache.ws = wsId; }); // a failure (early in boot) retries in 15 s
+                }
+                return newestCache.ws === wsId ? newestCache.value : null;
+            },
+            /** Today's Notes item: every note of the active workspace (same cache as newest()), null before the first answer. */
+            list() {
+                const v = this.newest();
+                return v == null ? null : (newestCache.list || []);
             }
         };
     })();
@@ -1560,7 +1586,7 @@
         Contacts.register();
     }
 
-    window.wmNotesApp = { openNote: (id, wsId, name) => Notes.openNote(id, wsId, name) };
+    window.wmNotesApp = { openNote: (id, wsId, name) => Notes.openNote(id, wsId, name), newest: () => Notes.newest(), list: () => Notes.list() };
     window.wmContactsApp = { openFile: (item, folder) => Contacts.openFile(item, folder) };
 
     if (window.wmShell) register();

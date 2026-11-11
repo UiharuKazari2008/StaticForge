@@ -1375,6 +1375,9 @@
 
         function renderPage() {
             const { def, tab, draft, tabs } = open;
+            // WM: an applet started by a program carries its own name in the title bar; from the
+            // Settings grid the title stays Settings with the page name as the header
+            if (sh.current === 'settings') sh.setTitle(open.direct ? def.label : 'Settings');
             page.innerHTML = `<div class="wm-form-hdr">${esc(def.label)}</div><div class="wm-set-scroll"><div class="wm-form"></div></div>${tabs.length ? tabsHtml(tabs, tab) : ''}`;
             const el = page.querySelector('.wm-form');
             const api = { rerender: () => { if (open && open.draft === draft) renderPage(); }, tab };
@@ -1406,7 +1409,7 @@
                 try { extDrafts.set(x.id, typeof x.init === 'function' ? x.init() : {}); } catch (err) { console.warn('Settings: init failed', x.id, err); extDrafts.set(x.id, {}); }
             }
             const first = tabs[0] ? tabs[0][0] : '';
-            open = { def, exts, tabs, tab: tab && tabs.some(([t]) => t === tab) ? tab : first, draft: def.init(), extDrafts, direct: !!(opts && opts.direct) };
+            open = { def, exts, tabs, tab: tab && tabs.some(([t]) => t === tab) ? tab : first, draft: def.init(), extDrafts, direct: !!(opts && opts.direct), openedAt: Date.now() };
             renderPage();
             sh.syncHistory();
             return true;
@@ -1481,10 +1484,12 @@
                 page = p;
                 page.classList.add('wm-set');
             },
-            // an open page and its draft stay while Settings is in the background (WM keeps the
-            // property page behind other programs); reopening comes back to it with ok
+            // Settings opened again (Start, Programs) always starts at its grid (Yukimi, Nov 10): a page
+            // left open behind other programs is left without saving, like leaving it without ok. A page
+            // just opened by wmSettings.open (a program's settings) stays.
             show() {
-                if (open) { refreshTitleKind(); return; }
+                if (open && Date.now() - (open.openedAt || 0) < 1000) { renderPage(); return; }
+                if (open) open = null;
                 renderGrid();
             },
             hide() {},

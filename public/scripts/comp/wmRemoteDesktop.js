@@ -1332,8 +1332,37 @@
         });
     }
 
+    /** The computer connected to last (Today's Remote Desktop row, wmTodayWidgets.js). */
+    function lastComputer() {
+        const last = readJson(LAST_KEY, '');
+        return (typeof last === 'string' && last) || history()[0] || '';
+    }
+
+    /**
+     * Today's row tap: the app with the running session, else the last computer in the Computer box,
+     * connected at once when it is a saved connection or its password is known (else the password
+     * box gets the focus and Connect stays the user's).
+     */
+    async function reconnectLast() {
+        ws.open(APP_ID);
+        if (session || !els) return;
+        const last = lastComputer();
+        if (!last) return;
+        for (let i = 0; i < 50 && (listState.loading || !listState.loaded) && !listState.error; i++) await new Promise((r) => setTimeout(r, 200));
+        if (session || !isCurrent()) return;
+        els.computer.value = last;
+        fillCredentials();
+        paintForm();
+        if (findSaved(last) || els.pass.value) { void connect(); return; }
+        if (!els.pass.disabled) els.pass.focus();
+    }
+
     // tests: a session view on any same-origin page (a stub Guacamole), and the internals
     window.wmRemoteDesktop = {
+        lastComputer,
+        reconnectLast,
+        /** A session is up (its computer's name), for Today. */
+        sessionName: () => (session && session.connected ? session.name : ''),
         get state() { return { view, status, full, session: session ? { name: session.name, connected: session.connected, state: session.state, fw: session.fw, fh: session.fh, scale: session.scale, tx: session.tx, ty: session.ty, fitted: session.fitted, attempts: session.attempts } : null, conns: conns.length, listError: listState.error, patched }; },
         _test: { openSession, onMirror: (k, p) => onMirror(k, p), endSession, layer }
     };

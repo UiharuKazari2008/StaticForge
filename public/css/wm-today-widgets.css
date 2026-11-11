@@ -1,0 +1,335 @@
+/* Melaton Mobile: Today widgets (wmTodayWidgets.js, Yozora #732). Blocks sit in the shell's
+ * .wm-today-block box (wm-shell.css: padding, rule under it, 12 px Tahoma, white on the Today
+ * wallpaper); these only lay out their parts. Rows use the shell's .wm-today-row. */
+
+.wm-today-block.wtw {
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    min-height: calc(40 * var(--wm-px));
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.wm-today-block.wtw[hidden] {
+    display: none !important;
+}
+
+.wm-today-block.wtw[role="button"]:active {
+    background: var(--wm-highlight);
+}
+
+.wtw-lines {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.wtw-title,
+.wtw-sub {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wtw-title {
+    font-weight: bold;
+}
+
+.wtw-sub[hidden] {
+    display: none;
+}
+
+/* a print: square, the Today print tile's frame (wm-shell.css .wm-today-print) */
+.wtw-thumb {
+    flex: 0 0 auto;
+    width: calc(36 * var(--wm-px));
+    height: calc(36 * var(--wm-px));
+    object-fit: cover;
+    background: #000;
+    border: calc(1 * var(--wm-px)) solid var(--wm-today-rule);
+    box-sizing: border-box;
+}
+
+.wtw-thumb[hidden] {
+    display: none;
+}
+
+/* ---- Director: persona head | session name over "Yumiya is working" | the last print */
+.wtw-persona {
+    flex: 0 0 auto;
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
+/* ---- Studio: the print (or a dark tile while none) | status, progress, prompt */
+.wtw-thumb-box {
+    flex: 0 0 auto;
+    display: block;
+    width: calc(36 * var(--wm-px));
+    height: calc(36 * var(--wm-px));
+}
+
+.wtw-thumb-box .wtw-thumb {
+    display: block;
+}
+
+.wtw-thumb-box.is-empty {
+    background: center / calc(32 * var(--wm-px)) no-repeat image-set(url('/static_images/wm61/app-studio-lg.png') 1x, url('/static_images/wm61/app-studio-lg@2x.png') 2x);
+}
+
+.wtw-studio .wtw-sub {
+    font-size: calc(11 * var(--wm-px));
+}
+
+/* WM 6.1 progress bar on the Today background: 1 px white frame, highlight fill */
+.wtw-bar {
+    display: block;
+    height: calc(7 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) 0 calc(1 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #fff;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.wtw-bar[hidden] {
+    display: none;
+}
+
+.wtw-bar-fill {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--wm-highlight);
+}
+
+.wm-today-block.wtw[role="button"]:active .wtw-bar-fill {
+    background: #fff;
+}
+
+/* ---- Weather: the Weather app's condition icon (wm61/weather, 64 px art) | "54° F Partly Cloudy"
+ * over the place | high / low */
+.wtw-sky {
+    flex: 0 0 auto;
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    object-fit: contain;
+}
+
+.wtw-hilo {
+    flex: 0 0 auto;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+/* ---- Accounts (wmAccounts.js renderToday): a compact WM details table on the Today background,
+ * Account | Balance | Status; the block is the grid, rows are display: contents so the columns
+ * line up across rows */
+.wm-today-block.wac-today {
+    display: grid;
+    /* the name as wide as it needs, the status at least a short figure ("V5 2%"); on a narrow
+     * phone the name gives way first */
+    grid-template-columns: minmax(0, max-content) auto minmax(6em, 1fr);
+    column-gap: calc(6 * var(--wm-px));
+    row-gap: 0;
+    align-items: center;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.wm-today-block.wac-today[hidden] {
+    display: none !important;
+}
+
+.wm-today-block.wac-today:active {
+    background: var(--wm-highlight);
+}
+
+.wac-today-head,
+.wac-today-row {
+    display: contents;
+}
+
+.wac-today-head > span {
+    padding-bottom: calc(1 * var(--wm-px));
+    margin-bottom: calc(1 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid rgba(255, 255, 255, 0.55);
+    font-size: calc(11 * var(--wm-px));
+    white-space: nowrap;
+}
+
+.wac-today-head > span:nth-child(2),
+.wac-today-bal {
+    text-align: right;
+}
+
+.wac-today-name,
+.wac-today-bal,
+.wac-today-st {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: calc(16 * var(--wm-px));
+}
+
+.wac-today-name,
+.wac-today-bal {
+    font-weight: bold;
+}
+
+/* the status light: small (Yukimi: no huge dots), framed so it reads on any wallpaper */
+.wac-today-light {
+    display: inline-block;
+    width: calc(6 * var(--wm-px));
+    height: calc(6 * var(--wm-px));
+    margin: 0 calc(4 * var(--wm-px)) calc(1 * var(--wm-px)) 0;
+    vertical-align: middle;
+    border: calc(1 * var(--wm-px)) solid rgba(0, 0, 0, 0.6);
+    background: #5ee05e;
+}
+
+.wac-today-light.is-warn { background: #ffc020; }
+.wac-today-light.is-bad { background: #ff4040; }
+.wac-today-light.is-off { background: #b0b0b0; }
+
+/* ---- Studio: the print and its lines on top, the buttons under them */
+.wm-today-block.wtw-studio {
+    flex-direction: column;
+    align-items: stretch;
+    gap: calc(3 * var(--wm-px));
+}
+
+.wtw-studio-top {
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    min-width: 0;
+}
+
+.wtw-studio .wtw-sub {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+}
+
+/* buttons on the Today background: WM's white-framed buttons, transparent over the wallpaper */
+.wtw-actions {
+    display: flex;
+    gap: calc(4 * var(--wm-px));
+}
+
+.wtw-actions[hidden] {
+    display: none;
+}
+
+.wtw-actions button {
+    /* widths follow the labels ("Ask Director" is the long one), the row shares what is left */
+    flex: 1 1 auto;
+    min-width: 0;
+    height: calc(19 * var(--wm-px));
+    padding: 0 calc(2 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #fff;
+    background: rgba(0, 0, 0, 0.25);
+    color: #fff;
+    font: bold calc(11 * var(--wm-px)) var(--wm-font);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wtw-actions button:active {
+    background: var(--wm-highlight);
+}
+
+.wtw-actions button:disabled {
+    opacity: 0.5;
+}
+
+/* ---- a block drawn as one Today row (Server status: One line) */
+.wm-today-block.wtw-rowlike {
+    min-height: calc(21 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px)) 0 calc(3 * var(--wm-px));
+    gap: calc(7 * var(--wm-px));
+}
+
+.wtw-rowlike img {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wtw-rowlike .wtw-title {
+    flex: 1 1 auto;
+}
+
+/* ---- Server status, details: icon | "Server OK" + uptime, then the figures in small type */
+.wm-today-block.wtw-server {
+    align-items: flex-start;
+}
+
+.wtw-server-icon {
+    flex: 0 0 auto;
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
+.wtw-server-head {
+    display: flex;
+    gap: calc(6 * var(--wm-px));
+    min-width: 0;
+}
+
+.wtw-server-head .wtw-title {
+    flex: 1 1 auto;
+}
+
+.wtw-uptime {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.wtw-server-lines {
+    display: flex;
+    flex-direction: column;
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+}
+
+.wtw-server-lines > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---- Notes: icon | the note's name over its first lines (Options: 1, 2, 3 or 5) */
+.wm-today-block.wtw-notes {
+    align-items: flex-start;
+    min-height: calc(21 * var(--wm-px));
+}
+
+.wtw-notes-icon {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin-top: calc(1 * var(--wm-px));
+}
+
+.wtw-preview {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--wtw-lines, 1);
+    line-clamp: var(--wtw-lines, 1);
+    overflow: hidden;
+    white-space: pre-line;
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+}
+
+.wtw-preview[hidden] {
+    display: none;
+}

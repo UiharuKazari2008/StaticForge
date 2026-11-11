@@ -121,10 +121,21 @@
         const V = vfs();
         if (!V) throw new Error('Files are not available.');
         let items = [];
+        // A workspace without a Calendars folder is normal (no appointments yet). Listing a missing
+        // folder makes the server send an 'error' packet, which the client turns into a "WebSocket
+        // server error: Folder not found" banner (ws/handlers/120-infrastructureInbound.js) before
+        // any catch here runs, so look in the workspace first and list the folder only when it is there.
+        let present = false;
         try {
-            const res = await V.listDirectory(folder(), { offset: 0, limit: 200 });
-            items = (res && res.items) || [];
-        } catch (_) { items = []; } // no Calendars folder yet: nothing to show until the first save
+            const top = await V.listDirectory(workspaceRoot(), { offset: 0, limit: 500 });
+            present = ((top && top.items) || []).some((i) => i && i.kind === 'folder' && String(i.name || '').toLowerCase() === 'calendars');
+        } catch (_) { present = false; }
+        if (present) {
+            try {
+                const res = await V.listDirectory(folder(), { offset: 0, limit: 200 });
+                items = (res && res.items) || [];
+            } catch (_) { items = []; }
+        }
         const files = items.filter((i) => /\.ics$/i.test(i.name || '') && (i.targetKind === 'user-file' || i.kind === 'file'));
         const next = [];
         for (const f of files) {
@@ -157,7 +168,13 @@
         if (!force && loadedAt && Date.now() - loadedAt < RELOAD_MS) return Promise.resolve();
         const first = !loadedAt;
         const p = load().catch((err) => {
-            ws.notify({ title: 'Calendar', icon: 'error', text: (err && err.message) || 'The calendar could not be opened.' });
+            // a real failure answers the user only when they opened Calendar (or asked to reload):
+            // a WM message box; background refreshes stay quiet
+            if ((first || force) && ws.current === APP_ID) {
+                ws.messageBox({ title: 'Calendar', icon: 'error', text: (err && err.message) || 'The calendar could not be opened.' });
+            } else {
+                console.warn('wmCalendar: reload failed', err);
+            }
         }).finally(() => { loading = null; render(); });
         loading = p;
         // the first open waits under the wait cursor; later refreshes run behind the view
@@ -842,7 +859,23 @@
         });
     }
 
-    window.wmCalendar = { reload: () => reload(true), _state: () => ({ view, date, cals, layer }) };
+    /**
+     * Today's Calendar row (wmTodayWidgets.js): the next appointments from now (14 days; all-day ones
+     * only on their day), null before the first load. A stale list (5 min) reloads quietly, no notice.
+     */
+    function upcoming(n) {
+        const now = new Date();
+        if (!loading && (!loadedAt || Date.now() - loadedAt > 5 * 60000) && window.wsClient && window.wsClient.initializationCompleted) {
+            loading = load().catch(() => { loadedAt = Date.now(); }).finally(() => { loading = null; render(); });
+        }
+        if (!loadedAt) return null;
+        return occ(startOfDay(now), addDays(startOfDay(now), 14))
+            .filter((o) => (o.ev.allDay ? sameDay(o.start, now) || o.start > now : o.end > now))
+            .sort((x, y) => (x.start - y.start) || (y.ev.allDay - x.ev.allDay))
+            .slice(0, Math.max(1, n || 1));
+    }
+
+    window.wmCalendar = { reload: () => reload(true), upcoming, _state: () => ({ view, date, cals, layer }) };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });
