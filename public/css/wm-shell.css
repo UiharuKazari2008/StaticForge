@@ -290,6 +290,28 @@ html.ui-mobile[data-wm-camera="bezel"] body {
     overflow: hidden;
 }
 
+/* the band replaces the safe area on its edge: app.css's black body border (the inset) and the
+ * shell's own safe padding would each add the camera's status-bar-tall box again (Fold7 cover
+ * screen: band 39 + border 46 + padding 46 put the title bar at 131 px) */
+html.ui-mobile[data-wm-camera="bezel"] body {
+    border-top-width: 0 !important;
+}
+
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"],
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"] #wmShell {
+    --wm-safe-top: 0px;
+}
+
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="left"],
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="left"] #wmShell {
+    --wm-safe-left: 0px;
+}
+
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="right"],
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="right"] #wmShell {
+    --wm-safe-right: 0px;
+}
+
 html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::before,
 html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::after {
     content: '';
@@ -606,10 +628,10 @@ html.ui-mobile[data-wm-app="today"] #wmShell > .wm-content {
 .wm-startmenu {
     position: absolute;
     left: env(safe-area-inset-left);
-    top: calc(env(safe-area-inset-top) + 26 * var(--wm-px));
+    top: calc(var(--wm-safe-top, env(safe-area-inset-top)) + 26 * var(--wm-px));
     z-index: 10;
     min-width: calc(129 * var(--wm-px));
-    max-height: calc(100% - 52 * var(--wm-px) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    max-height: calc(100% - 52 * var(--wm-px) - var(--wm-safe-top, env(safe-area-inset-top)) - env(safe-area-inset-bottom));
     overflow-y: auto;
     background: var(--wm-title);
     border: calc(1 * var(--wm-px)) solid #000;
@@ -805,7 +827,7 @@ html.ui-mobile[data-wm-app="gallery"] body > #galleryWindow {
     position: fixed !important;
     left: env(safe-area-inset-left) !important;
     right: env(safe-area-inset-right) !important;
-    top: calc(env(safe-area-inset-top) + 26 * var(--wm-px)) !important;
+    top: calc(var(--wm-safe-top, env(safe-area-inset-top)) + 26 * var(--wm-px)) !important;
     bottom: calc(env(safe-area-inset-bottom) + 26 * var(--wm-px)) !important;
     width: auto !important;
     height: auto !important;
@@ -827,7 +849,7 @@ html.ui-mobile #galleryWindow > .modal-window-controls {
     position: fixed;
     left: env(safe-area-inset-left);
     right: env(safe-area-inset-right);
-    top: calc(env(safe-area-inset-top) + 26 * var(--wm-px));
+    top: calc(var(--wm-safe-top, env(safe-area-inset-top)) + 26 * var(--wm-px));
     z-index: 2002;
     display: flex;
     gap: calc(2 * var(--wm-px));
@@ -858,7 +880,7 @@ html.ui-mobile #galleryWindow > .modal-window-controls {
 }
 
 html.ui-mobile[data-wm-search="1"] body > #galleryWindow {
-    top: calc(env(safe-area-inset-top) + 50 * var(--wm-px)) !important;
+    top: calc(var(--wm-safe-top, env(safe-area-inset-top)) + 50 * var(--wm-px)) !important;
 }
 
 /* ---- message box (replaces the desktop's dialogs while the shell is up) ---- */
@@ -1413,7 +1435,7 @@ html.ui-mobile body > #toastContainer {
     position: absolute;
     left: 0;
     right: 0;
-    top: calc(env(safe-area-inset-top) + 26 * var(--wm-px));
+    top: calc(var(--wm-safe-top, env(safe-area-inset-top)) + 26 * var(--wm-px));
     z-index: 9;
     display: flex;
     justify-content: center;
@@ -1472,7 +1494,7 @@ html.ui-mobile body > #agentClientUpdateDialog:not(.hidden) {
     backdrop-filter: none !important;
     font: calc(12 * var(--wm-px)) var(--wm-font) !important;
     color: #000 !important;
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left) !important;
+    padding: var(--wm-safe-top, env(safe-area-inset-top)) var(--wm-safe-right, env(safe-area-inset-right)) env(safe-area-inset-bottom) var(--wm-safe-left, env(safe-area-inset-left)) !important;
     animation: none !important;
 }
 
@@ -1480,10 +1502,10 @@ html.ui-mobile body > #agentClientUpdateDialog:not(.hidden) {
 html.ui-mobile body > #pinModal:not(.hidden),
 html.ui-mobile body > #agentClientUpdateDialog:not(.hidden) {
     box-shadow:
-        inset 0 env(safe-area-inset-top) #000,
+        inset 0 var(--wm-safe-top, env(safe-area-inset-top)) #000,
         inset 0 calc(-1 * env(safe-area-inset-bottom)) #000,
-        inset env(safe-area-inset-left) 0 #000,
-        inset calc(-1 * env(safe-area-inset-right)) 0 #000 !important;
+        inset var(--wm-safe-left, env(safe-area-inset-left)) 0 #000,
+        inset calc(-1 * var(--wm-safe-right, env(safe-area-inset-right))) 0 #000 !important;
 }
 
 html.ui-mobile #pinModal::before,
@@ -2310,7 +2332,7 @@ html.ui-mobile body > .pswp .pswp__preloader {
     position: absolute;
     left: calc(env(safe-area-inset-left) + 9 * var(--wm-px));
     right: calc(env(safe-area-inset-right) + 9 * var(--wm-px));
-    top: calc(env(safe-area-inset-top) + 36 * var(--wm-px));
+    top: calc(var(--wm-safe-top, env(safe-area-inset-top)) + 36 * var(--wm-px));
     z-index: 13;
     background: #fff;
     color: #000;
