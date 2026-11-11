@@ -170,3 +170,74 @@
         align-items: center;
     }
 }
+
+/* ---- Melaton Mobile 6.5 ---- */
+/* WM 6.5's MobileCalculator keeps 6.1's layout and puts a skin on it (measured on the 6.5 emulator,
+ * VGA halved; ~/.cache/claude-run/wm65apps/tools/calc65-*.png): the page is #293039, the keys are
+ * 35 px squares of the program's own PNGs (grey digits, red C / memory, blue operators, orange =)
+ * at x 5 + 39n, rows 45 apart from y 54, every glyph white; a pressed key is plain black. The
+ * memory box (22 x 26, its 25 px art squeezed) always shows M: #425163 empty, white when memory
+ * holds a value. The display is white with a black line on its top and left only, text #080431.
+ * The back key is its 25 x 26 art with a white block arrow. */
+html.ui-mobile[data-wm-version="6.5"] .wm-page.wm-calculator {
+    background: #293039;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-mem {
+    border: 0;
+    background: url('/static_images/wm65/tool-calc-mem@2x.png') center / 100% 100% no-repeat;
+    color: #425163;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-mem.is-set {
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-display {
+    border-width: max(1px, calc(0.5 * var(--wm-px))) 0 0 max(1px, calc(0.5 * var(--wm-px)));
+    color: #080431;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-back {
+    border: 0;
+    background: url('/static_images/wm65/tool-calc-back@2x.png') center / 100% 100% no-repeat;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-back-arrow {
+    background: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-back.is-down {
+    background: #000;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-key {
+    border: 0;
+    border-radius: 0;
+    background: url('/static_images/wm65/tool-calc-key-gray@2x.png') center / 100% 100% no-repeat;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-key:is([data-k="c"], [data-k="mc"], [data-k="mr"], [data-k="m+"]) {
+    background-image: url('/static_images/wm65/tool-calc-key-red@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-key:is([data-k="/"], [data-k="*"], [data-k="-"], [data-k="+"], .is-b) {
+    background-image: url('/static_images/wm65/tool-calc-key-blue@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-key[data-k="="] {
+    background-image: url('/static_images/wm65/tool-calc-key-orange@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-key.is-down {
+    background: #000;
+}
+
+/* the arrow: 27 x 31 device px (head 15 wide, shaft 11 high), 13 px in and 12 px down in the key */
+html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-back-arrow {
+    width: calc(13.5 * var(--wm-px));
+    height: calc(15.5 * var(--wm-px));
+    margin: calc(1.5 * var(--wm-px)) 0 0 calc(1.5 * var(--wm-px));
+    clip-path: polygon(0 50%, 55.6% 0, 55.6% 32.3%, 100% 32.3%, 100% 67.7%, 55.6% 67.7%, 55.6% 100%);
+}

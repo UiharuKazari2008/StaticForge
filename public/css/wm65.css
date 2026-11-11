@@ -1178,3 +1178,16 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-boot="reveal"] .wm-titlebar,
 html.ui-mobile[data-wm-version="6.5"][data-wm-boot="reveal"] .wm-softkeys { background: #000; opacity: 1; visibility: visible; }
 html.ui-mobile[data-wm-version="6.5"][data-wm-boot="reveal"] .wm-titlebar > *,
 html.ui-mobile[data-wm-version="6.5"][data-wm-boot="reveal"] .wm-softkeys > * { opacity: 1; visibility: visible; }
+
+/* ---- Pictures (the gallery app) ----
+ * Windows Mobile 6.5's Pictures & Videos against 6.1's (emulator): a plain white field with no cell
+ * rules, 106 x 106 square thumbnails in 160 x 121 cells, and File Explorer's 44 + 2 px bar with
+ * the wide drop arrows. */
+html.ui-mobile[data-wm-version="6.5"] .wm-pv { background: #fff; }
+html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar { height: calc(23 * var(--wm-px)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar :is(.wm-pv-folder, .wm-pv-sort) { gap: calc(0.5 * var(--wm-px)); padding: 0 calc(4 * var(--wm-px)) calc(1 * var(--wm-px)) calc(3 * var(--wm-px)) !important; color: var(--wm65-text) !important; }
+html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar .wm-pv-sort { padding-right: calc(3.5 * var(--wm-px)) !important; }
+html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar .wm-pv-arrow { flex: 0 0 auto; width: calc(9.5 * var(--wm-px)); height: calc(5 * var(--wm-px)); margin: calc(6 * var(--wm-px)) 0 0 calc(5 * var(--wm-px)); border: 0; background: #000; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar .wm-pv-sort .wm-pv-arrow { margin-left: calc(4.5 * var(--wm-px)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-pv-cell { height: calc(60.5 * var(--wm-px) * var(--wm-pv-k, 1)); border-right: 0 !important; border-bottom: 0 !important; }
+html.ui-mobile[data-wm-version="6.5"] .wm-pv-cell img { width: calc(53 * var(--wm-px) * var(--wm-pv-k, 1)); height: calc(53 * var(--wm-px) * var(--wm-pv-k, 1)); max-width: none; max-height: none; object-fit: cover; }

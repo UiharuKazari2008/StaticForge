@@ -272,3 +272,76 @@
     filter: grayscale(1) brightness(1.15);
     opacity: 0.55;
 }
+
+/* ---- Melaton Mobile 6.5 ---- */
+/* WM 6.5 ships the same player and the same skin files as 6.1 (the ROM's wmp_WPC_* and wm_*.bmp
+ * are byte-identical), so Now Playing keeps its skin. The Library and Now Playing list change with
+ * the 6.5 theme (measured on the 6.5 emulator, VGA halved; ~/.cache/claude-run/wm65apps/tools/
+ * wmp65-*.png): the lists are plain white (no gradient), the header is 23 px of flat tint with
+ * its text in 12 px right after the icon and the wide 9.5 x 5 drop-down arrow; rows keep their
+ * 17 px pitch, text 12 px. */
+html.ui-mobile[data-wm-version="6.5"] .wm-media[data-layer="library"] > .wmp-lib,
+html.ui-mobile[data-wm-version="6.5"] .wm-media[data-layer="queue"] > .wmp-queue {
+    background: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-lhead {
+    height: calc(23 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-lsel,
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-lback {
+    gap: 0;
+    font-size: calc(12 * var(--wm-px)) !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-larrow {
+    margin: calc(3 * var(--wm-px)) 0 0 calc(5.5 * var(--wm-px));
+    border-left-width: calc(4.75 * var(--wm-px));
+    border-right-width: calc(4.75 * var(--wm-px));
+    border-top-width: calc(5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-lrow {
+    font-size: calc(12 * var(--wm-px));
+}
+
+/* rows start right under the header; the icon at x 1, the highlighted text box from x 17 with
+ * 1.5 px before the text */
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-llist,
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-qlist {
+    padding-top: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-lrow {
+    gap: 0;
+    padding-left: calc(1 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-lrow span {
+    padding: 0 calc(1.5 * var(--wm-px));
+}
+
+/* the Now Playing list's toolbar: 23 px, buttons 23 px apart with the 16 px icon 3 px in
+ * (icons at x 3, 26, 49, 72), Properties 8 px further on (x 103) */
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-qbar {
+    height: calc(23 * var(--wm-px));
+    padding-left: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-qtool {
+    justify-content: flex-start;
+    width: calc(23 * var(--wm-px));
+    padding-left: calc(3 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-qtool[data-t="props"] {
+    margin-left: calc(8 * var(--wm-px));
+}
+
+/* a disabled tool is the icon's shape in #848284 with a white edge 1 px down and right */
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-qtool:disabled img {
+    filter: brightness(0) invert(0.517) drop-shadow(calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #fff);
+    opacity: 1;
+}

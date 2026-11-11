@@ -366,6 +366,8 @@
             b.classList.toggle('is-on', k === 'mute' && media.muted);
         });
         skin.querySelector('.wmp-vol').textContent = `${media.volume}%`;
+        // 6.5 (as the device with nothing queued): the rating stars only show for a queued item
+        skin.querySelector('.wmp-ratings').hidden = !it && ws.version === '6.5';
         paintTime();
     }
 

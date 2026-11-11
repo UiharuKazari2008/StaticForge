@@ -110,3 +110,32 @@
     text-align: right;
     padding-right: calc(6 * var(--wm-px));
 }
+
+/* ---- Melaton Mobile 6.5 ---- */
+/* Measured on the 6.5 emulator (VGA halved; ~/.cache/claude-run/wm65apps/tools/tm65-*.png): the
+ * header is 16.5 px (15.5 px of tint and a 1 px black rule), the CPU column 47 px (rules at
+ * x 136..137 and 191..192); rows are the 27 px finger rows with the theme's selector (wm65.css),
+ * the 16 px icon at x 1 and the name from x 18, text #090733; the icon is not dithered. */
+html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtm-head {
+    grid-template-columns: minmax(0, 1fr) calc(55 * var(--wm-px)) calc(47 * var(--wm-px));
+    height: calc(16.5 * var(--wm-px));
+    color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtm-row {
+    grid-template-columns: calc(18 * var(--wm-px)) minmax(0, 1fr) calc(55 * var(--wm-px)) calc(47 * var(--wm-px));
+    height: calc(27 * var(--wm-px));
+    color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtm-row.is-selected {
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtm-ico img {
+    margin-left: calc(1 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtm-row.is-selected .wtm-ico::after {
+    display: none;
+}

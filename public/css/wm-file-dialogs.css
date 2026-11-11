@@ -382,3 +382,15 @@
     background: var(--wm-highlight);
     color: var(--wm-highlight-text);
 }
+
+/* ---- Melaton Mobile 6.5 ---- */
+/* The common Open / Save As dialogs are 6.1's own in 6.5 (captured on the 6.5 emulator with
+ * \Storage Card\wmopen.exe; ~/.cache/claude-run/wm65apps/tools/od65-*.png): same layout, the
+ * 6.5 colours, combo boxes, buttons and scroll bars (wm65.css). The file list is a plain list
+ * view: its selected row is the flat highlight (#295dce on the device), not the finger-size
+ * gradient selector of File Explorer's rows. */
+html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-scroll .wfd-item.is-selected {
+    border-image: none;
+    background-color: var(--wm-highlight) !important;
+    color: #fff;
+}

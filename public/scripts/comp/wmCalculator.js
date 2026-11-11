@@ -168,7 +168,11 @@
     function render() {
         if (!page) return;
         page.querySelector('.wmc-display').textContent = shown();
-        page.querySelector('.wmc-mem').textContent = st.memory !== 0 ? 'M' : '';
+        const mem = page.querySelector('.wmc-mem');
+        // 6.5 always draws the M in its box: dim while memory is empty, white when it holds a value
+        const v65 = ws && ws.version === '6.5';
+        mem.textContent = st.memory !== 0 || v65 ? 'M' : '';
+        mem.classList.toggle('is-set', st.memory !== 0);
     }
 
     function mount(p) {

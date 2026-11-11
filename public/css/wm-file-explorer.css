@@ -261,3 +261,63 @@
     transform: translateY(-50%);
     pointer-events: none;
 }
+
+/* ---- Melaton Mobile 6.5 ---- */
+/* Measured on the 6.5 emulator (VGA halved; ~/.cache/wm65/ref/fe-*.png and
+ * ~/.cache/claude-run/wm65apps/tools/fe65-*.png). The folder bar is 22 px of tint over a 1 px black
+ * rule (23 in all); the folder name starts right after the 16 px icon (x 20), the drop arrows are
+ * the wide ones (9.5 x 5, 6 px after the text, the sort arrow 3.5 px from the edge). */
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-bar {
+    height: calc(23 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-bar :is(.wm-pv-folder, .wm-pv-sort) {
+    gap: calc(0.5 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px)) calc(1 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
+    color: var(--wm65-text) !important;
+}
+
+/* the arrow: 19 x 10 device px, black */
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-bar .wm-pv-arrow {
+    flex: 0 0 auto;
+    width: calc(9.5 * var(--wm-px));
+    height: calc(5 * var(--wm-px));
+    margin: calc(6 * var(--wm-px)) 0 0 calc(5 * var(--wm-px));
+    border: 0;
+    background: #000;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-bar .wm-pv-sort {
+    padding-right: calc(3.5 * var(--wm-px)) !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-bar .wm-pv-sort .wm-pv-arrow {
+    margin-left: calc(4.5 * var(--wm-px));
+}
+
+/* rows (27 px, wm65.css): the icon at x 1, the name from x 18; the date ends 57 px before the
+ * list's right edge (right-aligned), the size starts 43.5 px before it */
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-list:not(.fe-grid) .fe-row {
+    grid-template-columns: calc(18 * var(--wm-px)) minmax(0, 1fr) calc(62 * var(--wm-px)) calc(44.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-list:not(.fe-grid) .fe-ico {
+    margin-left: calc(1 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-list:not(.fe-grid) .fe-date {
+    padding: 0 calc(12.5 * var(--wm-px)) 0 0;
+    text-align: right;
+}
+
+/* View > Thumbnails: 6.5's Pictures & Videos field is plain white with no rules between cells */
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-list.fe-grid {
+    background: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-list.fe-grid .fe-tile {
+    border-right-color: transparent !important;
+    border-bottom-color: transparent !important;
+    color: var(--wm65-text);
+}
