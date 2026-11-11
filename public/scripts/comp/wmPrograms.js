@@ -1377,6 +1377,7 @@
             const items = pagesFor(gridTab).map((p) => ({ key: p.id, label: p.label, img: { src: sh.art.url(p.icon), srcset: sh.art.srcset(p.icon) } }))
                 .concat(links.map((l) => ({ key: l.id, label: l.label, img: { src: sh.art.url(l.icon), srcset: sh.art.srcset(l.icon) } })))
                 .sort((a, b) => a.label.localeCompare(b.label));
+            delete page.dataset.setPage; // an applet opened again starts at its top
             page.innerHTML = `<div class="wm-set-scroll"><div class="wm-icongrid" role="list">${items.map((i) => iconCell(i)).join('')}</div></div>${tabsHtml(SET_TABS, gridTab)}`;
             bindGrid(page.querySelector('.wm-icongrid'), openPage);
             page.querySelectorAll('.wm-tab').forEach((t) => t.addEventListener('click', () => { gridTab = t.dataset.tab; renderGrid(); }));
@@ -1387,6 +1388,11 @@
             const { def, tab, draft, tabs } = open;
             // the open applet's name in the title bar, from the grid or started by a program (Yukimi, Nov 10)
             if (sh.current === 'settings') sh.setTitle(def.label);
+            // a redraw (a tap on a list row, a check box) keeps where the page and its lists were
+            // scrolled: the same tab redrawn, not a new one (Today > Items read from the top again)
+            const keep = page.dataset.setPage === `${def.id}:${tab}`
+                ? [...page.querySelectorAll('.wm-set-scroll, .wm-listbox')].map((x) => x.scrollTop) : null;
+            page.dataset.setPage = `${def.id}:${tab}`;
             page.innerHTML = `<div class="wm-form-hdr">${esc(def.label)}</div><div class="wm-set-scroll"><div class="wm-form"></div></div>${tabs.length ? tabsHtml(tabs, tab) : ''}`;
             const el = page.querySelector('.wm-form');
             const api = { rerender: () => { if (open && open.draft === draft) renderPage(); }, tab };
@@ -1397,6 +1403,10 @@
                 else def.render(el, tab, draft, api);
             } catch (err) {
                 console.warn('Settings: could not draw', def.id, tab, err);
+            }
+            if (keep) {
+                const now = [...page.querySelectorAll('.wm-set-scroll, .wm-listbox')];
+                if (now.length === keep.length) now.forEach((x, i) => { x.scrollTop = keep[i]; });
             }
             page.querySelectorAll('.wm-tab').forEach((t) => t.addEventListener('click', () => { open.tab = t.dataset.tab; renderPage(); }));
             refreshTitleKind();
