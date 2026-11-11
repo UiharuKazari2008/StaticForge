@@ -972,8 +972,14 @@ html.ui-mobile[data-wm-version="6.5"] .wm-check input:disabled + span {
 
 /* push button: 20 px, 1 px black frame, button face, Tahoma bold 10.5; pressed it takes the
  * highlight; disabled keeps its black frame and greys the label */
-html.ui-mobile[data-wm-version="6.5"] .wm-button {
+/* the 72-unit minimum is a default only (:where keeps it as weak as 6.1's own .wm-button rule): a
+ * page's narrow buttons (the play / stop keys of Sounds & Notifications, spin and icon keys) keep
+ * the width their own rules give them instead of running off the page */
+html.ui-mobile:where([data-wm-version="6.5"]) .wm-button {
     min-width: calc(72 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-button {
     background: var(--wm65-face) !important;
     color: var(--wm65-text) !important;
     font-size: calc(10.5 * var(--wm-px));
