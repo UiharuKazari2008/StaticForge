@@ -94,6 +94,9 @@
     const folderOf = (id) => FOLDERS.find((f) => f.id === id) || FOLDERS[2];
     const mailById = (id) => mail.find((m) => String(m.id) === String(id)) || null;
     const px = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
+    // Melaton Mobile 6.5 (Windows Mobile 6.5 Professional's Messaging, measured on its emulator): the list has a
+    // status line, Delete / Menu soft keys and New in the menu; the menus have no rules
+    const is65 = () => !!(ws && ws.version === '6.5') || document.documentElement.dataset.wmVersion === '6.5';
 
     function send(type, data, quiet) {
         const c = wsc();
@@ -444,9 +447,22 @@
         let text = '';
         if (listError) text = listError;
         else if (loading && !rows.length) text = '';
-        else if (!rows.length) text = 'No messages.';
+        else if (!rows.length) text = is65() ? 'To create a new message, tap Menu, then tap New.' : 'No messages.';
         empty.textContent = text;
         empty.hidden = !text;
+        renderStatus();
+    }
+
+    /** 6.5: the line under the list, "<account>  N Items, M Unread." (the device's wording, plural kept). */
+    function renderStatus() {
+        const line = page && page.querySelector('.msg-status');
+        if (!line) return;
+        const out = folder === 'sent' || folder === 'outbox';
+        // the inbox's unread count is the mailbox's own (the list holds one page of it)
+        const box = mailboxes.find((x) => x.owner === owner);
+        const unread = out ? 0 : (folder === 'inbox' && box && !hasMore ? box.unread || 0 : mail.filter((m) => !m.read).length);
+        line.querySelector('.msg-status-acct').textContent = accountName(owner);
+        line.querySelector('.msg-status-count').textContent = `${mail.length}${hasMore ? '+' : ''} Items${unread ? `, ${unread} Unread` : ''}.`;
     }
 
     function selectRow(id, scroll) {
@@ -780,7 +796,8 @@
         const atts = view.querySelector('.msg-compose-atts');
         atts.innerHTML = compose.attachments.map((a) => `<div class="msg-att">${img('msg-attachment')}<span>${esc(a.name || 'attachment')}</span></div>`).join('');
         atts.hidden = !compose.attachments.length;
-        view.querySelector('.msg-from-addr').textContent = address(human());
+        // 6.5 names the account in brackets on the From line; 6.1 gives the address
+        view.querySelector('.msg-from-addr').textContent = is65() ? `(${accountName(human())})` : address(human());
         view.querySelector('[name="to"]').value = init.to || '';
         view.querySelector('[name="cc"]').value = init.cc || '';
         view.querySelector('[name="subject"]').value = init.subject || '';
@@ -925,6 +942,13 @@
         ];
     }
 
+    /** The sort orders (the bar's drop-down; 6.5 also has them under Tools > Sort By, Message Type first). */
+    function sortItems() {
+        const rows = SORTS.map(([k, label]) => ({ label, radio: sortField === k, action: () => setSort(k) }));
+        if (is65()) rows.unshift({ label: 'Message Type', disabled: true });
+        return rows;
+    }
+
     function goToItems() {
         return accountsInOrder().map((o) => ({ label: accountName(o), radio: o === owner, action: () => switchTo(o, 'inbox', { popLayers: true }) }));
     }
@@ -932,6 +956,29 @@
     function listMenu() {
         const m = selectedMail();
         const mine = isMine();
+        if (is65()) {
+            // the device's Outlook E-mail list menu (Delete is the left soft key there)
+            return [
+                { label: 'New', action: () => newMessage() },
+                { label: 'Reply/Forward', submenu: () => respondItems(m) },
+                m && m.read
+                    ? { label: 'Mark as Unread', disabled: !mine, action: () => setRead([String(m.id)], false) }
+                    : { label: 'Mark as Read', disabled: !m || !mine, action: () => setRead([String(m.id)], true) },
+                { label: 'Move...', disabled: !m || !mine, action: () => openMove([String(m.id)]) },
+                { label: 'Go To', submenu: () => [{ label: 'Folders...', action: () => pushLayer('folders') }, '-'].concat(goToItems()) },
+                { label: 'Tools', submenu: () => [
+                    { label: 'Sort By', submenu: () => sortItems() },
+                    { label: 'Manage Folders...', disabled: true },
+                    { label: `Clear "${accountName(owner)}"`, disabled: true },
+                    { label: 'Empty Deleted Items', disabled: !mine, action: emptyDeleted },
+                    { label: 'Enable Updates', disabled: true },
+                    { label: 'New Account...', disabled: true },
+                    { label: 'Options...', disabled: true }
+                ] },
+                { label: 'Select Messages', submenu: () => [{ label: 'All', disabled: true }, { label: 'All Below', disabled: true }, { label: 'Several', disabled: true }] },
+                { label: 'Send/Receive', action: sendReceive }
+            ];
+        }
         return [
             { label: 'Delete', disabled: !m || !mine, action: () => deleteIds([String(m.id)]) },
             { label: 'Reply/Send', submenu: () => respondItems(m) },
@@ -954,6 +1001,17 @@
     function contextMenu(m) {
         const mine = isMine();
         if (!m) return [{ label: 'Send/Receive', action: sendReceive }, { label: 'Folders', action: () => pushLayer('folders') }];
+        if (is65()) {
+            return [
+                { label: 'Delete', disabled: !mine, action: () => deleteIds([String(m.id)]) },
+                ...respondItems(m),
+                m.read
+                    ? { label: 'Mark as Unread', disabled: !mine, action: () => setRead([String(m.id)], false) }
+                    : { label: 'Mark as Read', disabled: !mine, action: () => setRead([String(m.id)], true) },
+                { label: 'Move...', disabled: !mine, action: () => openMove([String(m.id)]) },
+                { label: 'Download Message', disabled: true }
+            ];
+        }
         return [
             { label: 'Delete', disabled: !mine, action: () => deleteIds([String(m.id)]) },
             '-',
@@ -986,6 +1044,19 @@
 
     function composeMenu() {
         const people = addRecipientItems();
+        const cancel = () => { if (composeDirty()) confirmCancelCompose(); else popLayer(); };
+        if (is65()) {
+            return [
+                { label: 'Add Recipient...', disabled: !people.length, submenu: () => people },
+                { label: 'Check Names', action: checkNames },
+                { label: 'Insert', disabled: true, submenu: () => [] },
+                { label: 'My Text', disabled: true, submenu: () => [] },
+                { label: 'Save to Drafts', disabled: true },
+                { label: 'Spell Check', disabled: true },
+                { label: 'Cancel Message', action: cancel },
+                { label: 'Message Options...', disabled: true }
+            ];
+        }
         return [
             { label: 'Add Recipient...', disabled: !people.length, submenu: () => people },
             { label: 'Check Names', action: checkNames },
@@ -995,7 +1066,7 @@
             { label: 'Spell Check', disabled: true },
             '-',
             { label: 'Save to Drafts', disabled: true },
-            { label: 'Cancel Message', action: () => { if (composeDirty()) confirmCancelCompose(); else popLayer(); } }
+            { label: 'Cancel Message', action: cancel }
         ];
     }
 
@@ -1021,6 +1092,10 @@
         }
         if (t === 'compose') {
             return { left: { label: 'Send', disabled: sending, action: sendCompose }, right: { label: 'Menu', menu: composeMenu } };
+        }
+        if (is65()) {
+            const m = selectedMail();
+            return { left: { label: 'Delete', disabled: !m || !isMine(), action: () => deleteIds([String(m.id)]) }, right: { label: 'Menu', menu: listMenu } };
         }
         return { left: { label: 'New', action: () => newMessage() }, right: { label: 'Menu', menu: listMenu } };
     }
@@ -1089,6 +1164,7 @@
                     <button type="button" class="wm-pv-sort msg-sort" aria-haspopup="menu" aria-expanded="false"><span>Received</span><i class="wm-pv-arrow"></i></button>
                 </div>
                 <div class="msg-scroll"><div class="msg-list" role="listbox" aria-label="Messages"></div><p class="msg-empty" hidden></p></div>
+                ${is65() ? '<div class="msg-status"><span class="msg-status-acct"></span><span class="msg-status-count"></span></div>' : ''}
             </div>
             <div class="msg-view" data-view="accounts" hidden>
                 <div class="msg-head">Select an Account</div>
@@ -1131,8 +1207,8 @@
         sortBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             sortBtn.setAttribute('aria-expanded', 'true');
-            sortBtn.querySelector('span').textContent = 'Sort By';
-            ws.dropdown(sortBtn, SORTS.map(([k, label]) => ({ label, radio: sortField === k, action: () => setSort(k) })), 'right', () => { sortBtn.setAttribute('aria-expanded', 'false'); renderBar(); });
+            sortBtn.querySelector('span').textContent = is65() ? 'Sort by' : 'Sort By';
+            ws.dropdown(sortBtn, sortItems(), 'right', () => { sortBtn.setAttribute('aria-expanded', 'false'); renderBar(); });
         });
         p.querySelectorAll('.msg-pick').forEach((host) => {
             host.addEventListener('click', (e) => {
@@ -1233,6 +1309,62 @@
         newMessage({ to: to.join('; '), subject: init.subject || '', body: init.body || '', attachments: init.attachments });
     }
     window.wmMessagingCompose = composeFromApp;
+
+    /**
+     * The home screen's e-mail panel opens one inbox message here: Messaging comes to the front on the
+     * person's own inbox and the message opens through openMessage (fetched by id when the list does not
+     * hold it yet). An id that cannot be found leaves the app on the inbox list.
+     */
+    async function openMail(id) {
+        if (!ws || id == null) return;
+        ws.open(APP_ID, { fromStart: true });
+        if (!page) return;
+        const want = String(id);
+        if (top() === 'read' && reading && String(reading.id) === want && isMine() && folder === 'inbox') return;
+        layers = [];
+        if (reading) { reading = null; readToken++; }
+        compose = null;
+        moveIds = [];
+        const me = human();
+        if (owner !== me || folder !== 'inbox') {
+            owner = me;
+            folder = 'inbox';
+            mail = [];
+            selectedId = null;
+        }
+        showLayer();
+        ws.syncHistory();
+        // show() has just started the list load (or this does): the row may come with it
+        const token = ++listToken;
+        loading = true;
+        let row = mailById(want);
+        try {
+            const r = await send('dovecote_list_mail', { folder: 'inbox', limit: Math.max(PAGE_LIMIT, mail.length) }, true);
+            if (token === listToken) {
+                mail = (r && r.mail) || [];
+                nextCursor = (r && r.nextCursor) || null;
+                hasMore = !!(r && r.hasMore);
+                listError = '';
+            }
+        } catch (_) { /* the list keeps what it had */ }
+        if (token !== listToken) return;
+        loading = false;
+        loadingMore = false;
+        row = mailById(want) || row;
+        if (!row) {
+            // not in the first page: the message itself, unread state untouched until it is opened
+            try {
+                const r = await send('dovecote_get_mail', { id, markRead: false }, true);
+                const full = r && r.mail;
+                if (full && String(full.id) === want && (!full.owner || full.owner === me)) row = full;
+            } catch (_) { /* not found: the inbox list stays */ }
+        }
+        if (token !== listToken || owner !== me || folder !== 'inbox' || layers.length) return;
+        renderList();
+        if (isCurrent()) ws.refreshSoftKeys();
+        if (row) openMessage(row);
+    }
+    window.wmMessaging = { openMail };
 
     // ---------------------------------------------------------------- registration
 

@@ -487,3 +487,312 @@
     user-select: text;
     -webkit-user-select: text;
 }
+
+/* ---- Melaton Mobile 6.5 ----
+ * Windows Mobile 6.5 Professional's Notes and Contacts, measured on its emulator (VGA: one unit =
+ * 2 device px; captures in ~/.cache/claude-run/wm65apps/pim/emu). 6.5 has no list gradient: the
+ * pages are white. Notes kept its 6.1 list (flat highlight); Contacts got finger rows with the
+ * theme's selector, lost the letter tabs and shows a picture frame on every card. */
+
+html.ui-mobile[data-wm-version="6.5"] .wm-notes,
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts {
+    background: #fff;
+    color: var(--wm65-text);
+}
+
+/* ---- Notes: rows 17 px, bold; the flat highlight (not the selector art) on the chosen row ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-notes .nt-row {
+    /* the name from x 18, the date column from x 122.5, the size ends 7 px from the edge */
+    grid-template-columns: calc(18 * var(--wm-px)) calc(104.5 * var(--wm-px)) minmax(0, 1fr) auto;
+    height: calc(17 * var(--wm-px));
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-notes .nt-name {
+    padding-right: calc(4 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-notes .nt-ico img {
+    margin-left: calc(1 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell .wm-notes .nt-row.is-selected {
+    border-image: none;
+    border-width: 0;
+    background: var(--wm-highlight) !important;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-notes .nt-size {
+    padding-right: calc(1 * var(--wm-px));
+}
+
+/* ---- Contacts: list ---- */
+
+/* the name box: 26 px of tint with a 1 px black rule under it; the letter tabs are gone in 6.5 */
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-searchbar {
+    height: calc(27 * var(--wm-px));
+    padding-right: calc(3.5 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-search {
+    padding: 0 calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    color: var(--wm65-text);
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-search::placeholder {
+    color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-tabs {
+    display: none;
+}
+
+/* rows on a 35.5 px pitch, no rules; the selector art is 9-sliced over the pitch, 1.5 px short of
+ * the right edge; the card picture at x 11.5, the bold name from x 30 and the number under it */
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-row {
+    position: relative;
+    grid-template-rows: calc(12 * var(--wm-px)) calc(12 * var(--wm-px));
+    height: calc(35.5 * var(--wm-px));
+    padding-top: calc(6.5 * var(--wm-px));
+    border-bottom: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell .wm-contacts :is(.ct-row, .ct-crow).is-selected {
+    border-image: none;
+    border-width: 0;
+    background: transparent !important;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts :is(.ct-row, .ct-crow).is-selected::before,
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-nomatch::before {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    left: 0;
+    right: calc(1.5 * var(--wm-px));
+    top: 0;
+    bottom: 0;
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: url('/static_images/wm65/theme-classicblue-listviewselector@2x.png') 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) / 0 stretch;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts :is(.ct-row, .ct-crow, .ct-nomatch) > * {
+    position: relative;
+    z-index: 1;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-ico {
+    grid-row: 1 / 3;
+    align-self: start;
+    margin-top: calc(2.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-ico img {
+    margin-left: calc(11.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-name {
+    align-self: start;
+    line-height: calc(12.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-sub {
+    gap: 0;
+    font-size: calc(10.5 * var(--wm-px));
+    line-height: calc(12 * var(--wm-px));
+}
+
+/* the letter of the number stands between two small arrows (3.5 x 6 px), 21 px after the number */
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-kind {
+    display: inline-flex;
+    align-items: center;
+    margin-left: calc(21 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-kind::before,
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-kind::after {
+    content: '';
+    width: calc(3.5 * var(--wm-px));
+    height: calc(6 * var(--wm-px));
+    margin-top: calc(1 * var(--wm-px));
+    background: currentColor;
+    clip-path: polygon(100% 0, 100% 100%, 0 50%);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-kind::before {
+    margin-right: calc(8 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-kind::after {
+    margin-left: calc(8 * var(--wm-px));
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+/* "No matches: ..." is one selector-art row with the bold white line centred */
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-nomatch::before {
+    z-index: -1;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-nomatch {
+    position: relative;
+    isolation: isolate;
+    box-sizing: border-box;
+    min-height: calc(35.5 * var(--wm-px));
+    padding: calc(10 * var(--wm-px)) calc(8 * var(--wm-px)) calc(8 * var(--wm-px));
+    border-bottom: 0;
+    background: transparent;
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-note {
+    padding-top: calc(114 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+}
+
+/* ---- Contacts: the card. A 79.5 px name band (the bold name at x 4.5; the 54 x 72 picture frame
+ * 4 px from the top and right) over a 1 px #9c9a9c rule; the band takes the highlight when the
+ * card has nothing to call. Rows on a 40 px pitch under it with the selector art over the pitch. */
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-card-head {
+    align-items: flex-start;
+    box-sizing: content-box;
+    height: calc(79.5 * var(--wm-px));
+    min-height: 0;
+    padding: 0 calc(4 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #9c9a9c;
+    line-height: calc(14 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-card-head.is-selected {
+    background: var(--wm-highlight);
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-card-name {
+    padding-top: calc(3.5 * var(--wm-px));
+}
+
+/* the first row's selector art starts on the rule */
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-card-summary {
+    margin-top: calc(-1 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-card-photo {
+    flex: 0 0 auto;
+    width: calc(54 * var(--wm-px));
+    height: calc(72 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) 0 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-crow {
+    position: relative;
+    grid-template-rows: calc(14 * var(--wm-px)) calc(14 * var(--wm-px));
+    height: calc(40 * var(--wm-px));
+    padding-top: calc(4.5 * var(--wm-px));
+    border-bottom: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-crow-ico {
+    padding-top: calc(1 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-crow-ico img {
+    margin-left: calc(5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-crow-label {
+    align-self: start;
+    line-height: calc(14 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-crow-value {
+    font-size: calc(10.5 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+}
+
+/* the device shows no hint on a card with no details */
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-card-empty {
+    display: none;
+}
+
+/* bottom tabs: the shell's 6.5 strip (wm65.css .wm-tabs / .wm-tab), 19.5 px */
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-btabs {
+    height: calc(19.5 * var(--wm-px));
+    border-top: 0;
+    background: #000;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-btab {
+    top: 0;
+    font-size: calc(10.5 * var(--wm-px)) !important;
+}
+
+/* ---- Contacts: the form (6.1's, in 6.5's text colour) ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-field input,
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-fstatic,
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-form-notes,
+html.ui-mobile[data-wm-version="6.5"] .wm-notes .nt-text {
+    color: var(--wm65-text);
+}
+
+/* ---- scroll bars: the 6.5 bar (13 px, grey track, the theme's thumb and arrow buttons), as the
+ * shell's lists have it ---- */
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar {
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-track {
+    background: #e6e6e6;
+    border: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-thumb {
+    min-height: calc(35 * var(--wm-px));
+    border-style: solid;
+    border-color: transparent;
+    border-width: calc(12 * var(--wm-px)) 0;
+    border-radius: 0;
+    border-image: url('/static_images/wm65/theme-black-scrollbarthumb@2x.png') 24 0 24 0 fill / calc(12 * var(--wm-px)) 0 stretch;
+    background: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button {
+    display: block;
+    width: calc(13 * var(--wm-px));
+    height: calc(19.5 * var(--wm-px));
+    border: 0;
+    background: #e6e6e6 center / 100% 100% no-repeat;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button:vertical:decrement {
+    background-image: url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button:vertical:increment {
+    background-image: url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
+    background-image: url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button:vertical:increment:active {
+    background-image: url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png');
+}
+
+/* the form's first rule lies 17.5 px under the title bar on the device and the rules are #848284 */
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-form {
+    margin-top: calc(-1.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-field input,
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-fstatic {
+    border-bottom-color: #848284;
+}

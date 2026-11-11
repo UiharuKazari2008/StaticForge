@@ -143,6 +143,8 @@
     }
 
     function px() { return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1; }
+    // Melaton Mobile 6.5 (Windows Mobile 6.5 Professional's Notes and Contacts, measured on its emulator)
+    function is65() { return !!(ws && ws.version === '6.5') || document.documentElement.dataset.wmVersion === '6.5'; }
 
     /** Tap-and-hold on rows: fn(row, x, y). Returns a function that says whether the last tap was a hold. */
     function onHold(el, selector, fn) {
@@ -1014,8 +1016,16 @@
             const box = page.querySelector('.ct-cardview');
             box.querySelector('.ct-card-name').textContent = VC().displayName(c);
             const pic = box.querySelector('.ct-card-photo');
-            pic.hidden = !(c.photo && /^data:image\//.test(c.photo));
-            if (!pic.hidden) pic.src = c.photo;
+            const hasPhoto = !!(c.photo && /^data:image\//.test(c.photo));
+            pic.hidden = !hasPhoto && !is65();
+            pic.removeAttribute('srcset');
+            if (hasPhoto) pic.src = c.photo;
+            else if (is65()) {
+                // 6.5: a contact with no picture shows the device's own picture frame
+                pic.src = '/static_images/wm65/pim-contact-picture.png';
+                pic.srcset = '/static_images/wm65/pim-contact-picture.png 1x, /static_images/wm65/pim-contact-picture@2x.png 2x';
+            }
+            pic.classList.toggle('is-frame', !hasPhoto);
             const rows = cardRows(c);
             box.querySelector('.ct-card-summary').innerHTML = rows.length
                 ? rows.map((r, n) => `<div class="ct-crow${r.kind === 'info' ? ' is-info' : ''}" data-n="${n}" role="button" tabindex="-1">`
@@ -1028,6 +1038,9 @@
             box.querySelectorAll('.ct-btab').forEach((t) => t.classList.toggle('is-selected', t.dataset.tab === cardTab));
             const first = box.querySelector('.ct-crow:not(.is-info)');
             box.querySelectorAll('.ct-crow').forEach((r) => r.classList.toggle('is-selected', r === first));
+            // 6.5: with nothing to call or write to, the name band holds the highlight
+            box.querySelector('.ct-card-head').classList.toggle('is-selected', !first);
+            box.querySelectorAll('.ct-btab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === cardTab)));
         }
 
         async function noPhone(number) {
@@ -1172,7 +1185,7 @@
             const box = page.querySelector('.ct-editview');
             box.querySelector('.ct-form').hidden = editTab !== 'details';
             box.querySelector('.ct-form-notes').hidden = editTab !== 'notes';
-            box.querySelectorAll('.ct-btab').forEach((t) => t.classList.toggle('is-selected', t.dataset.tab === editTab));
+            box.querySelectorAll('.ct-btab').forEach((t) => { t.classList.toggle('is-selected', t.dataset.tab === editTab); t.setAttribute('aria-selected', String(t.dataset.tab === editTab)); });
         }
 
         function refreshComputed() {
@@ -1301,7 +1314,11 @@
 
         async function deleteContact(e) {
             if (!e || readOnly()) return;
-            const yes = await ws.messageBox({
+            // 6.5 asks under the contact's name, with the warning sign
+            const yes = await ws.messageBox(is65() ? {
+                title: VC().displayName(e.c) || 'Contacts', icon: 'warning', text: 'Permanently delete the selected contact or contacts?',
+                buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false
+            } : {
                 title: 'Contacts', icon: 'question', text: 'Contact will be deleted. Continue?',
                 buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false
             });
@@ -1368,6 +1385,22 @@
         function listMenu() {
             const e = selectedEntry();
             const ro = readOnly();
+            const viewByRows = () => [['name', 'Name'], ['company', 'Company']].map(([k, l]) => ({ label: l, radio: viewBy === k, action: () => { viewBy = k; store(VIEW_KEY, k); sortEntries(); renderList(); } }));
+            if (is65()) {
+                return [
+                    { label: 'Edit', disabled: !e || ro, action: () => openForm(e) },
+                    '-',
+                    { label: 'Send Contact', disabled: !e, submenu: () => sendContactRows(e) },
+                    { label: 'Copy Contact', disabled: !e || ro, action: () => copyContact(e) },
+                    { label: 'Delete', disabled: !e || ro, action: () => deleteContact(e) },
+                    '-',
+                    { label: 'Options...', disabled: true },
+                    { label: 'View By', submenu: viewByRows },
+                    { label: 'Filter', submenu: [{ label: 'All Contacts', radio: true }, { label: 'Recently Viewed', disabled: true }] },
+                    '-',
+                    { label: 'Select Contacts', disabled: true, submenu: () => [] }
+                ];
+            }
             return [
                 { label: 'Edit', disabled: !e || ro, action: () => openForm(e) },
                 '-',
@@ -1376,7 +1409,7 @@
                 { label: 'Delete Contact', disabled: !e || ro, action: () => deleteContact(e) },
                 '-',
                 { label: 'Options...', disabled: true },
-                { label: 'View By', submenu: [['name', 'Name'], ['company', 'Company']].map(([k, l]) => ({ label: l, radio: viewBy === k, action: () => { viewBy = k; store(VIEW_KEY, k); sortEntries(); renderList(); } })) },
+                { label: 'View By', submenu: viewByRows },
                 { label: 'Filter', submenu: [{ label: 'All Contacts', radio: true }, { label: 'Recently Viewed', disabled: true }] }
             ];
         }
@@ -1426,6 +1459,13 @@
                     <div class="ct-btabs"><button type="button" class="ct-btab is-selected" data-tab="details">Details</button><button type="button" class="ct-btab" data-tab="notes">Notes</button></div>
                 </div>`;
 
+            if (is65()) {
+                // 6.5: the shell's tab strip (wm65.css .wm-tabs) and the card's picture frame, which a
+                // contact with no picture also has (outres.192.dll bitmap 8202)
+                p.classList.add('is-65');
+                p.querySelectorAll('.ct-btabs').forEach((t) => t.classList.add('wm-tabs'));
+                p.querySelectorAll('.ct-btab').forEach((t) => { t.classList.add('wm-tab'); t.setAttribute('aria-selected', String(t.classList.contains('is-selected'))); });
+            }
             const searchEl = p.querySelector('.ct-search');
             searchEl.addEventListener('input', () => {
                 search = searchEl.value;
@@ -1442,6 +1482,23 @@
             onHold(scroll, '.ct-row', (row, x, y) => {
                 selectRow(row.dataset.key);
                 const en = entryByKey(row.dataset.key);
+                if (is65() && en) {
+                    // the device's row menu: the calls and messages first, no Edit
+                    const c = en.c;
+                    const mail = VC().email(c);
+                    ws.menuAt(x, y, [
+                        { label: 'Call Work', disabled: !c.work.phone, action: () => runRow({ kind: 'call', value: c.work.phone }) },
+                        { label: 'Call Home', disabled: !c.home.phone, action: () => runRow({ kind: 'call', value: c.home.phone }) },
+                        { label: 'Call Mobile', disabled: !c.home.mobile, action: () => runRow({ kind: 'call', value: c.home.mobile }) },
+                        { label: 'Send E-mail', disabled: !mail, action: () => runRow({ kind: 'mail', value: mail }) },
+                        { label: 'Send Text Message', disabled: !c.home.mobile, action: () => runRow({ kind: 'sms', value: c.home.mobile }) },
+                        '-',
+                        { label: 'Send Contact', submenu: () => sendContactRows(en) },
+                        { label: 'Copy Contact', disabled: readOnly(), action: () => copyContact(en) },
+                        { label: 'Delete', disabled: readOnly(), action: () => deleteContact(en) }
+                    ]);
+                    return;
+                }
                 ws.menuAt(x, y, [
                     { label: 'Edit', disabled: readOnly(), action: () => openForm(en) },
                     { label: 'Send Contact', submenu: () => sendContactRows(en) },
@@ -1462,6 +1519,7 @@
                 const r = e.target.closest('.ct-crow');
                 if (!r || r.classList.contains('is-info')) return;
                 card.querySelectorAll('.ct-crow').forEach((x) => x.classList.toggle('is-selected', x === r));
+                card.querySelector('.ct-card-head').classList.remove('is-selected');
                 runRow(cardRows(current.c)[Number(r.dataset.n)]);
             });
             card.querySelector('.ct-btabs').addEventListener('click', (e) => {
@@ -1534,7 +1592,10 @@
                         const v = view();
                         if (v === 'card') {
                             const c = current && current.c;
-                            return { left: { label: 'Call', disabled: !(c && (c.home.mobile || c.work.phone || c.home.phone)), action: callDefault }, right: { label: 'Menu', menu: cardMenu } };
+                            const canCall = !!(c && (c.home.mobile || c.work.phone || c.home.phone));
+                            // 6.5: a card with no number has Edit there
+                            if (is65() && !canCall) return { left: { label: 'Edit', disabled: readOnly(), action: () => openForm(current) }, right: { label: 'Menu', menu: cardMenu } };
+                            return { left: { label: 'Call', disabled: !canCall, action: callDefault }, right: { label: 'Menu', menu: cardMenu } };
                         }
                         if (v === 'edit') return { left: null, right: { label: 'Menu', menu: formMenu } };
                         return { left: { label: 'New', disabled: readOnly(), action: () => ensureVCard().then((ok) => { if (ok) openForm(null); }) }, right: { label: 'Menu', menu: listMenu } };

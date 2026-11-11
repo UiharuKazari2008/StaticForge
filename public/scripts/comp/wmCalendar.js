@@ -48,7 +48,11 @@
     let loading = null;
     let view = 'agenda';
     let date = startOfDay(new Date());
-    let selHour = null; // the slot picked in Day / Week (an hour, on `date`)
+    let selHour = null; // the slot picked in Day / Week (an hour, on `date`; 6.5 has half-hour slots: h + 0.5)
+    // Melaton Mobile 6.5 (Windows Mobile 6.5 Professional's Calendar, measured on its emulator): Day and
+    // Week show half-hour slots; the rest is 6.1's Calendar under the 6.5 chrome
+    const is65 = () => !!(ws && ws.version === '6.5') || document.documentElement.dataset.wmVersion === '6.5';
+    const pickedCls = (h) => (selHour !== null && Math.floor(selHour) === h ? ` is-picked${selHour % 1 ? ' is-half' : ''}` : '');
     let sel = null; // the appointment picked: { ev, cal, start, end }
     let layer = null; // null | 'summary' | 'form'
     let fromSummary = false;
@@ -328,7 +332,7 @@
             o.lane = lane;
         });
         const n = Math.max(1, lanes.length);
-        const rows = Array.from({ length: 24 }, (_, h) => `<div class="wcl-hour${h >= WORK_START && h < WORK_END ? ' is-work' : ''}${selHour === h && !sel ? ' is-picked' : ''}" data-h="${h}"><span class="wcl-hlabel">${h12(h)}</span></div>`).join('');
+        const rows = Array.from({ length: 24 }, (_, h) => `<div class="wcl-hour${h >= WORK_START && h < WORK_END ? ' is-work' : ''}${!sel ? pickedCls(h) : ''}" data-h="${h}"><span class="wcl-hlabel">${h12(h)}</span></div>`).join('');
         const boxes = timed.map((o) => {
             const i = list.indexOf(o);
             const top = (o.start.getHours() + o.start.getMinutes() / 60);
@@ -351,7 +355,7 @@
         const list = occ(days[0], addDays(days[days.length - 1], 1));
         const today = startOfDay(new Date());
         const head = `<div class="wcl-whead" style="--cols:${days.length}"><span class="wcl-wcorner"></span>${days.map((d) => `<button type="button" class="wcl-wday${sameDay(d, date) ? ' is-selected' : ''}${sameDay(d, today) ? ' is-today' : ''}" data-day="${+d}"><b>${LETTERS[d.getDay()]}</b> ${pad(d.getDate())}</button>`).join('')}</div>`;
-        const hours = Array.from({ length: 24 }, (_, h) => `<div class="wcl-whour${h >= WORK_START && h < WORK_END ? ' is-work' : ''}" style="--h:${h}"><span class="wcl-hlabel">${h12(h)}</span>${days.map((d) => `<span class="wcl-wcell${sameDay(d, date) && selHour === h && !sel ? ' is-picked' : ''}" data-day="${+d}" data-h="${h}"></span>`).join('')}</div>`).join('');
+        const hours = Array.from({ length: 24 }, (_, h) => `<div class="wcl-whour${h >= WORK_START && h < WORK_END ? ' is-work' : ''}" style="--h:${h}"><span class="wcl-hlabel">${h12(h)}</span>${days.map((d) => `<span class="wcl-wcell${sameDay(d, date) && !sel ? pickedCls(h) : ''}" data-day="${+d}" data-h="${h}"></span>`).join('')}</div>`).join('');
         const boxes = list.map((o, i) => {
             const col = days.findIndex((d) => sameDay(d, o.start));
             if (col < 0) return '';
@@ -432,7 +436,7 @@
                 // opens on the working day (8 o'clock at the top), or the selection
                 const row = sc.querySelector('.wcl-hour, .wcl-whour');
                 const h = row ? row.getBoundingClientRect().height : 0;
-                const first = sel && !sel.ev.allDay ? sel.start.getHours() : selHour !== null ? selHour : WORK_START;
+                const first = sel && !sel.ev.allDay ? sel.start.getHours() : selHour !== null ? Math.floor(selHour) : WORK_START;
                 sc.scrollTop = Math.max(0, Math.min(first, WORK_START) * h);
             }
         }
@@ -504,7 +508,7 @@
         const s = start || (() => {
             const d = new Date(date);
             const now = new Date();
-            d.setHours(selHour !== null ? selHour : (sameDay(date, now) ? now.getHours() + 1 : WORK_START), 0, 0, 0);
+            d.setHours(selHour !== null ? Math.floor(selHour) : (sameDay(date, now) ? now.getHours() + 1 : WORK_START), selHour !== null && selHour % 1 ? 30 : 0, 0, 0);
             return d;
         })();
         const rem = remParts(15);
@@ -557,7 +561,7 @@
         form = o ? editForm(o) : newForm(start);
         layer = 'form';
         page.querySelector('.wcl-form').dataset.tab = 'appt';
-        page.querySelectorAll('.wcl-ftab').forEach((t) => t.classList.toggle('is-selected', t.dataset.tab === 'appt'));
+        page.querySelectorAll('.wcl-ftab').forEach((t) => { t.classList.toggle('is-selected', t.dataset.tab === 'appt'); t.setAttribute('aria-selected', String(t.dataset.tab === 'appt')); });
         render();
         renderForm();
         ws.syncHistory();
@@ -704,7 +708,7 @@
             if (tab) {
                 readForm();
                 page.querySelector('.wcl-form').dataset.tab = tab.dataset.tab;
-                page.querySelectorAll('.wcl-ftab').forEach((x) => x.classList.toggle('is-selected', x === tab));
+                page.querySelectorAll('.wcl-ftab').forEach((x) => { x.classList.toggle('is-selected', x === tab); x.setAttribute('aria-selected', String(x === tab)); });
                 if (tab.dataset.tab === 'notes') page.querySelector('.wcl-fnotes').focus();
             }
             return;
@@ -723,11 +727,16 @@
         }
         const slot = t.closest('.wcl-hour, .wcl-wcell');
         if (slot) {
-            const h = Number(slot.dataset.h);
+            let h = Number(slot.dataset.h);
+            // 6.5: the lower half of an hour is its half-hour slot
+            if (is65()) {
+                const box = slot.getBoundingClientRect();
+                if (e.clientY - box.top >= box.height / 2) h += 0.5;
+            }
             const d = slot.dataset.day ? new Date(Number(slot.dataset.day)) : date;
             if (selHour === h && sameDay(d, date) && !sel) {
                 const s = new Date(d);
-                s.setHours(h, 0, 0, 0);
+                s.setHours(Math.floor(h), h % 1 ? 30 : 0, 0, 0);
                 openForm(null, s);
                 return;
             }
@@ -769,6 +778,21 @@
     }
 
     function viewMenu() {
+        if (is65()) {
+            // the device's menu (it scrolls there: ten rows, no rules); Refresh is ours, kept under Tools
+            return [
+                { label: 'New Appointment', action: () => openForm(null) },
+                { label: 'Delete Appointment', action: deleteSel, disabled: !sel || sel.cal.readonly },
+                { label: 'Propose New Time', disabled: true },
+                { label: 'Reply/Forward', disabled: true, submenu: () => [] },
+                { label: 'Go to Today', action: () => { date = startOfDay(new Date()); sel = null; render(); } },
+                { label: 'Go to Date', action: goToDate },
+                { label: 'Edit', submenu: () => [{ label: 'Cut', disabled: true }, { label: 'Copy', disabled: true }, { label: 'Paste', disabled: true }] },
+                { label: 'Tools', submenu: () => [{ label: 'Refresh', action: () => reload(true) }, { label: 'Options...', disabled: true }] },
+                { label: 'View', submenu: VIEWS.map((v) => ({ label: VIEW_LABEL[v], radio: view === v, action: () => { view = v; render(); } })) },
+                { label: 'Filter', disabled: true, submenu: () => [] }
+            ];
+        }
         return [
             { label: 'New Appointment', action: () => openForm(null) },
             { label: 'Beam Appointment...', disabled: true },
@@ -811,6 +835,11 @@
                 <textarea class="wcl-fnotes" aria-label="Notes"></textarea>
                 <div class="wcl-ftabs"><button type="button" class="wcl-ftab is-selected" data-tab="appt">Appointment</button><button type="button" class="wcl-ftab" data-tab="notes">Notes</button></div>
             </div>`;
+        if (is65()) {
+            // 6.5: the shell's tab strip (wm65.css .wm-tabs)
+            p.querySelector('.wcl-ftabs').classList.add('wm-tabs');
+            p.querySelectorAll('.wcl-ftab').forEach((t) => { t.classList.add('wm-tab'); t.setAttribute('aria-selected', String(t.classList.contains('is-selected'))); });
+        }
         p.addEventListener('click', onTap);
         render();
     }

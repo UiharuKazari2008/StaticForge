@@ -773,3 +773,249 @@
     background: #fff !important;
     border-top-color: #fff !important;
 }
+
+/* ---- Melaton Mobile 6.5 ----
+ * Windows Mobile 6.5 Professional's Calendar, measured on its emulator (VGA: one unit = 2 device
+ * px; captures in ~/.cache/claude-run/wm65apps/pim/emu, ca*.png / cb*.png / cc*.png). It is 6.1's
+ * Calendar under the 6.5 chrome with three changes: no list gradient (white pages), half-hour
+ * slots in Day and Week (17 px per half hour, a "30" label on the lower one) and the 6.5 scroll
+ * bar; the text is the 6.5 system size (Tahoma 10.5). */
+
+html.ui-mobile[data-wm-version="6.5"] .wm-page.wm-calendar {
+    background: #fff;
+    color: var(--wm65-text);
+    --wcl-hour: calc(34 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-hdate,
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-letter,
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-arow,
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-adbox,
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-dbox,
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-wdetail,
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-snotes {
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+/* the header's date sits 1 px lower beside the day letters and 2 px higher on its own */
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-hdate {
+    position: relative;
+    top: calc(-2 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-hdate:has(+ .wcl-letters) {
+    top: calc(1 * var(--wm-px));
+}
+
+/* Agenda: the hour strip in Tahoma 9.5 over a hairline, rows 30.5 px */
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-strip {
+    border-bottom-width: calc(0.5 * var(--wm-px));
+    font-size: calc(9.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-arow {
+    min-height: calc(30.5 * var(--wm-px));
+    padding-top: 0;
+    line-height: calc(13.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-shead {
+    font-size: calc(9.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-flabel {
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+/* Month: the day numbers in Tahoma 10.5, 1 px left and 2.5 px up in their cells; the letters 2 px right */
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-mnum {
+    transform: translate(calc(-1 * var(--wm-px)), calc(-2.5 * var(--wm-px)));
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-mlet {
+    transform: translate(calc(2 * var(--wm-px)), calc(-1 * var(--wm-px)));
+}
+
+/* Year (the device, 6.1 and 6.5 alike): 7 px of tint over the first row of months, then four
+ * rows of 59.5 px: a 13.5 px name band (Tahoma bold 10.5) and five rows of days; the day columns
+ * are 11.65 px, the last number ending 2.5 px from the month's right edge */
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-ygrid {
+    grid-template-rows: calc(66.5 * var(--wm-px)) repeat(3, calc(59.5 * var(--wm-px)));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-ymonth {
+    overflow: hidden;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-yname {
+    height: calc(13.5 * var(--wm-px));
+    font-size: calc(10.5 * var(--wm-px));
+    line-height: calc(12.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-ymonth:nth-child(-n + 3) .wcl-yname {
+    height: calc(20.5 * var(--wm-px));
+    padding-top: calc(7 * var(--wm-px));
+    box-sizing: border-box;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-ydays {
+    margin-left: calc(-3.5 * var(--wm-px));
+    padding: 0 calc(2 * var(--wm-px)) 0 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-yday {
+    font-size: calc(8 * var(--wm-px));
+}
+
+/* the agenda's chosen row keeps the flat highlight (no selector art) */
+
+/* ---- Day: an hour is two 17 px slots (16 px and a 1 px tint rule each); the hour in bold on the
+ * upper slot, "30" small on the lower one ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-hour {
+    position: relative;
+    border-top: 0;
+    background-image: linear-gradient(var(--wm-tint), var(--wm-tint)), linear-gradient(var(--wm-tint), var(--wm-tint));
+    background-size: 100% calc(1 * var(--wm-px)), 100% calc(1 * var(--wm-px));
+    background-position: 0 calc(16 * var(--wm-px)), 0 calc(33 * var(--wm-px));
+    background-repeat: no-repeat;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-hlabel {
+    height: calc(17 * var(--wm-px));
+    padding-right: calc(2 * var(--wm-px));
+    font-size: calc(10.5 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-hour::after,
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-whour > .wcl-hlabel::after {
+    content: '30';
+    position: absolute;
+    left: 0;
+    top: calc(17 * var(--wm-px));
+    box-sizing: border-box;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    padding-right: calc(2 * var(--wm-px));
+    font-weight: bold;
+    font-size: calc(7 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
+    letter-spacing: 0;
+    text-align: right;
+    pointer-events: none;
+}
+
+/* the picked slot: one half hour, a 2 px highlight frame and its label on the highlight */
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-hour.is-picked {
+    box-shadow: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-hour.is-picked::before {
+    content: '';
+    position: absolute;
+    left: calc(16 * var(--wm-px));
+    right: 0;
+    top: 0;
+    height: calc(17 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(2 * var(--wm-px)) solid var(--wm-highlight);
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-hour.is-picked.is-half::before {
+    top: calc(17 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-hour.is-picked.is-half .wcl-hlabel {
+    background: none;
+    color: inherit;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-hour.is-picked.is-half::after {
+    height: calc(17 * var(--wm-px));
+    background: var(--wm-highlight);
+    color: #fff;
+}
+
+/* ---- Week: the same half-hour pitch; the picked cell is half an hour ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-whour {
+    position: relative;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-whour .wcl-hlabel {
+    position: relative;
+    height: calc(34 * var(--wm-px));
+    font-size: calc(10.5 * var(--wm-px));
+    line-height: calc(17 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-wcell.is-picked {
+    box-shadow: inset 0 calc(17 * var(--wm-px)) 0 0 transparent;
+    background-image: linear-gradient(var(--wm-highlight), var(--wm-highlight)), linear-gradient(var(--wm-highlight), var(--wm-highlight)), linear-gradient(var(--wm-highlight), var(--wm-highlight)), linear-gradient(var(--wm-highlight), var(--wm-highlight));
+    background-size: 100% calc(2 * var(--wm-px)), 100% calc(2 * var(--wm-px)), calc(2 * var(--wm-px)) calc(17 * var(--wm-px)), calc(2 * var(--wm-px)) calc(17 * var(--wm-px));
+    background-position: 0 0, 0 calc(15 * var(--wm-px)), 0 0, 100% 0;
+    background-repeat: no-repeat;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-wcell.is-picked.is-half {
+    background-position: 0 calc(17 * var(--wm-px)), 0 calc(32 * var(--wm-px)), 0 calc(17 * var(--wm-px)), 100% calc(17 * var(--wm-px));
+}
+
+/* ---- the form's tabs: the shell's 6.5 strip (wm65.css .wm-tabs / .wm-tab), 19.5 px ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-ftabs {
+    height: calc(19.5 * var(--wm-px));
+    border-top: 0;
+    background: #000;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-ftab {
+    top: 0;
+    font-size: calc(10.5 * var(--wm-px)) !important;
+}
+
+/* ---- scroll bars: the 6.5 bar (13 px, grey track, the theme's thumb and arrow buttons) ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes)::-webkit-scrollbar {
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes)::-webkit-scrollbar-track {
+    background: #e6e6e6;
+    border: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes)::-webkit-scrollbar-thumb {
+    min-height: calc(35 * var(--wm-px));
+    border-style: solid;
+    border-color: transparent;
+    border-width: calc(12 * var(--wm-px)) 0;
+    border-radius: 0;
+    border-image: url('/static_images/wm65/theme-black-scrollbarthumb@2x.png') 24 0 24 0 fill / calc(12 * var(--wm-px)) 0 stretch;
+    background: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes)::-webkit-scrollbar-button:single-button {
+    display: block;
+    width: calc(13 * var(--wm-px));
+    height: calc(19.5 * var(--wm-px));
+    border: 0;
+    background: #e6e6e6 center / 100% 100% no-repeat;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes)::-webkit-scrollbar-button:single-button:vertical:decrement {
+    background-image: url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes)::-webkit-scrollbar-button:single-button:vertical:increment {
+    background-image: url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
+    background-image: url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes)::-webkit-scrollbar-button:single-button:vertical:increment:active {
+    background-image: url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png');
+}

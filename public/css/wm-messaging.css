@@ -370,3 +370,278 @@
     resize: none;
     outline: none;
 }
+
+/* ---- Melaton Mobile 6.5 ----
+ * Windows Mobile 6.5 Professional's Messaging, measured on its emulator (VGA: one unit = 2 device px;
+ * captures in ~/.cache/claude-run/wm65apps/pim/emu). The folder bar and the menus are the shell's
+ * (wm65.css); here: the list's finger rows, the status line, the account picker and the forms. */
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg {
+    color: var(--wm65-text);
+}
+
+/* the folder bar has no folder picture: "Inbox" from x 9.5, the sort arrow ends 11 px from the right */
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-bar .msg-folder img {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-bar .msg-folder {
+    padding-left: calc(8.5 * var(--wm-px)) !important;
+}
+
+/* the bar's text sits 1 px higher here than in File Explorer's bar */
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-bar :is(.msg-folder, .msg-sort) {
+    padding-bottom: calc(3 * var(--wm-px)) !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-bar .msg-sort {
+    padding-right: calc(11 * var(--wm-px)) !important;
+}
+
+/* the rows: 38.5 px pitch, no rule between them; the sender (bold when unread) from x 26.5, the
+ * time column from x 136.5, the subject in the plain face under the sender; the 16 px envelope at
+ * x 2, 8 px down; Tahoma 10.5 like the rest of 6.5 */
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row {
+    position: relative;
+    grid-template-columns: calc(26.5 * var(--wm-px)) calc(109 * var(--wm-px)) minmax(0, 1fr);
+    grid-template-rows: calc(15 * var(--wm-px)) calc(14.5 * var(--wm-px));
+    height: calc(38.5 * var(--wm-px));
+    box-sizing: border-box;
+    padding: calc(4 * var(--wm-px)) calc(5.5 * var(--wm-px)) 0 0;
+    border-bottom: 0;
+    font-size: calc(10.5 * var(--wm-px));
+    contain-intrinsic-size: auto calc(38.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row.is-unread .msg-subj {
+    font-weight: normal;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row .msg-ico {
+    grid-row: 1 / 3;
+    align-self: start;
+    margin: calc(1 * var(--wm-px)) 0 0 calc(2 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row .msg-date {
+    grid-column: 3;
+    padding-left: 0;
+    overflow: hidden;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row .msg-subj {
+    grid-column: 2 / 4;
+}
+
+/* the selector: the theme's list view selector (474 x 72 at 2x: 8 clear rows, 56 of blue, 8 of
+ * shadow) from the row's top, 9-sliced to 1 px short of the pitch (blue from 4.5 to 34 px down the
+ * row on the device) and 1.5 px short of the right edge */
+html.ui-mobile[data-wm-version="6.5"] #wmShell .wm-msg .msg-row.is-selected,
+html.ui-mobile[data-wm-version="6.5"] #wmShell .wm-msg .msg-pick-row.is-two.is-selected {
+    border-image: none;
+    border-width: 0;
+    background: transparent !important;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row.is-selected::before,
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-two.is-selected::before {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    left: 0;
+    right: calc(1.5 * var(--wm-px));
+    top: 0;
+    height: calc(37.5 * var(--wm-px));
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: url('/static_images/wm65/theme-classicblue-listviewselector@2x.png') 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) / 0 stretch;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row > *,
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-two > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* the empty list's line: centred in the list, two lines */
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-scroll {
+    position: relative;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-empty {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    margin: calc(-16 * var(--wm-px)) calc(5 * var(--wm-px)) 0;
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(14.5 * var(--wm-px));
+}
+
+/* the status line under the list: a 1 px black rule and 18 px of the bar tint; the account, then
+ * "N Items, M Unread." */
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-status {
+    flex: 0 0 auto;
+    display: flex;
+    gap: calc(7.5 * var(--wm-px));
+    box-sizing: border-box;
+    height: calc(19 * var(--wm-px));
+    padding: 0 calc(2 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tint);
+    font-size: calc(10.5 * var(--wm-px));
+    line-height: calc(18 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* ---- "Select an Account": a 23 px white header with the caption in the menu text colour from
+ * x 9.5, a 1 px black rule; rows on a 40.5 px pitch, the selector 9-sliced over 41 px from the
+ * row's top (blue from 4 to 37 px down on the device) */
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-head {
+    box-sizing: content-box;
+    height: calc(23 * var(--wm-px));
+    padding-left: calc(9.5 * var(--wm-px));
+    font-size: calc(10.5 * var(--wm-px));
+    line-height: calc(21 * var(--wm-px));
+    /* the device's caption blue here (16 bit: #00109c), not the menu text colour */
+    color: #00109c;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-two {
+    position: relative;
+    grid-template-rows: calc(14 * var(--wm-px)) calc(14 * var(--wm-px));
+    height: calc(40.5 * var(--wm-px));
+    padding-top: calc(6 * var(--wm-px));
+    border-bottom: 0;
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-two.is-selected::before {
+    top: 0;
+    height: calc(41 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-two .msg-ico {
+    margin: calc(4 * var(--wm-px)) 0 0 calc(3.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-two .msg-pick-name {
+    padding-top: 0;
+    line-height: calc(14 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-two .msg-pick-sub {
+    line-height: calc(14 * var(--wm-px));
+}
+
+/* ---- scroll bars: the 6.5 bar (13 px, grey track, the theme's thumb and arrow buttons), as the
+ * shell's lists have it ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text)::-webkit-scrollbar {
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text)::-webkit-scrollbar-track {
+    background: #e6e6e6;
+    border: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text)::-webkit-scrollbar-thumb {
+    min-height: calc(35 * var(--wm-px));
+    border-style: solid;
+    border-color: transparent;
+    border-width: calc(12 * var(--wm-px)) 0;
+    border-radius: 0;
+    border-image: url('/static_images/wm65/theme-black-scrollbarthumb@2x.png') 24 0 24 0 fill / calc(12 * var(--wm-px)) 0 stretch;
+    background: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text)::-webkit-scrollbar-button:single-button {
+    display: block;
+    width: calc(13 * var(--wm-px));
+    height: calc(19.5 * var(--wm-px));
+    border: 0;
+    background: #e6e6e6 center / 100% 100% no-repeat;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text)::-webkit-scrollbar-button:single-button:vertical:decrement {
+    background-image: url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text)::-webkit-scrollbar-button:single-button:vertical:increment {
+    background-image: url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
+    background-image: url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text)::-webkit-scrollbar-button:single-button:vertical:increment:active {
+    background-image: url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png');
+}
+
+/* the folder lists (Folders, Move): the device's tree marks the chosen folder with the flat highlight */
+html.ui-mobile[data-wm-version="6.5"] #wmShell .wm-msg .msg-pick-row:not(.is-two).is-selected {
+    border-image: none;
+    background: var(--wm-highlight) !important;
+    color: #fff;
+}
+
+/* ---- new message (measured on the device's Outlook E-mail form): captions right-aligned to x 44
+ * in the menu text colour, the From line 15.5 px with the account in brackets, To / Subject 24 px
+ * with the typed text in Tahoma 14, 1 px #c6c3c6 rules from x 47.5, a 1 px black rule 4 px under
+ * the last field and the text in Tahoma 14 on a 17 px line. (The device keeps Cc / Bcc above From,
+ * scrolled out of sight; ours keeps Cc between To and Subject.) */
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-field {
+    grid-template-columns: calc(46 * var(--wm-px)) minmax(0, 1fr);
+    height: calc(24 * var(--wm-px));
+    padding-right: calc(14 * var(--wm-px));
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-field.is-static {
+    height: calc(15.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-field > span {
+    align-self: start;
+    padding: calc(1.5 * var(--wm-px)) 0 0;
+    line-height: calc(14 * var(--wm-px));
+    color: var(--wm-menu-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-field.is-static > span {
+    padding-top: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-field input,
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-field output {
+    width: auto;
+    height: calc(24 * var(--wm-px));
+    margin-left: calc(1.5 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px));
+    border-bottom-color: #c6c3c6;
+    color: var(--wm65-text);
+    font-size: calc(14 * var(--wm-px));
+    line-height: calc(23 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-field.is-static output {
+    height: 100%;
+    padding-left: calc(1 * var(--wm-px));
+    color: var(--wm65-text);
+    font-size: calc(10.5 * var(--wm-px));
+    line-height: calc(14.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-text {
+    margin-top: calc(4 * var(--wm-px));
+    padding: calc(3 * var(--wm-px)) calc(6.5 * var(--wm-px));
+    color: var(--wm65-text);
+    font-size: calc(14 * var(--wm-px));
+    line-height: calc(17 * var(--wm-px));
+}
