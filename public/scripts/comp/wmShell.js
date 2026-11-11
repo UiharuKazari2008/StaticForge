@@ -33,6 +33,7 @@
     // swaps the Start menu for the Start screen (wmStart65.js, app id 'start') and Today's rows
     // for the Melaton Default home screen (wmTitanium.js, setTodayView); wm65.css restyles the rest.
     const WM65 = root.dataset.wmVersion === '6.5';
+    const FLAG65 = '/static_images/wm65/start-flag.png';
     if (window.uiShell !== 'mobile' || !root.classList.contains('ui-mobile')) return;
 
     const ART = '/static_images/wm61/';
@@ -305,6 +306,16 @@
             <div class="wm-volume" role="dialog" aria-label="Volume" hidden></div>
             <div class="wm-notify-tray" role="listbox" aria-label="Notifications" hidden></div>
             <div class="wm-notify" role="alertdialog" hidden></div>`;
+        if (WM65) {
+            // 6.5 draws the Today picture over the whole screen, the title and soft key bars
+            // translucent on it (Titanium_480x640.cpr: Background Top="-52" Height="640"): a layer
+            // behind the bars carries Today's picture on Today and Start (applyTodayBackground)
+            const wall = document.createElement('div');
+            wall.className = 'wm-wall65';
+            wall.hidden = true;
+            wall.setAttribute('aria-hidden', 'true');
+            shell.prepend(wall);
+        }
         document.body.appendChild(shell);
 
         shell.querySelector('.wm-start').addEventListener('click', (e) => {
@@ -498,9 +509,13 @@
         if (!shell) return;
         const b = startButtonPrefs();
         const img = shell.querySelector('.wm-start img');
-        if (img && b.icon && img.getAttribute('src') !== b.icon) {
-            img.setAttribute('src', b.icon);
-            if (b.icon === art('start-flag')) img.setAttribute('srcset', srcset('start-flag'));
+        // 6.5's title bar flag is white (shellres.192 icon 4609 there), whatever the theme
+        const flag65 = WM65 && b.icon === art('start-flag');
+        const src = flag65 ? FLAG65 : b.icon;
+        if (img && src && img.getAttribute('src') !== src) {
+            img.setAttribute('src', src);
+            if (flag65) img.setAttribute('srcset', `${FLAG65} 1x, ${FLAG65.replace('.png', '@2x.png')} 2x`);
+            else if (b.icon === art('start-flag')) img.setAttribute('srcset', srcset('start-flag'));
             else img.removeAttribute('srcset');
         }
         // the Windows flag keeps WM's own colours and Start-cell metrics (wm-shell.css)
@@ -3370,6 +3385,12 @@
             // theme behind the shell (black, like the Settings preview)
             today.page.style.backgroundColor = u ? '#000' : '';
             today.page.classList.toggle('has-picture', !!u);
+            const wall = WM65 && shell.querySelector('.wm-wall65');
+            if (wall) {
+                Object.assign(wall.style, { backgroundImage: bg.image, backgroundSize: bg.size, backgroundPosition: bg.position, backgroundRepeat: bg.repeat });
+                wall.hidden = !u;
+                shell.classList.toggle('has-wall65', !!u);
+            }
         };
         set(url);
         if (url) {
@@ -4969,7 +4990,17 @@
         const splash = document.createElement('div');
         splash.className = 'wm-splash';
         splash.setAttribute('aria-label', 'Melaton Mobile is starting');
-        splash.innerHTML = `
+        // 6.5's splash (emulator cold boot): the yellow glow on orange with the white flag and
+        // wordmark near the top left, the copyright lines under them late in the boot. Here the
+        // Melaton emblem and name, and Xyridian as the holder (wm65.css .wm-splash65)
+        if (WM65) {
+            splash.classList.add('wm-splash65');
+            splash.innerHTML = `<div class="wm-splash65-art">
+                    <img class="wm-splash65-mark" src="/static_images/melaton/melaton-white-256.png" alt="" draggable="false">
+                    <span class="wm-splash65-word">Melaton</span>
+                    <p class="wm-splash65-copy">&copy; 2009 Xyridian Corporation. All rights reserved.&nbsp; This computer program is protected by U.S. and international copyright laws.</p>
+                </div>`;
+        } else splash.innerHTML = `
             <svg class="wm-splash-swirl" viewBox="0 0 480 640" aria-hidden="true" preserveAspectRatio="xMidYMax slice">
                 <circle cx="248" cy="508" r="214" />
                 <circle cx="232" cy="500" r="146" />

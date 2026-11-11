@@ -16,6 +16,8 @@
  *     label is full white and slides 1:1 under the band's glass (dim inside it), the selected
  *     item's label waits centred in the band, and the selection moves on when the next item has
  *     travelled one full row; a drag starts after 36 px
+ *   - left / right on a panel with pages: after 45 px the page follows the finger, the next one a
+ *     screen width behind; past half the width it carries on, short of it the page slides back
  *   - soft keys: left the Today key, right the panel's own (Set, Compose, Messaging, Library ...)
  *
  * Panels come from Today's items: the shell's rows (date + connection = the clock panel, as 6.5
@@ -35,6 +37,7 @@
     const ROW = 34;      // condensed item, WM units (68 VGA px)
     const BAND = 70;     // focus band (140)
     const DRAG_START = 18; // a drag starts after 36 VGA px of travel
+    const SLIDE_START = 22.5; // a page starts to follow the finger after 45
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     // wm65 art by name ('ti-2051'); 's:owner' / 'x:app-studio-lg' = a 6.5 Start icon / a 6.1 set
     // icon in the panel icons' frame with their mirror image (ti-s-*, ti-x-*: made for the items 6.5
@@ -317,42 +320,116 @@
         return text ? `<div class="wm-ti-line ${cls}">${esc(text)}</div>` : '';
     }
 
+    /** One page of a panel as markup (positions are the layout's, inside the 480 x 164 expanded box). */
+    function pageHtml(p, pg) {
+        const icon = pg.icon || p.icon;
+        const iconHtml = icon ? `<img class="wm-ti-icon" src="${esc(artUrl(icon))}" srcset="${esc(artSet(icon))}" alt="" draggable="false">` : '';
+        if (p.clock) {
+            return `${iconHtml}<div class="wm-ti-time">${esc(pg.time)}</div><div class="wm-ti-ampm">${esc(pg.ampm)}</div>
+                <div class="wm-ti-date">${esc(pg.date)}</div><div class="wm-ti-network">${esc(pg.network)}</div>`;
+        }
+        const lines = [pg.title, pg.line2, pg.line3].filter(Boolean).length;
+        const pic = pg.image ? `<span class="wm-ti-pic" style="background-image:url('${esc(pg.image)}')"></span>` : '';
+        const small = !pg.image && pg.smallIcon ? `<img class="wm-ti-small" src="${esc(artUrl(pg.smallIcon))}" srcset="${esc(artSet(pg.smallIcon))}" alt="" draggable="false">` : '';
+        return `${iconHtml}<div class="wm-ti-text" data-lines="${lines}"${pg.image ? ' data-pic="1"' : ''}${small ? ' data-small="1"' : ''}>${pic}${small}
+            ${lineHtml('is-1', pg.title)}${lineHtml('is-2', pg.line2)}${lineHtml('is-3', pg.line3)}</div>`;
+    }
+
+    function pageIndex(p) {
+        const at = pageAt.get(p.id) || 0;
+        return at < p.pages.length ? at : 0;
+    }
+
     let expKey = '';
     function drawExpanded() {
         const p = panels[sel];
         const exp = host.querySelector('.wm-ti-exp');
         if (!p) { exp.innerHTML = ''; expKey = ''; return; }
         const n = p.pages.length;
-        let at = pageAt.get(p.id) || 0;
-        if (at >= n) at = 0;
+        const at = pageIndex(p);
         const pg = p.pages[at];
         const key = JSON.stringify([p.id, p.icon, at, n, pg.time, pg.ampm, pg.date, pg.network, pg.title, pg.line2, pg.line3, pg.image, pg.smallIcon, pg.icon]);
-        const arrows = host.querySelectorAll('.wm-ti-arrow');
-        arrows.forEach((a) => { a.hidden = n < 2; });
-        if (key === expKey) return;
+        host.querySelectorAll('.wm-ti-arrow').forEach((a) => { a.hidden = n < 2; });
+        if (slide.active || key === expKey) return; // a page on its way keeps what it shows
         expKey = key;
-        const icon = pg.icon || p.icon;
-        const iconHtml = icon ? `<img class="wm-ti-icon" src="${esc(artUrl(icon))}" srcset="${esc(artSet(icon))}" alt="" draggable="false">` : '';
-        let body;
-        if (p.clock) {
-            body = `<div class="wm-ti-time">${esc(pg.time)}</div><div class="wm-ti-ampm">${esc(pg.ampm)}</div>
-                <div class="wm-ti-date">${esc(pg.date)}</div><div class="wm-ti-network">${esc(pg.network)}</div>`;
-        } else {
-            const lines = [pg.title, pg.line2, pg.line3].filter(Boolean).length;
-            const pic = pg.image ? `<span class="wm-ti-pic" style="background-image:url('${esc(pg.image)}')"></span>` : '';
-            const small = !pg.image && pg.smallIcon ? `<img class="wm-ti-small" src="${esc(artUrl(pg.smallIcon))}" srcset="${esc(artSet(pg.smallIcon))}" alt="" draggable="false">` : '';
-            body = `<div class="wm-ti-text" data-lines="${lines}"${pg.image ? ' data-pic="1"' : ''}${small ? ' data-small="1"' : ''}>${pic}${small}
-                ${lineHtml('is-1', pg.title)}${lineHtml('is-2', pg.line2)}${lineHtml('is-3', pg.line3)}</div>`;
-        }
-        exp.innerHTML = iconHtml + body;
+        exp.innerHTML = `<div class="wm-ti-pg">${pageHtml(p, pg)}</div>`;
+        // the pages either side slide in with their picture already loaded
+        if (n > 1) for (const d of [1, -1]) { const im = p.pages[(at + d + n) % n].image; if (im) { const pre = new Image(); pre.decoding = 'async'; pre.src = im; } }
     }
 
+    // Left / right on a panel with pages (emulator, "getting started", sampled every 15-40 px): after
+    // 45 px of travel the page, its text and its icon, follows the finger 1:1 and the next one follows
+    // a screen width behind (the pages go round); the arrows are gone while it moves; let go past half
+    // the width and it carries on to the next page, short of it the page slides back.
+    const slide = { active: false, dir: 0, x: 0, raf: 0 };
+
+    function slideBegin(dir) {
+        const p = panels[sel];
+        if (!p || p.pages.length < 2) return false;
+        const exp = host.querySelector('.wm-ti-exp');
+        const cur = exp.querySelector('.wm-ti-pg');
+        if (!cur) return false;
+        if (slide.active && slide.dir === dir) return true;
+        exp.querySelectorAll('.wm-ti-pg.is-next').forEach((el) => el.remove());
+        const n = p.pages.length;
+        const next = document.createElement('div');
+        next.className = 'wm-ti-pg is-next';
+        next.innerHTML = pageHtml(p, p.pages[(pageIndex(p) + dir + n) % n]);
+        exp.appendChild(next);
+        slide.active = true;
+        slide.dir = dir;
+        host.classList.add('is-sliding');
+        return true;
+    }
+
+    /** x: how far the page has moved, px (negative = to the left, the next page comes from the right). */
+    function slideMove(x) {
+        const dir = x < 0 ? 1 : -1;
+        if (!slideBegin(dir)) return;
+        slide.x = x;
+        const exp = host.querySelector('.wm-ti-exp');
+        const w = host.clientWidth;
+        const cur = exp.querySelector('.wm-ti-pg:not(.is-next)');
+        const next = exp.querySelector('.wm-ti-pg.is-next');
+        if (cur) cur.style.transform = `translate3d(${x}px, 0, 0)`;
+        if (next) next.style.transform = `translate3d(${x + dir * w}px, 0, 0)`;
+    }
+
+    /** Finish a slide: on to the next page (commit) or back, eased; then the panel is redrawn. */
+    function slideEnd(commit) {
+        if (!slide.active) return;
+        cancelAnimationFrame(slide.raf);
+        const w = host.clientWidth;
+        const from = slide.x;
+        const dir = slide.dir;
+        const to = commit ? -dir * w : 0;
+        const ms = Math.max(120, Math.min(320, 320 * Math.abs(to - from) / w));
+        const t0 = performance.now();
+        const done = () => {
+            const p = panels[sel];
+            if (commit && p) { const n = p.pages.length; pageAt.set(p.id, (pageIndex(p) + dir + n) % n); }
+            slide.active = false;
+            slide.x = 0;
+            host.classList.remove('is-sliding');
+            expKey = '';
+            drawExpanded();
+        };
+        const step = (now) => {
+            const k = Math.min(1, (now - t0) / ms);
+            const eased = 1 - (1 - k) * (1 - k);
+            slideMove(from + (to - from) * eased || (dir > 0 ? -0.01 : 0.01));
+            if (k < 1) slide.raf = requestAnimationFrame(step); else done();
+        };
+        slide.raf = requestAnimationFrame(step);
+    }
+
+    /** The arrows and the left / right keys: the same slide, run on its own. */
     function turnPage(dir) {
         const p = panels[sel];
-        if (!p || p.pages.length < 2) return;
-        const n = p.pages.length;
-        pageAt.set(p.id, ((pageAt.get(p.id) || 0) + dir + n) % n);
-        drawExpanded();
+        if (!p || p.pages.length < 2 || slide.active) return;
+        if (!slideBegin(dir)) return;
+        slide.x = 0;
+        slideEnd(true);
     }
 
     function select(i, animate) {
@@ -397,34 +474,50 @@
         let y0 = 0;
         let x0 = 0;
         let pos0 = 0;
-        let moved = false;
+        let axis = '';   // '' until the travel passes a start distance, then 'y' (the list) or 'x' (the pages)
         let lastY = 0;
+        let lastX = 0;
         let lastT = 0;
-        let vel = 0; // rows per ms
+        let vel = 0;  // rows per ms
+        let velX = 0; // px per ms
+        let inBand = false;
         host.addEventListener('pointerdown', (e) => {
             if (id != null || (e.pointerType === 'mouse' && e.button !== 0)) return;
-            if (e.target.closest('.wm-ti-arrow')) return;
+            if (e.target.closest('.wm-ti-arrow') || slide.active) return;
             id = e.pointerId;
             y0 = lastY = e.clientY;
-            x0 = e.clientX;
+            x0 = lastX = e.clientX;
             lastT = e.timeStamp;
             vel = 0;
-            moved = false;
+            velX = 0;
+            axis = '';
             cancelAnimationFrame(settle);
             settle = 0;
             pos0 = pos;
+            const top = focusTop();
+            const y = (e.clientY - host.getBoundingClientRect().top) / unit();
+            inBand = y >= top && y < top + BAND;
         });
         host.addEventListener('pointermove', (e) => {
             if (e.pointerId !== id) return;
             const u = unit();
             const dy = (e.clientY - y0) / u;
-            if (!moved) {
-                if (Math.abs(dy) < DRAG_START) return;
-                moved = true;
-                dragging = true;
+            const dx = (e.clientX - x0) / u;
+            if (!axis) {
+                const p = panels[sel];
+                if (inBand && p && p.pages.length > 1 && Math.abs(dx) >= SLIDE_START && Math.abs(dx) > Math.abs(dy)) axis = 'x';
+                else if (Math.abs(dy) >= DRAG_START) { axis = 'y'; dragging = true; }
+                else return;
                 try { host.setPointerCapture(id); } catch (_) { /* capture is a nicety */ }
             }
             const dt = e.timeStamp - lastT;
+            if (axis === 'x') {
+                if (dt > 0) { velX = 0.7 * velX + 0.3 * ((e.clientX - lastX) / dt); lastX = e.clientX; lastT = e.timeStamp; }
+                // the page starts where the finger is once the start distance is passed
+                const x = (dx - Math.sign(dx) * SLIDE_START) * u;
+                slideMove(x || (dx < 0 ? -0.01 : 0.01));
+                return;
+            }
             if (dt > 0) { vel = 0.7 * vel + 0.3 * (-(e.clientY - lastY) / u / ROW / dt); lastY = e.clientY; lastT = e.timeStamp; }
             moveTo(pos0 - dy / ROW);
             place();
@@ -432,8 +525,15 @@
         const end = (e) => {
             if (e.pointerId !== id) return;
             id = null;
-            if (!moved) {
-                if (e.type === 'pointerup') tap(e, x0);
+            if (!axis) {
+                if (e.type === 'pointerup') tap(e);
+                return;
+            }
+            if (axis === 'x') {
+                // past half the width, or a flick the way the page is going
+                const w = host.clientWidth;
+                const flick = e.timeStamp - lastT < 80 && Math.abs(velX) > 0.5 && Math.sign(velX) === Math.sign(slide.x);
+                slideEnd(e.type === 'pointerup' && (Math.abs(slide.x) > w / 2 || flick));
                 return;
             }
             dragging = false;
@@ -445,17 +545,14 @@
         host.addEventListener('pointercancel', end);
     }
 
-    function tap(e, x0) {
+    function tap(e) {
         const u = unit();
         const r = host.getBoundingClientRect();
         const y = (e.clientY - r.top) / u;
         const top = focusTop();
         if (y >= top && y < top + BAND) {
-            // a swipe across the band turns the panel's page; a tap opens it
-            const dx = (e.clientX - x0) / u;
-            if (Math.abs(dx) > DRAG_START) { turnPage(dx < 0 ? 1 : -1); return; }
             const p = panels[sel];
-            if (p && typeof p.onTap === 'function') { try { p.onTap(p.pages[pageAt.get(p.id) || 0]); } catch (err) { console.warn('[wmTitanium] tap', p.id, err); } }
+            if (p && typeof p.onTap === 'function') { try { p.onTap(p.pages[pageIndex(p)]); } catch (err) { console.warn('[wmTitanium] tap', p.id, err); } }
             return;
         }
         const i = y < top ? sel - Math.ceil((top - y) / ROW) : sel + 1 + Math.floor((y - top - BAND) / ROW);
@@ -471,7 +568,7 @@
         else if (e.key === 'ArrowUp') { select(sel - 1, true); e.preventDefault(); }
         else if (e.key === 'ArrowLeft') { turnPage(-1); e.preventDefault(); }
         else if (e.key === 'ArrowRight') { turnPage(1); e.preventDefault(); }
-        else if (e.key === 'Enter') { const p = panels[sel]; if (p && typeof p.onTap === 'function') { p.onTap(p.pages[pageAt.get(p.id) || 0]); e.preventDefault(); } }
+        else if (e.key === 'Enter') { const p = panels[sel]; if (p && typeof p.onTap === 'function') { p.onTap(p.pages[pageIndex(p)]); e.preventDefault(); } }
     }
 
     // ---------------------------------------------------------------- the Today view

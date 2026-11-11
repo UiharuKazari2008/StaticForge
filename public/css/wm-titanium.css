@@ -104,6 +104,16 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-rest .wm-ti-exp {
     transition: opacity 0.18s linear;
 }
 
+/* a page of the panel; while one slides out the next follows a screen width behind (wmTitanium.js) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-pg {
+    position: absolute;
+    inset: 0;
+    will-change: transform;
+}
+
+/* the arrows are gone while a page moves, and the selected item's own change waits for it */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-rest.is-sliding .wm-ti-arrow { opacity: 0; }
+
 /* panel icon: 86 x 114 at 376,-26 (18 from the right edge) */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-icon {
     position: absolute;

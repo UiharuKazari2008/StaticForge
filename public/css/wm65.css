@@ -1059,3 +1059,110 @@ html.ui-mobile[data-wm-version="6.5"] .wm-slider.is-disabled .wm-slider-tick,
 html.ui-mobile[data-wm-version="6.5"] .wm-slider.is-disabled .wm-slider-thumb::before {
     background: var(--wm65-gray);
 }
+
+/* ---- the Today picture behind the bars ----
+ * 6.5 paints the wallpaper over the whole screen and the title and soft key bars on it at 39 %
+ * black (Titanium_480x640.cpr: Background Top="-52" Height="640"; StartMenu_Background_Screen is
+ * a full-screen 50 % black sheet). wmShell.js keeps Today's picture on .wm-wall65, a layer behind
+ * everything in the shell, shown on Today and Start; the pages themselves draw no picture then. */
+html.ui-mobile[data-wm-version="6.5"] #wmShell > .wm-wall65 {
+    position: absolute;
+    top: var(--wm-safe-top);
+    right: var(--wm-safe-right);
+    bottom: var(--wm-safe-bottom);
+    left: var(--wm-safe-left);
+    z-index: -1;
+    display: none;
+    pointer-events: none;
+    background-color: #000;
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="today"] #wmShell > .wm-wall65:not([hidden]),
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] #wmShell > .wm-wall65:not([hidden]) {
+    display: block;
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell.has-wall65 .wm-today.has-picture {
+    background-image: none !important;
+    background-color: transparent !important;
+}
+
+/* Start: the 50 % sheet covers the whole screen, bars included */
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] #wmShell > .wm-wall65::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell.has-wall65 .wm-page.wm-s65 { background: transparent; }
+html.ui-mobile[data-wm-version="6.5"] #wmShell.has-wall65 .wm-s65-wall,
+html.ui-mobile[data-wm-version="6.5"] #wmShell.has-wall65 .wm-s65-sheet { display: none; }
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] #wmShell.has-wall65 > .wm-content { background: transparent; }
+
+/* ---- the boot splash ----
+ * Windows Mobile 6.5's (emulator cold boot, 480 x 640): a yellow glow on orange (centre 120,110,
+ * #FFC700 out to #CE3408 at radius 330; boot-splash is that picture with the logo fitted out), the
+ * white flag 127 x 121 at 133,91, the wordmark under it centred on x 196 (cap top 223, Segoe UI
+ * 54 px), and late in the boot three copyright lines at 41,386 (Tahoma 8 pt). No wait wheel.
+ * Lengths are those pixels as shares of the screen width (1 px = 100 / 480 cqw); a taller screen
+ * carries the orange on below. Melaton's emblem and name stand for the flag and wordmark. */
+html.ui-mobile[data-wm-version="6.5"] .wm-splash.wm-splash65 {
+    background: #ce3408;
+    container-type: inline-size;
+    font-family: 'Segoe UI', var(--wm-font);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-splash65-art {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    aspect-ratio: 480 / 640;
+    background: url("/static_images/wm65/boot-splash@2x.png") 0 0 / 100% 100% no-repeat;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-splash65-mark {
+    position: absolute;
+    /* the emblem's petals fill the flag's 127 x 121 box (its picture has a margin) */
+    left: 26.5cqw;
+    top: 17.1cqw;
+    width: 29cqw;
+    height: 29cqw;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-splash65-word {
+    position: absolute;
+    left: 0;
+    top: 44.4cqw;
+    width: 81.67cqw;
+    text-align: center;
+    font-size: 11.25cqw;
+    line-height: 1;
+    color: #fff;
+    white-space: nowrap;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-splash65-copy {
+    position: absolute;
+    left: 8.33cqw;
+    top: 79.4cqw;
+    width: 83.3cqw;
+    margin: 0;
+    /* 19.2 px here sets the lines as wide as the device's 8 pt (332 px for the first) */
+    font: 4cqw / 1.2 var(--wm-font);
+    color: #fff;
+    visibility: hidden;
+}
+
+/* the copyright comes up late in the boot, at once (no fade) */
+html.ui-mobile[data-wm-version="6.5"][data-wm-boot="splash"] .wm-splash65-copy {
+    animation: wm-splash65-copy 0s 2.5s forwards;
+}
+
+@keyframes wm-splash65-copy {
+    to { visibility: visible; }
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-boot-wait { display: none; }
