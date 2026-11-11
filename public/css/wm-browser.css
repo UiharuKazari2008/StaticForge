@@ -372,81 +372,339 @@
     margin: 0 0 calc(4 * var(--wm-px));
 }
 
-.wm-browser .wmb-g-body h1,
-.wm-browser .wmb-g-body h2,
-.wm-browser .wmb-g-body h3,
-.wm-browser .wmb-g-body h4,
-.wm-browser .wmb-g-body h5,
-.wm-browser .wmb-g-body h6 {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) h1,
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) h2,
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) h3,
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) h4,
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) h5,
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) h6 {
     margin: calc(8 * var(--wm-px)) 0 calc(3 * var(--wm-px));
     font: bold calc(12 * var(--wm-px)) / 1.25 var(--wm-font);
 }
 
-.wm-browser .wmb-g-body h1,
-.wm-browser .wmb-g-body h2,
-.wm-browser .wmb-g-body h4 {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) h1,
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) h2,
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) h4 {
     font-size: calc(13 * var(--wm-px));
 }
 
-.wm-browser .wmb-g-body p {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) p {
     margin: 0 0 calc(5 * var(--wm-px));
 }
 
-.wm-browser .wmb-g-body ul,
-.wm-browser .wmb-g-body ol {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) ul,
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) ol {
     margin: 0 0 calc(5 * var(--wm-px));
     padding-left: calc(14 * var(--wm-px));
 }
 
-.wm-browser .wmb-g-body details {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) details {
     margin: 0 0 calc(6 * var(--wm-px));
     padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
     border: calc(1 * var(--wm-px)) solid #9c9e9c;
     background: #f7fbff;
 }
 
-.wm-browser .wmb-g-body summary {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) summary {
     font-weight: bold;
 }
 
-.wm-browser .wmb-g-body img,
-.wm-browser .wmb-g-body video {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) img,
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) video {
     max-width: 100%;
     height: auto;
 }
 
 /* wide tables and code scroll sideways inside the column */
-.wm-browser .wmb-g-body table,
-.wm-browser .wmb-g-body pre {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) table,
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) pre {
     display: block;
     max-width: 100%;
     overflow-x: auto;
 }
 
-.wm-browser .wmb-g-body table td,
-.wm-browser .wmb-g-body table th {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) table td,
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) table th {
     width: auto !important;
     padding: calc(1 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
     border: calc(1 * var(--wm-px)) solid #c6c3c6;
     vertical-align: top;
 }
 
-.wm-browser .wmb-g-body table {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) table {
     border-collapse: collapse;
 }
 
-.wm-browser .wmb-g-body pre,
-.wm-browser .wmb-g-body code {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) pre,
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) code {
     font-family: 'Courier New', monospace;
     font-size: calc(11 * var(--wm-px));
     white-space: pre-wrap;
 }
 
-.wm-browser .wmb-g-body blockquote {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) blockquote {
     margin: 0 0 calc(5 * var(--wm-px)) calc(6 * var(--wm-px));
     padding-left: calc(5 * var(--wm-px));
     border-left: calc(2 * var(--wm-px)) solid #c6c3c6;
     color: #424542;
+}
+
+/* Search the Grim (edtx://en.grimoire.jp/search): the desktop's search homepage in one column, WM buttons */
+.wm-browser .wmb-g-searchhome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: calc(10 * var(--wm-px));
+}
+
+.wm-browser .wmb-g-brand {
+    display: block;
+    width: min(calc(200 * var(--wm-px)), 86%);
+    height: auto;
+    margin-bottom: calc(8 * var(--wm-px));
+    /* the sheet's off-white ground disappears into IE's white page */
+    mix-blend-mode: multiply;
+}
+
+.wm-browser .wmb-g-searchhome .wmb-search {
+    margin: 0 0 calc(6 * var(--wm-px));
+}
+
+.wm-browser .wmb-g-actions {
+    display: flex;
+    gap: calc(6 * var(--wm-px));
+    margin-bottom: calc(8 * var(--wm-px));
+}
+
+.wm-browser .wmb-g-btn {
+    min-width: calc(64 * var(--wm-px));
+    height: calc(22 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: inset calc(-1 * var(--wm-px)) calc(-1 * var(--wm-px)) 0 #848284;
+    color: #000;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+}
+
+.wm-browser .wmb-g-btn:active {
+    background: #d6dfe7;
+    box-shadow: none;
+}
+
+.wm-browser .wmb-g-searchhome .wmb-g-note {
+    text-align: center;
+}
+
+/* Fandom and the Apocrypha (wmBrowser.js renderCore): the desktop Grimoire's own markup in one column */
+.wm-browser .wmb-core {
+    position: absolute;
+    inset: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-sizing: border-box;
+    background: #fff;
+    color: #000;
+    font: calc(12 * var(--wm-px)) / 1.3 var(--wm-font);
+    overflow-wrap: anywhere;
+}
+
+.wm-browser .wmb-core[hidden] {
+    display: none;
+}
+
+/* IE's busy ring is the page's progress: not the desktop's "Loading..." line */
+.wm-browser .wmb-core .tag-wiki-loading {
+    display: none;
+}
+
+/* Fandom pages and its index in the phone's Grimoire page form (as .wmb-g-*): black WM text, blue links */
+.wm-browser .wmb-core .tag-wiki-page {
+    padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) calc(10 * var(--wm-px));
+}
+
+.wm-browser .wmb-core :is(.tag-wiki-body-content, .tag-wiki-page-content) {
+    color: #000;
+    font: calc(12 * var(--wm-px)) / 1.3 var(--wm-font);
+}
+
+.wm-browser .wmb-core .tag-wiki-page-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(4 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+    color: #000;
+    font: bold calc(14 * var(--wm-px)) / 1.2 var(--wm-font);
+    font-variation-settings: normal;
+}
+
+.wm-browser .wmb-core .static-wiki-index-site-icon {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wm-browser .wmb-core .tag-wiki-page-header-sep {
+    height: 0;
+    margin: 0 0 calc(4 * var(--wm-px));
+    border: 0;
+    border-top: calc(1 * var(--wm-px)) solid #9c9e9c;
+    background: none;
+}
+
+.wm-browser .wmb-core .tag-wiki-page a {
+    color: #00f;
+    text-decoration: underline;
+}
+
+.wm-browser .wmb-core .static-wiki-index-group-title {
+    margin: calc(8 * var(--wm-px)) 0 calc(3 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+    background: linear-gradient(#fff, #d6dfe7);
+    border-bottom: calc(1 * var(--wm-px)) solid #9c9e9c;
+    color: #424542;
+    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+}
+
+.wm-browser .wmb-core .tag-wiki-page-content ul.static-wiki-index-page-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.wm-browser .wmb-core .static-wiki-index-page-list > li {
+    margin: 0;
+}
+
+/* the desktop's light-on-dark heading and table header colours: black on IE's white page */
+.wm-browser .wmb-core .tag-wiki-body-content :is(h1, h2, h3, h4, h5, h6, th, caption, strong, b) {
+    color: #000;
+}
+
+.wm-browser .wmb-core .tag-wiki-body-content th {
+    background: #e7ebef;
+}
+
+/* the sideways scroll bar of a wide table or code block: WM's, not the desktop's */
+.wm-browser .wmb-core .tag-wiki-body-content :is(table, pre)::-webkit-scrollbar {
+    height: calc(9 * var(--wm-px));
+}
+
+.wm-browser .wmb-core .tag-wiki-body-content :is(table, pre)::-webkit-scrollbar-track {
+    background: #fff;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-browser .wmb-core .tag-wiki-body-content :is(table, pre)::-webkit-scrollbar-thumb {
+    background: var(--wm-tab-strip);
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+}
+
+/* a wide table scrolls sideways inside the column (as the phone's Grimoire pages); words stay whole */
+.wm-browser .wmb-core .tag-wiki-body-content :is(td, th) {
+    overflow-wrap: normal;
+    word-break: normal;
+}
+
+.wm-browser .wmb-core .static-wiki-index-page-list > li > a {
+    display: block;
+    padding: calc(3 * var(--wm-px)) calc(2 * var(--wm-px));
+}
+
+.wm-browser .wmb-core .fandom-wiki-index-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(6 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) 0 calc(6 * var(--wm-px));
+}
+
+/* the toolbar's buttons as WM push buttons; the view shown is the pressed one */
+.wm-browser .wmb-core .fandom-wiki-index-toolbar :is(.btn-primary, .btn-secondary) {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    min-width: calc(56 * var(--wm-px));
+    height: calc(22 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: inset calc(-1 * var(--wm-px)) calc(-1 * var(--wm-px)) 0 #848284;
+    color: #000;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    opacity: 1;
+    filter: none;
+    transform: none;
+}
+
+.wm-browser .wmb-core .fandom-wiki-index-toolbar .btn-primary,
+.wm-browser .wmb-core .fandom-wiki-index-toolbar :is(.btn-primary, .btn-secondary):active {
+    background: #d6dfe7;
+    box-shadow: inset calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #848284;
+}
+
+.wm-browser .wmb-core .fandom-wiki-index-toolbar i {
+    display: none;
+}
+
+.wm-browser .wmb-core .dreamwiki-recent-empty,
+.wm-browser .wmb-core .tag-wiki-error {
+    padding: calc(6 * var(--wm-px)) calc(2 * var(--wm-px));
+    color: #808080;
+}
+
+.wm-browser .wmb-core .tag-wiki-error i {
+    display: none;
+}
+
+/* the Apocrypha keeps its own dark zine look (IE shows a site in its style), reflowed to one column */
+.wm-browser .wmb-core:has(> .wmb-core-area > .apocrypha-interior) {
+    background: #0d0d0d;
+}
+
+.wm-browser .wmb-core .apocrypha-interior {
+    max-height: none;
+    overflow: visible;
+}
+
+.wm-browser .wmb-core .apocrypha-interior .zine {
+    max-width: none;
+    padding: calc(6 * var(--wm-px));
+}
+
+.wm-browser .wmb-core .apocrypha-interior :is(.billboard, .content, .split) {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+/* the zine's own narrow rule spans the hero over 2 columns: in one column that adds a 0 px column */
+.wm-browser .wmb-core .apocrypha-interior .tile.hero {
+    grid-column: auto;
+    grid-row: auto;
+}
+
+.wm-browser .wmb-core .apocrypha-interior .mast {
+    flex-wrap: wrap;
+    gap: calc(4 * var(--wm-px));
+}
+
+.wm-browser .wmb-core .apocrypha-interior .mast-title {
+    font-size: calc(30 * var(--wm-px));
+}
+
+.wm-browser .wmb-core .apocrypha-interior .mast-right {
+    text-align: left;
+}
+
+.wm-browser .wmb-core .apocrypha-interior :is(img, video, iframe, table, pre) {
+    max-width: 100%;
+}
+
+.wm-browser .wmb-core .apocrypha-interior :is(table, pre) {
+    display: block;
+    overflow-x: auto;
 }
 
 /* ---------------------------------------------------------------- the web page */
@@ -607,18 +865,21 @@
 
 /* the Grimoire pages scroll with the WM scroll bar (as wm-shell.css .wm-page) */
 .wm-browser .wmb-home::-webkit-scrollbar,
-.wm-browser .wmb-gpage::-webkit-scrollbar {
+.wm-browser .wmb-gpage::-webkit-scrollbar,
+.wm-browser .wmb-core::-webkit-scrollbar {
     width: calc(13 * var(--wm-px));
 }
 
 .wm-browser .wmb-home::-webkit-scrollbar-track,
-.wm-browser .wmb-gpage::-webkit-scrollbar-track {
+.wm-browser .wmb-gpage::-webkit-scrollbar-track,
+.wm-browser .wmb-core::-webkit-scrollbar-track {
     background: #fff;
     border-left: calc(1 * var(--wm-px)) solid #000;
 }
 
 .wm-browser .wmb-home::-webkit-scrollbar-thumb,
-.wm-browser .wmb-gpage::-webkit-scrollbar-thumb {
+.wm-browser .wmb-gpage::-webkit-scrollbar-thumb,
+.wm-browser .wmb-core::-webkit-scrollbar-thumb {
     background: var(--wm-tab-strip);
     border: calc(1 * var(--wm-px)) solid #000;
     border-right: 0;
@@ -626,7 +887,8 @@
 }
 
 .wm-browser .wmb-home::-webkit-scrollbar-button:single-button,
-.wm-browser .wmb-gpage::-webkit-scrollbar-button:single-button {
+.wm-browser .wmb-gpage::-webkit-scrollbar-button:single-button,
+.wm-browser .wmb-core::-webkit-scrollbar-button:single-button {
     display: block;
     height: calc(19 * var(--wm-px));
     background: var(--wm-tab-strip) center / calc(8 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
@@ -634,7 +896,8 @@
 }
 
 .wm-browser .wmb-home::-webkit-scrollbar-button:single-button:vertical:decrement,
-.wm-browser .wmb-gpage::-webkit-scrollbar-button:single-button:vertical:decrement {
+.wm-browser .wmb-gpage::-webkit-scrollbar-button:single-button:vertical:decrement,
+.wm-browser .wmb-core::-webkit-scrollbar-button:single-button:vertical:decrement {
     border-bottom: calc(1 * var(--wm-px)) solid #000;
     background-image: linear-gradient(to bottom right, transparent 50%, #000 50%), linear-gradient(to bottom left, transparent 50%, #000 50%);
     background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
@@ -642,7 +905,8 @@
 }
 
 .wm-browser .wmb-home::-webkit-scrollbar-button:single-button:vertical:increment,
-.wm-browser .wmb-gpage::-webkit-scrollbar-button:single-button:vertical:increment {
+.wm-browser .wmb-gpage::-webkit-scrollbar-button:single-button:vertical:increment,
+.wm-browser .wmb-core::-webkit-scrollbar-button:single-button:vertical:increment {
     border-top: calc(1 * var(--wm-px)) solid #000;
     background-image: linear-gradient(to top right, transparent 50%, #000 50%), linear-gradient(to top left, transparent 50%, #000 50%);
     background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
@@ -650,7 +914,7 @@
 }
 
 /* DText's collapsed sections: a link-blue row with the chevron turning down when open */
-.wm-browser .wmb-g-body .tag-wiki-section-toggle {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) .tag-wiki-section-toggle {
     display: flex;
     align-items: center;
     gap: calc(4 * var(--wm-px));
@@ -660,19 +924,19 @@
     cursor: pointer;
 }
 
-.wm-browser .wmb-g-body .tag-wiki-section-toggle i {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) .tag-wiki-section-toggle i {
     font-size: calc(9 * var(--wm-px));
     transition: none;
 }
 
-.wm-browser .wmb-g-body .tag-wiki-section-toggle.is-open i {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) .tag-wiki-section-toggle.is-open i {
     transform: rotate(90deg);
 }
 
-.wm-browser .wmb-g-body .tag-wiki-section-content {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) .tag-wiki-section-content {
     padding-left: calc(6 * var(--wm-px));
 }
 
-.wm-browser .wmb-g-body .tag-wiki-section-content.hidden {
+.wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) .tag-wiki-section-content.hidden {
     display: none;
 }

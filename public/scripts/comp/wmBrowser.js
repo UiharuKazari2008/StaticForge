@@ -23,7 +23,8 @@
  * documentation pages drawn here without Alchemy (see "Grimoire pages" below).
  * Dreamscape apps (dsap: addresses: Data Management, Image Search, Control Panel, Agora ...) run
  * here too, the desktop's own applet code in IE's page (see "Dreamscape apps" below); their phone
- * layout is public/css/wm-dsap.css.
+ * layout is public/css/wm-dsap.css. Fandom and the Apocrypha show here with the desktop Grimoire's
+ * own renderers (see "Fandom and the Apocrypha" below).
  * Sessions: Alchemy has a 4-session cap, so the session is closed when the app is closed (title
  * X), 60 s after the app goes behind another, and when the tab goes away.
  *
@@ -69,6 +70,10 @@
     const RECENT_KEY = 'dreamWikiRecentPages'; // DREAMWIKI_RECENT_STORAGE_KEY, shared with the desktop Grimoire
     const RECENT_MAX = 20;
     const ALCHEMY_HOME = 'https://www.bing.com/'; // ALCHEMY_HOME_URL: public/scripts/comp/featureLoader.js
+    // the desktop Grimoire homepage's Settings, Fandom and Apocrypha buttons (bindDreamWikiHomepageEvents)
+    const SETTINGS_URL = 'dsap://dreamscape.jp/';
+    const FANDOM_HOME = 'rdf://wiki.fandom.jp/';
+    const APOCRYPHA_HOME = 'rdf://apocrypha.737.jp.net/';
 
     let ws = null; // window.wmShell
     // WM's wait cursor (wmShell.busy) while a download is saved or a picked file uploads
@@ -382,6 +387,8 @@
     /** Go to a web address (typed, a favorite, a link from elsewhere). */
     function navigate(raw, title) {
         if (!raw) return;
+        // Fandom and the Apocrypha: the desktop Grimoire's renderers in IE's page
+        if (coreAddress(raw)) { openCore(raw, title); return; }
         // a Dreamscape app's address (dsap:, or a bare registered applet host such as data.dreamscape.jp)
         if (dsapAddress(raw)) { openDsap(raw, title); return; }
         const url = webUrl(raw);
@@ -1255,7 +1262,8 @@
      * search (search_tag_wiki) and the documentation sites (get_static_wiki_site_index / _page).
      * Addresses are the desktop's: edtx://en.grimoire.jp/index.dtxt, .../search?q=,
      * edtx://wiki.danbooru.jp/tag/<name>, rdf://docs.novelai.jp/<page>, edtx://en.grimoire.jp/docs/<site>/<page>.
-     * Dreamscape apps (dsap:), Fandom and the Apocrypha stay on the desktop.
+     * Dreamscape apps (dsap:) and Fandom / the Apocrypha (rdf://wiki.fandom.jp, rdf://apocrypha.737.jp.net)
+     * have their own sections below.
      */
     function parseGrim(raw) {
         const text = String(raw || '').trim();
@@ -1264,7 +1272,8 @@
         if ((m = /^edtx:\/\/en\.grimoire\.jp\/search\/?(?:\?(.*))?$/i.exec(text))) {
             let q = '';
             try { q = new URLSearchParams(m[1] || '').get('q') || ''; } catch (_) { /* none */ }
-            return q.trim() ? { kind: 'search', q: q.trim() } : { kind: 'home' };
+            // no query: the search page (the desktop's search homepage, Search the Grim)
+            return { kind: 'search', q: q.trim() };
         }
         if ((m = /^edtx:\/\/wiki\.(?:danbooru|e621)\.(?:jp|com)\/tag\/([^?#]+)/i.exec(text))) {
             let name = m[1];
@@ -1278,7 +1287,7 @@
     }
 
     function grimUrl(g) {
-        if (g.kind === 'search') return 'edtx://en.grimoire.jp/search?q=' + encodeURIComponent(g.q);
+        if (g.kind === 'search') return g.q ? 'edtx://en.grimoire.jp/search?q=' + encodeURIComponent(g.q) : 'edtx://en.grimoire.jp/search';
         if (g.kind === 'wiki') return 'edtx://wiki.danbooru.jp/tag/' + encodeURIComponent(String(g.tag).replace(/\s+/g, '_'));
         if (g.kind === 'site') return g.site === 'novelai' ? 'rdf://docs.novelai.jp/' : `edtx://en.grimoire.jp/docs/${g.site}`;
         if (g.kind === 'doc') return g.site === 'novelai' ? `rdf://docs.novelai.jp/${g.page}` : `edtx://en.grimoire.jp/docs/${g.site}/${g.page}`;
@@ -1286,7 +1295,7 @@
     }
 
     function grimTitle(g) {
-        if (g.kind === 'search') return `Search: ${g.q}`;
+        if (g.kind === 'search') return g.q ? `Search: ${g.q}` : 'Search the Grim';
         if (g.kind === 'wiki') return g.tag;
         if (g.kind === 'site') return g.site === 'novelai' ? 'NovelAI Documentation' : g.site;
         if (g.kind === 'doc') return g.page;
@@ -1309,16 +1318,25 @@
     const webLink = (url, label, icon) => `<a class="wmb-home-link${icon ? ' has-icon' : ''}" href="${esc(url)}" data-url="${esc(url)}">${icon || ''}${esc(label)}</a>`;
     const iconImg = (src) => `<img class="wmb-link-ico" src="${esc(src)}" alt="" draggable="false">`;
 
-    let docSites = null; // get_wiki_home's documentation sites (Fandom stays on the desktop)
+    let docSites = null; // get_wiki_home's documentation sites (Fandom has its own row, as on the desktop)
     let docSitesAsked = false;
 
+    let docSitesRetry = 0;
     function loadDocSites() {
-        if (docSitesAsked || !window.wsClient || !window.wsClient.isConnected || !window.wsClient.isConnected()) return;
+        if (docSitesAsked || docSitesRetry) return;
+        // not connected yet, or the socket was still signing in (boot): asked again shortly while the start page shows
+        const later = () => {
+            docSitesRetry = setTimeout(() => {
+                docSitesRetry = 0;
+                if (visible && onHome() && entry().grim.kind === 'home') loadDocSites();
+            }, 3000);
+        };
+        if (!window.wsClient || !window.wsClient.isConnected || !window.wsClient.isConnected()) { later(); return; }
         docSitesAsked = true;
         window.wsClient.sendMessage('get_wiki_home', {}).then((r) => {
             docSites = ((r && r.sites) || []).filter((x) => x && x.id && x.kind !== 'fandom');
             if (onHome() && entry().grim.kind === 'home') renderHomeLists();
-        }).catch(() => { docSitesAsked = false; });
+        }).catch(() => { docSitesAsked = false; later(); });
     }
 
     function renderHomeLists() {
@@ -1328,10 +1346,15 @@
         for (const k of ['start', 'recent', 'favorites', 'history']) list(k).hidden = !open(k);
         const row = (r) => (webUrl(r.url) ? webLink(r.url, r.title || r.url) : `<a class="wmb-home-link" href="${esc(r.url)}" data-url="${esc(r.url)}">${esc(r.title || r.url)}</a>`);
         if (open('start')) {
+            // the desktop's starting points in its order (tagWikiSearchModal.js showDreamWikiHomepage)
             const tagIcon = iconImg('/static_images/wm61/ie-page.png');
             const rows = [
+                linkTo({ kind: 'search', q: '' }, 'Search the Grim', iconImg('/static_images/wm61/app-search.png')),
+                webLink(SETTINGS_URL, 'Settings', iconImg('/static_images/wm61/app-settings.png')),
                 linkTo({ kind: 'wiki', tag: 'tag groups' }, 'Danbooru Tags', tagIcon),
-                linkTo({ kind: 'wiki', tag: 'tag_group:index' }, 'e621 Tags', tagIcon)
+                linkTo({ kind: 'wiki', tag: 'tag_group:index' }, 'e621 Tags', tagIcon),
+                webLink(FANDOM_HOME, 'Fandom', iconImg('/static_images/fandom.png')),
+                webLink(APOCRYPHA_HOME, 'Apocrypha', tagIcon)
             ];
             (docSites || []).forEach((site) => {
                 const name = site.id === 'novelai' || String(site.id).toLowerCase().includes('novelai') ? 'NovelAI' : (site.name || site.id);
@@ -1359,6 +1382,7 @@
         if (!e.home) return;
         if (e.grim.kind === 'home') { renderHomeLists(); return; }
         if (e.grim.kind === 'dsap') { renderDsap(e, force); return; }
+        if (e.grim.kind === 'core') { renderCore(e, force); return; }
         if (localShown === e && !force) {
             // back on a page whose request is still out (the start page was shown meanwhile): its ring again
             if (!e.html && e.pending) { setGrimLoading(true); return; }
@@ -1414,6 +1438,17 @@
 
     async function loadGrimPage(g, force) {
         const send = (type, data) => window.wsClient.sendMessage(type, data);
+        if (g.kind === 'search' && !g.q) {
+            // the desktop's search homepage (tagWikiSearchModal.js showSearchResultsPage with no query)
+            return `<div class="wmb-g-searchhome" data-page-title="Search the Grim">
+                <img class="wmb-g-brand" src="/static_images/grim_logo_sheet.png" alt="Grimoire" draggable="false">
+                ${searchForm('')}
+                <div class="wmb-g-actions">
+                    <button type="button" class="wmb-g-btn" data-grim-search>Search</button>
+                    <button type="button" class="wmb-g-btn" data-grim-lucky>I'm Feeling Lucky</button>
+                </div>
+                <div class="wmb-g-note">Tip: Use the address bar for direct edtx:// navigation or tag names.</div></div>`;
+        }
         if (g.kind === 'search') {
             const r = await send('search_tag_wiki', { query: g.q, searchType: 'name', source: 'both', includeNonTag: false, includeOnline: false, limit: 50 });
             const rows = ((r && r.results) || []).map((x) => {
@@ -1474,6 +1509,18 @@
             let body = null;
             try { body = els.gpage.querySelector('#' + CSS.escape(toggle.dataset.target || '')); } catch (_) { body = null; }
             if (body) toggle.classList.toggle('is-open', body.classList.toggle('hidden') === false);
+            return;
+        }
+        const btn = e.target.closest && e.target.closest('[data-grim-search], [data-grim-lucky]');
+        if (btn && els.gpage.contains(btn)) {
+            if (btn.hasAttribute('data-grim-lucky')) {
+                // the desktop's demo searches
+                const demos = ['1girl', 'solo', 'cat', 'school_uniform'];
+                openLocal({ kind: 'search', q: demos[Math.floor(Math.random() * demos.length)] });
+            } else {
+                const form = els.gpage.querySelector('form.wmb-g-search');
+                if (form) form.requestSubmit();
+            }
             return;
         }
         const a = e.target.closest && e.target.closest('a');
@@ -1546,6 +1593,7 @@
             // a Grimoire domain written as dsap: (dsap://en.grimoire.jp/search?q=...): its phone page if it has one
             const g = parseGrim('edtx://' + m.normalized) || parseGrim('rdf://' + m.normalized);
             if (g) openLocal(g, title);
+            else if (coreAddress(m.normalized)) openCore(m.normalized, title);
             else cannotOpen(raw);
             return;
         }
@@ -1713,6 +1761,182 @@
         ws.menuAt(e.clientX, e.clientY, list);
     }
 
+    // ---------------------------------------------------------------- Fandom and the Apocrypha
+
+    /**
+     * Fandom (rdf://wiki.fandom.jp/, /?all=1, /<site>/<page>) and the Apocrypha
+     * (rdf://apocrypha.737.jp.net/, /archive/<issue>) are drawn here by the desktop Grimoire's own
+     * renderers: the Grimoire feature loads (tagWikiSearchModal.js), and the address's registry entry
+     * (grimoireCoreDomains.js) activates on a phone pane, a WikiDisplayBase whose display area is a
+     * box in IE's page, the way the desktop activates it on a Grimoire window. The pane is the part
+     * of the window those renderers use: displayArea, setAddress (the real address goes to IE's
+     * address bar), addToHistory (the page's title), navigate. Every link on these pages is caught
+     * before the desktop's own handlers (onCoreClick) and opens as an IE page, so Back, Forward,
+     * History and Favorites work. Each page keeps its own pane and box: Back shows it as it was left.
+     * IE's busy ring turns while a renderer is out; the desktop's in-page "Loading..." is hidden
+     * (wm-browser.css). The pages keep their own look (the Apocrypha's dark zine) in one column.
+     */
+    const CORE_RE = /^(?:(?:rdf|edtx|dsap):\/\/)?(?:wiki\.fandom\.jp|fandom\.grimoire\.jp|en\.grimoire\.jp\/fandom|apocrypha\.737\.jp\.net)(?:[/?#]|$)/i;
+    let coreShown = null; // the entry whose box is in .wmb-core
+    let PhonePane = null;
+
+    /** Fandom or the Apocrypha (a bare host only with a scheme or the exact registered host). */
+    function coreAddress(raw) {
+        const text = String(raw || '').trim();
+        return !!text && !/\s/.test(text) && CORE_RE.test(text);
+    }
+
+    function fandomUrl(site, page) {
+        return `rdf://wiki.fandom.jp/${site}/${page}`;
+    }
+
+    function openCore(raw, title) {
+        closeSub();
+        const url = 'rdf://' + String(raw).trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+        const cur = entry();
+        if (cur.home && cur.grim.kind === 'core' && cur.url === url) { render(); return; }
+        pushLocal({ home: true, grim: { kind: 'core' }, url, title: title || '' });
+    }
+
+    /** The phone pane class (WikiDisplayBase exists once the Grimoire feature has loaded). */
+    function phonePaneClass() {
+        if (PhonePane) return PhonePane;
+        /* global WikiDisplayBase */
+        if (typeof WikiDisplayBase !== 'function') return null;
+        PhonePane = class extends WikiDisplayBase {
+            constructor(e, area) {
+                super();
+                this._ie = e;
+                this.displayArea = area;
+                this._loads = 0;
+                this.history = [];
+                this.historyIndex = -1;
+            }
+            isStandaloneWindow() { return true; }
+            setAddress(o) {
+                const url = String((o && (o.displayUrl || o.fullUrl)) || '').trim();
+                if (!url) return;
+                this._ie.url = url;
+                if (entry() === this._ie) renderAddress();
+            }
+            addToHistory(h) {
+                // IE keeps the history: the renderer's entry only names the page
+                if (!h) return;
+                const title = h.type === 'apocrypha' ? 'Apocrypha' : (h.title || h.siteName || '');
+                if (title) this._ie.title = String(title);
+                noteHistory(this._ie.url, this._ie.title);
+            }
+            updateNavigationButtons() { step(); }
+            navigate(url) { navigate(String(url || '').trim()); }
+            goBack() { goBack(); }
+            setNavigationLoading() { /* _track turns IE's busy ring */ }
+            showGrimoireNavigationLoadingPage() { /* IE's busy ring */ }
+            showGrimoireNavigateErrorPage() { this.displayArea.innerHTML = '<div class="wmb-g-note">The page cannot be displayed.</div>'; }
+            showStaticWikiSiteIndex(id) { if (id) openLocal({ kind: 'site', site: String(id) }); }
+            getTagWikiPageDirectly(name) { if (name) openLocal({ kind: 'wiki', tag: String(name) }); }
+            _track(p) {
+                this._loads++;
+                this._sync();
+                return Promise.resolve(p).finally(() => { this._loads--; this._sync(); });
+            }
+            _sync() { if (coreShown === this._ie && entry() === this._ie) setGrimLoading(this._loads > 0); }
+            showApocryphaZine(o) { return this._track(super.showApocryphaZine(o)); }
+            showFandomWikiIndex(o) { return this._track(super.showFandomWikiIndex(o)); }
+            openStaticWikiPage(site, page, o) { return this._track(super.openStaticWikiPage(site, page, o)); }
+        };
+        return PhonePane;
+    }
+
+    let grimFeature = null;
+    function loadGrimFeature() {
+        if (typeof WikiDisplayBase === 'function') return Promise.resolve(true);
+        const fl = window.featureLoader;
+        if (!fl || typeof fl.loadFeature !== 'function') return Promise.resolve(false);
+        if (!grimFeature) grimFeature = Promise.resolve(fl.loadFeature('grimoire')).catch(() => false).finally(() => { if (typeof WikiDisplayBase !== 'function') grimFeature = null; });
+        return grimFeature;
+    }
+
+    /** Show the entry's page (again from the server with force: Refresh). */
+    function renderCore(e, force) {
+        if (!force && coreShown === e && e.area && e.area.parentNode === els.core) return;
+        coreShown = e;
+        if (e.area && e.pane && !force) {
+            // Back / Forward: the page as it was left, its scroll too
+            els.core.replaceChildren(e.area);
+            els.core.scrollTop = e.scroll || 0;
+            setGrimLoading(e.pane._loads > 0);
+            return;
+        }
+        if (force && e.pane && e.pane.currentStaticWiki) {
+            // wikiPageCache: tagWikiSearchModal.js (the desktop's page cache would answer Refresh)
+            try { /* global wikiPageCache */ wikiPageCache.invalidate(wikiPageCache.staticKey(e.pane.currentStaticWiki.siteId, e.pane.currentStaticWiki.pageId)); } catch (_) { /* no cache */ }
+        }
+        const area = document.createElement('div');
+        area.className = 'wmb-core-area';
+        e.area = area;
+        e.pane = null;
+        e.scroll = 0;
+        els.core.replaceChildren(area);
+        els.core.scrollTop = 0;
+        const fail = (text) => {
+            if (e.area !== area) return;
+            area.innerHTML = `<div class="wmb-g-note">${esc(text)}</div>`;
+            if (coreShown === e && entry() === e) setGrimLoading(false);
+        };
+        const ws_ = window.wsClient;
+        if (!ws_ || !ws_.isConnected || !ws_.isConnected()) { fail('The page cannot be reached: this phone is not connected to Dreamscape. Try again later.'); return; }
+        setGrimLoading(true);
+        loadGrimFeature().then(() => {
+            if (e.area !== area) return;
+            const Pane = phonePaneClass();
+            let m = null;
+            try { m = dsapApi() ? window.resolveDsap(e.url) : null; } catch (_) { m = null; }
+            if (!Pane || !m || !m.entry || typeof m.entry.activate !== 'function') { fail('The page cannot be displayed.'); return; }
+            const pane = new Pane(e, area);
+            e.pane = pane;
+            pane._track(null); // the ring stays until a renderer has started
+            try { m.entry.activate(pane, m); } catch (err) { console.warn('[wmBrowser] core page', e.url, err); fail('The page cannot be displayed.'); }
+        }).catch((err) => { console.warn('[wmBrowser] core page', e.url, err); fail('The page cannot be displayed.'); });
+    }
+
+    function coreScrollTo(id) {
+        let target = null;
+        try {
+            target = id && (els.core.querySelector('#' + CSS.escape(id)) || els.core.querySelector(`[name="${CSS.escape(id)}"]`));
+        } catch (_) { target = null; }
+        if (target) els.core.scrollTop += target.getBoundingClientRect().top - els.core.getBoundingClientRect().top;
+        else if (!id) els.core.scrollTop = 0;
+    }
+
+    /** Taps on Fandom / Apocrypha pages, before the desktop's own handlers: every page opens in IE. */
+    function onCoreClick(e) {
+        const t = e.target;
+        if (!t || !t.closest) return;
+        const swallow = () => { e.preventDefault(); e.stopPropagation(); };
+        const view = t.closest('[data-fandom-index-view]');
+        if (view && els.core.contains(view)) {
+            swallow();
+            navigate(view.getAttribute('data-fandom-index-view') === 'all' ? FANDOM_HOME + '?all=1' : FANDOM_HOME, 'Fandom Wikis');
+            return;
+        }
+        if (t.closest('[data-action="open-fandom-wiki-import"]')) { swallow(); navigate('dsap://wiki.dyna.dreamscape.jp/import'); return; }
+        const a = t.closest('a');
+        if (!a || !els.core.contains(a)) return;
+        swallow();
+        const label = a.textContent.replace(/\s+/g, ' ').trim();
+        const href = (a.getAttribute('href') || '').trim();
+        if (a.dataset.wikiSite && a.dataset.wikiPage) { navigate(fandomUrl(a.dataset.wikiSite, a.dataset.wikiPage), label); return; }
+        if (a.classList.contains('tag-wiki-link') && a.dataset.tagName && !a.dataset.tagName.startsWith('#')) { openLocal({ kind: 'wiki', tag: a.dataset.tagName }); return; }
+        if (href.startsWith('#')) { coreScrollTo(href.slice(1)); return; }
+        if (!href || /^javascript:/i.test(href)) return;
+        if (/^(edtx|rdf|dsap):/i.test(href) || coreAddress(href) || dsapAddress(href)) { navigate(href, label); return; }
+        let abs = null;
+        try { abs = new URL(href, location.href); } catch (_) { return; }
+        // same-origin links (a picture saved with a wiki page) would leave the phone's shell: the picture is on the page already
+        if (abs.origin === location.origin) return;
+        if (abs.protocol === 'http:' || abs.protocol === 'https:') navigate(abs.href, label);
+    }
+
     // ---------------------------------------------------------------- rendering
 
     function renderGoButton() {
@@ -1740,9 +1964,12 @@
         page.classList.toggle('is-full', fullScreen);
         const start = home && entry().grim.kind === 'home';
         const app = home && entry().grim.kind === 'dsap';
+        const core = home && entry().grim.kind === 'core';
         els.home.hidden = !start;
-        els.gpage.hidden = !home || start || app;
+        els.gpage.hidden = !home || start || app || core;
         els.dsap.hidden = !app;
+        els.core.hidden = !core;
+        if (!core && coreShown) { els.core.replaceChildren(); coreShown = null; }
         page.classList.toggle('on-dsap', app);
         // another page on screen: the applet stops (its timers, socket listeners); Back starts it again
         if (!app) leaveDsap();
@@ -1804,6 +2031,7 @@
                 </div>
                 <div class="wmb-gpage" hidden></div>
                 <div class="wmb-dsap form-section-scroll" hidden><div class="wmb-dsap-area"></div></div>
+                <div class="wmb-core" hidden></div>
                 <div class="wmb-frame-wrap" hidden>
                     <div class="wmb-touch"></div>
                 </div>
@@ -1822,6 +2050,7 @@
             gpage: page.querySelector('.wmb-gpage'),
             dsap: page.querySelector('.wmb-dsap'),
             dsapArea: page.querySelector('.wmb-dsap-area'),
+            core: page.querySelector('.wmb-core'),
             frameWrap: page.querySelector('.wmb-frame-wrap'),
             touch: page.querySelector('.wmb-touch'),
             sub: page.querySelector('.wmb-sub'),
@@ -1880,6 +2109,11 @@
         dsapShell.displayArea = els.dsapArea;
         els.dsap.addEventListener('click', onDsapClick);
         els.dsap.addEventListener('contextmenu', onDsapContextMenu);
+
+        // capture: ahead of the desktop renderers' own link handlers and context menus
+        els.core.addEventListener('click', onCoreClick, true);
+        els.core.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+        els.core.addEventListener('scroll', () => { if (coreShown && coreShown === entry()) coreShown.scroll = els.core.scrollTop; }, { passive: true });
 
         els.sub.addEventListener('click', (e) => {
             const row = e.target.closest('.wmb-sub-row');
@@ -2005,6 +2239,7 @@
         // web links elsewhere on the phone (Help, Messaging, Director) land here, never in desktop windows
         window.wmBrowser = {
             open(url) {
+                if (coreAddress(url)) { ws.open(APP_ID); openCore(url); return true; }
                 if (dsapAddress(url)) { ws.open(APP_ID); openDsap(url); return true; }
                 const u = webUrl(url);
                 const g = u ? null : parseGrim(url);
