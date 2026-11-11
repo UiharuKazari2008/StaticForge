@@ -251,8 +251,10 @@
 
     // Title-bar status icons are WM 6.1's white 1-bit glyphs: new mail is outres 32507 (the title-bar
     // envelope), prints and the Director are Melaton glyphs drawn in the same style (manifest.json)
-    const STATUS_APP_ICONS = { mail: 'status-mail', prints: 'status-prints', director: 'status-director' };
-    const STATUS_APP_ROLES = ['mail', 'prints', 'director'];
+    const STATUS_APP_ICONS = { mail: 'status-mail', prints: 'status-prints', director: 'status-director', update: 'status-update' };
+    const STATUS_APP_ROLES = ['mail', 'prints', 'director', 'update'];
+    // the Director's clapper while a turn runs: the stick claps (open frames, closed, open again)
+    const DIRECTOR_CLAP = ['status-director-open-2', 'status-director-open-1', 'status-director-open-0', 'status-director', 'status-director-open-0', 'status-director-open-1'];
     const artImageSet = (name) => `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x${HD_ART.has(name) ? `, url("${ART}${name}@4x.png") 4x` : ''})`;
 
     // ---------------------------------------------------------------- frame
@@ -271,6 +273,7 @@
                     <button type="button" class="wm-status-icon wm-status-app" data-role="mail" hidden aria-label="Messages"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="prints" hidden aria-label="Prints"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="director" hidden aria-label="Director"></button>
+                    <button type="button" class="wm-status-icon wm-status-app" data-role="update" hidden aria-label="Updates ready"></button>
                     <button type="button" class="wm-status-icon" data-role="data" data-icon="data-off" aria-label="Connectivity"></button>
                     <button type="button" class="wm-status-icon" data-role="roaming" data-icon="roaming" hidden aria-label="Roaming"></button>
                     <button type="button" class="wm-status-icon" data-role="signal" hidden aria-label="Phone signal"></button>
@@ -999,10 +1002,16 @@
         let muted = false;
         try { muted = !!(window.tabVolume && typeof window.tabVolume.isMuted === 'function' && window.tabVolume.isMuted()); } catch (_) { /* volume unknown */ }
         vol.dataset.icon = muted ? 'volume-off' : 'volume';
-        // pending things only, as WM shows a notification glyph: the Director while a turn runs,
-        // prints in progress, unread mail (an idle Director has nothing pending)
+        // pending things, as WM shows a notification glyph: the Director (an open clapper that claps
+        // while a turn runs; closed while it is idle and its app is open), prints in progress,
+        // unread mail, an update downloaded and ready to install
         const dir = directorState();
-        shell.querySelector('[data-role="director"]').hidden = !(dir && dir.running);
+        const dirOpen = stack.includes('director') || openedApps.includes('director');
+        shell.querySelector('[data-role="director"]').hidden = !((dir && dir.running) || dirOpen);
+        paintDirectorClap(!!(dir && dir.running));
+        let updateReady = false;
+        try { updateReady = !!(window.serviceWorkerManager && window.serviceWorkerManager.hasPendingUpdates()); } catch (_) { updateReady = false; }
+        shell.querySelector('[data-role="update"]').hidden = !updateReady;
         shell.querySelector('[data-role="prints"]').hidden = !printsInProgress();
         const mailEl = shell.querySelector('[data-role="mail"]');
         mailEl.hidden = !(shellMailUnread > 0);
@@ -1028,6 +1037,26 @@
      * open at 4x, #723).
      */
     let fitQueued = false;
+    let clapTimer = null;
+    let clapFrame = 0;
+    /** The Director icon: the clapper claps while a turn runs, closed otherwise (timers: no rAF in background tabs). */
+    function paintDirectorClap(working) {
+        const el = shell && shell.querySelector('[data-role="director"]');
+        if (!el) return;
+        if (!working || el.hidden) {
+            if (clapTimer) { clearInterval(clapTimer); clapTimer = null; }
+            if (el.dataset.clap !== 'closed') { el.dataset.clap = 'closed'; el.style.backgroundImage = artImageSet('status-director'); }
+            return;
+        }
+        if (clapTimer) return;
+        el.dataset.clap = 'working';
+        clapTimer = setInterval(() => {
+            if (document.hidden) return;
+            clapFrame = (clapFrame + 1) % DIRECTOR_CLAP.length;
+            el.style.backgroundImage = artImageSet(DIRECTOR_CLAP[clapFrame]);
+        }, 140);
+    }
+
     function fitStatus() {
         if (!shell || fitQueued) return;
         fitQueued = true;
@@ -1469,7 +1498,7 @@
         return artImageSet(n && n.type === 'reminder' ? 'status-reminder' : 'status-notify-many');
     }
 
-    const STATUS_APP_LABEL = { mail: 'Messages', prints: 'Prints', director: 'Director' };
+    const STATUS_APP_LABEL = { mail: 'Messages', prints: 'Prints', director: 'Director', update: 'Updates' };
 
     /** The bubble icon: pending notifications plus any status icons folded into it by fitStatus. */
     function paintNotifyIcon() {
@@ -1729,8 +1758,35 @@
             const d = directorState();
             const text = !d ? 'The Director has not reported yet.'
                 : d.running ? `${d.persona} is working${d.name ? ` on "${d.name}"` : ''}.` : `${d.persona} is idle.`;
+            const sections = [text];
+            // the current session: its name, turns and prints, context used (director.js's own counts)
+            const di = window.directorInstance;
+            const ses = di && di.currentSession;
+            if (ses) {
+                const msgs = Array.isArray(ses.messages) ? ses.messages : [];
+                const turns = msgs.filter((m) => m && m.role === 'user' && m.message_type !== 'Attachment').length;
+                let prints = 0;
+                try { prints = typeof di.sessionPrints === 'function' ? di.sessionPrints().length : 0; } catch (_) { prints = 0; }
+                const ctx = ((document.getElementById('directorContextPercent') || {}).textContent || '').trim();
+                sections.push(`Session: ${ses.name || 'Untitled'}`);
+                sections.push(`${turns} ${turns === 1 ? 'turn' : 'turns'}, ${prints} ${prints === 1 ? 'print' : 'prints'}${ctx && ctx !== '\u2014' ? `, context ${ctx}` : ''}`);
+            }
+            // the balance: the Director's own usage readout (plan share or remaining balance), and Anlas
+            const usageHost = document.getElementById('directorUsageDisplay');
+            const usage = ((document.getElementById('directorUsageAuto') || {}).textContent || '').trim();
+            if (usageHost && !usageHost.classList.contains('hidden') && usage && usage !== '\u2014') sections.push(`${usageHost.title || 'Usage'}: ${usage}`);
+            const o = window.optionsData;
+            const anlas = o && o.balance && Number(o.balance.totalCredits);
+            if (Number.isFinite(anlas) && anlas >= 0) sections.push(`Balance: ${anlas.toLocaleString()} Anlas`);
             const links = apps.has('director') ? [{ label: 'Open Director', action: () => open('director') }] : [];
-            bubble({ title: 'Director', role, anchor, sections: links.length ? [text, { links }] : [text], buttons: [{ text: 'Hide' }] });
+            if (links.length) sections.push({ links });
+            bubble({ title: 'Director', role, anchor, sections, buttons: [{ text: 'Hide' }] });
+        } else if (role === 'update') {
+            const sw = window.serviceWorkerManager;
+            const n = sw && Number(sw.pendingUpdateFilesTotal);
+            const text = `Updates are ready to install${Number.isFinite(n) && n > 0 ? ` (${n.toLocaleString()} files)` : ''}. Melaton restarts to install them.`;
+            const links = sw && typeof sw.forceRestart === 'function' ? [{ label: 'Restart Now', action: () => { closeBubble(); sw.forceRestart(); } }] : [];
+            bubble({ title: 'Updates', role, anchor, sections: links.length ? [text, { links }] : [text], buttons: [{ text: 'Hide' }] });
         } else if (role === 'prints') {
             const n = printsInProgress();
             bubble({ title: 'Prints', role, anchor, sections: [n ? `${n} ${n === 1 ? 'print is' : 'prints are'} in progress.` : 'No prints in progress.', { links: [{ label: 'Pictures & Videos', action: () => open('gallery') }] }], buttons: [{ text: 'Hide' }] });

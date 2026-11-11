@@ -41,7 +41,8 @@
         startMenu: 'wmStartMenu',
         startSource: 'wmStartSource',
         startText: 'wmStartText',
-        startIcon: 'wmStartIcon'
+        startIcon: 'wmStartIcon',
+        camera: 'wmCamera'
     };
     const SCALES = [1, 1.25, 1.5, 1.75, 2];
     const MELATON_EMBLEM = '/static_images/melaton/melaton-white-256.png';
@@ -87,8 +88,18 @@
         root.dataset.wmTitlebar = titleBarStyle();
     }
 
+    // Settings > Screen > Camera (#735): keep the title bar clear of the camera, or a black bezel above the screen
+    function cameraStyle() {
+        return lsGet(K.camera) === 'bezel' ? 'bezel' : 'clear';
+    }
+
+    function applyCamera() {
+        root.dataset.wmCamera = cameraStyle();
+    }
+
     applyScale();
     applyTitleBar();
+    applyCamera();
 
     function todayUsesDesktop() {
         const v = lsGet(K.todayUseDesktop);
@@ -124,7 +135,7 @@
         return { source: 'wm', text: 'Start', icon: MELATON_EMBLEM };
     }
 
-    window.wmSettings = { keys: K, startButton, todayUsesDesktop, titleBarStyle, applyScale, scales: SCALES };
+    window.wmSettings = { keys: K, startButton, todayUsesDesktop, titleBarStyle, cameraStyle, applyScale, scales: SCALES };
 
     // ---------------------------------------------------------------- helpers
 
@@ -891,9 +902,17 @@
         },
         {
             id: 'screen', tab: 'system', label: 'Screen', icon: 'set-screen',
-            tabs: [['textsize', 'Text Size']],
-            init: () => ({ scale: currentScale() }),
+            tabs: [['textsize', 'Text Size'], ['camera', 'Camera']],
+            init: () => ({ scale: currentScale(), camera: cameraStyle() }),
             render(el, tab, d) {
+                if (tab === 'camera') {
+                    el.innerHTML = `<p>Choose how the screen handles the camera at the top of the display.</p>
+                        <div class="wm-form-gap"></div>
+                        ${radio('wmCamera', 'clear', 'Keep the title bar clear of the camera', d.camera === 'clear')}
+                        ${radio('wmCamera', 'bezel', 'Black bezel above the screen', d.camera === 'bezel')}`;
+                    el.querySelectorAll('input[name="wmCamera"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) d.camera = r.value; }));
+                    return;
+                }
                 const n = SCALES.length;
                 const pos = (i) => `calc(4 * var(--wm-px) + (100% - 8 * var(--wm-px)) * ${i / (n - 1)})`;
                 el.innerHTML = `<p>Adjust the text size to see more content or increase the readability in many programs.</p>
@@ -936,10 +955,16 @@
                 set(SCALES.indexOf(d.scale));
             },
             commit(d) {
-                if (d.scale === currentScale() && storedScale() !== null) return [];
+                const keys = [];
+                if (d.camera !== cameraStyle()) {
+                    lsSet(K.camera, d.camera === 'bezel' ? 'bezel' : null);
+                    applyCamera();
+                    keys.push(K.camera);
+                }
+                if (d.scale === currentScale() && storedScale() !== null) return keys;
                 lsSet(K.scale, String(d.scale));
                 applyScale();
-                return [K.scale];
+                return keys.concat(K.scale);
             }
         },
         {
