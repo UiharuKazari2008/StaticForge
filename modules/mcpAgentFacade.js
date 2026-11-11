@@ -856,12 +856,14 @@ const TOOL_DEFS = [
     {
         name: 'request_workspace_switch',
         core: true,
-        description: 'Ask the user to switch to this Director session\'s workspace so you can use Studio. Shows a card with a 90 second countdown. Returns status accepted, declined, or timeout. Timeout counts as declined. Call this when a client has in_workspace false and you need Studio. Do not use Studio while it is false. Glancewell, Lumen, and show_chat_image are still fine without switching. Already in the workspace returns accepted without a card.',
+        description: 'Ask the user to switch to this Director session\'s workspace so you can use Studio. Shows a card with a 90 second countdown. Returns status accepted, declined, or timeout. Timeout counts as declined. Call this when a client has in_workspace false and you need Studio. Do not use Studio while it is false. Glancewell, Lumen, and show_chat_image are still fine without switching. Already in the workspace returns accepted without a card. A chat that is not paired to a workspace (Yozora\'s) passes workspace: the card then asks the user to switch the client there.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             properties: {
+                workspace: { type: 'string', description: 'Only for a chat with no paired workspace: the workspace to switch the client to (id, display name, or nickname from get_workspaces). Ignored when the chat is paired.' },
+                workspaceId: { type: 'string', description: 'Same as workspace' },
                 reason: { type: 'string', description: 'One short line on the card: why Studio needs this workspace' },
                 chatId: { type: 'string', description: 'Director chat id. Only needed if the server cannot tell which chat is running.' }
             }
@@ -5621,14 +5623,27 @@ async function runDirectorSessionTool(globalResources, name, input, req) {
         }
     }
     if (name === 'request_workspace_switch') {
-        const workspaceId = director.readChatWorkspace ? director.readChatWorkspace(chatId) : '';
+        let workspaceId = director.readChatWorkspace ? director.readChatWorkspace(chatId) : '';
         if (!workspaceId) {
-            return mcpTextResult({
-                success: false,
-                error: 'This chat is not paired to a workspace.',
-                code: 'WORKSPACE_NOT_PAIRED',
-                chatId
-            }, true);
+            // a chat with no paired workspace (Yozora's, #745) names where the client should go
+            const asked = String(input.workspaceId || input.workspace || '').trim();
+            if (!asked) {
+                return mcpTextResult({
+                    success: false,
+                    error: 'This chat is not paired to a workspace. Pass workspace (an id, name, or nickname from get_workspaces) to ask the user to switch there.',
+                    code: 'WORKSPACE_NOT_PAIRED',
+                    chatId
+                }, true);
+            }
+            const resolved = resolveWorkspaceId(asked, globalResources);
+            if (!workspaceRecordExact(globalResources, resolved)) {
+                return mcpTextResult({
+                    success: false,
+                    error: `No workspace matches "${asked}". get_workspaces lists the ids, names, and nicknames.`,
+                    code: 'WORKSPACE_NOT_FOUND'
+                }, true);
+            }
+            workspaceId = resolved;
         }
         const here = req ? (inferBoundWorkspaceId(globalResources, req) || '') : '';
         if (here && here === workspaceId) {

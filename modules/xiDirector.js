@@ -570,8 +570,8 @@ function buildPrompt(chat, userText, files, clientId, options) {
         'A client reload is normal. Continue this chat. Do not redo a finished step.',
         `Director chat id: ${chat.id}. Pass chatId on session tools.`,
         options && options.clientWorkspaceId
-            ? `This chat is not tied to a Dreamscape workspace. The client that sent this message is in workspace id: ${options.clientWorkspaceId}; Dreamscape tools act in the workspace of the client you use.`
-            : 'This chat is not tied to a Dreamscape workspace; Dreamscape tools act in the workspace of the client you use.',
+            ? `This chat is not tied to a Dreamscape workspace. The client that sent this message is in workspace id: ${options.clientWorkspaceId}; Dreamscape tools act in the workspace of the client you use. To move the user's client to another workspace, call request_workspace_switch with workspace (it shows a card and waits for their answer).`
+            : 'This chat is not tied to a Dreamscape workspace; Dreamscape tools act in the workspace of the client you use. To move the user\'s client to another workspace, call request_workspace_switch with workspace.',
         `Workspace: ${workspacePath(boundGr)}`
     ];
     if (options && options.memoryStore === 'obliterated') {
