@@ -1102,41 +1102,36 @@
         },
         {
             id: 'screen', tab: 'system', label: 'Screen', icon: 'set-screen',
-            tabs: [['textsize', 'Text Size'], ['camera', 'Camera'], ['fullscreen', 'Full Screen'], ['icons', 'Status Icons']],
+            tabs: [['textsize', 'Text Size'], ['statusbar', 'Status Bar']],
             init: () => ({ scale: currentScale(), camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
                 showBt: lsGet(K.showBluetoothIcon) !== '0', showCell: lsGet(K.showCellIcon) === '1' }),
             render(el, tab, d) {
-                if (tab === 'icons') {
-                    el.innerHTML = `<p>Choose which icons the title bar shows.</p>
-                        <div class="wm-form-gap"></div>
-                        ${check('wmShowBt', 'Show the Bluetooth icon while Bluetooth is on', d.showBt)}
-                        ${check('wmShowCell', 'Always show the mobile network icon (also on Wi-Fi)', d.showCell)}`;
-                    el.querySelector('input[name="wmShowBt"]').addEventListener('change', (e) => { d.showBt = e.target.checked; });
-                    el.querySelector('input[name="wmShowCell"]').addEventListener('change', (e) => { d.showCell = e.target.checked; });
-                    return;
-                }
-                if (tab === 'fullscreen') {
-                    if (!d.bars) {
-                        el.innerHTML = '<p>Hiding the status bar and the gesture bar is available in the Dreamscape app for Android.</p>';
-                        return;
-                    }
-                    el.innerHTML = `<p>Hide the phone's bars to give Melaton Mobile the whole screen. Swipe from the edge to show a hidden bar for a moment.</p>
-                        <div class="wm-form-gap"></div>
-                        ${check('wmHideStatus', 'Hide the status bar', d.bars.hideStatus)}
-                        ${check('wmHideNavigation', 'Hide the gesture bar', d.bars.hideNavigation)}`;
-                    el.querySelector('input[name="wmHideStatus"]').addEventListener('change', (e) => { d.bars.hideStatus = e.target.checked; });
-                    el.querySelector('input[name="wmHideNavigation"]').addEventListener('change', (e) => { d.bars.hideNavigation = e.target.checked; });
-                    return;
-                }
-                if (tab === 'camera') {
-                    el.innerHTML = `<p>Choose how the screen handles the camera at the top of the display.</p>
-                        <div class="wm-form-gap"></div>
+                // Status Bar: everything about the top of the phone's screen in one place: the
+                // camera in the display, the phone's own bars (Android app only), the title bar's icons
+                if (tab === 'statusbar') {
+                    el.innerHTML = `<div class="wm-form-sub">Camera</div>
                         ${radio('wmCamera', 'clear', 'Keep the title bar clear of the camera', d.camera === 'clear')}
                         ${radio('wmCamera', 'bezel', 'Black bezel above the screen', d.camera === 'bezel')}
+                        ${check('wmCameraPortraitOnly', 'Only in portrait (a turned phone uses the whole screen)', d.portraitOnly)}
                         <div class="wm-form-gap"></div>
-                        ${check('wmCameraPortraitOnly', 'Only in portrait (a turned phone uses the whole screen)', d.portraitOnly)}`;
+                        <div class="wm-form-sub">Full screen</div>
+                        ${d.bars
+                            ? `${check('wmHideStatus', 'Hide the phone\'s status bar', d.bars.hideStatus)}
+                               ${check('wmHideNavigation', 'Hide the gesture bar', d.bars.hideNavigation)}
+                               <p class="wm-form-note">Swipe from the edge to show a hidden bar for a moment.</p>`
+                            : '<p class="wm-form-note">Hiding the status bar and the gesture bar is available in the Dreamscape app for Android.</p>'}
+                        <div class="wm-form-gap"></div>
+                        <div class="wm-form-sub">Status icons</div>
+                        ${check('wmShowBt', 'Show the Bluetooth icon while Bluetooth is on', d.showBt)}
+                        ${check('wmShowCell', 'Always show the mobile network icon (also on Wi-Fi)', d.showCell)}`;
                     el.querySelectorAll('input[name="wmCamera"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) d.camera = r.value; }));
                     el.querySelector('input[name="wmCameraPortraitOnly"]').addEventListener('change', (e) => { d.portraitOnly = e.target.checked; });
+                    if (d.bars) {
+                        el.querySelector('input[name="wmHideStatus"]').addEventListener('change', (e) => { d.bars.hideStatus = e.target.checked; });
+                        el.querySelector('input[name="wmHideNavigation"]').addEventListener('change', (e) => { d.bars.hideNavigation = e.target.checked; });
+                    }
+                    el.querySelector('input[name="wmShowBt"]').addEventListener('change', (e) => { d.showBt = e.target.checked; });
+                    el.querySelector('input[name="wmShowCell"]').addEventListener('change', (e) => { d.showCell = e.target.checked; });
                     return;
                 }
                 const n = SCALES.length;
