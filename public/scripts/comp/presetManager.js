@@ -45,7 +45,6 @@ function getQueueStatus() {
 
 // Initialize preset manager
 function initializePresetManager() {
-    const presetManagerBtn = document.getElementById('presetManagerBtn');
     const closePresetManagerBtn = document.getElementById('closePresetManagerBtn');
     const presetSearch = document.getElementById('presetSearch');
     const presetPrevBtn = document.getElementById('presetPrevBtn');
@@ -157,39 +156,6 @@ function wirePresetManagerKeyboardOverlayEntries() {
             overlayValid: typeof entry.overlayValid === 'function' ? entry.overlayValid : null
         });
     });
-}
-
-// No dropdown initialization needed - only simple updates allowed
-function initializePresetDropdowns() {
-    // Workspace dropdown
-    const workspaceDropdown = document.getElementById('presetWorkspaceDropdown');
-    if (workspaceDropdown) {
-        const workspaceBtn = document.getElementById('presetWorkspaceDropdownBtn');
-        const workspaceMenu = document.getElementById('presetWorkspaceDropdownMenu');
-        const workspaceSelected = document.getElementById('presetWorkspaceSelected');
-        
-        if (workspaceBtn && workspaceMenu && workspaceSelected) {
-            workspaceBtn.addEventListener('click', () => toggleDropdown(workspaceMenu, workspaceBtn));
-            
-            // Populate workspace options
-            if (workspaces) {
-                workspaceMenu.innerHTML = '';
-                Object.keys(workspaces).forEach(workspaceId => {
-                    const workspace = workspaces[workspaceId];
-                    const option = document.createElement('div');
-                    option.className = 'custom-dropdown-option';
-                    option.textContent = workspace.name;
-                    option.dataset.value = workspaceId;
-                    option.addEventListener('click', () => {
-                        workspaceSelected.textContent = option.textContent;
-                        workspaceSelected.dataset.value = workspaceId;
-                        closeDropdown(workspaceMenu, workspaceBtn);
-                    });
-                    workspaceMenu.appendChild(option);
-                });
-            }
-        }
-    }
 }
 
 // Show preset manager modal
