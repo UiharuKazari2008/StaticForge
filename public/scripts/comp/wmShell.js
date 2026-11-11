@@ -2607,8 +2607,9 @@
         }
         const at = notes.indexOf(n);
         const snap = `${n.id}\u0001${at}/${notes.length}\u0001${n.toast.innerHTML}`;
+        const cameUp = el.hidden;
         el.hidden = false;
-        if (snap === noteSnapshot) return;
+        if (snap === noteSnapshot) { if (cameUp) noteZoom(el); return; }
         noteSnapshot = snap;
         el.textContent = '';
         const head = document.createElement('div');
@@ -2660,6 +2661,46 @@
             body.appendChild(copy);
         }
         el.appendChild(body);
+        if (cameUp) noteZoom(el);
+    }
+
+    /**
+     * 6.1: a notification bubble opens with the device's zoom rectangle (recording nb): an outline
+     * of one device pixel in the highlight green grows from the title bar's icon to the bubble's
+     * place in eight even steps (~65 ms each on the emulator, a stage tick here), then the frame
+     * with its title band, the body one tick later. 6.5 was not captured: it opens at once.
+     */
+    let noteZoomTimers = [];
+    function noteZoom(el) {
+        noteZoomTimers.forEach(clearTimeout);
+        noteZoomTimers = [];
+        shell.querySelectorAll(':scope > .wm-zoom-rect').forEach((x) => x.remove());
+        delete el.dataset.wmPaint;
+        if (WM65) return;
+        const icon = shell.querySelector('.wm-status-icon[data-role="notify"]');
+        const sr = shell.getBoundingClientRect();
+        const to = el.getBoundingClientRect();
+        const ir = icon && icon.getClientRects().length ? icon.getBoundingClientRect() : null;
+        if (!to.width || !to.height) return;
+        const fx = ir ? ir.left + ir.width / 2 : sr.left + sr.width / 2;
+        const fy = ir ? ir.bottom : sr.top;
+        const rect = document.createElement('div');
+        rect.className = 'wm-zoom-rect';
+        rect.setAttribute('aria-hidden', 'true');
+        el.dataset.wmPaint = 'zoom';
+        const place = (i) => {
+            const k = i / 8;
+            rect.style.left = `${fx + (to.left - fx) * k - sr.left}px`;
+            rect.style.top = `${fy + (to.top - fy) * k - sr.top}px`;
+            rect.style.width = `${to.width * k}px`;
+            rect.style.height = `${to.height * k}px`;
+        };
+        place(1);
+        shell.appendChild(rect);
+        const at = (i, fn) => noteZoomTimers.push(setTimeout(fn, i * STAGE_TICK));
+        for (let i = 2; i <= 8; i++) at(i - 1, () => place(i));
+        at(8, () => { rect.remove(); el.dataset.wmPaint = 'frame'; });
+        at(9, () => { delete el.dataset.wmPaint; });
     }
 
     function showNote(id) {

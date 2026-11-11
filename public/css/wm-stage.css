@@ -150,3 +150,17 @@ html.ui-mobile[data-wm-version="6.5"] .wm-popup.wm-popup-ghost > ::after {
 /* Today's Tasks row: the count and "N High priority" under it, two lines as the device's (wmTasks.js summary) */
 html.ui-mobile .wm-today-row[data-row="tasks"] { cursor: default; }
 html.ui-mobile .wm-today-row[data-row="tasks"] .wm-today-text { white-space: pre; }
+
+/* ---- 6.1 notification bubble (wmShell.js noteZoom): the zoom rectangle, an outline of one device
+ * pixel in the highlight green (49, 211, 57); the bubble is not drawn under it, then its frame and
+ * title band come, the body a tick later ---- */
+.wm-zoom-rect {
+    position: absolute;
+    z-index: 40;
+    box-sizing: border-box;
+    border: calc(0.5 * var(--wm-px)) solid rgb(49, 211, 57);
+    pointer-events: none;
+}
+
+html.ui-mobile .wm-notify[data-wm-paint="zoom"] { visibility: hidden; }
+html.ui-mobile .wm-notify[data-wm-paint="frame"] > .wm-notify-body > * { visibility: hidden; }
