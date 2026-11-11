@@ -1473,6 +1473,8 @@ class Director {
                         {
                             icon: 'fas fa-planet-ringed',
                             text: 'Move to workspace',
+                            // Yozora's chats are not tied to a workspace (#745)
+                            hidden: () => this.persona === 'xi',
                             optionsfn: (target) => this.sessionMoveWorkspaceOptions(target),
                             handlerfn: (option, target) => this.moveSessionToWorkspace(option, target)
                         },

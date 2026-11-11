@@ -253,11 +253,12 @@ function activeRuntime() {
     return chat ? sanitizeRuntime(chat.runtime) : null;
 }
 
-function readChatWorkspace(sessionId) {
-    const id = String(sessionId || '').trim();
-    if (!id) return '';
-    const chat = peekIndex().chats.find((item) => item.id === id);
-    return chat && typeof chat.workspaceId === 'string' ? chat.workspaceId.trim() : '';
+// Yozora is the coding agent: her chats are not tied to a Dreamscape workspace (Yozora #745). The
+// Director's prompt engineers pair each chat with one; hers list everywhere, carry no workspace
+// banner, and her Dreamscape tools act in the workspace of the client she uses. A workspaceId an
+// older chat still has in the index is ignored (it is not sent to clients either).
+function readChatWorkspace() {
+    return '';
 }
 
 function runtimeStatus() {
@@ -298,6 +299,7 @@ function usesClaudeCli(runtime) {
 function publicXiSession(chat) {
     return Object.assign(director._test.publicSession(chat), {
         persona: 'xi',
+        workspaceId: null,
         runtime: sanitizeRuntime(chat && chat.runtime)
     });
 }
@@ -567,9 +569,9 @@ function buildPrompt(chat, userText, files, clientId, options) {
         'To ask the user anything, call request_form with chatId. AskQuestion is skipped in this window and they never see it. If it returns pending with a formId, call request_form again with only that formId until values come back.',
         'A client reload is normal. Continue this chat. Do not redo a finished step.',
         `Director chat id: ${chat.id}. Pass chatId on session tools.`,
-        chat.workspaceId
-            ? `Dreamscape workspace id: ${chat.workspaceId}. If a client has in_workspace false, do not use Studio. Call request_workspace_switch. Glancewell, Lumen, and show_chat_image are still fine. Writes go to this workspace.`
-            : 'No Dreamscape workspace is paired yet.',
+        options && options.clientWorkspaceId
+            ? `This chat is not tied to a Dreamscape workspace. The client that sent this message is in workspace id: ${options.clientWorkspaceId}; Dreamscape tools act in the workspace of the client you use.`
+            : 'This chat is not tied to a Dreamscape workspace; Dreamscape tools act in the workspace of the client you use.',
         `Workspace: ${workspacePath(boundGr)}`
     ];
     if (options && options.memoryStore === 'obliterated') {
@@ -1201,7 +1203,7 @@ async function handleDirectorCreateSession(handler, ws, message) {
         const gr = handler.globalResources;
         boundGr = gr;
         const activeAccId = getActiveXiAccountId(gr);
-        const workspaceId = message.workspaceId || null;
+        const workspaceId = null;
         const chat = await enqueue(async () => {
             const index = readIndex();
             const created = {
@@ -1262,12 +1264,8 @@ async function handleDirectorOpenWorkspace(handler, ws, message) {
     const index = peekIndex();
     const preferred = message.preferredChatId && index.chats.find((chat) => chat.id === message.preferredChatId);
     const byId = message.directorSessionId && index.chats.find((chat) => chat.id === message.directorSessionId);
-    const workspaceId = message.workspaceId || null;
-    let found = preferred || byId || null;
-    if (!found && workspaceId) {
-        const matches = index.chats.filter((chat) => chat.workspaceId === workspaceId && chatIsListed(chat));
-        found = matches.length ? matches[matches.length - 1] : null;
-    }
+    // no lookup by workspace: her chats are not tied to one
+    const found = preferred || byId || null;
     if (!found) {
         sendOk(handler, ws, 'director_open_workspace_response', message.requestId, { session: null, draft: true });
         return;
@@ -1447,8 +1445,6 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 effort: message.effort || 'medium',
                 fast: message.fast === true
             };
-            const { keepSessionWorkspace } = require('./sessionWorkspacePairing');
-            keepSessionWorkspace(chat, message.workspaceId);
             chat.messages = chat.messages || [];
             chat.messages.push({
                 id: crypto.randomUUID(),
@@ -1506,7 +1502,8 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 ? customProviders.memoryStoreForEngine(gr, runtime)
                 : '';
             const ageTool = !customProviders.isEngine(runtime) || customProviders.ageToolEnabled(gr, runtime);
-            const prompt = buildPrompt(chat, userText, files, clientId, { memoryStore, ageTool, sessionRestarted });
+            const clientWorkspaceId = typeof message.workspaceId === 'string' ? message.workspaceId.trim() : '';
+            const prompt = buildPrompt(chat, userText, files, clientId, { memoryStore, ageTool, sessionRestarted, clientWorkspaceId });
             writeIndex(index);
             return { prompt, cursorId, claudeSessionId, claudeFirstTurn, model: chat.model, name: chat.name, round, runtime };
         });
@@ -1626,7 +1623,7 @@ async function handleDirectorForkSession(handler, ws, message) {
             runtime: sanitizeRuntime(chat.runtime),
             accountId: chat.accountId || activeAccId,
             name: `${chat.name || 'Yozora'} fork`.slice(0, 48),
-            workspaceId: chat.workspaceId || null,
+            workspaceId: null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             archived: false,
@@ -1655,38 +1652,7 @@ async function handleDirectorForkSession(handler, ws, message) {
 
 async function handleDirectorMoveSession(handler, ws, message) {
     if (!assertEnabled(handler, ws, message.requestId)) return;
-    const sessionId = message.sessionId;
-    const workspaceId = typeof message.workspaceId === 'string' ? message.workspaceId.trim() : '';
-    if (!sessionId || !workspaceId) {
-        handler.sendError(ws, 'Session and workspace are required', 'MISSING_PARAMETERS', message.requestId);
-        return;
-    }
-    const gr = handler.globalResources;
-    let known = false;
-    try {
-        const all = gr.getWorkspaceManager().getWorkspaces();
-        known = !!(all && all[workspaceId]);
-    } catch (_err) { known = false; }
-    if (!known) {
-        handler.sendError(ws, 'Workspace not found', 'WORKSPACE_NOT_FOUND', message.requestId);
-        return;
-    }
-    const moved = await enqueue(async () => {
-        const index = readIndex();
-        const chat = index.chats.find((item) => item.id === sessionId);
-        if (!chat) return null;
-        chat.workspaceId = workspaceId;
-        writeIndex(index);
-        return chat;
-    });
-    if (!moved) {
-        handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
-        return;
-    }
-    sendOk(handler, ws, 'director_move_session_response', message.requestId, {
-        persona: 'xi',
-        session: publicXiSession(moved)
-    });
+    handler.sendError(ws, "Yozora's sessions are not tied to a workspace", 'NOT_SUPPORTED', message.requestId);
 }
 
 async function handleDirectorToolDiff(handler, ws, message) {
