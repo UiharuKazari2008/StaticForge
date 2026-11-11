@@ -2293,3 +2293,549 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
         display: none;
     }
 }
+
+/* ======================================================================
+ * Shrine Terminal (Yozora #744, Nov 11): Yozora (xi) is the coding agent and admin assistant, so her
+ * phone screens are about files and commands, in the colours of her room: a night-blue monitor face
+ * (her sprite is white, so white paper would vanish against her), a vermilion torii beam over every
+ * panel, blue foxfire for the lights.
+ *   panels    night blue under a torii beam (the top bar is wider than the body), a foxfire rim
+ *   name      a wooden votive plaque
+ *   choices   slips with a vermilion head and a swallow-tail end
+ *   HUD       turns / files / score as foxfire flames (wmDirector.js writes "files")
+ *   dock      .wmd-files: the files she edited this turn as tags with line counts
+ *   Changes   .wmd-page-changes: one file's removed and added lines
+ *   log       her monitor: monospace tool rows marked with small flames
+ * Nothing here animates.
+ * ====================================================================== */
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"],
+.wm-director .wmd-page-changes {
+    --sh-verm: linear-gradient(#f2664a, #c8321e);
+    --sh-shu: #d23a22;
+    --sh-fire: #7fd0ff;
+    --sh-text: #e6eeff;
+    --sh-dim: #9fb0dc;
+    --sh-rim: rgba(127, 208, 255, 0.45);
+    --sh-night:
+        repeating-linear-gradient(0deg, rgba(127, 208, 255, 0.045) 0 1px, transparent 1px 3px),
+        linear-gradient(rgba(22, 30, 84, 0.96), rgba(6, 8, 28, 0.97));
+    --sh-torii: polygon(0 0, 100% 0, 100% 6px, calc(100% - 5px) 6px, calc(100% - 5px) 100%, 5px 100%, 5px 6px, 0 6px);
+    --sh-slip: polygon(0 0, 100% 0, calc(100% - 8px) 50%, 100% 100%, 0 100%);
+    --sh-flame: radial-gradient(circle at 62% 62%, #fff 12%, #9fe0ff 42%, #2f7dff 80%);
+    --sh-mono: 'Cascadia Mono', Consolas, 'Roboto Mono', 'Droid Sans Mono', monospace;
+    --sh-serif: 'Palatino Linotype', 'Book Antiqua', Georgia, 'Noto Serif', serif;
+}
+
+/* ---- title banner ---- */
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-banner {
+    left: 4px;
+    padding: 10px 16px 5px 14px;
+    border-left: 0;
+    background: var(--sh-verm) 0 0 / 100% 6px no-repeat, var(--sh-fire);
+    clip-path: var(--sh-torii);
+    filter: none;
+    isolation: isolate;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-banner::before {
+    content: '';
+    position: absolute;
+    inset: 6px 6px 1px 6px;
+    z-index: -1;
+    background: var(--sh-night);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-banner-title {
+    color: #fff;
+    font: 700 13px var(--sh-serif);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-banner-sub {
+    color: #ff9d86;
+}
+
+/* ---- HUD: foxfire ---- */
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-hud {
+    gap: 9px;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-hud-chip {
+    width: 44px;
+    height: 44px;
+    min-width: 0;
+    margin-top: 6px;
+    padding: 5px 0 0;
+    clip-path: none;
+    background: none;
+    box-shadow: none;
+    color: #0b1a4a;
+    font-size: 9.5px;
+    font-weight: 700;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-hud-chip::before {
+    inset: 0;
+    border-radius: 0 50% 50% 50%;
+    clip-path: none;
+    background: var(--sh-flame);
+    box-shadow: 0 0 10px #4aa8ff;
+    transform: rotate(45deg);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-hud-chip::after {
+    display: none;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-hud-chip b {
+    color: #0b1a4a;
+    font-size: 15px;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-ring {
+    width: 30px;
+    height: 30px;
+    background: conic-gradient(#0b1a4a calc(var(--p) * 1%), rgba(11, 26, 74, 0.18) 0);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-ring::before {
+    inset: 3px;
+    background: #dff3ff;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-ring span {
+    color: #0b1a4a;
+}
+
+/* she writes no report cards: no score ring, no growth bar */
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-hud-chip:is(.dm-hud-ring, .dm-hud-grow) {
+    display: none;
+}
+
+/* ---- her text box: the monitor under the beam ---- */
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog {
+    --dm-ink: var(--sh-text);
+    --dm-teal: var(--sh-fire);
+    --dm-teal-deep: #bfe6ff;
+    --dm-line: var(--sh-rim);
+    padding: 24px 18px 14px 20px;
+    color: var(--sh-text);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog::before {
+    clip-path: var(--sh-torii);
+    filter: none;
+    background: var(--sh-verm) 0 0 / 100% 6px no-repeat, var(--sh-fire);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog::after {
+    inset: 6px 6px 1px 6px;
+    clip-path: none;
+    background: linear-gradient(var(--sh-shu), var(--sh-shu)) 0 4px / 100% 1.5px no-repeat, var(--sh-night);
+    box-shadow: inset 0 0 12px rgba(74, 168, 255, 0.5);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog-edge {
+    clip-path: var(--sh-torii);
+    filter: none;
+    background: linear-gradient(#ffb7a3, #ff8163) 0 0 / 100% 6px no-repeat, #e2f5ff;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog-head {
+    left: 16px;
+    top: -17px;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog-head::after {
+    display: none;
+}
+
+/* the votive plaque: a pitched top, a vermilion cord knot at the apex */
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog-name {
+    min-width: 0;
+    padding: 10px 22px 3px;
+    color: #3a1a0a;
+    font: 700 14px var(--sh-serif);
+    letter-spacing: 0.03em;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+    background: radial-gradient(circle 2.5px at 50% 6px, #d23a22 95%, transparent), linear-gradient(#f3d6a4, #cf9a5c);
+    clip-path: polygon(0 34%, 50% 0, 100% 34%, 100% 100%, 0 100%);
+    box-shadow: none;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat .dm-vn-layer :is(.dm-dialog-reply, .dm-say) strong {
+    color: #bfe6ff;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-dialog-reply code {
+    padding: 0 4px;
+    border: 1px solid var(--sh-rim);
+    border-radius: 2px;
+    background: #040616;
+    color: #9fd8ff;
+    font-family: var(--sh-mono);
+    font-size: 0.88em;
+}
+
+/* ---- choices: slips with a vermilion head ---- */
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip) {
+    position: relative;
+    height: auto;
+    padding: 8px 20px 8px 32px;
+    border: 0;
+    border-radius: 0;
+    clip-path: var(--sh-slip);
+    background: var(--sh-verm) 0 0 / 22px 100% no-repeat, linear-gradient(#1d2a72, #0a0e2e);
+    box-shadow: inset 0 0 0 1px var(--sh-rim);
+    color: var(--sh-text);
+    font: 600 13px / 1.3 'Segoe UI', sans-serif;
+    text-align: left;
+    text-shadow: 0 1px 1px #000;
+    white-space: normal;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip)::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    inset-block-end: auto;
+    inset-inline-end: auto;
+    width: 6px;
+    height: 6px;
+    margin-top: -3px;
+    background: #fff;
+    opacity: 1;
+    transform: rotate(45deg);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip)::after {
+    display: none;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip):active:not(:disabled) {
+    background: var(--sh-verm);
+    color: #fff;
+}
+
+/* ---- the files she edited this turn: tags under the choices (wmDirector.js paintFiles) ---- */
+.wm-director .wmd-files {
+    display: flex;
+    gap: 5px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    padding: 1px;
+}
+
+.wm-director .wmd-files:empty {
+    display: none;
+}
+
+.wm-director .wmd-files::-webkit-scrollbar {
+    display: none;
+}
+
+.wm-director :is(.wmd-files, .wmd-ch-files) .wmd-file {
+    flex: 0 0 auto;
+    min-height: 30px;
+    margin: 0;
+    padding: 7px 9px 4px;
+    border: 0;
+    border-radius: 0;
+    background: linear-gradient(#d23a22, #d23a22) 0 0 / 100% 2.5px no-repeat, linear-gradient(#1d2a72, #0a0e2e);
+    box-shadow: inset 0 0 0 1px rgba(127, 208, 255, 0.45);
+    color: #e6eeff;
+    font: 11px / 1.3 'Cascadia Mono', Consolas, 'Roboto Mono', 'Droid Sans Mono', monospace;
+    white-space: nowrap;
+}
+
+.wm-director :is(.wmd-files, .wmd-ch-files) .wmd-file:is(:active, .is-on) {
+    background: linear-gradient(#f2664a, #c8321e);
+    color: #fff;
+}
+
+.wm-director :is(.wmd-files, .wmd-page-changes) i {
+    font-style: normal;
+}
+
+.wm-director :is(.wmd-files, .wmd-page-changes) .wmd-add {
+    color: #7df0a0;
+}
+
+.wm-director :is(.wmd-files, .wmd-page-changes) .wmd-del {
+    color: #ffb0a6;
+}
+
+.wm-director :is(.wmd-files, .wmd-ch-files) .wmd-file:is(:active, .is-on) :is(.wmd-add, .wmd-del) {
+    color: #fff;
+}
+
+/* ---- Changes (Menu > Changes, or a tag): one file's edits on her monitor ---- */
+.wm-director .wmd-page-changes {
+    background: repeating-linear-gradient(0deg, rgba(127, 208, 255, 0.045) 0 1px, transparent 1px 3px), linear-gradient(#141c58, #06081c);
+    color: var(--sh-text);
+}
+
+.wm-director .wmd-ch-hdr {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 8px 8px 0;
+    padding: 5px 8px;
+    border-left: 3px solid var(--sh-fire);
+    background: rgba(127, 208, 255, 0.14);
+    font: 13px / 1.3 var(--sh-mono);
+}
+
+.wm-director .wmd-ch-hdr b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #fff;
+    font-weight: 400;
+}
+
+.wm-director .wmd-ch-hdr span {
+    flex: none;
+}
+
+.wm-director .wmd-ch-path {
+    flex: 0 0 auto;
+    margin: 0 8px;
+    padding: 3px 8px 5px 11px;
+    color: var(--sh-dim);
+    font: 10px / 1.3 var(--sh-mono);
+    overflow-wrap: anywhere;
+}
+
+.wm-director .wmd-ch-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0 8px 8px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--sh-fire) transparent;
+    border-top: 1px solid var(--sh-rim);
+    user-select: text;
+}
+
+.wm-director .wmd-ch-lines {
+    display: inline-block;
+    min-width: 100%;
+    padding: 4px 0;
+    color: var(--sh-dim);
+    font: 11px / 1.55 var(--sh-mono);
+}
+
+.wm-director .wmd-l {
+    padding-right: 8px;
+    white-space: pre;
+}
+
+.wm-director .wmd-l u {
+    display: inline-block;
+    width: 16px;
+    text-align: center;
+    text-decoration: none;
+}
+
+.wm-director .wmd-l.a {
+    background: rgba(60, 210, 120, 0.16);
+    color: #c4f7d2;
+}
+
+.wm-director .wmd-l.d {
+    background: rgba(255, 90, 80, 0.17);
+    color: #ffc9c2;
+}
+
+.wm-director .wmd-l.n {
+    padding-left: 16px;
+    font-style: italic;
+}
+
+.wm-director .wmd-ch-gap {
+    height: 0;
+    margin: 6px 0;
+    border-top: 1px dashed var(--sh-rim);
+}
+
+.wm-director .wmd-ch-files {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    max-height: 30%;
+    overflow-y: auto;
+    padding: 7px 8px;
+    border-top: 1px solid var(--sh-rim);
+    background: rgba(4, 6, 22, 0.6);
+}
+
+/* ---- the log: her monitor (over her scene, the wide column, and the Messages page) ---- */
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat:not(.director-mascot-view) {
+    background: #06081c !important;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat .director-chat-messages-container {
+    border-color: var(--sh-rim) !important;
+    border-radius: 0 !important;
+    background: repeating-linear-gradient(0deg, rgba(127, 208, 255, 0.045) 0 1px, transparent 1px 3px), linear-gradient(#141c58, #06081c) !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    color: var(--sh-text) !important;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message {
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--sh-text);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message.user {
+    border-left: 3px solid #5f79d8;
+    background: rgba(127, 208, 255, 0.08);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message:is(.assistant, .user) .director-request-type-badge {
+    padding: 1px 7px;
+    border: 0;
+    border-radius: 0;
+    background: var(--sh-shu);
+    box-shadow: none;
+    color: #fff;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-shadow: none;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message.user .director-request-type-badge {
+    background: #3d4f9a;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message.assistant .director-request-type-badge:has(.director-engine-icon) {
+    border: 1px solid var(--sh-rim);
+    background: none;
+    color: var(--sh-dim);
+    letter-spacing: 0.04em;
+}
+
+/* tool calls and thoughts: a small flame, then the name in the terminal face */
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message:is(.tool, .thinking) {
+    color: var(--sh-dim);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message:is(.tool, .thinking) .director-request-type-badge {
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: #9fd8ff;
+    font-family: var(--sh-mono);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    text-shadow: none;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message:is(.tool, .thinking) .director-request-type-badge::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin: 0 8px 0 2px;
+    border-radius: 0 50% 50% 50%;
+    background: var(--sh-flame);
+    box-shadow: 0 0 6px #4aa8ff;
+    transform: rotate(45deg);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message.thinking .director-request-type-badge::before {
+    background: none;
+    box-shadow: inset 0 0 0 1.5px var(--sh-fire);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages :is(.director-thinking-line, .director-tool-detail) {
+    color: var(--sh-dim);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-tool-detail {
+    font-family: var(--sh-mono);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message :is(.director-trace-inspect, .director-user-message-header > .btn-small, .director-expand-button),
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message[data-older] > button {
+    border: 1px solid var(--sh-rim);
+    border-radius: 0;
+    background: rgba(127, 208, 255, 0.1);
+    box-shadow: none;
+    color: var(--sh-text);
+    text-shadow: none;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message .director-expand-button {
+    border: 0;
+    background: none;
+    color: var(--sh-dim);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message-content :is(code, pre) {
+    border: 1px solid var(--sh-rim);
+    border-radius: 2px;
+    background: #040616;
+    color: #9fd8ff;
+    font-family: var(--sh-mono);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message-content code {
+    padding: 0 4px;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message-content pre code {
+    padding: 0;
+    border: 0;
+    background: none;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message-content a {
+    color: #9fd8ff;
+}
+
+/* over her scene (Menu > Log) the monitor hangs under the beam like her text box */
+@container wmd not ((min-width: 40em) and (aspect-ratio >= 3 / 4)) {
+    html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container {
+        padding: 12px 6px 1px !important;
+        border: 0 !important;
+        background: var(--sh-verm) 0 0 / 100% 6px no-repeat, var(--sh-fire) !important;
+        clip-path: var(--sh-torii);
+    }
+
+    html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content {
+        background: linear-gradient(var(--sh-shu), var(--sh-shu)) 0 0 / 100% 1.5px no-repeat, repeating-linear-gradient(0deg, rgba(127, 208, 255, 0.045) 0 1px, transparent 1px 3px), linear-gradient(#141c58, #06081c);
+        box-shadow: inset 0 0 14px rgba(74, 168, 255, 0.45);
+    }
+
+    html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar {
+        width: 7px;
+        height: 0;
+    }
+
+    html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-track {
+        background: rgba(127, 208, 255, 0.08);
+    }
+
+    html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-thumb {
+        border-radius: 0;
+        background: var(--sh-fire);
+    }
+
+    html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-button {
+        display: none;
+    }
+}

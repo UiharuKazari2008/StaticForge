@@ -47,6 +47,9 @@
  *                and her prints as a strip (the desktop's prints sidebar; tap views, hold for its menu);
  *                the HUD's chips open Prints. Wide screens: the prints gallery is the column beside
  *                her instead of the log (Menu > Log swaps the log in; Options > Log Beside Her keeps it)
+ *   Yozora       (#744) the coding agent shows files where the others show prints: the files she edited
+ *                this turn as tags under her choices, Menu > Changes (one file's removed and added lines),
+ *                "files" in the HUD; no Report Card or Prints for her
  *   phone options  Settings > Director > Phone (localStorage wmDirectorPhone, wmDirectorPhonePrefs):
  *                allow the Director to open Studio (off by default: the server is told through
  *                client_desktop_state phone + director_send_message client and refuses her Studio tools
@@ -1136,6 +1139,7 @@
         page.classList.toggle('wmd-vn', vn);
         page.classList.toggle('wmd-strip-on', vn && p.printStrip && (items.length > 0 || pending));
         page.classList.toggle('wmd-gallery-on', vn && !p.wideLog && !!(d && d.persona !== 'xi'));
+        paintFiles();
         const sid = d && d.currentSession ? String(d.currentSession.id) : '';
         const key = `${sid}|${pending ? 1 : 0}|${items.map((x) => x.filename).join('|')}`;
         if (key === printsKey) return;
@@ -1245,6 +1249,254 @@
                 onHold(el, '.wmd-print[data-file]', (b, x, y) => ws.menuAt(x, y, printMenuRows(b.dataset.file, b.dataset.msg)));
             },
             keys: () => ({ left: null, right: { label: 'Menu', menu: () => [{ label: 'Refresh', action: () => { const p = stack.find((x) => x.kind === 'prints'); if (p) renderPrints(p.el); } }] } })
+        });
+    }
+
+    // ---------------------------------------------------------------- Changes (Yozora, #744)
+
+    /**
+     * Yozora (xi) is the coding agent: where the prompt engineers show prints, she shows the files she
+     * edited. The rows are her last turn's Edit / Write tool calls (message.trace, diffKind 'diff'); what
+     * each one changed comes from its stored payload (director_tool_payload: the tool's arguments), read
+     * once and kept. Nothing here asks the agent anything.
+     *   dock    .wmd-files under her choices: one tag per file with its added / removed line counts
+     *   page    Changes (Menu > Changes, or a tag): one file's edits as removed and added lines
+     *   HUD     the second counter reads "files"
+     */
+    const changeCache = new Map();
+    let filesKey = null;
+    let filesSeq = 0;
+    let filesCount = null;
+
+    function editRows(d) {
+        const s = d && d.currentSession;
+        const ms = s && Array.isArray(s.messages) ? s.messages : [];
+        let from = 0;
+        for (let i = ms.length - 1; i >= 0; i--) {
+            if (ms[i] && ms[i].role === 'user' && ms[i].message_type !== 'Attachment') { from = i; break; }
+        }
+        const rows = [];
+        const seen = new Set();
+        for (let i = from; i < ms.length; i++) {
+            const t = ms[i] && Array.isArray(ms[i].trace) ? ms[i].trace : [];
+            t.forEach((r) => {
+                const id = r && r.type === 'tool' && r.diffKind === 'diff' ? (r.payloadId || r.diffId) : '';
+                if (!id || seen.has(id)) return;
+                seen.add(id);
+                rows.push(r);
+            });
+        }
+        return rows.slice(-80);
+    }
+
+    const textLines = (v) => (typeof v === 'string' && v !== '' ? v.replace(/\n$/, '').split('\n') : []);
+
+    /** A unified diff's body as [kind, text] lines: '' context, 'a' added, 'd' removed, 'h' a hunk break. */
+    function diffLines(text) {
+        const out = [];
+        String(text || '').split('\n').forEach((l) => {
+            if (/^(\+\+\+ |--- |diff --git |index |\\ No newline)/.test(l)) return;
+            if (l.startsWith('@@')) { if (out.length) out.push(['h', '']); return; }
+            if (l[0] === '+') out.push(['a', l.slice(1)]);
+            else if (l[0] === '-') out.push(['d', l.slice(1)]);
+            else out.push(['', l.slice(1)]);
+        });
+        while (out.length && out[out.length - 1][0] === '' && out[out.length - 1][1] === '') out.pop();
+        return out;
+    }
+
+    /** A JSON string value that may have been stored cut off: what can still be read of it. */
+    function looseString(text, key) {
+        const m = new RegExp(`"${key}"\\s*:\\s*"`).exec(text);
+        if (!m) return null;
+        let body = text.slice(m.index + m[0].length);
+        const end = /(?:^|[^\\])(?:\\\\)*"/.exec(body);
+        body = end ? body.slice(0, end.index + end[0].length - 1) : body.replace(/…$/, '').replace(/\\(u[0-9a-fA-F]{0,3})?$/, '');
+        try { return JSON.parse(`"${body}"`); } catch (_) { return null; }
+    }
+
+    /**
+     * One edit as { file, add, del, lines, cut }. Claude's tools carry the old and new text in their
+     * arguments (old_string / new_string, content); Cursor's carry a unified diff in the result
+     * (diffString, linesAdded, linesRemoved). Either may have been stored cut off at 4,000 characters.
+     */
+    function parseChange(row, argsText, resultText) {
+        const none = (file, cut) => ({ file: file || (row && row.detail && /^[/~.\w]/.test(row.detail) && !/\s/.test(row.detail) ? row.detail : ''), add: 0, del: 0, lines: [], cut });
+        const name = row && row.name;
+        const args = String(argsText || '');
+        const result = String(resultText || '');
+        let a = null;
+        try { a = JSON.parse(args); } catch (_) { /* stored cut off */ }
+        const pick = (...keys) => { for (const k of keys) { if (a && typeof a[k] === 'string') return a[k]; } return null; };
+        let file = pick('file_path', 'path', 'target_file', 'filePath', 'relative_workspace_path')
+            || looseString(args, 'file_path') || looseString(args, 'path') || looseString(args, 'target_file') || '';
+        // Cursor: the diff it reports
+        let r = null;
+        try { r = JSON.parse(result); } catch (_) { /* stored cut off, or plain text */ }
+        const diff = (r && typeof r.diffString === 'string' ? r.diffString : null) || (result.includes('"diffString"') ? looseString(result, 'diffString') : null);
+        if (diff) {
+            const lines = diffLines(diff);
+            const num = (k) => (r && Number.isFinite(r[k]) ? r[k] : Number((new RegExp(`"${k}"\\s*:\\s*(\\d+)`).exec(result) || [])[1]));
+            const add = num('linesAdded');
+            const del = num('linesRemoved');
+            const shownAdd = lines.filter((l) => l[0] === 'a').length;
+            const shownDel = lines.filter((l) => l[0] === 'd').length;
+            return {
+                file: file || (r && r.path) || none('', false).file,
+                add: Number.isFinite(add) ? add : shownAdd,
+                del: Number.isFinite(del) ? del : shownDel,
+                lines,
+                // a result stored cut off: say so only when changed lines are missing from it
+                cut: !r && (!Number.isFinite(add) || !Number.isFinite(del) || shownAdd < add || shownDel < del)
+            };
+        }
+        if (!a) return none(file, true);
+        let del = textLines(pick('old_string', 'old_str', 'oldString', 'old_text'));
+        let add = name === 'Delete' ? [] : textLines(pick('new_string', 'new_str', 'newString', 'new_text', 'content', 'contents', 'file_text', 'streamContent'));
+        const patch = pick('patch', 'input');
+        if (patch && !del.length && !add.length) {
+            const m = /^\*\*\* (?:Update|Add|Delete) File: (.+)$/m.exec(patch);
+            if (m && !file) file = m[1].trim();
+            const lines = diffLines(patch.split('\n').filter((l) => !l.startsWith('***')).join('\n'));
+            return { file, add: lines.filter((l) => l[0] === 'a').length, del: lines.filter((l) => l[0] === 'd').length, lines, cut: false };
+        }
+        // the lines both sides share at the ends are context, not change
+        let head = 0;
+        while (head < del.length && head < add.length && del[head] === add[head]) head++;
+        let tail = 0;
+        while (tail < del.length - head && tail < add.length - head && del[del.length - 1 - tail] === add[add.length - 1 - tail]) tail++;
+        const ctx = del.slice(Math.max(0, head - 2), head);
+        const after = tail ? del.slice(del.length - tail, del.length - tail + 2) : [];
+        del = del.slice(head, del.length - tail);
+        add = add.slice(head, add.length - tail);
+        const tag = (k) => (t) => [k, t];
+        return { file: file || none('', false).file, add: add.length, del: del.length, lines: [...ctx.map(tag('')), ...del.map(tag('d')), ...add.map(tag('a')), ...after.map(tag(''))], cut: false };
+    }
+
+    /** The files of her last turn's edits: [{ file, name, add, del, hunks }], in the order she touched them. */
+    async function loadChanges(d) {
+        const sid = d && d.currentSession && d.currentSession.id;
+        if (!sid) return [];
+        const rows = editRows(d);
+        const one = async (r) => {
+            const id = `${sid}|${r.payloadId || r.diffId}`;
+            if (changeCache.has(id)) return changeCache.get(id);
+            let c;
+            try {
+                const p = await d.directorRequest('director_tool_payload', { sessionId: sid, payloadId: r.payloadId || r.diffId, diffId: r.diffId || '' });
+                c = parseChange(r, p && p.args, p && p.result);
+                changeCache.set(id, c);
+            } catch (_) {
+                c = { file: '', add: 0, del: 0, lines: [], cut: true };
+            }
+            return c;
+        };
+        const out = [];
+        for (let i = 0; i < rows.length; i += 8) out.push(...await Promise.all(rows.slice(i, i + 8).map(one)));
+        const files = new Map();
+        out.forEach((c) => {
+            const k = c.file || '(unknown file)';
+            if (!files.has(k)) files.set(k, { file: k, name: k.split('/').pop(), add: 0, del: 0, hunks: [] });
+            const f = files.get(k);
+            f.add += c.add;
+            f.del += c.del;
+            f.hunks.push(c);
+        });
+        return [...files.values()];
+    }
+
+    const fileTag = (f, on) => `<button type="button" class="wmd-file${on ? ' is-on' : ''}" data-file="${esc(f.file)}">${esc(f.name)}`
+        + `${f.add ? ` <i class="wmd-add">+${f.add}</i>` : ''}${f.del ? ` <i class="wmd-del">−${f.del}</i>` : ''}</button>`;
+
+    /** The HUD's second counter: her files this turn (directorMascot.js writes the prints count there). */
+    function paintFilesHud(d) {
+        const b = page && page.querySelector('.dm-hud [data-hud="prints"]');
+        const label = b && b.parentNode ? b.parentNode.querySelector('span') : null;
+        if (!b || !label) return;
+        const xi = !!(d && d.persona === 'xi');
+        const want = xi ? 'files' : 'prints';
+        if (label.textContent !== want) label.textContent = want;
+        if (xi && filesCount != null && b.textContent !== String(filesCount)) b.textContent = String(filesCount);
+    }
+
+    function paintFiles() {
+        if (!page) return;
+        const d = dir();
+        const dock = page.querySelector('.wmd-dock');
+        if (!d || !dock) return;
+        const on = d.persona === 'xi' && !!d.currentSession && !isDraft(d);
+        const rows = on ? editRows(d) : [];
+        const key = on ? `${d.currentSession.id}|${rows.map((r) => r.payloadId || r.diffId).join(',')}` : '';
+        if (key !== filesKey) {
+            filesKey = key;
+            const seq = ++filesSeq;
+            let bar = dock.querySelector('.wmd-files');
+            if (!bar) {
+                bar = document.createElement('div');
+                bar.className = 'wmd-files';
+                dock.appendChild(bar);
+                bar.addEventListener('click', (e) => {
+                    const b = e.target.closest('.wmd-file[data-file]');
+                    if (b) void showChanges(b.dataset.file);
+                });
+            }
+            const settle = () => { if (d.mascot && d.mascot._result) d.mascot.settleLayout(300); };
+            if (!on) closePages('changes');
+            if (!rows.length) {
+                filesCount = on ? 0 : null;
+                if (bar.innerHTML) { bar.innerHTML = ''; settle(); }
+            } else {
+                void loadChanges(d).then((files) => {
+                    if (seq !== filesSeq) return;
+                    filesCount = files.length;
+                    bar.innerHTML = files.map((f) => fileTag(f, false)).join('');
+                    paintFilesHud(d);
+                    settle();
+                });
+            }
+        }
+        paintFilesHud(d);
+    }
+
+    const CHANGE_LINES = 600;
+    const MARK = { a: '+', d: '−' };
+    function hunkHtml(h) {
+        const rows = h.lines.slice(0, CHANGE_LINES).map(([k, t]) => (k === 'h' ? '<div class="wmd-ch-gap"></div>'
+            : `<div class="wmd-l ${k}"><u>${MARK[k] || ' '}</u>${esc(t) || ' '}</div>`)).join('');
+        return rows
+            + (h.lines.length > CHANGE_LINES ? `<div class="wmd-l n">(${h.lines.length - CHANGE_LINES} more lines)</div>` : '')
+            + (h.cut ? `<div class="wmd-l n">${h.lines.length ? '(the rest of this change was not kept)' : '(this change is too large to show)'}</div>` : '');
+    }
+
+    const changeText = (f) => `${f.file}\n\n` + f.hunks.map((h) => h.lines.map(([k, t]) => (k === 'h' ? '' : `${k === 'a' ? '+' : k === 'd' ? '-' : ' '}${t}`)).join('\n')).join('\n\n');
+
+    async function showChanges(file) {
+        const d = dir();
+        if (!d || !d.currentSession || d.persona !== 'xi') return;
+        let files = [];
+        try { files = await busyOf(() => loadChanges(d)); } catch (err) { console.warn('[wmDirector] changes', err); }
+        if (!files.length) return;
+        let cur = files.find((f) => f.file === file) || files[0];
+        const draw = (el) => {
+            el.innerHTML = `<div class="wmd-ch-hdr"><b>${esc(cur.name)}</b><span>${cur.add ? `<i class="wmd-add">+${cur.add}</i>` : ''}${cur.del ? ` <i class="wmd-del">−${cur.del}</i>` : ''}</span></div>`
+                + `<div class="wmd-ch-path">${esc(cur.file)}</div>`
+                + `<div class="wmd-ch-body"><div class="wmd-ch-lines">${cur.hunks.map(hunkHtml).join('<div class="wmd-ch-gap"></div>')}</div></div>`
+                + (files.length > 1 ? `<div class="wmd-ch-files">${files.map((f) => fileTag(f, f === cur)).join('')}</div>` : '');
+        };
+        closePages('changes');
+        pushPage({
+            kind: 'changes',
+            corner: 'ok',
+            title: 'Changes',
+            render(el) {
+                draw(el);
+                el.addEventListener('click', (e) => {
+                    const b = e.target.closest('.wmd-file[data-file]');
+                    const f = b && files.find((x) => x.file === b.dataset.file);
+                    if (f && f !== cur) { cur = f; draw(el); }
+                });
+            },
+            keys: () => ({ left: { label: 'Copy', action: () => copyText(changeText(cur), 'Change') }, right: null })
         });
     }
 
@@ -1569,12 +1821,13 @@
             '-'
         ];
         if (vn) {
-            items.push({ label: m._tab === 'card' ? 'Show Reply' : 'Report Card', disabled: !result || (!card && m._tab !== 'card'), action: () => { m.quickAction(m._tab === 'card' ? 'reply' : 'card'); after(); } });
+            if (d.persona !== 'xi') items.push({ label: m._tab === 'card' ? 'Show Reply' : 'Report Card', disabled: !result || (!card && m._tab !== 'card'), action: () => { m.quickAction(m._tab === 'card' ? 'reply' : 'card'); after(); } });
             // wide screens: the log is beside her, or (prints gallery column) takes the column's place
             if (layout !== 'wide') items.push({ label: 'Log', checked: !!m.peek, action: () => { m.togglePeek(); after(); } });
             else if (galleryMode()) items.push({ label: 'Log', checked: logCol, action: () => setLogCol(!logCol) });
         }
         if (d.persona !== 'xi') items.push({ label: 'Prints', disabled: draft || !d.sessionPrints().length, action: showPrints });
+        else items.push({ label: 'Changes', disabled: draft || !editRows(d).length, action: () => { void showChanges(); } });
         items.push({ label: 'History', disabled: draft || !d.currentSession, action: showHistory });
         // the desktop's browser pane (what her Dreamspace browser shows while she works)
         if (browserShown(d)) items.push({ label: 'Browser', action: showBrowser });
