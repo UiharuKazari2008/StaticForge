@@ -521,6 +521,7 @@
         // a program's next window repaints the whole bar: 6.5's see-through title bar ends
         if (root.dataset.wmBar && text !== glassTitle && text !== titleText) delete root.dataset.wmBar;
         titleText = text;
+        if (stage && stage.mask.title) return; // its step draws it (staged drawing)
         if (!shell.querySelector('.wm-titlebar').classList.contains('is-start-open')) shell.querySelector('.wm-title').textContent = text;
     }
 
@@ -563,6 +564,7 @@
     }
 
     function setTitleAction(kind) {
+        if (stage && stage.mask.corner) return; // its step draws it (staged drawing)
         const btn = shell.querySelector('.wm-title-action');
         kind = kind === 'ok' || kind === 'close' ? kind : null;
         if (btn.hidden === !kind && (!kind || btn.dataset.kind === kind)) return;
@@ -689,12 +691,12 @@
         for (const side of ['left', 'right']) {
             const btn = shell.querySelector(`.wm-softkey[data-side="${side}"]`);
             const key = softKeys[side];
-            btn.textContent = key ? key.label : '';
+            if (!(stage && stage.mask.keys)) btn.textContent = key ? key.label : '';
             btn.disabled = !key || !!key.disabled;
             btn.setAttribute('aria-haspopup', key && key.menu ? 'menu' : 'false');
             btn.setAttribute('aria-expanded', 'false');
         }
-        shell.querySelector('.wm-sip').hidden = !(app && app.sip);
+        if (!(stage && stage.mask.keys)) shell.querySelector('.wm-sip').hidden = !(app && app.sip);
         // the corner follows the same layer as the soft keys
         refreshTitleAction();
     }
@@ -1079,7 +1081,9 @@
     }
 
     function stageRun(steps, finish) {
-        const s = { timers: [], finish };
+        // mask: the parts whose old look is held; the shell's own repaints (the 2 s refresh, a
+        // poll) leave them alone until their step comes
+        const s = { timers: [], finish, mask: { title: true, corner: true, keys: true } };
         stage = s;
         let t = 0;
         steps.forEach(([delay, fn], i) => {
@@ -1122,13 +1126,13 @@
         const hold = (p) => { if (!p || p === page) return; held = p; p.hidden = false; page.style.visibility = 'hidden'; };
         const showPage = () => { if (held) { held.hidden = held !== (apps.get(current) || {}).page; held = null; } page.style.visibility = ''; };
         const oldTitle = () => { titleEl.textContent = before.title; };
-        const newTitle = () => { if (!shell.querySelector('.wm-titlebar').classList.contains('is-start-open')) titleEl.textContent = titleText; };
+        const newTitle = () => { if (stage) stage.mask.title = false; if (!shell.querySelector('.wm-titlebar').classList.contains('is-start-open')) titleEl.textContent = titleText; };
         const oldCorner = () => { corner.hidden = before.corner.hidden; if (before.corner.kind) corner.dataset.kind = before.corner.kind; };
         const noCorner = () => { corner.hidden = true; };
-        const newCorner = () => refreshTitleAction();
+        const newCorner = () => { if (stage) stage.mask.corner = false; refreshTitleAction(); };
         const labels = (list) => keyEls.forEach((b, i) => { b.textContent = list[i] || ''; });
         const oldKeys = () => { labels(before.keys); sip.hidden = before.sip; };
-        const newKeys = () => renderSoftKeys();
+        const newKeys = () => { if (stage) { stage.mask.keys = false; stage.mask.corner = false; } renderSoftKeys(); };
         const finish = () => { showPage(); newTitle(); renderSoftKeys(); stageTokens([]); };
         const toToday = id === 'today';
 
@@ -1210,7 +1214,7 @@
         // window is in front; another window (a new title) or leaving clears it (setTitle, here)
         if (WM65) {
             if (before && before.app === 'start' && id !== 'today' && id !== 'start' && !firstMount) { root.dataset.wmBar = 'glass'; glassTitle = titleText; }
-            else delete root.dataset.wmBar;
+            else if (!(before && before.app === id)) delete root.dataset.wmBar; // the same program again (a Settings page opening) keeps it
         }
         stagePlay(before, id, page, firstMount);
     }
@@ -5695,23 +5699,28 @@
         stack.length = 0;
         stack.push('today');
         activate('today');
-        // As on the device after the splash: Today's background and date line first with no title
-        // bar or soft keys (reveal), the items fill in over ~2 s, the bars come last
-        setBoot('reveal');
+        // The end of the boot as both emulators draw it (recorded at 10 - 20 ms, #748): the body of
+        // Today / the home screen is painted first while the splash is still in the two bar bands
+        // (html[data-wm-reveal="body"], wm-stage.css clips the splash to them); then
+        //   6.1: the left soft key (+180 ms), the right one (+275), the title bar (+374), and
+        //        Today's items in three groups after the date row (+779, +1142, +1338)
+        //   6.5: the soft key bar with its labels (+518), the title bar (+281 after that)
+        // in that order at about a third of the emulator's times.
+        setBoot('done');
         // gwes plays SystemStart as the shell comes up (only once audio is unlocked: a tap or key
         // during startup, e.g. the PIN; a cold load stays silent)
         playSystemSound('SystemStart');
-        if (WM65) {
-            // 6.5 ends its boot on the white base with the bars drawn first, then the home screen
-            // at once (wm65.css holds the picture and the panels back while "reveal" lasts)
-            setTimeout(() => { if (root.dataset.wmBoot === 'reveal') setBoot('done'); }, 700);
-            return;
-        }
+        root.dataset.wmReveal = 'body';
+        const steps = WM65 ? [['keys', 180], ['bars', 100]] : [['left', 60], ['keys', 40], ['bars', 40]];
+        let t = 0;
+        steps.forEach(([name, d]) => { t += d; setTimeout(() => { if (root.dataset.wmReveal) root.dataset.wmReveal = name; }, t); });
+        setTimeout(() => { delete root.dataset.wmReveal; }, t + 60);
+        if (WM65) return;
         const page = apps.get('today').page;
         const rows = page ? [...page.children].slice(1) : [];
         rows.forEach((r) => r.classList.add('wm-boot-hidden'));
-        rows.forEach((r, i) => setTimeout(() => r.classList.remove('wm-boot-hidden'), 1400 + i * 90));
-        setTimeout(() => { if (root.dataset.wmBoot === 'reveal') setBoot('done'); }, 1400 + rows.length * 90 + 300);
+        const third = Math.max(1, Math.ceil(rows.length / 3));
+        rows.forEach((r, i) => setTimeout(() => r.classList.remove('wm-boot-hidden'), [260, 380, 450][Math.min(2, Math.floor(i / third))]));
     }
 
     function bootTick() {

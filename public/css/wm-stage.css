@@ -1,0 +1,83 @@
+/*
+ * Melaton Mobile: the order things are drawn in, as recorded on the Windows Mobile 6.1 and 6.5
+ * emulators frame by frame (Yozora #748; ~/.cache/claude-run/wm65apps/auth61, auth65). The steps are
+ * wmShell.js's; these are their looks. 6.5-only rules carry html.ui-mobile[data-wm-version="6.5"].
+ */
+
+/* a menu opens with its first enabled row under the highlight (wmShell.js showPopup, toggleStartMenu) */
+.wm-popup-item.is-hot {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"]) > .wm-popup-item.is-hot {
+    background: none !important;
+    color: #fff;
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: url('/static_images/wm65/theme-classicblue-menuselector@2x.png') 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) stretch;
+}
+
+/* ---- a switch drawn in the device's order (wmShell.js stagePlay): html[data-wm-stage] names the
+ * parts that still show their old look ----
+ * body-home: the home / Today page is still on screen under another program's bars */
+html.ui-mobile[data-wm-stage~="body-home"] #wmShell > .wm-content {
+    background: transparent;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"])[data-wm-stage~="body-home"] #wmShell {
+    background: transparent;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"])[data-wm-stage~="body-home"] body > .page-background {
+    display: block !important;
+}
+
+/* body-app: a program's page is still on screen under the home's title bar */
+html.ui-mobile[data-wm-stage~="body-app"] #wmShell > .wm-content {
+    background: #fff;
+}
+
+/* 6.5: the bars' two looks, apart from the screen they belong to */
+html.ui-mobile[data-wm-version="6.5"][data-wm-stage~="title-home"] .wm-titlebar,
+html.ui-mobile[data-wm-version="6.5"][data-wm-stage~="keys-home"] .wm-softkeys,
+html.ui-mobile[data-wm-version="6.5"][data-wm-bar="glass"] .wm-titlebar {
+    background: rgba(0, 0, 0, 0.392);
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-stage~="title-app"] .wm-titlebar,
+html.ui-mobile[data-wm-version="6.5"][data-wm-stage~="keys-app"] .wm-softkeys {
+    background: #000;
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-stage~="body-home"] #wmShell > .wm-wall65:not([hidden]),
+html.ui-mobile[data-wm-version="6.5"][data-wm-stage~="title-home"] #wmShell > .wm-wall65:not([hidden]),
+html.ui-mobile[data-wm-version="6.5"][data-wm-stage~="keys-home"] #wmShell > .wm-wall65:not([hidden]),
+html.ui-mobile[data-wm-version="6.5"][data-wm-bar="glass"] #wmShell > .wm-wall65:not([hidden]) {
+    display: block;
+}
+
+/* ---- the end of the boot (wmShell.js finishBoot): Today's / the home screen's body is up while the
+ * splash is still in the two bar bands; html[data-wm-reveal] = body | left (6.1: the left soft key is
+ * drawn) | keys (the soft key bar) | bars (the title bar too) ---- */
+html.ui-mobile[data-wm-reveal] .wm-splash {
+    --wm-band: calc(26 * var(--wm-px));
+    --wm-band-top: calc(var(--wm-safe-top, 0px) + var(--wm-band));
+    --wm-band-bottom: calc(100% - var(--wm-safe-bottom, 0px) - var(--wm-band));
+    display: block;
+    pointer-events: none;
+    clip-path: polygon(0 0, 100% 0, 100% var(--wm-band-top), 0 var(--wm-band-top), 0 var(--wm-band-bottom), 100% var(--wm-band-bottom), 100% 100%, 0 100%);
+}
+
+html.ui-mobile[data-wm-reveal="left"] .wm-splash {
+    clip-path: polygon(0 0, 100% 0, 100% var(--wm-band-top), 50% var(--wm-band-top), 50% var(--wm-band-bottom), 100% var(--wm-band-bottom), 100% 100%, 50% 100%, 50% var(--wm-band-top), 0 var(--wm-band-top));
+}
+
+html.ui-mobile[data-wm-reveal="keys"] .wm-splash {
+    clip-path: polygon(0 0, 100% 0, 100% var(--wm-band-top), 0 var(--wm-band-top));
+}
+
+html.ui-mobile[data-wm-reveal="bars"] .wm-splash {
+    display: none;
+}

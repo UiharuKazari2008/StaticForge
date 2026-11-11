@@ -1173,18 +1173,6 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-boot="splash"] .wm-splash65-copy {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-boot-wait { display: none; }
 
-/* ---- the end of the boot ----
- * 6.5 comes up on the white base with the title and soft key bars drawn first; the picture and the
- * home screen follow at once (wmShell.js finishBoot holds "reveal" for 0.7 s in 6.5). */
-html.ui-mobile[data-wm-version="6.5"][data-wm-boot="reveal"] #wmShell { background: #fff; }
-html.ui-mobile[data-wm-version="6.5"][data-wm-boot="reveal"] #wmShell > .wm-wall65,
-html.ui-mobile[data-wm-version="6.5"][data-wm-boot="reveal"] .wm-today > * { visibility: hidden; }
-html.ui-mobile[data-wm-version="6.5"][data-wm-boot="reveal"] body > .page-background { display: none !important; }
-html.ui-mobile[data-wm-version="6.5"][data-wm-boot="reveal"] .wm-titlebar,
-html.ui-mobile[data-wm-version="6.5"][data-wm-boot="reveal"] .wm-softkeys { background: #000; opacity: 1; visibility: visible; }
-html.ui-mobile[data-wm-version="6.5"][data-wm-boot="reveal"] .wm-titlebar > *,
-html.ui-mobile[data-wm-version="6.5"][data-wm-boot="reveal"] .wm-softkeys > * { opacity: 1; visibility: visible; }
-
 /* ---- Pictures (the gallery app) ----
  * Windows Mobile 6.5's Pictures & Videos against 6.1's (emulator): a plain white field with no cell
  * rules, 106 x 106 square thumbnails in 160 x 121 cells, and File Explorer's 44 + 2 px bar with
