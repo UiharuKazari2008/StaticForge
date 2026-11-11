@@ -216,6 +216,53 @@
         return `<div class="wm-tabs" role="tablist">${tabs.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${esc(id)}" aria-selected="${id === current}">${esc(label)}</button>`).join('')}</div>`;
     }
 
+    /**
+     * More tabs than fit (6.1, measured on the device: Windows Media > Options, six tabs): a
+     * left / right spin button at the right end of the strip (31 x 16.5 units, two white faces
+     * with black triangles, pressed = inverted). Only whole tabs are drawn: the ones that do not
+     * fit before the button are absent, not cut. A press scrolls by exactly one tab, on pen down,
+     * with no animation; there is no disabled look at the ends, no drag scrolling, and the selected
+     * tab is not kept in view (it can be scrolled away). `state.first` is the first tab shown.
+     * 6.5 handles overflow its own way (not built here).
+     */
+    function fitTabs(strip, state) {
+        if (!strip || runningVersion() !== '6.1') return;
+        const tabs = [...strip.querySelectorAll('.wm-tab')];
+        let spin = strip.querySelector('.wm-tabs-spin');
+        tabs.forEach((t) => { t.hidden = false; });
+        if (spin) spin.hidden = true;
+        const widths = tabs.map((t) => t.getBoundingClientRect().width);
+        const total = widths.reduce((n, w) => n + w, 0);
+        const width = strip.clientWidth;
+        if (!tabs.length || total <= width + 0.5) { state.first = 0; return; }
+        if (!spin) {
+            spin = document.createElement('div');
+            spin.className = 'wm-tabs-spin';
+            spin.innerHTML = '<button type="button" data-dir="-1" aria-label="Previous tabs" tabindex="-1"></button><button type="button" data-dir="1" aria-label="More tabs" tabindex="-1"></button>';
+            strip.appendChild(spin);
+            spin.querySelectorAll('button').forEach((b) => b.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                state.first = (state.first || 0) + Number(b.dataset.dir);
+                fitTabs(strip, state);
+            }));
+            // a press must not reach the tab under the button
+            spin.addEventListener('click', (e) => e.stopPropagation());
+        }
+        spin.hidden = false;
+        const room = width - spin.getBoundingClientRect().width;
+        // the last position still shows the last tab whole
+        let maxFirst = tabs.length - 1;
+        for (let f = 0, rest = total; f < tabs.length; rest -= widths[f], f++) { if (rest <= room + 0.5) { maxFirst = f; break; } }
+        state.first = Math.max(0, Math.min(maxFirst, state.first || 0));
+        let used = 0;
+        tabs.forEach((t, i) => {
+            if (i < state.first) { t.hidden = true; return; }
+            used += widths[i];
+            t.hidden = used > room + 0.5;
+        });
+    }
+
     /** A Settings layer changed: the shell's corner follows the app's titleKind(). */
     function refreshTitleKind() {
         if (sh && typeof sh.refreshTitleAction === 'function') sh.refreshTitleAction();
@@ -1539,6 +1586,9 @@
                 if (now.length === keep.length) now.forEach((x, i) => { x.scrollTop = keep[i]; });
             }
             page.querySelectorAll('.wm-tab').forEach((t) => t.addEventListener('click', () => { open.tab = t.dataset.tab; renderPage(); }));
+            // more tabs than fit: the spin button (its position is the open page's, kept across redraws)
+            if (!open.tabScroll) open.tabScroll = { first: 0 };
+            fitTabs(page.querySelector('.wm-tabs'), open.tabScroll);
             refreshTitleKind();
             if (sh && typeof sh.refreshSoftKeys === 'function') sh.refreshSoftKeys();
         }

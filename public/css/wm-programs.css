@@ -774,3 +774,70 @@ html.ui-mobile #wmShell input.wm-edit,
 html.ui-mobile #wmShell .wm-edit {
     border-radius: 0;
 }
+
+/* ---- tabs that do not fit: WM 6.1's spin button (wmPrograms.js fitTabs) ----
+ * device (Windows Media > Options): x 418-480, y 549-581 of 480 x 640 = 31 x 16.5 units flush right,
+ * 1-unit black frame and divider, white faces, black triangles about 5.5 units tall; pressed =
+ * black face, white triangle */
+.wm-tabs {
+    position: relative;
+}
+
+.wm-tab[hidden] {
+    display: none !important;
+}
+
+.wm-tabs-spin {
+    position: absolute;
+    right: 0;
+    top: calc(2 * var(--wm-px));
+    display: flex;
+    width: calc(31 * var(--wm-px));
+    height: calc(16.5 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-tabs-spin[hidden] {
+    display: none;
+}
+
+.wm-tabs-spin > button {
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: #fff;
+    position: relative;
+}
+
+.wm-tabs-spin > button + button {
+    border-left: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-tabs-spin > button::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(5.5 * var(--wm-px));
+    height: calc(11 * var(--wm-px));
+    transform: translate(-50%, -50%);
+    background: #000;
+    clip-path: polygon(100% 0, 100% 100%, 0 50%);
+}
+
+.wm-tabs-spin > button[data-dir="1"]::before {
+    clip-path: polygon(0 0, 0 100%, 100% 50%);
+}
+
+.wm-tabs-spin > button:active {
+    background: #000;
+}
+
+.wm-tabs-spin > button:active::before {
+    background: #fff;
+}

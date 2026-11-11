@@ -1306,13 +1306,48 @@
         return only && window.innerWidth > window.innerHeight;
     }
 
+    // Top edge of the wordmark's ink in its right 30 % (fraction of its height) per column fraction:
+    // the right end is "an" at x-height, so it can sit closer into a rounded corner than its box.
+    const BEZEL_LOGO_INK = [[0.7, 0.26], [0.797, 0.2645], [0.8065, 0.2769], [0.8161, 0.3058], [0.8258, 0.3512], [0.8452, 0.3388], [0.8548, 0.2893], [0.8645, 0.2686], [0.8742, 0.26], [0.9516, 0.26], [0.9613, 0.2645], [0.971, 0.2769], [0.9806, 0.3017], [0.9903, 0.3471], [1, 0.36]];
+
+    /** The smallest right margin that keeps every ink sample inside the display's top-right corner. */
+    function bezelLogoMargin(lw, lh, px) {
+        const r = parseFloat(root.style.getPropertyValue('--display-corner-tr')) || 0;
+        if (!(r > 0)) return 12 * px; // no corner reported (a browser, an older app): as before
+        const W = window.innerWidth;
+        const inside = (x, y) => x <= W - r || y >= r || Math.hypot(x - (W - r), y - r) <= r;
+        for (let m = 0; m <= r + 1; m += 0.5) {
+            if (BEZEL_LOGO_INK.every(([fx, fy]) => inside(W - m - (1 - fx) * lw, fy * lh))) return m + 1;
+        }
+        return r + 1;
+    }
+
+    /** localStorage wmBezelCache: per screen size, what the band and logo were, for the next boot. */
+    function saveBezelCache(entry) {
+        try {
+            const key = `${window.innerWidth}x${window.innerHeight}`;
+            const all = JSON.parse(localStorage.getItem('wmBezelCache') || '{}') || {};
+            const prev = all[key] ? JSON.stringify(all[key]) : '';
+            const next = entry;
+            if (prev === JSON.stringify(next)) return;
+            all[key] = next;
+            const keys = Object.keys(all);
+            if (keys.length > 8) delete all[keys[0]];
+            localStorage.setItem('wmBezelCache', JSON.stringify(all));
+        } catch (_) { /* storage off */ }
+    }
+
     function syncBezel() {
         const style = root.style;
         const v = (n) => parseFloat(style.getPropertyValue(n)) || 0;
         const h = { left: v('--camera-hole-left'), top: v('--camera-hole-top'), width: v('--camera-hole-width'), height: v('--camera-hole-height') };
+        // the Android app sends the camera a moment after the shell starts (dreamscape:cutout): until
+        // then the band stays as app.html put it from the cache (else it jumps to the plain 18 px band)
+        if (window.AndroidDisplay && style.getPropertyValue('--camera-hole-width') === '') return;
         if (cameraIgnoredNow()) {
             ['--wm-bezel-top', '--wm-bezel-left', '--wm-bezel-right'].forEach((n) => style.setProperty(n, '0px'));
             if (root.dataset.wmBezelEdge !== 'none') root.dataset.wmBezelEdge = 'none';
+            saveBezelCache({ edge: 'none', top: 0, left: 0, right: 0, logo: null });
             return;
         }
         const margin = 6;
@@ -1330,15 +1365,34 @@
         // is estimated from Android's box and gets 6 px; the inner screen's measured camera area 1 px;
         // 18 px where none is reported
         const under = central ? 6 : 1;
-        style.setProperty('--wm-bezel-top', edge === 'top' ? `${h.height > 0 ? h.top + h.height + under : 18 * px}px` : '0px');
+        const band = edge === 'top' ? (h.height > 0 ? h.top + h.height + under : 18 * px) : 0;
+        style.setProperty('--wm-bezel-top', `${band}px`);
         const logoRight = central;
+        // The printed logo (Yukimi, Nov 11): from the display's very top edge down to where it ended
+        // before (70 % of the band, the old bottom gap kept), centred - or, with the camera in the
+        // middle, as far right as the display's rounded corner allows without cutting ink.
+        let logo = null;
+        if (band > 0) {
+            const lh = band * 0.7;
+            const lw = lh * (1024 / 242);
+            let lx = (window.innerWidth - lw) / 2;
+            if (logoRight) lx = window.innerWidth - lw - bezelLogoMargin(lw, lh, px);
+            logo = { x: lx, w: lw, h: lh };
+            style.setProperty('--wm-bezel-logo-x', `${lx}px`);
+            style.setProperty('--wm-bezel-logo-w', `${lw}px`);
+            style.setProperty('--wm-bezel-logo-h', `${lh}px`);
+        }
         if ((root.dataset.wmBezelLogo === 'right') !== logoRight) {
             if (logoRight) root.dataset.wmBezelLogo = 'right';
             else delete root.dataset.wmBezelLogo;
         }
-        style.setProperty('--wm-bezel-left', edge === 'left' ? `${h.left + h.width + margin}px` : '0px');
-        style.setProperty('--wm-bezel-right', edge === 'right' ? `${window.innerWidth - h.left + margin}px` : '0px');
+        const left = edge === 'left' ? h.left + h.width + margin : 0;
+        const right = edge === 'right' ? window.innerWidth - h.left + margin : 0;
+        style.setProperty('--wm-bezel-left', `${left}px`);
+        style.setProperty('--wm-bezel-right', `${right}px`);
         if (root.dataset.wmBezelEdge !== edge) root.dataset.wmBezelEdge = edge;
+        // the band as the boot draws it before any script (app.html's inline script, DSApp's cover)
+        saveBezelCache({ edge, top: band, left, right, logo });
     }
 
     function applyCameraHole(bar) {
@@ -1821,7 +1875,7 @@
         clearInterval(switchCoverFrames);
         const tick = () => { waitFrame(img, frame); frame = (frame + 1) % 16; };
         tick();
-        switchCoverFrames = setInterval(tick, 90);
+        switchCoverFrames = setInterval(tick, WAIT_FRAME_MS);
         cover.hidden = false;
         closeMenus(true);
         root.dataset.wmSwitching = '1';
@@ -2583,6 +2637,10 @@
         }
     }
 
+    // 6.1's wheel turns at 143 ms a frame on the device (14 frame changes in 2,008 ms, recorded at
+    // 10 ms); 6.5's is not measured yet and keeps 90
+    const WAIT_FRAME_MS = WM65 ? 90 : 140;
+
     /** One of the wait cursor's 16 frames: 6.1's wheel, or 6.5's four coloured dots going round (shellres.192 bitmaps 4896-4911, 80 x 80). */
     function waitFrame(img, frame) {
         if (WM65) {
@@ -2605,7 +2663,7 @@
         };
         tick();
         img.hidden = false;
-        busyFrameTimer = setInterval(tick, 90);
+        busyFrameTimer = setInterval(tick, WAIT_FRAME_MS);
     }
 
     /** Resolves after the next frame is painted (a timer stands in where rAF does not run: hidden tabs). */
@@ -5262,7 +5320,7 @@
                 };
                 tick();
                 bootWait.hidden = false;
-                waitTimer = setInterval(tick, 90);
+                waitTimer = setInterval(tick, WAIT_FRAME_MS);
             }, BOOT_WAIT_DELAY_MS);
         }
         if (phase === 'install') {
@@ -5280,7 +5338,7 @@
                 frame = (frame + 1) % 16;
             };
             tick();
-            waitTimer = setInterval(tick, 90);
+            waitTimer = setInterval(tick, WAIT_FRAME_MS);
         }
     }
 
