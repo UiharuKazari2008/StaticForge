@@ -720,9 +720,19 @@
                     const defs = optionDefs(id);
                     const cur = d.opts[id] || {};
                     const item = d.items.find((r) => r.id === id);
-                    el.innerHTML = `<p><b>${esc(item ? item.label : id)}</b></p>${defs.map((o) => `<div class="wm-form-gap"></div><p>${esc(o.label)}:</p>${o.choices.map(([v, l]) => radio(`opt-${o.key}`, v, l, (cur[o.key] != null ? cur[o.key] : o.value) === v)).join('')}`).join('')}
+                    // type 'checks': one check box per choice, kept as the comma list of the unchecked ones
+                    const offList = (o) => String(cur[o.key] != null ? cur[o.key] : (o.value || '')).split(',').filter(Boolean);
+                    const field = (o) => (o.type === 'checks'
+                        ? o.choices.map(([v, l]) => check(`opt-${o.key}`, l, !offList(o).includes(v), `value="${esc(v)}"`)).join('')
+                        : o.choices.map(([v, l]) => radio(`opt-${o.key}`, v, l, (cur[o.key] != null ? cur[o.key] : o.value) === v)).join(''));
+                    el.innerHTML = `<p><b>${esc(item ? item.label : id)}</b></p>${defs.map((o) => `<div class="wm-form-gap"></div><p>${esc(o.label)}:</p>${field(o)}`).join('')}
                         <div class="wm-buttons is-right"><button type="button" class="wm-button" data-act="done">Done</button></div>`;
                     defs.forEach((o) => el.querySelectorAll(`input[name="opt-${o.key}"]`).forEach((r) => r.addEventListener('change', () => {
+                        if (o.type === 'checks') {
+                            const off = [...el.querySelectorAll(`input[name="opt-${o.key}"]`)].filter((x) => !x.checked).map((x) => x.value);
+                            d.opts[id] = Object.assign({}, d.opts[id], { [o.key]: off.join(',') });
+                            return;
+                        }
                         if (!r.checked) return;
                         d.opts[id] = Object.assign({}, d.opts[id], { [o.key]: r.value });
                     })));

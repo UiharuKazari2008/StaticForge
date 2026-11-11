@@ -195,6 +195,44 @@
 .wac-today-light.is-bad { background: #ff4040; }
 .wac-today-light.is-off { background: #b0b0b0; }
 
+/* Just balances: one column per balance, the caption over the figure, thin rules between */
+.wm-today-block.wac-today.is-balances {
+    grid-template-columns: repeat(auto-fit, minmax(calc(64 * var(--wm-px)), 1fr));
+    column-gap: 0;
+    align-items: stretch;
+}
+
+.wac-today-col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 0 calc(5 * var(--wm-px));
+    border-left: calc(1 * var(--wm-px)) solid rgba(255, 255, 255, 0.55);
+}
+
+.wac-today-col:first-child {
+    padding-left: 0;
+    border-left: 0;
+}
+
+.wac-today-cap,
+.wac-today-fig {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wac-today-cap {
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+}
+
+.wac-today-fig {
+    font-weight: bold;
+    font-size: calc(14 * var(--wm-px));
+    line-height: calc(18 * var(--wm-px));
+}
+
 /* ---- Studio: the print and its lines on top, the buttons under them */
 .wm-today-block.wtw-studio {
     flex-direction: column;

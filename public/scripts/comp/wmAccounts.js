@@ -15,7 +15,9 @@
  *              NovelAI). Service keys stay on the desktop (Control Panel has no phone page).
  *   Today      registerTodayItem 'accounts' block after Calendar: a table Account | Balance | Status
  *              (NovelAI Anlas included); option Show: 'all' = every account, 'notices' = only the
- *              accounts with alerts or warnings, hidden without any; tap opens the app.
+ *              accounts with alerts or warnings, hidden without any, 'balances' = just the figures,
+ *              one column each; option Accounts: which balances (NovelAI's Anlas and usage apart);
+ *              tap opens the app.
  *              Styles: public/css/wm-today-widgets.css (.wac-today-*).
  *
  * The desktop tray does not run on phones (systemTrayManager is desktop only), so this file asks
@@ -392,10 +394,59 @@
         return a ? a.title : (row.value || DOT_TITLES[row.dot] || '');
     }
 
+    /**
+     * The balances an account shows on Today, each one picked on its own (Options > Accounts):
+     * NovelAI is two, its Anlas and its usage; every other account is one, its Balance figure (or
+     * its first figure). id: the check box value; label: the check box; caption / value: the
+     * Balances view's column.
+     */
+    function accountParts(row) {
+        const sides = rowSides(row);
+        const anlas = sides.find((x) => x.label === 'Anlas');
+        if (anlas) {
+            const parts = [{ id: `${row.key}:anlas`, label: `${row.name.replace(/\s+(opus|scroll|tablet|paper)$/i, '')} Anlas`, caption: 'Anlas', value: todayBalance(row) }];
+            sides.filter((x) => /usage/i.test(x.label)).forEach((x, i) => parts.push({
+                id: `${row.key}:usage${i ? i + 1 : ''}`,
+                label: `${row.name.replace(/\s+(opus|scroll|tablet|paper)$/i, '')} ${x.label.replace(/^Usage$/, 'usage')}`,
+                caption: x.label,
+                value: x.value && x.value !== '-' ? x.value : (x.summary || '')
+            }));
+            return parts;
+        }
+        let value = todayBalance(row);
+        if (!value) {
+            const fig = sides.find((x) => (x.value && x.value !== '-') || x.summary);
+            value = fig ? (fig.value && fig.value !== '-' ? fig.value : fig.summary) : (row.value || '');
+        }
+        return [{ id: row.key, label: row.name, caption: row.name, value }];
+    }
+
+    function todayHidden() {
+        let v = '';
+        try { v = (typeof sh.todayOption === 'function' && sh.todayOption(APP_ID, 'accounts')) || ''; } catch (_) { v = ''; }
+        return new Set(String(v).split(',').filter(Boolean));
+    }
+
+    /** Options > Accounts: a check box per balance of every account the wallet knows now. */
+    function accountChoices() {
+        const { rows } = readModel();
+        const out = [];
+        rows.forEach((row) => accountParts(row).forEach((p) => out.push([p.id, p.label])));
+        return out;
+    }
+
     function todayRows() {
         const show = todayShow();
+        const hidden = todayHidden();
         const { rows, alerts } = readModel();
-        let out = rows.map((row) => ({ name: row.name, balance: todayBalance(row), status: todayStatus(row, alerts), level: row.dot || 'ok', key: row.key }));
+        let out = rows.filter((row) => accountParts(row).some((p) => !hidden.has(p.id))).map((row) => {
+            // a hidden Anlas leaves the balance column empty, a hidden usage the status its default
+            const parts = accountParts(row);
+            const anlasOff = parts.some((p) => p.caption === 'Anlas' && hidden.has(p.id));
+            const usageOff = parts.some((p) => p.id !== row.key && p.caption !== 'Anlas' && hidden.has(p.id));
+            const view = usageOff ? Object.assign({}, row, { sides: rowSides(row).filter((x) => !/usage/i.test(x.label)), side: null }) : row;
+            return { name: row.name, balance: anlasOff ? '' : todayBalance(row), status: todayStatus(view, alerts), level: row.dot || 'ok', key: row.key };
+        });
         if (show === 'notices') {
             out = out.filter((r) => r.level === 'warn' || r.level === 'bad' || alerts.some((a) => String(a.id || '').startsWith(`${r.key}:`)));
             // alerts no row carries (service keys ...): their own line
@@ -406,12 +457,41 @@
     }
 
     let todayKey = '';
+    /** Balances only: one column per picked balance, its caption over the figure. */
+    function todayBalanceCols() {
+        const hidden = todayHidden();
+        const out = [];
+        readModel().rows.forEach((row) => accountParts(row).forEach((p) => {
+            if (!hidden.has(p.id) && p.value) out.push({ caption: p.caption, value: p.value, level: row.dot || 'ok' });
+        }));
+        return out;
+    }
+
     function renderToday(el) {
         const now = Date.now();
         const show = todayShow();
-        if (now - rowsCache.at >= TODAY_CACHE_MS || rowsCache.show !== show || !rowsCache.rows) rowsCache = { at: now, show, rows: todayRows() };
+        const cacheKey = `${show}|${[...todayHidden()].join(',')}`;
+        if (now - rowsCache.at >= TODAY_CACHE_MS || rowsCache.show !== cacheKey || !rowsCache.rows) {
+            rowsCache = { at: now, show: cacheKey, rows: show === 'balances' ? todayBalanceCols() : todayRows() };
+        }
         const rows = rowsCache.rows;
         if (!rows.length) return false;
+        el.classList.toggle('is-balances', show === 'balances');
+        if (show === 'balances') {
+            if (!el.dataset.wacToday) {
+                el.dataset.wacToday = '1';
+                el.classList.add('wac-today');
+                el.setAttribute('role', 'button');
+                el.tabIndex = 0;
+                el.addEventListener('click', () => {
+                    if (current.alerts.length) tab = 'alerts';
+                    sh.open(APP_ID, { fromStart: true });
+                });
+            }
+            const html = rows.map((c) => `<div class="wac-today-col"><span class="wac-today-cap">${esc(c.caption)}</span><span class="wac-today-fig">${esc(c.value.replace(/\s+Anlas$/, ''))}</span></div>`).join('');
+            if (html !== todayKey) { todayKey = html; el.innerHTML = html; }
+            return true;
+        }
         if (!el.dataset.wacToday) {
             el.dataset.wacToday = '1';
             el.classList.add('wac-today');
@@ -479,7 +559,11 @@
                 id: APP_ID,
                 label: 'Accounts',
                 after: 'calendar',
-                options: [{ key: 'show', label: 'Show', choices: [['all', 'Balances for all accounts'], ['notices', 'Notices only']], value: 'all' }],
+                options: [
+                    { key: 'show', label: 'Show', choices: [['all', 'Balances for all accounts'], ['notices', 'Notices only'], ['balances', 'Just balances (in columns)']], value: 'all' },
+                    // the accounts the wallet knows now (NovelAI's Anlas and usage apart)
+                    { key: 'accounts', label: 'Accounts', type: 'checks', value: '', get choices() { return accountChoices(); } }
+                ],
                 render: renderToday
             });
         }

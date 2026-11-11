@@ -6107,21 +6107,21 @@
     },
     "app-xlink": {
       "1x": {
-        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink-16.png, Lanczos-downscaled",
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink-16.png, Lanczos-downscaled",
         "size": [
           16,
           16
         ]
       },
       "2x": {
-        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
         "size": [
           32,
           32
         ]
       },
       "4x": {
-        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
         "size": [
           64,
           64
@@ -6131,25 +6131,25 @@
         "generated",
         "1x-own-16px-frame"
       ],
-      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For XLink Operator Console (arcade cabinet control). Subject: arcade joystick with a red ball top on a black console base with two round buttons."
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For XLink (arcade cabinet network operator console). Subject: a single bold glossy three-dimensional letter X shaped exactly like the X in the reference logo (two straight crossing strokes of even width with square-cut ends, a clean geometric sans X), made of polished electric cyan-blue glass/plastic, standing on its own."
     },
     "app-xlink-lg": {
       "1x": {
-        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
         "size": [
           32,
           32
         ]
       },
       "2x": {
-        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
         "size": [
           64,
           64
         ]
       },
       "4x": {
-        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
         "size": [
           128,
           128

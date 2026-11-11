@@ -686,7 +686,6 @@
         sh.registerApp({
             id: APP_ID,
             title: TITLE,
-            startLabel: 'XLink Operator Console',
             icon: ICON,
             inStart: 'programs',
             

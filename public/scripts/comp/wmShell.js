@@ -2135,6 +2135,14 @@
     }
 
     /** The bubble for a title-bar status icon; update=true repaints an open one in place. */
+    /** Settings > Wireless Manager (wmSettingsConnections.js), as WM 6.1's bubble link opens it. */
+    function openWirelessManager() {
+        closeBubble();
+        const ws = window.wmSettings;
+        if (ws && typeof ws.open === 'function' && ws.open('wireless')) return;
+        if (apps.has('settings')) open('settings');
+    }
+
     function statusBubble(role, anchor, update) {
         if (role === 'volume') { if (!update) toggleVolume(anchor); return; }
         closeVolume();
@@ -2159,7 +2167,8 @@
             sections.push(connected
                 ? `Connected to Dreamscape at ${host}.${rtt != null ? ` Round trip ${rtt} ms.` : ''}`
                 : (ws && ws.connectionUi && ws.connectionUi.message) || `Not connected to Dreamscape at ${host}.`);
-            const links = [{ label: 'Settings', action: () => { if (apps.has('settings')) open('settings'); } }];
+            // WM 6.1: the connectivity and phone bubbles link to Wireless Manager
+            const links = [{ label: 'Wireless Manager', action: openWirelessManager }, { label: 'Settings', action: () => { if (apps.has('settings')) open('settings'); } }];
             if (!connected) links.unshift({ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() });
             sections.push({ links });
             bubble({ title: 'Connectivity', role, anchor, sections, buttons: [{ text: 'Hide' }] });
@@ -2185,6 +2194,7 @@
                 if (c.dataEnabled === false) lines.push('Cellular data: off');
                 else if (dn) lines.push(`Data: ${dn}${dev.active === 'cellular' ? ', in use' : ''}`);
             }
+            lines.push({ links: [{ label: 'Wireless Manager', action: openWirelessManager }] });
             bubble({ title: 'Phone', role: 'signal', anchor: shell.querySelector('[data-role="signal"]:not([hidden])') || anchor, sections: lines, buttons: [{ text: 'Hide' }] });
         } else if (role === 'battery') {
             const b = deviceView().battery;
@@ -3289,7 +3299,8 @@
     /**
      * Settings > Today > Items > Options... (WM 6.1's Options button): per-row choices, stored per
      * device in wmTodayOptions = { rowId: { key: value } }. The shell's own rows have these; an app's
-     * row brings its own (registerTodayItem options: [{ key, label, choices: [[value, label]], value }]).
+     * row brings its own (registerTodayItem options: [{ key, label, choices: [[value, label]], value }];
+     * type: 'checks' lists check boxes instead, the value the comma list of the unchecked choices).
      */
     const TODAY_OPTIONS_KEY = 'wmTodayOptions';
     const TODAY_BUILTIN_OPTIONS = {
@@ -3313,6 +3324,9 @@
         try { all = JSON.parse(localStorage.getItem(TODAY_OPTIONS_KEY) || 'null'); } catch (_) { all = null; }
         const v = all && all[id] && all[id][key];
         const def = todayOptionDefs(id).find((o) => o.key === key);
+        // type 'checks': a check box per choice, stored as the comma list of the unchecked values
+        // (a string: the workspace field keeps no arrays), so new choices start checked
+        if (def && def.type === 'checks') return typeof v === 'string' ? v : (def.value || '');
         if (def && def.choices.some(([c]) => c === v)) return v;
         return def ? def.value : (v == null ? null : v);
     }
