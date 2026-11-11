@@ -179,6 +179,8 @@ function directorMascotTypedHtml(raw, count, start = 0) {
 //             a kick, the mask, the next stage's belly) shrinks into / grows out of its own middle while
 //             it blends (a true linear blend: no see-through dip half way);
 //   lumps     bulges that wander over her belly after she swallows a print, lit from the upper left.
+//   physics   in her later stages the belly has weight (Yukimi 2026-11-11): a damped spring carries it, so
+//             when she bounces it lags behind her, overshoots and settles, stretching as it swings.
 // It draws only while something moves. Without WebGL (or after a lost context) the <img> layers and the
 // pre-warped _g1 / _g2 sheets take over.
 const DIRECTOR_MASCOT_GL_VERT = 'attribute vec2 p; varying vec2 v; void main() { v = p; gl_Position = vec4(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 0.0, 1.0); }';
@@ -199,6 +201,9 @@ uniform vec3 mc;
 uniform vec2 ms;
 uniform vec4 L[4];
 uniform float lit;
+uniform vec4 W1;
+uniform vec4 W2;
+uniform vec2 fW;
 float sm(float x) { x = clamp(x, 0.0, 1.0); return x * x * (3.0 - 2.0 * x); }
 // g1: the disc that moves (centre xy, radius) and how much (scale - 1); f: the point it scales about
 // g2: nothing above y moves (with a ramp), and the part of the radius that moves whole (the rest
@@ -211,6 +216,18 @@ vec2 growInv(vec2 p, vec4 g1, vec3 g2, vec2 f) {
         float w = r >= 1.0 ? 0.0 : (r <= g2.z ? 1.0 : 1.0 - sm((r - g2.z) / (1.0 - g2.z)));
         float k = g1.w * w * sm((q.y - g2.x) / g2.y);
         q = p - (q - f) * k;
+    }
+    return q;
+}
+// belly physics: W1 the belly disc (centre xy, radius, on), W2 its swing (offset xy in sheet pixels,
+// stretch xy), fW where the belly meets her body (nothing moves there). Strongest at the disc's middle.
+vec2 swayInv(vec2 p) {
+    if (W1.w == 0.0) return p;
+    vec2 q = p;
+    for (int i = 0; i < 4; i++) {
+        float r = length(q - W1.xy) / W1.z;
+        float w = r >= 1.0 ? 0.0 : (1.0 - sm(r)) * sm(length(q - fW) / W1.z * 1.2);
+        q = p - (W2.xy + (q - W1.xy) * W2.zw) * w;
     }
     return q;
 }
@@ -241,7 +258,7 @@ vec4 tx(sampler2D s, vec2 q) {
     return texture2D(s, u);
 }
 void main() {
-    vec2 p = v * size;
+    vec2 p = swayInv(v * size);
     vec2 q = lit > 0.0 ? lumpInv(p) : p;
     vec2 qb = growInv(q, gB1, gB2, fB);
     vec4 b0 = tx(B, qb);
@@ -290,6 +307,7 @@ class DirectorMascotGL {
         this.B = null;                   // the sheet she shows: { url, tex, cfg, gain, tween }
         this.morph = null;
         this.lump = null;
+        this.sway = null;                // belly physics: { belly, x, y, vx, vy, freq, damp, last }
         this.seq = 0;
         this.ok = false;
         const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false, powerPreference: 'low-power' });
@@ -312,7 +330,7 @@ class DirectorMascotGL {
         gl.enableVertexAttribArray(at);
         gl.vertexAttribPointer(at, 2, gl.FLOAT, false, 0, 0);
         this.u = {};
-        ['A', 'B', 'size', 't', 'gA1', 'gA2', 'fA', 'gB1', 'gB2', 'fB', 'mc', 'ms', 'lit'].forEach((name) => { this.u[name] = gl.getUniformLocation(prog, name); });
+        ['A', 'B', 'size', 't', 'gA1', 'gA2', 'fA', 'gB1', 'gB2', 'fB', 'mc', 'ms', 'lit', 'W1', 'W2', 'fW'].forEach((name) => { this.u[name] = gl.getUniformLocation(prog, name); });
         this.uL = [0, 1, 2, 3].map((i) => gl.getUniformLocation(prog, `L[${i}]`));
         gl.uniform1i(this.u.A, 0);
         gl.uniform1i(this.u.B, 1);
@@ -425,6 +443,25 @@ class DirectorMascotGL {
         this.kick();
     }
 
+    // Belly physics: push the belly disc [cx, cy, r] (ix, iy: -1..1, down and right positive). weight 0..1
+    // is how far along her stages she is: a heavier belly swings further and slower.
+    wobble(belly, ix, iy, weight) {
+        if (!this.ok || !Array.isArray(belly) || !(belly[2] > 0)) return;
+        const w = Math.max(0, Math.min(1, weight || 0));
+        const now = performance.now();
+        const sw = this.sway || { x: 0, y: 0, vx: 0, vy: 0, last: now };
+        sw.belly = belly;
+        sw.freq = 2.5 - 0.9 * w;          // Hz
+        sw.damp = 0.2 - 0.05 * w;         // damping ratio: a few swings, then still
+        const reach = belly[2] * (0.028 + 0.034 * w);
+        const omega = 2 * Math.PI * sw.freq;
+        sw.vx += ix * reach * omega;
+        sw.vy += iy * reach * omega;
+        if (!this.sway) sw.last = now;
+        this.sway = sw;
+        this.kick();
+    }
+
     kick() {
         if (this._raf || !this.ok) return;
         this._raf = requestAnimationFrame(() => { this._raf = 0; this.draw(); });
@@ -512,6 +549,44 @@ class DirectorMascotGL {
             }
         }
         gl.uniform1f(this.u.lit, lit);
+        // belly physics: one damped spring per axis, stepped in real time (small fixed steps)
+        const sw = this.sway;
+        if (sw) {
+            // real time even when frames are far apart (a busy phone): up to a quarter second per frame
+            let dt = Math.max(0, Math.min(0.25, (now - sw.last) / 1000));
+            sw.last = now;
+            const omega = 2 * Math.PI * sw.freq;
+            const k = omega * omega; const c = 2 * sw.damp * omega;
+            while (dt > 0) {
+                const h = Math.min(dt, 0.008);
+                sw.vx += (-k * sw.x - c * sw.vx) * h; sw.x += sw.vx * h;
+                sw.vy += (-k * sw.y - c * sw.vy) * h; sw.y += sw.vy * h;
+                dt -= h;
+            }
+            const [cx0, cy0, r0] = sw.belly;
+            if (Math.abs(sw.x) + Math.abs(sw.y) < r0 * 0.0015 && Math.abs(sw.vx) + Math.abs(sw.vy) < r0 * 0.01) {
+                this.sway = null;
+                gl.uniform4f(this.u.W1, 0, 0, 1, 0);
+            } else {
+                // the disc moves and grows with her size (as the lumps' does)
+                const g = this.gainOf(b, now);
+                const cfg = b.cfg;
+                const fx = cfg ? (cfg.f || cfg.a) : null;
+                const cx = fx ? fx[0] + (cx0 - fx[0]) * g : cx0;
+                const cy = fx ? fx[1] + (cy0 - fx[1]) * g : cy0;
+                const r = r0 * g;
+                const ax = fx ? fx[0] : cx;
+                const ay = fx ? fx[1] : cy - r * 0.85;
+                // it stretches the way it swings and thins across (about a third of the swing)
+                const sy = (sw.y / r) * 0.9;
+                gl.uniform4f(this.u.W1, cx, cy, r * 1.15, 1);
+                gl.uniform4f(this.u.W2, sw.x, sw.y, -sy * 0.35 + Math.abs(sw.x / r) * 0.2, sy);
+                gl.uniform2f(this.u.fW, ax, ay);
+                moving = true;
+            }
+        } else {
+            gl.uniform4f(this.u.W1, 0, 0, 1, 0);
+        }
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, (this.A || b).tex);
         gl.activeTexture(gl.TEXTURE1);
@@ -2019,6 +2094,36 @@ class DirectorMascot {
         void target.offsetWidth;      // restart the keyframes
         target.classList.add(cls);
         this.later(() => target.classList.remove(cls), 1600);
+        this.bellyPhysics(action);
+    }
+
+    // Her belly answers what her body does, from her second stage on (the shader body's spring, wobble):
+    // on a bounce it is left behind as she goes up and comes down after her; a jiggle rocks it sideways.
+    // [delay ms, sideways, down] per push, in the keyframes' own timing (director.css dm-bounce 0.7 s).
+    bellyPhysics(action) {
+        if (!this.glOn() || !this.manifest || !this.stageState) return;
+        const def = this.stageDef();
+        if (!def || !Array.isArray(def.belly)) return;
+        const order = directorMascotGrowth(this.manifest).order;
+        const at = order.indexOf(this.stageState.stage);
+        if (at < 1 || order.length < 2) return;
+        const weight = at / (order.length - 1);
+        const side = this.manifest.anchor === 'left' ? 1 : -1;
+        const pushes = {
+            bounce: [[0, 0, 0.8], [470, 0, 1.25]],
+            jiggle: [[0, 0.75 * side, 0.45], [190, -0.55 * side, 0.3]],
+            nod: [[0, 0, 0.35]],
+            slump: [[0, 0, 0.6]],
+            'lean-in': [[0, 0.25 * side, 0.3]],
+            lean: [[0, 0, 0.3]],
+            shake: [[0, 0.8, 0], [150, -0.9, 0], [300, 0.5, 0]]
+        }[action];
+        if (!pushes) return;
+        const st = this.stageState;
+        pushes.forEach(([ms, x, y]) => {
+            const push = () => { if (this.stageState === st && this.glOn()) this.glBody.wobble(def.belly, x, y, weight); };
+            if (ms) this.later(push, ms); else push();
+        });
     }
 
     scheduleBlink() {
