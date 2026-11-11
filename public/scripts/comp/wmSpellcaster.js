@@ -19,7 +19,7 @@
  *
  * The desktop's routes to the Spellcaster window (openSpellbookApplet: Start, Run, the main menu, the
  * preset manager's Generate) open this app on phones; selectPreset / handleGenerate on the desktop
- * manager pick and cast here. Only on phones. Styles: public/css/wm-spellcaster.css (+ wm-suite-kit.css).
+ * manager pick and cast here; Spellbook's Open in Spellcaster calls window.wmSpellcaster.openSpell(name). Only on phones. Styles: public/css/wm-spellcaster.css (+ wm-suite-kit.css).
  */
 (function () {
     'use strict';
@@ -92,7 +92,7 @@
 
     function subLine(p) {
         const s = sizeOf(p.resolution);
-        return [modelLabel(p.model), `${s.label}${s.dims ? ` ${s.dims}` : ''}`].join(' ');
+        return [modelLabel(p.model), `${s.label}${s.dims ? ` ${s.dims}` : ''}`].join('  ');
     }
 
     /** The desktop's own cost rule (handleGenerate): free unless the preset allows paid or costs. */
@@ -439,6 +439,14 @@
             await K.feature('spellbook');
             patchManager();
             return mgr();
+        };
+        // the phone's own entry (Spellbook's Open in Spellcaster): this app on that spell's screen
+        window.wmSpellcaster = {
+            openSpell(name) {
+                if (!name) { sh.open(APP_ID); return; }
+                sh.open(APP_ID);
+                openSpell(String(name));
+            }
         };
         window.addEventListener('appOptionsChunkLoaded', () => { if (page) { renderList(); renderSpell(); } });
         sh.registerApp({

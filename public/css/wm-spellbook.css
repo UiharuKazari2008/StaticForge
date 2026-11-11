@@ -17,7 +17,8 @@
 }
 
 .wm-spellbook .wsb-listview,
-.wm-spellbook .wsb-details {
+.wm-spellbook .wsb-details,
+.wm-spellbook .wsb-edit {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -199,8 +200,12 @@
     display: grid;
     grid-template-columns: calc(74 * var(--wm-px)) minmax(0, 1fr);
     column-gap: calc(4 * var(--wm-px));
-    align-items: center;
+    /* a value on several lines keeps its label on the first one */
+    align-items: baseline;
     min-height: calc(19 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) 0;
+    box-sizing: border-box;
+    line-height: calc(15 * var(--wm-px));
     border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6;
 }
 
@@ -219,8 +224,8 @@
     font-weight: bold;
 }
 
-.wm-spellbook .wsb-card-prompt {
-    padding: 0 calc(4 * var(--wm-px)) calc(8 * var(--wm-px));
+.wm-spellbook .wsb-card-text {
+    padding: 0 calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
     line-height: calc(15 * var(--wm-px));
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -228,6 +233,168 @@
     -webkit-user-select: text;
 }
 
-.wm-spellbook .wsb-card-prompt.is-empty {
+.wm-spellbook .wsb-card-text.is-empty {
     color: #848284;
+}
+
+/* Open in Studio / Open in Spellcaster: WM push buttons (wm-suite-kit.css .wsk-button) */
+.wm-spellbook .wsb-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(4 * var(--wm-px));
+    padding: calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6;
+}
+
+.wm-spellbook .wsb-button {
+    flex: 1 1 calc(100 * var(--wm-px));
+    min-width: calc(60 * var(--wm-px));
+    max-width: calc(150 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    padding: 0 calc(8 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    background: linear-gradient(#fff, #e7e7e7) !important;
+    color: #000 !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    white-space: nowrap;
+}
+
+.wm-spellbook .wsb-button:active {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text) !important;
+}
+
+/* a character: its name, its prompt, its undesired content */
+.wm-spellbook .wsb-char {
+    border-top: calc(1 * var(--wm-px)) solid #d6d3d6;
+}
+
+.wm-spellbook .wsb-char-name {
+    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px)) calc(1 * var(--wm-px));
+    font-weight: bold;
+}
+
+.wm-spellbook .wsb-char-note,
+.wm-spellbook .wsb-char-label {
+    font-weight: normal;
+    color: #555;
+}
+
+/* ---- edit: Contacts' edit form (labels right-aligned to x 74, fields from x 78) ---- */
+
+.wm-spellbook .wsb-edit {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    background: #fff;
+}
+
+.wm-spellbook .wsb-form-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: calc(8 * var(--wm-px));
+}
+
+.wm-spellbook .wsb-field {
+    display: grid;
+    grid-template-columns: calc(74 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(4 * var(--wm-px));
+    align-items: end;
+    min-height: calc(21.5 * var(--wm-px));
+    padding-right: calc(5 * var(--wm-px));
+}
+
+.wm-spellbook .wsb-flabel {
+    padding-bottom: calc(2 * var(--wm-px));
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-spellbook .wsb-input {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: calc(18 * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(2 * var(--wm-px));
+    border: 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    color: #000;
+    font: calc(13 * var(--wm-px)) var(--wm-font);
+    line-height: calc(17 * var(--wm-px));
+    user-select: text;
+    -webkit-user-select: text;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.wm-spellbook .wsb-input:focus {
+    border-color: #000;
+}
+
+/* WM's combo box: white, 1 px black frame, the drop arrow in its own cell */
+.wm-spellbook .wsb-combo {
+    box-sizing: border-box;
+    display: flex !important;
+    align-items: center;
+    min-width: 0;
+    height: calc(18 * var(--wm-px));
+    margin-bottom: calc(1 * var(--wm-px));
+    padding: 0 0 0 calc(3 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    text-align: left;
+}
+
+.wm-spellbook .wsb-combo-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-spellbook .wsb-combo-arrow {
+    flex: 0 0 auto;
+    align-self: stretch;
+    width: calc(13 * var(--wm-px));
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    background: no-repeat center / calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 4'%3E%3Cpath d='M0 0h7L3.5 3.5z'/%3E%3C/svg%3E");
+}
+
+/* WM's check box row and box (wm-suite-kit.css .wsk-check) */
+.wm-spellbook .wsb-check {
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    min-height: calc(22 * var(--wm-px));
+    padding: 0 calc(5 * var(--wm-px)) 0 calc(78 * var(--wm-px));
+}
+
+.wm-spellbook .wsb-check input {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+    margin: 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff center / 100% 100% no-repeat;
+    outline: none;
+}
+
+.wm-spellbook .wsb-check input:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11'%3E%3Cpath d='M2 5.2 4.3 7.5 9 2.8' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E");
 }

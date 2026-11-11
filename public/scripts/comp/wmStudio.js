@@ -19,7 +19,7 @@
  *               opens the shell's picture view
  *
  *   soft keys   Generate (the desktop's Generate button; it queues another print while one runs, the
- *               progress shows in the title) | Menu: the desktop menu bar's File Edit Add Model Image Tools View Help, built
+ *               progress shows in the title) | Menu: the desktop menu bar's File Edit Add Model Generate Image Tools View Help, built
  *               from the same item builders (studioMenuBarItems / handleStudioMenuBarAction)
  *   tool pages  any desktop window that opens while Studio is on screen (Character Positions, Text
  *               Expanders, Stage Results ...) is moved into a full-screen sub-page with Done; a window
@@ -46,7 +46,8 @@
     const TABS = [['prompt', 'Prompt'], ['images', 'Images'], ['print', 'Print']];
     // the former Characters and Settings tabs are sections of the Prompt page
     const SECTIONS = { chars: '.wms-chars', characters: '.wms-chars', settings: '.model-control' };
-    const MENUS = ['File', 'Edit', 'Add', 'Model', 'Image', 'Tools', 'View', 'Help'];
+    // Generate is the desktop's menu with Phasewalker (wmPhasewalker.js), Stage Results and Remove All Stages
+    const MENUS = ['File', 'Edit', 'View', 'Prompt', 'Add', 'Model', 'Generate', 'Image', 'Rentan', 'Tools', 'Help'];
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     let ws = null; // window.wmShell
@@ -1860,7 +1861,9 @@
         proxyDropdown: (btn) => proxyDropdown(btn),
         windowTitle: (win, fallback) => windowTitle(win, fallback),
         armMenuHide: (fn) => armMenuHide(fn),
-        menuInContent: (x, y, items) => menuInContent(x, y, items)
+        menuInContent: (x, y, items) => menuInContent(x, y, items),
+        // a page of the form (prompt, images, print; or a Prompt section): Phasewalker's Compile lands on Prompt
+        showTab: (id) => setTab(id)
     };
 
     if (window.wmShell) register();

@@ -1,15 +1,66 @@
 /*
  * Melaton Mobile: Phasewalker (wmPhasewalker.js), Yozora #732. Lists, combo band, bottom tabs,
- * form: wm-suite-kit.css. Here only the stage list's empty text and the form's text boxes.
+ * form: wm-suite-kit.css. Here the name band's status, the stage rows' extras and the stage form.
  * Lengths N * --wm-px.
  */
 
+/* the name band: the document at the left, Studio's state (or the form's stage) at the right */
+.wm-phasewalker .wsk-head-name {
+    flex: 1 1 auto;
+}
+
+.wm-phasewalker .wpw-status {
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding-left: calc(6 * var(--wm-px));
+    font-weight: normal;
+    white-space: nowrap;
+    color: #555;
+}
+
+.wm-phasewalker .wpw-status:empty {
+    display: none;
+}
+
+.wm-phasewalker .wpw-status[data-state="pending"] {
+    color: #b00000;
+}
+
+/* the stage rows: the empty text grey, the comparison source marked before the stage number */
 .wm-phasewalker .wsk-row:not(.is-selected) .wpw-empty {
     color: #848284;
 }
 
+.wm-phasewalker .wsk-row .wsk-right {
+    white-space: nowrap;
+}
+
+.wm-phasewalker .wsk-row:not(.is-selected) .wsk-right {
+    color: #555;
+}
+
+.wm-phasewalker .wpw-compare {
+    display: inline-block;
+    padding: 0 calc(3 * var(--wm-px));
+    border-radius: calc(2 * var(--wm-px));
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+    font-size: calc(10 * var(--wm-px));
+    line-height: calc(12 * var(--wm-px));
+}
+
+.wm-phasewalker .wsk-row.is-selected .wpw-compare {
+    background: #fff;
+    color: #000;
+}
+
+/* the stage form */
 .wm-phasewalker .wpw-stage .wsk-body {
     padding-bottom: calc(8 * var(--wm-px));
+}
+
+.wm-phasewalker .wpw-stage .wsk-field {
+    padding-top: calc(2 * var(--wm-px));
 }
 
 .wm-phasewalker .wpw-stage .wsk-field.is-tall {
@@ -18,4 +69,31 @@
 
 .wm-phasewalker .wpw-stage .wsk-textarea {
     min-height: calc(90 * var(--wm-px));
+}
+
+.wm-phasewalker .wpw-stage .wsk-combo:disabled {
+    color: #848284 !important;
+}
+
+.wm-phasewalker .wpw-source {
+    padding-top: calc(4 * var(--wm-px));
+}
+
+.wm-phasewalker .wpw-source.is-disabled {
+    color: #848284;
+}
+
+.wm-phasewalker .wpw-hint {
+    margin: 0;
+    padding: 0 calc(5 * var(--wm-px)) 0 calc(96 * var(--wm-px));
+    color: #555;
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+}
+
+/* landscape / wide: the text boxes get shorter so Name, both texts and the box fit together */
+@media (orientation: landscape) {
+    .wm-phasewalker .wpw-stage .wsk-textarea {
+        min-height: calc(48 * var(--wm-px));
+    }
 }
