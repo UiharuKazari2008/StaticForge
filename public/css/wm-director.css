@@ -1593,3 +1593,703 @@ html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-sm
         height: 38px;
     }
 }
+
+/* ======================================================================
+ * Maki-e (Yozora #743, Nov 11): the phone visual novel's own kit for the prompt engineers (Yumiya,
+ * Chiyo). Yukimi picked it from mockups as the "premium 2009 phone game" look: a lacquer writing box.
+ *   panels    lacquer with scooped corners, a gold rim and inlay line, a faint wave pattern
+ *   name      a gold foil tag with swallow-tail ends
+ *   choices   lacquer slips with a pointed end and a gold stud (the dock, and the log's suggestions)
+ *   HUD       turns / prints / score as coins
+ *   prints    small tilted photographs
+ *   report    a paper slip graded with ink seals: hit, partial, miss (the buttons keep their names
+ *             for screen readers; the seal glyphs are drawn over them)
+ *   log       a paper scroll under a gold rod, tool calls marked down a red margin rule
+ * Yumiya is red lacquer, Chiyo black lacquer. Yozora (xi, the coding agent) keeps the white kit until
+ * her own screens land. Phone only: every rule sits under html.ui-mobile .wm-director; nothing here
+ * animates (director-perf-735: no filters or shadows that repaint).
+ * ====================================================================== */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) {
+    --mk-gold: linear-gradient(135deg, #8a5f14, #f6dc8c 30%, #c9972e 55%, #fbe9a8 75%, #8a5f14);
+    --mk-gold-flat: #e3bd62;
+    --mk-gold-hi: #fbe7a6;
+    --mk-inlay: rgba(227, 189, 98, 0.5);
+    --mk-lac-hi: #611423;
+    --mk-lac-lo: #1d0509;
+    --mk-slip-hi: #6b1826;
+    --mk-slip-lo: #2c080f;
+    --mk-cream: #fbf1dc;
+    --mk-tan: #cdb48c;
+    --mk-ink: #2b1a12;
+    --mk-ink2: #7a6046;
+    --mk-rule: rgba(120, 90, 40, 0.3);
+    --mk-shu: #c8321e;
+    --mk-ai: #2b2f55;
+    --mk-leaf: #fbf3de;
+    --mk-serif: 'Palatino Linotype', 'Book Antiqua', Georgia, 'Noto Serif', serif;
+    --mk-lac:
+        linear-gradient(rgba(255, 226, 196, 0.2), transparent 38%),
+        radial-gradient(circle at 50% 100%, transparent 5px, rgba(227, 189, 98, 0.13) 5.5px, transparent 6.5px) 0 0 / 14px 7px,
+        radial-gradient(circle at 50% 100%, transparent 5px, rgba(227, 189, 98, 0.13) 5.5px, transparent 6.5px) 7px 3.5px / 14px 7px,
+        linear-gradient(var(--mk-lac-hi), var(--mk-lac-lo));
+    --mk-paper:
+        repeating-linear-gradient(90deg, rgba(120, 90, 40, 0.05) 0 1px, transparent 1px 3px),
+        linear-gradient(#fcf5e2, #efe1bf);
+    --mk-slip: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="kabuki"] {
+    --mk-lac-hi: #2e2529;
+    --mk-lac-lo: #070506;
+    --mk-slip-hi: #3a2b30;
+    --mk-slip-lo: #0d090a;
+}
+
+/* scooped corners: four quarter tiles, each with its own corner bitten out (--mk-n is the bite) */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-banner,
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog-edge,
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-banner::before,
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog::before,
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog::after {
+    -webkit-mask:
+        radial-gradient(circle var(--mk-n) at 0 0, #0000 97%, #000) 0 0 / 51% 51% no-repeat,
+        radial-gradient(circle var(--mk-n) at 100% 0, #0000 97%, #000) 100% 0 / 51% 51% no-repeat,
+        radial-gradient(circle var(--mk-n) at 0 100%, #0000 97%, #000) 0 100% / 51% 51% no-repeat,
+        radial-gradient(circle var(--mk-n) at 100% 100%, #0000 97%, #000) 100% 100% / 51% 51% no-repeat;
+    mask:
+        radial-gradient(circle var(--mk-n) at 0 0, #0000 97%, #000) 0 0 / 51% 51% no-repeat,
+        radial-gradient(circle var(--mk-n) at 100% 0, #0000 97%, #000) 100% 0 / 51% 51% no-repeat,
+        radial-gradient(circle var(--mk-n) at 0 100%, #0000 97%, #000) 0 100% / 51% 51% no-repeat,
+        radial-gradient(circle var(--mk-n) at 100% 100%, #0000 97%, #000) 100% 100% / 51% 51% no-repeat;
+}
+
+/* ---- title banner: a small lacquer plate ---- */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-banner {
+    --mk-n: 6px;
+    left: 5px;
+    padding: 5px 13px 5px 12px;
+    border-left: 0;
+    background: var(--mk-gold);
+    clip-path: none;
+    filter: none;
+    isolation: isolate;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-banner::before {
+    --mk-n: 6.5px;
+    content: '';
+    position: absolute;
+    inset: 1.5px;
+    z-index: -1;
+    background: var(--mk-lac);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-banner-title {
+    color: var(--mk-cream);
+    font: 700 13px var(--mk-serif);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-banner-sub {
+    color: var(--mk-gold-flat);
+}
+
+/* ---- HUD: coins ---- */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip {
+    width: 46px;
+    height: 46px;
+    min-width: 0;
+    padding: 0;
+    border-radius: 50%;
+    clip-path: none;
+    background: none;
+    box-shadow: none;
+    color: var(--mk-tan);
+    font-size: 9.5px;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip::before {
+    inset: 0;
+    border-radius: 50%;
+    clip-path: none;
+    background: var(--mk-gold);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip::after {
+    inset: 2.5px;
+    border-radius: 50%;
+    clip-path: none;
+    background: radial-gradient(circle at 50% 18%, var(--mk-slip-hi), var(--mk-slip-lo) 72%);
+    box-shadow: inset 0 0 0 1px var(--mk-inlay);
+}
+
+/* the growth chip (landscape): a lacquer bar beside the coins */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip.dm-hud-grow {
+    width: auto;
+    min-width: 120px;
+    padding: 0 14px;
+    border-radius: 23px;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip.dm-hud-grow::before,
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip.dm-hud-grow::after {
+    border-radius: 23px;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-grow [data-hud="stage"] {
+    color: var(--mk-gold-hi);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-grow-bar {
+    background: rgba(227, 189, 98, 0.22);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-grow-bar i {
+    background: linear-gradient(90deg, #c9972e, #fbe9a8);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip b {
+    color: var(--mk-gold-hi);
+    font-size: 15px;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-ring {
+    width: 34px;
+    height: 34px;
+    background: conic-gradient(#f6dc8c calc(var(--p) * 1%), rgba(227, 189, 98, 0.2) 0);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-ring::before {
+    inset: 3px;
+    background: var(--mk-slip-lo);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-ring span {
+    color: var(--mk-gold-hi);
+}
+
+/* ---- her text box: the lacquer tray ---- */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog {
+    --dm-ink: var(--mk-cream);
+    --dm-teal: var(--mk-gold-flat);
+    --dm-teal-deep: #f6dc8c;
+    --dm-line: var(--mk-inlay);
+    padding: 20px 16px 16px 18px;
+    color: var(--mk-cream);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog::before {
+    --mk-n: 11px;
+    clip-path: none;
+    filter: none;
+    background: var(--mk-gold);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog::after {
+    --mk-n: 11.5px;
+    inset: 1.5px;
+    clip-path: none;
+    background:
+        linear-gradient(var(--mk-inlay), var(--mk-inlay)) 3px 3px / calc(100% - 6px) 1px no-repeat,
+        linear-gradient(var(--mk-inlay), var(--mk-inlay)) 3px calc(100% - 3px) / calc(100% - 6px) 1px no-repeat,
+        linear-gradient(var(--mk-inlay), var(--mk-inlay)) 3px 3px / 1px calc(100% - 6px) no-repeat,
+        linear-gradient(var(--mk-inlay), var(--mk-inlay)) calc(100% - 3px) 3px / 1px calc(100% - 6px) no-repeat,
+        var(--mk-lac);
+}
+
+/* while she works the rim brightens (opacity only, as before) */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog-edge {
+    --mk-n: 11px;
+    clip-path: none;
+    filter: none;
+    background: linear-gradient(135deg, #fff6cf, #ffe89a 50%, #fff6cf);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog-head {
+    left: 18px;
+    top: -12px;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog-head::after {
+    display: none;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog-name {
+    min-width: 0;
+    padding: 3px 24px 4px;
+    color: #3a1206;
+    font: 700 14px var(--mk-serif);
+    letter-spacing: 0.03em;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+    background: var(--mk-gold);
+    clip-path: polygon(0 0, 100% 0, calc(100% - 7px) 50%, 100% 100%, 0 100%, 7px 50%);
+    box-shadow: none;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer :is(.dm-dialog-reply, .dm-say) strong {
+    color: #f6dc8c;
+}
+
+/* ---- choices: lacquer slips ---- */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip) {
+    --mk-face:
+        radial-gradient(circle 3.2px at 13px 50%, #f6dc8c 0 2.2px, #8a5f14 2.3px 3px, transparent 3.2px),
+        linear-gradient(rgba(255, 226, 196, 0.22), transparent 45%),
+        linear-gradient(var(--mk-slip-hi), var(--mk-slip-lo));
+    position: relative;
+    isolation: isolate;
+    height: auto;
+    padding: 8px 22px 8px 27px;
+    border: 0;
+    border-radius: 0;
+    clip-path: var(--mk-slip);
+    background: var(--mk-gold);
+    box-shadow: none;
+    color: var(--mk-gold-hi);
+    font: 600 13px / 1.3 'Segoe UI', sans-serif;
+    text-align: left;
+    text-shadow: 0 1px 1px #000;
+    white-space: normal;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip)::before {
+    content: '';
+    position: absolute;
+    inset: 1.5px;
+    z-index: -1;
+    clip-path: var(--mk-slip);
+    background: var(--mk-face);
+    opacity: 1;
+    transform: none;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip)::after {
+    display: none;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip):active:not(:disabled) {
+    --mk-face: var(--mk-gold);
+    background: #8a5f14;
+    color: #3a1206;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* ---- prints strip: small tilted photographs ---- */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip {
+    gap: 6px;
+    padding: 4px 3px 5px;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip .wmd-thumb {
+    height: 50px;
+    padding: 2px 2px 6px;
+    background-color: var(--mk-leaf);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip .wmd-thumb:nth-child(odd) {
+    transform: rotate(-2.5deg);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip .wmd-thumb:nth-child(even) {
+    transform: rotate(2deg) translateY(1px);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip .wmd-thumb:active {
+    background-color: var(--mk-gold-flat);
+}
+
+/* ---- report card: a paper slip, graded with ink seals ---- */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-card {
+    margin-top: 6px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    overflow: visible;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-head {
+    padding: 2px 4px 7px;
+    border: 0;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-title {
+    color: var(--mk-gold-hi);
+    font: 700 16px var(--mk-serif);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-tally,
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-status {
+    color: var(--mk-tan);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-request {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--mk-rule);
+    background: var(--mk-paper);
+    color: var(--mk-ink2);
+    font-style: italic;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-items {
+    background: var(--mk-paper);
+    color: var(--mk-ink);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-row {
+    padding: 8px 8px 8px 10px;
+    border-left: 0;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-row + .director-report-row {
+    border-top: 1px dashed var(--mk-rule);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-item {
+    color: var(--mk-ink);
+    font-weight: 600;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-note {
+    color: var(--mk-ink2);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores {
+    gap: 6px;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px dashed rgba(90, 60, 30, 0.42);
+    border-radius: 50%;
+    background: none;
+    box-shadow: none;
+    opacity: 1;
+    color: rgba(90, 60, 30, 0.5);
+    font-size: 0;
+    text-shadow: none;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small::before {
+    content: '\25CE';
+    position: static;
+    inset: auto;
+    width: auto;
+    height: auto;
+    background: none;
+    opacity: 1;
+    transform: none;
+    font: 700 15px / 1 'Segoe UI Symbol', 'Noto Sans Symbols 2', 'Noto Sans CJK JP', sans-serif;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small[data-score="partial"]::before {
+    content: '\25B3';
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small[data-score="miss"]::before {
+    content: '\00D7';
+    font-size: 18px;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small::after {
+    display: none;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small[aria-pressed="true"][data-score="hit"] {
+    border: 0;
+    background: var(--mk-shu);
+    box-shadow: 0 0 0 1.5px var(--mk-leaf), 0 0 0 3px var(--mk-shu);
+    color: #fff5e6;
+    transform: rotate(-9deg);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small[aria-pressed="true"][data-score="partial"] {
+    border: 2px solid #c98512;
+    background: rgba(233, 170, 50, 0.22);
+    color: #a86a05;
+    transform: rotate(6deg);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small[aria-pressed="true"][data-score="miss"] {
+    border: 0;
+    background: var(--mk-ai);
+    box-shadow: 0 0 0 1.5px var(--mk-leaf), 0 0 0 3px var(--mk-ai);
+    color: #fff;
+    transform: rotate(-5deg);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-foot {
+    padding: 8px 4px 2px;
+    border: 0;
+}
+
+/* Submit: a gold slip */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-foot .btn-primary {
+    height: auto;
+    padding: 6px 22px 6px 14px;
+    border: 0;
+    border-radius: 0;
+    clip-path: var(--mk-slip);
+    background: var(--mk-gold);
+    box-shadow: none;
+    color: #3a1206;
+    font: 700 13px 'Segoe UI', sans-serif;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-foot .btn-primary::before,
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-foot .btn-primary::after {
+    display: none;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-foot .btn-primary:active {
+    background: #c9972e;
+}
+
+/* the card in her text box scrolls: a thin gold thumb */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog[data-tab="card"] .dm-dialog-body {
+    scrollbar-color: var(--mk-gold-flat) transparent;
+    padding-right: 8px;
+}
+
+/* the card in the log sits on paper already: ink for its heading and foot, rules above and below */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-report-card {
+    margin-top: 10px;
+    border-top: 1px solid var(--mk-shu);
+    border-bottom: 1px solid var(--mk-shu);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-report-head {
+    padding: 7px 4px 5px;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-report-title {
+    color: var(--mk-shu);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages :is(.director-report-tally, .director-report-status) {
+    color: var(--mk-ink2);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages :is(.director-report-request, .director-report-items) {
+    background: none;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-report-foot {
+    padding: 6px 4px;
+    border-top: 1px dashed var(--mk-rule);
+}
+
+/* ---- the log's rows: ink on paper (the scroll over her scene, and the Messages page) ---- */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message {
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--mk-ink);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message.user {
+    border-left: 3px solid var(--mk-ai);
+    background: rgba(43, 47, 85, 0.08);
+    color: var(--mk-ink);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message:is(.assistant, .user) .director-request-type-badge {
+    padding: 1px 7px;
+    border: 0;
+    border-radius: 0;
+    background: var(--mk-shu);
+    box-shadow: none;
+    color: #fff5e6;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-shadow: none;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message.user .director-request-type-badge {
+    background: var(--mk-ai);
+}
+
+/* the model beside her name: a plain outlined label */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message.assistant .director-request-type-badge:has(.director-engine-icon) {
+    border: 1px solid var(--mk-rule);
+    background: none;
+    color: var(--mk-ink2);
+    letter-spacing: 0.04em;
+}
+
+/* tool calls and thoughts: a vermilion diamond, then the name in small capitals */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message:is(.tool, .thinking) {
+    color: var(--mk-ink2);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message:is(.tool, .thinking) .director-request-type-badge {
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--mk-ink2);
+    text-shadow: none;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message:is(.tool, .thinking) .director-request-type-badge::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin: 0 7px 1px 1px;
+    background: var(--mk-shu);
+    transform: rotate(45deg);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message.thinking .director-request-type-badge::before {
+    background: none;
+    box-shadow: inset 0 0 0 1.5px var(--mk-shu);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-thinking-line {
+    color: var(--mk-ink2);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message :is(.director-trace-inspect, .director-user-message-header > .btn-small, .director-expand-button),
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message[data-older] > button {
+    border: 1px solid rgba(120, 90, 40, 0.5);
+    border-radius: 0;
+    background: rgba(255, 255, 255, 0.45);
+    box-shadow: none;
+    color: var(--mk-ink);
+    text-shadow: none;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message .director-expand-button {
+    border: 0;
+    background: none;
+    color: var(--mk-ink2);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message-content code {
+    padding: 1px 5px;
+    border: 0;
+    border-radius: 2px;
+    background: #2b1a12;
+    color: #f0cf7a;
+}
+
+/* her prints under a reply: photographs */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-attach-chip {
+    padding: 2px 2px 5px;
+    border: 0;
+    border-radius: 0;
+    background: var(--mk-leaf);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-attach-chip img {
+    border-radius: 0;
+}
+
+/* the log's suggestions: slips as wide as their words */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message-actions {
+    gap: 6px;
+}
+
+/* ---- the log over her scene (Menu > Log): a paper scroll in the tray, under a gold rod.
+ *      Wide screens keep the log as the WM column beside her. ---- */
+@container wmd not ((min-width: 40em) and (aspect-ratio >= 3 / 4)) {
+    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container {
+        --mk-n: 11px;
+        position: relative;
+        isolation: isolate;
+        padding: 20px 8px 8px !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: var(--mk-gold) !important;
+        box-shadow: none !important;
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+        -webkit-mask:
+            radial-gradient(circle var(--mk-n) at 0 0, #0000 97%, #000) 0 0 / 51% 51% no-repeat,
+            radial-gradient(circle var(--mk-n) at 100% 0, #0000 97%, #000) 100% 0 / 51% 51% no-repeat,
+            radial-gradient(circle var(--mk-n) at 0 100%, #0000 97%, #000) 0 100% / 51% 51% no-repeat,
+            radial-gradient(circle var(--mk-n) at 100% 100%, #0000 97%, #000) 100% 100% / 51% 51% no-repeat;
+        mask:
+            radial-gradient(circle var(--mk-n) at 0 0, #0000 97%, #000) 0 0 / 51% 51% no-repeat,
+            radial-gradient(circle var(--mk-n) at 100% 0, #0000 97%, #000) 100% 0 / 51% 51% no-repeat,
+            radial-gradient(circle var(--mk-n) at 0 100%, #0000 97%, #000) 0 100% / 51% 51% no-repeat,
+            radial-gradient(circle var(--mk-n) at 100% 100%, #0000 97%, #000) 100% 100% / 51% 51% no-repeat;
+    }
+
+    /* the lacquer, one step inside the gold rim */
+    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container::before {
+        --mk-n: 11.5px;
+        content: '';
+        position: absolute;
+        inset: 1.5px;
+        z-index: -1;
+        background: var(--mk-lac);
+        -webkit-mask:
+            radial-gradient(circle var(--mk-n) at 0 0, #0000 97%, #000) 0 0 / 51% 51% no-repeat,
+            radial-gradient(circle var(--mk-n) at 100% 0, #0000 97%, #000) 100% 0 / 51% 51% no-repeat,
+            radial-gradient(circle var(--mk-n) at 0 100%, #0000 97%, #000) 0 100% / 51% 51% no-repeat,
+            radial-gradient(circle var(--mk-n) at 100% 100%, #0000 97%, #000) 100% 100% / 51% 51% no-repeat;
+        mask:
+            radial-gradient(circle var(--mk-n) at 0 0, #0000 97%, #000) 0 0 / 51% 51% no-repeat,
+            radial-gradient(circle var(--mk-n) at 100% 0, #0000 97%, #000) 100% 0 / 51% 51% no-repeat,
+            radial-gradient(circle var(--mk-n) at 0 100%, #0000 97%, #000) 0 100% / 51% 51% no-repeat,
+            radial-gradient(circle var(--mk-n) at 100% 100%, #0000 97%, #000) 100% 100% / 51% 51% no-repeat;
+    }
+
+    /* the rod the paper hangs from */
+    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container::after {
+        content: 'Log';
+        position: absolute;
+        left: 5px;
+        right: 5px;
+        top: 6px;
+        z-index: 2;
+        height: 20px;
+        padding: 0 13px;
+        border-radius: 10px;
+        background: var(--mk-gold);
+        box-shadow: 0 2px 3px rgba(0, 0, 0, 0.5);
+        color: #3a1206;
+        font: 700 13px / 20px var(--mk-serif);
+        pointer-events: none;
+    }
+
+    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content {
+        background: linear-gradient(90deg, transparent 9px, rgba(200, 50, 30, 0.5) 9px 10px, transparent 10px), var(--mk-paper);
+        box-shadow: inset 0 4px 5px rgba(60, 30, 10, 0.35);
+    }
+
+    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages {
+        padding-left: 14px;
+        padding-top: 12px;
+    }
+
+    /* a thin gold thumb down the paper's edge */
+    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar {
+        width: 7px;
+        height: 0;
+    }
+
+    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-track {
+        border-left: 1px solid var(--mk-rule);
+        background: rgba(120, 90, 40, 0.1);
+    }
+
+    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-thumb {
+        border: 1px solid #8a5f14;
+        border-radius: 0;
+        background: var(--mk-gold-flat);
+    }
+
+    html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-button {
+        display: none;
+    }
+}
