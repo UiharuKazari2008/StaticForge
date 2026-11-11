@@ -773,6 +773,8 @@
     // Problem Reports and Solutions (cplPages2.js): Consent in its registry key, the server's reports.
 
     const WER = 'HKCU\\Software\\Xyridian\\Melaton\\Windows Error Reporting';
+    // a report's program as the phone names it: the desktop's "Windows Task Manager" is Melaton's
+    const programName = (f) => String(f.program || 'Melaton Desktop').replace(/\bWindows\b/g, 'Melaton');
     const reg = () => window.melatonRegistry || null;
 
     function faultDate(iso, long) {
@@ -804,7 +806,7 @@
             d.tab = tab;
             if (tab === 'history') {
                 if (d.faults === null) { el.innerHTML = ui.text('Reading problem reports...'); return; }
-                const rows = d.faults.map((f) => ({ key: f.id, label: `${f.program || 'Melaton Desktop'}: ${line(f.message || 'Stopped working')}`, selected: f.id === d.sel }));
+                const rows = d.faults.map((f) => ({ key: f.id, label: `${programName(f)}: ${line(f.message || 'Stopped working')}`, selected: f.id === d.sel }));
                 el.innerHTML = `${ui.text('Problems reported to the Dreamscape server. Tap one for details.')}
                     ${rows.length ? ui.listbox(rows, { maxHeight: 260 }).replace('class="wm-listbox"', 'class="wm-listbox wm-ds-list"') : `<div class="wm-listbox wm-ds-list is-empty">${esc(d.failed ? 'The problem history could not be read.' : 'No problems found.')}</div>`}`;
                 ui.bindListbox(el.querySelector('.wm-listbox'), (key) => {
@@ -815,7 +817,7 @@
                         title: 'Error Reporting',
                         icon: 'info',
                         text: [
-                            `Program: ${f.program || 'Melaton Desktop'}`,
+                            `Program: ${programName(f)}`,
                             `Problem: ${f.message || 'Stopped working'}`,
                             f.lastSeen ? `Last seen: ${faultDate(f.lastSeen, true)}` : '',
                             f.firstSeen ? `First seen: ${faultDate(f.firstSeen, true)}` : '',

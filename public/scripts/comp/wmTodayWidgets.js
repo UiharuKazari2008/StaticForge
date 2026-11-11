@@ -153,7 +153,8 @@
         const list = c.upcoming(5);
         if (list == null) return null;
         const go = () => open('calendar');
-        const base = { label: 'calendar', softKey: { label: 'Calendar', action: go }, onTap: go };
+        // the device's right soft key on this panel reads "Today" (it opens Calendar on today)
+        const base = { label: 'calendar', softKey: { label: 'Today', action: go }, onTap: go };
         const short = new Intl.DateTimeFormat(undefined, { year: '2-digit', month: 'numeric', day: 'numeric' });
         if (!list.length) {
             const now = new Date();

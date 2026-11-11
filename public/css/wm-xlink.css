@@ -66,9 +66,19 @@
     filter: none;
 }
 
+/* the band's caption gives way first so the node count and the clock stay whole on a 240 screen */
 .wm-xlink .wxl-band-sub {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-weight: bold;
     letter-spacing: 0.02em;
+}
+
+.wm-xlink .wxl-nodes,
+.wm-xlink .wxl-tod {
+    flex: 0 0 auto;
 }
 
 .wm-xlink .wxl-band-fill {
@@ -548,4 +558,59 @@
 .wm-today-block[data-row="xlink"].is-sending .wxl-tw-key {
     opacity: 0.5;
     pointer-events: none;
+}
+
+/* ---- Melaton Mobile 6.5 ----
+ * The cabinet list takes 6.5 Contacts' measures (its emulator, VGA halved; wm-notes.css): Tahoma
+ * 10.5, rows on a pitch of at least 35.5 with no rule, the selector art over the whole pitch (4
+ * clear, the blue, 4 of shadow), 1.5 short of the right edge, both lines inside its blue. */
+
+html.ui-mobile[data-wm-version="6.5"] .wm-xlink {
+    --wm-fs: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-xlink .wxl-row[data-dev] {
+    position: relative;
+    grid-template-rows: calc(12.5 * var(--wm-px)) auto;
+    min-height: calc(35.5 * var(--wm-px));
+    padding-top: calc(6.5 * var(--wm-px));
+    padding-bottom: calc(5 * var(--wm-px));
+    border-bottom: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell .wm-xlink .wxl-row[data-dev].is-selected {
+    border-image: none;
+    border-width: 0;
+    background: transparent !important;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-xlink .wxl-row[data-dev].is-selected::before {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    left: 0;
+    right: calc(1.5 * var(--wm-px));
+    top: 0;
+    bottom: 0;
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: url('/static_images/wm65/theme-classicblue-listviewselector@2x.png') 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) / 0 stretch;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-xlink .wxl-row[data-dev] > * {
+    position: relative;
+    z-index: 1;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-xlink .wxl-row[data-dev] .wxl-row-name {
+    align-self: start;
+    line-height: calc(12.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-xlink .wxl-row[data-dev] .wxl-row-sub {
+    padding-bottom: 0;
+    line-height: calc(12 * var(--wm-px));
 }

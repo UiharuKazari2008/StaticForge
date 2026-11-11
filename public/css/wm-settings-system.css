@@ -133,6 +133,32 @@ html.ui-mobile .wm-sys-empty {
 }
 
 /* About > Hardware: the category rows bold, as Device Manager's tree */
+/* About > Hardware: the list takes what is left of the page under its caption (a fixed 240 units
+ * ran past the tab strip, so its last rows could only be reached by scrolling the page as well) */
+html.ui-mobile .wm-set-scroll > .wm-form:has(> .wm-sys-devices) {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    height: 100%;
+}
+
+html.ui-mobile .wm-set-scroll > .wm-form:has(> .wm-sys-devices) > * {
+    flex: 0 0 auto;
+}
+
+html.ui-mobile .wm-set-scroll > .wm-form > .wm-sys-devices {
+    flex: 1 1 auto;
+    min-height: calc(80 * var(--wm-px));
+    display: flex;
+    flex-direction: column;
+}
+
+html.ui-mobile .wm-set-scroll > .wm-form > .wm-sys-devices > .wm-listbox {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none !important;
+}
+
 html.ui-mobile .wm-sys-devices .wm-listbox-row:not(.is-indent) {
     font-weight: bold;
 }

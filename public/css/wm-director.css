@@ -1391,10 +1391,10 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
     padding: 0;
 }
 
+/* a choice shows all of its text: a button is not a -webkit-box, so a two-line clamp left the
+ * third line showing in the bottom padding; the row grows by a line instead */
 html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-small.btn-secondary {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    display: block;
     overflow: hidden;
     width: 100%;
     min-height: 38px;

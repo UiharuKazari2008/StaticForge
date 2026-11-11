@@ -174,7 +174,7 @@
 
     /**
      * An app's name on Start: its own. A stock WM title that carries the Windows / Microsoft name
-     * (wmMedia.js: "Windows Media") is replaced by the name of the desktop program it is the phone
+     * (wmMedia.js: "Melaton Media") is replaced by the name of the desktop program it is the phone
      * version of (MAPPED: Media Player).
      */
     function appLabel(a) {
@@ -605,6 +605,20 @@
             onBack: () => closeFolder()
         });
     }
+
+    // a program asks for a folder of Start (wmPrograms.js: on 6.5 the Settings program shown with no
+    // page open is the Settings folder, as on the device); Back / X there return to Start's top
+    window.wmStart65 = {
+        openFolder(id) {
+            if (!sh || root.dataset.wmVersion !== '6.5') return false;
+            sh.open('start', { fromStart: true });
+            const i = items.findIndex((it) => it.folder === id);
+            if (i < 0) return false;
+            select(i, false);
+            openFolder(items[i]);
+            return true;
+        }
+    };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

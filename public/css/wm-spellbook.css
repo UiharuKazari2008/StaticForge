@@ -398,3 +398,70 @@
 .wm-spellbook .wsb-check input:checked {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11'%3E%3Cpath d='M2 5.2 4.3 7.5 9 2.8' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E");
 }
+
+/* ---- Melaton Mobile 6.5 ----
+ * 6.5 Contacts' measures (its emulator, VGA halved; wm-notes.css, wm-suite-kit.css): list text is
+ * Tahoma 10.5, combo boxes 11.5; rows stand on a 35.5 pitch with no rule and the selector art lies
+ * over the whole pitch, 1.5 short of the right edge, both lines inside its blue. */
+
+html.ui-mobile[data-wm-version="6.5"] .wm-spellbook {
+    --wm-fs: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-spellbook .wsb-row {
+    position: relative;
+    grid-template-rows: calc(12 * var(--wm-px)) calc(12 * var(--wm-px));
+    height: calc(35.5 * var(--wm-px));
+    padding-top: calc(6.5 * var(--wm-px));
+    border-bottom: 0;
+    contain-intrinsic-size: auto calc(35.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell .wm-spellbook .wsb-row.is-selected {
+    border-image: none;
+    border-width: 0;
+    background: transparent !important;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-spellbook .wsb-row.is-selected::before {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    left: 0;
+    right: calc(1.5 * var(--wm-px));
+    top: 0;
+    bottom: 0;
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: url('/static_images/wm65/theme-classicblue-listviewselector@2x.png') 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) / 0 stretch;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-spellbook .wsb-row > * {
+    position: relative;
+    z-index: 1;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-spellbook .wsb-ico {
+    align-self: start;
+    margin-top: calc(2.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-spellbook .wsb-ico img {
+    margin-left: calc(11.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-spellbook .wsb-name {
+    align-self: start;
+    line-height: calc(12.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-spellbook .wsb-sub {
+    line-height: calc(12 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-spellbook .wsb-combo {
+    font-size: calc(11.5 * var(--wm-px)) !important;
+}

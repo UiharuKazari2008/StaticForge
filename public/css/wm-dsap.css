@@ -627,3 +627,40 @@
         grid-template-columns: repeat(auto-fit, minmax(calc(110 * var(--wm-px)), 1fr));
     }
 }
+
+/* ---------------------------------------------------------------- no Font Awesome on the phone (#748)
+ * Server Manager's link list and Data Management drew the desktop's Font Awesome glyphs. A link
+ * whose target has a fitting picture in the phone's art set (static_images/wm61, 16 px) shows
+ * that; WM tab strips and push buttons carry text only, so their glyphs go; the workers' bare
+ * refresh buttons take the media player's refresh art. Glyphs with no fitting art are left (listed
+ * in #748). */
+.wm-browser .wmb-dsap a.dsap-smf-home-link > i:is(.fa-database, .fa-search, .fa-shield-halved, .fa-globe, .fa-building-columns),
+.wm-browser .wmb-dsap .data-mgmt-worker-actions button > i.fa-arrows-rotate {
+    display: inline-block !important;
+    width: calc(16 * var(--wm-px)) !important;
+    height: calc(16 * var(--wm-px)) !important;
+    margin: 0 calc(3 * var(--wm-px)) 0 0 !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    vertical-align: middle;
+    color: transparent !important;
+    -webkit-text-fill-color: transparent !important;
+    background: var(--wmd-art) center / 100% 100% no-repeat !important;
+}
+
+.wm-browser .wmb-dsap a.dsap-smf-home-link > i:is(.fa-database, .fa-search, .fa-shield-halved, .fa-globe, .fa-building-columns)::before,
+.wm-browser .wmb-dsap .data-mgmt-worker-actions button > i.fa-arrows-rotate::before {
+    content: none !important;
+}
+
+.wm-browser .wmb-dsap a.dsap-smf-home-link > i.fa-database { --wmd-art: image-set(url('/static_images/wm61/app-data-management.png') 1x, url('/static_images/wm61/app-data-management@2x.png') 2x, url('/static_images/wm61/app-data-management@4x.png') 4x); }
+.wm-browser .wmb-dsap a.dsap-smf-home-link > i.fa-search { --wmd-art: image-set(url('/static_images/wm61/app-search.png') 1x, url('/static_images/wm61/app-search@2x.png') 2x, url('/static_images/wm61/app-search@4x.png') 4x); }
+.wm-browser .wmb-dsap a.dsap-smf-home-link > i.fa-shield-halved { --wmd-art: image-set(url('/static_images/wm61/ie-lock.png') 1x, url('/static_images/wm61/ie-lock@2x.png') 2x, url('/static_images/wm61/ie-lock@4x.png') 4x); }
+.wm-browser .wmb-dsap a.dsap-smf-home-link > i.fa-globe { --wmd-art: image-set(url('/static_images/wm61/app-ie.png') 1x, url('/static_images/wm61/app-ie@2x.png') 2x, url('/static_images/wm61/app-ie@4x.png') 4x); }
+.wm-browser .wmb-dsap a.dsap-smf-home-link > i.fa-building-columns { --wmd-art: image-set(url('/static_images/wm61/msg-acct-outlook.png') 1x, url('/static_images/wm61/msg-acct-outlook@2x.png') 2x, url('/static_images/wm61/msg-acct-outlook@4x.png') 4x); }
+.wm-browser .wmb-dsap .data-mgmt-worker-actions button > i.fa-arrows-rotate { --wmd-art: image-set(url('/static_images/wm61/wmp-refresh.png') 1x, url('/static_images/wm61/wmp-refresh@2x.png') 2x); margin: 0 !important; }
+
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar td.dsap-smf-tab > i[class*="fa-"],
+.wm-browser .wmb-dsap .dsap-smf :is(#dataMgmtRemoteWorkersRefreshAll, .data-mgmt-repl-status-link button, .data-mgmt-indexing-controls button) > i[class*="fa-"] {
+    display: none !important;
+}

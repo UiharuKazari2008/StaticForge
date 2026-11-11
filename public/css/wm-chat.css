@@ -360,3 +360,50 @@
         padding-top: calc(40 * var(--wm-px));
     }
 }
+
+/* ---- Melaton Mobile 6.5 ----
+ * The chat list takes 6.5 Messaging's measures (its emulator, VGA halved; wm-messaging.css):
+ * Tahoma 10.5, rows on a 38.5 pitch with no rule, the name line 15 and the last line 14.5 from 4
+ * down, and the selector art from the row's top, 1 short of the pitch and 1.5 short of the right
+ * edge (blue from 4.5 to 34 down the row), both lines and the picture inside its blue. */
+
+html.ui-mobile[data-wm-version="6.5"] .wm-chat {
+    --wm-fs: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-chat .wch-row {
+    position: relative;
+    grid-template-rows: calc(15 * var(--wm-px)) calc(14.5 * var(--wm-px));
+    height: calc(38.5 * var(--wm-px));
+    box-sizing: border-box;
+    padding: calc(4 * var(--wm-px)) calc(5.5 * var(--wm-px)) 0 0;
+    border-bottom: 0;
+    contain-intrinsic-size: auto calc(38.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell .wm-chat .wch-row.is-selected {
+    border-image: none;
+    border-width: 0;
+    background: transparent !important;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-chat .wch-row.is-selected::before {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    left: 0;
+    right: calc(1.5 * var(--wm-px));
+    top: 0;
+    height: calc(37.5 * var(--wm-px));
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: url('/static_images/wm65/theme-classicblue-listviewselector@2x.png') 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) / 0 stretch;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-chat .wch-row > * {
+    position: relative;
+    z-index: 1;
+}

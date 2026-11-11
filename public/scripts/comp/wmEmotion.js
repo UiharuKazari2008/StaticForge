@@ -358,7 +358,7 @@
             { label: "Studio's Picture", disabled: st.running || !studio, action: () => setPicture(studio, activeWs()) },
             '-',
             { label: 'View Animation', disabled: !st.result, action: () => viewGif(st.result && st.result.filename) },
-            { label: 'Play in Windows Media', disabled: !st.result || !window.wmMedia || !(st.result.formats.webm || st.result.formats.mp4), action: playInMedia },
+            { label: 'Play in Melaton Media', disabled: !st.result || !window.wmMedia || !(st.result.formats.webm || st.result.formats.mp4), action: playInMedia },
             '-',
             { label: 'Refresh Worker Status', action: refreshStatus }
         ];

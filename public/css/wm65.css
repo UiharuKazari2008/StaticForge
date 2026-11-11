@@ -589,17 +589,17 @@ html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-row.is-selected .fe-ico::after 
 /* ---- scroll bars (the lists that draw WM's bar): 13 px wide, the theme's grey track, the thumb
  * art (26 x 70 at 2x, its grip dots 12 px from each end) and 19.5 px arrow buttons (the 26 x 26
  * art stretched to 26 x 39 as on the device; the down button is the up art turned over) ---- */
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid)::-webkit-scrollbar {
     width: calc(13 * var(--wm-px));
     height: calc(13 * var(--wm-px));
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-track {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid)::-webkit-scrollbar-track {
     background: #e6e6e6;
     border: 0;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-thumb {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid)::-webkit-scrollbar-thumb {
     min-height: calc(35 * var(--wm-px));
     border-style: solid;
     border-color: transparent;
@@ -609,7 +609,7 @@ html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-
     background: none;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid)::-webkit-scrollbar-button:single-button {
     display: block;
     width: calc(13 * var(--wm-px));
     height: calc(19.5 * var(--wm-px));
@@ -617,25 +617,25 @@ html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-
     background: #e6e6e6 center / 100% 100% no-repeat;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:decrement {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid)::-webkit-scrollbar-button:single-button:vertical:decrement {
     border: 0;
     background-image: url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png');
     background-size: 100% 100%;
     background-position: center;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:increment {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid)::-webkit-scrollbar-button:single-button:vertical:increment {
     border: 0;
     background-image: url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png');
     background-size: 100% 100%;
     background-position: center;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
     background-image: url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png');
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:increment:active {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid)::-webkit-scrollbar-button:single-button:vertical:increment:active {
     background-image: url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png');
 }
 
@@ -651,18 +651,22 @@ html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar {
     color: var(--wm65-text);
 }
 
-/* ---- message box: 3 px from the screen edges, 1 px black frame, a 22 px caption that runs from
- * light blue at the left to deep blue at the right (device, dithered 16 bit: #5f6ff3 to
- * #142ac1) with the title in the caption text colour, Tahoma bold 12; body text 12; buttons 64 x
- * 24 in the button face, 9 px apart, the default one framed 2 px ---- */
+/* ---- message box (File Explorer's "Confirm File Delete" on the device, VGA capture halved): 229
+ * units wide and centred (5.5 from the screen edges) in a 1-unit black frame; a 22-unit caption
+ * that runs from light blue at the left to deep blue at the right (dithered 16 bit: #5f6ff3 to
+ * #142ac1) over a 1-unit black rule, the title in the caption text colour, Tahoma bold 12; the
+ * 32-unit icon 7.5 units in and 7.5 down; the text 58 units in and 16.5 down, 12 units on a
+ * 14.5-unit pitch, wrapping 8 units before the frame; the buttons a centred pair 7.5 units under
+ * the text and 8 above the frame, each 54 x 24 in the button face and 2 apart, bold 12, the default
+ * one in a 2-unit frame; a pressed button is (8,4,49) with white text ---- */
 html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-layer {
-    padding: calc(26 * var(--wm-px)) calc(3 * var(--wm-px));
+    padding: calc(26 * var(--wm-px)) calc(5.5 * var(--wm-px));
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msgbox,
 html.ui-mobile[data-wm-version="6.5"] body > #confirmationDialog,
 html.ui-mobile[data-wm-version="6.5"] body > #bootMessageBox {
-    max-width: calc(234 * var(--wm-px)) !important;
+    max-width: calc(229 * var(--wm-px)) !important;
     border: calc(1 * var(--wm-px)) solid #000 !important;
     font-size: calc(12 * var(--wm-px)) !important;
     color: var(--wm65-text) !important;
@@ -670,8 +674,8 @@ html.ui-mobile[data-wm-version="6.5"] body > #bootMessageBox {
 
 html.ui-mobile[data-wm-version="6.5"] body > #confirmationDialog,
 html.ui-mobile[data-wm-version="6.5"] body > #bootMessageBox {
-    left: calc(env(safe-area-inset-left) + 3 * var(--wm-px)) !important;
-    right: calc(env(safe-area-inset-right) + 3 * var(--wm-px)) !important;
+    left: calc(env(safe-area-inset-left) + 5.5 * var(--wm-px)) !important;
+    right: calc(env(safe-area-inset-right) + 5.5 * var(--wm-px)) !important;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-title,
@@ -692,10 +696,20 @@ html.ui-mobile[data-wm-version="6.5"] #bootMessageBox .boot-message-box-title {
     color: #cbc9e9 !important;
 }
 
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-title {
+    box-sizing: content-box;
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+}
+
 html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-body {
-    gap: calc(9.5 * var(--wm-px));
-    padding: calc(14 * var(--wm-px)) calc(8 * var(--wm-px)) calc(16 * var(--wm-px)) calc(12 * var(--wm-px));
-    line-height: calc(15 * var(--wm-px));
+    align-items: flex-start;
+    gap: calc(18.5 * var(--wm-px));
+    padding: calc(7.5 * var(--wm-px)) calc(8 * var(--wm-px)) calc(7.5 * var(--wm-px)) calc(7.5 * var(--wm-px));
+    line-height: calc(14.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-body img + .wm-msgbox-text {
+    margin-top: calc(9 * var(--wm-px));
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-body img {
@@ -710,14 +724,15 @@ html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .confirmation-message 
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-buttons {
     justify-content: center;
-    gap: calc(9 * var(--wm-px));
-    padding: 0 calc(6 * var(--wm-px)) calc(12 * var(--wm-px));
+    gap: calc(2 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px)) calc(8 * var(--wm-px));
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-buttons button,
 html.ui-mobile[data-wm-version="6.5"] #bootMessageBox .boot-message-box-buttons button,
 html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .modal-content button {
-    min-width: calc(64 * var(--wm-px));
+    box-sizing: border-box;
+    min-width: calc(54 * var(--wm-px));
     height: calc(24 * var(--wm-px));
     border: calc(1 * var(--wm-px)) solid #000 !important;
     border-radius: 0 !important;
@@ -737,7 +752,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-buttons button:focus-visible {
 html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-buttons button:active,
 html.ui-mobile[data-wm-version="6.5"] #bootMessageBox .boot-message-box-buttons button:active,
 html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .modal-content button:active {
-    background: var(--wm-highlight) !important;
+    background: #080431 !important;
     color: #fff !important;
 }
 
@@ -1227,4 +1242,30 @@ html.ui-mobile[data-wm-version="6.5"] .wm-tabs-spin > button::before {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-tabs-spin > button:active {
     background: #080431;
+}
+
+/* ---- Settings > Today > Items (device, VGA halved): the list 148 x 169 from x 8, the three
+ * buttons 72 x 20 from x 160 on a 24 pitch, and under the list (3 down) "Today timeout:" with its
+ * check box at x 8 and a 47 x 17 combo that ends with the list ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-listbox-side:has(+ .wm-today-timeout) {
+    grid-template-columns: calc(148 * var(--wm-px)) calc(72 * var(--wm-px));
+    gap: calc(4 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-listbox-side:has(+ .wm-today-timeout) > .wm-listbox {
+    height: calc(169 * var(--wm-px));
+    max-height: none !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-listbox-side:has(+ .wm-today-timeout) .wm-button {
+    width: calc(72 * var(--wm-px));
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-today-timeout {
+    display: grid;
+    grid-template-columns: calc(101 * var(--wm-px)) calc(47 * var(--wm-px));
+    align-items: center;
+    margin-top: calc(3 * var(--wm-px));
 }

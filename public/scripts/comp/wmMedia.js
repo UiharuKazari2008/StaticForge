@@ -87,9 +87,9 @@
         v.addEventListener('error', () => {
             if (!v.getAttribute('src')) return;
             media.status = 'Error';
-            media.error = 'Windows Media cannot play the file. The file might not be supported, or the codec used to compress it is not available.';
+            media.error = 'Melaton Media cannot play the file. The file might not be supported, or the codec used to compress it is not available.';
             paintSkin();
-            ws.notify({ title: 'Windows Media', icon: 'error', text: media.error });
+            ws.notify({ title: 'Melaton Media', icon: 'error', text: media.error });
         });
         media.el = v;
         applyVolume();
@@ -129,7 +129,7 @@
             if (err && err.name === 'NotAllowedError') { media.status = 'Paused'; paintSkin(); return; }
             if (!media.error) {
                 media.status = 'Error';
-                ws.notify({ title: 'Windows Media', icon: 'error', text: `${it.name} cannot be played.` });
+                ws.notify({ title: 'Melaton Media', icon: 'error', text: `${it.name} cannot be played.` });
             }
         }
         paintSkin();
@@ -226,7 +226,7 @@
         if (lib && !force) return Promise.resolve(lib);
         if (scanning) return scanning;
         scanning = ws.busy(scan(), { paint: true, timeout: 60000 }).then((r) => { lib = r; return r; }).catch((err) => {
-            ws.notify({ title: 'Windows Media', icon: 'error', text: (err && err.message) || 'The library could not be updated.' });
+            ws.notify({ title: 'Melaton Media', icon: 'error', text: (err && err.message) || 'The library could not be updated.' });
             lib = lib || { audio: [], video: [] };
             return lib;
         }).finally(() => { scanning = null; });
@@ -462,17 +462,17 @@
         const items = rowItems(libRows()[libSel]);
         if (!items.length) return;
         enqueue(items, false);
-        ws.notify({ title: 'Windows Media', icon: 'info', text: `${items.length === 1 ? items[0].name : `${items.length} items`} added to Now Playing.` });
+        ws.notify({ title: 'Melaton Media', icon: 'info', text: `${items.length === 1 ? items[0].name : `${items.length} items`} added to Now Playing.` });
     }
 
     async function openFile() {
         if (!window.wmFileDialogs || typeof window.wmFileDialogs.open !== 'function') {
-            ws.notify({ title: 'Windows Media', icon: 'info', text: 'Open a media file from File Explorer.' });
+            ws.notify({ title: 'Melaton Media', icon: 'info', text: 'Open a media file from File Explorer.' });
             return;
         }
         await window.wmFileDialogs.open({
             title: 'Open',
-            appTitle: 'Windows Media',
+            appTitle: 'Melaton Media',
             typeLabel: 'Media files',
             accept: (i) => AUDIO.test(i.name || '') || VIDEO.test(i.name || ''),
             onPick: async (item, dir) => {
@@ -489,7 +489,7 @@
         const v = await ws.messageBox({ title: 'Open URL', text: 'URL:', input: { value: 'http://' }, buttons: [{ text: 'ok', value: true }, { text: 'Cancel', value: false }] });
         if (!v || v === true) return;
         let url;
-        try { url = new URL(String(v).trim()); } catch (_) { ws.notify({ title: 'Windows Media', icon: 'error', text: 'That address is not valid.' }); return; }
+        try { url = new URL(String(v).trim()); } catch (_) { ws.notify({ title: 'Melaton Media', icon: 'error', text: 'That address is not valid.' }); return; }
         if (!/^https?:$/.test(url.protocol)) return;
         const name = decodeURIComponent(url.pathname.split('/').pop() || url.host);
         enqueue([{ name, url: url.href, kind: VIDEO.test(name) ? 'video' : 'audio' }], true);
@@ -628,8 +628,8 @@
         ws = window.wmShell;
         ws.registerApp({
             id: APP_ID,
-            title: 'Windows Media',
-            startLabel: 'Windows Media',
+            title: 'Melaton Media',
+            startLabel: 'Melaton Media',
             icon: 'app-windows-media',
             inStart: 'programs',
             sip: true,
@@ -659,7 +659,7 @@
                             { label: 'Full Screen', action: fullScreen, disabled: !(it && it.kind === 'video') }, '-',
                             { label: 'Options...', disabled: true },
                             { label: 'Properties', action: () => properties(it), disabled: !it }, '-',
-                            { label: 'About', action: () => ws.notify({ title: 'Windows Media', icon: 'info', text: 'Windows Media Player 10 Mobile\nCopyright (c) 2006 Xyridian Corporation. All rights reserved.' }) }
+                            { label: 'About', action: () => ws.notify({ title: 'Melaton Media', icon: 'info', text: 'Melaton Media Player 10 Mobile\nCopyright (c) 2006 Xyridian Corporation. All rights reserved.' }) }
                         ] }
                     };
                 }
@@ -675,7 +675,7 @@
                             { label: 'Shuffle/Repeat', submenu: shuffleRepeat() }, '-',
                             { label: 'Save Playlist...', disabled: true },
                             { label: 'Clear Now Playing', action: clearQueue, disabled: !has }, '-',
-                            { label: 'Error Details', action: () => ws.notify({ title: 'Windows Media', icon: 'error', text: media.error }), disabled: !media.error },
+                            { label: 'Error Details', action: () => ws.notify({ title: 'Melaton Media', icon: 'error', text: media.error }), disabled: !media.error },
                             { label: 'Properties', action: () => properties(media.queue[queueSel]), disabled: !has }
                         ] }
                     };

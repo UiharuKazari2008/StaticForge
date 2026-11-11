@@ -40,6 +40,8 @@
         todayBackground: 'wmTodayBackground',
         // 6.5 has a list of its own (the clock sits in the middle of its home screen)
         todayItems: root.dataset.wmVersion === '6.5' ? 'wmTodayItems65' : 'wmTodayItems',
+        // 6.5 Today > Items > "Today timeout": { on, hours }; stored only, nothing reads it yet
+        todayTimeout: 'wmTodayTimeout',
         startMenu: 'wmStartMenu',
         startSource: 'wmStartSource',
         startText: 'wmStartText',
@@ -583,6 +585,14 @@
         return out;
     }
 
+    // 6.5 Today > Items: "Today timeout" (the device returns to the home screen after that long):
+    // a check box and a combo of 1 to 12 hr, on and 4 hr out of the box
+    function todayTimeout() {
+        const v = lsJson(K.todayTimeout);
+        const hours = v && Number.isInteger(v.hours) && v.hours >= 1 && v.hours <= 12 ? v.hours : 4;
+        return { on: !v || v.on !== false, hours };
+    }
+
     function startMenuIds() {
         const saved = lsJson(K.startMenu);
         if (Array.isArray(saved)) return new Set(saved.map(String));
@@ -900,7 +910,7 @@
         {
             id: 'today', tab: 'personal', label: 'Today', icon: 'set-today',
             tabs: [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items']],
-            init: () => ({ useDesktop: todayUsesDesktop(), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall(), opts: todayOptionsStored(), optsFor: null }),
+            init: () => ({ useDesktop: todayUsesDesktop(), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall(), opts: todayOptionsStored(), optsFor: null, timeout: todayTimeout() }),
             render(el, tab, d, api) {
                 if (tab === 'wallpaper') { renderWall(el, d, api); return; }
                 if (tab === 'items' && d.optsFor) {
@@ -931,17 +941,25 @@
                 if (tab === 'items') {
                     const selId = d.items[d.sel] && d.items[d.sel].id;
                     const hasOpts = !!(selId && optionDefs(selId).length);
+                    // 6.5 (device): Move Up, Move Down, Options... down the side and "Today timeout" under the list
+                    const v65 = runningVersion() === '6.5';
+                    const optionsBtn = `<button type="button" class="wm-button" data-act="options"${hasOpts ? '' : ' disabled'}>Options...</button>`;
+                    const moveBtns = `<button type="button" class="wm-button" data-act="up"${d.sel > 0 ? '' : ' disabled'}>Move Up</button><button type="button" class="wm-button" data-act="down"${d.sel < d.items.length - 1 ? '' : ' disabled'}>Move Down</button>`;
                     el.innerHTML = `<p>Checked items appear on the Today screen.</p>
                         <div class="wm-listbox-side">
                             <div class="wm-listbox" style="max-height:calc(170 * var(--wm-px))">${d.items.map((r, i) => `<div class="wm-listbox-row${i === d.sel ? ' is-selected' : ''}" data-i="${i}">${check(`it-${r.id}`, r.label, r.on)}</div>`).join('')}</div>
-                            <div class="wm-buttons"><button type="button" class="wm-button" data-act="options"${hasOpts ? '' : ' disabled'}>Options...</button><button type="button" class="wm-button" data-act="up"${d.sel > 0 ? '' : ' disabled'}>Move Up</button><button type="button" class="wm-button" data-act="down"${d.sel < d.items.length - 1 ? '' : ' disabled'}>Move Down</button></div>
-                        </div>`;
+                            <div class="wm-buttons">${v65 ? `${moveBtns}${optionsBtn}` : `${optionsBtn}${moveBtns}`}</div>
+                        </div>${v65 ? `<div class="wm-today-timeout">${check('timeout', 'Today timeout:', d.timeout.on)}${ui.comboHtml('timeout', `${d.timeout.hours} hr`, !d.timeout.on)}</div>` : ''}`;
+                    if (v65) {
+                        el.querySelector('input[name="timeout"]').addEventListener('change', (e) => { d.timeout.on = e.target.checked; api.rerender(); });
+                        ui.bindCombo(el.querySelector('.wm-combo[data-act="timeout"]'), Array.from({ length: 12 }, (_, n) => [n + 1, `${n + 1} hr`]), d.timeout.hours, (v) => { d.timeout.hours = v; });
+                    }
                     el.querySelectorAll('.wm-listbox-row').forEach((row) => {
                         const i = Number(row.dataset.i);
                         row.addEventListener('click', () => { if (d.sel !== i) { d.sel = i; api.rerender(); } });
                         row.querySelector('input').addEventListener('change', (e) => { d.items[i].on = e.target.checked; });
                     });
-                    el.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => {
+                    el.querySelectorAll('.wm-button[data-act]').forEach((b) => b.addEventListener('click', () => {
                         if (b.dataset.act === 'options') { d.optsFor = selId; api.rerender(); return; }
                         const j = d.sel + (b.dataset.act === 'up' ? -1 : 1);
                         if (j < 0 || j >= d.items.length) return;
@@ -991,6 +1009,10 @@
                 lsSet(K.titleBar, d.titleBar);
                 applyTitleBar();
                 const keys = [K.todayUseDesktop, K.todayBackground, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY];
+                if (runningVersion() === '6.5' && d.timeout) {
+                    lsSet(K.todayTimeout, JSON.stringify({ on: d.timeout.on, hours: d.timeout.hours }));
+                    keys.push(K.todayTimeout);
+                }
                 if (!(await commitWall(d.wall))) {
                     changed(keys);
                     return false;
@@ -1649,7 +1671,10 @@
         // page return to that program, as WM's control panel applets started by a program do
         open: (id, tab, opts) => {
             if (!sh || !settingsHost) return false;
-            sh.open('settings');
+            // (6.5: the Settings program shown with no page hands over to Start's Settings folder;
+            // not while a page is on its way in)
+            settingsHost.opening = true;
+            try { sh.open('settings'); } finally { settingsHost.opening = false; }
             return settingsHost.openPage(id, tab, opts);
         },
         // 6.5 (#739, wmStart65.js): Settings is a folder of the Start screen there. The applets and
@@ -1748,6 +1773,22 @@
             if (sh && typeof sh.refreshSoftKeys === 'function') sh.refreshSoftKeys();
         }
 
+        /**
+         * 6.5 has no Settings program of its own: Settings is a folder of the Start screen (device:
+         * Bluetooth, Clock & Alarms, Lock, Power, Sounds & Notifications, Today, then the folders
+         * Connections, Personal and System). Settings shown with no page open hands over to that
+         * folder (wmStart65.js openFolder); without it the tabbed 6.1 grid stays.
+         */
+        function toStartFolder() {
+            const s65 = runningVersion() === '6.5' && window.wmStart65;
+            if (!s65 || typeof s65.openFolder !== 'function') return false;
+            queueMicrotask(() => {
+                if (open || sh.current !== 'settings') return;
+                try { s65.openFolder('settings'); } catch (err) { console.warn('Settings: Start folder', err); }
+            });
+            return true;
+        }
+
         /** The page's commit, then each extension's: their keys, or false (keep the page open). */
         async function commitAll(cur) {
             const keys = [];
@@ -1792,6 +1833,7 @@
                     sh.syncHistory(viaBack ? { noPush: true } : undefined);
                     // a page a program opened goes back to that program, not to the Settings grid
                     if (cur.direct && sh.current === 'settings') sh.back();
+                    else if (sh.current === 'settings') toStartFolder();
                 })
                 .catch((err) => console.warn('Settings: could not close', cur.def.id, err));
             return true;
@@ -1819,6 +1861,7 @@
                 if (open && Date.now() - (open.openedAt || 0) < 1000) { renderPage(); return; }
                 if (open) open = null;
                 renderGrid();
+                if (!(settingsHost && settingsHost.opening)) toStartFolder();
             },
             hide() {},
             // a page may bring its own soft keys (Wireless Manager's Menu): def.softKeys(draft)

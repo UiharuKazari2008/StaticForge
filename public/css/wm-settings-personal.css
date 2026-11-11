@@ -262,3 +262,23 @@ html.ui-mobile .wm-form .wmsp-btn-assign {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* ---- Melaton Mobile 6.5 ---- */
+
+/* Lock > Password on the 6.5 device: the check box's label wraps to two lines on a 12.5 pitch and
+ * the combo box stands beside it from x 134, 80 wide (17 high), its top level with the check box */
+html.ui-mobile[data-wm-version="6.5"] .wm-form .wmsp-checkcombo {
+    grid-template-columns: calc(126 * var(--wm-px)) calc(80 * var(--wm-px));
+    align-items: start;
+    column-gap: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-form .wmsp-checkcombo .wm-check {
+    align-items: flex-start;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-form .wmsp-checkcombo .wm-check > span {
+    white-space: normal;
+    padding-top: calc(1.5 * var(--wm-px));
+    line-height: calc(12.5 * var(--wm-px));
+}
