@@ -27,6 +27,10 @@
  * own renderers (see "Fandom and the Apocrypha" below).
  * Sessions: Alchemy has a 4-session cap, so the session is closed when the app is closed (title
  * X), 60 s after the app goes behind another, and when the tab goes away.
+ * Windows (#748): Menu > New Window / Windows / Close Window keep up to 8 pages open, each with its
+ * own history, page boxes, Alchemy session and running applet (see "Windows" below). A web page in
+ * a window that is not on screen keeps its session for 5 minutes (then it reopens from its address),
+ * and gives it up at once when a new page finds Alchemy full.
  *
  * Measured on the Device Emulator (VGA, 2x halved; ~/.cache/wm61/ref-ie/ie-home.png):
  *   address bar  22 px tab-strip tint + 1 px black rule (as .wm-pv-bar); security lock (16 px) at
@@ -85,30 +89,81 @@
     // pages seen here: Grimoire pages { home: true, grim, url, title } (no Alchemy; a Dreamscape app is
     // grim.kind 'dsap') | web pages { url, title, pending }
     const homeEntry = () => ({ home: true, grim: { kind: 'home' }, url: GRIM_HOME_URL, title: 'Grimoire' });
-    let entries = [homeEntry()];
-    let idx = 0;
-    let chromeAt = -1; // the entry Chromium is on
-    let chromeBase = 0; // entries before this are not in Chromium's history (a new session)
-    let pendingDir = 0;
-    let session = null; // { id, viewUrl, query }
-    let creating = null;
-    let wantUrl = ''; // the address the newest openSession asked for (a session being made loads this one)
-    let frame = null;
-    let ready = false;
-    let loading = false;
+
+    /**
+     * Windows (#748). The device shows one page at a time and has no tabs; here Menu > New Window,
+     * Windows and Close Window keep up to MAX_WINDOWS pages open, built from the device's own menu
+     * rows only. Each window has its own history (entries, idx), address and title, scroll, Alchemy
+     * session and viewer, running Dreamscape app, and its own page boxes (.wmb-home, .wmb-gpage,
+     * .wmb-dsap, .wmb-core, .wmb-frame-wrap: one set per window in .wmb-view, hidden while another
+     * window shows), so a window comes back as it was left and is not loaded again. Favorites,
+     * History, the typed addresses, View / Zoom / Text Size and the options belong to the program
+     * and are shared.
+     * W is the window the code works on, cur the one on screen. They are the same except inside
+     * inWin(w, fn): what answers later (a viewer's messages, server replies, timers, an applet's
+     * calls) reaches its own window that way. What draws the bars or the page (render,
+     * renderAddress, setLoading, step, chrome65) acts only for the window on screen.
+     * MAX_WINDOWS 8: the Windows list stays a short menu in both versions, and every window may
+     * hold a running applet or one of Alchemy's 4 sessions (see "sessions").
+     */
+    const MAX_WINDOWS = 8;
+    const WINDOW_IDLE_MS = 300000; // a web page or applet in a window that is not on screen is let go after 5 minutes
+    const WIN_BOXES = ['home', 'gpage', 'dsap', 'core', 'frameWrap'];
+    let winSeq = 0;
+    function makeWin() {
+        return {
+            id: ++winSeq,
+            closed: false,
+            popup: false, // opened by a page (window.open, target=_blank)
+            shownAt: 0,
+            dom: null, // { home, gpage, dsap, dsapArea, core, frameWrap, touch }
+            scrolls: null,
+            entries: [homeEntry()],
+            idx: 0,
+            chromeAt: -1, // the entry Chromium is on
+            chromeBase: 0, // entries before this are not in Chromium's history (a new session)
+            pendingDir: 0,
+            session: null, // { id, viewUrl, query }
+            creating: null,
+            wantUrl: '', // the address the newest openSession asked for (a session being made loads this one)
+            frame: null,
+            ready: false,
+            loading: false,
+            idleTimer: 0,
+            pendingInspect: null,
+            pendingInspectAt: 0,
+            lastPushAt: 0, // a page link added an entry
+            lastInputAt: 0, // the last tap or key sent to the page
+            grimLoading: false, // a Grimoire page on its way (renderLocal)
+            localShown: null, // the entry drawn in .wmb-gpage
+            dsapShown: null, // the entry the running applet draws
+            dsapLoadSeq: 0,
+            dsapActivating: false,
+            dsapIdleTimer: 0,
+            dsapAddrMove: null, // { from, to }: setAddress just moved the address (host.setUrl); addToHistory may follow
+            dsapShell: null,
+            coreShown: null // the entry whose box is in .wmb-core
+        };
+    }
+    let wins = [makeWin()]; // in the order they were opened
+    let W = wins[0];
+    let cur = W;
+    let inDepth = 0;
+    function inWin(w, fn) {
+        if (!w || w.closed) return undefined;
+        const prev = W;
+        W = w;
+        inDepth++;
+        try { return fn(); } finally { inDepth--; W = inDepth ? prev : cur; }
+    }
     let visible = false;
-    let idleTimer = 0;
     let favorites = [];
     let favoritesLoaded = false;
     let settings = null;
     let addrEditing = false;
     // the newest inspect request: 'tap' | { x, y } (tap-and-hold at a point). The viewer keeps one too and
     // answers only the newest, so a single slot (with a time limit) stays in step with it.
-    let pendingInspect = null;
     const INSPECT_MS = 1500;
-    let pendingInspectAt = 0;
-    let lastPushAt = 0; // a page link added an entry
-    let lastInputAt = 0; // the last tap or key sent to the page
     let viewMode = 'column';
     let zoomKey = 'medium';
     let fullScreen = false;
@@ -139,7 +194,7 @@
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const isCurrent = () => !!(ws && ws.current === APP_ID);
-    const entry = () => entries[idx] || homeEntry();
+    const entry = () => W.entries[W.idx] || homeEntry();
     const onHome = () => !!entry().home;
     const srcsetOf = (name) => (window.wmShell ? window.wmShell.art.srcset(name) : `/static_images/wm61/${name}@2x.png 2x`);
     const img = (name, cls) => `<img class="${cls || ''}" src="/static_images/wm61/${name}.png" srcset="${srcsetOf(name)}" alt="" draggable="false">`;
@@ -201,8 +256,10 @@
         if (!next || typeof next !== 'object') return;
         settings = Object.assign({}, settings || {}, next);
         if (Array.isArray(settings.bookmarks)) { favorites = settings.bookmarks.slice(); favoritesLoaded = true; }
-        if (ready) post({ type: 'grimoire-browser-settings', settings });
-        syncAudio();
+        wins.forEach((w) => inWin(w, () => {
+            if (W.ready) post({ type: 'grimoire-browser-settings', settings });
+            syncAudio();
+        }));
     });
 
     async function saveFavorites(next) {
@@ -256,36 +313,38 @@
     }
 
     function layoutFrame() {
-        if (!frame || !els.view.clientWidth) return;
+        if (!W.frame || !els.view.clientWidth) return;
         const g = geometry();
-        frame.style.width = `${g.L}px`;
-        frame.style.height = `${g.Lh}px`;
-        frame.style.transform = `scale(${1 / g.s})`;
-        if (ready) {
+        W.frame.style.width = `${g.L}px`;
+        W.frame.style.height = `${g.Lh}px`;
+        W.frame.style.transform = `scale(${1 / g.s})`;
+        if (W.ready) {
             post({ type: 'grimoire-browser-zoom', value: g.z });
             // a still at the phone's own pixels once the page settles (older viewers ignore it)
             post({ type: 'grimoire-browser-scale', value: g.d });
         }
     }
 
-    function post(msg) {
-        if (frame && frame.contentWindow) frame.contentWindow.postMessage(msg, location.origin);
+    function postTo(w, msg) {
+        if (w && w.frame && w.frame.contentWindow) w.frame.contentWindow.postMessage(msg, location.origin);
     }
+
+    function post(msg) { postTo(W, msg); }
 
     // ---------------------------------------------------------------- sessions
 
     function closeSession() {
-        clearTimeout(idleTimer);
-        idleTimer = 0;
-        const s = session;
-        session = null;
-        ready = false;
-        chromeAt = -1;
-        pendingInspect = null;
-        if (frame) { frame.remove(); frame = null; }
+        clearTimeout(W.idleTimer);
+        W.idleTimer = 0;
+        const s = W.session;
+        W.session = null;
+        W.ready = false;
+        W.chromeAt = -1;
+        W.pendingInspect = null;
+        if (W.frame) { W.frame.remove(); W.frame = null; }
         setLoading(false);
         if (!s) return Promise.resolve();
-        return fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(s.id), { method: 'DELETE', credentials: 'same-origin', keepalive: true }).catch(() => {});
+        return dropSession(s.id);
     }
 
     async function cannotConnect(detail) {
@@ -297,20 +356,58 @@
         });
     }
 
-    /** A new Alchemy session showing url (the entry at idx). */
+    const dropSession = (id) => fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id), { method: 'DELETE', credentials: 'same-origin', keepalive: true }).catch(() => {});
+
+    /** The viewer of W's session (a new one, or a page's own new window handed over by Alchemy). */
+    function attachSession(payload) {
+        W.session = { id: payload.sessionId || '', viewUrl: payload.viewUrl, query: String(payload.viewUrl).split('?')[1] || '' };
+        W.chromeAt = W.idx;
+        W.chromeBase = W.idx;
+        const frame = document.createElement('iframe');
+        W.frame = frame;
+        frame.className = 'wmb-frame';
+        frame.title = 'Web page';
+        frame.setAttribute('referrerpolicy', 'no-referrer');
+        frame.setAttribute('allow', 'autoplay; clipboard-read; clipboard-write');
+        if (W.dom) W.dom.frameWrap.prepend(frame);
+        layoutFrame();
+        frame.addEventListener('load', () => {
+            // the viewer's canvas keeps focus for keys; its focus ring is not part of the page
+            try {
+                const st = frame.contentDocument.createElement('style');
+                st.textContent = 'canvas:focus{outline:none}';
+                frame.contentDocument.head.appendChild(st);
+            } catch (_) { /* not ours */ }
+        });
+        frame.src = payload.viewUrl;
+        if (pageAway()) scheduleIdleClose();
+    }
+
+    /** Alchemy is full: the page of our window that has been off screen the longest is let go (it reopens from its address). */
+    function releaseOldestSession(but) {
+        let old = null;
+        for (const w of wins) if (w !== but && w !== cur && w.session && (!old || w.shownAt < old.shownAt)) old = w;
+        if (!old) return null;
+        return inWin(old, closeSession);
+    }
+
+    /** A new Alchemy session showing url (the entry at idx) in the window W. */
     async function openSession(url) {
+        const w = W;
         // a later request (a link from another app, a favorite tapped while the first page is still
         // being made) wins: the session is made for the newest address
-        wantUrl = url;
-        if (creating) return creating;
-        creating = (async () => {
+        w.wantUrl = url;
+        if (w.creating) return w.creating;
+        w.creating = (async () => {
             await closeSession();
             let res;
             let payload = {};
+            let freed = false;
             for (;;) {
+                if (w.closed) return false;
                 const g = geometry();
-                const asked = wantUrl;
-                setLoading(true);
+                const asked = w.wantUrl;
+                inWin(w, () => setLoading(true));
                 try {
                     res = await fetch('/api/grimoire-browser/sessions', {
                         method: 'POST',
@@ -319,56 +416,45 @@
                         body: JSON.stringify({ url: asked, width: g.L, height: g.Lh, popup: false })
                     });
                 } catch (_) {
-                    await cannotConnect();
+                    await inWin(w, () => cannotConnect());
                     return false;
                 }
                 payload = {};
                 try { payload = await res.json(); } catch (_) { /* empty */ }
-                if (wantUrl === asked || !res.ok || !payload.viewUrl) break;
+                // the window was closed while its page was made: the new session is let go
+                if (w.closed) { if (payload.sessionId) dropSession(payload.sessionId); return false; }
+                if (res.status === 429 && !freed) {
+                    // Alchemy's 4 pages are all in use: one of our own windows behind this one gives its page up
+                    const gone = releaseOldestSession(w);
+                    if (gone) { freed = true; await gone; continue; }
+                }
+                if (w.wantUrl === asked || !res.ok || !payload.viewUrl) break;
                 // another address was asked for while this one was made: let it go and make the newest
-                if (payload.sessionId) fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(payload.sessionId), { method: 'DELETE', credentials: 'same-origin', keepalive: true }).catch(() => {});
+                if (payload.sessionId) dropSession(payload.sessionId);
             }
             if (res.status === 429) {
-                await cannotConnect('Alchemy already has as many pages open as it can (4). Close a web page on the desktop, then try again.');
+                await inWin(w, () => cannotConnect('Alchemy already has as many pages open as it can (4). Close a web page on the desktop, then try again.'));
                 return false;
             }
             if (!res.ok || !payload.viewUrl) {
-                await cannotConnect(res.status === 503 ? 'The page cannot be displayed. Alchemy is not set up on this server.' : null);
+                await inWin(w, () => cannotConnect(res.status === 503 ? 'The page cannot be displayed. Alchemy is not set up on this server.' : null));
                 return false;
             }
-            session = { id: payload.sessionId || '', viewUrl: payload.viewUrl, query: String(payload.viewUrl).split('?')[1] || '' };
-            chromeAt = idx;
-            chromeBase = idx;
-            frame = document.createElement('iframe');
-            frame.className = 'wmb-frame';
-            frame.title = 'Web page';
-            frame.setAttribute('referrerpolicy', 'no-referrer');
-            frame.setAttribute('allow', 'autoplay; clipboard-read; clipboard-write');
-            els.frameWrap.prepend(frame);
-            layoutFrame();
-            frame.addEventListener('load', () => {
-                // the viewer's canvas keeps focus for keys; its focus ring is not part of the page
-                try {
-                    const st = frame.contentDocument.createElement('style');
-                    st.textContent = 'canvas:focus{outline:none}';
-                    frame.contentDocument.head.appendChild(st);
-                } catch (_) { /* not ours */ }
-            });
-            frame.src = payload.viewUrl;
-            if (pageAway()) scheduleIdleClose();
+            inWin(w, () => attachSession(payload));
             return true;
         })();
-        try { return await creating; } finally { creating = null; }
+        try { return await w.creating; } finally { w.creating = null; }
     }
 
-    function scheduleIdleClose() {
-        clearTimeout(idleTimer);
-        idleTimer = setTimeout(() => { idleTimer = 0; if (pageAway()) closeSession(); }, IDLE_CLOSE_MS);
+    function scheduleIdleClose(ms) {
+        const w = W;
+        clearTimeout(w.idleTimer);
+        w.idleTimer = setTimeout(() => inWin(w, () => { w.idleTimer = 0; if (pageAway()) closeSession(); }), ms || (visible && w !== cur ? WINDOW_IDLE_MS : IDLE_CLOSE_MS));
     }
 
-    /** The web page is not on screen: IE is hidden, or the start page, Favorites or History shows. */
+    /** The web page is not on screen: IE is hidden, another window shows, or the start page, Favorites or History shows. */
     function pageAway() {
-        return !visible || onHome() || !!sub;
+        return !visible || W !== cur || onHome() || !!sub;
     }
 
     /** The page left the screen (start page, Favorites, History): it falls silent and Alchemy lets it go
@@ -376,12 +462,12 @@
     function syncPageShown() {
         syncAudio();
         if (!visible) return;
-        if (pageAway()) { if (session && !idleTimer) scheduleIdleClose(); }
-        else if (idleTimer) { clearTimeout(idleTimer); idleTimer = 0; }
+        if (pageAway()) { if (W.session && !W.idleTimer) scheduleIdleClose(); }
+        else if (W.idleTimer) { clearTimeout(W.idleTimer); W.idleTimer = 0; }
     }
 
     function syncAudio() {
-        if (!ready) return;
+        if (!W.ready) return;
         const on = visible && !pageAway() && !document.hidden && !(settings && settings.audioEnabled === false);
         const vol = settings && settings.audioVolume !== undefined ? settings.audioVolume / 100 : 1;
         let master = 1;
@@ -393,12 +479,12 @@
 
     function webCount(upTo) {
         let n = 0;
-        for (let i = 0; i <= upTo && i < entries.length; i++) if (!entries[i].home) n++;
+        for (let i = 0; i <= upTo && i < W.entries.length; i++) if (!W.entries[i].home) n++;
         return n;
     }
 
     function step() {
-        if (ws) { ws.syncHistory(); if (isCurrent()) ws.refreshSoftKeys(); }
+        if (ws && W === cur) { ws.syncHistory(); if (isCurrent()) ws.refreshSoftKeys(); }
     }
 
     /** Go to a web address (typed, a favorite, a link from elsewhere). */
@@ -416,29 +502,32 @@
             else cannotOpen(raw);
             return;
         }
-        pendingInspect = null;
+        W.pendingInspect = null;
         closeSub();
         noteHistory(url, title);
-        entries = entries.slice(0, idx + 1);
-        entries.push({ url, title: title || '', pending: true });
-        idx = entries.length - 1;
-        pendingDir = 0;
+        W.entries = W.entries.slice(0, W.idx + 1);
+        W.entries.push({ url, title: title || '', pending: true });
+        W.idx = W.entries.length - 1;
+        W.pendingDir = 0;
         render();
         step();
-        if (session && frame && ready) {
-            chromeAt = idx;
+        if (W.session && W.frame && W.ready) {
+            W.chromeAt = W.idx;
             setLoading(true);
             post({ type: 'grimoire-browser-navigate', url });
         } else {
-            const added = entries[idx];
-            openSession(url).then((ok) => {
+            const added = W.entries[W.idx];
+            const w = W;
+            openSession(url).then((ok) => inWin(w, () => {
                 // no page: back to where the address was typed
-                if (ok || entries[idx] !== added) return;
-                entries.splice(idx, 1);
-                idx -= 1;
+                if (ok || W.entries[W.idx] !== added) return;
+                W.entries.splice(W.idx, 1);
+                W.idx -= 1;
+                // a window a page opened had nothing before it: the start page
+                if (!W.entries.length) { W.entries = [homeEntry()]; W.idx = 0; }
                 render();
                 step();
-            });
+            }));
         }
     }
 
@@ -449,10 +538,10 @@
     }
 
     function pushLocal(e) {
-        pendingInspect = null;
-        entries = entries.slice(0, idx + 1);
-        entries.push(e);
-        idx = entries.length - 1;
+        W.pendingInspect = null;
+        W.entries = W.entries.slice(0, W.idx + 1);
+        W.entries.push(e);
+        W.idx = W.entries.length - 1;
         render();
         step();
     }
@@ -466,41 +555,41 @@
 
     /** Move to entries[target]: the start page shows here; web pages step Chromium's history where it matches. */
     function goTo(target) {
-        if (target < 0 || target >= entries.length || target === idx) return false;
-        idx = target;
-        pendingDir = 0;
-        pendingInspect = null;
-        const e = entries[target];
+        if (target < 0 || target >= W.entries.length || target === W.idx) return false;
+        W.idx = target;
+        W.pendingDir = 0;
+        W.pendingInspect = null;
+        const e = W.entries[target];
         render();
         step();
         if (e.home) return true;
-        if (!session) { e.pending = true; chromeBase = target; openSession(e.url); return true; }
-        const steps = chromeAt >= chromeBase && target >= chromeBase ? webCount(target) - webCount(chromeAt) : NaN;
+        if (!W.session) { e.pending = true; W.chromeBase = target; openSession(e.url); return true; }
+        const steps = W.chromeAt >= W.chromeBase && target >= W.chromeBase ? webCount(target) - webCount(W.chromeAt) : NaN;
         if (steps === 0) return true;
         setLoading(true);
         if (steps === 1 || steps === -1) {
-            pendingDir = steps;
-            chromeAt = target;
+            W.pendingDir = steps;
+            W.chromeAt = target;
             post({ type: 'grimoire-browser-history', dir: steps });
         } else {
             e.pending = true;
-            chromeAt = target;
-            chromeBase = target;
+            W.chromeAt = target;
+            W.chromeBase = target;
             post({ type: 'grimoire-browser-navigate', url: e.url });
         }
         return true;
     }
 
     function goBack() {
-        if (sub) { if (v65) subDone65(false); else closeSub(); return true; }
-        return goTo(idx - 1);
+        if (sub && W === cur) { if (v65) subDone65(false); else closeSub(); return true; }
+        return goTo(W.idx - 1);
     }
 
-    function goForward() { goTo(idx + 1); }
+    function goForward() { goTo(W.idx + 1); }
 
     function refresh() {
         if (onHome()) { renderLocal(true); return; }
-        if (!session) { entry().pending = true; openSession(entry().url); return; }
+        if (!W.session) { entry().pending = true; openSession(entry().url); return; }
         setLoading(true);
         post({ type: 'grimoire-browser-reload' });
     }
@@ -518,59 +607,59 @@
         const title = data.title || '';
         if (data.type === 'grimoire-browser-navigating' || data.navigating) { setLoading(true); return; }
         setLoading(false);
-        let e = entries[chromeAt >= 0 ? chromeAt : idx];
-        if (pendingDir) {
+        let e = W.entries[W.chromeAt >= 0 ? W.chromeAt : W.idx];
+        if (W.pendingDir) {
             // Chromium stepped where we asked: it may land on another address (a redirect)
-            pendingDir = 0;
-            e = entries[chromeAt];
+            W.pendingDir = 0;
+            e = W.entries[W.chromeAt];
             if (e && !e.home) { e.url = url; if (title) e.title = title; }
         } else if (e && !e.home && (e.pending || e.url === url)) {
-            if (e.pending) lastPushAt = Date.now();
+            if (e.pending) W.lastPushAt = Date.now();
             e.url = url;
             if (title) e.title = title;
             e.pending = false;
-        } else if (e && !e.home && lastPushAt > lastInputAt && Date.now() - lastPushAt < 1500) {
+        } else if (e && !e.home && W.lastPushAt > W.lastInputAt && Date.now() - W.lastPushAt < 1500) {
             // a second address straight after a new page, with no tap or key between: the page
             // replaced its address (replaceState, a script redirect), Chromium has no new entry
             e.url = url;
             if (title) e.title = title;
         } else {
             // a link in the page: a new page after the one Chromium is on
-            lastPushAt = Date.now();
-            const at = chromeAt >= 0 ? chromeAt : idx;
-            entries = entries.slice(0, at + 1);
-            entries.push({ url, title });
-            idx = entries.length - 1;
-            chromeAt = idx;
+            W.lastPushAt = Date.now();
+            const at = W.chromeAt >= 0 ? W.chromeAt : W.idx;
+            W.entries = W.entries.slice(0, at + 1);
+            W.entries.push({ url, title });
+            W.idx = W.entries.length - 1;
+            W.chromeAt = W.idx;
             noteHistory(url, title);
             step();
         }
         if (e && !e.home && title) noteHistory(e.url, e.title);
-        if (chromeAt === idx) renderAddress();
+        // 6.5: the title bar names the page as soon as its title is known
+        if (W.chromeAt === W.idx) { renderAddress(); chrome65(); }
     }
 
     function onHistoryEnd(dir) {
         // Chromium has nothing that way: open the entry ourselves
-        pendingDir = 0;
-        const e = entries[chromeAt];
+        W.pendingDir = 0;
+        const e = W.entries[W.chromeAt];
         if (!e) return;
         if (e.home) { setLoading(false); return; }
         e.pending = true;
-        chromeBase = chromeAt;
+        W.chromeBase = W.chromeAt;
         post({ type: 'grimoire-browser-navigate', url: e.url });
         void dir;
     }
 
-    let grimLoading = false; // a Grimoire page on its way (renderLocal)
     function setGrimLoading(on) {
-        grimLoading = !!on;
-        if (page) page.classList.toggle('is-loading', (loading && !onHome()) || (grimLoading && onHome()));
+        W.grimLoading = !!on;
+        if (page && W === cur) page.classList.toggle('is-loading', (W.loading && !onHome()) || (W.grimLoading && onHome()));
     }
 
     function setLoading(on) {
-        loading = !!on;
-        if (!page) return;
-        page.classList.toggle('is-loading', (loading && !onHome()) || (grimLoading && onHome()));
+        W.loading = !!on;
+        if (!page || W !== cur) return;
+        page.classList.toggle('is-loading', (W.loading && !onHome()) || (W.grimLoading && onHome()));
         renderGoButton();
         if (isCurrent()) ws.refreshSoftKeys();
     }
@@ -578,12 +667,18 @@
     // ---------------------------------------------------------------- frame messages
 
     function onMessage(event) {
-        if (!frame || event.source !== frame.contentWindow) return;
+        // each window's viewer answers for its own window, on screen or not
+        const w = wins.find((x) => x.frame && x.frame.contentWindow === event.source);
+        if (!w) return;
         const data = event.data;
         if (!data || typeof data.type !== 'string') return;
+        inWin(w, () => onViewerMessage(data));
+    }
+
+    function onViewerMessage(data) {
         switch (data.type) {
             case 'grimoire-browser-ready':
-                ready = true;
+                W.ready = true;
                 layoutFrame();
                 syncAudio();
                 if (settings) post({ type: 'grimoire-browser-settings', settings });
@@ -618,12 +713,14 @@
                 break;
             case 'grimoire-browser-closed':
                 // the page closed itself: the session is gone
-                session = null;
-                ready = false;
-                if (frame) { frame.remove(); frame = null; }
-                chromeAt = -1;
+                W.session = null;
+                W.ready = false;
+                if (W.frame) { W.frame.remove(); W.frame = null; }
+                W.chromeAt = -1;
                 setLoading(false);
-                goHome();
+                // a window the page opened goes with it (a sign-in window closing itself); else the start page
+                if (W.popup && wins.length > 1) closeWindow(W.id);
+                else goHome();
                 break;
             case 'grimoire-browser-reopen':
                 if (webUrl(data.url)) { entry().pending = true; openSession(webUrl(data.url)); }
@@ -642,10 +739,39 @@
         }
     }
 
+    /**
+     * A page asked for a new window (window.open, target=_blank). It opens in a new window here
+     * while one is free (a window that keeps its opener comes with its own Alchemy session, which
+     * the new window takes over as it is); with every window in use the page opens in the window
+     * that asked, the old one-page behaviour, and a session that came with it is let go. A window
+     * asked for by a page that is not on screen opens behind the one on screen.
+     */
     function onPopup(data) {
-        // one page at a time on the phone: a new window's page opens here; an adopted popup session is let go
-        if (data.sessionId) fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(data.sessionId), { method: 'DELETE', credentials: 'same-origin', keepalive: true }).catch(() => {});
         const url = webUrl(data.url);
+        const own = data.sessionId && data.viewerToken
+            ? { sessionId: data.sessionId, viewUrl: '/api/grimoire-browser/view/' + encodeURIComponent(data.sessionId) + '?t=' + encodeURIComponent(data.viewerToken) }
+            : null;
+        if (page && wins.length < MAX_WINDOWS && (own || url)) {
+            const front = W === cur;
+            const w = makeWin();
+            w.popup = true;
+            w.entries = [];
+            w.idx = -1;
+            wins.push(w);
+            buildDom(w);
+            if (front) switchTo(w.id);
+            inWin(w, () => {
+                if (!own) { navigate(url); return; }
+                W.entries = [{ url: url || '', title: '', pending: true }];
+                W.idx = 0;
+                attachSession(own);
+                setLoading(true);
+                render();
+                step();
+            });
+            return;
+        }
+        if (data.sessionId) dropSession(data.sessionId);
         if (url) navigate(url);
     }
 
@@ -656,8 +782,9 @@
      * remote browser's file-chooser routes and the page's input gets them; Cancel leaves it empty.
      */
     function chooseFile(data) {
-        const s = session;
-        const reply = (cancel) => post({ type: 'grimoire-browser-file-chooser-reply', id: data.id, cancel: !!cancel });
+        const s = W.session;
+        const w = W;
+        const reply = (cancel) => postTo(w, { type: 'grimoire-browser-file-chooser-reply', id: data.id, cancel: !!cancel });
         if (!s || !window.wmFileDialogs) {
             reply(true);
             ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: 'Uploading files from this phone is not supported. Use the desktop to choose files for this page.' });
@@ -724,15 +851,16 @@
             onCancel() {
                 if (!answered) reply(true);
                 // left for another app from the dialog: the hidden page is let go after a while again
-                if (!visible && session) scheduleIdleClose();
+                inWin(w, () => { if (!visible && W.session) scheduleIdleClose(); });
             }
         });
         // the dialog hid IE: the page waits for the answer, not let go meanwhile
-        clearTimeout(idleTimer);
-        idleTimer = 0;
+        clearTimeout(W.idleTimer);
+        W.idleTimer = 0;
     }
 
     async function showDialog(data) {
+        const w = W;
         const reply = { type: 'grimoire-browser-dialog-reply', id: data.id, accept: false };
         const text = String(data.message || '').slice(0, 2000);
         if (data.kind === 'prompt') {
@@ -758,10 +886,12 @@
             });
             reply.accept = v === true;
         }
-        post(reply);
+        postTo(w, reply);
     }
 
     function showSelect(data) {
+        // a list of a page that is not on screen has nowhere to open
+        if (W !== cur || !W.frame) return;
         const items = [];
         let group = '';
         data.options.forEach((o, i) => {
@@ -769,7 +899,7 @@
             group = o.group || '';
             items.push({ label: o.label || ' ', radio: i === data.selected, disabled: !!o.disabled, indent: o.group ? 1 : 0, action: () => post({ type: 'grimoire-browser-select-pick', index: i }) });
         });
-        const r = frame.getBoundingClientRect();
+        const r = W.frame.getBoundingClientRect();
         const s = geometry().s;
         ws.menuAt(r.left + (Number(data.clientX) || 0) / s, r.top + (Number(data.clientY) || 0) / s, items);
     }
@@ -795,6 +925,7 @@
     }
 
     async function saveDownload(ref, filename) {
+        const session = W.session;
         if (!session) return;
         let ws0 = 'default';
         try {
@@ -832,7 +963,7 @@
     }
 
     function viewerCanvas() {
-        try { return frame && frame.contentDocument && frame.contentDocument.getElementById('view'); } catch (_) { return null; }
+        try { return W.frame && W.frame.contentDocument && W.frame.contentDocument.getElementById('view'); } catch (_) { return null; }
     }
 
     /** A pointer / mouse event on the viewer's canvas at a page point (phone px). */
@@ -840,7 +971,7 @@
         const canvas = viewerCanvas();
         if (!canvas) return false;
         const s = geometry().s;
-        const win = frame.contentWindow;
+        const win = W.frame.contentWindow;
         const init = Object.assign({ bubbles: true, cancelable: true, clientX: p.x * s, clientY: p.y * s, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true }, extra || {});
         const Ctor = type.startsWith('pointer') ? win.PointerEvent : type === 'wheel' ? win.WheelEvent : win.MouseEvent;
         canvas.dispatchEvent(new Ctor(type, init));
@@ -943,7 +1074,7 @@
 
     function tap(x, y) {
         const p = { x, y };
-        lastInputAt = Date.now();
+        W.lastInputAt = Date.now();
         if (!fire('pointerdown', p)) return;
         fire('pointerup', p);
         // is it an edit field? the viewer's inspect answers (grimoire-browser-menu); a tap there raises the keyboard
@@ -952,8 +1083,8 @@
     }
 
     function askInspect(purpose) {
-        pendingInspect = purpose;
-        pendingInspectAt = Date.now();
+        W.pendingInspect = purpose;
+        W.pendingInspectAt = Date.now();
     }
 
     function longPress(x, y, cx, cy) {
@@ -971,10 +1102,10 @@
     }
 
     function onInspect(data) {
-        const purpose = pendingInspect;
-        pendingInspect = null;
+        const purpose = W.pendingInspect;
+        W.pendingInspect = null;
         // an answer that comes too late (the page was busy, or it moved on) is not the newest tap's
-        if (!purpose || Date.now() - pendingInspectAt > INSPECT_MS) return;
+        if (!purpose || W !== cur || Date.now() - W.pendingInspectAt > INSPECT_MS) return;
         if (purpose === 'tap') {
             if (data.editable) focusIme();
             else if (document.activeElement === els.ime) els.ime.blur();
@@ -1001,13 +1132,13 @@
             // device (tap and hold on the page): Zoom, Make Selection, Back, Refresh, Add to Favorites, Favorites
             items.push({ label: 'Zoom', action: openZoom65 });
             items.push({ label: 'Make Selection', disabled: true });
-            items.push({ label: 'Back', disabled: idx < 1, action: goBack });
+            items.push({ label: 'Back', disabled: W.idx < 1, action: goBack });
             items.push({ label: 'Refresh', action: refresh });
             items.push({ label: 'Add to Favorites', action: () => addFavorite() });
             items.push({ label: 'Favorites', action: () => openSub('favorites') });
         }
         if (!items.length) {
-            items.push({ label: 'Back', disabled: idx < 1, action: goBack });
+            items.push({ label: 'Back', disabled: W.idx < 1, action: goBack });
             items.push({ label: 'Refresh', action: refresh });
             items.push({ label: 'Add to Favorites...', action: () => addFavorite() });
             items.push({ label: 'Copy Link', action: () => copyText(entry().url) });
@@ -1027,9 +1158,9 @@
      * focus from the hidden text box and closes the phone keyboard after one key.
      */
     function viewerKey(type, key) {
-        lastInputAt = Date.now();
+        W.lastInputAt = Date.now();
         try {
-            const win = frame && frame.contentWindow;
+            const win = W.frame && W.frame.contentWindow;
             if (!win) return false;
             win.dispatchEvent(new win.KeyboardEvent(type, { key, code: key.length === 1 ? '' : key, bubbles: true, cancelable: true }));
             return true;
@@ -1060,7 +1191,7 @@
     }
 
     function focusIme() {
-        if (!frame) return;
+        if (!W.frame) return;
         resetIme();
         els.ime.focus({ preventScroll: true });
     }
@@ -1155,12 +1286,13 @@
     }
 
     function closeSub() {
-        if (!sub) return;
+        // Favorites and History lie over the window on screen: a page moving on behind it leaves them be
+        if (!sub || W !== cur) return;
         sub = null;
         if (els.sub) els.sub.hidden = true;
         page.classList.remove('has-sub');
         // back on a web page whose session was let go while the list showed: it reopens from its address
-        if (visible && !onHome() && !session && !creating) { entry().pending = true; openSession(entry().url); }
+        if (visible && !onHome() && !W.session && !W.creating) { entry().pending = true; openSession(entry().url); }
         syncPageShown();
         step();
         chrome65();
@@ -1226,13 +1358,54 @@
 
     // ---------------------------------------------------------------- menus
 
+    /**
+     * Menu > New Window, Windows >, Close Window (#748). The device has no windows; the rows are
+     * its own menu rows. Windows lists the open pages by title (else address) in the order they
+     * were opened, the current one under the menu's own mark (6.1: the dot of View > One Column;
+     * 6.5: the tick of View > Mobile / Desktop, which is how IE Mobile 6 marks one of a set).
+     * New Window is grey with MAX_WINDOWS open, Close Window with one.
+     */
+    function winTitle(w) {
+        const e = w.entries[w.idx] || homeEntry();
+        return String(e.title || e.url || 'Internet Explorer').replace(/\s+/g, ' ').trim();
+    }
+
+    /** A long title ends in ... as CE cuts a menu row that does not fit. The row holds about 24
+     *  letters of the menu font in 6.1 and 22 in 6.5 (wm-popup's width limit, measured in the test
+     *  tab at the device's size); capitals and m / w are half again as wide, CJK twice. */
+    function menuLabel(text) {
+        const MAX = v65 ? 22 : 24;
+        let n = 0;
+        let out = '';
+        for (const ch of text) {
+            n += ch.codePointAt(0) > 0x2e7f ? 2 : /[A-Zmw@%]/.test(ch) ? 1.5 : 1;
+            if (n > MAX) return out.trimEnd() + '...';
+            out += ch;
+        }
+        return text;
+    }
+
+    function windowItems() {
+        return [
+            { label: 'New Window', disabled: wins.length >= MAX_WINDOWS, action: () => { newWindow(); } },
+            {
+                label: 'Windows',
+                submenu: () => wins.map((w) => Object.assign({ label: menuLabel(winTitle(w)), action: () => { switchTo(w.id); } }, v65 ? { checked: w === cur } : { radio: w === cur }))
+            },
+            { label: 'Close Window', disabled: wins.length < 2, action: () => { closeWindow(); } }
+        ];
+    }
+
     function mainMenu() {
         const web = !onHome();
         return [
-            { label: 'Back', disabled: idx < 1, action: goBack },
-            { label: 'Forward', disabled: idx >= entries.length - 1, action: goForward },
+            { label: 'Back', disabled: W.idx < 1, action: goBack },
+            { label: 'Forward', disabled: W.idx >= W.entries.length - 1, action: goForward },
             { label: 'Home', action: goHome },
-            loading && web ? { label: 'Stop', action: stop } : { label: 'Refresh', action: refresh },
+            W.loading && web ? { label: 'Stop', action: stop } : { label: 'Refresh', action: refresh },
+            // device (Menu: Zoom Out ... Forward, Refresh, View in one block, a rule, Edit, Tools): the
+            // window rows close the block of page commands, after Refresh
+            ...windowItems(),
             '-',
             { label: 'Add to Favorites...', action: () => addFavorite() },
             { label: 'History', action: () => openSub('history') },
@@ -1247,7 +1420,7 @@
                 label: 'Tools',
                 submenu: [
                     { label: 'Copy Link', action: () => copyText(entry().url) },
-                    { label: 'Paste', disabled: !web || !frame, action: pasteFromClipboard },
+                    { label: 'Paste', disabled: !web || !W.frame, action: pasteFromClipboard },
                     { label: 'Clear History', action: clearHistory },
                     '-',
                     { label: 'Properties', action: properties }
@@ -1370,7 +1543,7 @@
         docSitesAsked = true;
         window.wsClient.sendMessage('get_wiki_home', {}).then((r) => {
             docSites = ((r && r.sites) || []).filter((x) => x && x.id && x.kind !== 'fandom');
-            if (onHome() && entry().grim.kind === 'home') renderHomeLists();
+            wins.forEach((w) => inWin(w, () => { if (W.dom && onHome() && entry().grim.kind === 'home') renderHomeLists(); }));
         }).catch(() => { docSitesAsked = false; later(); });
     }
 
@@ -1409,7 +1582,6 @@
         }
     }
 
-    let localShown = null; // the entry drawn in .wmb-gpage
 
     /** Draw the Grimoire entry on screen (again with force: Refresh). */
     function renderLocal(force) {
@@ -1418,13 +1590,13 @@
         if (e.grim.kind === 'home') { renderHomeLists(); return; }
         if (e.grim.kind === 'dsap') { renderDsap(e, force); return; }
         if (e.grim.kind === 'core') { renderCore(e, force); return; }
-        if (localShown === e && !force) {
+        if (W.localShown === e && !force) {
             // back on a page whose request is still out (the start page was shown meanwhile): its ring again
             if (!e.html && e.pending) { setGrimLoading(true); return; }
             // already on screen as it is (#723 review: a page that arrived while away was left blank)
             if (e.html && els.gpage.childElementCount) return;
         }
-        localShown = e;
+        W.localShown = e;
         setGrimLoading(false);
         const box = els.gpage;
         // Back and Forward show a page as it was left (its scroll too); Refresh asks the server again
@@ -1440,16 +1612,17 @@
         box.classList.remove('is-restoring');
         // a Grimoire page is browsing like a web page: IE's busy ring turns while it comes, the page is blank
         box.innerHTML = '';
-        const still = () => localShown === e && entry() === e;
+        const w = W;
+        const still = () => w.localShown === e && w.entries[w.idx] === e;
         const ws_ = window.wsClient;
         if (!ws_ || !ws_.isConnected || !ws_.isConnected()) {
             box.innerHTML = '<div class="wmb-g-note">The Grimoire cannot be reached: this phone is not connected to Dreamscape. Try again later.</div>';
-            localShown = null;
+            W.localShown = null;
             return;
         }
         setGrimLoading(true);
         e.pending = true;
-        loadGrimPage(e.grim, force).finally(() => { e.pending = false; if (localShown === e) setGrimLoading(false); }).then((html) => {
+        loadGrimPage(e.grim, force).finally(() => { e.pending = false; if (w.localShown === e) inWin(w, () => setGrimLoading(false)); }).then((html) => {
             // kept even when the user went elsewhere meanwhile: Forward shows it without asking again
             e.html = html;
             e.scroll = 0;
@@ -1461,7 +1634,7 @@
         }).catch((err) => {
             if (!still()) return;
             box.innerHTML = `<div class="wmb-g-note">${esc((err && err.message) || 'The page cannot be displayed.')}</div>`;
-            localShown = null;
+            w.localShown = null;
         });
     }
 
@@ -1590,11 +1763,6 @@
      * its address. Addresses with no applet behind them (or a Grimoire domain with no phone page)
      * get a WM notification.
      */
-    let dsapShown = null; // the entry the running applet draws
-    let dsapLoadSeq = 0;
-    let dsapActivating = false;
-    let dsapIdleTimer = 0;
-    let dsapAddrMove = null; // { from, to }: setAddress just moved the address (host.setUrl); addToHistory may follow
 
     const dsapApi = () => typeof window.resolveDsap === 'function' && typeof window.activateDsapOnShell === 'function';
 
@@ -1635,7 +1803,7 @@
         const cur = entry();
         if (cur.home && cur.grim.kind === 'dsap' && cur.url === m.canonicalUrl) {
             // already on it: shown again (started again if it was stopped)
-            if (dsapShown !== cur) render();
+            if (W.dsapShown !== cur) render();
             return;
         }
         pushLocal({ home: true, grim: { kind: 'dsap' }, url: m.canonicalUrl, title: title || m.entry.title || m.displayPath });
@@ -1647,81 +1815,84 @@
 
     /** Start the entry's applet on screen (again with force: Refresh). */
     function renderDsap(e, force) {
-        if (!force && dsapShown === e && dsapShell._dsapActive) return;
-        const seq = ++dsapLoadSeq;
+        if (!force && W.dsapShown === e && W.dsapShell._dsapActive) return;
+        const w = W;
+        const seq = ++W.dsapLoadSeq;
         let m = null;
         try { m = window.resolveDsap(e.url); } catch (_) { m = null; }
         if (!m) { leaveDsap(); dsapNote(`There is no Dreamscape app at ${e.url}.`); return; }
         // IE's busy ring while the applet's scripts load and it draws (a page load, not a wait cursor)
         setGrimLoading(true);
         const paint = () => (ws && typeof ws.afterPaint === 'function' ? ws.afterPaint() : Promise.resolve());
-        Promise.resolve(window.ensureDsapEntryReady(m.entry)).then((ok) => paint().then(() => ok)).then((ok) => {
-            if (seq !== dsapLoadSeq || entry() !== e) return;
+        Promise.resolve(window.ensureDsapEntryReady(m.entry)).then((ok) => paint().then(() => ok)).then((ok) => inWin(w, () => {
+            if (seq !== W.dsapLoadSeq || entry() !== e) return;
             if (!ok) throw new Error('load');
-            dsapShown = e;
-            dsapAddrMove = null;
-            dsapActivating = true;
+            W.dsapShown = e;
+            W.dsapAddrMove = null;
+            W.dsapActivating = true;
             let done = false;
-            try { done = window.activateDsapOnShell(dsapShell, e.url, { force: true }); } finally { dsapActivating = false; }
+            try { done = window.activateDsapOnShell(W.dsapShell, e.url, { force: true }); } finally { W.dsapActivating = false; }
             if (!done) throw new Error('activate');
             // DSAP-SMF applets take WM's white form (wm-dsap.css), not the desktop's grey page
-            const root = dsapShell._dsapState && dsapShell._dsapState.rootEl;
+            const root = W.dsapShell._dsapState && W.dsapShell._dsapState.rootEl;
             if (root && root.classList.contains('dsap-smf')) els.dsap.style.backgroundColor = '';
             els.dsap.scrollTop = 0;
             renderAddress();
             noteHistory(e.url, e.title);
-        }).catch((err) => {
-            if (seq !== dsapLoadSeq || entry() !== e) return;
+        })).catch((err) => inWin(w, () => {
+            if (seq !== W.dsapLoadSeq || entry() !== e) return;
             console.warn('[wmBrowser] dsap', e.url, err);
             leaveDsap();
             setGrimLoading(false);
             dsapNote('The page cannot be displayed. The Dreamscape app did not start; try Refresh.');
-        }).finally(() => {
-            if (seq === dsapLoadSeq) setGrimLoading(false);
-        });
+        })).finally(() => inWin(w, () => {
+            if (seq === W.dsapLoadSeq) setGrimLoading(false);
+        }));
     }
 
     /** Stop the applet (another page shows, or IE stayed behind another app). */
     function leaveDsap() {
-        dsapLoadSeq++;
-        dsapAddrMove = null;
-        clearTimeout(dsapIdleTimer);
-        dsapIdleTimer = 0;
-        if (dsapShell._dsapState) {
-            try { window.deactivateDsapOnShell(dsapShell); } catch (err) { console.warn('[wmBrowser] dsap stop', err); }
+        W.dsapLoadSeq++;
+        W.dsapAddrMove = null;
+        clearTimeout(W.dsapIdleTimer);
+        W.dsapIdleTimer = 0;
+        if (W.dsapShell && W.dsapShell._dsapState) {
+            try { window.deactivateDsapOnShell(W.dsapShell); } catch (err) { console.warn('[wmBrowser] dsap stop', err); }
         }
-        if (dsapShown || els.dsapArea.childElementCount) els.dsapArea.innerHTML = '';
+        if (!W.dom) { W.dsapShown = null; return; }
+        if (W.dsapShown || els.dsapArea.childElementCount) els.dsapArea.innerHTML = '';
         els.dsap.style.backgroundColor = '';
-        dsapShown = null;
+        W.dsapShown = null;
     }
 
-    /** The Grimoire window's surface as the applets use it (dsapRegistry.js createDsapHost / activateDsapOnShell). */
-    const dsapShell = {
+    /** The Grimoire window's surface as the applets use it (dsapRegistry.js createDsapHost / activateDsapOnShell):
+     *  one per IE window (makeDsapShell), each call reaching its own window. */
+    const dsapShellProto = {
         displayArea: null,
         searchBody: null,
         _dsapState: null,
         _dsapActive: false,
         setAddress(o) {
             const url = String((o && (o.displayUrl || o.url)) || '').trim();
-            if (!url || !dsapShown) return;
-            if (!dsapActivating && url !== dsapShown.url) dsapAddrMove = { from: dsapShown.url, to: url };
-            dsapShown.url = url;
-            if (entry() === dsapShown) renderAddress();
+            if (!url || !W.dsapShown) return;
+            if (!W.dsapActivating && url !== W.dsapShown.url) W.dsapAddrMove = { from: W.dsapShown.url, to: url };
+            W.dsapShown.url = url;
+            if (entry() === W.dsapShown) renderAddress();
         },
         addToHistory(h) {
             const url = String((h && h.url) || '').trim();
-            if (!url || !dsapShown) return;
-            const move = dsapAddrMove;
-            dsapAddrMove = null;
-            if (dsapActivating || entry() !== dsapShown) { dsapShown.url = url; return; }
+            if (!url || !W.dsapShown) return;
+            const move = W.dsapAddrMove;
+            W.dsapAddrMove = null;
+            if (W.dsapActivating || entry() !== W.dsapShown) { W.dsapShown.url = url; return; }
             // the applet went to another of its pages (host.setUrl): a new IE entry with the same running applet
-            if (move && move.to === url) dsapShown.url = move.from;
-            if (dsapShown.url === url) return;
-            const next = { home: true, grim: { kind: 'dsap' }, url, title: (h && h.title) || dsapShown.title };
-            entries = entries.slice(0, idx + 1);
-            entries.push(next);
-            idx = entries.length - 1;
-            dsapShown = next;
+            if (move && move.to === url) W.dsapShown.url = move.from;
+            if (W.dsapShown.url === url) return;
+            const next = { home: true, grim: { kind: 'dsap' }, url, title: (h && h.title) || W.dsapShown.title };
+            W.entries = W.entries.slice(0, W.idx + 1);
+            W.entries.push(next);
+            W.idx = W.entries.length - 1;
+            W.dsapShown = next;
             noteHistory(url, next.title);
             renderAddress();
             step();
@@ -1735,6 +1906,15 @@
         // links are caught once on the page (onDsapClick)
         _interceptAllLinks() { /* onDsapClick */ }
     };
+
+    function makeDsapShell(w) {
+        const shell = { displayArea: w.dom.dsapArea, searchBody: null, _dsapState: null, _dsapActive: false };
+        for (const k of Object.keys(dsapShellProto)) {
+            const fn = dsapShellProto[k];
+            if (typeof fn === 'function') shell[k] = function () { const a = arguments; return inWin(w, () => fn.apply(shell, a)); };
+        }
+        return shell;
+    }
 
     /** Links in an applet: other applets, Grimoire pages and web pages open in IE; anchors scroll the page. */
     function onDsapClick(e) {
@@ -1769,7 +1949,7 @@
 
     /** Tap-and-hold in an applet: the applet's own context menu items (host.registerContextMenuItems) as a WM menu. */
     function onDsapContextMenu(e) {
-        const host = dsapShell._dsapState && dsapShell._dsapState.host;
+        const host = W.dsapShell && W.dsapShell._dsapState && W.dsapShell._dsapState.host;
         if (!host || typeof window.collectDsapHostContextMenuItems !== 'function') return;
         let items = [];
         try { items = window.collectDsapHostContextMenuItems(host, e.target).items || []; } catch (_) { items = []; }
@@ -1812,7 +1992,6 @@
      * (wm-browser.css). The pages keep their own look (the Apocrypha's dark zine) in one column.
      */
     const CORE_RE = /^(?:(?:rdf|edtx|dsap):\/\/)?(?:wiki\.fandom\.jp|fandom\.grimoire\.jp|en\.grimoire\.jp\/fandom|apocrypha\.737\.jp\.net)(?:[/?#]|$)/i;
-    let coreShown = null; // the entry whose box is in .wmb-core
     let PhonePane = null;
 
     /** Fandom or the Apocrypha (a bare host only with a scheme or the exact registered host). */
@@ -1841,6 +2020,7 @@
         PhonePane = class extends WikiDisplayBase {
             constructor(e, area) {
                 super();
+                this._w = W;
                 this._ie = e;
                 this.displayArea = area;
                 this._loads = 0;
@@ -1852,7 +2032,7 @@
                 const url = String((o && (o.displayUrl || o.fullUrl)) || '').trim();
                 if (!url) return;
                 this._ie.url = url;
-                if (entry() === this._ie) renderAddress();
+                inWin(this._w, () => { if (entry() === this._ie) renderAddress(); });
             }
             addToHistory(h) {
                 // IE keeps the history: the renderer's entry only names the page
@@ -1861,20 +2041,20 @@
                 if (title) this._ie.title = String(title);
                 noteHistory(this._ie.url, this._ie.title);
             }
-            updateNavigationButtons() { step(); }
-            navigate(url) { navigate(String(url || '').trim()); }
-            goBack() { goBack(); }
+            updateNavigationButtons() { inWin(this._w, step); }
+            navigate(url) { inWin(this._w, () => navigate(String(url || '').trim())); }
+            goBack() { inWin(this._w, goBack); }
             setNavigationLoading() { /* _track turns IE's busy ring */ }
             showGrimoireNavigationLoadingPage() { /* IE's busy ring */ }
             showGrimoireNavigateErrorPage() { this.displayArea.innerHTML = '<div class="wmb-g-note">The page cannot be displayed.</div>'; }
-            showStaticWikiSiteIndex(id) { if (id) openLocal({ kind: 'site', site: String(id) }); }
-            getTagWikiPageDirectly(name) { if (name) openLocal({ kind: 'wiki', tag: String(name) }); }
+            showStaticWikiSiteIndex(id) { if (id) inWin(this._w, () => openLocal({ kind: 'site', site: String(id) })); }
+            getTagWikiPageDirectly(name) { if (name) inWin(this._w, () => openLocal({ kind: 'wiki', tag: String(name) })); }
             _track(p) {
                 this._loads++;
                 this._sync();
                 return Promise.resolve(p).finally(() => { this._loads--; this._sync(); });
             }
-            _sync() { if (coreShown === this._ie && entry() === this._ie) setGrimLoading(this._loads > 0); }
+            _sync() { inWin(this._w, () => { if (W.coreShown === this._ie && entry() === this._ie) setGrimLoading(this._loads > 0); }); }
             showApocryphaZine(o) { return this._track(super.showApocryphaZine(o)); }
             showFandomWikiIndex(o) { return this._track(super.showFandomWikiIndex(o)); }
             openStaticWikiPage(site, page, o) { return this._track(super.openStaticWikiPage(site, page, o)); }
@@ -1893,8 +2073,8 @@
 
     /** Show the entry's page (again from the server with force: Refresh). */
     function renderCore(e, force) {
-        if (!force && coreShown === e && e.area && e.area.parentNode === els.core) return;
-        coreShown = e;
+        if (!force && W.coreShown === e && e.area && e.area.parentNode === els.core) return;
+        W.coreShown = e;
         if (e.area && e.pane && !force) {
             // Back / Forward: the page as it was left, its scroll too
             els.core.replaceChildren(e.area);
@@ -1913,11 +2093,12 @@
         e.scroll = 0;
         els.core.replaceChildren(area);
         els.core.scrollTop = 0;
-        const fail = (text) => {
+        const w = W;
+        const fail = (text) => inWin(w, () => {
             if (e.area !== area) return;
             area.innerHTML = `<div class="wmb-g-note">${esc(text)}</div>`;
-            if (coreShown === e && entry() === e) setGrimLoading(false);
-        };
+            if (W.coreShown === e && entry() === e) setGrimLoading(false);
+        });
         const ws_ = window.wsClient;
         if (!ws_ || !ws_.isConnected || !ws_.isConnected()) { fail('The page cannot be reached: this phone is not connected to Dreamscape. Try again later.'); return; }
         setGrimLoading(true);
@@ -1927,10 +2108,12 @@
             let m = null;
             try { m = dsapApi() ? window.resolveDsap(e.url) : null; } catch (_) { m = null; }
             if (!Pane || !m || !m.entry || typeof m.entry.activate !== 'function') { fail('The page cannot be displayed.'); return; }
-            const pane = new Pane(e, area);
-            e.pane = pane;
-            pane._track(null); // the ring stays until a renderer has started
-            try { m.entry.activate(pane, m); } catch (err) { console.warn('[wmBrowser] core page', e.url, err); fail('The page cannot be displayed.'); }
+            inWin(w, () => {
+                const pane = new Pane(e, area);
+                e.pane = pane;
+                pane._track(null); // the ring stays until a renderer has started
+                try { m.entry.activate(pane, m); } catch (err) { console.warn('[wmBrowser] core page', e.url, err); fail('The page cannot be displayed.'); }
+            });
         }).catch((err) => { console.warn('[wmBrowser] core page', e.url, err); fail('The page cannot be displayed.'); });
     }
 
@@ -2024,14 +2207,14 @@
 
     /** html[data-wm-ie65]: bars | bare | kbd (page), fav (Favorites: its own bar), sub (pages with soft keys). */
     function chrome65() {
-        if (!v65 || !page) return;
+        if (!v65 || !page || W !== cur) return;
         const root = document.documentElement;
         if (!visible) { if (root.dataset.wmIe65) delete root.dataset.wmIe65; return; }
         const st = sub ? (sub === 'favorites' ? 'fav' : 'sub') : kbd65() ? 'kbd' : bars65 ? 'bars' : 'bare';
         if (root.dataset.wmIe65 !== st) root.dataset.wmIe65 = st;
         if (ws && isCurrent()) ws.setTitle(title65());
         const back = els.bar65 && els.bar65.querySelector('[data-act="back"]');
-        if (back) back.disabled = idx < 1;
+        if (back) back.disabled = W.idx < 1;
     }
 
     function armBars65() {
@@ -2061,7 +2244,7 @@
     function applyZoom65() {
         if (!v65 || !els.home) return;
         const z = pageZoom65 === 1 ? '' : String(Math.round(pageZoom65 * 100) / 100);
-        for (const el of [els.home, els.gpage, els.core, els.dsapArea]) if (el) el.style.zoom = z;
+        for (const w of wins) if (w.dom) for (const el of [w.dom.home, w.dom.gpage, w.dom.core, w.dom.dsapArea]) el.style.zoom = z;
         if (els.zthumb65) els.zthumb65.style.top = `calc(${Math.round((1 - pOfZoom65(pageZoom65)) * 1060) / 10} * var(--wm-px))`;
         // Alchemy's page follows shortly after (a new viewport each time is a new layout over there)
         clearTimeout(zoomLayout65);
@@ -2108,8 +2291,10 @@
         return [
             { label: 'Home Page', action: goHome },
             { label: 'History', action: () => openSub('history') },
-            { label: 'Forward', disabled: idx >= entries.length - 1, action: goForward },
+            { label: 'Forward', disabled: W.idx >= W.entries.length - 1, action: goForward },
             { label: 'Refresh', action: refresh },
+            // after Refresh, before View; the device draws no rules in this menu
+            ...windowItems(),
             {
                 label: 'View',
                 submenu: [
@@ -2131,7 +2316,7 @@
                 label: 'Copy/Paste',
                 submenu: [
                     { label: 'Make Selection', disabled: true },
-                    { label: 'Paste', disabled: onHome() || !frame, action: pasteFromClipboard }
+                    { label: 'Paste', disabled: onHome() || !W.frame, action: pasteFromClipboard }
                 ]
             },
             // as the title bar's X
@@ -2143,7 +2328,13 @@
         ws.menu('right', mainMenu65(), btn);
         const pop = document.querySelector('#wmShell .wm-popup');
         // device: the menu's bottom line is 109 px above the bottom of the screen (over the bar's buttons)
-        if (pop && !pop.hidden) pop.style.bottom = 'calc(var(--wm-safe-bottom, 0px) + 54.5 * var(--wm-px))';
+        if (pop && !pop.hidden) {
+            pop.style.bottom = 'calc(var(--wm-safe-bottom, 0px) + 54.5 * var(--wm-px))';
+            // with the window rows (#748) the menu has 11 rows: on a screen as short as the device's it
+            // scrolls between the shell's arrow bars, and its top stays where the shell puts a long
+            // menu's (5.5 px under the screen's top), 29 px less room than over the soft keys
+            pop.style.maxHeight = 'calc(100% - var(--wm-safe-top, 0px) - var(--wm-safe-bottom, 0px) - 60 * var(--wm-px))';
+        }
     }
 
     function softKeys65() {
@@ -2384,7 +2575,7 @@
 
     function renderGoButton() {
         if (!els.go) return;
-        const stopNow = loading && !onHome();
+        const stopNow = W.loading && !onHome();
         els.go.innerHTML = img(stopNow ? 'ie-stop' : 'ie-go');
         els.go.setAttribute('aria-label', stopNow ? 'Stop' : 'Go');
     }
@@ -2402,6 +2593,12 @@
 
     function render() {
         if (!page) return;
+        if (W !== cur) {
+            // a window behind the one on screen draws nothing; an applet whose page moved on stops
+            const e = entry();
+            if (!(e.home && e.grim.kind === 'dsap')) leaveDsap();
+            return;
+        }
         const home = onHome();
         page.classList.toggle('on-home', home);
         page.classList.toggle('is-full', fullScreen && !v65);
@@ -2412,13 +2609,13 @@
         els.gpage.hidden = !home || start || app || core;
         els.dsap.hidden = !app;
         els.core.hidden = !core;
-        if (!core && coreShown) { els.core.replaceChildren(); coreShown = null; }
+        if (!core && W.coreShown) { els.core.replaceChildren(); W.coreShown = null; }
         page.classList.toggle('on-dsap', app);
         // another page on screen: the applet stops (its timers, socket listeners); Back starts it again
         if (!app) leaveDsap();
         els.frameWrap.hidden = home;
-        if (!home || entry().grim.kind === 'home') grimLoading = false;
-        page.classList.toggle('is-loading', (loading && !home) || (grimLoading && home));
+        if (!home || entry().grim.kind === 'home') W.grimLoading = false;
+        page.classList.toggle('is-loading', (W.loading && !home) || (W.grimLoading && home));
         if (home) renderLocal(false);
         renderAddress();
         if (!home) requestAnimationFrame(layoutFrame);
@@ -2442,20 +2639,13 @@
         navigate(url);
     }
 
-    function mount(p) {
-        page = p;
-        page.classList.add('wm-browser');
-        page.innerHTML = `
-            <div class="wmb-bar">
-                <span class="wmb-lock" aria-hidden="true"></span>
-                <div class="wmb-addr-box">
-                    <input type="url" class="wmb-addr" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Address">
-                    <button type="button" class="wmb-addr-drop" aria-label="Recent addresses" aria-haspopup="menu"></button>
-                </div>
-                <button type="button" class="wmb-go" aria-label="Go"></button>
-            </div>
-            <div class="wmb-view">
-                <div class="wmb-home">
+    // ---------------------------------------------------------------- windows
+
+    /** A window's own page boxes, in .wmb-view under the busy ring, Favorites / History and the text box. */
+    function buildDom(w) {
+        const t = document.createElement('template');
+        t.innerHTML = `
+                <div class="wmb-home" hidden>
                     <div class="wmb-logo wmb-g-logo">
                         <img class="wmb-logo-img" src="/static_images/app_icons/64/dreamscape-logo.webp" srcset="/static_images/app_icons/128/dreamscape-logo.webp 2x" alt="" draggable="false">
                         <div class="wmb-logo-text"><small>Dreamscape</small><b>The Grimoire</b><span class="wmb-g-tagline">The central home of Knowledge</span></div>
@@ -2478,7 +2668,179 @@
                 <div class="wmb-core" hidden></div>
                 <div class="wmb-frame-wrap" hidden>
                     <div class="wmb-touch"></div>
+                </div>`;
+        const q = (sel) => t.content.querySelector(sel);
+        const d = { home: q('.wmb-home'), gpage: q('.wmb-gpage'), dsap: q('.wmb-dsap'), dsapArea: q('.wmb-dsap-area'), core: q('.wmb-core'), frameWrap: q('.wmb-frame-wrap'), touch: q('.wmb-touch') };
+        w.dom = d;
+        els.view.insertBefore(t.content, els.busy);
+        w.dsapShell = makeDsapShell(w);
+        // what the boxes hear is their own window's
+        const on = (el, type, fn, opts) => el.addEventListener(type, (e) => inWin(w, () => fn(e)), opts);
+
+        on(d.home.querySelector('.wmb-search'), 'submit', (e) => {
+            e.preventDefault();
+            const input = d.home.querySelector('.wmb-search-input');
+            const q0 = input.value.trim();
+            if (!q0) { input.focus(); return; }
+            input.blur();
+            if (webUrl(q0)) navigate(webUrl(q0));
+            else openLocal({ kind: 'search', q: q0 });
+            input.value = '';
+        });
+        on(d.home, 'click', (e) => {
+            const exp = e.target.closest('.wmb-exp');
+            if (exp) {
+                exp.setAttribute('aria-expanded', exp.getAttribute('aria-expanded') === 'true' ? 'false' : 'true');
+                if (exp.dataset.exp === 'favorites' && !favoritesLoaded) busyOf(loadSettings).then(() => inWin(w, renderHomeLists));
+                renderHomeLists();
+                return;
+            }
+            onLocalClick(e);
+        });
+        on(d.gpage, 'click', onLocalClick);
+        on(d.gpage, 'scroll', () => { if (W.localShown && W.localShown === entry()) W.localShown.scroll = d.gpage.scrollTop; }, { passive: true });
+        on(d.gpage, 'submit', (e) => {
+            e.preventDefault();
+            const input = e.target.querySelector('input');
+            const q0 = input ? input.value.trim() : '';
+            if (!q0) { if (input) input.focus(); return; }
+            input.blur();
+            openLocal({ kind: 'search', q: q0 });
+        });
+
+        on(d.dsap, 'click', onDsapClick);
+        on(d.dsap, 'contextmenu', onDsapContextMenu);
+
+        // capture: ahead of the desktop renderers' own link handlers and context menus
+        on(d.core, 'click', onCoreClick, true);
+        d.core.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+        on(d.core, 'scroll', () => { if (W.coreShown && W.coreShown === entry()) W.coreShown.scroll = d.core.scrollTop; }, { passive: true });
+
+        on(d.touch, 'pointerdown', onTouchDown);
+        on(d.touch, 'pointermove', onTouchMove);
+        on(d.touch, 'pointerup', onTouchUp);
+        on(d.touch, 'pointercancel', onTouchUp);
+        on(d.touch, 'wheel', onWheel, { passive: false });
+        d.touch.addEventListener('contextmenu', (e) => e.preventDefault());
+        applyZoom65();
+    }
+
+    /** A window leaves for good: its Alchemy page, applet, timers and boxes go with it. */
+    function disposeWin(w) {
+        inWin(w, () => {
+            clearTimeout(W.idleTimer);
+            W.idleTimer = 0;
+            leaveDsap();
+            closeSession();
+            // the pages it kept (a Grimoire page's HTML, a Fandom page's pane and box)
+            W.entries.forEach((e) => { e.html = ''; e.area = null; e.pane = null; });
+            W.localShown = null;
+            W.coreShown = null;
+        });
+        w.closed = true;
+        if (w.dom) { for (const k of WIN_BOXES) w.dom[k].remove(); w.dom = null; }
+        w.dsapShell = null;
+    }
+
+    /** The applet of a window that is not on screen (another window shows, or IE is behind another app) stops after a wait. */
+    function armDsapIdle() {
+        const w = W;
+        clearTimeout(w.dsapIdleTimer);
+        w.dsapIdleTimer = 0;
+        if (!w.dsapShown) return;
+        w.dsapIdleTimer = setTimeout(() => inWin(w, () => { w.dsapIdleTimer = 0; if (!visible || W !== cur) leaveDsap(); }), visible ? WINDOW_IDLE_MS : IDLE_CLOSE_MS);
+    }
+
+    /** Show another window. Its page is as it was left: the boxes, the viewer and the applet were only hidden. */
+    function switchTo(id) {
+        const w = wins.find((x) => x.id === id && !x.closed);
+        if (!w) return false;
+        if (w === cur) return true;
+        const old = cur;
+        if (page) {
+            // what is half done on the window on screen ends: a menu, Favorites / History, typing, a drag
+            if (ws) ws.closeMenus();
+            if (sub) { sub = null; subData65 = null; els.sub.hidden = true; page.classList.remove('has-sub'); }
+            addrEditing = false;
+            const a = document.activeElement;
+            if (a && page.contains(a) && typeof a.blur === 'function') a.blur();
+            stopFling();
+            if (touch) { clearTimeout(touch.timer); touch = null; }
+            wheelAcc = null;
+            closeZoom65();
+            if (old.dom) {
+                old.scrolls = {};
+                for (const k of ['home', 'gpage', 'dsap', 'core']) old.scrolls[k] = old.dom[k].scrollTop;
+                for (const k of WIN_BOXES) old.dom[k].hidden = true;
+            }
+        }
+        cur = w;
+        W = w;
+        w.shownAt = Date.now();
+        if (!page) return true;
+        // the window left behind falls silent; its page and applet are let go after WINDOW_IDLE_MS
+        inWin(old, () => { clearTimeout(W.idleTimer); W.idleTimer = 0; syncPageShown(); armDsapIdle(); });
+        clearTimeout(w.dsapIdleTimer);
+        w.dsapIdleTimer = 0;
+        // its web page was let go while it was behind: it comes back from its address
+        if (visible && !onHome() && !W.session && !W.creating) { entry().pending = true; openSession(entry().url); }
+        render();
+        // a box that was hidden may come back at the top: where it was left
+        if (w.scrolls) for (const k of Object.keys(w.scrolls)) if (w.dom[k].scrollTop !== w.scrolls[k]) w.dom[k].scrollTop = w.scrolls[k];
+        if (v65 && visible) showBars65();
+        step();
+        return true;
+    }
+
+    /** Menu > New Window: a new window on the start page, on screen. Returns its id (null with MAX_WINDOWS open). */
+    function newWindow() {
+        if (wins.length >= MAX_WINDOWS) return null;
+        const w = makeWin();
+        wins.push(w);
+        if (page) buildDom(w);
+        switchTo(w.id);
+        return w.id;
+    }
+
+    /** Menu > Close Window: the window on screen (or the one named) goes; the one before it in the list shows. */
+    function closeWindow(id) {
+        const w = id == null ? cur : wins.find((x) => x.id === id);
+        if (!w || w.closed || wins.length < 2) return false;
+        const at = wins.indexOf(w);
+        if (w === cur) switchTo(wins[at > 0 ? at - 1 : 1].id);
+        wins.splice(at, 1);
+        disposeWin(w);
+        return true;
+    }
+
+    /** An address of any kind IE shows, in the window W (false: not one). */
+    function openAddress(url) {
+        if (coreAddress(url)) { openCore(url); return true; }
+        if (dsapAddress(url)) { openDsap(url); return true; }
+        const u = webUrl(url);
+        const g = u ? null : parseGrim(url);
+        if (!u && !g) return false;
+        if (u) navigate(u);
+        else openLocal(g);
+        return true;
+    }
+
+    let boundOnce = false;
+    let viewObserver = null;
+
+    function mount(p) {
+        page = p;
+        page.classList.add('wm-browser');
+        page.innerHTML = `
+            <div class="wmb-bar">
+                <span class="wmb-lock" aria-hidden="true"></span>
+                <div class="wmb-addr-box">
+                    <input type="url" class="wmb-addr" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Address">
+                    <button type="button" class="wmb-addr-drop" aria-label="Recent addresses" aria-haspopup="menu"></button>
                 </div>
+                <button type="button" class="wmb-go" aria-label="Go"></button>
+            </div>
+            <div class="wmb-view">
                 <div class="wmb-busy" aria-hidden="true"></div>
                 <div class="wmb-sub" hidden></div>
                 <textarea class="wmb-ime" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Type into the page"></textarea>
@@ -2490,16 +2852,13 @@
             drop: page.querySelector('.wmb-addr-drop'),
             go: page.querySelector('.wmb-go'),
             view: page.querySelector('.wmb-view'),
-            home: page.querySelector('.wmb-home'),
-            gpage: page.querySelector('.wmb-gpage'),
-            dsap: page.querySelector('.wmb-dsap'),
-            dsapArea: page.querySelector('.wmb-dsap-area'),
-            core: page.querySelector('.wmb-core'),
-            frameWrap: page.querySelector('.wmb-frame-wrap'),
-            touch: page.querySelector('.wmb-touch'),
+            busy: page.querySelector('.wmb-busy'),
             sub: page.querySelector('.wmb-sub'),
             ime: page.querySelector('.wmb-ime')
         };
+        // the page boxes are the window's own (buildDom): els.home, els.gpage ... are those of W
+        for (const k of WIN_BOXES.concat(['dsapArea', 'touch'])) Object.defineProperty(els, k, { enumerable: true, get: () => (W.dom ? W.dom[k] : null) });
+        wins.forEach(buildDom);
 
         els.addr.addEventListener('focus', () => { addrEditing = true; setTimeout(() => els.addr.select(), 0); });
         els.addr.addEventListener('blur', () => { setTimeout(() => { addrEditing = false; renderAddress(); }, 150); });
@@ -2508,7 +2867,7 @@
             if (e.key === 'Escape') { e.preventDefault(); addrEditing = false; els.addr.blur(); renderAddress(); }
         });
         els.go.addEventListener('click', () => {
-            if (loading && !onHome() && !addrEditing) { stop(); return; }
+            if (W.loading && !onHome() && !addrEditing) { stop(); return; }
             if (els.addr.value.trim()) submitAddress();
             else els.addr.focus();
         });
@@ -2518,46 +2877,6 @@
             const items = typed.length ? typed.map((u) => ({ label: u, action: () => { els.addr.value = u; navigate(u); } })) : [{ label: '(Empty)', disabled: true }];
             ws.dropdown(els.addr.parentElement, items, 'left');
         });
-
-        page.querySelector('.wmb-search').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const input = page.querySelector('.wmb-search-input');
-            const q = input.value.trim();
-            if (!q) { input.focus(); return; }
-            input.blur();
-            if (webUrl(q)) navigate(webUrl(q));
-            else openLocal({ kind: 'search', q });
-            input.value = '';
-        });
-        els.home.addEventListener('click', (e) => {
-            const exp = e.target.closest('.wmb-exp');
-            if (exp) {
-                exp.setAttribute('aria-expanded', exp.getAttribute('aria-expanded') === 'true' ? 'false' : 'true');
-                if (exp.dataset.exp === 'favorites' && !favoritesLoaded) busyOf(loadSettings).then(renderHomeLists);
-                renderHomeLists();
-                return;
-            }
-            onLocalClick(e);
-        });
-        els.gpage.addEventListener('click', onLocalClick);
-        els.gpage.addEventListener('scroll', () => { if (localShown && localShown === entry()) localShown.scroll = els.gpage.scrollTop; }, { passive: true });
-        els.gpage.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const input = e.target.querySelector('input');
-            const q = input ? input.value.trim() : '';
-            if (!q) { if (input) input.focus(); return; }
-            input.blur();
-            openLocal({ kind: 'search', q });
-        });
-
-        dsapShell.displayArea = els.dsapArea;
-        els.dsap.addEventListener('click', onDsapClick);
-        els.dsap.addEventListener('contextmenu', onDsapContextMenu);
-
-        // capture: ahead of the desktop renderers' own link handlers and context menus
-        els.core.addEventListener('click', onCoreClick, true);
-        els.core.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
-        els.core.addEventListener('scroll', () => { if (coreShown && coreShown === entry()) coreShown.scroll = els.core.scrollTop; }, { passive: true });
 
         if (v65) mount65();
 
@@ -2590,38 +2909,35 @@
         }));
         els.sub.addEventListener('contextmenu', (e) => e.preventDefault());
 
-        els.touch.addEventListener('pointerdown', onTouchDown);
-        els.touch.addEventListener('pointermove', onTouchMove);
-        els.touch.addEventListener('pointerup', onTouchUp);
-        els.touch.addEventListener('pointercancel', onTouchUp);
-        els.touch.addEventListener('wheel', onWheel, { passive: false });
-        els.touch.addEventListener('contextmenu', (e) => e.preventDefault());
-
         els.ime.addEventListener('input', onImeInput);
         els.ime.addEventListener('keydown', onImeKey);
 
-        // the SIP button types into the page while a web page shows (the shell's own handler focuses the first edit box)
-        document.addEventListener('click', (e) => {
-            if (!isCurrent() || onHome() || sub || !frame) return;
-            if (!e.target.closest || !e.target.closest('#wmShell .wm-sip')) return;
-            e.stopImmediatePropagation();
-            if (document.activeElement === els.ime) els.ime.blur();
-            else focusIme();
-        }, true);
-
         if (typeof ResizeObserver === 'function') {
             let t = 0;
-            new ResizeObserver(() => { clearTimeout(t); t = setTimeout(layoutFrame, 60); }).observe(els.view);
+            viewObserver = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(layoutFrame, 60); });
+            viewObserver.observe(els.view);
         }
-        addEventListener('message', onMessage);
-        // a new pixel ratio (another screen, browser zoom) changes the frame size, not the page area
-        const watchDpr = () => {
-            const mq = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
-            mq.addEventListener('change', () => { layoutFrame(); watchDpr(); }, { once: true });
-        };
-        watchDpr();
-        addEventListener('pagehide', () => { if (session) closeSession(); });
-        document.addEventListener('visibilitychange', syncAudio);
+        // the document's and the window's own listeners are set once: the page is made again after the program ended
+        if (!boundOnce) {
+            boundOnce = true;
+            // the SIP button types into the page while a web page shows (the shell's own handler focuses the first edit box)
+            document.addEventListener('click', (e) => {
+                if (!page || !isCurrent() || onHome() || sub || !W.frame) return;
+                if (!e.target.closest || !e.target.closest('#wmShell .wm-sip')) return;
+                e.stopImmediatePropagation();
+                if (document.activeElement === els.ime) els.ime.blur();
+                else focusIme();
+            }, true);
+            addEventListener('message', onMessage);
+            // a new pixel ratio (another screen, browser zoom) changes the frame size, not the page area
+            const watchDpr = () => {
+                const mq = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+                mq.addEventListener('change', () => { if (page) layoutFrame(); watchDpr(); }, { once: true });
+            };
+            watchDpr();
+            addEventListener('pagehide', () => wins.forEach((w) => inWin(w, () => { if (W.session) closeSession(); })));
+            document.addEventListener('visibilitychange', () => wins.forEach((w) => inWin(w, syncAudio)));
+        }
         render();
     }
 
@@ -2639,15 +2955,15 @@
             mount,
             show() {
                 visible = true;
-                clearTimeout(idleTimer);
-                idleTimer = 0;
-                if (!settings) loadSettings().then(() => { if (onHome()) renderHomeLists(); syncAudio(); });
+                cur.shownAt = Date.now();
+                wins.forEach((w) => { clearTimeout(w.idleTimer); w.idleTimer = 0; clearTimeout(w.dsapIdleTimer); w.dsapIdleTimer = 0; });
+                if (!settings) loadSettings().then(() => { if (page && W.dom && onHome()) renderHomeLists(); syncAudio(); });
                 // the session was let go while away: the page comes back from its address
-                if (!onHome() && !sub && !session && !creating) { entry().pending = true; openSession(entry().url); }
-                clearTimeout(dsapIdleTimer);
-                dsapIdleTimer = 0;
+                if (!onHome() && !sub && !W.session && !W.creating) { entry().pending = true; openSession(entry().url); }
                 if (v65) { bars65 = true; armBars65(); setTimeout(chrome65, 0); }
                 render();
+                // the windows behind the one on screen: their pages and applets wait their own, longer time
+                wins.forEach((w) => { if (w !== cur) inWin(w, () => { syncPageShown(); armDsapIdle(); }); });
                 if (sub) renderSub();
                 syncAudio();
             },
@@ -2659,11 +2975,37 @@
                 // the Alchemy frame (or the address box) lets go of the focus: keys go to the app on screen
                 const a = document.activeElement;
                 if (a && page && page.contains(a) && typeof a.blur === 'function') a.blur();
-                syncAudio();
-                if (session) scheduleIdleClose();
-                // a Dreamscape app behind another app stops after the same wait (it comes back from its address)
-                clearTimeout(dsapIdleTimer);
-                if (dsapShown) dsapIdleTimer = setTimeout(() => { dsapIdleTimer = 0; if (!visible) leaveDsap(); }, IDLE_CLOSE_MS);
+                // every window's page falls silent and is let go after the idle wait; a Dreamscape app
+                // behind another app stops after the same wait (it comes back from its address)
+                wins.forEach((w) => inWin(w, () => {
+                    syncAudio();
+                    if (W.session) scheduleIdleClose(IDLE_CLOSE_MS);
+                    armDsapIdle();
+                }));
+            },
+            // the program ends (the title's X, Exit, Task Manager's End Task): every window goes with its
+            // Alchemy page, applet and timers, and the next start has one window on the start page. Before
+            // #748 the page list outlived the page it was drawn on, and a web page or applet came back blank
+            onEnd() {
+                wins.slice().forEach(disposeWin);
+                for (const t of [barsTimer65, zoomTimer65, zoomLayout65, docSitesRetry]) clearTimeout(t);
+                barsTimer65 = zoomTimer65 = zoomLayout65 = docSitesRetry = 0;
+                zoomOpen65 = false;
+                bars65 = true;
+                stopFling();
+                if (wheelRaf) { cancelAnimationFrame(wheelRaf); wheelRaf = 0; }
+                wheelAcc = null;
+                if (touch) { clearTimeout(touch.timer); touch = null; }
+                if (viewObserver) { viewObserver.disconnect(); viewObserver = null; }
+                sub = null;
+                subSel = -1;
+                subData65 = null;
+                addrEditing = false;
+                page = null;
+                els = {};
+                wins = [makeWin()];
+                cur = wins[0];
+                W = cur;
             },
             // WM: X on the page (Smart Minimize: the page stays, and hide() lets Alchemy's session
             // go after the idle wait), ok on Favorites / History (back to the page)
@@ -2676,7 +3018,7 @@
                 else closeSub();
                 return true;
             },
-            historyDepth: () => idx + (sub ? 1 : 0),
+            historyDepth: () => W.idx + (sub ? 1 : 0),
             onBack: () => (v65 && sub ? (subDone65(false), true) : goBack()),
             softKeys() {
                 if (v65) return softKeys65();
@@ -2696,19 +3038,26 @@
         // web links elsewhere on the phone (Help, Messaging, Director) land here, never in desktop windows
         window.wmBrowser = {
             open(url) {
-                if (coreAddress(url)) { ws.open(APP_ID); openCore(url); return true; }
-                if (dsapAddress(url)) { ws.open(APP_ID); openDsap(url); return true; }
-                const u = webUrl(url);
-                const g = u ? null : parseGrim(url);
-                if (!u && !g) return false;
+                if (!(coreAddress(url) || dsapAddress(url) || webUrl(url) || parseGrim(url))) return false;
                 ws.open(APP_ID);
-                if (u) navigate(u);
-                else openLocal(g);
-                return true;
+                return openAddress(url);
             },
             closeSession,
-            // tests: the pages seen here and where Chromium is
-            _state: () => ({ entries: entries.map((e) => (e.home ? (e.grim.kind === 'home' ? 'home' : e.url) : e.url)), idx, dsap: dsapShell._dsapState ? dsapShell._dsapState.url : null, idle: !!idleTimer, inspect: pendingInspect, chromeAt, chromeBase, session: session && session.id, loading, frame: !!frame, ready, viewMode, zoomKey, geometry: els.view ? geometry() : null })
+            // windows (#748): the calls above act on the window on screen
+            windows: () => wins.map((w) => ({ id: w.id, title: winTitle(w), url: (w.entries[w.idx] || homeEntry()).url, current: w === cur })),
+            switchTo: (id) => switchTo(id),
+            /** A new window on screen, on url or the start page; its id, or null with every window in use. */
+            newWindow(url) {
+                if (wins.length >= MAX_WINDOWS) return null;
+                ws.open(APP_ID);
+                const id = newWindow();
+                const address = String(url == null ? '' : url).trim();
+                if (id != null && address && !openAddress(address)) cannotOpen(address);
+                return id;
+            },
+            closeWindow: (id) => closeWindow(id),
+            // tests: the pages seen in the window on screen and where Chromium is
+            _state: () => ({ entries: W.entries.map((e) => (e.home ? (e.grim.kind === 'home' ? 'home' : e.url) : e.url)), idx: W.idx, dsap: W.dsapShell && W.dsapShell._dsapState ? W.dsapShell._dsapState.url : null, idle: !!W.idleTimer, inspect: W.pendingInspect, chromeAt: W.chromeAt, chromeBase: W.chromeBase, session: W.session && W.session.id, loading: W.loading, frame: !!W.frame, ready: W.ready, viewMode, zoomKey, geometry: els.view ? geometry() : null, win: cur.id, windows: wins.length, maxWindows: MAX_WINDOWS })
         };
         try {
             // featureLoader.js's global function: on the phone it opens this app
