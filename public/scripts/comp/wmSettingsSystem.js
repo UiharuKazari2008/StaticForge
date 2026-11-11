@@ -13,7 +13,7 @@
  *   regional         Regional Settings (Region, Number, Currency, Time, Date): HKCU\Control Panel\
  *                    International LocaleName and ...\Geo Nation, the lists from cplDialogs.js's own
  *                    Regional and Language Options fields; the other tabs show the locale's formats
- *                    (Melaton stores only the locale).
+ *                    (Melaton stores the locale and the time style; app.html regionalFormats applies them).
  *   power            Power (Battery, Advanced): the Battery API, and Power Options' registry (cplPages.js:
  *                    ...\Power\User\PowerSchemes ActivePowerScheme, <plan> display / sleep minutes).
  *   backlight        Backlight (Battery Power, External Power): the active plan's display minutes.
@@ -363,21 +363,42 @@
 
     const show = (s) => (s === '' || s == null ? '(none)' : s.replace(/ | /g, ' ') || '(space)');
 
+    /**
+     * The time styles a locale offers, as Windows writes them: 12 or 24 hours, with or without a
+     * leading zero, in the locale's own separator and AM / PM place. The first is the locale's own.
+     */
+    function timeStyles(loc) {
+        const own = timePicture(loc);
+        const s = own.sep;
+        const lead = /^tt/.test(own.pic);
+        const h12 = (h) => (lead ? `tt ${h}${s}mm${s}ss` : `${h}${s}mm${s}ss tt`);
+        const all = [h12('h'), h12('hh'), `H${s}mm${s}ss`, `HH${s}mm${s}ss`];
+        const norm = (p) => p.replace(/\s+/g, ' ').trim();
+        const mine = all.find((p) => norm(p) === norm(own.pic)) || own.pic;
+        return [mine, ...all.filter((p) => p !== mine)];
+    }
+
+    /** Intl options for a time picture ("HH:mm:ss"): the hour cycle and the hour's leading zero. */
+    function timeOpts(pic, o) {
+        if (!pic) return o;
+        return Object.assign({}, o, { hourCycle: /H/.test(pic) ? 'h23' : 'h12', hour: /hh/i.test(pic) ? '2-digit' : 'numeric' });
+    }
+
     function regionalInit() {
-        const d = { locale: reg(INTL_KEY, 'LocaleName', null), nation: reg(GEO_KEY, 'Nation', null) };
+        const d = { locale: reg(INTL_KEY, 'LocaleName', null), nation: reg(GEO_KEY, 'Nation', null), time: reg(INTL_KEY, 'sTimeFormat', null) || null };
         return whenLoaded(d, [CPL_DIALOGS], () => {
             const f = regionalFields();
             if (!f) return;
             // the desktop's defaults when the registry has no value (the browser's locale)
             if (d.locale == null) d.locale = fieldDefault(f.locale);
             if (d.nation == null) d.nation = fieldDefault(f.nation);
-            d.initial = { locale: d.locale, nation: d.nation };
+            d.initial = { locale: d.locale, nation: d.nation, time: d.time };
         });
     }
 
     // ---- 6.1: the device's own Regional Settings pages (Region, Number, Currency, Time, Date as
-    // captured on the emulator), filled with the locale's real formats. Melaton stores only the
-    // locale, so each format combo lists the one value the region gives it.
+    // captured on the emulator), filled with the locale's real formats. Melaton stores the
+    // locale and the time style; every other format combo lists the one value the region gives it.
 
     /** Windows' picture of the locale's time ("h:mm:ss tt") and its separator. */
     function timePicture(loc) {
@@ -445,7 +466,8 @@
         const now = new Date();
         // "Label: [combo]" rows; a row's value is the region's own, the only one its list holds
         const rows = (list) => list.map(([label, value, off], i) => `<div class="wm-sys-rrow"><span>${esc(label)}</span>${ui.comboHtml(`fx-${i}`, show(value), !!off)}</div>`).join('');
-        const bindRows = () => el.querySelectorAll('.wm-sys-rrow > .wm-combo:not(:disabled)').forEach((btn) => {
+        const bindRows = (own = -1) => el.querySelectorAll('.wm-sys-rrow > .wm-combo:not(:disabled)').forEach((btn, i) => {
+            if (i === own) return; // a row with a list of its own (Time style)
             const v = btn.textContent;
             ui.bindCombo(btn, [[v, v]], v, () => {});
         });
@@ -481,15 +503,19 @@
         if (tab === 'time') {
             const per = dayPeriods(loc);
             const t = timePicture(loc);
+            // Time style is a real choice (12 or 24 hours, leading zero): stored as sTimeFormat
+            const styles = timeStyles(loc);
+            const pic = d.time && styles.includes(d.time) ? d.time : styles[0];
             el.innerHTML = `<div class="wm-sys-reg is-time">
-                <div class="wm-sys-reg-sample"><b>Time sample:</b><span>${esc(df(loc, { hour: 'numeric', minute: '2-digit', second: '2-digit' }, now))}</span></div>
+                <div class="wm-sys-reg-sample"><b>Time sample:</b><span>${esc(df(loc, timeOpts(pic, { hour: 'numeric', minute: '2-digit', second: '2-digit' }), now))}</span></div>
                 ${rows([
-                    ['Time style:', t.pic],
+                    ['Time style:', pic],
                     ['Time separator:', t.sep],
                     ['AM symbol:', per.am],
                     ['PM symbol:', per.pm]
                 ])}</div>`;
-            bindRows();
+            bindRows(0);
+            ui.bindCombo(el.querySelector('.wm-sys-rrow > .wm-combo'), styles.map((x) => [x, x]), pic, (v) => { d.time = v === styles[0] ? null : v; d.rerender(); });
             return;
         }
         if (tab === 'date') {
@@ -516,14 +542,14 @@
             <div class="wm-sys-reg-samples">${[
                 ['Positive numbers:', nf(loc, 123456789, { minimumFractionDigits: 2 })],
                 ['Positive currency:', nf(loc, 123456789, { style: 'currency', currency: c })],
-                ['Time:', df(loc, { hour: 'numeric', minute: '2-digit', second: '2-digit' }, now)],
+                ['Time:', df(loc, timeOpts(d.time, { hour: 'numeric', minute: '2-digit', second: '2-digit' }), now)],
                 ['Short date:', df(loc, { year: 'numeric', month: 'numeric', day: 'numeric' }, now)],
                 ['Long date:', df(loc, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }, now)]
             ].map(([a, b]) => `<span>${esc(a)}</span><span>${esc(show(b))}</span>`).join('')}</div>
             <div class="wm-sys-rrow is-location"><span>Location:</span>${ui.comboHtml('nation', label(nations, d.nation))}</div>
         </div>`;
         const lb = el.querySelector('[data-act="locale"]');
-        ui.bindCombo(lb, locales, loc, (v) => { d.locale = v; d.rerender(); });
+        ui.bindCombo(lb, locales, loc, (v) => { d.locale = v; d.time = null; d.rerender(); });
         longCombo(lb);
         const nb = el.querySelector('[data-act="nation"]');
         ui.bindCombo(nb, nations, d.nation, (v) => { d.nation = v; });
@@ -561,12 +587,17 @@
         }
         if (tab === 'time') {
             const per = dayPeriods(loc);
-            el.innerHTML = `${facts([
-                ['Time:', df(loc, { hour: 'numeric', minute: '2-digit', second: '2-digit' }, now)],
-                ['Short time:', df(loc, { hour: 'numeric', minute: '2-digit' }, now)],
+            const styles = timeStyles(loc);
+            const pic = d.time && styles.includes(d.time) ? d.time : styles[0];
+            el.innerHTML = `${ui.sub('Time style:')}
+                ${ui.comboHtml('timestyle', pic)}
+                ${ui.gap()}${facts([
+                ['Time:', df(loc, timeOpts(pic, { hour: 'numeric', minute: '2-digit', second: '2-digit' }), now)],
+                ['Short time:', df(loc, timeOpts(pic, { hour: 'numeric', minute: '2-digit' }), now)],
                 ['AM symbol:', per.am],
                 ['PM symbol:', per.pm]
-            ])}${ui.gap()}${ui.note('The time format follows the region. Change it on the Region tab.')}`;
+            ])}`;
+            ui.bindCombo(el.querySelector('[data-act="timestyle"]'), styles.map((x) => [x, x]), pic, (v) => { d.time = v === styles[0] ? null : v; api.rerender(); });
             return;
         }
         if (tab === 'date') {
@@ -590,12 +621,12 @@
                 ['Negative numbers:', nf(loc, -123456789, { minimumFractionDigits: 2 })],
                 ['Positive currency:', nf(loc, 123456789, { style: 'currency', currency: c })],
                 ['Negative currency:', nf(loc, -123456789, { style: 'currency', currency: c })],
-                ['Time:', df(loc, { hour: 'numeric', minute: '2-digit', second: '2-digit' }, now)],
+                ['Time:', df(loc, timeOpts(d.time, { hour: 'numeric', minute: '2-digit', second: '2-digit' }), now)],
                 ['Short date:', df(loc, { year: 'numeric', month: 'numeric', day: 'numeric' }, now)],
                 ['Long date:', df(loc, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }, now)]
             ].map(([a, b]) => [a, show(b)]))}</div>`;
         const lb = el.querySelector('[data-act="locale"]');
-        ui.bindCombo(lb, locales, loc, (v) => { d.locale = v; api.rerender(); });
+        ui.bindCombo(lb, locales, loc, (v) => { d.locale = v; d.time = null; api.rerender(); });
         longCombo(lb);
         const nb = el.querySelector('[data-act="nation"]');
         ui.bindCombo(nb, nations, d.nation, (v) => { d.nation = v; });
@@ -605,11 +636,27 @@
     async function regionalCommit(d) {
         const r = R();
         if (!r || !d.ready || !d.initial) return [];
+        const formats = d.locale !== d.initial.locale || (d.time || null) !== (d.initial.time || null);
         if (d.locale !== d.initial.locale) await r.set(INTL_KEY, { LocaleName: d.locale });
+        if ((d.time || null) !== (d.initial.time || null)) await r.set(INTL_KEY, { sTimeFormat: d.time || '' });
         if (d.nation !== d.initial.nation) await r.set(GEO_KEY, { Nation: d.nation });
         // the desktop's Apply: the taskbar clock and the dates follow the format (taskbarClock.js)
         if (window.taskbarClock && typeof window.taskbarClock.refresh === 'function') window.taskbarClock.refresh();
-        d.initial = { locale: d.locale, nation: d.nation };
+        d.initial = { locale: d.locale, nation: d.nation, time: d.time };
+        // dates and times are written through formatters made when the programs started
+        // (app.html regionalFormats): the new formats show after a restart
+        const rf = window.regionalFormats;
+        if (formats && rf && typeof rf.store === 'function' && rf.store(d.locale, d.time)) {
+            const yes = await ui.messageBox({
+                title: 'Regional Settings', icon: 'question',
+                text: 'Melaton Mobile must restart to use the new regional settings. Restart now?',
+                buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }]
+            });
+            if (yes) {
+                const m = swm();
+                if (m && typeof m.forceRestart === 'function') m.forceRestart(); else location.reload();
+            }
+        }
         return [];
     }
 

@@ -115,6 +115,76 @@
                 }
             } catch (_) { /* storage off: the shell applies it when it starts */ }
         }
+        // Regional Settings (Control Panel's Regional and Language Options, the phone's Settings >
+        // System > Regional Settings): dates and times written with no locale of their own follow the
+        // chosen locale and time style (12 or 24 hours, leading zero). The choice lives in the registry
+        // (HKCU\Control Panel\International: LocaleName, sTimeFormat); a copy in localStorage
+        // ("regionalFormats") is read here, before any script makes a formatter, and brought up to
+        // date once the registry has loaded: a change shows from the next start.
+        (function () {
+            const KEY = 'regionalFormats';
+            const INTL = 'HKCU\\Control Panel\\International';
+            let pref = null;
+            try { pref = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { pref = null; }
+            if (!pref || typeof pref !== 'object') pref = null;
+            /** { locale, hourCycle, hour2 } for a locale name and a time picture ("HH:mm:ss"); null: the browser's own. */
+            const make = (locale, time) => {
+                const out = {};
+                if (locale && typeof locale === 'string') out.locale = locale;
+                if (time && typeof time === 'string' && /h/i.test(time)) {
+                    out.hourCycle = /H/.test(time) ? 'h23' : 'h12';
+                    out.hour2 = /hh/i.test(time);
+                }
+                return Object.keys(out).length ? out : null;
+            };
+            const store = (locale, time) => {
+                const next = make(locale, time);
+                const a = JSON.stringify(next);
+                try {
+                    if (a === (localStorage.getItem(KEY) || 'null')) return false;
+                    if (next) localStorage.setItem(KEY, a); else localStorage.removeItem(KEY);
+                } catch (e) { return false; }
+                return true;
+            };
+            globalThis.regionalFormats = { key: KEY, active: () => pref, store };
+            const sync = () => {
+                const r = globalThis.melatonRegistry;
+                if (!r || typeof r.get !== 'function') return false;
+                const read = () => { try { store(r.get(INTL, 'LocaleName', null), r.get(INTL, 'sTimeFormat', null)); } catch (e) { /* next load */ } };
+                // only a registry that has loaded says "no value": an empty one before that would drop the copy
+                if (typeof r.onChange === 'function') r.onChange(read);
+                if (r._data && Object.keys(r._data).length) read();
+                return true;
+            };
+            addEventListener('load', () => { let n = 0; const t = setInterval(() => { if (sync() || ++n > 120) clearInterval(t); }, 500); });
+            if (!pref || (!pref.locale && !pref.hourCycle)) return;
+            const Native = Intl.DateTimeFormat;
+            const unset = (l) => l === undefined || l === null || (Array.isArray(l) && !l.length);
+            // a caller's own locale, hour12 or hourCycle is kept as written
+            const adjust = (l, o) => {
+                if (!unset(l)) return [l, o];
+                const opts = Object.assign({}, o || {});
+                if (pref.hourCycle && opts.hour12 === undefined && opts.hourCycle === undefined) {
+                    opts.hourCycle = pref.hourCycle;
+                    if (opts.hour !== undefined) opts.hour = pref.hour2 ? '2-digit' : 'numeric';
+                }
+                return [pref.locale || undefined, opts];
+            };
+            const DateTimeFormat = function (l, o) {
+                const a = adjust(l, o);
+                try { return new Native(a[0], a[1]); } catch (e) { return new Native(l, o); }
+            };
+            DateTimeFormat.prototype = Native.prototype;
+            DateTimeFormat.supportedLocalesOf = Native.supportedLocalesOf.bind(Native);
+            try { Intl.DateTimeFormat = DateTimeFormat; } catch (e) { return; }
+            ['toLocaleString', 'toLocaleDateString', 'toLocaleTimeString'].forEach((name) => {
+                const native = Date.prototype[name];
+                Date.prototype[name] = function (l, o) {
+                    const a = adjust(l, o);
+                    try { return native.call(this, a[0], a[1]); } catch (e) { return native.call(this, l, o); }
+                };
+            });
+        })();
         // Melaton Mobile's UI version (Settings > System > Melaton Update > Version, #739): the
         // Windows Mobile 6.1 style or the 6.5 one (wm65*.css, wmStart65.js, wmTitanium.js). Read
         // once per load, before the first paint; a change restarts Melaton Mobile.
