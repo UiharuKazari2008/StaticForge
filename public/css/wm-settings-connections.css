@@ -227,6 +227,10 @@ html.ui-mobile .wm-setc .wm-wl-glyph {
     filter: invert(1);
 }
 
+html.ui-mobile .wm-setc .wm-wl-glyph.is-white {
+    filter: none;
+}
+
 html.ui-mobile .wm-setc .wm-wl-panel {
     margin: calc(-13 * var(--wm-px)) calc(10 * var(--wm-px)) 0;
     padding: calc(26 * var(--wm-px)) calc(5 * var(--wm-px)) calc(10 * var(--wm-px));

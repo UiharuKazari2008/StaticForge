@@ -334,12 +334,14 @@
         if (!dv) return null;
         try { return JSON.parse(dv.getRadios()); } catch (_) { return null; }
     }
-    const RADIO_ROWS = [['all', 'All'], ['wifi', 'Wi-Fi'], ['bluetooth', 'Bluetooth'], ['phone', 'Phone']];
+    // WM's four, then NFC (Melaton's own row: WM 6.1 had none; glyph = the NFC N mark in the ROM style)
+    const RADIO_ROWS = [['all', 'All'], ['wifi', 'Wi-Fi'], ['bluetooth', 'Bluetooth'], ['phone', 'Phone'], ['nfc', 'NFC']];
     function radioOn(r, id) {
         if (!r) return null;
         if (id === 'wifi') return !!r.wifi;
         if (id === 'bluetooth') return !!r.bluetooth;
         if (id === 'phone') return !r.airplane;
+        if (id === 'nfc') return r.nfc == null ? null : !!r.nfc;
         return (!r.airplane) || !!r.wifi || !!r.bluetooth; // All: On while any radio is
     }
     function radioPresent(r, id) {
@@ -348,6 +350,7 @@
         if (id === 'wifi') return p.wifi !== false;
         if (id === 'bluetooth') return p.bluetooth !== false;
         if (id === 'phone') return p.phone !== false;
+        if (id === 'nfc') return p.nfc === true;
         return true;
     }
     function setRadio(name, on) {
@@ -357,7 +360,7 @@
     }
     function switchRadio(r, id) {
         const on = radioOn(r, id);
-        if (id === 'wifi' || id === 'bluetooth') setRadio(id, !on);
+        if (id === 'wifi' || id === 'bluetooth' || id === 'nfc') setRadio(id, !on);
         else if (id === 'phone') setRadio('airplane', on); // the phone radio off = flight mode
         else if (on) { setRadio('wifi', false); setRadio('bluetooth', false); setRadio('airplane', true); }
         else { setRadio('airplane', false); setRadio('wifi', true); setRadio('bluetooth', true); }
@@ -407,6 +410,7 @@
                         { label: 'Phone Settings', disabled: !canOpen, action: () => openAndroidSettings('phone') },
                         { label: 'Bluetooth Settings', disabled: !canOpen, action: () => openAndroidSettings('bluetooth') },
                         { label: 'Wi-Fi Settings', disabled: !canOpen, action: () => openAndroidSettings('wifi') },
+                        ...(r && r.present && r.present.nfc ? [{ label: 'NFC Settings', disabled: !canOpen, action: () => openAndroidSettings('nfc') }] : []),
                         { label: 'Disconnect Cellular Data', disabled: !(r && r.data && !r.airplane), action: () => setRadio('data', false) }
                     ]
                 }
@@ -439,6 +443,16 @@
                 });
             };
             paintRadios(r);
+            // the Wi-Fi network's name needs precise location on Android 12+: asked once, here
+            const dv = device();
+            if (r && r.wifi && r.wifiNameAccess === false && dv && typeof dv.requestWifiNameAccess === 'function') {
+                let asked = false;
+                try { asked = localStorage.getItem('wmAskedWifiName') === '1'; } catch (_) { asked = true; }
+                if (!asked) {
+                    try { localStorage.setItem('wmAskedWifiName', '1'); } catch (_) { /* storage off */ }
+                    try { dv.requestWifiNameAccess(); } catch (_) { /* older app */ }
+                }
+            }
             el.querySelectorAll('[data-radio]').forEach((bar) => bar.addEventListener('click', () => {
                 const id = bar.dataset.radio;
                 if (d.pending[id]) return;
@@ -454,10 +468,17 @@
                 if (root.wmShell && typeof root.wmShell.refreshSoftKeys === 'function') root.wmShell.refreshSoftKeys();
             };
             root.addEventListener('dreamscape:radios', onRadios);
+            // the Wi-Fi network's name arrives with the device status (precise location granted, network change)
+            const onStatus = () => {
+                if (!el.isConnected) { root.removeEventListener('androiddevicestatus', onStatus); return; }
+                paintRadios(radios());
+            };
+            root.addEventListener('androiddevicestatus', onStatus);
 
             // the Dreamscape connection: the shell's connectivity glyph, Connected / Connecting... / Off
             const bar = el.querySelector('[data-act="toggle"]');
             const dsImg = bar.querySelector('img');
+            dsImg.classList.add('is-white'); // the tray's connectivity art is white already (no invert)
             const stateEl = bar.parentElement.querySelector('.wm-wl-state');
             const paint = () => {
                 const s = linkState();

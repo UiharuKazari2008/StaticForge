@@ -6776,6 +6776,62 @@
         "white-made-transparent"
       ],
       "notes": "Wireless Manager glyph: Phone (handset), off (with the X). Strip order = strings 18304-18307 (All, Wi-Fi, Bluetooth, Phone)."
+    },
+    "wrls-nfc-on": {
+      "1x": {
+        "source": "Melaton drawn (scratch generator, NFC N mark)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "melaton-drawn",
+        "4x-point-upscaled"
+      ],
+      "notes": "Wireless Manager glyph: NFC (WM 6.1 had none). The NFC N mark (a bold N in a rounded square) in the ROM glyph style, top-left aligned so the off version's X (copied from wrls-wifi-off) has its corner."
+    },
+    "wrls-nfc-off": {
+      "1x": {
+        "source": "Melaton drawn (scratch generator, NFC N mark)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "melaton-drawn",
+        "4x-point-upscaled"
+      ],
+      "notes": "Wireless Manager glyph: NFC (WM 6.1 had none). The NFC N mark (a bold N in a rounded square) in the ROM glyph style, top-left aligned so the off version's X (copied from wrls-wifi-off) has its corner with a 1 px gap."
     }
   },
   "notDelivered": {
