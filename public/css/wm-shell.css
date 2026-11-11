@@ -267,17 +267,18 @@ html.ui-mobile[data-wm-app="today"][data-wm-boot="reveal"] #wmShell {
     height: 100%;
 }
 
-/* Settings > Screen > Camera > Black bezel (#735): the screen starts below a black band as tall as
- * the camera area, with the maker's logo printed on it as on a phone's front glass. <body> becomes
- * the box every fixed layer (the shell, dialogs, the viewer, toasts) is placed in. */
+/* Settings > Screen > Camera > Black bezel (#735): the screen starts clear of a black band along
+ * the edge the camera is on (wmShell syncBezel sets data-wm-bezel-edge and --wm-bezel-top/left/right
+ * from the app's --camera-hole-*): on top in portrait with the maker's logo printed on it as on a
+ * phone's front glass, a plain side band when the phone is turned. <body> becomes the box every
+ * fixed layer (the shell, dialogs, the viewer, toasts) is placed in. */
 html.ui-mobile[data-wm-camera="bezel"] {
-    --wm-bezel-h: max(calc(var(--camera-hole-top, 0px) + var(--camera-hole-height, 0px) + 6px), calc(18 * var(--wm-px)));
     background: #000;
 }
 
 html.ui-mobile[data-wm-camera="bezel"] body {
     position: fixed;
-    inset: var(--wm-bezel-h) 0 0 0;
+    inset: var(--wm-bezel-top, 0px) var(--wm-bezel-right, 0px) 0 var(--wm-bezel-left, 0px);
     /* the page's own body height (100% / 100dvh) would keep the full screen and push the soft
        keys below it: the insets decide the size here */
     width: auto !important;
@@ -289,26 +290,41 @@ html.ui-mobile[data-wm-camera="bezel"] body {
     overflow: hidden;
 }
 
-html.ui-mobile[data-wm-camera="bezel"]::before,
-html.ui-mobile[data-wm-camera="bezel"]::after {
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::before,
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::after {
     content: '';
     position: fixed;
     left: 0;
     right: 0;
     top: 0;
-    height: var(--wm-bezel-h);
+    height: var(--wm-bezel-top);
     z-index: 2147483647;
     pointer-events: none;
 }
 
-html.ui-mobile[data-wm-camera="bezel"]::before {
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::before {
     background: #000;
 }
 
-html.ui-mobile[data-wm-camera="bezel"]::after {
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::after {
     background: image-set(url('/static_images/xyridian/xyridian-wordmark-white-512.png') 1x, url('/static_images/xyridian/xyridian-wordmark-white.png') 2x) center / auto 40% no-repeat;
     opacity: 0.55;
 }
+
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="left"]::before,
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="right"]::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: var(--wm-bezel-left, var(--wm-bezel-right));
+    background: #000;
+    z-index: 2147483647;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="left"]::before { left: 0; width: var(--wm-bezel-left); }
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="right"]::before { right: 0; width: var(--wm-bezel-right); }
 
 /* tray icons that do not fit right of the camera, left of it in the same order and pitch */
 .wm-status-left {
@@ -897,7 +913,7 @@ html.ui-mobile[data-wm-search="1"] body > #galleryWindow {
 .wm-msgbox-title {
     display: flex;
     align-items: center;
-    height: calc(21 * var(--wm-px));
+    height: calc(23 * var(--wm-px));
     padding: 0 calc(3 * var(--wm-px)) 0 calc(4 * var(--wm-px));
     background: var(--wm-highlight);
     color: #fff;
@@ -1017,9 +1033,9 @@ html.ui-mobile #confirmationDialog .modal-window-title {
     position: static !important;
     display: flex !important;
     align-items: center !important;
-    height: calc(21 * var(--wm-px)) !important;
+    height: calc(23 * var(--wm-px)) !important;
     min-height: 0 !important;
-    padding: 0 calc(4 * var(--wm-px)) !important;
+    padding: 0 calc(3 * var(--wm-px)) 0 calc(4 * var(--wm-px)) !important;
     margin: 0 !important;
     background: var(--wm-highlight) !important;
     border: 0 !important;
@@ -2555,4 +2571,13 @@ html.ui-mobile[data-wm-dialog] #wmShell {
 
 .wm-pvx-n {
     font: bold calc(11 * var(--wm-px)) / calc(13 * var(--wm-px)) var(--wm-font);
+}
+
+/* the corner button of a message box (and of the desktop's dialog drawn as one): WM 6.1's measure
+ * (messagebox reference, VGA halved): a 23 px caption, the button centred in it, 3 px from the
+ * right edge inside the frame. The title bar's own 4 px top margin does not apply here. */
+.wm-msgbox-title > .wm-title-action,
+html.ui-mobile #confirmationDialog .modal-window-title > .wm-title-action {
+    align-self: center !important;
+    margin: 0 !important;
 }

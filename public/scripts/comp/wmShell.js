@@ -1070,7 +1070,31 @@
      * the bar right of the title's start, the title ends before it (ellipsis), a spacer covers it and
      * the tray icons stay right of it; fitStatusNow() then sheds what no longer fits.
      */
+    /**
+     * Screen > Camera > Black bezel: the band goes along the edge the camera is on, as tall (or wide)
+     * as the camera area; none when the camera is away from the edges. A turned phone moves the
+     * camera to a side, so the top band goes and a side band comes (#735).
+     */
+    function syncBezel() {
+        const style = root.style;
+        const v = (n) => parseFloat(style.getPropertyValue(n)) || 0;
+        const h = { left: v('--camera-hole-left'), top: v('--camera-hole-top'), width: v('--camera-hole-width'), height: v('--camera-hole-height') };
+        const margin = 6;
+        const near = 64;
+        let edge = 'none';
+        if (!(h.width > 0 && h.height > 0)) edge = 'top'; // no camera reported (a browser): a plain top bezel
+        else if (h.top < near) edge = 'top';
+        else if (h.left < near) edge = 'left';
+        else if (h.left + h.width > window.innerWidth - near) edge = 'right';
+        const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        style.setProperty('--wm-bezel-top', edge === 'top' ? `${Math.max(h.top + h.height + margin, 18 * px)}px` : '0px');
+        style.setProperty('--wm-bezel-left', edge === 'left' ? `${h.left + h.width + margin}px` : '0px');
+        style.setProperty('--wm-bezel-right', edge === 'right' ? `${window.innerWidth - h.left + margin}px` : '0px');
+        if (root.dataset.wmBezelEdge !== edge) root.dataset.wmBezelEdge = edge;
+    }
+
     function applyCameraHole(bar) {
+        syncBezel();
         const title = bar.querySelector('.wm-title');
         const status = bar.querySelector('.wm-status');
         let left = bar.querySelector('.wm-status-left');
@@ -1384,7 +1408,7 @@
         const byKey = new Map();
         // toastManager prepends: walk oldest first so the list keeps arrival order
         for (const t of [...box.children].reverse()) {
-            if (!t.id || t.classList.contains('removing')) continue;
+            if (!t.id || t.classList.contains('removing') || t.dataset.wmBusy === '1') continue;
             const titleEl = t.querySelector('.toast-title');
             const msgEl = t.querySelector('.toast-message');
             const title = titleEl ? titleEl.textContent.trim() : '';
@@ -1433,11 +1457,26 @@
             if (!t.id || toastSeen.has(t) || t.classList.contains('removing')) continue;
             toastSeen.add(t);
             if (!answersUser() || !notesMayPop()) continue;
-            if (t.classList.contains('upload-progress') || t.querySelector('.toast-progress, .toast-buttons') || !t.querySelector('.toast-close')) continue;
             const title = ((t.querySelector('.toast-title') || {}).textContent || '').trim();
             if (BACKGROUND_TOAST.test(title)) continue;
+            if (t.querySelector('.toast-buttons')) continue;
             const text = ((t.querySelector('.toast-message') || {}).textContent || '').replace(/\s+/g, ' ').trim();
             const type = (t.className.match(/glass-toast-(\w+)/) || [])[1] || 'info';
+            // work under way for the user's tap (a progress toast, "Loading Gallery...", "Deleting..."):
+            // the wait cursor while it lasts, no notification (Yukimi, Nov 10)
+            const progress = t.classList.contains('upload-progress') || !!t.querySelector('.toast-progress') || !t.querySelector('.toast-close')
+                || /^(loading|deleting|moving|copying|saving|uploading|downloading|processing|refreshing|applying)\b|\.\.\.$|\u2026$/i.test(title || text);
+            if (progress) {
+                t.dataset.wmBusy = '1';
+                const release = busy(true, { delay: 250, timeout: 60000 });
+                const watch = setInterval(() => { if (!t.isConnected || t.classList.contains('removing')) { clearInterval(watch); release(); } }, 250);
+                continue;
+            }
+            // a routine done ("Image deleted!", "Moved 1 files", "Saved"): nothing, the result is on screen
+            if (type === 'success') {
+                if (typeof window.removeGlassToast === 'function') window.removeGlassToast(t.id);
+                continue;
+            }
             const icon = type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'info';
             const app = current && current !== 'today' ? apps.get(current) : null;
             const boxTitle = title && title !== 'Dreamscape' ? title : ((app && app.title) || 'Melaton Mobile');
@@ -2061,6 +2100,25 @@
                 const notice = confirmationNotice(message, options, config);
                 if (notice) return notice;
                 const result = ask.apply(this, arguments);
+                // the dialog's close (X), hidden with the desktop's window controls: WM's title-bar X
+                // in the caption, pressing the desktop close (its answer is the dialog's own)
+                try {
+                    const dlg = document.getElementById('confirmationDialog');
+                    const title = dlg && dlg.querySelector('.modal-window-title');
+                    if (title) {
+                        title.querySelectorAll(':scope > .wm-title-action').forEach((b) => b.remove());
+                        const close = dlg.querySelector('.modal-window-controls .close-btn');
+                        if (close && close.style.display !== 'none') {
+                            const x = document.createElement('button');
+                            x.type = 'button';
+                            x.className = 'wm-title-action';
+                            x.dataset.kind = 'close';
+                            x.setAttribute('aria-label', 'Close');
+                            x.addEventListener('click', () => close.click());
+                            title.appendChild(x);
+                        }
+                    }
+                } catch (_) { /* no corner */ }
                 try {
                     const dlg = document.getElementById('confirmationDialog');
                     const icon = (dlg && dlg.querySelector('.modal-window-title-main i') || {}).className || '';
@@ -2574,6 +2632,15 @@
     // (and install / update progress), owner = the Melaton account, Messages = Dovecote unread,
     // Tasks = this phone's prints in flight, Calendar = NovelAI Anlas and subscription, Live
     // Search = gallery search, workspace, and the newest prints.
+    const todayWidgets = [];
+
+    function registerTodayItem(w) {
+        if (!w || !w.id || typeof w.text !== 'function' || todayWidgets.some((x) => x.id === w.id)) return;
+        todayWidgets.push(w);
+        const today = apps.get('today');
+        if (today && today.page) today.refresh();
+    }
+
     function registerTodayApp() {
         const fmtDate = new Intl.DateTimeFormat(undefined, { month: 'long', day: '2-digit', year: 'numeric' });
         const fmtDay = new Intl.DateTimeFormat(undefined, { weekday: 'long' });
@@ -2790,6 +2857,7 @@
                     strip.innerHTML = prints.map((p) => `<button type="button" class="wm-today-print" data-filename="${escapeHtml(p.filename || p.original || '')}" aria-label="${escapeHtml(p.filename || 'Print')}" style="background-image:url('${escapeHtml(previewUrl(p))}')"></button>`).join('');
                 }
                 strip.hidden = !prints.length;
+                paintTodayWidgets(page);
                 applyTodayItems(page);
             },
             softKeys() {
@@ -2802,6 +2870,31 @@
 
         function workspaceMenu() {
             return workspaceItems();
+        }
+
+        /**
+         * Today rows from apps in their own files (wmShell.registerTodayItem): { id, label, icon (wm61
+         * art name or '/path'), after (the row id to follow), text() -> string ('' hides the row),
+         * onTap() }. Each refresh of Today repaints them; Settings > Today > Items lists them.
+         */
+        function paintTodayWidgets(page) {
+            for (const w of todayWidgets) {
+                let row = page.querySelector(`[data-row="${CSS.escape(w.id)}"]`);
+                if (!row) {
+                    row = document.createElement(w.onTap ? 'button' : 'div');
+                    if (w.onTap) { row.type = 'button'; row.addEventListener('click', () => { try { w.onTap(); } catch (err) { console.warn('[wmShell] today item', w.id, err); } }); }
+                    row.className = `wm-today-row${w.onTap ? '' : ' is-plain'}`;
+                    row.dataset.row = w.id;
+                    row.innerHTML = `${imgTag(w.icon || 'app-programs')}<span class="wm-today-text"></span>`;
+                    const after = w.after && page.querySelector(`[data-row="${CSS.escape(w.after)}"]`);
+                    if (after) after.after(row); else page.querySelector('[data-row="search"]').before(row);
+                    itemsKey = null; // the stored order places the new row next time
+                }
+                let text = '';
+                try { text = String(w.text() || ''); } catch (_) { text = ''; }
+                row.hidden = !text;
+                setText(row.querySelector('.wm-today-text'), text);
+            }
         }
 
         // Settings > Today > Items: order and on / off of the rows (wmTodayItems = [{ id, on }])
@@ -4006,9 +4099,9 @@
         startBoot();
         refreshStatus();
         setInterval(refreshStatus, 2000);
-        window.addEventListener('resize', () => { if (noteTrayOpen) renderNotes(); else fitStatus(); });
+        window.addEventListener('resize', () => { syncBezel(); if (noteTrayOpen) renderNotes(); else fitStatus(); });
         // the Android app moved or rotated the camera hole (--camera-hole-*)
-        window.addEventListener('dreamscape:cutout', () => fitStatus());
+        window.addEventListener('dreamscape:cutout', () => { syncBezel(); fitStatus(); });
         checkTakeover();
         setInterval(checkTakeover, 400);
         setInterval(checkViewer, 150);
@@ -4027,6 +4120,10 @@
         dropdown: (anchor, items, align, onClose) => showDropdown(anchor, items, align, onClose),
         closeMenus: () => closeMenus(),
         /** Registered apps (id, title, icon, inStart) in registration order. */
+        /** A Today row from an app: registerTodayItem({ id, label, icon, after, text(), onTap() }). */
+        registerTodayItem: (w) => registerTodayItem(w),
+        /** Today rows from apps: [{ id, label }] (Settings > Today > Items). */
+        listTodayItems: () => todayWidgets.map((w) => ({ id: w.id, label: w.label || w.id })),
         /** End an app: its page is removed and remounted on the next open (Task Manager). */
         endApp: (id) => endApp(id),
         /** Apps opened this session, most recent first. */

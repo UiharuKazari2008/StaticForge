@@ -97,6 +97,16 @@
         root.dataset.wmCamera = cameraStyle();
     }
 
+    // Settings > Screen > Full Screen (#735): the Android app hides its status bar and/or gesture bar
+    function systemBars() {
+        const app = window.AndroidDisplay;
+        if (!app || typeof app.getSystemBars !== 'function') return null;
+        try {
+            const v = JSON.parse(app.getSystemBars());
+            return { hideStatus: v.hideStatus !== false, hideNavigation: v.hideNavigation === true };
+        } catch (_) { return null; }
+    }
+
     applyScale();
     applyTitleBar();
     applyCamera();
@@ -405,15 +415,17 @@
         const saved = lsJson(K.todayItems);
         const out = [];
         const seen = new Set();
+        // the shell's rows and the rows apps add (wmShell.registerTodayItem: Accounts ...)
+        const rows = TODAY_ROWS.concat(sh && typeof sh.listTodayItems === 'function' ? sh.listTodayItems().map((w) => [w.id, w.label]) : []);
         if (Array.isArray(saved)) {
             for (const r of saved) {
-                const def = r && TODAY_ROWS.find(([id]) => id === r.id);
+                const def = r && rows.find(([id]) => id === r.id);
                 if (!def || seen.has(def[0])) continue;
                 seen.add(def[0]);
                 out.push({ id: def[0], label: def[1], on: r.on !== false });
             }
         }
-        for (const [id, label] of TODAY_ROWS) if (!seen.has(id)) out.push({ id, label, on: true });
+        for (const [id, label] of rows) if (!seen.has(id)) out.push({ id, label, on: true });
         return out;
     }
 
@@ -902,9 +914,22 @@
         },
         {
             id: 'screen', tab: 'system', label: 'Screen', icon: 'set-screen',
-            tabs: [['textsize', 'Text Size'], ['camera', 'Camera']],
-            init: () => ({ scale: currentScale(), camera: cameraStyle() }),
+            tabs: [['textsize', 'Text Size'], ['camera', 'Camera'], ['fullscreen', 'Full Screen']],
+            init: () => ({ scale: currentScale(), camera: cameraStyle(), bars: systemBars() }),
             render(el, tab, d) {
+                if (tab === 'fullscreen') {
+                    if (!d.bars) {
+                        el.innerHTML = '<p>Hiding the status bar and the gesture bar is available in the Dreamscape app for Android.</p>';
+                        return;
+                    }
+                    el.innerHTML = `<p>Hide the phone's bars to give Melaton Mobile the whole screen. Swipe from the edge to show a hidden bar for a moment.</p>
+                        <div class="wm-form-gap"></div>
+                        ${check('wmHideStatus', 'Hide the status bar', d.bars.hideStatus)}
+                        ${check('wmHideNavigation', 'Hide the gesture bar', d.bars.hideNavigation)}`;
+                    el.querySelector('input[name="wmHideStatus"]').addEventListener('change', (e) => { d.bars.hideStatus = e.target.checked; });
+                    el.querySelector('input[name="wmHideNavigation"]').addEventListener('change', (e) => { d.bars.hideNavigation = e.target.checked; });
+                    return;
+                }
                 if (tab === 'camera') {
                     el.innerHTML = `<p>Choose how the screen handles the camera at the top of the display.</p>
                         <div class="wm-form-gap"></div>
@@ -956,6 +981,10 @@
             },
             commit(d) {
                 const keys = [];
+                const bars = systemBars();
+                if (d.bars && bars && (d.bars.hideStatus !== bars.hideStatus || d.bars.hideNavigation !== bars.hideNavigation)) {
+                    try { window.AndroidDisplay.setSystemBars(!!d.bars.hideStatus, !!d.bars.hideNavigation); } catch (_) { /* older app */ }
+                }
                 if (d.camera !== cameraStyle()) {
                     lsSet(K.camera, d.camera === 'bezel' ? 'bezel' : null);
                     applyCamera();
