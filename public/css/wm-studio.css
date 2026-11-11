@@ -2698,3 +2698,206 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
 
 .wm-studio #manualModal i.fa-dollar-sign::before { content: '$' !important; }
 .wm-studio #manualModal i.fa-lambda::before { content: '\3BB' !important; font-weight: normal !important; }
+
+/* ---- badges in full (Yukimi, Nov 10: the phone has the room) ----
+ * the desktop's combos carry a short (small-viewport: "A", "Euler") and a full (full-viewport:
+ * "Ancestral") text; the phone shows the full one */
+.wm-studio #manualModal .custom-dropdown-btn .small-viewport {
+    display: none !important;
+}
+
+.wm-studio #manualModal .custom-dropdown-btn .full-viewport {
+    display: inline-block !important;
+}
+
+.wm-studio #manualModal .custom-dropdown-btn .custom-dropdown-badge,
+.wm-studio #manualModal .wms-badge {
+    white-space: nowrap;
+}
+
+/* the two dice (Yukimi, Nov 10): New seed (rollSeedBtn) keeps NovelAI's dice; Random Prompt
+ * (randomPromptToggleBtn, a toggle) is a shuffle glyph of our own so the two read apart */
+.wm-studio #manualModal #randomPromptToggleBtn .nai-dice {
+    display: inline-block !important;
+    width: calc(11 * var(--wm-px)) !important;
+    height: calc(11 * var(--wm-px)) !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    vertical-align: middle;
+    color: transparent !important;
+    -webkit-text-fill-color: transparent !important;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M8 2h1v1h-1zM0 3h3v1h-3zM6 3h5v1h-5zM3 4h1v1h-1zM5 4h1v1h-1zM8 4h1v1h-1zM4 5h1v1h-1zM3 6h1v1h-1zM5 6h1v1h-1zM8 6h1v1h-1zM0 7h3v1h-3zM6 7h5v1h-5zM8 8h1v1h-1z'/%3E%3C/svg%3E") center / 100% 100% no-repeat !important;
+}
+
+.wm-studio #manualModal #randomPromptToggleBtn .nai-dice::before,
+.wm-studio #manualModal #randomPromptToggleBtn .nai-dice::after {
+    content: none !important;
+    display: none !important;
+}
+
+/* ---- the token / usage / cost / balance row in words (Yukimi, Nov 10: UI bugs on the cost and
+ * balance element; full text on the phone): the desktop's bare numbers, dot and Anlas mark become
+ * "1457 tokens free", "156 in 24 h, 3% used", "Cost 0 Anlas", "Balance 9713 + 22825" ---- */
+.wm-studio #manualModal .character-prompts-controls {
+    justify-content: flex-start !important;
+    row-gap: calc(3 * var(--wm-px)) !important;
+}
+
+.wm-studio #manualModal .character-prompts-controls > .inset-badge {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.wm-studio #manualModal #manualTokenFree::after {
+    content: " tokens free";
+}
+
+.wm-studio #manualModal #manualGenCount::after {
+    content: " in 24 h,";
+}
+
+.wm-studio #manualModal #manualGenUsagePercent::after {
+    content: " used";
+}
+
+.wm-studio #manualModal #manualGenUsageSplit {
+    display: inline-flex !important;
+    margin-left: calc(3 * var(--wm-px)) !important;
+    border: 0 !important;
+    padding: 0 !important;
+}
+
+/* the price chip: Cost, then the balance as its own chip-like group after a rule */
+.wm-studio #manualModal #manualPriceDisplay > i.nai-anla {
+    display: none !important;
+}
+
+.wm-studio #manualModal #manualPriceList::before {
+    content: "Cost ";
+}
+
+.wm-studio #manualModal #manualPriceList::after {
+    content: " Anlas";
+}
+
+.wm-studio #manualModal #manualBalanceSplit {
+    display: inline-flex !important;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    margin-left: calc(4 * var(--wm-px)) !important;
+    padding-left: calc(5 * var(--wm-px)) !important;
+    border: 0 !important;
+    border-left: calc(1 * var(--wm-px)) solid #000 !important;
+    background: none !important;
+}
+
+.wm-studio #manualModal #manualBalanceSplit .manual-balance-dot {
+    display: none !important;
+}
+
+.wm-studio #manualModal #manualBalanceFixed::before {
+    content: "Balance ";
+}
+
+.wm-studio #manualModal #manualBalancePaid::before {
+    content: "+ ";
+}
+
+.wm-studio #manualModal #manualBalanceSplit .hidden {
+    display: none !important;
+}
+
+/* combo badges in their own case */
+.wm-studio #manualModal .custom-dropdown-btn .custom-dropdown-badge,
+.wm-studio #manualModal .wms-badge {
+    text-transform: none !important;
+    letter-spacing: normal !important;
+}
+
+/* ---- prompt fields open at the height of their text (Yukimi, Nov 10: "the prompt boxes are not
+ * opening in their correct height"). The base fields were pinned at 150 WM px and the character
+ * prompts kept the desktop autosizer's height, measured while Studio was hidden (2 lines). The
+ * field follows its content (field-sizing), from 80 / 40 WM px, up to most of the page; the short
+ * page layouts above (30em and lower, the keyboard strip) keep their own heights. ---- */
+@container wms (min-height: 30.01em) {
+    .wm-studio #manualModal :is(#manualPrompt, #manualUc, #manualPromptNegative, #creativeDirectiveInput) {
+        field-sizing: content !important;
+        height: auto !important;
+        min-height: calc(80 * var(--wm-px)) !important;
+        max-height: calc(100cqh - 60 * var(--wm-px)) !important;
+        overflow-y: auto !important;
+    }
+
+    .wm-studio #manualModal .character-prompt-textarea-container > textarea,
+    .wm-studio #manualModal .character-prompt-textarea-container .prompt-textarea-emphasis-wrap > textarea {
+        field-sizing: content !important;
+        height: auto !important;
+        min-height: calc(40 * var(--wm-px)) !important;
+        max-height: calc(100cqh - 60 * var(--wm-px)) !important;
+        overflow-y: auto !important;
+    }
+}
+
+/* the result: no previous-print thumbnail (the desktop's dual mode, opacity 0 at the right edge but
+ * tappable: a tap swapped the pictures, the print shifted and got smaller). A tap opens the viewer;
+ * Menu > Previous Print / Next Print step through the prints. */
+.wm-studio #manualModal #manualPreviewOriginalImage {
+    display: none !important;
+}
+
+/* ---- band (Yukimi, Nov 10: "on this wider display the settings can be a full width bar at the
+ * bottom"): a split page with height to spare (40em+ tall, the Fold's inner screen, a tablet in
+ * landscape) puts Settings in a full-width band along the bottom, three label / field pairs a row,
+ * under the form and the Print; the band scrolls on its own. The Prompt page only. ---- */
+@container wms (min-width: 40em) and (aspect-ratio >= 3 / 4) and (min-height: 40em) {
+    .wm-studio > * {
+        --wms-band-h: clamp(calc(120 * var(--wm-px)), 32cqh, calc(220 * var(--wm-px)));
+    }
+
+    .wm-studio[data-tab="prompt"] #manualModal .model-control.model-control {
+        position: fixed !important;
+        inset: auto 0 0 0 !important;
+        height: var(--wms-band-h) !important;
+        margin: 0 !important;
+        padding: calc(3 * var(--wm-px)) calc(5 * var(--wm-px)) !important;
+        overflow-y: auto !important;
+        overscroll-behavior: contain;
+        box-sizing: border-box;
+        z-index: 3;
+        background: #fff !important;
+        border-top: calc(1 * var(--wm-px)) solid #000 !important;
+    }
+
+    .wm-studio[data-tab="prompt"] #manualForm {
+        margin-bottom: var(--wms-band-h) !important;
+    }
+
+    .wm-studio[data-tab="prompt"] #manualModal #manualPanelSection#manualPanelSection {
+        inset: 0 0 var(--wms-band-h) auto !important;
+    }
+
+    .wm-studio[data-tab="prompt"] .wms-noprint {
+        bottom: var(--wms-band-h);
+    }
+
+    .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder.control-holder {
+        grid-template-columns: repeat(2, calc(66 * var(--wm-px)) minmax(0, 1fr)) !important;
+        grid-auto-flow: row dense;
+    }
+
+    .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder.control-holder > .form-row > .form-group.form-group {
+        grid-template-columns: subgrid !important;
+        grid-column: auto / span 2 !important;
+    }
+
+    .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder.control-holder > .form-row > .form-group .wms-stepper {
+        max-width: none !important;
+    }
+}
+
+/* a band 60em and wider (a tablet in landscape): three pairs a row */
+@container wms (min-width: 60em) and (aspect-ratio >= 3 / 4) and (min-height: 40em) {
+    .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder.control-holder {
+        grid-template-columns: repeat(3, calc(66 * var(--wm-px)) minmax(0, 1fr)) !important;
+    }
+}

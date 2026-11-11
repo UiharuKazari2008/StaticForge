@@ -240,7 +240,8 @@
         try {
             for (const g of modelGroups) {
                 const o = g.options.find((x) => x.value === value);
-                if (o) return o.badge ? { badge: o.badge, cls: o.badge_class || '' } : null;
+                // the phone has the room: the full word (Full, Curated, Legacy), not the letter
+                if (o) return o.badge ? { badge: o.badge_full || o.badge, cls: o.badge_class || '' } : null;
             }
         } catch (_) { /* no list */ }
         return null;
@@ -1753,7 +1754,9 @@
         // a tap on the finished print opens it in the picture view
         page.addEventListener('click', (e) => {
             if (!printOnScreen() || !e.target.closest) return;
-            if (!e.target.closest('#manualPreviewImage, .manual-preview-image-container-inner')) return;
+            // the whole print area: the desktop's invisible previous-print thumbnail (#manualPreviewOriginalImage,
+            // opacity 0 at the right edge) took taps and swapped the pictures (the print shifted and shrank)
+            if (!e.target.closest('#manualPreviewImage, #manualPreviewOriginalImage, .manual-preview-image-container-inner, .manual-preview-image-container')) return;
             if (!printName()) return;
             e.preventDefault();
             e.stopPropagation();
