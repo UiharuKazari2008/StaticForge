@@ -410,6 +410,7 @@ class ExplorerApplet {
 
     buildEmptyContextMenuSections() {
         if (this._isPhonePath()) return explorerPhoneDrive.emptyMenuSections(this);
+        if (this._isSequenziaPath()) return explorerSequenzia.emptyMenuSections();
         if (typeof explorerArchive !== 'undefined' && explorerArchive.isArchivePath(this.currentPath)) {
             return explorerArchive.emptyMenuSections();
         }
@@ -1077,6 +1078,8 @@ class ExplorerApplet {
         const WORKSPACE_SYSTEM = ['Desktop', 'Pictures', 'References', 'Notes', 'Scraps', 'Trash'];
         if (this._isComputerPath(vfsPath)) return false;
         if (this._isPhonePath(vfsPath)) return explorerPhoneDrive.isWritable(vfsPath);
+        // the Sequenzia network drive is read-only for now (explorerSequenzia.js)
+        if (this._isSequenziaPath(vfsPath)) return false;
         const normalized = (vfsPath || '/').replace(/\/+$/, '') || '/';
         if (this._isTrashPath(normalized)) return false;
         // inside an archive (vfsArchive.js): read-only
@@ -2125,6 +2128,10 @@ class ExplorerApplet {
         if (typeof explorerPhoneDrive !== 'undefined' && explorerPhoneDrive.isEntry(item)) {
             return explorerPhoneDrive.entryMenuSections(this, item);
         }
+        // on the Sequenzia network drive: Open, Download (explorerSequenzia.js)
+        if (typeof explorerSequenzia !== 'undefined' && explorerSequenzia.isItem(item)) {
+            return explorerSequenzia.entryMenuSections(this, item);
+        }
         // inside an archive: Open, Extract files..., Download, Copy (explorerArchive.js)
         if (typeof explorerArchive !== 'undefined' && explorerArchive.isEntry(item)) {
             return explorerArchive.entryMenuSections(this, item);
@@ -2394,6 +2401,10 @@ class ExplorerApplet {
         }
         if (action.startsWith('explorer-phone-') && typeof explorerPhoneDrive !== 'undefined') {
             await explorerPhoneDrive.handleAction(action, item, this);
+            return;
+        }
+        if (action.startsWith('explorer-seq-') && typeof explorerSequenzia !== 'undefined') {
+            await explorerSequenzia.handleAction(action, item, this);
             return;
         }
 
@@ -3616,6 +3627,11 @@ class ExplorerApplet {
         if (this.grid) this.grid.replaceItems(this.items);
     }
 
+    /** The Sequenzia network drive (explorerSequenzia.js, Yozora #749): a VFS mount at /~sequenzia. */
+    _isSequenziaPath(path) {
+        return typeof explorerSequenzia !== 'undefined' && explorerSequenzia.isPath(path ?? this.currentPath);
+    }
+
     /** The phone (explorerPhoneDrive.js, Yozora #698): only inside the Android app. */
     _isPhonePath(path) {
         return typeof explorerPhoneDrive !== 'undefined' && explorerPhoneDrive.isPath(path ?? this.currentPath);
@@ -3862,6 +3878,11 @@ class ExplorerApplet {
             const up = explorerPhoneDrive.parentOf(this.currentPath);
             if (up) this.navigateTo(up);
             else if (this.computer) this.navigateTo(ExplorerComputerView.PATH);
+            return;
+        }
+        // up from the Sequenzia network drive's root is Computer too (explorerSequenzia.js)
+        if (this.computer && typeof explorerSequenzia !== 'undefined' && this.currentPath === explorerSequenzia.ROOT) {
+            this.navigateTo(ExplorerComputerView.PATH);
             return;
         }
         const parts = this.currentPath.split('/').filter(Boolean);
@@ -4531,6 +4552,12 @@ class ExplorerApplet {
             return;
         }
 
+        // a file on the Sequenzia network drive (explorerSequenzia.js)
+        if (typeof explorerSequenzia !== 'undefined' && explorerSequenzia.isEntry(item)) {
+            await explorerSequenzia.openEntry(this, item);
+            return;
+        }
+
         // an archive opens as a folder; its files open from inside it (explorerArchive.js)
         if (typeof explorerArchive !== 'undefined') {
             if (explorerArchive.isEntry(item)) {
@@ -4660,7 +4687,9 @@ class ExplorerApplet {
         }
         if (uploadBtn) {
             uploadBtn.classList.toggle('hidden', isWsList || this._isComputerPath()
-                || (this._isPhonePath() && !this._isWritableFolderPath(this.currentPath)));
+                || (this._isPhonePath() && !this._isWritableFolderPath(this.currentPath))
+                // the Sequenzia network drive is read-only for now (explorerSequenzia.js)
+                || this._isSequenziaPath());
         }
     }
 
@@ -5176,6 +5205,10 @@ class ExplorerApplet {
             explorerPhoneDrive.download(sel);
             return;
         }
+        if (sel.length && typeof explorerSequenzia !== 'undefined' && sel.every(i => explorerSequenzia.isItem(i))) {
+            explorerSequenzia.download(sel);
+            return;
+        }
         if (sel.length && typeof explorerArchive !== 'undefined' && sel.every(i => explorerArchive.isEntry(i))) {
             await explorerArchive.downloadEntries(this, sel);
             return;
@@ -5184,6 +5217,10 @@ class ExplorerApplet {
     }
 
     async downloadSelectionItem(item) {
+        if (typeof explorerSequenzia !== 'undefined' && explorerSequenzia.isItem(item)) {
+            explorerSequenzia.download([item]);
+            return;
+        }
         if (typeof explorerArchive !== 'undefined' && explorerArchive.isEntry(item)) {
             await explorerArchive.downloadEntries(this, [item]);
             return;
@@ -5374,6 +5411,8 @@ class ExplorerApplet {
         }
         // an archive's contents are read-only here (vfsArchive.js)
         if (sel.some(i => i.targetKind === 'archive-entry')) return;
+        // the Sequenzia network drive is read-only for now (vfsSequenzia.js)
+        if (sel.some(i => i.targetKind === 'sequenzia-entry' || i.targetKind === 'sequenzia-folder')) return;
 
         if (this._isTrashPath(this.currentPath)) {
             const confirmed = typeof showConfirmationDialog === 'function'

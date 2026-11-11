@@ -8365,8 +8365,9 @@ function formatFileSize(bytes) {
     if (isNaN(bytes)) return 'Invalid Size';
     
     const k = 1024;
-    const sizes = ['', 'K', 'M', 'G'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    // up to petabytes: a terabyte-sized folder printed "1.57 undefinedB" before (Yozora #749)
+    const sizes = ['', 'K', 'M', 'G', 'T', 'P'];
+    const i = Math.max(0, Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k))));
     
     const result = parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i] + 'B';
     return result;

@@ -187,6 +187,15 @@
             return String(key || '').startsWith('phone:') ? (this.phoneDrives().find((d) => d.key === key) || null) : null;
         }
 
+        /** Network drives (Network Location): Sequenzia, when this server has it set up (explorerSequenzia.js). */
+        networkDrives() {
+            return root.explorerSequenzia ? root.explorerSequenzia.computerDrives() : [];
+        }
+
+        networkDrive(key) {
+            return String(key || '').startsWith('net:') ? (this.networkDrives().find((d) => d.key === key) || null) : null;
+        }
+
         /** A phone root's icon: Vista's removable disk (imageres.dll 29), never the system drive's. */
         deviceIcon(d, size) {
             return `<img class="explorer-computer-tile-icon" src="${ART}/${d.icon || 'drive-removable'}-${size}.png" alt="" draggable="false">`;
@@ -201,12 +210,27 @@
                 root.explorerPhoneDrive.openComputerDrive(this.app, letter);
                 return;
             }
+            const net = this.networkDrive(letter);
+            if (net) {
+                if (net.online) this.app.navigateTo(net.path);
+                else this.networkUnavailable(net);
+                return;
+            }
             const d = this.drive(letter);
             if (d) this.app.navigateTo(d.path);
         }
 
+        /** Vista's words for a mapped drive it cannot reach. */
+        networkUnavailable(net) {
+            if (typeof root.showConfirmationDialog !== 'function') return;
+            const why = net.error ? `<br><br>${esc(net.error)}` : '';
+            root.showConfirmationDialog(`<p>An error occurred while reconnecting Z: to \\\\Kanmi\\Sequenzia<br>The network path was not found.${why}</p>`,
+                [{ text: 'OK', value: true, className: 'btn-standard primary' }], null,
+                { title: 'Restoring Network Connections', showCloseButton: true });
+        }
+
         select(letter) {
-            this.selected = letter && (this.drive(letter) || this.phoneDrive(letter)) ? letter : null;
+            this.selected = letter && (this.drive(letter) || this.phoneDrive(letter) || this.networkDrive(letter)) ? letter : null;
             if (this.el) {
                 this.el.querySelectorAll('[data-drive]').forEach((t) => {
                     const on = t.dataset.drive === this.selected;
@@ -234,10 +258,20 @@
             if (!this.el) return;
             this.selected = null;
             this.render();
+            // the network drive's state arrives on its own; the tile appears (or changes) when it does
+            const net = root.explorerSequenzia ? root.explorerSequenzia.refreshStatus(reload) : null;
             await this.load(reload);
             if (!ExplorerComputerView.isPath(this.app.currentPath)) return;
             this.render();
             this.app.renderStatusText();
+            if (net) {
+                const before = JSON.stringify(this.networkDrives());
+                net.then(() => {
+                    if (!ExplorerComputerView.isPath(this.app.currentPath) || JSON.stringify(this.networkDrives()) === before) return;
+                    this.render();
+                    this.app.renderStatusText();
+                });
+            }
         }
 
         render() {
@@ -284,14 +318,34 @@
                 <section class="explorer-computer-group${this.collapsed ? ' is-collapsed' : ''}">
                     <h3 class="explorer-computer-group-head"><span>Hard Disk Drives (${DRIVES.length})</span><button type="button" class="explorer-computer-group-toggle" tabindex="-1" aria-expanded="${!this.collapsed}" aria-label="${this.collapsed ? 'Expand' : 'Collapse'} the group"></button></h3>
                     <div class="explorer-computer-tiles">${tiles}</div>
-                </section>${phoneGroup}`;
+                </section>${phoneGroup}${this.networkGroup()}`;
+        }
+
+        /** Vista's Network Location group: mapped drives, below the disks and devices. */
+        networkGroup() {
+            const nets = this.networkDrives();
+            if (!nets.length) return '';
+            const tiles = nets.map((d) => `<div class="explorer-computer-tile${d.key === this.selected ? ' is-selected' : ''}" data-drive="${esc(d.key)}" role="option" aria-selected="${d.key === this.selected}" title="${esc(d.line || d.name)}">
+                        ${this.deviceIcon(d, 48)}
+                        <div class="explorer-computer-tile-text">
+                            <div class="explorer-computer-tile-name">${esc(d.name)}</div>
+                            <div class="explorer-computer-tile-free">${esc(d.line)}</div>
+                        </div>
+                    </div>`).join('');
+            return `
+                <section class="explorer-computer-group explorer-computer-group-network">
+                    <h3 class="explorer-computer-group-head"><span>Network Location (${nets.length})</span></h3>
+                    <div class="explorer-computer-tiles">${tiles}</div>
+                </section>`;
         }
 
         /** Vista's status words for the old status line (classic theme). */
         statusText() {
             const phone = this.phoneDrive(this.selected);
             if (phone) return phone.block ? phone.block.text : (phone.total ? `${formatSize(phone.free)} free of ${formatSize(phone.total)}` : '1 item selected');
-            const count = DRIVES.length + this.phoneDrives().length;
+            const net = this.networkDrive(this.selected);
+            if (net) return net.online ? '1 item selected' : net.line;
+            const count = DRIVES.length + this.phoneDrives().length + this.networkDrives().length;
             if (this.selected) {
                 const disk = diskFacts(this.sys);
                 return disk ? `${formatSize(disk.free)} free of ${formatSize(disk.total)}` : '1 item selected';
@@ -331,6 +385,20 @@
                         ['Space free', phone.total ? esc(formatSize(phone.free)) : ''],
                         ['Total size', phone.total ? esc(formatSize(phone.total)) : '']
                     ]);
+                return;
+            }
+            const net = this.networkDrive(this.selected);
+            if (net) {
+                const nkey = `computer:${net.key}:${net.icon}`;
+                if (icon.dataset.detailsKey !== nkey) {
+                    icon.dataset.detailsKey = nkey;
+                    icon.className = 'explorer-details-icon explorer-item-icon-box explorer-item-icon-box-md';
+                    icon.innerHTML = this.deviceIcon(net, 64).replace('explorer-computer-tile-icon', 'explorer-details-shell-icon');
+                }
+                info.innerHTML = grid(net.name, [
+                    ['Network location', esc('\\\\Kanmi\\Sequenzia')],
+                    ['Status', esc(net.online ? 'Connected' : 'Disconnected')]
+                ], net.user ? ['User', esc(net.user)] : null);
                 return;
             }
             const d = this.selected ? this.drive(this.selected) : null;

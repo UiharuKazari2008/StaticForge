@@ -69,6 +69,15 @@ class VfsManager {
         this._pathStatsCache.clear();
     }
 
+    /** Sequenzia as a network drive: /~sequenzia/... (modules/vfsSequenzia.js, Yozora #749). */
+    getSequenzia() {
+        if (!this._sequenzia) {
+            const { VfsSequenzia } = require('./vfsSequenzia');
+            this._sequenzia = new VfsSequenzia(this);
+        }
+        return this._sequenzia;
+    }
+
     getDb() {
         return this.globalResources.getVfsDatabase();
     }
@@ -94,6 +103,10 @@ class VfsManager {
         }
         if (parts[0] === 'System') {
             return { type: 'system', path: normalized, systemId: VFS_SYSTEM_IDS.SYSTEM };
+        }
+        // the Sequenzia network drive (modules/vfsSequenzia.js): read-only for now
+        if (this.getSequenzia().isPath(normalized)) {
+            return { type: 'sequenzia', path: normalized };
         }
         if (parts[0] === 'Workspaces') {
             if (parts.length === 1) {
@@ -845,6 +858,9 @@ class VfsManager {
         if (parsed.type === 'archive') {
             throw new Error(`Cannot ${actionLabel} a compressed folder. Extract its files first.`);
         }
+        if (parsed.type === 'sequenzia') {
+            throw new Error(`Cannot ${actionLabel} the Sequenzia drive: it is read-only for now.`);
+        }
     }
 
     sortItems(items, sortField = 'name', sortDirection = 'asc') {
@@ -1300,6 +1316,9 @@ class VfsManager {
 
         if (this.getArchive().isArchivePath(vfsPath)) {
             return this.getArchive().listDirectory(vfsPath, options);
+        }
+        if (this.getSequenzia().isPath(this.normalizePath(vfsPath || '/'))) {
+            return this.getSequenzia().listDirectory(vfsPath, options);
         }
         const resolvedPath = await this.resolvePathInput(vfsPath || '/');
         const parsed = this.parsePath(resolvedPath);
@@ -1934,6 +1953,9 @@ class VfsManager {
         if (this.getArchive().isArchivePath(normalized)) {
             return this.getArchive().getPathDisplayInfo(normalized);
         }
+        if (this.getSequenzia().isPath(normalized)) {
+            return this.getSequenzia().getPathDisplayInfo(normalized);
+        }
         const wm = this.globalResources.getWorkspaceManager();
         const segments = [];
 
@@ -2113,6 +2135,7 @@ class VfsManager {
 
         const normalized = this.normalizePath(trimmed);
         if (this.getArchive().isArchivePath(normalized)) return normalized;
+        if (this.getSequenzia().isPath(normalized)) return normalized;
         if (normalized.split('/').filter(Boolean)[0] === 'System') {
             return await this._assertSystemPathListable(normalized);
         }
@@ -2381,6 +2404,9 @@ class VfsManager {
     async getPathStats(vfsPath) {
         if (this.getArchive().isArchivePath(vfsPath)) {
             return this.getArchive().getPathStats(vfsPath);
+        }
+        if (this.getSequenzia().isPath(this.normalizePath(vfsPath || '/'))) {
+            return this.getSequenzia().getPathStats(vfsPath);
         }
         const resolvedPath = await this.resolvePathInput(vfsPath || '/');
         const normalized = this.normalizePath(resolvedPath);
@@ -3347,6 +3373,10 @@ class VfsManager {
     buildItemPreviewUrl(item, vfsPathUuid) {
         if (item.archivePreviewUrl) {
             return item.archivePreviewUrl;
+        }
+        // the Sequenzia drive's files carry their preview address already (vfsSequenzia.js)
+        if (item.targetKind === 'sequenzia-entry') {
+            return item.previewUrl || null;
         }
         if (item.previewDataUrl) {
             return item.previewDataUrl;

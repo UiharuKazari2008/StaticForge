@@ -3273,6 +3273,14 @@ app.get('/traces/:id', authMiddleware, adminOnlyMiddleware, (req, res) => {
         workspaceExists
     });
 
+    // modules/vfsSequenzia.js — the Sequenzia network drive: status, file bytes, previews
+    require('./modules/vfsSequenzia').registerSequenziaRoutes(app, {
+        vfsPath,
+        authMiddleware,
+        globalResources,
+        buildVfsSession
+    });
+
     // modules/vfsFuseHttp.js — `${vfsPath}/fs/...` VFS API for a Linux FUSE client
     require('./modules/vfsFuseHttp').registerVfsFuseRoutes(app, {
         vfsPath,

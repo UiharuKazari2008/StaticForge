@@ -50,6 +50,12 @@ class VfsWebSocketHandlers {
         };
     }
 
+    /** The Sequenzia drive carries one person's Sequenzia rights: administrators only (vfsSequenzia.js). */
+    _assertSequenziaAccess(vfsPath, clientInfo) {
+        if (!this.getVfs().getSequenzia().isPath(this.getVfs().normalizePath(vfsPath || '/'))) return;
+        if (!clientInfo || clientInfo.userType !== 'admin') throw new Error('Access denied');
+    }
+
     async _gcContentBlobIfUnreferenced(contentHash) {
         if (!contentHash) return;
         const vfsDb = this.globalResources.getVfsDatabase();
@@ -69,6 +75,7 @@ class VfsWebSocketHandlers {
     async handleVfsListDirectory(ws, message, clientInfo) {
         try {
             const { path: vfsPath, offset, limit, sortField, sortDirection, search } = this.getPayload(message);
+            this._assertSequenziaAccess(vfsPath, clientInfo);
             const result = await this.getVfs().listDirectory(vfsPath || '/', {
                 offset: offset || 0,
                 limit: limit || 300,
@@ -87,9 +94,10 @@ class VfsWebSocketHandlers {
         }
     }
 
-    async handleVfsGetPathStats(ws, message) {
+    async handleVfsGetPathStats(ws, message, clientInfo) {
         try {
             const { path: vfsPath } = this.getPayload(message);
+            this._assertSequenziaAccess(vfsPath, clientInfo);
             const stats = await this.getVfs().getPathStats(vfsPath || '/');
             this.handlers.sendToClient(ws, {
                 type: 'vfs_get_path_stats_response',
@@ -715,7 +723,7 @@ function registerVfsPackets(handlersCtx) {
     };
 
     reg('vfs_list_directory', (ctx) => vfs.handleVfsListDirectory(ctx.ws, ctx.message, ctx.clientInfo));
-    reg('vfs_get_path_stats', (ctx) => vfs.handleVfsGetPathStats(ctx.ws, ctx.message));
+    reg('vfs_get_path_stats', (ctx) => vfs.handleVfsGetPathStats(ctx.ws, ctx.message, ctx.clientInfo));
     reg('vfs_resolve_path', (ctx) => vfs.handleVfsResolvePath(ctx.ws, ctx.message));
     reg('vfs_folder_has_user_files', (ctx) => vfs.handleVfsFolderHasUserFiles(ctx.ws, ctx.message));
     reg('vfs_create_folder', (ctx) => vfs.handleVfsCreateFolder(ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer), VFS_DESTRUCTIVE);

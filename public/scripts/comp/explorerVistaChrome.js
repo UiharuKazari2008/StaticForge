@@ -316,7 +316,9 @@
             } else if (!atComputer) {
                 const parts = String(this.app.currentPath || '/').split('/').filter(Boolean);
                 const labels = String(displayPath || '/').split('/').filter(Boolean);
-                crumbs.push({ label: rootLabel(), path: '/' });
+                // a network drive hangs off Computer, not off Local Disk (explorerSequenzia.js)
+                const network = root.explorerSequenzia && root.explorerSequenzia.isPath(this.app.currentPath);
+                if (!network) crumbs.push({ label: rootLabel(), path: '/' });
                 parts.forEach((part, i) => {
                     crumbs.push({ label: labels[i] || part, path: '/' + parts.slice(0, i + 1).join('/') });
                 });
@@ -329,6 +331,7 @@
             // the Contacts folder's own icon (wab32res IDI_ICON_FOLDER, explorerContacts.js)
             if (root.explorerContacts && root.explorerContacts.isPath(current)) this.crumbIcon = '../vista-contacts/folder-16.png';
             if (phone) this.crumbIcon = root.explorerPhoneDrive.crumbIcon(current);
+            if (root.explorerSequenzia && current === root.explorerSequenzia.ROOT) this.crumbIcon = 'drive-network-16.png';
             this.layoutBreadcrumb();
             this.watchBreadcrumbWidth();
             this.highlightFavorite();
