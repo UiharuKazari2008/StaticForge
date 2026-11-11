@@ -1763,16 +1763,100 @@
     function wrapWorkspaceSwitch() {
         const orig = window.setActiveWorkspace;
         if (typeof orig !== 'function' || orig.wmWrapped) return !!(orig && orig.wmWrapped);
-        const wrapped = function () {
+        const wrapped = function (id) {
             switchingWorkspace = true;
+            // another workspace: the whole screen is covered until its Today is ready (showSwitchCover)
+            let covered = false;
+            try {
+                const active = typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
+                if (id && id !== active && root.dataset.wmBoot === 'done') { showSwitchCover(id); covered = true; }
+            } catch (_) { /* the switch runs uncovered */ }
             let r;
-            try { r = orig.apply(this, arguments); } catch (err) { switchingWorkspace = false; throw err; }
-            Promise.resolve(r).finally(() => { setTimeout(() => { switchingWorkspace = false; }, 1500); });
+            try { r = orig.apply(this, arguments); } catch (err) { switchingWorkspace = false; if (covered) hideSwitchCover(); throw err; }
+            Promise.resolve(r).then(
+                () => { if (covered) setTimeout(() => { if (switchCoverFor === id) settleSwitchCover(id); }, 4000); },
+                () => { if (covered) hideSwitchCover(); }
+            ).finally(() => { setTimeout(() => { switchingWorkspace = false; }, 1500); });
             return r;
         };
         wrapped.wmWrapped = true;
         window.setActiveWorkspace = wrapped;
+        // after Today's own listeners (registered at start): its settings and picture are set by then
+        document.addEventListener('workspaceSwitchComplete', (ev) => {
+            const id = ev && ev.detail && ev.detail.workspaceId;
+            if (switchCoverFor && (!id || id === switchCoverFor)) void settleSwitchCover(switchCoverFor);
+        });
         return true;
+    }
+
+    /**
+     * A workspace switch reconfigures the whole phone: theme colours, the Today picture and its
+     * placement, the Today layout, the gallery. Drawn live that was a run of jumps (old picture,
+     * then the colours, then rows moving). So the screen is covered from the moment the switch
+     * starts: the white base with the wait cursor and the workspace's name, over the bars too.
+     * It lifts when the switch reported complete (workspaceSwitchComplete), the workspace's Today
+     * settings are in place, its picture has loaded (2.5 s at most) and two frames were painted;
+     * never before 0.9 s (no flash on a fast switch), never after 25 s.
+     */
+    let switchCoverFor = null;
+    let switchCoverAt = 0;
+    let switchCoverTimer = null;
+    let switchCoverFrames = null;
+
+    function showSwitchCover(id) {
+        let cover = shell.querySelector('.wm-switch');
+        if (!cover) {
+            cover = document.createElement('div');
+            cover.className = 'wm-switch';
+            cover.setAttribute('role', 'status');
+            cover.setAttribute('aria-live', 'polite');
+            cover.innerHTML = '<img class="wm-switch-wait" alt="" draggable="false"><p class="wm-switch-text"></p>';
+            shell.appendChild(cover);
+        }
+        let name = '';
+        try { if (typeof workspaces !== 'undefined' && workspaces[id]) name = workspaces[id].name || ''; } catch (_) { name = ''; }
+        cover.querySelector('.wm-switch-text').textContent = name ? `Loading ${name}...` : 'Loading workspace...';
+        const img = cover.querySelector('.wm-switch-wait');
+        let frame = 0;
+        clearInterval(switchCoverFrames);
+        const tick = () => { waitFrame(img, frame); frame = (frame + 1) % 16; };
+        tick();
+        switchCoverFrames = setInterval(tick, 90);
+        cover.hidden = false;
+        closeMenus(true);
+        root.dataset.wmSwitching = '1';
+        switchCoverFor = id;
+        switchCoverAt = Date.now();
+        clearTimeout(switchCoverTimer);
+        switchCoverTimer = setTimeout(hideSwitchCover, 25000);
+    }
+
+    function hideSwitchCover() {
+        clearTimeout(switchCoverTimer);
+        clearInterval(switchCoverFrames);
+        switchCoverTimer = null;
+        switchCoverFrames = null;
+        switchCoverFor = null;
+        delete root.dataset.wmSwitching;
+        const cover = shell && shell.querySelector('.wm-switch');
+        if (cover) cover.hidden = true;
+    }
+
+    /** The switch is through: wait for the new Today picture and two painted frames, then lift the cover. */
+    async function settleSwitchCover(id) {
+        if (switchCoverFor !== id) return;
+        const url = todayPicture();
+        if (url) {
+            await Promise.race([
+                new Promise((resolve) => { const im = new Image(); im.onload = im.onerror = resolve; im.src = url; }),
+                new Promise((resolve) => setTimeout(resolve, 2500))
+            ]);
+        }
+        await afterPaint();
+        await afterPaint();
+        const left = 900 - (Date.now() - switchCoverAt);
+        if (left > 0) await new Promise((resolve) => setTimeout(resolve, left));
+        if (switchCoverFor === id) hideSwitchCover();
     }
 
     function showLoadingBox(text, caption) {
@@ -3167,7 +3251,13 @@
         if (todayPrefsFor === id && !force) return true;
         todayPrefsFor = id;
         const t = w.mobileToday;
-        if (!t || typeof t !== 'object') return true;
+        if (!t || typeof t !== 'object') {
+            // nothing saved for this workspace yet: the layout it is first seen with is the last
+            // one used (it becomes its own on the first change), but the picture never carries
+            // over from another workspace: Today shows this workspace's own desktop wallpaper
+            try { localStorage.removeItem(TODAY_BG_KEY); localStorage.removeItem('wmTodayUseDesktop'); } catch (_) { /* storage off */ }
+            return true;
+        }
         for (const [k, key, json, optional] of TODAY_PREF) {
             try {
                 const v = t[k];
@@ -5514,7 +5604,11 @@
         },
         closeBubble: () => closeBubble(),
         // tests: run the startup sequence again (splash, installer, Today) on a live page
-        _test: { restartBoot() { clearInterval(bootTimer); installKind = null; bootStart = Date.now(); setBoot('splash'); bootTimer = setInterval(bootTick, 200); } },
+        _test: {
+            restartBoot() { clearInterval(bootTimer); installKind = null; bootStart = Date.now(); setBoot('splash'); bootTimer = setInterval(bootTick, 200); },
+            // the workspace switch cover without a switch: up for id, lifted as after a completed one
+            switchCover(id, ms) { showSwitchCover(id); setTimeout(() => { void settleSwitchCover(id); }, ms || 1500); }
+        },
         deriveRoles,
         get current() { return current; }
     };

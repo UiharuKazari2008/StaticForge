@@ -3004,3 +3004,48 @@ html.ui-mobile #confirmationDialog #confirmationMessage::after {
 .wm-viewbar-btn[data-act="scraps"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M3 0h5v1h-5zM0 1h11v1h-11zM1 3h9v1h-9zM1 4h1v1h-1zM3 4h1v1h-1zM5 4h1v1h-1zM7 4h1v1h-1zM9 4h1v1h-1zM1 5h1v1h-1zM3 5h1v1h-1zM5 5h1v1h-1zM7 5h1v1h-1zM9 5h1v1h-1zM1 6h1v1h-1zM3 6h1v1h-1zM5 6h1v1h-1zM7 6h1v1h-1zM9 6h1v1h-1zM1 7h1v1h-1zM3 7h1v1h-1zM5 7h1v1h-1zM7 7h1v1h-1zM9 7h1v1h-1zM1 8h1v1h-1zM3 8h1v1h-1zM5 8h1v1h-1zM7 8h1v1h-1zM9 8h1v1h-1zM1 9h9v1h-9z'/%3E%3C/svg%3E"); }
 .wm-viewbar-btn[data-act="delete"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h2v1h-2zM9 0h2v1h-2zM0 1h3v1h-3zM8 1h3v1h-3zM1 2h3v1h-3zM7 2h3v1h-3zM2 3h3v1h-3zM6 3h3v1h-3zM3 4h5v1h-5zM4 5h3v1h-3zM3 6h5v1h-5zM2 7h3v1h-3zM6 7h3v1h-3zM1 8h3v1h-3zM7 8h3v1h-3zM0 9h3v1h-3zM8 9h3v1h-3zM0 10h2v1h-2zM9 10h2v1h-2z'/%3E%3C/svg%3E"); }
 .wm-viewbar-btn[data-act="next"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M3 1h1v1h-1zM9 1h1v1h-1zM3 2h2v1h-2zM9 2h1v1h-1zM3 3h3v1h-3zM9 3h1v1h-1zM3 4h4v1h-4zM9 4h1v1h-1zM3 5h5v1h-5zM9 5h1v1h-1zM3 6h4v1h-4zM9 6h1v1h-1zM3 7h3v1h-3zM9 7h1v1h-1zM3 8h2v1h-2zM9 8h1v1h-1zM3 9h1v1h-1zM9 9h1v1h-1z'/%3E%3C/svg%3E"); }
+
+/* ---- workspace switch cover (wmShell.js showSwitchCover) ----
+ * the white base over the whole screen, bars included, with the wait cursor and the workspace's
+ * name, while a switch reconfigures colours, the Today picture and layout and the gallery */
+.wm-switch {
+    position: absolute;
+    top: var(--wm-safe-top);
+    right: var(--wm-safe-right);
+    bottom: var(--wm-safe-bottom);
+    left: var(--wm-safe-left);
+    z-index: 28;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(8 * var(--wm-px));
+    background: #fff;
+    color: #000;
+    font-size: calc(12 * var(--wm-px));
+    pointer-events: auto;
+}
+
+.wm-switch[hidden] {
+    display: none;
+}
+
+.wm-switch-wait {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
+.wm-switch-text {
+    margin: 0;
+    max-width: 90%;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* the status box and the wait cursor of the switch itself stay under the cover */
+html.ui-mobile[data-wm-switching] .wm-loading-layer,
+html.ui-mobile[data-wm-switching] .wm-busy-wait {
+    display: none;
+}

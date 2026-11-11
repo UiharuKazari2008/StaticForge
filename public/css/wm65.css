@@ -1198,3 +1198,13 @@ html.ui-mobile[data-wm-version="6.5"] .wm-installer-wait {
     width: calc(40 * var(--wm-px));
     height: calc(40 * var(--wm-px));
 }
+
+/* the workspace switch cover's wait cursor is 6.5's (80 x 80) */
+html.ui-mobile[data-wm-version="6.5"] .wm-switch-wait {
+    width: calc(40 * var(--wm-px));
+    height: calc(40 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-switch {
+    font-size: calc(10.5 * var(--wm-px));
+}
