@@ -217,16 +217,20 @@
     }
 
     /**
-     * More tabs than fit (6.1, measured on the device: Windows Media > Options, six tabs): a
-     * left / right spin button at the right end of the strip (31 x 16.5 units, two white faces
-     * with black triangles, pressed = inverted). Only whole tabs are drawn: the ones that do not
-     * fit before the button are absent, not cut. A press scrolls by exactly one tab, on pen down,
-     * with no animation; there is no disabled look at the ends, no drag scrolling, and the selected
-     * tab is not kept in view (it can be scrolled away). `state.first` is the first tab shown.
-     * 6.5 handles overflow its own way (not built here).
+     * More tabs than fit: both devices put left / right buttons at the right end of the strip and
+     * scroll by exactly one tab per press, on pen down, with no animation; neither scrolls by a
+     * finger drag, neither has a disabled look at the ends, neither keeps the selected tab in view.
+     * `state.first` is the first tab shown.
+     *   6.1 (Windows Media > Options, six tabs): a spin button 31 x 16.5 units; only whole tabs
+     *       are drawn, the ones that do not fit before the button are absent, not cut.
+     *   6.5 (a nine-tab test form on the emulator): two buttons 13 x 12.5 units; the strip's left
+     *       edge is always a tab boundary and the last visible tab is cut by the buttons; a press
+     *       held repeats after 575 ms every 170 ms; a tap on the cut tab selects it and scrolls
+     *       one tab so it is whole.
      */
     function fitTabs(strip, state) {
-        if (!strip || runningVersion() !== '6.1') return;
+        if (!strip) return;
+        const v65 = runningVersion() === '6.5';
         const tabs = [...strip.querySelectorAll('.wm-tab')];
         let spin = strip.querySelector('.wm-tabs-spin');
         tabs.forEach((t) => { t.hidden = false; });
@@ -240,12 +244,20 @@
             spin.className = 'wm-tabs-spin';
             spin.innerHTML = '<button type="button" data-dir="-1" aria-label="Previous tabs" tabindex="-1"></button><button type="button" data-dir="1" aria-label="More tabs" tabindex="-1"></button>';
             strip.appendChild(spin);
-            spin.querySelectorAll('button').forEach((b) => b.addEventListener('pointerdown', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                state.first = (state.first || 0) + Number(b.dataset.dir);
-                fitTabs(strip, state);
-            }));
+            spin.querySelectorAll('button').forEach((b) => {
+                let wait = 0;
+                let rep = 0;
+                const step = () => { state.first = (state.first || 0) + Number(b.dataset.dir); fitTabs(strip, state); };
+                const stop = () => { clearTimeout(wait); clearInterval(rep); wait = 0; rep = 0; };
+                b.addEventListener('pointerdown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    step();
+                    stop();
+                    if (v65) wait = setTimeout(() => { rep = setInterval(step, 170); }, 575);
+                });
+                ['pointerup', 'pointercancel', 'pointerleave'].forEach((n) => b.addEventListener(n, stop));
+            });
             // a press must not reach the tab under the button
             spin.addEventListener('click', (e) => e.stopPropagation());
         }
@@ -258,8 +270,15 @@
         let used = 0;
         tabs.forEach((t, i) => {
             if (i < state.first) { t.hidden = true; return; }
+            const start = used;
             used += widths[i];
-            t.hidden = used > room + 0.5;
+            if (!v65) { t.hidden = used > room + 0.5; return; }
+            // 6.5 draws the tab the buttons cut; one that starts under them is not there at all
+            t.hidden = start >= room;
+            if (!t.hidden && used > room + 0.5 && !t.dataset.cutBound) {
+                t.dataset.cutBound = '1';
+                t.addEventListener('pointerdown', () => { if (t.getBoundingClientRect().right > strip.getBoundingClientRect().left + room + 0.5) state.first = (state.first || 0) + 1; });
+            }
         });
     }
 
@@ -1149,34 +1168,92 @@
         },
         {
             id: 'screen', tab: 'system', label: 'Screen', icon: 'set-screen',
-            tabs: [['textsize', 'Text Size'], ['statusbar', 'Status Bar']],
-            init: () => ({ scale: currentScale(), camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
-                showBt: lsGet(K.showBluetoothIcon) !== '0', showCell: lsGet(K.showCellIcon) === '1' }),
+            tabs: [['textsize', 'Text Size'], ['bezel', 'Bezel'], ['statusbar', 'Status Bar']],
+            init: () => ({
+                scale: currentScale(), camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
+                showBt: lsGet(K.showBluetoothIcon) !== '0', showCell: lsGet(K.showCellIcon) === '1',
+                logoOpacity: Math.min(100, Math.max(10, Number(lsGet(K.bezelLogoOpacity)) || 55)),
+                logoPos: lsGet(K.bezelLogoPos) || 'auto',
+                model: lsGet(K.bezelModel) || '',
+                modelPos: lsGet(K.bezelModelPos) || 'auto',
+                led: lsGet(K.bezelLed) === '1',
+                ledNotify: lsGet(K.bezelLedNotify) !== '0',
+                ledBattery: lsGet(K.bezelLedBattery) !== '0',
+                ledCharge: lsGet(K.bezelLedCharge) !== '0'
+            }),
             render(el, tab, d) {
-                // Status Bar: everything about the top of the phone's screen in one place: the
-                // camera in the display, the phone's own bars (Android app only), the title bar's icons
-                if (tab === 'statusbar') {
-                    el.innerHTML = `<div class="wm-form-sub">Camera</div>
+                // Bezel: the top of the phone's screen. Hiding the phone's status bar (Android app) is
+                // what lets the screen handle its camera: a black bezel band with the maker's printed logo,
+                // model text and a notification LED, or a title bar kept clear of the camera.
+                if (tab === 'bezel') {
+                    const statusShown = !!(d.bars && !d.bars.hideStatus);
+                    const POS = [['auto', 'Automatic'], ['left', 'Left'], ['center', 'Centre'], ['right', 'Right']];
+                    const posLabel = (v) => (POS.find(([k]) => k === v) || POS[0])[1];
+                    el.innerHTML = `${d.bars
+                            ? `${check('wmHideStatus', 'Hide the phone\'s status bar', d.bars.hideStatus)}
+                               <p class="wm-form-note">The camera settings below need the status bar hidden: with it showing, the camera sits under it.</p>`
+                            : ''}
+                        <div class="wm-form-sub">Camera</div>
                         ${radio('wmCamera', 'clear', 'Keep the title bar clear of the camera', d.camera === 'clear')}
                         ${radio('wmCamera', 'bezel', 'Black bezel above the screen', d.camera === 'bezel')}
                         ${check('wmCameraPortraitOnly', 'Only in portrait (a turned phone uses the whole screen)', d.portraitOnly)}
                         <div class="wm-form-gap"></div>
-                        <div class="wm-form-sub">Full screen</div>
-                        ${d.bars
-                            ? `${check('wmHideStatus', 'Hide the phone\'s status bar', d.bars.hideStatus)}
-                               ${check('wmHideNavigation', 'Hide the gesture bar', d.bars.hideNavigation)}
-                               <p class="wm-form-note">Swipe from the edge to show a hidden bar for a moment.</p>`
-                            : '<p class="wm-form-note">Hiding the status bar and the gesture bar is available in the Dreamscape app for Android.</p>'}
+                        <div class="wm-form-sub">Logo</div>
+                        <div data-f="opacity"></div>
+                        <div class="wm-form-row"><span class="wm-form-label">Position:</span><button type="button" class="wm-combo" data-act="logopos"><span>${posLabel(d.logoPos)}</span></button></div>
                         <div class="wm-form-gap"></div>
+                        <div class="wm-form-sub">Model text</div>
+                        <div class="wm-form-row"><span class="wm-form-label">Text:</span><input class="wm-edit" type="text" maxlength="32" autocomplete="off" data-f="model" value="${esc(d.model)}"></div>
+                        <div class="wm-form-row"><span class="wm-form-label">Corner:</span><button type="button" class="wm-combo" data-act="modelpos"><span>${posLabel(d.modelPos)}</span></button></div>
+                        <div class="wm-form-gap"></div>
+                        <div class="wm-form-sub">Notification LED</div>
+                        ${check('wmLed', 'Show a notification LED on the bezel', d.led)}
+                        <div class="wm-setb-led">
+                            ${check('wmLedNotify', 'Flash for new notifications', d.ledNotify)}
+                            ${check('wmLedBattery', 'Blink red when the battery is low', d.ledBattery)}
+                            ${check('wmLedCharge', 'Light while charging (green when full)', d.ledCharge)}
+                        </div>`;
+                    const q = (sel) => el.querySelector(sel);
+                    const ops = ui.trackbar(q('[data-f="opacity"]'), {
+                        steps: [10, 20, 30, 40, 50, 55, 60, 70, 80, 90, 100], value: d.logoOpacity, lo: 'Faint', hi: 'Solid', label: 'Logo opacity',
+                        onChange: (v) => { d.logoOpacity = v; }
+                    });
+                    const bind = (name, fn) => { const i = q(`input[name="${name}"]`); if (i) i.addEventListener('change', () => { fn(i.checked); sync(); }); };
+                    // everything after the status bar works only with it hidden; the bezel's parts with the bezel
+                    const sync = () => {
+                        const off = !!(d.bars && !d.bars.hideStatus);
+                        el.querySelectorAll('input[name="wmCamera"], input[name="wmCameraPortraitOnly"]').forEach((i) => { i.disabled = off; });
+                        const noBezel = off || d.camera !== 'bezel';
+                        el.querySelectorAll('[data-act="logopos"], [data-act="modelpos"], [data-f="model"], input[name="wmLed"]').forEach((i) => { i.disabled = noBezel; });
+                        if (ops && typeof ops.setDisabled === 'function') ops.setDisabled(noBezel);
+                        el.querySelectorAll('.wm-setb-led input').forEach((i) => { i.disabled = noBezel || !d.led; });
+                    };
+                    if (d.bars) bind('wmHideStatus', (v) => { d.bars.hideStatus = v; });
+                    el.querySelectorAll('input[name="wmCamera"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) d.camera = r.value; sync(); }));
+                    bind('wmCameraPortraitOnly', (v) => { d.portraitOnly = v; });
+                    bind('wmLed', (v) => { d.led = v; });
+                    bind('wmLedNotify', (v) => { d.ledNotify = v; });
+                    bind('wmLedBattery', (v) => { d.ledBattery = v; });
+                    bind('wmLedCharge', (v) => { d.ledCharge = v; });
+                    q('[data-f="model"]').addEventListener('input', (e) => { d.model = e.target.value; });
+                    ui.bindCombo(q('[data-act="logopos"]'), POS, d.logoPos, (v) => { d.logoPos = v; });
+                    ui.bindCombo(q('[data-act="modelpos"]'), POS.filter(([k]) => k !== 'center'), d.modelPos, (v) => { d.modelPos = v; });
+                    sync();
+                    if (statusShown) { /* the controls stay visible, disabled, so the dependency is clear */ }
+                    return;
+                }
+                // Status Bar: the phone's gesture bar (Android app) and the title bar's icons
+                if (tab === 'statusbar') {
+                    el.innerHTML = `${d.bars
+                            ? `<div class="wm-form-sub">Full screen</div>
+                               ${check('wmHideNavigation', 'Hide the gesture bar', d.bars.hideNavigation)}
+                               <p class="wm-form-note">Swipe from the edge to show a hidden bar for a moment.</p>
+                               <div class="wm-form-gap"></div>`
+                            : '<p class="wm-form-note">Hiding the phone\'s bars is available in the Dreamscape app for Android.</p>'}
                         <div class="wm-form-sub">Status icons</div>
                         ${check('wmShowBt', 'Show the Bluetooth icon while Bluetooth is on', d.showBt)}
                         ${check('wmShowCell', 'Always show the mobile network icon (also on Wi-Fi)', d.showCell)}`;
-                    el.querySelectorAll('input[name="wmCamera"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) d.camera = r.value; }));
-                    el.querySelector('input[name="wmCameraPortraitOnly"]').addEventListener('change', (e) => { d.portraitOnly = e.target.checked; });
-                    if (d.bars) {
-                        el.querySelector('input[name="wmHideStatus"]').addEventListener('change', (e) => { d.bars.hideStatus = e.target.checked; });
-                        el.querySelector('input[name="wmHideNavigation"]').addEventListener('change', (e) => { d.bars.hideNavigation = e.target.checked; });
-                    }
+                    if (d.bars) el.querySelector('input[name="wmHideNavigation"]').addEventListener('change', (e) => { d.bars.hideNavigation = e.target.checked; });
                     el.querySelector('input[name="wmShowBt"]').addEventListener('change', (e) => { d.showBt = e.target.checked; });
                     el.querySelector('input[name="wmShowCell"]').addEventListener('change', (e) => { d.showCell = e.target.checked; });
                     return;
@@ -1235,6 +1312,20 @@
                 if (d.showCell !== (lsGet(K.showCellIcon) === '1')) {
                     lsSet(K.showCellIcon, d.showCell ? '1' : null);
                     keys.push(K.showCellIcon);
+                }
+                // Bezel: logo, model text, LED (wmShell syncBezel / paintBezelLed read them)
+                const bezelSets = [
+                    [K.bezelLogoOpacity, d.logoOpacity === 55 ? null : String(d.logoOpacity)],
+                    [K.bezelLogoPos, d.logoPos === 'auto' ? null : d.logoPos],
+                    [K.bezelModel, String(d.model || '').trim().slice(0, 32) || null],
+                    [K.bezelModelPos, d.modelPos === 'auto' ? null : d.modelPos],
+                    [K.bezelLed, d.led ? '1' : null],
+                    [K.bezelLedNotify, d.ledNotify ? null : '0'],
+                    [K.bezelLedBattery, d.ledBattery ? null : '0'],
+                    [K.bezelLedCharge, d.ledCharge ? null : '0']
+                ];
+                for (const [k, v] of bezelSets) {
+                    if ((lsGet(k) || null) !== v) { lsSet(k, v); keys.push(k); }
                 }
                 if (d.portraitOnly !== (lsGet(K.cameraPortraitOnly) === '1')) {
                     lsSet(K.cameraPortraitOnly, d.portraitOnly ? '1' : null);

@@ -1193,6 +1193,7 @@
         shell.querySelector('[data-role="prints"]').hidden = !printsInProgress();
         const mailEl = shell.querySelector('[data-role="mail"]');
         mailEl.hidden = !(shellMailUnread > 0);
+        paintBezelLed();
         if (noteTrayOpen) renderNotes(); else fitStatus();
         const bubble = shell.querySelector('.wm-bubble');
         if (!bubble.hidden && bubble.dataset.role) statusBubble(bubble.dataset.role, shell.querySelector(statusFolded.includes(bubble.dataset.role) ? '[data-role="notify"]' : `.wm-status-icon[data-role="${bubble.dataset.role}"]`), true);
@@ -1301,6 +1302,12 @@
      */
     /** Screen > Camera > Only in portrait: a turned phone (wider than tall) ignores the camera. */
     function cameraIgnoredNow() {
+        // Settings > Screen > Bezel: the camera is handled only while the app hides the status bar
+        // (with the bar showing, the camera sits under it anyway)
+        const dv = window.AndroidDisplay;
+        if (dv && typeof dv.getSystemBars === 'function') {
+            try { if (JSON.parse(dv.getSystemBars()).hideStatus === false) return true; } catch (_) { /* older app */ }
+        }
         let only = false;
         try { only = localStorage.getItem('wmCameraPortraitOnly') === '1'; } catch (_) { /* storage off */ }
         return only && window.innerWidth > window.innerHeight;
@@ -1309,6 +1316,20 @@
     // Top edge of the wordmark's ink in its right 30 % (fraction of its height) per column fraction:
     // the right end is "an" at x-height, so it can sit closer into a rounded corner than its box.
     const BEZEL_LOGO_INK = [[0.7, 0.26], [0.797, 0.2645], [0.8065, 0.2769], [0.8161, 0.3058], [0.8258, 0.3512], [0.8452, 0.3388], [0.8548, 0.2893], [0.8645, 0.2686], [0.8742, 0.26], [0.9516, 0.26], [0.9613, 0.2645], [0.971, 0.2769], [0.9806, 0.3017], [0.9903, 0.3471], [1, 0.36]];
+
+    // ... and in its left 30 % (from the left edge): "xy" also starts at x-height
+    const BEZEL_LOGO_INK_LEFT = [[0, 0.78], [0.02, 0.26], [0.06, 0.277], [0.08, 0.364], [0.1, 0.384], [0.12, 0.31], [0.14, 0.26], [0.2, 0.26], [0.22, 0.36], [0.24, 0.537], [0.26, 0.405], [0.28, 0.26], [0.3, 0.26]];
+
+    /** The smallest left margin that keeps every ink sample inside the display's top-left corner. */
+    function bezelLogoMarginLeft(lw, lh, px) {
+        const r = parseFloat(root.style.getPropertyValue('--display-corner-tl')) || 0;
+        if (!(r > 0)) return 12 * px;
+        const inside = (x, y) => x >= r || y >= r || Math.hypot(x - r, y - r) <= r;
+        for (let m = 0; m <= r + 1; m += 0.5) {
+            if (BEZEL_LOGO_INK_LEFT.every(([fx, fy]) => inside(m + fx * lw, fy * lh))) return m + 1;
+        }
+        return r + 1;
+    }
 
     /** The smallest right margin that keeps every ink sample inside the display's top-right corner. */
     function bezelLogoMargin(lw, lh, px) {
@@ -1335,6 +1356,51 @@
             if (keys.length > 8) delete all[keys[0]];
             localStorage.setItem('wmBezelCache', JSON.stringify(all));
         } catch (_) { /* storage off */ }
+    }
+
+    /** The bezel's model text and LED: an element on <html> (outside the contained <body>). */
+    function bezelOverlay() {
+        let ov = document.getElementById('wmBezelOverlay');
+        if (!ov) {
+            ov = document.createElement('div');
+            ov.id = 'wmBezelOverlay';
+            ov.setAttribute('aria-hidden', 'true');
+            ov.innerHTML = '<span class="wm-bezel-model"></span><span class="wm-bezel-led"></span>';
+            document.documentElement.appendChild(ov);
+        }
+        if (!ov.querySelector('.wm-bezel-led')) ov.insertAdjacentHTML('beforeend', '<span class="wm-bezel-led"></span>');
+        return ov;
+    }
+
+    function paintBezelModel(ov, model) {
+        const el = ov.querySelector('.wm-bezel-model');
+        if (!model) { el.textContent = ''; el.hidden = true; return; }
+        el.hidden = false;
+        if (el.textContent !== model.text) el.textContent = model.text;
+        el.style.fontSize = `${model.size}px`;
+        el.style.lineHeight = '1';
+        el.style.top = `${model.baseline - model.size * 0.8}px`;
+        el.style.left = model.align === 'left' ? `${model.x}px` : '';
+        el.style.right = model.align === 'right' ? `${window.innerWidth - model.x}px` : '';
+    }
+
+    /**
+     * The notification LED (Settings > Screen > Bezel): low battery blinks red, new notifications pulse
+     * green, charging is amber, a full charge green; steps() blinks so the compositor draws only on change.
+     */
+    function paintBezelLed() {
+        const ov = document.getElementById('wmBezelOverlay');
+        const led = ov && ov.querySelector('.wm-bezel-led');
+        if (!led) return;
+        let state = '';
+        if (lsFlag('wmBezelLed', false)) {
+            const b = deviceView().battery;
+            if (lsFlag('wmBezelLedBattery', true) && b && !b.charging && b.level <= 15) state = 'battery';
+            else if (lsFlag('wmBezelLedNotify', true) && notes.length) state = 'notify';
+            else if (lsFlag('wmBezelLedCharge', true) && b && b.charging && b.level < 100) state = 'charging';
+            else if (lsFlag('wmBezelLedCharge', true) && b && b.charging) state = 'full';
+        }
+        if (led.dataset.state !== state) led.dataset.state = state;
     }
 
     function syncBezel() {
@@ -1371,16 +1437,47 @@
         // The printed logo (Yukimi, Nov 11): from the display's very top edge down to where it ended
         // before (70 % of the band, the old bottom gap kept), centred - or, with the camera in the
         // middle, as far right as the display's rounded corner allows without cutting ink.
+        // Settings > Screen > Bezel: the logo's opacity and position (Auto = centred, or right with the
+        // camera in the middle), the model text and the notification LED
         let logo = null;
+        let model = null;
+        const W = window.innerWidth;
+        let lsv = (k) => null;
+        try { lsv = (k) => localStorage.getItem(k); } catch (_) { /* storage off */ }
+        const opacity = Math.min(1, Math.max(0.1, (parseFloat(lsv('wmBezelLogoOpacity')) || 55) / 100));
+        style.setProperty('--wm-bezel-logo-opacity', String(opacity));
+        let logoSide = 'center';
         if (band > 0) {
             const lh = band * 0.7;
             const lw = lh * (1024 / 242);
-            let lx = (window.innerWidth - lw) / 2;
-            if (logoRight) lx = window.innerWidth - lw - bezelLogoMargin(lw, lh, px);
-            logo = { x: lx, w: lw, h: lh };
+            const pos = lsv('wmBezelLogoPos') || 'auto';
+            let lx = (W - lw) / 2;
+            if (pos === 'left') { lx = bezelLogoMarginLeft(lw, lh, px); logoSide = 'left'; }
+            else if (pos === 'right' || (pos === 'auto' && logoRight)) { lx = W - lw - bezelLogoMargin(lw, lh, px); logoSide = 'right'; }
+            logo = { x: lx, w: lw, h: lh, opacity };
             style.setProperty('--wm-bezel-logo-x', `${lx}px`);
             style.setProperty('--wm-bezel-logo-w', `${lw}px`);
             style.setProperty('--wm-bezel-logo-h', `${lh}px`);
+            const text = String(lsv('wmBezelModel') || '').trim().slice(0, 32);
+            const ov = bezelOverlay();
+            if (text) {
+                let side = lsv('wmBezelModelPos') || 'auto';
+                if (side === 'auto') side = logoSide === 'left' ? 'right' : 'left';
+                const size = Math.max(7, band * 0.3);
+                const corner = parseFloat(style.getPropertyValue(side === 'left' ? '--display-corner-tl' : '--display-corner-tr')) || 0;
+                const edgeGap = Math.max(corner, 6 * px) + 2;
+                const x = side === 'left' ? edgeGap : W - edgeGap;
+                const baseline = band / 2 + size * 0.36;
+                model = { text, x, baseline, size, align: side === 'left' ? 'left' : 'right' };
+            }
+            paintBezelModel(ov, model);
+            // the LED sits beside the camera (left of it), or near the left corner without one
+            const d = Math.max(4, band * 0.2);
+            const ledX = h.width > 0 ? h.left - d * 1.6 : (parseFloat(style.getPropertyValue('--display-corner-tl')) || 0) + 10 * px;
+            style.setProperty('--wm-bezel-led-d', `${d}px`);
+            style.setProperty('--wm-bezel-led-x', `${ledX}px`);
+            style.setProperty('--wm-bezel-led-y', `${(band - d) / 2}px`);
+            paintBezelLed();
         }
         if ((root.dataset.wmBezelLogo === 'right') !== logoRight) {
             if (logoRight) root.dataset.wmBezelLogo = 'right';
@@ -1392,7 +1489,7 @@
         style.setProperty('--wm-bezel-right', `${right}px`);
         if (root.dataset.wmBezelEdge !== edge) root.dataset.wmBezelEdge = edge;
         // the band as the boot draws it before any script (app.html's inline script, DSApp's cover)
-        saveBezelCache({ edge, top: band, left, right, logo });
+        saveBezelCache({ edge, top: band, left, right, logo, model });
     }
 
     function applyCameraHole(bar) {
@@ -1450,7 +1547,18 @@
         if (!shell) return;
         const bar = shell.querySelector('.wm-titlebar');
         const el = (r) => shell.querySelector(`.wm-status-icon[data-role="${r}"]`);
-        const fits = () => bar.scrollWidth <= bar.clientWidth + 1;
+        // the children's own boxes, not scrollWidth: 6.5's corner button carries a pressed
+        // highlight that reaches 22 units past it (wm65.css), which made the bar always "too
+        // wide" there and shed the volume and app icons beside every X / ok
+        const fits = () => {
+            const box = bar.getBoundingClientRect();
+            let right = box.left;
+            for (const c of bar.children) {
+                if (!c.getClientRects().length) continue;
+                right = Math.max(right, c.getBoundingClientRect().right + (parseFloat(getComputedStyle(c).marginRight) || 0));
+            }
+            return right <= box.right + 1;
+        };
         ['roaming', 'volume', ...STATUS_APP_ROLES].forEach((r) => el(r).classList.remove('wm-shed'));
         statusFolded = [];
         paintNotifyIcon();
@@ -2035,6 +2143,7 @@
         if (!shell) return;
         toastsToDialogs();
         notes = readToasts();
+        paintBezelLed();
         const live = new Set(notes.flatMap((n) => n.ids.map((id) => seenKey(id, n))));
         for (const k of [...noteSeen]) if (!live.has(k)) noteSeen.delete(k);
         soundNewNotes(live);

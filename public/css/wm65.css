@@ -1214,3 +1214,29 @@ html.ui-mobile[data-wm-version="6.5"] .wm-switch-wait {
 html.ui-mobile[data-wm-version="6.5"] .wm-switch {
     font-size: calc(10.5 * var(--wm-px));
 }
+
+/* ---- tabs that do not fit: 6.5's two arrow buttons (wmPrograms.js fitTabs) ----
+ * emulator, nine-tab form: white buttons 26 x 25 px at x 426-451 and 454-479, y 557-581, a 2 px
+ * black frame left of, between and above them, black triangles; pressed = (8,4,49) with a white
+ * triangle; the last tab is cut by them. The strip is 39 px from y 549: the buttons end 6 px
+ * above its bottom. */
+html.ui-mobile[data-wm-version="6.5"] .wm-tabs-spin {
+    top: auto;
+    bottom: calc(3 * var(--wm-px));
+    width: calc(28 * var(--wm-px));
+    height: calc(13.5 * var(--wm-px));
+    border: 0;
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    z-index: 2;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tabs-spin > button::before {
+    width: calc(3.5 * var(--wm-px));
+    height: calc(6.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tabs-spin > button:active {
+    background: #080431;
+}
