@@ -1722,6 +1722,11 @@ class WebSocketClient {
 
     _showLatencyTrayPopup(reason) {
         const message = reason || 'High latency detected on the network link.';
+        // Melaton Mobile: a status icon in the title bar (wmShell), not a notification (Yukimi, Nov 10)
+        if (window.uiShell === 'mobile') {
+            this._latencyNotice = { reason: message, at: Date.now() };
+            return;
+        }
         if (typeof showGlassToast !== 'function') return;
 
         if (this._isDesktopTrayMode()) {

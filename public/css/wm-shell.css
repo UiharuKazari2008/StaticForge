@@ -2661,3 +2661,29 @@ html.ui-mobile #confirmationDialog #confirmationMessage::after {
 
 .wm-pv-tool[data-act="top"] { --wm-pv-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h11v1h-11zM0 1h11v1h-11zM5 3h1v1h-1zM4 4h3v1h-3zM3 5h5v1h-5zM2 6h7v1h-7zM4 7h3v1h-3zM4 8h3v1h-3zM4 9h3v1h-3zM4 10h3v1h-3z'/%3E%3C/svg%3E"); }
 .wm-pv-tool[data-act="index"] { --wm-pv-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h4v1h-4zM6 0h4v1h-4zM1 1h1v1h-1zM4 1h1v1h-1zM6 1h1v1h-1zM9 1h1v1h-1zM1 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM9 2h1v1h-1zM1 3h4v1h-4zM6 3h4v1h-4zM1 5h4v1h-4zM6 5h4v1h-4zM1 6h1v1h-1zM4 6h1v1h-1zM6 6h1v1h-1zM9 6h1v1h-1zM1 7h1v1h-1zM4 7h1v1h-1zM6 7h1v1h-1zM9 7h1v1h-1zM1 8h4v1h-4zM6 8h4v1h-4z'/%3E%3C/svg%3E"); }
+
+/* a Today block (registerTodayItem render): an item box the widget fills, the rule under it like
+ * the rows; .wm-today-block-* helpers for the common parts */
+.wm-today-block {
+    display: block;
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) calc(3 * var(--wm-px)) calc(3 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid var(--wm-today-rule);
+    color: #fff;
+    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font);
+    box-sizing: border-box;
+}
+
+.wm-today-block[hidden] {
+    display: none !important;
+}
+
+/* the Please Wait box (loading at startup / workspace switch): a message box with the wait cursor */
+.wm-loading-layer {
+    z-index: 21;
+}
+
+.wm-loading-layer .wm-loading-wait {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    flex: 0 0 auto;
+}

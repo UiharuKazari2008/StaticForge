@@ -417,8 +417,6 @@
         ['owner', 'Owner Info'],
         ['messages', 'Messaging'],
         ['tasks', 'Tasks'],
-        ['novelai', 'NovelAI'],
-        ['director', 'Director'],
         ['search', 'Search'],
         ['workspace', 'Workspace'],
         ['prints', 'Recent Pictures']

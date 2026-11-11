@@ -251,8 +251,8 @@
 
     // Title-bar status icons are WM 6.1's white 1-bit glyphs: new mail is outres 32507 (the title-bar
     // envelope), prints and the Director are Melaton glyphs drawn in the same style (manifest.json)
-    const STATUS_APP_ICONS = { mail: 'status-mail', prints: 'status-prints', director: 'status-director', update: 'status-update' };
-    const STATUS_APP_ROLES = ['mail', 'prints', 'director', 'update'];
+    const STATUS_APP_ICONS = { mail: 'status-mail', prints: 'status-prints', director: 'status-director', update: 'status-update', latency: 'status-signal-alert' };
+    const STATUS_APP_ROLES = ['mail', 'prints', 'director', 'update', 'latency'];
     // the Director's clapper while a turn runs: the stick claps (open frames, closed, open again)
     const DIRECTOR_CLAP = ['status-director-open-2', 'status-director-open-1', 'status-director-open-0', 'status-director', 'status-director-open-0', 'status-director-open-1'];
     const artImageSet = (name) => `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x${HD_ART.has(name) ? `, url("${ART}${name}@4x.png") 4x` : ''})`;
@@ -274,6 +274,7 @@
                     <button type="button" class="wm-status-icon wm-status-app" data-role="prints" hidden aria-label="Prints"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="director" hidden aria-label="Director"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="update" hidden aria-label="Updates ready"></button>
+                    <button type="button" class="wm-status-icon wm-status-app" data-role="latency" hidden aria-label="High latency"></button>
                     <button type="button" class="wm-status-icon" data-role="data" data-icon="data-off" aria-label="Connectivity"></button>
                     <button type="button" class="wm-status-icon" data-role="roaming" data-icon="roaming" hidden aria-label="Roaming"></button>
                     <button type="button" class="wm-status-icon" data-role="signal" hidden aria-label="Phone signal"></button>
@@ -1024,6 +1025,9 @@
         let updateReady = false;
         try { updateReady = !!(window.serviceWorkerManager && window.serviceWorkerManager.hasPendingUpdates()); } catch (_) { updateReady = false; }
         shell.querySelector('[data-role="update"]').hidden = !updateReady;
+        // high latency on the link (websocket.js _latencyNotice): the alert icon for a minute after the last warning
+        const lat = window.wsClient && window.wsClient._latencyNotice;
+        shell.querySelector('[data-role="latency"]').hidden = !(lat && Date.now() - lat.at < 60000);
         shell.querySelector('[data-role="prints"]').hidden = !printsInProgress();
         const mailEl = shell.querySelector('[data-role="mail"]');
         mailEl.hidden = !(shellMailUnread > 0);
@@ -1486,12 +1490,91 @@
     let toastDialogs = Promise.resolve();
     const BACKGROUND_TOAST = /^(connecting|connected|connection|reconnect|offline|high latency|generation complete|you have mail|new mail|update)/i;
 
+    /**
+     * Loading while Melaton starts (20 s after boot) or while a workspace switch runs (Yukimi, Nov 10:
+     * a dialog, not a notification): a WM "Please Wait" box with the wait cursor and the toast's
+     * text, over the screen until the loading toasts are gone.
+     */
+    let bootDoneAt = 0;
+    let switchingWorkspace = false;
+    const loadingToasts = new Set();
+    let loadingLayer = null;
+    let loadingTimer = null;
+
+    function loadingPhase() {
+        return switchingWorkspace || (bootDoneAt && Date.now() - bootDoneAt < 20000);
+    }
+
+    function wrapWorkspaceSwitch() {
+        const orig = window.setActiveWorkspace;
+        if (typeof orig !== 'function' || orig.wmWrapped) return !!(orig && orig.wmWrapped);
+        const wrapped = function () {
+            switchingWorkspace = true;
+            let r;
+            try { r = orig.apply(this, arguments); } catch (err) { switchingWorkspace = false; throw err; }
+            Promise.resolve(r).finally(() => { setTimeout(() => { switchingWorkspace = false; }, 1500); });
+            return r;
+        };
+        wrapped.wmWrapped = true;
+        window.setActiveWorkspace = wrapped;
+        return true;
+    }
+
+    function showLoadingBox(text) {
+        if (!loadingLayer) {
+            loadingLayer = document.createElement('div');
+            loadingLayer.className = 'wm-msgbox-layer wm-loading-layer';
+            loadingLayer.innerHTML = '<div class="wm-msgbox" role="alertdialog" aria-busy="true"><div class="wm-msgbox-title"><span>Please Wait</span></div><div class="wm-msgbox-body"><img class="wm-loading-wait" alt="" draggable="false"><div class="wm-msgbox-text"></div></div></div>';
+            shell.appendChild(loadingLayer);
+        }
+        loadingLayer.querySelector('.wm-msgbox-text').textContent = text || 'Loading...';
+        if (loadingLayer.hidden !== false || !loadingTimer) {
+            loadingLayer.hidden = false;
+            let f = 0;
+            const img = loadingLayer.querySelector('.wm-loading-wait');
+            const tick = () => { img.src = art(`wait-${f}`); img.srcset = srcset(`wait-${f}`); f = (f + 1) % 16; };
+            tick();
+            clearInterval(loadingTimer);
+            loadingTimer = setInterval(() => {
+                for (const t of [...loadingToasts]) if (!t.isConnected || t.classList.contains('removing')) loadingToasts.delete(t);
+                if (!loadingToasts.size) { hideLoadingBox(); return; }
+                const t = [...loadingToasts].pop();
+                const title = ((t.querySelector('.toast-title') || {}).textContent || '').trim();
+                const msg = ((t.querySelector('.toast-message') || {}).textContent || '').replace(/\s+/g, ' ').trim();
+                loadingLayer.querySelector('.wm-msgbox-text').textContent = [title, msg].filter(Boolean).join('\n') || 'Loading...';
+                tick();
+            }, 90);
+        }
+    }
+
+    function hideLoadingBox() {
+        clearInterval(loadingTimer);
+        loadingTimer = null;
+        if (loadingLayer) loadingLayer.hidden = true;
+    }
+
     function toastsToDialogs() {
         const box = document.getElementById('toastContainer');
         if (!box) return;
         for (const t of [...box.children].reverse()) {
             if (!t.id || toastSeen.has(t) || t.classList.contains('removing')) continue;
+            // during the boot screens a toast waits: it is sorted when Today comes up (still the loading phase)
+            if (!notesMayPop()) continue;
             toastSeen.add(t);
+            // starting up / switching workspace: loading is a Please Wait box
+            if (loadingPhase() && !t.querySelector('.toast-buttons')) {
+                const ttl = ((t.querySelector('.toast-title') || {}).textContent || '').trim();
+                const txt = ((t.querySelector('.toast-message') || {}).textContent || '').replace(/\s+/g, ' ').trim();
+                const loading = t.classList.contains('upload-progress') || !!t.querySelector('.toast-progress') || !t.querySelector('.toast-close')
+                    || /^(loading|connecting|preparing|installing|downloading|syncing|refreshing|switching)\b|\.\.\.$|\u2026$/i.test(ttl || txt) || /loading/i.test(txt);
+                if (loading) {
+                    t.dataset.wmBusy = '1';
+                    loadingToasts.add(t);
+                    // Teleport draws its own travel while the workspace loads
+                    if (current !== 'teleport') showLoadingBox([ttl, txt].filter(Boolean).join('\n'));
+                    continue;
+                }
+            }
             if (!answersUser() || !notesMayPop()) continue;
             const title = ((t.querySelector('.toast-title') || {}).textContent || '').trim();
             if (BACKGROUND_TOAST.test(title)) continue;
@@ -1573,7 +1656,7 @@
         return artImageSet(n && n.type === 'reminder' ? 'status-reminder' : 'status-notify-many');
     }
 
-    const STATUS_APP_LABEL = { mail: 'Messages', prints: 'Prints', director: 'Director', update: 'Updates' };
+    const STATUS_APP_LABEL = { mail: 'Messages', prints: 'Prints', director: 'Director', update: 'Updates', latency: 'High Latency' };
 
     /** The bubble icon: pending notifications plus any status icons folded into it by fitStatus. */
     function paintNotifyIcon() {
@@ -1856,6 +1939,11 @@
             const links = apps.has('director') ? [{ label: 'Open Director', action: () => open('director') }] : [];
             if (links.length) sections.push({ links });
             bubble({ title: 'Director', role, anchor, sections, buttons: [{ text: 'Hide' }] });
+        } else if (role === 'latency') {
+            const lat = window.wsClient && window.wsClient._latencyNotice;
+            const c = window.wsClient;
+            const links = c ? [{ label: 'View Connection', action: () => { closeBubble(); statusBubble('data', shell.querySelector('[data-role="data"]')); } }] : [];
+            bubble({ title: 'High Latency Detected', role, anchor, sections: [lat ? lat.reason : 'The link to Melaton is slow.', ...(links.length ? [{ links }] : [])], buttons: [{ text: 'Hide' }] });
         } else if (role === 'update') {
             const sw = window.serviceWorkerManager;
             const n = sw && Number(sw.pendingUpdateFilesTotal);
@@ -4016,6 +4104,7 @@
     function setBoot(phase) {
         if (root.dataset.wmBoot === phase) return;
         root.dataset.wmBoot = phase;
+        if (phase === 'done') bootDoneAt = Date.now();
         const bootWait = shell.querySelector('.wm-boot-wait');
         // the wheel stays from the splash through Today's fill-in (reveal) until done
         if (!(phase === 'reveal' && bootWait && !bootWait.hidden)) {
@@ -4233,6 +4322,7 @@
         watchSystemSounds();
         watchRequestBusy();
         routeAlert();
+        if (!wrapWorkspaceSwitch()) { const t = setInterval(() => { if (wrapWorkspaceSwitch()) clearInterval(t); }, 1000); setTimeout(() => clearInterval(t), 60000); }
         startBoot();
         refreshStatus();
         setInterval(refreshStatus, 2000);
