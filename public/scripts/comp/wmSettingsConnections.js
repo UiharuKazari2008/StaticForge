@@ -368,19 +368,39 @@
     }
     const glyph = (id, on) => ui.art(`wrls-${id}-${on ? 'on' : 'off'}`);
 
+    /** The connected Wi-Fi network's name (the Android app's device status), for the Wi-Fi state. */
+    function wifiName() {
+        const st = root.AndroidDeviceStatus;
+        if (!st || typeof st.getState !== 'function') return null;
+        try {
+            const s = JSON.parse(st.getState());
+            const w = s && s.wifi;
+            return w && typeof w.ssid === 'string' && w.ssid ? w.ssid : null;
+        } catch (_) { return null; }
+    }
+    function radioState(r, id) {
+        const on = radioOn(r, id);
+        if (on == null) return '';
+        if (id === 'wifi' && on) return wifiName() || 'On';
+        return on ? 'On' : 'Off';
+    }
+
+    // Layout from WM 6.1 itself (Yukimi's emulator, Nov 10): All on a full-width bar, the radios in a
+    // rounded panel under it, each a bar (name left, glyph right, white) with its state in a white box
+    // under the bar's right half; Done | Menu; X in the title bar.
     wmSettings.registerPage({
         id: 'wireless',
         tab: 'connections',
         label: 'Wireless Manager',
         icon: 'set-wireless',
         tabs: [],
+        titleKind: () => 'close',
         init: () => ({ busy: false, pending: {} }),
         softKeys(d) {
-            if (!device()) return { left: null, right: null };
             const r = radios();
-            const canOpen = typeof device().openSettings === 'function';
+            const canOpen = !!(device() && typeof device().openSettings === 'function');
             return {
-                left: null,
+                left: { label: 'Done', action: () => root.history.back() },
                 right: {
                     label: 'Menu',
                     menu: () => [
@@ -394,30 +414,33 @@
         },
         render(el, tab, d, api) {
             el.classList.add('wm-setc');
-            setHeader(el, 'Wireless Manager');
             const r = radios();
-            const rows = r ? RADIO_ROWS.filter(([id]) => radioPresent(r, id)) : [];
-            const art = ui.art('set-wireless');
-            el.innerHTML = `${rows.map(([id, name]) => `<button type="button" class="wm-setc-radio is-glyph" data-radio="${id}"><img alt="" draggable="false"><span class="wm-setc-radio-name">${esc(name)}</span><span class="wm-setc-radio-state"></span></button>`).join('')}
-                ${r ? '' : '<p class="wm-form-note">Phone, Wi-Fi and Bluetooth are switched here in the Dreamscape app for Android.</p>'}
-                <button type="button" class="wm-setc-radio" data-act="toggle"><img src="${esc(art.src)}" srcset="${esc(art.srcset)}" alt="" draggable="false"><span class="wm-setc-radio-name">Dreamscape</span><span class="wm-setc-radio-state"></span></button>`;
+            const rows = r ? RADIO_ROWS.filter(([id]) => id !== 'all' && radioPresent(r, id)) : [];
+            const item = (attr, name) => `<div class="wm-wl-item"><button type="button" class="wm-wl-bar" ${attr}><span class="wm-wl-name">${esc(name)}</span><img class="wm-wl-glyph" alt="" draggable="false"></button><span class="wm-wl-state"></span></div>`;
+            el.innerHTML = `<div class="wm-wl">
+                    ${r ? `<button type="button" class="wm-wl-bar is-all" data-radio="all"><span class="wm-wl-name">All</span><img class="wm-wl-glyph" alt="" draggable="false"></button>` : ''}
+                    <div class="wm-wl-panel${r ? '' : ' is-alone'}">
+                        ${rows.map(([id, name]) => item(`data-radio="${id}"`, name)).join('')}
+                        ${item('data-act="toggle"', 'Dreamscape')}
+                    </div>
+                    ${r ? '' : '<p class="wm-form-note">Phone, Wi-Fi and Bluetooth are switched here in the Dreamscape app for Android.</p>'}
+                </div>`;
             const paintRadios = (now) => {
-                el.querySelectorAll('[data-radio]').forEach((row) => {
-                    const id = row.dataset.radio;
+                el.querySelectorAll('[data-radio]').forEach((bar) => {
+                    const id = bar.dataset.radio;
                     const on = radioOn(now, id);
                     const g = glyph(id, on);
-                    const img = row.querySelector('img');
+                    const img = bar.querySelector('img');
                     if (img.getAttribute('src') !== g.src) { img.src = g.src; img.srcset = g.srcset; }
-                    const st = row.querySelector('.wm-setc-radio-state');
-                    const text = on == null ? '' : (on ? 'On' : 'Off');
-                    if (st.textContent !== text) st.textContent = text;
-                    row.classList.toggle('is-on', !!on);
-                    row.classList.toggle('is-busy', !!d.pending[id]);
+                    bar.classList.toggle('is-off', on === false);
+                    bar.classList.toggle('is-busy', !!d.pending[id]);
+                    const st = bar.parentElement.querySelector('.wm-wl-state');
+                    if (st) { const t = radioState(now, id); if (st.textContent !== t) st.textContent = t; }
                 });
             };
             paintRadios(r);
-            el.querySelectorAll('[data-radio]').forEach((row) => row.addEventListener('click', () => {
-                const id = row.dataset.radio;
+            el.querySelectorAll('[data-radio]').forEach((bar) => bar.addEventListener('click', () => {
+                const id = bar.dataset.radio;
                 if (d.pending[id]) return;
                 d.pending[id] = true;
                 switchRadio(radios(), id);
@@ -432,19 +455,23 @@
             };
             root.addEventListener('dreamscape:radios', onRadios);
 
-            const row = el.querySelector('[data-act="toggle"]');
-            const stateEl = row.querySelector('.wm-setc-radio-state');
+            // the Dreamscape connection: the shell's connectivity glyph, Connected / Connecting... / Off
+            const bar = el.querySelector('[data-act="toggle"]');
+            const dsImg = bar.querySelector('img');
+            const stateEl = bar.parentElement.querySelector('.wm-wl-state');
             const paint = () => {
                 const s = linkState();
                 const on = s === 'connected';
+                const art = ui.art(on ? 'status-data-on' : 'status-data-off');
+                if (dsImg.getAttribute('src') !== art.src) { dsImg.src = art.src; dsImg.srcset = art.srcset; }
                 const text = { connected: 'Connected', connecting: 'Connecting...', auth: 'Logon required', disconnected: 'Off' }[s];
                 if (stateEl.textContent !== text) stateEl.textContent = text;
-                row.classList.toggle('is-on', on);
-                row.classList.toggle('is-busy', s === 'connecting' || d.busy);
+                bar.classList.toggle('is-off', s === 'disconnected');
+                bar.classList.toggle('is-busy', s === 'connecting' || d.busy);
             };
             paint();
             liveTick(el, paint, 500);
-            row.addEventListener('click', async () => {
+            bar.addEventListener('click', async () => {
                 if (d.busy) return;
                 const s = linkState();
                 if (s === 'connected' || s === 'connecting') {

@@ -277,6 +277,7 @@
                     <button type="button" class="wm-status-icon wm-status-app" data-role="latency" hidden aria-label="High latency"></button>
                     <button type="button" class="wm-status-icon" data-role="bluetooth" data-icon="bluetooth" hidden aria-label="Bluetooth"></button>
                     <button type="button" class="wm-status-icon" data-role="data" data-icon="data-off" aria-label="Connectivity"></button>
+                    <button type="button" class="wm-status-icon" data-role="cell" hidden aria-label="Mobile network"></button>
                     <button type="button" class="wm-status-icon" data-role="roaming" data-icon="roaming" hidden aria-label="Roaming"></button>
                     <button type="button" class="wm-status-icon" data-role="signal" hidden aria-label="Phone signal"></button>
                     <button type="button" class="wm-status-icon" data-role="volume" data-icon="volume" aria-label="Volume"></button>
@@ -1080,6 +1081,13 @@
 
     // ---------------------------------------------------------------- status icons
 
+    /** A '1' / '0' setting in localStorage (Settings > Screen > Status Icons); fallback when unset. */
+    function lsFlag(key, fallback) {
+        let v = null;
+        try { v = localStorage.getItem(key); } catch (_) { v = null; }
+        return v === '1' ? true : v === '0' ? false : fallback;
+    }
+
     function refreshStatus() {
         if (!shell) return;
         applyStartButton();
@@ -1090,6 +1098,14 @@
         // the phone's own link when the Android app or the browser says what it is; else Dreamscape's
         data.dataset.icon = dev.link ? dev.link.icon : connected ? 'data-on' : 'data-off';
         data.title = dev.link ? dev.link.text : connected ? 'Connected' : 'Not connected';
+        // Settings > Screen > Status Icons > Always show the mobile network icon: on Wi-Fi the
+        // connectivity icon is Wi-Fi's, so the mobile network's type (available) shows beside it
+        const cellEl = shell.querySelector('[data-role="cell"]');
+        let cellIcon = null;
+        if (lsFlag('wmShowCellIcon', false) && dev.active === 'wifi' && dev.type && DATA_ICON[dev.type] && !dev.airplane
+            && dev.cell && dev.cell.dataEnabled !== false && dev.cell.radioOn !== false) cellIcon = `data-${DATA_ICON[dev.type]}`;
+        cellEl.hidden = !cellIcon;
+        if (cellIcon) { cellEl.dataset.icon = cellIcon; cellEl.title = `${DATA_NAME[dev.type]} available`; }
         const sig = shell.querySelector('[data-role="signal"]');
         sig.hidden = !dev.signal;
         if (dev.signal) { sig.dataset.icon = dev.signal.icon; sig.title = dev.signal.text; }
@@ -1382,7 +1398,7 @@
         radiosNow = r || null;
         const icon = shell && shell.querySelector('.wm-status-icon[data-role="bluetooth"]');
         if (!icon) return;
-        const show = !!(radiosNow && radiosNow.bluetooth);
+        const show = !!(radiosNow && radiosNow.bluetooth) && lsFlag('wmShowBluetoothIcon', true);
         if (icon.hidden === show) { icon.hidden = !show; fitStatus(); }
         const bubble = shell.querySelector('.wm-bubble');
         if (bubble && !bubble.hidden && bubble.dataset.role === 'bluetooth') statusBubble('bluetooth', icon, true);
@@ -1510,9 +1526,11 @@
      * WM notification bubble (device: Connectivity / Cannot Connect): rounded 2 px black frame 9 px
      * in from the sides, a tail up to the status icon that opened it, the title on a band in the
      * highlight colour, sections split by 1 px rules, blue underlined links, buttons at the right.
-     * sections: strings, { html }, { links: [{ label, action }] }; buttons: [{ text, action }].
+     * sections: strings, { html }, { links: [{ label, action }], align: 'right' }, { rule: true };
+     * buttons: [{ text, action }]; footLinks: [{ label, action }] = links left of the buttons with a
+     * rule above them (WM 6.1's Phone / Connectivity bubbles: Settings | Hide).
      */
-    function bubble({ title, sections = [], buttons = [{ text: 'Hide' }], anchor = null, role = '' } = {}) {
+    function bubble({ title, sections = [], buttons = [{ text: 'Hide' }], footLinks = null, anchor = null, role = '' } = {}) {
         const el = shell.querySelector('.wm-bubble');
         el.innerHTML = '<span class="wm-bubble-tail" aria-hidden="true"></span>';
         el.dataset.role = role || '';
@@ -1528,8 +1546,10 @@
             part.className = 'wm-bubble-section';
             if (typeof sec === 'string') part.textContent = sec;
             else if (sec && sec.html) part.innerHTML = sec.html;
+            else if (sec && sec.rule) part.classList.add('is-rule');
             else if (sec && sec.links) {
                 part.classList.add('is-links');
+                if (sec.align === 'right') part.classList.add('is-right');
                 for (const l of sec.links) {
                     const a = document.createElement('button');
                     a.type = 'button';
@@ -1541,10 +1561,21 @@
             } else if (sec && sec.node) part.appendChild(sec.node);
             el.appendChild(part);
         }
-        if (buttons && buttons.length) {
+        if ((buttons && buttons.length) || (footLinks && footLinks.length)) {
             const row = document.createElement('div');
             row.className = 'wm-bubble-buttons';
-            for (const b of buttons) {
+            if (footLinks && footLinks.length) {
+                row.classList.add('has-links');
+                for (const l of footLinks) {
+                    const a = document.createElement('button');
+                    a.type = 'button';
+                    a.className = 'wm-bubble-link';
+                    a.textContent = l.label;
+                    a.addEventListener('click', (e) => { e.stopPropagation(); closeBubble(); if (typeof l.action === 'function') l.action(); });
+                    row.appendChild(a);
+                }
+            }
+            for (const b of (buttons || [])) {
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.textContent = b.text;
@@ -2200,7 +2231,7 @@
         closeVolume();
         const el = shell.querySelector('.wm-bubble');
         // roaming opens the Phone bubble, so a second tap on it closes that bubble
-        const r = role === 'roaming' ? 'signal' : role;
+        const r = role === 'roaming' || role === 'cell' ? 'signal' : role;
         if (!update && !el.hidden && el.dataset.role === r) { closeBubble(); return; }
         closeMenus(true);
         const ws = window.wsClient;
@@ -2219,35 +2250,51 @@
             sections.push(connected
                 ? `Connected to Dreamscape at ${host}.${rtt != null ? ` Round trip ${rtt} ms.` : ''}`
                 : (ws && ws.connectionUi && ws.connectionUi.message) || `Not connected to Dreamscape at ${host}.`);
-            // WM 6.1: the connectivity and phone bubbles link to Wireless Manager
-            const links = [{ label: 'Wireless Manager', action: openWirelessManager }, { label: 'Settings', action: () => { if (apps.has('settings')) open('settings'); } }];
-            if (!connected) links.unshift({ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() });
-            sections.push({ links });
-            bubble({ title: 'Connectivity', role, anchor, sections, buttons: [{ text: 'Hide' }] });
-        } else if (role === 'signal' || role === 'roaming') {
-            // WM's Phone bubble: operator, then the radio's state
+            // WM 6.1's Connectivity bubble (shellres 5588-5635): Wireless Manager at the right, a rule,
+            // the sessions, then Settings | Hide
+            if (!connected) sections.push({ links: [{ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() }] });
+            const connSettings = () => {
+                const st = window.wmSettings;
+                if (st && typeof st.open === 'function' && st.open('connections')) return;
+                if (apps.has('settings')) open('settings');
+            };
+            bubble({
+                title: 'Connectivity',
+                role,
+                anchor,
+                sections: [{ links: [{ label: 'Wireless Manager', action: openWirelessManager }], align: 'right' }, { rule: true }, ...sections],
+                footLinks: [{ label: 'Settings', action: connSettings }],
+                buttons: [{ text: 'Hide' }]
+            });
+        } else if (role === 'signal' || role === 'roaming' || role === 'cell') {
+            // WM 6.1's Phone bubble (captured on WM 6.1, Nov 10): the operator or the radio's state
+            // (tshres 16458-16477 wording), the Wireless Manager link at the right, a rule, Settings | Hide
             const dev = deviceView();
             const c = dev.cell || {};
-            const lines = [];
             const op = typeof c.operator === 'string' && c.operator ? c.operator : null;
-            if (dev.airplane) lines.push('Flight mode is on. The phone radio is off.');
-            else if (c.radioOn === false) lines.push('The phone radio is off.');
-            else if (c.simState === 'absent') lines.push('No SIM card.');
-            else if (c.simState === 'locked') lines.push('The SIM card is locked.');
-            else {
-                lines.push(op || (c.searching === true ? 'Searching for service...' : 'No operator'));
-                const lv = Number.isFinite(c.level) ? Math.max(0, Math.min(4, Math.round(c.level))) : null;
-                if (c.searching === true) { if (op) lines.push('Searching for service...'); }
-                else if (lv != null) lines.push(lv === 0 ? 'Signal: no service' : `Signal: ${bars(lv)}`);
-                if (c.roaming === true) lines.push('Roaming');
-            }
-            if (!dev.airplane && c.radioOn !== false) {
-                const dn = dev.type ? DATA_NAME[dev.type] : null;
-                if (c.dataEnabled === false) lines.push('Cellular data: off');
-                else if (dn) lines.push(`Data: ${dn}${dev.active === 'cellular' ? ', in use' : ''}`);
-            }
-            lines.push({ links: [{ label: 'Wireless Manager', action: openWirelessManager }] });
-            bubble({ title: 'Phone', role: 'signal', anchor: shell.querySelector('[data-role="signal"]:not([hidden])') || anchor, sections: lines, buttons: [{ text: 'Hide' }] });
+            const lv = Number.isFinite(c.level) ? Math.max(0, Math.min(4, Math.round(c.level))) : null;
+            let line;
+            if (dev.airplane) line = 'Flight Mode';
+            else if (c.radioOn === false) line = 'Phone off';
+            else if (c.simState === 'absent') line = 'No SIM';
+            else if (c.simState === 'locked') line = 'SIM Blocked';
+            else if (c.searching === true) line = 'Searching...';
+            else if (lv === 0 && !op) line = 'No Service';
+            else line = op || 'No Service';
+            if (line === op && c.roaming === true) line = `${op} (Roaming Service)`;
+            const phoneSettings = () => {
+                const dv = window.AndroidDevice;
+                if (dv && typeof dv.openSettings === 'function') { try { dv.openSettings('phone'); return; } catch (_) { /* older app */ } }
+                if (apps.has('settings')) open('settings');
+            };
+            bubble({
+                title: 'Phone',
+                role: 'signal',
+                anchor: shell.querySelector('[data-role="signal"]:not([hidden])') || anchor,
+                sections: [line, { links: [{ label: 'Wireless Manager', action: openWirelessManager }], align: 'right' }],
+                footLinks: [{ label: 'Settings', action: phoneSettings }],
+                buttons: [{ text: 'Hide' }]
+            });
         } else if (role === 'bluetooth') {
             const rd = radiosNow || readRadios() || {};
             const lines = [rd.bluetooth ? 'Bluetooth: On' : 'Bluetooth: Off'];
@@ -5139,6 +5186,8 @@
             applyTodayBackground(true);
             applyStartButton();
             syncBezel();
+            takeRadios(radiosNow); // Screen > Status Icons: the Bluetooth icon
+            refreshStatus(); // ... and the mobile network icon
             fitStatus(); // Screen > Camera moves the title bar's camera gap
             const today = apps.get('today');
             if (today && today.page) today.refresh();

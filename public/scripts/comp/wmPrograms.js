@@ -43,7 +43,9 @@
         startText: 'wmStartText',
         startIcon: 'wmStartIcon',
         camera: 'wmCamera',
-        cameraPortraitOnly: 'wmCameraPortraitOnly'
+        cameraPortraitOnly: 'wmCameraPortraitOnly',
+        showBluetoothIcon: 'wmShowBluetoothIcon',
+        showCellIcon: 'wmShowCellIcon'
     };
     const SCALES = [1, 1.25, 1.5, 1.75, 2];
     const MELATON_EMBLEM = '/static_images/melaton/melaton-white-256.png';
@@ -1078,9 +1080,19 @@
         },
         {
             id: 'screen', tab: 'system', label: 'Screen', icon: 'set-screen',
-            tabs: [['textsize', 'Text Size'], ['camera', 'Camera'], ['fullscreen', 'Full Screen']],
-            init: () => ({ scale: currentScale(), camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars() }),
+            tabs: [['textsize', 'Text Size'], ['camera', 'Camera'], ['fullscreen', 'Full Screen'], ['icons', 'Status Icons']],
+            init: () => ({ scale: currentScale(), camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
+                showBt: lsGet(K.showBluetoothIcon) !== '0', showCell: lsGet(K.showCellIcon) === '1' }),
             render(el, tab, d) {
+                if (tab === 'icons') {
+                    el.innerHTML = `<p>Choose which icons the title bar shows.</p>
+                        <div class="wm-form-gap"></div>
+                        ${check('wmShowBt', 'Show the Bluetooth icon while Bluetooth is on', d.showBt)}
+                        ${check('wmShowCell', 'Always show the mobile network icon (also on Wi-Fi)', d.showCell)}`;
+                    el.querySelector('input[name="wmShowBt"]').addEventListener('change', (e) => { d.showBt = e.target.checked; });
+                    el.querySelector('input[name="wmShowCell"]').addEventListener('change', (e) => { d.showCell = e.target.checked; });
+                    return;
+                }
                 if (tab === 'fullscreen') {
                     if (!d.bars) {
                         el.innerHTML = '<p>Hiding the status bar and the gesture bar is available in the Dreamscape app for Android.</p>';
@@ -1151,6 +1163,14 @@
                 const bars = systemBars();
                 if (d.bars && bars && (d.bars.hideStatus !== bars.hideStatus || d.bars.hideNavigation !== bars.hideNavigation)) {
                     try { window.AndroidDisplay.setSystemBars(!!d.bars.hideStatus, !!d.bars.hideNavigation); } catch (_) { /* older app */ }
+                }
+                if (d.showBt !== (lsGet(K.showBluetoothIcon) !== '0')) {
+                    lsSet(K.showBluetoothIcon, d.showBt ? null : '0');
+                    keys.push(K.showBluetoothIcon);
+                }
+                if (d.showCell !== (lsGet(K.showCellIcon) === '1')) {
+                    lsSet(K.showCellIcon, d.showCell ? '1' : null);
+                    keys.push(K.showCellIcon);
                 }
                 if (d.portraitOnly !== (lsGet(K.cameraPortraitOnly) === '1')) {
                     lsSet(K.cameraPortraitOnly, d.portraitOnly ? '1' : null);
@@ -1607,7 +1627,9 @@
                 return { left: null, right: null };
             },
             // WM: X on the Settings grid, ok on a settings page (saves it, back to the grid)
-            titleKind: () => (open ? 'ok' : 'close'),
+            // a page may ask for X instead of ok (Wireless Manager, an app on WM): X goes back to the grid
+            titleKind: () => (open ? (typeof open.def.titleKind === 'function' ? open.def.titleKind() : 'ok') : 'close'),
+            closeGoesBack: true,
             onTitleOk: () => commitAndClose(false),
             historyDepth: () => (open ? 1 : 0),
             // the back key leaves a page as ok does on the device

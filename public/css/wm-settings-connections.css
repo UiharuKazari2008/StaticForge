@@ -150,3 +150,115 @@ html.ui-mobile .wm-setc > .wm-edit {
 html.ui-mobile .wm-setc .wm-combo + .wm-check {
     margin-top: calc(6 * var(--wm-px));
 }
+
+/* ---- Wireless Manager, WM 6.1's own layout (measured on WM 6.1 at VGA, Yukimi's emulator, Nov 10;
+ * 1x px here): All bar 26 tall at x 5-234, 28 below the title; the radios in a rounded panel
+ * (x 10-230, a 23% tint of the highlight, 47% border) on a white-to-tint page; each radio a 26 px bar
+ * (x 16-224) with the name in 18 px bold white and the glyph in white at the right, its state in a
+ * white box (x 106-219, 17 tall) under the bar's right half; items 55 px apart. */
+html.ui-mobile .wm-set:has(.wm-wl) .wm-form-hdr {
+    display: none;
+}
+
+/* the white-to-tint page fills the whole screen under the panel, as on WM */
+html.ui-mobile .wm-set:has(.wm-wl) .wm-set-scroll {
+    background: linear-gradient(to right, #fff, color-mix(in srgb, var(--wm-highlight) 23%, #fff));
+}
+
+html.ui-mobile .wm-setc .wm-wl {
+    --wm-wl-bar: var(--wm-highlight);
+    --wm-wl-tint: color-mix(in srgb, var(--wm-highlight) 23%, #fff);
+    --wm-wl-edge: color-mix(in srgb, var(--wm-highlight) 47%, #fff);
+    /* full bleed over .wm-form's padding (7 / 5 / 8 px): the page is Wireless Manager's own */
+    margin: calc(-7 * var(--wm-px)) calc(-5 * var(--wm-px)) calc(-8 * var(--wm-px));
+    min-height: calc(100% + 15 * var(--wm-px));
+    padding: calc(28 * var(--wm-px)) 0 calc(10 * var(--wm-px));
+    background: linear-gradient(to right, #fff, var(--wm-wl-tint));
+    box-sizing: border-box;
+}
+
+html.ui-mobile .wm-setc .wm-wl-bar {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: calc(26 * var(--wm-px));
+    padding: 0 calc(5 * var(--wm-px)) 0 calc(6 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid color-mix(in srgb, var(--wm-wl-bar) 70%, #000);
+    border-radius: calc(4 * var(--wm-px));
+    background: var(--wm-wl-bar);
+    color: #fff;
+    font: bold calc(18 * var(--wm-px)) / 1 var(--wm-font);
+    text-align: left;
+}
+
+/* off: a lighter bar and the glyph with the X (Microsoft: "a lighter color ... an icon marked with an X") */
+html.ui-mobile .wm-setc .wm-wl-bar.is-off {
+    background: color-mix(in srgb, var(--wm-wl-bar) 50%, #fff);
+}
+
+html.ui-mobile .wm-setc .wm-wl-bar.is-busy .wm-wl-name {
+    opacity: 0.75;
+}
+
+html.ui-mobile .wm-setc .wm-wl-bar:focus-visible {
+    outline: calc(1 * var(--wm-px)) solid #fff;
+    outline-offset: calc(-3 * var(--wm-px));
+    box-shadow: 0 0 0 calc(1 * var(--wm-px)) #000;
+}
+
+html.ui-mobile .wm-setc .wm-wl-bar.is-all {
+    width: calc(100% - 11 * var(--wm-px));
+    margin: 0 calc(6 * var(--wm-px)) 0 calc(5 * var(--wm-px));
+    position: relative;
+    z-index: 1;
+}
+
+html.ui-mobile .wm-setc .wm-wl-name {
+    flex: 1 1 auto;
+}
+
+html.ui-mobile .wm-setc .wm-wl-glyph {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-icon-unit, var(--wm-px)));
+    height: calc(16 * var(--wm-icon-unit, var(--wm-px)));
+    image-rendering: pixelated;
+    /* the ROM glyphs are black 1-bit art; WM draws them white on the bar */
+    filter: invert(1);
+}
+
+html.ui-mobile .wm-setc .wm-wl-panel {
+    margin: calc(-13 * var(--wm-px)) calc(10 * var(--wm-px)) 0;
+    padding: calc(26 * var(--wm-px)) calc(5 * var(--wm-px)) calc(10 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid var(--wm-wl-edge);
+    border-radius: 0 0 calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    background: var(--wm-wl-tint);
+}
+
+html.ui-mobile .wm-setc .wm-wl-panel.is-alone {
+    margin-top: 0;
+    padding-top: calc(10 * var(--wm-px));
+    border-radius: calc(4 * var(--wm-px));
+}
+
+html.ui-mobile .wm-setc .wm-wl-item + .wm-wl-item {
+    margin-top: calc(11 * var(--wm-px));
+}
+
+html.ui-mobile .wm-setc .wm-wl-state {
+    display: block;
+    width: 54%;
+    min-height: calc(17 * var(--wm-px));
+    margin: calc(1 * var(--wm-px)) calc(5 * var(--wm-px)) 0 auto;
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid var(--wm-wl-edge);
+    border-top: 0;
+    border-radius: 0 0 calc(3 * var(--wm-px)) calc(3 * var(--wm-px));
+    background: #fff;
+    color: var(--wm-wl-bar);
+    font: bold calc(12 * var(--wm-px)) / calc(16 * var(--wm-px)) var(--wm-font);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

@@ -2433,6 +2433,39 @@ html.ui-mobile body > .pswp .pswp__preloader {
     justify-content: space-between;
 }
 
+.wm-bubble-section.is-links.is-right {
+    justify-content: flex-end;
+    /* WM 6.1's Phone bubble: the Wireless Manager link sits right under the operator, no rule */
+    border-top: 0;
+    padding-top: 0;
+}
+
+.wm-bubble-section.is-rule + .wm-bubble-section {
+    border-top: 0;
+}
+
+/* Settings left of Hide is a plain link, not a button */
+.wm-bubble-buttons .wm-bubble-link {
+    border: 0 !important;
+    background: none !important;
+    font-weight: normal;
+}
+
+/* a full-width rule inside the body (WM 6.1: 2 px black at VGA), as above the Settings | Hide row */
+.wm-bubble-section.is-rule {
+    height: 0;
+    padding: 0 !important;
+    margin: calc(3 * var(--wm-px)) calc(5 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-bubble-buttons.has-links {
+    justify-content: space-between;
+    align-items: center;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    padding-top: calc(4 * var(--wm-px));
+}
+
 .wm-bubble-link {
     color: #00f !important;
     text-decoration: underline;
