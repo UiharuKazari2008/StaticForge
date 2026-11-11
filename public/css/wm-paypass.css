@@ -522,7 +522,8 @@
     }
 }
 
-/* the first open, while the overview loads behind the wait cursor: nothing drawn yet */
-.wm-page.is-loading > * {
+/* the first open, while the overview loads behind the wait cursor: nothing drawn yet (this app's
+ * page only: Internet Explorer marks its page is-loading too and went blank while a page loaded) */
+.wm-page[data-app="paypass-mobile"].is-loading > * {
     visibility: hidden;
 }

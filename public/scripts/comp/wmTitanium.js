@@ -40,13 +40,14 @@
     const DRAG_START = 18; // a drag starts after 36 VGA px of travel
     const SLIDE_START = 22.5; // a page starts to follow the finger after 45
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    // wm65 art by name ('ti-2051'); 's:owner' / 'x:app-studio-lg' = a 6.5 Start icon / a 6.1 set
+    // wm65 art by name ('ti-2051'); 's:owner' / 'x:app-studio-lg' / 'p:wren' = a 6.5 Start icon / a 6.1 set
+    // icon / a Director persona's picture
     // icon in the panel icons' frame with their mirror image (ti-s-*, ti-x-*: made for the items 6.5
     // has no panel art for); or a path
     const artUrl = (name, scale) => {
         const n = String(name || '');
         if (n.startsWith('/')) return n;
-        const file = n.startsWith('x:') ? `ti-x-${n.slice(2)}` : n.startsWith('s:') ? `ti-s-${n.slice(2)}` : n;
+        const file = n.startsWith('x:') ? `ti-x-${n.slice(2)}` : n.startsWith('s:') ? `ti-s-${n.slice(2)}` : n.startsWith('p:') ? `ti-p-${n.slice(2)}` : n;
         return `${ART}${file}${scale > 1 ? `@${scale}x` : ''}.png`;
     };
     // 1x = the ROM art halved, 2x = the ROM art, 4x = it upscaled (GPU) for dense phone screens
@@ -83,7 +84,7 @@
     // ---------------------------------------------------------------- settings
 
     function storedItems() {
-        try { const v = JSON.parse(localStorage.getItem('wmTodayItems') || 'null'); return Array.isArray(v) ? v : null; } catch (_) { return null; }
+        try { const v = JSON.parse(localStorage.getItem(sh.todayItemsKey) || 'null'); return Array.isArray(v) ? v : null; } catch (_) { return null; }
     }
 
     /** "Melaton Default" checked in Settings > Today > Items (on until switched off). */
@@ -224,7 +225,7 @@
     function panelIcon(name) {
         const n = String(name || '');
         if (!n || n.startsWith('/')) return n || 'x:app-programs-lg';
-        if (/^(ti-|s:|x:)/.test(n)) return n;
+        if (/^(ti-|s:|x:|p:)/.test(n)) return n;
         return `x:${n.replace(/^today-/, 'app-').replace(/-lg$/, '')}-lg`;
     }
 
@@ -260,20 +261,15 @@
         return { label: lower(w.label || w.id), icon, pages: [{ title: lines[0], line2: lines[1] || '', line3: lines[2] || '' }], onTap: () => { const b = rowEl && rowEl.querySelector('button, [role="button"]'); if (b) b.click(); else if (rowEl) rowEl.click(); } };
     }
 
-    // 6.5 keeps pictures and the phone items above the clock and the message items under it; with
-    // no order chosen in Settings the panels follow that (pictures, workspace, tasks | clock | ...)
-    const ABOVE_HOME = ['prints', 'workspace', 'tasks'];
+    // with no order chosen in Settings the panels follow 6.5's own (wmShell.todayOrder65): the
+    // clock is home, in the middle of the list, the places above it and what arrives below
 
     function buildPanels() {
         const st = sh.todayState() || {};
         const defs = new Map(sh.todayItemDefs().map((w) => [w.id, w]));
         const rows = [...page.querySelectorAll(':scope > [data-row]')];
         let ids = rows.filter((r) => !r.classList.contains('wm-today-off')).map((r) => r.dataset.row);
-        if (!storedItems()) {
-            const above = ABOVE_HOME.filter((id) => ids.includes(id));
-            ids = above.concat(ids.filter((id) => !above.includes(id)));
-            if (ids.includes('date')) { ids = ids.filter((id) => id !== 'date'); ids.splice(above.length, 0, 'date'); }
-        }
+        if (!storedItems()) ids = sh.todayOrder65(ids);
         const out = [];
         for (const id of ids) {
             const rowEl = rows.find((r) => r.dataset.row === id);

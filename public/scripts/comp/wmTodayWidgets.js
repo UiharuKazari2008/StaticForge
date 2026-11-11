@@ -81,7 +81,7 @@
     function itemOff(el, defaultOn) {
         if (el.classList.contains('wm-today-off')) return true;
         try {
-            const list = JSON.parse(localStorage.getItem('wmTodayItems') || 'null');
+            const list = JSON.parse(localStorage.getItem((sh && sh.todayItemsKey) || 'wmTodayItems') || 'null');
             const it = Array.isArray(list) ? list.find((x) => x && x.id === el.dataset.row) : null;
             return it ? it.on === false : defaultOn === false;
         } catch (_) { return defaultOn === false; }
@@ -359,6 +359,29 @@
         };
     }
 
+    /** "5 min ago", "3 h ago", "2 d ago": how long since a session was last used. */
+    function agoText(at) {
+        const ms = Date.now() - Number(at || 0);
+        if (!at || !Number.isFinite(ms) || ms < 0) return '';
+        const min = Math.round(ms / 60000);
+        if (min < 1) return 'Just now';
+        if (min < 60) return `${min} min ago`;
+        const h = Math.round(min / 60);
+        if (h < 24) return `${h} h ago`;
+        return `${Math.round(h / 24)} d ago`;
+    }
+
+    /** New Session with that persona: the Director app in front, her selected, the desktop's own openNewSession. */
+    async function newDirectorSession(p) {
+        const inst = window.directorInstance;
+        open('director');
+        if (!inst) return;
+        try {
+            if (inst.persona !== p && typeof inst.setPersona === 'function') await sh.busy(() => inst.setPersona(p), { paint: true });
+            if (typeof inst.openNewSession === 'function') await sh.busy(() => inst.openNewSession(), { paint: true });
+        } catch (err) { console.warn('[wmTodayWidgets] new session', err); }
+    }
+
     /** A Director item's home screen panel (6.5): the session's picture, its name, who works on it. */
     function directorTitanium(fixedPersona) {
         return ({ option }) => {
@@ -369,9 +392,20 @@
                 return { image: directorPicture(m.file) || '', title: m.name || 'Untitled', line2: m.words, softKey: { label: 'Director', action: go }, onTap: go };
             };
             const pages = [page(first)];
-            // the main item: the last session, then each persona's own (Yumiya, Chiyo, Yozora)
+            // the main item: the last session, then a page per persona: her picture at the top
+            // right, her name over how long ago she was last used and that session's name; the
+            // soft key starts a new session with her, a tap opens the last one
             if (!fixedPersona) {
-                PERSONAS.forEach((p) => { const m = directorModel(p); if (m) pages.push(page(m)); });
+                PERSONAS.forEach((p) => {
+                    const m = directorModel(p);
+                    if (!m) return;
+                    pages.push({
+                        icon: `p:${p}`, title: DIRECTOR_NAMES[p],
+                        line2: [m.running ? 'Working now' : agoText(m.at), m.name || 'Untitled'].filter(Boolean).join(' '),
+                        softKey: { label: 'New Session', action: () => { void newDirectorSession(p); } },
+                        onTap: () => openDirector(m)
+                    });
+                });
             }
             return { label: fixedPersona ? DIRECTOR_NAMES[fixedPersona].toLowerCase() : 'director', icon: 'x:app-director-lg', pages };
         };

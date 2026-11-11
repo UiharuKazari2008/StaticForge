@@ -19,6 +19,7 @@
  *   wmTodayUseDesktop  '1' | '0'   (absent: '0' when wmTodayBackground is set, else '1')
  *   wmTodayBackground  same-site preview path ('/previews/...'), written by Pictures and here
  *   wmTodayItems       JSON [{ id, on }] in display order; ids = Today's data-row values
+ *                      (6.5 keeps its own list in wmTodayItems65)
  *   wmStartMenu        JSON [appId] shown in the Start menu (absent = the apps' own inStart)
  *   wmStartSource      'wm' | 'flag' | 'desktop' | 'custom'  (absent = wm: "Start" + Melaton emblem;
  *                      flag = "Start" + WM 6.1's own Windows flag, opt-in at Yukimi's request)
@@ -37,7 +38,8 @@
         titleBar: 'wmTitleBar',
         todayUseDesktop: 'wmTodayUseDesktop',
         todayBackground: 'wmTodayBackground',
-        todayItems: 'wmTodayItems',
+        // 6.5 has a list of its own (the clock sits in the middle of its home screen)
+        todayItems: root.dataset.wmVersion === '6.5' ? 'wmTodayItems65' : 'wmTodayItems',
         startMenu: 'wmStartMenu',
         startSource: 'wmStartSource',
         startText: 'wmStartText',
@@ -487,8 +489,13 @@
                 out.push({ id: def[0], label: def[1], on: r.on !== false });
             }
         }
+        // 6.5 with nothing chosen yet: its own order, the clock in the middle (wmShell.todayOrder65)
+        if (first.length && !Array.isArray(saved) && sh && typeof sh.todayOrder65 === 'function') {
+            const order = sh.todayOrder65(rows.map(([id]) => id));
+            rows.sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
+        }
         for (const [id, label, defaultOn] of rows) if (!seen.has(id)) out.push({ id, label, on: defaultOn !== false });
-        // an order saved under 6.1 has no home screen entry: it still leads the list
+        // the home screen entry leads the list
         if (first.length && !(Array.isArray(saved) && saved.some((r) => r && r.id === 'titanium'))) {
             const at = out.findIndex((it) => it.id === 'titanium');
             if (at > 0) out.unshift(out.splice(at, 1)[0]);

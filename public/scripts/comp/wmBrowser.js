@@ -120,6 +120,23 @@
         fullScreen = localStorage.getItem(FULL_KEY) === '1';
     } catch (_) { /* storage off */ }
 
+    // Melaton Mobile 6.5 (Internet Explorer Mobile 6, #741): see "6.5" below
+    const v65 = document.documentElement.dataset.wmVersion === '6.5';
+    const ZOOM65_KEY = 'wmIeZoom65';
+    const BARS65_MS = 7000; // device: bars still up 6.2 s after the tap that showed them, fading at 7.5 s
+    const ZOOM65_MS = 1500; // device: the slider stays 1 to 2 s after the last touch
+    const ZOOM65_REST = 0.13; // device: the thumb rests 184 of 212 px down its travel on a page at 100%
+    let bars65 = true;
+    let barsTimer65 = 0;
+    let zoomOpen65 = false;
+    let zoomTimer65 = 0;
+    let pageZoom65 = 1;
+    let subData65 = null; // the form on screen (Add / Edit Favorite, Other)
+    try {
+        const pz = Number(localStorage.getItem(ZOOM65_KEY));
+        if (v65 && pz >= 0.5 && pz <= 4) pageZoom65 = pz;
+    } catch (_) { /* storage off */ }
+
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const isCurrent = () => !!(ws && ws.current === APP_ID);
     const entry = () => entries[idx] || homeEntry();
@@ -227,7 +244,7 @@
         const W = Math.max(1, els.view.clientWidth);
         const H = Math.max(1, els.view.clientHeight);
         const base = viewMode === 'desktop' ? Math.max(W, 1024) : viewMode === 'default' ? Math.round(W * 1.5) : W;
-        const V = base / zoomFactor();
+        const V = base / (zoomFactor() * (v65 ? pageZoom65 : 1));
         let s = Math.min(2, Math.max(1, window.devicePixelRatio || 1), V / W);
         // Alchemy's frames are 320..1920 x 240..1440
         s = Math.min(s, 1920 / W, 1440 / H);
@@ -475,7 +492,7 @@
     }
 
     function goBack() {
-        if (sub) { closeSub(); return true; }
+        if (sub) { if (v65) subDone65(false); else closeSub(); return true; }
         return goTo(idx - 1);
     }
 
@@ -980,6 +997,15 @@
             if (data.selection) items.push({ label: 'Copy', action: () => copyText(data.selection) });
             if (data.editable) items.push({ label: 'Paste', action: pasteFromClipboard });
         }
+        if (!items.length && v65) {
+            // device (tap and hold on the page): Zoom, Make Selection, Back, Refresh, Add to Favorites, Favorites
+            items.push({ label: 'Zoom', action: openZoom65 });
+            items.push({ label: 'Make Selection', disabled: true });
+            items.push({ label: 'Back', disabled: idx < 1, action: goBack });
+            items.push({ label: 'Refresh', action: refresh });
+            items.push({ label: 'Add to Favorites', action: () => addFavorite() });
+            items.push({ label: 'Favorites', action: () => openSub('favorites') });
+        }
         if (!items.length) {
             items.push({ label: 'Back', disabled: idx < 1, action: goBack });
             items.push({ label: 'Refresh', action: refresh });
@@ -1075,6 +1101,7 @@
             return;
         }
         if (!favoritesLoaded) await busyOf(loadSettings);
+        if (v65) { openFavForm65({ url: u, title: title || entry().title || hostOf(u), at: -1 }); return; }
         const name = await ws.messageBox({
             title: 'Add Favorite',
             text: `Name:\n(${u})`,
@@ -1093,6 +1120,7 @@
     async function renameFavorite(i) {
         const f = favorites[i];
         if (!f) return;
+        if (v65) { openFavForm65({ url: f.url, title: f.title || '', at: i }); return; }
         const name = await ws.messageBox({ title: 'Edit Favorite', text: 'Name:', input: { value: f.title || '' }, buttons: [{ text: 'Done', value: true, default: true }, { text: 'Cancel', value: false }] });
         if (!name) return;
         const next = favorites.slice();
@@ -1104,10 +1132,11 @@
     async function deleteFavorite(i) {
         const f = favorites[i];
         if (!f) return;
-        const yes = await ws.messageBox({ title: 'Internet Explorer', icon: 'question', text: `Delete '${f.title || f.url}' from Favorites?`, buttons: [{ text: 'Yes', value: true, default: true }, { text: 'No', value: false }] });
+        const yes = await ws.messageBox({ title: v65 ? 'Delete Favorite' : 'Internet Explorer', icon: 'question', text: v65 ? `The Favorite '${f.title || f.url}' will be permanently deleted. Continue?` : `Delete '${f.title || f.url}' from Favorites?`, buttons: [{ text: 'Yes', value: true, default: true }, { text: 'No', value: false }] });
         if (!yes) return;
         try { await saveFavorites(favorites.filter((_, n) => n !== i)); } catch (_) { /* kept */ }
         subSel = Math.min(subSel, favorites.length - 1);
+        if (v65 && subSel < 0 && favorites.length) subSel = 0;
         renderSub();
     }
 
@@ -1116,7 +1145,8 @@
     function openSub(kind) {
         if (ws) ws.closeMenus();
         sub = kind;
-        subSel = -1;
+        // 6.5 lists open with their first row chosen
+        subSel = v65 ? 0 : -1;
         renderSub();
         syncPageShown();
         // the list waits for the favorites under the wait cursor (no "Loading..." row of its own)
@@ -1133,6 +1163,7 @@
         if (visible && !onHome() && !session && !creating) { entry().pending = true; openSession(entry().url); }
         syncPageShown();
         step();
+        chrome65();
     }
 
     function subRows() {
@@ -1142,6 +1173,7 @@
 
     function renderSub() {
         if (!sub) return;
+        if (v65) { renderSub65(); return; }
         page.classList.add('has-sub');
         els.sub.hidden = false;
         const rows = subRows();
@@ -1159,7 +1191,9 @@
 
     function openSubRow(i) {
         const r = subRows()[i];
-        if (r) navigate(r.url, r.title);
+        if (!r) return;
+        if (v65 && sub) { sub = null; els.sub.hidden = true; page.classList.remove('has-sub'); }
+        navigate(r.url, r.title);
     }
 
     function subMenu() {
@@ -1242,6 +1276,7 @@
     }
 
     function properties() {
+        if (v65) { openSub('props'); return; }
         const e = entry();
         const secure = /^https:/i.test(e.url || '');
         ws.messageBox({
@@ -1937,6 +1972,414 @@
         if (abs.protocol === 'http:' || abs.protocol === 'https:') navigate(abs.href, label);
     }
 
+    // ---------------------------------------------------------------- 6.5
+    // Melaton Mobile 6.5 (#741): Internet Explorer Mobile 6 as Windows Mobile 6.5 Professional ships it.
+    // Measured on the Device Emulator (VGA; captures in ~/.cache/claude-run/wm65apps/ie/emu):
+    //   page       full screen; the title bar, the address bar (56 px + a 2 px black rule under the
+    //              title bar) and the bottom bar lie over it and go away about 7 s after they came
+    //              (BARS65_MS); a round button at the bottom right (x 390, y 550) brings them back.
+    //              No soft keys on the page. While a page loads with the bars away the address bar
+    //              alone stays at the top.
+    //   bottom bar five 90 px round buttons at x 3 + 96 n, y 550 (browsres.192.dll bitmap 4599:
+    //              back, favorites, keyboard, zoom, menu, each with its pressed cell) over a 30 px
+    //              grey band (198, 195, 198)
+    //   menu       Home Page, History, Forward, Refresh, View > (Text Size >, Mobile, Desktop),
+    //              Tools > (Send Link..., Properties, Options), Copy/Paste > (Make Selection, Paste),
+    //              Exit; its bottom line 109 px above the screen's bottom, 34 px from the right
+    //   zoom       an 84 x 380 px slider (bitmaps 4600 to 4602) 20 px from the right, centred, drawn
+    //              at 74 %; the address bar is away while it shows; gone 1 to 2 s after the last touch
+    //   Favorites  27 px rows, the first chosen, a tap opens; bar (bitmap 4604): back, add, add
+    //              folder, edit, delete. History: two-line rows, Open / Cancel. Options: a list
+    //              (Open / Close) of pages (Done / Cancel). Properties: a page with Close.
+    // 6.1's menu here: Back = bar button; Forward, Home (Home Page), Refresh, History = menu;
+    // Add to Favorites = the + of Favorites and the page's tap-and-hold menu; View One Column /
+    // Desktop = View > Mobile / Desktop (and Options > Other); Default (a page half again as wide)
+    // = the zoom slider at 67 %; Full Screen = the bars' own coming and going; Zoom = View > Text
+    // Size; Tools > Copy Link = Send Link... (a new message with the link; the clipboard when
+    // Messaging is not there); Paste = Copy/Paste; Clear History = Options > Browsing History >
+    // Clear; Properties = Tools.
+
+    const SUB65_TITLES = { favorites: 'Favorites', history: 'History', options: 'Options', 'opt-history': 'Browsing History', 'opt-other': 'Other', props: 'Properties' };
+    const OPTIONS65 = [['opt-history', 'Browsing History'], ['opt-other', 'Other']];
+
+    function title65() {
+        if (sub === 'favform') return subData65 && subData65.at >= 0 ? 'Edit Favorite' : 'Add Favorite';
+        if (sub) return SUB65_TITLES[sub] || 'Internet Explorer';
+        return entry().title || 'Internet Explorer';
+    }
+
+    /** An edit field of the page has the keyboard: the soft-key bar (with the input panel button) shows. */
+    function kbd65() {
+        const a = document.activeElement;
+        if (!a || !page || a === els.addr || !page.contains(a)) return false;
+        if (a === els.ime || a.isContentEditable) return true;
+        if (a.tagName === 'TEXTAREA') return true;
+        return a.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|reset|range|file|color|image)$/i.test(a.type || '');
+    }
+
+    function menuOpen65() {
+        const pop = document.querySelector('#wmShell .wm-popup');
+        return !!pop && !pop.hidden;
+    }
+
+    /** html[data-wm-ie65]: bars | bare | kbd (page), fav (Favorites: its own bar), sub (pages with soft keys). */
+    function chrome65() {
+        if (!v65 || !page) return;
+        const root = document.documentElement;
+        if (!visible) { if (root.dataset.wmIe65) delete root.dataset.wmIe65; return; }
+        const st = sub ? (sub === 'favorites' ? 'fav' : 'sub') : kbd65() ? 'kbd' : bars65 ? 'bars' : 'bare';
+        if (root.dataset.wmIe65 !== st) root.dataset.wmIe65 = st;
+        if (ws && isCurrent()) ws.setTitle(title65());
+        const back = els.bar65 && els.bar65.querySelector('[data-act="back"]');
+        if (back) back.disabled = idx < 1;
+    }
+
+    function armBars65() {
+        clearTimeout(barsTimer65);
+        barsTimer65 = setTimeout(() => {
+            barsTimer65 = 0;
+            if (!visible || sub || !bars65) return;
+            // in use: the wait starts over
+            if (addrEditing || zoomOpen65 || menuOpen65() || kbd65()) { armBars65(); return; }
+            bars65 = false;
+            chrome65();
+        }, BARS65_MS);
+    }
+
+    function showBars65() {
+        bars65 = true;
+        chrome65();
+        armBars65();
+    }
+
+    // zoom: the slider's place p (0 at the bottom, 1 at the top) and the page's scale; 100 % at the
+    // thumb's rest place, 50 % at the bottom, 400 % at the top
+    const zoomOfP65 = (p) => (p <= ZOOM65_REST ? 0.5 * Math.pow(2, p / ZOOM65_REST) : Math.pow(4, (p - ZOOM65_REST) / (1 - ZOOM65_REST)));
+    const pOfZoom65 = (z) => (z <= 1 ? ZOOM65_REST * Math.log2(z / 0.5) : ZOOM65_REST + (1 - ZOOM65_REST) * Math.log(z) / Math.log(4));
+    let zoomLayout65 = 0;
+
+    function applyZoom65() {
+        if (!v65 || !els.home) return;
+        const z = pageZoom65 === 1 ? '' : String(Math.round(pageZoom65 * 100) / 100);
+        for (const el of [els.home, els.gpage, els.core, els.dsapArea]) if (el) el.style.zoom = z;
+        if (els.zthumb65) els.zthumb65.style.top = `calc(${Math.round((1 - pOfZoom65(pageZoom65)) * 1060) / 10} * var(--wm-px))`;
+        // Alchemy's page follows shortly after (a new viewport each time is a new layout over there)
+        clearTimeout(zoomLayout65);
+        zoomLayout65 = setTimeout(layoutFrame, 150);
+    }
+
+    function setZoom65(z) {
+        pageZoom65 = Math.max(0.5, Math.min(4, z));
+        try { localStorage.setItem(ZOOM65_KEY, String(Math.round(pageZoom65 * 1000) / 1000)); } catch (_) { /* storage off */ }
+        applyZoom65();
+    }
+
+    function armZoom65() {
+        clearTimeout(zoomTimer65);
+        zoomTimer65 = setTimeout(closeZoom65, ZOOM65_MS);
+    }
+
+    function openZoom65() {
+        if (!v65 || sub) return;
+        zoomOpen65 = true;
+        els.zoom65.hidden = false;
+        page.classList.add('is-zooming');
+        applyZoom65();
+        armZoom65();
+    }
+
+    function closeZoom65() {
+        clearTimeout(zoomTimer65);
+        zoomTimer65 = 0;
+        if (!zoomOpen65) return;
+        zoomOpen65 = false;
+        els.zoom65.hidden = true;
+        page.classList.remove('is-zooming');
+        if (bars65) armBars65();
+    }
+
+    function sendLink65() {
+        const e = entry();
+        if (typeof window.wmMessagingCompose === 'function') window.wmMessagingCompose({ subject: e.title || '', body: e.url || '' });
+        else copyText(e.url);
+    }
+
+    function mainMenu65() {
+        return [
+            { label: 'Home Page', action: goHome },
+            { label: 'History', action: () => openSub('history') },
+            { label: 'Forward', disabled: idx >= entries.length - 1, action: goForward },
+            { label: 'Refresh', action: refresh },
+            {
+                label: 'View',
+                submenu: [
+                    { label: 'Text Size', submenu: ZOOMS.map(([k, label]) => ({ label, radio: zoomKey === k, action: () => setZoom(k) })) },
+                    '-',
+                    { label: 'Mobile', checked: viewMode === 'column', action: () => setView('column') },
+                    { label: 'Desktop', checked: viewMode === 'desktop', action: () => setView('desktop') }
+                ]
+            },
+            {
+                label: 'Tools',
+                submenu: [
+                    { label: 'Send Link...', action: sendLink65 },
+                    { label: 'Properties', action: properties },
+                    { label: 'Options', action: () => openSub('options') }
+                ]
+            },
+            {
+                label: 'Copy/Paste',
+                submenu: [
+                    { label: 'Make Selection', disabled: true },
+                    { label: 'Paste', disabled: onHome() || !frame, action: pasteFromClipboard }
+                ]
+            },
+            // as the title bar's X
+            { label: 'Exit', action: () => { const x = document.querySelector('#wmShell .wm-title-action[data-kind="close"]'); if (x) x.click(); } }
+        ];
+    }
+
+    function openMenu65(btn) {
+        ws.menu('right', mainMenu65(), btn);
+        const pop = document.querySelector('#wmShell .wm-popup');
+        // device: the menu's bottom line is 109 px above the bottom of the screen (over the bar's buttons)
+        if (pop && !pop.hidden) pop.style.bottom = 'calc(var(--wm-safe-bottom, 0px) + 54.5 * var(--wm-px))';
+    }
+
+    function softKeys65() {
+        const none = { left: null, right: null };
+        if (!sub || sub === 'favorites') return none;
+        if (sub === 'history') {
+            return {
+                left: { label: 'Open', disabled: !subRows()[subSel], action: () => openSubRow(subSel) },
+                right: { label: 'Cancel', action: closeSub }
+            };
+        }
+        if (sub === 'options') return { left: { label: 'Open', action: () => openSub(OPTIONS65[subSel] ? OPTIONS65[subSel][0] : 'options') }, right: { label: 'Close', action: closeSub } };
+        if (sub === 'opt-history') return { left: { label: 'Done', action: () => subDone65(true) }, right: { label: 'Clear', action: clearHistory } };
+        if (sub === 'opt-other') return { left: { label: 'Done', action: () => subDone65(true) }, right: { label: 'Cancel', action: () => subDone65(false) } };
+        if (sub === 'props') return { left: { label: 'Close', action: closeSub }, right: null };
+        if (sub === 'favform') return { left: { label: subData65 && subData65.at >= 0 ? 'OK' : 'Add', action: () => subDone65(true) }, right: { label: 'Cancel', action: () => subDone65(false) } };
+        return none;
+    }
+
+    /** ok / Done (true) or Cancel / the back key (false) on the page on screen. */
+    function subDone65(ok) {
+        if (sub === 'opt-history') { openSub('options'); return; }
+        if (sub === 'opt-other') {
+            const on = ok && els.sub.querySelector('input[name="wmb65-as"]:checked');
+            if (on) setView(on.value);
+            openSub('options');
+            subSel = 1;
+            renderSub();
+            return;
+        }
+        if (sub === 'favform') {
+            if (ok) saveFavForm65();
+            else leaveFavForm65();
+            return;
+        }
+        closeSub();
+    }
+
+    function openFavForm65(data) {
+        subData65 = Object.assign({ from: sub === 'favorites' ? 'favorites' : null, sel: subSel }, data);
+        if (ws) ws.closeMenus();
+        sub = 'favform';
+        renderSub();
+        syncPageShown();
+        step();
+        const name = els.sub.querySelector('[data-f="title"]');
+        if (name) { name.focus({ preventScroll: true }); name.select(); }
+    }
+
+    function leaveFavForm65() {
+        const d = subData65;
+        subData65 = null;
+        if (d && d.from === 'favorites') { openSub('favorites'); subSel = Math.max(0, Math.min(d.sel, favorites.length - 1)); renderSub(); }
+        else closeSub();
+    }
+
+    async function saveFavForm65() {
+        const d = subData65;
+        if (!d) return;
+        const title = els.sub.querySelector('[data-f="title"]').value.trim();
+        const url = els.sub.querySelector('[data-f="url"]').value.trim();
+        if (!url) { els.sub.querySelector('[data-f="url"]').focus(); return; }
+        let next;
+        if (d.at >= 0 && favorites[d.at]) {
+            next = favorites.slice();
+            next[d.at] = Object.assign({}, favorites[d.at], { url, title: title || hostOf(url) || url });
+        } else {
+            next = [{ url, title: title || hostOf(url) || url }].concat(favorites.filter((f) => f.url !== url));
+        }
+        try { await saveFavorites(next); } catch (_) {
+            await ws.messageBox({ title: 'Internet Explorer', icon: 'error', text: 'The favorite could not be saved.' });
+            return;
+        }
+        leaveFavForm65();
+    }
+
+    function renderSub65() {
+        page.classList.add('has-sub');
+        els.sub.hidden = false;
+        els.sub.dataset.kind = sub;
+        const cell = (act, label, off) => `<button type="button" class="wmb65-btn" data-act="${act}" aria-label="${label}"${off ? ' disabled' : ''}></button>`;
+        let html = '';
+        if (sub === 'favorites' || sub === 'history') {
+            const rows = subRows();
+            if (subSel >= rows.length) subSel = rows.length - 1;
+            if (subSel < 0 && rows.length) subSel = 0;
+            const two = sub === 'history';
+            html = `<div class="wmb-sub-list" role="listbox">${rows.map((r, i) => `
+                <div class="wmb-sub-row${two ? ' wmb65-two' : ''}${i === subSel ? ' is-selected' : ''}" role="option" data-i="${i}">
+                    ${two ? `<b>${esc(r.title)}</b><span>${esc(r.url)}</span>` : `${img(r.icon, 'wmb-sub-ico')}<span class="wmb-sub-title">${esc(r.title)}</span>`}
+                </div>`).join('')}</div>`;
+            if (sub === 'favorites') {
+                const none = !rows.length;
+                // add folder: Favorites here has no folders, the button shows its unavailable cell
+                html += `<div class="wmb65-bar" data-bar="fav">${cell('fav-back', 'Back')}${cell('fav-add', 'Add Favorite')}${cell('fav-folder', 'Add Folder', true)}${cell('fav-edit', 'Edit', none)}${cell('fav-delete', 'Delete', none)}</div>`;
+            }
+        } else if (sub === 'options') {
+            html = `<div class="wmb-sub-list" role="listbox">${OPTIONS65.map(([, label], i) => `<div class="wmb-sub-row wmb65-opt${i === subSel ? ' is-selected' : ''}" role="option" data-i="${i}"><b>${label}</b></div>`).join('')}</div>`;
+        } else if (sub === 'opt-history') {
+            let bytes = 0;
+            try { bytes = (localStorage.getItem(HISTORY_KEY) || '').length; } catch (_) { bytes = 0; }
+            if (!readList(HISTORY_KEY).length) bytes = 0;
+            html = `<div class="wmb-sub-list" role="listbox"><div class="wmb-sub-row wmb65-two is-selected" role="option" data-i="0"><b>History</b><span>${bytes} bytes</span></div></div>`;
+        } else if (sub === 'opt-other') {
+            const radio = (v, label) => `<label class="wm-check"><input type="radio" name="wmb65-as" value="${v}"${(v === 'desktop') === (viewMode === 'desktop') ? ' checked' : ''}><span>${label}</span></label>`;
+            html = `<div class="wmb65-form wmb65-other"><div class="wmb65-lbl">Browse websites as:</div>${radio('column', 'Mobile Device')}${radio('desktop', 'Desktop Computer')}</div>`;
+        } else if (sub === 'props') {
+            const e = entry();
+            const scheme = (/^([a-z][a-z0-9+.-]*):/i.exec(e.url || '') || [])[1] || '';
+            const proto = /^https$/i.test(scheme) ? 'HyperText Transfer Protocol with Privacy' : /^http$/i.test(scheme) ? 'HyperText Transfer Protocol' : scheme || 'Not Available';
+            const fields = [
+                ['Name:', e.title || (e.home ? 'Grimoire' : hostOf(e.url))],
+                ['Address:', e.url || ''],
+                ['Protocol:', proto],
+                ['Encryption:', !e.home && /^https:/i.test(e.url || '') ? 'Secure (HTTPS)' : 'None'],
+                ['Loaded by:', e.home ? (e.grim.kind === 'dsap' ? 'Dreamscape' : 'Grimoire') : 'Alchemy']
+            ];
+            html = `<div class="wmb65-props">${fields.map(([k, v]) => `<b>${k}</b><span>${esc(v)}</span>`).join('')}</div>`;
+        } else if (sub === 'favform') {
+            const d = subData65 || { url: '', title: '' };
+            html = `<div class="wmb65-form">
+                <label class="wmb65-lbl">Name:</label><input type="text" class="wm-edit" data-f="title" autocomplete="off" spellcheck="false" enterkeyhint="done" value="${esc(d.title)}" aria-label="Name">
+                <label class="wmb65-lbl">Address (URL):</label><input type="url" class="wm-edit" data-f="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" value="${esc(d.url)}" aria-label="Address (URL)">
+                <label class="wmb65-lbl">Folder:</label><button type="button" class="wm-combo" data-f="folder"><span>Favorites</span></button>
+            </div>`;
+        }
+        els.sub.innerHTML = html;
+        chrome65();
+        if (isCurrent()) { ws.refreshSoftKeys(); ws.refreshTitleAction(); }
+    }
+
+    function subClick65(e) {
+        const btn = e.target.closest('.wmb65-btn');
+        if (btn) {
+            if (btn.disabled) return;
+            const act = btn.dataset.act;
+            if (act === 'fav-back') closeSub();
+            else if (act === 'fav-add') addFavorite();
+            else if (act === 'fav-edit') renameFavorite(subSel);
+            else if (act === 'fav-delete') deleteFavorite(subSel);
+            return;
+        }
+        // Favorites here has no folders: the list holds Favorites alone
+        const combo = e.target.closest('.wm-combo[data-f="folder"]');
+        if (combo) { e.stopPropagation(); ws.dropdown(combo, [{ label: 'Favorites', radio: true, action: () => {} }], 'left'); return; }
+        const row = e.target.closest('.wmb-sub-row');
+        if (!row) return;
+        subSel = Number(row.dataset.i);
+        if (sub === 'favorites' || sub === 'history') openSubRow(subSel);
+        else if (sub === 'options') openSub(OPTIONS65[subSel][0]);
+    }
+
+    function mount65() {
+        const cell = (act, label) => `<button type="button" class="wmb65-btn" data-act="${act}" aria-label="${label}"></button>`;
+        page.insertAdjacentHTML('beforeend', `
+            <div class="wmb65-bar" data-bar="page">${cell('back', 'Back')}${cell('favorites', 'Favorites')}${cell('keyboard', 'Keyboard')}${cell('zoom', 'Zoom')}${cell('menu', 'Menu')}</div>
+            <button type="button" class="wmb65-fs" aria-label="Show the bars"></button>
+            <div class="wmb65-zoom" hidden>
+                <button type="button" class="wmb65-zstep" data-step="1" aria-label="Zoom in"></button>
+                <div class="wmb65-ztrack"><span class="wmb65-zthumb"></span></div>
+                <button type="button" class="wmb65-zstep" data-step="-1" aria-label="Zoom out"></button>
+            </div>`);
+        els.bar65 = page.querySelector('.wmb65-bar[data-bar="page"]');
+        els.fs65 = page.querySelector('.wmb65-fs');
+        els.zoom65 = page.querySelector('.wmb65-zoom');
+        els.ztrack65 = page.querySelector('.wmb65-ztrack');
+        els.zthumb65 = page.querySelector('.wmb65-zthumb');
+
+        let menuWasOpen = false;
+        els.bar65.addEventListener('pointerdown', () => { menuWasOpen = menuOpen65(); }, true);
+        els.bar65.addEventListener('click', (e) => {
+            const btn = e.target.closest('.wmb65-btn');
+            if (!btn || btn.disabled) return;
+            const act = btn.dataset.act;
+            armBars65();
+            if (act !== 'zoom') closeZoom65();
+            if (act === 'back') goBack();
+            else if (act === 'favorites') openSub('favorites');
+            else if (act === 'keyboard') {
+                // the shell's input panel button: the page's text box (Alchemy) or the first edit box
+                const sip = document.querySelector('#wmShell .wm-sip');
+                if (sip) sip.click();
+            } else if (act === 'zoom') {
+                if (zoomOpen65) closeZoom65();
+                else openZoom65();
+            } else if (act === 'menu') {
+                if (menuWasOpen) ws.closeMenus();
+                else openMenu65(btn);
+            }
+        });
+        els.fs65.addEventListener('click', showBars65);
+        // a touch on the page puts the bars away
+        els.view.addEventListener('pointerdown', () => {
+            if (sub || !bars65 || zoomOpen65) return;
+            bars65 = false;
+            chrome65();
+        }, true);
+        page.addEventListener('focusin', chrome65);
+        page.addEventListener('focusout', () => setTimeout(chrome65, 0));
+
+        // the slider: drag the thumb (or the track), + and - step a tenth of the way
+        let drag = null;
+        const place = (e) => {
+            const r = els.ztrack65.getBoundingClientRect();
+            const thumb = r.height * 24 / 130;
+            const p = 1 - (e.clientY - r.top - thumb / 2) / (r.height - thumb);
+            setZoom65(zoomOfP65(Math.max(0, Math.min(1, p))));
+        };
+        els.ztrack65.addEventListener('pointerdown', (e) => {
+            if (e.button > 0) return;
+            drag = e.pointerId;
+            try { els.ztrack65.setPointerCapture(e.pointerId); } catch (_) { /* gone */ }
+            els.zthumb65.classList.add('is-drag');
+            clearTimeout(zoomTimer65);
+            place(e);
+            e.preventDefault();
+        });
+        els.ztrack65.addEventListener('pointermove', (e) => { if (drag === e.pointerId) place(e); });
+        const end = (e) => {
+            if (drag !== e.pointerId) return;
+            drag = null;
+            els.zthumb65.classList.remove('is-drag');
+            armZoom65();
+        };
+        els.ztrack65.addEventListener('pointerup', end);
+        els.ztrack65.addEventListener('pointercancel', end);
+        els.zoom65.addEventListener('click', (e) => {
+            const s = e.target.closest('.wmb65-zstep');
+            if (!s) return;
+            setZoom65(zoomOfP65(Math.max(0, Math.min(1, pOfZoom65(pageZoom65) + 0.1 * Number(s.dataset.step)))));
+            armZoom65();
+        });
+        els.zoom65.addEventListener('contextmenu', (e) => e.preventDefault());
+        applyZoom65();
+    }
+
     // ---------------------------------------------------------------- rendering
 
     function renderGoButton() {
@@ -1961,7 +2404,7 @@
         if (!page) return;
         const home = onHome();
         page.classList.toggle('on-home', home);
-        page.classList.toggle('is-full', fullScreen);
+        page.classList.toggle('is-full', fullScreen && !v65);
         const start = home && entry().grim.kind === 'home';
         const app = home && entry().grim.kind === 'dsap';
         const core = home && entry().grim.kind === 'core';
@@ -1980,6 +2423,7 @@
         renderAddress();
         if (!home) requestAnimationFrame(layoutFrame);
         syncPageShown();
+        chrome65();
     }
 
     function submitAddress() {
@@ -2115,7 +2559,10 @@
         els.core.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
         els.core.addEventListener('scroll', () => { if (coreShown && coreShown === entry()) coreShown.scroll = els.core.scrollTop; }, { passive: true });
 
+        if (v65) mount65();
+
         els.sub.addEventListener('click', (e) => {
+            if (v65) { subClick65(e); return; }
             const row = e.target.closest('.wmb-sub-row');
             if (!row) return;
             subSel = Number(row.dataset.i);
@@ -2125,10 +2572,14 @@
         els.sub.addEventListener('pointerdown', (e) => {
             const row = e.target.closest('.wmb-sub-row');
             if (!row) return;
+            if (v65 && sub !== 'favorites' && sub !== 'history') return;
             const { clientX, clientY } = e;
             holdTimer = setTimeout(() => {
                 subSel = Number(row.dataset.i);
                 renderSub();
+                const swallow65 = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+                // 6.5 Favorites: tap and hold only chooses the row (device), the bar's buttons act on it
+                if (v65 && sub === 'favorites') { els.sub.addEventListener('click', swallow65, { capture: true, once: true }); return; }
                 ws.menuAt(clientX, clientY, [{ label: 'Open', action: () => openSubRow(subSel) }, '-'].concat(subMenu().slice(0, -2)));
                 const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
                 els.sub.addEventListener('click', swallow, { capture: true, once: true });
@@ -2195,6 +2646,7 @@
                 if (!onHome() && !sub && !session && !creating) { entry().pending = true; openSession(entry().url); }
                 clearTimeout(dsapIdleTimer);
                 dsapIdleTimer = 0;
+                if (v65) { bars65 = true; armBars65(); setTimeout(chrome65, 0); }
                 render();
                 if (sub) renderSub();
                 syncAudio();
@@ -2202,6 +2654,7 @@
             hide() {
                 visible = false;
                 ws.closeMenus();
+                chrome65();
                 if (document.activeElement === els.ime) els.ime.blur();
                 // the Alchemy frame (or the address box) lets go of the focus: keys go to the app on screen
                 const a = document.activeElement;
@@ -2214,15 +2667,19 @@
             },
             // WM: X on the page (Smart Minimize: the page stays, and hide() lets Alchemy's session
             // go after the idle wait), ok on Favorites / History (back to the page)
-            titleKind: () => (sub ? 'ok' : 'close'),
+            // 6.5: Favorites and History keep the X (device), the forms and Options have ok
+            titleKind: () => (sub && !(v65 && (sub === 'favorites' || sub === 'history')) ? 'ok' : 'close'),
+            titleNow: () => (v65 ? title65() : null),
             onTitleOk() {
                 if (!sub) return false;
-                closeSub();
+                if (v65) subDone65(true);
+                else closeSub();
                 return true;
             },
             historyDepth: () => idx + (sub ? 1 : 0),
-            onBack: () => goBack(),
+            onBack: () => (v65 && sub ? (subDone65(false), true) : goBack()),
             softKeys() {
+                if (v65) return softKeys65();
                 if (sub) {
                     return {
                         left: { label: 'Go', disabled: subSel < 0, action: () => openSubRow(subSel) },

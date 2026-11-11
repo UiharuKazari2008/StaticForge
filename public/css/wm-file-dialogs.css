@@ -394,3 +394,35 @@ html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-scroll .wfd-item.is-selected {
     background-color: var(--wm-highlight) !important;
     color: #fff;
 }
+
+/* Save As on the 6.5 device (\Storage Card\wmsave.exe, ~/.cache/wm65/ref/saveas): the heading is
+ * navy (#00109c), labels are 8 pt (16 px tall "Name:" against our 18), boxes 42 px tall 60 apart
+ * from y 124, Save | Cancel 131 x 48 with 13 between, their top at y 362. */
+html.ui-mobile[data-wm-version="6.5"] .wm-fd .wm-form-hdr {
+    color: #00109c;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-save .wfd-row {
+    height: calc(21 * var(--wm-px));
+    margin-bottom: calc(9 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-save .wfd-row > label,
+html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-save .wfd-row > .wfd-label {
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-save .wfd-row :is(.wm-edit, .wm-combo) {
+    height: calc(21 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-save .wfd-buttons {
+    gap: calc(6.5 * var(--wm-px));
+    margin-top: calc(-1 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-save .wfd-buttons .wm-button {
+    min-width: calc(65.5 * var(--wm-px));
+    width: calc(65.5 * var(--wm-px));
+    height: calc(24 * var(--wm-px));
+}

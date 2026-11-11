@@ -34,6 +34,17 @@
     // for the Melaton Default home screen (wmTitanium.js, setTodayView); wm65.css restyles the rest.
     const WM65 = root.dataset.wmVersion === '6.5';
     const FLAG65 = '/static_images/wm65/start-flag.png';
+    // 6.5 keeps its own Today items list (order, on / off, "Melaton Default"): its home screen has
+    // the clock in the middle of the list, which is not 6.1's top-down order
+    const TODAY_ITEMS_KEY = WM65 ? 'wmTodayItems65' : 'wmTodayItems';
+    // the 6.5 order until one is chosen in Settings: the clock is home, in the centre, as on
+    // Windows Mobile 6.5 (pictures, music, getting started, phone, voicemail | clock | text,
+    // e-mail, calendar, favorites): pictures and the places above it, what arrives below
+    const TODAY_ORDER_65 = ['owner', 'search', 'workspace', 'prints', 'studio', 'director', 'date', 'connection', 'messages', 'calendar', 'tasks', 'weather', 'accounts', 'xlink', 'notes', 'remote-desktop', 'server'];
+    function todayOrder65(ids) {
+        const rank = (id) => { const i = TODAY_ORDER_65.indexOf(id); return i < 0 ? TODAY_ORDER_65.length : i; };
+        return ids.map((id, i) => [id, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([id]) => id);
+    }
     if (window.uiShell !== 'mobile' || !root.classList.contains('ui-mobile')) return;
 
     const ART = '/static_images/wm61/';
@@ -1733,6 +1744,15 @@
     let bootDoneAt = 0;
     let switchingWorkspace = false;
     const loadingToasts = new Set();
+    /**
+     * Connection status (Yukimi, Nov 11, #742): the server starting, a lost link, reconnecting and
+     * connected again are a status box over the screen, never a notification (no bubble, no sound).
+     * The box has no close button and goes by itself: when the toast goes, a moment after it reads
+     * Connected, or a few seconds after an error (the title bar's connection icon keeps showing that
+     * state). A workspace switch is the same box for every toast it raises, its result included.
+     */
+    const STATUS_TOAST = /^(connecting|connected|connection (error|warning|lost|restored|established)|reconnect\w*|disconnected|offline|server\b)/i;
+    const statusToasts = new Map();   // toast -> { title: the box's caption, doneAt: when its end state was first seen }
     let loadingLayer = null;
     let loadingTimer = null;
 
@@ -1755,7 +1775,7 @@
         return true;
     }
 
-    function showLoadingBox(text) {
+    function showLoadingBox(text, caption) {
         if (!loadingLayer) {
             loadingLayer = document.createElement('div');
             loadingLayer.className = 'wm-msgbox-layer wm-loading-layer';
@@ -1763,6 +1783,7 @@
             shell.appendChild(loadingLayer);
         }
         loadingLayer.querySelector('.wm-msgbox-text').textContent = text || 'Loading...';
+        loadingLayer.querySelector('.wm-msgbox-title span').textContent = caption || 'Please Wait';
         if (loadingLayer.hidden !== false || !loadingTimer) {
             loadingLayer.hidden = false;
             let f = 0;
@@ -1771,9 +1792,20 @@
             tick();
             clearInterval(loadingTimer);
             loadingTimer = setInterval(() => {
-                for (const t of [...loadingToasts]) if (!t.isConnected || t.classList.contains('removing')) loadingToasts.delete(t);
+                for (const t of [...loadingToasts]) {
+                    if (!t.isConnected || t.classList.contains('removing')) { loadingToasts.delete(t); statusToasts.delete(t); continue; }
+                    // a status toast that reached its end state: shown a moment longer, then let go
+                    const st = statusToasts.get(t);
+                    if (!st) continue;
+                    const type = (t.className.match(/glass-toast-(\w+)/) || [])[1] || 'info';
+                    const hold = type === 'success' ? 1300 : (type === 'error' || type === 'warning') ? 5000 : 0;
+                    if (!hold || t.classList.contains('upload-progress') && type !== 'success') { st.doneAt = 0; continue; }
+                    if (!st.doneAt) st.doneAt = Date.now();
+                    else if (Date.now() - st.doneAt > hold) { loadingToasts.delete(t); statusToasts.delete(t); }
+                }
                 if (!loadingToasts.size) { hideLoadingBox(); return; }
                 const t = [...loadingToasts].pop();
+                loadingLayer.querySelector('.wm-msgbox-title span').textContent = (statusToasts.get(t) || {}).title || 'Please Wait';
                 const title = ((t.querySelector('.toast-title') || {}).textContent || '').trim();
                 const msg = ((t.querySelector('.toast-message') || {}).textContent || '').replace(/\s+/g, ' ').trim();
                 loadingLayer.querySelector('.wm-msgbox-text').textContent = [title, msg].filter(Boolean).join('\n') || 'Loading...';
@@ -1796,6 +1828,21 @@
             // during the boot screens a toast waits: it is sorted when Today comes up (still the loading phase)
             if (!notesMayPop()) continue;
             toastSeen.add(t);
+            // connection status, and everything a workspace switch raises: the status box (above)
+            {
+                const ttl = ((t.querySelector('.toast-title') || {}).textContent || '').trim();
+                const isStatus = STATUS_TOAST.test(ttl);
+                const starting = bootDoneAt && Date.now() - bootDoneAt < 20000;
+                if (!t.querySelector('.toast-buttons') && ((isStatus && !starting) || switchingWorkspace)) {
+                    const txt = ((t.querySelector('.toast-message') || {}).textContent || '').replace(/\s+/g, ' ').trim();
+                    t.dataset.wmBusy = '1';
+                    loadingToasts.add(t);
+                    statusToasts.set(t, { title: isStatus ? 'Connection' : 'Please Wait', doneAt: 0 });
+                    // Teleport draws its own travel while the workspace loads
+                    if (isStatus || current !== 'teleport') showLoadingBox([ttl, txt].filter(Boolean).join('\n'), isStatus ? 'Connection' : 'Please Wait');
+                    continue;
+                }
+            }
             // starting up / switching workspace: loading is a Please Wait box
             if (loadingPhase() && !t.querySelector('.toast-buttons')) {
                 const ttl = ((t.querySelector('.toast-title') || {}).textContent || '').trim();
@@ -2452,14 +2499,24 @@
         }
     }
 
+    /** One of the wait cursor's 16 frames: 6.1's wheel, or 6.5's four coloured dots going round (shellres.192 bitmaps 4896-4911, 80 x 80). */
+    function waitFrame(img, frame) {
+        if (WM65) {
+            img.src = `/static_images/wm65/wait-${frame}.png`;
+            img.srcset = `/static_images/wm65/wait-${frame}.png 1x, /static_images/wm65/wait-${frame}@2x.png 2x`;
+            return;
+        }
+        img.src = art(`wait-${frame}`);
+        img.srcset = srcset(`wait-${frame}`);
+    }
+
     function showBusyCursor() {
         busyShowTimer = null;
         if (busyCount <= 0 || busyFrameTimer) return;
         const img = shell.querySelector('.wm-busy-wait');
         let frame = 0;
         const tick = () => {
-            img.src = art(`wait-${frame}`);
-            img.srcset = srcset(`wait-${frame}`);
+            waitFrame(img, frame);
             frame = (frame + 1) % 16;
         };
         tick();
@@ -3097,7 +3154,9 @@
      * workspace switch, and every Today change (wmSettingsChange with those keys) is saved back.
      * A workspace with nothing saved yet keeps the current layout until its first change.
      */
-    const TODAY_PREF = [['items', 'wmTodayItems', true], ['options', 'wmTodayOptions', true], ['background', TODAY_BG_KEY, false], ['useDesktop', 'wmTodayUseDesktop', false]];
+    // items65: 6.5's own list; a workspace record without it (saved by 6.1, or by a server that does
+    // not know the field yet) leaves this device's 6.5 list alone
+    const TODAY_PREF = [['items', 'wmTodayItems', true], ['items65', 'wmTodayItems65', true, true], ['options', 'wmTodayOptions', true], ['background', TODAY_BG_KEY, false], ['useDesktop', 'wmTodayUseDesktop', false]];
     const TODAY_PREF_KEYS = new Set(TODAY_PREF.map(([, key]) => key));
     let todayPrefsFor = null;
 
@@ -3109,9 +3168,10 @@
         todayPrefsFor = id;
         const t = w.mobileToday;
         if (!t || typeof t !== 'object') return true;
-        for (const [k, key, json] of TODAY_PREF) {
+        for (const [k, key, json, optional] of TODAY_PREF) {
             try {
                 const v = t[k];
+                if (v == null && optional) continue;
                 if (v == null) localStorage.removeItem(key);
                 else localStorage.setItem(key, json ? JSON.stringify(v) : String(v));
             } catch (_) { /* storage off */ }
@@ -3907,7 +3967,7 @@
         function applyTodayItems(page) {
             let list = null;
             let raw = null;
-            try { raw = localStorage.getItem('wmTodayItems'); list = JSON.parse(raw || 'null'); } catch (_) { list = null; }
+            try { raw = localStorage.getItem(TODAY_ITEMS_KEY); list = JSON.parse(raw || 'null'); } catch (_) { list = null; }
             const off = new Set();
             // a widget that ships switched off (defaultOn: false) stays off until Settings turns it on
             const saved = new Set(Array.isArray(list) ? list.map((it) => it && it.id) : []);
@@ -5126,8 +5186,7 @@
             const img = shell.querySelector('.wm-installer-wait');
             let frame = 0;
             const tick = () => {
-                img.src = art(`wait-${frame}`);
-                img.srcset = srcset(`wait-${frame}`);
+                waitFrame(img, frame);
                 frame = (frame + 1) % 16;
             };
             tick();
@@ -5363,6 +5422,9 @@
         todayOptionDefs: (id) => todayOptionDefs(id),
         todayOption: (id, key) => todayOption(id, key),
         todayOptionsKey: TODAY_OPTIONS_KEY,
+        /** The Today items list of the running version ('wmTodayItems' / 'wmTodayItems65'), and 6.5's default order. */
+        todayItemsKey: TODAY_ITEMS_KEY,
+        todayOrder65,
         /** End an app: its page is removed and remounted on the next open (Task Manager). */
         endApp: (id) => endApp(id),
         /** Apps opened this session, most recent first. */

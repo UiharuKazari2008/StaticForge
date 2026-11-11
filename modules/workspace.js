@@ -156,6 +156,12 @@ function normalizeWorkspaceMobileToday(raw) {
             .filter((it) => it && str(it.id, 60))
             .map((it) => ({ id: it.id, on: it.on !== false }));
     }
+    // Melaton Mobile 6.5 keeps a list of its own (wmTodayItems65)
+    if (Array.isArray(raw.items65)) {
+        out.items65 = raw.items65.slice(0, 80)
+            .filter((it) => it && str(it.id, 60))
+            .map((it) => ({ id: it.id, on: it.on !== false }));
+    }
     if (raw.options && typeof raw.options === 'object' && !Array.isArray(raw.options)) {
         const opts = {};
         for (const [id, o] of Object.entries(raw.options).slice(0, 80)) {

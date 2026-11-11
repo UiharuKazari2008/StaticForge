@@ -940,3 +940,391 @@
 .wm-browser :is(.wmb-g-body, .wmb-core .tag-wiki-body-content) .tag-wiki-section-content.hidden {
     display: none;
 }
+
+/* ---- Melaton Mobile 6.5 ---- */
+/*
+ * Internet Explorer Mobile 6 as Windows Mobile 6.5 Professional ships it (#741; wmBrowser.js "6.5").
+ * Measured on the Device Emulator (VGA, halved; ~/.cache/claude-run/wm65apps/ie/emu). The page is
+ * full screen; the title bar, the address bar and the bottom bar lie over it. wmBrowser.js sets
+ * html[data-wm-ie65]: bars | bare (the bars away) | kbd (an edit field has the keyboard) | fav
+ * (Favorites, its own bar) | sub (History, Options ...: the shell's soft keys).
+ */
+
+/* the page runs under the title bar and to the bottom of the screen (no soft keys on the page) */
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="browser"]:is([data-wm-ie65="bars"], [data-wm-ie65="bare"], [data-wm-ie65="kbd"]) #wmShell > .wm-content {
+    margin-top: calc(-26 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="browser"]:is([data-wm-ie65="bars"], [data-wm-ie65="bare"], [data-wm-ie65="fav"]) #wmShell > .wm-softkeys {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="browser"][data-wm-ie65] #wmShell > .wm-titlebar {
+    transition: opacity 0.3s linear;
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="browser"][data-wm-ie65="bare"] #wmShell > .wm-titlebar {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* wm-paypass.css hides every child of any .wm-page.is-loading (its rule is not scoped to PayPass):
+ * the page, the address bar and the bars here stay drawn while a page loads */
+html.ui-mobile[data-wm-version="6.5"] .wm-page.wm-browser.is-loading > * {
+    visibility: visible;
+}
+
+/* address bar: 28 px of the button face colour and a 1 px black rule, under the title bar; the
+ * lock cell at x 2, the edit box x 20 .. 214 (25 px tall, 1 px black frame), the go / stop cell at
+ * x 219 */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(26 * var(--wm-px));
+    z-index: 5;
+    height: calc(29 * var(--wm-px));
+    box-sizing: border-box;
+    background: var(--wm65-face, #c9cde9);
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-ie65="bare"] .wm-browser .wmb-bar,
+html.ui-mobile[data-wm-version="6.5"] .wm-browser.is-zooming .wmb-bar {
+    display: none;
+}
+
+/* a page loading with the bars away: the address bar alone, at the top */
+html.ui-mobile[data-wm-version="6.5"][data-wm-ie65="bare"] .wm-browser.is-loading:not(.has-sub, .is-zooming) .wmb-bar {
+    display: flex;
+    top: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-addr-box {
+    position: relative;
+    height: calc(25 * var(--wm-px));
+}
+
+/* the address: Tahoma 12 px (29 characters span 340 px on the device, 342 here) */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-addr {
+    position: relative;
+    font-size: calc(12 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-go {
+    margin: 0 calc(5 * var(--wm-px));
+}
+
+/* loading: a light blue band (173, 203, 239) grows behind the address, 16.5 px tall, from x 3 of
+ * the box; the part of the address past it is grey (107, 105, 132) */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser.is-loading .wmb-addr-box::before {
+    content: '';
+    position: absolute;
+    left: calc(2 * var(--wm-px));
+    top: calc(3 * var(--wm-px));
+    bottom: calc(3 * var(--wm-px));
+    width: 10%;
+    background: #adcbef;
+    animation: wmb65-load 8s cubic-bezier(0.1, 0.7, 0.3, 1) forwards;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser.is-loading .wmb-addr:not(:focus) {
+    color: #6b6984;
+}
+
+@keyframes wmb65-load {
+    to { width: 90%; }
+}
+
+/* bottom bar: 45 px cells of browsres.192.dll bitmap 4599 at x 1.5 + 48 n (of 240) over a 15 px grey band
+ * (198, 195, 198); the page shows between the buttons */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    height: calc(45 * var(--wm-px));
+    /* on a wider screen the five cells keep their even spread from x 1.5 to 1.5 px from the right */
+    display: flex;
+    justify-content: space-between;
+    padding: 0 calc(1.5 * var(--wm-px));
+    box-sizing: border-box;
+    background: linear-gradient(to top, #c6c3c6 calc(15 * var(--wm-px)), transparent calc(15 * var(--wm-px)));
+    pointer-events: none;
+    transition: opacity 0.3s linear;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn,
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-fs {
+    flex: 0 0 auto;
+    width: calc(45 * var(--wm-px));
+    height: calc(45 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: url('/static_images/wm65/ie-bar.png') 0 0 / auto calc(45 * var(--wm-px)) no-repeat;
+    background-image: image-set(url('/static_images/wm65/ie-bar.png') 1x, url('/static_images/wm65/ie-bar@2x.png') 2x);
+    --cell: 0;
+    background-position: calc(-45 * var(--cell) * var(--wm-px)) 0;
+    pointer-events: auto;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+/* cells of bitmap 4599: back 0 (pressed 1, unavailable 2), favorites 3 (4), keyboard 5 (6),
+ * home 7 (8), menu 9 (10), zoom 11 (12; 13 while the slider shows), stop 14 (15, 16), bars 18 (17) */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="back"] { --cell: 0; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="back"]:active { --cell: 1; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="back"]:disabled { --cell: 2; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="favorites"] { --cell: 3; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="favorites"]:active { --cell: 4; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="keyboard"] { --cell: 5; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="keyboard"]:active { --cell: 6; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="menu"] { --cell: 9; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="menu"]:is(:active, [aria-expanded="true"]) { --cell: 10; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="zoom"] { --cell: 11; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="zoom"]:active { --cell: 12; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser.is-zooming .wmb65-btn[data-act="zoom"]:not(:active) { --cell: 13; }
+
+/* the bars away: the round button in the bottom right corner (x 195 of 240) brings them back */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-fs {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    z-index: 5;
+    /* at rest the device draws cell 18 (matched on the emulator), cell 17 is the other state */
+    --cell: 18;
+    opacity: 0;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-fs:active { --cell: 17; }
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-ie65="bare"] .wm-browser .wmb65-fs {
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 0.3s linear;
+}
+
+html.ui-mobile[data-wm-version="6.5"]:is([data-wm-ie65="bare"], [data-wm-ie65="kbd"]) .wm-browser > .wmb65-bar {
+    opacity: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"]:is([data-wm-ie65="bare"], [data-wm-ie65="kbd"]) .wm-browser > .wmb65-bar > .wmb65-btn {
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-ie65="kbd"] .wm-browser > .wmb65-bar {
+    transition: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser.has-sub > .wmb65-bar,
+html.ui-mobile[data-wm-version="6.5"] .wm-browser.has-sub > .wmb65-fs {
+    display: none;
+}
+
+/* Favorites' bar, bitmap 4604: back 0 (1, 2), add 3 (4), add folder 5 (6, 7), edit 8 (9, 10),
+ * delete 11 (12, 13) */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-bar[data-bar="fav"] .wmb65-btn {
+    background-image: url('/static_images/wm65/ie-favbar.png');
+    background-image: image-set(url('/static_images/wm65/ie-favbar.png') 1x, url('/static_images/wm65/ie-favbar@2x.png') 2x);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-back"] { --cell: 0; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-back"]:active { --cell: 1; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-add"] { --cell: 3; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-add"]:active { --cell: 4; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-folder"] { --cell: 5; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-folder"]:active { --cell: 6; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-folder"]:disabled { --cell: 7; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-edit"] { --cell: 8; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-edit"]:active { --cell: 9; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-edit"]:disabled { --cell: 10; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-delete"] { --cell: 11; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-delete"]:active { --cell: 12; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-delete"]:disabled { --cell: 13; }
+
+/* zoom slider: 42 x 190 px (+ 30, track 130, - 30; bitmaps 4602, 4600), 10 px from the right,
+ * centred on the screen, drawn at 74 % over the page; the thumb (bitmap 4601, 33 x 24: blue while
+ * held, grey at rest) travels 106 px */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-zoom {
+    position: absolute;
+    right: calc(10 * var(--wm-px));
+    top: 50%;
+    z-index: 6;
+    width: calc(42 * var(--wm-px));
+    height: calc(190 * var(--wm-px));
+    margin-top: calc(-95 * var(--wm-px));
+    opacity: 0.74;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-zoom[hidden] {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-zstep {
+    display: block;
+    width: calc(42 * var(--wm-px));
+    height: calc(30 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: url('/static_images/wm65/ie-zoom-plusminus.png') 0 0 / auto calc(30 * var(--wm-px)) no-repeat;
+    background-image: image-set(url('/static_images/wm65/ie-zoom-plusminus.png') 1x, url('/static_images/wm65/ie-zoom-plusminus@2x.png') 2x);
+    -webkit-tap-highlight-color: transparent;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-zstep[data-step="1"]:active { background-position: calc(-42 * var(--wm-px)) 0; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-zstep[data-step="-1"] { background-position: calc(-84 * var(--wm-px)) 0; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-zstep[data-step="-1"]:active { background-position: calc(-126 * var(--wm-px)) 0; }
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-ztrack {
+    position: relative;
+    width: calc(42 * var(--wm-px));
+    height: calc(130 * var(--wm-px));
+    background: url('/static_images/wm65/ie-zoom-track.png') 0 0 / 100% 100% no-repeat;
+    background-image: image-set(url('/static_images/wm65/ie-zoom-track.png') 1x, url('/static_images/wm65/ie-zoom-track@2x.png') 2x);
+    touch-action: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-zthumb {
+    position: absolute;
+    left: calc(4.5 * var(--wm-px));
+    width: calc(33 * var(--wm-px));
+    height: calc(24 * var(--wm-px));
+    background: url('/static_images/wm65/ie-zoom-slider.png') calc(-33 * var(--wm-px)) 0 / auto calc(24 * var(--wm-px)) no-repeat;
+    background-image: image-set(url('/static_images/wm65/ie-zoom-slider.png') 1x, url('/static_images/wm65/ie-zoom-slider@2x.png') 2x);
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-zthumb.is-drag {
+    background-position: 0 0;
+}
+
+/* Favorites: 27 px rows, the first one's 21 px selector right under the title bar (the row box
+ * starts 3 px above it), the picture at x 4, the name (not bold, Tahoma 12) at x 20 */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-sub-row {
+    grid-template-columns: calc(20 * var(--wm-px)) minmax(0, 1fr);
+    height: calc(27 * var(--wm-px));
+    padding-right: calc(4 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-sub[data-kind="favorites"] .wmb-sub-row:first-child {
+    margin-top: calc(-3 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-sub-ico {
+    margin-left: calc(4 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-sub-title {
+    font-weight: normal;
+}
+
+/* the shell's list selector art keeps 3 px clear above its blue and 3 px of shadow under it inside
+ * the row box, so a row is its blue's height + 6 px.
+ * History: two lines, the title bold over the address; 30 px of blue every 38 px, the first 4 px
+ * under the title bar */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-sub-row.wmb65-two {
+    display: block;
+    height: calc(36 * var(--wm-px));
+    margin: 0 0 calc(2 * var(--wm-px));
+    padding: calc(4 * var(--wm-px)) calc(2 * var(--wm-px)) 0;
+    box-sizing: border-box;
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(13.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-sub-row.wmb65-two:first-child {
+    margin-top: calc(1 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-sub-row.wmb65-two > :is(b, span) {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Browsing History: 34 px of blue every 42 px, the size under the name in Tahoma 12.5 */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-sub[data-kind="opt-history"] .wmb-sub-row.wmb65-two {
+    height: calc(40 * var(--wm-px));
+    line-height: calc(15.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-sub[data-kind="opt-history"] .wmb-sub-row.wmb65-two > span {
+    font-size: calc(12.5 * var(--wm-px));
+}
+
+/* Options: bold rows, 19.5 px of blue every 25.5 px, the first 3 px under the title bar */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-sub-row.wmb65-opt {
+    display: block;
+    height: calc(25.5 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(25.5 * var(--wm-px));
+}
+
+/* Properties: a bold label at x 2 and its value at x 5, 14 px lines */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-props {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: calc(1 * var(--wm-px)) calc(2 * var(--wm-px));
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-props > :is(b, span) {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-props > span {
+    padding-left: calc(3 * var(--wm-px));
+}
+
+/* Add / Edit Favorite: a label line (its middle 12 px above the box) over a 21 px edit box, x 6 ..
+ * 6 px from the right, a group every 46 px; the Folder combo is 17 px tall and 165 px wide */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-form {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: calc(2 * var(--wm-px)) calc(6 * var(--wm-px)) 0;
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-form .wmb65-lbl {
+    display: block;
+    height: calc(25 * var(--wm-px));
+    padding-top: calc(3 * var(--wm-px));
+    box-sizing: border-box;
+    line-height: calc(20 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-form .wm-edit {
+    display: block;
+    width: 100%;
+    height: calc(21 * var(--wm-px));
+    box-sizing: border-box;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-form .wm-combo {
+    display: flex;
+    width: calc(165 * var(--wm-px));
+    height: calc(17 * var(--wm-px));
+}
+
+/* Other: the question in Tahoma 12, the choices 21 px apart at x 12.5 */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-form.wmb65-other {
+    font-size: calc(12 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-form.wmb65-other .wm-check {
+    display: flex;
+    min-height: calc(21 * var(--wm-px));
+    margin-left: calc(6.5 * var(--wm-px));
+    font-size: calc(10.5 * var(--wm-px));
+}
