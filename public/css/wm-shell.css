@@ -340,7 +340,81 @@ html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::before {
 html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::after {
     background: image-set(url('/static_images/xyridian/xyridian-wordmark-white-512.png') 1x, url('/static_images/xyridian/xyridian-wordmark-white.png') 2x)
         var(--wm-bezel-logo-x, center) 0 / var(--wm-bezel-logo-w, auto) var(--wm-bezel-logo-h, 40%) no-repeat;
-    opacity: 0.55;
+    opacity: var(--wm-bezel-logo-opacity, 0.55);
+}
+
+/* the model text and the notification LED on the band (wmShell bezelOverlay; Settings > Screen > Bezel) */
+#wmBezelOverlay {
+    display: none;
+}
+
+html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"] #wmBezelOverlay {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: var(--wm-bezel-top);
+    z-index: 2147483647;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+#wmBezelOverlay .wm-bezel-model {
+    position: absolute;
+    color: #fff;
+    opacity: var(--wm-bezel-logo-opacity, 0.55);
+    font-family: 'Segoe UI', var(--wm-font), sans-serif;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+}
+
+#wmBezelOverlay .wm-bezel-led {
+    position: absolute;
+    left: var(--wm-bezel-led-x, 10px);
+    top: var(--wm-bezel-led-y, 4px);
+    width: var(--wm-bezel-led-d, 6px);
+    height: var(--wm-bezel-led-d, 6px);
+    border-radius: 50%;
+    display: none;
+}
+
+#wmBezelOverlay .wm-bezel-led[data-state="battery"] {
+    display: block;
+    background: #ff2b1c;
+    box-shadow: 0 0 calc(var(--wm-bezel-led-d, 6px) * 0.8) #ff2b1c;
+    animation: wm-led-blink 1s steps(1, end) infinite;
+}
+
+#wmBezelOverlay .wm-bezel-led[data-state="notify"] {
+    display: block;
+    background: #2cff5a;
+    box-shadow: 0 0 calc(var(--wm-bezel-led-d, 6px) * 0.8) #2cff5a;
+    animation: wm-led-pulse 3s steps(1, end) infinite;
+}
+
+#wmBezelOverlay .wm-bezel-led[data-state="charging"] {
+    display: block;
+    background: #ffa20a;
+    box-shadow: 0 0 calc(var(--wm-bezel-led-d, 6px) * 0.6) #ffa20a;
+}
+
+#wmBezelOverlay .wm-bezel-led[data-state="full"] {
+    display: block;
+    background: #2cff5a;
+    box-shadow: 0 0 calc(var(--wm-bezel-led-d, 6px) * 0.6) #2cff5a;
+}
+
+@keyframes wm-led-blink {
+    0% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+/* a short flash every 3 s, as phones' message LEDs */
+@keyframes wm-led-pulse {
+    0% { opacity: 1; }
+    12% { opacity: 0; }
 }
 
 html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="left"]::before,

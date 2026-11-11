@@ -371,8 +371,15 @@
     }
     const glyph = (id, on) => ui.art(`wrls-${id}-${on ? 'on' : 'off'}`);
 
-    /** The connected Wi-Fi network's name (the Android app's device status), for the Wi-Fi state. */
+    /**
+     * The connected Wi-Fi network's name for the Wi-Fi state: read once on demand while Wireless Manager
+     * is open (AndroidDevice.getWifiName, precise location), so location is not in use all session.
+     */
     function wifiName() {
+        const dv = device();
+        if (dv && typeof dv.getWifiName === 'function') {
+            try { return dv.getWifiName() || null; } catch (_) { return null; }
+        }
         const st = root.AndroidDeviceStatus;
         if (!st || typeof st.getState !== 'function') return null;
         try {
