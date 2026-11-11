@@ -63,9 +63,10 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-count {
     vertical-align: top;
 }
 
-/* at rest the items fade with their distance from the band */
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-row[data-far="2"] { opacity: var(--wm-ti-far2, 0.8); }
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-row[data-far="3"] { opacity: var(--wm-ti-far3, 0.55); }
+/* at rest the items fade with their distance from the band (emulator: the label's brightest
+   pixel 255 next to the band, 231-239 one further, 206-222 beyond, over backgrounds of 50-130) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-row[data-far="2"] { opacity: 0.86; }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-row[data-far="3"] { opacity: 0.7; }
 
 /* the selected item's label waits in the band while the list moves; at rest the panel is there */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-row.is-sel { opacity: 0.55; }

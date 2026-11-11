@@ -51,7 +51,7 @@
     // ---------------------------------------------------------------- art
 
     /** A 6.5 Start icon from the ROM (Start_Icon_<name>.png, 90x90, with its half-size copy). */
-    const art65 = (name) => ({ src: `${ART65}start-${name}.png`, srcset: `${ART65}start-${name}.png 1x, ${ART65}start-${name}@2x.png 2x` });
+    const art65 = (name) => ({ src: `${ART65}start-${name}.png`, srcset: `${ART65}start-${name}.png 1x, ${ART65}start-${name}@2x.png 2x, ${ART65}start-${name}@4x.png 4x` });
 
     /** The largest copy of a 6.1 shell icon (app-x-lg@4x is 128 px), drawn into the 90x90 box. */
     function art61(name) {

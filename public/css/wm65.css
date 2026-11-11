@@ -125,8 +125,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-title {
 }
 
 /* status icons: 16 px cells (shellres.192.dll 32 px icons) at y 5 on a 21 px pitch; the battery
- * sits one more 5 px gap to the right; the corner cell (X / ok) is 16 px, 5 px after the
- * battery and 1 px from the edge, and keeps its place when an app has none */
+ * sits one more 5 px gap to the right; the corner cell (X / ok) is 16 px, 5.5 px after the
+ * battery and 0.5 px from the edge, and keeps its place when an app has none (device, 2x: cells
+ * at x 268 / 310 / 352, battery 404, corner 447, y 10) */
 html.ui-mobile[data-wm-version="6.5"] .wm-status,
 html.ui-mobile[data-wm-version="6.5"] .wm-status-left {
     gap: calc(5 * var(--wm-px));
@@ -135,7 +136,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-status-left {
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-status {
-    padding-right: calc(5 * var(--wm-px));
+    padding-right: calc(5.5 * var(--wm-px));
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status,
@@ -269,7 +270,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-search"]
 html.ui-mobile[data-wm-version="6.5"] .wm-title-action {
     width: calc(16 * var(--wm-px));
     height: calc(16 * var(--wm-px));
-    margin: calc(5 * var(--wm-px)) calc(1 * var(--wm-px)) 0 0;
+    margin: calc(5 * var(--wm-px)) calc(0.5 * var(--wm-px)) 0 0;
     background: none !important;
     overflow: visible;
 }
@@ -312,7 +313,10 @@ html.ui-mobile[data-wm-version="6.5"] .wm-softkeys {
 html.ui-mobile[data-wm-version="6.5"] .wm-softkey {
     font-size: calc(10.5 * var(--wm-px));
     font-weight: bold;
+    /* a 25 px line over 1 px of bottom padding: the caps stand at y 9 .. 16.5 of the bar */
     line-height: calc(25 * var(--wm-px));
+    padding-bottom: calc(1 * var(--wm-px)) !important;
+    box-sizing: border-box;
     text-shadow: none;
 }
 
@@ -585,17 +589,17 @@ html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-row.is-selected .fe-ico::after 
 /* ---- scroll bars (the lists that draw WM's bar): 13 px wide, the theme's grey track, the thumb
  * art (26 x 70 at 2x, its grip dots 12 px from each end) and 19.5 px arrow buttons (the 26 x 26
  * art stretched to 26 x 39 as on the device; the down button is the up art turned over) ---- */
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar {
     width: calc(13 * var(--wm-px));
     height: calc(13 * var(--wm-px));
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-track {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-track {
     background: #e6e6e6;
     border: 0;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-thumb {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-thumb {
     min-height: calc(35 * var(--wm-px));
     border-style: solid;
     border-color: transparent;
@@ -605,7 +609,7 @@ html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-l
     background: none;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button {
     display: block;
     width: calc(13 * var(--wm-px));
     height: calc(19.5 * var(--wm-px));
@@ -613,25 +617,25 @@ html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-l
     background: #e6e6e6 center / 100% 100% no-repeat;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:decrement {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:decrement {
     border: 0;
     background-image: url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png');
     background-size: 100% 100%;
     background-position: center;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:increment {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:increment {
     border: 0;
     background-image: url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png');
     background-size: 100% 100%;
     background-position: center;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
     background-image: url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png');
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:increment:active {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:increment:active {
     background-image: url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png');
 }
 
@@ -773,13 +777,13 @@ html.ui-mobile[data-wm-version="6.5"] .wm-notify-title {
     align-items: center;
     box-sizing: border-box;
     height: calc(23 * var(--wm-px));
-    padding: 0 calc(4 * var(--wm-px)) calc(1 * var(--wm-px)) calc(9 * var(--wm-px));
+    /* the art's rounded ends are its 8 px side borders; the title starts 1 px after the left one */
+    padding: 0 0 calc(1 * var(--wm-px)) calc(1 * var(--wm-px));
     border-radius: 0;
     border-style: solid;
     border-color: transparent;
     border-width: 0 calc(8 * var(--wm-px));
     border-image: url('/static_images/wm65/theme-classicblue-msgboxtitle@2x.png') 0 16 0 16 fill / 0 calc(8 * var(--wm-px)) stretch;
-    padding-left: calc(1 * var(--wm-px));
     background: none;
     color: #cbc9e9;
     font-weight: bold;
