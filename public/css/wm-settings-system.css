@@ -377,3 +377,11 @@ html.ui-mobile .wm-sys-pow-plan {
     margin-top: calc(14 * var(--wm-px));
     padding: 0 calc(5 * var(--wm-px)) calc(8 * var(--wm-px));
 }
+
+/* ---- Melaton Mobile 6.5 ---- */
+/* Clock & Alarms > Time: "Home" and "Visiting" are Tahoma bold 23 px = 11.5 on the 6.5 device (67
+ * and 88 px wide on the VGA screen; bold 23 px gives 67 and 86, the 26 px of 6.1's page 72 and 95) */
+html.ui-mobile[data-wm-version="6.5"] .wm-sys-clock-name,
+html.ui-mobile[data-wm-version="6.5"] .wm-sys-clock .wm-check span {
+    font-size: calc(11.5 * var(--wm-px));
+}

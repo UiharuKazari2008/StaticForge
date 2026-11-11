@@ -404,10 +404,6 @@
  * Tahoma 10.5, combo boxes 11.5; rows stand on a 35.5 pitch with no rule and the selector art lies
  * over the whole pitch, 1.5 short of the right edge, both lines inside its blue. */
 
-html.ui-mobile[data-wm-version="6.5"] .wm-spellbook {
-    --wm-fs: calc(10.5 * var(--wm-px));
-}
-
 html.ui-mobile[data-wm-version="6.5"] .wm-spellbook .wsb-row {
     position: relative;
     grid-template-rows: calc(12 * var(--wm-px)) calc(12 * var(--wm-px));

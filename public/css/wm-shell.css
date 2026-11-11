@@ -18,8 +18,10 @@ html:not(.ui-mobile) #wmShell {
 
 html.ui-mobile {
     --wm-px: 1px;
-    /* the system font size (6.1 sets its own just below) */
-    --wm-fs: calc(12 * var(--wm-px));
+    /* the system font size: Tahoma 8 pt at the device's 192 dpi = 21 px of the VGA screen = 10.5
+       units, on 6.5 (measured: title bar, soft keys, list rows, folder bars, tabs, page headings,
+       form and check box labels, push buttons) as on 6.1 (which says so itself just below) */
+    --wm-fs: calc(10.5 * var(--wm-px));
     /* defaults = WM 6.1 green, replaced at boot from the workspace colour */
     --wm-title: #004a19;
     --wm-highlight: #31d339;

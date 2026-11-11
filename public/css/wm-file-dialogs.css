@@ -409,7 +409,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-save .wfd-row {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-save .wfd-row > label,
 html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-save .wfd-row > .wfd-label {
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-save .wfd-row :is(.wm-edit, .wm-combo) {

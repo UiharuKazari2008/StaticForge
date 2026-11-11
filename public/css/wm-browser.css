@@ -1004,6 +1004,13 @@ html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-addr-box {
     height: calc(25 * var(--wm-px));
 }
 
+/* page content is not system text: the pages keep the 12 units they were laid out in when the
+ * shell's 6.5 size became 10.5 (the device's own start page draws "Search..." at 26 px of the VGA
+ * screen, 98 px wide: larger still) */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser :is(.wmb-home, .wmb-gpage, .wmb-core) {
+    --wm-fs: calc(12 * var(--wm-px));
+}
+
 /* the address: Tahoma 12 px (29 characters span 340 px on the device, 342 here) */
 html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-addr {
     position: relative;

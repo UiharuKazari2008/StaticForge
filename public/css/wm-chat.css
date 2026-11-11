@@ -367,10 +367,6 @@
  * down, and the selector art from the row's top, 1 short of the pitch and 1.5 short of the right
  * edge (blue from 4.5 to 34 down the row), both lines and the picture inside its blue. */
 
-html.ui-mobile[data-wm-version="6.5"] .wm-chat {
-    --wm-fs: calc(10.5 * var(--wm-px));
-}
-
 html.ui-mobile[data-wm-version="6.5"] .wm-chat .wch-row {
     position: relative;
     grid-template-rows: calc(15 * var(--wm-px)) calc(14.5 * var(--wm-px));

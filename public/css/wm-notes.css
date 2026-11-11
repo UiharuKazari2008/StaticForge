@@ -505,7 +505,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-notes .nt-row {
     /* the name from x 18, the date column from x 122.5, the size ends 7 px from the edge */
     grid-template-columns: calc(18 * var(--wm-px)) calc(104.5 * var(--wm-px)) minmax(0, 1fr) auto;
     height: calc(17 * var(--wm-px));
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-notes .nt-name {
@@ -539,7 +539,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-searchbar {
 html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-search {
     padding: 0 calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
     color: var(--wm65-text);
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-search::placeholder {
@@ -605,7 +605,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-name {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-sub {
     gap: 0;
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(12 * var(--wm-px));
 }
 
@@ -648,7 +648,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-nomatch {
     padding: calc(10 * var(--wm-px)) calc(8 * var(--wm-px)) calc(8 * var(--wm-px));
     border-bottom: 0;
     background: transparent;
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-note {
@@ -712,7 +712,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-crow-label {
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-crow-value {
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(14 * var(--wm-px));
 }
 
@@ -730,10 +730,17 @@ html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-btabs {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-btab {
     top: 0;
-    font-size: calc(10.5 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
 }
 
-/* ---- Contacts: the form (6.1's, in 6.5's text colour) ---- */
+/* ---- Contacts: the form (6.1's, in 6.5's text colour). The values are Tahoma 27 px = 13.5 on the
+ * 6.5 device ("Select a picture..." 202 px wide on the VGA screen, "<Unnamed>" 148; capitals 20 px
+ * tall, as About's values); the labels are the system size ("Department:" 113 px) ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-field input,
+html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-fstatic {
+    font-size: calc(13.5 * var(--wm-px));
+}
+
 html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-field input,
 html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-fstatic,
 html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-form-notes,

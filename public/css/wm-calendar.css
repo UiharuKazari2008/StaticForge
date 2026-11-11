@@ -832,7 +832,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-adbox,
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-dbox,
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-wdetail,
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-snotes {
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 /* the header's date sits 1 px lower beside the day letters and 2 px higher on its own */
@@ -862,13 +862,13 @@ html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-shead {
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-flabel {
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 /* Month: the day numbers in Tahoma 10.5, 1 px left and 2.5 px up in their cells; the letters 2 px right */
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-mnum {
     transform: translate(calc(-1 * var(--wm-px)), calc(-2.5 * var(--wm-px)));
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-mlet {
@@ -888,7 +888,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-ymonth {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-yname {
     height: calc(13.5 * var(--wm-px));
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(12.5 * var(--wm-px));
 }
 
@@ -923,7 +923,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-hour {
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-hlabel {
     height: calc(17 * var(--wm-px));
     padding-right: calc(2 * var(--wm-px));
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(13 * var(--wm-px));
 }
 
@@ -985,7 +985,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-whour {
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-whour .wcl-hlabel {
     position: relative;
     height: calc(34 * var(--wm-px));
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(17 * var(--wm-px));
 }
 
@@ -1001,6 +1001,22 @@ html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-wcell.is-picked.is-half 
     background-position: 0 calc(17 * var(--wm-px)), 0 calc(32 * var(--wm-px)), 0 calc(17 * var(--wm-px)), 100% calc(17 * var(--wm-px));
 }
 
+/* ---- the form's values: Tahoma 27 px = 13.5 on the 6.5 device ("12:00 PM" 109 px wide on the
+ * VGA screen, "Remind me" 132, "11/11/26" 106; capitals 20 px tall) ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-finput,
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-fval {
+    font-size: calc(13.5 * var(--wm-px)) !important;
+}
+
+/* a value stands on its label's base line on the device ("Starts:" and "11/11/26" both end at y 154
+ * of the VGA screen, "All Day:" and "No" at 232 / 236 with the descender): 2 units higher than the
+ * 12-unit line put it */
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-fval,
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-field:not(.is-boxed) .wcl-finput {
+    padding-bottom: calc(9 * var(--wm-px)) !important;
+    line-height: calc(8 * var(--wm-px)) !important;
+}
+
 /* ---- the form's tabs: the shell's 6.5 strip (wm65.css .wm-tabs / .wm-tab), 19.5 px ---- */
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-ftabs {
     height: calc(19.5 * var(--wm-px));
@@ -1010,7 +1026,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-ftabs {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-ftab {
     top: 0;
-    font-size: calc(10.5 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
 }
 
 /* ---- scroll bars: the 6.5 bar (13 px, grey track, the theme's thumb and arrow buttons) ---- */

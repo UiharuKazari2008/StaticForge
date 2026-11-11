@@ -409,7 +409,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row {
     box-sizing: border-box;
     padding: calc(4 * var(--wm-px)) calc(5.5 * var(--wm-px)) 0 0;
     border-bottom: 0;
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     contain-intrinsic-size: auto calc(38.5 * var(--wm-px));
 }
 
@@ -492,7 +492,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-status {
     padding: 0 calc(2 * var(--wm-px));
     border-top: calc(1 * var(--wm-px)) solid #000;
     background: var(--wm-tint);
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(18 * var(--wm-px));
     white-space: nowrap;
     overflow: hidden;
@@ -505,7 +505,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-head {
     box-sizing: content-box;
     height: calc(23 * var(--wm-px));
     padding-left: calc(9.5 * var(--wm-px));
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(21 * var(--wm-px));
     /* the device's caption blue here (16 bit: #00109c), not the menu text colour */
     color: #00109c;
@@ -517,7 +517,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-two {
     height: calc(40.5 * var(--wm-px));
     padding-top: calc(6 * var(--wm-px));
     border-bottom: 0;
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-two.is-selected::before {
@@ -600,7 +600,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-field {
     grid-template-columns: calc(46 * var(--wm-px)) minmax(0, 1fr);
     height: calc(24 * var(--wm-px));
     padding-right: calc(14 * var(--wm-px));
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-field.is-static {
@@ -634,7 +634,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-field.is-static output {
     height: 100%;
     padding-left: calc(1 * var(--wm-px));
     color: var(--wm65-text);
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(14.5 * var(--wm-px));
 }
 

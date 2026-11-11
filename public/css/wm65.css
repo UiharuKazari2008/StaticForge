@@ -118,7 +118,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-titlebar.is-start-open > .wm-start:not
 /* title: Tahoma bold 8 pt (21 px at 192 dpi = 10.5), white, from x 27 */
 html.ui-mobile[data-wm-version="6.5"] .wm-title {
     padding-left: calc(4.5 * var(--wm-px));
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     font-weight: bold;
     line-height: calc(23.5 * var(--wm-px));
     align-self: stretch;
@@ -311,7 +311,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-softkeys {
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-softkey {
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     font-weight: bold;
     /* a 25 px line over 1 px of bottom padding: the caps stand at y 9 .. 16.5 of the bar */
     line-height: calc(25 * var(--wm-px));
@@ -537,7 +537,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="dropdown"] > .wm-popu
     margin: calc(0.5 * var(--wm-px)) calc(8 * var(--wm-px)) calc(0.5 * var(--wm-px)) calc(15 * var(--wm-px));
 }
 
-/* a combo box's list: 14 px rows in the plain 12 px face, the text 1 px from the frame */
+/* a combo box's list: 14 px rows in the combo's own 11.5 face (Settings > Today > Items, "Today
+ * timeout": "5 hr" is 40 px wide on the VGA screen and "10 hr" 51, Tahoma 23 px gives 41 and 52,
+ * 24 px 42 and 54; digits 18 px tall), the text 1 px from the frame */
 html.ui-mobile[data-wm-version="6.5"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] {
     color: var(--wm65-text);
 }
@@ -545,7 +547,7 @@ html.ui-mobile[data-wm-version="6.5"] #wmShell:has(:is(.wm-combo, .wm-combo-edit
 html.ui-mobile[data-wm-version="6.5"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] > .wm-popup-item {
     height: calc(14 * var(--wm-px));
     padding: 0 calc(4 * var(--wm-px)) 0 calc(1 * var(--wm-px)) !important;
-    font-size: calc(12 * var(--wm-px));
+    font-size: calc(11.5 * var(--wm-px));
     font-weight: normal;
 }
 
@@ -643,11 +645,11 @@ html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-
  * folder bars, list rows, settings pages, buttons and bubbles. List boxes and combo boxes use
  * 11.5 (23 px), message boxes 12 (24 px), menus 13 (26 px). ---- */
 html.ui-mobile[data-wm-version="6.5"] #wmShell {
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar {
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     color: var(--wm65-text);
 }
 
@@ -772,7 +774,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-notify {
     border-image: url('/static_images/wm65/theme-classicblue-toastborder-box@2x.png') 40 38 40 38 fill / calc(20 * var(--wm-px)) calc(19 * var(--wm-px)) / calc(8 * var(--wm-px)) calc(7 * var(--wm-px)) stretch;
     background: none;
     color: var(--wm65-text);
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     padding-bottom: calc(11 * var(--wm-px));
 }
 
@@ -833,7 +835,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-notify-body .toast-buttons button {
     background: var(--wm65-face) !important;
     box-shadow: none;
     color: var(--wm65-text);
-    font: bold calc(10.5 * var(--wm-px)) var(--wm-font);
+    font: bold var(--wm-fs) var(--wm-font);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-bubble-buttons button:not(.wm-bubble-link):active,
@@ -843,7 +845,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-notify-body .toast-buttons button:acti
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-notify {
-    font: calc(10.5 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-notify-step {
@@ -888,7 +890,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-tab {
     border: 0 !important;
     background: var(--wm65-face) !important;
     color: var(--wm65-text) !important;
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(19.5 * var(--wm-px));
 }
 
@@ -936,12 +938,12 @@ html.ui-mobile[data-wm-version="6.5"] .wm-tab[aria-selected="true"]:last-child::
 html.ui-mobile[data-wm-version="6.5"] .wm-form-hdr {
     height: calc(24 * var(--wm-px));
     color: var(--wm65-caption);
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-form {
     padding: calc(4 * var(--wm-px)) calc(8 * var(--wm-px)) calc(8 * var(--wm-px));
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
     color: var(--wm65-text);
 }
 
@@ -950,7 +952,15 @@ html.ui-mobile[data-wm-version="6.5"] .wm-form p {
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-form-value {
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
+}
+
+/* the values of About's "Label: value" rows are Tahoma 27 px = 13.5 (Settings > System > About >
+ * Version on the VGA screen: "222.13 MB" 125 px wide, "Not in use" 117, capitals 20 px tall; the
+ * 26 px menu face has 19 px capitals). Regional Settings' samples are the system size and say so
+ * themselves (.wm-sys-facts) */
+html.ui-mobile[data-wm-version="6.5"] .wm-facts:not(.wm-sys-facts .wm-facts) > :nth-child(even) {
+    font-size: calc(13.5 * var(--wm-px));
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-edit {
@@ -997,7 +1007,7 @@ html.ui-mobile:where([data-wm-version="6.5"]) .wm-button {
 html.ui-mobile[data-wm-version="6.5"] .wm-button {
     background: var(--wm65-face) !important;
     color: var(--wm65-text) !important;
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-button:active:not(:disabled) {
@@ -1069,7 +1079,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-combo-edit .wm-combo {
 
 /* trackbar: 6.1's, in 6.5's colours (the frame takes the highlight) */
 html.ui-mobile[data-wm-version="6.5"] .wm-slider-scale {
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-slider.is-disabled .wm-slider-track {
@@ -1215,7 +1225,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-switch-wait {
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-switch {
-    font-size: calc(10.5 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 /* ---- tabs that do not fit: 6.5's two arrow buttons (wmPrograms.js fitTabs) ----

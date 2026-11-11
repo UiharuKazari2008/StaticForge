@@ -565,10 +565,6 @@
  * 10.5, rows on a pitch of at least 35.5 with no rule, the selector art over the whole pitch (4
  * clear, the blue, 4 of shadow), 1.5 short of the right edge, both lines inside its blue. */
 
-html.ui-mobile[data-wm-version="6.5"] .wm-xlink {
-    --wm-fs: calc(10.5 * var(--wm-px));
-}
-
 html.ui-mobile[data-wm-version="6.5"] .wm-xlink .wxl-row[data-dev] {
     position: relative;
     grid-template-rows: calc(12.5 * var(--wm-px)) auto;

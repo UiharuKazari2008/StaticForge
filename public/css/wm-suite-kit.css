@@ -503,10 +503,6 @@
  * pitch with no rule and the selector art lies over the whole pitch (4 clear, 27.5 of blue, 4 of
  * shadow), 1.5 short of the right edge, both lines inside the blue. */
 
-html.ui-mobile[data-wm-version="6.5"] .wsk {
-    --wm-fs: calc(10.5 * var(--wm-px));
-}
-
 html.ui-mobile[data-wm-version="6.5"] .wsk .wsk-combo {
     font-size: calc(11.5 * var(--wm-px)) !important;
 }
