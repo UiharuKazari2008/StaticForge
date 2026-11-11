@@ -1,0 +1,161 @@
+/*
+ * Melaton Mobile: Atelier (wmAtelier.js), Yozora #732. Search band, combo, card rows: wm-suite-kit.css.
+ * Here the thumbnail grid (Pictures & Videos' cells, a tag caption under each), the filter line, and
+ * the tag screen (picture over rows; beside them on landscape / wide screens). Lengths N * --wm-px.
+ */
+
+.wm-atelier .wat-list {
+    background: #fff;
+}
+
+/* the filters in force, small grey text under the Gallery band */
+.wm-atelier .wat-band-filter {
+    flex: 0 0 auto;
+    padding: calc(1 * var(--wm-px)) calc(5 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    color: #555;
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-atelier .wat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(76 * var(--wm-px)), 1fr));
+    gap: calc(2 * var(--wm-px));
+    padding: calc(2 * var(--wm-px));
+}
+
+.wm-atelier .wat-cell {
+    min-width: 0;
+    padding: calc(2 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid transparent;
+    cursor: default;
+    -webkit-touch-callout: none;
+    user-select: none;
+    content-visibility: auto;
+    contain-intrinsic-size: auto calc(96 * var(--wm-px));
+}
+
+.wm-atelier .wat-cell.is-selected {
+    border-color: var(--wm-highlight);
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-atelier .wat-cell.is-hidden .wat-pic {
+    opacity: 0.45;
+}
+
+.wm-atelier .wat-pic {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    background: #e7e7e7;
+    overflow: hidden;
+}
+
+.wm-atelier .wat-pic img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+}
+
+.wm-atelier .wat-missing,
+.wm-atelier .wat-big-missing {
+    color: #848284;
+    font-weight: bold;
+    font-size: calc(28 * var(--wm-px));
+}
+
+.wm-atelier .wat-cap {
+    display: block;
+    padding-top: calc(1 * var(--wm-px));
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Favorite = a gold star, Try = a teal flask dot, drawn small before the tag */
+.wm-atelier .wat-mark {
+    display: inline-block;
+    width: calc(8 * var(--wm-px));
+    height: calc(8 * var(--wm-px));
+    margin-right: calc(2 * var(--wm-px));
+    vertical-align: calc(-0.5 * var(--wm-px));
+    background: no-repeat center / contain;
+}
+
+.wm-atelier .wat-mark.is-fav {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M5 .4l1.4 3 3.2.3-2.4 2.1.7 3.2L5 7.4 2.1 9l.7-3.2L.4 3.7l3.2-.3z' fill='%23f2b400' stroke='%23805e00' stroke-width='.6'/%3E%3C/svg%3E");
+}
+
+.wm-atelier .wat-mark.is-try {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M3.6.8h2.8M4 .8v3L1.3 8.4c-.3.5 0 .9.5.9h6.4c.5 0 .8-.4.5-.9L6 3.8v-3' fill='%2384d3ce' stroke='%23206060' stroke-width='.7'/%3E%3C/svg%3E");
+}
+
+.wm-atelier .wat-foot {
+    margin: 0;
+    padding: calc(6 * var(--wm-px)) calc(8 * var(--wm-px)) calc(10 * var(--wm-px));
+    color: #555;
+    text-align: center;
+}
+
+/* ---- the tag screen ---- */
+
+.wm-atelier .wat-split {
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-atelier .wat-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(120 * var(--wm-px));
+    padding: calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+}
+
+.wm-atelier .wat-big {
+    display: block;
+    max-width: 100%;
+    max-height: min(calc(320 * var(--wm-px)), 48vh);
+    object-fit: contain;
+    border: calc(1 * var(--wm-px)) solid #a5a5a5;
+    pointer-events: none;
+}
+
+.wm-atelier .wat-bag-row .wsk-ico img {
+    object-fit: cover;
+}
+
+@media (min-aspect-ratio: 5/4) {
+    .wm-atelier .wat-split {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+
+    .wm-atelier .wat-stage {
+        flex: 0 0 55%;
+        border-bottom: 0;
+        border-right: calc(1 * var(--wm-px)) solid #a5a5a5;
+    }
+
+    .wm-atelier .wat-big {
+        max-height: calc(100vh - 120 * var(--wm-px));
+    }
+
+    .wm-atelier .wat-rows {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+}

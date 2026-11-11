@@ -1,0 +1,24 @@
+/*
+ * Melaton Mobile: Expanders (wmExpanders.js), Yozora #732. Lists, card, form: wm-suite-kit.css; here
+ * only the numbered choices of a random expander. Lengths N * --wm-px.
+ */
+
+.wm-expanders .wex-choices {
+    margin: 0;
+    padding: 0 calc(4 * var(--wm-px)) calc(8 * var(--wm-px)) calc(28 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.wm-expanders .wex-choices li {
+    padding: calc(1 * var(--wm-px)) 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+/* "Name: !" keeps the ! next to the field, as the name is typed without it */
+.wm-expanders .wex-edit .wsk-flabel {
+    white-space: pre;
+}

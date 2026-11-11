@@ -1,0 +1,523 @@
+/*
+ * Melaton Mobile: PayPass (PayPass Operator's phone version), Yozora #732. wmPayPass.js.
+ * WM 6.1 metrics as the other phone apps (Contacts rows 28 px with a 1 px #A5A5A5 rule, tabs at the
+ * bottom from wm-programs.css, the green form header); lengths N * --wm-px. The band and the badges
+ * take PayPass Operator's own blue and colours, as a ported line-of-business app would.
+ */
+
+.wm-paypass {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: #fff;
+    color: #000;
+    font-size: calc(12 * var(--wm-px));
+    container: wpp / size;
+}
+
+.wm-paypass [hidden] {
+    display: none !important;
+}
+
+.wm-paypass .wpp-main,
+.wm-paypass .wpp-layer,
+.wm-paypass .wpp-pane,
+.wm-paypass .wpp-card,
+.wm-paypass .wpp-form {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-paypass .wpp-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ---- the PayPass band: icon, name over the arcade, the ONLINE lamp ---- */
+.wm-paypass .wpp-band {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    height: calc(30 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: linear-gradient(to bottom, #2f6fc4, #123f86);
+    color: #fff;
+    white-space: nowrap;
+}
+
+.wm-paypass .wpp-band-ico {
+    flex: 0 0 auto;
+    width: calc(20 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+}
+
+.wm-paypass .wpp-band-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    line-height: calc(13 * var(--wm-px));
+}
+
+.wm-paypass .wpp-band-text small {
+    font-size: calc(11 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.9;
+}
+
+.wm-paypass .wpp-lamp {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    font-size: calc(10 * var(--wm-px));
+    font-weight: bold;
+}
+
+.wm-paypass .wpp-lamp::before {
+    content: '';
+    width: calc(8 * var(--wm-px));
+    height: calc(8 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 50%;
+    background: #7a1b1b;
+}
+
+.wm-paypass .wpp-lamp.is-on::before {
+    background: #3cff52;
+    box-shadow: 0 0 calc(3 * var(--wm-px)) #3cff52;
+}
+
+/* ---- "Enter a name..." box on the tab-strip tint (26 px band), as Contacts ---- */
+.wm-paypass .wpp-searchbar {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    height: calc(26 * var(--wm-px));
+    padding: calc(3 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+}
+
+.wm-paypass .wpp-search {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    height: calc(19 * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    outline: none;
+    background: #fff;
+    color: #000;
+    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+    -webkit-appearance: none;
+    appearance: none;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.wm-paypass .wpp-search::placeholder {
+    color: #000;
+    opacity: 1;
+}
+
+.wm-paypass .wpp-search::-webkit-search-cancel-button {
+    display: none;
+}
+
+.wm-paypass .wpp-nomatch {
+    flex: 0 0 auto;
+    padding: calc(5 * var(--wm-px)) calc(8 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+    font-weight: bold;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+/* ---- rows: icon at x 7, bold name, the balance at the right, a grey second line ---- */
+.wm-paypass .wpp-row {
+    display: grid;
+    grid-template-columns: calc(30 * var(--wm-px)) minmax(0, 1fr) auto;
+    grid-template-rows: calc(14 * var(--wm-px)) auto;
+    min-height: calc(28 * var(--wm-px));
+    padding: calc(1 * var(--wm-px)) calc(6 * var(--wm-px)) calc(2 * var(--wm-px)) 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    box-sizing: border-box;
+    cursor: default;
+    -webkit-touch-callout: none;
+    user-select: none;
+    content-visibility: auto;
+    contain-intrinsic-size: auto calc(30 * var(--wm-px));
+}
+
+.wm-paypass .wpp-row.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-paypass .wpp-row.is-orphan .wpp-row-name {
+    font-style: italic;
+}
+
+.wm-paypass .wpp-row-ico {
+    grid-row: 1 / 4;
+    align-self: center;
+}
+
+.wm-paypass .wpp-ico {
+    display: block;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-paypass .wpp-row-ico .wpp-ico {
+    margin-left: calc(7 * var(--wm-px));
+}
+
+.wm-paypass .wpp-row-name {
+    align-self: end;
+    font-weight: bold;
+    line-height: calc(14 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-paypass .wpp-row-right {
+    align-self: end;
+    padding-left: calc(6 * var(--wm-px));
+    font-weight: bold;
+    line-height: calc(14 * var(--wm-px));
+    text-align: right;
+    white-space: nowrap;
+}
+
+.wm-paypass .wpp-row-sub,
+.wm-paypass .wpp-row-sub2 {
+    grid-column: 2 / 4;
+    display: flex;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    min-width: 0;
+    line-height: calc(13 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-paypass .wpp-row-sub2 {
+    color: #424142;
+}
+
+.wm-paypass .wpp-t {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-paypass .wpp-row.is-selected .wpp-row-sub2 {
+    color: inherit;
+}
+
+/* badges: PayPass Operator's, full text, white on colour */
+.wm-paypass .wpp-badge {
+    flex: 0 0 auto;
+    padding: 0 calc(3 * var(--wm-px));
+    border-radius: calc(2 * var(--wm-px));
+    background: #5a5d63;
+    color: #fff;
+    font-size: calc(10 * var(--wm-px));
+    font-weight: bold;
+    line-height: calc(12 * var(--wm-px));
+}
+
+.wm-paypass .wpp-badge.is-free {
+    background: #12814a;
+}
+
+.wm-paypass .wpp-badge.is-bad {
+    background: #b3261e;
+}
+
+.wm-paypass .wpp-led {
+    display: inline-block;
+    width: calc(8 * var(--wm-px));
+    height: calc(8 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 50%;
+    background: #8c8e8c;
+}
+
+.wm-paypass .wpp-led.is-on {
+    background: #3cff52;
+}
+
+.wm-paypass .wpp-note {
+    margin: 0;
+    padding: calc(8 * var(--wm-px));
+    color: #424142;
+}
+
+.wm-paypass .wpp-hint,
+.wm-paypass .wpp-dim {
+    color: #525152;
+}
+
+/* ---- the customer / machine card (Contacts' card) ---- */
+.wm-paypass .wpp-card-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    min-height: calc(26 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+    white-space: nowrap;
+}
+
+.wm-paypass .wpp-card-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-paypass .wpp-wallet {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: calc(6 * var(--wm-px));
+    padding: calc(5 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: linear-gradient(to bottom, #2f6fc4, #123f86);
+    color: #fff;
+    line-height: calc(14 * var(--wm-px));
+}
+
+.wm-paypass .wpp-wallet b {
+    font-size: calc(20 * var(--wm-px));
+    line-height: calc(24 * var(--wm-px));
+}
+
+.wm-paypass .wpp-wallet small {
+    font-size: calc(11 * var(--wm-px));
+    opacity: 0.9;
+}
+
+.wm-paypass .wpp-crows {
+    padding: calc(3 * var(--wm-px)) calc(6 * var(--wm-px));
+}
+
+.wm-paypass .wpp-crow {
+    display: grid;
+    grid-template-columns: calc(84 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(5 * var(--wm-px));
+    min-height: calc(17 * var(--wm-px));
+    align-items: center;
+}
+
+.wm-paypass .wpp-clabel {
+    color: #424142;
+    white-space: nowrap;
+}
+
+.wm-paypass .wpp-cvalue {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.wm-paypass .wpp-csub {
+    margin: calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) calc(2 * var(--wm-px));
+    font-weight: bold;
+}
+
+.wm-paypass .wpp-cnotes {
+    margin: 0 calc(6 * var(--wm-px)) calc(8 * var(--wm-px));
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* ---- forms ---- */
+.wm-paypass .wpp-seg {
+    display: flex;
+    gap: calc(12 * var(--wm-px));
+    margin-bottom: calc(5 * var(--wm-px));
+}
+
+.wm-paypass .wpp-presets .wm-button {
+    min-width: calc(36 * var(--wm-px));
+}
+
+.wm-paypass .wpp-area-row {
+    display: grid;
+    grid-template-columns: calc(62 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(5 * var(--wm-px));
+    margin-bottom: calc(1 * var(--wm-px));
+}
+
+.wm-paypass .wpp-area-row > label {
+    padding-top: calc(3 * var(--wm-px));
+    text-align: right;
+}
+
+.wm-paypass .wpp-area {
+    height: calc(52 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    resize: none;
+}
+
+.wm-paypass .wm-form-row .wm-edit {
+    min-width: 0;
+}
+
+.wm-paypass .wpp-fplist {
+    margin-bottom: calc(6 * var(--wm-px));
+}
+
+.wm-paypass .wpp-fprow {
+    justify-content: space-between;
+    min-height: calc(20 * var(--wm-px)) !important;
+}
+
+.wm-paypass .wpp-fpname {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-paypass .wpp-fpstate {
+    flex: 0 0 auto;
+    min-width: calc(30 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #d6d3ce;
+    color: #000;
+    font-size: calc(10 * var(--wm-px));
+    font-weight: bold;
+    line-height: calc(13 * var(--wm-px));
+    text-align: center;
+}
+
+.wm-paypass .wpp-fpstate.is-on {
+    background: #12814a;
+    color: #fff;
+}
+
+/* ---- "Scan card now!" ---- */
+.wm-paypass .wpp-scan {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(5 * var(--wm-px));
+    padding: calc(12 * var(--wm-px));
+    text-align: center;
+}
+
+.wm-paypass .wpp-scan-ico {
+    width: calc(48 * var(--wm-px));
+    height: calc(48 * var(--wm-px));
+}
+
+.wm-paypass .wpp-scan b {
+    font-size: calc(16 * var(--wm-px));
+    line-height: calc(20 * var(--wm-px));
+}
+
+.wm-paypass .wpp-scan-bar {
+    position: relative;
+    width: calc(140 * var(--wm-px));
+    height: calc(10 * var(--wm-px));
+    margin-top: calc(6 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    overflow: hidden;
+}
+
+/* WM's marquee progress: a block of highlight squares sliding across */
+.wm-paypass .wpp-scan-bar i {
+    position: absolute;
+    top: calc(1 * var(--wm-px));
+    bottom: calc(1 * var(--wm-px));
+    width: 30%;
+    background: repeating-linear-gradient(to right, var(--wm-highlight) 0 calc(6 * var(--wm-px)), transparent 0 calc(8 * var(--wm-px)));
+    animation: wpp-marquee 1.6s steps(20) infinite;
+}
+
+@keyframes wpp-marquee {
+    from { left: -30%; }
+    to { left: 100%; }
+}
+
+/* ---- wide screens (Fold inner, tablets): rows in columns, the card's rows side by side ---- */
+@container wpp (min-width: 40em) {
+    .wm-paypass .wpp-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(22em, 1fr));
+    }
+
+    .wm-paypass .wpp-list > .wpp-row {
+        border-right: calc(1 * var(--wm-px)) solid #a5a5a5;
+    }
+
+    .wm-paypass .wpp-card-body[data-tab="summary"] {
+        display: grid;
+        grid-template-columns: minmax(0, 18em) minmax(0, 1fr);
+        align-content: start;
+    }
+
+    .wm-paypass .wpp-card-body[data-tab="summary"] .wpp-csub,
+    .wm-paypass .wpp-card-body[data-tab="summary"] .wpp-cnotes {
+        grid-column: 1 / -1;
+    }
+
+    .wm-paypass .wpp-form .wm-form {
+        max-width: 34em;
+    }
+}
+
+/* ---- landscape phones: a thinner band and wallet ---- */
+@container wpp (orientation: landscape) and (max-height: 26em) {
+    .wm-paypass .wpp-band {
+        height: calc(22 * var(--wm-px));
+    }
+
+    .wm-paypass .wpp-band-text {
+        flex-direction: row;
+        align-items: baseline;
+        gap: calc(6 * var(--wm-px));
+    }
+
+    .wm-paypass .wpp-wallet {
+        flex-direction: row;
+        align-items: baseline;
+        justify-content: center;
+        gap: calc(8 * var(--wm-px));
+        margin: calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
+        padding: calc(2 * var(--wm-px)) calc(5 * var(--wm-px));
+    }
+
+    .wm-paypass .wpp-scan {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+}

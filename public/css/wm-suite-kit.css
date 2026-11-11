@@ -1,0 +1,497 @@
+/*
+ * Melaton Mobile: shared WM 6.1 parts of the Dreamscape suite phone apps (Yozora #732):
+ * wmSpellcaster / wmCharacters / wmExpanders / wmAtelier / wmEmotion / wmPhasewalker (wmSuiteKit.js).
+ * Metrics are WM 6.1 Contacts' (Device Emulator VGA, 2x halved; wm-notes.css, wm-spellbook.css);
+ * every length is N * --wm-px.
+ */
+
+.wsk {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: #fff;
+    color: #000;
+    font-size: calc(12 * var(--wm-px));
+}
+
+.wsk [hidden] {
+    display: none !important;
+}
+
+.wsk .wsk-view {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* lists sit on Contacts' white-to-tint wash */
+.wsk .wsk-view.is-list {
+    background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+}
+
+/* "Enter a name..." box: 20 px, 1 px black frame, 3 px in, on the tab-strip tint (26 px band) */
+.wsk .wsk-searchbar {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: flex;
+    gap: calc(3 * var(--wm-px));
+    height: calc(26 * var(--wm-px));
+    padding: calc(3 * var(--wm-px));
+    background: var(--wm-tab-strip);
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wsk .wsk-search {
+    box-sizing: border-box;
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: calc(20 * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    outline: none;
+    background: #fff;
+    color: #000;
+    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+    -webkit-appearance: none;
+    appearance: none;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.wsk .wsk-search::placeholder {
+    color: #000;
+    opacity: 1;
+}
+
+.wsk .wsk-search::-webkit-search-cancel-button {
+    display: none;
+}
+
+/* the path / filter band under the search (a combo box on the tint) */
+.wsk .wsk-band {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    min-height: calc(22 * var(--wm-px));
+    padding: calc(1 * var(--wm-px)) calc(3 * var(--wm-px));
+    background: var(--wm-tab-strip);
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    white-space: nowrap;
+}
+
+.wsk .wsk-band-label {
+    flex: 0 0 auto;
+}
+
+.wsk .wsk-band .wsk-combo {
+    flex: 1 1 auto;
+}
+
+.wsk .wsk-nomatch {
+    flex: 0 0 auto;
+    padding: calc(1 * var(--wm-px)) calc(8 * var(--wm-px));
+    min-height: calc(26 * var(--wm-px));
+    box-sizing: border-box;
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+    font-weight: bold;
+    text-align: center;
+    line-height: calc(24 * var(--wm-px));
+    overflow-wrap: anywhere;
+}
+
+.wsk .wsk-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* rows 28 px: the 16 px icon at x 7, the bold name at x 30, a second line under it */
+.wsk .wsk-row {
+    display: grid;
+    grid-template-columns: calc(30 * var(--wm-px)) minmax(0, 1fr) auto;
+    grid-template-rows: calc(13 * var(--wm-px)) calc(14 * var(--wm-px));
+    height: calc(28 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    box-sizing: border-box;
+    cursor: default;
+    -webkit-touch-callout: none;
+    user-select: none;
+    white-space: nowrap;
+    content-visibility: auto;
+    contain-intrinsic-size: auto calc(28 * var(--wm-px));
+}
+
+/* one-line rows (19 px): a folder level, a short list */
+.wsk .wsk-row.is-one {
+    grid-template-rows: calc(18 * var(--wm-px));
+    height: calc(19 * var(--wm-px));
+    contain-intrinsic-size: auto calc(19 * var(--wm-px));
+}
+
+.wsk .wsk-row.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wsk .wsk-ico {
+    grid-row: 1 / -1;
+    align-self: center;
+}
+
+.wsk .wsk-ico img {
+    display: block;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin-left: calc(7 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wsk .wsk-name {
+    align-self: end;
+    line-height: calc(13 * var(--wm-px));
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wsk .wsk-row.is-one .wsk-name {
+    align-self: center;
+    line-height: calc(18 * var(--wm-px));
+}
+
+.wsk .wsk-sub {
+    grid-column: 2 / 4;
+    line-height: calc(14 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* a count or short value at the right of the name line */
+.wsk .wsk-right {
+    grid-row: 1;
+    grid-column: 3;
+    align-self: end;
+    padding: 0 calc(5 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+}
+
+.wsk .wsk-row.is-one .wsk-right {
+    align-self: center;
+    line-height: calc(18 * var(--wm-px));
+}
+
+.wsk .wsk-note {
+    margin: 0;
+    padding: calc(60 * var(--wm-px)) calc(12 * var(--wm-px)) 0;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+/* ---- a card: the name band, label / value rows, text (Contacts' summary card) ---- */
+
+.wsk .wsk-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    min-height: calc(20 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    background: #fff;
+    font-weight: bold;
+}
+
+.wsk .wsk-head img {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wsk .wsk-head-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wsk .wsk-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.wsk .wsk-crow {
+    display: grid;
+    grid-template-columns: calc(74 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(4 * var(--wm-px));
+    align-items: center;
+    min-height: calc(19 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6;
+}
+
+.wsk .wsk-clabel {
+    text-align: right;
+    color: #555;
+    white-space: nowrap;
+}
+
+.wsk .wsk-cvalue {
+    padding-right: calc(4 * var(--wm-px));
+    overflow-wrap: anywhere;
+}
+
+.wsk .wsk-subhead {
+    padding: calc(6 * var(--wm-px)) calc(4 * var(--wm-px)) calc(2 * var(--wm-px));
+    font-weight: bold;
+}
+
+.wsk .wsk-text {
+    padding: 0 calc(4 * var(--wm-px)) calc(8 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.wsk .wsk-text.is-empty {
+    color: #848284;
+}
+
+/* ---- a form: labels right-aligned to x 74, fields from x 78 with a grey rule (Contacts' edit) ---- */
+
+.wsk .wsk-field {
+    display: grid;
+    grid-template-columns: calc(74 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(4 * var(--wm-px));
+    align-items: end;
+    min-height: calc(19.5 * var(--wm-px));
+    padding-right: calc(5 * var(--wm-px));
+}
+
+.wsk .wsk-field.is-tall {
+    align-items: start;
+    padding-top: calc(3 * var(--wm-px));
+}
+
+.wsk .wsk-flabel {
+    padding-bottom: calc(2 * var(--wm-px));
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wsk .wsk-field.is-tall .wsk-flabel {
+    padding: calc(1 * var(--wm-px)) 0 0;
+}
+
+.wsk .wsk-input,
+.wsk .wsk-textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 0 calc(2 * var(--wm-px));
+    border: 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    color: #000;
+    font: calc(13 * var(--wm-px)) var(--wm-font);
+    user-select: text;
+    -webkit-user-select: text;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.wsk .wsk-input {
+    height: calc(18 * var(--wm-px));
+    line-height: calc(17 * var(--wm-px));
+}
+
+/* a multi-line edit (WM's Notes field: framed, grows with the form) */
+.wsk .wsk-textarea {
+    display: block;
+    min-height: calc(60 * var(--wm-px));
+    padding: calc(2 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #a5a5a5;
+    line-height: calc(15 * var(--wm-px));
+    resize: none;
+    field-sizing: content;
+}
+
+.wsk .wsk-input:focus,
+.wsk .wsk-textarea:focus {
+    border-color: #000;
+}
+
+.wsk .wsk-input[readonly] {
+    color: #555;
+}
+
+/* WM's combo box: white, 1 px black frame, the drop arrow in its own cell */
+.wsk .wsk-combo {
+    box-sizing: border-box;
+    display: flex !important;
+    align-items: center;
+    min-width: 0;
+    height: calc(18 * var(--wm-px));
+    padding: 0 0 0 calc(3 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    text-align: left;
+}
+
+.wsk .wsk-combo-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wsk .wsk-combo-arrow {
+    flex: 0 0 auto;
+    align-self: stretch;
+    width: calc(13 * var(--wm-px));
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    background: no-repeat center / calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 4'%3E%3Cpath d='M0 0h7L3.5 3.5z'/%3E%3C/svg%3E");
+}
+
+.wsk .wsk-field .wsk-combo {
+    margin-bottom: calc(1 * var(--wm-px));
+}
+
+/* a WM check box row */
+.wsk .wsk-check {
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    min-height: calc(20 * var(--wm-px));
+    padding: 0 calc(5 * var(--wm-px)) 0 calc(78 * var(--wm-px));
+}
+
+/* WM's check box (wm-programs.css .wm-check): white, 1 px black frame, a black tick */
+.wsk .wsk-check input {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+    margin: 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff center / 100% 100% no-repeat;
+    outline: none;
+}
+
+.wsk .wsk-check input:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11'%3E%3Cpath d='M2 5.2 4.3 7.5 9 2.8' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E");
+}
+
+.wsk .wsk-check input:disabled {
+    border-color: #848284;
+}
+
+/* folder rows (one line) are plain, as in File Explorer */
+.wsk .wsk-row.is-one .wsk-name {
+    font-weight: normal;
+}
+
+/* ---- bottom tabs: 22 px on the tab-strip tint; the open tab white and joined to the page ---- */
+
+.wsk .wsk-btabs {
+    flex: 0 0 auto;
+    display: flex;
+    height: calc(22 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+    overflow: hidden;
+}
+
+.wsk .wsk-btab {
+    position: relative;
+    top: calc(-1 * var(--wm-px));
+    padding: 0 calc(5 * var(--wm-px)) !important;
+    border-right: calc(1 * var(--wm-px)) solid #000 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
+    border-top: calc(1 * var(--wm-px)) solid #000 !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    white-space: nowrap;
+}
+
+.wsk .wsk-btab.is-selected {
+    background: #fff !important;
+    border-top-color: #fff !important;
+}
+
+/* ---- WM 6.1's progress bar: a 1 px black frame, green blocks with 1 px gaps ---- */
+
+.wsk .wsk-progress {
+    position: relative;
+    box-sizing: border-box;
+    height: calc(12 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    overflow: hidden;
+}
+
+.wsk .wsk-progress-fill {
+    position: absolute;
+    inset: calc(1 * var(--wm-px)) auto calc(1 * var(--wm-px)) calc(1 * var(--wm-px));
+    width: 0;
+    max-width: calc(100% - 2 * var(--wm-px));
+    background: repeating-linear-gradient(to right, var(--wm-highlight) 0 calc(6 * var(--wm-px)), transparent calc(6 * var(--wm-px)) calc(7 * var(--wm-px)));
+}
+
+/* no known percentage: three blocks run across (WM's marquee bar) */
+.wsk .wsk-progress.is-marquee .wsk-progress-fill {
+    width: calc(20 * var(--wm-px));
+    animation: wsk-marquee 1.6s steps(24) infinite;
+}
+
+@keyframes wsk-marquee {
+    from { left: calc(-20 * var(--wm-px)); }
+    to { left: 100%; }
+}
+
+/* a row of plain WM buttons inside a page (Contacts' "Add" style) */
+.wsk .wsk-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(4 * var(--wm-px));
+    padding: calc(4 * var(--wm-px));
+}
+
+.wsk .wsk-button {
+    min-width: calc(60 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    padding: 0 calc(8 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    background: linear-gradient(#fff, #e7e7e7) !important;
+    color: #000 !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+}
+
+.wsk .wsk-button:active {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text) !important;
+}
+
+.wsk .wsk-button:disabled {
+    color: #848284 !important;
+}

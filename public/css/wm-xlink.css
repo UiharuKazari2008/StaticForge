@@ -1,0 +1,551 @@
+/*
+ * Melaton Mobile: XLink (the XLink Operator Console's phone version), Yozora #732. wmXLink.js.
+ * WM 6.1 lists and property pages (rows 28 px with a 1 px #A5A5A5 rule, the green form header, tabs at
+ * the bottom from wm-programs.css); the band and the state LCDs keep the console's broadcast-panel
+ * charcoal and tally colours. Lengths N * --wm-px.
+ */
+
+.wm-xlink {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: #fff;
+    color: #000;
+    font-size: calc(12 * var(--wm-px));
+    container: wxl / size;
+}
+
+.wm-xlink [hidden] {
+    display: none !important;
+}
+
+.wm-xlink .wxl-main,
+.wm-xlink .wxl-layer,
+.wm-xlink .wxl-card,
+.wm-xlink .wxl-form {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-xlink .wxl-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ---- the console's band: logo plate (lit while a node answers), nodes, time of day ---- */
+.wm-xlink .wxl-band {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    height: calc(26 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: linear-gradient(to bottom, #3a3d42, #1d1f22);
+    color: #d8dbe0;
+    white-space: nowrap;
+    font-size: calc(10 * var(--wm-px));
+}
+
+.wm-xlink .wxl-logo {
+    flex: 0 0 auto;
+    height: calc(15 * var(--wm-px));
+    width: auto;
+    opacity: 0.45;
+    filter: grayscale(1);
+}
+
+.wm-xlink .wxl-band.is-up .wxl-logo {
+    opacity: 1;
+    filter: none;
+}
+
+.wm-xlink .wxl-band-sub {
+    font-weight: bold;
+    letter-spacing: 0.02em;
+}
+
+.wm-xlink .wxl-band-fill {
+    flex: 1 1 auto;
+}
+
+.wm-xlink .wxl-tod {
+    padding: 0 calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #0b0c0d;
+    color: #ffb000;
+    font: bold calc(11 * var(--wm-px)) / calc(14 * var(--wm-px)) Consolas, 'Lucida Console', monospace;
+}
+
+/* the list's column header (WM ListView report header) */
+.wm-xlink .wxl-head {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: space-between;
+    height: calc(17 * var(--wm-px));
+    padding: 0 calc(8 * var(--wm-px)) 0 calc(30 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+    line-height: calc(16 * var(--wm-px));
+}
+
+/* ---- rows: icon at x 7, bold name, LED / LCD at the right, a second line ---- */
+.wm-xlink .wxl-row {
+    display: grid;
+    grid-template-columns: calc(30 * var(--wm-px)) minmax(0, 1fr) auto;
+    grid-template-rows: calc(15 * var(--wm-px)) auto;
+    min-height: calc(30 * var(--wm-px));
+    padding: calc(1 * var(--wm-px)) calc(6 * var(--wm-px)) calc(2 * var(--wm-px)) 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    box-sizing: border-box;
+    cursor: default;
+    -webkit-touch-callout: none;
+    user-select: none;
+}
+
+.wm-xlink .wxl-frow {
+    padding-left: calc(var(--d, 0) * 14 * var(--wm-px));
+    grid-template-columns: calc(44 * var(--wm-px)) minmax(0, 1fr) auto;
+}
+
+.wm-xlink .wxl-row.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-xlink .wxl-row:active:not(.is-selected) {
+    background: var(--wm-tint);
+}
+
+.wm-xlink .wxl-row-ico {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    align-self: center;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: calc(2 * var(--wm-px));
+    padding-right: calc(7 * var(--wm-px));
+}
+
+.wm-xlink .wxl-ico {
+    display: inline-block;
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    vertical-align: middle;
+    pointer-events: none;
+}
+
+/* WM's tree [+] / [-]: 9 px box, 1 px grey frame */
+.wm-xlink .wxl-twisty {
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+    padding: 0 !important;
+    border: calc(1 * var(--wm-px)) solid #848284 !important;
+    background: #fff !important;
+    color: #000 !important;
+    font: bold calc(11 * var(--wm-px)) / calc(10 * var(--wm-px)) var(--wm-font);
+    text-align: center;
+}
+
+.wm-xlink .wxl-row-name {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: end;
+    font-weight: bold;
+    line-height: calc(15 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-xlink .wxl-row-right {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    align-self: center;
+    padding-left: calc(6 * var(--wm-px));
+}
+
+.wm-xlink .wxl-row-sub {
+    grid-column: 2;
+    grid-row: 2;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: calc(3 * var(--wm-px));
+    min-width: 0;
+    padding-bottom: calc(1 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+}
+
+.wm-xlink .wxl-dim {
+    color: #525152;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-xlink .wxl-row.is-selected .wxl-dim {
+    color: inherit;
+}
+
+/* tally LED: lit in the status colour, dark when the node does not answer */
+.wm-xlink .wxl-led {
+    display: block;
+    width: calc(10 * var(--wm-px));
+    height: calc(10 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 50%;
+    background: #3b3d40;
+}
+
+.wm-xlink .wxl-led.is-on {
+    background: var(--led, #39ff5a);
+    box-shadow: 0 0 calc(3 * var(--wm-px)) var(--led, #39ff5a);
+}
+
+/* the state LCD: black glass, text in the menu's colour */
+.wm-xlink .wxl-lcd {
+    display: inline-block;
+    max-width: calc(130 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #0d1410;
+    color: var(--lcd, #7dff9a);
+    font: bold calc(11 * var(--wm-px)) / calc(14 * var(--wm-px)) Consolas, 'Lucida Console', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.wm-xlink .wxl-lcd.is-failed {
+    color: #ff5a4f;
+}
+
+.wm-xlink .wxl-lcd.is-empty {
+    color: #3a4a40;
+}
+
+.wm-xlink .wxl-badge,
+.wm-xlink .wxl-warn {
+    flex: 0 0 auto;
+    padding: 0 calc(3 * var(--wm-px));
+    border-radius: calc(2 * var(--wm-px));
+    font-size: calc(10 * var(--wm-px));
+    font-weight: bold;
+    line-height: calc(12 * var(--wm-px));
+    white-space: nowrap;
+}
+
+.wm-xlink .wxl-warn {
+    background: #c47a00;
+    color: #fff;
+}
+
+.wm-xlink .wxl-note {
+    margin: 0;
+    padding: calc(8 * var(--wm-px));
+    color: #424142;
+    white-space: pre-line;
+}
+
+.wm-xlink .wxl-hint {
+    color: #525152;
+}
+
+/* ---- the cabinet page ---- */
+.wm-xlink .wxl-card-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    min-height: calc(24 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px));
+    background: linear-gradient(to bottom, #3a3d42, #1d1f22);
+    color: #fff;
+    white-space: nowrap;
+}
+
+.wm-xlink .wxl-card-name {
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-xlink .wxl-statusline {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    min-height: calc(20 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+}
+
+.wm-xlink .wxl-statusline .wxl-dim {
+    margin-left: auto;
+}
+
+/* ---- the function page ---- */
+.wm-xlink .wm-form-hdr {
+    gap: calc(5 * var(--wm-px));
+}
+
+.wm-xlink .wm-form-hdr span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-xlink .wxl-positions {
+    display: flex;
+    flex-direction: column;
+    gap: calc(2 * var(--wm-px));
+    margin-bottom: calc(4 * var(--wm-px));
+}
+
+.wm-xlink .wxl-pos {
+    min-height: calc(22 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid transparent;
+}
+
+.wm-xlink .wxl-pos > span:first-of-type {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    flex: 1 1 auto;
+    font-weight: bold;
+}
+
+.wm-xlink .wxl-pos:has(input:checked) {
+    border-color: #000;
+    background: var(--wm-tint);
+}
+
+.wm-xlink .wxl-lit {
+    flex: 0 0 auto;
+    padding: 0 calc(4 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: var(--lamp, #39ff5a);
+    color: #000;
+    font-size: calc(10 * var(--wm-px));
+    font-weight: bold;
+    line-height: calc(13 * var(--wm-px));
+}
+
+.wm-xlink .wxl-level {
+    display: flex;
+    align-items: center;
+    gap: calc(8 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) 0;
+}
+
+.wm-xlink .wxl-range {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: calc(22 * var(--wm-px));
+    margin: 0;
+    accent-color: var(--wm-highlight);
+}
+
+.wm-xlink .wxl-level-val {
+    min-width: calc(40 * var(--wm-px));
+    text-align: right;
+}
+
+.wm-xlink .wxl-warnline {
+    display: flex;
+    align-items: flex-start;
+    gap: calc(4 * var(--wm-px));
+}
+
+.wm-xlink .wxl-prow {
+    display: grid;
+    grid-template-columns: calc(92 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(5 * var(--wm-px));
+    min-height: calc(17 * var(--wm-px));
+    align-items: start;
+    padding: calc(1 * var(--wm-px)) 0;
+}
+
+.wm-xlink .wxl-plabel {
+    color: #424142;
+}
+
+.wm-xlink .wxl-pvalue {
+    overflow-wrap: anywhere;
+}
+
+/* ---- event log: the console's green-on-black window ---- */
+.wm-xlink .wxl-log {
+    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px));
+    background: #0b0c0d;
+    color: #9be7a8;
+    font: calc(10 * var(--wm-px)) / calc(13 * var(--wm-px)) Consolas, 'Lucida Console', monospace;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.wm-xlink .wxl-log .is-bad {
+    color: #ff6b5e;
+}
+
+/* ---- wide screens: cabinets in columns, the LCDs get room ---- */
+@container wxl (min-width: 40em) {
+    .wm-xlink .wxl-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(22em, 1fr));
+    }
+
+    .wm-xlink .wxl-list > .wxl-row {
+        border-right: calc(1 * var(--wm-px)) solid #a5a5a5;
+    }
+
+    .wm-xlink .wxl-head {
+        display: none;
+    }
+
+    .wm-xlink .wxl-lcd {
+        max-width: calc(220 * var(--wm-px));
+    }
+
+    .wm-xlink .wxl-form .wm-form {
+        max-width: 36em;
+    }
+}
+
+/* ---- landscape phones: a thinner band ---- */
+@container wxl (orientation: landscape) and (max-height: 26em) {
+    .wm-xlink .wxl-band {
+        height: calc(20 * var(--wm-px));
+    }
+
+    .wm-xlink .wxl-row {
+        min-height: calc(26 * var(--wm-px));
+    }
+}
+
+/* ---- Today: XLink quick controls (registerTodayItem block, white on the Today wallpaper) ---- */
+.wm-today-block[data-row="xlink"] {
+    display: flex;
+    flex-direction: column;
+    gap: calc(1 * var(--wm-px));
+}
+
+.wm-today-block[data-row="xlink"] .wxl-tw-head {
+    display: flex !important;
+    align-items: center;
+    gap: calc(7 * var(--wm-px));
+    min-height: calc(18 * var(--wm-px));
+    padding: 0 !important;
+    color: #fff !important;
+    text-align: left;
+}
+
+.wm-today-block[data-row="xlink"] .wxl-tw-head img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    flex: 0 0 auto;
+}
+
+.wm-today-block[data-row="xlink"] .wxl-tw-head span {
+    margin-left: auto;
+    font-weight: normal;
+}
+
+.wm-today-block[data-row="xlink"] .wxl-tw-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: calc(2 * var(--wm-px)) calc(5 * var(--wm-px));
+    min-height: calc(19 * var(--wm-px));
+    padding-left: calc(5 * var(--wm-px));
+}
+
+.wm-today-block[data-row="xlink"] .wxl-tw-led {
+    flex: 0 0 auto;
+    width: calc(8 * var(--wm-px));
+    height: calc(8 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 50%;
+    background: #3b3d40;
+}
+
+.wm-today-block[data-row="xlink"] .wxl-tw-led.is-on {
+    background: var(--led, #39ff5a);
+    box-shadow: 0 0 calc(3 * var(--wm-px)) var(--led, #39ff5a);
+}
+
+.wm-today-block[data-row="xlink"] .wxl-tw-name {
+    flex: 1 1 calc(60 * var(--wm-px));
+    min-width: 0;
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-today-block[data-row="xlink"] .wxl-lcd {
+    flex: 0 1 auto;
+    max-width: calc(90 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #0d1410;
+    color: var(--lcd, #7dff9a);
+    font: bold calc(10 * var(--wm-px)) / calc(13 * var(--wm-px)) Consolas, 'Lucida Console', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-today-block[data-row="xlink"] .wxl-lcd.is-failed {
+    color: #ff5a4f;
+}
+
+.wm-today-block[data-row="xlink"] .wxl-lcd.is-empty {
+    color: #3a4a40;
+}
+
+/* the quick control: a bank of small backlit keys, the lit one in the menu's lamp colour */
+.wm-today-block[data-row="xlink"] .wxl-tw-keys {
+    display: flex;
+    flex: 0 0 auto;
+}
+
+.wm-today-block[data-row="xlink"] .wxl-tw-key {
+    min-width: calc(24 * var(--wm-px));
+    height: calc(17 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px)) !important;
+    margin-left: calc(-1 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #fff !important;
+    background: rgba(0, 0, 0, 0.45) !important;
+    color: #fff !important;
+    font: bold calc(10 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font);
+    white-space: nowrap;
+}
+
+.wm-today-block[data-row="xlink"] .wxl-tw-key.is-lit {
+    background: var(--lamp, #39ff5a) !important;
+    color: #000 !important;
+}
+
+.wm-today-block[data-row="xlink"] .wxl-tw-key:active {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text) !important;
+}
+
+.wm-today-block[data-row="xlink"].is-sending .wxl-tw-key {
+    opacity: 0.5;
+    pointer-events: none;
+}

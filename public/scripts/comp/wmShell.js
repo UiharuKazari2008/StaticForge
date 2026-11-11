@@ -4151,6 +4151,8 @@
         }
     }
 
+    let installMax = 0; // the furthest the install bar got (reset when an install finishes)
+
     function setInstallProgress(pct) {
         const inst = shell.querySelector('.wm-installer');
         inst.querySelector('.wm-installer-progress').hidden = false;
@@ -4158,7 +4160,10 @@
         inst.querySelector('.wm-installer-wait').hidden = false;
         inst.querySelector('.wm-installer-text').textContent = `Installing ${installNoun()} ...`;
         const bar = inst.querySelector('.wm-installer-bar');
-        const p = Math.max(0, Math.min(100, Math.round(pct)));
+        // one install only moves forward: the update check runs several download passes, each counting
+        // from 0 again; wceload's bar never steps back (Yukimi, Nov 10)
+        const p = Math.max(installMax, Math.max(0, Math.min(100, Math.round(pct))));
+        installMax = p;
         bar.setAttribute('aria-valuenow', String(p));
         bar.style.setProperty('--wm-install-blocks', String(Math.floor(p * 18 / 100)));
     }
@@ -4166,6 +4171,7 @@
     /** wceload's last page: "<name> was successfully installed on your device." + ok. */
     function showInstallDone(kind) {
         installKind = kind;
+        installMax = 0;
         setBoot('install');
         clearInterval(waitTimer);
         const inst = shell.querySelector('.wm-installer');

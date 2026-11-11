@@ -1,0 +1,98 @@
+/*
+ * Melaton Mobile: eMotion LIVE (wmEmotion.js), Yozora #732. Form rows, combos, progress bar:
+ * wm-suite-kit.css. Here the picture / filmstrip / result video over the form (portrait), or beside
+ * it (landscape and wide screens). Lengths N * --wm-px.
+ */
+
+.wm-emotion .wem-split {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-emotion .wem-stage {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: min(calc(200 * var(--wm-px)), 40vh);
+    padding: calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
+    background: #fff;
+    overflow: hidden;
+    cursor: default;
+}
+
+.wm-emotion .wem-pic,
+.wm-emotion .wem-video {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border: calc(1 * var(--wm-px)) solid #a5a5a5;
+    pointer-events: none;
+}
+
+.wm-emotion .wem-empty {
+    margin: 0;
+    color: #555;
+    text-align: center;
+}
+
+.wm-emotion .wem-fields {
+    padding-bottom: calc(8 * var(--wm-px));
+}
+
+.wm-emotion .wem-progress {
+    display: grid;
+    gap: calc(3 * var(--wm-px));
+    padding: calc(5 * var(--wm-px)) calc(6 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6;
+}
+
+.wm-emotion .wem-progress-text,
+.wm-emotion .wem-resultline {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-emotion .wem-resultline {
+    padding: calc(3 * var(--wm-px)) calc(6 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6;
+    color: #555;
+}
+
+.wm-emotion .wem-length {
+    padding: 0 calc(2 * var(--wm-px)) calc(2 * var(--wm-px));
+    color: #555;
+    white-space: nowrap;
+}
+
+.wm-emotion .wem-worker {
+    margin: calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) 0 calc(78 * var(--wm-px));
+    color: #555;
+    font-size: calc(11 * var(--wm-px));
+}
+
+.wm-emotion .wem-worker.is-off {
+    color: #b00000;
+}
+
+.wm-emotion .wsk-field .wsk-combo:disabled {
+    color: #848284 !important;
+}
+
+@media (min-aspect-ratio: 5/4) {
+    .wm-emotion .wem-split {
+        flex-direction: row;
+    }
+
+    .wm-emotion .wem-stage {
+        flex: 0 0 45%;
+        height: auto;
+        border-bottom: 0;
+        border-right: calc(1 * var(--wm-px)) solid #a5a5a5;
+    }
+}

@@ -1,0 +1,21 @@
+/*
+ * Melaton Mobile: Phasewalker (wmPhasewalker.js), Yozora #732. Lists, combo band, bottom tabs,
+ * form: wm-suite-kit.css. Here only the stage list's empty text and the form's text boxes.
+ * Lengths N * --wm-px.
+ */
+
+.wm-phasewalker .wsk-row:not(.is-selected) .wpw-empty {
+    color: #848284;
+}
+
+.wm-phasewalker .wpw-stage .wsk-body {
+    padding-bottom: calc(8 * var(--wm-px));
+}
+
+.wm-phasewalker .wpw-stage .wsk-field.is-tall {
+    padding-bottom: calc(3 * var(--wm-px));
+}
+
+.wm-phasewalker .wpw-stage .wsk-textarea {
+    min-height: calc(90 * var(--wm-px));
+}

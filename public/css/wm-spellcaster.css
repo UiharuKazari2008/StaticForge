@@ -1,0 +1,80 @@
+/*
+ * Melaton Mobile: Spellcaster (wmSpellcaster.js), Yozora #732. Lists / cards / progress come from
+ * wm-suite-kit.css; here only the spell screen: the rows, then the picture filling the rest
+ * (portrait), or the rows beside the picture (landscape and wide screens). Lengths N * --wm-px.
+ */
+
+.wm-spellcaster .wsc-split {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-spellcaster .wsc-side {
+    flex: 0 0 auto;
+}
+
+.wm-spellcaster .wsc-status {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: calc(6 * var(--wm-px));
+    padding: calc(5 * var(--wm-px)) calc(6 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6;
+}
+
+.wm-spellcaster .wsc-status-text {
+    white-space: nowrap;
+}
+
+.wm-spellcaster .wsc-result {
+    padding: calc(3 * var(--wm-px)) calc(6 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6;
+    color: #555;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* the picture: centred on white, as big as the screen allows */
+.wm-spellcaster .wsc-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(4 * var(--wm-px));
+    overflow: hidden;
+}
+
+.wm-spellcaster .wsc-pic {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border: calc(1 * var(--wm-px)) solid #a5a5a5;
+    pointer-events: none;
+}
+
+.wm-spellcaster .wsc-empty {
+    margin: 0;
+    padding: 0 calc(12 * var(--wm-px));
+    color: #555;
+    text-align: center;
+}
+
+/* landscape and wide screens: the rows at the left, the picture beside them */
+@media (min-aspect-ratio: 5/4) {
+    .wm-spellcaster .wsc-split {
+        flex-direction: row;
+    }
+
+    .wm-spellcaster .wsc-side {
+        flex: 0 0 42%;
+        max-width: calc(260 * var(--wm-px));
+        border-right: calc(1 * var(--wm-px)) solid #a5a5a5;
+        overflow-y: auto;
+    }
+}
