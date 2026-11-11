@@ -202,13 +202,15 @@
      * and the notification zoom rectangle (the highlight as it is, before the white-text clamp).
      * 6.5: wm65.css holds the device's Classic Blue values; three numbers turn them: --wm65-dh, the
      * workspace hue less the Classic Blue highlight's (#2d5ecf, 221.9 deg), --wm65-k, the saturation
-     * factor, and --wm65-lm, a lightness factor for the mid tones under white text (1 unless white
-     * on the turned highlight falls under 3 : 1, the 6.1 clamp). The ROM's blue selector art (list
-     * and menu selectors, menu arrow bars, message box caption, pressed scroll arrows, the tab
-     * curves' face) is redrawn pixel by pixel with the same three numbers and handed to the
+     * factor, --wm65-lm, a lightness factor for the mid tones under white text (1 unless white on
+     * the turned highlight falls under 3 : 1, the 6.1 clamp), and --wm65-near, how much of Classic
+     * Blue's own hue spread (its roles sit up to 23 deg apart) is kept: all of it within 15 deg of
+     * the device's blue, none from 45 deg on, like the 6.1 ok / X frame. The ROM's blue selector
+     * art (list and menu selectors, menu arrow bars, message box caption, pressed scroll arrows,
+     * the tab curves' face) is redrawn pixel by pixel with the same four numbers and handed to the
      * stylesheets as --wm65-art-<name> (the device ships a drawn set per theme instead). A workspace
-     * in the Classic Blue highlight colour gives 0 / 1 / 1: no art variable, the ROM's files as
-     * they are.
+     * in the Classic Blue highlight colour gives 0 / 1 / 1 / 1: no art variable, the ROM's files
+     * as they are.
      */
     function applyTheme() {
         // before the workspace is known --primary-color is the page default: keep the cached roles
@@ -232,9 +234,11 @@
         roles['--wm65-dh'] = `${dh.toFixed(1)}deg`;
         roles['--wm65-k'] = k65.toFixed(3);
         roles['--wm65-lm'] = lm.toFixed(2);
+        const near = k65 < 0.005 ? 1 : Math.max(0, Math.min(1, (45 - Math.abs(dh)) / 30));
+        roles['--wm65-near'] = near.toFixed(3);
         const ART = ['listviewselector', 'menuselector', 'menuuparrowbackground-l', 'menuuparrowbackground-m', 'menuuparrowbackground-r', 'menudownarrowbackground-l', 'menudownarrowbackground-m', 'menudownarrowbackground-r', 'msgboxtitle', 'scrollbaruparrowbuttonselected', 'scrollbardownarrowbuttonselected', 'tabcurve-face-face', 'tabcurve-face-white', 'tabcurve-white-face', 'tabcurve-face-black'];
         const art = applyTheme.art || (applyTheme.art = { key: '', vars: {}, pending: '', images: {} });
-        const artKey = `${roles['--wm65-dh']}|${roles['--wm65-k']}|${roles['--wm65-lm']}`;
+        const artKey = `${roles['--wm65-dh']}|${roles['--wm65-k']}|${roles['--wm65-lm']}|${roles['--wm65-near']}`;
         const plain = dh === 0 && k65 === 1 && lm === 1;
         if (plain) { art.key = artKey; art.vars = {}; art.pending = ''; }
         if (art.key === artKey) Object.assign(roles, art.vars);
@@ -268,7 +272,7 @@
                         const c = rgbToHsl({ r: px[p], g: px[p + 1], b: px[p + 2] });
                         // the greys (white glyphs, black edges, shadows) are not the theme's
                         if (c.s < 3) continue;
-                        const rgb = hslToRgb(turn(c.h + dh), Math.min(100, c.s * k65), c.l * lm);
+                        const rgb = hslToRgb(turn(BLUE_HUE + dh + (turn(c.h - BLUE_HUE + 180) - 180) * near), Math.min(100, c.s * k65), c.l * lm);
                         px[p] = Math.round(rgb[0] * 255);
                         px[p + 1] = Math.round(rgb[1] * 255);
                         px[p + 2] = Math.round(rgb[2] * 255);
@@ -1561,6 +1565,43 @@
         });
     }
 
+    /**
+     * The title bar's unread mail icon. As shipped it stands for NEW mail only: mail received since
+     * this client started that is still unread. The newest inbox message at start-up is the mark
+     * (its time); the icon goes once nothing unread is newer than it (read or deleted). With
+     * "show for any unread message" (Messaging > Tools > Options, localStorage wmMailIconAll) it
+     * shows while the inbox has unread mail at all, as before.
+     */
+    const MAIL_ICON_ALL_KEY = 'wmMailIconAll';
+    let shellMailNew = false;
+    let mailMark = null;      // ms of the newest inbox message when the client started
+    let mailNewBusy = false;
+    let mailNewAgain = false;
+    const mailTime = (m) => { const t = typeof m.createdAt === 'number' ? m.createdAt : Date.parse(m.createdAt); return Number.isFinite(t) ? t : 0; };
+
+    async function mailNewCheck() {
+        if (lsFlag(MAIL_ICON_ALL_KEY, false) && mailMark != null) return;
+        // nothing unread: nothing new unread either (the mark is still taken once)
+        if (!(shellMailUnread > 0) && mailMark != null) { if (shellMailNew) { shellMailNew = false; refreshStatus(); } return; }
+        if (mailNewBusy) { mailNewAgain = true; return; }
+        const ws = window.wsClient;
+        if (!ws || typeof ws.isConnected !== 'function' || !ws.isConnected()) return;
+        mailNewBusy = true;
+        try {
+            const r = await ws.sendMessage('dovecote_list_mail', { folder: 'inbox', limit: mailMark == null ? 1 : 30 }, false);
+            const list = (r && (r.mail || (r.data && r.data.mail))) || [];
+            if (mailMark == null) {
+                // an empty inbox: everything that comes is new
+                mailMark = list.reduce((max, m) => Math.max(max, mailTime(m)), 0);
+            } else {
+                const now = list.some((m) => !m.read && mailTime(m) > mailMark);
+                if (now !== shellMailNew) { shellMailNew = now; refreshStatus(); }
+            }
+        } catch (_) { /* mail unavailable: the icon keeps its state */ }
+        mailNewBusy = false;
+        if (mailNewAgain) { mailNewAgain = false; mailNewCheck(); }
+    }
+
     function refreshStatus() {
         if (!shell) return;
         applyStartButton();
@@ -1606,7 +1647,9 @@
         shell.querySelector('[data-role="latency"]').hidden = !(lat && Date.now() - lat.at < 60000);
         shell.querySelector('[data-role="prints"]').hidden = !printsInProgress();
         const mailEl = shell.querySelector('[data-role="mail"]');
-        mailEl.hidden = !(shellMailUnread > 0);
+        // any unread mail, if the user asked for that (Messaging > Tools > Options); else only mail
+        // that came in since this client started and is still unread (mailNewCheck)
+        mailEl.hidden = !(lsFlag(MAIL_ICON_ALL_KEY, false) ? shellMailUnread > 0 : shellMailNew);
         paintBezelLed();
         if (noteTrayOpen) renderNotes(); else fitStatus();
         const bubble = shell.querySelector('.wm-bubble');
@@ -4480,6 +4523,7 @@
                 const mine = boxes.find((b) => b.owner === owner);
                 mailUnread = mine ? (mine.unread || 0) : 0;
                 shellMailUnread = mailUnread;
+                mailNewCheck();
                 ok = true;
             } catch (_) { /* mail unavailable: the row keeps its last text */ }
             mailLoading = false;
@@ -4625,6 +4669,7 @@
                     const mine = boxes.find((b) => b.owner === owner);
                     mailUnread = mine ? (mine.unread || 0) : 0;
                     shellMailUnread = mailUnread;
+                    mailNewCheck();
                     refreshStatus();
                 });
                 window.addEventListener('meletonaccountschange', () => today.refresh());
@@ -6248,6 +6293,8 @@
         /** An app's page, made (mounted) without bringing the app up. */
         pageOf: (id) => (apps.has(id) ? pageFor(apps.get(id)) : null),
         listApps: () => [...apps.values()].map((a) => ({ id: a.id, title: a.title, startLabel: a.startLabel, icon: a.icon, inStart: a.inStart, sip: !!a.sip, programsFolder: a.programsFolder || null })),
+        /** The unread mail icon's "any unread message" switch (Messaging > Tools > Options). */
+        mailIconAllKey: MAIL_ICON_ALL_KEY,
         /** The low battery warning level in percent, and its storage key (Settings > Power). */
         batteryLowLevel,
         refreshStatus: () => refreshStatus(),

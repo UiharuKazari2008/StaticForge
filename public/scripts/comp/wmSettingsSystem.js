@@ -865,6 +865,34 @@
         return keys;
     }
 
+    // ================================================================ Messaging > Tools > Options
+    // A page of Messaging's own (hidden: not in the Settings grids), opened from its menu. Message:
+    // whether the title bar's envelope stands for any unread message, or (as shipped) only for
+    // mail that came in since this client started (wmShell.js mailNewCheck).
+    wmSettings.registerPage({
+        id: 'messaging-options', tab: 'personal', label: 'Options', icon: 'app-messaging', hidden: true,
+        tabs: [['message', 'Message']],
+        init() {
+            const key = (sh() && sh().mailIconAllKey) || 'wmMailIconAll';
+            let on = false;
+            try { on = localStorage.getItem(key) === '1'; } catch (_) { on = false; }
+            return { key, all: on, initial: on };
+        },
+        render(el, tab, d) {
+            el.innerHTML = `${ui.check('mail-icon-all', 'Show the unread message icon for any unread message', d.all)}
+                ${ui.note('When this is off, the icon shows only for messages received since Melaton Mobile started.')}`;
+            el.querySelector('input[name="mail-icon-all"]').addEventListener('change', (e) => { d.all = e.target.checked; });
+        },
+        async commit(d) {
+            if (d.all === d.initial) return [];
+            try { localStorage.setItem(d.key, d.all ? '1' : '0'); } catch (_) { return []; }
+            d.initial = d.all;
+            const s1 = sh();
+            if (s1 && typeof s1.refreshStatus === 'function') s1.refreshStatus();
+            return [d.key];
+        }
+    });
+
     wmSettings.registerPage({
         id: 'power', tab: 'system', label: 'Power', icon: 'set-power',
         tabs: [['battery', 'Battery'], ['advanced', 'Advanced']],

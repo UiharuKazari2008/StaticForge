@@ -1681,7 +1681,7 @@
         // links the Settings grid shows, and the Programs list, as data.
         gridItems: () => {
             const have = new Set(sh ? sh.listApps().map((a) => a.id) : []);
-            return PAGES.filter(safeAvailable).map((p) => ({ key: p.id, tab: p.tab, label: p.label, icon: p.icon }))
+            return PAGES.filter((p) => !p.hidden && safeAvailable(p)).map((p) => ({ key: p.id, tab: p.tab, label: p.label, icon: p.icon }))
                 .concat(SETTINGS_LINKS.filter((l) => !l.app || have.has(l.app)).map((l) => ({ key: l.id, tab: l.tab, label: l.label, icon: l.icon, app: l.app || null, open: l.open || null })));
         },
         programItems: (folder) => programItems(folder),
@@ -1695,7 +1695,7 @@
         let backPending = null; // the page whose back-key commit is still running
 
         function pagesFor(tab) {
-            return PAGES.filter((p) => p.tab === tab && safeAvailable(p));
+            return PAGES.filter((p) => p.tab === tab && !p.hidden && safeAvailable(p));
         }
 
         function renderGrid() {

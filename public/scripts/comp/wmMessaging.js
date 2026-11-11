@@ -974,7 +974,7 @@
                     { label: 'Empty Deleted Items', disabled: !mine, action: emptyDeleted },
                     { label: 'Enable Updates', disabled: true },
                     { label: 'New Account...', disabled: true },
-                    { label: 'Options...', disabled: true }
+                    { label: 'Options...', disabled: !(window.wmSettings && typeof window.wmSettings.open === 'function'), action: () => window.wmSettings.open('messaging-options', null, { direct: true }) }
                 ] },
                 { label: 'Select Messages', submenu: () => [{ label: 'All', disabled: true }, { label: 'All Below', disabled: true }, { label: 'Several', disabled: true }] },
                 { label: 'Send/Receive', action: sendReceive }
