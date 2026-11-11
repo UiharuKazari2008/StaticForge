@@ -388,6 +388,8 @@
             hide() { folder = null; },
             softKeys() { return { left: null, right: null }; },
             historyDepth: () => (folder ? 1 : 0),
+            // X in a folder goes back to Programs; X on Programs itself closes (Yukimi, Nov 10)
+            closeGoesBack: true,
             onBack() {
                 if (!folder) return false;
                 folder = null;

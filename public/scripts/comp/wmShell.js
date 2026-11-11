@@ -564,6 +564,15 @@
                 return;
             }
         }
+        // X inside a folder of a folder-like app (Programs: closeGoesBack) goes up to the parent
+        // folder, not out of the app (Yukimi, Nov 10)
+        if (kind === 'close' && app && app.closeGoesBack && typeof app.onBack === 'function'
+            && typeof app.historyDepth === 'function' && Number(app.historyDepth()) > 0 && app.onBack()) {
+            syncHistory({ noPush: true });
+            renderSoftKeys();
+            refreshTitleAction();
+            return;
+        }
         // X closes the app (Yukimi, Nov 10: as on WM; multitasking is the Start menu): its own close
         // (onTitleClose: Studio, the Director and hosted programs close their windows their way),
         // then it ends (endApp: a fresh page next time, off the Start strip). ok on an app's only
