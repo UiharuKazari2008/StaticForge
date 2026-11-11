@@ -65,7 +65,10 @@
         // A phone (touch, under 1200 px) is a phone even as an agent tab: ?agent=1 forces
         // the desktop only on desktop browsers (#709)
         const phoneBrowser = innerWidth < 1200 && touchFirst;
-        const isWideScreen = (agentBrowserSession && !phoneBrowser) || innerWidth >= 1200;
+        // The Android app in Samsung DeX (or on any desktop display) is a desktop at any window size;
+        // the app reloads the page when it moves between the phone screen and DeX.
+        const androidDesktop = (() => { try { return !!(window.AndroidDisplay && window.AndroidDisplay.isDesktop()); } catch (_) { return false; } })();
+        const isWideScreen = (agentBrowserSession && !phoneBrowser) || innerWidth >= 1200 || androidDesktop;
         // The shell is chosen once per page load and never changes while the page lives: the
         // desktop and Melaton Mobile (wm-shell.css, wmShell.js, #709) never share the screen.
         // Under 1200 px a page that is not an agent tab is a phone.
