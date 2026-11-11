@@ -1276,6 +1276,21 @@ Returns NovelAI's raw-deflate Qwen BPE definition. The server downloads it from 
 
 **Auth:** Required. Serves the vendored `fflate` browser build (`public/scripts/vendor/fflate.js`, fflate 0.8.3, MIT) used to decode tokenizer definitions.
 
+### VisionCaster OSD and live preview (#734)
+
+Routes from `modules/avOsdHttp.js` (registered in `web_server.js`). The VisionCaster websocket side is in [ws/quickcast.md](./ws/quickcast.md).
+
+| Route | Auth | Notes |
+|-------|------|-------|
+| `GET /av-osd/:box?k=<token>[&card=systest\|slate&cab=<id>]` | No login session; the per-box token from `osd.json` | The OSD page for the box's own OBS browser source. Wrong box or token: `404` with no body. `Cache-Control: no-store` |
+| `GET /av-osd/:box/events?k=<token>[&card=...&cab=<id>]` | Same per-box token | Server-Sent Events for the OSD page (or the System Test / slate card with `card`). A `data: {"beat":1}` heartbeat every 15 s. Exempt from the busy-status gate (`modules/busyStatus.js`) because it stays open |
+| `GET /av-osd-art/:name.png` | None | The units' logos, fixed list `takao` and `amuvision` (from `apps/quickcast/assets/`); anything else `404`. `Cache-Control: no-cache` |
+| `GET /quickcast/live/:ticket` | One-time ticket from the admin websocket `quickcast_live_ticket` | MJPEG REALTIME preview of the cabinet's layout. An unknown or already-used ticket answers `404`; the ticket is dropped when the stream closes. `X-Robots-Tag: noindex`; exempt from the busy-status gate |
+
+### ActiveSync file transfer (#747)
+
+The chunked `/api/activesync/file|transfer|upload/...` routes from `modules/activeSyncTransfers.js` (phone to desktop and desktop to phone) are documented in [ws/activeSync.md](./ws/activeSync.md).
+
 ---
 
 ## Replication
