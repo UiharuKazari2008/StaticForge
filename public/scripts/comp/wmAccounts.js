@@ -456,6 +456,20 @@
         return out;
     }
 
+    /** The 6.5 home screen panel (wmTitanium.js): an account a page, its balance and status under its name. */
+    function todayTitanium() {
+        const rows = todayShow() === 'balances'
+            ? todayBalanceCols().map((c) => ({ name: c.caption, balance: c.value, status: '' }))
+            : todayRows();
+        if (!rows.length) return null;
+        const go = () => { if (current.alerts.length) tab = 'alerts'; sh.open(APP_ID, { fromStart: true }); };
+        return {
+            label: 'accounts', icon: 'x:app-accounts-lg',
+            pages: rows.map((r) => ({ title: r.name, line2: r.balance, line3: r.status })),
+            softKey: { label: 'Accounts', action: go }, onTap: go
+        };
+    }
+
     let todayKey = '';
     /** Balances only: one column per picked balance, its caption over the figure. */
     function todayBalanceCols() {
@@ -564,7 +578,8 @@
                     // the accounts the wallet knows now (NovelAI's Anlas and usage apart)
                     { key: 'accounts', label: 'Accounts', type: 'checks', value: '', get choices() { return accountChoices(); } }
                 ],
-                render: renderToday
+                render: renderToday,
+                titanium: todayTitanium
             });
         }
         startPolling();

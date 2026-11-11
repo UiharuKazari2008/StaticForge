@@ -1,0 +1,141 @@
+/* Melaton Mobile 6.5 (Yozora #739): the Start screen (wmStart65.js). Every rule is scoped to
+ * html.ui-mobile[data-wm-version="6.5"]. Metrics are WM 6.5 Professional's, from the ROM's
+ * StartMenu_GridScene_480x640.cpr and the VGA emulator, halved into design units (--wm-px):
+ * cell 96x83, columns 72 apart (cells overlap by 24), rows 83 apart, the middle column 41.5
+ * lower; icon 45x45 at 25.5,2; label box 78x34 at 9,49; selection glow 96x79 at 0,-15. */
+
+html.ui-mobile[data-wm-version="6.5"] .wm-page.wm-s65 {
+    overflow: hidden;
+    background: #000;
+    color: #fff;
+}
+
+/* Today's picture where Today shows it (copied by wmStart65.js), then the ROM's sheet:
+ * StartMenu_Background_Screen is plain black at 50 % */
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-wall,
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-sheet,
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-view {
+    position: absolute;
+    inset: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-sheet {
+    background-image: url("/static_images/wm65/start-background.png");
+    background-image: image-set(url("/static_images/wm65/start-background.png") 1x, url("/static_images/wm65/start-background@2x.png") 2x);
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+}
+
+/* the grid's window: the finger is read by wmStart65.js (WM's pan, not the browser's scroll) */
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-view {
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/* the scrolled layer: only its transform changes while a finger pans or the grid coasts */
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-list {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: calc(var(--half, 0) * 41.5 * var(--wm-px));
+    will-change: transform;
+}
+
+/* a 480 px screen: columns at 0 / 144 / 288, cells 192 wide. Kept as shares of the width (30 %
+ * apart, 40 % wide) so a wider phone spreads the three columns the same way */
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-cell {
+    position: absolute;
+    left: calc(var(--c) * 30%);
+    /* the half unit of the middle column's 41.5 is a transform: Chrome places a box on whole CSS
+     * pixels (25.5 was painted at 26), a transform is not snapped */
+    top: calc((var(--r) * 83 + var(--m) * 41) * var(--wm-px));
+    transform: translateY(calc(var(--m) * 0.5 * var(--wm-px)));
+    width: 40%;
+    height: calc(83 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: inherit;
+    font: inherit;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    -webkit-tap-highlight-color: transparent;
+    /* two neighbours overlap by a quarter of a cell: a cell takes taps on its own middle (the 30 %
+     * of the screen no other column covers), its icon and its label */
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-cell::before {
+    content: "";
+    position: absolute;
+    left: 12.5%;
+    right: 12.5%;
+    top: 0;
+    bottom: 0;
+    pointer-events: auto;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-icon {
+    position: absolute;
+    left: calc(50% - 23 * var(--wm-px));
+    top: calc(2 * var(--wm-px));
+    transform: translateX(calc(0.5 * var(--wm-px)));
+    width: calc(45 * var(--wm-px));
+    height: calc(45 * var(--wm-px));
+    /* ScaleStyle="Fit": other art (a Dreamscape app's own icon) is fitted into the 90x90 box */
+    object-fit: contain;
+    pointer-events: auto;
+}
+
+/* Tahoma 7 pt, white, centred, wrapped. On the emulator the glyphs are 18 px tall-set (9 units:
+ * "Internet Explorer" is 132 px wide, x 317..448, rows 320..337; here 133 px at 9 units, 141 at
+ * 9.5) and GDI's hinted stems are a full 2 px: a 0.4-unit stroke gives the same weight (689
+ * near-white pixels in that label on the emulator, 693 here; 341 without the stroke) */
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-label {
+    position: absolute;
+    left: calc(9 * var(--wm-px));
+    right: calc(9 * var(--wm-px));
+    top: calc(49 * var(--wm-px));
+    max-height: calc(33 * var(--wm-px));
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    font: calc(9 * var(--wm-px)) / calc(11 * var(--wm-px)) var(--wm-font);
+    -webkit-text-stroke: calc(0.4 * var(--wm-px)) #fff;
+    text-align: center;
+    color: #fff;
+    /* plain white, no shadow: the emulator's label pixels are 255 or the picture, nothing between.
+     * GDI centres the text 1 px left of the cell's middle ("Today" x 71..118, cell centre 96) */
+    text-shadow: none;
+    transform: translateX(calc(-0.5 * var(--wm-px)));
+    pointer-events: auto;
+}
+
+/* StartMenu_Selection.png at 0,-30 of the selected cell, under the icons */
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-glow {
+    position: absolute;
+    left: calc(var(--c) * 30% + 20% - 48 * var(--wm-px));
+    top: calc((var(--r) * 83 + var(--m) * 41 - 15) * var(--wm-px));
+    transform: translateY(calc(var(--m) * 0.5 * var(--wm-px)));
+    width: calc(96 * var(--wm-px));
+    height: calc(79 * var(--wm-px));
+    background-image: url("/static_images/wm65/start-selection.png");
+    background-image: image-set(url("/static_images/wm65/start-selection.png") 1x, url("/static_images/wm65/start-selection@2x.png") 2x);
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-glow[hidden] {
+    display: none;
+}

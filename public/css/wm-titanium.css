@@ -1,0 +1,218 @@
+/*
+ * Melaton Mobile 6.5: the "Melaton Default" home screen (wmTitanium.js, Yozora #739).
+ * Lengths are the ROM layout's (\Windows\Titanium_480x640.cpr, VGA pixels) halved to WM units:
+ * var(--wm-px) is one QVGA pixel. Fonts: Tahoma, points at 96 dpi (18 pt = 24 units, 10 pt =
+ * 13.33, 8 pt = 10.67, 28 pt = 37.33, 10.5 pt = 14). Every text has the layout's two stages:
+ * a black drop shadow 1 px down-right with blur 3 (VGA), then white.
+ */
+html.ui-mobile[data-wm-version="6.5"] .wm-today.is-titanium {
+    overflow: hidden;
+    padding: 0;
+}
+
+/* Today's rows stay in the page as the panels' data source, never shown */
+html.ui-mobile[data-wm-version="6.5"] .wm-today.is-titanium > [data-row] {
+    display: none !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti {
+    --u: var(--wm-px);
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    color: #fff;
+    font-family: var(--wm-font);
+    text-shadow: calc(1 * var(--u)) calc(1 * var(--u)) calc(1.5 * var(--u)) #000, calc(0.5 * var(--u)) calc(0.5 * var(--u)) calc(0.75 * var(--u)) rgba(0, 0, 0, 0.7);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    contain: layout paint;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti[hidden] {
+    display: none;
+}
+
+/* ---- condensed items ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-list {
+    position: absolute;
+    inset: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-row {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: calc(34 * var(--u));
+    box-sizing: border-box;
+    padding: calc(5.25 * var(--u)) calc(10 * var(--u)) 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: calc(24 * var(--u));
+    line-height: 1.2075;
+    will-change: transform;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-count {
+    display: inline-block;
+    margin-left: calc(4 * var(--u));
+    font-size: calc(14 * var(--u));
+    line-height: 1.2075;
+    vertical-align: top;
+}
+
+/* at rest the items fade with their distance from the band */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-row[data-far="2"] { opacity: var(--wm-ti-far2, 0.8); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-row[data-far="3"] { opacity: var(--wm-ti-far3, 0.55); }
+
+/* the selected item's label waits in the band while the list moves; at rest the panel is there */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-row.is-sel { opacity: 0.55; }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-rest .wm-ti-row.is-sel { visibility: hidden; }
+
+/* ---- the focus band (RCDATA 3000, 480 x 164, stretched to the width) ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-band {
+    position: absolute;
+    left: 0;
+    top: calc(var(--wm-ti-top, 99) * var(--u));
+    width: 100%;
+    height: calc(82 * var(--u));
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-focus {
+    position: absolute;
+    left: 0;
+    top: calc(var(--wm-ti-top, 99) * var(--u));
+    width: 100%;
+    height: calc(70 * var(--u));
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-exp {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-rest .wm-ti-exp {
+    opacity: 1;
+    transition: opacity 0.18s linear;
+}
+
+/* panel icon: 86 x 114 at 376,-26 (18 from the right edge) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-icon {
+    position: absolute;
+    right: calc(9 * var(--u));
+    top: calc(-13 * var(--u));
+    width: calc(43 * var(--u));
+    height: calc(57 * var(--u));
+    object-fit: contain;
+    object-position: center top;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-line {
+    position: absolute;
+    left: calc(10 * var(--u));
+    right: calc(56 * var(--u));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2075;
+    font-size: calc(10.667 * var(--u));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-line.is-1 {
+    font-size: calc(13.333 * var(--u));
+    font-weight: bold;
+}
+
+/* three lines 34 / 68 / 98, two 52 / 86, one 66 */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-lines="3"] .is-1 { top: calc(17 * var(--u)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-lines="3"] .is-2 { top: calc(34 * var(--u)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-lines="3"] .is-3 { top: calc(49 * var(--u)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-lines="2"] .is-1 { top: calc(26 * var(--u)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-lines="2"] .is-2,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-lines="2"] .is-3 { top: calc(43 * var(--u)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-lines="1"] .is-1 { top: calc(33 * var(--u)); }
+
+/* with a picture (86 x 86 at 20,34, white 2 px frame) the lines start at 118 */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-pic {
+    position: absolute;
+    left: calc(10 * var(--u));
+    top: calc(17 * var(--u));
+    width: calc(43 * var(--u));
+    height: calc(43 * var(--u));
+    outline: calc(1 * var(--u)) solid #fff;
+    background: #000 center / cover no-repeat;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-pic] .wm-ti-line { left: calc(59 * var(--u)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-pic][data-lines="1"] .is-1 { top: calc(26 * var(--u)); }
+
+/* with a small icon (32 x 32 at 20,62) the line starts at 64 */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-small {
+    position: absolute;
+    left: calc(10 * var(--u));
+    top: calc(31 * var(--u));
+    width: calc(16 * var(--u));
+    height: calc(16 * var(--u));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-small] .wm-ti-line { left: calc(32 * var(--u)); }
+
+/* ---- the clock panel: time 20,22 (186 wide, right aligned, 28 pt), AM/PM 226,36, date 226,66,
+   network 20,104 ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-time {
+    position: absolute;
+    left: calc(10 * var(--u));
+    top: calc(11.5 * var(--u));
+    width: calc(93 * var(--u));
+    text-align: right;
+    font-size: calc(37.333 * var(--u));
+    line-height: 1.2075;
+    white-space: nowrap;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-ampm,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-date,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-network {
+    position: absolute;
+    left: calc(113 * var(--u));
+    font-size: calc(10.667 * var(--u));
+    line-height: 1.2075;
+    white-space: nowrap;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-ampm { top: calc(18 * var(--u)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-date { top: calc(33 * var(--u)); }
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-network {
+    left: calc(10 * var(--u));
+    right: calc(56 * var(--u));
+    top: calc(52 * var(--u));
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- page arrows: 8 x 18 at 4,74 and 4 from the right; a finger-size hit box around each ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-arrow {
+    position: absolute;
+    top: calc(22 * var(--u));
+    width: calc(16 * var(--u));
+    height: calc(39 * var(--u));
+    padding: 0;
+    border: 0;
+    background: transparent no-repeat;
+    background-size: calc(4 * var(--u)) calc(9 * var(--u));
+    pointer-events: auto;
+    opacity: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-rest .wm-ti-arrow { opacity: 1; }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-arrow[hidden] { display: none; }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-arrow[data-dir="-1"] { left: 0; background-position: calc(2 * var(--u)) calc(15 * var(--u)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-arrow[data-dir="1"] { right: 0; background-position: right calc(2 * var(--u)) top calc(15 * var(--u)); }

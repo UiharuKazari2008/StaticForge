@@ -544,6 +544,20 @@
         return loaded || today.loading;
     }
 
+    /**
+     * The 6.5 home screen panel (wmTitanium.js): the node count, then a cabinet a page with its state.
+     * Status only: a panel sends no command (the quick controls stay in the app).
+     */
+    function todayTitanium() {
+        if (!isAdminUser()) return null;
+        if (!loaded && !today.loading) return null;
+        const go = () => sh.open(APP_ID, { fromStart: true });
+        const up = devices.filter((d) => d.status && !d.status.failed).length;
+        const pages = [{ title: 'XLink', line2: loaded ? (listError ? 'Not reachable' : `${up}/${devices.length} nodes`) : 'Connecting...' }]
+            .concat(devices.map((d) => ({ title: d.name, line2: d.status ? (d.status.failed ? 'No response' : (d.status.text || 'Up')) : 'No status' })));
+        return { label: 'xlink', icon: 'x:app-xlink-lg', pages, softKey: { label: 'XLink', action: go }, onTap: go };
+    }
+
     // ---------------------------------------------------------------- event log
 
     function renderLog(host) {
@@ -724,7 +738,8 @@
                 icon: ICON,
                 after: 'tasks',
                 options: [{ key: 'show', label: 'Show', choices: [['controls', 'Status and quick controls'], ['status', 'Status only']], value: 'controls' }],
-                render: todayRender
+                render: todayRender,
+                titanium: todayTitanium
             });
         }
     }

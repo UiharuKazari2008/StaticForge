@@ -45,8 +45,13 @@
         camera: 'wmCamera',
         cameraPortraitOnly: 'wmCameraPortraitOnly',
         showBluetoothIcon: 'wmShowBluetoothIcon',
-        showCellIcon: 'wmShowCellIcon'
+        showCellIcon: 'wmShowCellIcon',
+        version: 'wmVersion'
     };
+    // The UI version this page runs (app.html sets html[data-wm-version] before the first paint)
+    // and the one stored for the next start: Melaton Update > Version changes the stored one.
+    const VERSIONS = [['6.1', 'Melaton Mobile 6.1'], ['6.5', 'Melaton Mobile 6.5']];
+    const runningVersion = () => (root.dataset.wmVersion === '6.5' ? '6.5' : '6.1');
     const SCALES = [1, 1.25, 1.5, 1.75, 2];
     const MELATON_EMBLEM = '/static_images/melaton/melaton-white-256.png';
     // WM 6.1's colour Start flag (shellres.192 icon 4609); a user-chosen exception to the copyright
@@ -148,7 +153,9 @@
         return { source: 'wm', text: 'Start', icon: MELATON_EMBLEM };
     }
 
-    window.wmSettings = { keys: K, startButton, todayUsesDesktop, titleBarStyle, cameraStyle, applyScale, scales: SCALES };
+    const storedVersion = () => (lsGet(K.version) === '6.5' ? '6.5' : '6.1');
+
+    window.wmSettings = { keys: K, startButton, todayUsesDesktop, titleBarStyle, cameraStyle, applyScale, scales: SCALES, versions: VERSIONS, version: runningVersion, storedVersion };
 
     // ---------------------------------------------------------------- helpers
 
@@ -467,8 +474,11 @@
         const saved = lsJson(K.todayItems);
         const out = [];
         const seen = new Set();
+        // 6.5 lists its home screen first, as Windows Mobile 6.5 lists "Windows Default": checked,
+        // Today is that screen and the items below are its panels; unchecked, Today shows them as rows
+        const first = runningVersion() === '6.5' ? [['titanium', 'Melaton Default']] : [];
         // the shell's rows and the rows apps add (wmShell.registerTodayItem: Accounts ...)
-        const rows = TODAY_ROWS.concat(sh && typeof sh.listTodayItems === 'function' ? sh.listTodayItems().map((w) => [w.id, w.label, w.defaultOn]) : []);
+        const rows = first.concat(TODAY_ROWS, sh && typeof sh.listTodayItems === 'function' ? sh.listTodayItems().map((w) => [w.id, w.label, w.defaultOn]) : []);
         if (Array.isArray(saved)) {
             for (const r of saved) {
                 const def = r && rows.find(([id]) => id === r.id);
@@ -478,6 +488,11 @@
             }
         }
         for (const [id, label, defaultOn] of rows) if (!seen.has(id)) out.push({ id, label, on: defaultOn !== false });
+        // an order saved under 6.1 has no home screen entry: it still leads the list
+        if (first.length && !(Array.isArray(saved) && saved.some((r) => r && r.id === 'titanium'))) {
+            const at = out.findIndex((it) => it.id === 'titanium');
+            if (at > 0) out.unshift(out.splice(at, 1)[0]);
+        }
         return out;
     }
 
@@ -1462,6 +1477,14 @@
             sh.open('settings');
             return settingsHost.openPage(id, tab, opts);
         },
+        // 6.5 (#739, wmStart65.js): Settings is a folder of the Start screen there. The applets and
+        // links the Settings grid shows, and the Programs list, as data.
+        gridItems: () => {
+            const have = new Set(sh ? sh.listApps().map((a) => a.id) : []);
+            return PAGES.filter(safeAvailable).map((p) => ({ key: p.id, tab: p.tab, label: p.label, icon: p.icon }))
+                .concat(SETTINGS_LINKS.filter((l) => !l.app || have.has(l.app)).map((l) => ({ key: l.id, tab: l.tab, label: l.label, icon: l.icon, app: l.app || null, open: l.open || null })));
+        },
+        programItems: (folder) => programItems(folder),
         ui
     });
 

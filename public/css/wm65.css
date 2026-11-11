@@ -1,0 +1,1057 @@
+/*
+ * Melaton Mobile 6.5 (Yozora #739): the Windows Mobile 6.5 Professional look of the shell chrome
+ * and the common controls. Every rule is scoped to html.ui-mobile[data-wm-version="6.5"], so the
+ * 6.1 style is untouched; this file loads after every other wm-*.css.
+ *
+ * Metrics are WM 6.5 Professional VGA (480 x 640, 192 dpi) from the device (Device Emulator),
+ * halved: N * --wm-px as in wm-shell.css. Art is the ROM's own (public/static_images/wm65: the
+ * black bar theme with the Classic Blue selection art, shellres.192.dll title-bar icons); @2x is
+ * the ROM file, 1x its Lanczos half.
+ */
+
+/* ---- colours: the device's system colours (HKLM\System\GWE SysColor, Classic Blue). The bars
+ * are the black theme art and the selectors are blue art, so the roles are pinned here and do not
+ * follow the workspace colour (wmShell.js applyTheme sets them inline: hence !important) ---- */
+html.ui-mobile[data-wm-version="6.5"] {
+    --wm-title: #000 !important;
+    --wm-rule: #000 !important;
+    --wm-highlight: #2d5ecf !important;
+    --wm-highlight-text: #fff !important;
+    --wm-menu-text: #120c7f !important;
+    --wm-tint: #c9cde9 !important;
+    --wm-tab-strip: #c9cde9 !important;
+    --wm-start-rule: #120c7f !important;
+    --wm-softkey-base: #000 !important;
+    --wm-gloss-top: #000 !important;
+    --wm-gloss-bottom: #000 !important;
+    /* 6.5's own roles */
+    --wm65-text: #090733;
+    --wm65-caption: #374bd3;
+    --wm65-face: #c9cde9;
+    --wm65-gray: #999;
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell {
+    color: var(--wm65-text);
+}
+
+/* ---- title bar: 26 px of the black taskbar art, no rule under it ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-titlebar {
+    height: calc(26 * var(--wm-px));
+    border-bottom: 0;
+    background: #000;
+    color: #fff;
+}
+
+/* Today and the Start screen: the bars are see-through, black at 100 / 255 over the picture
+ * (device: bar pixel = wallpaper pixel x 0.61 on both bars) */
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="today"] .wm-titlebar,
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] .wm-titlebar,
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="today"] .wm-softkeys,
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] .wm-softkeys {
+    background: rgba(0, 0, 0, 0.392);
+}
+
+/* Start cell: the picture in a 16 px cell at x 3, y 5 (the device's flag icon cell), no rule */
+html.ui-mobile[data-wm-version="6.5"] .wm-start,
+html.ui-mobile[data-wm-version="6.5"] .wm-start.is-flag {
+    width: calc(22 * var(--wm-px));
+    align-items: flex-start;
+    justify-content: flex-start;
+    border-right: 0;
+    position: relative;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-start img,
+html.ui-mobile[data-wm-version="6.5"] .wm-start.is-flag img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin: calc(5 * var(--wm-px)) 0 0 calc(3 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-start.is-flag::after {
+    display: none;
+}
+
+/* pressed: the theme's taskbar highlight (120 x 52 at 2x) centred on the cell */
+html.ui-mobile[data-wm-version="6.5"] .wm-start::before {
+    content: '';
+    position: absolute;
+    left: calc(-19 * var(--wm-px));
+    top: 0;
+    width: calc(60 * var(--wm-px));
+    height: calc(26 * var(--wm-px));
+    background: url('/static_images/wm65/theme-black-taskbarhighlight@2x.png') center / 100% 100% no-repeat;
+    opacity: 0;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-start:active::before,
+html.ui-mobile[data-wm-version="6.5"] .wm-titlebar.is-start-open > .wm-start::before {
+    opacity: 1;
+}
+
+/* 6.5 has no Start menu glow over the bar */
+html.ui-mobile[data-wm-version="6.5"] .wm-titlebar::before {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-titlebar.is-start-open > .wm-title {
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-titlebar.is-start-open > .wm-start:not(.is-flag) > img[src="/static_images/melaton/melaton-white-256.png"] {
+    visibility: visible;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-titlebar.is-start-open > .wm-start:not(.is-flag):has(> img[src="/static_images/melaton/melaton-white-256.png"])::before {
+    left: calc(-19 * var(--wm-px));
+    top: 0;
+    width: calc(60 * var(--wm-px));
+    height: calc(26 * var(--wm-px));
+    transform: none;
+    background: url('/static_images/wm65/theme-black-taskbarhighlight@2x.png') center / 100% 100% no-repeat;
+    -webkit-mask: none;
+    mask: none;
+}
+
+/* title: Tahoma bold 8 pt (21 px at 192 dpi = 10.5), white, from x 27 */
+html.ui-mobile[data-wm-version="6.5"] .wm-title {
+    padding-left: calc(4.5 * var(--wm-px));
+    font-size: calc(10.5 * var(--wm-px));
+    font-weight: bold;
+    line-height: calc(23.5 * var(--wm-px));
+    align-self: stretch;
+}
+
+/* status icons: 16 px cells (shellres.192.dll 32 px icons) at y 5 on a 21 px pitch; the battery
+ * sits one more 5 px gap to the right; the corner cell (X / ok) is 16 px, 5 px after the
+ * battery and 1 px from the edge, and keeps its place when an app has none */
+html.ui-mobile[data-wm-version="6.5"] .wm-status,
+html.ui-mobile[data-wm-version="6.5"] .wm-status-left {
+    gap: calc(5 * var(--wm-px));
+    align-self: flex-start;
+    margin-top: calc(5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-status {
+    padding-right: calc(5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status,
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status {
+    padding-right: calc(22 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-role="battery"] {
+    margin-left: calc(5 * var(--wm-px));
+}
+
+/* the art: shellres.192.dll icon frames. H+, 4G, 4G+, NR, NR-A, UWB, 5G and 5G+ (data types WM 6.5
+ * never had) are Melaton-drawn in the ROM's style: the G / E / 3G / H icons' rounded box with the
+ * letters cut out. 2x is the ROM frame; the 1x art serves only a 1x scale. */
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="bluetooth"] { background-image: url('/static_images/wm65/status-bluetooth@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-off"] { background-image: url('/static_images/wm65/status-data-off@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-on"] { background-image: url('/static_images/wm65/status-data-on@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-active"] { background-image: url('/static_images/wm65/status-data-active@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="volume"] { background-image: url('/static_images/wm65/status-volume@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="volume-off"] { background-image: url('/static_images/wm65/status-volume-off@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="vibrate"] { background-image: url('/static_images/wm65/status-vibrate@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="notify-many"] { background-image: url('/static_images/wm65/status-notify-many@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-1"] { background-image: url('/static_images/wm65/status-signal-1@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-2"] { background-image: url('/static_images/wm65/status-signal-2@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-3"] { background-image: url('/static_images/wm65/status-signal-3@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-4"] { background-image: url('/static_images/wm65/status-signal-4@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-none"] { background-image: url('/static_images/wm65/status-signal-none@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-off"] { background-image: url('/static_images/wm65/status-signal-off@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-alert"] { background-image: url('/static_images/wm65/status-signal-alert@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="roaming"] { background-image: url('/static_images/wm65/status-roaming@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="wifi-available"] { background-image: url('/static_images/wm65/status-wifi-available@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="wifi-connected"] { background-image: url('/static_images/wm65/status-wifi-connected@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-full"] { background-image: url('/static_images/wm65/status-battery-full@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-3"] { background-image: url('/static_images/wm65/status-battery-3@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-2"] { background-image: url('/static_images/wm65/status-battery-2@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-1"] { background-image: url('/static_images/wm65/status-battery-1@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-empty"] { background-image: url('/static_images/wm65/status-battery-empty@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-charging"] { background-image: url('/static_images/wm65/status-battery-charging@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-unknown"] { background-image: url('/static_images/wm65/status-battery-unknown@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-g"] { background-image: url('/static_images/wm65/status-data-g@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-g-active"] { background-image: url('/static_images/wm65/status-data-g-active@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-e"] { background-image: url('/static_images/wm65/status-data-e@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-e-active"] { background-image: url('/static_images/wm65/status-data-e-active@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-3g"] { background-image: url('/static_images/wm65/status-data-3g@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-3g-active"] { background-image: url('/static_images/wm65/status-data-3g-active@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h"] { background-image: url('/static_images/wm65/status-data-h@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h-active"] { background-image: url('/static_images/wm65/status-data-h-active@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h-plus"] { background-image: url('/static_images/wm65/status-data-h-plus@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h-plus-active"] { background-image: url('/static_images/wm65/status-data-h-plus-active@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g"] { background-image: url('/static_images/wm65/status-data-4g@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g-active"] { background-image: url('/static_images/wm65/status-data-4g-active@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g-plus"] { background-image: url('/static_images/wm65/status-data-4g-plus@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g-plus-active"] { background-image: url('/static_images/wm65/status-data-4g-plus-active@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr"] { background-image: url('/static_images/wm65/status-data-nr@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-active"] { background-image: url('/static_images/wm65/status-data-nr-active@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-a"] { background-image: url('/static_images/wm65/status-data-nr-a@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-a-active"] { background-image: url('/static_images/wm65/status-data-nr-a-active@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uwb"] { background-image: url('/static_images/wm65/status-data-uwb@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uwb-active"] { background-image: url('/static_images/wm65/status-data-uwb-active@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g"] { background-image: url('/static_images/wm65/status-data-5g@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-active"] { background-image: url('/static_images/wm65/status-data-5g-active@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-plus"] { background-image: url('/static_images/wm65/status-data-5g-plus@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-plus-active"] { background-image: url('/static_images/wm65/status-data-5g-plus-active@2x.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="bluetooth"] { background-image: url('/static_images/wm65/status-bluetooth.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-off"] { background-image: url('/static_images/wm65/status-data-off.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-on"] { background-image: url('/static_images/wm65/status-data-on.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-active"] { background-image: url('/static_images/wm65/status-data-active.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="volume"] { background-image: url('/static_images/wm65/status-volume.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="volume-off"] { background-image: url('/static_images/wm65/status-volume-off.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="vibrate"] { background-image: url('/static_images/wm65/status-vibrate.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="notify-many"] { background-image: url('/static_images/wm65/status-notify-many.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-1"] { background-image: url('/static_images/wm65/status-signal-1.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-2"] { background-image: url('/static_images/wm65/status-signal-2.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-3"] { background-image: url('/static_images/wm65/status-signal-3.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-4"] { background-image: url('/static_images/wm65/status-signal-4.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-none"] { background-image: url('/static_images/wm65/status-signal-none.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-off"] { background-image: url('/static_images/wm65/status-signal-off.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-alert"] { background-image: url('/static_images/wm65/status-signal-alert.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="roaming"] { background-image: url('/static_images/wm65/status-roaming.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="wifi-available"] { background-image: url('/static_images/wm65/status-wifi-available.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="wifi-connected"] { background-image: url('/static_images/wm65/status-wifi-connected.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-full"] { background-image: url('/static_images/wm65/status-battery-full.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-3"] { background-image: url('/static_images/wm65/status-battery-3.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-2"] { background-image: url('/static_images/wm65/status-battery-2.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-1"] { background-image: url('/static_images/wm65/status-battery-1.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-empty"] { background-image: url('/static_images/wm65/status-battery-empty.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-charging"] { background-image: url('/static_images/wm65/status-battery-charging.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-unknown"] { background-image: url('/static_images/wm65/status-battery-unknown.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-g"] { background-image: url('/static_images/wm65/status-data-g.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-g-active"] { background-image: url('/static_images/wm65/status-data-g-active.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-e"] { background-image: url('/static_images/wm65/status-data-e.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-e-active"] { background-image: url('/static_images/wm65/status-data-e-active.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-3g"] { background-image: url('/static_images/wm65/status-data-3g.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-3g-active"] { background-image: url('/static_images/wm65/status-data-3g-active.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h"] { background-image: url('/static_images/wm65/status-data-h.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h-active"] { background-image: url('/static_images/wm65/status-data-h-active.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h-plus"] { background-image: url('/static_images/wm65/status-data-h-plus.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h-plus-active"] { background-image: url('/static_images/wm65/status-data-h-plus-active.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g"] { background-image: url('/static_images/wm65/status-data-4g.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g-active"] { background-image: url('/static_images/wm65/status-data-4g-active.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g-plus"] { background-image: url('/static_images/wm65/status-data-4g-plus.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g-plus-active"] { background-image: url('/static_images/wm65/status-data-4g-plus-active.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr"] { background-image: url('/static_images/wm65/status-data-nr.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-active"] { background-image: url('/static_images/wm65/status-data-nr-active.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-a"] { background-image: url('/static_images/wm65/status-data-nr-a.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-a-active"] { background-image: url('/static_images/wm65/status-data-nr-a-active.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uwb"] { background-image: url('/static_images/wm65/status-data-uwb.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uwb-active"] { background-image: url('/static_images/wm65/status-data-uwb-active.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g"] { background-image: url('/static_images/wm65/status-data-5g.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-active"] { background-image: url('/static_images/wm65/status-data-5g-active.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-plus"] { background-image: url('/static_images/wm65/status-data-5g-plus.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-plus-active"] { background-image: url('/static_images/wm65/status-data-5g-plus-active.png'); }
+
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-search"] {
+    background-image: url('/static_images/wm65/status-signal-search-1@2x.png');
+    animation: wm65-signal-search 1.5s step-end infinite;
+}
+
+@keyframes wm65-signal-search {
+    0% { background-image: url('/static_images/wm65/status-signal-search-1@2x.png'); }
+    33.333% { background-image: url('/static_images/wm65/status-signal-search-2@2x.png'); }
+    66.667% { background-image: url('/static_images/wm65/status-signal-search-3@2x.png'); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-search"] { animation: none; }
+}
+
+/* X / ok: the ROM's plain 16 px glyph icons (shellres.192.dll 4615 / 4610) in the corner cell, no
+ * frame; pressed, the taskbar highlight glows behind it */
+html.ui-mobile[data-wm-version="6.5"] .wm-title-action {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin: calc(5 * var(--wm-px)) calc(1 * var(--wm-px)) 0 0;
+    background: none !important;
+    overflow: visible;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-title-action::before {
+    inset: calc(-5 * var(--wm-px)) calc(-22 * var(--wm-px));
+    padding: 0;
+    background: url('/static_images/wm65/theme-black-taskbarhighlight@2x.png') center / 100% 100% no-repeat;
+    opacity: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-title-action:active::before {
+    background: url('/static_images/wm65/theme-black-taskbarhighlight@2x.png') center / 100% 100% no-repeat;
+    opacity: 1;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-title-action::after,
+html.ui-mobile[data-wm-version="6.5"] .wm-title-action:active::after {
+    inset: 0;
+    background: center / 100% 100% no-repeat;
+    -webkit-mask: none;
+    mask: none;
+    image-rendering: pixelated;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-title-action[data-kind="close"]::after { background-image: url('/static_images/wm65/title-close@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-title-action[data-kind="ok"]::after { background-image: url('/static_images/wm65/title-ok@2x.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-title-action[data-kind="close"]::after { background-image: url('/static_images/wm65/title-close.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-title-action[data-kind="ok"]::after { background-image: url('/static_images/wm65/title-ok.png'); }
+
+/* ---- soft-key bar: 26 px of the black soft-key bar art, no rule; a soft key is 90 px wide at
+ * each end with the input panel button in the 60 px between them ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-softkeys {
+    height: calc(26 * var(--wm-px));
+    border-top: 0;
+    background: #000;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(0, 3fr);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-softkey {
+    font-size: calc(10.5 * var(--wm-px));
+    font-weight: bold;
+    line-height: calc(25 * var(--wm-px));
+    text-shadow: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-softkey:disabled {
+    color: var(--wm65-gray) !important;
+}
+
+/* pressed, or its menu open: the theme's soft-key highlight (a white glow) and the label in the
+ * menu text colour */
+html.ui-mobile[data-wm-version="6.5"] .wm-softkey.is-pressed,
+html.ui-mobile[data-wm-version="6.5"] .wm-softkey:active:not(:disabled),
+html.ui-mobile[data-wm-version="6.5"] .wm-softkey[aria-expanded="true"] {
+    background: url('/static_images/wm65/theme-black-softkeyhighlight@2x.png') center / 100% 100% no-repeat !important;
+    color: var(--wm-menu-text);
+}
+
+/* the input panel button: the keyboard icon's 16 px cell (msim.192.dll 15366) at x 110, y 3 */
+html.ui-mobile[data-wm-version="6.5"] .wm-sip {
+    align-items: flex-start;
+    justify-content: flex-start;
+    background: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-sip::before {
+    content: '';
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin: calc(3 * var(--wm-px)) 0 0 calc(20 * var(--wm-px));
+    background: url('/static_images/wm65/sip-keyboard@2x.png') center / 100% 100% no-repeat;
+    image-rendering: pixelated;
+    pointer-events: none;
+}
+
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-sip::before {
+    background-image: url('/static_images/wm65/sip-keyboard.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-sip img {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-sip:active:not([hidden]),
+html.ui-mobile[data-wm-version="6.5"] .wm-sip[aria-pressed="true"] {
+    background: url('/static_images/wm65/theme-black-siphighlight@2x.png') center / 100% 100% no-repeat;
+}
+
+/* ---- menus (soft-key menus, context menus, submenus): the theme's menu border (a rounded white
+ * box, 1 px black line, soft shadow; 118 x 101 at 2x as a 9-slice whose shadow hangs outside the
+ * box), 31 px rows in Tahoma bold 13 px, the selector art under the chosen row. Device: the box
+ * stands 17 px in from the screen edge on its soft key's side; rows start 19 px from the line
+ * and end 16 px before it. ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"]) {
+    border: calc(1 * var(--wm-px)) solid transparent;
+    border-radius: calc(7 * var(--wm-px));
+    /* -even: the ROM file with one clear row / column added so its shadow margins are whole
+       pixels at 1x (12 px above the line, 14 left of it, 34 right, 20 below at 2x) */
+    border-image: url('/static_images/wm65/theme-classicblue-menuborder-even@2x.png') 26 48 34 28 fill / calc(13 * var(--wm-px)) calc(24 * var(--wm-px)) calc(17 * var(--wm-px)) calc(14 * var(--wm-px)) / calc(6 * var(--wm-px)) calc(17 * var(--wm-px)) calc(10 * var(--wm-px)) calc(7 * var(--wm-px)) stretch;
+    background: none;
+    padding: 0;
+    min-width: calc(60 * var(--wm-px));
+    max-height: calc(100% - var(--wm-safe-top, 0px) - var(--wm-safe-bottom, 0px) - 31 * var(--wm-px));
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: none;
+    color: var(--wm-menu-text);
+}
+
+/* a soft-key menu's bottom line lies half over the soft-key bar's top edge */
+html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="left"],
+html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="right"] {
+    bottom: calc(var(--wm-safe-bottom, 0px) + 25.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"])::-webkit-scrollbar {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="right"] {
+    right: calc(var(--wm-safe-right, 0px) + 17 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="left"] {
+    left: calc(var(--wm-safe-left, 0px) + 17 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"]) > .wm-popup-item {
+    width: auto;
+    min-width: calc(100% - 7 * var(--wm-px));
+    height: calc(31 * var(--wm-px));
+    margin: 0 calc(3.5 * var(--wm-px));
+    padding: 0 calc(12.5 * var(--wm-px)) calc(2 * var(--wm-px)) calc((15.5 + 12 * var(--wm-indent, 0)) * var(--wm-px)) !important;
+    font-size: calc(13 * var(--wm-px));
+    font-weight: bold;
+    color: var(--wm-menu-text);
+    background: none !important;
+}
+
+/* the selector: the art's 72 rows (8 clear, 56 of blue, 8 of shadow) as a 9-slice over the row,
+ * 3.5 px in from the box line on each side */
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"]) > .wm-popup-item:hover:not(:disabled),
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"]) > .wm-popup-item:focus-visible,
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"]) > .wm-popup-item.is-open {
+    color: #fff;
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: url('/static_images/wm65/theme-classicblue-menuselector@2x.png') 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) stretch;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"]) > .wm-popup-item:disabled {
+    color: var(--wm65-gray);
+}
+
+/* the separator: 1 px in the menu text colour, 10.5 px short of the line on each side */
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"]) > .wm-popup-sep {
+    height: calc(1 * var(--wm-px));
+    margin: 0 calc(10.5 * var(--wm-px));
+    background: var(--wm-menu-text);
+}
+
+/* the submenu arrow: 4 x 7 px, 7 px before the line */
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"]) > .wm-popup-item.has-submenu::after {
+    right: calc(3.5 * var(--wm-px));
+    width: calc(4 * var(--wm-px));
+    height: calc(7 * var(--wm-px));
+    margin-top: calc(1 * var(--wm-px));
+}
+
+/* the mark of a checked row sits in the 19 px before the label */
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"]) > .wm-popup-item[aria-checked="true"]::before {
+    left: calc(3.5 * var(--wm-px));
+    width: calc(8 * var(--wm-px));
+    height: calc(8 * var(--wm-px));
+}
+
+/* a menu taller than the screen scrolls between the theme's two arrow bars (28 px of blue, a
+ * 1 px grey rule and 4.5 px of white: the ROM art, 289 x 67 at 2x, drawn 1:1: its two
+ * ends (-l, -r: 30 px cut from the art) and its middle column (-m) stretched between them). The up arrow is
+ * dimmed at the top and the down arrow at the end. The bars exist only while the list overflows:
+ * their height comes from an animation on the menu's own scroll timeline, which is inactive (no
+ * effect) when there is nothing to scroll. menudownarrow is the ROM's up arrow turned over. */
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"])::before,
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"])::after {
+    content: '';
+    display: block;
+    position: sticky;
+    z-index: 1;
+    height: 0;
+    pointer-events: none;
+    animation: 1s linear both;
+    animation-timeline: scroll(nearest block);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"])::before {
+    top: 0;
+    animation-name: wm65-menu-up;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"])::after {
+    bottom: 0;
+    animation-name: wm65-menu-down;
+}
+
+@keyframes wm65-menu-up {
+    0% {
+        height: calc(33.5 * var(--wm-px));
+        background:
+            url('/static_images/wm65/theme-black-menuuparrowdisabled@2x.png') center calc(6 * var(--wm-px)) / calc(18.5 * var(--wm-px)) calc(14.5 * var(--wm-px)) no-repeat,
+            url('/static_images/wm65/theme-classicblue-menuuparrowbackground-l@2x.png') calc(-7.5 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            url('/static_images/wm65/theme-classicblue-menuuparrowbackground-r@2x.png') calc(100% + 18 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            url('/static_images/wm65/theme-classicblue-menuuparrowbackground-m@2x.png') 0 0 / 100% 100% no-repeat;
+    }
+    0.5%, 100% {
+        height: calc(33.5 * var(--wm-px));
+        background:
+            url('/static_images/wm65/theme-black-menuuparrow@2x.png') center calc(6 * var(--wm-px)) / calc(18.5 * var(--wm-px)) calc(14.5 * var(--wm-px)) no-repeat,
+            url('/static_images/wm65/theme-classicblue-menuuparrowbackground-l@2x.png') calc(-7.5 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            url('/static_images/wm65/theme-classicblue-menuuparrowbackground-r@2x.png') calc(100% + 18 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            url('/static_images/wm65/theme-classicblue-menuuparrowbackground-m@2x.png') 0 0 / 100% 100% no-repeat;
+    }
+}
+
+@keyframes wm65-menu-down {
+    0%, 99.5% {
+        height: calc(33.5 * var(--wm-px));
+        background:
+            url('/static_images/wm65/theme-black-menudownarrow@2x.png') center calc(100% - 7 * var(--wm-px)) / calc(18.5 * var(--wm-px)) calc(14.5 * var(--wm-px)) no-repeat,
+            url('/static_images/wm65/theme-classicblue-menudownarrowbackground-l@2x.png') calc(-7.5 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            url('/static_images/wm65/theme-classicblue-menudownarrowbackground-r@2x.png') calc(100% + 18 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            url('/static_images/wm65/theme-classicblue-menudownarrowbackground-m@2x.png') 0 0 / 100% 100% no-repeat;
+    }
+    100% {
+        height: calc(33.5 * var(--wm-px));
+        background:
+            url('/static_images/wm65/theme-black-menudownarrowdisabled@2x.png') center calc(100% - 7 * var(--wm-px)) / calc(18.5 * var(--wm-px)) calc(14.5 * var(--wm-px)) no-repeat,
+            url('/static_images/wm65/theme-classicblue-menudownarrowbackground-l@2x.png') calc(-7.5 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            url('/static_images/wm65/theme-classicblue-menudownarrowbackground-r@2x.png') calc(100% + 18 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            url('/static_images/wm65/theme-classicblue-menudownarrowbackground-m@2x.png') 0 0 / 100% 100% no-repeat;
+    }
+}
+
+/* ---- drop-downs (folder bars, sort): the plain WM list, 1 px black frame, 21 px rows in
+ * Tahoma bold 13 px, flat highlight ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="dropdown"] {
+    border: calc(1 * var(--wm-px)) solid #000;
+    padding: 0;
+    color: var(--wm-menu-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="dropdown"] > .wm-popup-item {
+    height: calc(21 * var(--wm-px));
+    padding: 0 calc(12 * var(--wm-px)) 0 calc((16 + 12 * var(--wm-indent, 0)) * var(--wm-px)) !important;
+    font-size: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="dropdown"] > .wm-popup-sep {
+    height: calc(1 * var(--wm-px));
+    margin: calc(0.5 * var(--wm-px)) calc(8 * var(--wm-px)) calc(0.5 * var(--wm-px)) calc(15 * var(--wm-px));
+}
+
+/* a combo box's list: 14 px rows in the plain 12 px face, the text 1 px from the frame */
+html.ui-mobile[data-wm-version="6.5"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] {
+    color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] > .wm-popup-item {
+    height: calc(14 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px)) 0 calc(1 * var(--wm-px)) !important;
+    font-size: calc(12 * var(--wm-px));
+    font-weight: normal;
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] > .wm-popup-item.is-radio[aria-checked="true"] {
+    background: var(--wm-highlight) !important;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] > .wm-popup-item.is-radio::before {
+    display: none;
+}
+
+/* ---- list selection: the theme's list view selector (474 x 72 at 2x: 8 clear rows, 56 of blue,
+ * 8 of shadow) as a 9-slice over the row and 1 px past it above and below, as the device draws it
+ * (a 58 px selector on a 54 px row at 192 dpi) ---- */
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-row, .wsk .wsk-row, .wm-task-manager .wtm-row, .wm-xlink .wxl-row, .wm-spellbook .wsb-row, .wm-paypass .wpp-row, .wm-notes .nt-row, .wm-contacts .ct-row, .wm-contacts .ct-crow, .wm-msg .msg-row, .wm-msg .msg-pick-row, .wm-chat .wch-row, .wm-characters .wch-trow, .wm-browser .wmb-sub-row, .wm-accounts .wac-row, .wm-fd .wfd-item, .wm-listbox-row:has(.wm-check)).is-selected {
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: url('/static_images/wm65/theme-classicblue-listviewselector@2x.png') 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) / calc(1 * var(--wm-px)) 0 stretch;
+    background-color: transparent !important;
+    color: #fff;
+}
+
+/* File Explorer's list: 27 px rows (54 px pitch on the device) */
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-list:not(.fe-grid) .fe-row {
+    height: calc(27 * var(--wm-px));
+    contain-intrinsic-size: auto calc(27 * var(--wm-px));
+    color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-list:not(.fe-grid) .fe-row.is-selected {
+    color: #fff;
+}
+
+/* the selected row's icon is not dithered with the highlight in 6.5 */
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-row.is-selected .fe-ico::after {
+    display: none;
+}
+
+/* ---- scroll bars (the lists that draw WM's bar): 13 px wide, the theme's grey track, the thumb
+ * art (26 x 70 at 2x, its grip dots 12 px from each end) and 19.5 px arrow buttons (the 26 x 26
+ * art stretched to 26 x 39 as on the device; the down button is the up art turned over) ---- */
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar {
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-track {
+    background: #e6e6e6;
+    border: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-thumb {
+    min-height: calc(35 * var(--wm-px));
+    border-style: solid;
+    border-color: transparent;
+    border-width: calc(12 * var(--wm-px)) 0;
+    border-radius: 0;
+    border-image: url('/static_images/wm65/theme-black-scrollbarthumb@2x.png') 24 0 24 0 fill / calc(12 * var(--wm-px)) 0 stretch;
+    background: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button {
+    display: block;
+    width: calc(13 * var(--wm-px));
+    height: calc(19.5 * var(--wm-px));
+    border: 0;
+    background: #e6e6e6 center / 100% 100% no-repeat;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:decrement {
+    border: 0;
+    background-image: url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png');
+    background-size: 100% 100%;
+    background-position: center;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:increment {
+    border: 0;
+    background-image: url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png');
+    background-size: 100% 100%;
+    background-position: center;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
+    background-image: url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-listbox, .wm-popup[data-side="dropdown"], .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core)::-webkit-scrollbar-button:single-button:vertical:increment:active {
+    background-image: url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png');
+}
+
+/* ---- text: WM 6.5's system font is Tahoma 8 pt (21 px at 192 dpi = 10.5): title bar, soft keys,
+ * folder bars, list rows, settings pages, buttons and bubbles. List boxes and combo boxes use
+ * 11.5 (23 px), message boxes 12 (24 px), menus 13 (26 px). ---- */
+html.ui-mobile[data-wm-version="6.5"] #wmShell {
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar {
+    font-size: calc(10.5 * var(--wm-px));
+    color: var(--wm65-text);
+}
+
+/* ---- message box: 3 px from the screen edges, 1 px black frame, a 22 px caption that runs from
+ * light blue at the left to deep blue at the right (device, dithered 16 bit: #5f6ff3 to
+ * #142ac1) with the title in the caption text colour, Tahoma bold 12; body text 12; buttons 64 x
+ * 24 in the button face, 9 px apart, the default one framed 2 px ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-layer {
+    padding: calc(26 * var(--wm-px)) calc(3 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox,
+html.ui-mobile[data-wm-version="6.5"] body > #confirmationDialog,
+html.ui-mobile[data-wm-version="6.5"] body > #bootMessageBox {
+    max-width: calc(234 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    color: var(--wm65-text) !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] body > #confirmationDialog,
+html.ui-mobile[data-wm-version="6.5"] body > #bootMessageBox {
+    left: calc(env(safe-area-inset-left) + 3 * var(--wm-px)) !important;
+    right: calc(env(safe-area-inset-right) + 3 * var(--wm-px)) !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-title,
+html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .modal-window-title,
+html.ui-mobile[data-wm-version="6.5"] #bootMessageBox .modal-window-title {
+    height: calc(22 * var(--wm-px)) !important;
+    padding: 0 calc(3 * var(--wm-px)) 0 calc(2.5 * var(--wm-px)) !important;
+    background: linear-gradient(to right, #5f6ff3, #142ac1) !important;
+    color: #cbc9e9 !important;
+    font-size: calc(12 * var(--wm-px));
+    font-weight: bold;
+}
+
+html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .modal-window-title-main,
+html.ui-mobile[data-wm-version="6.5"] #confirmationDialog #confirmationDialogTitle,
+html.ui-mobile[data-wm-version="6.5"] #bootMessageBox .modal-window-title-main,
+html.ui-mobile[data-wm-version="6.5"] #bootMessageBox .boot-message-box-title {
+    color: #cbc9e9 !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-body {
+    gap: calc(9.5 * var(--wm-px));
+    padding: calc(14 * var(--wm-px)) calc(8 * var(--wm-px)) calc(16 * var(--wm-px)) calc(12 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-body img {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .confirmation-message,
+html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .confirmation-message * {
+    color: var(--wm65-text) !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-buttons {
+    justify-content: center;
+    gap: calc(9 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px)) calc(12 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-buttons button,
+html.ui-mobile[data-wm-version="6.5"] #bootMessageBox .boot-message-box-buttons button,
+html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .modal-content button {
+    min-width: calc(64 * var(--wm-px));
+    height: calc(24 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: var(--wm65-face) !important;
+    color: var(--wm65-text) !important;
+    font-size: calc(12 * var(--wm-px));
+    font-weight: bold;
+    box-shadow: none !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-buttons button.is-default,
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-buttons button:focus-visible {
+    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #000 !important;
+    outline: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-buttons button:active,
+html.ui-mobile[data-wm-version="6.5"] #bootMessageBox .boot-message-box-buttons button:active,
+html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .modal-content button:active {
+    background: var(--wm-highlight) !important;
+    color: #fff !important;
+}
+
+/* ---- status bubbles and notifications: the theme's toast border (rounded, 1 px black line,
+ * soft shadow; -box is the ROM's top half mirrored for the bottom, as the device draws it) 10 px
+ * from the screen edges and 16 px under the title bar, with the message box title art (389 x 46
+ * at 2x: 21.5 px of blue and a 1 px grey rule) as its caption, Tahoma bold 10.5 in the caption
+ * text colour ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-bubble,
+html.ui-mobile[data-wm-version="6.5"] .wm-notify {
+    left: calc(env(safe-area-inset-left) + 10 * var(--wm-px));
+    right: calc(env(safe-area-inset-right) + 10 * var(--wm-px));
+    top: calc(var(--wm-safe-top, env(safe-area-inset-top)) + 42 * var(--wm-px));
+    bottom: auto;
+    border: calc(1 * var(--wm-px)) solid transparent;
+    border-radius: calc(8 * var(--wm-px));
+    border-image: url('/static_images/wm65/theme-classicblue-toastborder-box@2x.png') 40 38 40 38 fill / calc(20 * var(--wm-px)) calc(19 * var(--wm-px)) / calc(8 * var(--wm-px)) calc(7 * var(--wm-px)) stretch;
+    background: none;
+    color: var(--wm65-text);
+    font-size: calc(10.5 * var(--wm-px));
+    padding-bottom: calc(11 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-notify {
+    max-height: calc(100% - 80 * var(--wm-px));
+    padding-bottom: calc(5 * var(--wm-px));
+}
+
+/* 6.5 bubbles have no tail */
+html.ui-mobile[data-wm-version="6.5"] .wm-bubble .wm-bubble-tail {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-bubble-title,
+html.ui-mobile[data-wm-version="6.5"] .wm-notify-title {
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    height: calc(23 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px)) calc(1 * var(--wm-px)) calc(9 * var(--wm-px));
+    border-radius: 0;
+    border-style: solid;
+    border-color: transparent;
+    border-width: 0 calc(8 * var(--wm-px));
+    border-image: url('/static_images/wm65/theme-classicblue-msgboxtitle@2x.png') 0 16 0 16 fill / 0 calc(8 * var(--wm-px)) stretch;
+    padding-left: calc(1 * var(--wm-px));
+    background: none;
+    color: #cbc9e9;
+    font-weight: bold;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-bubble-section {
+    margin: 0 calc(4 * var(--wm-px));
+    padding: calc(4 * var(--wm-px)) 0;
+    border-top-color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-bubble-section.is-rule {
+    margin: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) calc(3 * var(--wm-px));
+    border-top-color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-bubble-buttons {
+    margin: 0 calc(5.5 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-bubble-buttons.has-links {
+    border-top-color: var(--wm65-text);
+}
+
+/* Hide and friends: 16 px high, 1 px frame in the text colour, button face, bold */
+html.ui-mobile[data-wm-version="6.5"] .wm-bubble-buttons button:not(.wm-bubble-link),
+html.ui-mobile[data-wm-version="6.5"] .wm-notify-body .toast-buttons button {
+    height: calc(16.5 * var(--wm-px));
+    padding: 0 calc(2 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid var(--wm65-text) !important;
+    border-radius: 0;
+    background: var(--wm65-face) !important;
+    box-shadow: none;
+    color: var(--wm65-text);
+    font: bold calc(10.5 * var(--wm-px)) var(--wm-font);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-bubble-buttons button:not(.wm-bubble-link):active,
+html.ui-mobile[data-wm-version="6.5"] .wm-notify-body .toast-buttons button:active {
+    background: var(--wm-highlight) !important;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-notify {
+    font: calc(10.5 * var(--wm-px)) var(--wm-font);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-notify-step {
+    height: calc(22 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-notify-step::before {
+    top: calc(6.5 * var(--wm-px));
+    background: #cbc9e9;
+}
+
+/* the notification strip under the title bar: black like the bars */
+html.ui-mobile[data-wm-version="6.5"] .wm-notify-tray {
+    background: #000;
+}
+
+/* ---- volume bubble: 6.1's callout in 6.5's colours (6.5's own volume panel is not built) ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-volume {
+    color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-volume-title {
+    background: linear-gradient(to bottom, #3951ce, #2138ce);
+    color: #cbc9e9;
+}
+
+/* ---- tabs: a 19.5 px black strip; tabs in the button face, the chosen one white and open to
+ * the page above; each tab ends in the theme's S-curve edge (tabcurve-*: the ROM's colour-keyed
+ * edge art and its shadow composed for each pair of neighbours), text Tahoma 10.5 ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-tabs {
+    height: calc(19.5 * var(--wm-px));
+    border-top: 0;
+    background: #000;
+    overflow: visible;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tab {
+    position: relative;
+    isolation: isolate;
+    margin-top: 0 !important;
+    padding: 0 calc(6 * var(--wm-px)) 0 calc(6.5 * var(--wm-px)) !important;
+    border: 0 !important;
+    background: var(--wm65-face) !important;
+    color: var(--wm65-text) !important;
+    font-size: calc(10.5 * var(--wm-px));
+    line-height: calc(19.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tab:first-child {
+    padding-left: calc(5 * var(--wm-px)) !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tab[aria-selected="true"] {
+    background: #fff !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tab:not(:first-child)::before,
+html.ui-mobile[data-wm-version="6.5"] .wm-tab:last-child::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    top: 0;
+    left: calc(-17 * var(--wm-px));
+    width: calc(34 * var(--wm-px));
+    height: 100%;
+    background: url('/static_images/wm65/tabcurve-face-face@2x.png') 0 0 / 100% 100% no-repeat;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tab[aria-selected="true"]:not(:first-child)::before {
+    background-image: url('/static_images/wm65/tabcurve-face-white@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tab[aria-selected="true"] + .wm-tab::before {
+    background-image: url('/static_images/wm65/tabcurve-white-face@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tab:last-child::after {
+    left: auto;
+    right: calc(-17 * var(--wm-px));
+    background-image: url('/static_images/wm65/tabcurve-face-black@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tab[aria-selected="true"]:last-child::after {
+    background-image: url('/static_images/wm65/tabcurve-white-black@2x.png');
+}
+
+/* ---- settings page: a 23 px header in the caption blue (Tahoma bold 10.5) over a 1 px black
+ * rule, text in the window text colour ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-form-hdr {
+    height: calc(24 * var(--wm-px));
+    color: var(--wm65-caption);
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-form {
+    padding: calc(4 * var(--wm-px)) calc(8 * var(--wm-px)) calc(8 * var(--wm-px));
+    font-size: calc(10.5 * var(--wm-px));
+    color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-form p {
+    margin-bottom: calc(6.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-form-value {
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-edit {
+    color: var(--wm65-text);
+    font-size: calc(11.5 * var(--wm-px));
+}
+
+/* check box and radio button: 15 px, 1 px black; the device's tick (18 x 14 at 2x) and a 9 px dot */
+html.ui-mobile[data-wm-version="6.5"] .wm-check {
+    gap: calc(4 * var(--wm-px));
+    min-height: calc(19 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-check input {
+    width: calc(15 * var(--wm-px));
+    height: calc(15 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-check input[type="checkbox"]:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='2 2 26 26' shape-rendering='crispEdges'%3E%3Cpath d='M22 8h2v6L14 24h-2L6 18v-6h2l5 5z'/%3E%3C/svg%3E");
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-check input[type="radio"] {
+    margin-right: calc(2 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-check input[type="radio"]:checked {
+    background-image: radial-gradient(circle, #000 0 calc(4.5 * var(--wm-px)), transparent calc(4.5 * var(--wm-px) + 0.5px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-check input:disabled + span {
+    color: var(--wm65-gray);
+}
+
+/* push button: 20 px, 1 px black frame, button face, Tahoma bold 10.5; pressed it takes the
+ * highlight; disabled keeps its black frame and greys the label */
+html.ui-mobile[data-wm-version="6.5"] .wm-button {
+    min-width: calc(72 * var(--wm-px));
+    background: var(--wm65-face) !important;
+    color: var(--wm65-text) !important;
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-button:active:not(:disabled) {
+    background: var(--wm-highlight) !important;
+    color: #fff !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-button:disabled {
+    border-color: #000 !important;
+    color: var(--wm65-gray) !important;
+}
+
+/* list box: 1 px black frame, 15 px rows in Tahoma 11.5, flat highlight; rows with a check box
+ * are list view rows: 27 px under the selector art */
+html.ui-mobile[data-wm-version="6.5"] .wm-listbox-row {
+    min-height: calc(15 * var(--wm-px));
+    padding: 0 calc(2 * var(--wm-px)) !important;
+    font-size: calc(11.5 * var(--wm-px));
+    color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-listbox-row.is-selected {
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-listbox-row:has(.wm-check) {
+    min-height: calc(27 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-listbox-row .wm-check {
+    gap: calc(2 * var(--wm-px));
+}
+
+/* combo box: 17 px, 1 px black frame, the text in Tahoma 11.5 and a black 8 x 4 arrow with no
+ * rule before it; while its list is open the arrow's cell turns to the text colour, arrow white */
+html.ui-mobile[data-wm-version="6.5"] .wm-combo {
+    height: calc(17 * var(--wm-px));
+    padding: 0 0 0 calc(2 * var(--wm-px)) !important;
+    color: var(--wm65-text);
+    font-size: calc(11.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-combo::after {
+    width: calc(13 * var(--wm-px));
+    border-left: 0;
+    background:
+        linear-gradient(to bottom right, transparent 50%, #000 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to bottom left, transparent 50%, #000 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-combo[aria-expanded="true"]::after {
+    background:
+        linear-gradient(to bottom right, transparent 50%, #fff 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to bottom left, transparent 50%, #fff 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-combo:disabled {
+    color: var(--wm65-gray) !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-combo-edit .wm-edit {
+    height: calc(17 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-combo-edit .wm-combo {
+    width: calc(14 * var(--wm-px));
+}
+
+/* trackbar: 6.1's, in 6.5's colours (the frame takes the highlight) */
+html.ui-mobile[data-wm-version="6.5"] .wm-slider-scale {
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-slider.is-disabled .wm-slider-track {
+    border-color: var(--wm65-gray);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-slider.is-disabled .wm-slider-tick,
+html.ui-mobile[data-wm-version="6.5"] .wm-slider.is-disabled .wm-slider-thumb::before {
+    background: var(--wm65-gray);
+}

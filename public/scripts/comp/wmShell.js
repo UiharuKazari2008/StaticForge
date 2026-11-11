@@ -29,6 +29,10 @@
     'use strict';
 
     const root = document.documentElement;
+    // The UI version this page runs (#739): app.html reads wmVersion before the first paint. 6.5
+    // swaps the Start menu for the Start screen (wmStart65.js, app id 'start') and Today's rows
+    // for the Melaton Default home screen (wmTitanium.js, setTodayView); wm65.css restyles the rest.
+    const WM65 = root.dataset.wmVersion === '6.5';
     if (window.uiShell !== 'mobile' || !root.classList.contains('ui-mobile')) return;
 
     const ART = '/static_images/wm61/';
@@ -848,6 +852,12 @@
     // ---------------------------------------------------------------- Start menu
 
     function toggleStartMenu() {
+        if (WM65 && apps.has('start')) {
+            // WM 6.5: Start is a screen of its own; the Start button on it goes back
+            closeMenus(true);
+            if (current === 'start') back(); else open('start');
+            return;
+        }
         const menu = shell.querySelector('.wm-startmenu');
         if (!menu.hidden) { closeMenus(); return; }
         closeMenus(true);
@@ -949,7 +959,7 @@
     const MAX_OPEN_STRIP = 6;
 
     // the shell's own screens are not open apps (Yukimi, Nov 10)
-    const SHELL_SCREENS = new Set(['today', 'programs', 'settings', 'help']);
+    const SHELL_SCREENS = new Set(['today', 'start', 'programs', 'settings', 'help']);
 
     function noteOpened(id) {
         const app = apps.get(id);
@@ -3511,6 +3521,14 @@
         return def ? def.value : (v == null ? null : v);
     }
 
+    // 6.5's home screen (wmTitanium.js): { refresh(page), softKeys(keys) } drawn over Today's rows
+    let todayView = null;
+    function setTodayView(view) {
+        todayView = view || null;
+        const today = apps.get('today');
+        if (today && today.page) { today.refresh(); if (current === 'today') renderSoftKeys(); }
+    }
+
     function registerTodayItem(w) {
         if (!w || !w.id || (typeof w.text !== 'function' && typeof w.render !== 'function') || todayWidgets.some((x) => x.id === w.id)) return;
         todayWidgets.push(w);
@@ -3738,11 +3756,33 @@
                 paintTodayWidgets(page);
                 applyTodayItems(page);
                 markTodayLast(page);
+                // 6.5: the Melaton Default home screen draws from the rows above (wmTitanium.js)
+                if (todayView) { try { todayView.refresh(page); } catch (err) { console.warn('[wmShell] today view', err); } }
+            },
+            /** What Today's rows show, as data (6.5's home screen panels, wmTitanium.js). */
+            state() {
+                const acc = window.meletonAccounts;
+                let workspace = '';
+                try { if (typeof workspaces !== 'undefined' && typeof activeWorkspace !== 'undefined' && workspaces[activeWorkspace]) workspace = workspaces[activeWorkspace].name || ''; } catch (_) { /* not loaded yet */ }
+                const tasks = tasksText();
+                return {
+                    connection: connectionText(),
+                    owner: acc && typeof acc.name === 'function' ? acc.name() : '',
+                    mailUnread,
+                    tasks: tasks === 'No tasks' ? '' : tasks,
+                    workspace,
+                    workspaceMenu: () => workspaceMenu(),
+                    prints: newestPrints(12).map((p) => ({ filename: p.filename || p.original || '', preview: previewUrl(p), time: p.mtime || p.timestamp || p.date || null }))
+                };
             },
             softKeys() {
                 // Settings > Buttons picks each key (todaySoftKeyFor); Pictures | Menu by default
                 const menu = () => workspaceMenu().concat(['-', { label: 'Reconnect', disabled: !!(window.wsClient && window.wsClient.isConnected()), action: () => window.wsClient && window.wsClient.manualReconnect() }]);
-                return { left: todaySoftKeyFor('left', menu), right: todaySoftKeyFor('right', menu) };
+                const keys = { left: todaySoftKeyFor('left', menu), right: todaySoftKeyFor('right', menu) };
+                if (todayView && typeof todayView.softKeys === 'function') {
+                    try { return todayView.softKeys(keys) || keys; } catch (err) { console.warn('[wmShell] today view keys', err); }
+                }
+                return keys;
             }
         };
 
@@ -5231,6 +5271,11 @@
         registerTodayItem: (w) => registerTodayItem(w),
         /** Today rows from apps: [{ id, label }] (Settings > Today > Items). */
         listTodayItems: () => todayWidgets.map((w) => ({ id: w.id, label: w.label || w.id, defaultOn: w.defaultOn !== false })),
+        /** 6.5 (#739): the registered Today items themselves (their titanium() panels), and the home screen's hook. */
+        todayItemDefs: () => todayWidgets.slice(),
+        todayState: () => { const t = apps.get('today'); return t && typeof t.state === 'function' ? t.state() : null; },
+        setTodayView,
+        version: WM65 ? '6.5' : '6.1',
         /** A Today row's options: defs (Settings > Today > Items > Options...), and a stored value. */
         todayOptionDefs: (id) => todayOptionDefs(id),
         todayOption: (id, key) => todayOption(id, key),

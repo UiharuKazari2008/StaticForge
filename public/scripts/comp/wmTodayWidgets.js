@@ -146,6 +146,28 @@
         return `${when} ${o.ev.summary || '(No subject)'}`;
     }
 
+    /** 6.5's Appointments panel: "No Appointments" over today - tomorrow, or an appointment a page. */
+    function calendarTitanium() {
+        const c = window.wmCalendar;
+        if (!c || typeof c.upcoming !== 'function') return null;
+        const list = c.upcoming(5);
+        if (list == null) return null;
+        const go = () => open('calendar');
+        const base = { label: 'calendar', softKey: { label: 'Calendar', action: go }, onTap: go };
+        const short = new Intl.DateTimeFormat(undefined, { year: '2-digit', month: 'numeric', day: 'numeric' });
+        if (!list.length) {
+            const now = new Date();
+            return { ...base, icon: 'ti-2252', pages: [{ title: 'No Appointments', line2: `${short.format(now)} - ${short.format(new Date(now.getTime() + 86400000))}` }] };
+        }
+        return {
+            ...base, icon: 'ti-2255',
+            pages: list.map((o) => {
+                const day = dayWord(o.start) || short.format(o.start);
+                return { title: o.ev.summary || '(No subject)', line2: o.ev.allDay ? `${day}: All day` : `${day}: ${fmtTime.format(o.start)}`, line3: o.ev.location || '' };
+            })
+        };
+    }
+
     // ================================================================ Director
 
     /**
@@ -337,8 +359,23 @@
         };
     }
 
+    /** A Director item's home screen panel (6.5): the session's picture, its name, who works on it. */
+    function directorTitanium(fixedPersona) {
+        return ({ option }) => {
+            const m = directorModel(fixedPersona || option('show') || 'last');
+            if (!m || (!m.running && option('idle') === 'hide')) return null;
+            const go = () => openDirector(m);
+            return {
+                label: fixedPersona ? DIRECTOR_NAMES[fixedPersona].toLowerCase() : 'director', icon: 'x:app-director-lg',
+                pages: [{ image: directorPicture(m.file) || '', title: m.name || 'Untitled', line2: m.words }],
+                softKey: { label: 'Director', action: go }, onTap: go
+            };
+        };
+    }
+
     // ================================================================ Studio
 
+    let studioPanel = null; // what the Studio item shows, for its 6.5 panel
     const studio = { progress: null, latest: null, wired: false, frameKey: '', meta: { name: '', data: null, busy: false } };
     const ZW = /[​-‏⁠-⁤﻿]/g; // emphasis marks inside stored prompts
 
@@ -567,12 +604,23 @@
     }
 
     let studioShown = null; // the print the buttons act on
+    function studioTitanium() {
+        const s = studioPanel;
+        if (!s) return null;
+        const go = () => open('studio');
+        return {
+            label: 'studio', icon: 'x:app-studio-lg',
+            pages: [{ image: s.picture || '', title: s.title, line2: s.prompt }],
+            softKey: { label: 'Studio', action: go }, onTap: () => (s.last ? viewPrint(s.last) : go())
+        };
+    }
+
     function renderStudio(el) {
         wireStudio();
         const n = printing();
         const last = lastPrint();
         studioShown = last;
-        if (!n && !last) return false;
+        if (!n && !last) { studioPanel = null; return false; }
         if (el.dataset.wtwBuilt !== 'wtw-studio') {
             shell(el, 'wtw-studio', `
                 <span class="wtw-studio-top">
@@ -617,6 +665,7 @@
         }
         // the prompt: Studio's while it prints, else the last print's own (its metadata)
         const prompt = (n ? studioPrompt() : promptOf(printMeta(last && last.filename))).replace(ZW, '').replace(/\s+/g, ' ').trim().slice(0, 200);
+        studioPanel = { title, prompt, picture: p && p.frame ? p.frame : printPicture(last), last };
         setText(el.querySelector('.wtw-title'), title);
         const sub = el.querySelector('.wtw-sub');
         setText(sub, prompt);
@@ -668,6 +717,13 @@
         return usageCache.text;
     }
 
+    function usageTitanium() {
+        const parts = usageText().split(', ').filter(Boolean);
+        if (!parts.length) return null;
+        const go = () => open('studio');
+        return { label: 'daily usage', icon: 'x:app-studio-lg', pages: [{ title: parts[0], line2: parts.slice(1).join(', ') }], softKey: { label: 'Studio', action: go }, onTap: go };
+    }
+
     function usageLine() {
         const parts = [];
         let count = null;
@@ -688,6 +744,23 @@
      * stale, works for every account); Today repaints on 'wmWeatherChange'; tap opens Weather.
      */
     const deg = (v) => (v == null || !Number.isFinite(Number(v)) ? '' : `${v}°`);
+
+    function weatherTitanium() {
+        const W = window.wmWeather;
+        const w = W && typeof W.current === 'function' ? W.current() : null;
+        if (!w) return null;
+        const go = () => open('weather');
+        return {
+            label: 'weather', icon: 'x:app-weather-lg',
+            pages: [{
+                smallIcon: w.iconUrl2x || w.iconUrl || '',
+                title: `${deg(w.temp)}${w.unit || ''} ${w.condition || ''}`.trim(),
+                line2: [w.place, w.region].filter(Boolean).join(', '),
+                line3: w.hi != null && w.lo != null ? `${deg(w.hi)} / ${deg(w.lo)}` : ''
+            }],
+            softKey: { label: 'Weather', action: go }, onTap: go
+        };
+    }
 
     let weatherEl = null;
     function renderWeather(el) {
@@ -761,6 +834,14 @@
     }
 
     let notesShown = null;
+    let notesPanel = null; // what the Notes item shows, for its 6.5 panel
+    function notesTitanium() {
+        const s = notesPanel;
+        if (!s) return null;
+        const lines = String(s.text || '').split(/\n+/).map((t) => t.trim()).filter(Boolean);
+        return { label: 'notes', icon: 's:notes', pages: [{ title: s.title, line2: lines[0] || '', line3: lines[1] || '' }], softKey: { label: 'Notes', action: () => open('notes') }, onTap: s.tap };
+    }
+
     function renderNotes(el, { option }) {
         if (itemOff(el, false)) return false;
         const app = window.wmNotesApp;
@@ -788,6 +869,7 @@
         const lines = Number(option('lines')) || 1;
         const pv = el.querySelector('.wtw-preview');
         const text = n ? previewOf(n, noteBody(n)) : '';
+        notesPanel = { title: n ? n.name : 'No notes', text, tap: () => el.click() };
         setText(pv, text);
         pv.hidden = !text;
         if (pv.style.getPropertyValue('--wtw-lines') !== String(lines)) pv.style.setProperty('--wtw-lines', String(lines));
@@ -803,6 +885,13 @@
         if (live) return `Connected to ${live}`;
         const last = r.lastComputer();
         return last ? `Connect to ${last}` : '';
+    }
+
+    function remoteTitanium() {
+        const text = remoteText();
+        if (!text) return null;
+        const go = () => { const r = window.wmRemoteDesktop; if (r && typeof r.reconnectLast === 'function') void r.reconnectLast(); else open('remote-desktop-mobile'); };
+        return { label: 'remote desktop', icon: 'x:app-remote-desktop-mobile-lg', pages: [{ title: text }], softKey: { label: 'Connect', action: go }, onTap: go };
     }
 
     // ================================================================ Server status
@@ -903,6 +992,15 @@
         };
     }
 
+    /** The server's panel: its state, then its facts two to a page. */
+    function serverTitanium({ option }) {
+        const m = serverModel(option('view') !== 'compact');
+        if (!m) return null;
+        const pages = [{ title: m.head, line2: m.uptime ? `up ${m.uptime}` : '' }];
+        for (let i = 0; i < m.lines.length; i += 2) pages.push({ title: m.head, line2: m.lines[i], line3: m.lines[i + 1] || '' });
+        return { label: 'server status', icon: 'x:app-data-management-lg', pages, softKey: { label: 'Manage', action: openServerManager }, onTap: openServerManager };
+    }
+
     function renderServer(el, { option }) {
         if (itemOff(el, false)) return false;
         const detailed = option('view') !== 'compact';
@@ -950,10 +1048,10 @@
         // order: Tasks, Calendar, Accounts (wmAccounts.js, after 'calendar'), Director, Studio,
         // Daily usage, Weather, Notes, Remote Desktop, Server status. defaultOn: false = off until
         // switched on in Settings > Today > Items (when the shell honours it)
-        sh.registerTodayItem({ id: 'calendar', label: 'Calendar', icon: 'today-calendar', after: 'tasks', text: calendarText, onTap: () => open('calendar') });
+        sh.registerTodayItem({ id: 'calendar', label: 'Calendar', icon: 'today-calendar', after: 'tasks', text: calendarText, onTap: () => open('calendar'), titanium: calendarTitanium });
         const IDLE = { key: 'idle', label: 'While the Director is idle', value: 'show', choices: [['show', 'Show the last session'], ['hide', 'Hide the item']] };
         sh.registerTodayItem({
-            id: 'director', label: 'Director', after: 'accounts', render: directorRenderer(null),
+            id: 'director', label: 'Director', after: 'accounts', render: directorRenderer(null), titanium: directorTitanium(null),
             options: [
                 { key: 'show', label: 'Session', value: 'last', choices: [['last', 'Last Director session'], ['workspace', 'Last session in this workspace'], ['wren', 'Yumiya (Wren)'], ['kabuki', 'Chiyo (Kabuki)'], ['xi', 'Yozora (Xi)']] },
                 IDLE
@@ -962,19 +1060,19 @@
         // one item per persona, off until switched on in Settings > Today > Items
         let prev = 'director';
         PERSONAS.forEach((p) => {
-            sh.registerTodayItem({ id: `director-${p}`, label: `Director: ${DIRECTOR_NAMES[p]}`, after: prev, defaultOn: false, render: directorRenderer(p), options: [IDLE] });
+            sh.registerTodayItem({ id: `director-${p}`, label: `Director: ${DIRECTOR_NAMES[p]}`, after: prev, defaultOn: false, render: directorRenderer(p), titanium: directorTitanium(p), options: [IDLE] });
             prev = `director-${p}`;
         });
-        sh.registerTodayItem({ id: 'studio', label: 'Studio', after: prev, render: renderStudio });
-        sh.registerTodayItem({ id: 'usage', label: 'Daily Usage', icon: 'app-studio', after: 'studio', text: usageText, onTap: () => open('studio') });
-        sh.registerTodayItem({ id: 'weather', label: 'Weather', after: 'usage', render: renderWeather });
-        sh.registerTodayItem({ id: 'notes', label: 'Notes', after: 'weather', defaultOn: false, render: renderNotes, options: NOTES_OPTIONS });
+        sh.registerTodayItem({ id: 'studio', label: 'Studio', after: prev, render: renderStudio, titanium: studioTitanium });
+        sh.registerTodayItem({ id: 'usage', label: 'Daily Usage', icon: 'app-studio', after: 'studio', text: usageText, onTap: () => open('studio'), titanium: usageTitanium });
+        sh.registerTodayItem({ id: 'weather', label: 'Weather', after: 'usage', render: renderWeather, titanium: weatherTitanium });
+        sh.registerTodayItem({ id: 'notes', label: 'Notes', after: 'weather', defaultOn: false, render: renderNotes, titanium: notesTitanium, options: NOTES_OPTIONS });
         sh.registerTodayItem({
-            id: 'remote-desktop', label: 'Remote Desktop', icon: 'app-remote-desktop-mobile', after: 'notes', defaultOn: false, text: remoteText,
+            id: 'remote-desktop', label: 'Remote Desktop', icon: 'app-remote-desktop-mobile', after: 'notes', defaultOn: false, text: remoteText, titanium: remoteTitanium,
             onTap: () => { const r = window.wmRemoteDesktop; if (r && typeof r.reconnectLast === 'function') void r.reconnectLast(); else open('remote-desktop-mobile'); }
         });
         sh.registerTodayItem({
-            id: 'server', label: 'Server Status', after: 'remote-desktop', defaultOn: false, render: renderServer,
+            id: 'server', label: 'Server Status', after: 'remote-desktop', defaultOn: false, render: renderServer, titanium: serverTitanium,
             options: [{ key: 'view', label: 'Show', value: 'detailed', choices: [['detailed', 'Details (version, CPU, RAM, disk, workers)'], ['compact', 'One line']] }]
         });
     }

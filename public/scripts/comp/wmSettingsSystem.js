@@ -17,8 +17,9 @@
  *   power            Power (Battery, Advanced): the Battery API, and Power Options' registry (cplPages.js:
  *                    ...\Power\User\PowerSchemes ActivePowerScheme, <plan> display / sleep minutes).
  *   backlight        Backlight (Battery Power, External Power): the active plan's display minutes.
- *   update           Melaton Update (Update, Schedule): the service worker's own check / install /
- *                    restart calls (serviceWorkerManager.js) with cplUpdate.js's state words.
+ *   update           Melaton Update (Update, Schedule, Version): the service worker's own check /
+ *                    install / restart calls (serviceWorkerManager.js) with cplUpdate.js's state
+ *                    words; Version picks the Melaton Mobile UI version (6.1 / 6.5, #739).
  *   remove-programs  Remove Programs: Programs and Features' list and its uninstall (cplPages2.js:
  *                    HKLM\...\CurrentVersion\Uninstall Hidden).
  *   about (+ Server, Hardware)  the System page's facts (cplSystem.js) and Device Manager's
@@ -656,7 +657,7 @@
     }
 
     function updateInit() {
-        const d = { view: { message: '', progress: 0, filesTotal: 0, ...updateInitialState() } };
+        const d = { view: { message: '', progress: 0, filesTotal: 0, ...updateInitialState() }, version: wmSettings.storedVersion() };
         // cplUpdate.js's classify turns the service worker's state words into the page's
         return whenLoaded(d, ['scripts/comp/cplUpdate.js']);
     }
@@ -745,8 +746,40 @@
         }
     }
 
+    // Version (#739): which Melaton Mobile the phone runs, the Windows Mobile 6.1 style or the 6.5
+    // one (Start screen, Melaton Default home screen). The page runs one version for its whole
+    // life (app.html reads wmVersion before the first paint), so a change restarts Melaton Mobile.
+    function versionRender(el, d) {
+        const names = new Map(wmSettings.versions);
+        el.innerHTML = `${ui.sub('Select the version of Melaton Mobile to use:')}
+            ${wmSettings.versions.map(([id, name]) => ui.radio('wm-version', id, name, id === d.version)).join('')}
+            ${ui.gap()}
+            ${ui.value('Current version:', names.get(wmSettings.version()), { wide: true })}
+            ${ui.gap()}
+            ${ui.note('Melaton Mobile restarts to change its version. Your settings and programs are kept.')}`;
+        el.querySelectorAll('input[name="wm-version"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) d.version = r.value; }));
+    }
+
+    async function versionCommit(d) {
+        if (!d.version || d.version === wmSettings.storedVersion()) return [];
+        try { localStorage.setItem(wmSettings.keys.version, d.version); } catch (_) { return []; }
+        if (d.version === wmSettings.version()) return [wmSettings.keys.version]; // back to the running one
+        const name = new Map(wmSettings.versions).get(d.version);
+        const yes = await ui.messageBox({
+            title: 'Melaton Update', icon: 'question',
+            text: `Melaton Mobile must restart to change to ${name}. Restart now?`,
+            buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }]
+        });
+        if (yes) {
+            const m = swm();
+            if (m && typeof m.forceRestart === 'function') m.forceRestart(); else location.reload();
+        }
+        return [wmSettings.keys.version];
+    }
+
     function updateRender(el, tab, d, api) {
         d.rerender = api.rerender;
+        if (tab === 'version') { versionRender(el, d); return; }
         if (tab === 'schedule') {
             el.innerHTML = `${ui.text('Melaton downloads updates in the background and installs them when Melaton restarts (recommended).')}
                 ${ui.radio('sched', 'auto', 'Automatic', true, 'disabled')}
@@ -778,14 +811,14 @@
 
     wmSettings.registerPage({
         id: 'update', tab: 'system', label: 'Melaton Update', icon: 'set-update',
-        tabs: [['update', 'Update'], ['schedule', 'Schedule']],
+        tabs: [['update', 'Update'], ['schedule', 'Schedule'], ['version', 'Version']],
         init: updateInit,
         render: updateRender,
         commit(d) {
             clearInterval(d.watch);
             const m = swm();
             if (m && m.foregroundUpdateView) m.foregroundUpdateView = null;
-            return [];
+            return versionCommit(d);
         }
     });
 
