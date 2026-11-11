@@ -490,6 +490,7 @@
     /** Ease the list to item `target`, the selection stepping on as each row passes (as a drag does). */
     function settleTo(target) {
         cancelAnimationFrame(settle);
+        const sel0 = settle ? -1 : sel; // the item that was in the band when the move began
         const from = pos;
         const dist = target - from;
         if (Math.abs(dist) < 0.001) { settle = 0; sel = target; pos = target; place(); drawExpanded(); sh.refreshSoftKeys(); return; }
@@ -501,14 +502,29 @@
             moveTo(from + dist * eased);
             if (k < 1) { settle = requestAnimationFrame(step); place(); return; }
             settle = 0;
+            const moved = sel0 !== target;
             sel = target;
             pos = target;
             place();
             drawExpanded();
-            sh.refreshSoftKeys();
+            if (moved) zoomIn(); else sh.refreshSoftKeys();
         };
         settle = requestAnimationFrame(step);
         place();
+    }
+
+    /**
+     * The panel arriving in the band (device: the band is empty while the list slides, then the
+     * content grows from about 65 % to full size, the text toward the left edge and the icon toward
+     * the right, slowing down, 0.4 - 0.5 s; the right soft key changes only after it). 350 ms here.
+     */
+    let zoomTimer = 0;
+    function zoomIn() {
+        clearTimeout(zoomTimer);
+        host.classList.remove('is-zoom');
+        void host.offsetWidth; // restart the animation
+        host.classList.add('is-zoom');
+        zoomTimer = setTimeout(() => { host.classList.remove('is-zoom'); sh.refreshSoftKeys(); }, 350);
     }
 
     /** List position p (rows): the selection moves on once the next item has travelled a whole row. */

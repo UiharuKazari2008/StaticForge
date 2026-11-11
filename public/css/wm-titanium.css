@@ -227,3 +227,24 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-rest .wm-ti-arrow { opacity: 1; 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-arrow[hidden] { display: none; }
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-arrow[data-dir="-1"] { left: 0; background-position: calc(2 * var(--u)) calc(15 * var(--u)); }
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-arrow[data-dir="1"] { right: 0; background-position: right calc(2 * var(--u)) top calc(15 * var(--u)); }
+
+/* ---- a panel arriving in the band (wmTitanium.js zoomIn): from 65 % to full size in 350 ms, the
+ * text toward the left edge, the icon toward the right, slowing down ---- */
+@keyframes wm-ti-zoom {
+    from { transform: scale(0.65); }
+    to { transform: scale(1); }
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom .wm-ti-pg > :not(.wm-ti-icon) {
+    transform-origin: 0 50%;
+    animation: wm-ti-zoom 0.35s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom .wm-ti-pg > .wm-ti-icon {
+    transform-origin: 100% 40%;
+    animation: wm-ti-zoom 0.35s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom .wm-ti-pg > * { animation: none; }
+}
