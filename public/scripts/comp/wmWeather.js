@@ -855,7 +855,7 @@
             cancel();
             const x = e.clientX;
             const y = e.clientY;
-            hold = setTimeout(() => { held = true; tileMenu(tile.dataset.id, x, y); }, 550);
+            hold = setTimeout(() => { held = true; tileMenu(tile.dataset.id, x, y); }, ((window.wmShell && window.wmShell.holdMs) || 550));
         });
         els.tiles.addEventListener('pointerup', cancel);
         els.tiles.addEventListener('pointercancel', cancel);

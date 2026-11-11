@@ -81,3 +81,42 @@ html.ui-mobile[data-wm-reveal="keys"] .wm-splash {
 html.ui-mobile[data-wm-reveal="bars"] .wm-splash {
     display: none;
 }
+
+/* ---- tap-and-hold: the ring of dots (wmShell.js bindHoldRing). Device: eight dots of 7 units with
+ * a black edge of one device pixel, 14 units from the ring's middle (the diagonal ones 10.5 both
+ * ways), the middle 2 units above the pen; dark green (16, 166, 24) in 6.1, dark blue
+ * (16, 36, 165) in 6.5 ---- */
+.wm-hold-ring {
+    position: absolute;
+    z-index: 10;
+    width: 0;
+    height: 0;
+    margin-top: calc(-2 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-hold-ring > i {
+    position: absolute;
+    left: calc((var(--x) - 3.5) * var(--wm-px));
+    top: calc((var(--y) - 3.5) * var(--wm-px));
+    width: calc(7 * var(--wm-px));
+    height: calc(7 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(0.5 * var(--wm-px)) solid #000;
+    border-radius: 50%;
+    background: rgb(16, 166, 24);
+}
+
+.wm-hold-ring > i[hidden] { display: none; }
+.wm-hold-ring > i:nth-child(1) { --x: 0; --y: -14; }
+.wm-hold-ring > i:nth-child(2) { --x: 10.5; --y: -10.5; }
+.wm-hold-ring > i:nth-child(3) { --x: 14; --y: 0; }
+.wm-hold-ring > i:nth-child(4) { --x: 10.5; --y: 10.5; }
+.wm-hold-ring > i:nth-child(5) { --x: 0; --y: 14; }
+.wm-hold-ring > i:nth-child(6) { --x: -10.5; --y: 10.5; }
+.wm-hold-ring > i:nth-child(7) { --x: -14; --y: 0; }
+.wm-hold-ring > i:nth-child(8) { --x: -10.5; --y: -10.5; }
+
+html.ui-mobile[data-wm-version="6.5"] .wm-hold-ring > i {
+    background: rgb(16, 36, 165);
+}

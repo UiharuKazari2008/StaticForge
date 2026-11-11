@@ -467,7 +467,7 @@
                 b.addEventListener('pointerdown', () => {
                     b._held = false;
                     cancel();
-                    timer = setTimeout(() => { timer = null; b._held = true; open(); }, 600);
+                    timer = setTimeout(() => { timer = null; b._held = true; open(); }, ((window.wmShell && window.wmShell.holdMs) || 600));
                 });
                 ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => b.addEventListener(t, cancel));
                 b.addEventListener('contextmenu', (e) => e.preventDefault());

@@ -403,6 +403,7 @@
             if (e.target.closest && e.target.closest('#wmShell .wm-start, #wmShell .wm-title, #wmShell .wm-softkey, #wmShell [aria-haspopup="menu"]')) return;
             closeMenus();
         }, true);
+        bindHoldRing();
         window.addEventListener('keydown', (e) => {
             if (busyBlocksKey()) {
                 // busy: keys (soft keys, back, Enter) wait with the taps
@@ -1064,6 +1065,109 @@
     //        closing to home: the title bar turns home first, then the soft key bar, the body last
     // The emulator's own times are 2 to 10 times longer; the order is what is kept. Nothing waits
     // on it: any new switch finishes the running one at once. Off with reduced motion.
+    /**
+     * Tap-and-hold: the device's ring of dots, then the pop-up menu.
+     * Measured on the emulators (recordings fehold, notehold, mbhold1-3 / fe_hold, fe_hold2): eight
+     * dots, 7 units each with a black edge, in the theme's dark highlight colour, on a ring 14 units
+     * in radius (the diagonal ones 10.5 off both ways) whose middle is 2 units above the pen. The
+     * first at 12 o'clock, then clockwise.
+     *   6.1: first dot 250-370 ms after pen down, one every ~85 ms, the menu at 720-840 ms; the
+     *        dots the menu does not cover stay a tick longer.
+     *   6.5: nothing for 500 ms, one dot every ~95 ms, the ring is erased when it is whole and the
+     *        menu follows (its first row, then the rest).
+     * The browser's own long press (a contextmenu event after about half a second) is taken while
+     * a finger is down and the program's menu is asked for when the ring is whole, by a contextmenu
+     * event at the pen point. Edit fields keep the browser's own press (selection, paste); the
+     * bars, menus and message boxes have no ring (buttons on the device do not either).
+     */
+    const HOLD_FIRST_MS = WM65 ? 500 : 250;
+    const HOLD_STEP_MS = WM65 ? 90 : 70;
+    const HOLD_MENU_MS = WM65 ? 130 : 0;   // from the whole ring to the menu
+    const HOLD_LEAVE_MS = WM65 ? 0 : 80;   // the ring stays this long after the menu (6.1)
+    const HOLD_SLOP = 8;                   // CSS px the pen may wander
+    const HOLD_SKIP = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], .wm-titlebar, .wm-softkeys, .wm-viewbar, .wm-popup, .wm-msgbox-layer, .wm-busy, .wm-splash, .wm-switch, .wm-lock65, .wm-bubble, .wm-notify, .wm-notify-tray, .wrd-touch, .wmb-touch, .wmb-core, [data-wm-no-hold]';
+    const holdRing = { el: null, id: null, x: 0, y: 0, target: null, timers: [], touchAt: 0 };
+
+    function holdRingEnd(keepMs) {
+        holdRing.timers.forEach(clearTimeout);
+        holdRing.timers = [];
+        holdRing.id = null;
+        holdRing.target = null;
+        const el = holdRing.el;
+        if (!el || el.hidden) return;
+        if (keepMs) holdRing.timers.push(setTimeout(() => { el.hidden = true; }, keepMs));
+        else el.hidden = true;
+    }
+
+    function holdRingStart(e) {
+        holdRingEnd(0);
+        if (!shell || !e.isPrimary) return;
+        const t = e.target;
+        if (!t || !t.closest || t.closest(HOLD_SKIP)) return;
+        if (root.dataset.wmBoot && root.dataset.wmBoot !== 'done') return;
+        holdRing.id = e.pointerId;
+        holdRing.x = e.clientX;
+        holdRing.y = e.clientY;
+        holdRing.target = t;
+        if (!holdRing.el) {
+            const el = document.createElement('div');
+            el.className = 'wm-hold-ring';
+            el.hidden = true;
+            el.setAttribute('aria-hidden', 'true');
+            el.innerHTML = '<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>';
+            shell.appendChild(el);
+            holdRing.el = el;
+        }
+        const el = holdRing.el;
+        const dots = el.children;
+        for (let i = 0; i < 8; i++) {
+            holdRing.timers.push(setTimeout(() => {
+                if (i === 0) {
+                    const sr = shell.getBoundingClientRect();
+                    el.style.left = `${holdRing.x - sr.left}px`;
+                    el.style.top = `${holdRing.y - sr.top}px`;
+                    for (const d of dots) d.hidden = true;
+                    el.hidden = false;
+                }
+                dots[i].hidden = false;
+            }, HOLD_FIRST_MS + i * HOLD_STEP_MS));
+        }
+        const whole = HOLD_FIRST_MS + 8 * HOLD_STEP_MS;
+        if (WM65) holdRing.timers.push(setTimeout(() => { el.hidden = true; }, whole));
+        holdRing.timers.push(setTimeout(() => {
+            const target = holdRing.target;
+            const x = holdRing.x;
+            const y = holdRing.y;
+            holdRingEnd(HOLD_LEAVE_MS);
+            if (!target || !target.isConnected) return;
+            target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, composed: true, view: window, clientX: x, clientY: y, button: 2 }));
+        }, whole + HOLD_MENU_MS));
+    }
+
+    function bindHoldRing() {
+        const touch = (e) => e.pointerType === 'touch' || e.pointerType === 'pen';
+        document.addEventListener('pointerdown', (e) => {
+            if (!touch(e)) return;
+            holdRing.touchAt = Date.now();
+            holdRingStart(e);
+        }, true);
+        document.addEventListener('pointermove', (e) => {
+            if (holdRing.id !== e.pointerId) return;
+            if (Math.abs(e.clientX - holdRing.x) > HOLD_SLOP || Math.abs(e.clientY - holdRing.y) > HOLD_SLOP) holdRingEnd(0);
+        }, true);
+        const up = (e) => { if (holdRing.id === e.pointerId) holdRingEnd(0); };
+        document.addEventListener('pointerup', up, true);
+        document.addEventListener('pointercancel', up, true);
+        document.addEventListener('scroll', () => { if (holdRing.id != null) holdRingEnd(0); }, true);
+        // the browser's own long press: ours comes when the ring is whole
+        document.addEventListener('contextmenu', (e) => {
+            if (!e.isTrusted || Date.now() - holdRing.touchAt > 3000) return;
+            if (e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }, true);
+    }
+
     const STAGE_TICK = 40;
     let stage = null;
 
@@ -5870,6 +5974,8 @@
         /** An app's page, made (mounted) without bringing the app up. */
         pageOf: (id) => (apps.has(id) ? pageFor(apps.get(id)) : null),
         listApps: () => [...apps.values()].map((a) => ({ id: a.id, title: a.title, startLabel: a.startLabel, icon: a.icon, inStart: a.inStart, sip: !!a.sip, programsFolder: a.programsFolder || null })),
+        /** Tap-and-hold: ms from pen down to the menu, when the ring of dots is whole (bindHoldRing). */
+        holdMs: HOLD_FIRST_MS + 8 * HOLD_STEP_MS + HOLD_MENU_MS,
         /** A context menu at a point (tap-and-hold), kept on screen. */
         menuAt: (x, y, items) => {
             showPopup('context', items, null);

@@ -687,7 +687,7 @@
             if (!row || e.touches.length !== 1) return;
             at = { x: e.touches[0].clientX, y: e.touches[0].clientY };
             cancel();
-            timer = setTimeout(() => { timer = null; fired = Date.now(); open(row, at.x, at.y); }, 550);
+            timer = setTimeout(() => { timer = null; fired = Date.now(); open(row, at.x, at.y); }, ((window.wmShell && window.wmShell.holdMs) || 550));
         }, { passive: true });
         root.addEventListener('touchmove', (e) => {
             if (!timer || !at) return;

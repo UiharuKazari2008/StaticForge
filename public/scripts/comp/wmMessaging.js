@@ -671,7 +671,8 @@
         // never allow-scripts: the server sanitized this HTML and a scripted frame would undo that
         frame.setAttribute('sandbox', 'allow-same-origin allow-popups allow-popups-to-escape-sandbox');
         frame.className = 'msg-frame';
-        const fs = 12 * px();
+        // the device's 8 pt system font is 10.5 units (6.5 keeps its 12)
+        const fs = (window.wmShell && window.wmShell.version === '6.5' ? 12 : 10.5) * px();
         frame.srcdoc = `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'"><style>html{margin:0;padding:0;overflow-y:hidden;overflow-x:auto}body{margin:0;padding:0;overflow:visible;font:${fs}px Tahoma,'Segoe UI',Verdana,sans-serif;color:#000;background:#fff;word-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}a{color:#00f}</style></head><body>${(r && r.html) || ''}</body></html>`;
         const fit = () => {
             try {
@@ -1131,7 +1132,7 @@
             start = { x: e.clientX, y: e.clientY };
             const row = e.target.closest('.msg-row');
             clear();
-            timer = setTimeout(() => hold(start.x, start.y, row), 550);
+            timer = setTimeout(() => hold(start.x, start.y, row), ((window.wmShell && window.wmShell.holdMs) || 550));
         });
         scroll.addEventListener('pointermove', (e) => {
             if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8 * px()) clear();

@@ -1443,7 +1443,8 @@
         let holdTimer = null;
         let start = null;
         let held = false;
-        const HOLD_MS = 550;
+        // the shell's tap-and-hold time: its ring of dots is whole then (wmShell.js bindHoldRing)
+        const HOLD_MS = ((window.wmShell && window.wmShell.holdMs) || 550);
         const clear = () => { clearTimeout(holdTimer); holdTimer = null; };
         const hold = (x, y, row) => {
             held = true;

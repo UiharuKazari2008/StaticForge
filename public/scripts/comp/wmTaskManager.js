@@ -279,7 +279,7 @@
                 sel = row.dataset.id;
                 render();
                 if (view === 'apps') ws.menuAt(x, y, [{ label: 'Switch To', action: switchTo }, { label: 'End Task', action: endSelected }]);
-            }, 600);
+            }, ((window.wmShell && window.wmShell.holdMs) || 600));
         });
         const cancel = () => clearTimeout(holdTimer);
         list.addEventListener('pointerup', cancel);

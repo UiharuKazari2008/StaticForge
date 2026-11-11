@@ -159,7 +159,7 @@
             if (!row) return;
             start = { x: e.clientX, y: e.clientY };
             clear();
-            timer = setTimeout(() => { held = true; fn(row, start.x, start.y); }, 550);
+            timer = setTimeout(() => { held = true; fn(row, start.x, start.y); }, ((window.wmShell && window.wmShell.holdMs) || 550));
         });
         el.addEventListener('pointermove', (e) => {
             if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8 * px()) clear();

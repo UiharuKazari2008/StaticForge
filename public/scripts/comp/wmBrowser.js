@@ -2583,7 +2583,7 @@
                 ws.menuAt(clientX, clientY, [{ label: 'Open', action: () => openSubRow(subSel) }, '-'].concat(subMenu().slice(0, -2)));
                 const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
                 els.sub.addEventListener('click', swallow, { capture: true, once: true });
-            }, LONG_PRESS_MS);
+            }, (window.wmShell && window.wmShell.holdMs) || LONG_PRESS_MS);
         });
         ['pointerup', 'pointercancel', 'pointermove'].forEach((t) => els.sub.addEventListener(t, (e) => {
             if (t !== 'pointermove' || Math.abs(e.movementY) > 3) clearTimeout(holdTimer);

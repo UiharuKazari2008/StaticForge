@@ -38,7 +38,8 @@
     const ORDER_KEY = 'wmStart65Order';
     // start distance of a pan and the hold time (see the header: the first is between 15 and 20 units)
     const PAN_START = 16;
-    const HOLD_MS = 800;
+    // the shell's tap-and-hold time: its ring of dots is whole then (wmShell.js bindHoldRing)
+    const HOLD_MS = ((window.wmShell && window.wmShell.holdMs) || 800);
     // fling: speed falls by e every FRICTION_MS; past an end a critically damped spring pulls back
     const FRICTION_MS = 420;
     const SPRING = 0.00035;

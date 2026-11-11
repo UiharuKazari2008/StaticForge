@@ -288,7 +288,7 @@
                 select(row.dataset.sel);
                 const act = selectedAction();
                 if (act) sh.menuAt(x, y, [{ label: ACTION_LABELS[act.name], action: () => runAction(act) }]);
-            }, 600);
+            }, ((window.wmShell && window.wmShell.holdMs) || 600));
         });
         const cancel = () => clearTimeout(holdTimer);
         list.addEventListener('pointerup', cancel);

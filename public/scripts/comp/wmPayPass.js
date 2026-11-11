@@ -776,7 +776,7 @@
             if (!row) return;
             start = { x: e.clientX, y: e.clientY };
             clear();
-            t = setTimeout(() => { held = true; fn(row, start.x, start.y); }, 550);
+            t = setTimeout(() => { held = true; fn(row, start.x, start.y); }, ((window.wmShell && window.wmShell.holdMs) || 550));
         });
         el.addEventListener('pointermove', (e) => { if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) clear(); });
         ['pointerup', 'pointercancel', 'pointerleave'].forEach((n) => el.addEventListener(n, clear));
