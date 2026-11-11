@@ -120,3 +120,33 @@ html.ui-mobile[data-wm-reveal="bars"] .wm-splash {
 html.ui-mobile[data-wm-version="6.5"] .wm-hold-ring > i {
     background: rgb(16, 36, 165);
 }
+
+/* ---- 6.5 menus (wmShell.js showPopup / closeMenus): the first paint has the frame and the first
+ * row only; a chosen menu loses its frame, shadow and fill first, its texts a tick later ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-wm-paint="first"] > :not(.is-hot) {
+    visibility: hidden;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup.wm-popup-ghost {
+    background: none;
+    border-color: transparent;
+    box-shadow: none;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup.wm-popup-ghost > * {
+    background: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup.wm-popup-ghost::before,
+html.ui-mobile[data-wm-version="6.5"] .wm-popup.wm-popup-ghost::after,
+html.ui-mobile[data-wm-version="6.5"] .wm-popup.wm-popup-ghost > ::before,
+html.ui-mobile[data-wm-version="6.5"] .wm-popup.wm-popup-ghost > ::after {
+    visibility: hidden;
+}
+
+/* Today's Tasks row: the count and "N High priority" under it, two lines as the device's (wmTasks.js summary) */
+html.ui-mobile .wm-today-row[data-row="tasks"] { cursor: default; }
+html.ui-mobile .wm-today-row[data-row="tasks"] .wm-today-text { white-space: pre; }

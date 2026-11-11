@@ -133,10 +133,13 @@
             };
         }
         if (id === 'tasks') {
-            return { label: 'tasks', icon: 's:tasks', pages: [{ title: st.tasks || 'No tasks' }], softKey: { label: 'Pictures', action: () => sh.open('gallery') }, onTap: () => sh.open('gallery') };
+            // the Tasks program's count, its second line under it; the panel and its key open Tasks
+            const lines = String(st.tasks || 'No tasks').split('\n');
+            const go = () => { if (window.wmTasks && typeof window.wmTasks.open === 'function') window.wmTasks.open(); else sh.open('gallery'); };
+            return { label: 'tasks', icon: 's:tasks', pages: [{ title: lines[0], line2: lines.slice(1).join(', ') }], softKey: { label: 'Tasks', action: go }, onTap: go };
         }
         if (id === 'search') {
-            return { label: 'search', icon: 's:search', pages: [{ title: 'Search pictures' }], softKey: { label: 'Search', action: () => searchPictures() }, onTap: () => searchPictures() };
+            return { label: 'search', icon: 's:search', pages: [{ title: window.wmSearch ? 'Search Phone' : 'Search pictures' }], softKey: { label: 'Search', action: () => searchPictures() }, onTap: () => searchPictures() };
         }
         if (id === 'workspace') {
             // the current workspace (Change opens Teleport), the favourites picked in the item's
@@ -217,8 +220,9 @@
     }
 
     function searchPictures() {
-        // Pictures holds the search (its Menu > Search)
-        sh.open('gallery');
+        // the Search program (programs, settings, notes, messages, pictures); Pictures' own search without it
+        if (window.wmSearch && typeof window.wmSearch.open === 'function') window.wmSearch.open();
+        else sh.open('gallery');
     }
 
     /** An item's 6.1 icon name as its panel icon (the large one of the set: ti-x-app-<x>-lg). */

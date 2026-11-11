@@ -1,0 +1,282 @@
+/*
+ * Melaton Mobile: Search (WM 6.1 / 6.5 Professional), Yozora #748. wmSearch.js.
+ * Measured on the Device Emulators (VGA halved; ~/.cache/claude-run/wm65apps/progs/emu61 s*.png,
+ * emu65 b3-*.png): the form is 53 px high (labels Tahoma 8 pt right-aligned to x 71.5, values and results 11.5 px ("Overview of Contacts" is 106 px wide) from x 83, the
+ * two rows 26 px apart, the field's rule x 81..231 at y 22), "Results" a 20 px tint band between
+ * two hairlines, rows 33 px (16 px icon at x 2, text from x 22, date at x 110, size ending x 190.5).
+ */
+
+.wm-page.wm-search {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: #fff;
+    color: #000;
+}
+
+.wm-search button {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+}
+
+.wm-search .wsr-form {
+    flex: 0 0 auto;
+    position: relative;
+    height: calc(53 * var(--wm-px));
+    font-size: calc(11.5 * var(--wm-px));
+}
+
+.wm-search .wsr-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(2.5 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+}
+
+.wm-search .wsr-row + .wsr-row {
+    top: calc(28.5 * var(--wm-px));
+}
+
+.wm-search .wsr-label {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: calc(71.5 * var(--wm-px));
+    font-size: calc(10.5 * var(--wm-px));
+    line-height: calc(18 * var(--wm-px));
+    text-align: right;
+    white-space: nowrap;
+}
+
+.wm-search .wsr-field,
+.wm-search .wsr-type {
+    position: absolute;
+    left: calc(81 * var(--wm-px));
+    top: 0;
+    width: calc(151 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    box-sizing: border-box;
+}
+
+.wm-search .wsr-q {
+    box-sizing: border-box;
+    width: 100%;
+    height: calc(20 * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(16 * var(--wm-px)) calc(1 * var(--wm-px)) calc(2 * var(--wm-px)) !important;
+    border: 0 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid transparent !important;
+    border-radius: 0;
+    outline: none;
+    background: transparent !important;
+    color: #000;
+    font: calc(11.5 * var(--wm-px)) var(--wm-font) !important;
+    user-select: text;
+    -webkit-user-select: text;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.wm-search .wsr-q:focus {
+    border-bottom-color: #000 !important;
+}
+
+.wm-search .wsr-q::placeholder {
+    color: #000;
+    opacity: 1;
+}
+
+.wm-search .wsr-q:focus::placeholder {
+    color: transparent;
+}
+
+/* the drop arrows: 9.5 x 4.5 px, centred on x 225.5, 8 px over the rule */
+.wm-search .wsr-drop,
+.wm-search .wsr-type::after {
+    position: absolute;
+    right: calc(1.5 * var(--wm-px));
+    top: calc(8 * var(--wm-px));
+    width: 0;
+    height: 0;
+    border-left: calc(4.75 * var(--wm-px)) solid transparent !important;
+    border-right: calc(4.75 * var(--wm-px)) solid transparent !important;
+    border-top: calc(4.5 * var(--wm-px)) solid #000 !important;
+}
+
+.wm-search .wsr-type::after {
+    content: '';
+}
+
+.wm-search .wsr-drop::before {
+    content: '';
+    position: absolute;
+    inset: calc(-14 * var(--wm-px)) calc(-9 * var(--wm-px)) calc(-8 * var(--wm-px)) calc(-12 * var(--wm-px));
+}
+
+.wm-search .wsr-type {
+    text-align: left;
+    line-height: calc(18 * var(--wm-px));
+    padding: 0 calc(16 * var(--wm-px)) 0 calc(2 * var(--wm-px)) !important;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-search .wsr-head {
+    flex: 0 0 auto;
+    box-sizing: content-box;
+    height: calc(20 * var(--wm-px));
+    padding: calc(0.5 * var(--wm-px)) 0 calc(0.5 * var(--wm-px)) calc(5.5 * var(--wm-px));
+    /* the two hairlines are half a unit: drawn as backgrounds (a border never gets thinner than 1 px) */
+    background: linear-gradient(var(--wsr-line, #000), var(--wsr-line, #000)) 0 0 / 100% calc(0.5 * var(--wm-px)) no-repeat,
+        linear-gradient(var(--wsr-line, #000), var(--wsr-line, #000)) 0 100% / 100% calc(0.5 * var(--wm-px)) no-repeat,
+        var(--wm-tint);
+    font-size: calc(10.5 * var(--wm-px));
+    font-weight: bold;
+    line-height: calc(20 * var(--wm-px));
+}
+
+.wm-search .wsr-results {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.wm-search .wsr-none {
+    padding: calc(1 * var(--wm-px)) calc(6 * var(--wm-px));
+    font-size: calc(11.5 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
+}
+
+.wm-search .wsr-item {
+    position: relative;
+    box-sizing: border-box;
+    height: calc(33 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px)) 0 calc(22 * var(--wm-px));
+    font-size: calc(11.5 * var(--wm-px));
+    line-height: calc(16 * var(--wm-px));
+    white-space: nowrap;
+    cursor: default;
+}
+
+.wm-search .wsr-item::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(0.5 * var(--wm-px));
+    background: #000;
+}
+
+.wm-search .wsr-item.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-search .wsr-ico {
+    position: absolute;
+    left: calc(2 * var(--wm-px));
+    top: calc(1 * var(--wm-px));
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wm-search .wsr-ico img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+/* a picture's row: its thumbnail fills the row's height (30 px square), the text moves right of it */
+.wm-search .wsr-ico.is-thumb {
+    left: calc(1 * var(--wm-px));
+    width: calc(30 * var(--wm-px));
+    height: calc(30 * var(--wm-px));
+    background: #000;
+}
+
+.wm-search .wsr-ico.is-thumb img {
+    object-fit: cover;
+}
+
+.wm-search .wsr-item:has(.is-thumb) {
+    padding-left: calc(35 * var(--wm-px));
+}
+
+.wm-search .wsr-title {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* the second line: the kind from x 22, the date from x 110, the size ending at x 190.5 (a long
+ * date pushes the size right instead of running into it) */
+.wm-search .wsr-line2 {
+    position: absolute;
+    left: calc(22 * var(--wm-px));
+    top: calc(16 * var(--wm-px));
+    display: flex;
+    width: calc(168.5 * var(--wm-px));
+}
+
+.wm-search .wsr-kind {
+    flex: 0 0 calc(88 * var(--wm-px));
+    overflow: hidden;
+}
+
+.wm-search .wsr-date {
+    flex: 0 0 auto;
+}
+
+.wm-search .wsr-size {
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding-left: calc(4 * var(--wm-px));
+}
+
+.wm-search .wsr-item:has(.is-thumb) .wsr-line2 {
+    left: calc(35 * var(--wm-px));
+    width: calc(155.5 * var(--wm-px));
+}
+
+.wm-search .wsr-item:has(.is-thumb) .wsr-kind {
+    flex-basis: calc(75 * var(--wm-px));
+}
+
+/* ---- Melaton Mobile 6.5 ---- */
+/* Measured on the 6.5 emulator (VGA halved; emu65 b3-*.png): the same form under the 6.5 chrome:
+ * the theme's tint band and selection, the 6.5 text colour, the band's hairlines #080431. */
+html.ui-mobile[data-wm-version="6.5"] .wm-page.wm-search,
+html.ui-mobile[data-wm-version="6.5"] .wm-search .wsr-q,
+html.ui-mobile[data-wm-version="6.5"] .wm-search .wsr-q::placeholder {
+    color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-search .wsr-q:focus::placeholder {
+    color: transparent;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-search .wsr-head {
+    --wsr-line: #080431;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-search .wsr-item::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(0.5 * var(--wm-px));
+    background: #000;
+}
+
+.wm-search .wsr-item.is-selected {
+    color: #fff;
+}

@@ -1,0 +1,623 @@
+/*
+ * Melaton Mobile: Tasks (WM 6.1 / 6.5 Professional), Yozora #748. wmTasks.js.
+ * Measured on the Device Emulators (VGA halved; ~/.cache/claude-run/wm65apps/progs/emu61 t*.png,
+ * emu65 a*.png). Art: outres.192.dll bitmaps 11005 (check box), 11026 (priority marks), 11031 (the
+ * entry bar's toggles), 11029 (bell), 11072 (chevrons) as tasks-*@2x.png.
+ */
+
+.wm-page.wm-tasks {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+    color: #000;
+}
+
+.wm-tasks [hidden] {
+    display: none !important;
+}
+
+.wm-tasks button {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+}
+
+.wm-tasks .wtk-listview,
+.wm-tasks .wtk-summary,
+.wm-tasks .wtk-form,
+.wm-tasks .wtk-options {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: none;
+    flex-direction: column;
+}
+
+.wm-tasks[data-view="list"] .wtk-listview,
+.wm-tasks[data-view="summary"] .wtk-summary,
+.wm-tasks[data-view="form"] .wtk-form,
+.wm-tasks[data-view="options"] .wtk-options {
+    display: flex;
+}
+
+/* ---- the entry bar: a 24 px tint band over a 1 px black rule ---- */
+
+.wm-tasks .wtk-bar {
+    flex: 0 0 auto;
+    position: relative;
+    box-sizing: content-box;
+    height: calc(24 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tint);
+}
+
+/* the two toggles: x 2..37, y 2..23, a 1 px frame; the cell with the focus has a 2 px frame */
+.wm-tasks .wtk-pri {
+    position: absolute;
+    left: calc(2 * var(--wm-px));
+    top: calc(2 * var(--wm-px));
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    box-sizing: border-box;
+    width: calc(35 * var(--wm-px));
+    height: calc(21 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-tasks .wtk-pri button {
+    position: relative;
+    height: 100%;
+}
+
+.wm-tasks .wtk-pri button + button {
+    border-left: calc(0.5 * var(--wm-px)) solid #000;
+}
+
+.wm-tasks .wtk-pri button::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: #fff;
+}
+
+/* the 6 x 13 px glyph of bitmap 11031 in the middle of its cell */
+.wm-tasks .wtk-pri button > i {
+    position: absolute;
+    left: calc(50% - 3 * var(--wm-px));
+    top: calc(50% - 6.5 * var(--wm-px));
+    width: calc(6 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+    background: url('/static_images/wm61/tasks-barpri@2x.png') 0 0 / calc(12 * var(--wm-px)) calc(13 * var(--wm-px)) no-repeat;
+}
+
+.wm-tasks .wtk-pri button[data-pri="low"] > i {
+    background-position: calc(-6 * var(--wm-px)) 0;
+}
+
+/* a toggle that is on is drawn inverted (black cell, the arrow orange) */
+.wm-tasks .wtk-pri button.is-on {
+    filter: invert(1);
+}
+
+.wm-tasks .wtk-pri button.is-focus::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #000;
+}
+
+/* "Tap here to add a new task": x 39..238, bold */
+.wm-tasks .wtk-entry {
+    position: absolute;
+    left: calc(39 * var(--wm-px));
+    right: calc(2 * var(--wm-px));
+    top: calc(2 * var(--wm-px));
+    box-sizing: border-box;
+    width: auto;
+    height: calc(21 * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0;
+    outline: none;
+    background: #fff !important;
+    color: #000;
+    font: bold calc(10.5 * var(--wm-px)) var(--wm-font) !important;
+    user-select: text;
+    -webkit-user-select: text;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.wm-tasks .wtk-entry::placeholder {
+    color: #000;
+    opacity: 1;
+}
+
+.wm-tasks .wtk-entry:focus::placeholder {
+    color: transparent;
+}
+
+/* ---- rows: 17 px; check box 15 px at x 1, mark at x 19.5, subject bold from x 34.5 ---- */
+
+.wm-tasks .wtk-rows {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.wm-tasks .wtk-row {
+    position: relative;
+    box-sizing: border-box;
+    height: calc(17 * var(--wm-px));
+    padding-left: calc(34.5 * var(--wm-px));
+    font-weight: bold;
+    cursor: default;
+    -webkit-touch-callout: none;
+}
+
+.wm-tasks .wtk-row.is-overdue {
+    color: #f00;
+}
+
+.wm-tasks .wtk-row.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-tasks .wtk-check {
+    position: absolute;
+    left: calc(1 * var(--wm-px));
+    top: calc(1 * var(--wm-px));
+    width: calc(15 * var(--wm-px));
+    height: calc(15 * var(--wm-px));
+    /* the bitmap's 1 px margin is drawn white, also on the selected row */
+    background: #fff url('/static_images/wm61/tasks-check@2x.png') 0 0 / calc(30 * var(--wm-px)) calc(15 * var(--wm-px)) no-repeat;
+}
+
+.wm-tasks .wtk-check.is-on {
+    background-position: calc(-15 * var(--wm-px)) 0;
+}
+
+/* a finger-sized target around the small box */
+.wm-tasks .wtk-check::before {
+    content: '';
+    position: absolute;
+    inset: calc(-1 * var(--wm-px)) calc(-3 * var(--wm-px)) calc(-1 * var(--wm-px)) calc(-1 * var(--wm-px));
+}
+
+.wm-tasks .wtk-mark {
+    position: absolute;
+    left: calc(19.5 * var(--wm-px));
+    top: calc(2 * var(--wm-px));
+    width: calc(10 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+}
+
+.wm-tasks .wtk-mark[data-mark] {
+    background: url('/static_images/wm61/tasks-pri@2x.png') 0 0 / calc(40 * var(--wm-px)) calc(13 * var(--wm-px)) no-repeat;
+}
+
+.wm-tasks .wtk-mark[data-mark="low"] {
+    background-position: calc(-20 * var(--wm-px)) 0;
+}
+
+.wm-tasks .wtk-text {
+    display: block;
+    min-width: 0;
+}
+
+.wm-tasks .wtk-subject,
+.wm-tasks .wtk-dates {
+    display: block;
+    height: calc(17 * var(--wm-px));
+    line-height: calc(16 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* "Show start and due dates": 34 px rows, the dates on a second line 14.5 px under the subject,
+ * a 1 px #848284 rule under each row */
+.wm-tasks .wtk-rows.has-dates .wtk-row {
+    height: calc(34 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #848284;
+}
+
+.wm-tasks .wtk-rows.has-dates .wtk-dates {
+    margin-top: calc(-2.5 * var(--wm-px));
+}
+
+/* ---- the summary ---- */
+
+.wm-tasks .wtk-summary {
+    background: #fff;
+}
+
+.wm-tasks .wtk-shead {
+    position: relative;
+    flex: 0 0 auto;
+    box-sizing: content-box;
+    min-height: calc(27 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(40 * var(--wm-px)) 0 calc(6.5 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    font-size: calc(10.5 * var(--wm-px));
+    line-height: calc(17.5 * var(--wm-px));
+}
+
+.wm-tasks .wtk-ssubj {
+    font-weight: bold;
+    overflow-wrap: anywhere;
+}
+
+.wm-tasks .wtk-sicons {
+    position: absolute;
+    top: calc(4 * var(--wm-px));
+    right: calc(6 * var(--wm-px));
+    display: flex;
+    align-items: flex-start;
+    gap: calc(1 * var(--wm-px));
+}
+
+.wm-tasks .wtk-sicons .wtk-mark {
+    position: static;
+}
+
+.wm-tasks .wtk-bell {
+    width: calc(16 * var(--wm-px));
+    height: calc(14 * var(--wm-px));
+    background: url('/static_images/wm61/tasks-bell@2x.png') 0 0 / 100% 100% no-repeat;
+}
+
+.wm-tasks .wtk-srow {
+    display: grid;
+    grid-template-columns: calc(64.5 * var(--wm-px)) minmax(0, 1fr);
+    margin-top: calc(10 * var(--wm-px));
+    padding-bottom: calc(5 * var(--wm-px));
+    white-space: nowrap;
+}
+
+.wm-tasks .wtk-srow + .wtk-srow {
+    margin-top: calc(-6 * var(--wm-px));
+}
+
+/* the chevron: 7 x 8 px at the right, 3 px over the rule */
+.wm-tasks .wtk-chev {
+    position: absolute;
+    right: calc(3 * var(--wm-px));
+    bottom: calc(2.5 * var(--wm-px));
+    width: calc(7 * var(--wm-px));
+    height: calc(8 * var(--wm-px));
+    background: url('/static_images/wm61/tasks-chevron@2x.png') 0 0 / calc(14 * var(--wm-px)) calc(8 * var(--wm-px)) no-repeat;
+}
+
+.wm-tasks .wtk-chev::before {
+    content: '';
+    position: absolute;
+    inset: calc(-10 * var(--wm-px));
+}
+
+.wm-tasks .wtk-shead.is-open .wtk-chev {
+    background-position: calc(-7 * var(--wm-px)) 0;
+}
+
+.wm-tasks .wtk-snotes {
+    padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
+    font-size: calc(10.5 * var(--wm-px));
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* ---- the form (the PIM form: labels to x 74, fields from x 78, 19.5 px rows) ---- */
+
+.wm-tasks .wtk-form {
+    background: #fff;
+}
+
+.wm-tasks .wtk-fbody > :first-child {
+    margin-top: calc(-1 * var(--wm-px));
+}
+
+.wm-tasks .wtk-form[data-tab="notes"] .wtk-fbody,
+.wm-tasks .wtk-form[data-tab="task"] .wtk-fnotes {
+    display: none;
+}
+
+.wm-tasks .wtk-field {
+    position: relative;
+    display: grid;
+    grid-template-columns: calc(74 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(4 * var(--wm-px));
+    align-items: end;
+    height: calc(19.5 * var(--wm-px));
+    padding-right: calc(17 * var(--wm-px));
+}
+
+.wm-tasks .wtk-flabel {
+    padding-bottom: calc(5.5 * var(--wm-px));
+    font-size: calc(10.5 * var(--wm-px));
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-tasks .wtk-finput,
+.wm-tasks .wtk-fval {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: calc(18 * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(2 * var(--wm-px)) calc(5 * var(--wm-px)) !important;
+    border: 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #848284 !important;
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    color: #000;
+    font: calc(13.35 * var(--wm-px)) var(--wm-font) !important;
+    line-height: calc(12 * var(--wm-px)) !important;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.wm-tasks .wtk-finput {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* Subject: an edit field with a drop arrow; with the focus it is a 1 px black box, the arrow inside */
+.wm-tasks .wtk-field.is-boxed .wtk-finput {
+    padding-right: calc(16 * var(--wm-px)) !important;
+}
+
+.wm-tasks .wtk-field.is-boxed .wtk-finput:focus {
+    height: calc(20 * var(--wm-px));
+    margin-left: calc(-1 * var(--wm-px));
+    width: calc(100% + 4.5 * var(--wm-px));
+    padding-left: calc(2 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+}
+
+.wm-tasks .wtk-fdrop {
+    position: absolute;
+    right: calc(16.5 * var(--wm-px));
+    bottom: calc(10 * var(--wm-px));
+    width: 0;
+    height: 0;
+    border-left: calc(4 * var(--wm-px)) solid transparent;
+    border-right: calc(4 * var(--wm-px)) solid transparent;
+    border-top: calc(4 * var(--wm-px)) solid #000;
+    cursor: default;
+}
+
+.wm-tasks .wtk-finput:focus + .wtk-fdrop {
+    bottom: calc(7 * var(--wm-px));
+}
+
+.wm-tasks .wtk-fdrop::before {
+    content: '';
+    position: absolute;
+    inset: calc(-10 * var(--wm-px)) calc(-8 * var(--wm-px)) calc(-4 * var(--wm-px));
+}
+
+/* the reminder's date and time on one rule */
+.wm-tasks .wtk-fdt {
+    position: relative;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.wm-tasks .wtk-fdt .wtk-fval + .wtk-fval {
+    padding-left: calc(6 * var(--wm-px)) !important;
+}
+
+.wm-tasks .wtk-fnative {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.wm-tasks .wtk-fnotes {
+    flex: 1 1 auto;
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+    padding: calc(4 * var(--wm-px));
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    resize: none;
+    background: #fff;
+    color: #000;
+    font: calc(13 * var(--wm-px)) / 1.35 var(--wm-font);
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* ---- Options: check boxes from x 8.5, the first 12 px under the heading's rule, 19 px apart ---- */
+
+.wm-tasks .wtk-options {
+    background: #fff;
+}
+
+.wm-tasks .wtk-opts {
+    padding: calc(10.5 * var(--wm-px)) calc(8 * var(--wm-px)) 0 calc(8.5 * var(--wm-px));
+}
+
+.wm-tasks .wtk-opts .wm-check {
+    min-height: calc(19 * var(--wm-px));
+}
+
+/* ---- the month picker: x 34..203 from the top of the screen, a 1 px black frame ---- */
+
+.wtk-cal {
+    position: absolute;
+    z-index: 9000;
+    left: calc(34 * var(--wm-px));
+    top: 0;
+    box-sizing: border-box;
+    width: calc(170 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-top: 0;
+    background: #fff;
+    color: #000;
+    font: calc(10.5 * var(--wm-px)) var(--wm-font);
+}
+
+.wtk-cal button {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+}
+
+/* the month band: 33 px of the highlight, the name bold white 13.5 px, the two 19 x 14 px buttons */
+.wtk-cal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: calc(33 * var(--wm-px));
+    padding: 0 calc(5 * var(--wm-px));
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+    font-weight: bold;
+    font-size: calc(13.5 * var(--wm-px));
+}
+
+.wtk-cal-nav {
+    position: relative;
+    width: calc(19.5 * var(--wm-px));
+    height: calc(14 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    background: #fff !important;
+}
+
+.wtk-cal-nav::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    margin: calc(-4.5 * var(--wm-px)) 0 0 calc(-2.5 * var(--wm-px));
+    border-top: calc(4.5 * var(--wm-px)) solid transparent;
+    border-bottom: calc(4.5 * var(--wm-px)) solid transparent;
+    border-right: calc(4.5 * var(--wm-px)) solid #000;
+}
+
+.wtk-cal-nav[data-nav="1"]::before {
+    border-right: 0;
+    border-left: calc(4.5 * var(--wm-px)) solid #000;
+}
+
+.wtk-cal-week,
+.wtk-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, calc(24 * var(--wm-px)));
+    text-align: center;
+}
+
+.wtk-cal-week {
+    height: calc(16.5 * var(--wm-px));
+    margin: 0 calc(4.5 * var(--wm-px)) calc(1 * var(--wm-px));
+    grid-template-columns: repeat(7, 1fr);
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    color: var(--wm-highlight);
+    font-weight: bold;
+    font-size: calc(13.5 * var(--wm-px));
+    line-height: calc(17 * var(--wm-px));
+}
+
+.wtk-cal-grid {
+    padding: 0 0 0 calc(0.5 * var(--wm-px));
+}
+
+.wtk-cal-day {
+    height: calc(17.5 * var(--wm-px));
+    font-size: calc(13.5 * var(--wm-px)) !important;
+    line-height: calc(17 * var(--wm-px));
+}
+
+.wtk-cal-day.is-other {
+    color: #a5a5a5;
+}
+
+.wtk-cal-day.is-today {
+    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #000;
+}
+
+.wtk-cal-day.is-picked {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wtk-cal-line {
+    display: block;
+    width: 100%;
+    height: calc(20 * var(--wm-px));
+    padding: 0 calc(4.5 * var(--wm-px)) !important;
+    text-align: left;
+    font-weight: bold !important;
+    font-size: calc(13.5 * var(--wm-px)) !important;
+}
+
+.wtk-cal-line.is-none {
+    padding-left: calc(7.5 * var(--wm-px)) !important;
+}
+
+/* ---- Melaton Mobile 6.5 ---- */
+/* Measured on the 6.5 emulator (VGA halved; ~/.cache/claude-run/wm65apps/progs/emu65 a*.png): the
+ * same program under the 6.5 chrome: white pages (no list gradient), the theme's tint band and
+ * selection, the 6.5 text colour, the form's tabs as the shell's 6.5 strip. */
+html.ui-mobile[data-wm-version="6.5"] .wm-page.wm-tasks {
+    background: #fff;
+    color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-entry,
+html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-entry::placeholder,
+html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-finput,
+html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-fval,
+html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-fnotes,
+html.ui-mobile[data-wm-version="6.5"] .wtk-cal {
+    color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-entry:focus::placeholder {
+    color: transparent;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-row.is-overdue {
+    color: #f00;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-row.is-selected,
+html.ui-mobile[data-wm-version="6.5"] .wtk-cal-day.is-picked {
+    color: #fff;
+}
+
+/* the month's name is drawn in the tint on the 6.5 selection colour */
+html.ui-mobile[data-wm-version="6.5"] .wtk-cal-head > span {
+    color: var(--wm-tint);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wtk-cal-day.is-other {
+    color: #a5a5a5;
+}

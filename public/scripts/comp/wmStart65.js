@@ -84,7 +84,7 @@
     const APP_ART65 = {
         today: 'today', gallery: 'photos', fileexplorer: 'fileexp', messaging: 'msg', browser: 'ie', notes: 'notes',
         contacts: 'contacts', calendar: 'calendar', calculator: 'calc', taskmgr: 'taskmgr', 'windows-media': 'wmp',
-        settings: 'settings', help: 'help'
+        settings: 'settings', help: 'help', tasks: 'tasks', search: 'search'
     };
     // WM 6.5's own order (HKLM\Security\Shell\StartInfo ranks: Today, Phone, Text, E-mail, Contacts,
     // Internet Explorer, Calendar, Settings, Getting Started, Pictures & Videos, Windows Media ...
@@ -92,7 +92,7 @@
     // for the apps that have a place in it; the Director and Studio, pinned at the top of the 6.1
     // Start menu, follow Settings. Everything else comes after, by name, as unranked programs do.
     const RANK = ['a:today', 'a:messaging', 'a:contacts', 'a:browser', 'a:calendar', 'a:settings', 'a:director', 'a:studio',
-        'a:gallery', 'a:windows-media', 'a:calculator', 'folder:games', 'a:notes', 'folder:dreamscape', 'a:fileexplorer', 'a:taskmgr', 'a:help'];
+        'a:gallery', 'a:windows-media', 'a:calculator', 'folder:games', 'a:notes', 'a:tasks', 'folder:dreamscape', 'a:fileexplorer', 'a:taskmgr', 'a:search', 'a:help'];
 
     // ---------------------------------------------------------------- items
     // The same programs the 6.1 Start menu and Programs screen list. wmPrograms.js keeps its tables

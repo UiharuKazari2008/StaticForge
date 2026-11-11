@@ -36,7 +36,7 @@
     const EXE = {
         calculator: 'MobileCalculator.exe', calendar: 'poutlook.exe', contacts: 'poutlook.exe', taskmgr: 'taskmgr.exe',
         'windows-media': 'wmplayer.exe', notes: 'notes.exe', fileexplorer: 'fexplore.exe', ie: 'iexplore.exe',
-        messaging: 'tmail.exe', settings: 'ctlpnl.exe', programs: 'shell32.exe', help: 'peghelp.exe'
+        messaging: 'tmail.exe', settings: 'ctlpnl.exe', programs: 'shell32.exe', help: 'peghelp.exe', tasks: 'poutlook.exe', search: 'shfind.exe'
     };
 
     // ---------------------------------------------------------------- what runs

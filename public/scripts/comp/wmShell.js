@@ -834,6 +834,20 @@
             pop.addEventListener('pointerover', cool);
             pop.addEventListener('pointerdown', cool);
         }
+        // 6.5 (recorded: e_menu, fe_hold): the first paint has the frame and the first row only,
+        // under the selector; the other rows come a tick later. Choosing a row erases the frame
+        // first, the rows' texts standing alone for a tick (closeMenus)
+        if (WM65 && side !== 'dropdown') {
+            pop.dataset.wmPaint = 'first';
+            clearTimeout(pop._paintTimer);
+            pop._paintTimer = setTimeout(() => { delete pop.dataset.wmPaint; }, STAGE_TICK);
+            if (!pop._choiceBound) {
+                pop._choiceBound = true;
+                pop.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.wm-popup-item:not(:disabled)')) pop._chosenAt = Date.now(); }, true);
+            }
+        } else {
+            delete pop.dataset.wmPaint;
+        }
         pop.hidden = false;
         openPopup = pop;
         // CE's Menu pop-up event (silent unless a sound is picked for it)
@@ -903,7 +917,18 @@
 
     function closeMenus(silent) {
         const had = !!openPopup;
-        shell.querySelector('.wm-popup').hidden = true;
+        const popEl = shell.querySelector('.wm-popup');
+        if (WM65 && had && !popEl.hidden && popEl._chosenAt && Date.now() - popEl._chosenAt < 80) {
+            // a row was chosen: the frame goes first, the texts a tick later (a copy that takes no taps)
+            popEl._chosenAt = 0;
+            const ghost = popEl.cloneNode(true);
+            ghost.classList.add('wm-popup-ghost');
+            ghost.setAttribute('aria-hidden', 'true');
+            ghost.setAttribute('inert', '');
+            shell.appendChild(ghost);
+            setTimeout(() => ghost.remove(), STAGE_TICK);
+        }
+        popEl.hidden = true;
         dropdownAnchor = null;
         if (popupOnClose) { const fn = popupOnClose; popupOnClose = null; fn(); }
         shell.querySelector('.wm-startmenu').hidden = true;
@@ -4240,6 +4265,11 @@
         }
 
         function tasksText() {
+            // the Tasks program's own count ("2 Active tasks" / "1 High priority", as the device's
+            // Today row), the prints in progress with it (wmTasks.js summary)
+            try {
+                if (window.wmTasks && typeof window.wmTasks.summary === 'function') return window.wmTasks.summary().text || 'No tasks';
+            } catch (_) { /* the print count alone */ }
             const ws = window.wsClient;
             let n = 0;
             if (ws && ws.pendingRequests && typeof ws.pendingRequests.forEach === 'function') {
@@ -4325,6 +4355,11 @@
                     e.stopPropagation();
                     showPopup('right', workspaceMenu(), null);
                 });
+                // the Tasks row opens Tasks (device); the list changing repaints the row
+                page.querySelector('[data-row="tasks"]').addEventListener('click', () => {
+                    if (window.wmTasks && typeof window.wmTasks.open === 'function') window.wmTasks.open();
+                });
+                document.addEventListener('wmTasksChange', () => { if (current === 'today') this.refresh(); });
                 page.querySelector('[data-row="search"]').addEventListener('submit', (e) => {
                     e.preventDefault();
                     const input = e.currentTarget.querySelector('input');
