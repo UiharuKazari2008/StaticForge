@@ -5109,14 +5109,29 @@ async function maybeOpenGeneratedInLumen(globalResources, req, filenames) {
         const ledge = require('./ledgeDesk');
         const session = ledge.ingestGenerated(names);
         const state = session ? ledge.publicSession(session, true) : null;
+        // The user is working from a phone (the client this session is bound to is Melaton Mobile):
+        // the prints still land on the desk, but no client is made to open it (Yukimi 2026-11-11: "we
+        // don't need every client opening it when we're staring at the screen"). A Ledge window that
+        // is already open somewhere takes the new prints; `quiet` tells ledgeDesk.js not to open one.
+        let quiet = false;
+        try {
+            const record = getBoundRecord(globalResources, resolveBindKey(req));
+            quiet = !!(record && record.info && clientPhoneState(record.info));
+        } catch (_) { quiet = false; }
         if (state) {
             let wsServer = null;
             try { wsServer = globalResources.getWebSocketServer(); } catch (_) { wsServer = null; }
             if (wsServer && typeof wsServer.broadcast === 'function') {
-                wsServer.broadcast({ type: 'ledge_state', data: Object.assign({ reason: 'add' }, state), timestamp: new Date().toISOString() });
+                wsServer.broadcast({ type: 'ledge_state', data: Object.assign({ reason: 'add' }, quiet ? { quiet: true } : {}, state), timestamp: new Date().toISOString() });
             }
         }
-        return { opened: !!state, target: 'ledge', sessionId: state && state.sessionId, clientCount: listClients(globalResources, resolveBindKey(req)).length };
+        return {
+            opened: !!state && !quiet,
+            target: 'ledge',
+            ...(quiet ? { reason: 'user-on-phone', note: 'The prints are on the Ledge desk; it was not opened because the user is on a phone.' } : {}),
+            sessionId: state && state.sessionId,
+            clientCount: listClients(globalResources, resolveBindKey(req)).length
+        };
     }
     const viewer = settings.openGeneratedImages === 'glancewell' ? 'glancewell' : 'lumen';
     const clients = listClients(globalResources, resolveBindKey(req));

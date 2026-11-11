@@ -351,6 +351,9 @@ function presentLedge(data) {
         if (host) ledgeSyncChecks(host, data);
         return;
     }
+    // quiet: new prints while the user works from a phone (mcpAgentFacade.js): a desk that is open
+    // here takes them, but none is opened for them
+    if (data.quiet && !ledgeWindows.has(data.sessionId)) return;
     ledgeEnsureWindow(data);
 }
 

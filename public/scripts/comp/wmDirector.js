@@ -1905,6 +1905,14 @@
         items.push({ label: n > 1 ? `Remove Attachments (${n})` : 'Remove Attachment', disabled: !n, action: () => { d.pendingAttachments.splice(0); d.renderAttachChips(); ws.refreshSoftKeys(); } });
         const quick = toolRows(['Quick Tasks']);
         if (quick.length) items.push('-', ...quick);
+        // what the turn runs on (the desktop header's picker), reachable while writing: a new chat has
+        // no other menu, and its engine and model are chosen before the first send
+        if (d) {
+            const cfg = d.toolsMenuConfig();
+            items.push('-', { label: 'Engine and Model', submenu: () => wmRows([d.engineMenuItem(), ...d.modelPrefItems()], null, (action) => cfg.onAction(action)) });
+            if (isDraft(d)) items.push({ label: 'Persona', submenu: personaItems }, { label: 'Sessions', action: () => { void showSessions(); } });
+            items.push({ label: 'Options', submenu: optionsItems });
+        }
         items.push('-', { label: 'Cancel', action: closeComposer });
         return items;
     }
