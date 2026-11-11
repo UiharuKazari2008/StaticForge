@@ -516,7 +516,10 @@
     let titleText = 'Start';
 
     /** The app's title; while the Start menu is open the bar shows the Start button's text (WM). */
+    let glassTitle = '';
     function setTitle(text) {
+        // a program's next window repaints the whole bar: 6.5's see-through title bar ends
+        if (root.dataset.wmBar && text !== glassTitle && text !== titleText) delete root.dataset.wmBar;
         titleText = text;
         if (!shell.querySelector('.wm-titlebar').classList.contains('is-start-open')) shell.querySelector('.wm-title').textContent = text;
     }
@@ -818,6 +821,16 @@
         // sizes an app gave its last menu (a combo's width, a scroll limit) do not carry over
         pop.style.minWidth = pop.style.maxWidth = pop.style.maxHeight = pop.style.overflowX = pop.style.overflowY = '';
         fillMenu(pop, items);
+        // both devices open a menu with its first enabled row under the highlight (recorded: soft
+        // key, tap-and-hold and Start menus; a drop-down keeps its own mark for the current choice).
+        // It leaves as soon as the finger goes anywhere in the menu
+        if (side !== 'dropdown') {
+            const first = pop.querySelector(':scope > .wm-popup-item:not(:disabled)');
+            if (first) first.classList.add('is-hot');
+            const cool = () => { pop.querySelectorAll(':scope > .is-hot').forEach((x) => x.classList.remove('is-hot')); pop.removeEventListener('pointerover', cool); pop.removeEventListener('pointerdown', cool); };
+            pop.addEventListener('pointerover', cool);
+            pop.addEventListener('pointerdown', cool);
+        }
         pop.hidden = false;
         openPopup = pop;
         // CE's Menu pop-up event (silent unless a sound is picked for it)
@@ -949,6 +962,14 @@
                 open(b.dataset.app, { fromStart: true });
             });
         });
+        // the device opens Start with its first row ("Today") under the highlight
+        const firstRow = menu.querySelector('.wm-startmenu-item');
+        if (firstRow) {
+            firstRow.classList.add('is-selected');
+            const cool = () => { firstRow.classList.remove('is-selected'); menu.removeEventListener('pointerover', cool); menu.removeEventListener('pointerdown', cool); };
+            menu.addEventListener('pointerover', cool);
+            menu.addEventListener('pointerdown', cool);
+        }
         menu.hidden = false;
         startMenuPicture(menu);
         openPopup = menu;
@@ -1028,9 +1049,142 @@
 
     const pageScroll = new WeakMap(); // page -> scrollTop when it was hidden
 
+    // ---------------------------------------------------------------- staged drawing
+    //
+    // Neither device swaps a screen in one go (recorded frame by frame, #748). The shell still
+    // switches at once (the app is live, the keys act), and then, for a few 40 ms ticks, puts back
+    // the old look of the parts the device repaints late and releases them in the device's order:
+    //   6.1  first launch: title text, then the page, the corner button, the soft keys last
+    //        back to an open app, and back to Today: the page first, title / corner / keys a tick later
+    //   6.5  from Start (cold): Start goes, the home screen shows through, the title bar turns
+    //        black with the app's name, then the page, the soft keys, the keyboard button last
+    //        from a home screen panel: page and soft key bar first under the see-through "Start"
+    //        closing to home: the title bar turns home first, then the soft key bar, the body last
+    // The emulator's own times are 2 to 10 times longer; the order is what is kept. Nothing waits
+    // on it: any new switch finishes the running one at once. Off with reduced motion.
+    const STAGE_TICK = 40;
+    let stage = null;
+
+    function stageFlush() {
+        if (!stage) return;
+        const s = stage;
+        stage = null;
+        s.timers.forEach(clearTimeout);
+        try { s.finish(); } catch (err) { console.warn('[wmShell] stage', err); }
+    }
+
+    function stageTokens(list) {
+        if (list && list.length) root.dataset.wmStage = list.join(' ');
+        else delete root.dataset.wmStage;
+    }
+
+    function stageRun(steps, finish) {
+        const s = { timers: [], finish };
+        stage = s;
+        let t = 0;
+        steps.forEach(([delay, fn], i) => {
+            t += delay;
+            s.timers.push(setTimeout(() => {
+                if (stage !== s) return;
+                try { fn(); } catch (err) { console.warn('[wmShell] stage step', err); }
+                if (i === steps.length - 1) { stage = null; try { finish(); } catch (err) { console.warn('[wmShell] stage', err); } }
+            }, t));
+        });
+    }
+
+    /** What the screen shows now, to put back for a tick or two after a switch. */
+    function stageSnapshot() {
+        if (!shell) return null;
+        const corner = shell.querySelector('.wm-title-action');
+        const keys = [...shell.querySelectorAll('.wm-softkey')];
+        const app = current && apps.get(current);
+        return {
+            app: current,
+            page: app ? app.page : null,
+            title: shell.querySelector('.wm-title').textContent,
+            corner: { hidden: corner.hidden, kind: corner.dataset.kind },
+            keys: keys.map((b) => b.textContent),
+            sip: shell.querySelector('.wm-sip').hidden
+        };
+    }
+
+    function stagePlay(before, id, page, firstMount) {
+        if (!before || !before.app || before.app === id || root.dataset.wmBoot !== 'done' || viewerActive || document.hidden || switchCoverFor) return;
+        try { if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (_) { /* staged */ }
+        const T = STAGE_TICK;
+        const titleEl = shell.querySelector('.wm-title');
+        const corner = shell.querySelector('.wm-title-action');
+        const keyEls = [...shell.querySelectorAll('.wm-softkey')];
+        const sip = shell.querySelector('.wm-sip');
+        const oldPage = before.page && before.page !== page ? before.page : null;
+        const todayPage = apps.get('today') && apps.get('today').page;
+        let held = null; // the page left on screen in place of the new one
+        const hold = (p) => { if (!p || p === page) return; held = p; p.hidden = false; page.style.visibility = 'hidden'; };
+        const showPage = () => { if (held) { held.hidden = held !== (apps.get(current) || {}).page; held = null; } page.style.visibility = ''; };
+        const oldTitle = () => { titleEl.textContent = before.title; };
+        const newTitle = () => { if (!shell.querySelector('.wm-titlebar').classList.contains('is-start-open')) titleEl.textContent = titleText; };
+        const oldCorner = () => { corner.hidden = before.corner.hidden; if (before.corner.kind) corner.dataset.kind = before.corner.kind; };
+        const noCorner = () => { corner.hidden = true; };
+        const newCorner = () => refreshTitleAction();
+        const labels = (list) => keyEls.forEach((b, i) => { b.textContent = list[i] || ''; });
+        const oldKeys = () => { labels(before.keys); sip.hidden = before.sip; };
+        const newKeys = () => renderSoftKeys();
+        const finish = () => { showPage(); newTitle(); renderSoftKeys(); stageTokens([]); };
+        const toToday = id === 'today';
+
+        if (!WM65) {
+            if (!toToday && firstMount && oldPage) {
+                // first launch: the title is already the app's; the old screen stays under it
+                hold(oldPage); oldCorner(); oldKeys();
+                if (before.app === 'today') stageTokens(['body-home']);
+                stageRun([[2 * T, () => { showPage(); stageTokens([]); }], [T, newCorner], [T, newKeys]], finish);
+                return;
+            }
+            // an app that is already open, and Today: the page first
+            oldTitle(); oldCorner(); oldKeys();
+            stageRun([[T, () => { newTitle(); newCorner(); newKeys(); }]], finish);
+            return;
+        }
+
+        if (before.app === 'start' && !toToday) {
+            // 6.5 from the Start screen. A program that is already running comes up straight over
+            // the grid: only its title is drawn, on the home look of the bar (the see-through
+            // title bar, set by activate()). A cold one lets the home screen show through first
+            if (!firstMount || !todayPage) return;
+            const home = apps.get('today');
+            let homeKeys = ['', ''];
+            try { const k = home.softKeys() || {}; homeKeys = [k.left ? k.left.label : '', k.right ? k.right.label : '']; } catch (_) { /* blank keys */ }
+            hold(todayPage); titleEl.textContent = startButtonPrefs().text; noCorner(); labels(homeKeys); sip.hidden = true;
+            stageTokens(['body-home', 'title-home', 'keys-home']);
+            stageRun([
+                [2 * T, () => { newTitle(); stageTokens(['body-home', 'title-app', 'keys-home']); }],
+                [3 * T, () => { showPage(); stageTokens(['keys-home']); }],
+                [2 * T, () => { stageTokens([]); newCorner(); labels([(softKeys.left || {}).label, (softKeys.right || {}).label]); }],
+                [T, newKeys]
+            ], finish);
+            return;
+        }
+        if (before.app === 'today' && !toToday && id !== 'start') {
+            // from a home screen panel: the page and the black soft key bar under the home's title
+            oldTitle(); noCorner(); labels(['', '']);
+            stageTokens(['title-home']);
+            stageRun([[2 * T, () => stageTokens([])], [T, () => { newTitle(); newCorner(); newKeys(); }]], finish);
+            return;
+        }
+        if (toToday && before.app !== 'start' && oldPage) {
+            // closing to the home screen: its title bar first, then the soft key bar, the body last
+            hold(oldPage); oldKeys();
+            stageTokens(['body-app', 'keys-app']);
+            stageRun([[2 * T, () => stageTokens(['body-app'])], [T, newKeys], [2 * T, () => { showPage(); stageTokens([]); }]], finish);
+        }
+    }
+
     function activate(id) {
         const app = apps.get(id);
         if (!app) return;
+        stageFlush();
+        const before = stageSnapshot();
+        const firstMount = !app.page;
         noteOpened(id);
         const prev = current && apps.get(current);
         if (prev && prev !== app) {
@@ -1049,6 +1203,16 @@
         const y = pageScroll.get(page);
         if (y) { page.scrollTop = y; requestAnimationFrame(() => { if (!page.hidden) page.scrollTop = y; }); }
         renderSoftKeys();
+        // 6.5's see-through title bar inside a program (device: e-mail from Start when it is
+        // already running 7 of 7, Settings pages from the Settings grid 5 of 5; never a first
+        // launch, never from a home screen panel): a window that comes up straight over the Start
+        // grid gets only its title text redrawn, on the home look of the bar. It stays while that
+        // window is in front; another window (a new title) or leaving clears it (setTitle, here)
+        if (WM65) {
+            if (before && before.app === 'start' && id !== 'today' && id !== 'start' && !firstMount) { root.dataset.wmBar = 'glass'; glassTitle = titleText; }
+            else delete root.dataset.wmBar;
+        }
+        stagePlay(before, id, page, firstMount);
     }
 
     function open(id, opts = {}) {
@@ -1448,7 +1612,8 @@
         style.setProperty('--wm-bezel-logo-opacity', String(opacity));
         let logoSide = 'center';
         if (band > 0) {
-            const lh = band * 0.7;
+            const logoSize = Math.min(100, Math.max(40, parseFloat(lsv('wmBezelLogoSize')) || 70));
+            const lh = band * logoSize / 100;
             const lw = lh * (1024 / 242);
             const pos = lsv('wmBezelLogoPos') || 'auto';
             let lx = (W - lw) / 2;
@@ -1458,12 +1623,13 @@
             style.setProperty('--wm-bezel-logo-x', `${lx}px`);
             style.setProperty('--wm-bezel-logo-w', `${lw}px`);
             style.setProperty('--wm-bezel-logo-h', `${lh}px`);
-            const text = String(lsv('wmBezelModel') || '').trim().slice(0, 32);
+            // model text: off unless switched on (Settings > Screen > Bezel), sized in % of the band
+            const text = lsv('wmBezelModelShow') === '1' ? String(lsv('wmBezelModel') || '').trim().slice(0, 32) : '';
             const ov = bezelOverlay();
             if (text) {
                 let side = lsv('wmBezelModelPos') || 'auto';
                 if (side === 'auto') side = logoSide === 'left' ? 'right' : 'left';
-                const size = Math.max(7, band * 0.3);
+                const size = Math.max(7, band * Math.min(50, Math.max(20, parseFloat(lsv('wmBezelModelSize')) || 30)) / 100);
                 const corner = parseFloat(style.getPropertyValue(side === 'left' ? '--display-corner-tl' : '--display-corner-tr')) || 0;
                 const edgeGap = Math.max(corner, 6 * px) + 2;
                 const x = side === 'left' ? edgeGap : W - edgeGap;
@@ -2262,8 +2428,11 @@
     }
 
     let noteTrayKey = '';
+    let noteKeyCount = -1;
     function renderNotes() {
         fitStatus();
+        // Today's left soft key follows whether a notification is waiting
+        if ((notes.length > 0) !== (noteKeyCount > 0) && current === 'today' && shell) { noteKeyCount = notes.length; renderSoftKeys(); } else noteKeyCount = notes.length;
         // the tray's only entries may have unfolded (a print ended, the bar got wider): close it
         if (!notes.length && !statusFolded.length) noteTrayOpen = false;
         const tray = shell.querySelector('.wm-notify-tray');
@@ -4163,6 +4332,9 @@
                 // Settings > Buttons picks each key (todaySoftKeyFor); Pictures | Menu by default
                 const menu = () => workspaceMenu().concat(['-', { label: 'Reconnect', disabled: !!(window.wsClient && window.wsClient.isConnected()), action: () => window.wsClient && window.wsClient.manualReconnect() }]);
                 const keys = { left: todaySoftKeyFor('left', menu), right: todaySoftKeyFor('right', menu) };
+                // a notification is waiting: the device's left soft key on Today reads "Notification"
+                // and opens it, whatever the key is set to
+                if (notes.length) keys.left = { label: 'Notification', action: () => noteIconTap() };
                 if (todayView && typeof todayView.softKeys === 'function') {
                     try { return todayView.softKeys(keys) || keys; } catch (err) { console.warn('[wmShell] today view keys', err); }
                 }

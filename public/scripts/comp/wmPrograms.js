@@ -48,6 +48,17 @@
         cameraPortraitOnly: 'wmCameraPortraitOnly',
         showBluetoothIcon: 'wmShowBluetoothIcon',
         showCellIcon: 'wmShowCellIcon',
+        bezelLogoOpacity: 'wmBezelLogoOpacity',
+        bezelLogoSize: 'wmBezelLogoSize',
+        bezelLogoPos: 'wmBezelLogoPos',
+        bezelModelShow: 'wmBezelModelShow',
+        bezelModel: 'wmBezelModel',
+        bezelModelPos: 'wmBezelModelPos',
+        bezelModelSize: 'wmBezelModelSize',
+        bezelLed: 'wmBezelLed',
+        bezelLedNotify: 'wmBezelLedNotify',
+        bezelLedBattery: 'wmBezelLedBattery',
+        bezelLedCharge: 'wmBezelLedCharge',
         version: 'wmVersion'
     };
     // The UI version this page runs (app.html sets html[data-wm-version] before the first paint)
@@ -55,6 +66,9 @@
     const VERSIONS = [['6.1', 'Melaton Mobile 6.1'], ['6.5', 'Melaton Mobile 6.5']];
     const runningVersion = () => (root.dataset.wmVersion === '6.5' ? '6.5' : '6.1');
     const SCALES = [1, 1.25, 1.5, 1.75, 2];
+    // Settings > Screen > Bezel: logo height and model text size, in % of the band (wmShell syncBezel)
+    const BEZEL_LOGO_SIZES = [40, 50, 60, 70, 80, 90, 100];
+    const BEZEL_MODEL_SIZES = [20, 25, 30, 35, 40, 45, 50];
     const MELATON_EMBLEM = '/static_images/melaton/melaton-white-256.png';
     // WM 6.1's colour Start flag (shellres.192 icon 4609); a user-chosen exception to the copyright
     // rule's emblem mapping, never the default
@@ -1173,8 +1187,11 @@
                 scale: currentScale(), camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
                 showBt: lsGet(K.showBluetoothIcon) !== '0', showCell: lsGet(K.showCellIcon) === '1',
                 logoOpacity: Math.min(100, Math.max(10, Number(lsGet(K.bezelLogoOpacity)) || 55)),
+                logoSize: BEZEL_LOGO_SIZES.includes(Number(lsGet(K.bezelLogoSize))) ? Number(lsGet(K.bezelLogoSize)) : 70,
                 logoPos: lsGet(K.bezelLogoPos) || 'auto',
+                modelShow: lsGet(K.bezelModelShow) === '1',
                 model: lsGet(K.bezelModel) || '',
+                modelSize: BEZEL_MODEL_SIZES.includes(Number(lsGet(K.bezelModelSize))) ? Number(lsGet(K.bezelModelSize)) : 30,
                 modelPos: lsGet(K.bezelModelPos) || 'auto',
                 led: lsGet(K.bezelLed) === '1',
                 ledNotify: lsGet(K.bezelLedNotify) !== '0',
@@ -1190,8 +1207,11 @@
                     const POS = [['auto', 'Automatic'], ['left', 'Left'], ['center', 'Centre'], ['right', 'Right']];
                     const posLabel = (v) => (POS.find(([k]) => k === v) || POS[0])[1];
                     el.innerHTML = `${d.bars
-                            ? `${check('wmHideStatus', 'Hide the phone\'s status bar', d.bars.hideStatus)}
-                               <p class="wm-form-note">The camera settings below need the status bar hidden: with it showing, the camera sits under it.</p>`
+                            ? `<div class="wm-form-sub">Full screen</div>
+                               ${check('wmHideStatus', 'Hide the phone\'s status bar', d.bars.hideStatus)}
+                               ${check('wmHideNavigation', 'Hide the gesture bar', d.bars.hideNavigation)}
+                               <p class="wm-form-note">The camera settings below need the status bar hidden: with it showing, the camera sits under it. Swipe from the edge to show a hidden bar for a moment.</p>
+                               <div class="wm-form-gap"></div>`
                             : ''}
                         <div class="wm-form-sub">Camera</div>
                         ${radio('wmCamera', 'clear', 'Keep the title bar clear of the camera', d.camera === 'clear')}
@@ -1199,12 +1219,18 @@
                         ${check('wmCameraPortraitOnly', 'Only in portrait (a turned phone uses the whole screen)', d.portraitOnly)}
                         <div class="wm-form-gap"></div>
                         <div class="wm-form-sub">Logo</div>
+                        <p>Opacity:</p>
                         <div data-f="opacity"></div>
+                        <p>Size:</p>
+                        <div data-f="logosize"></div>
                         <div class="wm-form-row"><span class="wm-form-label">Position:</span><button type="button" class="wm-combo" data-act="logopos"><span>${posLabel(d.logoPos)}</span></button></div>
                         <div class="wm-form-gap"></div>
                         <div class="wm-form-sub">Model text</div>
+                        ${check('wmModelShow', 'Show text in a corner of the bezel', d.modelShow)}
                         <div class="wm-form-row"><span class="wm-form-label">Text:</span><input class="wm-edit" type="text" maxlength="32" autocomplete="off" data-f="model" value="${esc(d.model)}"></div>
                         <div class="wm-form-row"><span class="wm-form-label">Corner:</span><button type="button" class="wm-combo" data-act="modelpos"><span>${posLabel(d.modelPos)}</span></button></div>
+                        <p>Size:</p>
+                        <div data-f="modelsize"></div>
                         <div class="wm-form-gap"></div>
                         <div class="wm-form-sub">Notification LED</div>
                         ${check('wmLed', 'Show a notification LED on the bezel', d.led)}
@@ -1218,17 +1244,29 @@
                         steps: [10, 20, 30, 40, 50, 55, 60, 70, 80, 90, 100], value: d.logoOpacity, lo: 'Faint', hi: 'Solid', label: 'Logo opacity',
                         onChange: (v) => { d.logoOpacity = v; }
                     });
+                    const lsz = ui.trackbar(q('[data-f="logosize"]'), {
+                        steps: BEZEL_LOGO_SIZES, value: d.logoSize, lo: 'Small', hi: 'Large', label: 'Logo size',
+                        onChange: (v) => { d.logoSize = v; }
+                    });
+                    const msz = ui.trackbar(q('[data-f="modelsize"]'), {
+                        steps: BEZEL_MODEL_SIZES, value: d.modelSize, lo: 'Small', hi: 'Large', label: 'Text size',
+                        onChange: (v) => { d.modelSize = v; }
+                    });
                     const bind = (name, fn) => { const i = q(`input[name="${name}"]`); if (i) i.addEventListener('change', () => { fn(i.checked); sync(); }); };
                     // everything after the status bar works only with it hidden; the bezel's parts with the bezel
                     const sync = () => {
                         const off = !!(d.bars && !d.bars.hideStatus);
                         el.querySelectorAll('input[name="wmCamera"], input[name="wmCameraPortraitOnly"]').forEach((i) => { i.disabled = off; });
                         const noBezel = off || d.camera !== 'bezel';
-                        el.querySelectorAll('[data-act="logopos"], [data-act="modelpos"], [data-f="model"], input[name="wmLed"]').forEach((i) => { i.disabled = noBezel; });
-                        if (ops && typeof ops.setDisabled === 'function') ops.setDisabled(noBezel);
+                        el.querySelectorAll('[data-act="logopos"], input[name="wmModelShow"], input[name="wmLed"]').forEach((i) => { i.disabled = noBezel; });
+                        el.querySelectorAll('[data-act="modelpos"], [data-f="model"]').forEach((i) => { i.disabled = noBezel || !d.modelShow; });
+                        [ops, lsz].forEach((t) => { if (t && typeof t.setDisabled === 'function') t.setDisabled(noBezel); });
+                        if (msz && typeof msz.setDisabled === 'function') msz.setDisabled(noBezel || !d.modelShow);
                         el.querySelectorAll('.wm-setb-led input').forEach((i) => { i.disabled = noBezel || !d.led; });
                     };
                     if (d.bars) bind('wmHideStatus', (v) => { d.bars.hideStatus = v; });
+                    if (d.bars) bind('wmHideNavigation', (v) => { d.bars.hideNavigation = v; });
+                    bind('wmModelShow', (v) => { d.modelShow = v; });
                     el.querySelectorAll('input[name="wmCamera"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) d.camera = r.value; sync(); }));
                     bind('wmCameraPortraitOnly', (v) => { d.portraitOnly = v; });
                     bind('wmLed', (v) => { d.led = v; });
@@ -1242,18 +1280,11 @@
                     if (statusShown) { /* the controls stay visible, disabled, so the dependency is clear */ }
                     return;
                 }
-                // Status Bar: the phone's gesture bar (Android app) and the title bar's icons
+                // Status Bar: the title bar's icons (the phone's own bars are on Bezel)
                 if (tab === 'statusbar') {
-                    el.innerHTML = `${d.bars
-                            ? `<div class="wm-form-sub">Full screen</div>
-                               ${check('wmHideNavigation', 'Hide the gesture bar', d.bars.hideNavigation)}
-                               <p class="wm-form-note">Swipe from the edge to show a hidden bar for a moment.</p>
-                               <div class="wm-form-gap"></div>`
-                            : '<p class="wm-form-note">Hiding the phone\'s bars is available in the Dreamscape app for Android.</p>'}
-                        <div class="wm-form-sub">Status icons</div>
+                    el.innerHTML = `<div class="wm-form-sub">Status icons</div>
                         ${check('wmShowBt', 'Show the Bluetooth icon while Bluetooth is on', d.showBt)}
                         ${check('wmShowCell', 'Always show the mobile network icon (also on Wi-Fi)', d.showCell)}`;
-                    if (d.bars) el.querySelector('input[name="wmHideNavigation"]').addEventListener('change', (e) => { d.bars.hideNavigation = e.target.checked; });
                     el.querySelector('input[name="wmShowBt"]').addEventListener('change', (e) => { d.showBt = e.target.checked; });
                     el.querySelector('input[name="wmShowCell"]').addEventListener('change', (e) => { d.showCell = e.target.checked; });
                     return;
@@ -1316,7 +1347,10 @@
                 // Bezel: logo, model text, LED (wmShell syncBezel / paintBezelLed read them)
                 const bezelSets = [
                     [K.bezelLogoOpacity, d.logoOpacity === 55 ? null : String(d.logoOpacity)],
+                    [K.bezelLogoSize, d.logoSize === 70 ? null : String(d.logoSize)],
                     [K.bezelLogoPos, d.logoPos === 'auto' ? null : d.logoPos],
+                    [K.bezelModelShow, d.modelShow ? '1' : null],
+                    [K.bezelModelSize, d.modelSize === 30 ? null : String(d.modelSize)],
                     [K.bezelModel, String(d.model || '').trim().slice(0, 32) || null],
                     [K.bezelModelPos, d.modelPos === 'auto' ? null : d.modelPos],
                     [K.bezelLed, d.led ? '1' : null],
@@ -1654,8 +1688,9 @@
 
         function renderPage() {
             const { def, tab, draft, tabs } = open;
-            // the open applet's name in the title bar, from the grid or started by a program (Yukimi, Nov 10)
-            if (sh.current === 'settings') sh.setTitle(def.label);
+            // the title bar reads "Settings" on every applet, as on the device (the applet's name is
+            // the page heading under it); the applet name there was cut short by the status icons
+            if (sh.current === 'settings') sh.setTitle('Settings');
             // a redraw (a tap on a list row, a check box) keeps where the page and its lists were
             // scrolled: the same tab redrawn, not a new one (Today > Items read from the top again)
             const keep = page.dataset.setPage === `${def.id}:${tab}`
