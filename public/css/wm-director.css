@@ -1605,11 +1605,13 @@ html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-sm
  *   report    a paper slip graded with ink seals: hit, partial, miss (the buttons keep their names
  *             for screen readers; the seal glyphs are drawn over them)
  *   log       a paper scroll under a gold rod, tool calls marked down a red margin rule
- * Yumiya is red lacquer, Chiyo black lacquer. Yozora (xi, the coding agent) keeps the white kit until
- * her own screens land. Phone only: every rule sits under html.ui-mobile .wm-director; nothing here
- * animates (director-perf-735: no filters or shadows that repaint).
+ * Yumiya is red lacquer, Chiyo black lacquer; Yozora (xi, the coding agent) has her own kit below.
+ * Phone and desktop (#750): the rules sit under #directorContainer[data-persona] #directorSessionChat
+ * (the chat in the Director window, in the Studio dock and in the phone app alike); the ones that
+ * only make sense on a phone keep html.ui-mobile .wm-director. Desktop polish is at the end of this
+ * file. Nothing here animates (director-perf-735: no filters or shadows that repaint).
  * ====================================================================== */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) {
+#directorContainer:not([data-persona="xi"]) {
     --mk-gold: linear-gradient(135deg, #8a5f14, #f6dc8c 30%, #c9972e 55%, #fbe9a8 75%, #8a5f14);
     --mk-gold-flat: #e3bd62;
     --mk-gold-hi: #fbe7a6;
@@ -1638,7 +1640,7 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) {
     --mk-slip: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="kabuki"] {
+#directorContainer[data-persona="kabuki"] {
     --mk-lac-hi: #2e2529;
     --mk-lac-lo: #070506;
     --mk-slip-hi: #3a2b30;
@@ -1646,11 +1648,11 @@ html.ui-mobile .wm-director #directorWindow[data-persona="kabuki"] {
 }
 
 /* scooped corners: four quarter tiles, each with its own corner bitten out (--mk-n is the bite) */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-banner,
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog-edge,
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-banner::before,
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog::before,
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog::after {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-banner,
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-dialog-edge,
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-banner::before,
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-dialog::before,
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-dialog::after {
     -webkit-mask:
         radial-gradient(circle var(--mk-n) at 0 0, #0000 97%, #000) 0 0 / 51% 51% no-repeat,
         radial-gradient(circle var(--mk-n) at 100% 0, #0000 97%, #000) 100% 0 / 51% 51% no-repeat,
@@ -1664,7 +1666,7 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-laye
 }
 
 /* ---- title banner: a small lacquer plate ---- */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-banner {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-banner {
     --mk-n: 6px;
     left: 5px;
     padding: 5px 13px 5px 12px;
@@ -1675,7 +1677,7 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-laye
     isolation: isolate;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-banner::before {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-banner::before {
     --mk-n: 6.5px;
     content: '';
     position: absolute;
@@ -1684,17 +1686,17 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-laye
     background: var(--mk-lac);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-banner-title {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-banner-title {
     color: var(--mk-cream);
     font: 700 13px var(--mk-serif);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-banner-sub {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-banner-sub {
     color: var(--mk-gold-flat);
 }
 
 /* ---- HUD: coins ---- */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-hud-chip {
     width: 46px;
     height: 46px;
     min-width: 0;
@@ -1707,14 +1709,14 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-laye
     font-size: 9.5px;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip::before {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-hud-chip::before {
     inset: 0;
     border-radius: 50%;
     clip-path: none;
     background: var(--mk-gold);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip::after {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-hud-chip::after {
     inset: 2.5px;
     border-radius: 50%;
     clip-path: none;
@@ -1723,52 +1725,52 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-laye
 }
 
 /* the growth chip (landscape): a lacquer bar beside the coins */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip.dm-hud-grow {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-hud-chip.dm-hud-grow {
     width: auto;
     min-width: 120px;
     padding: 0 14px;
     border-radius: 23px;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip.dm-hud-grow::before,
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip.dm-hud-grow::after {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-hud-chip.dm-hud-grow::before,
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-hud-chip.dm-hud-grow::after {
     border-radius: 23px;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-grow [data-hud="stage"] {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-hud-grow [data-hud="stage"] {
     color: var(--mk-gold-hi);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-grow-bar {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-grow-bar {
     background: rgba(227, 189, 98, 0.22);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-grow-bar i {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-grow-bar i {
     background: linear-gradient(90deg, #c9972e, #fbe9a8);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-hud-chip b {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-hud-chip b {
     color: var(--mk-gold-hi);
     font-size: 15px;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-ring {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-ring {
     width: 34px;
     height: 34px;
     background: conic-gradient(#f6dc8c calc(var(--p) * 1%), rgba(227, 189, 98, 0.2) 0);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-ring::before {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-ring::before {
     inset: 3px;
     background: var(--mk-slip-lo);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-ring span {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-ring span {
     color: var(--mk-gold-hi);
 }
 
 /* ---- her text box: the lacquer tray ---- */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-dialog {
     --dm-ink: var(--mk-cream);
     --dm-teal: var(--mk-gold-flat);
     --dm-teal-deep: #f6dc8c;
@@ -1777,14 +1779,14 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-laye
     color: var(--mk-cream);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog::before {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-dialog::before {
     --mk-n: 11px;
     clip-path: none;
     filter: none;
     background: var(--mk-gold);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog::after {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-dialog::after {
     --mk-n: 11.5px;
     inset: 1.5px;
     clip-path: none;
@@ -1797,23 +1799,23 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-laye
 }
 
 /* while she works the rim brightens (opacity only, as before) */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog-edge {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-dialog-edge {
     --mk-n: 11px;
     clip-path: none;
     filter: none;
     background: linear-gradient(135deg, #fff6cf, #ffe89a 50%, #fff6cf);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog-head {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-dialog-head {
     left: 18px;
     top: -12px;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog-head::after {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-dialog-head::after {
     display: none;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog-name {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-dialog-name {
     min-width: 0;
     padding: 3px 24px 4px;
     color: #3a1206;
@@ -1825,12 +1827,12 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-laye
     box-shadow: none;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer :is(.dm-dialog-reply, .dm-say) strong {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer :is(.dm-dialog-reply, .dm-say) strong {
     color: #f6dc8c;
 }
 
 /* ---- choices: lacquer slips ---- */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip) {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip) {
     --mk-face:
         radial-gradient(circle 3.2px at 13px 50%, #f6dc8c 0 2.2px, #8a5f14 2.3px 3px, transparent 3.2px),
         linear-gradient(rgba(255, 226, 196, 0.22), transparent 45%),
@@ -1851,7 +1853,7 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-m
     white-space: normal;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip)::before {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip)::before {
     content: '';
     position: absolute;
     inset: 1.5px;
@@ -1862,11 +1864,11 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-m
     transform: none;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip)::after {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip)::after {
     display: none;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip):active:not(:disabled) {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip):active:not(:disabled) {
     --mk-face: var(--mk-gold);
     background: #8a5f14;
     color: #3a1206;
@@ -1899,7 +1901,7 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip 
 }
 
 /* ---- report card: a paper slip, graded with ink seals ---- */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-card {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-card {
     margin-top: 6px;
     border: 0;
     border-radius: 0;
@@ -1907,22 +1909,22 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-r
     overflow: visible;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-head {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-head {
     padding: 2px 4px 7px;
     border: 0;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-title {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-title {
     color: var(--mk-gold-hi);
     font: 700 16px var(--mk-serif);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-tally,
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-status {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-tally,
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-status {
     color: var(--mk-tan);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-request {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-request {
     padding: 7px 10px;
     border-bottom: 1px solid var(--mk-rule);
     background: var(--mk-paper);
@@ -1930,34 +1932,34 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-r
     font-style: italic;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-items {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-items {
     background: var(--mk-paper);
     color: var(--mk-ink);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-row {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-row {
     padding: 8px 8px 8px 10px;
     border-left: 0;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-row + .director-report-row {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-row + .director-report-row {
     border-top: 1px dashed var(--mk-rule);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-item {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-item {
     color: var(--mk-ink);
     font-weight: 600;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-note {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-note {
     color: var(--mk-ink2);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-scores {
     gap: 6px;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-scores .btn-small {
     display: grid;
     place-items: center;
     width: 28px;
@@ -1974,7 +1976,7 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-r
     text-shadow: none;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small::before {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-scores .btn-small::before {
     content: '\25CE';
     position: static;
     inset: auto;
@@ -1986,20 +1988,20 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-r
     font: 700 15px / 1 'Segoe UI Symbol', 'Noto Sans Symbols 2', 'Noto Sans CJK JP', sans-serif;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small[data-score="partial"]::before {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-scores .btn-small[data-score="partial"]::before {
     content: '\25B3';
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small[data-score="miss"]::before {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-scores .btn-small[data-score="miss"]::before {
     content: '\00D7';
     font-size: 18px;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small::after {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-scores .btn-small::after {
     display: none;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small[aria-pressed="true"][data-score="hit"] {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-scores .btn-small[aria-pressed="true"][data-score="hit"] {
     border: 0;
     background: var(--mk-shu);
     box-shadow: 0 0 0 1.5px var(--mk-leaf), 0 0 0 3px var(--mk-shu);
@@ -2007,14 +2009,14 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-r
     transform: rotate(-9deg);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small[aria-pressed="true"][data-score="partial"] {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-scores .btn-small[aria-pressed="true"][data-score="partial"] {
     border: 2px solid #c98512;
     background: rgba(233, 170, 50, 0.22);
     color: #a86a05;
     transform: rotate(6deg);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-scores .btn-small[aria-pressed="true"][data-score="miss"] {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-scores .btn-small[aria-pressed="true"][data-score="miss"] {
     border: 0;
     background: var(--mk-ai);
     box-shadow: 0 0 0 1.5px var(--mk-leaf), 0 0 0 3px var(--mk-ai);
@@ -2022,13 +2024,13 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-r
     transform: rotate(-5deg);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-foot {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-foot {
     padding: 8px 4px 2px;
     border: 0;
 }
 
 /* Submit: a gold slip */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-foot .btn-primary {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-foot .btn-primary {
     height: auto;
     padding: 6px 22px 6px 14px;
     border: 0;
@@ -2041,51 +2043,51 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-r
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-foot .btn-primary::before,
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-foot .btn-primary::after {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-foot .btn-primary::before,
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-foot .btn-primary::after {
     display: none;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-report-foot .btn-primary:active {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-foot .btn-primary:active {
     background: #c9972e;
 }
 
 /* the card in her text box scrolls: a thin gold thumb */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .dm-vn-layer .dm-dialog[data-tab="card"] .dm-dialog-body {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-dialog[data-tab="card"] .dm-dialog-body {
     scrollbar-color: var(--mk-gold-flat) transparent;
     padding-right: 8px;
 }
 
 /* the card in the log sits on paper already: ink for its heading and foot, rules above and below */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-report-card {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-report-card {
     margin-top: 10px;
     border-top: 1px solid var(--mk-shu);
     border-bottom: 1px solid var(--mk-shu);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-report-head {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-report-head {
     padding: 7px 4px 5px;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-report-title {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-report-title {
     color: var(--mk-shu);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages :is(.director-report-tally, .director-report-status) {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages :is(.director-report-tally, .director-report-status) {
     color: var(--mk-ink2);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages :is(.director-report-request, .director-report-items) {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages :is(.director-report-request, .director-report-items) {
     background: none;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-report-foot {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-report-foot {
     padding: 6px 4px;
     border-top: 1px dashed var(--mk-rule);
 }
 
 /* ---- the log's rows: ink on paper (the scroll over her scene, and the Messages page) ---- */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message {
     border: 0;
     border-radius: 0;
     background: none;
@@ -2093,13 +2095,13 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
     color: var(--mk-ink);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message.user {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message.user {
     border-left: 3px solid var(--mk-ai);
     background: rgba(43, 47, 85, 0.08);
     color: var(--mk-ink);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message:is(.assistant, .user) .director-request-type-badge {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message:is(.assistant, .user) .director-request-type-badge {
     padding: 1px 7px;
     border: 0;
     border-radius: 0;
@@ -2111,12 +2113,12 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
     text-shadow: none;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message.user .director-request-type-badge {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message.user .director-request-type-badge {
     background: var(--mk-ai);
 }
 
 /* the model beside her name: a plain outlined label */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message.assistant .director-request-type-badge:has(.director-engine-icon) {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message.assistant .director-request-type-badge:has(.director-engine-icon) {
     border: 1px solid var(--mk-rule);
     background: none;
     color: var(--mk-ink2);
@@ -2124,11 +2126,11 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
 }
 
 /* tool calls and thoughts: a vermilion diamond, then the name in small capitals */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message:is(.tool, .thinking) {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message:is(.tool, .thinking) {
     color: var(--mk-ink2);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message:is(.tool, .thinking) .director-request-type-badge {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message:is(.tool, .thinking) .director-request-type-badge {
     padding: 0;
     border: 0;
     background: none;
@@ -2137,7 +2139,7 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
     text-shadow: none;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message:is(.tool, .thinking) .director-request-type-badge::before {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message:is(.tool, .thinking) .director-request-type-badge::before {
     content: '';
     display: inline-block;
     width: 6px;
@@ -2147,17 +2149,17 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
     transform: rotate(45deg);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message.thinking .director-request-type-badge::before {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message.thinking .director-request-type-badge::before {
     background: none;
     box-shadow: inset 0 0 0 1.5px var(--mk-shu);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-thinking-line {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-thinking-line {
     color: var(--mk-ink2);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message :is(.director-trace-inspect, .director-user-message-header > .btn-small, .director-expand-button),
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message[data-older] > button {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message :is(.director-trace-inspect, .director-user-message-header > .btn-small, .director-expand-button),
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message[data-older] > button {
     border: 1px solid rgba(120, 90, 40, 0.5);
     border-radius: 0;
     background: rgba(255, 255, 255, 0.45);
@@ -2166,13 +2168,13 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
     text-shadow: none;
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message .director-expand-button {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message .director-expand-button {
     border: 0;
     background: none;
     color: var(--mk-ink2);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message-content code {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message-content code {
     padding: 1px 5px;
     border: 0;
     border-radius: 2px;
@@ -2181,7 +2183,7 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
 }
 
 /* her prints under a reply: photographs */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-attach-chip {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-attach-chip {
     padding: 2px 2px 5px;
     border: 0;
     border-radius: 0;
@@ -2189,12 +2191,12 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
 }
 
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-attach-chip img {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-attach-chip img {
     border-radius: 0;
 }
 
 /* the log's suggestions: slips as wide as their words */
-html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-chat-messages .director-message-actions {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message-actions {
     gap: 6px;
 }
 
@@ -2309,7 +2311,7 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .director-c
  *   log       her monitor: monospace tool rows marked with small flames
  * Nothing here animates.
  * ====================================================================== */
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"],
+#directorContainer[data-persona="xi"],
 .wm-director .wmd-page-changes {
     --sh-verm: linear-gradient(#f2664a, #c8321e);
     --sh-shu: #d23a22;
@@ -2328,7 +2330,7 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"],
 }
 
 /* ---- title banner ---- */
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-banner {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-banner {
     left: 4px;
     padding: 10px 16px 5px 14px;
     border-left: 0;
@@ -2338,7 +2340,7 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-
     isolation: isolate;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-banner::before {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-banner::before {
     content: '';
     position: absolute;
     inset: 6px 6px 1px 6px;
@@ -2346,21 +2348,21 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-
     background: var(--sh-night);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-banner-title {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-banner-title {
     color: #fff;
     font: 700 13px var(--sh-serif);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-banner-sub {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-banner-sub {
     color: #ff9d86;
 }
 
 /* ---- HUD: foxfire ---- */
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-hud {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud {
     gap: 9px;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-hud-chip {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud-chip {
     width: 44px;
     height: 44px;
     min-width: 0;
@@ -2374,7 +2376,7 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-
     font-weight: 700;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-hud-chip::before {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud-chip::before {
     inset: 0;
     border-radius: 0 50% 50% 50%;
     clip-path: none;
@@ -2383,37 +2385,37 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-
     transform: rotate(45deg);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-hud-chip::after {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud-chip::after {
     display: none;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-hud-chip b {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud-chip b {
     color: #0b1a4a;
     font-size: 15px;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-ring {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-ring {
     width: 30px;
     height: 30px;
     background: conic-gradient(#0b1a4a calc(var(--p) * 1%), rgba(11, 26, 74, 0.18) 0);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-ring::before {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-ring::before {
     inset: 3px;
     background: #dff3ff;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-ring span {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-ring span {
     color: #0b1a4a;
 }
 
 /* she writes no report cards: no score ring, no growth bar */
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-hud-chip:is(.dm-hud-ring, .dm-hud-grow) {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud-chip:is(.dm-hud-ring, .dm-hud-grow) {
     display: none;
 }
 
 /* ---- her text box: the monitor under the beam ---- */
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-dialog {
     --dm-ink: var(--sh-text);
     --dm-teal: var(--sh-fire);
     --dm-teal-deep: #bfe6ff;
@@ -2422,36 +2424,36 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-
     color: var(--sh-text);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog::before {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-dialog::before {
     clip-path: var(--sh-torii);
     filter: none;
     background: var(--sh-verm) 0 0 / 100% 6px no-repeat, var(--sh-fire);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog::after {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-dialog::after {
     inset: 6px 6px 1px 6px;
     clip-path: none;
     background: linear-gradient(var(--sh-shu), var(--sh-shu)) 0 4px / 100% 1.5px no-repeat, var(--sh-night);
     box-shadow: inset 0 0 12px rgba(74, 168, 255, 0.5);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog-edge {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-dialog-edge {
     clip-path: var(--sh-torii);
     filter: none;
     background: linear-gradient(#ffb7a3, #ff8163) 0 0 / 100% 6px no-repeat, #e2f5ff;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog-head {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-dialog-head {
     left: 16px;
     top: -17px;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog-head::after {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-dialog-head::after {
     display: none;
 }
 
 /* the votive plaque: a pitched top, a vermilion cord knot at the apex */
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-dialog-name {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-dialog-name {
     min-width: 0;
     padding: 10px 22px 3px;
     color: #3a1a0a;
@@ -2463,11 +2465,11 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .dm-vn-layer .dm-
     box-shadow: none;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat .dm-vn-layer :is(.dm-dialog-reply, .dm-say) strong {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer :is(.dm-dialog-reply, .dm-say) strong {
     color: #bfe6ff;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-dialog-reply code {
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-dialog-reply code {
     padding: 0 4px;
     border: 1px solid var(--sh-rim);
     border-radius: 2px;
@@ -2478,7 +2480,7 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionC
 }
 
 /* ---- choices: slips with a vermilion head ---- */
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip) {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip) {
     position: relative;
     height: auto;
     padding: 8px 20px 8px 32px;
@@ -2494,7 +2496,7 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-message
     white-space: normal;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip)::before {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip)::before {
     content: '';
     position: absolute;
     left: 8px;
@@ -2509,11 +2511,11 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-message
     transform: rotate(45deg);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip)::after {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip)::after {
     display: none;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip):active:not(:disabled) {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip):active:not(:disabled) {
     background: var(--sh-verm);
     color: #fff;
 }
@@ -2678,11 +2680,11 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-message
 }
 
 /* ---- the log: her monitor (over her scene, the wide column, and the Messages page) ---- */
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat:not(.director-mascot-view) {
+#directorContainer[data-persona="xi"] #directorSessionChat:not(.director-mascot-view) {
     background: #06081c !important;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat .director-chat-messages-container {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages-container {
     border-color: var(--sh-rim) !important;
     border-radius: 0 !important;
     background: repeating-linear-gradient(0deg, rgba(127, 208, 255, 0.045) 0 1px, transparent 1px 3px), linear-gradient(#141c58, #06081c) !important;
@@ -2692,7 +2694,7 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionC
     color: var(--sh-text) !important;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message {
     border: 0;
     border-radius: 0;
     background: none;
@@ -2700,12 +2702,12 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-me
     color: var(--sh-text);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message.user {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message.user {
     border-left: 3px solid #5f79d8;
     background: rgba(127, 208, 255, 0.08);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message:is(.assistant, .user) .director-request-type-badge {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message:is(.assistant, .user) .director-request-type-badge {
     padding: 1px 7px;
     border: 0;
     border-radius: 0;
@@ -2717,11 +2719,11 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-me
     text-shadow: none;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message.user .director-request-type-badge {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message.user .director-request-type-badge {
     background: #3d4f9a;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message.assistant .director-request-type-badge:has(.director-engine-icon) {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message.assistant .director-request-type-badge:has(.director-engine-icon) {
     border: 1px solid var(--sh-rim);
     background: none;
     color: var(--sh-dim);
@@ -2729,11 +2731,11 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-me
 }
 
 /* tool calls and thoughts: a small flame, then the name in the terminal face */
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message:is(.tool, .thinking) {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message:is(.tool, .thinking) {
     color: var(--sh-dim);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message:is(.tool, .thinking) .director-request-type-badge {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message:is(.tool, .thinking) .director-request-type-badge {
     padding: 0;
     border: 0;
     background: none;
@@ -2745,7 +2747,7 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-me
     text-shadow: none;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message:is(.tool, .thinking) .director-request-type-badge::before {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message:is(.tool, .thinking) .director-request-type-badge::before {
     content: '';
     display: inline-block;
     width: 7px;
@@ -2757,21 +2759,21 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-me
     transform: rotate(45deg);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message.thinking .director-request-type-badge::before {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message.thinking .director-request-type-badge::before {
     background: none;
     box-shadow: inset 0 0 0 1.5px var(--sh-fire);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages :is(.director-thinking-line, .director-tool-detail) {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages :is(.director-thinking-line, .director-tool-detail) {
     color: var(--sh-dim);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-tool-detail {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-tool-detail {
     font-family: var(--sh-mono);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message :is(.director-trace-inspect, .director-user-message-header > .btn-small, .director-expand-button),
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message[data-older] > button {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message :is(.director-trace-inspect, .director-user-message-header > .btn-small, .director-expand-button),
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message[data-older] > button {
     border: 1px solid var(--sh-rim);
     border-radius: 0;
     background: rgba(127, 208, 255, 0.1);
@@ -2780,13 +2782,13 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-me
     text-shadow: none;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message .director-expand-button {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message .director-expand-button {
     border: 0;
     background: none;
     color: var(--sh-dim);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message-content :is(code, pre) {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message-content :is(code, pre) {
     border: 1px solid var(--sh-rim);
     border-radius: 2px;
     background: #040616;
@@ -2794,17 +2796,17 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-me
     font-family: var(--sh-mono);
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message-content code {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message-content code {
     padding: 0 4px;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message-content pre code {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message-content pre code {
     padding: 0;
     border: 0;
     background: none;
 }
 
-html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-messages .director-message-content a {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message-content a {
     color: #9fd8ff;
 }
 
@@ -2839,4 +2841,363 @@ html.ui-mobile .wm-director #directorWindow[data-persona="xi"] .director-chat-me
     html.ui-mobile .wm-director[data-wmd-layout="phone"] #directorWindow[data-persona="xi"] #directorSessionChat.director-mascot-view .director-chat-messages-container > .scrollable-content::-webkit-scrollbar-button {
         display: none;
     }
+}
+
+/* ---- the composer and a new chat's welcome in the kits (#750): Reply opens it over her dock; a new
+ *      chat shows her name, her greeting and the quick starts on it ---- */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorComposer {
+    padding: 9px 8px 8px !important;
+    border-top: 0 !important;
+    background: var(--mk-gold) 0 0 / 100% 2px no-repeat, linear-gradient(var(--mk-inlay), var(--mk-inlay)) 0 5px / 100% 1px no-repeat, var(--mk-lac) !important;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat #directorComposerWelcome > .logo-text {
+    color: var(--mk-gold-hi) !important;
+    font-family: var(--mk-serif);
+    font-weight: 700;
+    text-shadow: 0 1px 2px #000 !important;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat #directorComposerWelcome > h3 {
+    color: var(--mk-cream) !important;
+    font-weight: 400;
+    font-style: italic;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat #directorComposerWelcome > p {
+    color: var(--mk-tan);
+}
+
+/* the field: a paper slip to write on */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorChatInput {
+    border: 1px solid #8a5f14 !important;
+    background: #fcf5e2 !important;
+    box-shadow: inset 0 2px 4px rgba(60, 30, 10, 0.3) !important;
+    color: var(--mk-ink) !important;
+    caret-color: var(--mk-shu);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorChatInput::placeholder {
+    color: var(--mk-ink2);
+}
+
+/* quick starts: small lacquer plates (the desktop's cut-corner edge and face, recoloured) */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle {
+    --dm-edge: var(--mk-gold);
+    --dm-face: linear-gradient(rgba(255, 226, 196, 0.22), transparent 45%), linear-gradient(var(--mk-slip-hi), var(--mk-slip-lo));
+    color: var(--mk-gold-hi);
+    text-shadow: 0 1px 1px #000;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle:is(:active, [data-state="on"]) {
+    --dm-edge: #8a5f14;
+    --dm-face: var(--mk-gold);
+    color: #3a1206;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* her attachments on the message being written: photographs on the lacquer */
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) #directorComposer #directorAttachChips {
+    color: var(--mk-cream);
+}
+
+/* Yozora: the composer is her terminal under the beam */
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorComposer {
+    padding: 12px 8px 8px !important;
+    border-top: 0 !important;
+    background: var(--sh-verm) 0 0 / 100% 6px no-repeat, linear-gradient(var(--sh-fire), var(--sh-fire)) 0 6px / 100% 1px no-repeat, linear-gradient(#141c58, #06081c) !important;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat #directorComposerWelcome > .logo-text {
+    color: #fff !important;
+    font-family: var(--sh-serif);
+    font-weight: 700;
+    text-shadow: 0 0 10px #4aa8ff !important;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat #directorComposerWelcome > h3 {
+    color: var(--sh-text) !important;
+    font-weight: 400;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat #directorComposerWelcome > p {
+    color: var(--sh-dim);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorChatInput {
+    border: 1px solid var(--sh-fire) !important;
+    background: #040616 !important;
+    box-shadow: inset 0 0 10px rgba(74, 168, 255, 0.35) !important;
+    color: var(--sh-text) !important;
+    caret-color: var(--sh-fire);
+    font-family: var(--sh-mono) !important;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorChatInput::placeholder {
+    color: var(--sh-dim);
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle {
+    --dm-edge: var(--sh-fire);
+    --dm-face: linear-gradient(#1d2a72, #0a0e2e);
+    color: var(--sh-text);
+    text-shadow: 0 1px 1px #000;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorSessionChat #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle:is(:active, [data-state="on"]) {
+    --dm-edge: #a3230f;
+    --dm-face: var(--sh-verm);
+    color: #fff;
+}
+
+html.ui-mobile .wm-director #directorWindow[data-persona="xi"] #directorComposer #directorAttachChips {
+    color: var(--sh-text);
+}
+
+/* ======================================================================
+ * Desktop polish for the kits (#750): what only the desktop Director draws (the quick bar on the box's
+ * edge, the input bar, hover), and roomier insets than a phone's.
+ * ====================================================================== */
+html:not(.ui-mobile) #directorContainer[data-persona] #directorSessionChat .dm-vn-layer .dm-dialog {
+    padding: 26px 28px 24px 28px;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona] #directorSessionChat .dm-vn-layer .dm-dialog-head {
+    left: 26px;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona] #directorSessionChat .dm-vn-layer .dm-dialog-name {
+    font-size: 16px;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona] #directorSessionChat .dm-vn-layer .dm-banner {
+    left: 8px;
+    padding: 7px 16px 7px 14px;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-banner {
+    padding-top: 12px;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona] #directorSessionChat .dm-vn-layer .dm-banner-title {
+    font-size: 15px;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona] #directorSessionChat .dm-vn-layer .dm-dialog-pager {
+    color: var(--dm-teal);
+    opacity: 1;
+}
+
+/* ---- Maki-e ---- */
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip):hover:not(:disabled) {
+    --mk-face: var(--mk-gold);
+    background: #8a5f14;
+    color: #3a1206;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-quick button {
+    --dm-edge: var(--mk-gold);
+    --dm-face: linear-gradient(rgba(255, 226, 196, 0.22), transparent 45%), linear-gradient(var(--mk-slip-hi), var(--mk-slip-lo));
+    background: none;
+    color: var(--mk-gold-hi);
+    text-shadow: 0 1px 1px #000;
+}
+
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-quick button i {
+    background: var(--mk-gold-flat);
+    color: #3a1206;
+}
+
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-quick button:is(:hover:not(:disabled), [aria-pressed="true"]) {
+    --dm-edge: #8a5f14;
+    --dm-face: var(--mk-gold);
+    color: #3a1206;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-quick button:is(:hover:not(:disabled), [aria-pressed="true"]) i {
+    background: #3a1206;
+    color: var(--mk-gold-hi);
+}
+
+/* the input bar: a lacquer tray with a paper field and a gold Send */
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat.director-mascot-view #directorComposer .director-chat-input {
+    border: 1.5px solid var(--mk-gold-flat);
+    border-radius: 3px;
+    background: var(--mk-lac);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat.director-mascot-view #directorChatInput {
+    border: 1px solid #8a5f14;
+    border-radius: 2px;
+    background: #fcf5e2;
+    box-shadow: inset 0 2px 4px rgba(60, 30, 10, 0.3);
+    color: var(--mk-ink);
+    caret-color: var(--mk-shu);
+}
+
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat.director-mascot-view #directorChatInput::placeholder {
+    color: var(--mk-ink2);
+}
+
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat.director-mascot-view #directorComposer :is(#directorSendBtn, #directorAttachDropdownBtn) {
+    border: 1px solid #8a5f14;
+    border-radius: 2px;
+    background: var(--mk-gold);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    color: #3a1206;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat.director-mascot-view #directorComposer :is(#directorSendBtn, #directorAttachDropdownBtn):hover:not(:disabled) {
+    filter: none;
+    background: linear-gradient(135deg, #c9972e, #fff1c0 45%, #c9972e);
+}
+
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat.director-mascot-view #directorComposer :is(#directorSendBtn, #directorAttachDropdownBtn) i {
+    color: #3a1206;
+}
+
+/* a new chat's welcome over her scene */
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat.director-mascot-view #directorComposerWelcome > .logo-text {
+    color: var(--mk-gold-hi) !important;
+    font-family: var(--mk-serif);
+}
+
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat.director-mascot-view #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle {
+    --dm-edge: var(--mk-gold);
+    --dm-face: linear-gradient(rgba(255, 226, 196, 0.22), transparent 45%), linear-gradient(var(--mk-slip-hi), var(--mk-slip-lo));
+    color: var(--mk-gold-hi);
+    text-shadow: 0 1px 1px #000;
+}
+
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat.director-mascot-view #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle:is(:hover, [data-state="on"]) {
+    --dm-edge: #8a5f14;
+    --dm-face: var(--mk-gold);
+    color: #3a1206;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* ---- Shrine Terminal ---- */
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip):hover:not(:disabled) {
+    background: var(--sh-verm);
+    color: #fff;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-quick button {
+    --dm-edge: var(--sh-fire);
+    --dm-face: linear-gradient(#1d2a72, #0a0e2e);
+    background: none;
+    color: var(--sh-text);
+    text-shadow: 0 1px 1px #000;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-quick button i {
+    background: var(--sh-fire);
+    color: #0b1a4a;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-quick button:is(:hover:not(:disabled), [aria-pressed="true"]) {
+    --dm-edge: #a3230f;
+    --dm-face: var(--sh-verm);
+    color: #fff;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-quick button:is(:hover:not(:disabled), [aria-pressed="true"]) i {
+    background: #fff;
+    color: #a3230f;
+}
+
+/* she has no prints and no report card: those two buttons go */
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-quick button:is([data-act="card"], [data-act="prints"]) {
+    display: none;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat.director-mascot-view #directorComposer .director-chat-input {
+    border: 1px solid var(--sh-fire);
+    border-top: 5px solid #d23a22;
+    border-radius: 0;
+    background: linear-gradient(#141c58, #06081c);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat.director-mascot-view #directorChatInput {
+    border: 1px solid var(--sh-rim);
+    border-radius: 0;
+    background: #040616;
+    box-shadow: inset 0 0 10px rgba(74, 168, 255, 0.3);
+    color: var(--sh-text);
+    caret-color: var(--sh-fire);
+    font-family: var(--sh-mono);
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat.director-mascot-view #directorChatInput::placeholder {
+    color: var(--sh-dim);
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat.director-mascot-view #directorComposer :is(#directorSendBtn, #directorAttachDropdownBtn) {
+    border: 1px solid #a3230f;
+    border-radius: 0;
+    background: var(--sh-verm);
+    box-shadow: none;
+    color: #fff;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat.director-mascot-view #directorComposer :is(#directorSendBtn, #directorAttachDropdownBtn) i {
+    color: #fff;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat.director-mascot-view #directorComposerWelcome > .logo-text {
+    color: #fff !important;
+    font-family: var(--sh-serif);
+    text-shadow: 0 0 10px #4aa8ff !important;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat.director-mascot-view #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle {
+    --dm-edge: var(--sh-fire);
+    --dm-face: linear-gradient(#1d2a72, #0a0e2e);
+    color: var(--sh-text);
+    text-shadow: 0 1px 1px #000;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat.director-mascot-view #directorComposerWelcome .btn-group-compact button.btn-secondary.btn-toggle:is(:hover, [data-state="on"]) {
+    --dm-edge: #a3230f;
+    --dm-face: var(--sh-verm);
+    color: #fff;
+}
+
+/* the Vista skin draws its buttons with border-image art on the button and its ::before; the kits'
+   seals, slips and plates are their own shapes */
+html:not(.ui-mobile) #directorContainer[data-persona] #directorSessionChat :is(.director-message-actions, .director-report-card) button,
+html:not(.ui-mobile) #directorContainer[data-persona] #directorSessionChat :is(.director-message-actions, .director-report-card) button::before,
+html:not(.ui-mobile) #directorContainer[data-persona] #directorSessionChat :is(.director-message-actions, .director-report-card) button::after {
+    border-image: none;
+    transition: none;
+}
+
+html:not(.ui-mobile) #directorContainer[data-persona] #directorSessionChat .director-report-card button::before {
+    border: 0;
+}
+
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat .director-message-actions button.btn-small.btn-secondary:not(.director-attach-chip)::before {
+    border: 0;
+}
+
+/* the report card's heading and foot sit on the lacquer (the box) or on the paper (the log), not on
+   the Vista details pane's cream bands */
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat :is(.director-report-head, .director-report-foot) {
+    background: none;
+}
+
+/* the log panel beside her, and the Messages view: ink needs the paper under it on the desktop too */
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages-container {
+    background: var(--mk-paper);
+    color: var(--mk-ink);
 }

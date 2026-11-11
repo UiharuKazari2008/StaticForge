@@ -2394,6 +2394,11 @@ class Director {
         [this.directorCommonHeader, this.directorContainer, this.directorWindow].forEach((el) => {
             if (el) el.dataset.persona = persona;
         });
+        // Yozora codes; the other two make pictures (the field's hint in app.html is theirs)
+        if (this.directorChatInput) {
+            const hint = persona === 'xi' ? 'Ask for a fix, a check, or a change' : 'Ask for an image, a change, or a look';
+            if (this.directorChatInput.placeholder !== hint) this.directorChatInput.placeholder = hint;
+        }
         if (persona !== 'xi') return;
         this._selectedQuickTaskId = null;
         this.removeQuickStart();
