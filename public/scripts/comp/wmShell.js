@@ -1111,7 +1111,15 @@
         else if (h.left < near) edge = 'left';
         else if (h.left + h.width > window.innerWidth - near) edge = 'right';
         const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
-        style.setProperty('--wm-bezel-top', edge === 'top' ? `${Math.max(h.top + h.height + margin, 18 * px)}px` : '0px');
+        // a band only as tall as the camera needs: its bottom and a little; 18 px where none is reported
+        style.setProperty('--wm-bezel-top', edge === 'top' ? `${h.height > 0 ? h.top + h.height + 3 : 18 * px}px` : '0px');
+        // the logo leaves the middle when the camera sits there (Fold7 cover screen): top right
+        const mid = h.left + h.width / 2;
+        const logoRight = edge === 'top' && h.width > 0 && Math.abs(mid - window.innerWidth / 2) < window.innerWidth * 0.2;
+        if ((root.dataset.wmBezelLogo === 'right') !== logoRight) {
+            if (logoRight) root.dataset.wmBezelLogo = 'right';
+            else delete root.dataset.wmBezelLogo;
+        }
         style.setProperty('--wm-bezel-left', edge === 'left' ? `${h.left + h.width + margin}px` : '0px');
         style.setProperty('--wm-bezel-right', edge === 'right' ? `${window.innerWidth - h.left + margin}px` : '0px');
         if (root.dataset.wmBezelEdge !== edge) root.dataset.wmBezelEdge = edge;
