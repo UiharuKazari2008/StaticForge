@@ -7527,6 +7527,29 @@ class Director {
         this.showTypingIndicator();
     }
 
+    // Yozora edits files where the prompt engineers make prints, so what her mascot eats is a document
+    // (Yukimi 2026-11-11): each new file edit in her live turn (a tool row with diffKind 'diff') sends
+    // a page to her mouth through the mascot's own print routine. One at a time: an edit that lands
+    // while she is still chewing is not queued. A reload mid-turn starts from the rows already there.
+    noteDocumentEdits(payload) {
+        if (this.persona !== 'xi' || !this.mascot || typeof this.mascot.onPrint !== 'function') { this._docEditsSeen = -1; return; }
+        const rows = payload && Array.isArray(payload.rows) ? payload.rows : [];
+        const edits = rows.filter((row) => row && row.type === 'tool' && row.diffKind === 'diff').length;
+        const seen = typeof this._docEditsSeen === 'number' ? this._docEditsSeen : -1;
+        this._docEditsSeen = edits;
+        if (seen < 0 || edits <= seen) return;
+        const now = Date.now();
+        if (now < (this._docEatUntil || 0)) return;
+        this._docEatUntil = now + 5200;
+        const url = directorDocumentPrintUrl();
+        this.mascot.onPrint(url, { document: true });
+        // the routine draws a polaroid: this one is a bare page
+        document.querySelectorAll('.dm-polaroid').forEach((card) => {
+            const img = card.querySelector('img');
+            if (img && img.getAttribute('src') === url) card.classList.add('dm-document');
+        });
+    }
+
     // director_streaming_update: the latest payload wins and the live turn paints at most
     // every DIRECTOR_LIVE_PAINT_MS, never while the chat is out of sight (#511).
     queueLivePaint(payload) {
@@ -8587,6 +8610,7 @@ class Director {
                 }
                 window.directorInstance.queueLivePaint(payload);
                 if (window.directorInstance.mascot) window.directorInstance.mascot.onStream(payload);
+                try { window.directorInstance.noteDocumentEdits(payload); } catch (err) { console.warn('[director] document edit cue', err); }
             }
         });
         
@@ -9336,4 +9360,16 @@ if (window.wsClient) {
     window.wsClient.registerInitStep(60, 'Initializing Director System', async () => {
         await initializeDirector();
     });
+}
+
+// The page Yozora's mascot eats when she edits a file (noteDocumentEdits): drawn here, no art file.
+function directorDocumentPrintUrl() {
+    const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 116'>"
+        + "<path d='M8 2h58l26 26v84a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z' fill='#fbfaf6' stroke='#7d8496' stroke-width='2'/>"
+        + "<path d='M66 2v24a2 2 0 0 0 2 2h24' fill='#e3e6ee' stroke='#7d8496' stroke-width='2'/>"
+        + "<path d='M18 42h52M18 56h64M18 70h40' stroke='#5d6f9a' stroke-width='4' stroke-linecap='round'/>"
+        + "<path d='M18 84h46' stroke='#2fae3c' stroke-width='4' stroke-linecap='round'/>"
+        + "<path d='M18 98h30' stroke='#d3382f' stroke-width='4' stroke-linecap='round'/>"
+        + "<rect x='68' y='86' width='16' height='16' fill='#d23a22'/></svg>";
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }

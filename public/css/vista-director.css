@@ -859,3 +859,19 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat :is(.director-chat-messages-container, .dm-result) .director-report-scores button.btn-secondary[aria-pressed="false"] {
     color: #7a7a7a;
 }
+
+/* The page Yozora's mascot eats when she edits a file (director.js noteDocumentEdits): the print
+   routine's polaroid without its frame. Here, not in director.css, so it ships with this change. */
+.dm-polaroid.dm-document {
+    padding: 0;
+    background: none;
+    border-radius: 0;
+    box-shadow: none;
+    filter: drop-shadow(0 4px 8px hsl(0 0% 0% / 45%));
+}
+
+.dm-polaroid.dm-document img {
+    aspect-ratio: 100 / 116;
+    object-fit: contain;
+    background: none;
+}

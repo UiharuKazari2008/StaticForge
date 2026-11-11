@@ -225,12 +225,24 @@
             // the height, which on a phone put most of her off the side)
             const faceSize = Math.min(box.height * 0.1, box.width * 0.2);
             const k = faceSize / Math.max(1, face[2]);
-            const px = box.width * 0.5;
-            const py = box.height * 0.2;
+            // her belly in view (Yukimi 2026-11-11): she stands a little higher, and off centre away
+            // from her belly (the stage's belly point in the manifest), so it comes in from the screen
+            // edge and more of it clears her text box. Her size is untouched.
+            const def = typeof this.stageDef === 'function' ? this.stageDef() : null;
+            const belly = def && Array.isArray(def.belly) ? def.belly : null;
+            const lean = belly ? Math.max(-box.width * 0.22, Math.min(box.width * 0.22, (belly[0] - face[0]) * k * 0.75)) : 0;
+            const px = box.width * 0.5 - lean;
+            const py = box.height * 0.15;
             this.setStyle(this.el.canvas, 'width', `${Math.round(W * k)}px`);
             this.setStyle(this.el.canvas, 'height', `${Math.round(H * k)}px`);
             this.setStyle(this.el.canvas, 'transform', `translate(${Math.round(px - face[0] * k)}px, ${Math.round(py - face[1] * k)}px)`);
             this._k = k;
+        };
+        // the HUD's second counter is Yozora's files: directorMascot.js writes the prints count on every paint
+        const hud = m.updateHud.bind(m);
+        m.updateHud = function (info) {
+            hud(info);
+            paintFilesHud(dir());
         };
         // the pager counts pages of (height - 24 px): a short box read "1/2" with nothing more to show
         const pager = m.paintPager.bind(m);
@@ -271,6 +283,11 @@
         const onPrint = m.onPrint.bind(m);
         m.onPrint = function (url, options) {
             let opts = options || {};
+            // Yozora's page (director.js noteDocumentEdits) leaves from her newest file tag when it is on screen
+            if (opts.document && !opts.from && page && page.contains(this.host)) {
+                const tag = page.querySelector('.wmd-files .wmd-file:last-child');
+                return onPrint(url, tag ? { ...opts, from: tag } : opts);
+            }
             if (!opts.from && page && page.contains(this.host)) {
                 paintPrints();
                 const name = (() => { try { return decodeURIComponent(String(url).split('?')[0].split('/').pop()); } catch (_) { return ''; } })();
