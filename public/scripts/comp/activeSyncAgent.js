@@ -476,6 +476,11 @@
         });
 
         registerOp('device.ring', async () => {
+            // the app rings for real (ringtone on the alarm stream, whatever the ringer mode)
+            try {
+                const app = root.AndroidActiveSync;
+                if (app && typeof app.ring === 'function') { app.ring(); return true; }
+            } catch (_) { /* older app: the page does what it can */ }
             if (root.navigator && typeof root.navigator.vibrate === 'function') root.navigator.vibrate([400, 200, 400, 200, 400, 200, 800]);
             const sh = root.wmShell;
             if (sh && sh.sounds && typeof sh.sounds.play === 'function') {

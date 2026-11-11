@@ -20,8 +20,8 @@
  * and goes out after the device's next hello.
  *
  * The live half lives on the socket's clientInfo (info.as), so the online list is always the open
- * sockets. A device may hold several sockets (WebView and service): a call goes to the newest
- * socket that lists the op.
+ * sockets. A device may hold several sockets (WebView and service): a call goes to the service
+ * when it lists the op, else to the newest socket that does.
  */
 
 const Database = require('better-sqlite3');
@@ -290,10 +290,14 @@ function socketAnswers(info, op) {
     return ops.includes(op) || ops.includes(`${opGroupName(op)}.*`);
 }
 
-/** The socket of a peer that answers this op: the WebView first (it can show things), newest first. */
+/**
+ * The socket of a peer that answers this op, newest first. The app's service goes first for what it
+ * lists: it is native and keeps running while the WebView is paused in the background with its
+ * socket still open. Everything else (questions, trash, opening a file) is the WebView's alone.
+ */
 function socketFor(wsServer, kind, id, op) {
     const all = liveSockets(wsServer, kind, id).filter((s) => !op || socketAnswers(s.info, op));
-    return all.find((s) => s.info.as.speaker === 'webview') || all[0] || null;
+    return all.find((s) => s.info.as.speaker === 'service') || all[0] || null;
 }
 
 /** A device's connection state, shared by its sockets: the most established one wins. */

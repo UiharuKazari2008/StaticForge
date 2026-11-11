@@ -7,13 +7,14 @@ service in DSApp-Kotlin) needs to know to join.
 ## One protocol, two speakers on the phone
 
 - **WebView** (`speaker: "webview"`): `public/scripts/comp/activeSyncAgent.js` inside the app, while the app is open.
-  It can ask the user things, so the server sends it `partnership.propose` and prefers it for every operation it lists.
+  It can ask the user things, so `partnership.propose`, trash, restore and opening a file are its alone.
 - **Service** (`speaker: "service"`): the app's own foreground service on its own socket, with the same session cookie
   and the same device id. It keeps the device reachable while the WebView is gone. It lists only the operations it
   serves itself (`status.*`, `storage.*`, `stream.*`, `device.ring`, ...). It never answers `partnership.propose`.
 
 Both say `as_hello` with the same `id`. The server treats them as one device: one connection state, one permission
-set; a call goes to the WebView when it lists the operation, else to the service.
+set; a call goes to the service when it lists the operation (it keeps running while the WebView is paused), else to
+the WebView.
 
 ## A service's life
 

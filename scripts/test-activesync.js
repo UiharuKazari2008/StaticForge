@@ -159,19 +159,22 @@ async function main() {
 
     // a second socket of the same device (the background service) joins the guest connection
     const svc = connect();
-    r = as.hello(gr, server, svc.info, { kind: 'device', id: DEV, name: 'Galaxy Z Fold7', speaker: 'service', ops: ['status.*', 'storage.*', 'device.ring'] });
+    r = as.hello(gr, server, svc.info, { kind: 'device', id: DEV, name: 'Galaxy Z Fold7', speaker: 'service', ops: ['status.*', 'storage.list', 'device.ring'] });
     assert.strictEqual(r.session, 'guest');
     assert.deepStrictEqual(r.device.speakers.sort(), ['service', 'webview']);
-    // an op only the WebView lists goes to the WebView; one both list goes to the WebView too
+    // an op both list goes to the service (native, alive while the WebView is paused); one only the
+    // WebView lists goes to the WebView
     let svcAsked = 0;
     answer(svc, () => { svcAsked += 1; return { entries: [] }; });
     await as.call(gr, server, pc.info, { to: DEV, op: 'storage.list', args: {} });
-    assert.strictEqual(svcAsked, 0);
+    assert.strictEqual(svcAsked, 1);
+    await rejects(as.call(gr, server, pc.info, { to: DEV, op: 'storage.delete', args: {} }), 'EFAIL'); // the WebView's own answer
+    assert.strictEqual(svcAsked, 1);
     // the WebView goes away: the service answers, the device stays connected
     server.clients.delete(phone.ws);
     as.onSocketClosed(gr, server, phone.info);
     r = await as.call(gr, server, pc.info, { to: DEV, op: 'storage.list', args: {} });
-    assert.strictEqual(svcAsked, 1);
+    assert.strictEqual(svcAsked, 2);
     assert.strictEqual(as.list(gr, server).devices[0].session, 'guest');
     await rejects(as.partnership(gr, server, pc.info, { action: 'propose', deviceId: DEV, mode: 'partner', name: 'Fold' }), 'OFFLINE'); // the service shows no question
     server.clients.delete(svc.ws);
