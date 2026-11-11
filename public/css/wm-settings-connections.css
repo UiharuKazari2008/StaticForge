@@ -77,6 +77,15 @@ html.ui-mobile .wm-setc .wm-setc-radio.is-on {
     background: linear-gradient(var(--wm-gloss-top), var(--wm-button-light) 50%, var(--wm-gloss-bottom) 50%, var(--wm-button-light));
 }
 
+/* Wireless Manager's own glyphs (shellres bmp 18257 / 18258): black 1-bit art, pixel for pixel */
+html.ui-mobile .wm-setc .wm-setc-radio.is-glyph img {
+    width: calc(16 * var(--wm-icon-unit, var(--wm-px)));
+    height: calc(16 * var(--wm-icon-unit, var(--wm-px)));
+    margin: 0 calc(8 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+    filter: none;
+    image-rendering: pixelated;
+}
+
 html.ui-mobile .wm-setc .wm-setc-radio.is-on img,
 html.ui-mobile .wm-setc .wm-setc-radio.is-busy img {
     filter: none;

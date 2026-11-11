@@ -575,10 +575,21 @@
         const todayW = Math.max(1, window.innerWidth);
         const scale = screen.clientWidth / todayW;
         const css = sh.wallpaper.css(placement, url && wallNatural.get(url), scale);
-        screen.style.backgroundImage = url ? `url("${url.replace(/["\\\n]/g, encodeURIComponent)}")` : '';
-        screen.style.backgroundSize = css.size;
-        screen.style.backgroundPosition = css.position;
-        screen.style.backgroundRepeat = css.repeat;
+        const fx = wallEffectOf(d);
+        const paint = (src) => {
+            const bg = src && sh.wallpaper.effectBackground ? sh.wallpaper.effectBackground(src, css, fx)
+                : { image: src ? `url("${src.replace(/["\\\n]/g, encodeURIComponent)}")` : '', size: css.size, position: css.position, repeat: css.repeat };
+            screen.style.backgroundImage = bg.image;
+            screen.style.backgroundSize = bg.size;
+            screen.style.backgroundPosition = bg.position;
+            screen.style.backgroundRepeat = bg.repeat;
+        };
+        paint(url);
+        if (url && fx.effect === 'blur' && sh.wallpaper.blurred) {
+            const want = `${url}|${fx.level}`;
+            screen.dataset.fx = want;
+            sh.wallpaper.blurred(url, fx.level).then((b) => { if (b && screen.isConnected && screen.dataset.fx === want) paint(b); });
+        }
         screen.classList.toggle('is-empty', !url);
         if (url && !wallNatural.has(url) && (placement.size === 'tile' || placement.size === 'center')) {
             const img = new Image();
@@ -590,6 +601,17 @@
         }
     }
 
+    // the picture's effect (the draft's Today options, 'wallpaper' row: effect, level)
+    const WALL_EFFECTS = [['none', 'None'], ['lighten', 'Lighten'], ['darken', 'Darken'], ['blur', 'Blur']];
+
+    function wallEffectOf(d) {
+        const o = (d.opts && d.opts.wallpaper) || {};
+        const def = (k, v) => (o[k] != null ? o[k] : (sh.todayOption ? sh.todayOption('wallpaper', k) : v));
+        const effect = def('effect', 'none') || 'none';
+        const level = Math.max(0, Math.min(100, Number(def('level', '50')) || 0));
+        return { effect: level > 0 ? effect : 'none', chosen: effect, level };
+    }
+
     /** Focus { x, y } of the draft (0-100 %). */
     function wallFocusOf(w) {
         if (sh.wallpaper && typeof sh.wallpaper.focus === 'function') return sh.wallpaper.focus(w.position);
@@ -599,6 +621,7 @@
 
     function renderWall(el, d, api) {
         const w = d.wall;
+        const fxNow = wallEffectOf(d);
         const same = w.size === 'desktop';
         // Same as desktop has no focus of its own and Stretch shows the whole picture; Fill, Fit,
         // Tile and Center all move the picture (CSS background-position)
@@ -625,7 +648,22 @@
                 </div>
                 <div class="wm-wall-phone${portrait ? '' : ' is-landscape'}" aria-hidden="true"><div class="wm-wall-screen" data-f="screen"></div></div>
             </div>
-            <p class="wm-form-note">${same ? "The phone fills the screen at the desktop's position." : 'The desktop keeps its own setting.'} Applies to a custom Today picture too.</p>`;
+            <p class="wm-form-note">${same ? "The phone fills the screen at the desktop's position." : 'The desktop keeps its own setting.'} Applies to a custom Today picture too.</p>
+            <div class="wm-form-row"><label>Effect:</label><button type="button" class="wm-combo" data-act="effect"><span>${esc((WALL_EFFECTS.find(([k]) => k === fxNow.chosen) || WALL_EFFECTS[0])[1])}</span></button></div>
+            <div class="wm-wall-axis wm-wall-level${fxNow.chosen === 'none' ? ' is-disabled' : ''}" data-axis="level">
+                <div class="wm-slider-scale"><span>Level</span><span class="wm-wall-value" data-f="level-value"></span><span></span></div>
+                <div class="wm-slider wm-wall-slider" role="slider" aria-orientation="horizontal"${fxNow.chosen === 'none' ? ' aria-disabled="true"' : ' tabindex="0"'} aria-label="Level" aria-valuemin="0" aria-valuemax="100">
+                    <div class="wm-slider-track"></div>
+                    ${[0, 25, 50, 75, 100].map((v) => `<div class="wm-slider-tick" style="left:${pos(v)}"></div>`).join('')}
+                    <div class="wm-slider-thumb"></div>
+                </div>
+            </div>`;
+        const setFx = (k, v) => { d.opts = Object.assign({}, d.opts); d.opts.wallpaper = Object.assign({ effect: fxNow.chosen, level: String(fxNow.level) }, d.opts.wallpaper, { [k]: v }); };
+        const fxCombo = el.querySelector('[data-act="effect"]');
+        fxCombo.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sh.dropdown(fxCombo, WALL_EFFECTS.map(([k, l]) => ({ label: l, radio: k === fxNow.chosen, action: () => { setFx('effect', k); api.rerender(); } })), 'left');
+        });
         const combo = el.querySelector('[data-act="size"]');
         combo.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -637,7 +675,7 @@
             if (painted) return;
             painted = requestAnimationFrame(() => { painted = 0; if (screen.isConnected) paintWallPreview(screen, d); });
         };
-        el.querySelectorAll('.wm-wall-axis').forEach((box) => {
+        el.querySelectorAll('.wm-wall-axis:not(.wm-wall-level)').forEach((box) => {
             const axis = box.dataset.axis;
             const track = box.querySelector('.wm-wall-slider');
             const thumb = box.querySelector('.wm-slider-thumb');
@@ -700,6 +738,53 @@
                 e.stopPropagation();
             });
         });
+        // the effect's Level: 5 % steps (Today's stored choices)
+        {
+            const box = el.querySelector('.wm-wall-level');
+            const track = box.querySelector('.wm-wall-slider');
+            const thumb = box.querySelector('.wm-slider-thumb');
+            const value = box.querySelector('.wm-wall-value');
+            let level = fxNow.level;
+            const show = () => {
+                thumb.style.left = pos(level);
+                value.textContent = `${level}%`;
+                track.setAttribute('aria-valuenow', String(level));
+            };
+            const set = (v) => {
+                v = Math.round(Math.max(0, Math.min(100, v)) / 5) * 5;
+                if (v === level) return;
+                level = v;
+                setFx('level', String(v));
+                show();
+                repaint();
+            };
+            show();
+            if (fxNow.chosen !== 'none') {
+                const line = box.querySelector('.wm-slider-track');
+                const fromX = (x) => { const r = line.getBoundingClientRect(); return ((x - r.left) / Math.max(1, r.width)) * 100; };
+                track.addEventListener('pointerdown', (e) => {
+                    if (e.button > 0) return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    track.focus({ preventScroll: true });
+                    track.setPointerCapture(e.pointerId);
+                    set(fromX(e.clientX));
+                    const move = (ev) => { ev.stopPropagation(); set(fromX(ev.clientX)); };
+                    const up = () => { track.removeEventListener('pointermove', move); track.removeEventListener('pointerup', up); track.removeEventListener('pointercancel', up); };
+                    track.addEventListener('pointermove', move);
+                    track.addEventListener('pointerup', up);
+                    track.addEventListener('pointercancel', up);
+                });
+                ['touchstart', 'touchmove'].forEach((t) => track.addEventListener(t, (e) => e.stopPropagation(), { passive: true }));
+                track.addEventListener('keydown', (e) => {
+                    const step = { ArrowLeft: -5, ArrowRight: 5, PageUp: -25, PageDown: 25 }[e.key];
+                    if (step === undefined) return;
+                    set(level + step);
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
+            }
+        }
         repaint();
     }
 
@@ -1410,6 +1495,7 @@
             }
             page.querySelectorAll('.wm-tab').forEach((t) => t.addEventListener('click', () => { open.tab = t.dataset.tab; renderPage(); }));
             refreshTitleKind();
+            if (sh && typeof sh.refreshSoftKeys === 'function') sh.refreshSoftKeys();
         }
 
         function openPage(id, tab, opts) {
@@ -1437,6 +1523,7 @@
         function closePage() {
             open = null;
             renderGrid();
+            if (sh && typeof sh.refreshSoftKeys === 'function') sh.refreshSoftKeys();
         }
 
         /** The page's commit, then each extension's: their keys, or false (keep the page open). */
@@ -1512,7 +1599,13 @@
                 renderGrid();
             },
             hide() {},
-            softKeys() { return { left: null, right: null }; },
+            // a page may bring its own soft keys (Wireless Manager's Menu): def.softKeys(draft)
+            softKeys() {
+                if (open && typeof open.def.softKeys === 'function') {
+                    try { return open.def.softKeys(open.draft) || { left: null, right: null }; } catch (err) { console.warn('Settings: softKeys failed', open.def.id, err); }
+                }
+                return { left: null, right: null };
+            },
             // WM: X on the Settings grid, ok on a settings page (saves it, back to the grid)
             titleKind: () => (open ? 'ok' : 'close'),
             onTitleOk: () => commitAndClose(false),

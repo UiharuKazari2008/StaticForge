@@ -15,7 +15,9 @@
  *                          userGlobalSettings.desktop.domainName / connectionName through
  *                          persistUserGlobalSettingsPatch (modalUtils.js), as the desktop's
  *                          Customize network settings / Rename Connection
- *   Wireless Manager       one big row for the Dreamscape connection: tap connects
+ *   Wireless Manager       WM 6.1's All / Wi-Fi / Bluetooth / Phone rows through the Android app
+ *                          (AndroidDevice, Shizuku), Menu with the radios' Android settings and
+ *                          Disconnect Cellular Data; then the Dreamscape connection row: tap connects
  *                          (wsClient.manualReconnect) or disconnects (cancelConnectionFromUser,
  *                          after a warning), as the tray flyout's "Connect or disconnect"
  *   Remote Access          remoteAccessProperties.js on three tabs: priority client
@@ -320,6 +322,51 @@
     });
 
     // ---------------------------------------------------------------- Wireless Manager
+    // WM 6.1's Wireless Manager (#735): All, Wi-Fi, Bluetooth, Phone (shellres 18304-18307, glyph strips
+    // bmp 18257 off / 18258 on), states Off / On (18279 / 18280), Menu: "%1 Settings" (18273) and
+    // Disconnect Cellular Data (18281). The phone's radios come from the Android app
+    // (window.AndroidDevice, DSApp DeviceControl: Shizuku when allowed, else Android's panels);
+    // the Dreamscape connection stays as the last row.
+
+    const device = () => (root.AndroidDevice && typeof root.AndroidDevice.getRadios === 'function' ? root.AndroidDevice : null);
+    function radios() {
+        const dv = device();
+        if (!dv) return null;
+        try { return JSON.parse(dv.getRadios()); } catch (_) { return null; }
+    }
+    const RADIO_ROWS = [['all', 'All'], ['wifi', 'Wi-Fi'], ['bluetooth', 'Bluetooth'], ['phone', 'Phone']];
+    function radioOn(r, id) {
+        if (!r) return null;
+        if (id === 'wifi') return !!r.wifi;
+        if (id === 'bluetooth') return !!r.bluetooth;
+        if (id === 'phone') return !r.airplane;
+        return (!r.airplane) || !!r.wifi || !!r.bluetooth; // All: On while any radio is
+    }
+    function radioPresent(r, id) {
+        if (!r) return false;
+        const p = r.present || {};
+        if (id === 'wifi') return p.wifi !== false;
+        if (id === 'bluetooth') return p.bluetooth !== false;
+        if (id === 'phone') return p.phone !== false;
+        return true;
+    }
+    function setRadio(name, on) {
+        const dv = device();
+        if (!dv) return;
+        try { dv.setRadio(name, !!on); } catch (_) { /* older app */ }
+    }
+    function switchRadio(r, id) {
+        const on = radioOn(r, id);
+        if (id === 'wifi' || id === 'bluetooth') setRadio(id, !on);
+        else if (id === 'phone') setRadio('airplane', on); // the phone radio off = flight mode
+        else if (on) { setRadio('wifi', false); setRadio('bluetooth', false); setRadio('airplane', true); }
+        else { setRadio('airplane', false); setRadio('wifi', true); setRadio('bluetooth', true); }
+    }
+    function openAndroidSettings(name) {
+        const dv = device();
+        if (dv && typeof dv.openSettings === 'function') { try { dv.openSettings(name); } catch (_) { /* older app */ } }
+    }
+    const glyph = (id, on) => ui.art(`wrls-${id}-${on ? 'on' : 'off'}`);
 
     wmSettings.registerPage({
         id: 'wireless',
@@ -327,13 +374,64 @@
         label: 'Wireless Manager',
         icon: 'set-wireless',
         tabs: [],
-        init: () => ({ busy: false }),
+        init: () => ({ busy: false, pending: {} }),
+        softKeys(d) {
+            if (!device()) return { left: null, right: null };
+            const r = radios();
+            const canOpen = typeof device().openSettings === 'function';
+            return {
+                left: null,
+                right: {
+                    label: 'Menu',
+                    menu: () => [
+                        { label: 'Phone Settings', disabled: !canOpen, action: () => openAndroidSettings('phone') },
+                        { label: 'Bluetooth Settings', disabled: !canOpen, action: () => openAndroidSettings('bluetooth') },
+                        { label: 'Wi-Fi Settings', disabled: !canOpen, action: () => openAndroidSettings('wifi') },
+                        { label: 'Disconnect Cellular Data', disabled: !(r && r.data && !r.airplane), action: () => setRadio('data', false) }
+                    ]
+                }
+            };
+        },
         render(el, tab, d, api) {
             el.classList.add('wm-setc');
             setHeader(el, 'Wireless Manager');
+            const r = radios();
+            const rows = r ? RADIO_ROWS.filter(([id]) => radioPresent(r, id)) : [];
             const art = ui.art('set-wireless');
-            el.innerHTML = `<button type="button" class="wm-setc-radio" data-act="toggle"><img src="${esc(art.src)}" srcset="${esc(art.srcset)}" alt="" draggable="false"><span class="wm-setc-radio-name">Dreamscape</span><span class="wm-setc-radio-state"></span></button>
-                <p class="wm-form-note wm-setc-gap-top">Tap the button to connect to or disconnect from the Dreamscape server. Without the connection this phone cannot open, save or print anything.</p>`;
+            el.innerHTML = `${rows.map(([id, name]) => `<button type="button" class="wm-setc-radio is-glyph" data-radio="${id}"><img alt="" draggable="false"><span class="wm-setc-radio-name">${esc(name)}</span><span class="wm-setc-radio-state"></span></button>`).join('')}
+                ${r ? '' : '<p class="wm-form-note">Phone, Wi-Fi and Bluetooth are switched here in the Dreamscape app for Android.</p>'}
+                <button type="button" class="wm-setc-radio" data-act="toggle"><img src="${esc(art.src)}" srcset="${esc(art.srcset)}" alt="" draggable="false"><span class="wm-setc-radio-name">Dreamscape</span><span class="wm-setc-radio-state"></span></button>`;
+            const paintRadios = (now) => {
+                el.querySelectorAll('[data-radio]').forEach((row) => {
+                    const id = row.dataset.radio;
+                    const on = radioOn(now, id);
+                    const g = glyph(id, on);
+                    const img = row.querySelector('img');
+                    if (img.getAttribute('src') !== g.src) { img.src = g.src; img.srcset = g.srcset; }
+                    const st = row.querySelector('.wm-setc-radio-state');
+                    const text = on == null ? '' : (on ? 'On' : 'Off');
+                    if (st.textContent !== text) st.textContent = text;
+                    row.classList.toggle('is-on', !!on);
+                    row.classList.toggle('is-busy', !!d.pending[id]);
+                });
+            };
+            paintRadios(r);
+            el.querySelectorAll('[data-radio]').forEach((row) => row.addEventListener('click', () => {
+                const id = row.dataset.radio;
+                if (d.pending[id]) return;
+                d.pending[id] = true;
+                switchRadio(radios(), id);
+                paintRadios(radios());
+                setTimeout(() => { d.pending[id] = false; if (el.isConnected) paintRadios(radios()); }, 4000);
+            }));
+            const onRadios = (e) => {
+                if (!el.isConnected) { root.removeEventListener('dreamscape:radios', onRadios); return; }
+                RADIO_ROWS.forEach(([id]) => { d.pending[id] = false; });
+                paintRadios((e && e.detail) || radios());
+                if (root.wmShell && typeof root.wmShell.refreshSoftKeys === 'function') root.wmShell.refreshSoftKeys();
+            };
+            root.addEventListener('dreamscape:radios', onRadios);
+
             const row = el.querySelector('[data-act="toggle"]');
             const stateEl = row.querySelector('.wm-setc-radio-state');
             const paint = () => {

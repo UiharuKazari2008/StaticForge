@@ -6525,6 +6525,257 @@
         "generated"
       ],
       "notes": "Large (Programs grid) version of app-folder-dreamscape. Not ROM art."
+    },
+    "status-bluetooth": {
+      "1x": {
+        "source": "shellres.96.dll ico_4691 16px (QVGA ROM)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_4691 32px",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "4x-point-upscaled"
+      ],
+      "notes": "Bluetooth, title-bar format (white oval, alpha); 4692 is pixel-identical. Shown while the phone's Bluetooth is on (Android app AndroidDevice)."
+    },
+    "wrls-all-on": {
+      "1x": {
+        "source": "shellres.96.dll bmp_18258 cell 0 (QVGA ROM)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_18258 cell 0",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "4x-point-upscaled",
+        "white-made-transparent"
+      ],
+      "notes": "Wireless Manager glyph: All (power), on. Strip order = strings 18304-18307 (All, Wi-Fi, Bluetooth, Phone)."
+    },
+    "wrls-all-off": {
+      "1x": {
+        "source": "shellres.96.dll bmp_18257 cell 0 (QVGA ROM)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_18257 cell 0",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "4x-point-upscaled",
+        "white-made-transparent"
+      ],
+      "notes": "Wireless Manager glyph: All (power), off (with the X). Strip order = strings 18304-18307 (All, Wi-Fi, Bluetooth, Phone)."
+    },
+    "wrls-wifi-on": {
+      "1x": {
+        "source": "shellres.96.dll bmp_18258 cell 1 (QVGA ROM)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_18258 cell 1",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "4x-point-upscaled",
+        "white-made-transparent"
+      ],
+      "notes": "Wireless Manager glyph: Wi-Fi (antenna), on. Strip order = strings 18304-18307 (All, Wi-Fi, Bluetooth, Phone)."
+    },
+    "wrls-wifi-off": {
+      "1x": {
+        "source": "shellres.96.dll bmp_18257 cell 1 (QVGA ROM)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_18257 cell 1",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "4x-point-upscaled",
+        "white-made-transparent"
+      ],
+      "notes": "Wireless Manager glyph: Wi-Fi (antenna), off (with the X). Strip order = strings 18304-18307 (All, Wi-Fi, Bluetooth, Phone)."
+    },
+    "wrls-bluetooth-on": {
+      "1x": {
+        "source": "shellres.96.dll bmp_18258 cell 2 (QVGA ROM)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_18258 cell 2",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "4x-point-upscaled",
+        "white-made-transparent"
+      ],
+      "notes": "Wireless Manager glyph: Bluetooth, on. Strip order = strings 18304-18307 (All, Wi-Fi, Bluetooth, Phone)."
+    },
+    "wrls-bluetooth-off": {
+      "1x": {
+        "source": "shellres.96.dll bmp_18257 cell 2 (QVGA ROM)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_18257 cell 2",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "4x-point-upscaled",
+        "white-made-transparent"
+      ],
+      "notes": "Wireless Manager glyph: Bluetooth, off (with the X). Strip order = strings 18304-18307 (All, Wi-Fi, Bluetooth, Phone)."
+    },
+    "wrls-phone-on": {
+      "1x": {
+        "source": "shellres.96.dll bmp_18258 cell 3 (QVGA ROM)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_18258 cell 3",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "4x-point-upscaled",
+        "white-made-transparent"
+      ],
+      "notes": "Wireless Manager glyph: Phone (handset), on. Strip order = strings 18304-18307 (All, Wi-Fi, Bluetooth, Phone)."
+    },
+    "wrls-phone-off": {
+      "1x": {
+        "source": "shellres.96.dll bmp_18257 cell 3 (QVGA ROM)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll bmp_18257 cell 3",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "4x-point-upscaled",
+        "white-made-transparent"
+      ],
+      "notes": "Wireless Manager glyph: Phone (handset), off (with the X). Strip order = strings 18304-18307 (All, Wi-Fi, Bluetooth, Phone)."
     }
   },
   "notDelivered": {

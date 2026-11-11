@@ -38,7 +38,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uwb", "status-data-uwb-active", "status-director", "status-mail", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
+    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uwb", "status-data-uwb-active", "status-director", "status-mail", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
     const srcset = (name) => String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -275,6 +275,7 @@
                     <button type="button" class="wm-status-icon wm-status-app" data-role="director" hidden aria-label="Director"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="update" hidden aria-label="Updates ready"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="latency" hidden aria-label="High latency"></button>
+                    <button type="button" class="wm-status-icon" data-role="bluetooth" data-icon="bluetooth" hidden aria-label="Bluetooth"></button>
                     <button type="button" class="wm-status-icon" data-role="data" data-icon="data-off" aria-label="Connectivity"></button>
                     <button type="button" class="wm-status-icon" data-role="roaming" data-icon="roaming" hidden aria-label="Roaming"></button>
                     <button type="button" class="wm-status-icon" data-role="signal" hidden aria-label="Phone signal"></button>
@@ -1369,7 +1370,27 @@
         return true;
     }
 
+    // Bluetooth in the tray (#735): shellres ico 4691 while the phone's Bluetooth is on (Android app,
+    // AndroidDevice / dreamscape:radios); its bubble says whether a device is connected
+    let radiosNow = null;
+    function readRadios() {
+        const dv = window.AndroidDevice;
+        if (!dv || typeof dv.getRadios !== 'function') return null;
+        try { return JSON.parse(dv.getRadios()); } catch (_) { return null; }
+    }
+    function takeRadios(r) {
+        radiosNow = r || null;
+        const icon = shell && shell.querySelector('.wm-status-icon[data-role="bluetooth"]');
+        if (!icon) return;
+        const show = !!(radiosNow && radiosNow.bluetooth);
+        if (icon.hidden === show) { icon.hidden = !show; fitStatus(); }
+        const bubble = shell.querySelector('.wm-bubble');
+        if (bubble && !bubble.hidden && bubble.dataset.role === 'bluetooth') statusBubble('bluetooth', icon, true);
+    }
+
     function watchDevice() {
+        window.addEventListener('dreamscape:radios', (e) => takeRadios((e && e.detail) || readRadios()));
+        takeRadios(readRadios());
         window.addEventListener('androiddevicestatus', (e) => takeDeviceStatus(e && e.detail));
         pollDeviceBridge();
         if (typeof navigator.getBattery === 'function') {
@@ -2227,6 +2248,13 @@
             }
             lines.push({ links: [{ label: 'Wireless Manager', action: openWirelessManager }] });
             bubble({ title: 'Phone', role: 'signal', anchor: shell.querySelector('[data-role="signal"]:not([hidden])') || anchor, sections: lines, buttons: [{ text: 'Hide' }] });
+        } else if (role === 'bluetooth') {
+            const rd = radiosNow || readRadios() || {};
+            const lines = [rd.bluetooth ? 'Bluetooth: On' : 'Bluetooth: Off'];
+            if (rd.bluetooth && rd.bluetoothConnected === true) lines.push('A device is connected.');
+            else if (rd.bluetooth && rd.bluetoothConnected === false) lines.push('No device is connected.');
+            lines.push({ links: [{ label: 'Wireless Manager', action: openWirelessManager }] });
+            bubble({ title: 'Bluetooth', role, anchor, sections: lines, buttons: [{ text: 'Hide' }] });
         } else if (role === 'battery') {
             const b = deviceView().battery;
             const lines = [];
@@ -3180,6 +3208,71 @@
     let todayBgKey = '';
 
     /**
+     * The Today picture's effect (Settings > Today > Wallpaper, per workspace with the Today
+     * layout): WM 6.1's Today picture is washed toward white; here Lighten / Darken lay white /
+     * black over it at the level's strength and Blur draws a blurred copy (canvas, cached per
+     * picture and level). The Start menu copies Today's background, effect and all.
+     */
+    function todayEffect() {
+        const effect = todayOption('wallpaper', 'effect') || 'none';
+        const level = Math.max(0, Math.min(100, Number(todayOption('wallpaper', 'level')) || 0));
+        return { effect: level > 0 ? effect : 'none', level };
+    }
+
+    const blurCache = new Map(); // `${url}|${level}` -> Promise<objectURL|null>
+
+    function blurredPicture(url, level) {
+        const key = `${url}|${level}`;
+        if (blurCache.has(key)) return blurCache.get(key);
+        const job = new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                try {
+                    const w = img.naturalWidth;
+                    const h = img.naturalHeight;
+                    // drawn at most 1600 px on its long side: the blur hides the lost detail
+                    const k = Math.min(1, 1600 / Math.max(w, h));
+                    const cw = Math.max(1, Math.round(w * k));
+                    const ch = Math.max(1, Math.round(h * k));
+                    const r = Math.max(1, (level / 100) * 0.03 * Math.max(cw, ch));
+                    const c = document.createElement('canvas');
+                    c.width = cw;
+                    c.height = ch;
+                    const ctx = c.getContext('2d');
+                    ctx.filter = `blur(${r}px)`;
+                    // drawn past the edges so the blur does not fade them to transparent
+                    ctx.drawImage(img, -2 * r, -2 * r, cw + 4 * r, ch + 4 * r);
+                    c.toBlob((b) => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.9);
+                } catch (_) { resolve(null); }
+            };
+            img.onerror = () => resolve(null);
+            img.src = url;
+        });
+        blurCache.set(key, job);
+        if (blurCache.size > 8) {
+            const [first] = blurCache.keys();
+            const old = blurCache.get(first);
+            blurCache.delete(first);
+            Promise.resolve(old).then((u) => { if (u) URL.revokeObjectURL(u); });
+        }
+        return job;
+    }
+
+    /**
+     * The background for a picture with an effect: { image, size, position, repeat } from the
+     * placement's css; src: the picture to draw (Blur passes its blurred copy).
+     */
+    function effectBackground(src, css, fx) {
+        const q = `url("${src.replace(/["\\\n]/g, encodeURIComponent)}")`;
+        if (fx.effect === 'lighten' || fx.effect === 'darken') {
+            const a = (fx.level / 100).toFixed(3);
+            const tint = fx.effect === 'lighten' ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
+            return { image: `linear-gradient(${tint}, ${tint}), ${q}`, size: `100% 100%, ${css.size}`, position: `0 0, ${css.position}`, repeat: `no-repeat, ${css.repeat}` };
+        }
+        return { image: q, size: css.size, position: css.position, repeat: css.repeat };
+    }
+
+    /**
      * Today's background: a picture set from Pictures & Videos (Menu > Set as Today Background),
      * else the workspace's desktop wallpaper, else the page background. Both are placed by the
      * workspace's phone placement (Settings > Today > Wallpaper), else the desktop's.
@@ -3205,15 +3298,17 @@
         if (!today || !today.page) return;
         const url = todayPicture();
         const placement = wallpaperPlacement();
-        const key = `${url}|${placement.size}|${placement.position}`;
+        const fx = todayEffect();
+        const key = `${url}|${placement.size}|${placement.position}|${fx.effect}|${fx.level}`;
         if (!force && key === todayBgKey) return;
         todayBgKey = key;
-        const set = (u) => {
-            today.page.style.backgroundImage = u ? `url("${u.replace(/["\\\n]/g, encodeURIComponent)}")` : '';
+        const set = (u, drawn) => {
             const css = placementCss(placement, u && naturalSizes.get(u));
-            today.page.style.backgroundSize = css.size;
-            today.page.style.backgroundPosition = css.position;
-            today.page.style.backgroundRepeat = css.repeat;
+            const bg = u ? effectBackground(drawn || u, css, fx) : { image: '', size: css.size, position: css.position, repeat: css.repeat };
+            today.page.style.backgroundImage = bg.image;
+            today.page.style.backgroundSize = bg.size;
+            today.page.style.backgroundPosition = bg.position;
+            today.page.style.backgroundRepeat = bg.repeat;
             // Fit and Center leave margins: WM painted a solid colour there, not the workspace
             // theme behind the shell (black, like the Settings preview)
             today.page.style.backgroundColor = u ? '#000' : '';
@@ -3227,8 +3322,10 @@
             probe.onerror = () => { set(null); todayBgKey = ''; };
             probe.onload = () => {
                 naturalSizes.set(url, { w: probe.naturalWidth, h: probe.naturalHeight });
-                if (todayBgKey === key && (placement.size === 'tile' || placement.size === 'center')) set(url);
+                if (todayBgKey === key && (placement.size === 'tile' || placement.size === 'center') && fx.effect !== 'blur') set(url);
             };
+            // Blur: the blurred copy once it is drawn (the sharp picture until then)
+            if (fx.effect === 'blur') blurredPicture(url, fx.level).then((b) => { if (b && todayBgKey === key) set(url, b); });
             probe.src = url;
         }
     }
@@ -3340,6 +3437,11 @@
             { key: 'rows', label: 'Rows', value: '1', choices: [['1', '1'], ['2', '2'], ['3', '3']] }
         ],
         messages: [{ key: 'empty', label: 'With no unread messages', value: 'show', choices: [['show', 'Show the row'], ['hide', 'Hide the row']] }],
+        // Settings > Today > Wallpaper: the picture's effect and its level (not a Today row)
+        wallpaper: [
+            { key: 'effect', label: 'Effect', value: 'none', choices: [['none', 'None'], ['lighten', 'Lighten'], ['darken', 'Darken'], ['blur', 'Blur']] },
+            { key: 'level', label: 'Level', value: '50', choices: Array.from({ length: 21 }, (_, i) => [String(i * 5), `${i * 5}%`]) }
+        ],
         tasks: [{ key: 'empty', label: 'With no tasks', value: 'show', choices: [['show', 'Show the row'], ['hide', 'Hide the row']] }]
     };
     const TODAY_PRINT_SIZE = { small: 32, medium: 44, large: 64, xlarge: 88 };
@@ -5165,7 +5267,11 @@
             /** { x, y } 0-100 % of a placement position (keywords or percentages). */
             focus: (position) => wallFocus(position),
             set: (v) => setMobileWallpaper(v),
-            css: (placement, natural, scale) => placementCss(placement, natural, scale)
+            css: (placement, natural, scale) => placementCss(placement, natural, scale),
+            /** Today's picture effect { effect, level } and the helpers the Settings preview uses. */
+            effect: () => todayEffect(),
+            effectBackground: (src, css, fx) => effectBackground(src, css, fx),
+            blurred: (url, level) => blurredPicture(url, level)
         },
         closeBubble: () => closeBubble(),
         // tests: run the startup sequence again (splash, installer, Today) on a live page
