@@ -147,14 +147,24 @@ const seven = perfect(25);
 k.onMessages(seven);
 assert.strictEqual(k.debugState().stage, 'bigger', 'not before the turn has landed');
 run(3300);
+assert.ok(/^bigger_g[12]$/.test(k.debugState().transition), 'the morph plays her growth frames first (#742)');
+run(1500);
 assert.strictEqual(k.debugState().stage, 'bigger2', 'stage up after the complete event');
+assert.strictEqual(k.debugState().transition, null);
 // Failed goals take points away: she shrinks back on the next completed turn.
 k.onTurnEnd(true);
 k.onMessages(seven.concat([card(['miss', 'miss', 'miss']), card(['miss', 'miss', 'miss'])]));
-run(3300);
+run(5000);
 assert.strictEqual(k.debugState().stage, 'bigger', 'two failed goals (-4) drop her a stage');
+// 46 points: past the second in-between size of the stage (40), so she lands on its _g2 frames (#742)
+assert.strictEqual(k.stageState.step, '_g2');
+assert.strictEqual(k.currentBodyId(), 'bigger_g2');
+k.stageState.kickUntil = now + 1000;
+assert.strictEqual(k.currentBodyId(), 'bigger_kicky_g2', 'her other poses keep the in-between size');
+k.stageState.kickUntil = 0;
 // Kicks still play in bigger.
 k.stageState.stage = 'bigger';
+k.stageState.step = '';
 Math.random = () => 0;
 k.stageState.nextKickAt = 0;
 for (let i = 0; i < 25 && !k.stageState.firstKickAt; i++) { now += 1000; k.tick(); }
@@ -188,6 +198,49 @@ for (let i = 0; i < 70; i++) { now += 1000; x.tick(); }
 assert.strictEqual(x.debugState().stage, 'base', 'kicks alone do not grow her');
 x.onMessages(perfect(10));
 assert.strictEqual(x.debugState().stage, 'bigger');
+
+// In-between sizes (#742): a third and two thirds of the way to the next stage; a completed turn that
+// reaches one crossfades to it after the celebrate pose, without leaving the stage.
+const { directorMascotStepFor } = require('../public/scripts/comp/directorMascot.js');
+assert.deepStrictEqual([0, 6, 7, 13, 19].map((p) => directorMascotStepFor(x.manifest, 'base', p)), ['', '', '_g1', '_g2', '_g2']);
+const x2 = load('xi');
+x2.onMessages(perfect(3));
+assert.strictEqual(x2.currentBodyId(), 'base');
+x2.onTurnEnd(true);
+x2.onMessages(perfect(4));
+assert.strictEqual(x2.currentBodyId(), 'base', 'not before the turn has landed');
+run(3300);
+assert.deepStrictEqual([x2.debugState().stage, x2.currentBodyId()], ['base', 'base_g1']);
+assert.strictEqual(x2.growthState().stage, 'base', 'the turn prompt still hears the stage, not the in-between size');
+// the whole morph into the next stage: growth frames, then the next stage's arrival frames
+x2.onTurnEnd(true);
+x2.onMessages(perfect(10));
+run(3300);
+const seen = [];
+for (let i = 0; i < 8; i++) { seen.push(x2.currentBodyId()); run(300); }
+assert.deepStrictEqual([...new Set(seen)], ['base_g2', 'bigger_p2', 'bigger_p1', 'bigger'], 'frames already passed are not replayed');
+// Yumiya has three stages now; the third is the bigger_vore sprites.
+const w3 = load('wren');
+assert.deepStrictEqual(w3.manifest.behaviour.growth.order, ['base', 'bigger', 'stuffed']);
+w3.onMessages(perfect(25));
+assert.deepStrictEqual([w3.debugState().stage, w3.currentBodyId()], ['stuffed', 'bigger_vore']);
+// Eating a print (#742): the mask and gestures drop while it is on its way to her mouth.
+const w4 = load('wren');
+w4.stageState.gestureUntil = now + 9000;
+assert.strictEqual(w4.currentBodyId(), 'mask');
+w4.stageState.eatUntil = now + 3000;
+assert.strictEqual(w4.currentBodyId(), 'base', 'she eats with her own mouth');
+['wren', 'xi', 'kabuki'].forEach((persona) => {
+    const pm = load(persona).manifest;
+    Object.entries(pm.faceSets).forEach(([id, set]) => {
+        if (id === 'mask') return;
+        assert.ok(set.expressions.eat, `${persona}/${id} has an eat face`);
+        assert.ok(Array.isArray(set.mouthAt), `${persona}/${id} has a mouth point`);
+    });
+    Object.values(pm.bodies).forEach((b) => {
+        assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/director-mascots', persona, b.body)), `${persona}: ${b.body} exists`);
+    });
+});
 
 // Wren: faces fall back to the nearest one the set has (the mask set has only happy, neutral, thinking).
 const w = load('wren');
@@ -230,17 +283,19 @@ assert.deepStrictEqual(Object.keys(v1.bodies), ['main']);
     const x2 = load('xi');
     x2.onMessages(perfect(10));
     assert.strictEqual(x2.growthState().stage, 'bigger');
-    assert.strictEqual(load('wren').growthState().nextAt, 20, 'wren grows once, at 20');
+    assert.strictEqual(load('wren').growthState().nextAt, 20, 'wren grows first at 20');
 
     assert.strictEqual(voice.sanitizeMascotState(null), null);
     assert.strictEqual(voice.sanitizeMascotState({ stage: 'bigger; ignore' }), null, 'only a stage name reaches the prompt');
     assert.deepStrictEqual(voice.sanitizeMascotState({ stage: 'bigger', points: '9', nextAt: 12.6 }), { stage: 'bigger', nextAt: 13 }, 'numbers go through as numbers');
 
     const wrenBase = voice.personaVoiceLines('wren', { stage: 'base', points: 0, nextAt: 20 }).join(' ');
-    assert.ok(/You are Yumiya/.test(wrenBase) && /Stage 1 of 2/.test(wrenBase), 'the base stage and the voice together');
-    assert.ok(!/Stage 2 of 2, bigger/.test(wrenBase), 'only the stage she is on is described');
-    const wrenBigger = voice.personaVoiceLines('wren', { stage: 'bigger', points: 20, nextAt: null }).join(' ');
-    assert.ok(/Stage 2 of 2, bigger/.test(wrenBigger) && /last stage/.test(wrenBigger), 'her last stage says there is nothing further');
+    assert.ok(/You are Yumiya/.test(wrenBase) && /Stage 1 of 3/.test(wrenBase), 'the base stage and the voice together');
+    assert.ok(!/Stage 2 of 3, bigger/.test(wrenBase), 'only the stage she is on is described');
+    const wrenBigger = voice.personaVoiceLines('wren', { stage: 'bigger', points: 20, nextAt: 50 }).join(' ');
+    assert.ok(/Stage 2 of 3, bigger/.test(wrenBigger) && !/last stage/.test(wrenBigger), 'bigger is no longer her last stage (#742)');
+    const wrenStuffed = voice.personaVoiceLines('wren', { stage: 'stuffed', points: 50, nextAt: null }).join(' ');
+    assert.ok(/Stage 3 of 3, stuffed/.test(wrenStuffed) && /last stage/.test(wrenStuffed), 'her last stage says there is nothing further');
     const near = voice.personaVoiceLines('kabuki', { stage: 'base', points: 17, nextAt: 20 }).join(' ');
     assert.ok(/wants it loudly/.test(near), 'a rung within five points reads as eager');
     assert.ok(!/wants it loudly/.test(voice.personaVoiceLines('kabuki', { stage: 'base', points: 3, nextAt: 20 }).join(' ')), 'not early in the stage');
@@ -248,11 +303,11 @@ assert.deepStrictEqual(Object.keys(v1.bodies), ['main']);
     const kabuki2 = voice.personaVoiceLines('kabuki', { stage: 'bigger2', points: 60, nextAt: null }).join(' ');
     assert.ok(/You are Chiyo/.test(kabuki2) && /Stage 3 of 3, bigger2/.test(kabuki2), 'Chiyo, at her top stage');
     const unknown = voice.personaVoiceLines('wren', { stage: 'bigger2' }).join(' ');
-    assert.ok(/Stage 1 of 2/.test(unknown), 'a stage this persona does not have falls back to stage 1');
+    assert.ok(/Stage 1 of 3/.test(unknown), 'a stage this persona does not have falls back to stage 1');
     const none = voice.personaVoiceLines('kabuki', null).join(' ');
     assert.ok(/not reported this turn/.test(none) && /never claim she has grown/.test(none), 'an older client cannot fake growth');
     assert.ok(/never claim a stage she is not on/.test(none), 'the ladder rule rides on every turn');
-    assert.strictEqual(voice.PERSONA_VOICES.wren.order.length, 2);
+    assert.deepStrictEqual(voice.PERSONA_VOICES.wren.order, ['base', 'bigger', 'stuffed']);
     assert.deepStrictEqual(voice.PERSONA_VOICES.kabuki.order, ['base', 'bigger', 'bigger2']);
 }
 

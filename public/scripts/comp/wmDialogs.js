@@ -58,6 +58,13 @@
             },
             // what changes the price: the target size, upscale after, the model / steps
             watch: (win) => win
+        },
+        // the Director's question (request_form, requestForm.js): its fields as a WM form, the
+        // form's own Send on the soft key; Cancel / back / leaving answers it as closed
+        requestFormWindow: {
+            ok: (win) => win.querySelector('#requestFormFooter [data-form-send]'),
+            cancel: () => document.getElementById('requestFormCloseBtn'),
+            label: (btn) => (btn && btn.textContent.replace(/\s+/g, ' ').trim()) || 'Send'
         }
     };
 
@@ -98,6 +105,10 @@
             if (i === layers.length - 1) l.win.removeAttribute('data-wmo-under');
             else l.win.setAttribute('data-wmo-under', '');
         });
+        // the Director's question on top: its drop-down rows may wrap (wm-dialogs.css), long
+        // choices are whole sentences there
+        if (top() && top().win.id === 'requestFormWindow') root.setAttribute('data-wmo-form', 'request');
+        else root.removeAttribute('data-wmo-form');
         if (!isCurrent() || root.hasAttribute('data-wm-viewer')) return;
         const t = top();
         ws.setTitle(t ? windowTitle(t.win) : 'Melaton Mobile');
@@ -147,6 +158,7 @@
         if (layer.watched) layer.watched.removeEventListener('input', refreshLater);
         if (layer.cancelTimer) clearTimeout(layer.cancelTimer);
         win.removeAttribute('data-wmo-under');
+        if (win.id === 'requestFormWindow') root.removeAttribute('data-wmo-form');
         if (win.isConnected) {
             try {
                 if (layer.next && layer.next.parentNode === layer.parent) layer.parent.insertBefore(win, layer.next);

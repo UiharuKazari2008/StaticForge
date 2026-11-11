@@ -618,6 +618,7 @@ class BannerManager {
             'director_settings_set': 'Save Director Settings',
             'ledge_checks': 'Ledge Checks',
             'request_form_submit': 'Submit Request Form',
+            'request_form_open': 'Open Request Forms',
 
             // Packages, workers, wallet, Menma
             'package_list': 'List Packages',

@@ -4,10 +4,13 @@
 // Two views (Yukimi 2026-10-31): "mascot" (the default) is a visual novel: her room fills the chat, she
 // stands on her side, and the log (messages, thinking, tool calls) is a glass panel on the other side, top
 // most. "messages" keeps the plain log and puts her at the input bar edge (head and shoulders peek while
-// idle, she rises while a turn runs). A finished print flies in as a polaroid and fades into her belly.
+// idle, she rises while a turn runs). A finished print flies in as a polaroid and she eats it: mouth
+// open, a few chews, a gulp, then her belly answers (#742).
 //
 // Manifest v1: one body + head + expressions. v2: bodies (each names a faceSet), stages (base / bigger /
 // ...), transitions (in-between frames between stages), and behaviour (advance rules, kicks, gestures).
+// behaviour.growth.steps: in-between sizes inside a stage ({ at: points, suffix }): the stage's bodies
+// with that suffix (`base_g1`), warped from the real sprites by scripts/director-mascot-build.js.
 // Cues (expression + action) come from the server on director_streaming_update (modules/directorMascot.js).
 
 const DIRECTOR_MASCOT_ROOT = '/static_images/director-mascots';
@@ -65,6 +68,15 @@ function directorMascotStageFor(manifest, total) {
     return stage;
 }
 
+// The in-between size inside a stage: the suffix of the last step the points have reached ('' = none).
+function directorMascotStepFor(manifest, stage, total) {
+    const g = manifest && manifest.behaviour && manifest.behaviour.growth;
+    const steps = g && g.steps && Array.isArray(g.steps[stage]) ? g.steps[stage] : [];
+    let suffix = '';
+    steps.forEach((step) => { if (step && total >= step.at) suffix = String(step.suffix || ''); });
+    return suffix;
+}
+
 // A face set without the asked expression shows the nearest one it has, not a blank neutral.
 const DIRECTOR_MASCOT_FACE_FALLBACK = {
     satisfied: ['happy', 'smug'],
@@ -73,7 +85,9 @@ const DIRECTOR_MASCOT_FACE_FALLBACK = {
     focused: ['thinking'],
     frustrated: ['thinking'],
     surprised: ['thinking'],
-    sleepy: ['neutral']
+    sleepy: ['neutral'],
+    eat: ['surprised', 'happy'],
+    lick: ['satisfied', 'happy', 'smug']
 };
 
 // The line as it was plus the new snapshot's text after the first `visible` characters (markers do
@@ -253,6 +267,14 @@ class DirectorMascot {
             </div>`;
         host.appendChild(layer);
         this.layer = layer;
+        // The thought cloud belongs to her head (#742): it sits in a layer inside the head element, so
+        // the head's sway and every move of the rig (breathing, bounce, nod, chewing) carry it on the
+        // compositor. It keeps the .dm-vn-layer class, so the bubble's styles apply unchanged.
+        const headLayer = document.createElement('div');
+        headLayer.className = 'dm-vn-layer dm-head-layer';
+        headLayer.appendChild(layer.querySelector('.dm-think'));
+        root.querySelector('.dm-head').appendChild(headLayer);
+        this.headLayer = headLayer;
         this.el = {
             mascot: root.querySelector('.director-mascot'),
             canvas: root.querySelector('.director-mascot-canvas'),
@@ -267,8 +289,8 @@ class DirectorMascot {
             dialogue: root.querySelector('.director-mascot-dialogue'),
             name: root.querySelector('.dm-name'),
             text: root.querySelector('.dm-text'),
-            think: layer.querySelector('.dm-think'),
-            thinkFull: layer.querySelector('.dm-think-full'),
+            think: headLayer.querySelector('.dm-think'),
+            thinkFull: headLayer.querySelector('.dm-think-full'),
             say: layer.querySelector('.dm-say'),
             sayText: layer.querySelector('.dm-say .dm-bubble-text'),
             pops: layer.querySelector('.dm-tool-pops'),
@@ -381,6 +403,10 @@ class DirectorMascot {
             this.layer.classList.toggle('hidden', !(on && this.view === 'mascot' && !this.showLog));
             this.layer.dataset.side = this.manifest && this.manifest.anchor === 'left' ? 'left' : 'right';
         }
+        if (this.headLayer) {
+            this.headLayer.classList.toggle('hidden', !(on && this.view === 'mascot' && !this.showLog));
+            this.headLayer.dataset.side = this.manifest && this.manifest.anchor === 'left' ? 'left' : 'right';
+        }
         this.root.dataset.state = this.working ? 'working' : 'idle';
         this.layout();
         this.paintDialogue();
@@ -461,6 +487,7 @@ class DirectorMascot {
             this.root.classList.remove('dm-narrow');
             const [vx, vy] = this.manifest.headPivot || [W / 2, H * 0.4];
             this.setStyle(this.el.head, 'transformOrigin', `${(vx / W) * 100}% ${(vy / H) * 100}%`);
+            this.placeThink(face, kv, px - face[0] * kv, py - face[1] * kv, Wh);
             return;
         }
         const share = home ? 0.9 : 0.62;   // messages view: idle drops below the bar edge (--dm-drop)
@@ -495,6 +522,26 @@ class DirectorMascot {
         this.root.classList.toggle('dm-narrow', areaW < 360);
         const [px, py] = this.manifest.headPivot || [W / 2, H * 0.4];
         this.setStyle(this.el.head, 'transformOrigin', `${(px / W) * 100}% ${(py / H) * 100}%`);
+    }
+
+    // The thought cloud beside her head, in the head's own coordinates (canvas pixels times k): up and
+    // out from her face on the side the chat is, under the banner row, never wider than the room left.
+    placeThink(face, k, canvasX, canvasY, stageW) {
+        const think = this.el && this.el.think;
+        if (!think) return;
+        const left = this.manifest.anchor === 'left';
+        const top0 = parseInt(this.layer.style.getPropertyValue('--dm-top'), 10) || 12;
+        const narrow = stageW < 520;
+        const minScreenY = top0 + (narrow ? 44 : 72);
+        const y = Math.max((face[1] - face[2] * 1.6) * k, minScreenY - canvasY);
+        const out = face[2] * (narrow ? 0.75 : 1.05) * k;
+        const edge = left ? face[0] * k + out : face[0] * k - out;
+        const screenX = canvasX + edge;
+        const room = Math.max(120, Math.round((left ? stageW - screenX : screenX) - 12));
+        this.setStyle(think, 'top', `${Math.round(y)}px`);
+        this.setStyle(think, 'left', left ? `${Math.round(edge)}px` : 'auto');
+        this.setStyle(think, 'right', left ? 'auto' : `${Math.round(this.manifest.size[0] * k - edge)}px`);
+        this.setStyle(think, 'maxWidth', `${room}px`);
     }
 
     // Re-measure every frame for a moment (the bar slides between the centred home and the bottom).
@@ -561,14 +608,54 @@ class DirectorMascot {
     }
 
     preload(manifest) {
+        // Faces for every set; bodies only for the stage and size she is at. The growth frames are many
+        // (#742) and load when she gets near them (preloadBodies).
         const files = new Set();
-        Object.values(manifest.bodies).forEach((b) => { if (b.body) files.add(b.body); if (b.head) files.add(b.head); });
+        this.preloadBodies(this.stageBodyIds());
         Object.values(manifest.faceSets).forEach((f) => {
             Object.values(f.expressions || {}).forEach((x) => files.add(x));
             if (f.blink) files.add(f.blink);
             if (f.mouth && f.mouth.talk) files.add(f.mouth.talk);
         });
         files.forEach((file) => { const img = new Image(); img.decoding = 'async'; img.src = manifest.base + file; });
+    }
+
+    // Body ids the current stage can show, at her size and the next one up.
+    stageBodyIds() {
+        const m = this.manifest; const st = this.stageState; const def = this.stageDef();
+        if (!m || !st || !def) return [];
+        const g = m.behaviour && m.behaviour.growth;
+        const steps = g && g.steps && Array.isArray(g.steps[st.stage]) ? g.steps[st.stage].map((x) => x.suffix) : [];
+        const at = steps.indexOf(st.step || '');
+        const sizes = [st.step || '', steps[at + 1]].filter((x) => x != null);
+        const ids = [];
+        [...new Set(Object.values(def))].forEach((id) => sizes.forEach((sfx) => { if (m.bodies[id + sfx]) ids.push(id + sfx); }));
+        return ids;
+    }
+
+    // Fetch and decode body sheets ahead of a swap; resolves when they are ready (or failed).
+    preloadBodies(ids) {
+        const m = this.manifest;
+        // SYNC: a thenable that runs at once where there is nothing to wait for (no pictures to
+        // load: the node tests), so stage changes there stay in step with the test's clock
+        const SYNC = { then(fn) { fn(); return SYNC; } };
+        if (!m || typeof Image === 'undefined') return SYNC;
+        const cache = m._loaded || (m._loaded = new Map());
+        const jobs = [];
+        (ids || []).forEach((id) => {
+            const b = m.bodies[id];
+            if (!b) return;
+            [b.body, b.head].filter(Boolean).forEach((file) => {
+                if (!cache.has(file)) {
+                    const img = new Image();
+                    img.decoding = 'async';
+                    img.src = m.base + file;
+                    cache.set(file, typeof img.decode === 'function' ? img.decode().catch(() => {}) : Promise.resolve());
+                }
+                jobs.push(cache.get(file));
+            });
+        });
+        return Promise.all(jobs);
     }
 
     async setPersona(persona) {
@@ -593,6 +680,8 @@ class DirectorMascot {
         const start = m && m.behaviour && m.behaviour.start && m.stages[m.behaviour.start] ? m.behaviour.start : (m ? Object.keys(m.stages)[0] : null);
         this.stageState = {
             stage: start,
+            step: '',            // in-between size inside the stage (behaviour.growth.steps suffix)
+            eatUntil: 0,         // a print is on its way to her mouth: no mask, no gesture over it
             workingSince: 0,
             firstKickAt: 0,
             nextKickAt: 0,
@@ -615,51 +704,83 @@ class DirectorMascot {
         if (st.transition) return st.transition.frames[st.transition.index] || st.transition.via || null;
         const def = this.stageDef();
         if (!def) return null;
-        if (def.celebrate && now < st.celebrateUntil) return def.celebrate;
+        return this.sized(this.poseId(def, st, now));
+    }
+
+    poseId(def, st, now) {
+        const eating = now < st.eatUntil;
+        if (def.celebrate && now < st.celebrateUntil && !eating) return def.celebrate;
         if (def.printed && now < st.printedUntil) return def.printed;
         const alt = def.rub || def.gesture;
         const altKicky = def.rubKicky || def.gestureKicky;
         const kicking = now < st.kickUntil;
-        const gesturing = now < st.gestureUntil && !!alt;
+        const gesturing = now < st.gestureUntil && !!alt && !eating;
         if (kicking && gesturing && altKicky) return altKicky;
         if (kicking && def.kicky) return def.kicky;
         if (gesturing) return alt;
         return def.body;
     }
 
-    advanceTo(next) {
+    // The pose at her in-between size, when the stage has that frame.
+    sized(id) {
+        const sfx = this.stageState && this.stageState.step;
+        return sfx && this.manifest.bodies[id + sfx] ? id + sfx : id;
+    }
+
+    // A stage change morphs: her growth frames up to the edge of this stage, then the next stage's
+    // arrival frames (its belly a little smaller), each crossfading into the next. Shrinking plays the
+    // same frames backwards. step: the in-between size she lands on in the new stage.
+    advanceTo(next, step = '') {
         const m = this.manifest; const st = this.stageState;
         if (!m || !st || !m.stages[next] || st.transition) return;
         const from = st.stage;
-        const t = m.transitions && m.transitions[`${from}>${next}`];
+        const land = () => {
+            st.stage = next;
+            st.step = step;
+            st.firstKickAt = 0;
+            st.nextKickAt = 0;
+            this.preloadBodies(this.stageBodyIds());
+        };
+        const up = m.transitions && m.transitions[`${from}>${next}`];
+        const down = m.transitions && m.transitions[`${next}>${from}`];
+        const t = up || down;
         st.kickUntil = 0;
         st.gestureUntil = 0;
         this._swapMs = 650;
-        if (!t || !Array.isArray(t.frames) || !t.frames.length) {
-            st.stage = next;
-            st.firstKickAt = 0;
-            st.nextKickAt = 0;
+        let frames = t && Array.isArray(t.frames) ? (t.via ? [t.via] : []).concat(t.frames).filter((id) => m.bodies[id]) : [];
+        if (!up && down) frames = frames.slice().reverse();
+        // frames she has already passed (she stood at _g1 or _g2) are not played again
+        const here = this.currentBodyId();
+        const at = frames.indexOf(here);
+        if (at >= 0) frames = frames.slice(at + 1);
+        if (!frames.length) {
+            land();
             this.render();
             return;
         }
-        const frames = (t.via ? [t.via] : []).concat(t.frames);
+        const frameMs = t.frameMs || 420;
         st.transition = { frames, index: 0, to: next };
-        const step = () => {
-            if (!st.transition) return;
+        const show = () => { this._swapMs = Math.round(frameMs * 1.15); this.render(); };
+        const step1 = () => {
+            if (!st.transition || this.stageState !== st) return;
             st.transition.index += 1;
             if (st.transition.index >= frames.length) {
                 st.transition = null;
-                st.stage = next;
-                st.firstKickAt = 0;
-                st.nextKickAt = 0;
+                land();
                 this.act('bounce');
+                this.later(() => this.act('jiggle'), 420);
             } else {
-                this.later(step, t.frameMs || 420);
+                this.later(step1, frameMs);
             }
-            this.render();
+            show();
         };
-        this.render();
-        this.later(step, t.frameMs || 420);
+        // every frame decoded first, so no crossfade lands on a picture still loading
+        const target = m.stages[next].body;
+        this.preloadBodies(frames.concat([target, target + step])).then(() => {
+            if (!st.transition || this.stageState !== st) return;
+            show();
+            this.later(step1, frameMs);
+        });
     }
 
     tick(now = Date.now()) {
@@ -1056,7 +1177,7 @@ class DirectorMascot {
         const props = ['--dm-teal', '--dm-teal-deep', '--dm-hi', '--dm-line', '--dm-track', '--dm-tint'];
         // On the chat host and the whole Director (chat list, composer) too, so their VN buttons use them.
         const container = this.host ? this.host.closest('#directorContainer') : null;
-        const targets = [this.layer, this.host, container].filter(Boolean);
+        const targets = [this.layer, this.headLayer, this.host, container].filter(Boolean);
         if (!m) { targets.forEach((t) => props.forEach((p) => t.style.removeProperty(p))); this._accent = ''; return; }
         let h = m[1];
         if (h.length === 3) h = h.split('').map((c) => c + c).join('');
@@ -1242,25 +1363,51 @@ class DirectorMascot {
         const total = directorMascotGrowthPoints(messages);
         this.growthPoints = total;
         const target = directorMascotStageFor(m, total);
+        const step = target ? directorMascotStepFor(m, target, total) : '';
         const armed = this._growthArmed === true;
         this._growthArmed = false;
-        if (!target || target === st.stage || st.transition) return;
+        if (!target || st.transition || (target === st.stage && step === (st.step || ''))) return;
         if (!armed) {
             st.stage = target;
+            st.step = step;
             st.firstKickAt = 0;
             st.nextKickAt = 0;
+            this.preloadBodies(this.stageBodyIds());
             this.render();
             return;
         }
         const { order } = directorMascotGrowth(m);
-        const up = order.indexOf(target) > order.indexOf(st.stage);
+        const steps = (m.behaviour.growth.steps && m.behaviour.growth.steps[target]) || [];
+        const rank = (stage, sfx) => order.indexOf(stage) * 10 + steps.findIndex((x) => x.suffix === sfx) + 1;
+        const up = rank(target, step) > rank(st.stage, st.step || '') || order.indexOf(target) > order.indexOf(st.stage);
         // after the celebrate pose, so the turn lands first and the growth reads as its reward
         const cfg = m.behaviour.celebrate || {};
+        const wait = ((Number(cfg.durationSec) || 3) * 1000) + 200;
+        if (target === st.stage) {
+            // an in-between size inside the stage: a slow crossfade into the next frame
+            const ids = [...new Set(Object.values(m.stages[target]))].map((id) => id + step);
+            this.preloadBodies(ids);
+            this.later(() => {
+                if (this.stageState !== st || st.stage !== target || st.transition) return;
+                this.preloadBodies([m.stages[target].body + step]).then(() => {
+                    if (this.stageState !== st || st.stage !== target || st.transition) return;
+                    st.step = step;
+                    this._swapMs = 900;
+                    this.render();
+                    this.cue(up ? { expression: 'surprised', action: 'jiggle', holdMs: 1500 } : { expression: 'frustrated', action: 'slump', holdMs: 2500 });
+                    this.preloadBodies(this.stageBodyIds());
+                    this.paintChrome();
+                });
+            }, wait);
+            return;
+        }
+        const t = m.transitions && (m.transitions[`${st.stage}>${target}`] || m.transitions[`${target}>${st.stage}`]);
+        this.preloadBodies(((t && t.frames) || []).concat([m.stages[target].body + step]));
         this.later(() => {
             if (this.stageState !== st || st.stage === target) return;
-            this.advanceTo(target);
+            this.advanceTo(target, step);
             this.cue(up ? { expression: 'surprised', action: 'bounce', holdMs: 1800 } : { expression: 'frustrated', action: 'slump', holdMs: 3000 });
-        }, ((Number(cfg.durationSec) || 3) * 1000) + 200);
+        }, wait);
     }
 
     setWorking(on) {
@@ -1404,7 +1551,23 @@ class DirectorMascot {
         if (!body) return;
         const src = this.manifest.base + body.body;
         const old = this.el.body.getAttribute('src');
+        // a sheet not fetched yet (growth frames load on demand): swap when it is decoded, so the
+        // crossfade never fades to nothing
+        const loaded = this.manifest._loaded;
+        if (old && old !== src && !(loaded && loaded.has(body.body)) && this._pendingBody !== id) {
+            this._pendingBody = id;
+            const ms = this._swapMs;
+            this.preloadBodies([id]).then(() => {
+                if (this._pendingBody !== id) return;
+                this._pendingBody = null;
+                if (this.currentBodyId() !== id) return;
+                this._swapMs = ms;
+                this.render();
+            });
+            return;
+        }
         if (old !== src) {
+            this._pendingBody = null;
             // Crossfade: the old body fades out over the new one (slow on a stage change, quick for kicks and rubs).
             const ms = this._swapMs || 180;
             this._swapMs = 0;
@@ -1444,20 +1607,28 @@ class DirectorMascot {
         }
     }
 
-    // A finished print: a polaroid of it drifts in from the log side and fades into her belly; she is
-    // pleased with herself.
+    // A finished print: a polaroid of it drifts in from the prints strip and she eats it (#742): her
+    // mouth opens as it comes close, it goes in, she chews, swallows, and her belly answers (the stage's
+    // printed body, a jiggle). A masked or gesturing pose drops first: she eats with her own mouth.
     onPrint(url, options = {}) {
         if (!this.root || !this.manifest || !url || this.root.classList.contains('hidden')) return;
-        const id = this.currentBodyId();
-        const body = id ? this.manifest.bodies[id] : null;
+        const st = this.stageState;
+        const DURATION = 2400;
+        if (st) {
+            st.eatUntil = Date.now() + DURATION + 1400;
+            this._swapMs = 260;
+            this.render();
+        }
+        const set = this.faceSet();
         const k = this._k || 1;
         const cam = this.camera();
         const canvasBox = this.el.canvas.getBoundingClientRect();
         const stage = this.root.getBoundingClientRect();
         if (!canvasBox.width) return;
-        const belly = (body && body.belly) || [cam[0] + cam[2] / 2, cam[1] + cam[3] * 0.62];
-        const bx = canvasBox.left - stage.left + belly[0] * k;
-        const by = canvasBox.top - stage.top + belly[1] * k;
+        const face = Array.isArray(this.manifest.face) ? this.manifest.face : null;
+        const mouth = (set && set.mouthAt) || (face ? [face[0], face[1] + face[2] * 0.3] : [cam[0] + cam[2] / 2, cam[1] + cam[3] * 0.22]);
+        const bx = canvasBox.left - stage.left + mouth[0] * k;
+        const by = canvasBox.top - stage.top + mouth[1] * k;
         const left = this.manifest.anchor === 'left';
         let sx = left ? stage.width * 0.72 : stage.width * 0.28;
         let sy = stage.height * 0.42;
@@ -1486,33 +1657,56 @@ class DirectorMascot {
             this.root.appendChild(card);
         }
         card.style.width = `${Math.round(w)}px`;
-        const place = (x, y) => `translate(${Math.round(x - w / 2)}px, ${Math.round(y - w * 0.6)}px)`;
+        // the card's middle (its picture) on the point
+        const h = w * 1.16;
+        const place = (x, y) => `translate(${Math.round(x - w / 2)}px, ${Math.round(y - h / 2)}px)`;
         const tilt = left ? 7 : -7;
-        const done = () => {
+        const has = (key) => !!(set && set.expressions && set.expressions[key]);
+        const swallow = () => {
             card.remove();
-            this.showFor('printed', 6);
-            const set = this.faceSet();
-            this.cue({ expression: set && set.expressions && set.expressions.satisfied ? 'satisfied' : 'happy', action: 'bounce', holdMs: 4000 });
-            this.later(() => this.act('jiggle'), 380);
+            if (this.stageState !== st) return;
+            // chewing: mouth open and shut a few times, the head nodding with it, then the gulp
+            const shut = has('lick') ? 'lick' : (has('satisfied') ? 'satisfied' : 'happy');
+            [0, 1, 2].forEach((i) => {
+                this.later(() => { this.cue({ expression: shut, holdMs: 400 }); this.act('nod'); }, i * 340);
+                this.later(() => this.cue({ expression: 'eat', holdMs: 400 }), i * 340 + 170);
+            });
+            this.later(() => {
+                if (this.stageState !== st) return;
+                st.eatUntil = 0;
+                this.showFor('printed', 6);
+                this.cue({ expression: has('lick') ? 'lick' : shut, action: 'bounce', holdMs: 4000 });
+                this.later(() => this.act('jiggle'), 380);
+            }, 3 * 340 + 120);
         };
         const reduced = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         if (reduced || typeof card.animate !== 'function') {
-            this.later(done, 600);
+            this.cue({ expression: 'eat', holdMs: 900 });
+            this.later(swallow, 600);
             return;
         }
-        // From the strip: it starts at the thumbnail's size, lifts out, then arcs down into her belly.
+        // From the strip: it starts at the thumbnail's size, lifts out, arcs over to her face and goes
+        // into her mouth edge first (squeezed flat as it passes her lips).
         const startScale = fromStrip ? Math.max(0.2, Math.min(1, fromBox.width / w)) : 0.6;
-        const arcX = fromStrip ? sx + (tx - sx) * 0.45 : sx;
-        const arcY = fromStrip ? Math.min(sy, ty) - stage.height * 0.06 : sy;
+        const arcX = fromStrip ? sx + (tx - sx) * 0.45 : sx + (tx - sx) * 0.3;
+        const arcY = Math.min(sy, ty) - stage.height * 0.06;
+        const nearX = tx + (left ? 1 : -1) * w * 0.34;
         const anim = card.animate([
-            { transform: `${place(sx, fromStrip ? sy : sy + 40)} rotate(0deg) scale(${startScale})`, opacity: fromStrip ? 1 : 0, filter: 'blur(0px)' },
+            { transform: `${place(sx, fromStrip ? sy : sy + 40)} rotate(0deg) scale(${startScale})`, opacity: fromStrip ? 1 : 0 },
             { transform: `${place(fromStrip ? sx + (left ? -12 : 12) : sx, sy)} rotate(${tilt}deg) scale(1)`, opacity: 1, offset: 0.18 },
             { transform: `${place(arcX, arcY)} rotate(${tilt / 2}deg) scale(0.9)`, opacity: 1, offset: 0.45 },
-            { transform: `${place(tx, ty)} rotate(0deg) scale(0.35)`, opacity: 0.85, filter: 'blur(0px)', offset: 0.82 },
-            { transform: `${place(tx, ty)} rotate(0deg) scale(0.15)`, opacity: 0, filter: 'blur(3px)' }
-        ], { duration: 2600, easing: 'ease-in-out', fill: 'forwards' });
-        anim.onfinish = done;
-        this.cue({ expression: 'surprised', holdMs: 1200 });
+            { transform: `${place(nearX, ty - 4)} rotate(${-tilt}deg) scale(0.42)`, opacity: 1, offset: 0.76 },
+            { transform: `${place(tx, ty)} rotate(${-tilt * 2}deg) scale(0.2, 0.14)`, opacity: 1, offset: 0.92 },
+            { transform: `${place(tx, ty)} rotate(${-tilt * 2}deg) scale(0.05, 0.02)`, opacity: 0 }
+        ], { duration: DURATION, easing: 'ease-in-out', fill: 'forwards' });
+        anim.onfinish = swallow;
+        this.cue({ expression: 'surprised', holdMs: DURATION * 0.5 });
+        // her mouth opens while the print is still on its way, and she leans in to take it
+        this.later(() => {
+            if (this.stageState !== st) return;
+            this.cue({ expression: 'eat', holdMs: DURATION * 0.5 + 400 });
+            this.act('lean-in');
+        }, DURATION * 0.52);
     }
 
     // Her grown stage and how far the next one is. director.js stamps it on the send as `mascot`, and
@@ -1538,4 +1732,4 @@ class DirectorMascot {
 }
 
 if (typeof window !== 'undefined') window.DirectorMascot = DirectorMascot;
-if (typeof module !== 'undefined' && module.exports) module.exports = { DirectorMascot, directorMascotTypedHtml, directorMascotGrowthPoints, directorMascotCardPoints, directorMascotStageFor, directorMascotGrowth };
+if (typeof module !== 'undefined' && module.exports) module.exports = { DirectorMascot, directorMascotTypedHtml, directorMascotGrowthPoints, directorMascotCardPoints, directorMascotStageFor, directorMascotGrowth, directorMascotStepFor };

@@ -1,231 +1,507 @@
 {
-  "persona": "kabuki",
-  "name": "Chiyo",
-  "version": 2,
-  "source": "Chiyo sprite set (2021-11), by StygianRook",
-  "size": [
-    2201,
-    2432
-  ],
-  "headPivot": [
-    1616,
-    426
-  ],
-  "hipPivot": [
-    1101,
-    2432
-  ],
-  "shouldersY": 504,
-  "peekRatio": 0.37,
-  "bodies": {
-    "base": {
-      "body": "body-base.webp",
-      "faces": "fan",
-      "camera": [
-        779,
-        48,
-        1389,
-        1216
-      ],
-      "head": "head-base.webp",
-      "belly": [
-        1385,
-        1066
-      ]
-    },
-    "bigger": {
-      "body": "body-bigger.webp",
-      "faces": "fan",
-      "camera": [
-        779,
-        48,
-        1389,
-        1216
-      ],
-      "head": "head-bigger.webp",
-      "belly": [
-        1317,
-        1113
-      ]
-    },
-    "bigger_kicky": {
-      "body": "body-bigger_kicky.webp",
-      "faces": "fan",
-      "camera": [
-        779,
-        48,
-        1389,
-        1216
-      ],
-      "head": "head-bigger_kicky.webp",
-      "belly": [
-        1317,
-        1113
-      ]
-    },
-    "bigger_rub": {
-      "body": "body-bigger_rub.webp",
-      "faces": "rub",
-      "camera": [
-        779,
-        48,
-        1389,
-        1216
-      ],
-      "head": "head-bigger_rub.webp",
-      "belly": [
-        1317,
-        1113
-      ]
-    },
-    "bigger_rub_kicky": {
-      "body": "body-bigger_rub_kicky.webp",
-      "faces": "rub",
-      "camera": [
-        779,
-        48,
-        1389,
-        1216
-      ],
-      "head": "head-bigger_rub_kicky.webp",
-      "belly": [
-        1317,
-        1113
-      ]
-    },
-    "bigger2": {
-      "body": "body-bigger2.webp",
-      "faces": "big2",
-      "camera": [
-        71,
-        30,
-        2069,
-        2342
-      ],
-      "belly": [
-        1057,
-        1356
-      ]
-    }
-  },
-  "faceSets": {
-    "fan": {
-      "expressions": {
-        "neutral": "face-fan-neutral.webp",
-        "happy": "face-fan-happy.webp",
-        "focused": "face-fan-focused.webp",
-        "thinking": "face-fan-thinking.webp",
-        "surprised": "face-fan-surprised.webp",
-        "frustrated": "face-fan-frustrated.webp",
-        "smug": "face-fan-smug.webp",
-        "sleepy": "face-fan-sleepy.webp",
-        "satisfied": "face-fan-satisfied.webp"
-      },
-      "blink": "blink-fan.webp",
-      "blinkFor": [
-        "neutral",
-        "focused",
-        "frustrated",
-        "smug",
-        "surprised"
-      ],
-      "mouth": {
-        "talk": "mouth-fan.webp"
-      }
-    },
-    "rub": {
-      "expressions": {
-        "neutral": "face-rub-neutral.webp",
-        "happy": "face-rub-happy.webp",
-        "thinking": "face-rub-thinking.webp",
-        "surprised": "face-rub-surprised.webp",
-        "frustrated": "face-rub-frustrated.webp",
-        "smug": "face-rub-smug.webp"
-      },
-      "mouth": {
-        "talk": "mouth-rub.webp"
-      }
-    },
-    "big2": {
-      "expressions": {
-        "neutral": "face-big2-neutral.webp",
-        "happy": "face-big2-happy.webp",
-        "focused": "face-big2-focused.webp",
-        "thinking": "face-big2-thinking.webp",
-        "surprised": "face-big2-surprised.webp",
-        "frustrated": "face-big2-frustrated.webp",
-        "smug": "face-big2-smug.webp",
-        "sleepy": "face-big2-sleepy.webp",
-        "satisfied": "face-big2-satisfied.webp"
-      },
-      "mouth": {
-        "talk": "mouth-big2.webp"
-      }
-    }
-  },
-  "stages": {
-    "base": {
-      "body": "base"
-    },
-    "bigger": {
-      "body": "bigger",
-      "rub": "bigger_rub",
-      "kicky": "bigger_kicky",
-      "rubKicky": "bigger_rub_kicky"
-    },
-    "bigger2": {
-      "body": "bigger2"
-    }
-  },
-  "behaviour": {
-    "start": "base",
-    "growth": {
-      "order": [
-        "base",
-        "bigger",
-        "bigger2"
-      ],
-      "points": [
-        0,
-        20,
-        50
-      ]
-    },
-    "reset": {
-      "to": "base",
-      "onChatChange": true
-    },
-    "kicky": {
-      "stage": "bigger",
-      "everySec": [
-        20,
-        90
-      ],
-      "durationMs": [
-        2000,
-        3000
-      ],
-      "jiggle": true
-    },
-    "rub": {
-      "stage": "bigger",
-      "chance": 0.35,
-      "durationSec": [
-        6,
-        15
-      ]
-    }
-  },
-  "background": "room.webp",
-  "face": [
-    1597,
-    305,
-    181
-  ],
-  "refCamera": [
+ "persona": "kabuki",
+ "name": "Chiyo",
+ "version": 2,
+ "source": "Chiyo sprite set (2021-11), by StygianRook",
+ "size": [
+  2201,
+  2432
+ ],
+ "headPivot": [
+  1616,
+  426
+ ],
+ "hipPivot": [
+  1101,
+  2432
+ ],
+ "shouldersY": 504,
+ "peekRatio": 0.37,
+ "bodies": {
+  "base": {
+   "body": "body-base.webp",
+   "faces": "fan",
+   "camera": [
     779,
     48,
     1389,
     1216
-  ]
+   ],
+   "head": "head-base.webp",
+   "belly": [
+    1385,
+    1066
+   ]
+  },
+  "bigger": {
+   "body": "body-bigger.webp",
+   "faces": "fan",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger.webp",
+   "belly": [
+    1317,
+    1113
+   ]
+  },
+  "bigger_kicky": {
+   "body": "body-bigger_kicky.webp",
+   "faces": "fan",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger_kicky.webp",
+   "belly": [
+    1317,
+    1113
+   ]
+  },
+  "bigger_rub": {
+   "body": "body-bigger_rub.webp",
+   "faces": "rub",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger_rub.webp",
+   "belly": [
+    1317,
+    1113
+   ]
+  },
+  "bigger_rub_kicky": {
+   "body": "body-bigger_rub_kicky.webp",
+   "faces": "rub",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger_rub_kicky.webp",
+   "belly": [
+    1317,
+    1113
+   ]
+  },
+  "bigger2": {
+   "body": "body-bigger2.webp",
+   "faces": "big2",
+   "camera": [
+    71,
+    30,
+    2069,
+    2342
+   ],
+   "belly": [
+    1057,
+    1356
+   ]
+  },
+  "base_g1": {
+   "body": "body-base_g1.webp",
+   "faces": "fan",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-base.webp",
+   "belly": [
+    1375,
+    1061
+   ]
+  },
+  "base_g2": {
+   "body": "body-base_g2.webp",
+   "faces": "fan",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-base.webp",
+   "belly": [
+    1364,
+    1056
+   ]
+  },
+  "bigger_g1": {
+   "body": "body-bigger_g1.webp",
+   "faces": "fan",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger.webp",
+   "belly": [
+    1306,
+    1111
+   ]
+  },
+  "bigger_g2": {
+   "body": "body-bigger_g2.webp",
+   "faces": "fan",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger.webp",
+   "belly": [
+    1295,
+    1109
+   ]
+  },
+  "bigger_p1": {
+   "body": "body-bigger_p1.webp",
+   "faces": "fan",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger.webp",
+   "belly": [
+    1322,
+    1114
+   ]
+  },
+  "bigger_p2": {
+   "body": "body-bigger_p2.webp",
+   "faces": "fan",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger.webp",
+   "belly": [
+    1328,
+    1115
+   ]
+  },
+  "bigger_rub_g1": {
+   "body": "body-bigger_rub_g1.webp",
+   "faces": "rub",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger_rub.webp",
+   "belly": [
+    1306,
+    1111
+   ]
+  },
+  "bigger_rub_g2": {
+   "body": "body-bigger_rub_g2.webp",
+   "faces": "rub",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger_rub.webp",
+   "belly": [
+    1295,
+    1109
+   ]
+  },
+  "bigger_kicky_g1": {
+   "body": "body-bigger_kicky_g1.webp",
+   "faces": "fan",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger_kicky.webp",
+   "belly": [
+    1306,
+    1111
+   ]
+  },
+  "bigger_kicky_g2": {
+   "body": "body-bigger_kicky_g2.webp",
+   "faces": "fan",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger_kicky.webp",
+   "belly": [
+    1295,
+    1109
+   ]
+  },
+  "bigger_rub_kicky_g1": {
+   "body": "body-bigger_rub_kicky_g1.webp",
+   "faces": "rub",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger_rub_kicky.webp",
+   "belly": [
+    1306,
+    1111
+   ]
+  },
+  "bigger_rub_kicky_g2": {
+   "body": "body-bigger_rub_kicky_g2.webp",
+   "faces": "rub",
+   "camera": [
+    779,
+    48,
+    1389,
+    1216
+   ],
+   "head": "head-bigger_rub_kicky.webp",
+   "belly": [
+    1295,
+    1109
+   ]
+  },
+  "bigger2_g1": {
+   "body": "body-bigger2_g1.webp",
+   "faces": "big2",
+   "camera": [
+    71,
+    30,
+    2069,
+    2342
+   ],
+   "belly": [
+    1048,
+    1353
+   ]
+  },
+  "bigger2_g2": {
+   "body": "body-bigger2_g2.webp",
+   "faces": "big2",
+   "camera": [
+    71,
+    30,
+    2069,
+    2342
+   ],
+   "belly": [
+    1039,
+    1350
+   ]
+  }
+ },
+ "faceSets": {
+  "fan": {
+   "expressions": {
+    "neutral": "face-fan-neutral.webp",
+    "happy": "face-fan-happy.webp",
+    "focused": "face-fan-focused.webp",
+    "thinking": "face-fan-thinking.webp",
+    "surprised": "face-fan-surprised.webp",
+    "frustrated": "face-fan-frustrated.webp",
+    "smug": "face-fan-smug.webp",
+    "sleepy": "face-fan-sleepy.webp",
+    "satisfied": "face-fan-satisfied.webp",
+    "eat": "face-fan-eat.webp",
+    "lick": "face-fan-lick.webp"
+   },
+   "blink": "blink-fan.webp",
+   "blinkFor": [
+    "neutral",
+    "focused",
+    "frustrated",
+    "smug",
+    "surprised"
+   ],
+   "mouth": {
+    "talk": "mouth-fan.webp"
+   },
+   "mouthAt": [
+    1597,
+    351
+   ]
+  },
+  "rub": {
+   "expressions": {
+    "neutral": "face-rub-neutral.webp",
+    "happy": "face-rub-happy.webp",
+    "thinking": "face-rub-thinking.webp",
+    "surprised": "face-rub-surprised.webp",
+    "frustrated": "face-rub-frustrated.webp",
+    "smug": "face-rub-smug.webp",
+    "eat": "face-rub-eat.webp",
+    "lick": "face-rub-lick.webp"
+   },
+   "mouth": {
+    "talk": "mouth-rub.webp"
+   },
+   "mouthAt": [
+    1597,
+    351
+   ]
+  },
+  "big2": {
+   "expressions": {
+    "neutral": "face-big2-neutral.webp",
+    "happy": "face-big2-happy.webp",
+    "focused": "face-big2-focused.webp",
+    "thinking": "face-big2-thinking.webp",
+    "surprised": "face-big2-surprised.webp",
+    "frustrated": "face-big2-frustrated.webp",
+    "smug": "face-big2-smug.webp",
+    "sleepy": "face-big2-sleepy.webp",
+    "satisfied": "face-big2-satisfied.webp",
+    "eat": "face-big2-eat.webp",
+    "lick": "face-big2-lick.webp"
+   },
+   "mouth": {
+    "talk": "mouth-big2.webp"
+   },
+   "mouthAt": [
+    1597,
+    345
+   ]
+  }
+ },
+ "stages": {
+  "base": {
+   "body": "base"
+  },
+  "bigger": {
+   "body": "bigger",
+   "rub": "bigger_rub",
+   "kicky": "bigger_kicky",
+   "rubKicky": "bigger_rub_kicky"
+  },
+  "bigger2": {
+   "body": "bigger2"
+  }
+ },
+ "behaviour": {
+  "start": "base",
+  "growth": {
+   "order": [
+    "base",
+    "bigger",
+    "bigger2"
+   ],
+   "points": [
+    0,
+    20,
+    50
+   ],
+   "steps": {
+    "base": [
+     {
+      "at": 7,
+      "suffix": "_g1"
+     },
+     {
+      "at": 13,
+      "suffix": "_g2"
+     }
+    ],
+    "bigger": [
+     {
+      "at": 30,
+      "suffix": "_g1"
+     },
+     {
+      "at": 40,
+      "suffix": "_g2"
+     }
+    ],
+    "bigger2": [
+     {
+      "at": 62,
+      "suffix": "_g1"
+     },
+     {
+      "at": 74,
+      "suffix": "_g2"
+     }
+    ]
+   }
+  },
+  "reset": {
+   "to": "base",
+   "onChatChange": true
+  },
+  "kicky": {
+   "stage": "bigger",
+   "everySec": [
+    20,
+    90
+   ],
+   "durationMs": [
+    2000,
+    3000
+   ],
+   "jiggle": true
+  },
+  "rub": {
+   "stage": "bigger",
+   "chance": 0.35,
+   "durationSec": [
+    6,
+    15
+   ]
+  }
+ },
+ "background": "room.webp",
+ "face": [
+  1597,
+  305,
+  181
+ ],
+ "refCamera": [
+  779,
+  48,
+  1389,
+  1216
+ ],
+ "transitions": {
+  "base>bigger": {
+   "frames": [
+    "base_g1",
+    "base_g2",
+    "bigger_p2",
+    "bigger_p1"
+   ],
+   "frameMs": 300
+  },
+  "bigger>bigger2": {
+   "frames": [
+    "bigger_g1",
+    "bigger_g2"
+   ],
+   "frameMs": 300
+  }
+ }
 }

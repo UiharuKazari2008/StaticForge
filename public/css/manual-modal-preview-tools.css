@@ -2189,9 +2189,13 @@ body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dial
     text-align: start;
 }
 
+/* the content has no padding here (the body carries the 11 px margins), so the footer keeps its
+   place: vista-dialogs.css pulls a form footer out by 11 px to cross a padded content (#742) */
 body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dialog] .modal-footer {
     display: flex;
+    flex: 0 0 auto;
     justify-content: flex-end;
+    margin: 0;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dialog] .modal-footer .modal-footer-right {

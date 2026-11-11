@@ -1,6 +1,14 @@
 // Request form presented by MCP request_form (modules/requestForm.js).
-// Inline in the Director chat when that chat asked, otherwise #requestFormWindow (on the Vista
-// desktop a property-sheet dialog: check boxes, drop-down lists, OK-style button first).
+// Inline in the Director chat when that chat asked and its message log is on screen, otherwise
+// #requestFormWindow (on the Vista desktop a property-sheet dialog: check boxes, drop-down lists,
+// OK-style button first; on Melaton Mobile wmDialogs.js hosts the window as a full-screen WM form).
+// The mascot view hides the log, so a form mounted there was never seen on the device using the
+// Director (#742): there it is the window too. Every device shows the form; the first answer closes
+// it on the others (request_form_closed).
+
+function requestFormMobile() {
+    return window.uiShell === 'mobile';
+}
 
 function requestFormVista() {
     return document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme');
@@ -117,10 +125,14 @@ function requestFormBuildControl(field, vista) {
     if (field.type === 'bool' && vista) {
         const label = document.createElement('label');
         label.className = 'request-form-check';
+        // wm-check: Melaton Mobile's check box (wm-programs.css); it styles nothing on the desktop
+        if (requestFormMobile()) label.classList.add('wm-check');
         const check = document.createElement('input');
         check.type = 'checkbox';
         check.checked = data.default === true;
-        label.append(check, document.createTextNode(field.label));
+        const text = document.createElement('span');
+        text.textContent = field.label;
+        label.append(check, text);
         return label;
     }
     if (field.type === 'bool') {
@@ -203,7 +215,8 @@ function requestFormBuildControl(field, vista) {
 
 function renderRequestForm(host, spec, onDone, footer) {
     host.replaceChildren();
-    const vista = !!footer && requestFormVista();
+    // native controls (check boxes, drop-down lists): the Vista dialog and the phone's WM form
+    const vista = !!footer && (requestFormVista() || requestFormMobile());
     (spec.fields || []).forEach((field) => {
         const group = document.createElement('div');
         group.className = 'form-group';
@@ -256,6 +269,7 @@ function renderRequestForm(host, spec, onDone, footer) {
         left.className = 'modal-footer-left';
         const right = document.createElement('div');
         right.className = 'modal-footer-right';
+        send.dataset.formSend = '1';
         if (vista) {
             // Vista: the buttons right-aligned, the default one first
             send.dataset.dialogPrimary = '1';
@@ -273,44 +287,94 @@ function renderRequestForm(host, spec, onDone, footer) {
     host.appendChild(actions);
 }
 
+// Vista dialogs are as tall as what they hold: the window opens at the height of its fields (and
+// scrolls past the window's default height), not as a tall empty sheet.
+function requestFormFitWindow(modal) {
+    if (!requestFormVista() || requestFormMobile()) return;
+    const body = document.getElementById('requestFormBody');
+    const footer = document.getElementById('requestFormFooter');
+    if (!body || !footer) return;
+    const inner = body.querySelector(':scope > .scrollable-content') || body;
+    const frame = modal.offsetHeight - body.offsetHeight - footer.offsetHeight;
+    const bodyPad = body.offsetHeight - body.clientHeight + (parseFloat(getComputedStyle(body).paddingTop) || 0) + (parseFloat(getComputedStyle(body).paddingBottom) || 0);
+    let need = 0;
+    Array.from(inner.children).forEach((child) => { need = Math.max(need, child.offsetTop + child.offsetHeight - inner.offsetTop); });
+    const max = Math.min(Number(modal.dataset.windowDefaultHeight) || 640, window.innerHeight - 80);
+    const min = 150;
+    const height = Math.max(min, Math.min(max, Math.ceil(need + bodyPad + 14 + footer.offsetHeight + frame)));
+    modal.style.height = `${height}px`;
+}
+
+const requestFormShown = new Map();   // form id -> { close() } while it is on this device
+
 function openRequestFormWindow(spec) {
     const modal = document.getElementById('requestFormWindow');
     const body = document.getElementById('requestFormBody');
     const title = document.getElementById('requestFormTitle');
     if (!modal || !body) return;
+    // one window: a second question while one is open answers the first as closed
+    const open = modal.dataset.formId;
+    if (open && open !== spec.id) {
+        requestFormShown.delete(open);
+        requestFormSend({ id: open }, null, true);
+    }
     if (title) title.textContent = spec.title || 'Form';
-    renderRequestForm(body, spec, (values, cancelled) => {
+    const put = () => {
         modal.dataset.formId = '';
-        requestFormSend(spec, values, cancelled);
+        requestFormShown.delete(spec.id);
         const footer = document.getElementById('requestFormFooter');
         if (footer) footer.replaceChildren();
         // closeModal: public/scripts/comp/modalUtils.js
         closeModal(modal);
+    };
+    renderRequestForm(body, spec, (values, cancelled) => {
+        requestFormSend(spec, values, cancelled);
+        put();
     }, document.getElementById('requestFormFooter'));
     const closeBtn = document.getElementById('requestFormCloseBtn');
     if (closeBtn && closeBtn.dataset.formWired !== '1') {
         closeBtn.dataset.formWired = '1';
         closeBtn.addEventListener('click', () => {
             const current = modal.dataset.formId;
-            if (current) requestFormSend({ id: current }, null, true);
+            if (current) {
+                requestFormShown.delete(current);
+                requestFormSend({ id: current }, null, true);
+            }
+            modal.dataset.formId = '';
             closeModal(modal);
         });
     }
     modal.dataset.formId = spec.id || '';
+    requestFormShown.set(spec.id, { close: () => { if (modal.dataset.formId === spec.id) put(); } });
     // openModal: public/scripts/comp/modalUtils.js
     openModal(modal);
+    requestFormFitWindow(modal);
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => { if (modal.dataset.formId === spec.id) requestFormFitWindow(modal); });
+}
+
+// The Director's log is where an inline form goes: only when the user can see it there. The mascot
+// (visual novel) view hides the log, and the phone's Director is that view.
+function requestFormLogVisible(director) {
+    const list = director && director.directorChatMessages;
+    if (!list || requestFormMobile()) return false;
+    const chat = list.closest('#directorSessionChat');
+    if (chat && chat.classList.contains('dm-log-hidden') && !chat.classList.contains('dm-log-peek')) return false;
+    return typeof list.checkVisibility !== 'function' || list.checkVisibility();
 }
 
 function presentRequestForm(spec) {
     if (!spec || !spec.id) return;
+    if (requestFormShown.has(spec.id)) return;     // sent again to a device that reconnected
     const director = window.directorInstance;
     const sameChat = spec.chatId && director && director.currentSession
         && String(director.currentSession.id) === String(spec.chatId);
-    if (sameChat && director.directorSurfaceOpen()) {
+    if (sameChat && director.directorSurfaceOpen() && requestFormLogVisible(director)) {
         const host = director.mountInlineForm(spec);
         if (host) {
+            requestFormShown.set(spec.id, { close: () => host.remove() });
             renderRequestForm(host, spec, (values, cancelled) => {
                 requestFormSend(spec, values, cancelled);
+                requestFormShown.delete(spec.id);
                 host.remove();
             });
             return;
@@ -319,8 +383,28 @@ function presentRequestForm(spec) {
     openRequestFormWindow(spec);
 }
 
+// Answered (or timed out) on another device: this one puts its copy away without answering.
+function dismissRequestForm(id) {
+    const shown = requestFormShown.get(id);
+    if (!shown) return;
+    requestFormShown.delete(id);
+    try { shown.close(); } catch (_) { /* already gone */ }
+}
+
 if (window.wsClient && window.wsClient.on) {
     window.wsClient.on('request_form', (data) => {
         presentRequestForm((data && data.data) || data || {});
     });
+    window.wsClient.on('request_form_closed', (data) => {
+        const packet = (data && data.data) || data || {};
+        if (packet.id) dismissRequestForm(String(packet.id));
+    });
+    // forms asked while this device was away (reload, a second device joining mid-question)
+    const askOpenForms = () => {
+        try {
+            if (window.wsClient.isConnected()) window.wsClient.send({ type: 'request_form_open', requestId: Date.now().toString() });
+        } catch (_) { /* next connect asks again */ }
+    };
+    window.wsClient.on('connected', askOpenForms);
+    askOpenForms();
 }

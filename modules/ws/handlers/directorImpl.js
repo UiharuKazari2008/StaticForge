@@ -3,7 +3,7 @@
 // Memories rules and feedback stay in directorRules.js.
 const cursor = require('../../cursorDirector');
 const xi = require('../../xiDirector');
-const { submitRequestForm } = require('../../requestForm');
+const { submitRequestForm, listOpenRequestForms } = require('../../requestForm');
 const { submitWorkspaceSwitch } = require('../../sessionWorkspaceSwitch');
 const cursorUsage = require('../../cursorUsage');
 const legacy = require('../../directorRules');
@@ -43,6 +43,13 @@ module.exports = {
     handleDirectorToolPayload: cursor.handleDirectorToolPayload,
     handleRequestFormSubmit: function (_handler, _ws, message) {
         submitRequestForm(message || {});
+    },
+    // A device that just connected asks for the forms still waiting, so a reload or a second device
+    // mid-question shows them (the first broadcast went out before it was there).
+    handleRequestFormOpen: function (handler, ws) {
+        listOpenRequestForms().forEach((spec) => {
+            handler.sendToClient(ws, { type: 'request_form', data: spec, timestamp: new Date().toISOString() });
+        });
     },
     handleWorkspaceSwitchResult: function (_handler, _ws, message) {
         submitWorkspaceSwitch(message || {});

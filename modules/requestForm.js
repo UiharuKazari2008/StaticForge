@@ -63,22 +63,30 @@ function normalizeRequestForm(input) {
     };
 }
 
-function broadcastForm(globalResources, packet) {
+function broadcastForm(globalResources, packet, type = 'request_form') {
     let wsServer = null;
     try { wsServer = globalResources && globalResources.getWebSocketServer(); } catch (_) { wsServer = null; }
     if (!wsServer || typeof wsServer.broadcast !== 'function') return false;
     if (wsServer.clients && wsServer.clients.size === 0) return false;
     wsServer.broadcast({
-        type: 'request_form',
+        type,
         data: packet,
         timestamp: new Date().toISOString()
     });
     return true;
 }
 
+// Every device shows the form; once one answers (or it times out) the others put theirs away.
+function closeEverywhere(row, id) {
+    if (!row || row.closedSent) return;
+    row.closedSent = true;
+    try { broadcastForm(row.globalResources, { id }, 'request_form_closed'); } catch (_) { /* nobody to tell */ }
+}
+
 function settleRequestForm(id, answer) {
     const row = pending.get(id);
     if (!row) return;
+    closeEverywhere(row, id);
     if (row.waiter) {
         clearTimeout(row.waiter.timer);
         clearTimeout(row.timer);
@@ -101,7 +109,7 @@ function askRequestForm(globalResources, spec) {
         settleRequestForm(id, { id, cancelled: true, timedOut: true, values: null });
         pending.delete(id);
     }, WAIT_MS);
-    pending.set(id, { timer, waiter: null, answer: null });
+    pending.set(id, { timer, waiter: null, answer: null, spec: Object.assign({ id }, spec), globalResources });
     return id;
 }
 
@@ -141,7 +149,13 @@ function submitRequestForm(message) {
     return true;
 }
 
+// Forms still waiting for an answer: a device that connects (or reloads) mid-question shows them too.
+function listOpenRequestForms() {
+    return [...pending.values()].filter((row) => !row.answer && row.spec).map((row) => row.spec);
+}
+
 module.exports = {
+    listOpenRequestForms,
     FORM_TYPES,
     normalizeRequestForm,
     askRequestForm,

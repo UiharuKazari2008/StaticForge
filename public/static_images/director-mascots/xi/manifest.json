@@ -1,191 +1,360 @@
 {
-  "persona": "xi",
-  "name": "Yozora",
-  "version": 2,
-  "source": "Yozora sprite set (2022-01), by StygianRook",
-  "anchor": "left",
-  "size": [
-    1946,
-    2103
-  ],
-  "headPivot": [
-    788,
-    379
-  ],
-  "hipPivot": [
-    973,
-    2103
-  ],
-  "refCamera": [
-    0,
-    0,
-    1946,
-    1216
-  ],
-  "shouldersY": 430,
-  "peekRatio": 0.35,
-  "bodies": {
-    "base": {
-      "body": "body-base.webp",
-      "head": "head-base.webp",
-      "faces": "base",
-      "belly": [
-        812,
-        1213
-      ]
-    },
-    "kicky": {
-      "body": "body-kicky.webp",
-      "head": "head-kicky.webp",
-      "faces": "base",
-      "belly": [
-        812,
-        1213
-      ]
-    },
-    "kon": {
-      "body": "body-kon.webp",
-      "head": "head-kon.webp",
-      "faces": "base",
-      "belly": [
-        812,
-        1213
-      ]
-    },
-    "kon_kicky": {
-      "body": "body-kon_kicky.webp",
-      "head": "head-kon_kicky.webp",
-      "faces": "base",
-      "belly": [
-        812,
-        1213
-      ]
-    },
-    "bigger": {
-      "body": "body-bigger.webp",
-      "head": "head-bigger.webp",
-      "faces": "big",
-      "belly": [
-        962,
-        1254
-      ]
-    },
-    "kon_bigger": {
-      "body": "body-kon_bigger.webp",
-      "head": "head-kon_bigger.webp",
-      "faces": "big",
-      "belly": [
-        962,
-        1254
-      ]
-    }
+ "persona": "xi",
+ "name": "Yozora",
+ "version": 2,
+ "source": "Yozora sprite set (2022-01), by StygianRook",
+ "anchor": "left",
+ "size": [
+  1946,
+  2103
+ ],
+ "headPivot": [
+  788,
+  379
+ ],
+ "hipPivot": [
+  973,
+  2103
+ ],
+ "refCamera": [
+  0,
+  0,
+  1946,
+  1216
+ ],
+ "shouldersY": 430,
+ "peekRatio": 0.35,
+ "bodies": {
+  "base": {
+   "body": "body-base.webp",
+   "head": "head-base.webp",
+   "faces": "base",
+   "belly": [
+    812,
+    1213
+   ]
   },
-  "faceSets": {
-    "base": {
-      "expressions": {
-        "neutral": "face-base-neutral.webp",
-        "happy": "face-base-happy.webp",
-        "focused": "face-base-focused.webp",
-        "thinking": "face-base-thinking.webp",
-        "surprised": "face-base-surprised.webp",
-        "frustrated": "face-base-frustrated.webp",
-        "smug": "face-base-smug.webp",
-        "sleepy": "face-base-sleepy.webp",
-        "satisfied": "face-base-satisfied.webp"
-      },
-      "blink": "blink-base.webp",
-      "blinkFor": [
-        "neutral",
-        "focused",
-        "frustrated",
-        "smug",
-        "surprised"
-      ],
-      "mouth": {
-        "talk": "mouth-base.webp"
-      }
-    },
-    "big": {
-      "expressions": {
-        "neutral": "face-big-neutral.webp",
-        "happy": "face-big-happy.webp",
-        "focused": "face-big-focused.webp",
-        "thinking": "face-big-thinking.webp",
-        "frustrated": "face-big-frustrated.webp",
-        "smug": "face-big-smug.webp",
-        "satisfied": "face-big-satisfied.webp",
-        "surprised": "face-big-surprised.webp",
-        "sleepy": "face-big-sleepy.webp"
-      },
-      "blink": "blink-big.webp",
-      "blinkFor": [
-        "neutral",
-        "focused",
-        "frustrated",
-        "smug",
-        "surprised"
-      ],
-      "mouth": {
-        "talk": "mouth-big.webp"
-      }
-    }
+  "kicky": {
+   "body": "body-kicky.webp",
+   "head": "head-kicky.webp",
+   "faces": "base",
+   "belly": [
+    812,
+    1213
+   ]
   },
-  "stages": {
-    "base": {
-      "body": "base",
-      "kicky": "kicky",
-      "gesture": "kon",
-      "gestureKicky": "kon_kicky"
-    },
-    "bigger": {
-      "body": "bigger",
-      "gesture": "kon_bigger"
-    }
+  "kon": {
+   "body": "body-kon.webp",
+   "head": "head-kon.webp",
+   "faces": "base",
+   "belly": [
+    812,
+    1213
+   ]
   },
-  "behaviour": {
-    "start": "base",
-    "growth": {
-      "order": [
-        "base",
-        "bigger"
-      ],
-      "points": [
-        0,
-        20
-      ]
-    },
-    "reset": {
-      "to": "base",
-      "onChatChange": true
-    },
-    "kicky": {
-      "stage": "base",
-      "everySec": [
-        20,
-        90
-      ],
-      "durationMs": [
-        2000,
-        3000
-      ],
-      "jiggle": true
-    },
-    "gesture": {
-      "stages": [
-        "base",
-        "bigger"
-      ],
-      "chance": 0.35,
-      "durationSec": [
-        4,
-        10
-      ]
-    }
+  "kon_kicky": {
+   "body": "body-kon_kicky.webp",
+   "head": "head-kon_kicky.webp",
+   "faces": "base",
+   "belly": [
+    812,
+    1213
+   ]
   },
-  "background": "room.webp",
-  "face": [
+  "bigger": {
+   "body": "body-bigger.webp",
+   "head": "head-bigger.webp",
+   "faces": "big",
+   "belly": [
+    962,
+    1254
+   ]
+  },
+  "kon_bigger": {
+   "body": "body-kon_bigger.webp",
+   "head": "head-kon_bigger.webp",
+   "faces": "big",
+   "belly": [
+    962,
+    1254
+   ]
+  },
+  "base_g1": {
+   "body": "body-base_g1.webp",
+   "head": "head-base.webp",
+   "faces": "base",
+   "belly": [
+    802,
+    1224
+   ]
+  },
+  "base_g2": {
+   "body": "body-base_g2.webp",
+   "head": "head-base.webp",
+   "faces": "base",
+   "belly": [
+    792,
+    1236
+   ]
+  },
+  "kicky_g1": {
+   "body": "body-kicky_g1.webp",
+   "head": "head-kicky.webp",
+   "faces": "base",
+   "belly": [
+    802,
+    1224
+   ]
+  },
+  "kicky_g2": {
+   "body": "body-kicky_g2.webp",
+   "head": "head-kicky.webp",
+   "faces": "base",
+   "belly": [
+    792,
+    1236
+   ]
+  },
+  "kon_g1": {
+   "body": "body-kon_g1.webp",
+   "head": "head-kon.webp",
+   "faces": "base",
+   "belly": [
+    802,
+    1224
+   ]
+  },
+  "kon_g2": {
+   "body": "body-kon_g2.webp",
+   "head": "head-kon.webp",
+   "faces": "base",
+   "belly": [
+    792,
+    1236
+   ]
+  },
+  "kon_kicky_g1": {
+   "body": "body-kon_kicky_g1.webp",
+   "head": "head-kon_kicky.webp",
+   "faces": "base",
+   "belly": [
+    802,
+    1224
+   ]
+  },
+  "kon_kicky_g2": {
+   "body": "body-kon_kicky_g2.webp",
+   "head": "head-kon_kicky.webp",
+   "faces": "base",
+   "belly": [
+    792,
+    1236
+   ]
+  },
+  "bigger_g1": {
+   "body": "body-bigger_g1.webp",
+   "head": "head-bigger.webp",
+   "faces": "big",
+   "belly": [
+    936,
+    1251
+   ]
+  },
+  "bigger_g2": {
+   "body": "body-bigger_g2.webp",
+   "head": "head-bigger.webp",
+   "faces": "big",
+   "belly": [
+    910,
+    1247
+   ]
+  },
+  "bigger_p1": {
+   "body": "body-bigger_p1.webp",
+   "head": "head-bigger.webp",
+   "faces": "big",
+   "belly": [
+    988,
+    1257
+   ]
+  },
+  "bigger_p2": {
+   "body": "body-bigger_p2.webp",
+   "head": "head-bigger.webp",
+   "faces": "big",
+   "belly": [
+    1014,
+    1261
+   ]
+  },
+  "kon_bigger_g1": {
+   "body": "body-kon_bigger_g1.webp",
+   "head": "head-kon_bigger.webp",
+   "faces": "big",
+   "belly": [
+    936,
+    1251
+   ]
+  },
+  "kon_bigger_g2": {
+   "body": "body-kon_bigger_g2.webp",
+   "head": "head-kon_bigger.webp",
+   "faces": "big",
+   "belly": [
+    910,
+    1247
+   ]
+  }
+ },
+ "faceSets": {
+  "base": {
+   "expressions": {
+    "neutral": "face-base-neutral.webp",
+    "happy": "face-base-happy.webp",
+    "focused": "face-base-focused.webp",
+    "thinking": "face-base-thinking.webp",
+    "surprised": "face-base-surprised.webp",
+    "frustrated": "face-base-frustrated.webp",
+    "smug": "face-base-smug.webp",
+    "sleepy": "face-base-sleepy.webp",
+    "satisfied": "face-base-satisfied.webp",
+    "eat": "face-base-eat.webp"
+   },
+   "blink": "blink-base.webp",
+   "blinkFor": [
+    "neutral",
+    "focused",
+    "frustrated",
+    "smug",
+    "surprised"
+   ],
+   "mouth": {
+    "talk": "mouth-base.webp"
+   },
+   "mouthAt": [
     786,
-    301,
-    168
-  ]
+    343
+   ]
+  },
+  "big": {
+   "expressions": {
+    "neutral": "face-big-neutral.webp",
+    "happy": "face-big-happy.webp",
+    "focused": "face-big-focused.webp",
+    "thinking": "face-big-thinking.webp",
+    "frustrated": "face-big-frustrated.webp",
+    "smug": "face-big-smug.webp",
+    "satisfied": "face-big-satisfied.webp",
+    "surprised": "face-big-surprised.webp",
+    "sleepy": "face-big-sleepy.webp",
+    "eat": "face-big-eat.webp"
+   },
+   "blink": "blink-big.webp",
+   "blinkFor": [
+    "neutral",
+    "focused",
+    "frustrated",
+    "smug",
+    "surprised"
+   ],
+   "mouth": {
+    "talk": "mouth-big.webp"
+   },
+   "mouthAt": [
+    786,
+    343
+   ]
+  }
+ },
+ "stages": {
+  "base": {
+   "body": "base",
+   "kicky": "kicky",
+   "gesture": "kon",
+   "gestureKicky": "kon_kicky"
+  },
+  "bigger": {
+   "body": "bigger",
+   "gesture": "kon_bigger"
+  }
+ },
+ "behaviour": {
+  "start": "base",
+  "growth": {
+   "order": [
+    "base",
+    "bigger"
+   ],
+   "points": [
+    0,
+    20
+   ],
+   "steps": {
+    "base": [
+     {
+      "at": 7,
+      "suffix": "_g1"
+     },
+     {
+      "at": 13,
+      "suffix": "_g2"
+     }
+    ],
+    "bigger": [
+     {
+      "at": 32,
+      "suffix": "_g1"
+     },
+     {
+      "at": 44,
+      "suffix": "_g2"
+     }
+    ]
+   }
+  },
+  "reset": {
+   "to": "base",
+   "onChatChange": true
+  },
+  "kicky": {
+   "stage": "base",
+   "everySec": [
+    20,
+    90
+   ],
+   "durationMs": [
+    2000,
+    3000
+   ],
+   "jiggle": true
+  },
+  "gesture": {
+   "stages": [
+    "base",
+    "bigger"
+   ],
+   "chance": 0.35,
+   "durationSec": [
+    4,
+    10
+   ]
+  }
+ },
+ "background": "room.webp",
+ "face": [
+  786,
+  301,
+  168
+ ],
+ "transitions": {
+  "base>bigger": {
+   "frames": [
+    "base_g1",
+    "base_g2",
+    "bigger_p2",
+    "bigger_p1"
+   ],
+   "frameMs": 300
+  }
+ }
 }

@@ -39,6 +39,7 @@ const {
     handleDirectorToolDiff,
     handleDirectorToolPayload,
     handleRequestFormSubmit,
+    handleRequestFormOpen,
     handleWorkspaceSwitchResult,
     handleLedgeChecks,
     handleDirectorStreamingAck,
@@ -92,6 +93,7 @@ function registerPackets(handlersCtx) {
     reg('director_tool_diff', handleDirectorToolDiff);
     reg('director_tool_payload', handleDirectorToolPayload);
     reg('request_form_submit', handleRequestFormSubmit);
+    reg('request_form_open', handleRequestFormOpen);
     reg('director_workspace_switch_result', handleWorkspaceSwitchResult);
     reg('ledge_checks', handleLedgeChecks);
     reg('director_streaming_ack', handleDirectorStreamingAck);
