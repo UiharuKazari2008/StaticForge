@@ -198,7 +198,8 @@
     function programs() {
         const list = typeof root.collectStartMenuLaunchableDescriptors === 'function' ? root.collectStartMenuLaunchableDescriptors() : [];
         const hidden = reg(UNINSTALL, 'Hidden', []);
-        return list.filter((p) => p.text && !hidden.includes(p.launchId)).map((p) => ({
+        const hiddenSet = new Set(Array.isArray(hidden) ? hidden : []);
+        return list.filter((p) => p.text && !hiddenSet.has(p.launchId)).map((p) => ({
             id: p.launchId,
             name: p.text,
             icon: p.imageIcon && typeof root.resolveAppIconPath === 'function' ? root.resolveAppIconPath(p.imageIcon, 16) : `${ITEMS}/programs-and-features-16.png`,
@@ -275,11 +276,13 @@
 
     /** Turn Melaton features on or off: the programs Programs and Features hid come back here. */
     function openFeatures() {
-        const hidden = reg(UNINSTALL, 'Hidden', []);
+        const hiddenRaw = reg(UNINSTALL, 'Hidden', []);
+        const hidden = Array.isArray(hiddenRaw) ? hiddenRaw : [];
+        const hiddenSet = new Set(hidden);
         const all = typeof root.collectStartMenuLaunchableDescriptors === 'function' ? root.collectStartMenuLaunchableDescriptors() : [];
         const ids = new Set(all.map((p) => p.launchId));
         const extra = hidden.filter((h) => !ids.has(h));
-        const rows = all.map((p) => `<label class="cpl-feat-row"><input type="checkbox" value="${esc(p.launchId)}"${hidden.includes(p.launchId) ? '' : ' checked'}> ${esc(p.text)}</label>`).concat(extra.map((h) => `<label class="cpl-feat-row"><input type="checkbox" value="${esc(h)}"> ${esc(h)}</label>`));
+        const rows = all.map((p) => `<label class="cpl-feat-row"><input type="checkbox" value="${esc(p.launchId)}"${hiddenSet.has(p.launchId) ? '' : ' checked'}> ${esc(p.text)}</label>`).concat(extra.map((h) => `<label class="cpl-feat-row"><input type="checkbox" value="${esc(h)}"> ${esc(h)}</label>`));
         callGlobal('showConfirmationDialog', `<p>To turn a feature on, select its check box. To turn a feature off, clear its check box.</p><div class="cpl-feat-list">${rows.join('')}</div>`, [
             { text: 'OK', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }
         ], null, {
