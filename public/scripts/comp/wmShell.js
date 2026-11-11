@@ -264,6 +264,29 @@
 
     // ---------------------------------------------------------------- frame
 
+    /**
+     * Android scales web text by the system font size (Settings > Display > Font size: the WebView's
+     * text zoom, Chrome's font scale). A phone set to 0.9 drew every label of the shell 10 % small
+     * against bars and icons that kept their size (A53: title 14.2 px where 15.75 belongs). The shell
+     * is drawn to WM's pixel metrics, so the scale is measured once and cancelled with
+     * text-size-adjust (a 100 px probe that computes to 90 px gives 111.11 %).
+     */
+    function fixTextZoom() {
+        try {
+            const probe = document.createElement('span');
+            probe.style.cssText = 'position:fixed;left:0;top:0;visibility:hidden;font-size:100px;line-height:1';
+            probe.textContent = 'M';
+            document.body.appendChild(probe);
+            const got = parseFloat(getComputedStyle(probe).fontSize);
+            probe.remove();
+            if (got > 20 && Math.abs(got - 100) > 0.5) {
+                const pct = `${(10000 / got).toFixed(3)}%`;
+                root.style.setProperty('-webkit-text-size-adjust', pct);
+                root.style.setProperty('text-size-adjust', pct);
+            }
+        } catch (_) { /* the text keeps the system's scale */ }
+    }
+
     function build() {
         shell = document.createElement('div');
         shell.id = 'wmShell';
@@ -306,6 +329,7 @@
             <div class="wm-volume" role="dialog" aria-label="Volume" hidden></div>
             <div class="wm-notify-tray" role="listbox" aria-label="Notifications" hidden></div>
             <div class="wm-notify" role="alertdialog" hidden></div>`;
+        fixTextZoom();
         if (WM65) {
             // 6.5 draws the Today picture over the whole screen, the title and soft key bars
             // translucent on it (Titanium_480x640.cpr: Background Top="-52" Height="640"): a layer
@@ -3520,8 +3544,24 @@
             { key: 'effect', label: 'Effect', value: 'none', choices: [['none', 'None'], ['lighten', 'Lighten'], ['darken', 'Darken'], ['blur', 'Blur']] },
             { key: 'level', label: 'Level', value: '50', choices: Array.from({ length: 21 }, (_, i) => [String(i * 5), `${i * 5}%`]) }
         ],
-        tasks: [{ key: 'empty', label: 'With no tasks', value: 'show', choices: [['show', 'Show the row'], ['hide', 'Hide the row']] }]
+        tasks: [{ key: 'empty', label: 'With no tasks', value: 'show', choices: [['show', 'Show the row'], ['hide', 'Hide the row']] }],
+        // 6.5 home screen: the workspaces that get a page of their own after the current one. A
+        // 'checks' option stores the unchecked ids; unset, none is a favourite (value = every id)
+        workspace: [{
+            key: 'favorites', label: 'Favorite workspaces', type: 'checks',
+            get choices() { return workspaceList().map((w) => [w.id, w.name || w.id]); },
+            get value() { return workspaceList().map((w) => w.id).join(','); }
+        }]
     };
+
+    function workspaceList() {
+        try {
+            if (typeof workspaces !== 'undefined' && workspaces) {
+                return Object.values(workspaces).filter(Boolean).sort((a, b) => (Number(a.sort) || 0) - (Number(b.sort) || 0) || String(a.name).localeCompare(String(b.name)));
+            }
+        } catch (_) { /* not loaded */ }
+        return [];
+    }
     const TODAY_PRINT_SIZE = { small: 32, medium: 44, large: 64, xlarge: 88 };
 
     function todayOptionDefs(id) {
@@ -3793,6 +3833,12 @@
                     tasks: tasks === 'No tasks' ? '' : tasks,
                     workspace,
                     workspaceMenu: () => workspaceMenu(),
+                    workspaces: (() => {
+                        const active = typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
+                        const off = new Set(String(todayOption('workspace', 'favorites') || '').split(',').filter(Boolean));
+                        return workspaceList().map((w) => ({ id: w.id, name: w.name || w.id, count: Number.isFinite(Number(w.fileCount)) ? Number(w.fileCount) : null, active: w.id === active, favorite: !off.has(String(w.id)) }));
+                    })(),
+                    switchWorkspace: (id) => { if (typeof setActiveWorkspace === 'function') setActiveWorkspace(id); },
                     prints: newestPrints(12).map((p) => ({ filename: p.filename || p.original || '', preview: previewUrl(p), time: p.mtime || p.timestamp || p.date || null }))
                 };
             },
@@ -5167,6 +5213,12 @@
         // gwes plays SystemStart as the shell comes up (only once audio is unlocked: a tap or key
         // during startup, e.g. the PIN; a cold load stays silent)
         playSystemSound('SystemStart');
+        if (WM65) {
+            // 6.5 ends its boot on the white base with the bars drawn first, then the home screen
+            // at once (wm65.css holds the picture and the panels back while "reveal" lasts)
+            setTimeout(() => { if (root.dataset.wmBoot === 'reveal') setBoot('done'); }, 700);
+            return;
+        }
         const page = apps.get('today').page;
         const rows = page ? [...page.children].slice(1) : [];
         rows.forEach((r) => r.classList.add('wm-boot-hidden'));

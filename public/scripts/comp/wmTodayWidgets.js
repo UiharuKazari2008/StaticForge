@@ -362,14 +362,18 @@
     /** A Director item's home screen panel (6.5): the session's picture, its name, who works on it. */
     function directorTitanium(fixedPersona) {
         return ({ option }) => {
-            const m = directorModel(fixedPersona || option('show') || 'last');
-            if (!m || (!m.running && option('idle') === 'hide')) return null;
-            const go = () => openDirector(m);
-            return {
-                label: fixedPersona ? DIRECTOR_NAMES[fixedPersona].toLowerCase() : 'director', icon: 'x:app-director-lg',
-                pages: [{ image: directorPicture(m.file) || '', title: m.name || 'Untitled', line2: m.words }],
-                softKey: { label: 'Director', action: go }, onTap: go
+            const first = directorModel(fixedPersona || option('show') || 'last');
+            if (!first || (!first.running && option('idle') === 'hide')) return null;
+            const page = (m) => {
+                const go = () => openDirector(m);
+                return { image: directorPicture(m.file) || '', title: m.name || 'Untitled', line2: m.words, softKey: { label: 'Director', action: go }, onTap: go };
             };
+            const pages = [page(first)];
+            // the main item: the last session, then each persona's own (Yumiya, Chiyo, Yozora)
+            if (!fixedPersona) {
+                PERSONAS.forEach((p) => { const m = directorModel(p); if (m) pages.push(page(m)); });
+            }
+            return { label: fixedPersona ? DIRECTOR_NAMES[fixedPersona].toLowerCase() : 'director', icon: 'x:app-director-lg', pages };
         };
     }
 
@@ -604,15 +608,38 @@
     }
 
     let studioShown = null; // the print the buttons act on
+    /**
+     * Studio's home screen panel (6.5): the last print (its time under it; tap views it in Pictures,
+     * Edit opens it in Studio), then usage (prints in 24 h, V5 usage, Anlas; tap opens Accounts on
+     * Status), then References and the Spellbook. Daily Usage is not an item of its own in 6.5.
+     */
     function studioTitanium() {
         const s = studioPanel;
-        if (!s) return null;
         const go = () => open('studio');
-        return {
-            label: 'studio', icon: 'x:app-studio-lg',
-            pages: [{ image: s.picture || '', title: s.title, line2: s.prompt }],
-            softKey: { label: 'Studio', action: go }, onTap: () => (s.last ? viewPrint(s.last) : go())
-        };
+        const key = { label: 'Studio', action: go };
+        const pages = [];
+        if (s) {
+            // "Last print, 12:37 AM" reads as the title over the time; while it prints, the state over the prompt
+            const cut = s.printing ? -1 : s.title.indexOf(', ');
+            pages.push({
+                image: s.picture || '',
+                title: cut > 0 ? s.title.slice(0, cut) : s.title,
+                line2: cut > 0 ? s.title.slice(cut + 2) : s.prompt,
+                softKey: s.last ? { label: 'Edit', action: () => editPrint(s.last) } : key,
+                onTap: () => (s.last ? viewPrint(s.last) : go())
+            });
+        }
+        const use = usageText().split(', ').filter(Boolean);
+        let anlas = '';
+        try { const b = window.optionsData && window.optionsData.balance && Number(window.optionsData.balance.totalCredits); if (Number.isFinite(b) && b >= 0) anlas = `${b.toLocaleString()} Anlas`; } catch (_) { anlas = ''; }
+        if (use.length || anlas) {
+            const acc = () => { const a = window.wmAccounts; if (a && typeof a.open === 'function') a.open('status'); else open('accounts'); };
+            const lines = use.concat(anlas ? [anlas] : []);
+            pages.push({ title: lines[0], line2: lines[1] || '', line3: lines[2] || '', softKey: key, onTap: acc });
+        }
+        pages.push({ icon: 'x:app-reference-lg', title: 'References', softKey: { label: 'Open', action: () => open('reference') }, onTap: () => open('reference') });
+        pages.push({ icon: 'x:app-spellbook-lg', title: 'Spellbook', softKey: { label: 'Open', action: () => open('spellbook') }, onTap: () => open('spellbook') });
+        return { label: 'studio', icon: 'x:app-studio-lg', pages, softKey: key, onTap: go };
     }
 
     function renderStudio(el) {
@@ -665,7 +692,7 @@
         }
         // the prompt: Studio's while it prints, else the last print's own (its metadata)
         const prompt = (n ? studioPrompt() : promptOf(printMeta(last && last.filename))).replace(ZW, '').replace(/\s+/g, ' ').trim().slice(0, 200);
-        studioPanel = { title, prompt, picture: p && p.frame ? p.frame : printPicture(last), last };
+        studioPanel = { title, prompt, picture: p && p.frame ? p.frame : printPicture(last), last, printing: !!n };
         setText(el.querySelector('.wtw-title'), title);
         const sub = el.querySelector('.wtw-sub');
         setText(sub, prompt);
@@ -760,6 +787,24 @@
             }],
             softKey: { label: 'Weather', action: go }, onTap: go
         };
+    }
+
+    /** Weather's panel with the forecast on the pages left and right of now: a day a page. */
+    function weatherTitaniumPages() {
+        const p = weatherTitanium();
+        if (!p) return null;
+        const W = window.wmWeather;
+        const days = W && typeof W.forecast === 'function' ? W.forecast() : [];
+        const u = (W && typeof W.unit === 'function' && W.unit()) || '';
+        days.forEach((d) => {
+            p.pages.push({
+                smallIcon: d.iconUrl2x || d.iconUrl || '',
+                title: `${d.day}: ${d.condition || ''}`.replace(/: $/, ''),
+                line2: d.hi != null && d.lo != null ? `${deg(d.hi)}${u} / ${deg(d.lo)}${u}` : '',
+                line3: d.rain != null ? `Rain ${Math.round(d.rain)}%` : ''
+            });
+        });
+        return p;
     }
 
     let weatherEl = null;
@@ -1057,15 +1102,17 @@
                 IDLE
             ]
         });
-        // one item per persona, off until switched on in Settings > Today > Items
+        // one item per persona, off until switched on in Settings > Today > Items. Not offered in
+        // 6.5: there they are pages of the Director item, and Daily Usage is a page of Studio's
+        const v65 = sh.version === '6.5';
         let prev = 'director';
-        PERSONAS.forEach((p) => {
+        if (!v65) PERSONAS.forEach((p) => {
             sh.registerTodayItem({ id: `director-${p}`, label: `Director: ${DIRECTOR_NAMES[p]}`, after: prev, defaultOn: false, render: directorRenderer(p), titanium: directorTitanium(p), options: [IDLE] });
             prev = `director-${p}`;
         });
         sh.registerTodayItem({ id: 'studio', label: 'Studio', after: prev, render: renderStudio, titanium: studioTitanium });
-        sh.registerTodayItem({ id: 'usage', label: 'Daily Usage', icon: 'app-studio', after: 'studio', text: usageText, onTap: () => open('studio'), titanium: usageTitanium });
-        sh.registerTodayItem({ id: 'weather', label: 'Weather', after: 'usage', render: renderWeather, titanium: weatherTitanium });
+        if (!v65) sh.registerTodayItem({ id: 'usage', label: 'Daily Usage', icon: 'app-studio', after: 'studio', text: usageText, onTap: () => open('studio'), titanium: usageTitanium });
+        sh.registerTodayItem({ id: 'weather', label: 'Weather', after: 'usage', render: renderWeather, titanium: weatherTitaniumPages });
         sh.registerTodayItem({ id: 'notes', label: 'Notes', after: 'weather', defaultOn: false, render: renderNotes, titanium: notesTitanium, options: NOTES_OPTIONS });
         sh.registerTodayItem({
             id: 'remote-desktop', label: 'Remote Desktop', icon: 'app-remote-desktop-mobile', after: 'notes', defaultOn: false, text: remoteText, titanium: remoteTitanium,

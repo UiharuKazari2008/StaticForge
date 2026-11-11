@@ -18,7 +18,8 @@
  *     travelled one full row; a drag starts after 36 px
  *   - left / right on a panel with pages: after 45 px the page follows the finger, the next one a
  *     screen width behind; past half the width it carries on, short of it the page slides back
- *   - soft keys: left the Today key, right the panel's own (Set, Compose, Messaging, Library ...)
+ *   - soft keys: left the Today key, right the panel's own (Set, Compose, Messaging, Library ...);
+ *     a page may bring its own right key and tap (pages[].softKey / onTap)
  *
  * Panels come from Today's items: the shell's rows (date + connection = the clock panel, as 6.5
  * shows the network under the time) and each registered item's titanium() (wmTodayWidgets.js,
@@ -116,12 +117,18 @@
             return { label: 'owner', icon: 's:owner', pages: [{ title: st.owner || 'Owner' }], softKey: { label: 'Edit', action: () => openSettings('owner') }, onTap: () => openSettings('owner') };
         }
         if (id === 'messages') {
+            // the last five messages of the inbox, a page each: subject over sender and time
             const n = st.mailUnread;
+            const list = recentMail();
+            const go = () => sh.open('messaging');
+            const openMail = (m) => { const a = window.wmMessaging; if (a && typeof a.openMail === 'function') a.openMail(m.id); else go(); };
             return {
                 label: 'e-mail', count: n ? String(n) : '', icon: 'ti-2008',
-                pages: [n ? { title: 'Dovecote', line2: `${n} Unread` } : { title: 'No New E-mails' }],
-                softKey: { label: 'Messaging', action: () => sh.open('messaging') },
-                onTap: () => sh.open('messaging')
+                pages: list.length
+                    ? list.map((m) => ({ title: m.subject || '(no subject)', line2: [mailFrom(m), mailWhen(m.createdAt)].filter(Boolean).join(', '), onTap: () => openMail(m) }))
+                    : [{ title: 'No New E-mails' }],
+                softKey: { label: 'Messaging', action: go },
+                onTap: go
             };
         }
         if (id === 'tasks') {
@@ -131,8 +138,19 @@
             return { label: 'search', icon: 's:search', pages: [{ title: 'Search pictures' }], softKey: { label: 'Search', action: () => searchPictures() }, onTap: () => searchPictures() };
         }
         if (id === 'workspace') {
-            const menu = () => (typeof st.workspaceMenu === 'function' ? st.workspaceMenu() : []);
-            return { label: 'workspace', icon: 's:fileexp', pages: [{ title: st.workspace || 'Workspace' }], softKey: { label: 'Change', menu }, onTap: () => sh.menu('right', menu(), null) };
+            // the current workspace (Change opens Teleport), the favourites picked in the item's
+            // options (Change travels there), then Manage Workspaces (Create)
+            const all = st.workspaces || [];
+            const count = (w) => (w.count == null ? '' : (w.count === 1 ? '1 picture' : `${w.count.toLocaleString()} pictures`));
+            const teleport = () => sh.open('teleport');
+            const cur = all.find((w) => w.active);
+            const pages = [{ title: cur ? cur.name : (st.workspace || 'Workspace'), line2: cur ? count(cur) : '', softKey: { label: 'Change', action: teleport }, onTap: teleport }];
+            all.filter((w) => w.favorite && !w.active).forEach((w) => {
+                const travel = () => st.switchWorkspace(w.id);
+                pages.push({ title: w.name, line2: count(w), softKey: { label: 'Change', action: travel }, onTap: travel });
+            });
+            pages.push({ title: 'Manage Workspaces', line2: all.length === 1 ? '1 workspace' : `${all.length} workspaces`, softKey: { label: 'Create', action: createWorkspaceAsk }, onTap: teleport });
+            return { label: 'workspace', icon: 's:fileexp', pages };
         }
         if (id === 'prints') {
             const prints = (st.prints || []).filter((p) => p.filename);
@@ -147,6 +165,40 @@
         // a shell row this file does not know: its text
         const text = rowEl ? rowEl.textContent.trim() : '';
         return text ? { label: lower(id), icon: 'x:app-programs-lg', pages: [{ title: text }] } : null;
+    }
+
+    // ---- recent mail (dovecote_list_mail, read-only: listing marks nothing read) ----
+    const mail = { list: [], at: 0, busy: false };
+    function recentMail() {
+        const c = window.wsClient;
+        if (!mail.busy && Date.now() - mail.at > 60000 && c && typeof c.isConnected === 'function' && c.isConnected() && c.initializationCompleted) {
+            mail.busy = true;
+            Promise.resolve(c.sendMessage('dovecote_list_mail', { folder: 'inbox', limit: 5 }, false))
+                .then((r) => { mail.list = ((r && (r.mail || (r.data && r.data.mail))) || []).slice(0, 5); })
+                .catch(() => { /* the panel keeps what it had */ })
+                .finally(() => { mail.at = Date.now(); mail.busy = false; });
+        }
+        return mail.list;
+    }
+
+    function mailFrom(m) {
+        const f = (m.fromLabel && !m.labelSuspicious) ? m.fromLabel : m.from;
+        if (f && typeof f === 'object') return String(f.name || f.display || f.address || f.id || '');
+        return String(f || '').replace(/\s*<[^>]*>\s*$/, '').replace(/^"(.*)"$/, '$1');
+    }
+
+    function mailWhen(v) {
+        const t = v ? new Date(typeof v === 'number' && v < 1e11 ? v * 1000 : v) : null;
+        if (!t || Number.isNaN(t.getTime())) return '';
+        return t.toDateString() === new Date().toDateString() ? fmtTime.format(t) : `${fmtTime.format(t)} ${fmtShort.format(t)}`;
+    }
+
+    /** Manage Workspaces > Create: the name in a message box, then the desktop's own createWorkspace. */
+    async function createWorkspaceAsk() {
+        const name = await sh.messageBox({ title: 'Workspaces', text: 'Name of the new workspace:', input: { value: '' }, buttons: [{ text: 'Create', value: true }, { text: 'Cancel', value: false }], cancelValue: false });
+        const text = typeof name === 'string' ? name.trim() : (name && typeof name.value === 'string' ? name.value.trim() : '');
+        if (!text) return;
+        try { if (typeof createWorkspace === 'function') await sh.busy(() => createWorkspace(text), { paint: true }); } catch (err) { console.warn('[wmTitanium] create workspace', err); }
     }
 
     function printName(file) {
@@ -413,6 +465,7 @@
             host.classList.remove('is-sliding');
             expKey = '';
             drawExpanded();
+            if (commit) sh.refreshSoftKeys(); // a page can bring its own right soft key
         };
         const step = (now) => {
             const k = Math.min(1, (now - t0) / ms);
@@ -552,7 +605,9 @@
         const top = focusTop();
         if (y >= top && y < top + BAND) {
             const p = panels[sel];
-            if (p && typeof p.onTap === 'function') { try { p.onTap(p.pages[pageIndex(p)]); } catch (err) { console.warn('[wmTitanium] tap', p.id, err); } }
+            const pg = p && p.pages[pageIndex(p)];
+            const act = (pg && pg.onTap) || (p && p.onTap);
+            if (typeof act === 'function') { try { act(pg); } catch (err) { console.warn('[wmTitanium] tap', p.id, err); } }
             return;
         }
         const i = y < top ? sel - Math.ceil((top - y) / ROW) : sel + 1 + Math.floor((y - top - BAND) / ROW);
@@ -600,7 +655,8 @@
         softKeys(keys) {
             if (!host || host.hidden) return keys;
             const p = panels[sel];
-            return { left: keys.left, right: (p && p.softKey) || keys.right };
+            const pg = p && p.pages[pageIndex(p)];
+            return { left: keys.left, right: (pg && pg.softKey) || (p && p.softKey) || keys.right };
         }
     };
 
@@ -612,7 +668,7 @@
         sh.setTodayView(view);
     }
 
-    window.wmTitanium = { enabled, select: (i) => select(i, true), panels: () => panels.map((p) => ({ id: p.id, label: p.label })), selected: () => sel };
+    window.wmTitanium = { enabled, select: (i) => select(i, true), panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel };
 
     if (window.wmShell) init();
     else document.addEventListener('wmShellReady', init, { once: true });

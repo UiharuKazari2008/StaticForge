@@ -585,7 +585,7 @@
         startPolling();
     }
 
-    window.wmAccounts = { refresh: () => refresh({ force: true }), todayText: () => { todayCache.at = 0; return todayText(); } };
+    window.wmAccounts = { open: (t) => { if (t) tab = t; sh.open(APP_ID, { fromStart: true }); }, refresh: () => refresh({ force: true }), todayText: () => { todayCache.at = 0; return todayText(); } };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

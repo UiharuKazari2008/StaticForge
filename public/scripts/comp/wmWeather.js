@@ -1131,6 +1131,16 @@
                 updatedAt: (cache[keyOf(p)] || {}).at || null
             };
         },
+        /** The days after today for the selected place: [{ day, condition, iconUrl, iconUrl2x, hi, lo, rain }] (6.5 home screen pages). */
+        forecast() {
+            const p = selected();
+            const data = dataOf(p);
+            if (!p || !data || !Array.isArray(data.daily)) return [];
+            return data.daily.slice(1, 7).map((d) => {
+                const cond = condition(d.code, true);
+                return { day: DAYS[dayOf(d.date)], condition: cond.text, iconUrl: iconUrl(cond.icon), iconUrl2x: iconUrl(cond.icon, true), hi: tempOf(d.maxC), lo: tempOf(d.minC), rain: num(d.rain) };
+            });
+        },
         open() { if (ws) ws.open(APP_ID); },
         refresh() { return quiet(false); },
         unit: () => unit(),
