@@ -337,18 +337,96 @@
   "base": {
    "body": "base",
    "gesture": "mask",
-   "celebrate": "mask_wings"
+   "celebrate": "mask_wings",
+   "grow": {
+    "a": [
+     1376,
+     1010
+    ],
+    "R": 600,
+    "yTop": 610,
+    "ramp": 160,
+    "max": 1.2,
+    "min": 1
+   },
+   "belly": [
+    1376,
+    990,
+    315
+   ]
   },
   "bigger": {
    "body": "bigger",
    "gesture": "mask_bigger",
    "printed": "bigger_vore",
-   "celebrate": "mask_wings_bigger"
+   "celebrate": "mask_wings_bigger",
+   "grow": {
+    "a": [
+     2450,
+     1450
+    ],
+    "R": 2000,
+    "yTop": 600,
+    "ramp": 260,
+    "max": 1.07,
+    "min": 0.92
+   },
+   "belly": [
+    1836,
+    1388,
+    760
+   ],
+   "arrive": {
+    "f": [
+     1150,
+     820
+    ],
+    "c": [
+     1836,
+     1388
+    ],
+    "R": 1560,
+    "p": 0.5,
+    "yTop": 600,
+    "ramp": 200,
+    "from": 0.62
+   }
   },
   "stuffed": {
    "body": "bigger_vore",
    "gesture": "bigger_vore_mask",
-   "celebrate": "bigger_vore_wings"
+   "celebrate": "bigger_vore_wings",
+   "grow": {
+    "a": [
+     2450,
+     1450
+    ],
+    "R": 2000,
+    "yTop": 600,
+    "ramp": 260,
+    "max": 1.06,
+    "min": 1
+   },
+   "belly": [
+    1836,
+    1388,
+    760
+   ],
+   "arrive": {
+    "f": [
+     1150,
+     820
+    ],
+    "c": [
+     1836,
+     1388
+    ],
+    "R": 1080,
+    "p": 0.72,
+    "yTop": 600,
+    "ramp": 200,
+    "from": 0.94
+   }
   }
  },
  "behaviour": {
@@ -443,5 +521,35 @@
    ],
    "frameMs": 300
   }
+ },
+ "morphs": {
+  "base|mask": [
+   1153,
+   406
+  ],
+  "base|mask_wings": [
+   1152,
+   630
+  ],
+  "bigger|mask_bigger": [
+   1153,
+   406
+  ],
+  "bigger|bigger_vore": [
+   1836,
+   1388
+  ],
+  "bigger|mask_wings_bigger": [
+   1152,
+   630
+  ],
+  "bigger_vore|bigger_vore_mask": [
+   1276,
+   874
+  ],
+  "bigger_vore|bigger_vore_wings": [
+   1152,
+   630
+  ]
  }
 }

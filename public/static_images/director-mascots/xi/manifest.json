@@ -271,11 +271,58 @@
    "body": "base",
    "kicky": "kicky",
    "gesture": "kon",
-   "gestureKicky": "kon_kicky"
+   "gestureKicky": "kon_kicky",
+   "grow": {
+    "a": [
+     952,
+     1050
+    ],
+    "R": 760,
+    "yTop": 480,
+    "ramp": 160,
+    "max": 1.14,
+    "min": 1
+   },
+   "belly": [
+    952,
+    995,
+    450
+   ]
   },
   "bigger": {
    "body": "bigger",
-   "gesture": "kon_bigger"
+   "gesture": "kon_bigger",
+   "grow": {
+    "a": [
+     1700,
+     1350
+    ],
+    "R": 1500,
+    "yTop": 470,
+    "ramp": 260,
+    "max": 1.07,
+    "min": 0.93
+   },
+   "belly": [
+    1146,
+    1286,
+    690
+   ],
+   "arrive": {
+    "f": [
+     700,
+     900
+    ],
+    "c": [
+     1146,
+     1286
+    ],
+    "R": 1340,
+    "p": 0.52,
+    "yTop": 470,
+    "ramp": 200,
+    "from": 0.64
+   }
   }
  },
  "behaviour": {
@@ -356,5 +403,23 @@
    ],
    "frameMs": 300
   }
+ },
+ "morphs": {
+  "base|kicky": [
+   1352,
+   709
+  ],
+  "base|kon": [
+   1165,
+   379
+  ],
+  "base|kon_kicky": [
+   1255,
+   543
+  ],
+  "bigger|kon_bigger": [
+   1168,
+   368
+  ]
  }
 }

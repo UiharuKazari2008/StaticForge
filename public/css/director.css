@@ -3857,6 +3857,25 @@ html.disable-blur .director-attach-chip {
     visibility: hidden;
 }
 
+/* The shader body (directorMascot.js DirectorMascotGL, #742): a canvas over the body pictures, which
+   hold nothing while it draws. The old head and face fade out over the new ones on a pose change. */
+.director-mascot-stage .dm-gl-slot {
+    position: absolute;
+    inset: 0;
+}
+
+.director-mascot-stage .dm-gl-slot > canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.director-mascot-stage .dm-head-prev,
+.director-mascot-stage .dm-face-prev {
+    opacity: 0;
+    will-change: opacity;
+}
+
 .director-mascot-stage .dm-blink,
 .director-mascot-stage .dm-mouth {
     opacity: 0;

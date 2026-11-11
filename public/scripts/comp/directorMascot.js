@@ -144,6 +144,373 @@ function directorMascotTypedHtml(raw, count, start = 0) {
     return out;
 }
 
+// ---- WebGL body (#742) ----
+// Her body sheet drawn by a shader instead of an <img>, so changes are real morphs, not crossfades:
+//   growth    the belly warp of scripts/director-mascot-build.js (a scale about a fixed point, fading out
+//             at a radius and above the shoulders) with a continuous amount, so she grows a little with
+//             every point instead of in jumps;
+//   poses     two sheets at once: where they are the same picture nothing moves, and what differs (wings,
+//             a kick, the mask, the next stage's belly) shrinks into / grows out of its own middle while
+//             it blends (a true linear blend: no see-through dip half way);
+//   lumps     bulges that wander over her belly after she swallows a print, lit from the upper left.
+// It draws only while something moves. Without WebGL (or after a lost context) the <img> layers and the
+// pre-warped _g1 / _g2 sheets take over.
+const DIRECTOR_MASCOT_GL_VERT = 'attribute vec2 p; varying vec2 v; void main() { v = p; gl_Position = vec4(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 0.0, 1.0); }';
+const DIRECTOR_MASCOT_GL_FRAG = `
+precision highp float;
+varying vec2 v;
+uniform sampler2D A;
+uniform sampler2D B;
+uniform vec2 size;
+uniform float t;
+uniform vec4 gA1;
+uniform vec3 gA2;
+uniform vec2 fA;
+uniform vec4 gB1;
+uniform vec3 gB2;
+uniform vec2 fB;
+uniform vec3 mc;
+uniform vec2 ms;
+uniform vec4 L[4];
+uniform float lit;
+float sm(float x) { x = clamp(x, 0.0, 1.0); return x * x * (3.0 - 2.0 * x); }
+// g1: the disc that moves (centre xy, radius) and how much (scale - 1); f: the point it scales about
+// g2: nothing above y moves (with a ramp), and the part of the radius that moves whole (the rest
+// fades out: it has to be wider than the largest move, or the picture folds over itself)
+vec2 growInv(vec2 p, vec4 g1, vec3 g2, vec2 f) {
+    if (g1.w == 0.0) return p;
+    vec2 q = p;
+    for (int i = 0; i < 8; i++) {
+        float r = length(q - g1.xy) / g1.z;
+        float w = r >= 1.0 ? 0.0 : (r <= g2.z ? 1.0 : 1.0 - sm((r - g2.z) / (1.0 - g2.z)));
+        float k = g1.w * w * sm((q.y - g2.x) / g2.y);
+        q = p - (q - f) * k;
+    }
+    return q;
+}
+float lumpH(vec2 q) {
+    float h = 0.0;
+    for (int i = 0; i < 4; i++) {
+        float r = length(q - L[i].xy) / max(L[i].z, 1.0);
+        if (r < 1.0) { float f = 1.0 - r * r; h += L[i].w * f * f; }
+    }
+    return h;
+}
+vec2 lumpInv(vec2 p) {
+    vec2 q = p;
+    for (int j = 0; j < 3; j++) {
+        vec2 d = vec2(0.0);
+        for (int i = 0; i < 4; i++) {
+            vec2 e = q - L[i].xy;
+            float r = length(e) / max(L[i].z, 1.0);
+            if (r < 1.0) { float f = 1.0 - r * r; d += e * L[i].w * f * f; }
+        }
+        q = p - d;
+    }
+    return q;
+}
+vec4 tx(sampler2D s, vec2 q) {
+    vec2 u = q / size;
+    if (u.x < 0.0 || u.y < 0.0 || u.x > 1.0 || u.y > 1.0) return vec4(0.0);
+    return texture2D(s, u);
+}
+void main() {
+    vec2 p = v * size;
+    vec2 q = lit > 0.0 ? lumpInv(p) : p;
+    vec2 qb = growInv(q, gB1, gB2, fB);
+    vec4 b0 = tx(B, qb);
+    vec4 c = b0;
+    if (t < 1.0) {
+        vec2 qa = growInv(q, gA1, gA2, fA);
+        vec4 a0 = tx(A, qa);
+        c = mix(a0, b0, t);
+        if (mc.z > 0.5) {
+            float diff = sm((dot(abs(a0 - b0), vec4(1.0)) - 0.10) / 0.30);
+            vec4 a = tx(A, mc.xy + (qa - mc.xy) / ms.x);
+            vec4 b = tx(B, mc.xy + (qb - mc.xy) / ms.y);
+            c = mix(c, mix(a, b, t), diff);
+        }
+    }
+    if (lit > 0.0) {
+        float h = lumpH(q);
+        float h2 = lumpH(q + vec2(-7.0, -9.0));
+        c.rgb *= 1.0 + clamp((h - h2) * lit, -0.16, 0.12);
+    }
+    gl_FragColor = c;
+}`;
+
+class DirectorMascotGL {
+    static supported() {
+        if (typeof document === 'undefined' || typeof createImageBitmap !== 'function') return false;
+        if (DirectorMascotGL._ok == null) {
+            try {
+                const probe = document.createElement('canvas').getContext('webgl');
+                const prec = probe && probe.getShaderPrecisionFormat(probe.FRAGMENT_SHADER, probe.HIGH_FLOAT);
+                DirectorMascotGL._ok = !!(probe && prec && prec.precision > 0 && probe.getParameter(probe.MAX_TEXTURE_SIZE) >= 4096);
+                const lose = probe && probe.getExtension('WEBGL_lose_context');
+                if (lose) lose.loseContext();
+            } catch (_) { DirectorMascotGL._ok = false; }
+        }
+        return DirectorMascotGL._ok;
+    }
+
+    // onLost(): the context went away (or a sheet would not load): the caller goes back to <img> layers.
+    constructor(canvas, size, onLost) {
+        this.canvas = canvas;
+        this.size = size;
+        this.onLost = onLost;
+        this.cache = new Map();          // url -> { tex, promise, used }
+        this.A = null;                   // the sheet she is leaving, while a pose morph runs
+        this.B = null;                   // the sheet she shows: { url, tex, cfg, gain, tween }
+        this.morph = null;
+        this.lump = null;
+        this.seq = 0;
+        this.ok = false;
+        const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false, powerPreference: 'low-power' });
+        if (!gl) return;
+        this.gl = gl;
+        this._lost = (event) => { event.preventDefault(); this.fail(); };
+        canvas.addEventListener('webglcontextlost', this._lost);
+        const shader = (type, src) => { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); return gl.getShaderParameter(sh, gl.COMPILE_STATUS) ? sh : null; };
+        const vs = shader(gl.VERTEX_SHADER, DIRECTOR_MASCOT_GL_VERT);
+        const fs = shader(gl.FRAGMENT_SHADER, DIRECTOR_MASCOT_GL_FRAG);
+        if (!vs || !fs) return;
+        const prog = gl.createProgram();
+        gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
+        gl.useProgram(prog);
+        const buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+        const at = gl.getAttribLocation(prog, 'p');
+        gl.enableVertexAttribArray(at);
+        gl.vertexAttribPointer(at, 2, gl.FLOAT, false, 0, 0);
+        this.u = {};
+        ['A', 'B', 'size', 't', 'gA1', 'gA2', 'fA', 'gB1', 'gB2', 'fB', 'mc', 'ms', 'lit'].forEach((name) => { this.u[name] = gl.getUniformLocation(prog, name); });
+        this.uL = [0, 1, 2, 3].map((i) => gl.getUniformLocation(prog, `L[${i}]`));
+        gl.uniform1i(this.u.A, 0);
+        gl.uniform1i(this.u.B, 1);
+        gl.disable(gl.BLEND);
+        gl.clearColor(0, 0, 0, 0);
+        this.ok = true;
+    }
+
+    fail() {
+        if (!this.ok) return;
+        this.ok = false;
+        if (typeof this.onLost === 'function') this.onLost();
+    }
+
+    load(url) {
+        const hit = this.cache.get(url);
+        if (hit) { hit.used = Date.now(); return hit.promise; }
+        const entry = { tex: null, used: Date.now(), promise: null };
+        entry.promise = fetch(url, { credentials: 'same-origin' })
+            .then((res) => { if (!res.ok) throw new Error(`sheet ${res.status}`); return res.blob(); })
+            .then((blob) => createImageBitmap(blob, { premultiplyAlpha: 'premultiply', colorSpaceConversion: 'none' }))
+            .then((bitmap) => {
+                const gl = this.gl;
+                if (!this.ok || !gl) { bitmap.close(); return null; }
+                const tex = gl.createTexture();
+                gl.bindTexture(gl.TEXTURE_2D, tex);
+                gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                bitmap.close();
+                entry.tex = tex;
+                this.trim();
+                return tex;
+            })
+            .catch(() => { this.cache.delete(url); return null; });
+        this.cache.set(url, entry);
+        return entry.promise;
+    }
+
+    // Sheets are 26 MB each on the GPU: keep the ones on show and the two most recent others.
+    trim() {
+        const keep = new Set([this.A && this.A.url, this.B && this.B.url, this.want].filter(Boolean));
+        const rest = [...this.cache.entries()].filter(([url, e]) => !keep.has(url) && e.tex).sort((a, b) => b[1].used - a[1].used);
+        rest.slice(2).forEach(([url, e]) => { this.gl.deleteTexture(e.tex); this.cache.delete(url); });
+    }
+
+    // Show a sheet. o: { ms, centre [x, y] | null, sA [from, to], sB [from, to], cfg (stage.grow), gain, gainTo, gainMs }.
+    // Resolves true once it is on screen (the morph has started), false when it could not be loaded.
+    show(url, o = {}) {
+        const token = ++this.seq;
+        this.want = url;
+        return this.load(url).then((tex) => {
+            if (!this.ok) return false;
+            if (!tex) { this.fail(); return false; }
+            if (token !== this.seq) return true;
+            const now = performance.now();
+            const next = { url, tex, cfg: o.cfg || null, gain: o.gain || 1, tween: null };
+            if (this.B && this.B.url === url) {
+                // the same sheet: only her size may differ
+                this.setGain(o.cfg, o.gainTo != null ? o.gainTo : o.gain, o.gainMs || 0);
+            } else if (!this.B || !(o.ms > 0)) {
+                this.A = null; this.morph = null; this.B = next;
+            } else {
+                // a morph still running is cut at where it stands: the sheet nearer on show stays as A
+                const from = this.morph && this.A && this.progress(now) < 0.5 ? this.A : this.B;
+                this.A = { ...from, gain: this.gainOf(from, now), tween: null };
+                // o.leave { cfg, gainTo }: how the sheet she leaves moves while it blends away
+                if (o.leave) { this.A.cfg = o.leave.cfg; this.A.gain = 1; this.A.tween = { from: 1, to: o.leave.gainTo, start: now, ms: o.ms }; }
+                this.B = next;
+                this.morph = { start: now, ms: o.ms, centre: o.centre || null, a: o.sA || [1, 0.86], b: o.sB || [0.86, 1] };
+            }
+            if (o.gainTo != null && this.B.url === url && this.B === next) this.B.tween = { from: next.gain, to: o.gainTo, start: now, ms: o.gainMs || 600 };
+            this.trim();
+            this.kick();
+            return true;
+        });
+    }
+
+    setGain(cfg, gain, ms) {
+        const b = this.B;
+        if (!b || !this.ok) return;
+        if (cfg) b.cfg = cfg;
+        const now = performance.now();
+        const at = this.gainOf(b, now);
+        const to = gain || 1;
+        if (Math.abs(at - to) < 0.0005 && !b.tween) return;
+        if (ms > 0) b.tween = { from: at, to, start: now, ms };
+        else { b.gain = to; b.tween = null; }
+        this.kick();
+    }
+
+    gainOf(layer, now) {
+        const tw = layer.tween;
+        if (!tw) return layer.gain;
+        const x = Math.max(0, Math.min(1, (now - tw.start) / tw.ms));
+        return tw.from + (tw.to - tw.from) * (x * x * (3 - 2 * x));
+    }
+
+    progress(now) {
+        return this.morph ? Math.max(0, Math.min(1, (now - this.morph.start) / this.morph.ms)) : 1;
+    }
+
+    // Lumps over the belly disc [cx, cy, r] for ms, easing in and out.
+    lumps(belly, ms) {
+        if (!this.ok || !Array.isArray(belly)) return;
+        this.lump = { belly, start: performance.now(), ms };
+        this.kick();
+    }
+
+    kick() {
+        if (this._raf || !this.ok) return;
+        this._raf = requestAnimationFrame(() => { this._raf = 0; this.draw(); });
+    }
+
+    fit() {
+        const c = this.canvas;
+        const w = c.clientWidth, h = c.clientHeight;
+        if (!w || !h) return false;
+        // the backing store follows the screen, capped (a phone at 2.6x would hold 8 M pixels)
+        const cap = (typeof window !== 'undefined' && window.uiShell === 'mobile') ? 3.2e6 : 6e6;
+        let scale = Math.min(2, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1);
+        if (w * h * scale * scale > cap) scale = Math.sqrt(cap / (w * h));
+        const pw = Math.max(1, Math.round(w * scale)), ph = Math.max(1, Math.round(h * scale));
+        if (c.width !== pw || c.height !== ph) { c.width = pw; c.height = ph; }
+        return true;
+    }
+
+    draw() {
+        const gl = this.gl; const b = this.B;
+        if (!this.ok || !b || !this.fit()) return;
+        const now = performance.now();
+        let moving = false;
+        let t = 1;
+        if (this.morph && this.A) {
+            const x = this.progress(now);
+            if (x >= 1) { this.A = null; this.morph = null; this.trim(); } else { t = x * x * (3 - 2 * x); moving = true; }
+        }
+        [this.A, b].forEach((layer) => {
+            if (!layer || !layer.tween) return;
+            if (now >= layer.tween.start + layer.tween.ms) { layer.gain = layer.tween.to; layer.tween = null; } else moving = true;
+        });
+        // cfg: stage.grow { a, R, ... } (scales about the disc's own centre a) or stage.arrive
+        // { f, c, R, ... } (the disc c scales about f, the point where the belly meets her body)
+        const grow = (layer, u1, u2, uf) => {
+            const cfg = layer && layer.cfg;
+            const g = layer ? this.gainOf(layer, now) - 1 : 0;
+            if (!cfg || Math.abs(g) < 0.0005) { gl.uniform4f(u1, 0, 0, 1, 0); gl.uniform3f(u2, 0, 1, 0.72); gl.uniform2f(uf, 0, 0); return; }
+            const c = cfg.c || cfg.a;
+            const f = cfg.f || cfg.a;
+            gl.uniform4f(u1, c[0], c[1], cfg.R, g);
+            gl.uniform3f(u2, cfg.yTop, cfg.ramp, cfg.p || 0.72);
+            gl.uniform2f(uf, f[0], f[1]);
+        };
+        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.uniform2f(this.u.size, this.size[0], this.size[1]);
+        gl.uniform1f(this.u.t, t);
+        grow(this.A, this.u.gA1, this.u.gA2, this.u.fA);
+        grow(b, this.u.gB1, this.u.gB2, this.u.fB);
+        const m = this.morph;
+        if (m && m.centre && this.A) {
+            gl.uniform3f(this.u.mc, m.centre[0], m.centre[1], 1);
+            gl.uniform2f(this.u.ms, m.a[0] + (m.a[1] - m.a[0]) * t, m.b[0] + (m.b[1] - m.b[0]) * t);
+        } else {
+            gl.uniform3f(this.u.mc, 0, 0, 0);
+            gl.uniform2f(this.u.ms, 1, 1);
+        }
+        // lumps: three bulges that drift around the belly and swell in turn
+        let lit = 0;
+        const lump = this.lump;
+        if (lump) {
+            const age = now - lump.start;
+            if (age >= lump.ms) this.lump = null;
+            else {
+                const amount = Math.min(1, age / 600) * Math.min(1, (lump.ms - age) / 800);
+                const g = this.gainOf(b, now);
+                const cfg = b.cfg;
+                const [cx0, cy0, r0] = lump.belly;
+                // the belly disc moves and grows with her size
+                const fx = cfg ? (cfg.f || cfg.a) : null;
+                const cx = fx ? fx[0] + (cx0 - fx[0]) * g : cx0;
+                const cy = fx ? fx[1] + (cy0 - fx[1]) * g : cy0;
+                const r = r0 * g;
+                const s = age / 1000;
+                for (let i = 0; i < 4; i++) {
+                    if (i === 3) { gl.uniform4f(this.uL[i], 0, 0, 1, 0); continue; }
+                    const ang = i * 2.1 + 0.6 + Math.sin(s * (0.9 + i * 0.37) + i * 1.7) * 0.7 + s * 0.12;
+                    const dist = r * (0.42 + 0.12 * Math.sin(s * 1.3 + i * 2.2));
+                    const strength = amount * (0.1 + 0.07 * Math.sin(s * (2.1 + i * 0.6) + i * 2.9));
+                    gl.uniform4f(this.uL[i], cx + Math.cos(ang) * dist, cy + Math.sin(ang) * dist * 0.9, r * 0.46, strength);
+                }
+                lit = 5.5 * amount + 0.001;
+                moving = true;
+            }
+        }
+        gl.uniform1f(this.u.lit, lit);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, (this.A || b).tex);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, b.tex);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        this.drawn = b.url;
+        if (moving) this.kick();
+    }
+
+    // Let go of everything (she is hidden): textures and the context itself.
+    release() {
+        this.ok = false;
+        if (this._raf) cancelAnimationFrame(this._raf);
+        this._raf = 0;
+        const gl = this.gl;
+        if (!gl) return;
+        this.canvas.removeEventListener('webglcontextlost', this._lost);
+        this.cache.forEach((e) => { if (e.tex) gl.deleteTexture(e.tex); });
+        this.cache.clear();
+        const lose = gl.getExtension('WEBGL_lose_context');
+        if (lose) lose.loseContext();
+        this.gl = null;
+    }
+}
+
 class DirectorMascot {
     // options.isHosted(): true while she should show (the Director window, not Studio's inline panel).
     constructor(options = {}) {
@@ -211,9 +578,12 @@ class DirectorMascot {
                 <div class="director-mascot-rig">
                     <img class="dm-layer dm-body-prev" alt="">
                     <img class="dm-layer dm-body" alt="">
+                    <div class="dm-gl-slot"></div>
                     <div class="dm-head">
                         <img class="dm-layer dm-head-img" alt="">
+                        <img class="dm-layer dm-head-prev" alt="">
                         <img class="dm-layer dm-face" alt="">
+                        <img class="dm-layer dm-face-prev" alt="">
                         <img class="dm-layer dm-blink" alt="">
                         <img class="dm-layer dm-mouth" alt="">
                     </div>
@@ -283,7 +653,10 @@ class DirectorMascot {
             body: root.querySelector('.dm-body'),
             head: root.querySelector('.dm-head'),
             headImg: root.querySelector('.dm-head-img'),
+            headPrev: root.querySelector('.dm-head-prev'),
+            glSlot: root.querySelector('.dm-gl-slot'),
             face: root.querySelector('.dm-face'),
+            facePrev: root.querySelector('.dm-face-prev'),
             blink: root.querySelector('.dm-blink'),
             mouth: root.querySelector('.dm-mouth'),
             dialogue: root.querySelector('.director-mascot-dialogue'),
@@ -629,7 +1002,7 @@ class DirectorMascot {
         const at = steps.indexOf(st.step || '');
         const sizes = [st.step || '', steps[at + 1]].filter((x) => x != null);
         const ids = [];
-        [...new Set(Object.values(def))].forEach((id) => sizes.forEach((sfx) => { if (m.bodies[id + sfx]) ids.push(id + sfx); }));
+        [...new Set(Object.values(def).filter((v) => typeof v === 'string'))].forEach((id) => sizes.forEach((sfx) => { if (m.bodies[id + sfx]) ids.push(id + sfx); }));
         return ids;
     }
 
@@ -667,6 +1040,10 @@ class DirectorMascot {
         const manifest = await this.loadManifest(key);
         if (this.persona !== key) return;      // switched again while loading
         this.manifest = manifest;
+        // another persona's sheets are another size: the shader body is made again for hers
+        this.dropGL();
+        this._faceSet = null;
+        this.growthPoints = 0;
         this.resetStage();
         if (this.el) this.el.name.textContent = manifest ? manifest.name : '';
         this.applyView();
@@ -723,8 +1100,123 @@ class DirectorMascot {
 
     // The pose at her in-between size, when the stage has that frame.
     sized(id) {
+        if (this.glOn()) return id;      // the shader grows the stage's own sheet
         const sfx = this.stageState && this.stageState.step;
         return sfx && this.manifest.bodies[id + sfx] ? id + sfx : id;
+    }
+
+    // ---- WebGL body ----
+    glOn() {
+        return !!(this.glBody && this.glBody.ok);
+    }
+
+    // Make the shader body when she shows (and WebGL is there); the <img> layers stay as the fallback.
+    ensureGL() {
+        if (this.glBody || this._glOff || !this.el || !this.el.glSlot || !DirectorMascotGL.supported()) return this.glOn();
+        if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+        const canvas = document.createElement('canvas');
+        canvas.className = 'dm-gl';
+        this.el.glSlot.replaceChildren(canvas);
+        const body = new DirectorMascotGL(canvas, this.manifest.size, () => {
+            // lost context or a sheet that would not load: back to the pictures, for good this session
+            this._glOff = true;
+            this.dropGL();
+            this.render();
+        });
+        if (!body.ok) { this._glOff = true; canvas.remove(); return false; }
+        this.glBody = body;
+        this._glId = null;
+        return true;
+    }
+
+    dropGL() {
+        if (this.glBody) this.glBody.release();
+        this.glBody = null;
+        this._glId = null;
+        if (this.el && this.el.glSlot) this.el.glSlot.replaceChildren();
+    }
+
+    // How far the belly warp is on for her points: 1 at the stage's threshold, the stage's max just
+    // before the next one (30 points past the last stage's threshold).
+    growGain() {
+        const m = this.manifest; const st = this.stageState; const def = this.stageDef();
+        if (!m || !st || !def || !def.grow) return 1;
+        const { order, points } = directorMascotGrowth(m);
+        const at = order.indexOf(st.stage);
+        if (at < 0) return 1;
+        const from = points[at];
+        const span = points[at + 1] != null ? points[at + 1] - from : 30;
+        const f = Math.max(0, Math.min(1, ((Number(this.growthPoints) || 0) - from) / Math.max(1, span)));
+        return 1 + (def.grow.max - 1) * f;
+    }
+
+    // Where a change between two poses grows from: the middle of what differs (manifest.morphs), or
+    // the belly for poses the build did not compare.
+    morphCentre(a, b) {
+        const m = this.manifest; const def = this.stageDef();
+        const hit = m.morphs && (m.morphs[`${a}|${b}`] || m.morphs[`${b}|${a}`]);
+        if (hit) return hit;
+        return def && Array.isArray(def.belly) ? def.belly.slice(0, 2) : null;
+    }
+
+    // A stage change on the shader body (#742). Growing: she swells past the edge of her stage, and
+    // while that sheet blends away the next stage's sheet comes in with its belly deflated to about the
+    // same size (stage.arrive) and inflates to full; then she settles at her points. The two bellies
+    // overlap while they blend, so it reads as one belly growing, not a dissolve between two pictures.
+    // Shrinking runs the same thing backwards.
+    glAdvance(next, land) {
+        const m = this.manifest; const st = this.stageState;
+        const { order } = directorMascotGrowth(m);
+        const up = order.indexOf(next) > order.indexOf(st.stage);
+        const fromDef = m.stages[st.stage]; const toDef = m.stages[next];
+        const body = m.bodies[toDef.body];
+        const over = (def) => (def.grow ? def.grow.max + (def.grow.max - 1) * 0.5 : 1);
+        st.transition = { frames: [this.currentBodyId()], index: 0, to: next };
+        this.render();
+        // before the blend: up, swell past the stage's edge; down, back to the sheet as drawn
+        const deflate = !up && !!fromDef.arrive;
+        const lead = deflate ? 1250 : 650;
+        if (up) this.glBody.setGain(fromDef.grow, over(fromDef), lead);
+        else {
+            // back to the sheet as drawn, then its belly deflates to the size of the stage below
+            this.glBody.setGain(fromDef.grow, 1, 300);
+            if (deflate) {
+                this.later(() => {
+                    if (this.stageState === st && st.transition && this.glOn()) this.glBody.setGain(fromDef.arrive, fromDef.arrive.from, 800);
+                }, 320);
+            }
+        }
+        this.preloadBodies([toDef.body]);
+        this.glBody.load(m.base + body.body);
+        this.later(() => {
+            if (this.stageState !== st || !st.transition) return;
+            st.transition = null;
+            land();
+            if (!this.glOn()) { this.render(); return; }
+            this._glId = toDef.body;
+            // the blend is short and early, while the two bellies are the same size; the inflating
+            // (or deflating) carries on after it on one solid sheet, so nothing shows through
+            const ms = 1400;
+            const blend = 520;
+            const o = up
+                ? { ms: blend, cfg: toDef.arrive || toDef.grow || null, gain: toDef.arrive ? toDef.arrive.from : 1, gainTo: 1, gainMs: ms }
+                : { ms: blend, cfg: toDef.grow || null, gain: over(toDef), gainTo: this.growGain(), gainMs: ms };
+            this.glBody.show(m.base + body.body, o).then((ok) => {
+                if (!ok || !up || this.stageState !== st) return;
+                // inflated: from here her own warp carries her to her points
+                this.later(() => {
+                    if (this.stageState !== st || st.stage !== next || st.transition || !this.glOn()) return;
+                    this._gainShown = this.growGain();
+                    this.glBody.setGain(toDef.grow || null, this._gainShown, 900);
+                }, ms + 40);
+            });
+            this.renderHead(body, 800);
+            this.root.dataset.stage = next;
+            this.renderFace(undefined, 800);
+            this.later(() => this.act('bounce'), ms - 200);
+            this.later(() => this.act('jiggle'), ms + 300);
+            this.paintChrome();
+        }, lead - 150);
     }
 
     // A stage change morphs: her growth frames up to the edge of this stage, then the next stage's
@@ -747,6 +1239,7 @@ class DirectorMascot {
         st.kickUntil = 0;
         st.gestureUntil = 0;
         this._swapMs = 650;
+        if (this.glOn()) { this.glAdvance(next, land); return; }
         let frames = t && Array.isArray(t.frames) ? (t.via ? [t.via] : []).concat(t.frames).filter((id) => m.bodies[id]) : [];
         if (!up && down) frames = frames.slice().reverse();
         // frames she has already passed (she stood at _g1 or _g2) are not played again
@@ -785,6 +1278,14 @@ class DirectorMascot {
 
     tick(now = Date.now()) {
         if (!this.manifest || !this.stageState || (typeof document !== 'undefined' && document.hidden)) return;
+        // Her host can be moved after she decided whether she shows (the phone's Director app re-hosts
+        // the window once it has opened, #742): the chat then sat in the plain log view until Show
+        // Mascot was toggled. She checks again here and puts the reply box back.
+        if (this.root && this.enabled && !!this.isHosted() !== !!this._shown) {
+            this.applyView();
+            if (this._shown && !this.working && Array.isArray(this._messages)) this.showResult(this._messages);
+            this.settleLayout();
+        }
         const st = this.stageState; const b = this.manifest.behaviour || {};
         if (st.transition) return;
         // Advance rules (old timed growth). A manifest with behaviour.growth grows from report cards instead.
@@ -840,7 +1341,13 @@ class DirectorMascot {
     // ---- inputs from the Director ----
     onChatChange() {
         const reset = this.manifest && this.manifest.behaviour && this.manifest.behaviour.reset;
-        if (reset && reset.onChatChange) this.resetStage();
+        if (reset && reset.onChatChange) {
+            this.resetStage();
+            // her size starts over with the stage; the chat's own cards set it again (applyGrowth)
+            this.growthPoints = 0;
+            this._gainShown = 1;
+            if (this.glOn()) this.glBody.setGain(null, 1, 0);
+        }
         this._growthArmed = false;   // the next chat's stage is set quietly from its own cards
         this._bubble = { think: '', say: '' };
         this._rowSeen = -1;
@@ -1324,9 +1831,9 @@ class DirectorMascot {
         const cfg = (this.manifest.behaviour || {})[key] || {};
         const until = Date.now() + (Number(cfg.durationSec) || fallbackSec) * 1000;
         st[`${key}Until`] = until;
-        this._swapMs = 260;
+        this._swapMs = this.glOn() ? (key === 'celebrate' ? 700 : 600) : 260;
         this.render();
-        this.later(() => { this._swapMs = 260; this.render(); }, until - Date.now() + 20);
+        this.later(() => { this._swapMs = this.glOn() ? 600 : 260; this.render(); }, until - Date.now() + 20);
     }
 
     onTurnEnd(ok) {
@@ -1340,6 +1847,7 @@ class DirectorMascot {
 
     // The settled chat: the last assistant reply stays in the dialogue box until the next ask.
     onMessages(messages) {
+        if (Array.isArray(messages)) this._messages = messages;
         if (this.working || !Array.isArray(messages)) return;
         this.applyGrowth(messages);
         this.paintBubbles();
@@ -1366,6 +1874,22 @@ class DirectorMascot {
         const step = target ? directorMascotStepFor(m, target, total) : '';
         const armed = this._growthArmed === true;
         this._growthArmed = false;
+        if (this.glOn() && target === st.stage && !st.transition) {
+            // the shader body: every point shows. After a completed turn she swells to it (once the
+            // celebrate pose is over); opening a chat sets it at once.
+            st.step = step;
+            const gain = this.growGain();
+            if (!armed) { this.glBody.setGain(this.stageDef().grow, gain, 0); return; }
+            const before = this._gainShown || 1;
+            const cfg = m.behaviour.celebrate || {};
+            this.later(() => {
+                if (this.stageState !== st || st.stage !== target || st.transition || !this.glOn()) return;
+                this.glBody.setGain(this.stageDef().grow, gain, 1800);
+                this._gainShown = gain;
+                if (Math.abs(gain - before) > 0.002) this.cue(gain > before ? { expression: 'surprised', action: 'jiggle', holdMs: 1500 } : { expression: 'frustrated', action: 'slump', holdMs: 2500 });
+            }, ((Number(cfg.durationSec) || 3) * 1000) + 200);
+            return;
+        }
         if (!target || st.transition || (target === st.stage && step === (st.step || ''))) return;
         if (!armed) {
             st.stage = target;
@@ -1385,7 +1909,7 @@ class DirectorMascot {
         const wait = ((Number(cfg.durationSec) || 3) * 1000) + 200;
         if (target === st.stage) {
             // an in-between size inside the stage: a slow crossfade into the next frame
-            const ids = [...new Set(Object.values(m.stages[target]))].map((id) => id + step);
+            const ids = [...new Set(Object.values(m.stages[target]).filter((v) => typeof v === 'string'))].map((id) => id + step);
             this.preloadBodies(ids);
             this.later(() => {
                 if (this.stageState !== st || st.stage !== target || st.transition) return;
@@ -1524,24 +2048,54 @@ class DirectorMascot {
     /** Drops every layer's picture; render() sets them again when she shows. */
     releaseLayers() {
         if (!this.el) return;
-        [this.el.bodyPrev, this.el.body, this.el.headImg, this.el.face, this.el.blink, this.el.mouth].forEach((img) => {
+        this.dropGL();
+        [this.el.bodyPrev, this.el.body, this.el.headImg, this.el.headPrev, this.el.face, this.el.facePrev, this.el.blink, this.el.mouth].forEach((img) => {
             if (img && img.hasAttribute('src')) img.removeAttribute('src');
         });
     }
 
-    renderFace(expr) {
+    // ms: a pose change is under way: when it brings another face set (the mask), the old face
+    // fades out over the new one instead of cutting. Expression changes inside a set stay instant.
+    renderFace(expr, ms) {
         if (!this.el || !this.manifest || !this._shown) return;
         const set = this.faceSet();
         if (!set) return;
+        const setChanged = this._faceSet && this._faceSet !== set;
+        this._faceSet = set;
         const want = expr || this.shownExpression();
         const near = (DIRECTOR_MASCOT_FACE_FALLBACK[want] || []).find((key) => set.expressions[key]);
         const file = set.expressions[want] || (near && set.expressions[near]) || set.expressions.neutral || Object.values(set.expressions)[0];
         const url = file ? this.manifest.base + file : '';
-        if (this.el.face.getAttribute('src') !== url) this.el.face.setAttribute('src', url);
+        if (this.el.face.getAttribute('src') !== url) {
+            if (setChanged && ms > 0) this.fadeSwap(this.el.face, this.el.facePrev, url, ms);
+            else this.el.face.setAttribute('src', url);
+        }
         const blink = set.blink ? this.manifest.base + set.blink : '';
         if (this.el.blink.getAttribute('src') !== blink) this.el.blink.setAttribute('src', blink);
         const mouth = set.mouth && set.mouth.talk ? this.manifest.base + set.mouth.talk : '';
         if (this.el.mouth.getAttribute('src') !== mouth) this.el.mouth.setAttribute('src', mouth);
+    }
+
+    // The old picture of a layer fades out over the new one (the two are the same picture wherever
+    // the pose did not change, so only what differs is seen to change).
+    fadeSwap(img, prev, url, ms) {
+        const old = img.getAttribute('src') || '';
+        if (old === url) return;
+        if (old && url && ms > 0 && prev) {
+            prev.style.transition = 'none';
+            prev.setAttribute('src', old);
+            prev.style.opacity = '1';
+            void prev.offsetWidth;
+            prev.style.transition = `opacity ${ms}ms ease`;
+            prev.style.opacity = '0';
+        }
+        if (url) img.setAttribute('src', url); else img.removeAttribute('src');
+    }
+
+    renderHead(body, ms) {
+        const head = body.head ? this.manifest.base + body.head : '';
+        this.fadeSwap(this.el.headImg, this.el.headPrev, head, ms);
+        this.el.head.classList.toggle('dm-no-tilt', !body.head);
     }
 
     render() {
@@ -1550,6 +2104,30 @@ class DirectorMascot {
         const body = id ? this.manifest.bodies[id] : null;
         if (!body) return;
         const src = this.manifest.base + body.body;
+        if (this.ensureGL()) {
+            // the shader body: a pose change morphs about the middle of what differs
+            const ms = Math.max(this._swapMs || 0, this._glId ? 480 : 0);
+            this._swapMs = 0;
+            if (this._glId !== id) {
+                const from = this._glId;
+                this._glId = id;
+                const def = this.stageDef();
+                const gain = this.growGain();
+                this._gainShown = gain;
+                this.glBody.show(src, { ms: from ? ms : 0, centre: from ? this.morphCentre(from, id) : null, cfg: (def && def.grow) || null, gain });
+                [this.el.body, this.el.bodyPrev].forEach((img) => { if (img.hasAttribute('src')) img.removeAttribute('src'); });
+                if (this._camKey !== JSON.stringify(this.camera())) {
+                    this._camKey = JSON.stringify(this.camera());
+                    this.layout();
+                }
+            } else {
+                this.glBody.kick();
+            }
+            this.renderHead(body, ms);
+            this.root.dataset.stage = this.stageState ? this.stageState.stage || '' : '';
+            this.renderFace(undefined, ms);
+            return;
+        }
         const old = this.el.body.getAttribute('src');
         // a sheet not fetched yet (growth frames load on demand): swap when it is decoded, so the
         // crossfade never fades to nothing
@@ -1566,10 +2144,12 @@ class DirectorMascot {
             });
             return;
         }
+        let headMs = 0;
         if (old !== src) {
             this._pendingBody = null;
             // Crossfade: the old body fades out over the new one (slow on a stage change, quick for kicks and rubs).
             const ms = this._swapMs || 180;
+            headMs = ms;
             this._swapMs = 0;
             if (old) {
                 const prev = this.el.bodyPrev;
@@ -1586,11 +2166,9 @@ class DirectorMascot {
                 this.layout();
             }
         }
-        const head = body.head ? this.manifest.base + body.head : '';
-        if (this.el.headImg.getAttribute('src') !== head) this.el.headImg.setAttribute('src', head);
-        this.el.head.classList.toggle('dm-no-tilt', !body.head);
+        this.renderHead(body, headMs);
         this.root.dataset.stage = this.stageState ? this.stageState.stage || '' : '';
-        this.renderFace();
+        this.renderFace(undefined, headMs);
     }
 
     paintDialogue() {
@@ -1674,7 +2252,7 @@ class DirectorMascot {
             this.later(() => {
                 if (this.stageState !== st) return;
                 st.eatUntil = 0;
-                this.showFor('printed', 6);
+                this.digest();
                 this.cue({ expression: has('lick') ? 'lick' : shut, action: 'bounce', holdMs: 4000 });
                 this.later(() => this.act('jiggle'), 380);
             }, 3 * 340 + 120);
@@ -1709,6 +2287,29 @@ class DirectorMascot {
         }, DURATION * 0.52);
     }
 
+    // What her belly does once a print is down (#742): the stage's own after-print body where the set
+    // has one (Yumiya's lumpy belly), else a kick where the stage has a kicky pose (Chiyo, Yozora),
+    // else lumps that wander over the belly for a while (the shader body; Yumiya's lower stage).
+    digest() {
+        const def = this.stageDef(); const st = this.stageState;
+        if (!def || !st) return;
+        if (def.printed) { this.showFor('printed', 6); return; }
+        if (def.kicky || def.rubKicky || def.gestureKicky) {
+            this.later(() => {
+                if (this.stageState !== st) return;
+                const now = Date.now();
+                st.kickUntil = now + 2800;
+                if (!st.firstKickAt) st.firstKickAt = now;
+                this._swapMs = 450;
+                this.render();
+                this.act('jiggle');
+                this.later(() => { this._swapMs = 450; this.render(); }, 2820);
+            }, 500);
+            return;
+        }
+        if (this.glOn() && Array.isArray(def.belly)) this.glBody.lumps(def.belly, 6500);
+    }
+
     // Her grown stage and how far the next one is. director.js stamps it on the send as `mascot`, and
     // the turn prompt then speaks from that stage (modules/directorPersonaVoice.js).
     growthState() {
@@ -1732,4 +2333,4 @@ class DirectorMascot {
 }
 
 if (typeof window !== 'undefined') window.DirectorMascot = DirectorMascot;
-if (typeof module !== 'undefined' && module.exports) module.exports = { DirectorMascot, directorMascotTypedHtml, directorMascotGrowthPoints, directorMascotCardPoints, directorMascotStageFor, directorMascotGrowth, directorMascotStepFor };
+if (typeof module !== 'undefined' && module.exports) module.exports = { DirectorMascot, directorMascotTypedHtml, directorMascotGrowthPoints, directorMascotCardPoints, directorMascotStageFor, directorMascotGrowth, directorMascotStepFor, DirectorMascotGL };

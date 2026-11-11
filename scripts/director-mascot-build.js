@@ -9,6 +9,8 @@
  *   node scripts/director-mascot-build.js faces    eat / lick faces for each face set, mouth points
  *   node scripts/director-mascot-build.js stuffed  Yumiya's third stage (the bigger_vore sprites)
  *   node scripts/director-mascot-build.js grow     in-between growth frames (belly warp) + manifest
+ *   node scripts/director-mascot-build.js meta     warp settings, belly discs and pose-morph centres
+ *                                                  into the manifests (for the WebGL body, no sheets)
  *   node scripts/director-mascot-build.js all
  *   node scripts/director-mascot-build.js preview <dir>   contact sheets of the growth frames
  *
@@ -77,6 +79,30 @@ const GROW = {
         base: { a: [1560, 1150], R: 860, yTop: 570, ramp: 160, up: [1.06, 1.12] },
         bigger: { a: [1500, 1150], R: 940, yTop: 570, ramp: 160, up: [1.06, 1.12], down: [0.97, 0.94] },
         bigger2: { a: [1500, 1500], R: 1900, yTop: 660, ramp: 260, up: [1.02, 1.04] }
+    }
+};
+
+// the belly as a disc per stage (centre, radius): where the lumps of a swallowed print show
+const BELLY = {
+    wren: { base: [1376, 990, 315], bigger: [1836, 1388, 760], stuffed: [1836, 1388, 760] },
+    xi: { base: [952, 995, 450], bigger: [1146, 1286, 690] },
+    kabuki: { base: [1468, 1120, 480], bigger: [1376, 1103, 525], bigger2: [893, 1477, 830] }
+};
+
+// arriving in a stage (the shader body's stage morph): the new sheet's belly starts deflated and
+// inflates. A scale about f (where the belly meets her body) of everything inside the disc c / R,
+// from `from` to 1; nothing above yTop moves.
+const ARRIVE = {
+    // p: the part of R that moves whole. The fading ring (R * (1 - p)) is wider than the largest
+    // move ((1 - from) times the far edge's distance from f), or the picture would fold over itself.
+    wren: {
+        bigger: { f: [1150, 820], c: [1836, 1388], R: 1560, p: 0.5, yTop: 600, ramp: 200, from: 0.62 },
+        stuffed: { f: [1150, 820], c: [1836, 1388], R: 1080, p: 0.72, yTop: 600, ramp: 200, from: 0.94 }
+    },
+    xi: { bigger: { f: [700, 900], c: [1146, 1286], R: 1340, p: 0.52, yTop: 470, ramp: 200, from: 0.64 } },
+    kabuki: {
+        bigger: { f: [1500, 700], c: [1376, 1103], R: 900, p: 0.6, yTop: 570, ramp: 160, from: 0.9 },
+        bigger2: { f: [1500, 900], c: [893, 1477], R: 1680, p: 0.5, yTop: 660, ramp: 200, from: 0.64 }
     }
 };
 
@@ -272,7 +298,8 @@ function warp(img, { a, R, yTop, ramp }, m) {
     return { data: out, width: W, height: H };
 }
 
-const stageBodies = (stage) => [...new Set(Object.values(stage))];
+// the stage's poses (body, kicky, gesture ...): its string values; grow / belly are settings
+const stageBodies = (stage) => [...new Set(Object.values(stage).filter((v) => typeof v === 'string'))];
 
 async function buildGrow(only) {
     for (const persona of Object.keys(GROW)) {
@@ -321,6 +348,52 @@ async function buildGrow(only) {
     }
 }
 
+/**
+ * What the WebGL body (directorMascot.js DirectorMascotGL) needs to warp the base sheets itself:
+ * each stage's warp (`grow`: a, R, yTop, ramp, max = the _g2 scale, min = the _p2 scale), its belly
+ * disc, and for every other pose of the stage the middle of what differs from the stage's body
+ * (`morphs["body|pose"]`): a pose change grows out of / shrinks into that point.
+ */
+async function buildMeta() {
+    for (const persona of Object.keys(GROW)) {
+        const m = readManifest(persona);
+        m.morphs = {};
+        for (const [stageId, cfg] of Object.entries(GROW[persona])) {
+            const stage = m.stages[stageId];
+            if (!stage) continue;
+            stage.grow = { a: cfg.a, R: cfg.R, yTop: cfg.yTop, ramp: cfg.ramp, max: cfg.up[1], min: cfg.down ? cfg.down[1] : 1 };
+            stage.belly = BELLY[persona][stageId];
+            if (ARRIVE[persona][stageId]) stage.arrive = ARRIVE[persona][stageId];
+            const small = async (id) => {
+                const b = m.bodies[id];
+                return sharp(path.join(OUT, persona, b.body)).resize(Math.round(m.size[0] / 4), Math.round(m.size[1] / 4)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+            };
+            const base = await small(stage.body);
+            for (const poseId of stageBodies(stage)) {
+                if (poseId === stage.body) continue;
+                const pose = await small(poseId);
+                const W = base.info.width;
+                let sx = 0, sy = 0, n = 0;
+                for (let i = 0; i < base.data.length; i += 4) {
+                    const d = Math.abs(base.data[i] - pose.data[i]) + Math.abs(base.data[i + 1] - pose.data[i + 1])
+                        + Math.abs(base.data[i + 2] - pose.data[i + 2]) + Math.abs(base.data[i + 3] - pose.data[i + 3]);
+                    if (d > 90) { const px = (i / 4) % W; sx += px; sy += Math.floor(i / 4 / W); n += 1; }
+                }
+                if (n > 20) {
+                    let at = [Math.round((sx / n) * 4), Math.round((sy / n) * 4)];
+                    // wings spread from her back, not from the middle of the larger wing; the belly
+                    // after a print (printed) swells from the belly's own centre
+                    if (poseId === stage.celebrate && n * 16 > 200000) at = [m.headPivot[0], m.shouldersY + 80];
+                    if (poseId === stage.printed) at = BELLY[persona][stageId].slice(0, 2);
+                    m.morphs[`${stage.body}|${poseId}`] = at;
+                    console.log(`${persona}: ${stage.body}|${poseId} differs around ${m.morphs[`${stage.body}|${poseId}`]} (${n * 16} px)`);
+                }
+            }
+        }
+        writeManifest(persona, m);
+    }
+}
+
 async function preview(dir) {
     fs.mkdirSync(dir, { recursive: true });
     for (const persona of Object.keys(GROW)) {
@@ -350,9 +423,10 @@ async function preview(dir) {
     if (cmd === 'faces' || cmd === 'all') await buildFaces();
     if (cmd === 'stuffed' || cmd === 'all') await buildStuffed();
     if (cmd === 'grow' || cmd === 'all') await buildGrow(cmd === 'grow' ? arg : null);
+    if (cmd === 'meta' || cmd === 'all') await buildMeta();
     if (cmd === 'preview') await preview(arg || path.join(ROOT, 'tmp/mascot-preview'));
-    if (!['faces', 'stuffed', 'grow', 'all', 'preview'].includes(cmd)) {
-        console.log('usage: director-mascot-build.js faces | stuffed | grow [persona] | all | preview <dir>');
+    if (!['faces', 'stuffed', 'grow', 'meta', 'all', 'preview'].includes(cmd)) {
+        console.log('usage: director-mascot-build.js faces | stuffed | grow [persona] | meta | all | preview <dir>');
         process.exit(1);
     }
 })().catch((err) => { console.error(err); process.exit(1); });

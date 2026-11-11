@@ -242,6 +242,53 @@ assert.strictEqual(w4.currentBodyId(), 'base', 'she eats with her own mouth');
     });
 });
 
+// The shader body (#742): her size is continuous in the points, the manifests carry what it needs,
+// and a re-hosted mascot (the phone's Director app) shows herself again on the next tick.
+const g1 = load('wren');
+assert.strictEqual(g1.growGain(), 1);
+g1.growthPoints = 10;
+assert.ok(Math.abs(g1.growGain() - 1.1) < 1e-9, 'half way through the stage is half the stage\'s warp');
+g1.growthPoints = 19;
+assert.ok(g1.growGain() > 1.18 && g1.growGain() < 1.2);
+assert.strictEqual(g1.glOn(), false, 'no WebGL in node: the picture layers and _g frames are used');
+['wren', 'xi', 'kabuki'].forEach((persona) => {
+    const pm = load(persona).manifest;
+    Object.entries(pm.stages).forEach(([id, stage]) => {
+        assert.ok(stage.grow && Array.isArray(stage.grow.a) && stage.grow.max > 1, `${persona}/${id} has its warp`);
+        assert.ok(Array.isArray(stage.belly) && stage.belly.length === 3, `${persona}/${id} has its belly disc`);
+        if (stage.arrive) {
+            // the fading ring is wider than the largest move, so the picture cannot fold over itself
+            const far = Math.hypot(stage.arrive.c[0] - stage.arrive.f[0], stage.arrive.c[1] - stage.arrive.f[1]) + stage.belly[2];
+            assert.ok(stage.arrive.R * (1 - stage.arrive.p) > far * (1 - stage.arrive.from), `${persona}/${id} arrive warp does not fold`);
+        }
+    });
+    assert.ok(pm.morphs && Object.keys(pm.morphs).length > 0, `${persona} has pose-morph centres`);
+});
+assert.deepStrictEqual(g1.morphCentre('base', 'mask_wings'), g1.morphCentre('mask_wings', 'base'));
+{
+    const h = load('xi');
+    h.root = { classList: { toggle() {}, contains: () => false }, dataset: {}, style: { setProperty() {}, getPropertyValue: () => '' } };
+    let applied = 0;
+    h.applyView = () => { applied += 1; h._shown = !!h.isHosted(); };
+    h.settleLayout = () => {};
+    h.showResult = () => {};
+    h._shown = false;
+    h.isHosted = () => true;
+    now += 1000; h.tick();
+    assert.strictEqual(applied, 1, 'hosted but not shown: she applies her view again');
+    now += 1000; h.tick();
+    assert.strictEqual(applied, 1, 'and only once');
+}
+// after a print: the stage's kick where the set has one
+{
+    const e = load('xi');
+    e.digest();
+    run(600);
+    assert.strictEqual(e.currentBodyId(), 'kicky', 'Yozora kicks after she eats');
+    run(3000);
+    assert.strictEqual(e.currentBodyId(), 'base');
+}
+
 // Wren: faces fall back to the nearest one the set has (the mask set has only happy, neutral, thinking).
 const w = load('wren');
 assert.strictEqual(w.manifest.anchor, 'left');
