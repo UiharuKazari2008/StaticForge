@@ -2027,7 +2027,8 @@
         if (level != null) {
             // on battery at or under the warning level (Settings > Power): the device's low icon (the cell with "!")
             const low = !charging && level <= batteryLowLevel();
-            const icon = charging ? 'battery-charging' : low ? 'battery-empty' : level > 75 ? 'battery-full' : level > 50 ? 'battery-3' : level > 25 ? 'battery-2' : 'battery-1';
+            // the cell's stages (Yukimi, Nov 11): 4 bars from 85 %, 3 from 75, 2 from 50, 1 from 25, under that the "!"
+            const icon = charging ? 'battery-charging' : (low || level < 25) ? 'battery-empty' : level >= 85 ? 'battery-full' : level >= 75 ? 'battery-3' : level >= 50 ? 'battery-2' : 'battery-1';
             battery = { icon, level, charging, low, plugged: bat && typeof bat.plugged === 'string' ? bat.plugged : null, saver: !!(bat && bat.saver === true), text: `Main battery: ${level}%${charging ? ', charging' : ''}` };
         }
         return { cell, wifi, active, airplane, type, wifiName, link, signal, battery };
@@ -2561,6 +2562,9 @@
     // white glyphs of its own, a reminder the clock, anything else the speech bubble
     const NOTE_KIND_ICON = { error: 'status-error', warning: 'status-warning', reminder: 'status-reminder' };
     function noteIcon(n) {
+        // an app's own notification (appNote) may bring its own glyph
+        const own = n && appNotes.get(n.id);
+        if (own && own.icon) return /^(url|image-set)\(/.test(own.icon) ? own.icon : artImageSet(own.icon);
         return artImageSet((n && NOTE_KIND_ICON[n.type]) || 'status-notify-many');
     }
 
@@ -2757,11 +2761,79 @@
 
     function noteSoftKeys() {
         const n = noteShownNote();
+        // an app's own notification (appNote) may bring its own soft keys
+        const own = n && appNotes.get(n.id);
+        if (own && own.softKeys) {
+            const keys = typeof own.softKeys === 'function' ? own.softKeys() : own.softKeys;
+            if (keys) return { left: keys.left || null, right: keys.right || null };
+        }
         // progress toasts have no close button: they end on their own
         const closable = !!(n && n.toast.querySelector('.toast-close'));
         return {
             left: { label: 'Hide', action: hideNote },
             right: closable ? { label: 'Dismiss', action: () => dismissNote(n) } : null
+        };
+    }
+
+    /**
+     * An app's own notification (File Explorer's Receive, #748): a WM notification like notify()'s,
+     * but one the app keeps and changes while its work runs. It is always a notification (a
+     * progress toast raised within moments of a tap would otherwise become the wait cursor), with
+     * its own soft keys and its own title bar glyph:
+     *   appNote({ title, html, progress, detail, icon, softKeys })
+     *     -> { id, update({ title, html, progress, detail, icon, softKeys }), show(), hide(), shown(), close() } | null
+     * html is the body and detail the lines under the bar (markup: escape names); progress 0-100
+     * draws the progress bar between them (null: no bar, and the note cannot get one later); icon
+     * is the glyph in the title bar and the tray (an art name, or CSS url() / image-set(); the speech bubble
+     * without one); softKeys is { left, right } of { label, action } like an app's, or a function
+     * giving them (Hide / Dismiss without). The note stays until the app closes it: hide() is
+     * the Hide soft key (the bubble goes, the glyph stays), show() brings the bubble back.
+     */
+    const appNotes = new Map(); // toast id -> { icon, softKeys }
+    function appNote(opts = {}) {
+        if (typeof window.showGlassToast !== 'function') return null;
+        const st = { icon: opts.icon || null, softKeys: opts.softKeys || null };
+        const bar = opts.progress != null && opts.progress !== false;
+        let id = null;
+        try {
+            id = window.showGlassToast('info', escapeHtml(opts.title || 'Melaton Mobile'), opts.html || '&nbsp;', bar, false);
+        } catch (err) { console.warn('[wmShell] appNote', err); }
+        const el = id ? document.getElementById(id) : null;
+        if (!el) return null;
+        // asked for as a notification: never sorted into the wait cursor or a message box
+        toastSeen.add(el);
+        appNotes.set(id, st);
+        const detail = document.createElement('div');
+        detail.className = 'toast-detail';
+        if (opts.detail) detail.innerHTML = opts.detail;
+        el.querySelector('.toast-content').appendChild(detail);
+        const live = () => el.isConnected && !el.classList.contains('removing');
+        const mine = () => { const n = noteOf(id); return !!n && noteShownNote() === n; };
+        const setBar = (v) => { if (bar && typeof window.updateGlassToastProgress === 'function') window.updateGlassToastProgress(id, Math.max(0, Math.min(100, Number(v) || 0))); };
+        setBar(opts.progress);
+        queueNotes();
+        return {
+            id,
+            update(o = {}) {
+                if (!live()) return;
+                if (o.title != null) { const t = el.querySelector('.toast-title'); if (t && t.textContent !== String(o.title)) t.textContent = o.title; }
+                if (o.html != null) { const m = el.querySelector('.toast-message'); if (m && m.innerHTML !== o.html) m.innerHTML = o.html; }
+                if (o.detail != null && detail.innerHTML !== o.detail) detail.innerHTML = o.detail;
+                if (o.progress != null) setBar(o.progress);
+                if (o.icon !== undefined) st.icon = o.icon || null;
+                if (o.softKeys !== undefined) { st.softKeys = o.softKeys || null; if (mine()) renderSoftKeys(); }
+                queueNotes();
+            },
+            show() { if (live()) showNote(id); },
+            hide() { if (mine()) hideNote(); },
+            shown: () => live() && mine(),
+            close() {
+                const up = mine();
+                appNotes.delete(id);
+                if (typeof window.removeGlassToast === 'function') window.removeGlassToast(id);
+                if (up) noteShown = null;
+                refreshNotes();
+            }
         };
     }
 
@@ -6055,6 +6127,8 @@
         messageBox,
         /** A WM notification: notify({ title, text, icon: 'info' | 'warning' | 'error' | 'success', timeout, buttons }). */
         notify: (opts) => notify(opts || {}),
+        /** An app's own notification with a live progress bar, soft keys and title bar glyph (appNote above). */
+        appNote: (opts) => appNote(opts || {}),
         // for apps in their own files (wmFileExplorer.js ...)
         menu: (side, items, btn) => showPopup(side, items, btn),
         dropdown: (anchor, items, align, onClose) => showDropdown(anchor, items, align, onClose),
