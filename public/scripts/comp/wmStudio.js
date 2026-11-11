@@ -1817,6 +1817,12 @@
             softKeys,
             // WM: X on Studio, ok on a tool page (as its Done soft key)
             titleKind: () => (tools.length ? 'ok' : 'close'),
+            // X closes Studio the desktop's way (File > Close: hideManualModal); its fields stay as they are
+            onTitleClose() {
+                releaseAll();
+                /* global hideManualModal */
+                try { if (studioOpen() && typeof hideManualModal === 'function') hideManualModal(); } catch (err) { console.warn('[wmStudio] close', err); }
+            },
             onTitleOk() {
                 if (!tools.length) return false;
                 // ok = the page's left soft key (a form's Save, else Done)

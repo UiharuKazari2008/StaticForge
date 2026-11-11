@@ -181,6 +181,10 @@
                 return { left: k.left, right: k.right };
             },
             titleKind: () => (host.stack.length > 1 ? 'ok' : 'close'),
+            // X closes the program: every window it has open, each its own way
+            onTitleClose() {
+                for (let i = host.stack.length - 1; i >= 0; i--) closeTop(host);
+            },
             onTitleOk() {
                 if (host.stack.length < 2) return false;
                 const k = keysFor(host);

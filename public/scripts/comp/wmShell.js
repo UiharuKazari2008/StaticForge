@@ -561,7 +561,18 @@
                 return;
             }
         }
-        // X (and ok on an app's only screen): the screen under it comes back; the app keeps its state
+        // X closes the app (Yukimi, Nov 10: as on WM; multitasking is the Start menu): its own close
+        // (onTitleClose: Studio, the Director and hosted programs close their windows their way),
+        // then it ends (endApp: a fresh page next time, off the Start strip). ok on an app's only
+        // screen goes back, keeping the app.
+        if (kind === 'close' && app && current !== 'today') {
+            const id = current;
+            if (typeof app.onTitleClose === 'function') {
+                try { app.onTitleClose(); } catch (err) { console.warn('[wmShell] onTitleClose', id, err); }
+            }
+            if (!endApp(id)) back();
+            return;
+        }
         back();
     }
 
@@ -1336,8 +1347,40 @@
         setTimeout(() => { noteQueued = false; refreshNotes(); }, 30);
     }
 
+    /**
+     * Yukimi, Nov 10: dialogs for in-app information, notifications for background information. A
+     * toast that answers what the user just did (answersUser: "Image deleted!", "Saved", an error
+     * from the tap) is a WM message box over the app, titled with the app; the toast goes. Toasts
+     * that arrive on their own (connection status, a print or mail that came in, progress, ones
+     * with buttons) stay notifications.
+     */
+    const toastSeen = new WeakSet();
+    let toastDialogs = Promise.resolve();
+    const BACKGROUND_TOAST = /^(connecting|connected|connection|reconnect|offline|high latency|generation complete|you have mail|new mail|update)/i;
+
+    function toastsToDialogs() {
+        const box = document.getElementById('toastContainer');
+        if (!box) return;
+        for (const t of [...box.children].reverse()) {
+            if (!t.id || toastSeen.has(t) || t.classList.contains('removing')) continue;
+            toastSeen.add(t);
+            if (!answersUser() || !notesMayPop()) continue;
+            if (t.classList.contains('upload-progress') || t.querySelector('.toast-progress, .toast-buttons') || !t.querySelector('.toast-close')) continue;
+            const title = ((t.querySelector('.toast-title') || {}).textContent || '').trim();
+            if (BACKGROUND_TOAST.test(title)) continue;
+            const text = ((t.querySelector('.toast-message') || {}).textContent || '').replace(/\s+/g, ' ').trim();
+            const type = (t.className.match(/glass-toast-(\w+)/) || [])[1] || 'info';
+            const icon = type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'info';
+            const app = current && current !== 'today' ? apps.get(current) : null;
+            const boxTitle = title && title !== 'Dreamscape' ? title : ((app && app.title) || 'Melaton Mobile');
+            if (typeof window.removeGlassToast === 'function') window.removeGlassToast(t.id);
+            toastDialogs = toastDialogs.then(() => messageBox({ title: boxTitle, text: text || title, icon, modal: true }));
+        }
+    }
+
     function refreshNotes() {
         if (!shell) return;
+        toastsToDialogs();
         notes = readToasts();
         const live = new Set(notes.flatMap((n) => n.ids.map((id) => seenKey(id, n))));
         for (const k of [...noteSeen]) if (!live.has(k)) noteSeen.delete(k);

@@ -2735,78 +2735,6 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
     display: none !important;
 }
 
-/* ---- the token / usage / cost / balance row in words (Yukimi, Nov 10: UI bugs on the cost and
- * balance element; full text on the phone): the desktop's bare numbers, dot and Anlas mark become
- * "1457 tokens free", "156 in 24 h, 3% used", "Cost 0 Anlas", "Balance 9713 + 22825" ---- */
-.wm-studio #manualModal .character-prompts-controls {
-    justify-content: flex-start !important;
-    row-gap: calc(3 * var(--wm-px)) !important;
-}
-
-.wm-studio #manualModal .character-prompts-controls > .inset-badge {
-    flex: 0 0 auto;
-    white-space: nowrap;
-}
-
-.wm-studio #manualModal #manualTokenFree::after {
-    content: " tokens free";
-}
-
-.wm-studio #manualModal #manualGenCount::after {
-    content: " in 24 h,";
-}
-
-.wm-studio #manualModal #manualGenUsagePercent::after {
-    content: " used";
-}
-
-.wm-studio #manualModal #manualGenUsageSplit {
-    display: inline-flex !important;
-    margin-left: calc(3 * var(--wm-px)) !important;
-    border: 0 !important;
-    padding: 0 !important;
-}
-
-/* the price chip: Cost, then the balance as its own chip-like group after a rule */
-.wm-studio #manualModal #manualPriceDisplay > i.nai-anla {
-    display: none !important;
-}
-
-.wm-studio #manualModal #manualPriceList::before {
-    content: "Cost ";
-}
-
-.wm-studio #manualModal #manualPriceList::after {
-    content: " Anlas";
-}
-
-.wm-studio #manualModal #manualBalanceSplit {
-    display: inline-flex !important;
-    align-items: center;
-    gap: calc(3 * var(--wm-px));
-    margin-left: calc(4 * var(--wm-px)) !important;
-    padding-left: calc(5 * var(--wm-px)) !important;
-    border: 0 !important;
-    border-left: calc(1 * var(--wm-px)) solid #000 !important;
-    background: none !important;
-}
-
-.wm-studio #manualModal #manualBalanceSplit .manual-balance-dot {
-    display: none !important;
-}
-
-.wm-studio #manualModal #manualBalanceFixed::before {
-    content: "Balance ";
-}
-
-.wm-studio #manualModal #manualBalancePaid::before {
-    content: "+ ";
-}
-
-.wm-studio #manualModal #manualBalanceSplit .hidden {
-    display: none !important;
-}
-
 /* combo badges in their own case */
 .wm-studio #manualModal .custom-dropdown-btn .custom-dropdown-badge,
 .wm-studio #manualModal .wms-badge {
@@ -2900,4 +2828,43 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
     .wm-studio[data-tab="prompt"] #manualModal .model-control .control-holder.control-holder {
         grid-template-columns: repeat(3, calc(66 * var(--wm-px)) minmax(0, 1fr)) !important;
     }
+}
+
+/* ---- the usage / balance dividers and the dot between the balances (Yukimi, Nov 10: a huge dot and
+ * a dotted line in bad contrast): the desktop's 2 px dotted dividers (green on the free price well)
+ * are WM's 1 px solid black rule, and the dot between the two balances is a small black dot ---- */
+.wm-studio #manualModal :is(#manualBalanceSplit, #manualGenUsageSplit)#manualBalanceSplit,
+.wm-studio #manualModal :is(#manualBalanceSplit, #manualGenUsageSplit)#manualGenUsageSplit {
+    border: 0 !important;
+    border-left: calc(1 * var(--wm-px)) solid #000 !important;
+    padding-left: calc(4 * var(--wm-px)) !important;
+    margin-left: calc(1 * var(--wm-px)) !important;
+    background: none !important;
+}
+
+.wm-studio #manualModal #manualPriceDisplay .manual-balance-dot.manual-balance-dot {
+    display: inline-block !important;
+    width: calc(3 * var(--wm-px)) !important;
+    height: calc(3 * var(--wm-px)) !important;
+    padding: 0 !important;
+    margin: 0 calc(1 * var(--wm-px)) !important;
+    border-radius: 50% !important;
+    background: #000 !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    color: transparent !important;
+    -webkit-text-fill-color: transparent !important;
+    opacity: 1 !important;
+    vertical-align: middle;
+}
+
+.wm-studio #manualModal #manualPriceDisplay .manual-balance-dot::before {
+    content: none !important;
+}
+
+/* coloured model badges keep their white text (the form's black-text rule won: "Full" read black on orange) */
+#wmShell .wm-studio #manualModal .wms-badge:is(.full-model-badge, .curated-badge, .legacy-badge, .legacy-furry-badge),
+html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge:is(.full-model-badge, .curated-badge, .legacy-badge, .legacy-furry-badge) {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
 }
