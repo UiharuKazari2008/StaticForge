@@ -1,0 +1,3 @@
+# Reap leaked browser tabs (scripts/reap-stale-browser-tabs.js): hung or day-old Playwright tabs,
+# oversized Playwright renderers, hung Alchemy tabs. No restart of anything.
+*/10 * * * * /usr/bin/env -i HOME=/home/kanmi USER=kanmi PATH=/usr/bin:/bin LANG=C.UTF-8 /bin/sh -c 'cd /home/kanmi/staticforge && /usr/bin/node scripts/reap-stale-browser-tabs.js' >> /home/kanmi/staticforge/logs/tab-reaper.log 2>&1
