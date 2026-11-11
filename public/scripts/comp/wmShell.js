@@ -2788,6 +2788,7 @@
         // the grid's blocks still to come after a render (renderGrid), added after the first paint
         let gridToken = 0;
         let gridRest = null;
+        let gridMore = null; // IntersectionObserver on the grid's last block
 
         /** Every block of the grid now (a jump to a cell further down). */
         function flushGrid() {
@@ -2797,6 +2798,7 @@
             let add = '';
             for (; g.next < g.total; g.next += CHUNK) add += g.chunkHtml(g.next);
             g.box.insertAdjacentHTML('beforeend', add);
+            if (gridMore) { gridMore.disconnect(); gridMore = null; }
         }
 
         function renderGrid(page, force) {
@@ -2842,16 +2844,24 @@
             box.innerHTML = html;
             const token = ++gridToken;
             gridRest = now < list.length ? { token, box, next: now, total: list.length, chunkHtml } : null;
-            if (gridRest) {
-                const more = () => {
+            // Later blocks as the list nears its end, not all of them up front: a 20,000-picture
+            // gallery left ~40k nodes in the page for good, and every new print rebuilt and appended
+            // all 333 blocks again (Fold7, #735). A jump further down still uses flushGrid().
+            if (gridMore) { gridMore.disconnect(); gridMore = null; }
+            if (gridRest && typeof IntersectionObserver === 'function') {
+                gridMore = new IntersectionObserver((entries) => {
                     const g = gridRest;
-                    if (!g || g.token !== token) return;
+                    if (!g || g.token !== token) { if (gridMore) gridMore.disconnect(); return; }
+                    if (!entries.some((e) => e.isIntersecting)) return;
                     let add = '';
-                    for (let n = 0; n < 1 && g.next < g.total; n++, g.next += CHUNK) add += g.chunkHtml(g.next);
+                    for (let n = 0; n < 2 && g.next < g.total; n++, g.next += CHUNK) add += g.chunkHtml(g.next);
                     g.box.insertAdjacentHTML('beforeend', add);
-                    if (g.next < g.total) setTimeout(more, 0); else gridRest = null;
-                };
-                afterPaint().then(more);
+                    gridMore.disconnect();
+                    if (g.next < g.total) gridMore.observe(g.box.lastElementChild); else { gridRest = null; gridMore = null; }
+                }, { root: scroller, rootMargin: '0px 0px 1500px 0px' });
+                gridMore.observe(box.lastElementChild);
+            } else if (gridRest) {
+                afterPaint().then(flushGrid);
             }
             // a selection that left the list (view switch, search, delete) is dropped
             if (selectedName && !list.some((it) => nameOf(it) === selectedName)) {

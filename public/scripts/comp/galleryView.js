@@ -4697,6 +4697,10 @@ function addPlaceholdersBelow() {
 
 // Improved infinite scroll handler with percentage-based triggers
 function handleInfiniteScroll() {
+    // Melaton Mobile never shows this grid (#723). Hidden by the shell's CSS, not .hidden.windowed, it
+    // measures 0x0, so 'near the bottom' was always true and every call appended another batch to
+    // a grid nobody sees (Fold7: 9,361 cells, 108k nodes after a session).
+    if (window.uiShell === 'mobile') return;
     if (isLoadingMore || isScrolling) return;
 
     // Don't handle infinite scroll if gallery is not the foreground window or being scrolled
@@ -4817,6 +4821,10 @@ function handleInfiniteScroll() {
 
 // Load more images for infinite scroll (scroll down) with dynamic batch sizing
 async function loadMoreImages() {
+    // Melaton Mobile never shows this grid (#723). Hidden by the shell's CSS, not .hidden.windowed, it
+    // measures 0x0, so 'near the bottom' was always true and every call appended another batch to
+    // a grid nobody sees (Fold7: 9,361 cells, 108k nodes after a session).
+    if (window.uiShell === 'mobile') return;
     if (isLoadingMore) return;
 
     // Don't load more images if gallery is hidden in desktop mode
@@ -4895,6 +4903,10 @@ async function loadMoreImages() {
 
 // Load more images before for infinite scroll (scroll up) with dynamic batch sizing
 async function loadMoreImagesBefore() {
+    // Melaton Mobile never shows this grid (#723). Hidden by the shell's CSS, not .hidden.windowed, it
+    // measures 0x0, so 'near the bottom' was always true and every call appended another batch to
+    // a grid nobody sees (Fold7: 9,361 cells, 108k nodes after a session).
+    if (window.uiShell === 'mobile') return;
     if (isLoadingMore || !hasMoreImagesBefore) return;
 
     // Don't load more images if manual modal is open and maximized
