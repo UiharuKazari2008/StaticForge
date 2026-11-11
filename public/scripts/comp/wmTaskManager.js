@@ -46,9 +46,12 @@
     const cpuShown = new Map(); // id -> % at the last refresh
     let lastSample = performance.now();
 
+    // the shell's own screens (Today, Programs, Settings, Help) and its pages over an app are not tasks
+    const SHELL_SCREENS = new Set(['today', 'programs', 'settings', 'help', 'pv-goto', 'pv-vindex', 'wm-op', 'wm-file']);
+
     function noteCurrent() {
         const id = root.dataset.wmApp;
-        if (!id || id === 'today') return;
+        if (!id || SHELL_SCREENS.has(id)) return;
         if (!running.has(id)) running.set(id, { since: Date.now() });
     }
 
@@ -100,7 +103,7 @@
     function tasks() {
         // the observer runs after the shell's show(): the app on screen now counts at once
         noteCurrent();
-        if (ws.current && ws.current !== 'today' && !running.has(ws.current)) running.set(ws.current, { since: Date.now() });
+        if (ws.current && !SHELL_SCREENS.has(ws.current) && !running.has(ws.current)) running.set(ws.current, { since: Date.now() });
         const apps = registered();
         const host = hosted();
         const hostIds = new Set(host.map((h) => h.id));

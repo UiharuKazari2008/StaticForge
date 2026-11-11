@@ -866,9 +866,12 @@
     const openedApps = [];
     const MAX_OPEN_STRIP = 6;
 
+    // the shell's own screens are not open apps (Yukimi, Nov 10)
+    const SHELL_SCREENS = new Set(['today', 'programs', 'settings', 'help']);
+
     function noteOpened(id) {
         const app = apps.get(id);
-        if (!app || id === 'today' || !app.inStart) return;
+        if (!app || SHELL_SCREENS.has(id) || !app.inStart) return;
         const at = openedApps.indexOf(id);
         if (at >= 0) openedApps.splice(at, 1);
         openedApps.unshift(id);
@@ -2668,6 +2671,39 @@
     // Search = gallery search, workspace, and the newest prints.
     const todayWidgets = [];
 
+    /**
+     * Settings > Today > Items > Options... (WM 6.1's Options button): per-row choices, stored per
+     * device in wmTodayOptions = { rowId: { key: value } }. The shell's own rows have these; an app's
+     * row brings its own (registerTodayItem options: [{ key, label, choices: [[value, label]], value }]).
+     */
+    const TODAY_OPTIONS_KEY = 'wmTodayOptions';
+    const TODAY_BUILTIN_OPTIONS = {
+        prints: [
+            { key: 'size', label: 'Picture size', value: 'medium', choices: [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['xlarge', 'Extra Large']] },
+            { key: 'rows', label: 'Rows', value: '1', choices: [['1', '1'], ['2', '2'], ['3', '3']] }
+        ],
+        director: [{ key: 'idle', label: 'When the Director is idle', value: 'show', choices: [['show', 'Show the row'], ['hide', 'Hide the row']] }],
+        novelai: [{ key: 'show', label: 'Show', value: 'all', choices: [['all', 'Anlas and subscription'], ['balance', 'Anlas only']] }],
+        messages: [{ key: 'empty', label: 'With no unread messages', value: 'show', choices: [['show', 'Show the row'], ['hide', 'Hide the row']] }],
+        tasks: [{ key: 'empty', label: 'With no tasks', value: 'show', choices: [['show', 'Show the row'], ['hide', 'Hide the row']] }]
+    };
+    const TODAY_PRINT_SIZE = { small: 32, medium: 44, large: 64, xlarge: 88 };
+
+    function todayOptionDefs(id) {
+        if (TODAY_BUILTIN_OPTIONS[id]) return TODAY_BUILTIN_OPTIONS[id];
+        const w = todayWidgets.find((x) => x.id === id);
+        return (w && Array.isArray(w.options)) ? w.options : [];
+    }
+
+    function todayOption(id, key) {
+        let all = null;
+        try { all = JSON.parse(localStorage.getItem(TODAY_OPTIONS_KEY) || 'null'); } catch (_) { all = null; }
+        const v = all && all[id] && all[id][key];
+        const def = todayOptionDefs(id).find((o) => o.key === key);
+        if (def && def.choices.some(([c]) => c === v)) return v;
+        return def ? def.value : (v == null ? null : v);
+    }
+
     function registerTodayItem(w) {
         if (!w || !w.id || typeof w.text !== 'function' || todayWidgets.some((x) => x.id === w.id)) return;
         todayWidgets.push(w);
@@ -2749,7 +2785,7 @@
             const bal = o.balance && Number(o.balance.totalCredits);
             if (Number.isFinite(bal) && bal >= 0) parts.push(`${bal.toLocaleString()} Anlas`);
             const sub = o.user && o.user.subscription;
-            if (sub && Number.isFinite(Number(sub.tier))) {
+            if (sub && Number.isFinite(Number(sub.tier)) && todayOption('novelai', 'show') !== 'balance') {
                 let t = TIERS[Number(sub.tier)] || 'Subscription';
                 if (sub.expiresAt) t += ` until ${fmtRenew.format(new Date(Number(sub.expiresAt) * 1000))}`;
                 parts.push(t);
@@ -2867,8 +2903,12 @@
                 } else {
                     setText(page.querySelector('[data-f="messages"]'), mailUnread ? `${mailUnread} unread ${mailUnread === 1 ? 'message' : 'messages'}` : 'No unread messages');
                 }
-                setText(page.querySelector('[data-f="tasks"]'), tasksText());
-                const dir = directorText();
+                const tasks = tasksText();
+                setText(page.querySelector('[data-f="tasks"]'), tasks);
+                page.querySelector('[data-row="tasks"]').hidden = tasks === 'No tasks' && todayOption('tasks', 'empty') === 'hide';
+                if (mailUnread != null) page.querySelector('[data-row="messages"]').hidden = !mailUnread && todayOption('messages', 'empty') === 'hide';
+                const dirState = directorState();
+                const dir = dirState && !dirState.running && todayOption('director', 'idle') === 'hide' ? '' : directorText();
                 page.querySelector('[data-row="director"]').hidden = !dir;
                 setText(page.querySelector('[data-f="director"]'), dir || '');
                 const nai = novelAiText();
@@ -2884,7 +2924,16 @@
                 if (!wsEl.textContent) wsEl.textContent = 'Workspace';
                 // newest prints: as many square tiles as fit one row
                 const strip = page.querySelector('[data-row="prints"]');
-                const prints = newestPrints(8);
+                // Options: picture size and rows
+                const tile = TODAY_PRINT_SIZE[todayOption('prints', 'size')] || 44;
+                const rows = Number(todayOption('prints', 'rows')) || 1;
+                strip.style.setProperty('--wm-today-tile', String(tile));
+                strip.style.setProperty('--wm-today-rows', String(rows));
+                // exactly the tiles that fit the rows (extra ones would add empty grid rows and gaps)
+                const pxv = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+                const width = (strip.clientWidth || page.clientWidth) - 6 * pxv;
+                const cols = Math.max(1, Math.floor((width + 2 * pxv) / ((tile + 2) * pxv)));
+                const prints = newestPrints(cols * rows);
                 const key = prints.map((p) => p.filename || p.preview).join('|');
                 if (key !== recentKey) {
                     recentKey = key;
@@ -2893,6 +2942,7 @@
                 strip.hidden = !prints.length;
                 paintTodayWidgets(page);
                 applyTodayItems(page);
+                markTodayLast(page);
             },
             softKeys() {
                 return {
@@ -2929,6 +2979,16 @@
                 row.hidden = !text;
                 setText(row.querySelector('.wm-today-text'), text);
             }
+        }
+
+        /** The last row on screen draws no rule under it (rows hide and switch off, so CSS cannot tell). */
+        function markTodayLast(page) {
+            let last = null;
+            page.querySelectorAll(':scope > [data-row]').forEach((row) => {
+                row.classList.remove('is-last');
+                if (!row.hidden && !row.classList.contains('wm-today-off')) last = row;
+            });
+            if (last) last.classList.add('is-last');
         }
 
         // Settings > Today > Items: order and on / off of the rows (wmTodayItems = [{ id, on }])
@@ -4193,6 +4253,10 @@
         registerTodayItem: (w) => registerTodayItem(w),
         /** Today rows from apps: [{ id, label }] (Settings > Today > Items). */
         listTodayItems: () => todayWidgets.map((w) => ({ id: w.id, label: w.label || w.id })),
+        /** A Today row's options: defs (Settings > Today > Items > Options...), and a stored value. */
+        todayOptionDefs: (id) => todayOptionDefs(id),
+        todayOption: (id, key) => todayOption(id, key),
+        todayOptionsKey: TODAY_OPTIONS_KEY,
         /** End an app: its page is removed and remounted on the next open (Task Manager). */
         endApp: (id) => endApp(id),
         /** Apps opened this session, most recent first. */

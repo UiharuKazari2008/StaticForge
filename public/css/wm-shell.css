@@ -1674,13 +1674,18 @@ div.wm-today-row {
 /* newest prints: one row of square tiles under the items */
 .wm-today-prints {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(calc(44 * var(--wm-px)), 1fr));
-    grid-template-rows: auto;
+    grid-template-columns: repeat(auto-fill, minmax(calc(var(--wm-today-tile, 44) * var(--wm-px)), 1fr));
+    grid-template-rows: repeat(var(--wm-today-rows, 1), auto);
     grid-auto-rows: 0;
     overflow: hidden;
     gap: calc(2 * var(--wm-px));
-    padding: calc(3 * var(--wm-px)) calc(3 * var(--wm-px)) 0;
-    border-bottom: 0;
+    /* its rule under it like the other rows (the last row on screen has none: .is-last) */
+    padding: calc(3 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid var(--wm-today-rule);
+}
+
+.wm-today > .is-last {
+    border-bottom: 0 !important;
 }
 
 .wm-today-print {

@@ -260,6 +260,16 @@
         studio: ['studio'],
         chat: ['chat'],
         presets: ['spellbook'],
+        // AmusementVISION operator apps (wmPayPass.js, wmXLink.js)
+        paypass: ['paypass-mobile'],
+        xlink: ['xlink-mobile'],
+        // Dreamscape suite phone apps (wmSpellcaster.js, wmPhasewalker.js, wmAtelier.js, wmExpanders.js, wmCharacters.js, wmEmotion.js)
+        spellbook: ['spellcaster'],
+        'bracket-generation': ['phasewalker'],
+        naxt: ['atelier'],
+        expanders: ['expanders'],
+        'character-db': ['characters'],
+        emotion: ['emotion'],
         reference: ['reference'],
         calculator: ['calculator'],
         calendar: ['calendar'],
@@ -413,6 +423,14 @@
         ['workspace', 'Workspace'],
         ['prints', 'Recent Pictures']
     ];
+
+    // Today > Items > Options...: per-row choices (wmShell.todayOptionDefs), stored as wmTodayOptions
+    const TODAY_OPTIONS_KEY = 'wmTodayOptions';
+    const optionDefs = (id) => (sh && typeof sh.todayOptionDefs === 'function' ? sh.todayOptionDefs(id) : []);
+    function todayOptionsStored() {
+        const v = lsJson(TODAY_OPTIONS_KEY);
+        return v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : {};
+    }
 
     function todayItems() {
         const saved = lsJson(K.todayItems);
@@ -664,14 +682,31 @@
         {
             id: 'today', tab: 'personal', label: 'Today', icon: 'set-today',
             tabs: [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items']],
-            init: () => ({ useDesktop: todayUsesDesktop(), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall() }),
+            init: () => ({ useDesktop: todayUsesDesktop(), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall(), opts: todayOptionsStored(), optsFor: null }),
             render(el, tab, d, api) {
                 if (tab === 'wallpaper') { renderWall(el, d, api); return; }
+                if (tab === 'items' && d.optsFor) {
+                    // an item's Options (WM 6.1: Today > Items > Options...)
+                    const id = d.optsFor;
+                    const defs = optionDefs(id);
+                    const cur = d.opts[id] || {};
+                    const item = d.items.find((r) => r.id === id);
+                    el.innerHTML = `<p><b>${esc(item ? item.label : id)}</b></p>${defs.map((o) => `<div class="wm-form-gap"></div><p>${esc(o.label)}:</p>${o.choices.map(([v, l]) => radio(`opt-${o.key}`, v, l, (cur[o.key] != null ? cur[o.key] : o.value) === v)).join('')}`).join('')}
+                        <div class="wm-buttons is-right"><button type="button" class="wm-button" data-act="done">Done</button></div>`;
+                    defs.forEach((o) => el.querySelectorAll(`input[name="opt-${o.key}"]`).forEach((r) => r.addEventListener('change', () => {
+                        if (!r.checked) return;
+                        d.opts[id] = Object.assign({}, d.opts[id], { [o.key]: r.value });
+                    })));
+                    el.querySelector('[data-act="done"]').addEventListener('click', () => { d.optsFor = null; api.rerender(); });
+                    return;
+                }
                 if (tab === 'items') {
+                    const selId = d.items[d.sel] && d.items[d.sel].id;
+                    const hasOpts = !!(selId && optionDefs(selId).length);
                     el.innerHTML = `<p>Checked items appear on the Today screen.</p>
                         <div class="wm-listbox-side">
                             <div class="wm-listbox" style="max-height:calc(170 * var(--wm-px))">${d.items.map((r, i) => `<div class="wm-listbox-row${i === d.sel ? ' is-selected' : ''}" data-i="${i}">${check(`it-${r.id}`, r.label, r.on)}</div>`).join('')}</div>
-                            <div class="wm-buttons"><button type="button" class="wm-button" data-act="up"${d.sel > 0 ? '' : ' disabled'}>Move Up</button><button type="button" class="wm-button" data-act="down"${d.sel < d.items.length - 1 ? '' : ' disabled'}>Move Down</button></div>
+                            <div class="wm-buttons"><button type="button" class="wm-button" data-act="options"${hasOpts ? '' : ' disabled'}>Options...</button><button type="button" class="wm-button" data-act="up"${d.sel > 0 ? '' : ' disabled'}>Move Up</button><button type="button" class="wm-button" data-act="down"${d.sel < d.items.length - 1 ? '' : ' disabled'}>Move Down</button></div>
                         </div>`;
                     el.querySelectorAll('.wm-listbox-row').forEach((row) => {
                         const i = Number(row.dataset.i);
@@ -679,6 +714,7 @@
                         row.querySelector('input').addEventListener('change', (e) => { d.items[i].on = e.target.checked; });
                     });
                     el.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => {
+                        if (b.dataset.act === 'options') { d.optsFor = selId; api.rerender(); return; }
                         const j = d.sel + (b.dataset.act === 'up' ? -1 : 1);
                         if (j < 0 || j >= d.items.length) return;
                         [d.items[d.sel], d.items[j]] = [d.items[j], d.items[d.sel]];
@@ -723,9 +759,10 @@
                 lsSet(K.todayUseDesktop, useDesktop ? '1' : '0');
                 if (sameSite(d.picture)) lsSet(K.todayBackground, d.picture);
                 lsSet(K.todayItems, JSON.stringify(d.items.map((r) => ({ id: r.id, on: r.on }))));
+                lsSet(TODAY_OPTIONS_KEY, JSON.stringify(d.opts || {}));
                 lsSet(K.titleBar, d.titleBar);
                 applyTitleBar();
-                const keys = [K.todayUseDesktop, K.todayBackground, K.todayItems, K.titleBar];
+                const keys = [K.todayUseDesktop, K.todayBackground, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY];
                 if (!(await commitWall(d.wall))) {
                     changed(keys);
                     return false;
