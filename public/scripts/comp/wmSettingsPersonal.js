@@ -1,5 +1,5 @@
 /**
- * Melaton Mobile Settings: Personal pages (Sounds & Notifications, Input, Lock, Owner Information, Screen accessibility, Workspace) (Yozora #709).
+ * Melaton Mobile Settings: Personal pages (Buttons, Sounds & Notifications, Input, Lock, Owner Information, Screen accessibility, Workspace) (Yozora #709).
  * Pages for the Settings app (wmPrograms.js), added through window.wmSettings.registerPage /
  * extendPage and drawn with window.wmSettings.ui so they look like WM 6.1's own pages. Every
  * value is read and saved through the desktop's own store (one source of truth):
@@ -23,9 +23,13 @@
  *   Workspace               Theme Settings' Themes tab (another workspace's look, copied whole) and
  *                           the accent colour + Window Color and Appearance's swatches
  *
- * WM 6.1's other Personal items have no Dreamscape analogue and are left out: Buttons (it maps
- * the device's hardware program buttons; a phone browser gets none of them, only Back, which the
- * shell's history handles) and Phone (calls, ring tones, network and SIM services).
+ *   Buttons                 the Today screen's soft keys (a phone browser has no program buttons
+ *                           of its own; Back is the shell's), per device: wmShell.todaySoftKeys
+ *
+ * Sounds & Notifications also keeps this device's own sound options (wmShell.sounds: screen taps,
+ * hardware buttons, and each phone event's WM sound, repeat, display and vibrate; localStorage).
+ * WM 6.1's Phone item has no Dreamscape analogue and is left out (calls, ring tones, network and
+ * SIM services).
  *
  * Styles: public/css/wm-settings-personal.css. Runs only on Melaton Mobile (uiShell 'mobile').
  */
@@ -129,10 +133,19 @@
         if (!ids.some((id) => eventFile(d, id) !== '')) ids.forEach((id) => { if (d.sounds[id] === '') delete d.sounds[id]; });
     }
 
+    // the phone's own sound events and options (wmShell.js SND_EVENTS, kept per device)
+    const SND = () => {
+        const s = window.wmShell && window.wmShell.sounds;
+        return s && typeof s.events === 'function' && typeof s.setPrefs === 'function' ? s : null;
+    };
+    const clone = (o) => JSON.parse(JSON.stringify(o));
+
     function eventList(d) {
         const rows = [];
+        // WM 6.1's list: the phone's notification classes and system sounds (this device's options)
+        for (const ev of d.phoneEvents) rows.push({ key: `p:${ev.id}`, label: ev.label });
+        // then the workspace's events, shared with the desktop (the Sound dialog's list)
         for (const g of eventGroups()) for (const [id, label] of g.events) rows.push({ key: `s:${id}`, label: `${g.name}: ${label}` });
-        if (d.mail) rows.push({ key: 'mail', label: 'Dovecote: New mail' });
         return rows;
     }
 
@@ -142,6 +155,7 @@
         // mode only (a phone may hold 'off' from an earlier desktop session) and must not read as,
         // or be saved as, No Sounds for the workspace
         const mailApi = window.dovecoteMailSettings;
+        const snd = SND();
         const d = {
             scheme: p.soundScheme === 'none' ? 'none' : 'default',
             sounds: { ...p.sounds },
@@ -150,11 +164,14 @@
             // the phone shows every toast as a WM notification and never routes to the Android
             // Notification Bridge (toastManager.js), so its switches are not offered here (#723)
             bridge: null,
+            dev: snd ? clone(snd.prefs()) : null,
+            phoneEvents: snd ? snd.events() : [],
+            wmFiles: snd ? snd.files() : [],
             sel: '',
             stash: new Map()
         };
         d.sel = eventList(d)[0] ? eventList(d)[0].key : '';
-        d.saved = JSON.parse(JSON.stringify({ scheme: d.scheme, sounds: d.sounds, startupSound: d.startupSound, mail: d.mail, bridge: d.bridge }));
+        d.saved = clone({ scheme: d.scheme, sounds: d.sounds, startupSound: d.startupSound, mail: d.mail, bridge: d.bridge, dev: d.dev });
         return d;
     }
 
@@ -165,10 +182,14 @@
         if (modified) schemes.splice(1, 0, ['modified', 'Melaton Default (modified)']);
         const cur = none ? 'none' : (modified ? 'modified' : 'default');
         const programs = groupOn(d, 'programs');
+        // WM 6.1: Screen taps and Hardware buttons, each Soft or Loud (this device's own)
+        const clicks = (name, label, on, loud) => `${ui.check(name, label, on)}
+            <div class="wmsp-radios">${ui.radio(`${name}-vol`, 'soft', 'Soft', !loud, on ? '' : 'disabled')}${ui.radio(`${name}-vol`, 'loud', 'Loud', loud, on ? '' : 'disabled')}</div>`;
         el.innerHTML = `${ui.sub('Enable sounds for')}
             ${ui.check('grp-system', 'Events (warnings, system events)', groupOn(d, 'system'), `data-grp="system"${none ? ' disabled' : ''}`)}
             ${ui.check('grp-programs', 'Programs', programs, `data-grp="programs"${none ? ' disabled' : ''}`)}
             ${checkIn('grp-notifications', 'Notifications (mail, prints, balloons)', programs && groupOn(d, 'notifications'), `data-grp="notifications"${none || !programs ? ' disabled' : ''}`)}
+            ${d.dev ? clicks('taps', 'Screen taps', d.dev.taps, d.dev.tapsLoud) + clicks('buttons', 'Hardware buttons', d.dev.buttons, d.dev.buttonsLoud) : ''}
             ${ui.gap()}
             ${ui.row('Sound scheme:', ui.comboHtml('scheme', (schemes.find(([v]) => v === cur) || schemes[0])[1]), { wide: true })}
             ${ui.check('startup', 'Play Melaton Startup sound', d.startupSound, none ? 'disabled' : '')}
@@ -178,6 +199,12 @@
             setGroup(d, c.dataset.grp, c.checked);
             api.rerender();
         }));
+        if (d.dev) {
+            for (const k of ['taps', 'buttons']) {
+                el.querySelector(`input[name="${k}"]`).addEventListener('change', (e) => { d.dev[k] = e.target.checked; api.rerender(); });
+                el.querySelectorAll(`input[name="${k}-vol"]`).forEach((r) => r.addEventListener('change', () => { if (r.checked) d.dev[`${k}Loud`] = r.value === 'loud'; }));
+            }
+        }
         ui.bindCombo(el.querySelector('[data-act="scheme"]'), schemes, cur, (v) => {
             if (v === 'modified') return;
             // as the Sound dialog: picking the scheme starts from its own sounds
@@ -188,6 +215,86 @@
         el.querySelector('input[name="startup"]').addEventListener('change', (e) => { d.startupSound = e.target.checked; });
     }
 
+    /** A phone event's options in the draft: { on, file (shown in the Sound combo), repeat, display, vibrate, off (the workspace silences it) }. */
+    function phoneEvent(d, ev) {
+        const o = d.dev.ev[ev.id] || {};
+        const own = typeof o.sound === 'string' && o.sound !== '';
+        let on = typeof o.sound === 'string' ? o.sound !== '' : ev.play !== false;
+        let display = typeof o.display === 'boolean' ? o.display : ev.display !== false;
+        if (ev.dovecote && d.mail) { on = d.mail.sound; display = d.mail.notify; }
+        // the file: the device's pick; else a desktop sound picked for the event in this workspace; else WM's
+        const s = S();
+        const ws = Object.prototype.hasOwnProperty.call(d.sounds, ev.desktop) ? d.sounds[ev.desktop] : null;
+        const wsPick = ws && s && s.SCHEME && ws !== s.SCHEME[ev.desktop] && (s.FILES || []).includes(ws) ? ws : null;
+        const file = own ? o.sound : (o.last || wsPick || ev.sound);
+        const off = d.scheme === 'none' || eventFile(d, ev.desktop) === '' || (ev.id === 'startup' && !d.startupSound);
+        return {
+            on, file, off, display,
+            repeat: !!ev.repeatable && (typeof o.repeat === 'boolean' ? o.repeat : !!ev.repeat),
+            vibrate: o.vibrate === true
+        };
+    }
+
+    function renderPhoneEvent(el, d, ev, api) {
+        const st = phoneEvent(d, ev);
+        const snd = SND();
+        const s = S();
+        const files = d.wmFiles.map((f) => [f.file, f.label]).concat(((s && s.FILES) || []).map((f) => [f, soundName(f)]));
+        const shown = files.find(([f]) => f === st.file) || [st.file, st.file];
+        const playOn = st.on && !st.off;
+        const note = ev.kind === 'note';
+        el.innerHTML = `<div class="wmsp-ev">
+                <div class="wmsp-ev-left">
+                    ${ui.check('play-on', 'Play sound', playOn, st.off ? 'disabled' : '')}
+                    ${note ? checkIn('repeat', 'Repeat', ev.repeatable && playOn && st.repeat, ev.repeatable && playOn ? '' : 'disabled') : ''}
+                </div>
+                <div class="wmsp-ev-right">
+                    ${ui.comboHtml('file', shown[1], !playOn)}
+                    <div class="wmsp-media">
+                        <button type="button" class="wm-button wmsp-play" data-act="play" aria-label="Play"${st.file ? '' : ' disabled'}></button>
+                        <button type="button" class="wm-button wmsp-stop" data-act="stop" aria-label="Stop"></button>
+                    </div>
+                </div>
+            </div>
+            ${note ? ui.check('msg-on', 'Display message on screen', st.display) + ui.check('vibrate', 'Vibrate', st.vibrate) : ''}
+            ${st.off ? ui.note(d.scheme === 'none' ? 'Sounds are off: pick Melaton Default on the Sounds tab.' : 'This sound is off on the Sounds tab.') : ''}`;
+        const o = () => { d.dev.ev[ev.id] = d.dev.ev[ev.id] || {}; return d.dev.ev[ev.id]; };
+        el.querySelector('input[name="play-on"]').addEventListener('change', (e) => {
+            const on = e.target.checked;
+            if (ev.dovecote && d.mail) {
+                d.mail.sound = on;
+                // the mail sound needs the New Mail event to have one
+                if (on && eventFile(d, 'notify') === '') delete d.sounds.notify;
+            } else if (on) {
+                const x = o();
+                if (x.last && x.last !== ev.sound) x.sound = x.last;
+                else if (ev.play === false) x.sound = ev.sound;
+                else delete x.sound;
+            } else {
+                const x = o();
+                if (typeof x.sound === 'string' && x.sound) x.last = x.sound;
+                x.sound = '';
+            }
+            api.rerender();
+        });
+        ui.bindCombo(el.querySelector('[data-act="file"]'), files, st.file, (file) => {
+            const x = o();
+            x.sound = file;
+            delete x.last;
+            // WM plays the new choice
+            if (snd) snd.preview(file);
+            api.rerender();
+        });
+        el.querySelector('[data-act="play"]').addEventListener('click', () => { if (snd && st.file) snd.preview(st.file); });
+        el.querySelector('[data-act="stop"]').addEventListener('click', () => { if (snd) snd.stop(); });
+        const rep = el.querySelector('input[name="repeat"]');
+        if (rep) rep.addEventListener('change', () => { o().repeat = rep.checked; });
+        const msg = el.querySelector('input[name="msg-on"]');
+        if (msg) msg.addEventListener('change', () => { if (ev.dovecote && d.mail) d.mail.notify = msg.checked; else o().display = msg.checked; });
+        const vib = el.querySelector('input[name="vibrate"]');
+        if (vib) vib.addEventListener('change', () => { o().vibrate = vib.checked; });
+    }
+
     function renderNotifyTab(el, d, api) {
         const rows = eventList(d);
         if (!rows.some((r) => r.key === d.sel) && rows[0]) d.sel = rows[0].key;
@@ -195,74 +302,55 @@
         const s = S();
         const files = [['', '(None)']].concat(((s && s.FILES) || []).map((f) => [f, soundName(f)]));
         const none = d.scheme === 'none';
-        const soundRow = (id, on, checkName, label, disabled) => {
-            const file = on ? eventFile(d, id) : '';
-            const shown = files.find(([f]) => f === file) || files[0];
-            return `${ui.check(checkName, label, on, disabled ? 'disabled' : '')}
-                <div class="wmsp-indent wmsp-sound-row">${ui.comboHtml('file', shown[1], disabled || !on)}
-                    <button type="button" class="wm-button wmsp-play" data-act="play" aria-label="Play"${disabled || !file ? ' disabled' : ''}></button></div>`;
-        };
-        let body = '';
-        if (sel.key.startsWith('s:')) {
-            const id = sel.key.slice(2);
-            body = soundRow(id, !none && eventFile(d, id) !== '', 'play-on', 'Play sound', none)
-                + (none ? ui.note('Sounds are off: pick Melaton Default on the Sounds tab.') : '');
-        } else if (sel.key === 'mail') {
-            // Dovecote's own options (Control Panel Mail): its sound is the New Mail Notification event
-            body = soundRow('notify', d.mail.sound && !none && eventFile(d, 'notify') !== '', 'play-on', 'Play sound', none)
-                + ui.check('msg-on', 'Display message on screen', d.mail.notify)
-                // Dovecote keeps these two per browser (dovecote.js): a Mail Options choice of this one
-                + ui.note('Play sound and Display message are kept by each browser, as in Dovecote\'s Mail Options: this changes this browser only, not your other computers.');
-        }
         // Customize Notifications' hidden popups and minimum time are not here: the desktop keeps them
         // per browser (trayRegistry.js, localStorage) and the phone never shows those tray popups, so
         // a change here would reach neither the phone nor another computer
         el.innerHTML = `${ui.row('Event:', ui.comboHtml('event', sel.label))}
-            <div class="wmsp-event">${body}</div>
-            ${d.bridge ? `${ui.gap()}
-                ${ui.sub('All notifications')}
-                ${ui.check('bridge-on', 'Send notifications to the Android Notification Bridge', d.bridge.on)}
-                ${checkIn('bridge-bypass', 'On the desktop, show them here instead', d.bridge.bypass, d.bridge.on ? '' : 'disabled')}` : ''}`;
-        ui.bindCombo(el.querySelector('[data-act="event"]'), rows.map((r) => [r.key, r.label]), d.sel, (v) => { d.sel = v; api.rerender(); });
-        const evId = sel.key === 'mail' ? 'notify' : (sel.key.startsWith('s:') ? sel.key.slice(2) : '');
-        const playOn = el.querySelector('input[name="play-on"]');
-        if (playOn) {
-            playOn.addEventListener('change', () => {
-                if (sel.key === 'mail') {
-                    d.mail.sound = playOn.checked;
-                    // the mail sound needs the New Mail event to have one
-                    if (playOn.checked && eventFile(d, 'notify') === '') delete d.sounds.notify;
-                } else if (playOn.checked) {
-                    if (d.sounds[evId] === '') delete d.sounds[evId];
-                    if (eventFile(d, evId) === '') d.sounds[evId] = 'Windows Default.wav';
-                } else {
-                    d.sounds[evId] = '';
-                }
-                api.rerender();
-            });
-        }
-        ui.bindCombo(el.querySelector('[data-act="file"]'), files, evId ? eventFile(d, evId) : '', (file) => {
-            const sch = S() && S().SCHEME;
-            if (sch && sch[evId] === file) delete d.sounds[evId];
-            else d.sounds[evId] = file;
-            // the Sound dialog plays the new choice
-            if (file && S()) S().playFile(file);
+            <div class="wmsp-event"></div>`;
+        ui.bindCombo(el.querySelector('[data-act="event"]'), rows.map((r) => [r.key, r.label]), d.sel, (v) => {
+            if (SND()) SND().stop();
+            d.sel = v;
             api.rerender();
         });
-        const play = el.querySelector('[data-act="play"]');
-        if (play) play.addEventListener('click', () => { const f = eventFile(d, evId); if (f && S()) S().playFile(f); });
-        const msg = el.querySelector('input[name="msg-on"]');
-        if (msg) {
-            msg.addEventListener('change', () => { d.mail.notify = msg.checked; });
+        const body = el.querySelector('.wmsp-event');
+        if (sel.key.startsWith('p:')) {
+            const ev = d.phoneEvents.find((e) => e.id === sel.key.slice(2));
+            if (ev) renderPhoneEvent(body, d, ev, api);
+            return;
         }
-        const bOn = el.querySelector('input[name="bridge-on"]');
-        if (bOn) bOn.addEventListener('change', () => { d.bridge.on = bOn.checked; api.rerender(); });
-        const bBy = el.querySelector('input[name="bridge-bypass"]');
-        if (bBy) bBy.addEventListener('change', () => { d.bridge.bypass = bBy.checked; });
+        if (!sel.key.startsWith('s:')) return;
+        // a workspace event: its desktop sound, shared with the desktop's Sound dialog
+        const evId = sel.key.slice(2);
+        const on = !none && eventFile(d, evId) !== '';
+        const file = on ? eventFile(d, evId) : '';
+        const shown = files.find(([f]) => f === file) || files[0];
+        body.innerHTML = `${ui.check('play-on', 'Play sound', on, none ? 'disabled' : '')}
+            <div class="wmsp-indent wmsp-sound-row">${ui.comboHtml('file', shown[1], none || !on)}
+                <button type="button" class="wm-button wmsp-play" data-act="play" aria-label="Play"${none || !file ? ' disabled' : ''}></button></div>
+            ${none ? ui.note('Sounds are off: pick Melaton Default on the Sounds tab.') : ui.note('A sound of this workspace, shared with the desktop.')}`;
+        body.querySelector('input[name="play-on"]').addEventListener('change', (e) => {
+            if (e.target.checked) {
+                if (d.sounds[evId] === '') delete d.sounds[evId];
+                if (eventFile(d, evId) === '') d.sounds[evId] = 'Windows Default.wav';
+            } else {
+                d.sounds[evId] = '';
+            }
+            api.rerender();
+        });
+        ui.bindCombo(body.querySelector('[data-act="file"]'), files, file, (f) => {
+            const sch = s && s.SCHEME;
+            if (sch && sch[evId] === f) delete d.sounds[evId];
+            else d.sounds[evId] = f;
+            // the Sound dialog plays the new choice
+            if (f && SND()) SND().preview(f);
+            api.rerender();
+        });
+        body.querySelector('[data-act="play"]').addEventListener('click', () => { const f = eventFile(d, evId); if (f && SND()) SND().preview(f); });
     }
 
     async function commitSounds(d) {
         const v = d.saved;
+        if (SND()) SND().stop();
         // only what changed (the scheme only when one was picked): the Sound dialog's own fields
         const patch = {};
         if (d.scheme !== v.scheme) patch.soundScheme = d.scheme;
@@ -274,18 +362,8 @@
             if (d.mail.sound !== v.mail.sound) mailApi.setSound(d.mail.sound);
             if (d.mail.notify !== v.mail.notify) mailApi.setNotify(d.mail.notify);
         }
-        if (d.bridge && v.bridge && (d.bridge.on !== v.bridge.on || d.bridge.bypass !== v.bridge.bypass)) {
-            // as Taskbar and Start Menu Properties' Customize Notifications: the server-held pair
-            const desktop = { notificationBridgeEnabled: d.bridge.on, bypassNotificationBridgeInDesktopMode: d.bridge.bypass };
-            try {
-                const gs = typeof desktopSettingsGlobalState !== 'undefined' ? desktopSettingsGlobalState : null;
-                if (gs) { gs.notificationBridgeEnabled = d.bridge.on; gs.bypassNotificationBridgeInDesktopMode = d.bridge.bypass; }
-                if (fn('persistUserGlobalSettingsPatch')) await call('persistUserGlobalSettingsPatch', { desktop });
-            } catch (err) {
-                await box({ title: 'Sounds & Notifications', icon: 'error', text: (err && err.message) || 'The notification bridge setting could not be saved.' });
-                return false;
-            }
-        }
+        // this device's own: taps, buttons and each phone event
+        if (d.dev && SND() && !same(d.dev, v.dev)) SND().setPrefs(d.dev);
         return [];
     }
 
@@ -299,6 +377,68 @@
             else renderSoundsTab(el, d, api);
         },
         commit: commitSounds
+    });
+
+    // ======================================================================== Buttons
+
+    /**
+     * WM 6.1 Settings > Buttons (Program Buttons tab: "1. Select a button" list with Button |
+     * Assignment columns, "2. Assign a program" combo; ~/.cache/wm61/ref-shell/b1.png). A phone
+     * browser has no program buttons of its own, so the buttons here are the Today screen's soft
+     * keys (Yukimi, Nov 10), kept per device by the shell (wmShell.todaySoftKeys). The list:
+     * WM's <actions> first, then the programs, alphabetical.
+     */
+    const KEYS = () => {
+        const k = window.wmShell && window.wmShell.todaySoftKeys;
+        return k && typeof k.get === 'function' ? k : null;
+    };
+    const KEY_ROWS = [['left', 'Left soft key'], ['right', 'Right soft key']];
+    const KEY_ACTION_ICON = { start: 'start-flag', menu: 'set-menus', notifications: 'set-sounds' };
+
+    function keyChoices() {
+        const k = KEYS();
+        return k.actions().map((a) => ({ value: a.value, label: a.label, icon: KEY_ACTION_ICON[a.value] || '' }))
+            .concat(k.programs().map((p) => ({ value: `app:${p.id}`, label: p.label, icon: p.icon || 'app-programs' })));
+    }
+
+    wmSettings.registerPage({
+        id: 'buttons', tab: 'personal', label: 'Buttons', icon: 'set-buttons',
+        tabs: [['program', 'Program Buttons']],
+        available: () => !!KEYS(),
+        init() {
+            const v = KEYS().get();
+            return { v: { ...v }, saved: { ...v }, sel: 'left' };
+        },
+        render(el, tab, d, api) {
+            const choices = keyChoices();
+            const k = KEYS();
+            const choice = (v) => choices.find((c) => c.value === v) || choices.find((c) => c.value === k.defaults()[d.sel]) || choices[0];
+            const icon = (c) => {
+                if (!c || !c.icon) return '<span class="wmsp-btn-icon"></span>';
+                const a = ui.art(c.icon);
+                return `<img class="wmsp-btn-icon" src="${esc(a.src)}" srcset="${esc(a.srcset)}" alt="" draggable="false">`;
+            };
+            el.innerHTML = `<p class="wmsp-step">1. Select a button:</p>
+                <div class="wmsp-btn-list" role="listbox" aria-label="Buttons">
+                    <div class="wmsp-btn-head"><span>Button</span><span>Assignment</span></div>
+                    ${KEY_ROWS.map(([side, label]) => {
+                        const c = choice(d.v[side]);
+                        return `<button type="button" class="wmsp-btn-row${side === d.sel ? ' is-selected' : ''}" role="option" aria-selected="${side === d.sel}" data-side="${side}">
+                            <span class="wmsp-btn-name">${icon(c)}<span>${esc(label)}</span></span><span class="wmsp-btn-assign">${esc(c ? c.label : '')}</span></button>`;
+                    }).join('')}
+                </div>
+                <p class="wmsp-step">2. Assign a program:</p>
+                ${ui.comboHtml('assign', (choice(d.v[d.sel]) || {}).label || '')}`;
+            el.querySelectorAll('.wmsp-btn-row').forEach((r) => r.addEventListener('click', () => { d.sel = r.dataset.side; api.rerender(); }));
+            ui.bindCombo(el.querySelector('[data-act="assign"]'), choices.map((c) => [c.value, c.label]), (choice(d.v[d.sel]) || {}).value, (v) => {
+                d.v[d.sel] = v;
+                api.rerender();
+            });
+        },
+        commit(d) {
+            if (!same(d.v, d.saved)) KEYS().set(d.v);
+            return [];
+        }
     });
 
     // ======================================================================== Input

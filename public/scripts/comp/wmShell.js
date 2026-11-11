@@ -38,7 +38,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-off", "status-data-on", "status-director", "status-mail", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
+    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uwb", "status-data-uwb-active", "status-director", "status-mail", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
     const srcset = (name) => String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -289,6 +289,7 @@
                 <button type="button" class="wm-sip" aria-label="Input panel">${imgTag('sip-keyboard')}</button>
                 <button type="button" class="wm-softkey" data-side="right"></button>
             </footer>
+            <div class="wm-viewbar" role="toolbar" aria-label="Picture" hidden></div>
             <nav class="wm-startmenu" role="menu" hidden></nav>
             <div class="wm-popup" role="menu" hidden></div>
             <div class="wm-msgbox-layer" hidden></div>
@@ -759,6 +760,8 @@
         fillMenu(pop, items);
         pop.hidden = false;
         openPopup = pop;
+        // CE's Menu pop-up event (silent unless a sound is picked for it)
+        playSystemSound('menu');
         if (btn) btn.setAttribute('aria-expanded', 'true');
         syncHistory();
     }
@@ -778,6 +781,48 @@
         pop.style.top = `${r.bottom - sr.top}px`;
         if (align === 'right') { pop.style.left = 'auto'; pop.style.right = `${sr.right - r.right}px`; } else { pop.style.right = 'auto'; pop.style.left = `${r.left - sr.left}px`; }
         popupOnClose = onClose;
+        clampPopup(pop, r);
+        // callers size the list after this returns (a combo's width, a scroll limit): once more then
+        queueMicrotask(() => { if (openPopup === pop && dropdownAnchor === anchor) clampPopup(pop, r); });
+    }
+
+    /**
+     * Keep an open popup (drop-down, context menu) inside the content box, between the title bar
+     * and the soft keys: pulled back left / right, a drop-down with no room below opens above its
+     * control (as WM's combo lists do), and a list taller than the box scrolls, opening on its
+     * current choice. anchor: the control's rect (drop-downs).
+     */
+    function clampPopup(pop, anchor = null) {
+        if (!pop || pop.hidden) return;
+        const sr = shell.getBoundingClientRect();
+        const content = shell.querySelector('.wm-content');
+        const cr = content ? content.getBoundingClientRect() : sr;
+        const pad = 2;
+        const minL = cr.left - sr.left + pad;
+        const maxR = cr.right - sr.left - pad;
+        const minT = Math.max(0, cr.top - sr.top);
+        const maxB = cr.bottom - sr.top;
+        if (pop.offsetWidth > maxR - minL) { pop.style.maxWidth = `${Math.max(0, maxR - minL)}px`; pop.style.overflowX = 'hidden'; }
+        let pr = pop.getBoundingClientRect();
+        const w = pr.width;
+        const left = Math.max(minL, Math.min(pr.left - sr.left, maxR - w));
+        if (Math.abs(left - (pr.left - sr.left)) > 0.5) { pop.style.right = 'auto'; pop.style.left = `${left}px`; }
+        pr = pop.getBoundingClientRect();
+        let h = pr.height;
+        const top = pr.top - sr.top;
+        if (top >= minT - 0.5 && top + h <= maxB + 0.5) return;
+        if (h > maxB - minT) {
+            pop.style.maxHeight = `${Math.max(0, maxB - minT)}px`;
+            pop.style.overflowY = 'auto';
+            h = pop.getBoundingClientRect().height;
+        }
+        let t;
+        if (anchor && top + h > maxB && anchor.top - sr.top - h >= minT) t = anchor.top - sr.top - h;
+        else t = Math.max(minT, Math.min(top, maxB - h));
+        pop.style.bottom = 'auto';
+        pop.style.top = `${t}px`;
+        const on = pop.scrollHeight > pop.clientHeight && pop.querySelector(':scope > [aria-checked="true"]');
+        if (on) pop.scrollTop = Math.max(0, on.offsetTop - (pop.clientHeight - on.offsetHeight) / 2);
     }
 
     function closeMenus(silent) {
@@ -1019,6 +1064,7 @@
         // while a turn runs; closed while it is idle and its app is open), prints in progress,
         // unread mail, an update downloaded and ready to install
         const dir = directorState();
+        directorTurnWatch(dir);
         const dirOpen = stack.includes('director') || openedApps.includes('director');
         shell.querySelector('[data-role="director"]').hidden = !((dir && dir.running) || dirOpen);
         paintDirectorClap(!!(dir && dir.running));
@@ -1055,6 +1101,24 @@
     let fitQueued = false;
     let clapTimer = null;
     let clapFrame = 0;
+    /**
+     * Director: Turn finished (a phone sound event): running -> idle plays its sound and, with
+     * Display message on screen, posts a notification (off by default: the clapper already stops).
+     */
+    let dirWasRunning = null;
+    function directorTurnWatch(dir) {
+        const running = !!(dir && dir.running);
+        const was = dirWasRunning;
+        dirWasRunning = dir ? running : was;
+        if (!dir || was !== true || running) return;
+        playSystemSound('director');
+        const p = eventPrefs('director');
+        if (p && p.display) {
+            const who = dir.name ? `"${dir.name}"` : 'The session';
+            notify({ title: 'Director', text: `${who}: the turn is finished.`, asNote: true, timeout: 10000 });
+        }
+    }
+
     /** The Director icon: the clapper claps while a turn runs, closed otherwise (timers: no rAF in background tabs). */
     function paintDirectorClap(working) {
         const el = shell && shell.querySelector('[data-role="director"]');
@@ -1218,9 +1282,11 @@
      */
     let deviceStatus = null;
     let webBattery = null;
-    // WM 6.1 letters; LTE and 5G are Melaton's own (drawn in the same style, see manifest.json)
-    const DATA_ICON = { GPRS: 'g', EDGE: 'e', '3G': '3g', HSPA: 'h', 'HSPA+': 'h-plus', LTE: '4g', 'LTE+': '4g-plus', '5G': '5g', '5G+': '5g-plus' };
-    const DATA_NAME = { GPRS: 'GPRS', EDGE: 'EDGE', '3G': '3G', HSPA: 'HSPA', 'HSPA+': 'HSPA+', LTE: 'LTE', 'LTE+': 'LTE+', '5G': '5G', '5G+': '5G+' };
+    // WM 6.1 letters; LTE and 5G are Melaton's own (drawn in the same style, see manifest.json).
+    // 5G carrier style (Yukimi, Nov 10): NR for 5G (NSA and standalone), NR-A for NR Advanced,
+    // UWB for mmWave; an older app's '5G+' (both of the latter) shows NR-A
+    const DATA_ICON = { GPRS: 'g', EDGE: 'e', '3G': '3g', HSPA: 'h', 'HSPA+': 'h-plus', LTE: '4g', 'LTE+': '4g-plus', '5G': 'nr', '5G+': 'nr-a', '5G-A': 'nr-a', '5G UW': 'uwb' };
+    const DATA_NAME = { GPRS: 'GPRS', EDGE: 'EDGE', '3G': '3G', HSPA: 'HSPA', 'HSPA+': 'HSPA+', LTE: 'LTE', 'LTE+': 'LTE+', '5G': '5G NR', '5G+': '5G NR-A', '5G-A': '5G NR-A', '5G UW': '5G UWB' };
 
     function takeDeviceStatus(s) {
         if (typeof s === 'string') { try { s = JSON.parse(s); } catch (_) { return; } }
@@ -1614,6 +1680,8 @@
         if (!noteOf(noteShown)) noteShown = null;
         if (!notes.length && !statusFolded.length) noteTrayOpen = false;
         if (!noteShown && !noteTrayOpen && notesMayPop()) {
+            // a class with Display message off stays in the title bar (seen, never popped)
+            for (const n of notes) if (!noteDisplays(n)) n.ids.forEach((id) => noteSeen.add(seenKey(id, n)));
             const next = notes.find((n) => !n.ids.some((id) => noteSeen.has(seenKey(id, n))));
             if (next) noteShown = next.id;
         }
@@ -1625,12 +1693,29 @@
     }
 
     /**
-     * A notification sounds once as it arrives (SHNotificationAdd plays its class's Wave; the default
-     * class is Alarm2.wav) and again when a running one ends with its result; updates in between are
-     * silent. An error notice is an error (SystemHand, the Program Error event's settings). Notices
-     * that came during startup or a takeover sound when they can show.
+     * A notification sounds once as it arrives (SHNotificationAdd plays its class's Wave) and again
+     * when a running one ends with its result; updates in between are silent. Its class (phone
+     * sound event) comes from what it is: new mail, a print finished or failed, a reminder, an
+     * error or warning (Program Error's settings), a connection, a message, else Other
+     * notifications. A class with Repeat plays again every 4 s while its bubble stays up (4 more
+     * times at most). Notices that came during startup or a takeover sound when they can show.
      */
+    function noteEvent(n) {
+        const t = String((n && n.title) || '');
+        if (n.type === 'reminder') return 'reminder';
+        if (/^(you have mail|new mail|new e-?mail)/i.test(t)) return 'mail';
+        if (/^(generation|print|upscal\w*) (failed|error)/i.test(t)) return 'print-error';
+        if (/^generation complete/i.test(t)) return 'print';
+        if (n.type === 'error') return 'error';
+        if (n.type === 'warning') return 'warning';
+        if (/^(disconnected|connection lost|offline|reconnecting)/i.test(t)) return 'disconnect';
+        if (/^(connected|reconnected|connection (restored|established))/i.test(t)) return 'connect';
+        if (/\b(text message|new message|chat)\b/i.test(t)) return 'text';
+        return 'notification';
+    }
+
     const noteSounded = new Set();
+    let noteRepeat = null;
     function soundNewNotes(live) {
         for (const k of [...noteSounded]) if (!live.has(k)) noteSounded.delete(k);
         if (!notesMayPop()) return;
@@ -1641,7 +1726,26 @@
             keys.forEach((k) => noteSounded.add(k));
             if (!fresh || n.type === 'error') fresh = n;
         }
-        if (fresh) playSystemSound(fresh.type === 'error' ? 'SystemHand' : 'Notification', { event: fresh.type === 'error' ? 'error' : 'balloon' });
+        if (!fresh) return;
+        const id = noteEvent(fresh);
+        playSystemSound(id, id === 'error' ? { event: 'error' } : {});
+        const p = eventPrefs(id);
+        if (p && p.repeat && p.sound) {
+            clearInterval(noteRepeat);
+            let left = 4;
+            const toastId = fresh.id;
+            noteRepeat = setInterval(() => {
+                const n = noteOf(toastId);
+                if (!n || left-- <= 0 || noteShown !== toastId) { clearInterval(noteRepeat); noteRepeat = null; return; }
+                playSystemSound(id, { vibrate: false, again: true });
+            }, 4000);
+        }
+    }
+
+    /** Display message on screen off for its class: the notification waits in the title bar, no bubble. */
+    function noteDisplays(n) {
+        const p = eventPrefs(noteEvent(n));
+        return !p || p.display;
     }
 
     function noteTitle(n) {
@@ -1961,7 +2065,7 @@
             bubble({ title: 'Updates', role, anchor, sections: links.length ? [text, { links }] : [text], buttons: [{ text: 'Hide' }] });
         } else if (role === 'prints') {
             const n = printsInProgress();
-            bubble({ title: 'Prints', role, anchor, sections: [n ? `${n} ${n === 1 ? 'print is' : 'prints are'} in progress.` : 'No prints in progress.', { links: [{ label: 'Pictures & Videos', action: () => open('gallery') }] }], buttons: [{ text: 'Hide' }] });
+            bubble({ title: 'Prints', role, anchor, sections: [n ? `${n} ${n === 1 ? 'print is' : 'prints are'} in progress.` : 'No prints in progress.', { links: [{ label: 'Pictures', action: () => open('gallery') }] }], buttons: [{ text: 'Hide' }] });
         } else if (role === 'mail') {
             bubble({ title: 'Messaging', role, anchor, sections: [shellMailUnread ? `${shellMailUnread} unread ${shellMailUnread === 1 ? 'message' : 'messages'}.` : 'No unread messages.', ...(apps.has('messaging') ? [{ links: [{ label: 'Messaging', action: () => open('messaging') }] }] : [])], buttons: [{ text: 'Hide' }] });
         }
@@ -2085,7 +2189,8 @@
     // ---------------------------------------------------------------- system sounds
 
     /**
-     * WM 6.1's system sounds, from the device (Yozora #709; dump: ~/.cache/wm61/snd-evidence).
+     * WM 6.1's system sounds, from the device (Yozora #709, #732; dump: ~/.cache/wm61/snd-evidence,
+     * reference screens ~/.cache/wm61/ref-shell).
      * PlaySound's aliases are a fixed table in coredll (slot 1 at 0x033CD308, read on the emulator
      * with ~/.cache/wm61/tools/wmmem2.cs) indexed into HKLM\Snd\Event "Curr0" (multi_sz, the
      * scheme; EventMask 0x1F7ED):
@@ -2095,31 +2200,124 @@
      *   13-15 RN begin/end/intr   16 SystemStart alarm2   17 Maximize ""   18 Minimize ""
      *   19 RecordStart voicbeep   20 RecordEnd RecEnd
      * gwes plays SystemAsterisk / Exclamation / Question / Hand for a message box's icon (MessageBeep;
-     * no icon is MB_OK, SystemDefault) and SystemStart at startup; menus are silent. A notification
-     * plays its class's Wave (HKCU\ControlPanel\Notifications): Default \Windows\Alarm2.wav with
-     * Options 13 (sound + vibrate + display); new e-mail is Options 8 (no sound), so new mail stays
-     * silent. The files are the ROM's own (public/sounds/wm61, \Windows\Alarm2.wav and Default.wav).
+     * no icon is MB_OK, SystemDefault) and SystemStart at startup; menus are silent unless a sound is
+     * picked. A notification plays its class's Wave (HKCU\ControlPanel\Notifications; Options bits
+     * 1 sound, 2 vibrate, 4 repeat, 8 display, 16 flash): Default \Windows\Alarm2.wav, new e-mail
+     * Alarm1 (Options 8: no sound), new text message Alarm3 (9), voice mail Alarm4, Reminders notify
+     * (sound + repeat + display + flash), connections infbeg / infend (0: off).
      *
-     * The phone's switches are the workspace's (Settings > Sounds & Notifications, the desktop's own
-     * store): each WM sound follows the desktop event it stands for (EVENT_OF). (None), a group's
-     * check box off or No Sounds silences it; a sound picked for that event plays as picked; the
-     * scheme's own sound plays WM's. Muted or volume 0 (tabVolume) is silent; tabVolume's master gain
-     * scales the rest. Nothing plays before a tap or key has unlocked audio (no queue, never throws).
+     * Files: every sound of the ROM's \Windows a browser can play, under the ROM's names
+     * (public/sounds/wm61): WAVs as they are, WMAs as MP3 (WMA does not decode in browsers, names
+     * without the ROM's trailing space). The MIDI call tones (busy, calldrop, dpadctl ...) are not
+     * here: nothing synthesises MIDI. The ROM has no lowbatt / online / startup / shutdown files.
+     *
+     * Each phone event (SND_EVENTS: WM's notification classes, CE's sound events and Dreamscape's
+     * own) has per-device options on Settings > Sounds & Notifications > Notifications
+     * (localStorage wmSounds: { taps, tapsLoud, buttons, buttonsLoud, ev: { id: { sound, repeat,
+     * display, vibrate } } }; sound '' = Play sound off, missing = WM's default). Over that, the
+     * workspace's switches still decide (the desktop's store, Settings' Sounds tab): each event
+     * follows the desktop event it stands for (desktop); (None), a group's check box off or No
+     * Sounds silences it; a desktop sound picked for that event plays on a phone that has not
+     * picked its own. New e-mail's Play sound and Display message are Dovecote's own (per browser).
+     * Muted or volume 0 (tabVolume) is silent; tabVolume's master gain scales the rest. Nothing
+     * plays before a tap or key has unlocked audio (no queue, never throws).
      */
     const SND_BASE = '/sounds/wm61/';
-    const SND_FILE = {
-        SystemAsterisk: 'Alarm2.wav', SystemQuestion: 'Alarm2.wav', SystemExclamation: 'Alarm2.wav',
-        SystemHand: 'Alarm2.wav', SystemDefault: 'Default.wav', SystemStart: 'Alarm2.wav',
-        Notification: 'Alarm2.wav'
+    const WM_SOUNDS = [
+        'Alarm1.mp3', 'Alarm2.wav', 'Alarm3.mp3', 'Alarm4.mp3', 'Alarm5.wav', 'Default.wav', 'drive.mp3',
+        'hwandsw.wav', 'Infbeg.wav', 'Infend.wav', 'Loudest.wav', 'MenuPop.wav', 'notify.mp3', 'paloma.mp3',
+        'Quietest.wav', 'RecEnd.wav', 'Ring-Standard.mp3', 'Ring-Vision.mp3', 'Ring-WindowsMobile.mp3',
+        'ShutterSound.wav', 'Splat.wav', 'TimerSound.wav', 'type.mp3', 'Voicbeep.wav'
+    ];
+    // WM's Sound list names a file without its extension, first letter capital ("Notify", "Type")
+    const wmSoundLabel = (file) => {
+        const s = String(file || '').replace(/\.(wav|mp3)$/i, '');
+        return s.charAt(0).toUpperCase() + s.slice(1);
     };
-    // the desktop event (desktopSounds.SCHEME, the Sound dialog's list) whose settings each one follows
-    const SND_EVENT_OF = {
-        SystemAsterisk: 'dialog', SystemQuestion: 'dialog', SystemDefault: 'dialog',
-        SystemExclamation: 'warning', SystemHand: 'critical-stop', SystemStart: 'logon',
-        Notification: 'balloon'
+    /**
+     * The phone's sound events, in WM's Event list order (alphabetical). kind 'note' = a
+     * notification class (Repeat where WM offers it, Display message on screen, Vibrate); 'event' =
+     * a system sound (a message box's beep, startup, menus): Play sound only. desktop = the
+     * workspace event whose settings it follows.
+     */
+    const SND_EVENTS = [
+        { id: 'connect', label: 'Connection established', kind: 'note', sound: 'Infbeg.wav', play: false, desktop: 'balloon' },
+        { id: 'disconnect', label: 'Connection disconnected', kind: 'note', sound: 'Infend.wav', play: false, desktop: 'balloon' },
+        { id: 'beep', label: 'Default beep', kind: 'event', sound: 'Default.wav', desktop: 'dialog' },
+        { id: 'director', label: 'Director: Turn finished', kind: 'note', sound: 'Alarm2.wav', display: false, desktop: 'balloon' },
+        { id: 'error', label: 'Errors', kind: 'event', sound: 'Alarm2.wav', desktop: 'critical-stop' },
+        { id: 'info', label: 'Information', kind: 'event', sound: 'Alarm2.wav', desktop: 'dialog' },
+        { id: 'menu', label: 'Menu pop-up', kind: 'event', sound: 'MenuPop.wav', play: false, desktop: 'dialog' },
+        { id: 'mail', label: 'Messaging: New e-mail message', kind: 'note', sound: 'Alarm1.mp3', desktop: 'notify', dovecote: true },
+        { id: 'text', label: 'Messaging: New text message', kind: 'note', sound: 'Alarm3.mp3', desktop: 'balloon' },
+        { id: 'notification', label: 'Other notifications', kind: 'note', sound: 'Alarm2.wav', repeatable: true, desktop: 'balloon' },
+        { id: 'question', label: 'Questions', kind: 'event', sound: 'Alarm2.wav', desktop: 'dialog' },
+        { id: 'reminder', label: 'Reminders', kind: 'note', sound: 'notify.mp3', repeatable: true, repeat: true, desktop: 'balloon' },
+        { id: 'startup', label: 'Start up', kind: 'event', sound: 'Alarm2.wav', desktop: 'logon' },
+        { id: 'print', label: 'Studio: Print finished', kind: 'note', sound: 'Alarm2.wav', desktop: 'print-complete' },
+        { id: 'print-error', label: 'Studio: Print failed', kind: 'note', sound: 'Alarm2.wav', desktop: 'print-error' },
+        { id: 'warning', label: 'Warnings', kind: 'event', sound: 'Alarm2.wav', desktop: 'warning' }
+    ];
+    const SND_EVENT = new Map(SND_EVENTS.map((e) => [e.id, e]));
+    // the gwes / PlaySound names callers use, as phone events
+    const SND_ALIAS = {
+        SystemAsterisk: 'info', SystemQuestion: 'question', SystemExclamation: 'warning', SystemHand: 'error',
+        SystemDefault: 'beep', SystemStart: 'startup', MenuPopup: 'menu', Notification: 'notification'
     };
     const MSGBOX_SOUND = { info: 'SystemAsterisk', question: 'SystemQuestion', warning: 'SystemExclamation', error: 'SystemHand' };
-    const snd = { ctx: null, buffers: new Map(), last: 0, log: [] };
+    // the screen-tap / hardware-button click (WM's key click; the ROM's hwandsw.wav), soft and loud
+    const SND_CLICK = 'hwandsw.wav';
+    const SND_CLICK_GAIN = { soft: 0.3, loud: 1 };
+    const SND_PREFS_KEY = 'wmSounds';
+    const snd = { ctx: null, buffers: new Map(), last: 0, log: [], preview: null };
+
+    /** This device's sound options (Settings > Sounds & Notifications), defaults filled in. */
+    function soundPrefs() {
+        let p = null;
+        try { p = JSON.parse(localStorage.getItem(SND_PREFS_KEY) || 'null'); } catch (_) { p = null; }
+        p = p && typeof p === 'object' ? p : {};
+        return {
+            taps: p.taps === true, tapsLoud: p.tapsLoud !== false,
+            buttons: p.buttons === true, buttonsLoud: p.buttonsLoud !== false,
+            ev: p.ev && typeof p.ev === 'object' ? p.ev : {}
+        };
+    }
+
+    function saveSoundPrefs(p) {
+        try { localStorage.setItem(SND_PREFS_KEY, JSON.stringify(p)); } catch (_) { /* private mode: this session only */ }
+    }
+
+    const dovecoteMail = () => {
+        const m = window.dovecoteMailSettings;
+        return m && typeof m.soundOn === 'function' ? { sound: !!m.soundOn(), notify: typeof m.notifyOn === 'function' ? !!m.notifyOn() : true } : null;
+    };
+
+    /**
+     * One event's options on this device: { sound (file, '' = Play sound off), own (the device
+     * picked it), repeat, display, vibrate }. New e-mail's Play sound / Display are Dovecote's.
+     */
+    function eventPrefs(id, prefs) {
+        const ev = SND_EVENT.get(id);
+        if (!ev) return null;
+        const o = (prefs || soundPrefs()).ev[id] || {};
+        const own = typeof o.sound === 'string';
+        let sound = own ? o.sound : (ev.play === false ? '' : ev.sound);
+        let display = typeof o.display === 'boolean' ? o.display : ev.display !== false;
+        if (ev.dovecote) {
+            const m = dovecoteMail();
+            if (m) {
+                if (!m.sound) sound = '';
+                else if (sound === '') sound = ev.sound;
+                display = m.notify;
+            }
+        }
+        return {
+            sound, own: own && o.sound !== '',
+            repeat: !!ev.repeatable && (typeof o.repeat === 'boolean' ? o.repeat : !!ev.repeat),
+            display: ev.kind === 'note' ? display : false,
+            vibrate: ev.kind === 'note' && o.vibrate === true
+        };
+    }
 
     function sndUnlock() {
         try {
@@ -2129,7 +2327,11 @@
                 snd.ctx = new Ctor();
             }
             if (snd.ctx.state === 'suspended' && snd.ctx.resume) snd.ctx.resume().catch(() => {});
-            new Set(Object.values(SND_FILE)).forEach(sndBuffer);
+            // the sounds this device uses (each one picked or WM's own), not the whole list
+            const p = soundPrefs();
+            const want = new Set(SND_EVENTS.map((e) => eventPrefs(e.id, p).sound).filter((f) => f && WM_SOUNDS.includes(f)));
+            if (p.taps || p.buttons) want.add(SND_CLICK);
+            want.forEach(sndBuffer);
         } catch (_) { /* no audio */ }
     }
 
@@ -2160,59 +2362,123 @@
         if (snd.log.length > 50) snd.log.shift();
     }
 
+    /** Play a WM file now (gain 0..1); resolves with its source node or null. */
+    async function sndPlayFile(file, gain = 1) {
+        const ctx = snd.ctx;
+        if (!ctx || ctx.state !== 'running') return null;
+        const buffer = await sndBuffer(file);
+        if (!buffer) return null;
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        if (gain < 1) {
+            const g = ctx.createGain();
+            g.gain.value = gain;
+            src.connect(g);
+            g.connect(ctx.destination);
+        } else {
+            src.connect(ctx.destination); // tabVolume's master gain sits on the way out
+        }
+        src.start(0);
+        return src;
+    }
+
     /**
-     * Play one WM system sound (SND_FILE's names); resolves true when it started. opts.event: the
-     * desktop event whose settings decide (default SND_EVENT_OF). A second sound within 300 ms is
-     * dropped: a message box and the desktop's own call for the same box are one beep.
+     * Play one phone sound event (SND_EVENTS ids, or the PlaySound names in SND_ALIAS); resolves
+     * true when it started. opts.event: the desktop event whose settings decide instead of the
+     * event's own (an error notification follows Program Error). A second sound within 300 ms is
+     * dropped: a message box and the desktop's own call for the same box are one beep. A
+     * notification's Vibrate runs whatever the sound does.
      */
     async function playSystemSound(name, opts = {}) {
         try {
-            const file = SND_FILE[name];
-            if (!file) return false;
-            const event = opts.event || SND_EVENT_OF[name];
+            const id = SND_EVENT.has(name) ? name : SND_ALIAS[name];
+            const ev = id && SND_EVENT.get(id);
+            if (!ev) return false;
+            const prefs = eventPrefs(id);
+            if (prefs.vibrate && opts.vibrate !== false) {
+                try { if (navigator.vibrate) navigator.vibrate([400, 150, 400]); } catch (_) { /* no motor */ }
+            }
+            const event = opts.event || ev.desktop;
             const pers = window.desktopPersonalization;
             let own;
             if (pers && typeof pers.soundFile === 'function') {
-                if (name === 'SystemStart' && pers.soundFile('logon-startup') === '') return false;
+                if (id === 'startup' && pers.soundFile('logon-startup') === '') return false;
                 own = pers.soundFile(event);
             }
-            if (own === '' || sndSilentNow()) return false;
+            if (own === '' || prefs.sound === '' || sndSilentNow()) return false;
             const ctx = snd.ctx;
             if (!ctx || ctx.state !== 'running') return false;
             const now = Date.now();
-            if (now - snd.last < 300) return false;
+            if (now - snd.last < 300 && !opts.again) return false;
             snd.last = now;
             const ds = window.desktopSounds;
+            const vista = (f) => typeof f === 'string' && !!(ds && Array.isArray(ds.FILES) && ds.FILES.includes(f) && typeof ds.playFile === 'function');
             const schemeFile = ds && ds.SCHEME ? ds.SCHEME[event] : undefined;
-            // a sound picked for the event on Settings > Sounds & Notifications plays as picked
-            if (typeof own === 'string' && own !== schemeFile && ds && Array.isArray(ds.FILES) && ds.FILES.includes(own) && typeof ds.playFile === 'function') {
-                sndNote(name, event, `vista/${own}`, now);
-                return !!(await ds.playFile(own));
+            // the device's own pick; else a desktop sound picked for the event in this workspace
+            let file = prefs.own ? prefs.sound : (typeof own === 'string' && own !== schemeFile && vista(own) ? own : prefs.sound);
+            if (vista(file)) {
+                sndNote(id, event, `vista/${file}`, now);
+                return !!(await ds.playFile(file));
             }
-            sndNote(name, event, `wm61/${file}`, now);
-            const buffer = await sndBuffer(file);
-            if (!buffer) return false;
-            const src = ctx.createBufferSource();
-            src.buffer = buffer;
-            src.connect(ctx.destination); // tabVolume's master gain sits on the way out
-            src.start(0);
-            return true;
+            if (!WM_SOUNDS.includes(file)) file = ev.sound;
+            sndNote(id, event, `wm61/${file}`, now);
+            return !!(await sndPlayFile(file));
         } catch (_) {
             return false;
         }
     }
 
+    /** Settings' Play button: the file as it sounds, whatever the switches (Stop or the next Play ends it). */
+    async function previewSound(file) {
+        stopPreview();
+        sndUnlock();
+        try {
+            const ds = window.desktopSounds;
+            if (ds && Array.isArray(ds.FILES) && ds.FILES.includes(file) && typeof ds.playFile === 'function') return !!(await ds.playFile(file));
+            if (!WM_SOUNDS.includes(file) || !snd.ctx) return false;
+            if (snd.ctx.state !== 'running') await snd.ctx.resume().catch(() => {});
+            const src = await sndPlayFile(file);
+            snd.preview = src;
+            return !!src;
+        } catch (_) { return false; }
+    }
+
+    function stopPreview() {
+        try { if (snd.preview) snd.preview.stop(); } catch (_) { /* ended */ }
+        snd.preview = null;
+    }
+
+    /** A screen tap or hardware button's click, when Settings has it on (soft or loud). */
+    function playClick(kind) {
+        try {
+            const p = soundPrefs();
+            const on = kind === 'buttons' ? p.buttons : p.taps;
+            if (!on || sndSilentNow() || !snd.ctx || snd.ctx.state !== 'running') return;
+            const loud = kind === 'buttons' ? p.buttonsLoud : p.tapsLoud;
+            sndPlayFile(SND_CLICK, SND_CLICK_GAIN[loud ? 'loud' : 'soft']);
+        } catch (_) { /* no click */ }
+    }
+
     /**
      * The desktop's own sound calls on the phone (desktopSounds.play only plays in desktop mode):
      * a boot message box, an exception window, a dropped connection and the confirmation dialog's
-     * sound map to WM's; every other desktop event (logon, mail, prints, recycle ...) has no WM
-     * sound or comes as a notification here.
+     * sound map to WM's, Dovecote's new mail to New e-mail message (it calls only when its mail
+     * sound is on; its notification, when shown, is the same beep); every other desktop event
+     * (logon, prints, recycle ...) has no WM sound or comes as a notification here.
+     * Screen taps and the back key (DSApp sends it as Escape: WM's hardware button) click when
+     * Settings > Sounds & Notifications has them on.
      */
-    const DESKTOP_SOUND = { error: 'SystemHand', 'critical-stop': 'SystemHand', warning: 'SystemExclamation', dialog: 'SystemAsterisk' };
+    const DESKTOP_SOUND = { error: 'SystemHand', 'critical-stop': 'SystemHand', warning: 'SystemExclamation', dialog: 'SystemAsterisk', notify: 'mail' };
     function watchSystemSounds() {
         const unlock = () => sndUnlock();
-        document.addEventListener('pointerdown', unlock, { capture: true, passive: true });
-        document.addEventListener('keydown', unlock, { capture: true });
+        document.addEventListener('pointerdown', (e) => {
+            unlock();
+            if (e.isTrusted && e.isPrimary !== false) playClick('taps');
+        }, { capture: true, passive: true });
+        document.addEventListener('keydown', (e) => {
+            unlock();
+            if (e.isTrusted && !e.repeat && e.key === 'Escape') playClick('buttons');
+        }, { capture: true });
         const ds = window.desktopSounds;
         if (ds && typeof ds.play === 'function' && !ds.wmWrapped) {
             const play = ds.play;
@@ -2486,6 +2752,75 @@
     }
 
     const TODAY_BG_KEY = 'wmTodayBackground';
+
+    /**
+     * The Today layout per workspace (Yukimi, Nov 10): items, options, background and "use the
+     * desktop wallpaper" are the workspace's (server field mobileToday), not the device's. The
+     * device keys (wmTodayItems / wmTodayOptions / wmTodayBackground / wmTodayUseDesktop) stay the
+     * working copy every reader uses: the workspace's copy is loaded into them on boot and on a
+     * workspace switch, and every Today change (wmSettingsChange with those keys) is saved back.
+     * A workspace with nothing saved yet keeps the current layout until its first change.
+     */
+    const TODAY_PREF = [['items', 'wmTodayItems', true], ['options', 'wmTodayOptions', true], ['background', TODAY_BG_KEY, false], ['useDesktop', 'wmTodayUseDesktop', false]];
+    const TODAY_PREF_KEYS = new Set(TODAY_PREF.map(([, key]) => key));
+    let todayPrefsFor = null;
+
+    function loadTodayPrefs(force) {
+        const id = typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
+        const w = activeWorkspaceRecord();
+        if (!id || !w) return false;
+        if (todayPrefsFor === id && !force) return true;
+        todayPrefsFor = id;
+        const t = w.mobileToday;
+        if (!t || typeof t !== 'object') return true;
+        for (const [k, key, json] of TODAY_PREF) {
+            try {
+                const v = t[k];
+                if (v == null) localStorage.removeItem(key);
+                else localStorage.setItem(key, json ? JSON.stringify(v) : String(v));
+            } catch (_) { /* storage off */ }
+        }
+        return true;
+    }
+
+    function saveTodayPrefs() {
+        const id = typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
+        const w = activeWorkspaceRecord();
+        const c = window.wsClient;
+        if (!id || !w || !c || typeof c.updateWorkspaceSettings !== 'function') return;
+        const out = {};
+        for (const [k, key, json] of TODAY_PREF) {
+            try {
+                const v = localStorage.getItem(key);
+                if (v != null) out[k] = json ? JSON.parse(v) : v;
+            } catch (_) { /* skip */ }
+        }
+        w.mobileToday = out;
+        Promise.resolve(c.updateWorkspaceSettings(id, { mobileToday: out })).catch((err) => console.warn('[wmShell] Today layout not saved', err));
+    }
+
+    function watchTodayPrefs() {
+        const refreshToday = () => { const t = apps.get('today'); if (t && t.page) t.refresh(); };
+        // registered before Today's own listener: the workspace's layout is in place when it redraws
+        document.addEventListener('workspaceSwitchComplete', () => { loadTodayPrefs(true); });
+        document.addEventListener('wmSettingsChange', (ev) => {
+            const keys = (ev && ev.detail && ev.detail.keys) || [];
+            if (keys.some((k) => TODAY_PREF_KEYS.has(k))) saveTodayPrefs();
+        });
+        // another device changed this workspace's Today
+        document.addEventListener('workspaceUpdated', (ev) => {
+            const d = ev && ev.detail;
+            if (!d || !d.settings || d.settings.mobileToday === undefined) return;
+            if (d.workspaceId !== (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null)) return;
+            const w = activeWorkspaceRecord();
+            if (w) w.mobileToday = d.settings.mobileToday;
+            loadTodayPrefs(true);
+            refreshToday();
+        });
+        // first load: once the workspaces are known
+        const first = setInterval(() => { if (loadTodayPrefs(false)) { clearInterval(first); refreshToday(); } }, 500);
+        setTimeout(() => clearInterval(first), 120000);
+    }
     let setTodayBackgroundFn = null; // Pictures & Videos' Set as Today Background (registerGalleryApp)
 
     /** The active workspace's record (workspaceUtils.js), or null. */
@@ -3040,10 +3375,9 @@
                 markTodayLast(page);
             },
             softKeys() {
-                return {
-                    left: { label: 'Pictures', action: () => open('gallery') },
-                    right: { label: 'Menu', menu: () => workspaceMenu().concat(['-', { label: 'Reconnect', disabled: !!(window.wsClient && window.wsClient.isConnected()), action: () => window.wsClient && window.wsClient.manualReconnect() }]) }
-                };
+                // Settings > Buttons picks each key (todaySoftKeyFor); Pictures | Menu by default
+                const menu = () => workspaceMenu().concat(['-', { label: 'Reconnect', disabled: !!(window.wsClient && window.wsClient.isConnected()), action: () => window.wsClient && window.wsClient.manualReconnect() }]);
+                return { left: todaySoftKeyFor('left', menu), right: todaySoftKeyFor('right', menu) };
             }
         };
 
@@ -3397,14 +3731,14 @@
                     const pic = (item && (item.filename || item.original) === name) ? item : galleryList().find((it) => (it.filename || it.original) === name);
                     const url = pic && todayPictureUrl(pic);
                     if (!url) {
-                        messageBox({ title: 'Pictures & Videos', icon: 'error', text: 'This picture cannot be set as the Today background.' });
+                        messageBox({ title: 'Pictures', icon: 'error', text: 'This picture cannot be set as the Today background.' });
                         return;
                     }
                     localStorage.setItem(TODAY_BG_KEY, url);
                     localStorage.setItem(useKey, '0');
                 }
             } catch (_) {
-                messageBox({ title: 'Pictures & Videos', icon: 'error', text: 'The Today background could not be saved on this device.' });
+                messageBox({ title: 'Pictures', icon: 'error', text: 'The Today background could not be saved on this device.' });
                 return;
             }
             document.dispatchEvent(new CustomEvent('wmSettingsChange', { detail: { keys: [useKey, TODAY_BG_KEY] } }));
@@ -3720,7 +4054,7 @@
                 if (input) input.value = q;
                 runSearch(q);
             },
-            title: 'Pictures & Videos',
+            title: 'Pictures',
             icon: 'app-pictures',
             inStart: 'top',
             mount(page) {
@@ -3833,6 +4167,57 @@
         });
     }
 
+    // ---------------------------------------------------------------- Today soft keys
+
+    /**
+     * WM 6.1 Settings > Buttons for the Today screen's soft keys (Yukimi, Nov 10): each key runs an
+     * action (<Menu> = Today's own workspace menu, <Start Menu>, <Notifications>, <None>) or opens a
+     * program. Stored per device (localStorage wmTodaySoftKeys { left, right }: 'menu' | 'start' |
+     * 'notifications' | 'none' | 'app:<id>'); Pictures | Menu by default.
+     */
+    const TODAY_KEYS_KEY = 'wmTodaySoftKeys';
+    const TODAY_KEY_DEFAULT = { left: 'app:gallery', right: 'menu' };
+    const TODAY_KEY_SHORT = { gallery: 'Pictures' };
+    const TODAY_KEY_ACTIONS = [['menu', '<Menu>', 'Menu'], ['none', '<None>', ''], ['notifications', '<Notifications>', 'Notifications'], ['start', '<Start Menu>', 'Start']];
+
+    function todaySoftKeys() {
+        let v = null;
+        try { v = JSON.parse(localStorage.getItem(TODAY_KEYS_KEY) || 'null'); } catch (_) { v = null; }
+        const out = { ...TODAY_KEY_DEFAULT };
+        for (const side of ['left', 'right']) if (v && typeof v[side] === 'string' && v[side]) out[side] = v[side];
+        return out;
+    }
+
+    /** The programs a soft key can open: Start menu / Programs apps (not Today itself). */
+    function todayKeyPrograms() {
+        return [...apps.values()].filter((a) => a.inStart && a.id !== 'today')
+            .map((a) => ({ id: a.id, label: a.startLabel || a.title || a.id, icon: a.icon }))
+            .sort((x, y) => x.label.localeCompare(y.label, undefined, { sensitivity: 'base' }));
+    }
+
+    function todaySoftKeyFor(side, menu) {
+        let v = todaySoftKeys()[side];
+        if (v.startsWith('app:') && !apps.has(v.slice(4))) v = TODAY_KEY_DEFAULT[side];
+        if (v.startsWith('app:')) {
+            const a = apps.get(v.slice(4));
+            if (!a) return null;
+            // a soft key holds a short name (WM's Today: "Calendar", "Contacts"): an app's softLabel
+            return { label: a.softLabel || TODAY_KEY_SHORT[a.id] || a.startLabel || a.title || a.id, action: () => open(a.id) };
+        }
+        if (v === 'none') return null;
+        if (v === 'start') return { label: 'Start', action: () => toggleStartMenu() };
+        if (v === 'notifications') {
+            return {
+                label: 'Notifications',
+                action: () => {
+                    if (notes.length || statusFolded.length) noteIconTap();
+                    else messageBox({ title: 'Notifications', icon: 'info', text: 'There are no notifications.' });
+                }
+            };
+        }
+        return { label: 'Menu', menu };
+    }
+
     // ---------------------------------------------------------------- picture view
 
     // WM 6.1's picture view: black, the title bar with ok, soft keys Send / Menu. The PhotoSwipe
@@ -3853,6 +4238,109 @@
         ['Move to scraps', 'Move to Scraps'],
         ['Destroy image', 'Delete']
     ];
+
+    /**
+     * The picture view's toolbar (Yukimi, Nov 10: favourites, zoom, edit in Studio, delete ...): a
+     * WM tool strip above the soft keys, like the command bar toolbars of WM's Office Mobile. Each
+     * button runs the viewer's own (lightbox.js: Pin, Upscale, Scraps, Destroy, which ask first as
+     * on the desktop) or the Menu's own action (Studio, Director); one the picture has no button
+     * for is greyed. The viewer has no full-screen mode on phones (the WM bars stay), so neither
+     * does the strip; PhotoSwipe's bottom padding makes room for it.
+     */
+    const VIEWBAR = [
+        // [act, label, lightbox.js button title (null = the shell's own)]
+        ['prev', 'Previous', null], ['next', 'Next', null], '|',
+        ['zoom', 'Zoom', 'Zoom in/out'], ['pin', 'Pin', 'Pin image'], '|',
+        ['studio', 'Edit in DreamStudio', null], ['director', 'Ask the Director', null], ['upscale', 'Upscale', 'Upscale image'], '|',
+        ['scraps', 'Move to Scraps', 'Move to scraps'], ['delete', 'Delete', 'Destroy image']
+    ];
+    const VIEWBAR_H = 24;
+    let viewbarPswp = null;
+
+    function viewerPswp() {
+        try { return (typeof lightbox !== 'undefined' && lightbox && lightbox.pswp) || window.pswp || null; } catch (_) { return null; }
+    }
+
+    function viewbarState(act, title) {
+        const item = viewerItem();
+        const pic = item && (item.filename || item.original);
+        if (act === 'prev' || act === 'next') return { enabled: viewerSlides() > 1 };
+        if (act === 'studio') return { enabled: !!(item && typeof window.openManualModalWithContent === 'function') };
+        if (act === 'director') return { enabled: !!(pic && typeof window.askWrenAboutImage === 'function') };
+        const b = viewerButton(title);
+        return { enabled: !!b, pressed: act === 'pin' ? !!(b && item && item.isPinned) : null };
+    }
+
+    function renderViewbar() {
+        const bar = shell && shell.querySelector('.wm-viewbar');
+        if (!bar) return;
+        bar.hidden = !viewerActive;
+        if (!viewerActive) return;
+        if (!bar.firstChild) {
+            bar.innerHTML = VIEWBAR.map((b) => (b === '|' ? '<span class="wm-viewbar-sep" aria-hidden="true"></span>'
+                : `<button type="button" class="wm-viewbar-btn" data-act="${b[0]}" title="${escapeHtml(b[1])}" aria-label="${escapeHtml(b[1])}"></button>`)).join('');
+            bar.addEventListener('click', (e) => {
+                const btn = e.target.closest('.wm-viewbar-btn');
+                if (!btn || btn.disabled) return;
+                e.stopPropagation();
+                closeMenus(true);
+                viewbarPress(btn.dataset.act);
+            });
+        }
+        for (const b of VIEWBAR) {
+            if (b === '|') continue;
+            const el = bar.querySelector(`[data-act="${b[0]}"]`);
+            const st = viewbarState(b[0], b[2]);
+            el.disabled = !st.enabled;
+            if (st.pressed == null) el.removeAttribute('aria-pressed');
+            else {
+                el.setAttribute('aria-pressed', st.pressed ? 'true' : 'false');
+                el.title = st.pressed ? 'Unpin' : 'Pin';
+                el.setAttribute('aria-label', el.title);
+            }
+        }
+    }
+
+    function viewbarPress(act) {
+        const p = viewerPswp();
+        const item = viewerItem();
+        const pic = item && (item.filename || item.original);
+        if (act === 'prev') { if (p && p.prev) p.prev(); return; }
+        if (act === 'next') { if (p && p.next) p.next(); return; }
+        // Edit: as the Menu's Edit > DreamStudio / Director, over the viewer (Back returns here)
+        if (act === 'studio') { if (item) window.openManualModalWithContent({ type: 'image', image: item }); return; }
+        if (act === 'director') { if (pic) window.askWrenAboutImage(pic); return; }
+        const b = VIEWBAR.find((x) => x !== '|' && x[0] === act);
+        if (b && b[2]) viewerPress(b[2]);
+        // Pin answers after a round trip: the button follows
+        if (act === 'pin') [400, 1200, 2500].forEach((ms) => setTimeout(renderViewbar, ms));
+    }
+
+    /** PhotoSwipe's padding on the phone: the title bar above, the toolbar and soft keys below. */
+    function viewerPadding() {
+        const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        return { top: 26 * px, bottom: (26 + VIEWBAR_H) * px, left: 0, right: 0 };
+    }
+
+    /** The viewer that just opened: room for the toolbar, and the toolbar follows its slides. */
+    function attachViewbar() {
+        const p = viewerPswp();
+        try {
+            if (typeof lightbox !== 'undefined' && lightbox && lightbox.options) lightbox.options.paddingFn = viewerPadding;
+        } catch (_) { /* no gallery lightbox yet */ }
+        if (p && p !== viewbarPswp) {
+            viewbarPswp = p;
+            if (p.options && p.options.paddingFn !== viewerPadding) {
+                p.options.paddingFn = viewerPadding;
+                try { if (typeof p.updateSize === 'function') p.updateSize(true); } catch (_) { /* sized at the next resize */ }
+            }
+            if (typeof p.on === 'function') {
+                p.on('change', () => { renderViewbar(); renderSoftKeys(); });
+                p.on('destroy', () => { if (viewbarPswp === p) viewbarPswp = null; });
+            }
+        }
+        renderViewbar();
+    }
 
     /** Close whichever PhotoSwipe is open (the gallery's or a standalone one): its own close. */
     function closeViewer() {
@@ -3980,8 +4468,10 @@
         closeMenus(true);
         if (open) {
             root.setAttribute('data-wm-viewer', '');
-            setTitle('Pictures & Videos');
+            setTitle('Pictures');
+            attachViewbar();
         } else {
+            renderViewbar();
             root.removeAttribute('data-wm-viewer');
             const app = current && apps.get(current);
             // an app on one of its own pages names that page (titleNow(), e.g. the Director's Prints)
@@ -4317,6 +4807,7 @@
         ['menu-check', 'menu-submenu-arrow'].forEach((n) => ['', '@2x', '@4x'].forEach((x) => { const img = new Image(); img.src = `/static_images/wm61/${n}${x}.png`; }));
         // the wait cursor's frames: a busy() right after boot must not show an empty frame while they download
         for (let f = 0; f < 16; f++) { const img = new Image(); img.decoding = 'async'; img.srcset = srcset(`wait-${f}`); img.src = art(`wait-${f}`); }
+        watchTodayPrefs();
         registerTodayApp();
         registerGalleryApp();
         watchTheme();
@@ -4395,6 +4886,8 @@
             pop.style.bottom = 'auto';
             pop.style.left = `${Math.max(2, Math.min(x - sr.left, sr.width - w - 2))}px`;
             pop.style.top = `${Math.max(2, Math.min(y - sr.top, sr.height - h - 2))}px`;
+            // inside the content box (not over the title bar or the soft keys)
+            clampPopup(pop);
         },
         /** Apps with their own back steps call this after a step (it adds the entry after a tap). */
         syncHistory: () => syncHistory(),
@@ -4419,7 +4912,32 @@
         afterPaint: () => afterPaint(),
         isBusy: () => busyCount > 0,
         /** WM 6.1 system sounds: play('SystemHand' | 'SystemExclamation' | 'Notification' ...), log (what played). */
-        sounds: { play: (name, opts) => playSystemSound(name, opts || {}), log: snd.log, files: SND_FILE },
+        /** Settings > Buttons: the Today soft keys ({ left, right } values, the actions, the programs). */
+        todaySoftKeys: {
+            get: () => todaySoftKeys(),
+            set: (v) => {
+                const cur = todaySoftKeys();
+                const next = { left: (v && v.left) || cur.left, right: (v && v.right) || cur.right };
+                try { localStorage.setItem(TODAY_KEYS_KEY, JSON.stringify(next)); } catch (_) { /* this session only */ }
+                if (current === 'today') renderSoftKeys();
+            },
+            defaults: () => ({ ...TODAY_KEY_DEFAULT }),
+            actions: () => TODAY_KEY_ACTIONS.map(([value, label, key]) => ({ value, label, key })),
+            programs: () => todayKeyPrograms()
+        },
+        sounds: {
+            play: (name, opts) => playSystemSound(name, opts || {}),
+            log: snd.log,
+            /** Settings' Sound list: the ROM's files ({ file, label }). */
+            files: () => WM_SOUNDS.map((file) => ({ file, label: wmSoundLabel(file) })),
+            /** The phone's sound events ({ id, label, kind, sound, repeatable, desktop, dovecote }). */
+            events: () => SND_EVENTS.map((e) => ({ ...e })),
+            prefs: soundPrefs,
+            eventPrefs: (id) => eventPrefs(id),
+            setPrefs: (p) => { saveSoundPrefs(p); sndUnlock(); },
+            preview: previewSound,
+            stop: stopPreview
+        },
         /** Today's wallpaper placement (Settings > Today > Wallpaper). */
         wallpaper: {
             picture: () => todayPicture(),

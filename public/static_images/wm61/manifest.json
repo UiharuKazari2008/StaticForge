@@ -6269,6 +6269,207 @@
         "generated"
       ],
       "notes": "Large (Programs grid) version of app-weather. Not ROM art."
+    },
+    "set-buttons": {
+      "1x": {
+        "source": "shellres.192.dll ico_13944_1_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13944_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "4x-UltraSharp from @2x (~/.cache/wm61/up4/run.js)",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Buttons (Settings grid, Melaton Mobile Settings app; Today soft keys)."
+    },
+    "status-data-nr": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "5G NR (NSA and standalone): Melaton extension (WM 6.1 had no such network). Letters as 2 px holes in the ROM box (scripts/generate-wm-data-icons.py). Letters only = available, not the active link."
+    },
+    "status-data-nr-active": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G) + ico_4776 arrows",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "5G NR (NSA and standalone): Melaton extension (WM 6.1 had no such network). Letters as 2 px holes in the ROM box (scripts/generate-wm-data-icons.py). With the data arrows of ico_4776 = connected."
+    },
+    "status-data-nr-a": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "5G NR Advanced, white A beside the box as 5G+'s plus: Melaton extension (WM 6.1 had no such network). Letters as 2 px holes in the ROM box (scripts/generate-wm-data-icons.py). Letters only = available, not the active link."
+    },
+    "status-data-nr-a-active": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G) + ico_4776 arrows",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "5G NR Advanced, white A beside the box as 5G+'s plus: Melaton extension (WM 6.1 had no such network). Letters as 2 px holes in the ROM box (scripts/generate-wm-data-icons.py). With the data arrows of ico_4776 = connected."
+    },
+    "status-data-uwb": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          20,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G)",
+        "size": [
+          40,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          80,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "5G Ultra Wideband (mmWave); 40 x 32 at 2x, wider than the square cell: Melaton extension (WM 6.1 had no such network). Letters as 2 px holes in the ROM box (scripts/generate-wm-data-icons.py). Letters only = available, not the active link."
+    },
+    "status-data-uwb-active": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          20,
+          16
+        ]
+      },
+      "2x": {
+        "source": "Melaton drawn on shellres.192.dll ico_4945 (3G) + ico_4776 arrows",
+        "size": [
+          40,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          80,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled",
+        "melaton-drawn"
+      ],
+      "notes": "5G Ultra Wideband (mmWave); 40 x 32 at 2x, wider than the square cell: Melaton extension (WM 6.1 had no such network). Letters as 2 px holes in the ROM box (scripts/generate-wm-data-icons.py). With the data arrows of ico_4776 = connected."
     }
   },
   "notDelivered": {

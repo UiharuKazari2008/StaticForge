@@ -1,4 +1,4 @@
-/* Melaton Mobile Settings: Personal pages (Sounds & Notifications, Input, Lock, Owner Information, Screen accessibility, Workspace) (wmSettingsPersonal.js, Yozora #709); html.ui-mobile only. */
+/* Melaton Mobile Settings: Personal pages (Buttons, Sounds & Notifications, Input, Lock, Owner Information, Screen accessibility, Workspace) (wmSettingsPersonal.js, Yozora #709, #732); html.ui-mobile only. */
 
 /* a dependent option sits under its parent's text (WM: 19 px in, Notifications under Programs) */
 html.ui-mobile .wm-form .wmsp-indent {
@@ -121,4 +121,144 @@ html.ui-mobile .wm-form .wmsp-swatch-ws {
     height: 100%;
     border: calc(1 * var(--wm-px)) solid #4a4d4a;
     box-sizing: border-box;
+}
+
+/* Sounds: Screen taps / Hardware buttons' Soft and Loud (WM 6.1: radios 40 px in, Loud at 110 px;
+ * ~/.cache/wm61/ref-shell/n1.png) */
+html.ui-mobile .wm-form .wmsp-radios {
+    display: grid;
+    grid-template-columns: calc(70 * var(--wm-px)) auto;
+    justify-content: start;
+    padding-left: calc(32 * var(--wm-px));
+    margin-bottom: calc(1 * var(--wm-px));
+}
+
+/* Notifications, a phone event (n5.png / n6.png): the check boxes on the left, the Sound combo
+ * (87 px) with Play and Stop (20 x 20, 5 px apart) under it on the right; Display and Vibrate below */
+html.ui-mobile .wm-form .wmsp-event {
+    padding-left: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile .wm-form .wmsp-ev {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) calc(87 * var(--wm-px));
+    column-gap: calc(4 * var(--wm-px));
+    /* wide screens: the combo stays beside its check boxes, not across the screen */
+    max-width: calc(300 * var(--wm-px));
+    align-items: start;
+    margin-bottom: calc(5 * var(--wm-px));
+}
+
+html.ui-mobile .wm-form .wmsp-ev-left .wmsp-indent {
+    padding-left: calc(19 * var(--wm-px));
+}
+
+html.ui-mobile .wm-form .wmsp-ev-right .wm-combo {
+    width: 100%;
+}
+
+html.ui-mobile .wm-form .wmsp-media {
+    display: flex;
+    gap: calc(5 * var(--wm-px));
+    margin-top: calc(5 * var(--wm-px));
+}
+
+html.ui-mobile .wm-form .wmsp-media .wm-button {
+    width: calc(20 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+}
+
+/* the stop glyph: a black square 7 x 7 (WM's media button) */
+html.ui-mobile .wm-form .wmsp-stop {
+    position: relative;
+    min-width: 0;
+    padding: 0 !important;
+}
+
+html.ui-mobile .wm-form .wmsp-stop::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(7 * var(--wm-px));
+    height: calc(7 * var(--wm-px));
+    margin: calc(-3.5 * var(--wm-px)) 0 0 calc(-3.5 * var(--wm-px));
+    background: currentColor;
+}
+
+/* Buttons (b1.png): "1. Select a button:" over a list with a tint Button | Assignment header
+ * (20 px; Button column 92 px: WM's 68 fits "Button 1", not "Right soft key"), 17 px rows with the assignment's 16 px icon; "2. Assign a program:" */
+html.ui-mobile .wm-form .wmsp-step {
+    margin: calc(3 * var(--wm-px)) 0 calc(3 * var(--wm-px));
+}
+
+html.ui-mobile .wm-form .wmsp-btn-list {
+    min-height: calc(150 * var(--wm-px));
+    margin-bottom: calc(8 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    overflow-y: auto;
+}
+
+html.ui-mobile .wm-form :is(.wmsp-btn-head, .wmsp-btn-row) {
+    display: grid;
+    grid-template-columns: calc(92 * var(--wm-px)) minmax(0, 1fr);
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: left;
+}
+
+html.ui-mobile .wm-form .wmsp-btn-head {
+    height: calc(20 * var(--wm-px));
+    background: var(--wm-tint);
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+}
+
+html.ui-mobile .wm-form .wmsp-btn-head > span {
+    padding-left: calc(6 * var(--wm-px));
+}
+
+html.ui-mobile .wm-form .wmsp-btn-head > span + span {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    border-left: calc(1 * var(--wm-px)) solid #000;
+}
+
+html.ui-mobile .wm-form .wmsp-btn-row {
+    min-height: calc(17 * var(--wm-px));
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    color: #000;
+    font: inherit;
+    white-space: nowrap;
+}
+
+html.ui-mobile .wm-form .wmsp-btn-name {
+    display: flex;
+    align-items: center;
+    gap: calc(2 * var(--wm-px));
+    padding-left: calc(2 * var(--wm-px));
+    min-width: 0;
+}
+
+/* WM highlights the selected row's button name only */
+html.ui-mobile .wm-form .wmsp-btn-row.is-selected .wmsp-btn-name > span {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+    padding: 0 calc(1 * var(--wm-px));
+}
+
+html.ui-mobile .wm-form .wmsp-btn-icon {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+html.ui-mobile .wm-form .wmsp-btn-assign {
+    padding-left: calc(6 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
 }

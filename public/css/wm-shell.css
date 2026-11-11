@@ -427,6 +427,15 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
 .wm-status-icon[data-icon="data-4g-active"] { background-image: image-set(url('/static_images/wm61/status-data-4g-active.png') 1x, url('/static_images/wm61/status-data-4g-active@2x.png') 2x, url('/static_images/wm61/status-data-4g-active@4x.png') 4x); }
 .wm-status-icon[data-icon="data-4g-plus"] { background-image: image-set(url('/static_images/wm61/status-data-4g-plus.png') 1x, url('/static_images/wm61/status-data-4g-plus@2x.png') 2x, url('/static_images/wm61/status-data-4g-plus@4x.png') 4x); }
 .wm-status-icon[data-icon="data-4g-plus-active"] { background-image: image-set(url('/static_images/wm61/status-data-4g-plus-active.png') 1x, url('/static_images/wm61/status-data-4g-plus-active@2x.png') 2x, url('/static_images/wm61/status-data-4g-plus-active@4x.png') 4x); }
+.wm-status-icon[data-icon="data-nr"] { background-image: image-set(url('/static_images/wm61/status-data-nr.png') 1x, url('/static_images/wm61/status-data-nr@2x.png') 2x, url('/static_images/wm61/status-data-nr@4x.png') 4x); }
+.wm-status-icon[data-icon="data-nr-active"] { background-image: image-set(url('/static_images/wm61/status-data-nr-active.png') 1x, url('/static_images/wm61/status-data-nr-active@2x.png') 2x, url('/static_images/wm61/status-data-nr-active@4x.png') 4x); }
+.wm-status-icon[data-icon="data-nr-a"] { background-image: image-set(url('/static_images/wm61/status-data-nr-a.png') 1x, url('/static_images/wm61/status-data-nr-a@2x.png') 2x, url('/static_images/wm61/status-data-nr-a@4x.png') 4x); }
+.wm-status-icon[data-icon="data-nr-a-active"] { background-image: image-set(url('/static_images/wm61/status-data-nr-a-active.png') 1x, url('/static_images/wm61/status-data-nr-a-active@2x.png') 2x, url('/static_images/wm61/status-data-nr-a-active@4x.png') 4x); }
+.wm-status-icon[data-icon="data-uwb"] { background-image: image-set(url('/static_images/wm61/status-data-uwb.png') 1x, url('/static_images/wm61/status-data-uwb@2x.png') 2x, url('/static_images/wm61/status-data-uwb@4x.png') 4x); }
+.wm-status-icon[data-icon="data-uwb-active"] { background-image: image-set(url('/static_images/wm61/status-data-uwb-active.png') 1x, url('/static_images/wm61/status-data-uwb-active@2x.png') 2x, url('/static_images/wm61/status-data-uwb-active@4x.png') 4x); }
+/* UWB's box is wider than the square cell (Yukimi: wider is fine): 20 x 16 px */
+.wm-status-icon[data-icon="data-uwb"],
+.wm-status-icon[data-icon="data-uwb-active"] { width: calc(20 * var(--wm-px)); }
 .wm-status-icon[data-icon="data-5g"] { background-image: image-set(url('/static_images/wm61/status-data-5g.png') 1x, url('/static_images/wm61/status-data-5g@2x.png') 2x, url('/static_images/wm61/status-data-5g@4x.png') 4x); }
 .wm-status-icon[data-icon="data-5g-active"] { background-image: image-set(url('/static_images/wm61/status-data-5g-active.png') 1x, url('/static_images/wm61/status-data-5g-active@2x.png') 2x, url('/static_images/wm61/status-data-5g-active@4x.png') 4x); }
 .wm-status-icon[data-icon="data-5g-plus"] { background-image: image-set(url('/static_images/wm61/status-data-5g-plus.png') 1x, url('/static_images/wm61/status-data-5g-plus@2x.png') 2x, url('/static_images/wm61/status-data-5g-plus@4x.png') 4x); }
@@ -2687,3 +2696,85 @@ html.ui-mobile #confirmationDialog #confirmationMessage::after {
     height: calc(32 * var(--wm-px));
     flex: 0 0 auto;
 }
+
+/* ---- picture view toolbar (Yukimi, Nov 10): a WM tool strip above the soft keys, 24 px, icon
+ * buttons 22 x 20 with 11 x 11 black glyphs (our own art, the Pictures tool strip's style); each
+ * runs the viewer's own button (lightbox.js). Pressed = the picture is pinned. The viewer leaves
+ * room for it (wmShell sets PhotoSwipe's padding). ---- */
+.wm-viewbar {
+    position: absolute;
+    z-index: 3;
+    left: 0;
+    right: 0;
+    bottom: calc(env(safe-area-inset-bottom) + 26 * var(--wm-px));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(2 * var(--wm-px));
+    height: calc(24 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px)) 0 calc(env(safe-area-inset-left) + 3 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+    box-sizing: border-box;
+}
+
+.wm-viewbar[hidden] {
+    display: none !important;
+}
+
+.wm-viewbar-sep {
+    flex: 0 0 auto;
+    width: calc(1 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    background: #8c8e8c;
+}
+
+.wm-viewbar-btn {
+    flex: 0 1 calc(22 * var(--wm-px));
+    min-width: calc(18 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    padding: 0 !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: var(--wm-tint) !important;
+    color: #000 !important;
+}
+
+.wm-viewbar-btn::before {
+    content: '';
+    display: block;
+    width: calc(11 * var(--wm-px));
+    height: calc(11 * var(--wm-px));
+    margin: auto;
+    background: currentColor;
+    -webkit-mask: var(--wm-vb-glyph) center / 100% 100% no-repeat;
+    mask: var(--wm-vb-glyph) center / 100% 100% no-repeat;
+}
+
+.wm-viewbar-btn:active:not(:disabled),
+.wm-viewbar-btn[aria-pressed="true"] {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text) !important;
+}
+
+.wm-viewbar-btn:disabled {
+    color: #8c8e8c !important;
+}
+
+/* wide screens (landscape, Fold inner): the buttons keep their size, grouped from the left */
+@media (min-aspect-ratio: 4 / 3) {
+    .wm-viewbar {
+        justify-content: flex-start;
+        gap: calc(4 * var(--wm-px));
+    }
+}
+
+.wm-viewbar-btn[data-act="prev"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M1 1h1v1h-1zM7 1h1v1h-1zM1 2h1v1h-1zM6 2h2v1h-2zM1 3h1v1h-1zM5 3h3v1h-3zM1 4h1v1h-1zM4 4h4v1h-4zM1 5h1v1h-1zM3 5h5v1h-5zM1 6h1v1h-1zM4 6h4v1h-4zM1 7h1v1h-1zM5 7h3v1h-3zM1 8h1v1h-1zM6 8h2v1h-2zM1 9h1v1h-1zM7 9h1v1h-1z'/%3E%3C/svg%3E"); }
+.wm-viewbar-btn[data-act="zoom"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M2 0h5v1h-5zM1 1h1v1h-1zM7 1h1v1h-1zM0 2h1v1h-1zM4 2h1v1h-1zM8 2h1v1h-1zM0 3h1v1h-1zM4 3h1v1h-1zM8 3h1v1h-1zM0 4h1v1h-1zM2 4h5v1h-5zM8 4h1v1h-1zM0 5h1v1h-1zM4 5h1v1h-1zM8 5h1v1h-1zM0 6h1v1h-1zM4 6h1v1h-1zM8 6h1v1h-1zM1 7h1v1h-1zM7 7h1v1h-1zM2 8h5v1h-5zM8 8h2v1h-2zM8 9h3v1h-3zM9 10h2v1h-2z'/%3E%3C/svg%3E"); }
+.wm-viewbar-btn[data-act="pin"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M5 0h1v1h-1zM4 1h3v1h-3zM4 2h3v1h-3zM0 3h11v1h-11zM1 4h9v1h-9zM2 5h7v1h-7zM3 6h5v1h-5zM3 7h5v1h-5zM2 8h3v1h-3zM6 8h3v1h-3zM2 9h2v1h-2zM7 9h2v1h-2zM1 10h1v1h-1zM9 10h1v1h-1z'/%3E%3C/svg%3E"); }
+.wm-viewbar-btn[data-act="studio"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M9 0h1v1h-1zM8 1h3v1h-3zM7 2h3v1h-3zM6 3h3v1h-3zM5 4h3v1h-3zM4 5h3v1h-3zM3 6h3v1h-3zM2 7h3v1h-3zM1 8h4v1h-4zM1 9h2v1h-2zM0 10h3v1h-3z'/%3E%3C/svg%3E"); }
+.wm-viewbar-btn[data-act="director"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M1 1h9v1h-9zM0 2h1v1h-1zM10 2h1v1h-1zM0 3h1v1h-1zM2 3h7v1h-7zM10 3h1v1h-1zM0 4h1v1h-1zM10 4h1v1h-1zM0 5h1v1h-1zM2 5h5v1h-5zM10 5h1v1h-1zM0 6h1v1h-1zM10 6h1v1h-1zM1 7h3v1h-3zM5 7h5v1h-5zM3 8h2v1h-2zM3 9h1v1h-1z'/%3E%3C/svg%3E"); }
+.wm-viewbar-btn[data-act="upscale"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h3v1h-3zM8 0h3v1h-3zM0 1h2v1h-2zM9 1h2v1h-2zM0 2h1v1h-1zM2 2h1v1h-1zM8 2h1v1h-1zM10 2h1v1h-1zM3 3h5v1h-5zM3 4h1v1h-1zM7 4h1v1h-1zM3 5h1v1h-1zM7 5h1v1h-1zM3 6h1v1h-1zM7 6h1v1h-1zM3 7h5v1h-5zM0 8h1v1h-1zM2 8h1v1h-1zM8 8h1v1h-1zM10 8h1v1h-1zM0 9h2v1h-2zM9 9h2v1h-2zM0 10h3v1h-3zM8 10h3v1h-3z'/%3E%3C/svg%3E"); }
+.wm-viewbar-btn[data-act="scraps"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M3 0h5v1h-5zM0 1h11v1h-11zM1 3h9v1h-9zM1 4h1v1h-1zM3 4h1v1h-1zM5 4h1v1h-1zM7 4h1v1h-1zM9 4h1v1h-1zM1 5h1v1h-1zM3 5h1v1h-1zM5 5h1v1h-1zM7 5h1v1h-1zM9 5h1v1h-1zM1 6h1v1h-1zM3 6h1v1h-1zM5 6h1v1h-1zM7 6h1v1h-1zM9 6h1v1h-1zM1 7h1v1h-1zM3 7h1v1h-1zM5 7h1v1h-1zM7 7h1v1h-1zM9 7h1v1h-1zM1 8h1v1h-1zM3 8h1v1h-1zM5 8h1v1h-1zM7 8h1v1h-1zM9 8h1v1h-1zM1 9h9v1h-9z'/%3E%3C/svg%3E"); }
+.wm-viewbar-btn[data-act="delete"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h2v1h-2zM9 0h2v1h-2zM0 1h3v1h-3zM8 1h3v1h-3zM1 2h3v1h-3zM7 2h3v1h-3zM2 3h3v1h-3zM6 3h3v1h-3zM3 4h5v1h-5zM4 5h3v1h-3zM3 6h5v1h-5zM2 7h3v1h-3zM6 7h3v1h-3zM1 8h3v1h-3zM7 8h3v1h-3zM0 9h3v1h-3zM8 9h3v1h-3zM0 10h2v1h-2zM9 10h2v1h-2z'/%3E%3C/svg%3E"); }
+.wm-viewbar-btn[data-act="next"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M3 1h1v1h-1zM9 1h1v1h-1zM3 2h2v1h-2zM9 2h1v1h-1zM3 3h3v1h-3zM9 3h1v1h-1zM3 4h4v1h-4zM9 4h1v1h-1zM3 5h5v1h-5zM9 5h1v1h-1zM3 6h4v1h-4zM9 6h1v1h-1zM3 7h3v1h-3zM9 7h1v1h-1zM3 8h2v1h-2zM9 8h1v1h-1zM3 9h1v1h-1zM9 9h1v1h-1z'/%3E%3C/svg%3E"); }
