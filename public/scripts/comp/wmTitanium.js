@@ -41,13 +41,13 @@
     const SLIDE_START = 22.5; // a page starts to follow the finger after 45
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     // wm65 art by name ('ti-2051'); 's:owner' / 'x:app-studio-lg' / 'p:wren' = a 6.5 Start icon / a 6.1 set
-    // icon / a Director persona's picture
+    // icon / a Director persona's picture; 'w:rain' = a weather condition (ti-w-*)
     // icon in the panel icons' frame with their mirror image (ti-s-*, ti-x-*: made for the items 6.5
     // has no panel art for); or a path
     const artUrl = (name, scale) => {
         const n = String(name || '');
         if (n.startsWith('/')) return n;
-        const file = n.startsWith('x:') ? `ti-x-${n.slice(2)}` : n.startsWith('s:') ? `ti-s-${n.slice(2)}` : n.startsWith('p:') ? `ti-p-${n.slice(2)}` : n;
+        const file = n.startsWith('x:') ? `ti-x-${n.slice(2)}` : n.startsWith('s:') ? `ti-s-${n.slice(2)}` : n.startsWith('p:') ? `ti-p-${n.slice(2)}` : n.startsWith('w:') ? `ti-w-${n.slice(2)}` : n;
         return `${ART}${file}${scale > 1 ? `@${scale}x` : ''}.png`;
     };
     // 1x = the ROM art halved, 2x = the ROM art, 4x = it upscaled (GPU) for dense phone screens
@@ -225,7 +225,7 @@
     function panelIcon(name) {
         const n = String(name || '');
         if (!n || n.startsWith('/')) return n || 'x:app-programs-lg';
-        if (/^(ti-|s:|x:|p:)/.test(n)) return n;
+        if (/^(ti-|s:|x:|p:|w:)/.test(n)) return n;
         return `x:${n.replace(/^today-/, 'app-').replace(/-lg$/, '')}-lg`;
     }
 

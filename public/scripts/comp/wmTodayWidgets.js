@@ -816,10 +816,10 @@
         const w = W && typeof W.current === 'function' ? W.current() : null;
         if (!w) return null;
         const go = () => open('weather');
+        // the condition is the panel's picture, at the top right as on 6.5's panels
         return {
-            label: 'weather', icon: 'x:app-weather-lg',
+            label: 'weather', icon: w.icon ? `w:${w.icon}` : 'x:app-weather-lg',
             pages: [{
-                smallIcon: w.iconUrl2x || w.iconUrl || '',
                 title: `${deg(w.temp)}${w.unit || ''} ${w.condition || ''}`.trim(),
                 line2: [w.place, w.region].filter(Boolean).join(', '),
                 line3: w.hi != null && w.lo != null ? `${deg(w.hi)} / ${deg(w.lo)}` : ''
@@ -837,7 +837,7 @@
         const u = (W && typeof W.unit === 'function' && W.unit()) || '';
         days.forEach((d) => {
             p.pages.push({
-                smallIcon: d.iconUrl2x || d.iconUrl || '',
+                icon: d.icon ? `w:${d.icon}` : '',
                 title: `${d.day}: ${d.condition || ''}`.replace(/: $/, ''),
                 line2: d.hi != null && d.lo != null ? `${deg(d.hi)}${u} / ${deg(d.lo)}${u}` : '',
                 line3: d.rain != null ? `Rain ${Math.round(d.rain)}%` : ''

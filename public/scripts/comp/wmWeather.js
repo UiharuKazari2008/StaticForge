@@ -1138,7 +1138,7 @@
             if (!p || !data || !Array.isArray(data.daily)) return [];
             return data.daily.slice(1, 7).map((d) => {
                 const cond = condition(d.code, true);
-                return { day: DAYS[dayOf(d.date)], condition: cond.text, iconUrl: iconUrl(cond.icon), iconUrl2x: iconUrl(cond.icon, true), hi: tempOf(d.maxC), lo: tempOf(d.minC), rain: num(d.rain) };
+                return { day: DAYS[dayOf(d.date)], condition: cond.text, icon: cond.icon, iconUrl: iconUrl(cond.icon), iconUrl2x: iconUrl(cond.icon, true), hi: tempOf(d.maxC), lo: tempOf(d.minC), rain: num(d.rain) };
             });
         },
         open() { if (ws) ws.open(APP_ID); },
