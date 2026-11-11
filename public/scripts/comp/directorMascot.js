@@ -138,6 +138,7 @@ class DirectorMascot {
         this.persona = null;
         this.manifest = null;
         this.working = false;
+        this._thinkAloud = false;
         this.view = 'mascot';
         this.enabled = true;
         this.expression = 'neutral';
@@ -903,7 +904,9 @@ class DirectorMascot {
         this.el.say.classList.add('hidden');
         if (on && this.el.result.dataset.mode !== 'live') this.startLive();
         if (!on) this.endLive();
-        const aloud = on && this._thinkAloud && !!this.el.liveLine;
+        // Boolean on purpose: _thinkAloud starts undefined, and toggle(name, undefined) flips the class on
+        // every paint, so her live line blinked between the italic thinking style and plain text all turn.
+        const aloud = !!(on && this._thinkAloud && this.el.liveLine);
         this.el.result.classList.toggle('dm-think-aloud', aloud);
         this.el.think.classList.toggle('dm-think-on', on && !!this._thinkAloud);
         if (aloud) {
