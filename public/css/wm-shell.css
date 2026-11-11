@@ -261,6 +261,12 @@ html.ui-mobile[data-wm-app="today"][data-wm-boot="reveal"] #wmShell {
     text-overflow: ellipsis;
 }
 
+/* Over the camera in the title bar (#735, wmShell applyCameraHole): nothing is drawn there */
+.wm-cutout-gap {
+    flex: 0 0 auto;
+    height: 100%;
+}
+
 /* Icons on a 21 px pitch (16 px + 5 px), ending 6 px before the ok / X button. WM keeps the
  * button's place when an app has none, so the icons do not move; on Today they end at x 209
  * (emulator 2x: cells 262 / 304 / 346 / 386 on Today, 308 / 350 / 392 + button at 436 in apps). */

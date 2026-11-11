@@ -1005,9 +1005,46 @@
         afterPaint().then(() => { fitQueued = false; fitStatusNow(); });
     }
 
+    /*
+     * The camera in the title bar (#735): the Fold7's inner screen has an under-display camera at
+     * about x 644..676, y 8..39 (CSS px), which Android does not report as a cutout. The Android app
+     * passes it (and real cutouts) as --camera-hole-left/top/width/height on <html>. When it sits in
+     * the bar right of the title's start, the title ends before it (ellipsis), a spacer covers it and
+     * the tray icons stay right of it; fitStatusNow() then sheds what no longer fits.
+     */
+    function applyCameraHole(bar) {
+        const title = bar.querySelector('.wm-title');
+        const status = bar.querySelector('.wm-status');
+        let gap = bar.querySelector('.wm-cutout-gap');
+        const style = document.documentElement.style;
+        const v = (n) => parseFloat(style.getPropertyValue(n)) || 0;
+        const hole = { left: v('--camera-hole-left'), top: v('--camera-hole-top'), width: v('--camera-hole-width'), height: v('--camera-hole-height') };
+        const br = bar.getBoundingClientRect();
+        const tl = title.getBoundingClientRect().left;
+        const pad = 3 * (parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1);
+        const inBar = hole.width > 0 && hole.height > 0 && hole.top < br.bottom && hole.top + hole.height > br.top
+            && hole.left - pad > tl && hole.left + hole.width < br.right;
+        if (!inBar) {
+            if (gap) gap.remove();
+            title.style.flex = '';
+            status.style.marginLeft = '';
+            return;
+        }
+        if (!gap) {
+            gap = document.createElement('div');
+            gap.className = 'wm-cutout-gap';
+            gap.setAttribute('aria-hidden', 'true');
+            title.after(gap);
+        }
+        title.style.flex = `0 0 ${Math.max(0, hole.left - pad - tl)}px`;
+        gap.style.width = `${hole.width + 2 * pad}px`;
+        status.style.marginLeft = 'auto';
+    }
+
     function fitStatusNow() {
         if (!shell) return;
         const bar = shell.querySelector('.wm-titlebar');
+        applyCameraHole(bar);
         const el = (r) => shell.querySelector(`.wm-status-icon[data-role="${r}"]`);
         const fits = () => bar.scrollWidth <= bar.clientWidth + 1;
         ['roaming', 'volume', ...STATUS_APP_ROLES].forEach((r) => el(r).classList.remove('wm-shed'));
@@ -1911,7 +1948,12 @@
      * dismissed; others time out (timeout ms, false = stay). Resolves when it is gone (Dismiss, its
      * timeout); Hide keeps it in the tray and the promise waiting, like the box it stands for.
      */
-    function notify({ title = 'Melaton Mobile', text = '', icon = 'info', timeout = null, buttons = null } = {}) {
+    function notify({ title = 'Melaton Mobile', text = '', icon = 'info', timeout = null, buttons = null, asNote = false } = {}) {
+        // WM: what answers the user's own action (a tap a moment ago, or work under the wait cursor)
+        // is a message box; a notification is for what arrives on its own
+        if (!asNote && !buttons && answersUser()) {
+            return messageBox({ title, text, icon: NOTE_TYPE[icon] === 'success' ? 'info' : (icon || 'info'), modal: true });
+        }
         return new Promise((resolve) => {
             if (typeof window.showGlassToast !== 'function') { resolve(true); return; }
             const type = NOTE_TYPE[icon] || 'info';
@@ -1925,6 +1967,11 @@
             const gone = () => { const t = document.getElementById(id); return !t || t.classList.contains('removing'); };
             const timer = setInterval(() => { if (gone()) { clearInterval(timer); resolve(true); } }, 400);
         });
+    }
+
+    /** A message now answers the user's own action: a tap or Enter in the last 6 s, or work under the wait cursor. */
+    function answersUser() {
+        return performance.now() - lastTapAt < 6000 || busyCount > 0;
     }
 
     /** Plain text of a desktop dialog's HTML message, line breaks kept. */
@@ -1941,6 +1988,8 @@
      */
     function confirmationNotice(message, options, config) {
         if (!Array.isArray(options) || options.length !== 1) return null;
+        // the answer to something the user just did stays the desktop dialog (a WM message box)
+        if (answersUser()) return null;
         const opt = options[0] || {};
         const cfg = config || {};
         if (typeof opt.onClick === 'function' || typeof cfg.onDialogReady === 'function' || typeof cfg.resolveValue === 'function') return null;
@@ -1948,7 +1997,7 @@
         const fa = String(cfg.icon || '');
         const icon = /xmark|times|ban|skull|bug|bomb|circle-exclamation|exclamation-circle/.test(fa) ? 'error'
             : /exclamation|warning/.test(fa) ? 'warning' : /check/.test(fa) ? 'success' : 'info';
-        return notify({ title: cfg.title || 'Melaton Mobile', text: htmlToText(message), icon }).then(() => opt.value);
+        return notify({ title: cfg.title || 'Melaton Mobile', text: htmlToText(message), icon, asNote: true }).then(() => opt.value);
     }
 
     // ---------------------------------------------------------------- the wait cursor for server work
@@ -1978,6 +2027,7 @@
         const phoneAlert = function (message) {
             notify({ title: 'Melaton Mobile', text: String(message == null ? '' : message), icon: 'warning' });
         };
+        // (notify shows a message box when the alert answers a tap)
         phoneAlert.wmRouted = true;
         window.alert = phoneAlert;
     }
@@ -2026,11 +2076,11 @@
      * icon: 'error' | 'warning' | 'info' | 'question' | null.
      */
     function messageBox({ title = 'Melaton Mobile', text = '', icon = null, buttons = [{ text: 'ok', value: true }], cancelValue = false, input = null, modal = false } = {}) {
-        // a box with only ok tells the user something: a WM notification (bubble, title-bar icon,
-        // tray), not a modal box. Questions, edit boxes and modal: true stay message boxes.
-        if (buttons.length === 1 && !input && !modal) {
+        // an ok-only box that does not answer something the user just did (it came on its own, later)
+        // is a WM notification instead; one that answers a tap stays a message box (WM's rule)
+        if (buttons.length === 1 && !input && !modal && !answersUser()) {
             // resolved at once: a caller inside busy() must not hold the wait cursor until it is read
-            notify({ title, text, icon: icon || 'info' });
+            notify({ title, text, icon: icon || 'info', asNote: true });
             return Promise.resolve(buttons[0].value);
         }
         return new Promise((resolve) => {
@@ -2342,6 +2392,27 @@
             label: w.name || w.id,
             radio: w.id === active,
             action: () => { if (w.id !== active && typeof setActiveWorkspace === 'function') setActiveWorkspace(w.id); }
+        }));
+    }
+
+    /**
+     * Move To: the other workspaces; a pick moves the picture there with the desktop's own move
+     * (workspaceUtils.js moveFilesToWorkspace: its count update, gallery refresh and result notice),
+     * under the wait cursor.
+     */
+    function moveToItems(name) {
+        let list = [];
+        try {
+            if (typeof workspaces !== 'undefined') {
+                list = Object.values(workspaces).filter(Boolean).sort((a, b) => (Number(a.sort) || 0) - (Number(b.sort) || 0) || String(a.name).localeCompare(String(b.name)));
+            }
+        } catch (_) { /* not loaded */ }
+        const active = typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
+        const others = list.filter((w) => w.id !== active);
+        if (!name || typeof window.moveFilesToWorkspace !== 'function' || !others.length) return [{ label: 'No other workspaces', disabled: true }];
+        return others.map((w) => ({
+            label: w.name || w.id,
+            action: () => busy(() => window.moveFilesToWorkspace([name], w.id), { paint: true, timeout: 30000 })
         }));
     }
 
@@ -2944,6 +3015,7 @@
                 { label: 'Ask Wren', disabled: !fn('askWrenAboutImage'), action: () => run('askWrenAboutImage', name) },
                 '-',
                 { label: 'Set as Today Background', action: () => setTodayBackground(name) },
+                { label: 'Move To', disabled: !item, submenu: () => moveToItems(name) },
                 { label: scraps ? 'Restore from Scraps' : 'Move to Scraps', disabled: !item, action: () => run(scraps ? 'removeFromScraps' : 'moveToScraps', item) },
                 { label: 'Delete', disabled: !item || !fn('deleteImage'), action: () => run('deleteImage', item) }
             ];
@@ -3258,6 +3330,7 @@
                     // WM 6.1's viewer Menu: Zoom, Play Slide Show, Set as Today Background...
                     const shown = item && (item.filename || item.original);
                     if (shown && setTodayBackgroundFn) items.push({ label: 'Set as Today Background', action: () => setTodayBackgroundFn(shown, item) });
+                    if (shown) items.push({ label: 'Move To', submenu: () => moveToItems(shown) });
                     // Edit: the picture in DreamStudio (Glancewell's Open > DreamStudio, imageViewer.js
                     // openInCreator) or with the Director (Glancewell's E-mail: askWrenAboutImage); each
                     // opens its app over the viewer, Back returns here
@@ -3600,6 +3673,8 @@
         refreshStatus();
         setInterval(refreshStatus, 2000);
         window.addEventListener('resize', () => { if (noteTrayOpen) renderNotes(); else fitStatus(); });
+        // the Android app moved or rotated the camera hole (--camera-hole-*)
+        window.addEventListener('dreamscape:cutout', () => fitStatus());
         checkTakeover();
         setInterval(checkTakeover, 400);
         setInterval(checkViewer, 150);
