@@ -48,6 +48,13 @@
 
     function peerId() {
         let id = '';
+        // the app owns the device's id when it can (window.AndroidActiveSync.getDeviceId(), 32 hex), so its
+        // background service and a reinstalled WebView profile stay one device; else this profile keeps one
+        try {
+            const app = root.AndroidActiveSync;
+            const own = app && typeof app.getDeviceId === 'function' ? String(app.getDeviceId() || '').toLowerCase() : '';
+            if (/^[0-9a-f]{32}$/.test(own)) return own;
+        } catch (_) { /* older app */ }
         try { id = root.localStorage.getItem(ID_KEY) || ''; } catch (_) { /* private mode */ }
         if (!/^[0-9a-f]{32}$/.test(id)) {
             const bytes = new Uint8Array(16);
@@ -191,6 +198,11 @@
             const f = deviceFacts();
             let name = '';
             try { name = root.localStorage.getItem('activeSyncDeviceName') || ''; } catch (_) { /* none */ }
+            // the phone's own name (Settings > About phone), when the app tells it
+            try {
+                const app = root.AndroidActiveSync;
+                if (!name && app && typeof app.getDeviceName === 'function') name = String(app.getDeviceName() || '').slice(0, 64);
+            } catch (_) { /* older app */ }
             Object.assign(data, f, { name: name || f.model || 'Mobile Device', status: deviceStatus() });
         }
         try {

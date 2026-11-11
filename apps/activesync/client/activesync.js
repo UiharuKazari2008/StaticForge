@@ -1,8 +1,8 @@
 /**
  * Melaton Mobile Device Center (Yozora #747): Windows Mobile Device Center 6.1 as Vista shows it,
  * for Android phones running the Dreamscape app. Layout, art and wording from the VM
- * (~/.cache/vista-vm/wmdc-ref: window 800 x 600, stage 786 x 534 at 8,57), Windows -> Melaton and
- * Microsoft -> Xyridian. The connection itself is public/scripts/comp/activeSyncAgent.js
+ * (~/.cache/vista-vm/wmdc-ref: stage 786 x 534), Windows -> Melaton and Microsoft -> Xyridian. The
+ * frame is Melaton's own: Back, the bread crumbs and Help sit in the shared title toolbar. The connection itself is public/scripts/comp/activeSyncAgent.js
  * (window.activeSync) and modules/activeSync.js.
  *
  *   no device connected   the two phones, "Not Connected", Mobile Device Settings
@@ -78,25 +78,32 @@
 
         build() {
             const m = doc.createElement('div');
-            m.className = 'modal hidden asdc-window';
+            // a window with a title toolbar, as every Melaton window that has one (Explorer, Calculator):
+            // toolbar-visible + .modal-window-title-toolbar with plain shared buttons (modal-window-title-toolbar.css)
+            m.className = 'modal toolbar-visible hidden asdc-window';
             m.dataset.windowIdentifier = 'melatonMobileDeviceCenter';
             m.dataset.windowClient = 'light';
             m.dataset.taskbarIcon = `${A}/activesync-32.png`;
+            // one size: a stored place is kept, a stored size never applies
+            m.dataset.windowDefaultWidth = '800';
+            m.dataset.windowDefaultHeight = '616';
             m.style.width = '800px';
-            m.style.height = '600px';
+            m.style.height = '616px'; // the shared 75 px caption and toolbar, the 534 px stage, the 7 px frame
             m.setAttribute('role', 'dialog');
             m.setAttribute('aria-label', NAME);
             m.innerHTML = `
-                <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${A}/activesync-16.png" alt=""><span>${NAME}</span></div></div>
+                <div class="modal-window-title">
+                    <div class="modal-window-title-main"><i class="fas fa-mobile-screen icon-fa"></i><img class="icon-image" src="${A}/activesync-16.png" alt=""><span>${NAME}</span></div>
+                    <div class="modal-window-title-toolbar">
+                        <button type="button" class="btn-secondary asdc-back" data-asdc="back" title="Back" disabled><i class="fas fa-arrow-left"></i></button>
+                        <div class="asdc-crumbs"></div>
+                        <button type="button" class="btn-secondary asdc-help" title="Help"><i class="fas fa-circle-question"></i></button>
+                    </div>
+                </div>
                 <div class="modal-focus-overlay"></div>
                 <div class="modal-window-controls">
                     <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
                     <button type="button" class="btn-danger close-btn btn-small asdc-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
-                </div>
-                <div class="asdc-nav">
-                    <button type="button" class="asdc-back" data-asdc="back" title="Back" disabled></button>
-                    <div class="asdc-crumbs"></div>
-                    <button type="button" class="asdc-help" data-asdc="help" title="Help"></button>
                 </div>
                 <div class="modal-content asdc-client">
                     <div class="asdc-root">

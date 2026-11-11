@@ -1,26 +1,17 @@
 /*
  * Melaton Mobile Device Center (Yozora #747, apps/activesync/client/activesync.js): Windows Mobile
  * Device Center 6.1 on Vista, measured on the VM (references in ~/.cache/vista-vm/wmdc-ref). The
- * window is 800 x 600 and does not resize; the stage is the 786 x 534 background bitmap under a
- * 27 px navigation strip that sits on the window's glass.
+ * window does not resize; the stage is the 786 x 534 background bitmap under Melaton's caption and
+ * title toolbar.
  */
-/* the navigation strip is part of the frame's glass, under the caption (as log-viewer.css does) */
-.modal.asdc-window { --modal-title-chrome-height: 56px; padding-top: var(--modal-title-chrome-height); }
+/* Back, bread crumbs and Help live in the shared title toolbar (modal-window-title-toolbar.css):
+   plain shared buttons, nothing restyled here but the crumbs' text and Help at the far end */
 .modal.asdc-window > .modal-content.asdc-client { padding: 0 !important; overflow: hidden; }
-.asdc-root { position: relative; width: 786px; margin: 0 auto; font: 15px/1.3 'Segoe UI', Tahoma, sans-serif; color: #333; cursor: default; user-select: none; }
-
-/* ---- navigation strip: back, bread crumbs, help ---- */
-.asdc-window > .asdc-nav { position: absolute; left: var(--window-frame-inset, 7px); right: var(--window-frame-inset, 7px); top: 28px; height: 27px; font: 13px/1.3 'Segoe UI', Tahoma, sans-serif; cursor: default; user-select: none; }
-.asdc-window .asdc-back { position: absolute; left: 3px; top: -3px; width: 30px; height: 30px; padding: 0; border: 0; background: url(back-normal.png) no-repeat; }
-.asdc-window .asdc-back:hover { background-image: url(back-hot.png); }
-.asdc-window .asdc-back:active { background-image: url(back-pressed.png); }
-.asdc-window .asdc-back:disabled { background-image: url(back-disabled.png); }
-.asdc-crumbs { position: absolute; left: 38px; top: 0; height: 27px; display: flex; align-items: center; gap: 7px; font-size: 13px; color: #000; text-shadow: 0 0 6px #fff, 0 0 6px #fff; }
-.asdc-crumbs img { width: 6px; height: 9px; }
-.asdc-crumbs .asdc-crumb-menu { cursor: pointer; }
-.asdc-crumbs .asdc-crumb-menu:hover { text-decoration: underline; }
-.asdc-window .asdc-help { position: absolute; right: 2px; top: 2px; width: 35px; height: 23px; padding: 0; border: 0; background: url(help.png) no-repeat; }
-.asdc-window .asdc-help:hover { background-image: url(help-hot.png); }
+.asdc-window .modal-window-title-toolbar .asdc-crumbs { display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0 8px; white-space: nowrap; }
+.asdc-window .modal-window-title-toolbar .asdc-crumbs img { width: 6px; height: 9px; }
+.asdc-window .modal-window-title-toolbar .asdc-crumb-menu { cursor: pointer; }
+.asdc-window .modal-window-title-toolbar .asdc-crumb-menu:hover { text-decoration: underline; }
+.asdc-window .modal-window-title-toolbar .asdc-help { margin-left: auto; }
 
 /* ---- stage ---- */
 .asdc-stage { position: relative; width: 786px; height: 534px; overflow: hidden; background: #5cb531 url(background.png) no-repeat; }

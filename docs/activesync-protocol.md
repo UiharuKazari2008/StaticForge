@@ -27,8 +27,10 @@ set; a call goes to the WebView when it lists the operation, else to the service
 6. Send `as_status` when the battery, the network or the storage changes (at most every 5 seconds), and every 2 minutes.
 7. Reconnect with backoff and say hello again; a partner's waiting items arrive as `as_request`s right after.
 
-The device id is the one the WebView keeps in `localStorage.activeSyncPeerId`; the app should own it and hand it to the
-WebView, so both speakers and a reinstalled WebView profile stay one device.
+The app owns the device id: `window.AndroidActiveSync.getDeviceId()` returns 32 lowercase hex digits made once and
+kept by the app, and `getDeviceName()` the phone's own name (optional). The WebView uses them when the bridge exists,
+so both speakers and a reinstalled WebView profile stay one device. Without the bridge the WebView keeps its own id in
+`localStorage.activeSyncPeerId`.
 
 ## Rules
 
