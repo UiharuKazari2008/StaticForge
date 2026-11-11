@@ -172,14 +172,21 @@
     box-sizing: border-box;
     margin: 0;
     padding: 0 calc(3 * var(--wm-px));
-    border: calc(1 * var(--wm-px)) solid #000;
-    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #fff, inset 0 0 0 calc(2 * var(--wm-px)) #adaaad;
+    /* at rest one grey line (6.5 capture ie/emu/10-home.png, the focus on the button beside it) */
+    border: calc(1 * var(--wm-px)) solid #adaaad;
     border-radius: 0;
     outline: 0;
     background: #fff;
     font: var(--wm-fs) var(--wm-font);
     -webkit-appearance: none;
     appearance: none;
+}
+
+/* the second frame is the browser's focus mark (6.1 capture auth61/shots/ie1.png: the field has the
+   focus there), not part of the field */
+.wm-browser .wmb-search-input:focus {
+    border-color: #000;
+    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #fff, inset 0 0 0 calc(2 * var(--wm-px)) #adaaad;
 }
 
 .wm-browser .wmb-search-go {
@@ -707,6 +714,83 @@
     overflow-x: auto;
 }
 
+/* ---------------------------------------------------------------- Desktop view */
+
+/* View > Desktop (wmBrowser.js "Desktop view"): the desktop Internet Explorer's own page, drawn by the
+   desktop Grimoire's code and styles (tag-wiki-search.css: its document sheet hangs on
+   .grimoire-window .tag-wiki-search-display). The page is 1024 px wide and at least 768 px tall
+   (never less than the screen shows of it), in the desktop's body text (app.css: 16 px, line
+   height 1.25), and is panned inside this box; the zoom is set on .wmb-desk-page. */
+.wm-browser .wmb-desk {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background: #fff;
+    color: var(--text-primary);
+    font: 16px / 1.25 var(--font-primary);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    --wmb-desk-zoom: 1;
+    /* .grimoire-window is the desktop window's class: its size there (1050 x 750, an id's weight) is not this box's */
+    width: auto !important;
+    height: auto !important;
+}
+
+.wm-browser .wmb-desk[hidden] {
+    display: none;
+}
+
+/* the desktop's rule for this box (an id's weight: it makes the window's pane scroll) gives way:
+   the page is whole here and .wmb-desk scrolls */
+.wm-browser .wmb-desk > .wmb-desk-page {
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    box-sizing: border-box;
+    width: max(1024px, calc(100% / var(--wmb-desk-zoom)));
+    min-width: 0;
+    min-height: max(768px, calc(100% / var(--wmb-desk-zoom))) !important;
+    overflow: visible !important;
+}
+
+.wm-browser .wmb-desk-page > .tag-wiki-display-content {
+    flex: 1 0 auto;
+    height: auto;
+}
+
+.wm-browser .wmb-desk-page > .tag-wiki-display-content[hidden] {
+    display: none;
+}
+
+/* the home page fills the page, its foot (Perform Alchemy!) at the bottom as in the desktop window */
+.wm-browser .wmb-desk-page > .wmb-desk-area:has(> .dreamwiki-home) {
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-browser .wmb-desk-page > .wmb-desk-area > .dreamwiki-home {
+    flex: 1 0 auto;
+}
+
+/* what the desktop window's page takes from the desktop's other sheets, which a phone does not
+   load or which hang on body.desktop-mode: the heading rule of a documentation page
+   (desktop-settings.css .form-section-separator), and the text boxes' face and size
+   (vista-glass-controls.css, emphasis-manager.css .modal-content input) */
+.wm-browser .wmb-desk .form-section-separator {
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, var(--glass-border-2) 20%, var(--glass-border-2) 80%, transparent 100%);
+}
+
+.wm-browser .wmb-desk :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea) {
+    font-family: "Segoe UI", SegoeUI, "Noto Sans", sans-serif;
+}
+
+/* the weight of the desktop's own rule, so a page's or an applet's heavier rule still wins */
+:where(.wm-browser) .wmb-desk-page input:not([type="radio"]):not([type="checkbox"]) {
+    font-size: 1rem;
+}
+
 /* ---------------------------------------------------------------- the web page */
 
 .wm-browser .wmb-frame-wrap {
@@ -866,20 +950,23 @@
 /* the Grimoire pages scroll with the WM scroll bar (as wm-shell.css .wm-page) */
 .wm-browser .wmb-home::-webkit-scrollbar,
 .wm-browser .wmb-gpage::-webkit-scrollbar,
-.wm-browser .wmb-core::-webkit-scrollbar {
+.wm-browser .wmb-core::-webkit-scrollbar,
+.wm-browser .wmb-desk::-webkit-scrollbar {
     width: calc(13 * var(--wm-px));
 }
 
 .wm-browser .wmb-home::-webkit-scrollbar-track,
 .wm-browser .wmb-gpage::-webkit-scrollbar-track,
-.wm-browser .wmb-core::-webkit-scrollbar-track {
+.wm-browser .wmb-core::-webkit-scrollbar-track,
+.wm-browser .wmb-desk::-webkit-scrollbar-track {
     background: #fff;
     border-left: calc(1 * var(--wm-px)) solid #000;
 }
 
 .wm-browser .wmb-home::-webkit-scrollbar-thumb,
 .wm-browser .wmb-gpage::-webkit-scrollbar-thumb,
-.wm-browser .wmb-core::-webkit-scrollbar-thumb {
+.wm-browser .wmb-core::-webkit-scrollbar-thumb,
+.wm-browser .wmb-desk::-webkit-scrollbar-thumb {
     background: var(--wm-tab-strip);
     border: calc(1 * var(--wm-px)) solid #000;
     border-right: 0;
@@ -888,7 +975,8 @@
 
 .wm-browser .wmb-home::-webkit-scrollbar-button:single-button,
 .wm-browser .wmb-gpage::-webkit-scrollbar-button:single-button,
-.wm-browser .wmb-core::-webkit-scrollbar-button:single-button {
+.wm-browser .wmb-core::-webkit-scrollbar-button:single-button,
+.wm-browser .wmb-desk::-webkit-scrollbar-button:single-button {
     display: block;
     height: calc(19 * var(--wm-px));
     background: var(--wm-tab-strip) center / calc(8 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
@@ -897,7 +985,8 @@
 
 .wm-browser .wmb-home::-webkit-scrollbar-button:single-button:vertical:decrement,
 .wm-browser .wmb-gpage::-webkit-scrollbar-button:single-button:vertical:decrement,
-.wm-browser .wmb-core::-webkit-scrollbar-button:single-button:vertical:decrement {
+.wm-browser .wmb-core::-webkit-scrollbar-button:single-button:vertical:decrement,
+.wm-browser .wmb-desk::-webkit-scrollbar-button:single-button:vertical:decrement {
     border-bottom: calc(1 * var(--wm-px)) solid #000;
     background-image: linear-gradient(to bottom right, transparent 50%, #000 50%), linear-gradient(to bottom left, transparent 50%, #000 50%);
     background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
@@ -906,11 +995,55 @@
 
 .wm-browser .wmb-home::-webkit-scrollbar-button:single-button:vertical:increment,
 .wm-browser .wmb-gpage::-webkit-scrollbar-button:single-button:vertical:increment,
-.wm-browser .wmb-core::-webkit-scrollbar-button:single-button:vertical:increment {
+.wm-browser .wmb-core::-webkit-scrollbar-button:single-button:vertical:increment,
+.wm-browser .wmb-desk::-webkit-scrollbar-button:single-button:vertical:increment {
     border-top: calc(1 * var(--wm-px)) solid #000;
     background-image: linear-gradient(to top right, transparent 50%, #000 50%), linear-gradient(to top left, transparent 50%, #000 50%);
     background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
     background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
+}
+
+/* Desktop view pans sideways too: the same bar along the bottom (the arrows point left and right) */
+.wm-browser .wmb-desk::-webkit-scrollbar {
+    height: calc(13 * var(--wm-px));
+}
+
+.wm-browser .wmb-desk::-webkit-scrollbar-track:horizontal {
+    border-left: 0;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-browser .wmb-desk::-webkit-scrollbar-thumb:horizontal {
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-bottom: 0;
+}
+
+.wm-browser .wmb-desk::-webkit-scrollbar-button:single-button:horizontal {
+    width: calc(19 * var(--wm-px));
+    height: auto;
+    background-size: calc(4 * var(--wm-px)) calc(8 * var(--wm-px));
+    border-left: 0;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wm-browser .wmb-desk::-webkit-scrollbar-button:single-button:horizontal:decrement {
+    border-right: calc(1 * var(--wm-px)) solid #000;
+    background-image: linear-gradient(to bottom right, transparent 50%, #000 50%), linear-gradient(to top right, transparent 50%, #000 50%);
+    background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    background-position: 50% calc(50% - 2 * var(--wm-px)), 50% calc(50% + 2 * var(--wm-px));
+}
+
+.wm-browser .wmb-desk::-webkit-scrollbar-button:single-button:horizontal:increment {
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    background-image: linear-gradient(to bottom left, transparent 50%, #000 50%), linear-gradient(to top left, transparent 50%, #000 50%);
+    background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    background-position: 50% calc(50% - 2 * var(--wm-px)), 50% calc(50% + 2 * var(--wm-px));
+}
+
+.wm-browser .wmb-desk::-webkit-scrollbar-corner {
+    background: var(--wm-tab-strip);
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    border-top: calc(1 * var(--wm-px)) solid #000;
 }
 
 /* DText's collapsed sections: a link-blue row with the chevron turning down when open */
@@ -1071,7 +1204,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-fs {
     border: 0;
     border-radius: 0;
     background: url('/static_images/wm65/ie-bar.png') 0 0 / auto calc(45 * var(--wm-px)) no-repeat;
-    background-image: image-set(url('/static_images/wm65/ie-bar.png') 1x, url('/static_images/wm65/ie-bar@2x.png') 2x);
+    background-image: image-set(url('/static_images/wm65/ie-bar.png') 1x, url('/static_images/wm65/ie-bar@2x.png') 2x, url('/static_images/wm65/ie-bar@4x.png') 4x);
     --cell: 0;
     background-position: calc(-45 * var(--cell) * var(--wm-px)) 0;
     pointer-events: auto;
@@ -1135,7 +1268,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-browser.has-sub > .wmb65-fs {
  * delete 11 (12, 13) */
 html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-bar[data-bar="fav"] .wmb65-btn {
     background-image: url('/static_images/wm65/ie-favbar.png');
-    background-image: image-set(url('/static_images/wm65/ie-favbar.png') 1x, url('/static_images/wm65/ie-favbar@2x.png') 2x);
+    background-image: image-set(url('/static_images/wm65/ie-favbar.png') 1x, url('/static_images/wm65/ie-favbar@2x.png') 2x, url('/static_images/wm65/ie-favbar@4x.png') 4x);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="fav-back"] { --cell: 0; }
@@ -1179,7 +1312,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-zstep {
     border: 0;
     border-radius: 0;
     background: url('/static_images/wm65/ie-zoom-plusminus.png') 0 0 / auto calc(30 * var(--wm-px)) no-repeat;
-    background-image: image-set(url('/static_images/wm65/ie-zoom-plusminus.png') 1x, url('/static_images/wm65/ie-zoom-plusminus@2x.png') 2x);
+    background-image: image-set(url('/static_images/wm65/ie-zoom-plusminus.png') 1x, url('/static_images/wm65/ie-zoom-plusminus@2x.png') 2x, url('/static_images/wm65/ie-zoom-plusminus@4x.png') 4x);
     -webkit-tap-highlight-color: transparent;
 }
 
@@ -1202,7 +1335,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-zthumb {
     width: calc(33 * var(--wm-px));
     height: calc(24 * var(--wm-px));
     background: url('/static_images/wm65/ie-zoom-slider.png') calc(-33 * var(--wm-px)) 0 / auto calc(24 * var(--wm-px)) no-repeat;
-    background-image: image-set(url('/static_images/wm65/ie-zoom-slider.png') 1x, url('/static_images/wm65/ie-zoom-slider@2x.png') 2x);
+    background-image: image-set(url('/static_images/wm65/ie-zoom-slider.png') 1x, url('/static_images/wm65/ie-zoom-slider@2x.png') 2x, url('/static_images/wm65/ie-zoom-slider@4x.png') 4x);
     pointer-events: none;
 }
 

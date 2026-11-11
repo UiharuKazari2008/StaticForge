@@ -41,6 +41,9 @@ html.ui-mobile {
     --wm-button-fill-top: #63a239;
     --wm-button-fill-bottom: #448e12;
     --wm-button-pressed-glyph: #397d08;
+    /* the tap-and-hold ring's dots and the notification zoom rectangle (wm-stage.css) */
+    --wm-hold-ring: #10a618;
+    --wm-zoom-rect: #31d339;
     --wm-font: Tahoma, 'Segoe UI', Verdana, sans-serif;
     background: #000;
 }
@@ -1698,10 +1701,18 @@ html.ui-mobile body > #toastContainer {
     padding: 0 calc(3 * var(--wm-px));
     font: bold var(--wm-fs) var(--wm-font);
     color: #000;
-    background: #fff;
+    /* device (6.1 Connectivity bubble's Hide): one black line round the theme's light tint
+       (206, 235, 206 under the green theme), no second frame */
+    background: var(--wm-tint);
     border: calc(1 * var(--wm-px)) solid #000;
     border-radius: 0;
-    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #fff, inset 0 0 0 calc(2 * var(--wm-px)) #848284;
+    box-shadow: none;
+}
+
+/* the focus mark, only on the button that has the focus (device: a one-pixel rectangle) */
+.wm-notify-body .toast-buttons button:focus-visible {
+    outline: calc(0.5 * var(--wm-px)) solid #000;
+    outline-offset: calc(1 * var(--wm-px));
 }
 
 .wm-notify-body .toast-buttons button:active {
