@@ -290,6 +290,7 @@
                 <button type="button" class="wm-softkey" data-side="right"></button>
             </footer>
             <div class="wm-viewbar" role="toolbar" aria-label="Picture" hidden></div>
+            <div class="wm-startmenu-pic" aria-hidden="true" hidden><div></div></div>
             <nav class="wm-startmenu" role="menu" hidden></nav>
             <div class="wm-popup" role="menu" hidden></div>
             <div class="wm-msgbox-layer" hidden></div>
@@ -834,6 +835,7 @@
         dropdownAnchor = null;
         if (popupOnClose) { const fn = popupOnClose; popupOnClose = null; fn(); }
         shell.querySelector('.wm-startmenu').hidden = true;
+        shell.querySelector('.wm-startmenu-pic').hidden = true;
         shell.querySelector('.wm-start').setAttribute('aria-expanded', 'false');
         markStartOpen(false);
         shell.querySelectorAll('.wm-softkey').forEach((b) => b.setAttribute('aria-expanded', 'false'));
@@ -886,10 +888,39 @@
             });
         });
         menu.hidden = false;
+        startMenuPicture(menu);
         openPopup = menu;
         shell.querySelector('.wm-start').setAttribute('aria-expanded', 'true');
         markStartOpen(true);
         syncHistory();
+    }
+
+    /**
+     * WM 6.1 draws the Start menu on the Today picture: the piece of it the menu covers, at the
+     * place Today shows it (emulator: pixel for pixel the Today background, over any program), the
+     * theme's separators and white text on top. A layer under the menu holds a copy of Today's
+     * background, the size of Today's page, shifted by the menu's place; no picture: the theme.
+     */
+    function startMenuPicture(menu) {
+        const pic = shell.querySelector('.wm-startmenu-pic');
+        const today = apps.get('today');
+        const src = today && today.page;
+        const on = !!(src && src.classList.contains('has-picture') && src.style.backgroundImage);
+        menu.classList.toggle('has-picture', on);
+        pic.hidden = !on;
+        if (!on) return;
+        const sr = shell.getBoundingClientRect();
+        // Today's page box: the content area (its own rect while it is on screen)
+        const box = (src.hidden || !src.offsetWidth ? shell.querySelector('.wm-content') : src).getBoundingClientRect();
+        const mr = menu.getBoundingClientRect();
+        Object.assign(pic.style, { left: `${mr.left - sr.left}px`, top: `${mr.top - sr.top}px`, width: `${mr.width}px`, height: `${mr.height}px` });
+        const inner = pic.firstElementChild;
+        Object.assign(inner.style, {
+            left: `${box.left - mr.left}px`, top: `${box.top - mr.top}px`, width: `${box.width}px`, height: `${box.height}px`,
+            backgroundImage: src.style.backgroundImage, backgroundSize: src.style.backgroundSize || 'cover',
+            backgroundPosition: src.style.backgroundPosition || 'center', backgroundRepeat: src.style.backgroundRepeat || 'no-repeat',
+            backgroundColor: src.style.backgroundColor || '#000'
+        });
     }
 
     // ---------------------------------------------------------------- apps

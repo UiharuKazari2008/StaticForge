@@ -657,6 +657,27 @@ html.ui-mobile[data-wm-app="today"] #wmShell > .wm-content {
     display: none;
 }
 
+/* the Today picture under the Start menu (wmShell.js startMenuPicture): the menu's own background
+   goes and this layer, cut to the menu, shows the piece of Today's picture behind it */
+.wm-startmenu.has-picture {
+    background: transparent;
+}
+
+.wm-startmenu-pic {
+    position: absolute;
+    z-index: 10;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.wm-startmenu-pic[hidden] {
+    display: none;
+}
+
+.wm-startmenu-pic > div {
+    position: absolute;
+}
+
 .wm-startmenu-item {
     display: flex !important;
     align-items: center;
