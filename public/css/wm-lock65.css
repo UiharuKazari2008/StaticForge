@@ -1,0 +1,341 @@
+/* ---- Melaton Mobile 6.5: the lock screen (wmLock65.js) ----
+ * Windows Mobile 6.5's, drawn from the ROM's layout (LS_LockScene_480x640.cpr, LS_Global: the
+ * wallpaper over the whole screen) and the emulator (480 x 640; one unit = 2 device px).
+ * The scene starts under the 26-unit title bar, which stays up with only its status icons.
+ * Everything that moves is transform / opacity. */
+
+/* the layer: over the pages, the soft key bar, menus, message boxes (20) and the loading layer
+ * (21); under the workspace switch cover (28) and the boot splash (30) */
+html.ui-mobile[data-wm-version="6.5"] #wmShell > .wm-lock65 {
+    position: absolute;
+    top: var(--wm-safe-top);
+    right: var(--wm-safe-right);
+    bottom: var(--wm-safe-bottom);
+    left: var(--wm-safe-left);
+    z-index: 27;
+    overflow: hidden;
+    background: #000;
+    color: #fff;
+    font-family: var(--wm-font);
+    font-weight: normal;
+    pointer-events: auto;
+    touch-action: none;
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+    contain: layout paint style;
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell > .wm-lock65[hidden] {
+    display: none;
+}
+
+/* the Today picture (what .wm-wall65 carries), bars included */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-wall {
+    position: absolute;
+    inset: 0;
+    background-color: #000;
+}
+
+/* the title bar while locked: above the layer, see-through at 100 / 255 black as on the home
+ * screen, status icons only (device: no Start flag, no title, no X; taps do nothing) */
+html.ui-mobile[data-wm-version="6.5"] #wmShell.wm-locked65 > .wm-titlebar {
+    z-index: 28;
+    background: rgba(0, 0, 0, 0.392);
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell.wm-locked65 > .wm-titlebar > .wm-start,
+html.ui-mobile[data-wm-version="6.5"] #wmShell.wm-locked65 > .wm-titlebar > .wm-title-action,
+html.ui-mobile[data-wm-version="6.5"] #wmShell.wm-locked65.wm-locked65-title > .wm-titlebar > .wm-title {
+    visibility: hidden;
+}
+
+/* the gallery's search bar is a fixed strip above the shell's layers: not over the lock screen */
+html.ui-mobile[data-wm-version="6.5"] #wmShell.wm-locked65 .wm-searchbar {
+    visibility: hidden;
+}
+
+/* the scene: the form under the title bar */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-scene {
+    position: absolute;
+    top: calc(26 * var(--wm-px));
+    right: 0;
+    bottom: 0;
+    left: 0;
+}
+
+/* ---- the slider: 192 x 40 at y 3, centred (cpr LockSlider Left 48 of 480; the wide forms centre it) ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slider {
+    position: absolute;
+    top: calc(3 * var(--wm-px));
+    left: 50%;
+    width: calc(192 * var(--wm-px));
+    height: calc(40 * var(--wm-px));
+    margin-left: calc(-96 * var(--wm-px));
+}
+
+/* chevrons: a 29 x 13 window on a strip of the ROM's frames (arwL_entry_001-021 / arwR_enter,
+ * then arr_loop_1-4), 25 cells on a 30-unit pitch */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-path {
+    position: absolute;
+    top: calc(13 * var(--wm-px));
+    width: calc(29 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+    overflow: hidden;
+    opacity: 1;
+    transition: opacity 200ms linear;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-path[data-side="l"] { left: calc(34 * var(--wm-px)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-path[data-side="r"] { left: calc(129 * var(--wm-px)); }
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-path > i {
+    position: absolute;
+    top: 0;
+    left: calc(-0.5 * var(--wm-px));
+    width: calc(750 * var(--wm-px));
+    height: 100%;
+    background: url('/static_images/wm65/ls-arrows-l@2x.png') 0 0 / 100% 100% no-repeat;
+    /* at rest: the last loop frame, all three chevrons (the cpr's static SlidePath picture) */
+    transform: translateX(-96%);
+    will-change: transform;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-path[data-side="r"] > i {
+    background-image: url('/static_images/wm65/ls-arrows-r@2x.png');
+}
+
+/* the screen comes up: the 21 entry frames at 28 a second */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slide.is-entry .wm-lock65-path > i {
+    animation: wm-lock65-entry 750ms steps(21, jump-none) both;
+}
+
+/* at rest: the four loop frames at 4 a second, twice (cpr FramesPerSecond 4, LoopCount 2), then
+ * still for about 6 s (emulator: 5.6, 6.0 and 6.9 s between runs) */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slide.is-idle .wm-lock65-path > i {
+    animation: wm-lock65-loop 8s step-end 6s infinite;
+}
+
+/* held: the chevrons go out (gone by 300 ms on the device) */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slide.is-pressed .wm-lock65-path {
+    opacity: 0;
+}
+
+@keyframes wm-lock65-entry {
+    from { transform: translateX(0); }
+    to { transform: translateX(-80%); }
+}
+
+@keyframes wm-lock65-loop {
+    0% { transform: translateX(-84%); }
+    3.125% { transform: translateX(-88%); }
+    6.25% { transform: translateX(-92%); }
+    9.375% { transform: translateX(-96%); }
+    12.5% { transform: translateX(-84%); }
+    15.625% { transform: translateX(-88%); }
+    18.75% { transform: translateX(-92%); }
+    21.875% { transform: translateX(-96%); }
+    100% { transform: translateX(-96%); }
+}
+
+/* the handle: LS_LockSlider 60 x 40 in the middle of the slider; it travels 66 units either way */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-handle {
+    position: absolute;
+    top: 0;
+    left: calc(66 * var(--wm-px));
+    width: calc(60 * var(--wm-px));
+    height: calc(40 * var(--wm-px));
+    transform: translate3d(0, 0, 0);
+    will-change: transform;
+    touch-action: none;
+    cursor: pointer;
+}
+
+/* let go before the end: back to the middle, fast first with a long tail (device: 0.6 - 0.9 s) */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-handle.is-returning {
+    transition: transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-handle > i {
+    position: absolute;
+    inset: 0;
+    background: url('/static_images/wm65/ls-lockslider@2x.png') 0 0 / 100% 100% no-repeat;
+    background-image: image-set(url('/static_images/wm65/ls-lockslider.png') 1x, url('/static_images/wm65/ls-lockslider@2x.png') 2x);
+    pointer-events: none;
+    transition: opacity 200ms linear;
+}
+
+/* held: the light art fades out and the dark one in (device: half way at 100 ms, done by 300 ms) */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slide.is-pressed .wm-lock65-handle > i[data-art="up"] {
+    opacity: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-handle > i[data-art="dn"] {
+    background-image: url('/static_images/wm65/ls-lockslider-dwn@2x.png');
+    background-image: image-set(url('/static_images/wm65/ls-lockslider-dwn.png') 1x, url('/static_images/wm65/ls-lockslider-dwn@2x.png') 2x);
+    opacity: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slide.is-pressed .wm-lock65-handle > i[data-art="dn"] {
+    opacity: 1;
+}
+
+/* with notifications: the long art (lock at the left) and the total at x 26, 21 wide, Tahoma 10 pt */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slider.has-count .wm-lock65-handle > i[data-art="up"] {
+    background-image: url('/static_images/wm65/ls-locksliderlong@2x.png');
+    background-image: image-set(url('/static_images/wm65/ls-locksliderlong.png') 1x, url('/static_images/wm65/ls-locksliderlong@2x.png') 2x);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slider.has-count .wm-lock65-handle > i[data-art="dn"] {
+    background-image: url('/static_images/wm65/ls-locksliderlong-dwn@2x.png');
+    background-image: image-set(url('/static_images/wm65/ls-locksliderlong-dwn.png') 1x, url('/static_images/wm65/ls-locksliderlong-dwn@2x.png') 2x);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-total {
+    position: absolute;
+    top: 0;
+    left: calc(26.5 * var(--wm-px));
+    width: calc(20.5 * var(--wm-px));
+    height: 100%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(13.33 * var(--wm-px));
+    line-height: 1;
+    white-space: nowrap;
+    text-shadow: calc(0.5 * var(--wm-px)) 0 0 #000, calc(-0.5 * var(--wm-px)) 0 0 #000, 0 calc(0.5 * var(--wm-px)) 0 #000, 0 calc(-0.5 * var(--wm-px)) 0 #000;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slider.has-count .wm-lock65-total {
+    display: flex;
+}
+
+/* "slide" / "tap or slide": 60 x 12 at y 45, Tahoma 9 pt (24 device px), white on a soft shadow
+ * to the lower right; it stays while the handle is held and dragged */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-caption {
+    position: absolute;
+    top: calc(45 * var(--wm-px));
+    left: 0;
+    right: 0;
+    height: calc(12 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(12 * var(--wm-px));
+    text-align: center;
+    white-space: nowrap;
+    text-shadow: calc(0.5 * var(--wm-px)) calc(0.5 * var(--wm-px)) calc(1.5 * var(--wm-px)) #000, calc(0.5 * var(--wm-px)) calc(0.5 * var(--wm-px)) calc(1.5 * var(--wm-px)) #000;
+    pointer-events: none;
+}
+
+/* ---- notifications: rows of 222 x 46 from y 51, each its own slider 222 x 32 (cpr ItemSlider) ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-list {
+    position: absolute;
+    top: calc(51 * var(--wm-px));
+    left: 50%;
+    width: calc(222 * var(--wm-px));
+    margin-left: calc(-111 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-list[hidden] {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-item {
+    position: relative;
+    width: 100%;
+    height: calc(32 * var(--wm-px));
+    /* the 32-unit slider in the middle of its 46-unit row: the first icon starts under the caption */
+    margin: calc(7 * var(--wm-px)) 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-item .wm-lock65-path { top: calc(9.5 * var(--wm-px)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-item .wm-lock65-path[data-side="l"] { left: calc(61.5 * var(--wm-px)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-item .wm-lock65-path[data-side="r"] { left: calc(131.5 * var(--wm-px)); }
+
+/* the slide: 67 x 32 in the middle (77.5 units of travel), the icon 37 x 32 at x 15, the count
+ * at x 52 in a 15 x 9.5 box, Tahoma 8 pt */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-item .wm-lock65-handle {
+    left: calc(77.5 * var(--wm-px));
+    width: calc(67 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-item .wm-lock65-handle > i {
+    inset: 0 auto 0 calc(15 * var(--wm-px));
+    width: calc(37 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-item[data-kind="mail"] .wm-lock65-handle > i[data-art="up"] {
+    background-image: url('/static_images/wm65/ls-icn-em-up@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-item[data-kind="mail"] .wm-lock65-handle > i[data-art="dn"] {
+    background-image: url('/static_images/wm65/ls-icn-em-dn@2x.png');
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-count {
+    position: absolute;
+    top: 0;
+    left: calc(52 * var(--wm-px));
+    width: calc(15 * var(--wm-px));
+    height: calc(9.5 * var(--wm-px));
+    font-size: calc(10.67 * var(--wm-px));
+    line-height: calc(9.5 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: calc(0.5 * var(--wm-px)) 0 0 #000, calc(-0.5 * var(--wm-px)) 0 0 #000, 0 calc(0.5 * var(--wm-px)) 0 #000, 0 calc(-0.5 * var(--wm-px)) 0 #000;
+    pointer-events: none;
+}
+
+/* ---- time and date: LS_TimeBG (103.5 units tall) with its top 49.5 units above the screen's
+ * bottom edge when there is no appointment (device: band from y 541 of 640; the 800 and 480 high
+ * forms keep the same 99 px in view). The texts keep the form's left edge on any width. ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-time {
+    position: absolute;
+    left: 0;
+    right: 0;
+    /* half a unit past the bottom edge, so no row of the picture shows under the band at a
+     * fractional device pixel ratio */
+    bottom: calc(-0.5 * var(--wm-px));
+    height: calc(50 * var(--wm-px));
+    background: url('/static_images/wm65/ls-timebg@2x.png') 0 0 / 100% calc(103.5 * var(--wm-px)) no-repeat;
+    white-space: nowrap;
+    text-shadow: calc(0.5 * var(--wm-px)) calc(0.5 * var(--wm-px)) calc(1.5 * var(--wm-px)) #000, calc(0.5 * var(--wm-px)) calc(0.5 * var(--wm-px)) calc(1.5 * var(--wm-px)) #000;
+    pointer-events: none;
+}
+
+/* TimeText: right-aligned in 144 x 34 at y 6, Tahoma 31 pt (82.67 device px); half a unit up
+ * puts the digits on the device's rows (558 - 619 of 640) */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-clock {
+    position: absolute;
+    left: 0;
+    top: calc(5.5 * var(--wm-px));
+    width: calc(144 * var(--wm-px));
+    height: calc(34 * var(--wm-px));
+    font-size: calc(41.33 * var(--wm-px));
+    line-height: calc(34 * var(--wm-px));
+    text-align: right;
+}
+
+/* AMPMText: 16 high at x 150, y 7, Tahoma 9 pt */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-ampm {
+    position: absolute;
+    left: calc(150 * var(--wm-px));
+    top: calc(7 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(16 * var(--wm-px));
+}
+
+/* DateText: 19 high at x 150, y 23.5, Tahoma 11 pt; half a unit down for the device's rows (596 - 622) */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-date {
+    position: absolute;
+    left: calc(150 * var(--wm-px));
+    top: calc(24 * var(--wm-px));
+    height: calc(19 * var(--wm-px));
+    font-size: calc(14.67 * var(--wm-px));
+    line-height: calc(19 * var(--wm-px));
+}
