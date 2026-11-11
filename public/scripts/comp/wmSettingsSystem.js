@@ -695,7 +695,7 @@
         const plans = {};
         PLANS.forEach((p) => { plans[p.id] = { display: planValue(p.id, 'display'), sleep: planValue(p.id, 'sleep') }; });
         const sh0 = sh();
-        const d = { plan: activePlan(), plans, battery: null, low: sh0 && typeof sh0.batteryLowLevel === 'function' ? sh0.batteryLowLevel() : 20 };
+        const d = { plan: activePlan(), plans, battery: null, low: sh0 && typeof sh0.batteryLowLevel === 'function' ? sh0.batteryLowLevel() : 25 };
         d.initial = { plan: d.plan, plans: JSON.parse(JSON.stringify(plans)), low: d.low };
         if (navigator.getBattery) {
             navigator.getBattery().then((b) => {
@@ -736,7 +736,7 @@
     }
 
     // The low battery warning's level (Melaton's own row: the device has a fixed level). The shell
-    // shows its low icon and "Main Battery Low" at or under it (wmShell.js batteryLowCheck).
+    // shows "Main Battery Low" at or under it (wmShell.js batteryLowCheck); the icon has its own stages.
     const LOW_LEVELS = [5, 10, 15, 20, 25, 30];
     const lowHtml = (d) => `${ui.sub('Low battery warning at:')}${ui.comboHtml('low', `${d.low}%`)}`;
     function bindLow(el, d) {

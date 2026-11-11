@@ -54,7 +54,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uwb", "status-data-uwb-active", "status-director", "status-mail", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
+    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uwb", "status-data-uwb-active", "status-director", "status-mail", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-error", "status-update", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -192,14 +192,101 @@
         return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
     }
 
+    /**
+     * The workspace colour as the phone's theme, 6.1 and 6.5 (Yozora #748). The devices take only
+     * the hue from a theme's base colour and put it on fixed saturations and lightnesses (SHColor,
+     * HKLM\Software\Microsoft\Color: checked on the emulators under Guava Bubbles and Windows
+     * Default in 6.1, Vera Wang red and DVF green in 6.5); the workspace colour's saturation scales
+     * them (deriveRoles), so a grey workspace gives a grey phone.
+     * 6.1: the roles above, plus the tap-and-hold ring's dots (rgb 16 166 24 on the device's green)
+     * and the notification zoom rectangle (the highlight as it is, before the white-text clamp).
+     * 6.5: wm65.css holds the device's Classic Blue values; three numbers turn them: --wm65-dh, the
+     * workspace hue less the Classic Blue highlight's (#2d5ecf, 221.9 deg), --wm65-k, the saturation
+     * factor, and --wm65-lm, a lightness factor for the mid tones under white text (1 unless white
+     * on the turned highlight falls under 3 : 1, the 6.1 clamp). The ROM's blue selector art (list
+     * and menu selectors, menu arrow bars, message box caption, pressed scroll arrows, the tab
+     * curves' face) is redrawn pixel by pixel with the same three numbers and handed to the
+     * stylesheets as --wm65-art-<name> (the device ships a drawn set per theme instead). A workspace
+     * in the Classic Blue highlight colour gives 0 / 1 / 1: no art variable, the ROM's files as
+     * they are.
+     */
     function applyTheme() {
         // before the workspace is known --primary-color is the page default: keep the cached roles
         if (!document.body.dataset.workspace) return;
         const color = getComputedStyle(document.body).getPropertyValue('--primary-color').trim();
         const roles = deriveRoles(color);
         if (!roles) return;
+        const base = rgbToHsl(cssColorToRgb(color));
+        const k = Math.max(0, Math.min(1.25, base.s / REF_SATURATION));
+        const turn = (h) => ((h % 360) + 360) % 360;
+        roles['--wm-hold-ring'] = `hsl(${turn(base.h).toFixed(1)} ${Math.min(100, 82.4 * k).toFixed(1)}% 35.7%)`;
+        roles['--wm-zoom-rect'] = `hsl(${turn(base.h).toFixed(1)} ${Math.min(100, 64.6 * k).toFixed(1)}% 51%)`;
+        const BLUE_HUE = 221.9, BLUE_S = 64.3, BLUE_L = 49.4;
+        let dh = turn(base.h - BLUE_HUE + 180) - 180;
+        let k65 = k;
+        if (k65 < 0.005) dh = 0;
+        if (Math.abs(dh) < 0.75 && Math.abs(k65 - 1) < 0.02) { dh = 0; k65 = 1; }
+        let lm = 100;
+        while (lm > 40 && contrastWithWhite(hslToRgb(turn(BLUE_HUE + dh), Math.min(100, BLUE_S * k65), BLUE_L * lm / 100)) < 3) lm -= 1;
+        lm /= 100;
+        roles['--wm65-dh'] = `${dh.toFixed(1)}deg`;
+        roles['--wm65-k'] = k65.toFixed(3);
+        roles['--wm65-lm'] = lm.toFixed(2);
+        const ART = ['listviewselector', 'menuselector', 'menuuparrowbackground-l', 'menuuparrowbackground-m', 'menuuparrowbackground-r', 'menudownarrowbackground-l', 'menudownarrowbackground-m', 'menudownarrowbackground-r', 'msgboxtitle', 'scrollbaruparrowbuttonselected', 'scrollbardownarrowbuttonselected', 'tabcurve-face-face', 'tabcurve-face-white', 'tabcurve-white-face', 'tabcurve-face-black'];
+        const art = applyTheme.art || (applyTheme.art = { key: '', vars: {}, pending: '', images: {} });
+        const artKey = `${roles['--wm65-dh']}|${roles['--wm65-k']}|${roles['--wm65-lm']}`;
+        const plain = dh === 0 && k65 === 1 && lm === 1;
+        if (plain) { art.key = artKey; art.vars = {}; art.pending = ''; }
+        if (art.key === artKey) Object.assign(roles, art.vars);
         for (const [name, value] of Object.entries(roles)) root.style.setProperty(name, value);
+        // the art of another colour stays until the new set is drawn; none is left in the ROM's blue
+        if (art.key === artKey) for (const name of ART) if (!(`--wm65-art-${name}` in roles)) root.style.removeProperty(`--wm65-art-${name}`);
         try { localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(roles)); } catch (_) { /* storage off */ }
+        if (!WM65 || art.key === artKey || art.pending === artKey) return;
+        art.pending = artKey;
+        const load = (name) => art.images[name] || (art.images[name] = new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = `/static_images/wm65/${name.startsWith('tabcurve-') ? name : `theme-classicblue-${name}`}@2x.png`;
+        }));
+        Promise.all(ART.map(load)).then((images) => {
+            if (art.pending !== artKey) return;
+            const vars = {};
+            images.forEach((img, i) => {
+                if (!img) return;
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.naturalWidth;
+                    canvas.height = img.naturalHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+                    const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const px = data.data;
+                    for (let p = 0; p < px.length; p += 4) {
+                        if (!px[p + 3]) continue;
+                        const c = rgbToHsl({ r: px[p], g: px[p + 1], b: px[p + 2] });
+                        // the greys (white glyphs, black edges, shadows) are not the theme's
+                        if (c.s < 3) continue;
+                        const rgb = hslToRgb(turn(c.h + dh), Math.min(100, c.s * k65), c.l * lm);
+                        px[p] = Math.round(rgb[0] * 255);
+                        px[p + 1] = Math.round(rgb[1] * 255);
+                        px[p + 2] = Math.round(rgb[2] * 255);
+                    }
+                    ctx.putImageData(data, 0, 0);
+                    vars[`--wm65-art-${ART[i]}`] = `url("${canvas.toDataURL('image/png')}")`;
+                } catch (_) { /* this piece keeps the ROM's blue */ }
+            });
+            art.key = artKey;
+            art.vars = vars;
+            art.pending = '';
+            for (const name of ART) {
+                const prop = `--wm65-art-${name}`;
+                if (prop in vars) root.style.setProperty(prop, vars[prop]);
+                else root.style.removeProperty(prop);
+            }
+            try { localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(Object.assign({}, roles, vars))); } catch (_) { /* storage off */ }
+        });
     }
 
     /** The last workspace theme, so the splash already has it before the workspace CSS loads. */
@@ -1447,12 +1534,12 @@
 
     /**
      * The low battery warning. Its level is the user's (Settings > System > Power > Battery,
-     * localStorage wmBatteryLow, percent; 20 as shipped). On battery at or under it the title bar
-     * shows the low icon and the device's notification comes up once: "Main Battery Low". It is
+     * localStorage wmBatteryLow, percent; 25 as shipped). On battery at or under it the device's
+     * notification comes up once: "Main Battery Low" (the icon keeps its own stages). It is
      * armed again by the charger or by the level rising over it.
      */
     const BATTERY_LOW_KEY = 'wmBatteryLow';
-    const BATTERY_LOW_DEFAULT = 20;
+    const BATTERY_LOW_DEFAULT = 25;
     let batteryWarned = false;
 
     function batteryLowLevel() {
@@ -2025,10 +2112,10 @@
         else if (webBattery) { level = webBattery.level; charging = webBattery.charging; }
         let battery = null;
         if (level != null) {
-            // on battery at or under the warning level (Settings > Power): the device's low icon (the cell with "!")
+            // on battery at or under the warning level (Settings > Power): the notification and the LED; the icon has its own stages
             const low = !charging && level <= batteryLowLevel();
             // the cell's stages (Yukimi, Nov 11): 4 bars from 85 %, 3 from 75, 2 from 50, 1 from 25, under that the "!"
-            const icon = charging ? 'battery-charging' : (low || level < 25) ? 'battery-empty' : level >= 85 ? 'battery-full' : level >= 75 ? 'battery-3' : level >= 50 ? 'battery-2' : 'battery-1';
+            const icon = charging ? 'battery-charging' : level < 25 ? 'battery-empty' : level >= 85 ? 'battery-full' : level >= 75 ? 'battery-3' : level >= 50 ? 'battery-2' : 'battery-1';
             battery = { icon, level, charging, low, plugged: bat && typeof bat.plugged === 'string' ? bat.plugged : null, saver: !!(bat && bat.saver === true), text: `Main battery: ${level}%${charging ? ', charging' : ''}` };
         }
         return { cell, wifi, active, airplane, type, wifiName, link, signal, battery };
