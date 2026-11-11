@@ -335,14 +335,12 @@ html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::before {
     background: #000;
 }
 
+/* the printed logo: wmShell syncBezel's box (--wm-bezel-logo-x/w/h): from the display's top edge,
+ * centred or tucked into the top-right corner as far as its rounded corner allows */
 html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::after {
-    background: image-set(url('/static_images/xyridian/xyridian-wordmark-white-512.png') 1x, url('/static_images/xyridian/xyridian-wordmark-white.png') 2x) center / auto 40% no-repeat;
+    background: image-set(url('/static_images/xyridian/xyridian-wordmark-white-512.png') 1x, url('/static_images/xyridian/xyridian-wordmark-white.png') 2x)
+        var(--wm-bezel-logo-x, center) 0 / var(--wm-bezel-logo-w, auto) var(--wm-bezel-logo-h, 40%) no-repeat;
     opacity: 0.55;
-}
-
-/* the camera in the middle of the band (Fold7 cover screen): the logo printed top right instead */
-html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"][data-wm-bezel-logo="right"]::after {
-    background-position: right calc(12 * var(--wm-px)) center;
 }
 
 html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="left"]::before,
