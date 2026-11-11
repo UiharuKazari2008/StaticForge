@@ -453,7 +453,21 @@
                     try { dv.requestWifiNameAccess(); } catch (_) { /* older app */ }
                 }
             }
+            // tap and hold a bar: its settings (WM: hold for the item's context; Yukimi: like Wi-Fi settings)
+            const holdOpens = (b, open) => {
+                let timer = null;
+                const cancel = () => { clearTimeout(timer); timer = null; };
+                b.addEventListener('pointerdown', () => {
+                    b._held = false;
+                    cancel();
+                    timer = setTimeout(() => { timer = null; b._held = true; open(); }, 600);
+                });
+                ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => b.addEventListener(t, cancel));
+                b.addEventListener('contextmenu', (e) => e.preventDefault());
+            };
+            el.querySelectorAll('[data-radio]').forEach((b) => holdOpens(b, () => openAndroidSettings(b.dataset.radio)));
             el.querySelectorAll('[data-radio]').forEach((bar) => bar.addEventListener('click', () => {
+                if (bar._held) { bar._held = false; return; }
                 const id = bar.dataset.radio;
                 if (d.pending[id]) return;
                 d.pending[id] = true;
@@ -492,7 +506,9 @@
             };
             paint();
             liveTick(el, paint, 500);
+            holdOpens(bar, () => { if (wmSettings.open) wmSettings.open('connections'); });
             bar.addEventListener('click', async () => {
+                if (bar._held) { bar._held = false; return; }
                 if (d.busy) return;
                 const s = linkState();
                 if (s === 'connected' || s === 'connecting') {
