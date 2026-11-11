@@ -278,6 +278,13 @@ html.ui-mobile[data-wm-camera="bezel"] {
 html.ui-mobile[data-wm-camera="bezel"] body {
     position: fixed;
     inset: var(--wm-bezel-h) 0 0 0;
+    /* the page's own body height (100% / 100dvh) would keep the full screen and push the soft
+       keys below it: the insets decide the size here */
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
     contain: layout;
     overflow: hidden;
 }
