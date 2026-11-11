@@ -129,12 +129,29 @@ function checkToken(boxId, k) {
 
 // ------------------------------------------------------------------ latched faults survive restarts
 
+let faultCache = null; // { mtimeMs, data }
+
 function faultFile() { return path.join(deps.dataDir, 'faults.json'); }
-function loadFaults() { try { return JSON.parse(fs.readFileSync(faultFile(), 'utf8')) || {}; } catch (_) { return {}; } }
+function cloneFaults(data) {
+    try { return JSON.parse(JSON.stringify(data && typeof data === 'object' ? data : {})); } catch (_) { return {}; }
+}
+function loadFaults() {
+    let st = null;
+    const file = faultFile();
+    try { st = fs.statSync(file); } catch (_) { /* missing or unreadable: do not throw, do not keep a stale cache */ }
+    if (faultCache && st && faultCache.mtimeMs === st.mtimeMs) return cloneFaults(faultCache.data);
+    if (!st) { faultCache = null; return {}; }
+    let data;
+    try { data = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; }
+    catch (_) { faultCache = null; return {}; } // parse error: retry next call, do not cache empty
+    faultCache = { mtimeMs: st.mtimeMs, data };
+    return cloneFaults(data);
+}
 function saveFault(b) {
     const all = loadFaults();
     if (b.fault) all[b.id] = b.fault; else delete all[b.id];
     try { fs.mkdirSync(deps.dataDir, { recursive: true }); fs.writeFileSync(faultFile(), JSON.stringify(all, null, 2)); } catch (_) { /* best effort */ }
+    faultCache = null;
 }
 
 // ------------------------------------------------------------------ boxes
@@ -1934,4 +1951,4 @@ function shutdownStep(boxId, text, done) {
     emit(b);
 }
 
-module.exports = { shutdownStep, _signalTick: signalTick, unitState, noteCabinet, faults, powerOn, subscribeCard, alignFor, init, press, view, subscribe, checkToken, PORTS, bestLag, _boxes: boxes, OVERLAY_SCENE, OVERLAY_INPUT, DELAY_FILTER };
+module.exports = { shutdownStep, _signalTick: signalTick, unitState, noteCabinet, faults, powerOn, subscribeCard, alignFor, init, press, view, subscribe, checkToken, PORTS, bestLag, _boxes: boxes, _loadFaults: loadFaults, OVERLAY_SCENE, OVERLAY_INPUT, DELAY_FILTER };
