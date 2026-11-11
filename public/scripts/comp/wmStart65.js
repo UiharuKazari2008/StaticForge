@@ -337,16 +337,27 @@
         else if (bottom > y + view.clientHeight) place(Math.min(maxY, bottom - view.clientHeight));
     }
 
+    let cols = 3;
+    function columnsFor() {
+        const unit = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        const w = (view && view.clientWidth) || window.innerWidth || 0;
+        return Math.max(3, Math.floor((w / unit - 24) / 72));
+    }
+
     function render() {
         if (!page) return;
         items = itemsFor(folderNow());
         let half = 0; // the grid's height in half rows: the lowest cell's bottom edge
+        // the device's three columns are 72 units apart (the last cell 96 wide): a wider screen
+        // takes as many as fit at that pitch, every second one half a row down
+        cols = columnsFor();
+        list.style.setProperty('--s65-pitch', `${100 / (cols + 1 / 3)}%`);
         const cells = items.map((it, i) => {
-            const c = i % 3;
-            const r = Math.floor(i / 3);
-            half = Math.max(half, 2 * r + (c === 1 ? 1 : 0) + 2);
+            const c = i % cols;
+            const r = Math.floor(i / cols);
+            half = Math.max(half, 2 * r + (c % 2 === 1 ? 1 : 0) + 2);
             const ic = it.img;
-            return `<button type="button" class="wm-s65-cell" role="listitem" data-i="${i}" style="--c:${c};--r:${r};--m:${c === 1 ? 1 : 0}">`
+            return `<button type="button" class="wm-s65-cell" role="listitem" data-i="${i}" style="--c:${c};--r:${r};--m:${c % 2 === 1 ? 1 : 0}">`
                 + `<img class="wm-s65-icon" src="${esc(ic.src)}"${ic.srcset ? ` srcset="${esc(ic.srcset)}"` : ''} alt="" draggable="false" decoding="async">`
                 + `<span class="wm-s65-label">${esc(it.label)}</span></button>`;
         });
@@ -562,7 +573,7 @@
         shownApp = root.dataset.wmApp || '';
         new MutationObserver(() => { shownApp = root.dataset.wmApp || ''; }).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
         // the X ends Start (its page is made again on the next open): listeners outside the page are set once
-        window.addEventListener('resize', () => { if (page && page.isConnected && !page.hidden) { measure(); place(Math.max(0, Math.min(maxY, y))); } });
+        window.addEventListener('resize', () => { if (page && page.isConnected && !page.hidden) { if (columnsFor() !== cols) render(); else measure(); place(Math.max(0, Math.min(maxY, y))); } });
         sh.registerApp({
             id: 'start',
             title: 'Start',

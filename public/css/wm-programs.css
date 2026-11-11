@@ -40,11 +40,11 @@
 
 /* 6.1 device (Programs, Settings at 240 units): the ListView's icon spacing is 75 x 68 units, the
    columns start at the left edge (label centres at 37.25, 112.5, 187.25), three fit beside the
-   13-unit scroll bar and 2 units stay free at the right. A wider screen gets as many 75-unit
-   columns as fit, still from the left, as a ListView arranges icons. */
+   13-unit scroll bar and 2 units stay free at the right. A wider screen gets as many columns of
+   at least 75 units as fit, the space left over shared between them (Yukimi, Nov 11): the icons
+   and labels keep their size, only the spacing grows. */
 html.ui-mobile:not([data-wm-version="6.5"]) .wm-icongrid {
-    grid-template-columns: repeat(auto-fill, calc(75 * var(--wm-px)));
-    justify-content: start;
+    grid-template-columns: repeat(auto-fill, minmax(calc(75 * var(--wm-px)), 1fr));
     padding: 0;
 }
 

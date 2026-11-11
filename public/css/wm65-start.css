@@ -46,15 +46,17 @@ html.ui-mobile[data-wm-version="6.5"] .wm-s65-list {
 }
 
 /* a 480 px screen: columns at 0 / 144 / 288, cells 192 wide. Kept as shares of the width (30 %
- * apart, 40 % wide) so a wider phone spreads the three columns the same way */
+ * apart, 40 % wide) so a wider phone spreads the three columns the same way; a screen with room
+ * for more columns of the device's 72-unit pitch gets them (wmStart65.js sets --s65-pitch: the
+ * icons keep their size, the space between them takes the rest) */
 html.ui-mobile[data-wm-version="6.5"] .wm-s65-cell {
     position: absolute;
-    left: calc(var(--c) * 30%);
+    left: calc(var(--c) * var(--s65-pitch, 30%));
     /* the half unit of the middle column's 41.5 is a transform: Chrome places a box on whole CSS
      * pixels (25.5 was painted at 26), a transform is not snapped */
     top: calc((var(--r) * 83 + var(--m) * 41) * var(--wm-px));
     transform: translateY(calc(var(--m) * 0.5 * var(--wm-px)));
-    width: 40%;
+    width: calc(var(--s65-pitch, 30%) * 4 / 3);
     height: calc(83 * var(--wm-px));
     margin: 0;
     padding: 0;
@@ -124,7 +126,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-s65-label {
 /* StartMenu_Selection.png at 0,-30 of the selected cell, under the icons */
 html.ui-mobile[data-wm-version="6.5"] .wm-s65-glow {
     position: absolute;
-    left: calc(var(--c) * 30% + 20% - 48 * var(--wm-px));
+    left: calc(var(--c) * var(--s65-pitch, 30%) + var(--s65-pitch, 30%) * 2 / 3 - 48 * var(--wm-px));
     top: calc((var(--r) * 83 + var(--m) * 41 - 15) * var(--wm-px));
     transform: translateY(calc(var(--m) * 0.5 * var(--wm-px)));
     width: calc(96 * var(--wm-px));
