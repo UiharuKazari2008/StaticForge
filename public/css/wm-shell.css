@@ -381,9 +381,10 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
 }
 
 .wm-status-icon {
-    width: calc(16 * var(--wm-px));
-    height: calc(16 * var(--wm-px));
-    background: center / contain no-repeat;
+    /* whole device pixels per art pixel (wmShell syncIconUnit): the 1-bit art keeps even strokes */
+    width: calc(16 * var(--wm-icon-unit, var(--wm-px)));
+    height: calc(16 * var(--wm-icon-unit, var(--wm-px)));
+    background: center / 100% 100% no-repeat;
     /* 1-bit ROM glyphs: keep their pixel steps when a screen scale stretches them */
     image-rendering: pixelated;
 }
@@ -393,6 +394,7 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
 .wm-status-icon[data-icon="data-active"] { background-image: image-set(url('/static_images/wm61/status-data-active.png') 1x, url('/static_images/wm61/status-data-active@2x.png') 2x); }
 .wm-status-icon[data-icon="volume"] { background-image: image-set(url('/static_images/wm61/status-volume.png') 1x, url('/static_images/wm61/status-volume@2x.png') 2x, url('/static_images/wm61/status-volume@4x.png') 4x); }
 .wm-status-icon[data-icon="volume-off"] { background-image: image-set(url('/static_images/wm61/status-volume-off.png') 1x, url('/static_images/wm61/status-volume-off@2x.png') 2x, url('/static_images/wm61/status-volume-off@4x.png') 4x); }
+.wm-status-icon[data-icon="vibrate"] { background-image: image-set(url('/static_images/wm61/status-vibrate.png') 1x, url('/static_images/wm61/status-vibrate@2x.png') 2x, url('/static_images/wm61/status-vibrate@4x.png') 4x); }
 .wm-status-icon[data-icon="notify-many"] { background-image: image-set(url('/static_images/wm61/status-notify-many.png') 1x, url('/static_images/wm61/status-notify-many@2x.png') 2x, url('/static_images/wm61/status-notify-many@4x.png') 4x); }
 /* device status (#709): battery, signal, roaming, data type and Wi-Fi from the Android app or the
  * browser. ROM art; signal bars, H+, LTE (4G) and 5G are Melaton-drawn in the same style. */
@@ -435,7 +437,7 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
 .wm-status-icon[data-icon="data-uwb-active"] { background-image: image-set(url('/static_images/wm61/status-data-uwb-active.png') 1x, url('/static_images/wm61/status-data-uwb-active@2x.png') 2x, url('/static_images/wm61/status-data-uwb-active@4x.png') 4x); }
 /* UWB's box is wider than the square cell (Yukimi: wider is fine): 20 x 16 px */
 .wm-status-icon[data-icon="data-uwb"],
-.wm-status-icon[data-icon="data-uwb-active"] { width: calc(20 * var(--wm-px)); }
+.wm-status-icon[data-icon="data-uwb-active"] { width: calc(20 * var(--wm-icon-unit, var(--wm-px))); }
 .wm-status-icon[data-icon="data-5g"] { background-image: image-set(url('/static_images/wm61/status-data-5g.png') 1x, url('/static_images/wm61/status-data-5g@2x.png') 2x, url('/static_images/wm61/status-data-5g@4x.png') 4x); }
 .wm-status-icon[data-icon="data-5g-active"] { background-image: image-set(url('/static_images/wm61/status-data-5g-active.png') 1x, url('/static_images/wm61/status-data-5g-active@2x.png') 2x, url('/static_images/wm61/status-data-5g-active@4x.png') 4x); }
 .wm-status-icon[data-icon="data-5g-plus"] { background-image: image-set(url('/static_images/wm61/status-data-5g-plus.png') 1x, url('/static_images/wm61/status-data-5g-plus@2x.png') 2x, url('/static_images/wm61/status-data-5g-plus@4x.png') 4x); }
@@ -2465,6 +2467,168 @@ html.ui-mobile body > .pswp .pswp__preloader {
 .wm-bubble-volume label {
     display: inline-flex;
     align-items: center;
+}
+
+/* ---- the volume bubble (WM 6.1 speaker icon, emulator VGA capture halved): a 77 x 199 callout
+ * 12.5 below the title bar, tail tip at the icon (43.5 from its left edge), two 6-step trackbars
+ * (media | notifications and system sounds) in 28 x 94 cells, the focused one framed in the
+ * highlight colour, then On / Vibrate / Off ---- */
+.wm-volume {
+    position: absolute;
+    z-index: 14;
+    width: calc(77 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(2 * var(--wm-px)) solid #000;
+    border-radius: calc(5 * var(--wm-px)) calc(5 * var(--wm-px)) calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    background: #fff;
+    color: #000;
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    padding-bottom: calc(9 * var(--wm-px));
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+}
+
+.wm-volume[hidden] {
+    display: none;
+}
+
+.wm-volume-tail {
+    position: absolute;
+    left: calc(var(--wm-tip) - 24.5 * var(--wm-px));
+    top: calc(-14.5 * var(--wm-px));
+    width: calc(24.5 * var(--wm-px));
+    height: calc(14.5 * var(--wm-px));
+    background: #000;
+    clip-path: polygon(0 100%, calc(22.5 * var(--wm-px)) 0, 100% 0, 100% 100%);
+}
+
+.wm-volume-tail::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--wm-highlight);
+    clip-path: polygon(calc(3 * var(--wm-px)) 100%, calc(22.5 * var(--wm-px)) calc(2.8 * var(--wm-px)), calc(22.5 * var(--wm-px)) 100%);
+}
+
+.wm-volume-title {
+    height: calc(18 * var(--wm-px));
+    line-height: calc(18 * var(--wm-px));
+    padding: 0 calc(8.5 * var(--wm-px));
+    border-radius: calc(3 * var(--wm-px)) calc(3 * var(--wm-px)) 0 0;
+    background: linear-gradient(to bottom, var(--wm-highlight), color-mix(in srgb, var(--wm-highlight) 82%, #000));
+    color: #fff;
+    font-weight: bold;
+}
+
+.wm-vol-sliders {
+    display: flex;
+    gap: calc(7 * var(--wm-px));
+    padding: calc(5 * var(--wm-px)) 0 0 calc(5 * var(--wm-px));
+}
+
+.wm-vol-col {
+    --v: 5;
+    width: calc(28 * var(--wm-px));
+    cursor: default;
+}
+
+.wm-vol-col > img {
+    display: block;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin: 0 0 calc(1 * var(--wm-px)) calc(4.5 * var(--wm-px));
+    image-rendering: pixelated;
+}
+
+.wm-vol-col[data-kind="ringer"] > img {
+    margin-left: calc(0.5 * var(--wm-px));
+}
+
+.wm-vol-trackbar {
+    position: relative;
+    height: calc(94 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid transparent;
+    outline: none;
+}
+
+.wm-vol-col.is-focus .wm-vol-trackbar {
+    border-color: var(--wm-highlight);
+}
+
+/* positions below are from the cell's outer edge; the 1-unit frame comes off */
+.wm-vol-track {
+    position: absolute;
+    left: calc(6.5 * var(--wm-px));
+    top: calc(5.5 * var(--wm-px));
+    width: calc(3 * var(--wm-px));
+    height: calc(81.5 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-vol-tick {
+    position: absolute;
+    left: calc(18 * var(--wm-px));
+    top: round(calc((8 + var(--i) * 14.8) * var(--wm-px)), 1px);
+    width: calc(3 * var(--wm-px));
+    height: calc(1 * var(--wm-px));
+    background: #000;
+}
+
+.wm-vol-thumb {
+    position: absolute;
+    left: 0;
+    top: round(calc((4.5 + (5 - var(--v)) * 14.8) * var(--wm-px)), 1px);
+    width: calc(17 * var(--wm-px));
+    height: calc(8 * var(--wm-px));
+    background: #000;
+    clip-path: polygon(0 0, calc(100% - 5 * var(--wm-px)) 0, 100% 50%, calc(100% - 5 * var(--wm-px)) 100%, 0 100%);
+}
+
+.wm-vol-thumb::after {
+    content: '';
+    position: absolute;
+    inset: calc(1 * var(--wm-px)) calc(1.4 * var(--wm-px)) calc(1 * var(--wm-px)) calc(1 * var(--wm-px));
+    background: #fff;
+    clip-path: polygon(0 0, calc(100% - 4 * var(--wm-px)) 0, 100% 50%, calc(100% - 4 * var(--wm-px)) 100%, 0 100%);
+}
+
+.wm-vol-modes {
+    padding: calc(1 * var(--wm-px)) 0 0 calc(5 * var(--wm-px));
+}
+
+.wm-vol-mode {
+    display: flex;
+    align-items: center;
+    height: calc(17.5 * var(--wm-px));
+}
+
+.wm-vol-mode input[type="radio"] {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    flex: none;
+    width: calc(15 * var(--wm-px)) !important;
+    height: calc(15 * var(--wm-px)) !important;
+    margin: 0 calc(5.5 * var(--wm-px)) 0 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box;
+    border: calc(1.5 * var(--wm-px)) solid #000 !important;
+    border-radius: 50% !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    outline: none;
+}
+
+.wm-vol-mode input[type="radio"]:checked {
+    background: radial-gradient(circle, #000 0 calc(4.5 * var(--wm-px)), #fff calc(4.6 * var(--wm-px))) !important;
+}
+
+.wm-vol-mode input[type="radio"]::before,
+.wm-vol-mode input[type="radio"]::after {
+    content: none !important;
 }
 
 /* Settings > Today > Items: rows switched off */

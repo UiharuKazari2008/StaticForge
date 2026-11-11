@@ -6470,6 +6470,61 @@
         "melaton-drawn"
       ],
       "notes": "5G Ultra Wideband (mmWave); 40 x 32 at 2x, wider than the square cell: Melaton extension (WM 6.1 had no such network). Letters as 2 px holes in the ROM box (scripts/generate-wm-data-icons.py). With the data arrows of ico_4776 = connected."
+    },
+    "app-folder-dreamscape": {
+      "1x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-dreamscape-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-dreamscape.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-dreamscape.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Dreamscape program folder. Subject: an open yellow manila Windows folder, exactly like the reference Games folder (same folder shape, colour, angle and back panel), with a small square deep navy blue badge leaning in front of it at the lower left (where the playing card is in the reference), the badge showing the white Dreamscape emblem: a thick brush-stroke ring open at the upper right with small square pixels breaking away from the gap."
+    },
+    "app-folder-dreamscape-lg": {
+      "1x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-dreamscape.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-dreamscape.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-dreamscape.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-folder-dreamscape. Not ROM art."
     }
   },
   "notDelivered": {

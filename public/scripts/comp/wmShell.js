@@ -38,7 +38,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uwb", "status-data-uwb-active", "status-director", "status-mail", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
+    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uwb", "status-data-uwb-active", "status-director", "status-mail", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9"]);
     const srcset = (name) => String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -295,6 +295,7 @@
             <div class="wm-msgbox-layer" hidden></div>
             <div class="wm-busy" role="status" aria-live="polite" hidden><img class="wm-busy-wait" alt="Please wait" draggable="false" hidden></div>
             <div class="wm-bubble" role="dialog" hidden></div>
+            <div class="wm-volume" role="dialog" aria-label="Volume" hidden></div>
             <div class="wm-notify-tray" role="listbox" aria-label="Notifications" hidden></div>
             <div class="wm-notify" role="alertdialog" hidden></div>`;
         document.body.appendChild(shell);
@@ -339,6 +340,8 @@
             // a tap outside an open bubble hides it (its own buttons and links close it too)
             const bub = shell.querySelector('.wm-bubble');
             if (!bub.hidden && !bub.contains(e.target) && !(e.target.closest && e.target.closest('#wmShell .wm-status-icon'))) closeBubble();
+            const vc = shell.querySelector('.wm-volume');
+            if (!vc.hidden && !vc.contains(e.target) && !(e.target.closest && e.target.closest('#wmShell .wm-status-icon'))) closeVolume();
             // the notification tray closes on a tap elsewhere (the bubble itself stays, as on the device)
             if (noteTrayOpen && !(e.target.closest && e.target.closest('#wmShell .wm-notify-tray, #wmShell [data-role="notify"]'))) { noteTrayOpen = false; renderNotes(); }
             if (!openPopup || openPopup.contains(e.target)) return;
@@ -930,13 +933,17 @@
         open(id, { fromStart: true });
     }
 
+    const pageScroll = new WeakMap(); // page -> scrollTop when it was hidden
+
     function activate(id) {
         const app = apps.get(id);
         if (!app) return;
         noteOpened(id);
         const prev = current && apps.get(current);
         if (prev && prev !== app) {
-            if (prev.page) prev.page.hidden = true;
+            // a hidden page loses its scroll offset: kept here and put back when it returns
+            // (Today read from the top again after every row that opened an app)
+            if (prev.page) { pageScroll.set(prev.page, prev.page.scrollTop); prev.page.hidden = true; }
             if (typeof prev.hide === 'function') prev.hide();
         }
         current = id;
@@ -946,6 +953,8 @@
         // Today's title bar reads "Start"; an app shows its name and the X (or ok) at the right
         setTitle(id === 'today' ? startButtonPrefs().text : (app.title || id));
         if (typeof app.show === 'function') app.show(page);
+        const y = pageScroll.get(page);
+        if (y) { page.scrollTop = y; requestAnimationFrame(() => { if (!page.hidden) page.scrollTop = y; }); }
         renderSoftKeys();
     }
 
@@ -1057,9 +1066,8 @@
         bat.hidden = !dev.battery;
         if (dev.battery) { bat.dataset.icon = dev.battery.icon; bat.title = dev.battery.text; }
         const vol = shell.querySelector('[data-role="volume"]');
-        let muted = false;
-        try { muted = !!(window.tabVolume && typeof window.tabVolume.isMuted === 'function' && window.tabVolume.isMuted()); } catch (_) { /* volume unknown */ }
-        vol.dataset.icon = muted ? 'volume-off' : 'volume';
+        const mode = soundMode();
+        vol.dataset.icon = mode === 'off' ? 'volume-off' : mode === 'vibrate' ? 'vibrate' : 'volume';
         // pending things, as WM shows a notification glyph: the Director (an open clapper that claps
         // while a turn runs; closed while it is idle and its app is open), prints in progress,
         // unread mail, an update downloaded and ready to install
@@ -1137,10 +1145,38 @@
         }, 140);
     }
 
+    /*
+     * Tray icons pixel for pixel (#735): 16 x --wm-px at a 2.25 density is 54 device px, a 1.69x
+     * stretch of the 32 px art that made some art pixels 2 device px and others 1 (uneven strokes),
+     * at fractional device positions. --wm-icon-unit is a whole multiple of the 2x art (Fold7: 2x,
+     * 64 device px) and snapStatusIcons nudges each icon onto the device pixel grid.
+     */
+    function syncIconUnit() {
+        const dpr = window.devicePixelRatio || 1;
+        const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        const k = Math.max(1, Math.round((16 * px * dpr) / 32));
+        const unit = `${(2 * k) / dpr}px`;
+        if (root.style.getPropertyValue('--wm-icon-unit') !== unit) root.style.setProperty('--wm-icon-unit', unit);
+    }
+
+    function snapStatusIcons() {
+        if (!shell) return;
+        const dpr = window.devicePixelRatio || 1;
+        const icons = shell.querySelectorAll('.wm-titlebar .wm-status-icon');
+        icons.forEach((i) => { i.style.translate = ''; });
+        icons.forEach((i) => {
+            if (i.hidden || !i.offsetWidth) return;
+            const r = i.getBoundingClientRect();
+            const dx = Math.round(r.left * dpr) / dpr - r.left;
+            const dy = Math.round(r.top * dpr) / dpr - r.top;
+            if (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001) i.style.translate = `${dx}px ${dy}px`;
+        });
+    }
+
     function fitStatus() {
         if (!shell || fitQueued) return;
         fitQueued = true;
-        afterPaint().then(() => { fitQueued = false; fitStatusNow(); });
+        afterPaint().then(() => { fitQueued = false; syncIconUnit(); fitStatusNow(); snapStatusIcons(); });
     }
 
     /*
@@ -1557,9 +1593,10 @@
     const BACKGROUND_TOAST = /^(connecting|connected|connection|reconnect|offline|high latency|generation complete|you have mail|new mail|update)/i;
 
     /**
-     * Loading while Melaton starts (20 s after boot) or while a workspace switch runs (Yukimi, Nov 10:
-     * a dialog, not a notification): a WM "Please Wait" box with the wait cursor and the toast's
-     * text, over the screen until the loading toasts are gone.
+     * Loading while Melaton starts (20 s after boot) or while a workspace switch runs is never a
+     * notification (Yukimi, Nov 10). Starting up shows the wait cursor alone; a workspace switch
+     * shows a WM "Please Wait" box with the wait cursor and the toast's text, over the screen until
+     * the loading toasts are gone.
      */
     let bootDoneAt = 0;
     let switchingWorkspace = false;
@@ -1635,6 +1672,13 @@
                     || /^(loading|connecting|preparing|installing|downloading|syncing|refreshing|switching)\b|\.\.\.$|\u2026$/i.test(ttl || txt) || /loading/i.test(txt);
                 if (loading) {
                     t.dataset.wmBusy = '1';
+                    // starting up (the gallery and the rest) is short: the wait cursor alone, no box
+                    // (Yukimi, Nov 10); a workspace switch keeps its Please Wait box
+                    if (!switchingWorkspace) {
+                        const release = busy(true, { delay: 0, timeout: 30000 });
+                        const watch = setInterval(() => { if (!t.isConnected || t.classList.contains('removing')) { clearInterval(watch); release(); } }, 250);
+                        continue;
+                    }
                     loadingToasts.add(t);
                     // Teleport draws its own travel while the workspace loads
                     if (current !== 'teleport') showLoadingBox([ttl, txt].filter(Boolean).join('\n'));
@@ -1950,8 +1994,150 @@
         if (!attach()) new MutationObserver((_, mo) => { if (attach()) mo.disconnect(); }).observe(document.body, { childList: true });
     }
 
+    // ---------------------------------------------------------------- volume
+
+    /*
+     * The volume bubble (WM 6.1, the speaker icon on the emulator): a callout under the icon, two
+     * 6-step trackbars and On / Vibrate / Off. Left (the device icon, WM's System) is the media
+     * level: tabVolume's master, every page sound and video. Right (the handset, WM's Ringer) is
+     * notifications and system sounds: the WM sound events, past the media level (wmRingerLevel
+     * 0-5). Off is tabVolume's mute (everything); Vibrate (wmSoundMode) silences the WM sounds and
+     * buzzes notifications instead, media still plays. Phone only: the desktop keeps its flyout.
+     */
+    const VOL_STEPS = 5;
+    const RINGER_KEY = 'wmRingerLevel';
+    const MODE_KEY = 'wmSoundMode';
+
+    function ringerLevel() {
+        try {
+            const raw = localStorage.getItem(RINGER_KEY);
+            const n = raw == null || raw === '' ? VOL_STEPS : Number(raw);
+            return Number.isFinite(n) ? Math.max(0, Math.min(VOL_STEPS, Math.round(n))) : VOL_STEPS;
+        } catch (_) { return VOL_STEPS; }
+    }
+
+    function setRingerLevel(n) {
+        try { localStorage.setItem(RINGER_KEY, String(Math.max(0, Math.min(VOL_STEPS, Math.round(n))))); } catch (_) { /* storage off */ }
+    }
+
+    function mediaLevel() {
+        const tv = window.tabVolume;
+        const v = tv && typeof tv.getLevel === 'function' ? Number(tv.getLevel()) : 100;
+        return Math.max(0, Math.min(VOL_STEPS, Math.round((Number.isFinite(v) ? v : 100) / (100 / VOL_STEPS))));
+    }
+
+    function setMediaLevel(n) {
+        const tv = window.tabVolume;
+        if (tv && typeof tv.setLevel === 'function') tv.setLevel(Math.round(n * (100 / VOL_STEPS)), { keepMute: true });
+    }
+
+    /** 'on' | 'vibrate' | 'off' */
+    function soundMode() {
+        try {
+            const tv = window.tabVolume;
+            if (tv && typeof tv.isMuted === 'function' && tv.isMuted()) return 'off';
+            return localStorage.getItem(MODE_KEY) === 'vibrate' ? 'vibrate' : 'on';
+        } catch (_) { return 'on'; }
+    }
+
+    function setSoundMode(mode) {
+        const tv = window.tabVolume;
+        if (tv && typeof tv.setMuted === 'function' && tv.isMuted() !== (mode === 'off')) tv.setMuted(mode === 'off');
+        try {
+            if (mode === 'vibrate') localStorage.setItem(MODE_KEY, 'vibrate');
+            else localStorage.removeItem(MODE_KEY);
+        } catch (_) { /* storage off */ }
+        if (mode === 'vibrate') { try { if (navigator.vibrate) navigator.vibrate(200); } catch (_) { /* no motor */ } }
+    }
+
+    let volumeFocus = 'media';
+
+    function closeVolume() {
+        const el = shell && shell.querySelector('.wm-volume');
+        if (el && !el.hidden) { el.hidden = true; el.replaceChildren(); }
+    }
+
+    function toggleVolume(anchor) {
+        const el = shell.querySelector('.wm-volume');
+        if (!el.hidden) { closeVolume(); return; }
+        closeBubble();
+        closeMenus(true);
+        volumeFocus = 'media';
+        const col = (kind, icon, label) => `<div class="wm-vol-col" data-kind="${kind}">${imgTag(icon)}`
+            + `<div class="wm-vol-trackbar" role="slider" tabindex="0" aria-label="${label}" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="${VOL_STEPS}">`
+            + '<span class="wm-vol-track"></span>'
+            + Array.from({ length: VOL_STEPS + 1 }, (_, i) => `<span class="wm-vol-tick" style="--i:${i}"></span>`).join('')
+            + '<span class="wm-vol-thumb"></span></div></div>';
+        const radio = (v, t) => `<label class="wm-vol-mode"><input type="radio" name="wmvolmode" value="${v}"><span>${t}</span></label>`;
+        el.innerHTML = '<span class="wm-volume-tail" aria-hidden="true"></span><div class="wm-volume-title">Volume</div>'
+            + `<div class="wm-vol-sliders">${col('media', 'volume-system', 'Media')}${col('ringer', 'volume-ringer', 'Notifications and system sounds')}</div>`
+            + `<div class="wm-vol-modes">${radio('on', 'On')}${radio('vibrate', 'Vibrate')}${radio('off', 'Off')}</div>`;
+        el.hidden = false;
+        const paint = () => {
+            el.querySelectorAll('.wm-vol-col').forEach((c) => {
+                const v = c.dataset.kind === 'media' ? mediaLevel() : ringerLevel();
+                c.style.setProperty('--v', String(v));
+                const bar = c.querySelector('.wm-vol-trackbar');
+                bar.setAttribute('aria-valuenow', String(v));
+                c.classList.toggle('is-focus', c.dataset.kind === volumeFocus);
+            });
+            const mode = soundMode();
+            el.querySelectorAll('input[name="wmvolmode"]').forEach((r) => { r.checked = r.value === mode; });
+        };
+        const set = (kind, v) => {
+            v = Math.max(0, Math.min(VOL_STEPS, v));
+            if (kind === 'media') setMediaLevel(v); else setRingerLevel(v);
+            paint();
+            refreshStatus();
+        };
+        el.querySelectorAll('.wm-vol-col').forEach((c) => {
+            const kind = c.dataset.kind;
+            const bar = c.querySelector('.wm-vol-trackbar');
+            const fromY = (y) => {
+                const t = c.querySelector('.wm-vol-tick[style="--i:0"]').getBoundingClientRect();
+                const b = c.querySelector(`.wm-vol-tick[style="--i:${VOL_STEPS}"]`).getBoundingClientRect();
+                const top = t.top + t.height / 2;
+                const bottom = b.top + b.height / 2;
+                return Math.round(((bottom - y) / Math.max(1, bottom - top)) * VOL_STEPS);
+            };
+            c.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                volumeFocus = kind;
+                bar.focus({ preventScroll: true });
+                set(kind, fromY(e.clientY));
+                try { c.setPointerCapture(e.pointerId); } catch (_) { /* gone */ }
+            });
+            c.addEventListener('pointermove', (e) => { if (c.hasPointerCapture && c.hasPointerCapture(e.pointerId)) set(kind, fromY(e.clientY)); });
+            bar.addEventListener('focus', () => { volumeFocus = kind; paint(); });
+            bar.addEventListener('keydown', (e) => {
+                const cur = kind === 'media' ? mediaLevel() : ringerLevel();
+                if (e.key === 'ArrowUp' || e.key === 'ArrowRight') set(kind, cur + 1);
+                else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') set(kind, cur - 1);
+                else return;
+                e.preventDefault();
+                e.stopPropagation();
+            });
+        });
+        el.querySelectorAll('input[name="wmvolmode"]').forEach((r) => r.addEventListener('change', () => { setSoundMode(r.value); paint(); refreshStatus(); }));
+        el.addEventListener('click', (e) => e.stopPropagation());
+        paint();
+        // under the title bar, the tail's tip at the icon; kept on screen
+        const sr = shell.getBoundingClientRect();
+        const bar = shell.querySelector('.wm-titlebar').getBoundingClientRect();
+        const ar = (anchor || shell.querySelector('[data-role="volume"]')).getBoundingClientRect();
+        const px = parseFloat(getComputedStyle(el).getPropertyValue('--wm-px')) || 1;
+        const tip = ar.left + ar.width / 2 - sr.left;
+        const w = el.offsetWidth;
+        const left = Math.max(4.5 * px, Math.min(sr.width - 4.5 * px - w, tip - 43.5 * px));
+        el.style.left = `${Math.round(left)}px`;
+        el.style.top = `${Math.round(bar.bottom - sr.top + 12.5 * px)}px`;
+        el.style.setProperty('--wm-tip', `${Math.round(tip - left)}px`);
+    }
+
     /** The bubble for a title-bar status icon; update=true repaints an open one in place. */
     function statusBubble(role, anchor, update) {
+        if (role === 'volume') { if (!update) toggleVolume(anchor); return; }
+        closeVolume();
         const el = shell.querySelector('.wm-bubble');
         // roaming opens the Phone bubble, so a second tap on it closes that bubble
         const r = role === 'roaming' ? 'signal' : role;
@@ -2013,18 +2199,6 @@
                 if (b.saver) lines.push('Battery saver is on.');
             }
             bubble({ title: 'Power', role, anchor, sections: lines, buttons: [{ text: 'Hide' }] });
-        } else if (role === 'volume') {
-            const tv = window.tabVolume;
-            const node = document.createElement('div');
-            node.className = 'wm-bubble-volume';
-            const muted = !!(tv && tv.isMuted && tv.isMuted());
-            node.innerHTML = `<label><input type="radio" name="wmvol" value="on"${muted ? '' : ' checked'}> On</label><label><input type="radio" name="wmvol" value="off"${muted ? ' checked' : ''}> Off</label><input type="range" min="0" max="100" step="5" aria-label="Volume">`;
-            const range = node.querySelector('input[type=range]');
-            range.value = String(tv && tv.getLevel ? tv.getLevel() : 100);
-            range.addEventListener('input', () => { if (tv && tv.setLevel) tv.setLevel(Number(range.value)); refreshStatus(); });
-            node.querySelectorAll('input[type=radio]').forEach((r) => r.addEventListener('change', () => { if (tv && tv.setMuted) tv.setMuted(r.value === 'off'); refreshStatus(); }));
-            if (update && !el.hidden) return; // keep the live controls
-            bubble({ title: 'Volume', role, anchor, sections: [{ node }], buttons: [{ text: 'Hide' }] });
         } else if (role === 'director') {
             const d = directorState();
             const text = !d ? 'The Director has not reported yet.'
@@ -2219,7 +2393,8 @@
      * follows the desktop event it stands for (desktop); (None), a group's check box off or No
      * Sounds silences it; a desktop sound picked for that event plays on a phone that has not
      * picked its own. New e-mail's Play sound and Display message are Dovecote's own (per browser).
-     * Muted or volume 0 (tabVolume) is silent; tabVolume's master gain scales the rest. Nothing
+     * The volume bubble decides over all of it: Off (tabVolume muted) and Vibrate are silent, and
+     * the Ringer level (wmRingerLevel 0-5) scales every sound past the media level. Nothing
      * plays before a tap or key has unlocked audio (no queue, never throws).
      */
     const SND_BASE = '/sounds/wm61/';
@@ -2348,12 +2523,7 @@
     }
 
     function sndSilentNow() {
-        try {
-            const tv = window.tabVolume;
-            if (tv && typeof tv.isMuted === 'function' && tv.isMuted()) return true;
-            if (tv && typeof tv.getLevel === 'function' && Number(tv.getLevel()) <= 0) return true;
-        } catch (_) { /* volume unknown: play */ }
-        return false;
+        return soundMode() !== 'on' || ringerLevel() <= 0;
     }
 
     // what played, for tests (wmShell.sounds.log)
@@ -2370,14 +2540,13 @@
         if (!buffer) return null;
         const src = ctx.createBufferSource();
         src.buffer = buffer;
-        if (gain < 1) {
-            const g = ctx.createGain();
-            g.gain.value = gain;
-            src.connect(g);
-            g.connect(ctx.destination);
-        } else {
-            src.connect(ctx.destination); // tabVolume's master gain sits on the way out
-        }
+        // the Ringer level (volume bubble), not the media level: past tabVolume's master gain
+        const g = ctx.createGain();
+        g.gain.value = Math.max(0, Math.min(1, gain)) * (ringerLevel() / VOL_STEPS);
+        src.connect(g);
+        const tv = window.tabVolume;
+        if (tv && typeof tv.connectRaw === 'function') tv.connectRaw(g);
+        else g.connect(ctx.destination);
         src.start(0);
         return src;
     }
@@ -2395,7 +2564,9 @@
             const ev = id && SND_EVENT.get(id);
             if (!ev) return false;
             const prefs = eventPrefs(id);
-            if (prefs.vibrate && opts.vibrate !== false) {
+            // the volume bubble's Vibrate: sounds buzz instead (a notification that vibrates anyway once)
+            const buzz = opts.vibrate !== false && (prefs.vibrate || (soundMode() === 'vibrate' && ev.kind === 'note'));
+            if (buzz) {
                 try { if (navigator.vibrate) navigator.vibrate([400, 150, 400]); } catch (_) { /* no motor */ }
             }
             const event = opts.event || ev.desktop;
