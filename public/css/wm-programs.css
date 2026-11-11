@@ -38,6 +38,26 @@
     align-content: start;
 }
 
+/* 6.1 device (Programs, Settings at 240 units): the ListView's icon spacing is 75 x 68 units, the
+   columns start at the left edge (label centres at 37.25, 112.5, 187.25), three fit beside the
+   13-unit scroll bar and 2 units stay free at the right. A wider screen gets as many 75-unit
+   columns as fit, still from the left, as a ListView arranges icons. */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-icongrid {
+    grid-template-columns: repeat(auto-fill, calc(75 * var(--wm-px)));
+    justify-content: start;
+    padding: 0;
+}
+
+/* device: the label's capitals start 41 units under the cell top (VGA row 134 in a row from 52),
+   its highlight box reaches 2 units past the text at each side */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-icongrid-label {
+    margin-top: calc(4.5 * var(--wm-px));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-icongrid-label span {
+    padding: calc(1 * var(--wm-px)) calc(2 * var(--wm-px));
+}
+
 .wm-icongrid-cell {
     position: relative;
     display: flex !important;
@@ -83,7 +103,7 @@
     max-width: calc(100% + 4 * var(--wm-px));
     overflow: hidden;
     margin: calc(3 * var(--wm-px)) calc(-2 * var(--wm-px)) 0;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(12.5 * var(--wm-px));
     overflow-wrap: break-word;
 }
@@ -149,7 +169,8 @@
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    height: calc(23 * var(--wm-px));
+    /* device: the band is VGA rows 52..97 (23 units), the rule rows 98..99 */
+    height: calc(24 * var(--wm-px));
     padding: 0 calc(8 * var(--wm-px));
     border-bottom: calc(1 * var(--wm-px)) solid #000;
     color: var(--wm-highlight);
@@ -160,7 +181,7 @@
 
 .wm-form {
     padding: calc(7 * var(--wm-px)) calc(5 * var(--wm-px)) calc(8 * var(--wm-px));
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(13 * var(--wm-px));
 }
 
@@ -203,7 +224,7 @@
 }
 
 .wm-form-value {
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -219,7 +240,7 @@
     border-radius: 0;
     background: #fff;
     color: #000;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     outline: none;
     user-select: text;
     -webkit-user-select: text;
@@ -388,6 +409,43 @@
     background: linear-gradient(to bottom right, transparent 50%, #000 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
         linear-gradient(to bottom left, transparent 50%, #000 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
     transform: scaleY(-1);
+}
+
+/* 6.1 device (Regional Settings, Windows Media options; VGA halved): 20 units tall in a 1-unit
+   black frame, no rule and no button face before the arrow: a bare black triangle (8.5 x 4.5
+   units on the device, 8 x 4 here) whose centre is 7 units inside the box's right edge, in a 15-unit zone the value never
+   enters. With the focus the value's cell takes the highlight: from 3 units inside the left
+   edge to the arrow's zone, 1 unit clear of the frame above and below, the text white. */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-combo {
+    padding: 0 0 0 calc(2 * var(--wm-px)) !important;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-combo > span {
+    flex: 1 1 auto;
+    min-width: 0;
+    align-self: stretch;
+    /* a block centred by align-content keeps the ellipsis a flex box would lose */
+    display: block;
+    align-content: center;
+    margin: calc(1 * var(--wm-px)) 0;
+    padding-left: calc(1 * var(--wm-px));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-combo:focus:not(:disabled) > span {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-combo::after {
+    width: calc(15 * var(--wm-px));
+    border-left: 0;
+    /* two 4 x 4 unit halves on whole units: fractional ones left a notch at the phone's scale */
+    background: linear-gradient(to bottom right, transparent 50%, #000 50%) calc(5 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to bottom left, transparent 50%, #000 50%) calc(9 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-combo:disabled::after {
+    opacity: 0.45;
 }
 
 /* editable combo (Start text): an edit box with the drop button at its right */

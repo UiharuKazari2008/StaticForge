@@ -5,7 +5,7 @@
  */
 
 .wm-reference {
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 .wm-reference [hidden] {

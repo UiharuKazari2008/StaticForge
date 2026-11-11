@@ -118,7 +118,7 @@
     border-radius: 0;
     background: #fff;
     color: #000;
-    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+    font: bold var(--wm-fs) var(--wm-font);
     outline: none;
     user-select: text;
     -webkit-user-select: text;

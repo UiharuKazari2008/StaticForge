@@ -10,7 +10,7 @@
     overflow: hidden !important;
     background: #fff;
     color: #000;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 .wm-chat [hidden] {
@@ -290,7 +290,7 @@
     resize: none;
     background: linear-gradient(to bottom, #fff7ff 0%, #f7f3f7 40%, #efebef 100%);
     color: #000;
-    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font);
     user-select: text;
     -webkit-user-select: text;
 }

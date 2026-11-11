@@ -54,7 +54,7 @@
     flex-direction: column;
     background: #fff !important;
     color: #000;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     contain: layout paint;
 }
 
@@ -231,7 +231,7 @@
     padding: 0 0 calc(1 * var(--wm-px));
     border-bottom: calc(1 * var(--wm-px)) solid #000;
     color: #000;
-    font: bold calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+    font: bold var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font) !important;
 }
 
 /* Characters / Settings fold (wmStudio.js foldSections): the whole head is the touch target, a WM
@@ -311,7 +311,7 @@
     min-height: calc(20 * var(--wm-px));
     margin: 0 0 calc(3 * var(--wm-px));
     color: #000;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
 }
 
 .wm-studio .wms-chars-none[hidden] {
@@ -333,7 +333,7 @@
     border-radius: 0;
     background: var(--wm-tint);
     color: #000;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
 }
 
 .wm-studio .wms-chars-add:active {
@@ -378,7 +378,7 @@
     justify-content: center;
     gap: calc(8 * var(--wm-px));
     background: #fff;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
 }
 
 .wm-studio .wms-norefs,
@@ -390,7 +390,7 @@
     z-index: 2;
     margin: 0;
     text-align: center;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     color: #000;
     pointer-events: none;
 }
@@ -489,7 +489,7 @@
     background: #fff !important;
     box-shadow: none !important;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font) !important;
     text-shadow: none !important;
     -webkit-text-fill-color: #000 !important;
     outline: none !important;
@@ -526,7 +526,7 @@
     background: var(--wm-tint) !important;
     box-shadow: none !important;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     text-shadow: none !important;
     filter: none !important;
     backdrop-filter: none !important;
@@ -642,7 +642,7 @@
     background: #fff !important;
     box-shadow: none !important;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     backdrop-filter: none !important;
 }
 
@@ -724,7 +724,7 @@
     order: 9;
     min-width: 0;
     color: #000 !important;
-    font: bold calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: bold var(--wm-fs) var(--wm-font) !important;
 }
 
 .wm-studio #manualModal .prompt-textarea-container {
@@ -796,7 +796,7 @@
 
 .wm-studio #manualModal .inset-badge :is(span, .price-list) {
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     text-shadow: none !important;
     -webkit-text-fill-color: #000 !important;
     filter: none !important;
@@ -868,7 +868,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     text-transform: none !important;
     letter-spacing: normal !important;
     opacity: 1 !important;
@@ -934,7 +934,7 @@
     transform: translateY(-50%);
     color: #000 !important;
     pointer-events: none;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
 }
 
 .wm-studio #manualModal .model-control .percentage-input-container:focus-within .percentage-input-overlay {
@@ -986,7 +986,7 @@
 
 .wm-studio #manualModal .model-control .control-row-last > .form-group > label::after {
     content: 'Prints';
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
 }
 
 .wm-studio #manualModal .model-control .control-row-last .gen-controls,
@@ -1135,7 +1135,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     -webkit-text-fill-color: #000 !important;
     text-shadow: none !important;
 }
@@ -1206,7 +1206,7 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac#characterAutocomplete
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
 }
 
 html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar:not(.hidden) {
@@ -1260,7 +1260,7 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-displa
     border-radius: 0 !important;
     box-shadow: none !important;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     opacity: 1 !important;
 }
 
@@ -1324,7 +1324,7 @@ html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocomplete
     -webkit-backdrop-filter: none !important;
     box-shadow: none !important;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     letter-spacing: normal !important;
     text-shadow: none !important;
 }
@@ -1352,7 +1352,7 @@ html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocomplete
 }
 
 html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocompleteViewBar button {
-    font-size: calc(12 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
     border: 0 !important;
 }
 
@@ -1522,7 +1522,7 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     box-shadow: none !important;
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
-    font: calc(10 * var(--wm-px)) / calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: calc(10 * var(--wm-px)) / var(--wm-fs) var(--wm-font) !important;
     text-shadow: none !important;
     filter: none !important;
 }
@@ -1591,7 +1591,7 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     margin: 0 !important;
     padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
     border: calc(1 * var(--wm-px)) solid transparent !important;
-    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font) !important;
     letter-spacing: normal !important;
     word-spacing: normal !important;
     tab-size: 4 !important;
@@ -1664,7 +1664,7 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     transform: none !important;
     animation: none !important;
     color: inherit;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
 }
 
 .wm-studio #manualModal .prompt-tabs .extra-buttons #directorBtn::after { content: 'Director' !important; }
@@ -1690,7 +1690,7 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
 .wm-studio #manualModal .prompt-textarea-toolbar :is(.token-count, .text-search-label, .text-search-match-count) {
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     text-shadow: none !important;
     opacity: 1 !important;
 }
@@ -1990,7 +1990,7 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     background: #fff !important;
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     text-align: center;
 }
 
@@ -2013,7 +2013,7 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge {
     background: var(--wm-tab-strip);
     color: #000;
     -webkit-text-fill-color: currentColor;
-    font: calc(10 * var(--wm-px)) / calc(12 * var(--wm-px)) var(--wm-font);
+    font: calc(10 * var(--wm-px)) / var(--wm-fs) var(--wm-font);
     font-weight: normal;
     text-shadow: none;
     vertical-align: middle;
@@ -2055,7 +2055,7 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
     margin-left: calc(5 * var(--wm-px));
     color: #4a4d4a !important;
     -webkit-text-fill-color: #4a4d4a !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     white-space: nowrap;
 }
 
@@ -2184,7 +2184,7 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
     flex: 0 0 auto;
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     text-transform: none !important;
     letter-spacing: normal !important;
     text-shadow: none !important;
@@ -2203,7 +2203,7 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
     box-shadow: none !important;
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
-    font: calc(12 * var(--wm-px)) / calc(18 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) / calc(18 * var(--wm-px)) var(--wm-font) !important;
     text-align: center !important;
     text-shadow: none !important;
     opacity: 1 !important;
@@ -2240,7 +2240,7 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
     font-family: var(--wm-font) !important;
-    font-size: calc(12 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
     font-weight: normal !important;
     text-transform: none !important;
     letter-spacing: normal !important;
@@ -2404,7 +2404,7 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
     padding: 0 0 calc(1 * var(--wm-px));
     border-bottom: calc(1 * var(--wm-px)) solid #000;
     color: #000;
-    font: bold calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font);
+    font: bold var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font);
 }
 
 .wm-studio[data-tab="images"] #manualModal #transformationRow,
@@ -2692,7 +2692,7 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
 
 /* $ (paid requests) and the lambda (text replacement lock): type in the WM font */
 .wm-studio #manualModal i:is(.fa-dollar-sign, .fa-lambda)::before {
-    font: bold calc(12 * var(--wm-px)) / 1 var(--wm-font) !important;
+    font: bold var(--wm-fs) / 1 var(--wm-font) !important;
     -webkit-font-smoothing: auto;
 }
 

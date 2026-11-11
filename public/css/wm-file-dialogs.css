@@ -18,7 +18,7 @@
     flex-direction: column;
     flex: 1 1 auto;
     min-height: 0;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(13 * var(--wm-px));
 }
 
@@ -166,7 +166,7 @@
     border-right: calc(2 * var(--wm-px)) solid #000 !important;
     background: transparent !important;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     text-align: left;
     white-space: nowrap;
     overflow: hidden;
@@ -275,7 +275,7 @@
     border: calc(1 * var(--wm-px)) solid #000;
     background: #fff;
     color: #000;
-    font: calc(12 * var(--wm-px)) / calc(14 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) / calc(14 * var(--wm-px)) var(--wm-font);
 }
 
 .wm-fd .wfd-combo-row {
@@ -316,7 +316,7 @@
     border: 0 !important;
     background: transparent !important;
     color: #0000ff !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     text-align: left;
     text-decoration: underline;
 }

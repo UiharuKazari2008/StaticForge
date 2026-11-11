@@ -17,7 +17,7 @@
 }
 
 :is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal {
-    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font) !important;
     color: #000 !important;
     --text-primary: #000;
     --text-secondary: #404040;
@@ -26,7 +26,7 @@
 
 :is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(div, span, p, label, li, td, th, dt, dd, a, h1, h2, h3, h4, h5, h6, small, strong, em, b, legend, summary, figcaption, code, pre, kbd, button, input, textarea, select, option):not(.icon-fa):not([class*="fa-"]):not([class*="nai-"]) {
     font-family: var(--wm-font) !important;
-    font-size: calc(12 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
     letter-spacing: normal !important;
     text-transform: none !important;
     text-shadow: none !important;

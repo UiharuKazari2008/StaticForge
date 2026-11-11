@@ -25,7 +25,8 @@
 .wm-task-manager .wtm-head {
     flex: 0 0 auto;
     box-sizing: border-box;
-    height: calc(18 * var(--wm-px));
+    /* device: the band is VGA rows 52..86 (17.5 units), the rule rows 87..88 */
+    height: calc(18.5 * var(--wm-px));
     border-bottom: calc(1 * var(--wm-px)) solid #000;
     background: var(--wm-tint);
 }

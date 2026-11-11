@@ -11,7 +11,7 @@
     overflow: hidden !important;
     background: #fff;
     color: #000;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     container: wxl / size;
 }
 

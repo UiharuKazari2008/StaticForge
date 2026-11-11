@@ -1308,7 +1308,8 @@
                     d.scale = SCALES[i];
                     thumb.style.left = pos(i);
                     slider.setAttribute('aria-valuenow', String(i));
-                    example.style.fontSize = `${12 * d.scale}px`;
+                    // the device's text: 10.5 units in 6.1 (8 pt), 12 in 6.5
+                    example.style.fontSize = `${(document.documentElement.dataset.wmVersion === '6.5' ? 12 : 10.5) * d.scale}px`;
                     example.style.lineHeight = `${13 * d.scale}px`;
                 };
                 const fromX = (x) => {

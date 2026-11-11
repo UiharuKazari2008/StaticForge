@@ -62,7 +62,7 @@ html.ui-mobile .wm-sys-facts .wm-facts {
 }
 
 html.ui-mobile .wm-sys-facts .wm-facts > :nth-child(even) {
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     white-space: normal;
     overflow-wrap: anywhere;
 }
@@ -151,4 +151,203 @@ html.ui-mobile .wm-sys-devices .wm-listbox-row span {
 
 html.ui-mobile .wm-sys-clock-fields .wm-edit {
     border-radius: 0 !important;
+}
+
+/* ---- Regional Settings, 6.1: the device's five pages (emulator captures, VGA halved; y from the
+ * rule under the page header). .wm-sys-reg undoes the form's own padding and places each piece
+ * where the device's dialog has it. Label + combo rows are 20 units on a 24-unit pitch, their
+ * combos in 9 pt (12 units) like the device's. ---- */
+html.ui-mobile .wm-sys-reg {
+    /* the nine rows of Number end 6 units over the tabs, with no scroll bar */
+    margin: calc(-7 * var(--wm-px)) calc(-5 * var(--wm-px)) calc(-8 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-reg .wm-combo {
+    font-size: calc(12 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-rrow {
+    display: grid;
+    grid-template-columns: calc(135 * var(--wm-px)) calc(80 * var(--wm-px));
+    align-items: center;
+    height: calc(20 * var(--wm-px));
+    margin-bottom: calc(4 * var(--wm-px));
+    padding-left: calc(9 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-reg > .wm-sys-rrow:last-child {
+    margin-bottom: 0;
+}
+
+/* the device's labels are not centred on their combos: 2 units higher on Number, Currency and
+   Time, 5 units higher on Date (label top 2 units under the combo's) */
+html.ui-mobile .wm-sys-rrow > span {
+    position: relative;
+    top: calc(-2 * var(--wm-px));
+    white-space: nowrap;
+}
+
+html.ui-mobile .wm-sys-reg.is-date .wm-sys-rrow > span {
+    top: calc(-5 * var(--wm-px));
+}
+
+/* Number, Currency: the first combo 4 units under the rule, combos at x 144..224 */
+html.ui-mobile .wm-sys-reg.is-number {
+    padding-top: calc(4 * var(--wm-px));
+}
+
+/* "= Universal currency symbol": right edge at x 226, its capitals at VGA row 456 */
+html.ui-mobile .wm-sys-reg-key {
+    width: calc(226 * var(--wm-px));
+    max-width: 100%;
+    margin-top: calc(7 * var(--wm-px));
+    text-align: right;
+}
+
+/* Time: the bold sample line at x 8 with its value at x 145.5, a 1-unit tint rule from x 4 to
+   236 at y 27, then the rows (labels at x 8, combos at x 144..232) from y 34 */
+html.ui-mobile .wm-sys-reg-sample {
+    display: grid;
+    grid-template-columns: calc(137.5 * var(--wm-px)) minmax(0, 1fr);
+    margin: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
+    padding: 0 0 calc(10 * var(--wm-px)) calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid var(--wm-tint);
+}
+
+html.ui-mobile .wm-sys-reg.is-time .wm-sys-rrow {
+    grid-template-columns: calc(136 * var(--wm-px)) calc(88 * var(--wm-px));
+    padding-left: calc(8 * var(--wm-px));
+}
+
+/* Date: the two samples (labels at x 8.5, values at x 89, 14-unit pitch), then the rows from
+   y 47 with combos at x 88..232 */
+html.ui-mobile .wm-sys-reg-dates {
+    display: grid;
+    grid-template-columns: calc(80.5 * var(--wm-px)) minmax(0, 1fr);
+    row-gap: calc(1 * var(--wm-px));
+    align-content: start;
+    min-height: calc(40 * var(--wm-px));
+    margin: calc(3 * var(--wm-px)) calc(8 * var(--wm-px)) calc(4 * var(--wm-px)) calc(8.5 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-reg.is-date .wm-sys-rrow,
+html.ui-mobile .wm-sys-rrow.is-location {
+    grid-template-columns: calc(79.5 * var(--wm-px)) calc(144 * var(--wm-px));
+    padding-left: calc(8.5 * var(--wm-px));
+}
+
+/* Region: the locale combo from x 8 to 232, 8 units under the rule; "Appearance samples" bold at
+   x 9; the samples' labels at x 9.5 and values at x 117.5, the values 1.5 units lower than their
+   labels as the device draws them; row tops at y 48, 66.5, 82.5, 98, 113. Location is Melaton's
+   own setting (the device has none here): a row under the samples. */
+html.ui-mobile .wm-sys-reg.is-region > .wm-combo {
+    width: calc(100% - 16 * var(--wm-px));
+    margin: calc(8 * var(--wm-px)) calc(8 * var(--wm-px)) 0;
+}
+
+html.ui-mobile .wm-sys-reg-head {
+    margin: calc(3.5 * var(--wm-px)) 0 calc(3.5 * var(--wm-px)) calc(9 * var(--wm-px));
+    font-weight: bold;
+}
+
+html.ui-mobile .wm-sys-reg-samples {
+    display: grid;
+    grid-template-columns: calc(108 * var(--wm-px)) minmax(0, 1fr);
+    grid-template-rows: calc(18.5 * var(--wm-px)) calc(16 * var(--wm-px)) calc(15.5 * var(--wm-px)) calc(15 * var(--wm-px)) auto;
+    margin: 0 calc(8 * var(--wm-px)) calc(10 * var(--wm-px)) calc(9.5 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-reg-samples > :nth-child(even) {
+    position: relative;
+    top: calc(1.5 * var(--wm-px));
+    overflow-wrap: anywhere;
+}
+
+/* ---- Power, 6.1: the device's two pages (emulator captures, VGA halved; y from the rule under
+ * the page header). Battery: "Main battery:" bold at x 18 with its value at x 116, "Battery
+ * power remaining:" on the next 13.5-unit line, then at y 32 the bar: "0" at x 5, a 189 x 16
+ * unit meter from x 16 (1-unit black frame, 1 unit of tint, highlight fill), "100" at x 211.5.
+ * Advanced: the bold group titles at x 10.5 (y 10.5 and 65.5); under each a check box at x 9
+ * whose label wraps in 98 units, and a 81 x 20 unit combo in 9 pt at x 150, 1 unit lower. ---- */
+html.ui-mobile .wm-sys-pow {
+    margin: calc(-7 * var(--wm-px)) calc(-5 * var(--wm-px)) 0;
+    line-height: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-pow-main {
+    display: grid;
+    grid-template-columns: calc(98 * var(--wm-px)) minmax(0, 1fr);
+    margin-top: calc(-0.5 * var(--wm-px));
+    padding-left: calc(18 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-pow-rem {
+    margin-top: calc(0.5 * var(--wm-px));
+    padding-left: calc(18 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-pow-bar {
+    display: grid;
+    grid-template-columns: calc(11 * var(--wm-px)) calc(189 * var(--wm-px)) auto;
+    align-items: center;
+    margin-top: calc(3 * var(--wm-px));
+    padding-left: calc(5 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-pow-bar > span:last-child {
+    margin-left: calc(6.5 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-pow-meter {
+    box-sizing: border-box;
+    height: calc(16 * var(--wm-px));
+    padding: calc(1 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: var(--wm-tint);
+}
+
+html.ui-mobile .wm-sys-pow-meter > div {
+    height: 100%;
+    background: var(--wm-highlight);
+}
+
+html.ui-mobile .wm-sys-pow-head {
+    margin-top: calc(15.5 * var(--wm-px));
+    padding-left: calc(10.5 * var(--wm-px));
+    font-weight: bold;
+}
+
+html.ui-mobile .wm-sys-pow > .wm-sys-pow-head:first-child {
+    margin-top: calc(10 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-pow-row {
+    display: grid;
+    /* the label's column gives way when Melaton's longer page brings a scroll bar */
+    grid-template-columns: minmax(0, calc(141 * var(--wm-px))) calc(81 * var(--wm-px));
+    align-items: start;
+    margin-top: calc(1.5 * var(--wm-px));
+    padding-left: calc(9 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-pow-row .wm-check {
+    min-height: calc(25 * var(--wm-px));
+    line-height: calc(12.5 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-pow-row .wm-check > span {
+    max-width: calc(99 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-pow-row .wm-combo {
+    margin-top: calc(1 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+}
+
+/* Melaton's own part under the device's: the desktop's power plans */
+html.ui-mobile .wm-sys-pow-plan {
+    margin-top: calc(14 * var(--wm-px));
+    padding: 0 calc(5 * var(--wm-px)) calc(8 * var(--wm-px));
 }

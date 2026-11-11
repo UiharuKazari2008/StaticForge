@@ -11,7 +11,7 @@
     overflow: hidden !important;
     background: #fff;
     color: #000;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     container: wpp / size;
 }
 
@@ -119,7 +119,7 @@
     outline: none;
     background: #fff;
     color: #000;
-    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+    font: bold var(--wm-fs) var(--wm-font);
     -webkit-appearance: none;
     appearance: none;
     user-select: text;

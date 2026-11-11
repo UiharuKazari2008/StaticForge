@@ -11,7 +11,7 @@
     overflow: hidden !important;
     background: #fff;
     color: #000;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 .wsk [hidden] {
@@ -55,7 +55,7 @@
     outline: none;
     background: #fff;
     color: #000;
-    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+    font: bold var(--wm-fs) var(--wm-font);
     -webkit-appearance: none;
     appearance: none;
     user-select: text;
@@ -352,7 +352,7 @@
     border: calc(1 * var(--wm-px)) solid #000 !important;
     background: #fff !important;
     color: #000 !important;
-    font-size: calc(12 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
     text-align: left;
 }
 
@@ -430,7 +430,7 @@
     border-right: calc(1 * var(--wm-px)) solid #000 !important;
     border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
     border-top: calc(1 * var(--wm-px)) solid #000 !important;
-    font-size: calc(12 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
     white-space: nowrap;
 }
 
@@ -484,7 +484,7 @@
     border: calc(1 * var(--wm-px)) solid #000 !important;
     background: linear-gradient(#fff, #e7e7e7) !important;
     color: #000 !important;
-    font-size: calc(12 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
 }
 
 .wsk .wsk-button:active {

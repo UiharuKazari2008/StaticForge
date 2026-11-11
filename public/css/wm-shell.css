@@ -18,6 +18,8 @@ html:not(.ui-mobile) #wmShell {
 
 html.ui-mobile {
     --wm-px: 1px;
+    /* the system font size (6.1 sets its own just below) */
+    --wm-fs: calc(12 * var(--wm-px));
     /* defaults = WM 6.1 green, replaced at boot from the workspace colour */
     --wm-title: #004a19;
     --wm-highlight: #31d339;
@@ -39,6 +41,13 @@ html.ui-mobile {
     --wm-button-pressed-glyph: #397d08;
     --wm-font: Tahoma, 'Segoe UI', Verdana, sans-serif;
     background: #000;
+}
+
+/* 6.1's system font: Tahoma 8 pt at the device's 192 dpi = 21 px of the VGA screen = 10.5 units
+   (measured on title bars, soft keys, list rows, menus, tabs, form labels, Today rows: string
+   widths fit Tahoma 21 px, not 24). Message boxes are 9 pt = 12 units and say so themselves. */
+html.ui-mobile:not([data-wm-version="6.5"]) {
+    --wm-fs: calc(10.5 * var(--wm-px));
 }
 
 /* Finger input: WM 6.1 was drawn for a stylus; touch gets the same layout 1.5x larger.
@@ -85,7 +94,7 @@ html.ui-mobile body {
     display: flex;
     flex-direction: column;
     font-family: var(--wm-font);
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: 1.2;
     color: #000;
     pointer-events: none;
@@ -980,7 +989,7 @@ html.ui-mobile #galleryWindow > .modal-window-controls {
     flex: 1 1 auto;
     min-width: 0;
     height: calc(19 * var(--wm-px));
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     border: calc(1 * var(--wm-px)) solid #000;
     border-radius: 0;
     padding: 0 calc(3 * var(--wm-px));
@@ -1102,6 +1111,73 @@ html.ui-mobile[data-wm-search="1"] body > #galleryWindow {
     outline-offset: calc(-3 * var(--wm-px));
 }
 
+/* ---- the 6.1 message box as the device draws it (Task Manager "Confirm End", Notes delete; VGA
+ * captures halved): 198 units wide in a 1-unit black frame; a 22-unit title band, lighter at the
+ * left, over a 1-unit black rule, the title bold 9 pt (12 units) on one line; the 32-unit icon 8
+ * units in and 8 down, the text 11 units right of it in 9 pt on a 14.5-unit pitch, centred on the
+ * icon while it is shorter; the buttons a centred pair, each 56 x 28 units and 5 apart, bold, the
+ * default one in a 2-unit frame; a pressed button is black with white text. ---- */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msgbox {
+    width: calc(198 * var(--wm-px));
+    max-width: 100%;
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(14.5 * var(--wm-px));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msgbox-title {
+    box-sizing: border-box;
+    height: calc(23 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    background: linear-gradient(to right, color-mix(in srgb, var(--wm-highlight), #fff 25%), var(--wm-highlight));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msgbox-title span {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msgbox-body {
+    align-items: flex-start;
+    gap: calc(11 * var(--wm-px));
+    padding: calc(8 * var(--wm-px)) calc(8 * var(--wm-px)) calc(11 * var(--wm-px));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msgbox-body img {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msgbox-body img + .wm-msgbox-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: calc(32 * var(--wm-px));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msgbox-buttons {
+    justify-content: center;
+    gap: calc(5 * var(--wm-px));
+    padding: 0 0 calc(10 * var(--wm-px));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msgbox-buttons button {
+    box-sizing: border-box;
+    /* a label longer than the device's Yes / No widens its button */
+    min-width: calc(56 * var(--wm-px));
+    height: calc(28 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px)) !important;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msgbox-buttons button:active {
+    background: #000 !important;
+    color: #fff;
+}
+
 /* .workspace-name carries the desktop's own weight; Today rows set theirs */
 .wm-today-row .wm-today-text {
     font-weight: inherit;
@@ -1112,7 +1188,7 @@ html.ui-mobile[data-wm-search="1"] body > #galleryWindow {
     width: 100%;
     margin-top: calc(6 * var(--wm-px));
     height: calc(19 * var(--wm-px));
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     border: calc(1 * var(--wm-px)) solid #000;
     border-radius: 0;
     padding: 0 calc(3 * var(--wm-px));
@@ -1392,6 +1468,95 @@ html.ui-mobile #bootMessageBox .boot-message-box-buttons button {
     box-shadow: none !important;
 }
 
+/* ---- both desktop dialogs in 6.1: the device's message box measures (see .wm-msgbox above) ---- */
+html.ui-mobile:not([data-wm-version="6.5"]) body > #confirmationDialog,
+html.ui-mobile:not([data-wm-version="6.5"]) body > #bootMessageBox {
+    left: 50% !important;
+    right: auto !important;
+    transform: translate(-50%, -50%) !important;
+    width: calc(198 * var(--wm-px)) !important;
+    max-width: calc(100vw - 16 * var(--wm-px)) !important;
+    box-sizing: border-box !important;
+    line-height: calc(14.5 * var(--wm-px)) !important;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) #confirmationDialog .modal-window-title,
+html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox .modal-window-title {
+    box-sizing: border-box !important;
+    height: calc(23 * var(--wm-px)) !important;
+    padding: 0 calc(3 * var(--wm-px)) !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
+    background: linear-gradient(to right, color-mix(in srgb, var(--wm-highlight), #fff 25%), var(--wm-highlight)) !important;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) #confirmationDialog .modal-window-title-main,
+html.ui-mobile:not([data-wm-version="6.5"]) #confirmationDialog #confirmationDialogTitle,
+html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox .modal-window-title-main,
+html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox .boot-message-box-title {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) #confirmationDialog .modal-content,
+html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox .modal-content {
+    padding: calc(8 * var(--wm-px)) calc(8 * var(--wm-px)) calc(10 * var(--wm-px)) !important;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) #confirmationDialog .confirmation-message,
+html.ui-mobile:not([data-wm-version="6.5"]) #confirmationDialog .confirmation-message *,
+html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox p {
+    line-height: calc(14.5 * var(--wm-px)) !important;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) #confirmationDialog #confirmationMessage > .wm-cd-icon {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    margin: 0 calc(11 * var(--wm-px)) calc(2 * var(--wm-px)) 0;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox .boot-message-box-body {
+    gap: calc(11 * var(--wm-px)) !important;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox .boot-message-box-icon,
+html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox .boot-message-box-icon svg {
+    width: calc(32 * var(--wm-px)) !important;
+    height: calc(32 * var(--wm-px)) !important;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) #confirmationDialog .confirmation-controls,
+html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox .boot-message-box-buttons {
+    justify-content: center !important;
+    gap: calc(5 * var(--wm-px)) !important;
+    margin: calc(11 * var(--wm-px)) 0 0 !important;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) #confirmationDialog .confirmation-controls button,
+html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox .boot-message-box-buttons button {
+    box-sizing: border-box !important;
+    width: auto !important;
+    min-width: calc(56 * var(--wm-px)) !important;
+    height: calc(28 * var(--wm-px)) !important;
+    padding: 0 calc(4 * var(--wm-px)) !important;
+    font-weight: bold !important;
+    white-space: nowrap !important;
+}
+
+/* the default button's 2-unit frame: the dialog's primary button, the boot box's focused one */
+html.ui-mobile:not([data-wm-version="6.5"]) #confirmationDialog .confirmation-controls button:is(.primary, .btn-primary),
+html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox .boot-message-box-buttons button:focus {
+    border-width: calc(2 * var(--wm-px)) !important;
+    outline: none !important;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) #confirmationDialog .confirmation-controls button:active,
+html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox .boot-message-box-buttons button:active {
+    background: #000 !important;
+    color: #fff !important;
+}
+
 /* ---- toasts: WM notifications (wmShell.js reads #toastContainer and draws .wm-notify) ---- */
 html.ui-mobile body > #toastContainer {
     display: none !important;
@@ -1414,7 +1579,7 @@ html.ui-mobile body > #toastContainer {
     border-bottom: 0;
     border-radius: calc(8 * var(--wm-px)) calc(8 * var(--wm-px)) 0 0;
     box-sizing: border-box;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
 }
 
 .wm-notify[hidden] {
@@ -1529,7 +1694,7 @@ html.ui-mobile body > #toastContainer {
 .wm-notify-body .toast-buttons button {
     height: calc(19 * var(--wm-px));
     padding: 0 calc(3 * var(--wm-px));
-    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+    font: bold var(--wm-fs) var(--wm-font);
     color: #000;
     background: #fff;
     border: calc(1 * var(--wm-px)) solid #000;
@@ -1604,7 +1769,7 @@ html.ui-mobile body > #agentClientUpdateDialog:not(.hidden) {
     border-radius: 0 !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     color: #000 !important;
     padding: var(--wm-safe-top, env(safe-area-inset-top)) var(--wm-safe-right, env(safe-area-inset-right)) env(safe-area-inset-bottom) var(--wm-safe-left, env(safe-area-inset-left)) !important;
     animation: none !important;
@@ -1669,7 +1834,7 @@ html.ui-mobile #pinModal .modal-window-title-main,
 html.ui-mobile #pinModal .modal-window-title-main span,
 html.ui-mobile #agentClientUpdateDialog .modal-window-title-main,
 html.ui-mobile #agentClientUpdateDialog .modal-window-title-main span {
-    font: bold calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: bold var(--wm-fs) var(--wm-font) !important;
     color: #fff !important;
     text-shadow: none !important;
     text-align: left !important;
@@ -1687,7 +1852,7 @@ html.ui-mobile #pinModal .modal-body {
 }
 
 html.ui-mobile #pinModal .modal-body p {
-    font: bold calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: bold var(--wm-fs) var(--wm-font) !important;
     color: var(--wm-menu-text) !important;
     text-shadow: none !important;
     margin: 0 !important;
@@ -1783,7 +1948,7 @@ div.wm-today-row {
     border-radius: 0;
     background: transparent;
     color: #fff;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     outline: none;
     user-select: text;
     -webkit-appearance: none;
@@ -1993,7 +2158,7 @@ html.ui-mobile[data-wm-boot="install"] .wm-page {
 
 .wm-installer-text {
     margin: 0 0 calc(4 * var(--wm-px)) calc(1.5 * var(--wm-px));
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 .wm-installer-bar {
@@ -2053,7 +2218,7 @@ html.ui-mobile[data-wm-boot="install"] .wm-page {
 
 .wm-installer-done {
     padding: calc(5 * var(--wm-px)) calc(8 * var(--wm-px));
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 .wm-installer-done p {
@@ -2092,7 +2257,9 @@ html.ui-mobile[data-wm-boot="reveal"] .wm-softkeys {
     display: flex;
     align-items: stretch;
     justify-content: space-between;
-    height: calc(22 * var(--wm-px));
+    /* device (File Explorer, Notes, Pictures & Videos, Calendar): the tint band is 22 units
+       (VGA rows 52..95) over a 1-unit black rule (rows 96..97) */
+    height: calc(23 * var(--wm-px));
     border-bottom: calc(1 * var(--wm-px)) solid #000;
     background: var(--wm-tab-strip);
 }
@@ -2173,7 +2340,7 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
 
 .wm-pv .wm-photos-empty {
     margin: calc(8 * var(--wm-px));
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     color: #000;
 }
 
@@ -2207,11 +2374,15 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
 }
 
 /* WM scroll bar (device: 26 px at 2x): white track with a black left edge, tint thumb framed in
- * black, arrow buttons; browsers with overlay scroll bars (Android) keep their own */
+ * black, arrow buttons; browsers with overlay scroll bars (Android) keep their own.
+ * In 6.1 every scroller of the shell gets it (the :where() line weighs one class: just enough to
+ * beat the page's global thin bar in toasts.css, so an app's own scroll bar rule or a hidden bar
+ * still wins): the device draws this one bar everywhere, Messaging and text boxes included. */
 .wm-pv-scroll::-webkit-scrollbar,
 .wm-popup::-webkit-scrollbar,
 html.ui-mobile .scrollable-content::-webkit-scrollbar,
-#wmShell .wm-page::-webkit-scrollbar {
+#wmShell .wm-page::-webkit-scrollbar,
+:where(html.ui-mobile:not([data-wm-version="6.5"]) #wmShell) :not(.wm-own-bar)::-webkit-scrollbar {
     display: block;
     width: calc(13 * var(--wm-px));
 }
@@ -2230,7 +2401,8 @@ html.ui-mobile .custom-scrollbar {
 .wm-pv-scroll::-webkit-scrollbar-track,
 .wm-popup::-webkit-scrollbar-track,
 html.ui-mobile .scrollable-content::-webkit-scrollbar-track,
-#wmShell .wm-page::-webkit-scrollbar-track {
+#wmShell .wm-page::-webkit-scrollbar-track,
+:where(html.ui-mobile:not([data-wm-version="6.5"]) #wmShell) :not(.wm-own-bar)::-webkit-scrollbar-track {
     background: #fff;
     border-left: calc(1 * var(--wm-px)) solid #000;
 }
@@ -2238,7 +2410,8 @@ html.ui-mobile .scrollable-content::-webkit-scrollbar-track,
 .wm-pv-scroll::-webkit-scrollbar-thumb,
 .wm-popup::-webkit-scrollbar-thumb,
 html.ui-mobile .scrollable-content::-webkit-scrollbar-thumb,
-#wmShell .wm-page::-webkit-scrollbar-thumb {
+#wmShell .wm-page::-webkit-scrollbar-thumb,
+:where(html.ui-mobile:not([data-wm-version="6.5"]) #wmShell) :not(.wm-own-bar)::-webkit-scrollbar-thumb {
     background: var(--wm-tab-strip);
     border: calc(1 * var(--wm-px)) solid #000;
     border-right: 0;
@@ -2248,7 +2421,8 @@ html.ui-mobile .scrollable-content::-webkit-scrollbar-thumb,
 .wm-pv-scroll::-webkit-scrollbar-button:single-button,
 .wm-popup::-webkit-scrollbar-button:single-button,
 html.ui-mobile .scrollable-content::-webkit-scrollbar-button:single-button,
-#wmShell .wm-page::-webkit-scrollbar-button:single-button {
+#wmShell .wm-page::-webkit-scrollbar-button:single-button,
+:where(html.ui-mobile:not([data-wm-version="6.5"]) #wmShell) :not(.wm-own-bar)::-webkit-scrollbar-button:single-button {
     display: block;
     height: calc(19 * var(--wm-px));
     background: var(--wm-tab-strip) center / calc(8 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
@@ -2258,7 +2432,8 @@ html.ui-mobile .scrollable-content::-webkit-scrollbar-button:single-button,
 .wm-pv-scroll::-webkit-scrollbar-button:single-button:vertical:decrement,
 .wm-popup::-webkit-scrollbar-button:single-button:vertical:decrement,
 html.ui-mobile .scrollable-content::-webkit-scrollbar-button:single-button:vertical:decrement,
-#wmShell .wm-page::-webkit-scrollbar-button:single-button:vertical:decrement {
+#wmShell .wm-page::-webkit-scrollbar-button:single-button:vertical:decrement,
+:where(html.ui-mobile:not([data-wm-version="6.5"]) #wmShell) :not(.wm-own-bar)::-webkit-scrollbar-button:single-button:vertical:decrement {
     border-bottom: calc(1 * var(--wm-px)) solid #000;
     background-image: linear-gradient(to bottom right, transparent 50%, #000 50%), linear-gradient(to bottom left, transparent 50%, #000 50%);
     background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
@@ -2268,7 +2443,8 @@ html.ui-mobile .scrollable-content::-webkit-scrollbar-button:single-button:verti
 .wm-pv-scroll::-webkit-scrollbar-button:single-button:vertical:increment,
 .wm-popup::-webkit-scrollbar-button:single-button:vertical:increment,
 html.ui-mobile .scrollable-content::-webkit-scrollbar-button:single-button:vertical:increment,
-#wmShell .wm-page::-webkit-scrollbar-button:single-button:vertical:increment {
+#wmShell .wm-page::-webkit-scrollbar-button:single-button:vertical:increment,
+:where(html.ui-mobile:not([data-wm-version="6.5"]) #wmShell) :not(.wm-own-bar)::-webkit-scrollbar-button:single-button:vertical:increment {
     border-top: calc(1 * var(--wm-px)) solid #000;
     background-image: linear-gradient(to top right, transparent 50%, #000 50%), linear-gradient(to top left, transparent 50%, #000 50%);
     background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
@@ -2616,7 +2792,7 @@ html.ui-mobile body > .pswp .pswp__preloader {
     border-radius: calc(5 * var(--wm-px)) calc(5 * var(--wm-px)) calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
     background: #fff;
     color: #000;
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     padding-bottom: calc(9 * var(--wm-px));
     user-select: none;
     -webkit-user-select: none;
@@ -2819,7 +2995,7 @@ html.ui-mobile[data-wm-dialog] #wmShell {
     border-radius: 0 !important;
     background: var(--wm-tint) !important;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) / 1 var(--wm-font);
+    font: var(--wm-fs) / 1 var(--wm-font);
 }
 
 .wm-pv-tool:active {
@@ -2832,13 +3008,13 @@ html.ui-mobile[data-wm-dialog] #wmShell {
     padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
     border-bottom: calc(1 * var(--wm-px)) solid #000;
     background: var(--wm-tab-strip);
-    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+    font: bold var(--wm-fs) var(--wm-font);
     color: #000;
 }
 
 .wm-pv-index-note {
     margin: calc(4 * var(--wm-px));
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
     color: #000;
 }
 
@@ -2858,7 +3034,7 @@ html.ui-mobile[data-wm-dialog] #wmShell {
     align-items: center;
     gap: calc(4 * var(--wm-px));
     padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px));
-    font: calc(12 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) var(--wm-font);
 }
 
 .wm-pvx-sum {
@@ -2867,7 +3043,7 @@ html.ui-mobile[data-wm-dialog] #wmShell {
     flex-direction: column;
     padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) calc(3 * var(--wm-px));
     border-bottom: calc(1 * var(--wm-px)) solid #000;
-    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font);
 }
 
 .wm-pvx-grid {
@@ -2976,7 +3152,7 @@ html.ui-mobile #confirmationDialog #confirmationMessage::after {
     padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) calc(3 * var(--wm-px)) calc(3 * var(--wm-px));
     border-bottom: calc(1 * var(--wm-px)) solid var(--wm-today-rule);
     color: #fff;
-    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font);
     box-sizing: border-box;
 }
 
@@ -3094,7 +3270,7 @@ html.ui-mobile #confirmationDialog #confirmationMessage::after {
     gap: calc(8 * var(--wm-px));
     background: #fff;
     color: #000;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     pointer-events: auto;
 }
 

@@ -69,7 +69,7 @@ html.ui-mobile .wm-ds-textarea {
     border-radius: 0;
     background: #fff;
     color: #000;
-    font: calc(12 * var(--wm-px)) / calc(14 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) / calc(14 * var(--wm-px)) var(--wm-font);
     resize: none;
     outline: none;
     user-select: text;
@@ -118,7 +118,7 @@ html.ui-mobile .wm-ds-matrix {
     width: 100%;
     border-collapse: collapse;
     margin: calc(4 * var(--wm-px)) 0;
-    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font);
+    font: var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font);
     color: #000;
 }
 

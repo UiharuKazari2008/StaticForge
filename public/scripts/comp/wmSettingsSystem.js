@@ -375,10 +375,166 @@
         });
     }
 
+    // ---- 6.1: the device's own Regional Settings pages (Region, Number, Currency, Time, Date as
+    // captured on the emulator), filled with the locale's real formats. Melaton stores only the
+    // locale, so each format combo lists the one value the region gives it.
+
+    /** Windows' picture of the locale's time ("h:mm:ss tt") and its separator. */
+    function timePicture(loc) {
+        try {
+            const fmt = new Intl.DateTimeFormat(loc, { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+            const h12 = !!fmt.resolvedOptions().hour12;
+            const parts = fmt.formatToParts(new Date(2026, 0, 2, 3, 4, 5));
+            const pic = parts.map((p) => {
+                if (p.type === 'hour') return (p.value.length > 1 ? (h12 ? 'hh' : 'HH') : (h12 ? 'h' : 'H'));
+                if (p.type === 'minute') return 'mm';
+                if (p.type === 'second') return 'ss';
+                if (p.type === 'dayPeriod') return 'tt';
+                return p.value;
+            }).join('');
+            const i = parts.findIndex((p) => p.type === 'hour');
+            const sep = parts[i + 1] && parts[i + 1].type === 'literal' ? parts[i + 1].value : ':';
+            return { pic, sep };
+        } catch (_) { return { pic: 'h:mm:ss tt', sep: ':' }; }
+    }
+
+    /** Windows' picture of a date format ("M/d/yyyy", "dddd, MMMM d, yyyy") and its first separator. */
+    function datePicture(loc, o) {
+        try {
+            const parts = new Intl.DateTimeFormat(loc, o).formatToParts(new Date(2026, 0, 2));
+            const pic = parts.map((p) => {
+                if (p.type === 'weekday') return 'dddd';
+                if (p.type === 'month') return /^\d+$/.test(p.value) ? (p.value.length > 1 ? 'MM' : 'M') : 'MMMM';
+                if (p.type === 'day') return p.value.length > 1 ? 'dd' : 'd';
+                if (p.type === 'year') return p.value.length > 2 ? 'yyyy' : 'yy';
+                return p.value;
+            }).join('');
+            const lit = parts.find((p) => p.type === 'literal');
+            return { pic, sep: lit ? lit.value : '/' };
+        } catch (_) { return { pic: '', sep: '/' }; }
+    }
+
+    /** Digits in the last group of a large number (3 for "123,456,789"). */
+    function groupSize(loc) {
+        try {
+            const ints = new Intl.NumberFormat(loc).formatToParts(123456789).filter((p) => p.type === 'integer');
+            return ints.length > 1 ? String(ints[ints.length - 1].value.length) : '0';
+        } catch (_) { return '3'; }
+    }
+
+    /** A currency amount as the device shows its formats: the symbol as the universal sign. */
+    function currencyShape(loc, n) {
+        try {
+            return new Intl.NumberFormat(loc, { style: 'currency', currency: currencyFor(loc), minimumFractionDigits: 1, maximumFractionDigits: 1 })
+                .formatToParts(n).map((p) => (p.type === 'currency' ? '\u00a4' : p.value)).join('');
+        } catch (_) { return ''; }
+    }
+
+    function currencyDigits(loc) {
+        try { return String(new Intl.NumberFormat(loc, { style: 'currency', currency: currencyFor(loc) }).resolvedOptions().maximumFractionDigits); } catch (_) { return '2'; }
+    }
+
+    function measurementSystem(loc) {
+        let region = '';
+        try { region = new Intl.Locale(loc).maximize().region || ''; } catch (_) { /* metric */ }
+        return ['US', 'LR', 'MM'].includes(region) ? 'U.S.' : 'Metric';
+    }
+
+    function regionalRender61(el, tab, d, f) {
+        const loc = d.locale || 'en-US';
+        const now = new Date();
+        // "Label: [combo]" rows; a row's value is the region's own, the only one its list holds
+        const rows = (list) => list.map(([label, value, off], i) => `<div class="wm-sys-rrow"><span>${esc(label)}</span>${ui.comboHtml(`fx-${i}`, show(value), !!off)}</div>`).join('');
+        const bindRows = () => el.querySelectorAll('.wm-sys-rrow > .wm-combo:not(:disabled)').forEach((btn) => {
+            const v = btn.textContent;
+            ui.bindCombo(btn, [[v, v]], v, () => {});
+        });
+        const p = numberParts(loc);
+        if (tab === 'number') {
+            el.innerHTML = `<div class="wm-sys-reg is-number">${rows([
+                ['Decimal symbol:', p.decimal],
+                ['No. of decimal places:', '2'],
+                ['Digit grouping symbol:', p.group],
+                ['No. of digits in group:', groupSize(loc)],
+                ['List separators:', p.decimal === ',' ? ';' : ','],
+                ['Negative sign symbol:', p.minus],
+                ['Negative number format:', nf(loc, -1.1, { minimumFractionDigits: 1 })],
+                ['Display leading zero:', nf(loc, 0.7, { minimumFractionDigits: 1 })],
+                ['Measurement system:', measurementSystem(loc)]
+            ])}</div>`;
+            bindRows();
+            return;
+        }
+        if (tab === 'currency') {
+            el.innerHTML = `<div class="wm-sys-reg is-number">${rows([
+                ['Currency symbol:', currencySymbol(loc)],
+                ['Currency symbol position:', currencyShape(loc, 1.1)],
+                ['Decimal symbol:', p.decimal],
+                ['No. of decimal places:', currencyDigits(loc)],
+                ['Digit grouping symbol:', p.group],
+                ['No. of digits in group:', groupSize(loc)],
+                ['Negative number format:', currencyShape(loc, -1.1)]
+            ])}<div class="wm-sys-reg-key">\u00a4 = Universal currency symbol</div></div>`;
+            bindRows();
+            return;
+        }
+        if (tab === 'time') {
+            const per = dayPeriods(loc);
+            const t = timePicture(loc);
+            el.innerHTML = `<div class="wm-sys-reg is-time">
+                <div class="wm-sys-reg-sample"><b>Time sample:</b><span>${esc(df(loc, { hour: 'numeric', minute: '2-digit', second: '2-digit' }, now))}</span></div>
+                ${rows([
+                    ['Time style:', t.pic],
+                    ['Time separator:', t.sep],
+                    ['AM symbol:', per.am],
+                    ['PM symbol:', per.pm]
+                ])}</div>`;
+            bindRows();
+            return;
+        }
+        if (tab === 'date') {
+            const sd = datePicture(loc, { year: 'numeric', month: 'numeric', day: 'numeric' });
+            const ld = datePicture(loc, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            el.innerHTML = `<div class="wm-sys-reg is-date">
+                <div class="wm-sys-reg-dates"><span>Short date:</span><span>${esc(df(loc, { year: 'numeric', month: 'numeric', day: 'numeric' }, now))}</span><span>Long date:</span><span>${esc(df(loc, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }, now))}</span></div>
+                ${rows([
+                    ['Short date:', sd.pic],
+                    ['Date separator:', sd.sep],
+                    ['Long date:', ld.pic],
+                    ['Calendar type:', 'Gregorian Calendar', true]
+                ])}</div>`;
+            bindRows();
+            return;
+        }
+        const locales = optionList(f.locale);
+        const nations = optionList(f.nation);
+        const label = (list, v) => (list.find(([k]) => k === v) || [v, v])[1];
+        const c = currencyFor(loc);
+        el.innerHTML = `<div class="wm-sys-reg is-region">
+            ${ui.comboHtml('locale', label(locales, loc))}
+            <div class="wm-sys-reg-head">Appearance samples</div>
+            <div class="wm-sys-reg-samples">${[
+                ['Positive numbers:', nf(loc, 123456789, { minimumFractionDigits: 2 })],
+                ['Positive currency:', nf(loc, 123456789, { style: 'currency', currency: c })],
+                ['Time:', df(loc, { hour: 'numeric', minute: '2-digit', second: '2-digit' }, now)],
+                ['Short date:', df(loc, { year: 'numeric', month: 'numeric', day: 'numeric' }, now)],
+                ['Long date:', df(loc, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }, now)]
+            ].map(([a, b]) => `<span>${esc(a)}</span><span>${esc(show(b))}</span>`).join('')}</div>
+            <div class="wm-sys-rrow is-location"><span>Location:</span>${ui.comboHtml('nation', label(nations, d.nation))}</div>
+        </div>`;
+        const lb = el.querySelector('[data-act="locale"]');
+        ui.bindCombo(lb, locales, loc, (v) => { d.locale = v; d.rerender(); });
+        longCombo(lb);
+        const nb = el.querySelector('[data-act="nation"]');
+        ui.bindCombo(nb, nations, d.nation, (v) => { d.nation = v; });
+        longCombo(nb);
+    }
+
     function regionalRender(el, tab, d, api) {
         d.rerender = api.rerender;
         const f = d.ready ? regionalFields() : null;
         if (!f) { el.innerHTML = loadingHtml(d); return; }
+        if (!(window.wmShell && window.wmShell.version === '6.5')) { regionalRender61(el, tab, d, f); return; }
         const loc = d.locale || 'en-US';
         const now = new Date();
         const facts = (pairs) => `<div class="wm-sys-facts">${ui.facts(pairs.map(([a, b]) => [a, show(b)]))}</div>`;
@@ -544,9 +700,68 @@
             ${b ? '' : ui.note('This browser does not report the battery.')}`;
     }
 
+    // ---- 6.1: the device's Power pages (emulator captures). Battery: "Main battery:" with the
+    // state where the device names the cell type, "Battery power remaining:" over the 0..100 bar.
+    // Advanced: "On battery power:" and "On external power:", each a check box beside its combo;
+    // Melaton has one sleep time per plan, so both groups show and set that one value (as
+    // Backlight's two tabs do), and the desktop's power plans follow under them.
+
+    function batteryHtml61(d) {
+        const b = d.battery;
+        if (b === null) return ui.text('Checking the battery...');
+        const level = b ? Math.round(b.level * 100) : null;
+        const status = !b ? 'Unknown' : b.charging ? (level >= 100 ? 'Charged' : 'Charging') : 'On battery';
+        return `<div class="wm-sys-pow">
+            <div class="wm-sys-pow-main"><b>Main battery:</b><b>${esc(status)}</b></div>
+            <div class="wm-sys-pow-rem">Battery power remaining:${level == null ? '' : ` ${level}%`}</div>
+            <div class="wm-sys-pow-bar"><span>0</span><div class="wm-sys-pow-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100"${level == null ? '' : ` aria-valuenow="${level}"`}><div style="width:${level == null ? 0 : level}%"></div></div><span>100</span></div>
+            ${b ? '' : `<div class="wm-sys-pow-plan">${ui.note('This browser does not report the battery.')}</div>`}
+        </div>`;
+    }
+
+    function powerAdvanced61(el, d, api) {
+        const cur = d.plans[d.plan].sleep;
+        const remember = cur || d.last_sleep || planOf(d.plan).sleep || 3;
+        const list = MINUTES.slice();
+        if (cur && !list.includes(cur)) list.push(cur);
+        list.sort((a, b) => a - b);
+        const group = (key, head) => `<div class="wm-sys-pow-head">${esc(head)}</div>
+            <div class="wm-sys-pow-row">${ui.check(`on-${key}`, 'Turn off device if not used for', cur > 0)}${ui.comboHtml(`min-${key}`, minuteText(remember), !cur)}</div>`;
+        el.innerHTML = `<div class="wm-sys-pow">
+            ${group('battery', 'On battery power:')}
+            ${group('external', 'On external power:')}
+            <div class="wm-sys-pow-plan">${ui.sub('Power plan:')}
+                ${PLANS.map((p) => ui.radio('plan', p.id, p.name, p.id === d.plan)).join('')}
+                ${ui.gap()}
+                ${ui.note('The plans and this time are the desktop\'s Power Options values.')}</div>
+        </div>`;
+        ['battery', 'external'].forEach((key) => {
+            ui.bindCombo(el.querySelector(`[data-act="min-${key}"]`), list.map((m) => [m, minuteText(m)]), remember, (v) => {
+                d.plans[d.plan].sleep = v;
+                d.last_sleep = v;
+                api.rerender();
+            });
+            el.querySelector(`input[name="on-${key}"]`).addEventListener('change', (e) => {
+                d.plans[d.plan].sleep = e.target.checked ? remember : 0;
+                if (e.target.checked) d.last_sleep = remember;
+                api.rerender();
+            });
+        });
+        el.querySelectorAll('input[name="plan"]').forEach((r) => r.addEventListener('change', () => {
+            if (!r.checked) return;
+            d.plan = r.value;
+            api.rerender();
+        }));
+    }
+
     function powerRender(el, tab, d, api) {
         d.rerender = api.rerender;
         d.tab = tab;
+        if (!(window.wmShell && window.wmShell.version === '6.5')) {
+            if (tab === 'battery') el.innerHTML = batteryHtml61(d);
+            else powerAdvanced61(el, d, api);
+            return;
+        }
         if (tab === 'battery') { el.innerHTML = batteryHtml(d); return; }
         el.innerHTML = `${ui.sub('Power plan:')}
             ${PLANS.map((p) => ui.radio('plan', p.id, p.name, p.id === d.plan)).join('')}

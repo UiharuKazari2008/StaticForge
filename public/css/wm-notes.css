@@ -148,7 +148,7 @@
     outline: none;
     background: #fff;
     color: #000;
-    font: bold calc(12 * var(--wm-px)) var(--wm-font);
+    font: bold var(--wm-fs) var(--wm-font);
     -webkit-appearance: none;
     appearance: none;
     user-select: text;
@@ -178,7 +178,7 @@
 .wm-contacts .ct-tab {
     min-width: 0;
     border-left: calc(1 * var(--wm-px)) solid #000 !important;
-    font-size: calc(12 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
     line-height: calc(16 * var(--wm-px)) !important;
     text-align: center;
     white-space: nowrap;
@@ -382,7 +382,7 @@
     border-right: calc(1 * var(--wm-px)) solid #000 !important;
     border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
     border-top: calc(1 * var(--wm-px)) solid #000 !important;
-    font-size: calc(12 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
 }
 
 .wm-contacts .ct-btab.is-selected {

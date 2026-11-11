@@ -41,7 +41,7 @@
     overflow: auto !important;
     background: #fff !important;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font) !important;
     backdrop-filter: none !important;
     filter: none !important;
     contain: layout paint;
@@ -112,7 +112,7 @@ html.ui-mobile[data-wm-viewer] .wm-op .wmo-host > .modal {
     display: block !important;
     margin: 0 0 calc(2 * var(--wm-px)) !important;
     padding: 0 !important;
-    font: calc(12 * var(--wm-px)) / calc(14 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) / calc(14 * var(--wm-px)) var(--wm-font) !important;
     color: #000 !important;
     opacity: 1 !important;
     text-transform: none !important;
@@ -123,7 +123,7 @@ html.ui-mobile[data-wm-viewer] .wm-op .wmo-host > .modal {
     display: block !important;
     margin: 0 0 calc(8 * var(--wm-px)) !important;
     padding: 0 !important;
-    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font) !important;
     color: #000 !important;
     background: none !important;
 }
@@ -154,7 +154,7 @@ html.ui-mobile[data-wm-viewer] .wm-op .wmo-host > .modal {
     background: #fff !important;
     box-shadow: none !important;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font) !important;
     -webkit-text-fill-color: #000 !important;
     outline: none !important;
     filter: none !important;
@@ -195,7 +195,7 @@ html.ui-mobile[data-wm-viewer] .wm-op .wmo-host > .modal {
     transform: none !important;
     margin: 0 !important;
     color: #4a4d4a !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     pointer-events: none;
 }
 
@@ -212,7 +212,7 @@ html.ui-mobile[data-wm-viewer] .wm-op .wmo-host > .modal {
     background: var(--wm-tint) !important;
     box-shadow: none !important;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) var(--wm-font) !important;
     text-shadow: none !important;
     filter: none !important;
     backdrop-filter: none !important;
@@ -394,7 +394,7 @@ html.ui-mobile[data-wm-viewer] .wm-op .wmo-host > .modal {
     opacity: 1 !important;
     transform: none !important;
     color: #000 !important;
-    font: calc(12 * var(--wm-px)) / calc(14 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) / calc(14 * var(--wm-px)) var(--wm-font) !important;
 }
 
 .wm-op #imageExpansionDialog #expansionAdvancedToggle::after {

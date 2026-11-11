@@ -35,7 +35,7 @@
 
 .wm-browser .wmb-dsap .wmb-g-note {
     padding: calc(8 * var(--wm-px)) calc(5 * var(--wm-px));
-    font: calc(12 * var(--wm-px)) / 1.3 var(--wm-font);
+    font: var(--wm-fs) / 1.3 var(--wm-font);
 }
 
 /* ---------------------------------------------------------------- every applet: the phone layout */
@@ -106,7 +106,7 @@
     border: 0 !important;
     background: #fff !important;
     color: #000;
-    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font) !important;
+    font: var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font) !important;
 }
 
 .wm-browser .wmb-dsap .dsap-smf *:not(i):not([class*="fa-"]) {
@@ -114,7 +114,7 @@
 }
 
 .wm-browser .wmb-dsap .dsap-smf :is(div, p, span, td, th, label, li, a, button, input, select, textarea, h1, h2, h3, h4, small) {
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(15 * var(--wm-px));
 }
 
@@ -172,7 +172,7 @@
     width: auto !important;
     color: #000 !important;
     font-weight: normal !important;
-    font-size: calc(12 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
     text-align: right;
 }
 
@@ -261,7 +261,7 @@
     display: inline;
     margin: 0 !important;
     color: #000 !important;
-    font-size: calc(12 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
     white-space: nowrap;
 }
 
@@ -469,7 +469,7 @@
     outline: none !important;
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
-    font-size: calc(12 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
 }
 
 .wm-browser .wmb-dsap .dsap-smf textarea {
@@ -494,7 +494,7 @@
     appearance: none !important;
     -webkit-appearance: none !important;
     color: #000 !important;
-    font-size: calc(12 * var(--wm-px)) !important;
+    font-size: var(--wm-fs) !important;
     background:
         linear-gradient(to top right, transparent 50%, #000 50%) right calc(4.5 * var(--wm-px)) center / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
         linear-gradient(to top left, transparent 50%, #000 50%) right calc(0.5 * var(--wm-px) + 2 * var(--wm-px) - 2 * var(--wm-px)) center / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,

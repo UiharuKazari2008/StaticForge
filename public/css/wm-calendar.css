@@ -61,7 +61,7 @@
 .wm-calendar .wcl-hdate {
     flex: 0 0 auto;
     min-width: calc(78 * var(--wm-px));
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
 }
 
 .wm-calendar .wcl-letters {
@@ -76,7 +76,7 @@
     margin: 0 calc(0.85 * var(--wm-px)) !important;
     height: calc(18 * var(--wm-px));
     font-weight: bold;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     text-align: center;
 }
 
@@ -144,7 +144,7 @@
     height: calc(18 * var(--wm-px));
     border-bottom: calc(1 * var(--wm-px)) solid #000;
     background: #fff;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     text-align: center;
 }
 
@@ -174,7 +174,7 @@
     min-height: calc(33 * var(--wm-px));
     padding: calc(0.5 * var(--wm-px)) calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
     border-bottom: calc(1 * var(--wm-px)) solid #848284;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(14 * var(--wm-px));
     cursor: default;
 }
@@ -212,7 +212,7 @@
     padding: 0 calc(3 * var(--wm-px));
     border: calc(1 * var(--wm-px)) solid #000;
     background: var(--wcl-appt);
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(15 * var(--wm-px));
     white-space: nowrap;
     overflow: hidden;
@@ -255,7 +255,7 @@
     height: 100%;
     padding-right: calc(2 * var(--wm-px));
     font-weight: bold;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(16 * var(--wm-px));
     text-align: right;
     pointer-events: none;
@@ -283,7 +283,7 @@
     padding: calc(1 * var(--wm-px)) calc(2 * var(--wm-px));
     border: calc(1 * var(--wm-px)) solid #000;
     background: #fff;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(14 * var(--wm-px));
     overflow: hidden;
     cursor: default;
@@ -326,7 +326,7 @@
 
 .wm-calendar .wcl-wday {
     border-left: calc(1 * var(--wm-px)) solid #000 !important;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     white-space: nowrap;
     overflow: hidden;
 }
@@ -387,7 +387,7 @@
     height: calc(30 * var(--wm-px));
     padding: calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0;
     border-top: calc(1 * var(--wm-px)) solid #000;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(13 * var(--wm-px));
     white-space: nowrap;
     overflow: hidden;
@@ -455,7 +455,7 @@
     left: calc(2 * var(--wm-px));
     padding: 0 calc(1 * var(--wm-px));
     font-weight: bold;
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     line-height: calc(12 * var(--wm-px));
 }
 
@@ -553,6 +553,44 @@
     box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #ff494a;
 }
 
+/* Year on the 6.1 device (Start > Calendar > Menu > View > Year; VGA capture halved): 7 units of
+ * tint over the first row of months, then four rows on a 59.5-unit pitch (119 px): a 13.5-unit
+ * name band (Tahoma bold 8 pt) and five rows of days in a smaller, regular face, the last number
+ * ending 2.5 units from the month's right edge. Rows and bands as the 6.5 section at the end of
+ * this sheet, which the device shares. */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-calendar .wcl-ygrid {
+    grid-template-rows: calc(66.5 * var(--wm-px)) repeat(3, calc(59.5 * var(--wm-px)));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-calendar .wcl-ymonth {
+    overflow: hidden;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-calendar .wcl-yname {
+    height: calc(13.5 * var(--wm-px));
+    font-size: calc(10.5 * var(--wm-px));
+    line-height: calc(12.5 * var(--wm-px));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-calendar .wcl-ymonth:nth-child(-n + 3) .wcl-yname {
+    height: calc(20.5 * var(--wm-px));
+    padding-top: calc(7 * var(--wm-px));
+    box-sizing: border-box;
+}
+
+/* measured on the 6.1 capture: the numbers' right edges are 11.33 units apart (VGA x 17, 40, 62,
+   84, 107, 130, 153 in January), the last 2.5 units from the month's right edge */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-calendar .wcl-ydays {
+    grid-template-columns: repeat(7, calc(11.33 * var(--wm-px)));
+    justify-content: end;
+    padding: 0 calc(2 * var(--wm-px)) 0 0;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-calendar .wcl-yday {
+    font-size: calc(8 * var(--wm-px));
+    font-weight: normal;
+}
+
 /* ---- the appointment summary ---- */
 
 .wm-calendar .wcl-summary {
@@ -590,7 +628,7 @@
     min-height: 0;
     overflow-y: auto;
     padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
-    font-size: calc(12 * var(--wm-px));
+    font-size: var(--wm-fs);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     user-select: text;
