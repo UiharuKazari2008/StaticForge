@@ -1111,11 +1111,15 @@
         else if (h.left < near) edge = 'left';
         else if (h.left + h.width > window.innerWidth - near) edge = 'right';
         const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
-        // a band only as tall as the camera needs: its bottom and a little; 18 px where none is reported
-        style.setProperty('--wm-bezel-top', edge === 'top' ? `${h.height > 0 ? h.top + h.height + 3 : 18 * px}px` : '0px');
-        // the logo leaves the middle when the camera sits there (Fold7 cover screen): top right
+        // a camera in the middle of the top edge is a punch hole (Fold7 cover screen): the logo goes top right
         const mid = h.left + h.width / 2;
-        const logoRight = edge === 'top' && h.width > 0 && Math.abs(mid - window.innerWidth / 2) < window.innerWidth * 0.2;
+        const central = edge === 'top' && h.width > 0 && Math.abs(mid - window.innerWidth / 2) < window.innerWidth * 0.2;
+        // a band only as tall as the camera needs (Yukimi tuned it on the Fold7): a punch hole's circle
+        // is estimated from Android's box and gets 6 px; the inner screen's measured camera area 1 px;
+        // 18 px where none is reported
+        const under = central ? 6 : 1;
+        style.setProperty('--wm-bezel-top', edge === 'top' ? `${h.height > 0 ? h.top + h.height + under : 18 * px}px` : '0px');
+        const logoRight = central;
         if ((root.dataset.wmBezelLogo === 'right') !== logoRight) {
             if (logoRight) root.dataset.wmBezelLogo = 'right';
             else delete root.dataset.wmBezelLogo;
@@ -2690,8 +2694,6 @@
             { key: 'size', label: 'Picture size', value: 'medium', choices: [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['xlarge', 'Extra Large']] },
             { key: 'rows', label: 'Rows', value: '1', choices: [['1', '1'], ['2', '2'], ['3', '3']] }
         ],
-        director: [{ key: 'idle', label: 'When the Director is idle', value: 'show', choices: [['show', 'Show the row'], ['hide', 'Hide the row']] }],
-        novelai: [{ key: 'show', label: 'Show', value: 'all', choices: [['all', 'Anlas and subscription'], ['balance', 'Anlas only']] }],
         messages: [{ key: 'empty', label: 'With no unread messages', value: 'show', choices: [['show', 'Show the row'], ['hide', 'Hide the row']] }],
         tasks: [{ key: 'empty', label: 'With no tasks', value: 'show', choices: [['show', 'Show the row'], ['hide', 'Hide the row']] }]
     };
@@ -2713,7 +2715,7 @@
     }
 
     function registerTodayItem(w) {
-        if (!w || !w.id || typeof w.text !== 'function' || todayWidgets.some((x) => x.id === w.id)) return;
+        if (!w || !w.id || (typeof w.text !== 'function' && typeof w.render !== 'function') || todayWidgets.some((x) => x.id === w.id)) return;
         todayWidgets.push(w);
         const today = apps.get('today');
         if (today && today.page) today.refresh();
@@ -2837,12 +2839,6 @@
                     <div class="wm-today-row is-plain" data-row="tasks">
                         ${imgTag('today-tasks')}<span class="wm-today-text" data-f="tasks"></span>
                     </div>
-                    <div class="wm-today-row is-plain" data-row="director" hidden>
-                        <img src="/static_images/app_icons/director.png" alt="" draggable="false"><span class="wm-today-text" data-f="director"></span>
-                    </div>
-                    <div class="wm-today-row is-plain" data-row="novelai" hidden>
-                        ${imgTag('today-calendar')}<span class="wm-today-text" data-f="novelai"></span>
-                    </div>
                     <form class="wm-today-search" data-row="search" role="search">
                         <input type="search" enterkeyhint="search" autocomplete="off" placeholder="Search pictures" aria-label="Search pictures">
                         <button type="submit" class="wm-today-search-go" aria-label="Search"></button>
@@ -2915,14 +2911,8 @@
                 setText(page.querySelector('[data-f="tasks"]'), tasks);
                 page.querySelector('[data-row="tasks"]').hidden = tasks === 'No tasks' && todayOption('tasks', 'empty') === 'hide';
                 if (mailUnread != null) page.querySelector('[data-row="messages"]').hidden = !mailUnread && todayOption('messages', 'empty') === 'hide';
-                const dirState = directorState();
-                const dir = dirState && !dirState.running && todayOption('director', 'idle') === 'hide' ? '' : directorText();
-                page.querySelector('[data-row="director"]').hidden = !dir;
-                setText(page.querySelector('[data-f="director"]'), dir || '');
-                const nai = novelAiText();
-                const naiRow = page.querySelector('[data-row="novelai"]');
-                naiRow.hidden = !nai;
-                setText(page.querySelector('[data-f="novelai"]'), nai);
+                // the Director, NovelAI balance and calendar items are widgets now (wmTodayWidgets.js,
+                // wmAccounts.js: registerTodayItem)
                 const wsEl = page.querySelector('[data-f="workspace"]');
                 try {
                     if (typeof workspaces !== 'undefined' && typeof activeWorkspace !== 'undefined' && workspaces[activeWorkspace]) {
@@ -2973,14 +2963,24 @@
             for (const w of todayWidgets) {
                 let row = page.querySelector(`[data-row="${CSS.escape(w.id)}"]`);
                 if (!row) {
-                    row = document.createElement(w.onTap ? 'button' : 'div');
-                    if (w.onTap) { row.type = 'button'; row.addEventListener('click', () => { try { w.onTap(); } catch (err) { console.warn('[wmShell] today item', w.id, err); } }); }
-                    row.className = `wm-today-row${w.onTap ? '' : ' is-plain'}`;
+                    // a block (render): the widget draws its own content in a Today item box; a row
+                    // (text): icon + one line, like the shell's rows
+                    const block = typeof w.render === 'function';
+                    row = document.createElement(w.onTap && !block ? 'button' : 'div');
+                    if (w.onTap && !block) { row.type = 'button'; row.addEventListener('click', () => { try { w.onTap(); } catch (err) { console.warn('[wmShell] today item', w.id, err); } }); }
+                    row.className = block ? 'wm-today-block' : `wm-today-row${w.onTap ? '' : ' is-plain'}`;
                     row.dataset.row = w.id;
-                    row.innerHTML = `${imgTag(w.icon || 'app-programs')}<span class="wm-today-text"></span>`;
+                    if (!block) row.innerHTML = `${imgTag(w.icon || 'app-programs')}<span class="wm-today-text"></span>`;
                     const after = w.after && page.querySelector(`[data-row="${CSS.escape(w.after)}"]`);
                     if (after) after.after(row); else page.querySelector('[data-row="search"]').before(row);
                     itemsKey = null; // the stored order places the new row next time
+                }
+                if (typeof w.render === 'function') {
+                    // render(el, { option }) returns false to hide the block; it repaints only what changed
+                    let shown = true;
+                    try { shown = w.render(row, { option: (key) => todayOption(w.id, key) }) !== false; } catch (err) { shown = false; console.warn('[wmShell] today block', w.id, err); }
+                    row.hidden = !shown;
+                    continue;
                 }
                 let text = '';
                 try { text = String(w.text() || ''); } catch (_) { text = ''; }
@@ -4257,7 +4257,11 @@
         dropdown: (anchor, items, align, onClose) => showDropdown(anchor, items, align, onClose),
         closeMenus: () => closeMenus(),
         /** Registered apps (id, title, icon, inStart) in registration order. */
-        /** A Today row from an app: registerTodayItem({ id, label, icon, after, text(), onTap() }). */
+        /**
+         * A Today item from an app: a row registerTodayItem({ id, label, icon, after, text(), onTap(),
+         * options }) or a block { id, label, after, render(el, { option }) -> false hides, options }.
+         * Today repaints every 2 s: render must be cheap and repaint only what changed.
+         */
         registerTodayItem: (w) => registerTodayItem(w),
         /** Today rows from apps: [{ id, label }] (Settings > Today > Items). */
         listTodayItems: () => todayWidgets.map((w) => ({ id: w.id, label: w.label || w.id })),
