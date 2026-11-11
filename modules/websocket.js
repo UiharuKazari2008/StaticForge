@@ -349,6 +349,8 @@ class WebSocketServer {
                     require('./ws/handlers/245-melatonAppsHandler').onClientClosed(ws);
                     // a slideshow device is offline from here (Control Panel's SideShow page)
                     require('./slideshowDevices').onSocketClosed(this.globalResources, this, info);
+                    // an ActiveSync peer (phone or desktop tab) is gone: its waiting calls fail now
+                    require('./activeSync').onSocketClosed(this.globalResources, this, info);
                 }
             });
 

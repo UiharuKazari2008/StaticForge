@@ -1,0 +1,24 @@
+/*
+ * Melaton Mobile: ActiveSync (public/scripts/comp/wmActiveSync.js, Yozora #747). WM 6.1's ActiveSync
+ * page: the status picture (\Windows\Sync*.bmp, 42 x 40) beside the computer's name and the status
+ * line, a rule, then the page's text; Options and Status are forms over it.
+ */
+html.ui-mobile .wm-activesync { background: #fff; color: #000; overflow-y: auto; }
+.wm-activesync .was-head { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 3px 4px; border-bottom: 1px solid #000; }
+.wm-activesync .was-pic { flex: none; width: 42px; height: 40px; background: 0 0 / auto 40px no-repeat; }
+.wm-activesync .was-pic.is-syncing { animation: was-sync 1.6s steps(16) infinite; }
+@keyframes was-sync { to { background-position-x: -672px; } }
+@media (prefers-reduced-motion: reduce) { .wm-activesync .was-pic.is-syncing { animation: none; } }
+.wm-activesync .was-name { font-weight: bold; }
+.wm-activesync .was-line { min-height: 1.25em; }
+.wm-activesync .was-text { padding: 4px; }
+.wm-activesync .was-text p { margin: 0 0 1.25em; }
+.wm-activesync .was-rows { margin: 0; padding: 0 4px; list-style: none; }
+.wm-activesync .was-rows li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px solid #c6c6c6; }
+.wm-activesync .was-rows li span:last-child { text-align: right; }
+.wm-activesync .was-form { padding: 4px; }
+.wm-activesync .was-form .wm-check { display: flex; align-items: center; min-height: 26px; }
+.wm-activesync .was-log { margin: 0; padding: 0; list-style: none; }
+.wm-activesync .was-log li { padding: 3px 4px; border-bottom: 1px solid #c6c6c6; }
+.wm-activesync .was-log time { display: block; color: #555; font-size: .85em; }
+.wm-activesync .was-log li.is-warning { color: #7a4a00; }

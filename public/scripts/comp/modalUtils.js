@@ -6662,6 +6662,8 @@ function buildToolsSubmenuItems() {
         { launchId: 'perfmon', icon: 'fas fa-gauge', imageIcon: 'vista-reliability-performance.png', text: 'Reliability and Performance Monitor', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'perfmon' }) },
         // PayPass Operator: openCreditIC, the arcade's IC card / credit system, admins (Yozora #721; apps/paypass, a system package)
         { launchId: 'paypass', icon: 'fas fa-credit-card', imageIcon: 'paypass.png', text: 'PayPass Operator', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'paypass' }) },
+        // Melaton Mobile Device Center: phones running the Dreamscape app (Yozora #747; apps/activesync, a system package)
+        { launchId: 'mobile-device-center', icon: 'fas fa-mobile-screen', imageIcon: 'mobile-device-center.png', text: 'Melaton Mobile Device Center', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'activesync' }) },
         // XLink Operator Console: the arcade cabinets' control menu, admins (Yozora #719; apps/xlink, a system package)
         // VisionCaster (was QuickCast): video mixer remote for the cabinet mixers and the satellite encoder, and one-touch YouTube live, admins (Yozora #734; apps/quickcast, a system package)
         { launchId: 'quickcast', icon: 'fas fa-tower-broadcast', imageIcon: 'quickcast.png', text: 'VisionCaster', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'quickcast' }) },

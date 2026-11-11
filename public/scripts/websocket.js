@@ -877,6 +877,9 @@ class WebSocketClient {
     ]);
 
     static PROGRESS_REQUEST_TYPES = new Set([
+        // ActiveSync (activeSyncAgent.js): the phone's user is asked (up to 2 minutes), a relayed call may take as long
+        'as_partnership',
+        'as_call',
         'generate_image',
         'generate_preset',
         'expand_image',

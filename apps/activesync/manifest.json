@@ -1,0 +1,14 @@
+{
+    "id": "activesync",
+    "version": "6.1.6965",
+    "title": "Melaton Mobile Device Center",
+    "publisher": "Xyridian Corporation",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "mobile-device-center",
+    "icon": "assets/activesync-48.png",
+    "client": {
+        "entry": "client/activesync.js",
+        "styles": ["assets/activesync.css"]
+    }
+}

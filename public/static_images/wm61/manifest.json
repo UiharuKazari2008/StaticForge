@@ -6832,6 +6832,108 @@
         "4x-point-upscaled"
       ],
       "notes": "Wireless Manager glyph: NFC (WM 6.1 had none). The NFC N mark (a bold N in a rounded square) in the ROM glyph style, top-left aligned so the off version's X (copied from wrls-wifi-off) has its corner with a 1 px gap."
+    },
+    "app-activesync": {
+      "1x": {
+        "source": "syncres.dll ico_100_6_16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "syncres.dll ico_100_3_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "ActiveSync's own icon (Yozora #747)."
+    },
+    "app-activesync-lg": {
+      "1x": {
+        "source": "syncres.dll ico_100_3_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "syncres.dll ico_100_0_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "notes": "ActiveSync's own icon (Yozora #747)."
+    },
+    "as-connected": {
+      "1x": {
+        "source": "\\Windows\\Syncconnected.bmp Lanczos-downscaled",
+        "size": [
+          42,
+          40
+        ]
+      },
+      "2x": {
+        "source": "\\Windows\\Syncconnected.bmp",
+        "size": [
+          84,
+          80
+        ]
+      },
+      "notes": "ActiveSync status picture, VGA file halved for 1x."
+    },
+    "as-notconnected": {
+      "1x": {
+        "source": "\\Windows\\Syncnotconnect.bmp Lanczos-downscaled",
+        "size": [
+          42,
+          40
+        ]
+      },
+      "2x": {
+        "source": "\\Windows\\Syncnotconnect.bmp",
+        "size": [
+          84,
+          80
+        ]
+      },
+      "notes": "ActiveSync status picture, VGA file halved for 1x."
+    },
+    "as-attention": {
+      "1x": {
+        "source": "\\Windows\\Syncyellow.bmp Lanczos-downscaled",
+        "size": [
+          42,
+          40
+        ]
+      },
+      "2x": {
+        "source": "\\Windows\\Syncyellow.bmp",
+        "size": [
+          84,
+          80
+        ]
+      },
+      "notes": "ActiveSync status picture, VGA file halved for 1x."
+    },
+    "as-syncing": {
+      "1x": {
+        "source": "\\Windows\\SyncAnimation.gif Lanczos-downscaled",
+        "size": [
+          672,
+          40
+        ]
+      },
+      "2x": {
+        "source": "\\Windows\\SyncAnimation.gif",
+        "size": [
+          1344,
+          80
+        ]
+      },
+      "notes": "16 frames of 84 x 80 in a strip (42 x 40 at 1x)."
     }
   },
   "notDelivered": {

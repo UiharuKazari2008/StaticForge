@@ -374,6 +374,10 @@ class WebSocketMessageHandlers {
             // slideshow devices (Control Panel's SideShow page; modules/slideshowDevices.js)
             'device_send_command',
             'device_forget',
+            // ActiveSync (modules/activeSync.js): calls into a phone, partnerships, forgetting a device
+            'as_call',
+            'as_partnership',
+            'as_forget',
             'workspace_create',
             'workspace_delete',
             'workspace_rename',
