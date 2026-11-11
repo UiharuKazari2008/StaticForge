@@ -577,7 +577,7 @@
         sh.registerApp({
             id: APP_ID,
             title: 'Reference',
-            icon: ICON,
+            icon: 'app-reference',
             inStart: 'programs',
             mount,
             show() {

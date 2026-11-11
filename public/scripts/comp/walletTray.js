@@ -1169,6 +1169,9 @@
         hideFlyout,
         attachMenu,
         model,
+        /** What the flyout's notes read (Melaton Mobile's Accounts app, wmAccounts.js). */
+        state: () => ({ restricted, loading, error: serverError, hasServer: !!server, fetchedAt: (server && server.fetchedAt) || null }),
+        runAction,
         isOpen: () => !!(flyout && !flyout.classList.contains('hidden')),
         _test: {
             novelAiData,

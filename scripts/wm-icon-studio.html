@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WM icon studio</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #161616; color: #eee; }
+  header, main { padding: 16px 20px; }
+  header { border-bottom: 1px solid #333; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 14px; margin: 14px 0 6px; color: #ccc; font-weight: 600; }
+  p { margin: 0; color: #bbb; }
+  main { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start; }
+  label { display: block; margin: 10px 0 4px; color: #ccc; }
+  label.check { display: flex; gap: 6px; align-items: center; }
+  input, textarea, select, button { font: inherit; color: inherit; background: #222; border: 1px solid #444; border-radius: 6px; }
+  input:not([type]), input[type="text"], textarea, select { width: 100%; padding: 6px 8px; }
+  input[type="file"] { width: 100%; padding: 6px 0; background: transparent; border: 0; }
+  input[type="range"] { width: 100%; height: 32px; margin: 4px 0 8px; padding: 0; background: transparent; border: 0; accent-color: #f5d76e; cursor: pointer; }
+  textarea { min-height: 64px; resize: vertical; }
+  button { padding: 7px 10px; cursor: pointer; }
+  button.primary { background: #2d4a38; border-color: #3d6b50; }
+  button.on { background: #3b3a20; border-color: #f5d76e; }
+  .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .row button { flex: 1; }
+  .list { margin-top: 16px; max-height: 460px; overflow: auto; border-top: 1px solid #333; }
+  .icon-row { display: grid; grid-template-columns: 1fr auto; align-items: center; border-bottom: 1px solid #2a2a2a; }
+  .icon-row .open { display: grid; grid-template-columns: 36px 1fr auto; gap: 8px; align-items: center; width: 100%; text-align: left; background: transparent; border: 0; border-radius: 0; padding: 4px 6px; }
+  .icon-row .open:hover { background: #202020; }
+  .icon-row img { width: 32px; height: 32px; image-rendering: pixelated; }
+  .tag { color: #888; font-size: 12px; }
+  .stage { display: flex; flex-direction: column; gap: 12px; }
+  .crop-frame {
+    width: min(480px, 100%); aspect-ratio: 1; position: relative; overflow: hidden;
+    background-color: #2a2a2a;
+    background-image: linear-gradient(45deg, #3a3a3a 25%, transparent 25%), linear-gradient(-45deg, #3a3a3a 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #3a3a3a 75%), linear-gradient(-45deg, transparent 75%, #3a3a3a 75%);
+    background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    border: 2px solid #f2f2f2; touch-action: none;
+  }
+  #source { position: absolute; left: 0; top: 0; pointer-events: none; user-select: none; }
+  .safe-area { position: absolute; border: 1px dashed #f5d76e; box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.28); pointer-events: none; }
+  .readout { min-height: 2.8em; }
+  .readout.warn { color: #ffb4a8; }
+  .previews { display: grid; grid-template-columns: repeat(6, auto); gap: 8px 14px; justify-content: start; align-items: end; }
+  .preview { text-align: center; color: #aaa; font-size: 12px; }
+  .preview canvas, .preview img { display: block; margin: 4px auto 0; image-rendering: pixelated; }
+  .bg-white { background: #fff; }
+  .bg-today { background: linear-gradient(#2a64b4, #163c78); }
+  .bg-dark { background: #000; }
+  .saved { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+  .refs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .ref-chip { display: flex; align-items: center; gap: 4px; background: #222; border: 1px solid #444; border-radius: 6px; padding: 2px 4px; }
+  .ref-chip img { width: 32px; height: 32px; object-fit: contain; background: #111; }
+  .ref-chip button { padding: 2px 6px; }
+  #status.error { color: #ffb4a8; }
+</style>
+</head>
+<body>
+<header>
+  <h1>WM icon studio</h1>
+  <p>Windows Mobile 6.1 style program icons for Melaton Mobile. WM art fills its square (about 3% margin), so the dashed box is tight. Style notes: docs/design/wm61-icon-style.md. Our own art only: no company logos.</p>
+</header>
+<main>
+  <section>
+    <form id="gen">
+      <label for="input">Subject</label>
+      <input id="input" name="input" placeholder="glass globe on a chrome stand with two location pins">
+      <label for="from">Program</label>
+      <input id="from" name="from" placeholder="Teleport (switches between workspaces)">
+      <label for="extra">Extra</label>
+      <textarea id="extra" name="extra" placeholder="no stand, a green arrow badge instead"></textarea>
+      <label for="refs">Reference images (the desktop icon helps keep the subject)</label>
+      <input id="refs" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+      <div id="ref-list" class="refs"></div>
+      <label for="name">Art name (app-...)</label>
+      <input id="name" name="name" placeholder="teleport">
+      <label class="check"><input id="small" type="checkbox" checked> Also draw the simplified 16 px frame (second request)</label>
+      <label for="model">Model</label>
+      <select id="model"></select>
+      <label for="quality">Quality</label>
+      <select id="quality"></select>
+      <div class="row">
+        <button class="primary" type="submit" id="generate">Generate</button>
+        <button type="button" id="smallOnly">Redraw 16 px only</button>
+      </div>
+    </form>
+    <div id="status"></div>
+    <div class="list" id="list"></div>
+  </section>
+  <section class="stage">
+    <div class="row" style="margin-top:0">
+      <button type="button" id="editLarge" class="on">Frame: master (32-128 px)</button>
+      <button type="button" id="editSmall">Frame: 16 px master</button>
+    </div>
+    <div id="frame" class="crop-frame" tabindex="0">
+      <img id="source" alt="">
+      <div id="safe" class="safe-area"></div>
+    </div>
+    <label for="inset">Margin <span id="inset-label">3%</span></label>
+    <input id="inset" type="range" min="0" max="15" value="3">
+    <div id="readout" class="readout">Pick an icon or generate one.</div>
+    <div class="row">
+      <button type="button" id="fit">Fit to margin</button>
+      <button type="button" id="reset">Show full image</button>
+      <button type="button" class="primary" id="save">Write WM sizes</button>
+    </div>
+    <h2>Preview of this framing (1:1 and x3)</h2>
+    <div class="previews" id="previews"></div>
+    <h2>Files on disk</h2>
+    <div class="saved" id="saved"></div>
+  </section>
+</main>
+<script>
+const frame = document.getElementById('frame');
+const source = document.getElementById('source');
+const safe = document.getElementById('safe');
+const readout = document.getElementById('readout');
+const statusEl = document.getElementById('status');
+const listEl = document.getElementById('list');
+let config = { inset: 0.03, qualities: ['low', 'medium', 'high'], qualities25: ['high'] };
+let views = { large: null, small: null };
+let editing = 'large';
+let bitmap = null;
+let natural = { w: 0, h: 0 };
+let currentName = '';
+let sourceKind = '';
+let references = [];
+let refSeq = 0;
+let drag = null;
+
+const PREVIEWS = [
+  { size: 16, bg: 'bg-white', label: '16 list' },
+  { size: 16, bg: 'bg-today', label: '16 Today' },
+  { size: 32, bg: 'bg-white', label: '32 Programs' },
+  { size: 32, bg: 'bg-today', label: '32 Today' },
+  { size: 64, bg: 'bg-white', label: '64 (2x)' },
+  { size: 64, bg: 'bg-dark', label: '64 dark' }
+];
+
+function view() { return views[editing]; }
+function setStatus(text, isError) { statusEl.textContent = text || ''; statusEl.className = isError ? 'error' : ''; }
+function insetFraction() { return Number(document.getElementById('inset').value) / 100; }
+
+function applySafe() {
+  const inset = insetFraction();
+  const pct = (inset * 100).toFixed(0);
+  document.getElementById('inset-label').textContent = pct + '%';
+  safe.style.left = pct + '%';
+  safe.style.top = pct + '%';
+  safe.style.width = ((1 - inset * 2) * 100) + '%';
+  safe.style.height = ((1 - inset * 2) * 100) + '%';
+}
+
+function layout() {
+  const v = view();
+  if (!v) return;
+  const side = frame.clientWidth;
+  source.style.width = (natural.w / v.size) * side + 'px';
+  source.style.height = (natural.h / v.size) * side + 'px';
+  source.style.left = (-v.x / v.size) * side + 'px';
+  source.style.top = (-v.y / v.size) * side + 'px';
+}
+
+function captureBitmap() {
+  const canvas = document.createElement('canvas');
+  canvas.width = natural.w;
+  canvas.height = natural.h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(source, 0, 0);
+  bitmap = ctx.getImageData(0, 0, natural.w, natural.h).data;
+}
+
+function opaqueBounds(minAlpha) {
+  if (!bitmap) return null;
+  let minX = natural.w, minY = natural.h, maxX = -1, maxY = -1;
+  for (let y = 0; y < natural.h; y++) {
+    const row = y * natural.w * 4;
+    for (let x = 0; x < natural.w; x++) {
+      if (bitmap[row + x * 4 + 3] < minAlpha) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+  return maxX < 0 ? null : { minX, minY, maxX, maxY };
+}
+
+function pct(n) { return Math.round(n * 1000) / 10; }
+
+function report() {
+  const v = view();
+  const b = opaqueBounds(128);
+  if (!v || !b) {
+    readout.textContent = currentName ? 'No opaque pixels in view.' : 'Pick an icon or generate one.';
+    readout.className = 'readout';
+    drawPreviews();
+    return;
+  }
+  const m = { left: (b.minX - v.x) / v.size, top: (b.minY - v.y) / v.size, right: (v.x + v.size - b.maxX - 1) / v.size, bottom: (v.y + v.size - b.maxY - 1) / v.size };
+  const text = Object.entries(m).map(([k, n]) => k + ' ' + pct(n) + '%').join('  ');
+  const cut = Object.entries(m).filter(([, n]) => n < 0).map(([k]) => k);
+  const loose = Math.min(m.left + m.right, m.top + m.bottom) > 0.16;
+  readout.textContent = 'Body margins: ' + text + '. ' + (cut.length ? cut.join(', ') + ' is cut off.' : loose ? 'Looser than WM art, which nearly fills its square.' : 'WM-like fill.');
+  readout.className = 'readout' + (cut.length || loose ? ' warn' : '');
+  drawPreviews();
+}
+
+function drawPreviews() {
+  const box = document.getElementById('previews');
+  box.innerHTML = '';
+  const v = view();
+  PREVIEWS.forEach((p) => {
+    const cell = document.createElement('div');
+    cell.className = 'preview';
+    cell.textContent = p.label;
+    const one = document.createElement('canvas');
+    one.width = one.height = p.size;
+    one.className = p.bg;
+    const big = document.createElement('canvas');
+    big.width = big.height = p.size;
+    big.className = p.bg;
+    big.style.width = big.style.height = (p.size * 3) + 'px';
+    if (v && natural.w) {
+      [one, big].forEach((c) => {
+        const ctx = c.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(source, v.x, v.y, v.size, v.size, 0, 0, p.size, p.size);
+      });
+    }
+    cell.append(one, big);
+    box.appendChild(cell);
+  });
+}
+
+function showSaved() {
+  const box = document.getElementById('saved');
+  box.innerHTML = '';
+  if (!currentName) return;
+  const t = Date.now();
+  [['', 16], ['@2x', 32], ['@4x', 64], ['-lg', 32], ['-lg@2x', 64], ['-lg@4x', 128]].forEach(([suffix, size]) => {
+    const cell = document.createElement('div');
+    cell.className = 'preview';
+    cell.textContent = currentName + suffix + ' (' + size + ')';
+    const img = document.createElement('img');
+    img.className = 'bg-white';
+    img.width = img.height = size <= 32 ? size * 3 : size;
+    img.src = '/art/' + currentName + suffix + '.png?t=' + t;
+    img.onerror = () => { img.replaceWith(document.createTextNode(' none')); };
+    cell.appendChild(img);
+    box.appendChild(cell);
+  });
+}
+
+function showFull() {
+  const side = Math.max(natural.w, natural.h);
+  views[editing] = { x: (natural.w - side) / 2, y: (natural.h - side) / 2, size: side };
+  layout();
+  report();
+}
+
+function fitSafe() {
+  const b = opaqueBounds(128);
+  if (!b) return;
+  const side = Math.max(b.maxX - b.minX + 1, b.maxY - b.minY + 1) / Math.max(0.5, 1 - insetFraction() * 2);
+  views[editing] = { x: (b.minX + b.maxX + 1) / 2 - side / 2, y: (b.minY + b.maxY + 1) / 2 - side / 2, size: side };
+  layout();
+  report();
+}
+
+function loadFrame(which) {
+  editing = which;
+  document.getElementById('editLarge').classList.toggle('on', which === 'large');
+  document.getElementById('editSmall').classList.toggle('on', which === 'small');
+  if (!currentName) return;
+  const url = '/icon/source/' + encodeURIComponent(currentName) + '.png?t=' + Date.now() + (which === 'small' ? '&small=1' : '');
+  fetch(url, { method: 'HEAD' }).then((res) => {
+    sourceKind = res.headers.get('X-Source-Kind') || '';
+    if (!res.ok) {
+      setStatus(which === 'small' ? 'No 16 px master yet: the 16 px file is drawn from the main master. Use "Redraw 16 px only" to make one.' : 'No source for ' + currentName + '.', which !== 'small');
+      natural = { w: 0, h: 0 };
+      source.removeAttribute('src');
+      bitmap = null;
+      report();
+      return;
+    }
+    source.onload = () => {
+      natural = { w: source.naturalWidth, h: source.naturalHeight };
+      captureBitmap();
+      if (!views[which]) fitSafe(); else { layout(); report(); }
+      setStatus(sourceKind === 'art' ? currentName + ' has no generated master (ROM or older art): view only, saving needs a master.' : 'Framing the ' + (which === 'small' ? '16 px master' : 'master') + ' of ' + currentName + '.');
+    };
+    source.src = url;
+  });
+}
+
+function loadIcon(name) {
+  currentName = name;
+  views = { large: null, small: null };
+  document.getElementById('name').value = name.replace(/^app-/, '');
+  loadFrame('large');
+  showSaved();
+}
+
+function renderList(payload) {
+  listEl.innerHTML = '';
+  payload.icons.forEach((icon) => {
+    const row = document.createElement('div');
+    row.className = 'icon-row';
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'open';
+    const thumb = document.createElement('img');
+    thumb.alt = '';
+    thumb.src = '/art/' + icon.name + '-lg.png?t=' + icon.mtime;
+    const label = document.createElement('span');
+    label.textContent = icon.name;
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = icon.hasMaster ? (icon.hasSmall ? 'master + 16' : 'master') : 'ROM';
+    open.append(thumb, label, tag);
+    open.addEventListener('click', () => loadIcon(icon.name));
+    const refBtn = document.createElement('button');
+    refBtn.type = 'button';
+    refBtn.textContent = 'Ref';
+    refBtn.addEventListener('click', () => addReference({ id: ++refSeq, label: icon.name, preview: '/art/' + icon.name + '-lg@2x.png', icon: icon.name }));
+    row.append(open, refBtn);
+    listEl.appendChild(row);
+  });
+}
+
+async function refreshList() {
+  const res = await fetch('/api/icons');
+  renderList(await res.json());
+}
+
+frame.addEventListener('pointerdown', (event) => {
+  const v = view();
+  if (!natural.w || !v || event.button !== 0) return;
+  frame.setPointerCapture(event.pointerId);
+  drag = { x: event.clientX, y: event.clientY, vx: v.x, vy: v.y };
+});
+frame.addEventListener('pointermove', (event) => {
+  if (!drag) return;
+  const v = view();
+  const side = frame.clientWidth;
+  v.x = drag.vx - ((event.clientX - drag.x) / side) * v.size;
+  v.y = drag.vy - ((event.clientY - drag.y) / side) * v.size;
+  layout();
+});
+frame.addEventListener('pointerup', () => { if (drag) { drag = null; report(); } });
+frame.addEventListener('wheel', (event) => {
+  const v = view();
+  if (!natural.w || !v) return;
+  event.preventDefault();
+  const rect = frame.getBoundingClientRect();
+  const px = (event.clientX - rect.left) / rect.width;
+  const py = (event.clientY - rect.top) / rect.height;
+  const srcX = v.x + px * v.size;
+  const srcY = v.y + py * v.size;
+  let dy = event.deltaY;
+  if (event.deltaMode === 1) dy *= 16;
+  else if (event.deltaMode === 2) dy *= rect.height;
+  const next = Math.min(Math.max(v.size * Math.exp(dy * 0.00022), 32), Math.max(natural.w, natural.h) * 3);
+  v.size = next;
+  v.x = srcX - px * next;
+  v.y = srcY - py * next;
+  layout();
+  clearTimeout(frame.zoomReport);
+  frame.zoomReport = setTimeout(report, 70);
+}, { passive: false });
+
+document.getElementById('inset').addEventListener('input', () => { applySafe(); report(); });
+document.getElementById('fit').addEventListener('click', fitSafe);
+document.getElementById('reset').addEventListener('click', () => { if (natural.w) showFull(); });
+document.getElementById('editLarge').addEventListener('click', () => loadFrame('large'));
+document.getElementById('editSmall').addEventListener('click', () => loadFrame('small'));
+document.getElementById('model').addEventListener('change', fillQualities);
+
+function fillQualities() {
+  const model = document.getElementById('model').value;
+  const levels = model.startsWith('gpt-image-2.5') ? config.qualities25 : config.qualities;
+  const select = document.getElementById('quality');
+  const previous = select.value || 'high';
+  select.innerHTML = '';
+  levels.forEach((level) => {
+    const option = document.createElement('option');
+    option.value = level;
+    option.textContent = level;
+    if (level === previous) option.selected = true;
+    select.appendChild(option);
+  });
+  if (!select.value) select.value = levels.includes('high') ? 'high' : levels[0];
+}
+
+function renderRefs() {
+  const box = document.getElementById('ref-list');
+  box.innerHTML = '';
+  references.forEach((ref) => {
+    const chip = document.createElement('div');
+    chip.className = 'ref-chip';
+    const img = document.createElement('img');
+    img.alt = '';
+    img.src = ref.preview;
+    const name = document.createElement('span');
+    name.textContent = ref.label;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', () => {
+      references = references.filter((item) => item.id !== ref.id);
+      if (String(ref.preview).startsWith('blob:')) URL.revokeObjectURL(ref.preview);
+      renderRefs();
+    });
+    chip.append(img, name, remove);
+    box.appendChild(chip);
+  });
+}
+
+function addReference(entry) {
+  if (references.length >= 8) { setStatus('Up to 8 reference images.', true); return; }
+  if (entry.icon && references.some((item) => item.icon === entry.icon)) return;
+  references.push(entry);
+  renderRefs();
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('refs').addEventListener('change', async (event) => {
+  for (const file of Array.from(event.target.files || [])) {
+    addReference({ id: ++refSeq, label: file.name, preview: URL.createObjectURL(file), data: await fileToBase64(file), name: file.name });
+  }
+  event.target.value = '';
+});
+
+function generateBody(name, force, smallOnly) {
+  return {
+    input: document.getElementById('input').value,
+    from: document.getElementById('from').value,
+    extra: document.getElementById('extra').value,
+    name: name,
+    model: document.getElementById('model').value,
+    quality: document.getElementById('quality').value,
+    small: document.getElementById('small').checked,
+    smallOnly: smallOnly === true,
+    force: force,
+    references: references.map((ref) => ref.icon ? { icon: ref.icon } : { name: ref.name, data: ref.data })
+  };
+}
+
+async function runGenerate(smallOnly) {
+  const name = document.getElementById('name').value.trim();
+  if (!name || (!smallOnly && !document.getElementById('input').value.trim())) {
+    setStatus(smallOnly ? 'Art name is required.' : 'Subject and art name are required.', true);
+    return;
+  }
+  const buttons = [document.getElementById('generate'), document.getElementById('smallOnly')];
+  buttons.forEach((b) => { b.disabled = true; });
+  setStatus(smallOnly ? 'Drawing the 16 px frame...' : 'Generating (about 35 s per image)...');
+  try {
+    const post = (force) => fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(generateBody(name, force, smallOnly)) });
+    let res = await post(false);
+    let payload = await res.json();
+    if (!res.ok && /already exists/.test(payload.error || '') && confirm('Replace the stored master for ' + name + '?')) {
+      res = await post(true);
+      payload = await res.json();
+    }
+    if (!res.ok) throw new Error(payload.error || 'Generate failed');
+    setStatus('Written ' + payload.name + ' at every WM size' + (payload.hasSmall ? ' (16 px from its own frame)' : '') + '. Adjust the framing and write again if needed.');
+    loadIcon(payload.name);
+    refreshList();
+  } catch (err) {
+    setStatus(err.message, true);
+  } finally {
+    buttons.forEach((b) => { b.disabled = false; });
+  }
+}
+
+document.getElementById('gen').addEventListener('submit', (event) => { event.preventDefault(); runGenerate(false); });
+document.getElementById('smallOnly').addEventListener('click', () => runGenerate(true));
+
+document.getElementById('save').addEventListener('click', async () => {
+  if (!currentName || sourceKind !== 'master') {
+    setStatus('Load an icon with a generated master before writing.', true);
+    return;
+  }
+  setStatus('Writing...');
+  try {
+    const res = await fetch('/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: currentName, crop: views.large, smallCrop: views.small, input: document.getElementById('input').value, from: document.getElementById('from').value })
+    });
+    const payload = await res.json();
+    if (!res.ok) throw new Error(payload.error || 'Save failed');
+    setStatus('Wrote ' + payload.written.length + ' files' + (payload.hasSmall ? ' (16 px from its own frame)' : '') + ' and the manifest entries.');
+    showSaved();
+    refreshList();
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+});
+
+applySafe();
+fetch('/api/config').then((res) => res.json()).then((payload) => {
+  config = payload;
+  const model = document.getElementById('model');
+  payload.models.forEach((id) => {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = id;
+    if (id === payload.defaultModel) option.selected = true;
+    model.appendChild(option);
+  });
+  document.getElementById('inset').value = String(Math.round(payload.inset * 100));
+  applySafe();
+  fillQualities();
+  drawPreviews();
+  return refreshList();
+}).catch((err) => setStatus(err.message, true));
+</script>
+</body>
+</html>

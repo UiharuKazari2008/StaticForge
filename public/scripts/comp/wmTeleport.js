@@ -603,7 +603,7 @@
         ws.registerApp({
             id: APP_ID,
             title: 'Teleport',
-            icon: '/static_images/app_icons/vista-teleport.png',
+            icon: 'app-teleport',
             inStart: 'programs',
             mount(p) {
                 page = p;

@@ -994,7 +994,7 @@
         sh.registerApp({
             id: APP_ID,
             title: 'Chat',
-            icon: '/static_images/app_icons/vista-messenger.png',
+            icon: 'app-chat',
             inStart: 'programs',
             sip: true,
             mount,

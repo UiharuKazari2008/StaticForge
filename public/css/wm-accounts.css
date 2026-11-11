@@ -1,0 +1,175 @@
+/*
+ * Melaton Mobile: Accounts (the desktop wallet tray's Account Manager as a WM 6.1 program),
+ * Yozora #732, parent #709. wmAccounts.js.
+ *
+ * Laid out like WM 6.1 Settings pages and Messaging's list (lengths are N * --wm-px):
+ *   header   green section header (wm-programs.css .wm-form-hdr, 23 px + 1 px black rule)
+ *   rows     two-line style list rows, 1 px #848284 rule under each (Messaging); a 21 px left
+ *            column holds the status dot (Status) or the 16 px message-box icon (Alerts)
+ *   figures  label / value / meter rows under the account's lines; the meter is WM's progress
+ *            bar (1 px black box, solid fill) in the wallet's level colours
+ *   tabs     Alerts | Status at the bottom (wm-programs.css .wm-tabs)
+ */
+
+.wm-page.wm-accounts {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: #fff;
+    color: #000;
+}
+
+.wm-accounts .wac-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+}
+
+.wm-accounts .wac-panel[hidden] {
+    display: none;
+}
+
+/* ---- rows (both tabs) ---- */
+.wm-accounts .wac-row {
+    display: grid;
+    grid-template-columns: calc(21 * var(--wm-px)) minmax(0, 1fr);
+    align-items: start;
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) calc(3 * var(--wm-px)) 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #848284;
+    line-height: calc(15 * var(--wm-px));
+    cursor: default;
+    -webkit-touch-callout: none;
+    user-select: none;
+}
+
+.wm-accounts .wac-row.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-accounts .wac-main {
+    min-width: 0;
+}
+
+.wm-accounts .wac-name,
+.wm-accounts .wac-title {
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wm-accounts .wac-line {
+    overflow-wrap: anywhere;
+}
+
+/* the action a line offers (Log in): WM draws links as blue underlined text */
+.wm-accounts .wac-link {
+    color: #0000ff;
+    text-decoration: underline;
+}
+
+.wm-accounts .wac-row.is-selected .wac-link {
+    color: inherit;
+}
+
+/* ---- status dot (the flyout's ok / warn / bad / off) ---- */
+.wm-accounts .wac-dot {
+    display: block;
+    box-sizing: border-box;
+    width: calc(9 * var(--wm-px));
+    height: calc(9 * var(--wm-px));
+    margin: calc(3 * var(--wm-px)) 0 0 calc(6 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid rgba(0, 0, 0, 0.55);
+    border-radius: 50%;
+    background: #31b631;
+}
+
+.wm-accounts .wac-dot-warn { background: #f0a000; }
+.wm-accounts .wac-dot-bad { background: #e00000; }
+.wm-accounts .wac-dot-off { background: #a5a5a5; }
+
+/* ---- figures: label, value, meter ---- */
+.wm-accounts .wac-figs {
+    display: grid;
+    grid-template-columns: auto auto minmax(calc(40 * var(--wm-px)), 1fr);
+    column-gap: calc(6 * var(--wm-px));
+    align-items: center;
+    margin-top: calc(1 * var(--wm-px));
+}
+
+.wm-accounts .wac-fig-label {
+    white-space: nowrap;
+}
+
+.wm-accounts .wac-fig-value {
+    font-weight: bold;
+    white-space: nowrap;
+    text-align: right;
+}
+
+.wm-accounts .wac-fig-value.is-wide {
+    grid-column: 2 / -1;
+    text-align: left;
+    white-space: normal;
+}
+
+.wm-accounts .wac-fig-note {
+    grid-column: 1 / -1;
+    padding-left: calc(8 * var(--wm-px));
+}
+
+.wm-accounts .wac-lv-warn { color: #c05800; }
+.wm-accounts .wac-lv-bad { color: #d00000; }
+.wm-accounts .wac-lv-drain { color: #8a7000; }
+
+.wm-accounts .wac-row.is-selected .wac-fig-value {
+    color: inherit;
+}
+
+.wm-accounts .wac-meter {
+    position: relative;
+    display: block;
+    box-sizing: border-box;
+    height: calc(9 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    overflow: hidden;
+}
+
+.wm-accounts .wac-meter > i {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: var(--wm-highlight);
+}
+
+.wm-accounts .wac-meter.wac-lv-drain > i { background: #e8c800; }
+.wm-accounts .wac-meter.wac-lv-warn > i { background: #f08000; }
+.wm-accounts .wac-meter.wac-lv-bad > i { background: #e00000; }
+
+/* ---- alerts ---- */
+.wm-accounts .wac-alert-ico {
+    display: block;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin-left: calc(2 * var(--wm-px));
+}
+
+.wm-accounts .wac-alert-ico img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* ---- notes and the empty list ---- */
+.wm-accounts .wac-note {
+    padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px));
+    color: #525152;
+}
+
+.wm-accounts .wac-empty {
+    margin: calc(40 * var(--wm-px)) calc(8 * var(--wm-px)) 0;
+    text-align: center;
+}

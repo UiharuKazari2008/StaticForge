@@ -1286,7 +1286,7 @@
         ws.registerApp({
             id: APP_ID,
             title: TITLE,
-            icon: ICON,
+            icon: 'app-remote-desktop-mobile',
             inStart: 'programs',
             sip: true,
             mount(p) {

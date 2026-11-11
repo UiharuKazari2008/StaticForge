@@ -404,7 +404,7 @@
         sh.registerApp({
             id: APP_ID,
             title: 'Spellbook',
-            icon: ICON,
+            icon: 'app-spellbook',
             inStart: 'programs',
             programsFolder: 'toolbox',
             sip: true,

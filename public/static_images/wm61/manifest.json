@@ -1689,37 +1689,58 @@
     },
     "app-director": {
       "1x": {
-        "source": "public/static_images/app_icons/director.png (Dreamscape app icon, Lanczos-downscaled)",
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-director-16.png, Lanczos-downscaled",
         "size": [
           16,
           16
         ]
       },
       "2x": {
-        "source": "public/static_images/app_icons/director.png (Dreamscape app icon, Lanczos-downscaled)",
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-director.png, Lanczos-downscaled",
         "size": [
           32,
           32
         ]
       },
-      "notes": "Not ROM art: the Director is a Dreamscape app with its own icon (no WM stock counterpart). @4x is 64 px. Start menu (wmDirector.js)."
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-director.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Director (AI assistant that directs scenes). Subject: film clapperboard with black and white striped clapper and a small photo print tucked in front."
     },
     "app-director-lg": {
       "1x": {
-        "source": "public/static_images/app_icons/director.png (Dreamscape app icon, Lanczos-downscaled)",
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-director.png, Lanczos-downscaled",
         "size": [
           32,
           32
         ]
       },
       "2x": {
-        "source": "public/static_images/app_icons/director.png (Dreamscape app icon, Lanczos-downscaled)",
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-director.png, Lanczos-downscaled",
         "size": [
           64,
           64
         ]
       },
-      "notes": "Large Director icon (Programs-style 32 px); @4x is 128 px. Not ROM art."
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-director.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-director. Not ROM art."
     },
     "today-clock": {
       "1x": {
@@ -5039,6 +5060,1160 @@
         ]
       },
       "notes": "Windows Media Library icons (#732 wmMedia.js)."
+    },
+    "app-accounts": {
+      "1x": {
+        "source": "drawn (Melaton extension)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "drawn (Melaton extension)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "drawn (Melaton extension)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "melaton-extension"
+      ],
+      "notes": "Melaton extension: Accounts (wmAccounts.js), a wallet with a banknote drawn in WM 6.1 colour-icon style; the ROM has no wallet icon. Source: ~/.cache/wm61/tools/draw-app-accounts.js (each size drawn as vector, not scaled)."
+    },
+    "app-accounts-lg": {
+      "1x": {
+        "source": "drawn (Melaton extension)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "drawn (Melaton extension)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "drawn (Melaton extension)",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "melaton-extension"
+      ],
+      "notes": "Melaton extension: Accounts (wmAccounts.js), a wallet with a banknote drawn in WM 6.1 colour-icon style; the ROM has no wallet icon. Source: ~/.cache/wm61/tools/draw-app-accounts.js (each size drawn as vector, not scaled)."
+    },
+    "app-teleport": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-teleport-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-teleport.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-teleport.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Teleport (switches between workspaces, shown as planets). Subject: glass globe on a small chrome stand with two coloured location pins."
+    },
+    "app-teleport-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-teleport.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-teleport.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-teleport.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-teleport. Not ROM art."
+    },
+    "app-studio": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-studio-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-studio.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-studio.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Studio (image generation studio). Subject: artist's paintbrush with a wet rainbow-coloured tip resting across a cream canvas board."
+    },
+    "app-studio-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-studio.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-studio.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-studio.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-studio. Not ROM art."
+    },
+    "app-chat": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-chat-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-chat.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-chat.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Chat (talking with AI personas). Subject: two overlapping glossy speech bubbles, a sky blue one in front of a white one, with a small person bust in an orange shirt in the lower right."
+    },
+    "app-chat-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-chat.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-chat.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-chat.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-chat. Not ROM art."
+    },
+    "app-spellbook": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-spellbook-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-spellbook.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-spellbook.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Spellbook (saved prompt presets). Subject: blue ring-bound binder with a frosted cover showing four small portrait silhouette cards."
+    },
+    "app-spellbook-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-spellbook.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-spellbook.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-spellbook.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-spellbook. Not ROM art."
+    },
+    "app-reference": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-reference-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-reference.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-reference.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Reference (art style references). Subject: three glass paint jars with red, green and blue paint and silver screw lids."
+    },
+    "app-reference-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-reference.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-reference.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-reference.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-reference. Not ROM art."
+    },
+    "app-remote-desktop-mobile": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-remote-desktop-mobile-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-remote-desktop-mobile.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-remote-desktop-mobile.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Remote Desktop Mobile (remote computer sessions). Subject: silver laptop with a blue screen and a small white satellite dish in the lower right."
+    },
+    "app-remote-desktop-mobile-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-remote-desktop-mobile.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-remote-desktop-mobile.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-remote-desktop-mobile.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-remote-desktop-mobile. Not ROM art."
+    },
+    "app-spellcaster": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-spellcaster-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-spellcaster.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-spellcaster.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Spellcaster (prompt spell tools). Subject: dark blue pointed wizard hat with a silver band and a magic wand with a few sparkles."
+    },
+    "app-spellcaster-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-spellcaster.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-spellcaster.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-spellcaster.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-spellcaster. Not ROM art."
+    },
+    "app-phasewalker": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-phasewalker-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-phasewalker.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-phasewalker.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Phasewalker (step-by-step image variations). Subject: three translucent blue glass human figures in a row growing from small to large, standing on a glowing blue rail."
+    },
+    "app-phasewalker-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-phasewalker.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-phasewalker.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-phasewalker.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-phasewalker. Not ROM art."
+    },
+    "app-atelier": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-atelier-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-atelier.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-atelier.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Atelier (image experiments lab). Subject: wooden rack of three test tubes with blue, green and amber liquid beside a small framed portrait photo."
+    },
+    "app-atelier-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-atelier.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-atelier.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-atelier.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-atelier. Not ROM art."
+    },
+    "app-expanders": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-expanders-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-expanders.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-expanders.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Expanders (text replacement shortcuts). Subject: red metal bench vise clamping a small green glass tile."
+    },
+    "app-expanders-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-expanders.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-expanders.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-expanders.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-expanders. Not ROM art."
+    },
+    "app-characters": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-characters-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-characters.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-characters.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Characters (character database). Subject: fan of three character ID cards with person silhouettes, blue, lavender and amber, held by a small silver clip."
+    },
+    "app-characters-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-characters.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-characters.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-characters.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-characters. Not ROM art."
+    },
+    "app-emotion": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-emotion-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-emotion.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-emotion.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For eMotion LIVE (animated pictures and video). Subject: framed landscape photo with a strip of film curling in front of it."
+    },
+    "app-emotion-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-emotion.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-emotion.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-emotion.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-emotion. Not ROM art."
+    },
+    "app-agora": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-agora-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-agora.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-agora.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Agora (explore the public gallery). Subject: teal ring-bound portrait album with four character portrait frames on its cover."
+    },
+    "app-agora-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-agora.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-agora.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-agora.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-agora. Not ROM art."
+    },
+    "app-novels": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-novels-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-novels.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-novels.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Novels (reading and writing stories). Subject: grey e-book reader showing a page of text lines with a red bookmark ribbon."
+    },
+    "app-novels-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-novels.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-novels.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-novels.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-novels. Not ROM art."
+    },
+    "app-data-management": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-data-management-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-data-management.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-data-management.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Data Management (stored data, favourites and backups). Subject: pastel pink and lavender planet with a rainbow ring."
+    },
+    "app-data-management-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-data-management.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-data-management.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-data-management.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-data-management. Not ROM art."
+    },
+    "app-image-search": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-image-search-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-image-search.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-image-search.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Image Search (find pictures). Subject: magnifying glass with a wooden handle over a small landscape photo."
+    },
+    "app-image-search-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-image-search.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-image-search.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-image-search.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-image-search. Not ROM art."
+    },
+    "app-control-panel": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-control-panel-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-control-panel.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-control-panel.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Control Panel (system settings). Subject: steel control panel with a grid of glowing blue buttons and a round silver knob."
+    },
+    "app-control-panel-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-control-panel.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-control-panel.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-control-panel.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-control-panel. Not ROM art."
+    },
+    "app-paypass": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-paypass-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-paypass.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-paypass.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For PayPass Operator (front desk card payments). Subject: countertop payment terminal with a blue contactless card being tapped on top."
+    },
+    "app-paypass-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-paypass.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-paypass.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-paypass.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-paypass. Not ROM art."
+    },
+    "app-xlink": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For XLink Operator Console (arcade cabinet control). Subject: arcade joystick with a red ball top on a black console base with two round buttons."
+    },
+    "app-xlink-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-xlink.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-xlink. Not ROM art."
+    },
+    "app-import": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-import-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-import.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-import.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Import (bring images and files in). Subject: open cardboard box with a green arrow pointing down into it."
+    },
+    "app-import-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-import.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-import.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-import.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-import. Not ROM art."
     }
   },
   "notDelivered": {
