@@ -1986,6 +1986,9 @@ function getStudioFileMenuItems() {
             text: 'Session Name',
             action: 'studio-rename-preset'
         },
+        // ActiveSync: Send To / Get Session From, when a phone (or, on a phone, a computer) is connected
+        // activeSyncStudio.menuItems: public/scripts/comp/activeSyncStudio.js
+        ...(window.activeSyncStudio ? window.activeSyncStudio.menuItems() : []),
         { separator: true },
         studioPreviewListItem('copy'),
         studioPreviewListItem('download'),
@@ -2392,6 +2395,8 @@ function handleImageGenerationSettingsMenuAction(action, target, item) {
         addPipelineStage(row.stageType, { useBaseImage: !!row.useBaseImage, maxEnhance: row.maxEnhance === true });
         return true;
     }
+    // activeSyncStudio.handleMenuAction: public/scripts/comp/activeSyncStudio.js (Send To / Get Session From)
+    if (window.activeSyncStudio && window.activeSyncStudio.handleMenuAction(action)) return true;
     if (action === 'studio-new-session') {
         // startStudioNewSession: public/scripts/comp/studioSession.js
         startStudioNewSession();

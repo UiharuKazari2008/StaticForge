@@ -76,6 +76,29 @@
         const desktopPwaWindow = !!(window.matchMedia && matchMedia('(display-mode: window-controls-overlay)').matches);
         globalThis.uiShell = (isWideScreen || desktopPwaWindow) ? 'desktop' : 'mobile';
         if (globalThis.uiShell === 'mobile') document.documentElement.classList.add('ui-mobile');
+        // Settings > Screen > Camera before the first paint (#735): the black bezel band and its logo
+        // are there from the boot logo on, from what wmShell syncBezel cached for this screen size,
+        // instead of appearing once the shell's scripts run
+        if (globalThis.uiShell === 'mobile') {
+            try {
+                const root = document.documentElement;
+                const cam = localStorage.getItem('wmCamera') === 'bezel' ? 'bezel' : 'clear';
+                root.dataset.wmCamera = cam;
+                const all = cam === 'bezel' ? JSON.parse(localStorage.getItem('wmBezelCache') || '{}') : null;
+                const e = all && all[innerWidth + 'x' + innerHeight];
+                if (e) {
+                    root.dataset.wmBezelEdge = e.edge || 'none';
+                    root.style.setProperty('--wm-bezel-top', (e.top || 0) + 'px');
+                    root.style.setProperty('--wm-bezel-left', (e.left || 0) + 'px');
+                    root.style.setProperty('--wm-bezel-right', (e.right || 0) + 'px');
+                    if (e.logo) {
+                        root.style.setProperty('--wm-bezel-logo-x', e.logo.x + 'px');
+                        root.style.setProperty('--wm-bezel-logo-w', e.logo.w + 'px');
+                        root.style.setProperty('--wm-bezel-logo-h', e.logo.h + 'px');
+                    }
+                }
+            } catch (_) { /* storage off: the shell applies it when it starts */ }
+        }
         // Melaton Mobile's UI version (Settings > System > Melaton Update > Version, #739): the
         // Windows Mobile 6.1 style or the 6.5 one (wm65*.css, wmStart65.js, wmTitanium.js). Read
         // once per load, before the first paint; a change restarts Melaton Mobile.
@@ -8447,6 +8470,7 @@ Examples:
     <!-- ActiveSync (#747): this tab's peer (a device inside the Android app, a computer on the desktop), then the desktop's tray icon -->
     <script src="scripts/comp/activeSyncAgent.js"></script>
     <script src="scripts/comp/activeSyncTray.js"></script>
+    <script src="scripts/comp/activeSyncStudio.js"></script>
     <script src="scripts/comp/walletTray.js"></script>
     <script src="scripts/comp/systemTrayManager.js"></script>
     <script src="scripts/comp/windowControlsOverlay.js"></script>
