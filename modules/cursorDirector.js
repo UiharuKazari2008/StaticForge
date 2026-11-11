@@ -4599,6 +4599,31 @@ function transcriptBody(message, cutOff) {
 // the picture move with her growth instead of staying at one flat voice.
 const directorPersonaVoice = require('./directorPersonaVoice');
 
+/**
+ * Melaton Mobile (#732): director.js sends client {shell:'mobile', allowStudio, studioOpen} from a
+ * phone (Settings > Director > Phone). Anything else (a desktop tab, an old build) is null.
+ */
+function sanitizeDirectorClient(raw) {
+    if (!raw || typeof raw !== 'object' || raw.shell !== 'mobile') return null;
+    return { shell: 'mobile', allowStudio: raw.allowStudio === true, studioOpen: raw.studioOpen === true };
+}
+
+/** The per-turn line for a phone client (also kept on chat.inflight for a resumed turn). */
+function directorClientLines(client) {
+    if (!client || client.shell !== 'mobile') return [];
+    const lines = ['Client: the user is on a phone (Melaton Mobile, a small touch screen). Keep say lines and spoken short.'];
+    if (client.studioOpen) {
+        lines.push(client.allowStudio
+            ? 'Studio is open on the phone: Studio tools are fine.'
+            : 'Studio is open on the phone: you may use it as it is, but never open it again once it is closed.');
+    } else if (client.allowStudio) {
+        lines.push('Studio is closed on the phone. The user allows you to open it, but prefer generate_image on the server unless the request needs Studio.');
+    } else {
+        lines.push('Studio is closed on the phone and the user has not allowed you to open it: generate on the server (generate_image or generate_preset) and show results with show_chat_image. Do not call open_in_studio, apply_studio_changes, apply_preset_to_studio, print_studio, the Phasewalker tools, or open_application studio (they are refused).');
+    }
+    return lines;
+}
+
 function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     const lines = [];
     const handoff = !!(options && options.handoff);
@@ -4632,6 +4657,7 @@ function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     if (priorMessages.length && !chat.replay && !handoff && !repaired) lines.push('Follow-up: the next frame (section 3).');
     lines.push(...turnModeLines(turnWorkMode(userText)));
     if (clientId) lines.push(`Bound Studio clientId: ${clientId}`);
+    lines.push(...directorClientLines(options && options.client));
     lines.push(`Workspace id: ${chat.workspaceId || 'unknown'}. Chat id: ${chat.id} (folder chats/${chat.id}/); session tools default to it.`);
     if (options && options.memoryStore === 'obliterated') {
         lines.push('Memory store: Obliterated Memories. list_memories, search_memories, get_memory, and save_memory use that shared store. It is not the Studio memory database. Do not pass a Studio model filter.');
@@ -5940,7 +5966,8 @@ function continuationPrompt(chat) {
     return [
         `${stopped} Continue from the last finished step.`,
         'Do not start over, do not repeat a finished step, and do not ask what to do.',
-        ask ? `Request:\n${ask}` : ''
+        ask ? `Request:\n${ask}` : '',
+        directorClientLines(inflight.client).join('\n')
     ].filter(Boolean).join('\n\n');
 }
 
@@ -6231,12 +6258,13 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
                 draftId: freshDraftId,
                 startedAt: new Date().toISOString(),
                 resumes: 0,
-                userText: userText.slice(0, 2000)
+                userText: userText.slice(0, 2000),
+                client: sanitizeDirectorClient(message.client)
             };
             const clientId = await bindDirectorTab(handler.globalResources, paths, directorClientId(clientInfo, message));
             const memoryStore = turnStore;
             const ageTool = !customProviders.isEngine(engine) || customProviders.ageToolEnabled(handler.globalResources, engine);
-            const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId, { handoff, memoryStore, ageTool, persona: chatPersona(gr, chat), mascot: directorPersonaVoice.sanitizeMascotState(message.mascot), steer: message.steer === true || message.switched === true });
+            const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId, { handoff, memoryStore, ageTool, persona: chatPersona(gr, chat), mascot: directorPersonaVoice.sanitizeMascotState(message.mascot), client: sanitizeDirectorClient(message.client), steer: message.steer === true || message.switched === true });
             const repairAt = chat.repairedOpening && chat.repairedOpening.text ? String(chat.repairedOpening.at || '') : null;
             chat.replay = false;
             writeIndex(paths.indexPath, index);

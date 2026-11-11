@@ -858,10 +858,28 @@ function handleClientDesktopState(handlersCtx, ws, message, clientInfo) {
     const info = clientInfo || (wsServer && wsServer.clients ? wsServer.clients.get(ws) : null);
     if (!info) return;
     const data = (message && message.data) || message || {};
+    // Melaton Mobile (#732): a phone tab says so, with its Director settings and whether its Studio
+    // app is open (public/scripts/comp/wmDirector.js wmDirectorPhoneState); every other tab sends none
+    if (Object.prototype.hasOwnProperty.call(data, 'phone')) info.phone = normalizePhoneState(data.phone);
     const state = normalizeDesktopState(data.desktopState);
     if (!state) return;
     info.desktopState = state;
     info.desktopStateAt = Date.now();
+}
+
+function normalizePhoneState(value) {
+    if (!value || typeof value !== 'object') return null;
+    return {
+        shell: 'mobile',
+        allowStudio: value.allowStudio === true,
+        studioOpen: value.studioOpen === true,
+        at: Date.now()
+    };
+}
+
+/** The phone state a Melaton Mobile tab reported (client_desktop_state phone), or null for a desktop tab. */
+function clientPhoneState(info) {
+    return info && info.phone && typeof info.phone === 'object' ? info.phone : null;
 }
 
 function listClients(globalResources, bindKey, opts) {
@@ -890,6 +908,8 @@ function listClients(globalResources, bindKey, opts) {
             priority: priorityClient.clientId === clientId,
             desktopState: clientDesktopState(info),
             desktopReady: !device && isDesktopStateReady(clientDesktopState(info)) && !!info.authenticated,
+            // Melaton Mobile tab (#732): { shell, allowStudio, studioOpen } or absent
+            ...(clientPhoneState(info) ? { phone: clientPhoneState(info) } : {}),
             ...(device ? { kind: device.kind, name: device.name, deviceId: device.deviceId, bindable: false } : {})
         });
     }
@@ -2332,6 +2352,7 @@ module.exports = {
     handleAgentPriorityClient,
     handleClientDesktopState,
     clientDesktopState,
+    clientPhoneState,
     isDesktopStateReady,
     setPriorityClient,
     getPriorityClientState,

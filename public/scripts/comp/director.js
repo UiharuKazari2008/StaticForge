@@ -8088,7 +8088,10 @@ class Director {
                 steer: !!(pending && pending.steer),
                 switched: !!(pending && pending.switched),
                 // WebSocketClient: public/scripts/websocket.js
-                clientId: WebSocketClient.readStoredAgentClientId()
+                clientId: WebSocketClient.readStoredAgentClientId(),
+                // Melaton Mobile (#732): {shell:'mobile', allowStudio, studioOpen} from wmDirector.js
+                // (Settings > Director > Phone); the server's turn prompt keeps her off a closed Studio
+                client: window.uiShell === 'mobile' && typeof window.wmDirectorPhoneState === 'function' ? window.wmDirectorPhoneState() : undefined
             });
         } else if (handoff) {
             this._skipQuickStart = false;

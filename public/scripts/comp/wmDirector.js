@@ -43,6 +43,15 @@
  *   desktop menus  tap-and-hold on a log row (Retry / Revert / Fork) and the restart box's choice
  *                button open WM menus (contextMenu.js is patched for this app); inside the message
  *                box the drop-down is drawn in the box (the shell sits under it)
+ *   dock         (#732) under her text box: the next-reply choices one per row (moved out of the box)
+ *                and her prints as a strip (the desktop's prints sidebar; tap views, hold for its menu);
+ *                the HUD's chips open Prints. Wide screens: the prints gallery is the column beside
+ *                her instead of the log (Menu > Log swaps the log in; Options > Log Beside Her keeps it)
+ *   phone options  Settings > Director > Phone (localStorage wmDirectorPhone, wmDirectorPhonePrefs):
+ *                allow the Director to open Studio (off by default: the server is told through
+ *                client_desktop_state phone + director_send_message client and refuses her Studio tools
+ *                while Studio is closed), open new prints in the picture view, notify when a turn ends
+ *                in the background, prints strip, log beside her on wide screens
  *   notices      a turn that ends while the app is not on screen raises a WM notification (View)
  *   hand-offs    Ask Wren (Pictures & Videos, File Explorer, Studio), Attach to Director Message
  *                (File Explorer), Studio's Open session in Director and Expand Canvas's Director
@@ -75,6 +84,44 @@
 
     const dir = () => window.directorInstance || null;
     const isCurrent = () => !!(ws && ws.current === APP_ID);
+
+    // ---------------------------------------------------------------- phone settings (#732)
+
+    /**
+     * Settings > Director > Phone (wmSettingsDreamscape.js), kept on this device:
+     *   allowStudio   the Director may open Studio (off: she prints on the server unless Studio is
+     *                 already open; the server refuses her Studio tools, mcpAgentFacade refuseStudioOnPhone)
+     *   openPrints    a new print of the open chat opens in the picture view
+     *   notifyTurns   a turn that ends while the app is in the background raises a notification
+     *   printStrip    her prints as a strip under the text box (the desktop's prints sidebar)
+     *   wideLog       wide screens show the log beside her (off: the prints gallery column)
+     */
+    const PREF_KEY = 'wmDirectorPhone';
+    const PREF_DEFAULTS = Object.freeze({ allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, wideLog: false });
+    let prefCache = null;
+    function prefs() {
+        if (prefCache) return prefCache;
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(PREF_KEY) || '{}') || {}; } catch (_) { saved = {}; }
+        const out = { ...PREF_DEFAULTS };
+        Object.keys(PREF_DEFAULTS).forEach((k) => { if (typeof saved[k] === 'boolean') out[k] = saved[k]; });
+        prefCache = out;
+        return out;
+    }
+    function setPrefs(patch) {
+        const next = { ...prefs(), ...(patch || {}) };
+        prefCache = next;
+        try { localStorage.setItem(PREF_KEY, JSON.stringify(next)); } catch (_) { /* storage blocked: this load only */ }
+        window.dispatchEvent(new CustomEvent('wmDirectorPrefsChange', { detail: { ...next } }));
+        return next;
+    }
+    window.addEventListener('storage', (e) => { if (e.key === PREF_KEY) prefCache = null; });
+    window.wmDirectorPhonePrefs = { key: PREF_KEY, defaults: PREF_DEFAULTS, get: () => ({ ...prefs() }), set: setPrefs };
+    /** What the server is told (client_desktop_state phone, director_send_message client): read every second, cheap. */
+    window.wmDirectorPhoneState = () => {
+        const mm = document.getElementById('manualModal');
+        return { shell: 'mobile', allowStudio: prefs().allowStudio === true, studioOpen: !!(mm && !mm.classList.contains('hidden')) };
+    };
     const PERSONAS = { wren: 'Yumiya', kabuki: 'Chiyo', xi: 'Yozora' };
 
     function personaName(p) {
@@ -123,7 +170,10 @@
             const d = dir();
             const m = d && d.mascot;
             if (layout === 'wide' && m && m.peek && typeof m.togglePeek === 'function') m.togglePeek(false);
-            if (isCurrent()) ws.refreshSoftKeys();
+            if (layout !== 'wide' && logCol) setLogCol(false);
+            paintPrints();
+            if (d && d.mascot) d.mascot.settleLayout(400);
+            if (isCurrent()) { ws.refreshSoftKeys(); ws.syncHistory(); }
         };
         layout = readLayout();
         new ResizeObserver(check).observe(page);
@@ -188,6 +238,44 @@
                 this.el.pager.classList.add('hidden');
                 this.el.pager.textContent = '';
             }
+        };
+        // her text box sits over the dock (choices, prints strip) and takes a phone's share of the scene
+        const place = m.placeResult.bind(m);
+        m.placeResult = function () {
+            place();
+            const box = this.el && this.el.result;
+            if (page) page.classList.toggle('wmd-card', !!(box && !box.classList.contains('hidden') && this._tab === 'card'));
+            if (!box || box.classList.contains('hidden') || !page || !page.contains(box) || !this.layer) return;
+            const l = this.layer.getBoundingClientRect();
+            if (!l.height) return;
+            const dock = page.querySelector('.wmd-dock');
+            const dh = dock && getComputedStyle(dock).display !== 'none' ? dock.getBoundingClientRect().height : 0;
+            // wide: the composer is in the column, not under her box (the desktop lifted the box over it)
+            const was = layout === 'wide' ? 0 : (parseInt(box.style.bottom, 10) || 0);
+            const bottom = Math.round(Math.max(was, dh ? dh + 18 : 0, 12));
+            box.style.bottom = `${bottom}px`;
+            if (this._tab !== 'card') {
+                // a phone's share of the scene, and never over the title banner row (short landscape)
+                const share = layout === 'wide' ? 0.42 : 0.34;
+                const topRoom = (parseInt(this.layer.style.getPropertyValue('--dm-top'), 10) || 12) + 64;
+                const room = l.height - bottom - topRoom;
+                box.style.maxHeight = `${Math.round(Math.max(72, Math.min(l.height * share, 360, room)))}px`;
+            }
+            this.paintPager();
+        };
+        // a new print drops into her from its thumbnail in the strip / gallery column (the desktop's
+        // prints sidebar is not on a phone)
+        const onPrint = m.onPrint.bind(m);
+        m.onPrint = function (url, options) {
+            let opts = options || {};
+            if (!opts.from && page && page.contains(this.host)) {
+                paintPrints();
+                const name = (() => { try { return decodeURIComponent(String(url).split('?')[0].split('/').pop()); } catch (_) { return ''; } })();
+                const pool = page.classList.contains('wmd-gallery-on') && layout === 'wide' ? page.querySelector('.wmd-gallery') : page.querySelector('.wmd-strip');
+                const th = name && pool ? [...pool.querySelectorAll('.wmd-thumb[data-file]')].find((b) => b.dataset.file === name) : null;
+                if (th && th.firstChild) opts = { ...opts, from: th.firstChild };
+            }
+            return onPrint(url, opts);
         };
         m.applyView();
         syncBlink(m);
@@ -292,6 +380,10 @@
         if (m && !m._result && !m.working && m.vnBubbles() && d.currentSession && Array.isArray(d.currentSession.messages) && d.currentSession.messages.length) {
             m.onMessages(d.currentSession.messages);
         }
+        ensureGallery(d);
+        ensureDock(d);
+        setLogCol(logCol && layout === 'wide');
+        paintPrints();
         syncComposer();
         refreshTitle();
         paintQueue();
@@ -1006,8 +1098,119 @@
         after();
     }
 
+    /** Thumbnails fall back to the full picture while the preview webp is not written, then hide. */
+    function thumbFallback(root) {
+        root.querySelectorAll('img[data-file]').forEach((img) => {
+            if (img._wmdFallback) return;
+            img._wmdFallback = true;
+            img.addEventListener('error', () => {
+                /* global localGalleryImageUrl */
+                const full = typeof localGalleryImageUrl === 'function' ? localGalleryImageUrl(img.dataset.file) : '';
+                // no picture at all (a deleted print): the tile goes, not an empty frame
+                if (img.dataset.fullTried === '1' || !full) { const tile = img.closest('.wmd-thumb'); if (tile) tile.hidden = true; return; }
+                img.dataset.fullTried = '1';
+                img.src = full;
+            });
+        });
+    }
+
+    function sessionPrintList(d) {
+        if (!d || d.persona === 'xi' || !d.currentSession || isDraft(d)) return [];
+        try { return d.sessionPrints().slice().reverse(); } catch (_) { return []; }
+    }
+
+    /**
+     * The desktop's prints sidebar on a phone: a strip under her text box (portrait), or the column
+     * beside her scene on a wide screen (instead of the log, which stays under Menu > Log). Newest
+     * first; tap views, hold for the print's menu.
+     */
+    let printsKey = '';
+    function paintPrints() {
+        if (!page) return;
+        const d = dir();
+        const p = prefs();
+        const m = d && d.mascot;
+        const vn = !!(m && typeof m.vnBubbles === 'function' && m.vnBubbles() && m.host && page.contains(m.host));
+        const items = sessionPrintList(d);
+        const pending = !!(d && d._imagePending === true && d.currentSession && !isDraft(d));
+        page.classList.toggle('wmd-vn', vn);
+        page.classList.toggle('wmd-strip-on', vn && p.printStrip && (items.length > 0 || pending));
+        page.classList.toggle('wmd-gallery-on', vn && !p.wideLog && !!(d && d.persona !== 'xi'));
+        const sid = d && d.currentSession ? String(d.currentSession.id) : '';
+        const key = `${sid}|${pending ? 1 : 0}|${items.map((x) => x.filename).join('|')}`;
+        if (key === printsKey) return;
+        printsKey = key;
+        const tiles = (pending ? '<span class="wmd-thumb is-pending" aria-label="Waiting for the print"></span>' : '')
+            + items.map((x) => `<button type="button" class="wmd-thumb" data-file="${esc(x.filename)}" data-msg="${esc(x.messageId || '')}"><img data-file="${esc(x.filename)}" src="${esc(thumbSrc(d, x.filename))}" alt="" loading="lazy" decoding="async"></button>`).join('');
+        const strip = page.querySelector('.wmd-strip');
+        if (strip) { strip.innerHTML = tiles; strip.scrollLeft = 0; thumbFallback(strip); }
+        const gal = d && d.directorSessionChat ? d.directorSessionChat.querySelector('.wmd-gallery') : null;
+        if (gal) {
+            gal.querySelector('.wmd-gallery-hdr').textContent = items.length ? `Prints (${items.length})` : 'Prints';
+            const grid = gal.querySelector('.wmd-gallery-grid');
+            grid.innerHTML = tiles || '<p class="wmd-empty">No prints in this session yet.</p>';
+            grid.scrollTop = 0;
+            thumbFallback(grid);
+        }
+        if (m && m._result) m.settleLayout(300);
+    }
+
+    /** Tap views a thumbnail, hold opens its menu (the desktop print's menu). */
+    function wireThumbs(root) {
+        root.addEventListener('click', (e) => {
+            const b = e.target.closest && e.target.closest('.wmd-thumb[data-file]');
+            if (!b) return;
+            e.stopPropagation();
+            const d = dir();
+            if (d) d.openSessionImage(b.dataset.file);
+        });
+        onHold(root, '.wmd-thumb[data-file]', (b, x, y) => ws.menuAt(x, y, printMenuRows(b.dataset.file, b.dataset.msg)));
+    }
+
+    /** The gallery column lives in her chat's grid (wide screens), beside the log it stands in for. */
+    function ensureGallery(d) {
+        const chat = d && d.directorSessionChat;
+        if (!chat || chat.querySelector(':scope > .wmd-gallery')) return;
+        const gal = document.createElement('div');
+        gal.className = 'wmd-gallery';
+        gal.innerHTML = '<div class="wmd-gallery-hdr">Prints</div><div class="wmd-gallery-grid"></div>';
+        wireThumbs(gal);
+        chat.appendChild(gal);
+        printsKey = '';
+    }
+
+    /** The dock (choices, prints strip) rides in her chat too: it takes the persona's accent (--dm-*). */
+    function ensureDock(d) {
+        const chat = d && d.directorSessionChat;
+        const dock = page && page.querySelector('.wmd-dock');
+        if (chat && dock && dock.parentNode !== chat) chat.appendChild(dock);
+        // the next-reply choices leave the text box for the dock (thumb reach, no scroll inside the box);
+        // director.js wires each button itself, directorMascot.js fills and clears the node wherever it is
+        const m = d.mascot;
+        const choices = dock && dock.querySelector('.wmd-choices');
+        if (choices && m && m.el && m.el.dialogSuggest && m.el.dialogSuggest.parentNode !== choices) {
+            choices.appendChild(m.el.dialogSuggest);
+            if (m._result) m.placeResult();
+        }
+    }
+
+    /** Wide screens: Menu > Log puts the log in the column instead of the prints gallery. */
+    let logCol = false;
+    function setLogCol(on) {
+        logCol = !!on;
+        if (page) page.classList.toggle('wmd-log-col', logCol);
+        const d = dir();
+        if (logCol && d && d.directorChatMessages) {
+            const scroller = d.directorChatMessages.closest('.director-chat-messages-container');
+            if (scroller) setTimeout(() => { scroller.scrollTop = scroller.scrollHeight; }, 0);
+        }
+        after();
+    }
+    const galleryMode = () => layout === 'wide' && !!page && page.classList.contains('wmd-gallery-on');
+
     function renderPrints(el) {
         const d = dir();
+        el.dataset.session = d.currentSession ? String(d.currentSession.id) : '';
         const prints = d.sessionPrints().slice().reverse();
         const pending = d._imagePending === true;
         el.innerHTML = `<div class="wmd-prints-grid">${pending ? '<div class="wmd-print is-pending" aria-label="Waiting for the print"></div>' : ''}${prints.map((p) => `<button type="button" class="wmd-print" data-file="${esc(p.filename)}" data-msg="${esc(p.messageId || '')}"><img src="${esc(thumbSrc(d, p.filename))}" alt="" loading="lazy" decoding="async"></button>`).join('')}</div>`
@@ -1027,7 +1230,7 @@
 
     function showPrints() {
         const d = dir();
-        if (!d || !d.currentSession) return;
+        if (!d || !d.currentSession || d.persona === 'xi') return;
         closePages('prints');
         pushPage({
             kind: 'prints',
@@ -1192,7 +1395,7 @@
         d.showDirectorText = function (title, text, status) { inApp(() => showText(title, text, status)); };
         // Director Settings: Settings > Dreamscape > Director (wmSettingsDreamscape.js: the same messages)
         d.openDirectorSettings = async function () {
-            if (window.wmSettings && typeof window.wmSettings.open === 'function') window.wmSettings.open('director', null, { direct: true });
+            if (window.wmSettings && typeof window.wmSettings.open === 'function') window.wmSettings.open('director', 'new', { direct: true });
         };
         d.togglePrintsPane = function () { inApp(showPrints); };
         // the log hidden behind her scene is not laid out (wm-director.css content-visibility): a
@@ -1311,12 +1514,20 @@
                 { label: 'Show Mascot', checked: !!m.enabled, action: () => { unpeek(m); m.setEnabled(!m.enabled); after(); } }
             );
         }
+        const p = prefs();
+        items.push('-',
+            { label: 'Prints Strip', checked: !!p.printStrip, disabled: layout === 'wide' && !p.wideLog, action: () => { setPrefs({ printStrip: !p.printStrip }); paintPrints(); after(); } },
+            { label: 'Log Beside Her (wide screens)', checked: !!p.wideLog, action: () => { setPrefs({ wideLog: !p.wideLog }); setLogCol(false); paintPrints(); after(); } });
         items.push(...toolRows(['Show', 'Send on Enter']));
         // the model the next turn runs on (the desktop header's picker): Engine, Model, Thinking, Context, Fast
         const model = wmRows([d.engineMenuItem(), ...d.modelPrefItems()], null, run);
         if (model.length) items.push('-', ...model);
-        items.push('-', { label: 'Director Settings...', action: () => { void d.openDirectorSettings(); } });
+        items.push('-', { label: 'Phone Settings...', action: () => openPhoneSettings() }, { label: 'Director Settings...', action: () => { void d.openDirectorSettings(); } });
         return items;
+    }
+
+    function openPhoneSettings() {
+        if (window.wmSettings && typeof window.wmSettings.open === 'function') window.wmSettings.open('director', 'phone', { direct: true });
     }
 
     /** A view switch closes the log first, so no hidden peek is left behind (it would eat a Back press). */
@@ -1326,6 +1537,7 @@
 
     function after() {
         const d = dir();
+        if (page) page.classList.toggle('wmd-peek', peeking());
         if (d && d.mascot) d.mascot.settleLayout(500);
         // a closed log (or any layer) takes its history entry with it
         if (ws && isCurrent()) { ws.refreshSoftKeys(); ws.syncHistory(); }
@@ -1358,8 +1570,9 @@
         ];
         if (vn) {
             items.push({ label: m._tab === 'card' ? 'Show Reply' : 'Report Card', disabled: !result || (!card && m._tab !== 'card'), action: () => { m.quickAction(m._tab === 'card' ? 'reply' : 'card'); after(); } });
-            // beside the log (wide screens) there is nothing to peek at
+            // wide screens: the log is beside her, or (prints gallery column) takes the column's place
             if (layout !== 'wide') items.push({ label: 'Log', checked: !!m.peek, action: () => { m.togglePeek(); after(); } });
+            else if (galleryMode()) items.push({ label: 'Log', checked: logCol, action: () => setLogCol(!logCol) });
         }
         if (d.persona !== 'xi') items.push({ label: 'Prints', disabled: draft || !d.sessionPrints().length, action: showPrints });
         items.push({ label: 'History', disabled: draft || !d.currentSession, action: showHistory });
@@ -1426,13 +1639,26 @@
         page.classList.add('wm-director');
         page.innerHTML = `
             <div class="wmd-host"></div>
+            <div class="wmd-dock"><div class="wmd-choices"></div><div class="wmd-strip" role="list" aria-label="Prints"></div></div>
             <div class="wmd-status" hidden><img src="/static_images/app_icons/director.png" alt=""><span class="wmd-status-text"></span></div>`;
         watchLayout();
+        wireThumbs(page.querySelector('.wmd-strip'));
+        // the dock's height moves her text box (choices come and go with the reply)
+        if (typeof ResizeObserver === 'function') {
+            new ResizeObserver(() => { const d = dir(); if (shown && d && d.mascot && d.mascot._result) d.mascot.placeResult(); }).observe(page.querySelector('.wmd-dock'));
+        }
+        // the HUD's chips (turns, prints, context): a tap opens Prints, as the desktop quick bar's Prints
+        page.querySelector('.wmd-host').addEventListener('click', (e) => {
+            const chip = e.target.closest && e.target.closest('.dm-vn-layer .dm-hud');
+            if (!chip || composing) return;
+            e.stopPropagation();
+            showPrints();
+        }, true);
         // tap to advance: a tap on her scene (not on a control, a link, the text box's own parts or the composer)
         page.querySelector('.wmd-host').addEventListener('click', (e) => {
             if (composing) return;
             const t = e.target;
-            if (!t.closest || t.closest('a, button, input, textarea, select, label, .dm-dialog-suggest, .dm-dialog-head, #directorComposer, .director-chat-messages-container, .dm-think')) return;
+            if (!t.closest || t.closest('a, button, input, textarea, select, label, .dm-dialog-suggest, .dm-dialog-head, #directorComposer, .director-chat-messages-container, .dm-think, .wmd-dock, .wmd-gallery')) return;
             if (!t.closest('.director-mascot-stage, .dm-vn-layer, #directorSessionChat')) return;
             advance();
         });
@@ -1485,7 +1711,7 @@
         if (st.xi && st.xi.running && st.xi.sessionId) now.set(String(st.xi.sessionId), { name: st.xi.sessionName || '', xi: true });
         const ended = [...runningTurns.entries()].filter(([id]) => !now.has(id));
         runningTurns = now;
-        if (!ended.length || (shown && isCurrent()) || typeof showGlassToast !== 'function') return;
+        if (!ended.length || (shown && isCurrent()) || !prefs().notifyTurns || typeof showGlassToast !== 'function') return;
         ended.forEach(([id, turn]) => {
             const s = (d.directorSessions || []).find((x) => String(x.id) === id);
             const persona = turn.xi ? 'xi' : (s && s.memoryStore === 'obliterated' ? 'kabuki' : 'wren');
@@ -1507,6 +1733,20 @@
                 }
             }]);
         });
+    }
+
+    /**
+     * Settings > Director > Phone > Open new prints: a print of the chat on screen opens in the picture
+     * view once she has taken it in (after the fly-in), unless a page, the composer or the viewer is up.
+     */
+    function openNewPrint(msg) {
+        if (!prefs().openPrints || !shown || !isCurrent() || stack.length || composing) return;
+        const body = (msg && msg.data && typeof msg.data === 'object') ? msg.data : (msg || {});
+        const d = dir();
+        const chatId = body.chatId || body.sessionId;
+        if (!d || !body.filename || !d.currentSession || String(chatId) !== String(d.currentSession.id)) return;
+        if (openViewerPicture()) return;
+        try { d.openSessionImage(body.filename); } catch (err) { console.warn('[wmDirector] open print', err); }
     }
 
     function register() {
@@ -1575,17 +1815,19 @@
                 return true;
             },
             historyDepth() {
-                return stack.length + (composing && !isDraft() ? 1 : 0) + (peeking() ? 1 : 0);
+                return stack.length + (composing && !isDraft() ? 1 : 0) + (peeking() ? 1 : 0) + (logCol && galleryMode() ? 1 : 0);
             },
             onBack() {
                 if (stack.length) { popPage(); return true; }
                 if (peeking()) { dir().mascot.togglePeek(false); after(); return true; }
+                if (logCol && galleryMode()) { setLogCol(false); return true; }
                 if (composing && !isDraft()) { closeComposer(); return true; }
                 return false;
             }
         });
         waitForDirector();
         patchContextMenu();
+        window.addEventListener('wmDirectorPrefsChange', () => { if (page) { paintPrints(); if (isCurrent()) ws.refreshSoftKeys(); } });
         // the soft keys follow the Director (a turn starts or ends, a chat opens)
         const refresh = () => {
             if (!isCurrent()) return;
@@ -1593,14 +1835,21 @@
             ws.refreshSoftKeys();
             if (stack.some((p) => p.kind === 'sessions')) renderSessions();
             const pr = stack.find((p) => p.kind === 'prints');
-            if (pr) renderPrints(pr.el);
+            if (pr) {
+                // another chat opened under the page (a notification's View, Sessions, a hand-off): its prints
+                const d = dir();
+                if (!d || !d.currentSession || d.persona === 'xi') closePages('prints');
+                else renderPrints(pr.el);
+            }
+            paintPrints();
             paintQueue();
         };
         if (window.wsClient && typeof window.wsClient.on === 'function') {
-            ['director_computer_status', 'director_message_response', 'director_messages_updated', 'director_get_sessions_response', 'director_create_session_response', 'director_delete_session_response', 'director_fork_session_response', 'director_move_session_response', 'director_session_image', 'director_session_renamed'].forEach((t) => {
+            ['director_computer_status', 'director_message_response', 'director_messages_updated', 'director_get_messages_response', 'director_get_sessions_response', 'director_create_session_response', 'director_delete_session_response', 'director_fork_session_response', 'director_move_session_response', 'director_session_image', 'director_session_renamed'].forEach((t) => {
                 try { window.wsClient.on(t, () => setTimeout(refresh, 50)); } catch (_) { /* no such event */ }
             });
             try { window.wsClient.on('director_computer_status', () => setTimeout(noteTurns, 60)); } catch (_) { /* no such event */ }
+            try { window.wsClient.on('director_session_image', (msg) => setTimeout(() => openNewPrint(msg), 1400)); } catch (_) { /* no such event */ }
         }
     }
 

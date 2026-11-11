@@ -1177,9 +1177,16 @@
         const ws = window.wsClient;
         if (!ws || typeof ws.send !== 'function' || typeof ws.isConnected !== 'function' || !ws.isConnected()) return;
         const state = computeDesktopState();
-        if (!force && state === lastSentDesktopState) return;
+        // Melaton Mobile (#732): a phone adds its Director settings and whether Studio is open
+        // (wmDirector.js wmDirectorPhoneState), so the server keeps the agent off a closed Studio
+        let phone = null;
+        if (window.uiShell === 'mobile' && typeof window.wmDirectorPhoneState === 'function') {
+            try { phone = window.wmDirectorPhoneState(); } catch (_) { phone = null; }
+        }
+        const key = phone ? `${state}|${phone.allowStudio ? 1 : 0}${phone.studioOpen ? 1 : 0}` : state;
+        if (!force && key === lastSentDesktopState) return;
         // fire-and-forget (no reply): modules/ws/handlers/168-agentClientHandler.js client_desktop_state
-        if (ws.send({ type: 'client_desktop_state', desktopState: state })) lastSentDesktopState = state;
+        if (ws.send(phone ? { type: 'client_desktop_state', desktopState: state, phone } : { type: 'client_desktop_state', desktopState: state })) lastSentDesktopState = key;
     }
 
     async function handleAgentSessionCommand(message) {

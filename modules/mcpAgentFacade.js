@@ -31,6 +31,7 @@ const {
     getBoundClientId,
     getBoundRecord,
     clientDesktopState,
+    clientPhoneState,
     isDesktopStateReady,
     resolveBindKey,
     clearMcpStudioCheckpoint,
@@ -4905,6 +4906,12 @@ function clientGenerationAdvice(globalResources, bindKey) {
         go = false;
         reason = 'client has been idle';
     }
+    // Melaton Mobile (#732): a phone with Studio closed that has not allowed the Director to open it
+    const phone = info ? clientPhoneState(info) : null;
+    if (go && phoneRefusesStudio(phone)) {
+        go = false;
+        reason = PHONE_NO_STUDIO_REASON;
+    }
     return {
         rttMs: rtt,
         idleMs,
@@ -4912,7 +4919,8 @@ function clientGenerationAdvice(globalResources, bindKey) {
         clientGeneration: go ? 'go' : 'no-go',
         reason,
         desktopState,
-        desktopReady
+        desktopReady,
+        ...(phone ? { client: 'mobile', phone: { allowStudio: phone.allowStudio, studioOpen: phone.studioOpen } } : {})
     };
 }
 
@@ -5519,6 +5527,29 @@ function resolveDirectorChat(input) {
 
 function pairedWriteWorkspace(requested, req, input) {
     return scopeWriteWorkspaceForRequest(requested, req, input);
+}
+
+const PHONE_NO_STUDIO_REASON = 'the user is on a phone (Melaton Mobile) with Studio closed and has not allowed the Director to open Studio: generate on the server (generate_image / generate_preset), do not open Studio';
+
+function phoneRefusesStudio(phone) {
+    return !!(phone && !phone.allowStudio && !phone.studioOpen);
+}
+
+/**
+ * Melaton Mobile (#732): a phone tab opens Studio for the agent only when the user allows it in
+ * Settings > Director > Phone, or when its Studio app is already open. Otherwise tools that open or
+ * drive Studio are refused and the agent generates on the server.
+ */
+function refuseStudioOnPhone(globalResources, bindKey) {
+    const record = getBoundRecord(globalResources, bindKey);
+    const phone = record && record.info ? clientPhoneState(record.info) : null;
+    if (!phoneRefusesStudio(phone)) return null;
+    return mcpTextResult({
+        success: false,
+        code: 'PHONE_NO_STUDIO',
+        client: 'mobile',
+        error: 'The user is on a phone with Studio closed and has not allowed the Director to open Studio. Do not open or drive Studio. Generate on the server with generate_image (or generate_preset), then show the result with show_chat_image.'
+    }, true);
 }
 
 function refuseStudioOutsideWorkspace(globalResources, req) {
@@ -8210,6 +8241,8 @@ async function callTool(globalResources, req, name, args) {
         }
         const presetRefused = refuseStudioOutsideWorkspace(globalResources, req);
         if (presetRefused) return presetRefused;
+        const presetPhone = refuseStudioOnPhone(globalResources, bind.bindKey);
+        if (presetPhone) return presetPhone;
         const loaded = await dispatchPacketTool(globalResources, req, 'load_preset', {
             presetName: input.presetName,
             presetUuid: input.presetUuid
@@ -8367,6 +8400,8 @@ async function callTool(globalResources, req, name, args) {
         }
         const studioOpenRefused = refuseStudioOutsideWorkspace(globalResources, req);
         if (studioOpenRefused) return studioOpenRefused;
+        const openPhone = refuseStudioOnPhone(globalResources, bind.bindKey);
+        if (openPhone) return openPhone;
         try {
             const data = await sendBoundCommand(globalResources, 'open_image', { filename }, 20000, bind.bindKey);
             return mcpTextResult({ success: true, filename, ...(data || {}) });
@@ -9026,6 +9061,10 @@ async function callTool(globalResources, req, name, args) {
         if (!getBoundRecord(globalResources, bind.bindKey)) {
             return mcpBindChoiceResult(bind);
         }
+        if (name === 'open_application' && /^studio$/i.test(String(checked.payload.launchId || ''))) {
+            const appPhone = refuseStudioOnPhone(globalResources, bind.bindKey);
+            if (appPhone) return appPhone;
+        }
         const data = await sendBoundCommand(globalResources, name, checked.payload, 8000, bind.bindKey);
         const failed = !!(data && (data.error || data.ok === false));
         return mcpTextResult({
@@ -9258,6 +9297,8 @@ async function callTool(globalResources, req, name, args) {
         }
         const applyRefused = refuseStudioOutsideWorkspace(globalResources, req);
         if (applyRefused) return applyRefused;
+        const applyPhone = refuseStudioOnPhone(globalResources, bind.bindKey);
+        if (applyPhone) return applyPhone;
         const data = await applyStudioChanges(globalResources, { ...input, bindKey: bind.bindKey });
         rememberStudioCheckpointFromState(bind.bindKey, data);
         let responseNext;
@@ -9314,6 +9355,8 @@ async function callTool(globalResources, req, name, args) {
         }
         const printRefused = refuseStudioOutsideWorkspace(globalResources, req);
         if (printRefused) return printRefused;
+        const printPhone = refuseStudioOnPhone(globalResources, bind.bindKey);
+        if (printPhone) return printPhone;
         const data = await sendBoundCommand(globalResources, 'print_studio', {
             n: clampTurnPrints(readRemoteAccessSettings(globalResources), input.n),
             walk: input.walk === true,
@@ -9362,6 +9405,8 @@ async function callTool(globalResources, req, name, args) {
         }
         const decompileRefused = refuseStudioOutsideWorkspace(globalResources, req);
         if (decompileRefused) return decompileRefused;
+        const decompilePhone = refuseStudioOnPhone(globalResources, bind.bindKey);
+        if (decompilePhone) return decompilePhone;
         const data = await sendBoundCommand(globalResources, 'decompile_phasewalker', {
             phase: String(phase),
             autoGenerate: input.autoGenerate === true,
@@ -9399,6 +9444,8 @@ async function callTool(globalResources, req, name, args) {
         }
         const phaseRefused = refuseStudioOutsideWorkspace(globalResources, req);
         if (phaseRefused) return phaseRefused;
+        const phasePhone = refuseStudioOnPhone(globalResources, bind.bindKey);
+        if (phasePhone) return phasePhone;
         const compile = input.compile !== false;
         const data = await sendBoundCommand(globalResources, 'open_phasewalker', {
             state,
@@ -10956,6 +11003,9 @@ module.exports = {
         runDirectorSessionTool,
         pairedWriteWorkspace,
         refuseStudioOutsideWorkspace,
+        refuseStudioOnPhone,
+        phoneRefusesStudio,
+        clientGenerationAdvice,
         resolveDirectorChatId,
         DIRECTOR_LONG_JOB_NOTICE,
         alchemyOwnedTab,

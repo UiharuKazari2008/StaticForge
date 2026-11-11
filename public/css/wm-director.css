@@ -1262,11 +1262,8 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
         max-height: 40cqh !important;
     }
 
-    /* her text box keeps its place at the foot of the scene (the desktop lifts it over the composer,
-       which is in the column now) */
-    html.ui-mobile .wm-director .dm-vn-layer .dm-dialog.dm-result {
-        bottom: 28px !important;
-    }
+    /* her text box keeps its place at the foot of the scene, over the dock (wmDirector.js placeResult:
+       the desktop lifted it over the composer, which is in the column now) */
 
     /* the queued-message label sits over the scene, not the column */
     .wm-director .wmd-queue {
@@ -1308,7 +1305,6 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
 @container wmd (max-height: 20em) and (orientation: landscape) {
     .wm-director .dm-vn-layer .dm-dialog {
         min-height: 0;
-        max-height: 52% !important;
         padding: 12px 12px 10px 14px;
         font-size: 12.5px;
         line-height: 1.38;
@@ -1335,5 +1331,265 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
     .wm-director .dm-vn-layer .dm-dialog-name {
         font-size: 12px;
         padding: 2px 12px;
+    }
+}
+
+/* ======================================================================
+ * Phone VN (Yozora #732, Nov 10): portrait first, thumb reach at the bottom.
+ *   top      title banner and HUD (a tap on the HUD opens Prints)
+ *   middle   her room and sprites, untouched (director-perf-735: no cuts to her rendering)
+ *   bottom   her text box, then the dock: the next-reply choices one per row (the desktop draws
+ *            them inside the box, where a phone had to scroll them), then her prints as a strip
+ *            (the desktop's prints sidebar; Menu > Options > Prints Strip), soft keys under it.
+ *   wide     the column beside her shows the prints gallery instead of the log (Menu > Log puts the
+ *            log there; Options > Log Beside Her keeps it); the dock stays in her scene.
+ * wmDirector.js moves directorMascot's .dm-dialog-suggest into .wmd-choices and lifts the box over
+ * the dock (placeResult). The dock is in #directorSessionChat so it takes her accent (--dm-*).
+ * ====================================================================== */
+.wm-director .wmd-dock {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    z-index: 7;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+}
+
+.wm-director.wmd-vn:not(.wmd-composing):not(.wmd-peek) .wmd-dock {
+    display: flex;
+}
+
+.wm-director .wmd-dock > * {
+    pointer-events: auto;
+}
+
+/* the choices: one per row, the width of the box, the VN kit's cut-corner face (director.css) */
+.wm-director .wmd-choices {
+    display: contents;
+}
+
+.wm-director .wmd-choices .dm-dialog-suggest:empty {
+    display: none;
+}
+
+.wm-director .wmd-choices .dm-dialog-suggest {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    max-height: none;
+    overflow: visible;
+}
+
+.wm-director .wmd-choices .director-message-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin: 0;
+    padding: 0;
+}
+
+html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-small.btn-secondary {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    width: 100%;
+    min-height: 38px;
+    height: auto;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 8px 16px 8px 18px;
+    border: 0;
+    border-radius: 0;
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+    background: linear-gradient(180deg, #ffffff, var(--dm-tint, #eef7fa));
+    box-shadow: inset 0 0 0 1.5px var(--dm-line, #8fcfdc), inset 4px 0 0 var(--dm-teal, #22a7bf);
+    color: var(--dm-ink, #1c2b3a);
+    font: 600 13px / 1.3 'Segoe UI', sans-serif;
+    text-align: left;
+    text-shadow: none;
+    white-space: normal;
+}
+
+html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-small.btn-secondary:active:not(:disabled) {
+    background: linear-gradient(180deg, var(--dm-hi, #47c9dc), var(--dm-teal, #22a7bf) 60%, var(--dm-teal-deep, #17809a));
+    box-shadow: none;
+    color: #fff;
+}
+
+html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-small.btn-secondary:disabled {
+    opacity: 0.6;
+}
+
+/* the report card fills the scene down to the dock: the choices wait for the reply tab (as on the desktop) */
+.wm-director.wmd-card .wmd-choices .dm-dialog-suggest {
+    display: none;
+}
+
+/* her prints: small framed tiles (her polaroids), newest at the left, swiped sideways */
+.wm-director .wmd-strip {
+    display: none;
+    gap: 5px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    padding: 2px 1px 3px;
+}
+
+.wm-director .wmd-strip::-webkit-scrollbar {
+    display: none;
+}
+
+.wm-director.wmd-strip-on .wmd-strip {
+    display: flex;
+}
+
+.wm-director .wmd-thumb {
+    flex: 0 0 auto;
+    width: 46px;
+    height: 46px;
+    margin: 0;
+    padding: 2px;
+    border: 0;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    box-sizing: border-box;
+}
+
+.wm-director .wmd-thumb[hidden] {
+    display: none;
+}
+
+.wm-director .wmd-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+}
+
+.wm-director .wmd-thumb:active {
+    background: var(--dm-teal, #22a7bf);
+}
+
+.wm-director .wmd-thumb.is-pending {
+    background: #fff url('/static_images/wm61/wait-0.png') center / 22px no-repeat;
+}
+
+/* the HUD's chips open Prints */
+.wm-director .dm-vn-layer .dm-hud {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+/* the gallery column (wide screens only) */
+.wm-director .wmd-gallery {
+    display: none;
+}
+
+@container wmd (min-width: 40em) and (aspect-ratio >= 3 / 4) {
+    .wm-director #directorSessionChat.director-mascot-view > .wmd-dock {
+        grid-column: 1 / 2;
+        grid-row: 1 / -1;
+    }
+
+    /* the strip's prints are in the gallery column */
+    .wm-director.wmd-gallery-on .wmd-strip {
+        display: none !important;
+    }
+
+    html.ui-mobile .wm-director.wmd-gallery-on:not(.wmd-log-col) #directorSessionChat.director-mascot-on.director-mascot-view :is(.director-chat-messages-container, #directorTaskList) {
+        display: none !important;
+    }
+
+    html.ui-mobile .wm-director.wmd-gallery-on:not(.wmd-log-col) #directorSessionChat.director-mascot-view > .wmd-gallery {
+        display: flex;
+        flex-direction: column;
+        grid-column: 2;
+        grid-row: 2 / 4;
+        min-height: 0;
+        border-left: calc(1 * var(--wm-px)) solid #000;
+        background: #fff;
+        color: #000;
+        font: calc(12 * var(--wm-px)) var(--wm-font);
+    }
+
+    .wm-director .wmd-gallery-hdr {
+        flex: 0 0 auto;
+        padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+        border-bottom: calc(1 * var(--wm-px)) solid #000;
+        color: var(--wm-highlight);
+        font-weight: bold;
+    }
+
+    .wm-director .wmd-gallery-grid {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(calc(64 * var(--wm-px)), 1fr));
+        align-content: start;
+        gap: calc(2 * var(--wm-px));
+        padding: calc(2 * var(--wm-px));
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .wm-director .wmd-gallery .wmd-thumb {
+        width: auto;
+        height: auto;
+        aspect-ratio: 1;
+        padding: calc(2 * var(--wm-px));
+        background: transparent;
+        box-shadow: none;
+    }
+
+    .wm-director .wmd-gallery .wmd-thumb img {
+        border: calc(1 * var(--wm-px)) solid #000;
+        box-sizing: border-box;
+    }
+
+    .wm-director .wmd-gallery .wmd-thumb:active {
+        background: var(--wm-highlight);
+    }
+
+    .wm-director .wmd-gallery .wmd-thumb.is-pending {
+        border: calc(1 * var(--wm-px)) solid #000;
+        background: #fff url('/static_images/wm61/wait-0.png') center / calc(24 * var(--wm-px)) no-repeat;
+    }
+
+    .wm-director .wmd-gallery .wmd-empty {
+        grid-column: 1 / -1;
+    }
+}
+
+/* a short landscape scene: the choices as one row of chips swiped sideways (four rows covered her) */
+@container wmd (max-height: 20em) and (orientation: landscape) {
+    .wm-director .wmd-choices .director-message-actions {
+        flex-direction: row;
+        overflow-x: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: none;
+    }
+
+    html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-small.btn-secondary {
+        flex: 0 0 auto;
+        display: block;
+        width: auto;
+        max-width: 70%;
+        min-height: 32px;
+        padding: 6px 14px 6px 16px;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+
+    .wm-director .wmd-thumb {
+        width: 38px;
+        height: 38px;
     }
 }

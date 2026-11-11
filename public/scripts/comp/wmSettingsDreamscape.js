@@ -309,6 +309,44 @@
         st.ready = true;
     }
 
+    // ---- Phone (#732): this device's Director options (wmDirector.js wmDirectorPhonePrefs, localStorage)
+    const PHONE_KEY = 'wmDirectorPhone';
+    const PHONE_DEFAULTS = { allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, wideLog: false };
+    function phoneRead() {
+        const api = window.wmDirectorPhonePrefs;
+        if (api && typeof api.get === 'function') return api.get();
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(PHONE_KEY) || '{}') || {}; } catch (_) { saved = {}; }
+        const out = { ...PHONE_DEFAULTS };
+        Object.keys(PHONE_DEFAULTS).forEach((k) => { if (typeof saved[k] === 'boolean') out[k] = saved[k]; });
+        return out;
+    }
+    function phoneWrite(next) {
+        const api = window.wmDirectorPhonePrefs;
+        if (api && typeof api.set === 'function') { api.set(next); return; }
+        try { localStorage.setItem(PHONE_KEY, JSON.stringify(next)); } catch (_) { /* storage blocked */ }
+    }
+    const PHONE_ROWS = [
+        ['allowStudio', 'Allow the Director to open Studio'],
+        ['openPrints', 'Open new prints in the picture view'],
+        ['notifyTurns', 'Notify me when a turn ends in the background'],
+        ['printStrip', 'Show prints under her text box'],
+        ['wideLog', 'Show the log beside her on wide screens']
+    ];
+
+    function dirRenderPhone(el, st) {
+        const p = st.phone;
+        el.innerHTML = `${ui.text('These apply to the Director on this phone.')}
+            ${ui.check('allowStudio', PHONE_ROWS[0][1], p.allowStudio)}
+            ${ui.note('Off: she makes pictures on the server, and uses Studio only while it is already open.')}
+            ${PHONE_ROWS.slice(1).map(([k, label]) => ui.check(k, label, p[k])).join('')}
+            ${ui.note('Wide screens show her prints beside her. Menu > Log shows the log there instead.')}`;
+        PHONE_ROWS.forEach(([k]) => {
+            const box = el.querySelector(`input[name="${k}"]`);
+            if (box) box.addEventListener('change', () => { p[k] = box.checked; });
+        });
+    }
+
     function dirLearnedLists(st) {
         const rules = Array.isArray(st.learned && st.learned.rules) ? st.learned.rules : [];
         const pending = (Array.isArray(st.learned && st.learned.proposals) ? st.learned.proposals : []).filter((row) => row && row.status === 'pending');
@@ -399,10 +437,11 @@
         tab: 'personal',
         label: 'Director',
         icon: 'app-director-lg',
-        tabs: [['new', 'New Sessions'], ['repair', 'Auto-Repair'], ['learned', 'Learned Rules']],
+        tabs: [['phone', 'Phone'], ['new', 'Sessions'], ['repair', 'Auto-Repair'], ['learned', 'Rules']],
         available: () => !!(dir() && typeof dir().requestDirectorSettings === 'function' && typeof dir().directorRequest === 'function'),
         init() {
-            const st = { ready: false, error: '', catalogAsked: new Set(), ruleSel: '', propSel: '' };
+            const st = { ready: false, error: '', catalogAsked: new Set(), ruleSel: '', propSel: '', phone: phoneRead() };
+            st.phoneSaved = JSON.stringify(st.phone);
             st.loading = dirLoad(st).catch((err) => { st.error = (err && err.message) || 'Director Settings could not be read.'; })
                 .then(() => { if (st.redraw) st.redraw(); });
             // the page waits under the shell's wait cursor (WM shows no "Reading..." text)
@@ -412,6 +451,7 @@
         },
         render(el, tab, st, api) {
             st.redraw = () => { if (el.isConnected) rerenderKeep(el, api); };
+            if (tab === 'phone') { dirRenderPhone(el, st); return; }
             if (!st.ready) {
                 el.innerHTML = st.error ? ui.text(st.error) : '';
                 return;
@@ -438,6 +478,10 @@
             rows.forEach((r) => dirBindPicker(st, r, el, api));
         },
         async commit(st) {
+            if (st.phone && JSON.stringify(st.phone) !== st.phoneSaved) {
+                phoneWrite({ ...st.phone });
+                st.phoneSaved = JSON.stringify(st.phone);
+            }
             if (!st.ready) return [];
             const changedPicks = Object.keys(st.picks).some((k) => pickSig(st.picks[k]) !== st.saved.picks[k]);
             const raw = String(st.auto.threshold).trim();
