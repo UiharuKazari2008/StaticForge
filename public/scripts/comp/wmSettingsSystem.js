@@ -694,8 +694,9 @@
     function powerInit() {
         const plans = {};
         PLANS.forEach((p) => { plans[p.id] = { display: planValue(p.id, 'display'), sleep: planValue(p.id, 'sleep') }; });
-        const d = { plan: activePlan(), plans, battery: null };
-        d.initial = { plan: d.plan, plans: JSON.parse(JSON.stringify(plans)) };
+        const sh0 = sh();
+        const d = { plan: activePlan(), plans, battery: null, low: sh0 && typeof sh0.batteryLowLevel === 'function' ? sh0.batteryLowLevel() : 20 };
+        d.initial = { plan: d.plan, plans: JSON.parse(JSON.stringify(plans)), low: d.low };
         if (navigator.getBattery) {
             navigator.getBattery().then((b) => {
                 d.battery = b;
@@ -734,6 +735,17 @@
         });
     }
 
+    // The low battery warning's level (Melaton's own row: the device has a fixed level). The shell
+    // shows its low icon and "Main Battery Low" at or under it (wmShell.js batteryLowCheck).
+    const LOW_LEVELS = [5, 10, 15, 20, 25, 30];
+    const lowHtml = (d) => `${ui.sub('Low battery warning at:')}${ui.comboHtml('low', `${d.low}%`)}`;
+    function bindLow(el, d) {
+        const btn = el.querySelector('[data-act="low"]');
+        if (!btn) return;
+        const list = LOW_LEVELS.includes(d.low) ? LOW_LEVELS : LOW_LEVELS.concat(d.low).sort((a, b) => a - b);
+        ui.bindCombo(btn, list.map((n) => [n, `${n}%`]), d.low, (v) => { d.low = Number(v); btn.textContent = `${d.low}%`; });
+    }
+
     function batteryHtml(d) {
         const b = d.battery;
         if (b === null) return ui.text('Checking the battery...');
@@ -744,6 +756,7 @@
             <div class="wm-sys-battery">${bar}<span>${level == null ? 'Unknown' : `Battery remaining: ${level}%`}</span></div>
             ${ui.value('Status:', status)}
             ${ui.gap()}
+            ${lowHtml(d)}
             ${b ? '' : ui.note('This browser does not report the battery.')}`;
     }
 
@@ -763,6 +776,7 @@
             <div class="wm-sys-pow-rem">Battery power remaining:${level == null ? '' : ` ${level}%`}</div>
             <div class="wm-sys-pow-bar"><span>0</span><div class="wm-sys-pow-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100"${level == null ? '' : ` aria-valuenow="${level}"`}><div style="width:${level == null ? 0 : level}%"></div></div><span>100</span></div>
             ${b ? '' : `<div class="wm-sys-pow-plan">${ui.note('This browser does not report the battery.')}</div>`}
+            <div class="wm-sys-pow-plan">${lowHtml(d)}</div>
         </div>`;
     }
 
@@ -805,11 +819,11 @@
         d.rerender = api.rerender;
         d.tab = tab;
         if (!(window.wmShell && window.wmShell.version === '6.5')) {
-            if (tab === 'battery') el.innerHTML = batteryHtml61(d);
+            if (tab === 'battery') { el.innerHTML = batteryHtml61(d); bindLow(el, d); }
             else powerAdvanced61(el, d, api);
             return;
         }
-        if (tab === 'battery') { el.innerHTML = batteryHtml(d); return; }
+        if (tab === 'battery') { el.innerHTML = batteryHtml(d); bindLow(el, d); return; }
         el.innerHTML = `${ui.sub('Power plan:')}
             ${PLANS.map((p) => ui.radio('plan', p.id, p.name, p.id === d.plan)).join('')}
             ${ui.gap()}
@@ -826,8 +840,15 @@
     /** Power Options' own writes: the active plan (handlers['power-options'].change), then the plan's minutes (power-plan save). */
     async function powerCommit(d) {
         const r = R();
-        if (!r) return [];
         const i = d.initial;
+        const keys = [];
+        if (d.low !== i.low) {
+            const sh1 = sh();
+            const key = (sh1 && sh1.batteryLowKey) || 'wmBatteryLow';
+            try { localStorage.setItem(key, String(d.low)); keys.push(key); i.low = d.low; } catch (_) { /* storage off */ }
+            if (sh1 && typeof sh1.refreshStatus === 'function') sh1.refreshStatus();
+        }
+        if (!r) return keys;
         if (d.plan !== i.plan) {
             await r.set(POWER_KEY, { ActivePowerScheme: d.plan });
             window.dispatchEvent(new CustomEvent('melaton-power-plan', { detail: { plan: d.plan } }));
@@ -841,7 +862,7 @@
             window.dispatchEvent(new CustomEvent('melaton-power-plan', { detail: { plan: p.id, ...values } }));
         }
         d.initial = { plan: d.plan, plans: JSON.parse(JSON.stringify(d.plans)) };
-        return [];
+        return keys;
     }
 
     wmSettings.registerPage({

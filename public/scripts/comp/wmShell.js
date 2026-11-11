@@ -1445,6 +1445,35 @@
         return v === '1' ? true : v === '0' ? false : fallback;
     }
 
+    /**
+     * The low battery warning. Its level is the user's (Settings > System > Power > Battery,
+     * localStorage wmBatteryLow, percent; 20 as shipped). On battery at or under it the title bar
+     * shows the low icon and the device's notification comes up once: "Main Battery Low". It is
+     * armed again by the charger or by the level rising over it.
+     */
+    const BATTERY_LOW_KEY = 'wmBatteryLow';
+    const BATTERY_LOW_DEFAULT = 20;
+    let batteryWarned = false;
+
+    function batteryLowLevel() {
+        let n = NaN;
+        try { n = parseInt(localStorage.getItem(BATTERY_LOW_KEY), 10); } catch (_) { n = NaN; }
+        return Number.isFinite(n) ? Math.max(5, Math.min(50, n)) : BATTERY_LOW_DEFAULT;
+    }
+
+    function batteryLowCheck(b) {
+        if (!b || !b.low) { if (!b || b.charging || b.level > batteryLowLevel()) batteryWarned = false; return; }
+        if (batteryWarned) return;
+        // not over the boot: the warning waits for Today
+        if (root.dataset.wmBoot && root.dataset.wmBoot !== 'done') return;
+        batteryWarned = true;
+        notify({
+            title: 'Main Battery Low',
+            text: 'To prevent possible data loss, replace or recharge your batteries according to the owner\'s manual.',
+            icon: 'warning', asNote: true
+        });
+    }
+
     function refreshStatus() {
         if (!shell) return;
         applyStartButton();
@@ -1470,6 +1499,7 @@
         const bat = shell.querySelector('[data-role="battery"]');
         bat.hidden = !dev.battery;
         if (dev.battery) { bat.dataset.icon = dev.battery.icon; bat.title = dev.battery.text; }
+        batteryLowCheck(dev.battery);
         const vol = shell.querySelector('[data-role="volume"]');
         const mode = soundMode();
         vol.dataset.icon = mode === 'off' ? 'volume-off' : mode === 'vibrate' ? 'vibrate' : 'volume';
@@ -1692,7 +1722,7 @@
         let state = '';
         if (lsFlag('wmBezelLed', false)) {
             const b = deviceView().battery;
-            if (lsFlag('wmBezelLedBattery', true) && b && !b.charging && b.level <= 15) state = 'battery';
+            if (lsFlag('wmBezelLedBattery', true) && b && b.low) state = 'battery';
             else if (lsFlag('wmBezelLedNotify', true) && notes.length) state = 'notify';
             else if (lsFlag('wmBezelLedCharge', true) && b && b.charging && b.level < 100) state = 'charging';
             else if (lsFlag('wmBezelLedCharge', true) && b && b.charging) state = 'full';
@@ -1995,8 +2025,10 @@
         else if (webBattery) { level = webBattery.level; charging = webBattery.charging; }
         let battery = null;
         if (level != null) {
-            const icon = charging ? 'battery-charging' : level > 75 ? 'battery-full' : level > 50 ? 'battery-3' : level > 25 ? 'battery-2' : level > 10 ? 'battery-1' : 'battery-empty';
-            battery = { icon, level, charging, plugged: bat && typeof bat.plugged === 'string' ? bat.plugged : null, saver: !!(bat && bat.saver === true), text: `Main battery: ${level}%${charging ? ', charging' : ''}` };
+            // on battery at or under the warning level (Settings > Power): the device's low icon (the cell with "!")
+            const low = !charging && level <= batteryLowLevel();
+            const icon = charging ? 'battery-charging' : low ? 'battery-empty' : level > 75 ? 'battery-full' : level > 50 ? 'battery-3' : level > 25 ? 'battery-2' : 'battery-1';
+            battery = { icon, level, charging, low, plugged: bat && typeof bat.plugged === 'string' ? bat.plugged : null, saver: !!(bat && bat.saver === true), text: `Main battery: ${level}%${charging ? ', charging' : ''}` };
         }
         return { cell, wifi, active, airplane, type, wifiName, link, signal, battery };
     }
@@ -2194,7 +2226,7 @@
      */
     const toastSeen = new WeakSet();
     let toastDialogs = Promise.resolve();
-    const BACKGROUND_TOAST = /^(connecting|connected|connection|reconnect|offline|high latency|generation complete|you have mail|new mail|update)/i;
+    const BACKGROUND_TOAST = /^(connecting|connected|connection|reconnect|offline|high latency|generation complete|you have mail|new mail|update|main battery)/i;
 
     /**
      * Loading while Melaton starts (20 s after boot) or while a workspace switch runs is never a
@@ -6055,6 +6087,10 @@
         /** An app's page, made (mounted) without bringing the app up. */
         pageOf: (id) => (apps.has(id) ? pageFor(apps.get(id)) : null),
         listApps: () => [...apps.values()].map((a) => ({ id: a.id, title: a.title, startLabel: a.startLabel, icon: a.icon, inStart: a.inStart, sip: !!a.sip, programsFolder: a.programsFolder || null })),
+        /** The low battery warning level in percent, and its storage key (Settings > Power). */
+        batteryLowLevel,
+        refreshStatus: () => refreshStatus(),
+        batteryLowKey: BATTERY_LOW_KEY,
         /** Tap-and-hold: ms from pen down to the menu, when the ring of dots is whole (bindHoldRing). */
         holdMs: HOLD_FIRST_MS + 8 * HOLD_STEP_MS + HOLD_MENU_MS,
         /** A context menu at a point (tap-and-hold), kept on screen. */
