@@ -62,7 +62,32 @@ Pushed by the server:
 | `as_event` | `{ from, event, detail }`; from kind `server`: `partnership.changed` `{ session, permissions, name, syncItems }` to the device |
 | `as_peers_updated` | `{ devices, computers }` to administrators that said hello, coalesced (250 ms) |
 
+## File bodies (HTTP)
+
+`modules/activeSyncTransfers.js`, test `node scripts/test-activesync-transfers.js`. Chunked both ways; a device's
+requests must come from the session of one of its open sockets.
+
+| Request | Who | Notes |
+| --- | --- | --- |
+| `GET /api/activesync/file/:deviceId/:root/<path>[?thumb=N][&download=1]` | administrator | The phone is asked `stream.send { transferId, root, path, thumb, range }` and the response stays open. `Range` is passed on (206 when the phone answers with one). Served with `Content-Security-Policy: sandbox`. 6 streams per device at a time, the rest wait |
+| `POST /api/activesync/transfer/:id/chunk?seq=N[&end=1]` | the device | The file in order, at most 8 MB a chunk; `seq=0` carries `x-as-status`, `x-as-type`, `x-as-length`, `x-as-range`, `x-as-mtime`. Answered once the desktop took the chunk. 409 `OUT_OF_ORDER { expected }`, 410 when the desktop went away |
+| `POST /api/activesync/upload/:deviceId/begin` | administrator | `{ root, dir, name, size, conflict, mtime, id? }` -> `{ id, chunkSize }` |
+| `POST /api/activesync/upload/:id/chunk?offset=N` | administrator | Raw bytes in order -> `{ received }`; a wrong offset answers 409 with `received` (resume from there) |
+| `POST /api/activesync/upload/:id/commit` | administrator | `{ queue? }`. The phone is asked `stream.receive { transferId, root, dir, name, size, conflict, mtime }` and pulls the file; answers `{ entry }`, or `{ queued: true }` for an offline partner with `queue` (kept up to 7 days, removed when delivered, refused or the partnership ends) |
+| `GET /api/activesync/transfer/:id/data` | the device | The committed file, with `Range` |
+| `DELETE /api/activesync/upload/:id` | administrator | Gives up an upload that was not committed |
+
+The phone reports its writing as `as_event` `stream.progress { transferId, written, total }`.
+
 ## Operations in use
 
-Device: `status.get`, `partnership.propose`, `storage.hello|list|stat|mkdir|rename|delete|trash|trashList|restore` (the
-app's phone storage bridge, #698; `hello` without its local `baseUrl`), `clipboard.set { text }`, `device.ring`.
+Device: `status.get`, `partnership.propose`, `storage.hello|list|stat|mkdir|rename|delete|trash|trashList|restore|move|copy|open|watch|unwatch`
+(the app's phone storage bridge, #698, loaded by the peer when Explorer never was; `hello` without its local `baseUrl`;
+events `storage.changed`, `storage.config`), `stream.send`, `stream.receive`, `studio.getSession`, `studio.setSession { session }`,
+`clipboard.set { text }`, `device.ring`.
+
+Computer: `studio.getSession`, `studio.setSession { session }`.
+
+On a desktop `window.phoneStorage` is `public/scripts/comp/activeSyncRemoteStorage.js`: the bridge's interface over these
+operations and the file endpoints, so Explorer's phone drive (`explorerPhoneDrive.js`) shows a connected device's
+storage unchanged, and Send To copies files into its Download folder.

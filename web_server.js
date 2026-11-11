@@ -2208,6 +2208,8 @@ mountGuacRemoteBridge(app, authMiddleware);
 require('./modules/programFaultReports').mountProgramFaultReports(app, authMiddleware);
 // modules/slideshowDevices.js — Melaton SideShow device previews (frame, mask, live screen), admin only
 require('./modules/slideshowDevices').mountPreviewRoutes(app, authMiddleware, globalResources);
+// modules/activeSyncTransfers.js — ActiveSync file bodies between a phone and the desktop (Yozora #747)
+require('./modules/activeSyncTransfers').mount(app, authMiddleware, globalResources);
 
 app.use('/images/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;

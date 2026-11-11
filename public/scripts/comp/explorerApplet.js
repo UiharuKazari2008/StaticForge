@@ -1249,6 +1249,11 @@ class ExplorerApplet {
             }
             items.push({ icon: 'fas fa-download', text: 'Download', action: 'explorer-download' });
         }
+        // Send To > a phone connected through ActiveSync (explorerPhoneDrive.sendToMenuItem)
+        if (typeof explorerPhoneDrive !== 'undefined' && this._canCutCopyItem(item)) {
+            const sendTo = explorerPhoneDrive.sendToMenuItem(item);
+            if (sendTo) items.push(sendTo);
+        }
         return items;
     }
 

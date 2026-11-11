@@ -33,5 +33,5 @@ WebView, so both speakers and a reinstalled WebView profile stay one device.
 ## Rules
 
 - Never guess a status field: leave it out when the platform does not say.
-- File contents never travel in `as_call` arguments (1 MB cap): they will go through HTTP stream endpoints (#747 slice 3, not built yet).
+- File contents never travel in `as_call` arguments (1 MB cap): they go through the HTTP endpoints in [client-api/ws/activeSync.md](./client-api/ws/activeSync.md#file-bodies-http). A service answers `stream.send` by posting the file in ordered chunks of about 1 MB and stops on a 410; it answers `stream.receive` by fetching `.../data` in ranges and writing them.
 - A guest connection ends with the last socket of the device; only a partnership survives a reconnect.

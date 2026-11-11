@@ -16,6 +16,14 @@
 (function (root) {
     'use strict';
 
+    // loaded once: with Explorer, or earlier by ActiveSync (activeSyncAgent.js) so a computer can
+    // browse this phone while Explorer was never opened here. On the desktop ActiveSync's remote
+    // storage (activeSyncRemoteStorage.js) already stands in for the bridge.
+    if (root.phoneStorage) {
+        if (typeof module !== 'undefined' && module.exports) module.exports = root.phoneStorage;
+        return;
+    }
+
     const bridge = root.AndroidPhoneStorage || null;
     const MAX_IN_FLIGHT = 4;
     const MAX_WATCHES = 32;

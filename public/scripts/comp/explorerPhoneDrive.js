@@ -1,7 +1,8 @@
 /**
  * The Android phone as a drive in Cartograph (Yozora #698), over the DSApp app's storage bridge
- * (phoneStorageBridge.js, window.phoneStorage). Only inside the app: with no bridge every hook
- * answers "not mine" and nothing shows.
+ * (phoneStorageBridge.js, window.phoneStorage). Inside the app that is the app's bridge; on a
+ * desktop it is a phone connected through ActiveSync (activeSyncRemoteStorage.js, the same calls
+ * relayed). With neither every hook answers "not mine" and nothing shows.
  *
  * Places (Explorer's currentPath strings, beside the VFS's "/..." and "Computer"):
  *   phone://                      the phone's drives (one per root) or its state (sharing off ...)
@@ -116,8 +117,9 @@
     /** What the drive shows instead of its roots: null when browsable. */
     function blocker(st) {
         if (!st) return { kind: 'loading', text: 'Connecting to the phone…' };
-        if (!st.enabled) return { kind: 'disabled', text: 'Turn on in app settings', action: 'settings' };
-        if (!st.access) return { kind: 'no_access', text: 'Allow access', action: 'access' };
+        // from a computer both are done on the device itself: said, not offered
+        if (!st.enabled) return remote() ? { kind: 'disabled', text: 'Turn on phone storage in the app on the device' } : { kind: 'disabled', text: 'Turn on in app settings', action: 'settings' };
+        if (!st.access) return remote() ? { kind: 'no_access', text: 'Allow storage access on the device' } : { kind: 'no_access', text: 'Allow access', action: 'access' };
         if (st.locked) return { kind: 'locked', text: 'Unlock the app to browse the phone' };
         if (!rootsOf(st).length) return { kind: 'no_root', text: 'No storage to show' };
         return null;
@@ -254,8 +256,13 @@
         if (available()) void PS().unwatch(rootId, path);
     }
 
+    // On a desktop the phone comes and goes (ActiveSync, activeSyncRemoteStorage.js): windows attach
+    // and listen before one is connected, so it appears in them when it does.
+    const mayAppear = () => !!(PS() && (PS().available || PS().remote));
+    const remote = () => !!(PS() && PS().remote);
+
     function bind() {
-        if (bound || !available()) return;
+        if (bound || !mayAppear()) return;
         bound = true;
         PS().on('changed', (m) => {
             if (documents.size) void checkDocuments(m.root, m.path || '/');
@@ -276,7 +283,7 @@
     }
 
     function attach(app) {
-        if (!available() || !app) return;
+        if (!mayAppear() || !app) return;
         apps.add(app);
         bind();
         void ensureState().then(() => renderNav(app));
@@ -327,8 +334,9 @@
 
     // ---- labels, breadcrumb ----------------------------------------------------------------
 
+    /** "Phone" on the phone itself; on a desktop the connected device's name. */
     function phoneName() {
-        return 'Phone';
+        return (PS() && PS().deviceName) || 'Phone';
     }
 
     /** Drive letters after Cartograph's C:, in the phone's root order: D: internal storage, E: a USB drive... */
@@ -971,14 +979,16 @@
         const items = [{ icon: 'fas fa-folder-open', text: 'Open', action: 'explorer-open' }];
         if (file) {
             items.push({ icon: 'fas fa-up-right-from-square', text: 'Open with…', action: `${ACTION}open-with` });
-            items.push({ icon: 'fab fa-android', text: 'Open in Android app', action: `${ACTION}open-android` });
+            // from a computer the file opens on the device's own screen, in its Android app
+            items.push({ icon: 'fab fa-android', text: remote() ? 'Open on the device' : 'Open in Android app', action: `${ACTION}open-android` });
             // a NovelAI image (read once, cached; unread PNGs offer it and say so if there is none)
             if (naiCandidate(item) && naiKnownFor(item) !== false) {
                 items.push({ separator: true });
                 items.push({ icon: 'fas fa-compass-drafting', text: 'Open in Studio', action: `${ACTION}studio` });
                 items.push({ icon: 'fas fa-circle-info', text: 'Properties', action: `${ACTION}properties` });
             }
-            items.push({ icon: 'fas fa-share-nodes', text: 'Share', action: `${ACTION}share` });
+            // Android's share sheet belongs to the phone's own screen
+            if (!remote()) items.push({ icon: 'fas fa-share-nodes', text: 'Share', action: `${ACTION}share` });
             items.push({ icon: 'fas fa-download', text: 'Download', action: `${ACTION}download` });
         }
         items.push({ icon: 'fas fa-link', text: 'Copy path', action: `${ACTION}copy-path` });
@@ -1008,14 +1018,43 @@
         items.push({ separator: true });
         items.push({ icon: shownHidden() ? 'fas fa-check' : '', text: 'Show hidden files', action: `${ACTION}toggle-hidden` });
         items.push({ icon: 'fas fa-trash-can', text: 'Phone trash', action: `${ACTION}trash-view` });
-        items.push({ icon: 'fas fa-gear', text: 'Phone storage settings', action: `${ACTION}settings` });
+        if (!remote()) items.push({ icon: 'fas fa-gear', text: 'Phone storage settings', action: `${ACTION}settings` });
         return [{ type: 'list', items }];
+    }
+
+    // ---- Send To (a computer's files to a connected device, ActiveSync) --------------------------
+
+    /** Explorer's "Send To" row for files that are not on a phone already; null with no device. */
+    function sendToMenuItem(item) {
+        const ps = PS();
+        if (!item || isEntry(item) || !ps || !ps.remote || typeof ps.devices !== 'function') return null;
+        const devices = ps.devices();
+        if (!devices.length) return null;
+        return { text: 'Send To', optionsfn: () => devices.map((d) => ({ text: d.name, action: `${ACTION}sendto:${d.deviceId}` })) };
+    }
+
+    /** Copies the selection into the device's Download folder, under the usual progress dialog. */
+    async function sendTo(app, items, deviceId) {
+        const ps = PS();
+        if (!ps || !ps.remote || !items.length) return;
+        ps.select(deviceId);
+        let st = null;
+        try { st = await ps.hello(); } catch (err) { toast('error', errText(err)); return; }
+        const block = blocker(st);
+        if (block) { toast('warning', block.text); return; }
+        const rootId = rootsOf(st)[0].id;
+        try { await ps.call('mkdir', { root: rootId, path: '/Download' }); } catch (_err) { /* it is there */ }
+        await app.deliverItemsToPath(app._itemRefs(items), pathFor(rootId, '/Download'), 'copy', { sourcePath: app.currentPath });
     }
 
     async function handleAction(action, item, app) {
         const sel = app.grid ? app.grid.getSelectedItems() : [];
         const many = item && sel.some((s) => s.id === item.id) ? sel : (item ? [item] : sel);
         const what = action.slice(ACTION.length);
+        if (what.startsWith('sendto:')) {
+            await sendTo(app, many, what.slice(7));
+            return;
+        }
         try {
             switch (what) {
                 case 'open-with': if (item) await open(app, item, true); break;
@@ -1543,6 +1582,7 @@
     }
 
     root.explorerPhoneDrive = {
+        sendToMenuItem,
         PREFIX,
         TRASH,
         driveLetter,

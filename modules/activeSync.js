@@ -592,6 +592,49 @@ async function call(globalResources, wsServer, clientInfo, data) {
     return { success: true, result: res.result };
 }
 
+/**
+ * A call the server makes for a computer's HTTP request (file streams, modules/activeSyncTransfers.js):
+ * the same checks as as_call, the request goes out as from a computer named fromName.
+ */
+async function serverCall(globalResources, wsServer, deviceId, op, args, opts = {}) {
+    const server = wsServerOf(globalResources, wsServer);
+    if (!isPeerId(deviceId) || !rowOf(globalResources, deviceId)) throw fail('UNKNOWN_DEVICE', 'No such device.');
+    if (!isOpName(op)) throw fail('BAD_OP', 'op must look like group.name');
+    checkDeviceOp(server, deviceId, op);
+    const target = socketFor(server, 'device', deviceId, op);
+    if (!target) throw fail('UNSUPPORTED', 'The device does not support this.');
+    const timeoutMs = Math.min(opts.maxTimeoutMs || CALL_TIMEOUT_MAX_MS, Math.max(1000, Number(opts.timeoutMs) || CALL_TIMEOUT_MS));
+    const res = await sendRequest(server, target, { kind: 'computer', id: '', name: clampString(opts.fromName, 64) || hostName() }, op, args, timeoutMs);
+    if (!res.ok) throw fail(res.error.code, res.error.message);
+    return res.result;
+}
+
+/** Keep a queueable request for an offline partner (as as_call with queue:true does). */
+function queueFor(globalResources, wsServer, deviceId, op, args, fromName) {
+    const row = isPeerId(deviceId) ? rowOf(globalResources, deviceId) : null;
+    if (!row) throw fail('UNKNOWN_DEVICE', 'No such device.');
+    if (!row.partner || !QUEUEABLE.has(op)) throw fail('OFFLINE', 'The device is not connected.');
+    return enqueue(globalResources, wsServerOf(globalResources, wsServer), row, op, args, fromName || hostName());
+}
+
+/** Is a device connected, and with which session ('pending' | 'guest' | 'partner')? */
+function deviceOnline(globalResources, wsServer, deviceId) {
+    const sess = deviceSession(wsServerOf(globalResources, wsServer), deviceId);
+    return sess ? sess.session : null;
+}
+
+/** Does this HTTP session belong to one of the device's open sockets? */
+function isDeviceSession(globalResources, wsServer, deviceId, sessionId) {
+    if (!sessionId) return false;
+    return liveSockets(wsServerOf(globalResources, wsServer), 'device', deviceId).some((s) => s.info.sessionId === sessionId);
+}
+
+// told when a queued item got its answer (ok or refused), so what it pointed at can be released
+const queueListeners = [];
+function onQueueItemDone(fn) {
+    queueListeners.push(fn);
+}
+
 function enqueue(globalResources, server, row, op, args, fromName) {
     if (jsonBytes(args) > MAX_QUEUE_BYTES) throw fail('TOO_LARGE', 'Too large to keep for an offline device.');
     const d = getDb(globalResources);
@@ -622,6 +665,9 @@ async function deliverQueue(globalResources, wsServer, deviceId) {
         if ((need && !sess.permissions.includes(need)) || !target) {
             d.prepare('DELETE FROM as_queue WHERE id = ?').run(item.id);
             logEvent(globalResources, deviceId, 'warning', `Not delivered (not allowed on the device): ${item.op}`);
+            for (const fn of queueListeners) {
+                try { fn({ deviceId, op: item.op, args: parseJson(item.args, {}), ok: false }); } catch (err) { console.warn('[activeSync] queue listener failed:', err.message); }
+            }
             continue;
         }
         const from = { kind: 'computer', id: '', name: item.from_name || 'Computer', queuedAt: item.created };
@@ -629,6 +675,9 @@ async function deliverQueue(globalResources, wsServer, deviceId) {
         if (!res.ok && (res.error.code === 'TIMEOUT' || res.error.code === 'DISCONNECTED' || res.error.code === 'SEND_FAILED')) break;
         d.prepare('DELETE FROM as_queue WHERE id = ?').run(item.id);
         logEvent(globalResources, deviceId, res.ok ? 'info' : 'warning', res.ok ? `Delivered: ${item.op}` : `Refused by the device: ${item.op} (${res.error.message})`);
+        for (const fn of queueListeners) {
+            try { fn({ deviceId, op: item.op, args: parseJson(item.args, {}), ok: res.ok }); } catch (err) { console.warn('[activeSync] queue listener failed:', err.message); }
+        }
         sent += 1;
     }
     if (sent) scheduleUpdated(globalResources, server);
@@ -758,7 +807,7 @@ async function partnership(globalResources, wsServer, clientInfo, data) {
 
     if (action === 'end') {
         d.prepare("UPDATE as_devices SET partner = 0, permissions = '[]', sync_items = '[]', settings = '{}', last_sync = NULL WHERE device_id = ?").run(deviceId);
-        d.prepare('DELETE FROM as_queue WHERE device_id = ?').run(deviceId);
+        releaseQueue(globalResources, deviceId);
         if (row.partner) logEvent(globalResources, deviceId, 'info', me.kind === 'device' ? 'Partnership ended on the device' : 'Partnership ended');
         if (deviceSession(server, deviceId)) {
             setDeviceSession(server, deviceId, 'pending', []);
@@ -769,6 +818,18 @@ async function partnership(globalResources, wsServer, clientInfo, data) {
     }
 
     throw fail('BAD_ACTION', 'action must be propose, update or end');
+}
+
+/** Drop everything waiting for a device (its partnership ended, or it was forgotten). */
+function releaseQueue(globalResources, deviceId) {
+    const d = getDb(globalResources);
+    const items = d.prepare('SELECT op, args FROM as_queue WHERE device_id = ?').all(deviceId);
+    d.prepare('DELETE FROM as_queue WHERE device_id = ?').run(deviceId);
+    for (const item of items) {
+        for (const fn of queueListeners) {
+            try { fn({ deviceId, op: item.op, args: parseJson(item.args, {}), ok: false }); } catch (err) { console.warn('[activeSync] queue listener failed:', err.message); }
+        }
+    }
 }
 
 /** One-way news from the server to a device's sockets (as_event, from kind "server"). */
@@ -796,7 +857,7 @@ function forget(globalResources, wsServer, deviceId) {
     if (liveSockets(server, 'device', deviceId).length) throw fail('ONLINE', 'Disconnect the device first.');
     const d = getDb(globalResources);
     const res = d.prepare('DELETE FROM as_devices WHERE device_id = ?').run(deviceId);
-    d.prepare('DELETE FROM as_queue WHERE device_id = ?').run(deviceId);
+    releaseQueue(globalResources, deviceId);
     d.prepare('DELETE FROM as_log WHERE device_id = ?').run(deviceId);
     scheduleUpdated(globalResources, server);
     return res.changes > 0;
@@ -829,6 +890,11 @@ module.exports = {
     status,
     onSocketClosed,
     call,
+    serverCall,
+    queueFor,
+    deviceOnline,
+    isDeviceSession,
+    onQueueItemDone,
     reply,
     event,
     partnership,
