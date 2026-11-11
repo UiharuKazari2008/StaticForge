@@ -1783,6 +1783,7 @@ const TOOL_DEFS = [
             type: 'object',
             additionalProperties: false,
             properties: {
+                store: { type: 'string', enum: ['alternate'], description: 'Only when the turn prompt names an alternate memory store: "alternate" reads that second store (read only, lower trust). Leave out for your own store.' },
                 search: { type: 'string' },
                 category: { type: 'string' },
                 model: { type: 'string', description: 'Filter by Studio model (v5, v4_5, …). v4.5 matches v4_5.' },
@@ -1801,6 +1802,7 @@ const TOOL_DEFS = [
             additionalProperties: false,
             required: ['query'],
             properties: {
+                store: { type: 'string', enum: ['alternate'], description: 'Only when the turn prompt names an alternate memory store: "alternate" reads that second store (read only, lower trust). Leave out for your own store.' },
                 query: { type: 'string' },
                 category: { type: 'string' },
                 model: { type: 'string', description: 'Filter by Studio model (v5, v4_5, …).' },
@@ -1819,6 +1821,7 @@ const TOOL_DEFS = [
             type: 'object',
             additionalProperties: false,
             properties: {
+                store: { type: 'string', enum: ['alternate'], description: 'Only when the turn prompt names an alternate memory store: "alternate" reads that second store (read only, lower trust). Leave out for your own store.' },
                 name: { type: 'string' },
                 names: { type: 'array', items: { type: 'string' }, description: 'Old retrieveKnowledgeMemory batch. Same as name when length 1.' },
                 imageLimit: { type: 'number', description: 'Linked images per memory, newest first (default 50, max 200). linkedImages.total is the full count.' },
@@ -6677,16 +6680,25 @@ const PROTECTED_MEMORY_NAMES = new Set([
     'V5 Medium effort testing'
 ]);
 
-function turnMemoryStore(globalResources) {
+// The running turn's memory stores: { primary, alternate } ('' = Studio memories, 'obliterated';
+// alternate undefined when the chat has none). A Chiyo chat follows Director Settings > Chiyo
+// Memories (cursorDirector.turnMemoryStores); the others use their engine's own store.
+function turnMemoryStores(globalResources) {
     const customProviders = require('./customModelProviders');
     const wren = require('./cursorDirector');
     const xi = require('./xiDirector');
     const xiId = xi.activeSessionId();
     const wrenId = wren.activeDirectorSessionId();
-    const brief = (xiId && !wrenId) ? xi.activeChatBrief() : wren.activeChatBrief();
-    if (!brief || !customProviders.isEngine(brief.engine)) return '';
-    return customProviders.memoryStoreForEngine(globalResources, brief.engine);
+    const fromXi = !!(xiId && !wrenId);
+    const brief = fromXi ? xi.activeChatBrief() : wren.activeChatBrief();
+    if (!brief) return { primary: '', alternate: undefined };
+    if (!fromXi && brief.kabuki) return wren.turnMemoryStores(globalResources, true, brief.engine);
+    if (!customProviders.isEngine(brief.engine)) return { primary: '', alternate: undefined };
+    return { primary: customProviders.memoryStoreForEngine(globalResources, brief.engine) || '', alternate: undefined };
 }
+
+// Tools that only read: the ones the alternate store answers.
+const MEMORY_READ_TOOLS = new Set(['list_memories', 'search_memories', 'get_memory']);
 
 function ageToolAllowed(globalResources) {
     const customProviders = require('./customModelProviders');
@@ -6701,14 +6713,29 @@ function ageToolAllowed(globalResources) {
 
 function runMemoryTool(globalResources, name, input, ctx, storeForced) {
     if (storeForced === undefined) {
-        const store = turnMemoryStore(globalResources);
+        const stores = turnMemoryStores(globalResources);
+        let store = stores.primary;
+        // store "alternate": the chat's second, read-only store (#742)
+        const wantsAlternate = /^alt(ernate)?$/i.test(String((input && input.store) || '').trim());
+        if (wantsAlternate) {
+            if (stores.alternate === undefined) return { success: false, error: 'This chat has no alternate memory store. Leave store out.', code: 'NO_ALTERNATE_STORE' };
+            if (!MEMORY_READ_TOOLS.has(canonMemoryTool(name))) return { success: false, error: 'The alternate memory store is read only. Save, change, and delete in your own store (leave store out).', code: 'ALTERNATE_READ_ONLY' };
+            store = stores.alternate;
+        }
+        const mark = (result) => (result && typeof result === 'object'
+            ? { ...result, store: 'alternate', trust: 'Read only, from the alternate store. A second opinion: check it against your own store before you rely on it.' }
+            : result);
+        const tag = (result) => {
+            if (!wantsAlternate) return result;
+            return result && typeof result.then === 'function' ? result.then(mark) : mark(result);
+        };
         if (store) {
             return withKnowledgeMemoryStore(store, () => {
                 registerObliteratedCheckpoint(globalResources);
-                return runMemoryTool(globalResources, name, input, ctx, store);
+                return tag(runMemoryTool(globalResources, name, input, ctx, store));
             });
         }
-        storeForced = '';
+        return tag(runMemoryTool(globalResources, name, input, ctx, ''));
     }
     const obliterated = storeForced === OBLITERATED_MEMORY_STORE;
     name = canonMemoryTool(name);

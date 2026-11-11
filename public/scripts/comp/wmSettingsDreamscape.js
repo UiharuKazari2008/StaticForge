@@ -197,16 +197,72 @@
 
     const dir = () => window.directorInstance || null;
     const DIR_ROWS = [
-        { key: 'wren', tab: 'new', group: 'Yumiya', obliterated: false, blank: '(Last used)' },
-        { key: 'kabuki', tab: 'new', group: 'Chiyo (Obliterated Memories)', obliterated: true, blank: '(Last used)' },
+        { key: 'wren', tab: 'new', group: 'Yumiya', obliterated: false, persona: 'wren', blank: '(Last used)' },
+        { key: 'kabuki', tab: 'new', group: 'Chiyo', obliterated: true, persona: 'kabuki', blank: '(Last used)' },
         { key: 'normal', tab: 'repair', group: 'Yumiya (normal memories)', obliterated: false, blank: '(Same as the chat)' },
         { key: 'obliterated', tab: 'repair', group: 'Chiyo (Obliterated Memories)', obliterated: true, blank: '(Same as the chat)' }
     ];
     const line = (text) => String(text || '').replace(/\s+/g, ' ').trim();
 
-    function dirEngines(obliterated) {
+    // row: a DIR_ROWS entry. A new-chat default follows Model Availability for its persona (the saved
+    // table); an Auto-Repair lane keeps the engines of its memory store. (director.js settingsPickerEngines)
+    function dirEngines(row) {
         const d = dir();
-        return ((d && d.directorSettingsEngines) || []).filter((item) => item && (item.memoryStore === 'obliterated') === obliterated);
+        if (d && typeof d.settingsPickerEngines === 'function') return d.settingsPickerEngines(row);
+        return ((d && d.directorSettingsEngines) || []).filter((item) => item && (item.memoryStore === 'obliterated') === row.obliterated);
+    }
+
+    // ---- Model Availability and Chiyo Memories (#742): the desktop sheet's two pages
+    const DIR_PERSONAS = [['wren', 'Yumiya'], ['kabuki', 'Chiyo'], ['xi', 'Yozora']];
+    const DIR_STORES = [['obliterated', 'Obliterated'], ['studio', 'Studio']];
+    const dirMatrixEngines = () => { const d = dir(); return d && typeof d.settingsMatrixEngines === 'function' ? d.settingsMatrixEngines() : []; };
+
+    /** Personas across the top, one row per engine, a check box in each cell. */
+    function dirRenderModels(el, st) {
+        const engines = dirMatrixEngines();
+        el.innerHTML = `${ui.text('Tick the engines each of them may use. A chat only runs on an engine that is on for its persona.')}
+            <table class="wm-ds-matrix"><thead><tr><th scope="col">Engine</th>${DIR_PERSONAS.map(([, name]) => `<th scope="col">${esc(name)}</th>`).join('')}</tr></thead><tbody>
+            ${engines.map((item) => `<tr><th scope="row">${esc(item.name)}</th>${DIR_PERSONAS.map(([persona, name]) => `<td><label class="wm-check" aria-label="${esc(`${item.name}, ${name}`)}"><input type="checkbox" data-persona="${persona}" data-engine="${esc(item.engine)}"${st.avail[persona][item.engine] ? ' checked' : ''}><span></span></label></td>`).join('')}</tr>`).join('')}
+            </tbody></table>`;
+        el.querySelectorAll('input[data-persona]').forEach((box) => {
+            box.addEventListener('change', () => { st.avail[box.dataset.persona][box.dataset.engine] = box.checked; });
+        });
+    }
+
+    /** Per engine Chiyo may use: her stores, and which is primary when both are on. */
+    function dirRenderMemory(el, st, api) {
+        const engines = dirMatrixEngines().filter((item) => st.avail.kabuki[item.engine]);
+        if (!engines.length) {
+            el.innerHTML = ui.text('No engine is turned on for Chiyo. Tick one on the Models tab.');
+            return;
+        }
+        el.innerHTML = `${ui.text('The memory stores Chiyo reaches on each of her engines. Primary is the one she reads and saves in. The other one, when it is on too, is her alternate: read only, and she is told not to trust it too far.')}
+            ${engines.map((item, i) => {
+                const m = st.kmem[item.engine];
+                const both = m.obliterated && m.studio;
+                return `<div class="wm-ds-group" data-engine="${esc(item.engine)}">
+                    ${ui.sub(item.name)}
+                    ${ui.check(`km-${i}-obliterated`, 'Obliterated Memories', m.obliterated, 'data-store="obliterated"')}
+                    ${ui.check(`km-${i}-studio`, 'Studio memories', m.studio, 'data-store="studio"')}
+                    ${comboRow('Primary:', `km-${i}-primary`, DIR_STORES.filter(([id]) => m[id]), m.primary, !both)}
+                </div>`;
+            }).join('')}`;
+        engines.forEach((item, i) => {
+            const m = st.kmem[item.engine];
+            const group = el.querySelector(`.wm-ds-group[data-engine="${CSS.escape(item.engine)}"]`);
+            group.querySelectorAll('input[data-store]').forEach((box) => {
+                box.addEventListener('change', () => {
+                    const id = box.dataset.store;
+                    const other = id === 'studio' ? 'obliterated' : 'studio';
+                    m[id] = box.checked;
+                    // the last store cannot be unticked: the other one comes on instead
+                    if (!m.obliterated && !m.studio) m[other] = true;
+                    if (!m[m.primary]) m.primary = m.obliterated ? 'obliterated' : 'studio';
+                    rerenderKeep(el, api);
+                });
+            });
+            ui.bindCombo(el.querySelector(`[data-act="km-${i}-primary"]`), DIR_STORES.filter(([id]) => m[id]), m.primary, (v) => { m.primary = v; });
+        });
     }
 
     function dirModelOptions(engine, model) {
@@ -239,8 +295,8 @@
 
     function dirPickerHtml(st, row) {
         const pick = st.picks[row.key];
-        const engines = dirEngines(row.obliterated);
-        const usable = engines.length > 0 && (!row.obliterated || st.kabuki);
+        const engines = dirEngines(row);
+        const usable = engines.length > 0 && (!row.obliterated || row.persona || st.kabuki);
         const engine = pick.engine;
         const models = dirModelOptions(engine, pick.model);
         const efforts = dirEffortOptions(engine, pick.model, pick.effort);
@@ -256,7 +312,7 @@
     function dirBindPicker(st, row, el, api) {
         const pick = st.picks[row.key];
         const p = `dir-${row.key}`;
-        const engines = dirEngines(row.obliterated);
+        const engines = dirEngines(row);
         ui.bindCombo(el.querySelector(`[data-act="${p}-engine"]`), [['', row.blank]].concat(engines.map((e) => [e.engine, e.name || dir().engineName(e.engine)])), pick.engine, (v) => {
             if (v === pick.engine) return;
             pick.engine = v;
@@ -298,6 +354,18 @@
             normal: pickOf(settings.repair && settings.repair.normal),
             obliterated: pickOf(settings.repair && settings.repair.obliterated)
         };
+        // the two tables, a row for every engine (the server resolves unset rows)
+        st.avail = { wren: {}, kabuki: {}, xi: {} };
+        st.kmem = {};
+        dirMatrixEngines().forEach((item) => {
+            DIR_PERSONAS.forEach(([persona]) => { st.avail[persona][item.engine] = !!(settings.availability && settings.availability[persona] && settings.availability[persona][item.engine]); });
+            const m = (settings.kabukiMemory && settings.kabukiMemory[item.engine]) || {};
+            const studio = m.studio === true;
+            const obliterated = m.obliterated !== false || !studio;
+            st.kmem[item.engine] = { obliterated, studio, primary: m.primary === 'studio' && studio ? 'studio' : (obliterated ? 'obliterated' : 'studio') };
+        });
+        st.tablesSaved = JSON.stringify([st.avail, st.kmem]);
+        st.kabukiDefaults = dirEngines(DIR_ROWS[1]).length > 0;
         const auto = settings.autoRepair || { enabled: true, threshold: 85 };
         st.auto = { enabled: auto.enabled !== false, threshold: String(auto.threshold || 85) };
         st.saved = { picks: Object.fromEntries(Object.entries(st.picks).map(([k, v]) => [k, pickSig(v)])), auto: { ...st.auto } };
@@ -437,7 +505,7 @@
         tab: 'personal',
         label: 'Director',
         icon: 'app-director-lg',
-        tabs: [['phone', 'Phone'], ['new', 'Sessions'], ['repair', 'Auto-Repair'], ['learned', 'Rules']],
+        tabs: [['phone', 'Phone'], ['models', 'Models'], ['memory', 'Memories'], ['new', 'Sessions'], ['repair', 'Auto-Repair'], ['learned', 'Rules']],
         available: () => !!(dir() && typeof dir().requestDirectorSettings === 'function' && typeof dir().directorRequest === 'function'),
         init() {
             const st = { ready: false, error: '', catalogAsked: new Set(), ruleSel: '', propSel: '', phone: phoneRead() };
@@ -457,6 +525,8 @@
                 return;
             }
             if (tab === 'learned') { dirRenderLearned(el, st, api); return; }
+            if (tab === 'models') { dirRenderModels(el, st); return; }
+            if (tab === 'memory') { dirRenderMemory(el, st, api); return; }
             const rows = DIR_ROWS.filter((r) => r.tab === tab);
             if (tab === 'repair') {
                 const id = ui.uid('wmDsRepair');
@@ -471,9 +541,9 @@
             } else {
                 el.innerHTML = `${ui.text('A new chat starts on these. Once it has started, a chat keeps its own engine and model.')}
                     ${rows.map((r) => dirPickerHtml(st, r)).join('')}
-                    ${ui.note(st.kabuki
-                        ? 'Chiyo chats use Obliterated Memories, so only engines with that store are listed for them.'
-                        : 'No model provider uses Obliterated Memories. Turn it on for a custom model provider in Control Panel to use Chiyo.')}`;
+                    ${ui.note(st.kabukiDefaults
+                        ? 'Each list shows the engines turned on for her on the Models tab. Save a change there before picking it here.'
+                        : 'No engine is turned on for Chiyo. Tick one on the Models tab to use her.')}`;
             }
             rows.forEach((r) => dirBindPicker(st, r, el, api));
         },
@@ -493,20 +563,33 @@
             if (!Number.isFinite(threshold)) threshold = Math.round(Number(st.saved.auto.threshold)) || 85;
             threshold = Math.max(30, Math.min(100, threshold));
             const autoChanged = st.auto.enabled !== st.saved.auto.enabled || String(threshold) !== String(st.saved.auto.threshold);
-            if (!changedPicks && !autoChanged) return [];
+            const tablesChanged = JSON.stringify([st.avail, st.kmem]) !== st.tablesSaved;
+            if (!changedPicks && !autoChanged && !tablesChanged) return [];
             const payload = {
                 defaults: { wren: pickOut(st.picks.wren) },
                 autoRepair: { enabled: !!st.auto.enabled, threshold },
                 repair: { normal: pickOut(st.picks.normal) }
             };
             // without an obliterated engine the Chiyo rows are greyed out: leave what config holds (as the desktop does)
-            if (st.kabuki) {
-                payload.defaults.kabuki = pickOut(st.picks.kabuki);
-                payload.repair.obliterated = pickOut(st.picks.obliterated);
+            if (st.kabukiDefaults) payload.defaults.kabuki = pickOut(st.picks.kabuki);
+            if (st.kabuki) payload.repair.obliterated = pickOut(st.picks.obliterated);
+            if (tablesChanged) {
+                payload.availability = st.avail;
+                payload.kabukiMemory = st.kmem;
+                // a default whose engine was just turned off for her is cleared, not refused
+                ['wren', 'kabuki'].forEach((persona) => {
+                    const pick = payload.defaults[persona];
+                    if (pick && st.avail[persona][pick.engine] === false) { payload.defaults[persona] = null; st.picks[persona] = pickOf(null); }
+                });
             }
             try {
                 const body = await dir().directorRequest('director_settings_set', { settings: payload });
-                if (body && body.settings) dir().directorSettings = body.settings;
+                if (body && body.settings) {
+                    dir().directorSettings = body.settings;
+                    if (typeof dir().settingsArrived === 'function') dir().settingsArrived();
+                    st.tablesSaved = JSON.stringify([st.avail, st.kmem]);
+                    st.kabukiDefaults = dirEngines(DIR_ROWS[1]).length > 0;
+                }
             } catch (err) {
                 await errorBox('Director', (err && err.message) || 'Could not save Director Settings.');
                 return false;

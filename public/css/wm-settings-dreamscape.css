@@ -112,3 +112,39 @@ html.ui-mobile .wm-ds-progress.is-marquee > span {
     from { left: calc(-45 * var(--wm-px)); }
     to { left: calc(162 * var(--wm-px)); }
 }
+
+/* Director > Models (#742): personas across the top, one row per engine, a check box per cell */
+html.ui-mobile .wm-ds-matrix {
+    width: 100%;
+    border-collapse: collapse;
+    margin: calc(4 * var(--wm-px)) 0;
+    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font);
+    color: #000;
+}
+
+html.ui-mobile .wm-ds-matrix th,
+html.ui-mobile .wm-ds-matrix td {
+    padding: calc(3 * var(--wm-px)) calc(2 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #c6c7c6;
+    font-weight: normal;
+    text-align: center;
+    vertical-align: middle;
+}
+
+html.ui-mobile .wm-ds-matrix thead th {
+    font-weight: bold;
+    border-bottom-color: #000;
+}
+
+html.ui-mobile .wm-ds-matrix th[scope="row"],
+html.ui-mobile .wm-ds-matrix thead th:first-child {
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+
+html.ui-mobile .wm-ds-matrix td .wm-check {
+    display: inline-flex;
+    justify-content: center;
+    margin: 0;
+    min-width: calc(24 * var(--wm-px));
+}

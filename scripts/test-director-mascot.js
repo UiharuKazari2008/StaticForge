@@ -136,6 +136,8 @@ assert.strictEqual(directorMascotStageFor(k.manifest, 20), 'bigger');
 assert.strictEqual(directorMascotStageFor(k.manifest, 50), 'bigger2');
 assert.strictEqual(directorMascotGrowthPoints([hits(9)]) < 20, true, 'one perfect card does not grow her');
 const perfect = (n) => Array.from({ length: n }, () => hits(4));
+// Yozora's chats: n turns of bug fixes, 2 points each (her points are her work, #742)
+const works = (n) => Array.from({ length: n }, () => [{ role: 'user', content: 'fix the bug' }, { role: 'assistant', content: 'Fixed.', trace: [{ type: 'tool', name: 'Edit' }] }]).flat();
 // Opening a chat with earned points: quiet, no transition. Ten perfect turns reach the second stage.
 k.setWorking(false);
 const three = perfect(10);
@@ -196,7 +198,7 @@ assert.strictEqual(x.currentBodyId(), 'kon_kicky', 'gesture plus kick');
 Math.random = () => 0.99;
 for (let i = 0; i < 70; i++) { now += 1000; x.tick(); }
 assert.strictEqual(x.debugState().stage, 'base', 'kicks alone do not grow her');
-x.onMessages(perfect(10));
+x.onMessages(works(10));
 assert.strictEqual(x.debugState().stage, 'bigger');
 
 // In-between sizes (#742): a third and two thirds of the way to the next stage; a completed turn that
@@ -204,17 +206,17 @@ assert.strictEqual(x.debugState().stage, 'bigger');
 const { directorMascotStepFor } = require('../public/scripts/comp/directorMascot.js');
 assert.deepStrictEqual([0, 6, 7, 13, 19].map((p) => directorMascotStepFor(x.manifest, 'base', p)), ['', '', '_g1', '_g2', '_g2']);
 const x2 = load('xi');
-x2.onMessages(perfect(3));
+x2.onMessages(works(3));
 assert.strictEqual(x2.currentBodyId(), 'base');
 x2.onTurnEnd(true);
-x2.onMessages(perfect(4));
+x2.onMessages(works(4));
 assert.strictEqual(x2.currentBodyId(), 'base', 'not before the turn has landed');
 run(3300);
 assert.deepStrictEqual([x2.debugState().stage, x2.currentBodyId()], ['base', 'base_g1']);
 assert.strictEqual(x2.growthState().stage, 'base', 'the turn prompt still hears the stage, not the in-between size');
 // the whole morph into the next stage: growth frames, then the next stage's arrival frames
 x2.onTurnEnd(true);
-x2.onMessages(perfect(10));
+x2.onMessages(works(10));
 run(3300);
 const seen = [];
 for (let i = 0; i < 8; i++) { seen.push(x2.currentBodyId()); run(300); }
@@ -289,6 +291,25 @@ assert.deepStrictEqual(g1.morphCentre('base', 'mask_wings'), g1.morphCentre('mas
     assert.strictEqual(e.currentBodyId(), 'base');
 }
 
+// Yozora's points are her work (#742): edits and digging earn 1, a corrected bug or a verified change 2.
+{
+    const { directorMascotWorkPoints } = require('../public/scripts/comp/directorMascot.js');
+    const tool = (name, detail) => ({ type: 'tool', name, detail: detail || '' });
+    const turn = (rows, content) => ({ role: 'assistant', content: content || 'Done.', trace: rows });
+    assert.strictEqual(directorMascotWorkPoints(turn([]), 'hi'), 0, 'talk earns nothing');
+    assert.strictEqual(directorMascotWorkPoints(turn([tool('Read'), tool('Bash', 'ls')]), 'where is it'), 0, 'a quick look is not work yet');
+    assert.strictEqual(directorMascotWorkPoints(turn([tool('Read'), tool('Edit')]), 'rename the button'), 1);
+    assert.strictEqual(directorMascotWorkPoints(turn(Array.from({ length: 9 }, () => tool('Bash', 'grep x'))), 'why is it slow'), 1, 'real digging without an edit');
+    assert.strictEqual(directorMascotWorkPoints(turn([tool('Edit')]), 'the form is broken, fix it'), 2, 'a bug corrected');
+    assert.strictEqual(directorMascotWorkPoints(turn([tool('Edit'), tool('Bash', 'node scripts/test-x.js')]), 'add the field'), 2, 'a change verified');
+    const chat = [{ role: 'user', content: 'hi' }, turn([]), { role: 'user', content: 'fix the crash' }, turn([tool('Edit')]), { role: 'user', content: 'add a tab' }, turn([tool('Write')])];
+    assert.strictEqual(directorMascotGrowthPoints(chat, 'xi'), 3);
+    assert.strictEqual(directorMascotGrowthPoints(chat, 'wren'), 0, 'the others still grow from report cards');
+    const yz = load('xi');
+    yz.onMessages(Array.from({ length: 10 }, () => [{ role: 'user', content: 'fix the bug' }, turn([tool('Edit')])]).flat());
+    assert.deepStrictEqual([yz.growthPoints, yz.debugState().stage], [20, 'bigger']);
+}
+
 // Wren: faces fall back to the nearest one the set has (the mask set has only happy, neutral, thinking).
 const w = load('wren');
 assert.strictEqual(w.manifest.anchor, 'left');
@@ -328,7 +349,7 @@ assert.deepStrictEqual(Object.keys(v1.bodies), ['main']);
     k3.onMessages(perfect(10));
     assert.deepStrictEqual(k3.growthState(), { stage: 'bigger', points: 20, nextAt: 50 }, 'stage and the next threshold');
     const x2 = load('xi');
-    x2.onMessages(perfect(10));
+    x2.onMessages(works(10));
     assert.strictEqual(x2.growthState().stage, 'bigger');
     assert.strictEqual(load('wren').growthState().nextAt, 20, 'wren grows first at 20');
 

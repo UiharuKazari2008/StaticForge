@@ -1408,6 +1408,12 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
 
         const workspace = workspacePath(gr);
         const runtime = sanitizeRuntime((peekIndex().chats.find((item) => item.id === sessionId) || {}).runtime);
+        // Director Settings > Model Availability (#742)
+        if (!director.engineAvailable(gr, 'xi', runtime)) {
+            const error = new Error('That engine is not turned on for Yozora. Pick another, or turn it on in Director Settings > Model Availability.');
+            error.code = 'ENGINE_UNAVAILABLE';
+            throw error;
+        }
         if (runtime === 'cursor') director.installUnrestrictedCli(layout().configDir);
         if (runtime === 'tokenrouter') director._test.requireTokenRouterKey(gr);
         if (customProviders.isEngine(runtime)) {

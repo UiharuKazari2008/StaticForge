@@ -715,8 +715,17 @@ class Director {
         const tab = persona || this.persona;
         const extra = (this.customProviders || []).map((row) => row && row.engine).filter((id) => this.isCustomEngine(id));
         const all = ['cursor', 'claude', 'tokenrouter'].concat(extra);
-        if (tab === 'xi') return all;
-        return all.filter((id) => this.engineObliterated(id) === (tab === 'kabuki'));
+        // Director Settings > Model Availability (#742): the server's table of what each persona may
+        // use. Before it arrives (or from an older server) the old rule stands: Yozora any engine,
+        // Chiyo the Obliterated Memories ones, Yumiya the rest.
+        const table = this.directorSettings && this.directorSettings.availability && this.directorSettings.availability[tab];
+        if (table && typeof table === 'object') return all.filter((id) => (typeof table[id] === 'boolean' ? table[id] : this.engineFitsByStore(tab, id)));
+        return all.filter((id) => this.engineFitsByStore(tab, id));
+    }
+
+    engineFitsByStore(tab, id) {
+        if (tab === 'xi') return true;
+        return this.engineObliterated(id) === (tab === 'kabuki');
     }
 
     // director_get_models_response.providers[].memoryStore (customModelProviders.publicList)
@@ -726,7 +735,7 @@ class Director {
     }
 
     kabukiAvailable() {
-        return (this.customProviders || []).some((row) => row && row.memoryStore === 'obliterated' && this.isCustomEngine(row.engine));
+        return this.engineChoices('kabuki').length > 0;
     }
 
     // Wren keeps the original key; Kabuki remembers its own last engine.
@@ -751,7 +760,9 @@ class Director {
     // engine that is not, moves to one that fits the tab.
     fitEngineToPersona() {
         // Before the provider list arrives a custom engine cannot be judged.
-        if (this.persona === 'xi' || !(this.customProviders || []).length) return;
+        if (!(this.customProviders || []).length && !(this.directorSettings && this.directorSettings.availability)) return;
+        // Yozora keeps her engine unless the table turns it off for her
+        if (this.persona === 'xi' && !(this.directorSettings && this.directorSettings.availability)) return;
         if (this.engineChoices().includes(this.normalizeEngine(this.engine))) return;
         const next = this.personaEngine(this.persona);
         if (next && next !== this.engine) this.setEngine(next, { skipSave: true });
@@ -6673,8 +6684,18 @@ class Director {
             const body = await this.directorRequest('director_settings_get', {});
             this.directorSettings = body.settings || null;
             this.directorSettingsEngines = Array.isArray(body.engines) ? body.engines : [];
+            this.settingsArrived();
         } catch (_) { /* drafts keep the last-used engine */ }
         return this.directorSettings;
+    }
+
+    // The availability table may have changed which engines this tab offers (and whether Chiyo has any).
+    settingsArrived() {
+        try {
+            this.fitEngineToPersona();
+            if (typeof this.paintPersonaToggle === 'function') this.paintPersonaToggle();
+            if (typeof this.paintChatPrefs === 'function') this.paintChatPrefs();
+        } catch (_) { /* the pickers repaint on their next open */ }
     }
 
     // Fresh catalog for one engine; the cached one (catalogFor) fills the picker until it answers.
@@ -6702,7 +6723,53 @@ class Director {
             [-1, 'S', 15, top + 38, 44, 8, S, labels[2], 0], [ids[2], 'C', 62, top + 36, 176, 120, COMBO, '', 0]
         ];
         const font = ['MS Shell Dlg', 8];
+        const CHECK = 0x50010003;
+        // Model Availability (#742): personas across the top, one row per engine (ids 1000 + row * 10 + column).
+        // Chiyo Memories: per engine, her stores and which is primary (ids 2000 + row * 10 + 1 / 2 / 3).
+        const engines = this.settingsMatrixEngines();
+        const availRows = engines.flatMap((item, i) => {
+            const y = 42 + i * 12;
+            return [
+                [-1, 'S', 7, y + 1, 112, 8, S, item.name, 0],
+                [1000 + i * 10 + 1, 'B', 136, y, 10, 10, CHECK, '', 0],
+                [1000 + i * 10 + 2, 'B', 176, y, 10, 10, CHECK, '', 0],
+                [1000 + i * 10 + 3, 'B', 216, y, 10, 10, CHECK, '', 0]
+            ];
+        });
+        const memRows = engines.flatMap((item, i) => {
+            const y = 58 + i * 13;
+            return [
+                [-1, 'S', 7, y + 2, 84, 8, S, item.name, 0],
+                [2000 + i * 10 + 1, 'B', 106, y + 1, 10, 10, CHECK, '', 0],
+                [2000 + i * 10 + 2, 'B', 146, y + 1, 10, 10, CHECK, '', 0],
+                [2000 + i * 10 + 3, 'C', 172, y, 73, 60, COMBO, '', 0]
+            ];
+        });
         return [
+            {
+                key: 'director:avail',
+                title: 'Model Availability',
+                tpl: { t: 'Model Availability', w: 252, h: 218, f: font, c: [
+                    [-1, 'S', 7, 7, 238, 16, S, 'Tick the engines each of them may use. A chat only runs on an engine that is on for its persona.', 0],
+                    [-1, 'S', 7, 30, 60, 8, S, 'Engine', 0],
+                    [-1, 'S', 128, 30, 30, 8, S, 'Yumiya', 0],
+                    [-1, 'S', 170, 30, 30, 8, S, 'Chiyo', 0],
+                    [-1, 'S', 208, 30, 30, 8, S, 'Yozora', 0],
+                    ...availRows
+                ] }
+            },
+            {
+                key: 'director:kmem',
+                title: 'Chiyo Memories',
+                tpl: { t: 'Chiyo Memories', w: 252, h: 218, f: font, c: [
+                    [-1, 'S', 7, 7, 238, 32, S, 'The memory stores Chiyo reaches on each of her engines. Primary is the one she reads and saves in. The other one, when it is on too, is her alternate: read only, and she is told not to trust it too far.', 0],
+                    [-1, 'S', 7, 46, 60, 8, S, 'Engine', 0],
+                    [-1, 'S', 92, 46, 42, 8, S, 'Obliterated', 0],
+                    [-1, 'S', 140, 46, 26, 8, S, 'Studio', 0],
+                    [-1, 'S', 172, 46, 60, 8, S, 'Primary', 0],
+                    ...memRows
+                ] }
+            },
             {
                 key: 'director:new',
                 title: 'New Sessions',
@@ -6710,7 +6777,7 @@ class Director {
                     [-1, 'S', 7, 7, 238, 16, S, 'A new chat starts on these. Once it has started, a chat keeps its own engine and model.', 0],
                     [-1, 'B', 7, 28, 238, 70, GROUP, 'Yumiya', 0],
                     ...picker(41, [101, 102, 103], ['&Engine:', '&Model:', '&Reasoning:']),
-                    [-1, 'B', 7, 104, 238, 70, GROUP, 'Chiyo (Obliterated Memories)', 0],
+                    [-1, 'B', 7, 104, 238, 70, GROUP, 'Chiyo', 0],
                     ...picker(117, [111, 112, 113], ['E&ngine:', 'M&odel:', 'Reas&oning:']),
                     [120, 'S', 7, 182, 238, 26, S, '', 0]
                 ] }
@@ -6750,9 +6817,24 @@ class Director {
         ];
     }
 
+    // The matrix rows: every engine the server lists (12 fit the page).
+    settingsMatrixEngines() {
+        return (this.directorSettingsEngines || []).filter((item) => item && item.engine).slice(0, 12)
+            .map((item) => ({ engine: item.engine, name: item.name || this.engineName(item.engine) }));
+    }
+
+    // Engines a settings picker offers: a new-chat default follows Model Availability for its
+    // persona; an Auto-Repair lane keeps the engines of its memory store.
+    settingsPickerEngines(row) {
+        const all = (this.directorSettingsEngines || []).filter(Boolean);
+        const table = row.persona && this.directorSettings && this.directorSettings.availability && this.directorSettings.availability[row.persona];
+        if (table) return all.filter((item) => table[item.engine] === true);
+        return all.filter((item) => (item.memoryStore === 'obliterated') === row.obliterated);
+    }
+
     // One engine / model / reasoning row of the sheet. blank is the engine's "(...)" entry: unset.
     fillSettingsPicker(ctx, row, pick) {
-        const engines = (this.directorSettingsEngines || []).filter((item) => item && (item.memoryStore === 'obliterated') === row.obliterated);
+        const engines = this.settingsPickerEngines(row);
         const engine = pick && engines.some((item) => item.engine === pick.engine) ? pick.engine : '';
         ctx.options(row.ids[0], [{ value: '', text: row.blank }].concat(engines.map((item) => ({ value: item.engine, text: item.name || this.engineName(item.engine) }))), engine);
         const usable = engines.length > 0;
@@ -6896,12 +6978,35 @@ class Director {
         }
         const settings = this.directorSettings;
         const rows = [
-            { ids: [101, 102, 103], obliterated: false, blank: '(Last used)', pick: settings.defaults && settings.defaults.wren },
-            { ids: [111, 112, 113], obliterated: true, blank: '(Last used)', pick: settings.defaults && settings.defaults.kabuki },
+            { ids: [101, 102, 103], obliterated: false, persona: 'wren', blank: '(Last used)', pick: settings.defaults && settings.defaults.wren },
+            { ids: [111, 112, 113], obliterated: true, persona: 'kabuki', blank: '(Last used)', pick: settings.defaults && settings.defaults.kabuki },
             { ids: [211, 212, 213], obliterated: false, blank: '(Same as the chat)', pick: settings.repair && settings.repair.normal },
             { ids: [221, 222, 223], obliterated: true, blank: '(Same as the chat)', pick: settings.repair && settings.repair.obliterated }
         ];
         const kabuki = (this.directorSettingsEngines || []).some((item) => item && item.memoryStore === 'obliterated');
+        const kabukiDefaults = this.settingsPickerEngines(rows[1]).length > 0;
+        const matrix = this.settingsMatrixEngines();
+        const availability = settings.availability || {};
+        const kabukiMemory = settings.kabukiMemory || {};
+        const PERSONA_COLS = ['wren', 'kabuki', 'xi'];
+        const STORE_NAMES = [{ value: 'obliterated', text: 'Obliterated' }, { value: 'studio', text: 'Studio' }];
+        // One Chiyo Memories row: off while the engine is not Chiyo's; one store at least; primary among the ticked.
+        const paintMemRow = (ctx, i, changed) => {
+            const base = 2000 + i * 10;
+            const on = !!ctx.get(1000 + i * 10 + 2);
+            let obl = !!ctx.get(base + 1);
+            let stu = !!ctx.get(base + 2);
+            if (!obl && !stu) {
+                // the last store cannot be unticked: the other one comes on instead
+                if (changed === 1) { stu = true; ctx.set(base + 2, true); } else { obl = true; ctx.set(base + 1, true); }
+            }
+            const options = STORE_NAMES.filter((opt) => (opt.value === 'studio' ? stu : obl));
+            const cur = ctx.get(base + 3);
+            ctx.options(base + 3, options, options.some((opt) => opt.value === cur) ? cur : options[0].value);
+            ctx.enable(base + 1, on);
+            ctx.enable(base + 2, on);
+            ctx.enable(base + 3, on && options.length > 1);
+        };
         const studio = document.getElementById('manualModal');
         const owner = this.directorWindowIsOpen() ? this.directorWindow : (studio && !studio.classList.contains('hidden') ? studio : null);
         const director = this;
@@ -6911,6 +7016,20 @@ class Director {
             owner,
             pages: this.directorSettingsPages(),
             init(ctx) {
+                matrix.forEach((item, i) => {
+                    PERSONA_COLS.forEach((persona, c) => {
+                        const table = availability[persona] || {};
+                        ctx.set(1000 + i * 10 + c + 1, table[item.engine] === true);
+                    });
+                    const mem = kabukiMemory[item.engine] || { obliterated: true, studio: false, primary: 'obliterated' };
+                    ctx.set(2000 + i * 10 + 1, mem.obliterated !== false);
+                    ctx.set(2000 + i * 10 + 2, mem.studio === true);
+                    ctx.options(2000 + i * 10 + 3, STORE_NAMES, mem.primary === 'studio' ? 'studio' : 'obliterated');
+                    paintMemRow(ctx, i);
+                    ctx.on(1000 + i * 10 + 2, 'change', () => paintMemRow(ctx, i));
+                    ctx.on(2000 + i * 10 + 1, 'change', () => paintMemRow(ctx, i, 1));
+                    ctx.on(2000 + i * 10 + 2, 'change', () => paintMemRow(ctx, i, 2));
+                });
                 rows.forEach((row) => {
                     director.fillSettingsPicker(ctx, row, row.pick);
                     ctx.on(row.ids[0], 'change', () => {
@@ -6928,9 +7047,9 @@ class Director {
                         });
                     }
                 });
-                ctx.text(120, kabuki
-                    ? 'Chiyo chats use Obliterated Memories, so only engines with that store are listed for them.'
-                    : 'No model provider uses Obliterated Memories. Turn it on for a custom model provider in Control Panel to use Chiyo.');
+                ctx.text(120, kabukiDefaults
+                    ? 'Each list shows the engines turned on for her on the Model Availability page. Apply a change there before picking it here.'
+                    : 'No engine is turned on for Chiyo. Tick one on the Model Availability page to use her.');
                 const auto = settings.autoRepair || { enabled: true, threshold: 85 };
                 ctx.set(201, auto.enabled !== false);
                 ctx.set(202, String(auto.threshold || 85));
@@ -6962,14 +7081,27 @@ class Director {
                     autoRepair: { enabled: !!ctx.get(201), threshold },
                     repair: { normal: director.readSettingsPicker(ctx, rows[2]) }
                 };
-                // Without an obliterated engine the Kabuki rows are greyed out; leave what config holds.
-                if (kabuki) {
-                    payload.defaults.kabuki = director.readSettingsPicker(ctx, rows[1]);
-                    payload.repair.obliterated = director.readSettingsPicker(ctx, rows[3]);
-                }
+                // Without an engine for them the Chiyo rows are greyed out; leave what config holds.
+                if (kabukiDefaults) payload.defaults.kabuki = director.readSettingsPicker(ctx, rows[1]);
+                if (kabuki) payload.repair.obliterated = director.readSettingsPicker(ctx, rows[3]);
+                // the whole tables, every engine's row
+                payload.availability = { wren: {}, kabuki: {}, xi: {} };
+                payload.kabukiMemory = {};
+                matrix.forEach((item, i) => {
+                    PERSONA_COLS.forEach((persona, c) => { payload.availability[persona][item.engine] = !!ctx.get(1000 + i * 10 + c + 1); });
+                    const obliterated = !!ctx.get(2000 + i * 10 + 1);
+                    const studioOn = !!ctx.get(2000 + i * 10 + 2);
+                    const primary = ctx.get(2000 + i * 10 + 3) === 'studio' && studioOn ? 'studio' : (obliterated ? 'obliterated' : 'studio');
+                    payload.kabukiMemory[item.engine] = { obliterated: obliterated || !studioOn, studio: studioOn, primary };
+                });
+                // a default whose engine was just turned off for her is cleared, not refused
+                ['wren', 'kabuki'].forEach((persona) => {
+                    const pick = payload.defaults[persona];
+                    if (pick && payload.availability[persona][pick.engine] === false) payload.defaults[persona] = null;
+                });
                 try {
                     const body = await director.directorRequest('director_settings_set', { settings: payload });
-                    if (body.settings) director.directorSettings = body.settings;
+                    if (body.settings) { director.directorSettings = body.settings; director.settingsArrived(); }
                 } catch (err) {
                     showGlassToast('error', 'Director Settings', err.message || 'Could not save Director Settings');
                 }
@@ -8357,7 +8489,10 @@ class Director {
         window.wsClient.on('director_settings_changed', (data) => {
             const director = window.directorInstance;
             const body = data && (data.data || data);
-            if (director && body && body.settings) director.directorSettings = body.settings;
+            if (director && body && body.settings) {
+                director.directorSettings = body.settings;
+                director.settingsArrived();
+            }
         });
 
         window.wsClient.on('director_get_cursor_usage_response', (data) => {

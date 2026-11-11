@@ -60,8 +60,44 @@ function makeGr(initialDirector) {
     bad({ defaults: { wren: 'claude' } }, /must be \{ engine, model, effort \}/);
     bad({ defaults: { wren: { engine: 'gemini' } } }, /unknown engine/);
     bad({ defaults: { wren: { engine: 'custom:gone' } } }, /no custom model provider/);
-    bad({ defaults: { wren: { engine: 'custom:abl' } } }, /uses Obliterated Memories/);
-    bad({ defaults: { kabuki: { engine: 'claude' } } }, /does not use Obliterated Memories/);
+    bad({ defaults: { wren: { engine: 'custom:abl' } } }, /not turned on for Yumiya/);
+    bad({ defaults: { kabuki: { engine: 'claude' } } }, /not turned on for Chiyo/);
+
+    // ---- Model Availability and Chiyo's memory stores (#742) ----
+    {
+        const g = makeGr();
+        // unset: an Obliterated Memories engine is Chiyo's, the others Yumiya's, Yozora may use any
+        assert.deepStrictEqual(t.readDirectorSettings(g).availability, {
+            wren: { cursor: true, claude: true, tokenrouter: true, 'custom:deepseek': true, 'custom:abl': false },
+            kabuki: { cursor: false, claude: false, tokenrouter: false, 'custom:deepseek': false, 'custom:abl': true },
+            xi: { cursor: true, claude: true, tokenrouter: true, 'custom:deepseek': true, 'custom:abl': true }
+        });
+        assert.deepStrictEqual(t.readDirectorSettings(g).kabukiMemory.claude, { obliterated: true, studio: false, primary: 'obliterated' });
+        assert.deepStrictEqual(director.turnMemoryStores(g, true, 'claude'), { primary: 'obliterated', alternate: undefined });
+        assert.deepStrictEqual(director.turnMemoryStores(g, false, 'custom:abl'), { primary: 'obliterated', alternate: undefined }, 'another persona keeps the engine\'s own store');
+        assert.deepStrictEqual(director.turnMemoryStores(g, false, 'claude'), { primary: '', alternate: undefined });
+        // Chiyo on Claude with both stores, Studio first; the same save may set her default to it
+        const saved2 = await t.saveDirectorSettings(g, {
+            availability: { kabuki: { claude: true }, xi: { cursor: false }, wren: { 'custom:deepseek': false } },
+            kabukiMemory: { claude: { obliterated: true, studio: true, primary: 'studio' } },
+            defaults: { kabuki: { engine: 'claude' } }
+        });
+        assert.strictEqual(saved2.availability.kabuki.claude, true);
+        assert.strictEqual(saved2.availability.kabuki['custom:abl'], true, 'rows not sent keep their rule');
+        assert.strictEqual(saved2.availability.xi.cursor, false);
+        assert.deepStrictEqual(saved2.defaults.kabuki, { engine: 'claude', model: null, effort: null });
+        assert.strictEqual(director.engineAvailable(g, 'wren', 'custom:deepseek'), false);
+        assert.deepStrictEqual(director.turnMemoryStores(g, true, 'claude'), { primary: '', alternate: 'obliterated' });
+        assert.deepStrictEqual(director.turnMemoryStores(g, true, 'custom:abl'), { primary: 'obliterated', alternate: undefined });
+        const badA = async (settings, re) => assert.rejects(() => t.saveDirectorSettings(g, settings), re);
+        await badA({ availability: { kabuki: { nope: true } } }, /unknown engine/);
+        await badA({ availability: { kabuki: { claude: 'yes' } } }, /true or false/);
+        await badA({ kabukiMemory: { claude: { obliterated: false, studio: false } } }, /at least one memory store/);
+        await badA({ kabukiMemory: { claude: { obliterated: true, studio: false, primary: 'studio' } } }, /primary store must be one that is on/);
+        // turning Chiyo off for an engine un-fits her default
+        await t.saveDirectorSettings(g, { availability: { kabuki: { claude: false } } });
+        assert.strictEqual(t.readDirectorSettings(g).defaults.kabuki, null);
+    }
     bad({ repair: { obliterated: { engine: 'custom:deepseek' } } }, /does not use Obliterated Memories/);
     bad({ repair: { normal: { engine: 'custom:abl' } } }, /uses Obliterated Memories/);
     bad({ defaults: { wren: { engine: 'claude', model: 'two words' } } }, /not a model id/);

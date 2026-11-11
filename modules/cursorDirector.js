@@ -4624,6 +4624,22 @@ function directorClientLines(client) {
     return lines;
 }
 
+// Which memory store the turn's memory tools use, and the read-only alternate when Chiyo has one.
+function memoryStoreLines(options) {
+    const o = options || {};
+    const name = (id) => (id === 'obliterated' ? 'Obliterated Memories' : 'the Studio memories');
+    const lines = [];
+    if (o.memoryStore === 'obliterated') {
+        lines.push('Memory store: Obliterated Memories. list_memories, search_memories, get_memory, and save_memory use that shared store. It is not the Studio memory database. Do not pass a Studio model filter.');
+    } else if (o.kabukiChat) {
+        lines.push('Memory store: the Studio memories (this chat is set to them in Director Settings). list_memories, search_memories, get_memory, and save_memory use that store.');
+    }
+    if (o.memoryAlternate !== undefined && o.memoryAlternate !== null) {
+        lines.push(`Alternate memory store: ${name(o.memoryAlternate)}, read only. Reach it by passing store "alternate" to search_memories, list_memories, or get_memory; nothing can be saved, changed, or deleted there. Treat what it says as a second opinion that may be stale or written for a different model: check it against your own store and the picture before you rely on it, and when the two disagree your own store wins.`);
+    }
+    return lines;
+}
+
 function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     const lines = [];
     const handoff = !!(options && options.handoff);
@@ -4663,9 +4679,7 @@ function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     if (clientId) lines.push(`Bound Studio clientId: ${clientId}`);
     lines.push(...directorClientLines(options && options.client));
     lines.push(`Workspace id: ${chat.workspaceId || 'unknown'}. Chat id: ${chat.id} (folder chats/${chat.id}/); session tools default to it.`);
-    if (options && options.memoryStore === 'obliterated') {
-        lines.push('Memory store: Obliterated Memories. list_memories, search_memories, get_memory, and save_memory use that shared store. It is not the Studio memory database. Do not pass a Studio model filter.');
-    }
+    lines.push(...memoryStoreLines(options));
     if (options && options.ageTool === false) {
         lines.push('lookup_character_age is turned off for this engine. Do not call it.');
     }
@@ -5234,7 +5248,9 @@ function activeChatBrief() {
     return {
         id: chat.id,
         model: String(choice.id || chat.model || '').trim(),
-        engine: String(chat.lastEngine || choice.engine || '').trim()
+        engine: String(chat.lastEngine || choice.engine || '').trim(),
+        // a Chiyo chat: its memory stores come from Director Settings (turnMemoryStores)
+        kabuki: chat.memoryStore === customProviders.OBLITERATED_STORE
     };
 }
 
@@ -6184,9 +6200,17 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
                     persona: chatPersona(gr, chat)
                 };
             }
-            if (chat.memoryStore === customProviders.OBLITERATED_STORE && turnStore !== customProviders.OBLITERATED_STORE) {
-                const error = new Error('This is a Chiyo chat (Obliterated Memories). Pick an engine that uses Obliterated Memories.');
-                error.code = 'KABUKI_ENGINE';
+            // Model Availability (#742): a Chiyo chat runs on Chiyo's engines; a Yumiya chat on hers,
+            // or it becomes Chiyo's when the engine is only Chiyo's (the old Obliterated Memories rule).
+            if (chat.memoryStore === customProviders.OBLITERATED_STORE) {
+                if (!engineAvailable(gr, 'kabuki', engine)) {
+                    const error = new Error('This is a Chiyo chat, and that engine is not turned on for Chiyo. Pick one of hers, or turn it on in Director Settings > Model Availability.');
+                    error.code = 'KABUKI_ENGINE';
+                    throw error;
+                }
+            } else if (!engineAvailable(gr, 'wren', engine) && !engineAvailable(gr, 'kabuki', engine)) {
+                const error = new Error('That engine is not turned on for Yumiya or Chiyo. Turn it on in Director Settings > Model Availability.');
+                error.code = 'ENGINE_UNAVAILABLE';
                 throw error;
             }
             const files = await storeAttachments(gr, chat, message.attachments || []);
@@ -6246,7 +6270,9 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
             }
             chat.lastEngine = engine;
             const userText = steerText(message, spoken, handoff && priorMessages.length > 0 && !fresh);
-            if (turnStore === customProviders.OBLITERATED_STORE) chat.memoryStore = turnStore;
+            if (chat.memoryStore !== customProviders.OBLITERATED_STORE && !engineAvailable(gr, 'wren', engine) && engineAvailable(gr, 'kabuki', engine)) {
+                chat.memoryStore = customProviders.OBLITERATED_STORE;
+            }
             const round = usesClaudeCli(engine)
                 ? roundModelRecord(claudeRun.family || claudeRun.model, claudeRun.effort, claudeRun.fast, chat.model)
                 : roundModelRecord(message.model, message.effort || 'medium', message.fast === true, chat.model);
@@ -6266,9 +6292,11 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
                 client: sanitizeDirectorClient(message.client)
             };
             const clientId = await bindDirectorTab(handler.globalResources, paths, directorClientId(clientInfo, message));
-            const memoryStore = turnStore;
+            const turnStores = turnMemoryStores(gr, chat.memoryStore === customProviders.OBLITERATED_STORE, engine);
+            const memoryStore = turnStores.primary;
+            const memoryAlternate = turnStores.alternate;
             const ageTool = !customProviders.isEngine(engine) || customProviders.ageToolEnabled(handler.globalResources, engine);
-            const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId, { handoff, memoryStore, ageTool, persona: chatPersona(gr, chat), mascot: directorPersonaVoice.sanitizeMascotState(message.mascot), client: sanitizeDirectorClient(message.client), steer: message.steer === true || message.switched === true });
+            const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId, { handoff, memoryStore, memoryAlternate, kabukiChat: chat.memoryStore === customProviders.OBLITERATED_STORE, ageTool, persona: chatPersona(gr, chat), mascot: directorPersonaVoice.sanitizeMascotState(message.mascot), client: sanitizeDirectorClient(message.client), steer: message.steer === true || message.switched === true });
             const repairAt = chat.repairedOpening && chat.repairedOpening.text ? String(chat.repairedOpening.at || '') : null;
             chat.replay = false;
             writeIndex(paths.indexPath, index);
@@ -8509,6 +8537,116 @@ function storeReader(gr) {
     };
 }
 
+// ---- Model availability and Chiyo's memory stores (#742, Yukimi 2026-11-11) ----
+// config director.availability.{wren|kabuki|xi}.<engine> = true | false: which engines each persona
+// may run on (Director Settings > Model Availability). Unset keeps the old rule: an engine whose
+// provider uses Obliterated Memories is Chiyo's, the others are Yumiya's, and Yozora may use any.
+// config director.kabukiMemory.<engine> = { obliterated, studio, primary }: the memory stores a Chiyo
+// chat reaches on that engine. primary is where she reads and writes; the other one, when both are on,
+// is the alternate: read only, a second opinion she must not lean on. Unset is Obliterated only.
+const AVAILABILITY_PERSONAS = ['wren', 'kabuki', 'xi'];
+const KABUKI_STORES = ['obliterated', 'studio'];
+
+function knownEngine(gr, engine) {
+    return DIRECTOR_ENGINES.includes(engine) || (customProviders.isEngine(engine) && !!customProviders.lookup(gr, engine));
+}
+
+function availabilityDefault(gr, persona, engine) {
+    if (persona === 'xi') return true;
+    const obliterated = engineStore(gr, engine) === customProviders.OBLITERATED_STORE;
+    return persona === 'kabuki' ? obliterated : !obliterated;
+}
+
+// override: an availability object not saved yet (the same save validates its default picks against it)
+function engineAvailable(gr, persona, engine, override) {
+    const who = AVAILABILITY_PERSONAS.includes(persona) ? persona : 'wren';
+    const cfg = override || directorConfig(gr).availability;
+    const row = cfg && typeof cfg === 'object' ? cfg[who] : null;
+    if (row && typeof row === 'object' && typeof row[engine] === 'boolean') return row[engine];
+    return availabilityDefault(gr, who, engine);
+}
+
+function readAvailability(gr) {
+    const out = {};
+    AVAILABILITY_PERSONAS.forEach((persona) => {
+        out[persona] = {};
+        settingsEngines(gr).forEach((item) => { out[persona][item.engine] = engineAvailable(gr, persona, item.engine); });
+    });
+    return out;
+}
+
+function kabukiMemoryFor(gr, engine, override) {
+    const cfg = override || directorConfig(gr).kabukiMemory;
+    const row = cfg && typeof cfg === 'object' ? cfg[engine] : null;
+    const out = { obliterated: true, studio: false, primary: 'obliterated' };
+    if (row && typeof row === 'object') {
+        out.obliterated = row.obliterated !== false;
+        out.studio = row.studio === true;
+        if (!out.obliterated && !out.studio) out.obliterated = true;
+        out.primary = row.primary === 'studio' && out.studio ? 'studio' : (out.obliterated ? 'obliterated' : 'studio');
+    }
+    return out;
+}
+
+function readKabukiMemory(gr) {
+    const out = {};
+    settingsEngines(gr).forEach((item) => { out[item.engine] = kabukiMemoryFor(gr, item.engine); });
+    return out;
+}
+
+// knowledgeMemoryDatabase store ids: '' is the Studio store, 'obliterated' the shared one.
+const storeId = (name) => (name === 'studio' ? '' : customProviders.OBLITERATED_STORE);
+
+/**
+ * The memory stores of a turn: { primary, alternate } as store ids ('' = Studio memories,
+ * 'obliterated'), alternate undefined when there is none. A Chiyo chat follows Director Settings >
+ * Chiyo Memories for its engine; every other chat uses its engine's own store, as before.
+ */
+function turnMemoryStores(gr, kabuki, engine) {
+    if (!kabuki) return { primary: engineStore(gr, engine) || '', alternate: undefined };
+    const row = kabukiMemoryFor(gr, engine);
+    const other = row.primary === 'studio' ? 'obliterated' : 'studio';
+    return { primary: storeId(row.primary), alternate: row[other] ? storeId(other) : undefined };
+}
+
+function normalizeAvailability(gr, value) {
+    if (value == null) return null;
+    if (typeof value !== 'object' || Array.isArray(value)) throw settingsError('availability must be { wren, kabuki, xi }');
+    const out = {};
+    AVAILABILITY_PERSONAS.forEach((persona) => {
+        const row = value[persona];
+        if (row == null) return;
+        if (typeof row !== 'object' || Array.isArray(row)) throw settingsError(`availability.${persona} must be an object`);
+        out[persona] = {};
+        Object.keys(row).forEach((raw) => {
+            const engine = String(raw).trim().toLowerCase();
+            if (!knownEngine(gr, engine)) throw settingsError(`availability.${persona}: unknown engine "${engine.slice(0, 40)}"`);
+            if (typeof row[raw] !== 'boolean') throw settingsError(`availability.${persona}.${engine} must be true or false`);
+            out[persona][engine] = row[raw];
+        });
+    });
+    return out;
+}
+
+function normalizeKabukiMemory(gr, value) {
+    if (value == null) return null;
+    if (typeof value !== 'object' || Array.isArray(value)) throw settingsError('kabukiMemory must be an object keyed by engine');
+    const out = {};
+    Object.keys(value).forEach((raw) => {
+        const engine = String(raw).trim().toLowerCase();
+        if (!knownEngine(gr, engine)) throw settingsError(`kabukiMemory: unknown engine "${engine.slice(0, 40)}"`);
+        const row = value[raw];
+        if (!row || typeof row !== 'object' || Array.isArray(row)) throw settingsError(`kabukiMemory.${engine} must be { obliterated, studio, primary }`);
+        const obliterated = row.obliterated === true;
+        const studio = row.studio === true;
+        if (!obliterated && !studio) throw settingsError(`kabukiMemory.${engine}: pick at least one memory store`);
+        const primary = String(row.primary || '').trim().toLowerCase() || (obliterated ? 'obliterated' : 'studio');
+        if (!KABUKI_STORES.includes(primary) || !(primary === 'studio' ? studio : obliterated)) throw settingsError(`kabukiMemory.${engine}: the primary store must be one that is on`);
+        out[engine] = { obliterated, studio, primary };
+    });
+    return out;
+}
+
 // 'obliterated' or '': the chat's own marker, else the store of the engine it last ran on.
 function chatMemoryStore(gr, chat, readStore) {
     if (!chat) return '';
@@ -8551,6 +8689,10 @@ function normalizeAgentPick(gr, value, store, label) {
     if (!DIRECTOR_ENGINES.includes(engine) && !customProviders.isEngine(engine)) throw settingsError(`${label}: unknown engine "${engine.slice(0, 40)}"`);
     if (customProviders.isEngine(engine) && !customProviders.lookup(gr, engine)) throw settingsError(`${label}: no custom model provider ${engine}`);
     const obliterated = engineStore(gr, engine) === customProviders.OBLITERATED_STORE;
+    // persona:<id>[, availability]: a new-chat default must be an engine that persona may use
+    if (store && typeof store === 'object' && store.persona) {
+        if (!engineAvailable(gr, store.persona, engine, store.availability)) throw settingsError(`${label}: ${engine} is not turned on for ${store.persona === 'kabuki' ? 'Chiyo' : 'Yumiya'} (Model Availability)`);
+    }
     if (store === 'obliterated' && !obliterated) throw settingsError(`${label}: ${engine} does not use Obliterated Memories`);
     if (store === 'normal' && obliterated) throw settingsError(`${label}: ${engine} uses Obliterated Memories (Chiyo)`);
     const model = value.model == null ? '' : String(value.model).trim();
@@ -8583,11 +8725,13 @@ function normalizeDirectorSettings(gr, input) {
         if (typeof value !== 'object' || Array.isArray(value)) throw settingsError(`${name} must be an object`);
         return value;
     };
+    if (ownKey(input, 'availability')) out.availability = normalizeAvailability(gr, input.availability);
+    if (ownKey(input, 'kabukiMemory')) out.kabukiMemory = normalizeKabukiMemory(gr, input.kabukiMemory);
     if (ownKey(input, 'defaults')) {
         const defaults = part('defaults');
         out.defaults = {};
         SETTINGS_PERSONAS.forEach((persona) => {
-            if (ownKey(defaults, persona)) out.defaults[persona] = normalizeAgentPick(gr, defaults[persona], persona === 'kabuki' ? 'obliterated' : 'normal', `defaults.${persona}`);
+            if (ownKey(defaults, persona)) out.defaults[persona] = normalizeAgentPick(gr, defaults[persona], { persona, availability: out.availability || undefined }, `defaults.${persona}`);
         });
     }
     if (ownKey(input, 'autoRepair')) out.autoRepair = normalizeAutoRepairSetting(input.autoRepair);
@@ -8610,7 +8754,10 @@ function readDirectorSettings(gr) {
     const defaults = cfg.defaults && typeof cfg.defaults === 'object' ? cfg.defaults : {};
     const repair = cfg.repair && typeof cfg.repair === 'object' ? cfg.repair : {};
     return {
-        defaults: { wren: pick(defaults.wren, 'normal'), kabuki: pick(defaults.kabuki, 'obliterated') },
+        defaults: { wren: pick(defaults.wren, { persona: 'wren' }), kabuki: pick(defaults.kabuki, { persona: 'kabuki' }) },
+        // resolved for every engine: what each persona may run on, and Chiyo's stores per engine
+        availability: readAvailability(gr),
+        kabukiMemory: readKabukiMemory(gr),
         autoRepair: autoRepairSettings(gr),
         repair: { normal: pick(repair.normal, 'normal'), obliterated: pick(repair.obliterated, 'obliterated') }
     };
@@ -8640,6 +8787,15 @@ async function saveDirectorSettings(gr, input) {
     };
     if (next.defaults) merge('defaults', next.defaults);
     if (next.repair) merge('repair', next.repair);
+    // whole tables: the dialog sends every engine's row
+    if (ownKey(next, 'availability')) {
+        if (next.availability && Object.keys(next.availability).length) cfg.availability = next.availability;
+        else delete cfg.availability;
+    }
+    if (ownKey(next, 'kabukiMemory')) {
+        if (next.kabukiMemory && Object.keys(next.kabukiMemory).length) cfg.kabukiMemory = next.kabukiMemory;
+        else delete cfg.kabukiMemory;
+    }
     if (ownKey(next, 'autoRepair')) {
         if (next.autoRepair) cfg.autoRepair = next.autoRepair;
         else delete cfg.autoRepair;
@@ -8785,6 +8941,8 @@ module.exports = {
     handleDirectorSettingsGet,
     handleDirectorSettingsSet,
     readDirectorSettings,
+    engineAvailable,
+    turnMemoryStores,
     directorDefaultsFor,
     chatMemoryStore,
     awaitRentanAttempt,

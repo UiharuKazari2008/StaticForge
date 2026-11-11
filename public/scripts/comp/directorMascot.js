@@ -37,9 +37,35 @@ function directorMascotCardPoints(ratio) {
     return -2;
 }
 
-function directorMascotGrowthPoints(messages) {
+// Yozora (the coding agent, #742): her chats have no report cards, so her points are the work she
+// did, read from each finished turn's trace (Yukimi 2026-11-11: it should make her want to work
+// hard and correct bugs). A turn that changed files or took real digging earns 1; one that also
+// corrected a bug, verified its change (tests, a check, a lint run) or was a large change earns 2.
+// Talk earns nothing, and nothing is ever taken away.
+const DIRECTOR_MASCOT_EDIT_TOOL = /^(edit|write|multiedit|notebookedit|str_?replace\w*|search_replace|apply_patch|edit_file|create_file|delete_file)$/i;
+const DIRECTOR_MASCOT_BUG_WORD = /\b(fix(ed|es|ing)?|bug|broken|breaks?|crash(es|ed)?|regression|error|wrong|fails?|failing|not working|doesn'?t work|corrected?)\b/i;
+const DIRECTOR_MASCOT_VERIFY_WORD = /\b(test|tests|spec|lint|typecheck|tsc|--check|pytest|jest|verify)\b/i;
+
+function directorMascotWorkPoints(message, asked) {
+    const rows = (message && (message.trace || (message.data && message.data.trace))) || [];
+    const tools = (Array.isArray(rows) ? rows : []).filter((row) => row && row.type === 'tool');
+    if (!tools.length) return 0;
+    const edits = tools.filter((row) => DIRECTOR_MASCOT_EDIT_TOOL.test(String(row.name || '')) || row.hasDiff === true || row.hasDiff === 'True').length;
+    if (!edits && tools.length < 8) return 0;
+    const verified = tools.some((row) => /^(bash|shell|run_terminal\w*)$/i.test(String(row.name || '')) && DIRECTOR_MASCOT_VERIFY_WORD.test(`${row.detail || ''} ${row.text || ''}`));
+    const bug = DIRECTOR_MASCOT_BUG_WORD.test(String(asked || '')) || DIRECTOR_MASCOT_BUG_WORD.test(String((message && message.content) || '').slice(0, 600));
+    return edits && (bug || verified || edits >= 5) ? 2 : 1;
+}
+
+function directorMascotGrowthPoints(messages, persona) {
     let total = 0;
+    let asked = '';
     (Array.isArray(messages) ? messages : []).forEach((message) => {
+        if (persona === 'xi') {
+            if (message && message.role === 'user') asked = String(message.content || '');
+            else if (message && message.role === 'assistant') total += directorMascotWorkPoints(message, asked);
+            return;
+        }
         const report = message && message.role === 'assistant' && message.data && message.data.report;
         const items = report && report.card && Array.isArray(report.card.items) ? report.card.items : [];
         if (!items.length) return;
@@ -1868,7 +1894,7 @@ class DirectorMascot {
     applyGrowth(messages) {
         const m = this.manifest; const st = this.stageState;
         if (!m || !st || !m.behaviour || !m.behaviour.growth) return;
-        const total = directorMascotGrowthPoints(messages);
+        const total = directorMascotGrowthPoints(messages, this.persona);
         this.growthPoints = total;
         const target = directorMascotStageFor(m, total);
         const step = target ? directorMascotStepFor(m, target, total) : '';
@@ -2333,4 +2359,4 @@ class DirectorMascot {
 }
 
 if (typeof window !== 'undefined') window.DirectorMascot = DirectorMascot;
-if (typeof module !== 'undefined' && module.exports) module.exports = { DirectorMascot, directorMascotTypedHtml, directorMascotGrowthPoints, directorMascotCardPoints, directorMascotStageFor, directorMascotGrowth, directorMascotStepFor, DirectorMascotGL };
+if (typeof module !== 'undefined' && module.exports) module.exports = { DirectorMascot, directorMascotTypedHtml, directorMascotGrowthPoints, directorMascotCardPoints, directorMascotStageFor, directorMascotGrowth, directorMascotStepFor, directorMascotWorkPoints, DirectorMascotGL };
