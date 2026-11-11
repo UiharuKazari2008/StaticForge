@@ -4649,8 +4649,12 @@ function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
         lines.push('');
     }
     // Standing orders are in the project rule (wrenRules). This is the per-turn state only.
-    lines.push(...directorPersonaVoice.personaVoiceLines(options && options.persona, options && options.mascot));
-    lines.push('Turn: one get_session_state view live first; Read every new print before you answer (sections 2 and 4).');
+    // talk: this message reads like them just talking to her (a hint; she judges for herself)
+    const talk = directorPersonaVoice.turnTalkHint(userText, Array.isArray(files) ? files.length : 0);
+    lines.push(...directorPersonaVoice.personaVoiceLines(options && options.persona, options && options.mascot, { talk }));
+    lines.push(talk
+        ? 'Turn: if this is a job, one get_session_state view live first and Read every new print before you answer (sections 2 and 4); if they are only talking to you, skip both and just answer them.'
+        : 'Turn: one get_session_state view live first; Read every new print before you answer (sections 2 and 4).');
     // In the turn prompt too: models skip the rulebook line (a DeepSeek turn on Nov 6 never called it).
     lines.push('While you work, say {text} a short plain line to them every one to three tool calls (what you are doing, what you see, what you will try).');
     lines.push('End the turn with one finish_turn {summary, spoken, reportCard, suggestions} call as your last tool call: the summary is your reply; spoken is one to three plain sentences you would say out loud; reportCard (hit, partial, miss per item) whenever you edited a prompt or printed; 2 to 4 suggestions. No reply text after it (section 4c).');

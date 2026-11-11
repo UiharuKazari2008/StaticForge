@@ -309,3 +309,14 @@ Yukimi: growth more progressive, real morphing without display glitches, a lumpy
 - After a print (`digest()`): the stage's `printed` body where the set has one (Yumiya bigger), else a 2.8 s kick where the stage has a kicky pose (Yozora base, Chiyo bigger), else lumps: three lit bulges that drift over `stage.belly` for 6.5 s (Yumiya base and stuffed, Chiyo base and bigger2, Yozora bigger).
 - `scripts/director-mascot-build.js meta` writes `stages.*.grow`, `stages.*.belly`, `stages.*.arrive` and `morphs` into the manifests (seconds; no sheets).
 - Phone: the Director app re-hosts the window after it opens, and the mascot had already decided she was not hosted, so the chat sat in the log view until Show Mascot was toggled. `tick()` now notices hosted-but-not-shown and applies her view (and the reply box) again.
+
+### Persona block: state first, self-knowledge, bonding, one-on-one talk (Nov 11, #742 follow-up 2)
+
+Yukimi: every message should carry their current state (stage, point progress), they should know who they are, what they look like, what they will look like and why they want that, and each should bond with the user like a dating sim, including noticing when the user is only talking to them.
+
+- `modules/directorPersonaVoice.js` `personaVoiceLines(persona, mascot, { talk, coding })` is the block, on every turn of all three personas: Yumiya and Chiyo through `cursorDirector.buildPrompt`, Yozora through `xiDirector.buildPrompt` (`coding: true`: no picture contract, the work rules stay in charge).
+- Line 1 is `[Your state] <name> - stage N of M ("id") - P points - next stage at X (Y to go, Z% of the way through this stage ...)` from the mascot state the client sends on the send (`mascot { stage, points, nextAt }`); without it, stage 1 and "points not reported".
+- Then per persona: `self` (who she is and her body as the mascot draws it), `looks[stage]`, the next stage's look ("not yet yours"), `want` (why she wants to grow: it is earned from the user's report cards), the stage direction, `bond` (how she grows close to the user; in a work turn it is one line at most), and the talk rule.
+- Talk: she is told every turn that a message with no picture, prompt or code ask is time alone with the user: no prints, no Studio, no report card (so talk never moves points), a few sentences as herself, a question back, and `suggestions` written as the user's possible replies. `turnTalkHint(text, files)` adds "this message reads like them just talking" for greetings and personal lines (never for a prompt, a command or an attachment); it is only a hint, she judges.
+- The stage order and thresholds in `PERSONA_VOICES` must match the manifests (`points`, `order`); the test compares them.
+- Yozora's chats do not end with `finish_turn`, so they earn no points today: her state line will read 0 points until Xi turns get report cards.

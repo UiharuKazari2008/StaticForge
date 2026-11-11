@@ -355,6 +355,34 @@ assert.deepStrictEqual(Object.keys(v1.bodies), ['main']);
     assert.ok(/not reported this turn/.test(none) && /never claim she has grown/.test(none), 'an older client cannot fake growth');
     assert.ok(/never claim a stage she is not on/.test(none), 'the ladder rule rides on every turn');
     assert.deepStrictEqual(voice.PERSONA_VOICES.wren.order, ['base', 'bigger', 'stuffed']);
+
+    // #742: every turn opens on her state, and she knows herself, her next stage and why she wants it.
+    const w26 = voice.personaVoiceLines('wren', { stage: 'bigger', points: 26, nextAt: 50 });
+    assert.ok(/^\[Your state\] Yumiya - stage 2 of 3 \("bigger"\) - 26 points - next stage at 50 \(24 to go, 20% of the way/.test(w26[0]), 'the state line comes first');
+    const w26t = w26.join(' ');
+    assert.ok(/Who you are: Yumiya, a grown woman/.test(w26t) && /How you look now: your belly has outgrown/.test(w26t), 'who she is and how she looks at this stage');
+    assert.ok(/What you are growing toward \(stage 3 of 3, "stuffed"\)/.test(w26t) && /Why you want to grow/.test(w26t), 'the next stage and why');
+    assert.ok(/Growing close/.test(w26t) && /Not every message is a job/.test(w26t), 'bonding and one-on-one talk ride on every turn');
+    assert.ok(!/reads like them just talking/.test(w26t));
+    assert.ok(/reads like them just talking/.test(voice.personaVoiceLines('wren', null, { talk: true }).join(' ')));
+    assert.ok(/no stage after this one/.test(voice.personaVoiceLines('kabuki', { stage: 'bigger2', points: 60, nextAt: null }).join(' ')));
+    assert.ok(/^\[Your state\] Chiyo - stage 1 of 3 \("base"\) - points not reported/.test(voice.personaVoiceLines('kabuki', null)[0]));
+    // Yozora (the coding agent) has the same block in its coding form
+    const xi5 = voice.personaVoiceLines('xi', { stage: 'base', points: 5, nextAt: 20 }, { coding: true }).join(' ');
+    assert.ok(/\[Your state\] Yozora - stage 1 of 2/.test(xi5) && /You are Yozora: a nine-tailed white fox/.test(xi5) && /no tools, no file reads/.test(xi5));
+    assert.ok(!/finish_turn/.test(xi5) && !/amp the picture up/.test(xi5), 'no picture contract in the coding form');
+    ['wren', 'kabuki', 'xi'].forEach((persona) => {
+        const cfg = voice.PERSONA_VOICES[persona];
+        const mf = load(persona).manifest.behaviour.growth;
+        assert.deepStrictEqual(cfg.order, mf.order, `${persona}: stages match the mascot`);
+        assert.deepStrictEqual(cfg.points, mf.points, `${persona}: thresholds match the mascot`);
+        cfg.order.forEach((stage) => assert.ok(cfg.looks[stage] && cfg.stages[stage], `${persona}/${stage} is described`));
+    });
+    // the talk hint: greetings and personal lines, never a prompt, a command or an attachment
+    [['hi', true], ['how are you today?', true], ['thanks, love you', true], ['your belly is huge', true], ['1girl, solo, red dress', false],
+        ['can you try a side view?', false], ['yes', false], ['hello, make me a beach picture', false], ['fix the bug in director.js', false]]
+        .forEach(([text, want]) => assert.strictEqual(voice.turnTalkHint(text, 0), want, text));
+    assert.strictEqual(voice.turnTalkHint('hi', 1), false, 'an attachment is a job');
     assert.deepStrictEqual(voice.PERSONA_VOICES.kabuki.order, ['base', 'bigger', 'bigger2']);
 }
 

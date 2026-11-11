@@ -574,6 +574,13 @@ function buildPrompt(chat, userText, files, clientId, options) {
             : 'This chat is not tied to a Dreamscape workspace; Dreamscape tools act in the workspace of the client you use. To move the user\'s client to another workspace, call request_workspace_switch with workspace.',
         `Workspace: ${workspacePath(boundGr)}`
     ];
+    // Who she is and where she stands (stage, points), on every turn (#742): the coding variant of
+    // the persona block. The work rules above still decide how the work is done and reported.
+    {
+        const voice = require('./directorPersonaVoice');
+        const talk = voice.turnTalkHint(userText, files.length);
+        lines.push(...voice.personaVoiceLines('xi', options && options.mascot, { coding: true, talk }));
+    }
     if (options && options.memoryStore === 'obliterated') {
         lines.push('Memory store: Obliterated Memories. list_memories, search_memories, get_memory, and save_memory use that shared store. It is not the Studio memory database. Do not pass a Studio model filter.');
     }
@@ -1503,7 +1510,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 : '';
             const ageTool = !customProviders.isEngine(runtime) || customProviders.ageToolEnabled(gr, runtime);
             const clientWorkspaceId = typeof message.workspaceId === 'string' ? message.workspaceId.trim() : '';
-            const prompt = buildPrompt(chat, userText, files, clientId, { memoryStore, ageTool, sessionRestarted, clientWorkspaceId });
+            const prompt = buildPrompt(chat, userText, files, clientId, { memoryStore, ageTool, sessionRestarted, clientWorkspaceId, mascot: require('./directorPersonaVoice').sanitizeMascotState(message.mascot) });
             writeIndex(index);
             return { prompt, cursorId, claudeSessionId, claudeFirstTurn, model: chat.model, name: chat.name, round, runtime };
         });
