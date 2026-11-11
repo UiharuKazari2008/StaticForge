@@ -143,6 +143,38 @@ function normalizeWorkspaceMobileWallpaper(raw) {
 }
 
 /**
+ * Melaton Mobile's Today screen for this workspace (wmShell.js, Settings > Today): the items' order
+ * and on / off, each item's options, and the background choice. Kept small and plain: ids and
+ * option values are short strings, the picture is a same-site path.
+ */
+function normalizeWorkspaceMobileToday(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const str = (v, max) => (typeof v === 'string' && v.length <= max ? v : null);
+    const out = {};
+    if (Array.isArray(raw.items)) {
+        out.items = raw.items.slice(0, 80)
+            .filter((it) => it && str(it.id, 60))
+            .map((it) => ({ id: it.id, on: it.on !== false }));
+    }
+    if (raw.options && typeof raw.options === 'object' && !Array.isArray(raw.options)) {
+        const opts = {};
+        for (const [id, o] of Object.entries(raw.options).slice(0, 80)) {
+            if (!str(id, 60) || !o || typeof o !== 'object' || Array.isArray(o)) continue;
+            const one = {};
+            for (const [k, v] of Object.entries(o).slice(0, 20)) {
+                if (str(k, 40) && (str(v, 120) !== null || typeof v === 'number' || typeof v === 'boolean')) one[k] = v;
+            }
+            opts[id] = one;
+        }
+        out.options = opts;
+    }
+    if (raw.useDesktop === '1' || raw.useDesktop === '0') out.useDesktop = raw.useDesktop;
+    const bg = str(raw.background, 400);
+    if (bg && /^\/[^/]/.test(bg)) out.background = bg;
+    return Object.keys(out).length ? out : null;
+}
+
+/**
  * The desktop's icon view (desktopIconView.js): Vista's icon size (16-256; 32 / 48 / 96 are
  * Classic / Medium / Large), Auto Arrange, Align to Grid, Show Desktop Icons, the last Sort By,
  * and the icons picked in Desktop Icon Settings for its system icons.
@@ -261,6 +293,10 @@ class WorkspaceManager {
 
     normalizeWorkspacePersonalization(raw) {
         return normalizeWorkspacePersonalization(raw);
+    }
+
+    normalizeWorkspaceMobileToday(raw) {
+        return normalizeWorkspaceMobileToday(raw);
     }
 
     normalizeWorkspaceMobileWallpaper(raw) {
@@ -641,6 +677,9 @@ class WorkspaceManager {
         }
         if (typeof settings.mobileWallpaper !== 'undefined') {
             updates.mobileWallpaper = normalizeWorkspaceMobileWallpaper(settings.mobileWallpaper);
+        }
+        if (typeof settings.mobileToday !== 'undefined') {
+            updates.mobileToday = normalizeWorkspaceMobileToday(settings.mobileToday);
         }
 
         // Merge all updates at once (fluent API - use array notation for workspace ID)

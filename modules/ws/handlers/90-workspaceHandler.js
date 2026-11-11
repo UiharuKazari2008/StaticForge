@@ -106,6 +106,8 @@ class WorkspaceWebSocketHandlers {
                 desktopView: workspace.desktopView && typeof workspace.desktopView === 'object' ? workspace.desktopView : null,
                 // Melaton Mobile's wallpaper placement; null = same as the desktop (wmShell.js)
                 mobileWallpaper: workspace.mobileWallpaper && typeof workspace.mobileWallpaper === 'object' ? workspace.mobileWallpaper : null,
+                // Melaton Mobile's Today layout for this workspace (wmShell.js)
+                mobileToday: workspace.mobileToday && typeof workspace.mobileToday === 'object' ? workspace.mobileToday : null,
                 sort: workspace.sort || 0, // Include sort field
                 fileCount,
                 presetCount: Array.isArray(workspace.presets) ? workspace.presets.length : 0,
@@ -1299,6 +1301,9 @@ class WorkspaceWebSocketHandlers {
             // stored and broadcast in the same normalised shape (modules/workspace.js)
             if (settings.mobileWallpaper !== undefined) {
                 settings.mobileWallpaper = this.globalResources.getWorkspaceManager().normalizeWorkspaceMobileWallpaper(settings.mobileWallpaper);
+            }
+            if (settings.mobileToday !== undefined) {
+                settings.mobileToday = this.globalResources.getWorkspaceManager().normalizeWorkspaceMobileToday(settings.mobileToday);
             }
             if (settings.personalization !== undefined) {
                 settings.personalization = this.globalResources.getWorkspaceManager().normalizeWorkspacePersonalization(settings.personalization);

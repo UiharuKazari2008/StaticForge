@@ -470,7 +470,7 @@
                 renderList();
                 return true;
             },
-            closeQuestion: () => (job && job.running ? `"${job.name}" is still being cast. It keeps going in the background and arrives in Pictures & Videos.` : null),
+            closeQuestion: () => (job && job.running ? `"${job.name}" is still being cast. It keeps going in the background and arrives in Pictures.` : null),
             softKeys() {
                 if (view() === 'spell') {
                     const casting = !!(job && job.running && job.name === current);
