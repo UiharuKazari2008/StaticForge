@@ -3244,10 +3244,11 @@ function initializeWebSocketWorkspaceEvents() {
                     break;
                 }
                 
-                // phone-only fields (Melaton Mobile's mobileWallpaper, wmShell.js) change nothing
-                // here: the record already took them (30-workspaceInbound.js), so no gallery reload
+                // phone-only fields (Melaton Mobile's mobileWallpaper and mobileToday, wmShell.js)
+                // change nothing here: the record already took them (30-workspaceInbound.js), so no
+                // gallery reload (a Today save used to reload the whole gallery, #732)
                 if (data.settings && Object.keys(data.settings).length
-                    && Object.keys(data.settings).every((k) => k === 'mobileWallpaper')) {
+                    && Object.keys(data.settings).every((k) => k === 'mobileWallpaper' || k === 'mobileToday')) {
                     break;
                 }
 

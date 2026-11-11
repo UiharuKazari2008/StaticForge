@@ -689,7 +689,7 @@
             startLabel: 'XLink Operator Console',
             icon: ICON,
             inStart: 'programs',
-            programsFolder: 'amusementvision',
+            
             mount,
             show() {
                 shown = true;

@@ -942,7 +942,7 @@
             startLabel: 'PayPass Operator',
             icon: ICON,
             inStart: 'programs',
-            programsFolder: 'amusementvision',
+            
             sip: true,
             mount,
             show() {

@@ -291,18 +291,17 @@
     const IN_SETTINGS_APPS = new Set(['taskmgr', 'accounts']);
     const IN_SETTINGS_DESKTOP = new Set(['alarm', 'control-panel', 'data-management', 'taskmgr']);
     const openDsap = (url) => { try { if (typeof window.openDsapInGrimoire === 'function') window.openDsapInGrimoire(url); } catch (err) { console.warn('Settings: open', url, err); } };
-    // Programs folders (Yukimi, Nov 10): the Dreamscape suite in one folder, the AmusementVISION
-    // operator apps in another (as the desktop's program folders); apps name theirs with
-    // programsFolder, the suite's are listed here
+    // Programs folders (Yukimi, Nov 10): Games first, then the Dreamscape suite (a WM folder drawn
+    // like Games'); everything else, the AmusementVISION operator apps too, sits in Programs itself
     const PROGRAM_FOLDERS = {
-        dreamscape: { label: 'Dreamscape', icon: () => appIcon('dreamscape-logo.png') },
-        amusementvision: { label: 'AmusementVISION', icon: () => wmLargeIcon('app-xlink') }
+        dreamscape: { label: 'Dreamscape', icon: () => wmLargeIcon('app-folder-dreamscape') }
     };
+    const FOLDER_ORDER = ['games', 'dreamscape'];
     const DREAMSCAPE_APPS = new Set(['studio', 'director', 'spellcaster', 'phasewalker', 'atelier', 'reference', 'characters', 'expanders', 'spellbook', 'emotion', 'teleport', 'chat']);
     const DREAMSCAPE_DESKTOP = new Set(['explore-gallery', 'novels', 'ispy', 'image-search']);
     // WM 6.1 art for desktop entries the phone lists as they are (the dsap apps)
     const DESKTOP_WM_ART = { 'explore-gallery': 'app-agora', novels: 'app-novels', ispy: 'app-image-search', 'image-search': 'app-image-search', 'data-management': 'app-data-management', 'control-panel': 'app-control-panel', import: 'app-import' };
-    const appFolder = (a) => (a.programsFolder && a.programsFolder !== 'toolbox' ? a.programsFolder : (DREAMSCAPE_APPS.has(a.id) ? 'dreamscape' : null));
+    const appFolder = (a) => (PROGRAM_FOLDERS[a.programsFolder] ? a.programsFolder : (DREAMSCAPE_APPS.has(a.id) ? 'dreamscape' : null));
     const desktopFolder = (l) => (DREAMSCAPE_DESKTOP.has(l.launchId) ? 'dreamscape' : null);
 
     // Settings grid items that open an app (not a Settings page)
@@ -367,7 +366,8 @@
             desktopLaunchables('toolbox').forEach(desktopItem);
         }
         const coll = new Intl.Collator(undefined, { sensitivity: 'base' });
-        return items.sort((x, y) => (y.folder ? 1 : 0) - (x.folder ? 1 : 0) || coll.compare(x.label, y.label));
+        const rank = (it) => (it.folder ? FOLDER_ORDER.indexOf(it.folder) : FOLDER_ORDER.length);
+        return items.sort((x, y) => rank(x) - rank(y) || coll.compare(x.label, y.label));
     }
 
     function registerPrograms() {

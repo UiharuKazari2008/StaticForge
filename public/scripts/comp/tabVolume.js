@@ -198,7 +198,8 @@
     function setLevel(next, opts) {
         level = Math.max(0, Math.min(100, Math.round(next)));
         if (!opts || !opts.keepMute) muted = level <= 0 ? muted : false;
-        if (level <= 0) muted = true;
+        // keepMute: the level alone (Melaton Mobile's media slider; Off is its own radio button)
+        if (level <= 0 && !(opts && opts.keepMute)) muted = true;
         writeStored();
         applyMaster();
         paintIcon();
@@ -369,9 +370,16 @@
         // the tab's master level (0-100) and mute, for surfaces without the tray flyout
         // (Melaton Mobile's volume bubble, #709)
         getLevel: () => level,
-        setLevel: (v) => setLevel(Number(v)),
+        setLevel: (v, opts) => setLevel(Number(v), opts),
         isMuted: () => muted,
-        setMuted: (m) => setMuted(!!m)
+        setMuted: (m) => setMuted(!!m),
+        // a node straight to its context's speakers, past the master level: Melaton Mobile's
+        // notification and system sounds follow their own level (the volume bubble's Ringer)
+        connectRaw(node) {
+            if (!node || !node.context) return;
+            if (origConnect) origConnect.call(node, node.context.destination);
+            else node.connect(node.context.destination);
+        }
     };
 
     readStored();

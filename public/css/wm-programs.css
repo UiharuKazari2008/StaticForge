@@ -31,7 +31,10 @@
 /* ---- icon grid ---- */
 .wm-icongrid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(calc(80 * var(--wm-px)), 1fr));
+    /* labels may run 2 px past their cell: the 2 px inset keeps the edge columns' on screen
+       (3 columns still fit 240 px) */
+    grid-template-columns: repeat(auto-fill, minmax(calc(78 * var(--wm-px)), 1fr));
+    padding: 0 calc(2 * var(--wm-px));
     align-content: start;
 }
 
