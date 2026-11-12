@@ -110,7 +110,7 @@ function buildWmIconPrompt({ input, from, extra, referenceCount, small } = {}) {
 
 function assertQuality(quality, model) {
     const name = collapse(quality) || DEFAULT_QUALITY;
-    const allowed = String(model || '').startsWith('gpt-image-2.5')
+    const allowed = /^gpt-image-2\.[5-9]/.test(String(model || ''))
         ? ['low', 'medium', 'high', 'xhigh', 'max']
         : ['low', 'medium', 'high'];
     if (!allowed.includes(name)) {
@@ -314,7 +314,7 @@ async function requestImage({ projectRoot, model, quality, prompt, files }) {
     try {
         if (files.length) {
             request.image = files;
-            if (!String(model).startsWith('gpt-image-2.5')) request.input_fidelity = 'high'; // 2.5 rejects it
+            if (!/^gpt-image-2\.[5-9]/.test(String(model))) request.input_fidelity = 'high'; // 2.5 and later reject it
             result = await client.images.edit(request);
         } else {
             result = await client.images.generate(request);

@@ -1,18 +1,31 @@
 /**
- * Melaton Mobile: the phone's own Android programs (Yozora #747), before the app becomes a launcher.
+ * Melaton Mobile: the phone's own Android programs (Yozora #747, #773), before the app becomes a launcher.
  *
  * The Dreamscape app lists the phone's launcher programs (window.AndroidApps, DSApp-Kotlin
- * AndroidApps.kt: list / launch / info, icons as files, the window event 'androidapps'). Here each
- * becomes a program of the shell that starts instead of showing a page (registerApp({ launch })):
+ * AndroidApps.kt: list / launch / info / forceStop / uninstall, icons as files, the window event
+ * 'androidapps'). Here each becomes a program of the shell that starts instead of showing a page
+ * (registerApp({ launch })):
  *
  *   Programs > Android      every program that is not hidden, under its own name and icon
+ *   Programs > Games        the programs that are games (Android's category), unless moved out
  *   Programs                the phone's own Phone, Camera and store ("Marketplace"), linked out of the folder
- *   Settings > System       "Android": the phone's own Settings; "Android Programs": this file's page
- *   Start                   the programs picked on the page's Start Menu tab
+ *   Settings > System       "Android": the phone's own Settings
+ *   Start                   the programs added to Start from their tap-and-hold menu
  *
- * Android Programs (Settings > System) has two lists: Programs (unchecked = hidden everywhere, for
- * the dozens a phone ships that nobody starts) and Start Menu (checked = on Start itself).
- * Stored on the phone: wmAndroidHidden, wmAndroidStart (JSON arrays of "package/activity").
+ * Tap-and-hold on a program (Programs, 6.5 Start): Add to Start / Remove from Start, Move to Games /
+ * Remove from Games, Hide program, Program Info (Android's App info), End Task (stops its background
+ * processes), Remove program (Android's uninstall). Hidden programs are listed again on
+ * Settings > System > Remove Programs > Android.
+ *
+ * Icons: the program's own launcher icon (the app reads it unthemed, no icon pack), or its Windows
+ * Mobile icon from the shared Program Icons store when it has one (modules/wmProgramIcons.js).
+ * Settings > Personal > Program Icons asks the server for those: pick programs, Request, and the
+ * server makes them in the background; a notification says when they are ready; keep or regenerate,
+ * then Done saves the kept ones for every phone.
+ *
+ * Stored on the phone: wmAndroidHidden, wmAndroidStart (JSON arrays of "package/activity"),
+ * wmAndroidGames (JSON { id: true | false }: a choice that overrides Android's category),
+ * wmAndroidIconStore (the store's manifest, last seen), wmProgramIconsJob (the open batch).
  * Only inside the app, on phones.
  */
 (function () {
@@ -24,8 +37,13 @@
 
     const HIDDEN_KEY = 'wmAndroidHidden';
     const START_KEY = 'wmAndroidStart';
+    const GAMES_KEY = 'wmAndroidGames';
+    const STORE_KEY = 'wmAndroidIconStore';
+    const JOB_KEY = 'wmProgramIconsJob';
     const START_MENU_KEY = 'wmStartMenu'; // Settings > Menus' own list (wmPrograms.js)
     const FOLDER = 'android';
+    const API = '/api/wm-program-icons';
+    const PAGE_ID = 'program-icons';
     // linked out of the folder under the device's names and with Windows Mobile's own pictures
     // (icon: the 6.1 set, art65: the 6.5 Start icon), never Android's
     const ROLES = {
@@ -36,15 +54,23 @@
     let sh = null;
     let apps = [];
     const registered = new Set();
+    let store = readStore();
 
-    const readSet = (key) => {
-        try {
-            const v = JSON.parse(localStorage.getItem(key) || '[]');
-            return new Set(Array.isArray(v) ? v.map(String) : []);
-        } catch (_) { return new Set(); }
+    const readJson = (key, fallback) => {
+        try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return v == null ? fallback : v; } catch (_) { return fallback; }
     };
-    const writeSet = (key, set) => { try { localStorage.setItem(key, JSON.stringify([...set])); } catch (_) { /* this session only */ } };
+    const writeJson = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch (_) { /* this session only */ } };
+    const readSet = (key) => { const v = readJson(key, []); return new Set(Array.isArray(v) ? v.map(String) : []); };
+    const writeSet = (key, set) => writeJson(key, [...set]);
     const shellId = (a) => `android:${a.id}`;
+    const has = (fn) => typeof bridge[fn] === 'function';
+
+    function readStore() {
+        try {
+            const v = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+            return v && v.icons && typeof v.icons === 'object' ? v : { version: 0, icons: {} };
+        } catch (_) { return { version: 0, icons: {} }; }
+    }
 
     function read() {
         try {
@@ -53,13 +79,89 @@
         } catch (_) { return []; }
     }
 
+    /** The icon a program shows: its Windows Mobile one from the store, else its own launcher icon. */
+    const storeIcon = (a) => (store.icons[a.id] && store.icons[a.id].icon) || null;
+    const iconOf = (a) => storeIcon(a) || a.icon;
+    const inGames = (a) => {
+        const o = readJson(GAMES_KEY, {});
+        return o && Object.prototype.hasOwnProperty.call(o, a.id) ? o[a.id] === true : a.game === true;
+    };
+
     function start(a) {
         let ok = false;
         try { ok = bridge.launch(a.id) === true; } catch (_) { ok = false; }
         if (!ok) void sh.messageBox({ title: a.label, text: `${a.label} could not be started. It may have been removed from the device.`, icon: 'warning' });
     }
 
-    /** Programs, Start and Settings follow the phone's list and the two stored choices. */
+    /** Redraw Programs and Start after a change (wmPrograms / wmStart65 listen). */
+    function refresh() {
+        sync();
+        document.dispatchEvent(new CustomEvent('wmAppsChanged'));
+    }
+
+    // ---------------------------------------------------------------- tap-and-hold menu
+
+    function holdRows(a, role) {
+        const onStart = readSet(START_KEY).has(a.id);
+        const rows = [{
+            label: onStart ? 'Remove from Start' : 'Add to Start',
+            action: () => {
+                const s = readSet(START_KEY);
+                if (onStart) s.delete(a.id); else s.add(a.id);
+                writeSet(START_KEY, s);
+                refresh();
+            }
+        }];
+        if (!role) {
+            const games = inGames(a);
+            rows.push({
+                label: games ? 'Remove from Games' : 'Move to Games',
+                action: () => {
+                    const o = readJson(GAMES_KEY, {});
+                    // back to Android's own category: no stored choice
+                    if (!games === (a.game === true)) delete o[a.id]; else o[a.id] = !games;
+                    writeJson(GAMES_KEY, o);
+                    refresh();
+                }
+            });
+        }
+        rows.push('-', {
+            label: 'Hide program',
+            action: async () => {
+                const yes = await sh.messageBox({
+                    title: 'Hide program', icon: 'question',
+                    text: `Hide ${a.label}? It leaves Programs and Start. Settings > Remove Programs > Android shows it again.`,
+                    buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }], cancelValue: false
+                });
+                if (!yes) return;
+                const h = readSet(HIDDEN_KEY);
+                h.add(a.id);
+                writeSet(HIDDEN_KEY, h);
+                const s = readSet(START_KEY);
+                s.delete(a.id);
+                writeSet(START_KEY, s);
+                refresh();
+            }
+        }, {
+            label: 'Program Info',
+            disabled: !has('info'),
+            action: () => { let ok = false; try { ok = bridge.info(a.id) === true; } catch (_) { ok = false; } if (!ok) void sh.messageBox({ title: a.label, icon: 'warning', text: `There is no information for ${a.label}. It may have been removed from the device.` }); }
+        }, {
+            label: 'End Task',
+            disabled: !has('forceStop'),
+            action: () => { let ok = false; try { ok = bridge.forceStop(a.id) === true; } catch (_) { ok = false; } if (!ok) void sh.messageBox({ title: 'End Task', icon: 'warning', text: `${a.label} could not be ended.` }); }
+        }, '-', {
+            label: 'Remove program',
+            disabled: !has('uninstall') || a.removable === false,
+            // Android asks itself (its uninstall dialog); the list follows its 'androidapps' event
+            action: () => { let ok = false; try { ok = bridge.uninstall(a.id) === true; } catch (_) { ok = false; } if (!ok) void sh.messageBox({ title: 'Remove program', icon: 'error', text: `${a.label} could not be removed.` }); }
+        });
+        return rows;
+    }
+
+    // ---------------------------------------------------------------- the shell's programs
+
+    /** Programs, Start and Settings follow the phone's list and the stored choices. */
     function sync() {
         apps = read();
         const hidden = readSet(HIDDEN_KEY);
@@ -70,9 +172,9 @@
             // the phone's own Settings is "Android" in Settings, never a program of Programs
             if (a.role === 'settings') {
                 want.add(shellId(a));
-                sh.registerApp({ id: shellId(a), title: 'Android', icon: a.icon, inStart: false, launch: () => start(a) });
+                sh.registerApp({ id: shellId(a), title: 'Android', icon: 'app-android', inStart: false, launch: () => start(a) });
                 if (window.wmSettings && typeof window.wmSettings.addLink === 'function') {
-                    window.wmSettings.addLink({ id: 'link-android', tab: 'system', label: 'Android', icon: a.icon, app: shellId(a) });
+                    window.wmSettings.addLink({ id: 'link-android', tab: 'system', label: 'Android', icon: 'app-android', app: shellId(a) });
                 }
                 continue;
             }
@@ -81,12 +183,13 @@
             sh.registerApp({
                 id: shellId(a),
                 title: role ? ROLES[role].label : a.label,
-                icon: (role && ROLES[role].icon) || a.icon,
+                icon: (role && ROLES[role].icon) || iconOf(a),
                 art65: role ? ROLES[role].art65 : undefined,
                 // 'bottom': on Start under the pinned programs; 'programs': in Programs only
                 inStart: onStart.has(a.id) ? 'bottom' : 'programs',
-                programsFolder: role ? undefined : FOLDER,
-                launch: () => start(a)
+                programsFolder: role ? undefined : (inGames(a) ? 'games' : FOLDER),
+                launch: () => start(a),
+                holdMenu: () => holdRows(a, role)
             });
         }
         for (const id of [...registered]) if (!want.has(id)) sh.removeApp(id);
@@ -103,31 +206,54 @@
         } catch (_) { /* Start shows the programs' own places */ }
     }
 
-    function registerPage() {
+    async function api(pathname, opts = {}) {
+        const res = await fetch(`${API}${pathname}`, {
+            method: opts.method || 'GET',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,
+            body: opts.body ? JSON.stringify(opts.body) : undefined
+        });
+        let j = null;
+        try { j = await res.json(); } catch (_) { j = null; }
+        if (!res.ok || !j || j.success === false) {
+            const err = new Error((j && j.error) || (res.status === 403 ? 'Only an administrator can change program icons.' : `The server answered ${res.status}.`));
+            err.status = res.status;
+            throw err;
+        }
+        return j;
+    }
+
+    /** The store's manifest: what every phone draws for programs that have a Windows Mobile icon. */
+    function applyStore(m) {
+        if (!m || !m.icons || typeof m.icons !== 'object') return;
+        const before = JSON.stringify(store.icons);
+        store = { version: m.version || 0, icons: m.icons };
+        writeJson(STORE_KEY, store);
+        if (JSON.stringify(store.icons) !== before && sh) refresh();
+    }
+
+    function loadStore() {
+        api('/manifest').then(applyStore).catch(() => { /* the last copy stays */ });
+    }
+
+    // ---------------------------------------------------------------- Remove Programs > Android
+
+    function registerRemoveTab() {
         const ws = window.wmSettings;
-        if (!ws || typeof ws.registerPage !== 'function' || !ws.ui) return;
+        if (!ws || typeof ws.extendPage !== 'function' || !ws.ui) return;
         const esc = (s) => sh.escapeHtml(s);
         const coll = new Intl.Collator(undefined, { sensitivity: 'base' });
-        ws.registerPage({
-            id: 'android-programs', tab: 'system', label: 'Android Programs', icon: 'app-folder-android',
-            tabs: [['programs', 'Programs'], ['start', 'Start Menu']],
+        ws.extendPage('remove-programs', {
+            id: 'android',
+            tabs: [['android-hidden', 'Android']],
             init() {
                 const list = read().filter((a) => a.role !== 'settings').sort((x, y) => coll.compare(x.label, y.label));
-                return { list, hidden: readSet(HIDDEN_KEY), start: readSet(START_KEY) };
+                return { list, hidden: readSet(HIDDEN_KEY) };
             },
             render(el, tab, d) {
-                const row = (a, on) => `<div class="wm-listbox-row">${ws.ui.check(`aa-${tab}-${a.id}`, a.label, on, `data-id="${esc(a.id)}"`)}</div>`;
-                if (tab === 'start') {
-                    const shown = d.list.filter((a) => !d.hidden.has(a.id));
-                    el.innerHTML = `<p>Checked programs appear in the Start menu.</p>
-                        <div class="wm-listbox" style="max-height:calc(190 * var(--wm-px))">${shown.map((a) => row(a, d.start.has(a.id))).join('')}</div>`;
-                    el.querySelectorAll('input[data-id]').forEach((c) => c.addEventListener('change', () => {
-                        if (c.checked) d.start.add(c.dataset.id); else d.start.delete(c.dataset.id);
-                    }));
-                    return;
-                }
-                el.innerHTML = `<p>Checked programs appear in Programs. Clear the ones you never start.</p>
-                    <div class="wm-listbox" style="max-height:calc(190 * var(--wm-px))">${d.list.map((a) => row(a, !d.hidden.has(a.id))).join('')}</div>`;
+                el.innerHTML = `<p>Checked programs appear in Programs and Start. Clear the ones you never start.</p>
+                    <div class="wm-listbox" style="max-height:calc(190 * var(--wm-px))">${d.list.map((a) => `<div class="wm-listbox-row">${ws.ui.check(`aa-h-${a.id}`, a.label, !d.hidden.has(a.id), `data-id="${esc(a.id)}"`)}</div>`).join('')}</div>`;
                 el.querySelectorAll('input[data-id]').forEach((c) => c.addEventListener('change', () => {
                     if (c.checked) d.hidden.delete(c.dataset.id); else d.hidden.add(c.dataset.id);
                 }));
@@ -135,11 +261,238 @@
             commit(d) {
                 // a program that left the phone leaves the lists with it
                 const have = new Set(d.list.map((a) => a.id));
-                writeSet(HIDDEN_KEY, new Set([...d.hidden].filter((id) => have.has(id))));
-                writeSet(START_KEY, new Set([...d.start].filter((id) => have.has(id) && !d.hidden.has(id))));
-                sync();
+                const hidden = new Set([...d.hidden].filter((id) => have.has(id)));
+                writeSet(HIDDEN_KEY, hidden);
+                writeSet(START_KEY, new Set([...readSet(START_KEY)].filter((id) => have.has(id) && !hidden.has(id))));
+                refresh();
                 return [HIDDEN_KEY, START_KEY, START_MENU_KEY];
             }
+        });
+    }
+
+    // ---------------------------------------------------------------- Program Icons
+
+    const job = { id: readJson(JOB_KEY, null), data: null, timer: null, live: null, lastState: null };
+
+    /** The program's own launcher icon as a data URL (the app's icon file at 512 px). */
+    async function iconData(a) {
+        try {
+            const src = String(a.icon || '');
+            const abs = src.startsWith('//') ? `${location.protocol}${src}` : src;
+            const res = await fetch(`${abs}${abs.includes('?') ? '&' : '?'}s=512`);
+            if (!res.ok) return null;
+            const blob = await res.blob();
+            return await new Promise((resolve) => {
+                const fr = new FileReader();
+                fr.onload = () => resolve(fr.result);
+                fr.onerror = () => resolve(null);
+                fr.readAsDataURL(blob);
+            });
+        } catch (_) { return null; }
+    }
+
+    function pageShown() {
+        const el = job.live && job.live.el;
+        return !!(el && el.isConnected && !el.closest('[hidden]') && sh.current === 'settings');
+    }
+
+    function rerenderLive() {
+        if (pageShown() && job.live.api) job.live.api.rerender();
+    }
+
+    function setJob(id, data) {
+        job.id = id || null;
+        job.data = data || null;
+        if (id) writeJson(JOB_KEY, id); else { try { localStorage.removeItem(JOB_KEY); } catch (_) { /* gone */ } }
+    }
+
+    /** Watch the open batch: the page redraws as icons arrive; closed, a notification says when they are ready. */
+    function poll(soon) {
+        clearTimeout(job.timer);
+        if (!job.id) return;
+        job.timer = setTimeout(async () => {
+            let j = null;
+            try { j = await api(`/jobs/${encodeURIComponent(job.id)}`); } catch (err) {
+                if (err.status === 404 || err.status === 403) { setJob(null); rerenderLive(); return; }
+                poll(false);
+                return;
+            }
+            const was = job.lastState;
+            job.data = j.job;
+            job.lastState = j.job.state;
+            if (j.job.state === 'done' || j.job.state === 'cancelled') { setJob(null); rerenderLive(); return; }
+            rerenderLive();
+            if (j.job.state === 'working') { poll(false); return; }
+            if (was === 'working' && !pageShown()) {
+                const ready = j.job.items.filter((it) => it.state === 'ready').length;
+                sh.notify({
+                    title: 'Program Icons', icon: 'success', asNote: true,
+                    text: `${ready} of ${j.job.items.length} program icon${j.job.items.length === 1 ? ' is' : 's are'} ready to review.`,
+                    buttons: [{ text: 'View', onClick: () => { window.wmSettings.open(PAGE_ID, 'pi-results'); } }, { text: 'Dismiss' }]
+                });
+            }
+        }, soon ? 300 : (pageShown() ? 3000 : 8000));
+    }
+
+    function registerIconsPage() {
+        const ws = window.wmSettings;
+        if (!ws || typeof ws.registerPage !== 'function' || !ws.ui) return;
+        const ui = ws.ui;
+        const esc = (s) => sh.escapeHtml(s);
+        const coll = new Intl.Collator(undefined, { sensitivity: 'base' });
+        const STATE_TEXT = { queued: 'Waiting', working: 'Making...', ready: 'Ready', failed: 'Failed' };
+
+        function renderPrograms(el, d, pageApi) {
+            const cells = d.list.map((a) => {
+                const ic = iconOf(a);
+                const src = sh.art.isSet && sh.art.isSet(ic) ? `${ic}-lg@4x.png` : ic;
+                return `<button type="button" class="wm-icongrid-cell wm-pi-cell${d.sel.has(a.id) ? ' is-checked' : ''}" data-id="${esc(a.id)}" aria-pressed="${d.sel.has(a.id)}">
+                    <span class="wm-icongrid-icon"><img src="${esc(src)}" alt="" draggable="false" loading="lazy"><i class="wm-pi-check"></i></span>
+                    <span class="wm-icongrid-label"><span>${esc(a.label)}</span></span></button>`;
+            }).join('');
+            const anyWm = [...d.sel].some((id) => store.icons[id]);
+            el.innerHTML = `<p>Select the programs to give Windows Mobile icons, then tap Request. The server makes them; you can close Program Icons meanwhile.</p>
+                <div class="wm-pi-scroll"><div class="wm-icongrid wm-pi-grid" role="list">${cells}</div></div>
+                ${ui.buttons([['request', job.id ? 'Request (busy)' : `Request${d.sel.size ? ` (${d.sel.size})` : ''}`, !d.sel.size || !!job.id], ['original', 'Use Android Icon', !anyWm]])}`;
+            el.querySelector('.wm-pi-grid').addEventListener('click', (e) => {
+                const cell = e.target.closest('.wm-pi-cell');
+                if (!cell) return;
+                const id = cell.dataset.id;
+                if (d.sel.has(id)) d.sel.delete(id); else d.sel.add(id);
+                pageApi.rerender();
+            });
+            el.querySelector('[data-act="request"]').addEventListener('click', async () => {
+                const chosen = d.list.filter((a) => d.sel.has(a.id));
+                if (!chosen.length || job.id) return;
+                try {
+                    const items = await sh.busy(async () => Promise.all(chosen.map(async (a) => ({ id: a.id, label: a.label, category: a.category || null, game: a.game === true, icon: await iconData(a) }))), { paint: true, timeout: 30000 });
+                    const j = await sh.busy(() => api('/jobs', { method: 'POST', body: { items } }), { paint: true, timeout: 60000 });
+                    setJob(j.job.id, j.job);
+                    job.lastState = 'working';
+                    d.sel.clear();
+                    poll(false);
+                    await sh.messageBox({ title: 'Program Icons', icon: 'info', text: `The server is making ${j.job.items.length} icon${j.job.items.length === 1 ? '' : 's'}. You can close Program Icons: Melaton Mobile tells you when they are ready.` });
+                    if (d.goTab) d.goTab('pi-results');
+                } catch (err) {
+                    void sh.messageBox({ title: 'Program Icons', icon: 'error', text: `The icons could not be requested. ${err.message}` });
+                }
+            });
+            el.querySelector('[data-act="original"]').addEventListener('click', async () => {
+                const ids = [...d.sel].filter((id) => store.icons[id]);
+                if (!ids.length) return;
+                const yes = await sh.messageBox({
+                    title: 'Program Icons', icon: 'question',
+                    text: `Use the Android icon again for ${ids.length === 1 ? 'this program' : `these ${ids.length} programs`}? Every phone goes back to it.`,
+                    buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }], cancelValue: false
+                });
+                if (!yes) return;
+                try {
+                    let last = null;
+                    await sh.busy(async () => { for (const id of ids) last = await api(`/store?id=${encodeURIComponent(id)}`, { method: 'DELETE' }); }, { paint: true, timeout: 30000 });
+                    if (last) applyStore(last);
+                    d.sel.clear();
+                    pageApi.rerender();
+                } catch (err) {
+                    void sh.messageBox({ title: 'Program Icons', icon: 'error', text: `The icons could not be changed. ${err.message}` });
+                }
+            });
+        }
+
+        function renderResults(el, d, pageApi) {
+            const jd = job.id ? job.data : null;
+            if (!jd) {
+                el.innerHTML = `${job.id ? '<p>Reading the batch...</p>' : '<p>No icons are being made. Select programs on the Programs tab and tap Request.</p>'}`;
+                return;
+            }
+            const items = jd.items;
+            const ready = items.filter((it) => it.state === 'ready');
+            for (const k of [...d.keep]) if (!ready.some((it) => it.key === k)) d.keep.delete(k);
+            const busy = jd.state === 'working';
+            const done = items.filter((it) => it.state === 'ready' || it.state === 'failed').length;
+            const rows = items.map((it) => {
+                const pv = it.preview;
+                const can = it.state === 'ready';
+                return `<div class="wm-listbox-row wm-pi-row">
+                    <label class="wm-pi-pick">${can ? `<input type="checkbox" data-key="${esc(it.key)}"${d.keep.has(it.key) ? ' checked' : ''}>` : '<span class="wm-pi-nobox"></span>'}
+                    <span class="wm-pi-thumbs">${it.original ? `<img class="wm-pi-orig" src="${esc(it.original)}" alt="">` : ''}${pv ? `<img class="wm-pi-big" src="${esc(pv[128])}" alt=""><img class="wm-pi-small" src="${esc(pv[16])}" alt="">` : '<span class="wm-pi-big wm-pi-empty"></span>'}</span>
+                    <span class="wm-pi-text"><b>${esc(it.label)}</b><span>${esc(it.state === 'failed' ? `Failed: ${it.error || ''}` : (STATE_TEXT[it.state] || it.state))}${it.attempt > 1 && it.state === 'ready' ? ` (try ${it.attempt})` : ''}</span></span></label></div>`;
+            }).join('');
+            el.innerHTML = `<p>${busy ? `Making icons: ${done} of ${items.length} finished. You can close Program Icons.` : 'Check the icons to keep, or to make again, then tap Done or Regenerate.'}</p>
+                <div class="wm-listbox wm-pi-list" style="max-height:calc(230 * var(--wm-px))">${rows}</div>
+                ${ui.buttons([['regen', 'Regenerate', !d.keep.size], ['done', 'Done', busy], ['discard', 'Discard', false]])}`;
+            el.querySelectorAll('input[data-key]').forEach((c) => c.addEventListener('change', () => {
+                if (c.checked) d.keep.add(c.dataset.key); else d.keep.delete(c.dataset.key);
+                pageApi.rerender();
+            }));
+            el.querySelector('[data-act="regen"]').addEventListener('click', async () => {
+                if (!d.keep.size) return;
+                try {
+                    const j = await sh.busy(() => api(`/jobs/${encodeURIComponent(job.id)}/regenerate`, { method: 'POST', body: { keys: [...d.keep] } }), { paint: true, timeout: 20000 });
+                    job.data = j.job;
+                    job.lastState = 'working';
+                    d.keep.clear();
+                    pageApi.rerender();
+                    poll(false);
+                } catch (err) { void sh.messageBox({ title: 'Program Icons', icon: 'error', text: `The icons could not be made again. ${err.message}` }); }
+            });
+            el.querySelector('[data-act="done"]').addEventListener('click', async () => {
+                const keep = [...d.keep];
+                const yes = await sh.messageBox({
+                    title: 'Program Icons', icon: 'question',
+                    text: keep.length
+                        ? `Keep ${keep.length} icon${keep.length === 1 ? '' : 's'} for every phone? The others are discarded.`
+                        : 'No icon is checked. Discard the whole batch?',
+                    buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }], cancelValue: false
+                });
+                if (!yes) return;
+                try {
+                    const j = await sh.busy(() => api(`/jobs/${encodeURIComponent(job.id)}/done`, { method: 'POST', body: { accept: keep } }), { paint: true, timeout: 60000 });
+                    setJob(null);
+                    d.keep.clear();
+                    applyStore(j.manifest);
+                    pageApi.rerender();
+                    if (j.saved && j.saved.length) void sh.messageBox({ title: 'Program Icons', icon: 'info', text: `${j.saved.length} icon${j.saved.length === 1 ? ' was' : 's were'} saved. Other phones get ${j.saved.length === 1 ? 'it' : 'them'} with their next update.` });
+                } catch (err) { void sh.messageBox({ title: 'Program Icons', icon: 'error', text: `The icons could not be saved. ${err.message}` }); }
+            });
+            el.querySelector('[data-act="discard"]').addEventListener('click', async () => {
+                const yes = await sh.messageBox({
+                    title: 'Program Icons', icon: 'question', text: 'Discard this batch? No icon is saved.',
+                    buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }], cancelValue: false
+                });
+                if (!yes) return;
+                try { await api(`/jobs/${encodeURIComponent(job.id)}/cancel`, { method: 'POST' }); } catch (_) { /* gone already */ }
+                setJob(null);
+                d.keep.clear();
+                pageApi.rerender();
+            });
+        }
+
+        ws.registerPage({
+            id: PAGE_ID, tab: 'personal', label: 'Program Icons', icon: 'app-program-icons',
+            tabs: [['pi-programs', 'Programs'], ['pi-results', 'Results']],
+            init() {
+                const list = read().filter((a) => a.role !== 'settings' && !ROLES[a.role]).sort((x, y) => coll.compare(x.label, y.label));
+                const d = { list, sel: new Set(), keep: new Set() };
+                // a batch another phone started (or one this phone forgot): the newest open one
+                if (!job.id) {
+                    api('/jobs').then((j) => {
+                        const first = j.jobs && j.jobs[0];
+                        if (first && !job.id) { setJob(first.id, first); job.lastState = first.state; poll(true); rerenderLive(); }
+                    }).catch(() => {});
+                } else {
+                    poll(true);
+                }
+                loadStore();
+                return d;
+            },
+            render(el, tab, d, pageApi) {
+                job.live = { el, api: pageApi };
+                // the Request button moves to Results: the Settings host opens the page there
+                d.goTab = (t) => { if (window.wmSettings) window.wmSettings.open(PAGE_ID, t); };
+                if (tab === 'pi-results') renderResults(el, d, pageApi);
+                else renderPrograms(el, d, pageApi);
+            },
+            commit() { return []; }
         });
     }
 
@@ -149,13 +502,16 @@
             window.wmSettings.addProgramFolder(FOLDER, { label: 'Android', icon: 'app-folder-android' });
         }
         sync();
-        registerPage();
+        registerRemoveTab();
+        registerIconsPage();
+        loadStore();
+        if (job.id) poll(true);
         // a program was installed, removed or changed
         let timer = null;
-        window.addEventListener('androidapps', () => { clearTimeout(timer); timer = setTimeout(sync, 800); });
+        window.addEventListener('androidapps', () => { clearTimeout(timer); timer = setTimeout(refresh, 800); });
     }
 
-    window.wmAndroidApps = { sync, list: () => apps.slice() };
+    window.wmAndroidApps = { sync, refresh, list: () => apps.slice(), store: () => store };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

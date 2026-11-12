@@ -226,6 +226,8 @@
 
     /** 32 px art for a shell icon name: its -lg pair when the ROM has one. */
     function wmLargeIcon(name) {
+        // a Program Icons set (#773) has its own -lg frames
+        if (sh.art.isSet && sh.art.isSet(name)) return { src: sh.art.url(`${name}-lg`), srcset: sh.art.srcset(`${name}-lg`) };
         if (String(name).startsWith('/')) return { src: name, srcset: '' };
         const n = manifest && manifest[`${name}-lg`] ? `${name}-lg` : name;
         return { src: sh.art.url(n), srcset: sh.art.srcset(n) };
@@ -439,7 +441,8 @@
     const DREAMSCAPE_DESKTOP = new Set(['explore-gallery', 'novels', 'ispy', 'image-search']);
     // WM 6.1 art for desktop entries the phone lists as they are (the dsap apps)
     const DESKTOP_WM_ART = { 'explore-gallery': 'app-agora', novels: 'app-novels', ispy: 'app-image-search', 'image-search': 'app-image-search', 'data-management': 'app-data-management', 'control-panel': 'app-control-panel', import: 'app-import' };
-    const appFolder = (a) => (PROGRAM_FOLDERS[a.programsFolder] ? a.programsFolder : (DREAMSCAPE_APPS.has(a.id) ? 'dreamscape' : null));
+    // programsFolder 'games': a phone program that is a game (the Android ones, #773) sits in Games
+    const appFolder = (a) => (a.programsFolder === 'games' ? 'games' : PROGRAM_FOLDERS[a.programsFolder] ? a.programsFolder : (DREAMSCAPE_APPS.has(a.id) ? 'dreamscape' : null));
     const desktopFolder = (l) => (DREAMSCAPE_DESKTOP.has(l.launchId) ? 'dreamscape' : null);
 
     // Settings grid items that open an app (not a Settings page)
@@ -483,6 +486,7 @@
         const folderApps = (f) => shellApps.filter((a) => a.inStart && appFolder(a) === f && !SHELL_ONLY.has(a.id) && !IN_SETTINGS_APPS.has(a.id))
             .forEach((a) => items.push({ key: `a:${a.id}`, label: a.startLabel || a.title || a.id, img: wmLargeIcon(a.icon || 'app-programs') }));
         if (folder === 'games') {
+            folderApps('games');
             for (const g of desktopLaunchables('games')) {
                 if (!g || !g.text || !g.imageIcon) continue;
                 // games come later (Yukimi, Nov 10): listed, not yet playable on the phone
@@ -493,7 +497,8 @@
             desktopLaunchables().forEach(desktopItem);
             desktopLaunchables('toolbox').forEach(desktopItem);
         } else {
-            if (desktopLaunchables('games').length) items.push({ key: 'folder:games', label: 'Games', img: wmLargeIcon('app-games'), folder: 'games' });
+            const phoneGames = shellApps.some((a) => a.inStart && appFolder(a) === 'games');
+            if (phoneGames || desktopLaunchables('games').length) items.push({ key: 'folder:games', label: 'Games', img: wmLargeIcon('app-games'), folder: 'games' });
             for (const [id, f] of Object.entries(PROGRAM_FOLDERS)) {
                 if (EXTRA_FOLDERS.has(id) && !shellApps.some((a) => a.inStart && appFolder(a) === id)) continue;
                 items.push({ key: `folder:${id}`, label: f.label, img: f.icon(), folder: id });
@@ -515,6 +520,7 @@
         let page = null;
         let folder = null; // 'games' while the Games folder is open
         let byKey = new Map();
+        let onAppsChanged = null;
 
         function render() {
             if (!page) return;
@@ -559,9 +565,27 @@
                 page = p;
                 page.classList.add('wm-pg');
                 page.innerHTML = '<div class="wm-pg-scroll"><div class="wm-icongrid" role="list"></div></div>';
-                bindGrid(page.querySelector('.wm-icongrid'), openItem);
+                const grid = page.querySelector('.wm-icongrid');
+                bindGrid(grid, openItem);
+                // tap-and-hold on a program that has a menu of its own (the Android programs: Add to
+                // Start, Move to Games, Hide, Program Info, End Task, Remove; #773)
+                grid.addEventListener('contextmenu', (e) => {
+                    const cell = e.target.closest('.wm-icongrid-cell');
+                    e.preventDefault();
+                    if (!cell || !cell.dataset.key.startsWith('a:')) return;
+                    const rows = sh.appHoldMenu(cell.dataset.key.slice(2));
+                    if (!rows.length) return;
+                    grid.querySelectorAll('.wm-icongrid-cell.is-selected').forEach((c) => c.classList.remove('is-selected'));
+                    cell.classList.add('is-selected');
+                    sh.menuAt(e.clientX, e.clientY, rows);
+                });
             },
             show() {
+                if (!onAppsChanged) {
+                    // a program came, went or moved folder (wmAndroidApps.js): redraw where we are
+                    onAppsChanged = () => { if (page && !page.hidden && sh.current === 'programs') { const keep = page.querySelector('.wm-pg-scroll').scrollTop; render(); page.querySelector('.wm-pg-scroll').scrollTop = keep; } };
+                    document.addEventListener('wmAppsChanged', onAppsChanged);
+                }
                 // the Start menu opens Programs at its top level
                 folder = null;
                 render();
@@ -1495,7 +1519,8 @@
     //                                   an id already registered is replaced (late wins), so a group
     //                                   file can take over one of the pages above
     //   wmSettings.extendPage(pageId, ext)
-    //                                   more tabs on a page that exists: ext = { id, tabs [[id, label]],
+    //                                   more tabs on a page that exists (a page without tabs names its
+    //                                   own first one with ownTab: [id, label]): ext = { id, tabs [[id, label]],
     //                                   after? (the tab they follow; default the end), available()?,
     //                                   init() -> its own draft, render(el, tabId, draft, api),
     //                                   commit(draft) -> keys | false | Promise }; tab ids must not
@@ -1547,6 +1572,9 @@
     /** The page's tabs with its extensions' tabs placed in. */
     function tabsWith(def, exts) {
         const tabs = (def.tabs || []).slice();
+        // a page with no tabs of its own keeps its page as the first tab once an extension adds one
+        // (ownTab: [id, label]; Remove Programs > Programs | Android, #773)
+        if (!tabs.length && exts.length && Array.isArray(def.ownTab)) tabs.push(def.ownTab);
         for (const x of exts) {
             const own = x.tabs.filter((t) => !tabs.some(([id]) => id === t[0]));
             const i = x.after ? tabs.findIndex(([id]) => id === x.after) : -1;

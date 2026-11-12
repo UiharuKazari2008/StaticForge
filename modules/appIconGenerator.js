@@ -25,10 +25,13 @@ const TRANSPARENT_MODELS = Object.freeze([
     'gpt-image-2.5-flare',
     'gpt-image-2.5-flare-2026-09-08',
     'gpt-image-2.5-sunburst',
-    'gpt-image-2.5-sunburst-2026-09-08'
+    'gpt-image-2.5-sunburst-2026-09-08',
+    'gpt-image-2.6-flare',
+    'gpt-image-2.6-sunburst'
 ]);
 
-const DEFAULT_MODEL = 'gpt-image-2.5-sunburst';
+// OpenAI's latest (Yukimi, Nov 12 2026: generations use the newest image model); 2.6 keeps transparent backgrounds
+const DEFAULT_MODEL = 'gpt-image-2.6-sunburst';
 const DEFAULT_QUALITY = 'high';
 const DEFAULT_SIZE = '1024x1024';
 const QUALITIES = Object.freeze(['low', 'medium', 'high']);
@@ -124,7 +127,7 @@ function assertTransparentModel(model) {
 
 function assertQuality(quality, model) {
     const name = collapse(quality) || DEFAULT_QUALITY;
-    const allowed = String(model || '').startsWith('gpt-image-2.5') ? QUALITIES_25 : QUALITIES;
+    const allowed = /^gpt-image-2\.[5-9]/.test(String(model || '')) ? QUALITIES_25 : QUALITIES;
     if (!allowed.includes(name)) {
         throw new AppIconError(`--quality must be ${allowed.join(', ')} for ${model || 'this model'}.`);
     }

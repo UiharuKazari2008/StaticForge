@@ -899,3 +899,100 @@ html.ui-mobile #wmShell .wm-edit {
 .wm-tabs-spin > button:active::before {
     background: #fff;
 }
+
+/* ---- Settings > Personal > Program Icons (wmAndroidApps.js, #773) ----
+   Programs tab: the icon grid with several picks (each picked cell has the highlighted label and
+   a check over its icon's corner); Results tab: one row per program, its Android icon, the new
+   icon at 48 and 16 units, its name and state. */
+.wm-pi-scroll {
+    max-height: calc(210 * var(--wm-px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    margin-bottom: calc(4 * var(--wm-px));
+}
+
+.wm-pi-check {
+    display: none;
+    position: absolute;
+    right: calc(-4 * var(--wm-px));
+    bottom: calc(-3 * var(--wm-px));
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff url('/static_images/wm61/menu-check@2x.png') center / calc(9 * var(--wm-px)) no-repeat;
+}
+
+.wm-pi-cell.is-checked .wm-pi-check {
+    display: block;
+}
+
+.wm-pi-cell.is-checked .wm-icongrid-label span {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-pi-list .wm-pi-row {
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
+}
+
+.wm-pi-pick {
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    width: 100%;
+    min-width: 0;
+}
+
+.wm-pi-pick input,
+.wm-pi-nobox {
+    flex: 0 0 auto;
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+    margin: 0;
+}
+
+.wm-pi-thumbs {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    flex: 0 0 auto;
+}
+
+.wm-listbox-row .wm-pi-thumbs img.wm-pi-orig {
+    width: calc(24 * var(--wm-px));
+    height: calc(24 * var(--wm-px));
+    opacity: 0.85;
+}
+
+.wm-listbox-row .wm-pi-thumbs .wm-pi-big {
+    width: calc(48 * var(--wm-px));
+    height: calc(48 * var(--wm-px));
+}
+
+.wm-pi-empty {
+    display: block;
+    border: calc(1 * var(--wm-px)) dotted #808080;
+    box-sizing: border-box;
+}
+
+.wm-listbox-row .wm-pi-thumbs img.wm-pi-small {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    image-rendering: pixelated;
+}
+
+.wm-pi-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    white-space: normal;
+    line-height: calc(12.5 * var(--wm-px));
+}
+
+.wm-pi-text b,
+.wm-pi-text span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

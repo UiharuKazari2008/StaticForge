@@ -93,6 +93,8 @@
 
     /** The largest copy of a 6.1 shell icon (app-x-lg@4x is 128 px), drawn into the 90x90 box. */
     function art61(name) {
+        // a Program Icons set (#773): its largest frame, -lg@4x (128 px)
+        if (sh.art.isSet && sh.art.isSet(name)) return { src: `${name}-lg@4x.png`, srcset: '' };
         if (String(name).startsWith('/')) return { src: name, srcset: '' };
         const n = manifest && manifest[`${name}-lg`] ? `${name}-lg` : name;
         const list = String(sh.art.srcset(n)).split(',').map((s) => s.trim().split(/\s+/)[0]).filter(Boolean);
@@ -254,6 +256,8 @@
         const inFolder = (a) => {
             if (a.inStart !== 'top' && a.inStart !== 'bottom') {
                 if (DREAMSCAPE_APPS.has(a.id)) return 'dreamscape';
+                // a phone program that is a game (the Android ones, #773)
+                if (a.programsFolder === 'games') return 'games';
                 if (a.programsFolder && extra.has(a.programsFolder)) return a.programsFolder;
             }
             return null;
@@ -270,6 +274,7 @@
             items.push({ key: `d:${l.launchId}`, label: l.text, img: art ? art61(art) : artDesktop(l.imageIcon), desktop: l.text, launch: l });
         };
         if (folder === 'games') {
+            for (const a of apps) if (a.inStart && !NOT_LISTED.has(a.id) && inFolder(a) === 'games') items.push(appItem(a));
             for (const g of desktopLaunchables('games')) {
                 if (!g || !g.text || !g.imageIcon) continue;
                 // listed, not yet playable on the phone (as in Programs > Games)
@@ -281,7 +286,7 @@
                 items.push(appItem(a));
             }
             if (!folder) {
-                if (desktopLaunchables('games').length) items.push({ key: 'folder:games', label: FOLDERS.games.label, img: FOLDERS.games.icon(), folder: 'games' });
+                if (apps.some((a) => a.inStart && inFolder(a) === 'games') || desktopLaunchables('games').length) items.push({ key: 'folder:games', label: FOLDERS.games.label, img: FOLDERS.games.icon(), folder: 'games' });
                 items.push({ key: 'folder:dreamscape', label: FOLDERS.dreamscape.label, img: FOLDERS.dreamscape.icon(), folder: 'dreamscape' });
                 for (const [id, f] of extra) {
                     if (apps.some((a) => a.inStart && inFolder(a) === id)) items.push({ key: `folder:${id}`, label: f.label, img: art61(`app-folder-${id}`), folder: id });
@@ -590,7 +595,9 @@
         const folder = folderNow();
         const top = topItems(layout()).map((t) => t.key);
         const at = top.indexOf(it.key);
-        if (folder && at >= 0) return false;
+        // a program's own rows (the Android programs: Add to Start, Move to Games, Hide ...; #773)
+        const own = it.app ? sh.appHoldMenu(it.app) : [];
+        if (folder && at >= 0 && !own.length) return false;
         select(i, true);
         const run = (up) => () => {
             setTop(it.key, up);
@@ -601,8 +608,11 @@
             settle();
         };
         const rows = [];
-        if (at !== 0) rows.push({ label: 'Move to Top', action: run(true) });
-        if (at >= 0) rows.push({ label: 'Move Down', action: run(false) });
+        if (!(folder && at >= 0)) {
+            if (at !== 0) rows.push({ label: 'Move to Top', action: run(true) });
+            if (at >= 0) rows.push({ label: 'Move Down', action: run(false) });
+        }
+        if (own.length) rows.push(...(rows.length ? ['-'] : []), ...own);
         sh.menuAt(x, yPt, rows);
         // Start's menu hangs to the left of the pen: the frame's top right corner 2.5 units right
         // of and 5.5 under it, its left edge never under 7 units (pen 240,360 on the device: frame
@@ -936,6 +946,8 @@
         shownApp = root.dataset.wmApp || '';
         new MutationObserver(() => { shownApp = root.dataset.wmApp || ''; }).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
         // the X ends Start (its page is made again on the next open): listeners outside the page are set once
+        // a program came, went or moved (wmAndroidApps.js after a hold menu command or an install)
+        document.addEventListener('wmAppsChanged', () => { if (page && page.isConnected && !page.hidden && !drag) { render(); place(Math.max(0, Math.min(maxY, y))); } });
         window.addEventListener('resize', () => { if (page && page.isConnected && !page.hidden) { endDrag(false); if (columnsFor() !== cols) render(); else measure(); place(Math.max(0, Math.min(maxY, y))); } });
         sh.registerApp({
             id: 'start',

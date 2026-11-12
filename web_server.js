@@ -59,6 +59,8 @@ const runtimeAssetService = require('./modules/runtimeAssetService');
 const agentAssetBundle = require('./modules/agentAssetBundle');
 const meletonInstallPack = require('./modules/meletonInstallPack');
 const melatonUpdateEngine = require('./public/scripts/launch/updateEngine');
+// which client needs which files: Melaton Mobile's art per version and density (Yozora #774)
+const melatonPackages = require('./public/scripts/launch/assetPackages');
 const agentClientBridge = require('./modules/agentClientBridge');
 const cursorDirector = require('./modules/cursorDirector');
 const mcpAgentFacade = require('./modules/mcpAgentFacade');
@@ -1000,6 +1002,35 @@ function buildServiceWorkerCacheManifest() {
     return manifest;
 }
 
+/**
+ * The client's asset package set (Yozora #774, public/scripts/launch/assetPackages.js): the
+ * X-Melaton-Packages header, else the melaton_pkgs cookie its pages keep. null = a client from
+ * before packages (no cookie): it gets everything, as before.
+ */
+function requestPackageSet(req) {
+    let raw = req.get('X-Melaton-Packages');
+    if (raw == null) {
+        const m = /(?:^|;\s*)melaton_pkgs=([^;]*)/.exec(req.headers.cookie || '');
+        if (m) { try { raw = decodeURIComponent(m[1]); } catch (_) { raw = m[1]; } }
+    }
+    return melatonPackages.parseSet(raw);
+}
+// one filtered manifest per package set, kept while the full one is the same object
+const swVariantMemo = new Map();
+function manifestForPackages(set) {
+    const full = buildServiceWorkerCacheManifest();
+    if (set == null) return full;
+    const key = set.join(',') || 'none';
+    const memo = swVariantMemo.get(key);
+    if (memo && memo.full === full) return memo.manifest;
+    const manifest = melatonPackages.filterRows(full, set);
+    swVariantMemo.set(key, { full, manifest });
+    return manifest;
+}
+const packageSetKey = (set) => (set == null ? '' : (set.join(',') || 'none'));
+// the named pack of a set: a short stable name from its key
+const packageSetPackName = (set) => (set == null ? '' : `v${crypto.createHash('sha256').update(packageSetKey(set)).digest('hex').slice(0, 10)}`);
+
 // Build service worker cache manifest (same payload as OPTIONS /)
 function buildServiceWorkerCacheManifestUncached() {
     const routeFiles = [
@@ -1050,11 +1081,15 @@ function buildServiceWorkerCacheManifestUncached() {
     const onDemandGameAsset = (webPath) => typeof webPath === 'string'
         && (webPath.startsWith('/static_images/vista-games/') || webPath.startsWith('/static_images/vista-gadgets/'));
 
+    // the animation frames the strips and the status atlas are built from: loaded by nobody (#774)
+    const buildSourceArt = (webPath) => melatonPackages.packageOf(webPath) === 'source';
+
     const staticFiles = globalResources.getGlobalCacheData()
         .filter(file =>
             !routeNames.includes(file.path) &&
             !shadowedByGalleryRoute(file.path) &&
             !onDemandGameAsset(file.path) &&
+            !buildSourceArt(file.path) &&
             !splashOrScreenshotPattern.test(file.path) &&
             !unrelatedFilePattern.test(file.path)
         )
@@ -2212,6 +2247,8 @@ require('./modules/slideshowDevices').mountPreviewRoutes(app, authMiddleware, gl
 require('./modules/activeSyncTransfers').mount(app, authMiddleware, globalResources);
 // modules/activeSyncScreen.js — ActiveSync remote viewer: a phone's screen frames for the desktop (Yozora #747)
 require('./modules/activeSyncScreen').mount(app, authMiddleware, globalResources);
+// modules/wmProgramIcons.js — Melaton Mobile Program Icons: WM icons for Android programs, one shared store (Yozora #773)
+require('./modules/wmProgramIcons').mount(app, authMiddleware, globalResources);
 
 app.use('/images/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
@@ -2478,7 +2515,48 @@ function refreshInstallPackIfStale() {
     startInstallPackRebuild();
     return true;
 }
+// A package set's own pack (#774): built when first asked for, rebuilt when its manifest moved;
+// the newest few stay on disk. Asked while it builds: 503 + Retry-After, as the default pack.
+const namedPackBuilds = new Map(); // name -> promise
+const namedPackUsed = new Map(); // name -> last asked
+const NAMED_PACKS_KEPT = 6;
+function refreshNamedPackIfStale(name, manifest) {
+    namedPackUsed.set(name, Date.now());
+    if (namedPackBuilds.has(name)) return true;
+    const pack = meletonInstallPack.status(name);
+    if (pack.building) return true;
+    let want = installPackHashes.get(manifest);
+    if (!want) {
+        want = meletonInstallPack.hashManifest(manifest);
+        installPackHashes.set(manifest, want);
+    }
+    if (pack.ready && pack.hash === want) return false;
+    const job = meletonInstallPack.rebuild({ name, manifest, resolveFile: resolveInstallPackFile })
+        .then((built) => {
+            globalResources.logger.info(`${built.rebuilt ? 'Built' : 'Reused'} install pack ${name} (${built.count} files, ${built.bytes} bytes)`);
+            const keep = [...namedPackUsed.entries()].sort((a, b) => b[1] - a[1]).slice(0, NAMED_PACKS_KEPT).map(([n]) => n);
+            meletonInstallPack.prune(keep);
+        })
+        .catch((error) => globalResources.logger.error(`Install pack ${name} build failed: ${error.message}`))
+        .finally(() => namedPackBuilds.delete(name));
+    namedPackBuilds.set(name, job);
+    return true;
+}
 app.get('/install/meletonfx.zip', (req, res) => {
+    const set = requestPackageSet(req);
+    if (set != null) {
+        // this client's packages only: core, and the Melaton Mobile art it uses (#774)
+        const name = packageSetPackName(set);
+        let stale = true;
+        try { stale = refreshNamedPackIfStale(name, manifestForPackages(set)); } catch (_) { stale = true; }
+        const named = meletonInstallPack.status(name);
+        if (stale || !named.ready || !named.path) {
+            res.set('Retry-After', '5');
+            return res.status(503).json({ success: false, error: 'Install pack is building', retryAfter: 5 });
+        }
+        res.setHeader('X-Pack-Set', packageSetKey(set));
+        return sendInstallPack(res, named);
+    }
     let stale = false;
     try { stale = refreshInstallPackIfStale(); } catch (_) { stale = false; }
     const pack = meletonInstallPack.status();
@@ -2531,6 +2609,29 @@ app.post('/install/meletonfx.zip', async (req, res) => {
     }
 });
 
+// Melaton Update > Applied Updates (#774): the packages, their size, and which this client has
+app.get('/install/packages', (req, res) => {
+    try {
+        const sizes = new Map();
+        for (const row of buildServiceWorkerCacheManifest()) {
+            const id = melatonPackages.packageOf(row.url);
+            if (!id || id === 'source') continue;
+            const s = sizes.get(id) || { files: 0, bytes: 0 };
+            s.files += 1; s.bytes += Number(row.size) || 0;
+            sizes.set(id, s);
+        }
+        const set = requestPackageSet(req);
+        res.set('Cache-Control', 'no-store');
+        res.json({
+            success: true,
+            active: set,
+            packages: melatonPackages.PACKAGES.map((p) => ({ ...p, ...(sizes.get(p.id) || { files: 0, bytes: 0 }) }))
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.options('/', (req, res) => {
     if (!runtimeCompileComplete) {
         const bootStatus = serverStartupStatus.getPublicStatus();
@@ -2545,7 +2646,8 @@ app.options('/', (req, res) => {
         });
     }
     try {
-        const manifest = buildServiceWorkerCacheManifest();
+        // the client's packages (#774): a phone gets its Melaton Mobile version and density only
+        const manifest = manifestForPackages(requestPackageSet(req));
         // Digest of the url + hash rows. A client whose cache was in sync with this manifest
         // sends it back (X-Manifest-Hash) and gets a bodyless 304 instead of ~130 KB, twice per
         // boot (/launch and /app) on links where that held up the logon (Yozora #516).
