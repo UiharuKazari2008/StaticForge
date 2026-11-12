@@ -22,7 +22,8 @@
  * Play Store answers are kept a week in .cache/wm-program-icons/play/<package>.json.
  *
  * Image route (Yukimi, Nov 12: OpenAI's latest image model; TokenRouter when it can, for one wallet):
- * config.json wmProgramIcons { provider: 'auto' | 'tokenrouter' | 'openai', model?, quality?, briefModel? }.
+ * config.json wmProgramIcons { provider: 'auto' | 'tokenrouter' | 'openai', model?, quality?, briefModel?,
+ * colours? (palette per rendered size, default 32, 0 = full colour) }.
  * model defaults to gpt-image-2.5-sunburst (as good as 2.6 for these, cheaper); 'latest' takes the
  * newest gpt-image Sunburst OpenAI or TokenRouter lists. auto sends it through TokenRouter when
  * TokenRouter lists that model (2.5 only on Nov 12 2026), else to OpenAI directly.
@@ -192,7 +193,7 @@ const TAKES = [
 ];
 
 // a game's store icon is usually a painted scene: the icon is its few signature objects, rebuilt
-const GAME_TAKE = 'This is a game whose store icon is a painted illustration. Pick its one to three signature objects or characters (for example the three candies of a candy game, the bird of a bird game) and model each again as a clean, chunky glossy object in the Windows Mobile style, grouped tightly and overlapping a little, like a 2009 Windows Mobile game icon (Bubble Breaker, Solitaire). Simplify their shapes and surface detail so each reads at 16 pixels; drop the scene, sparkles and background.';
+const GAME_TAKE = 'This is a game whose store icon is a painted illustration. If its icon is a character, draw that character as a free-standing head-and-shoulders figure whose hair and shoulders end in their own outline (never cut off by a straight or rounded edge), like the era\'s Messenger buddy figures. Otherwise pick its one to three signature objects or characters (for example the three candies of a candy game, the bird of a bird game) and draw each again as a clean, chunky object in the Windows Mobile style (few flat tones, stepped shading), grouped tightly and overlapping a little, like a 2009 Windows Mobile game icon (Bubble Breaker, Solitaire). Simplify their shapes and surface detail so each reads at 16 pixels; drop the scene, sparkles and background.';
 
 function buildPrompt(item, ctx, attempt, refs, brief) {
     const name = collapse(item.label) || collapse(ctx && ctx.title) || item.package;
@@ -211,7 +212,8 @@ function buildPrompt(item, ctx, attempt, refs, brief) {
         'Leave out everything that is not the app\'s own mark: publisher or developer logos and wordmarks (a studio\'s name in a corner, a "King" or "Google" badge), corner ribbons, "new" or "beta" tags, store badges.',
         'But make it a real 2009 Windows Mobile icon, not the modern icon with a gloss filter:',
         '- No modern app-icon plate: no flat rounded-square or circle tile behind the mark, no Material Design long shadows, no flat vector look, no 2020s gradients. Windows Mobile icons are free-standing objects on a transparent background.',
-        '- Volume and light: a slight three-quarter turn or front-on view, light from the upper left, smooth glossy gradients, a crisp white gloss highlight on the upper half of rounded parts, every shape outlined thinly in a darker shade of its own colour (never black).',
+        '- Nothing is cropped or masked into a shape: no rounded corners, no rounded-square, circle or badge outline cutting the picture, no vignette. Rounded app-icon shapes did not exist in 2009. Every object ends in its own silhouette.',
+        '- Light and colour the way the era\'s icons were drawn (Yukimi: limited colour, staggered shading): a slight three-quarter turn or front-on view, light from the upper left, each surface in a small palette of three or four tones of its colour laid down as distinct steps or bands (a light top, a mid tone, a darker lower edge), not smooth airbrushed or painterly shading, no soft ambient occlusion, no detailed rendering of hair strands, skin or fabric. One crisp white gloss highlight on rounded parts. Every shape outlined thinly in a darker shade of its own colour (never black).',
         '- Built from a few big, simple shapes that stay readable at 32 and 16 pixels; no fine texture, hairlines or small text.',
         `- ${(item.game || /game/i.test(cat)) && (Number(attempt) || 1) === 1 ? GAME_TAKE : TAKES[(Math.max(1, Number(attempt) || 1) - 1) % TAKES.length]}`,
         '- Lettering only where the brand mark itself is a letter or a short word; then keep it as a bold glossy shape. No other text.',
@@ -317,7 +319,7 @@ async function describeIcon(name, refBuffers) {
                     role: 'user',
                     content: [{
                         type: 'text',
-                        text: `These are icons of the game "${name}". Name its one to three signature objects or characters that make the icon recognisable, and describe each for an illustrator who will model it again from scratch: shape, proportions, colours, distinctive features, pose. Leave out the background, the scene, sparkles, the icon tile, and any publisher or developer logo, wordmark or badge (studio names, corner ribbons). Plain prose, at most 90 words, no preamble.`
+                        text: `These are icons of the game "${name}". Name its one to three signature objects or characters that make the icon recognisable, and describe each for an illustrator who will model it again from scratch: shape, proportions, colours, distinctive features, pose. Leave out the background, the scene, sparkles, the icon tile, any publisher or developer logo, wordmark or badge (studio names, corner ribbons), and all text, event banners and anniversary or season ribbons. Describe colours as a few flat tones. Plain prose, at most 90 words, no preamble.`
                     }, ...images]
                 }]
             })
@@ -354,6 +356,18 @@ async function requestIcon(route, prompt, refBuffers) {
     const buf = Buffer.from(b64, 'base64');
     if (buf.length < 8 || buf[0] !== 0x89 || buf[1] !== 0x50) throw new Error('The image answer was not a PNG.');
     return buf;
+}
+
+/**
+ * One WM size, cut to a small palette with no dithering (Yukimi, Nov 12: Windows Mobile art had
+ * limited colour and staggered shading; the model's smooth gradients fall into bands). config
+ * wmProgramIcons.colours (default 32; 0 = full colour).
+ */
+async function renderWm(square, size) {
+    const out = await wmIconGenerator.renderSize(square, size);
+    const n = settings().colours === undefined ? 32 : Math.floor(Number(settings().colours));
+    if (!Number.isFinite(n) || n < 2) return out;
+    return sharp(out).png({ palette: true, colours: Math.min(256, n), dither: 0, compressionLevel: 9 }).toBuffer();
 }
 
 // ---------------------------------------------------------------- jobs
@@ -455,7 +469,7 @@ async function runItem(job, item) {
         const base = `${item.key}-${item.attempt}`;
         atomicWrite(path.join(dir, `${base}.png`), master);
         const square = await wmIconGenerator.squareFromCrop(master, await wmIconGenerator.autoCrop(master));
-        for (const s of PREVIEW_SIZES) atomicWrite(path.join(dir, `${base}-${s}.png`), await wmIconGenerator.renderSize(square, s));
+        for (const s of PREVIEW_SIZES) atomicWrite(path.join(dir, `${base}-${s}.png`), await renderWm(square, s));
         item.preview = base;
         item.state = 'ready';
     } catch (err) {
@@ -539,7 +553,7 @@ async function finish(job, accept) {
         const master = fs.readFileSync(path.join(jobDir(job.id), `${it.preview}.png`));
         const square = await wmIconGenerator.squareFromCrop(master, await wmIconGenerator.autoCrop(master));
         const name = setName(it);
-        for (const s of wmIconGenerator.SIZES) atomicWrite(path.join(storeDir(), `${name}${s.suffix}.png`), await wmIconGenerator.renderSize(square, s.size));
+        for (const s of wmIconGenerator.SIZES) atomicWrite(path.join(storeDir(), `${name}${s.suffix}.png`), await renderWm(square, s.size));
         const old = manifest.icons[it.id];
         manifest.icons[it.id] = { name, package: it.package, label: it.label, model: job.model || null, updatedAt: new Date().toISOString() };
         if (old && old.name && old.name !== name) removeSet(old.name);
@@ -577,7 +591,7 @@ function mount(app, authMiddleware, globalResources) {
     projectRoot = PROJECT_ROOT;
     loadJobs();
     const auth = authMiddleware || ((req, res, next) => next());
-    const admin = (req, res, next) => (req.userType === 'admin' ? next() : res.status(403).json({ success: false, error: 'Only an administrator can change program icons.' }));
+    const admin = (req, res, next) => (req.userType === 'admin' || req.userType === 'dev_admin' ? next() : res.status(403).json({ success: false, error: 'Only an administrator can change program icons.' }));
     const json = express.json({ limit: `${Math.ceil((MAX_ICON_BYTES * 1.4 * MAX_ITEMS) / (1024 * 1024)) + 2}mb` });
     const fail = (res, err) => res.status(err && err.status ? err.status : 500).json({ success: false, error: err && err.message ? err.message : String(err) });
     const jobOr404 = (req, res) => {
@@ -647,5 +661,5 @@ module.exports = {
     playStoreContext,
     chooseRoute,
     publicManifest,
-    _test: { versionOf, TAKES, createJob, jobs, setRoot: (r) => { projectRoot = r; } }
+    _test: { versionOf, TAKES, createJob, finish, removeFromStore, jobs, setRoot: (r) => { projectRoot = r; } }
 };

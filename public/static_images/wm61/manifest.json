@@ -7373,7 +7373,7 @@
         "generated",
         "1x-own-16px-frame"
       ],
-      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Program Icons (choose and make Windows Mobile icons for the phone's programs). Subject: a 2 by 2 grid of four small glossy rounded program icon squares (blue, green, amber, red) seen slightly from the front, with an artist's paintbrush leaning across the lower right."
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Program Icons (choose and make Windows Mobile icons for the phone's programs). Subject: three overlapping glossy rounded program icon cards fanned out like playing cards (a sky blue card with a white star, a leaf green card with a white note, an amber card with a white gear), with an artist's paintbrush with a wet blue tip leaning across the lower right."
     },
     "app-program-icons-lg": {
       "1x": {

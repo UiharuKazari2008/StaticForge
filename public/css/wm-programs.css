@@ -945,12 +945,15 @@ html.ui-mobile #wmShell .wm-edit {
     min-width: 0;
 }
 
-.wm-pi-pick input,
+.wm-pi-pick.wm-check {
+    min-height: 0;
+}
+
+/* the check box of a row still being made: its place kept */
 .wm-pi-nobox {
     flex: 0 0 auto;
     width: calc(13 * var(--wm-px));
     height: calc(13 * var(--wm-px));
-    margin: 0;
 }
 
 .wm-pi-thumbs {

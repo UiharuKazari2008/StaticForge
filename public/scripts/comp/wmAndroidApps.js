@@ -317,6 +317,7 @@
                 poll(false);
                 return;
             }
+            if (!j.job || !Array.isArray(j.job.items)) { setJob(null); rerenderLive(); return; }
             const was = job.lastState;
             job.data = j.job;
             job.lastState = j.job.state;
@@ -405,21 +406,23 @@
                 return;
             }
             const items = jd.items;
-            const ready = items.filter((it) => it.state === 'ready');
-            for (const k of [...d.keep]) if (!ready.some((it) => it.key === k)) d.keep.delete(k);
+            // a ready icon can be kept or made again; a failed one only made again
+            const pickable = items.filter((it) => it.state === 'ready' || it.state === 'failed');
+            for (const k of [...d.keep]) if (!pickable.some((it) => it.key === k)) d.keep.delete(k);
+            const keepReady = () => [...d.keep].filter((k) => items.some((it) => it.key === k && it.state === 'ready'));
             const busy = jd.state === 'working';
             const done = items.filter((it) => it.state === 'ready' || it.state === 'failed').length;
             const rows = items.map((it) => {
                 const pv = it.preview;
-                const can = it.state === 'ready';
+                const can = it.state === 'ready' || it.state === 'failed';
                 return `<div class="wm-listbox-row wm-pi-row">
-                    <label class="wm-pi-pick">${can ? `<input type="checkbox" data-key="${esc(it.key)}"${d.keep.has(it.key) ? ' checked' : ''}>` : '<span class="wm-pi-nobox"></span>'}
+                    <label class="wm-check wm-pi-pick">${can ? `<input type="checkbox" data-key="${esc(it.key)}"${d.keep.has(it.key) ? ' checked' : ''}><span></span>` : '<span class="wm-pi-nobox"></span>'}
                     <span class="wm-pi-thumbs">${it.original ? `<img class="wm-pi-orig" src="${esc(it.original)}" alt="">` : ''}${pv ? `<img class="wm-pi-big" src="${esc(pv[128])}" alt=""><img class="wm-pi-small" src="${esc(pv[16])}" alt="">` : '<span class="wm-pi-big wm-pi-empty"></span>'}</span>
                     <span class="wm-pi-text"><b>${esc(it.label)}</b><span>${esc(it.state === 'failed' ? `Failed: ${it.error || ''}` : (STATE_TEXT[it.state] || it.state))}${it.attempt > 1 && it.state === 'ready' ? ` (try ${it.attempt})` : ''}</span></span></label></div>`;
             }).join('');
             el.innerHTML = `<p>${busy ? `Making icons: ${done} of ${items.length} finished. You can close Program Icons.` : 'Check the icons to keep, or to make again, then tap Done or Regenerate.'}</p>
                 <div class="wm-listbox wm-pi-list" style="max-height:calc(230 * var(--wm-px))">${rows}</div>
-                ${ui.buttons([['regen', 'Regenerate', !d.keep.size], ['done', 'Done', busy], ['discard', 'Discard', false]])}`;
+                ${ui.buttons([['regen', 'Regenerate', !d.keep.size], ['done', 'Done', busy || !items.some((it) => it.state === 'ready')], ['discard', 'Discard', false]])}`;
             el.querySelectorAll('input[data-key]').forEach((c) => c.addEventListener('change', () => {
                 if (c.checked) d.keep.add(c.dataset.key); else d.keep.delete(c.dataset.key);
                 pageApi.rerender();
@@ -436,7 +439,7 @@
                 } catch (err) { void sh.messageBox({ title: 'Program Icons', icon: 'error', text: `The icons could not be made again. ${err.message}` }); }
             });
             el.querySelector('[data-act="done"]').addEventListener('click', async () => {
-                const keep = [...d.keep];
+                const keep = keepReady();
                 const yes = await sh.messageBox({
                     title: 'Program Icons', icon: 'question',
                     text: keep.length
@@ -471,7 +474,8 @@
             id: PAGE_ID, tab: 'personal', label: 'Program Icons', icon: 'app-program-icons',
             tabs: [['pi-programs', 'Programs'], ['pi-results', 'Results']],
             init() {
-                const list = read().filter((a) => a.role !== 'settings' && !ROLES[a.role]).sort((x, y) => coll.compare(x.label, y.label));
+                const hidden = readSet(HIDDEN_KEY);
+                const list = read().filter((a) => a.role !== 'settings' && !ROLES[a.role] && !hidden.has(a.id)).sort((x, y) => coll.compare(x.label, y.label));
                 const d = { list, sel: new Set(), keep: new Set() };
                 // a batch another phone started (or one this phone forgot): the newest open one
                 if (!job.id) {
