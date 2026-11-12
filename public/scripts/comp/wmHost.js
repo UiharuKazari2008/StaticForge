@@ -94,6 +94,77 @@
         return out;
     }
 
+    // ---------------------------------------------------------------- windows given a WM form
+
+    /**
+     * A picture's metadata Properties (imagePromptInspector.js: Glancewell's File > Properties,
+     * Studio's View Image Data, Explorer's Properties of a print) as a WM property page: "Properties"
+     * in the title bar (the file name is on the page), the command bar's Copy / Edit / Open /
+     * Metadata / Find and the Computed toggle in the Menu soft key, Prompt / Director / UC as WM's
+     * tabs along the bottom (the desktop's own tab buttons, given .wm-tab), one page that scrolls
+     * (wm-host.css [data-wmh-form="inspector"]).
+     */
+    function adaptWindow(win) {
+        const content = win.querySelector(':scope > .image-prompt-inspector-content');
+        if (!content || win.dataset.wmhForm) return;
+        win.dataset.wmhForm = 'inspector';
+        win.dataset.wmhTitle = 'Properties';
+        const tabs = content.querySelector(':scope > .explorer-actions-header > [role="tablist"]');
+        if (tabs) {
+            tabs.classList.add('wm-tabs', 'wmh-tabs');
+            tabs.querySelectorAll('[role="tab"]').forEach((b) => b.classList.add('wm-tab'));
+            // the Computed toggle is no tab: it stays with the command bar (a Menu row)
+            const lane = tabs.querySelector('[id^="imagePromptInspectorLaneToggle"]');
+            const bar = content.querySelector(':scope > .explorer-actions-header > .explorer-command-set:not([role="tablist"])');
+            if (lane && bar) bar.appendChild(lane);
+            content.appendChild(tabs);
+        }
+    }
+
+    /** The inspector object behind an image Properties window (imagePromptInspector.js), or null. */
+    function inspectorOf(win) {
+        try {
+            // eslint-disable-next-line no-undef
+            const m = typeof imagePromptInspectorManager !== 'undefined' ? imagePromptInspectorManager : null;
+            return (m && m.instances && m.instances.get(win.id)) || null;
+        } catch (_) { return null; }
+    }
+
+    /** Menu rows for a window's own command bar (adaptWindow), before its footer's. */
+    function commandRows(win, press) {
+        if (win.dataset.wmhForm !== 'inspector') return [];
+        const rows = [];
+        const bar = win.querySelector('.image-prompt-inspector-content > .explorer-actions-header:not(.image-prompt-inspector-findbar) > .explorer-command-set:not([role="tablist"])');
+        if (bar) {
+            bar.querySelectorAll(':scope > button').forEach((b) => {
+                if (b.hidden || b.classList.contains('hidden') || b.id.startsWith('imagePromptInspectorLaneToggle')) return;
+                const text = (b.textContent || '').replace(/\s+/g, ' ').trim() || b.title || '';
+                if (!text) return;
+                // Copy's click menu (contextMenu.js on the desktop) is a WM submenu of the same rows,
+                // each run by the inspector itself (imagePromptInspector.js runAction)
+                const inst = b.classList.contains('has-menu') ? inspectorOf(win) : null;
+                if (inst && typeof inst.copyMenuItems === 'function') {
+                    rows.push({
+                        label: text,
+                        submenu: () => inst.copyMenuItems('').map((it) => (it.separator ? '-' : {
+                            label: it.text, disabled: !!it.disabled, action: () => { inst.runAction(it.action); }
+                        }))
+                    });
+                    return;
+                }
+                // the device's wording: a command that opens a page ends with ...
+                const more = /^(find|metadata)$/i.test(text) ? '...' : '';
+                rows.push({ label: text + more, disabled: !!b.disabled, action: press({ b }) });
+            });
+        }
+        const lane = win.querySelector('[id^="imagePromptInspectorLaneToggle"]');
+        if (lane && !lane.classList.contains('hidden')) {
+            if (rows.length) rows.push('-');
+            rows.push({ label: 'Computed Prompt', checked: lane.getAttribute('aria-pressed') === 'true', action: press({ b: lane }) });
+        }
+        return rows;
+    }
+
     function keysFor(host) {
         const top = host.stack[host.stack.length - 1];
         if (!top) return { left: null, right: null, rows: [] };
@@ -109,11 +180,14 @@
         const left = form
             ? { label: prim.label.length > 14 ? prim.label.split(' ')[0] : prim.label, disabled: prim.b.disabled, action: press(prim) }
             : { label: sub ? 'Done' : 'Back', action: () => (sub ? closeTop(host) : ws.back()) };
-        const rows = btns.filter((x) => x !== cancel && !(form && x === prim))
+        const cmds = commandRows(win, press);
+        const foot = btns.filter((x) => x !== cancel && !(form && x === prim))
             .map((x) => ({ label: x.label, disabled: !!x.b.disabled, action: press(x) }));
+        const rows = cmds.length && foot.length ? [...cmds, '-', ...foot] : [...cmds, ...foot];
         if (rows.length) rows.push('-');
         if (form) rows.push({ label: cancel ? cancel.label : 'Cancel', action: () => closeTop(host) });
-        else rows.push({ label: sub ? 'Close' : `Close ${host.title}`, action: () => closeTop(host) });
+        // (a window given a WM form names itself on the page: plain Close, or the menu ran off screen)
+        else rows.push({ label: sub || win.dataset.wmhForm ? 'Close' : `Close ${host.title}`, action: () => closeTop(host) });
         return { left, right: { label: 'Menu', menu: () => keysFor(host).rows }, rows, form, prim };
     }
 
@@ -128,7 +202,7 @@
 
     function refreshTitle(host) {
         const top = host.stack[host.stack.length - 1];
-        const t = top ? windowTitle(top.win, host.title) : host.title;
+        const t = top ? (top.win.dataset.wmhTitle || windowTitle(top.win, host.title)) : host.title;
         if (ws.current === host.id && !root.hasAttribute('data-wm-viewer')) ws.setTitle(t);
     }
 
@@ -206,6 +280,7 @@
         const entry = { win, parent: win.parentNode, next: win.nextSibling, mo: null };
         host.stack.push(entry);
         byWin.set(win, host);
+        adaptWindow(win);
         let queued = false;
         entry.mo = new MutationObserver(() => {
             if (!isOpen(win)) { release(win); return; }
@@ -317,7 +392,7 @@
         }
         // a window opening while a hosted program is on screen (its dialogs, pickers) stacks over it
         const cur = ws.current && hosts.get(ws.current);
-        if (cur && cur.stack.length && Date.now() - lastTapAt < 3000) return cur;
+        if (cur && cur.stack.length && tapped()) return cur;
         return ensureHost(win.id || `w${Date.now()}`, windowTitle(win, 'Program'), windowIconSrc(win));
     }
 
@@ -327,13 +402,13 @@
         if (byWin.has(win)) {
             // asked for again while open: its program comes up
             const h = byWin.get(win);
-            if (Date.now() - lastTapAt < 3000) { unnotify(win); ws.open(h.id); }
+            if (tapped()) { unnotify(win); ws.open(h.id); }
             return true;
         }
         launched = false;
         const h = hostFor(win);
         // after a tap, or the window a Programs launch was waiting for: to the front
-        host(win, h, launched || Date.now() - lastTapAt < 3000);
+        host(win, h, launched || tapped());
         return true;
     }
 
@@ -395,9 +470,50 @@
         return false;
     }
 
+    /**
+     * Did the user ask for the window now opening? A tap in the last 3 s, or a tap that started a
+     * download of the desktop code the window needs (featureLoader.loadFeature: the image
+     * Properties' bundle, Paint ...) and that download ended under 3 s ago. A slow first load on a
+     * phone opened the window after the 3 s and it was taken for one opened by an agent ("Opened
+     * in the background" for the Properties the user had just tapped).
+     */
+    let tapLoads = 0; // feature downloads a tap started, still running
+    let tapLoadEnd = -1e9;
+    function tapped() {
+        const now = Date.now();
+        return now - lastTapAt < 3000 || tapLoads > 0 || now - tapLoadEnd < 3000;
+    }
+
+    function watchTapLoads() {
+        const fl = window.featureLoader;
+        if (!fl || typeof fl.loadFeature !== 'function' || fl.loadFeature.wmhWrapped) return;
+        const load = fl.loadFeature;
+        const wrapped = function (...args) {
+            const p = load.apply(this, args);
+            if (Date.now() - lastTapAt >= 3000 && tapLoads === 0) return p;
+            tapLoads++;
+            let ended = false;
+            const done = () => {
+                if (ended) return;
+                ended = true;
+                clearTimeout(cap);
+                tapLoads = Math.max(0, tapLoads - 1);
+                tapLoadEnd = Date.now();
+            };
+            // at most 20 s: a download that never ends does not make every later window "asked for"
+            const cap = setTimeout(done, 20000);
+            Promise.resolve(p).then(done, done);
+            return p;
+        };
+        wrapped.wmhWrapped = true;
+        fl.loadFeature = wrapped;
+    }
+
     function register() {
         ws = window.wmShell;
-        document.addEventListener('click', (e) => { if (e.isTrusted) lastTapAt = Date.now(); }, true);
+        // (featureLoader may come after this file: wrapped at the first tap, before its handlers run)
+        document.addEventListener('click', (e) => { if (e.isTrusted) { lastTapAt = Date.now(); watchTapLoads(); } }, true);
+        watchTapLoads();
         setInterval(sweep, 1500);
         setInterval(() => { for (const w of behind.keys()) if (!isOpen(w) || !w.isConnected) unnotify(w); }, 2000);
     }
@@ -411,6 +527,10 @@
             const page = el.closest('.wm-page.wm-host');
             return !!(page && ws && ws.current === page.dataset.app);
         },
+        /** Give a desktop window its WM form, if it has one (wmStudio.js tool pages share it). */
+        adapt: (win) => adaptWindow(win),
+        /** Menu rows for an adapted window's command bar; press({ b }) presses a desktop button. */
+        commandRows: (win, press) => commandRows(win, press),
         /** Whether a window is hosted here. */
         hosts: (win) => byWin.has(win),
         /** Hosted programs: [{ id, title, windows }]. */

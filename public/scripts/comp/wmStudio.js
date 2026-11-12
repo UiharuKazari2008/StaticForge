@@ -728,7 +728,7 @@
     function refreshTitle() {
         if (!ws || !isCurrent() || root.hasAttribute('data-wm-viewer')) return;
         const top = tools[tools.length - 1];
-        if (top) { ws.setTitle(windowTitle(top.win)); return; }
+        if (top) { ws.setTitle(top.win.dataset.wmhTitle || windowTitle(top.win)); return; }
         // a print running: its progress in the title (Generate stays free to queue another)
         if (generating()) {
             const p = progress();
@@ -1319,9 +1319,13 @@
         const left = form
             ? { label: prim.label.length > 14 ? prim.label.split(' ')[0] : prim.label, disabled: prim.b.disabled, action: press(prim) }
             : { label: 'Done', action: closeTool };
-        const rows = btns.filter((x) => x !== cancel && !(form && x === prim))
+        const foot = btns.filter((x) => x !== cancel && !(form && x === prim))
             .map((x) => ({ label: x.label, disabled: !!x.b.disabled, action: press(x) }));
+        // the window's own command bar, when wmHost.js gave it a WM form (the image Properties)
+        const cmds = window.wmHost && typeof window.wmHost.commandRows === 'function' ? window.wmHost.commandRows(win, press) : [];
+        const rows = cmds.length && foot.length ? [...cmds, '-', ...foot] : [...cmds, ...foot];
         if (form) rows.push('-', { label: cancel ? cancel.label : 'Cancel', action: closeTool });
+        else if (cmds.length) rows.push('-', { label: 'Close', action: closeTool });
         return { left, right: rows.length ? { label: 'Menu', menu: () => toolKeys(win).rows } : null, rows, form, prim };
     }
 
@@ -1339,7 +1343,9 @@
     function hostTool(win) {
         if (!page || tools.some((t) => t.win === win)) return;
         const box = page.querySelector('.wms-tool');
-        const entry = { win, parent: win.parentNode, next: win.nextSibling, title: windowTitle(win), mo: null };
+        // a window with a WM form of its own (the image Properties: wmHost.js adaptWindow)
+        if (window.wmHost && typeof window.wmHost.adapt === 'function') window.wmHost.adapt(win);
+        const entry = { win, parent: win.parentNode, next: win.nextSibling, title: win.dataset.wmhTitle || windowTitle(win), mo: null };
         tools.push(entry);
         // its caption (SmartText [field]) and footer buttons (enabled, shown) follow on the title bar / soft keys
         if (typeof MutationObserver === 'function') {

@@ -349,3 +349,67 @@ html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="dropdown"] > .wm-popu
 html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="dropdown"] > .wm-popup-sep:has(+ .fe-dd-volume) {
     margin: 0 calc(7 * var(--wm-px));
 }
+
+/* the selected cell is a flat highlight-colour box, as 6.5's Pictures & Videos draws it
+ * (~/.cache/claude-run/wm65apps/tools/pv65-1.png), not wm65.css's list view selector: that rule's
+ * clear background left the white name on the white field, and the cell's border: 0 kept its
+ * selector art from drawing (a new folder's first item showed neither name nor highlight) */
+html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-list.fe-grid .fe-tile.is-selected {
+    border-image: none;
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text) !important;
+}
+
+/* ---- a picture's Properties (wmFileExplorer.js openPictureProperties): Pictures & Videos'
+ * Properties dialog, the same in 6.1 and 6.5 (pimg.exe on both emulators, VGA halved): the form
+ * heading (wm-programs.css .wm-form-hdr, 23 units over a 1 unit rule, its text 1 unit further in
+ * than Settings'), then label / value rows 21 units apart from y 35 of the page (labels' static
+ * boxes at x 6, 75 wide; values at x 86 to 230). The name box is 23 tall, 3 units above its row
+ * (y 32 to 55). Tahoma 8 pt (10.5 units), regular, black, the capitals 2.5 units under the row's
+ * top. 6.5's heading is the dialog navy (#00109c in the default theme; 6.1's is #009a00). ---- */
+.wm-pic-props {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    background: #fff;
+    color: #000;
+}
+
+.wm-pic-props .wm-form-hdr {
+    padding-left: calc(9 * var(--wm-px));
+}
+
+.wm-pic-props .wpp-form {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: calc(11 * var(--wm-px)) calc(10 * var(--wm-px)) calc(8 * var(--wm-px)) calc(7 * var(--wm-px));
+    font: calc(10.5 * var(--wm-px)) / calc(12 * var(--wm-px)) var(--wm-font);
+    font-weight: normal;
+}
+
+.wm-pic-props .wpp-row {
+    display: grid;
+    grid-template-columns: calc(79 * var(--wm-px)) minmax(0, 1fr);
+    align-items: start;
+    height: calc(21 * var(--wm-px));
+    white-space: nowrap;
+}
+
+.wm-pic-props .wpp-label,
+.wm-pic-props .wpp-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-pic-props .wpp-name {
+    position: relative;
+    top: calc(-3 * var(--wm-px));
+    height: calc(23 * var(--wm-px)) !important;
+    font: calc(10.5 * var(--wm-px)) var(--wm-font) !important;
+    color: #000 !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-pic-props .wm-form-hdr {
+    color: var(--wm65-navy, #00109c);
+}

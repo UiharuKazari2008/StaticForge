@@ -781,22 +781,50 @@
             return;
         }
         if (typeof showLightbox !== 'function') { await noApp(i); return; }
-        // only a same-site path goes to the viewer
+        // only a same-site path goes to the viewer. previewUrl is the list's small thumbnail
+        // (/previews/...): the viewer gets the picture itself, as the desktop Explorer opens it
+        // (explorerApplet openGalleryImage / downloadFile), and the thumbnail only when the full
+        // file cannot be drawn (a remote gallery file, TIFF, HEIC ...)
         const url = typeof i.previewUrl === 'string' && /^\/[^/\\]/.test(i.previewUrl) ? i.previewUrl : null;
         try {
             if (i.targetKind === 'image' || i.targetKind === 'scrap') {
                 const fn = i.previewImageFilename || i.targetId;
-                if (fn && galleryHas(fn)) await busyOf(() => showLightbox({ filename: fn }));
-                else if (url) await busyOf(() => showLightbox({ url, title: i.name }));
+                if (fn && galleryHas(fn)) { await busyOf(() => showLightbox({ filename: fn })); return; }
+                // a picture the phone's gallery list has not loaded (pages of it load as it scrolls)
+                const full = fn ? await busyOf(() => drawable(`/images/${encodeURIComponent(fn)}`)) : null;
+                if (full || url) await busyOf(() => showLightbox({ url: full || url, title: i.name }));
                 else await noApp(i);
                 return;
             }
-            if (/^image\//.test(i.mimeType || '') && url) {
-                await busyOf(() => showLightbox({ url, title: i.name }));
-                return;
+            if (/^image\//.test(i.mimeType || '')) {
+                let full = null;
+                if (i.targetKind === 'user-file' && i.targetId && typeof vfsClient !== 'undefined'
+                    && /^image\/(png|jpe?g|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon|svg\+xml)$/i.test(i.mimeType)) {
+                    full = await busyOf(async () => {
+                        try {
+                            const resp = await vfsClient.downloadFile(i.targetId);
+                            return resp && resp.downloadUrl ? drawable(resp.downloadUrl) : null;
+                        } catch (_) { return null; /* the thumbnail below */ }
+                    });
+                }
+                if (full || url) {
+                    await busyOf(() => showLightbox({ url: full || url, title: i.name }));
+                    return;
+                }
             }
         } catch (_) { /* the viewer could not open it */ }
         await noApp(i);
+    }
+
+    /** The url when the browser can load and draw the picture there, else null. */
+    function drawable(src) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.decoding = 'async';
+            img.onload = () => resolve(img.naturalWidth ? src : null);
+            img.onerror = () => resolve(null);
+            img.src = src;
+        });
     }
 
     /**
@@ -855,6 +883,192 @@
         }
         return ws.messageBox({ title: 'Properties', icon: 'info', text: lines.join('\n') });
     }
+
+    // ---------------------------------------------------------------- picture Properties
+
+    /**
+     * A picture's Properties, the page Pictures & Videos opens from Menu > Properties (6.1 and 6.5
+     * emulators, pimg.exe: the same dialog in both, ~/.cache/wm65/ref-props): the form heading
+     * "Properties" over its rule, then label / value rows: Name (an edit box, its text selected),
+     * File Type, Dimensions, File Size, Date Created, Protected. ok in the title bar keeps a new
+     * name, Cancel (right soft key, the left one is blank) leaves it. Opened by File Explorer's
+     * hold menu and the picture view's Menu (wmShell viewerSoftKeys); window.wmPictureProperties.
+     *
+     * info: { name, src?, width?, height?, size?, created? (s or ms), mimeType?,
+     *         rename?(newName) -> Promise (absent: the name is read-only), after?() (on close) }
+     */
+    const PROPS_ID = 'pic-props';
+    let props = null;
+    const PIC_TYPES = { jpg: 'JPEG Image', jpeg: 'JPEG Image', png: 'PNG Image', gif: 'GIF Image', bmp: 'Bitmap Image', webp: 'WebP Image', avif: 'AVIF Image', tif: 'TIFF Image', tiff: 'TIFF Image', heic: 'HEIC Image', svg: 'SVG Image', ico: 'Icon' };
+
+    function picType(name, mime) {
+        const ext = (/\.([a-z0-9]+)$/i.exec(name || '') || [])[1];
+        if (ext && PIC_TYPES[ext.toLowerCase()]) return PIC_TYPES[ext.toLowerCase()];
+        const sub = (/^image\/([a-z0-9.+-]+)/i.exec(mime || '') || [])[1];
+        if (sub && PIC_TYPES[sub.toLowerCase()]) return PIC_TYPES[sub.toLowerCase()];
+        return ext ? `${ext.toUpperCase()} File` : 'Picture';
+    }
+
+    /** The device's size: "62 KB" (whole KB), MB with one decimal from 1 MB. */
+    function picSize(b) {
+        const n = Number(b);
+        if (!Number.isFinite(n) || n < 0) return '';
+        if (n < 1024) return `${n} bytes`;
+        if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+        return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    function openPictureProperties(info) {
+        if (!info || !info.name) return;
+        const name = String(info.name);
+        const dot = name.lastIndexOf('.');
+        props = {
+            info,
+            base: dot > 0 ? name.slice(0, dot) : name,
+            ext: dot > 0 ? name.slice(dot) : '',
+            width: Number(info.width) || 0,
+            height: Number(info.height) || 0,
+            size: info.size != null && info.size !== '' ? Number(info.size) : null,
+            saving: false,
+            closed: false,
+            // the screen under the page: the picture comes back only when it is that one again
+            under: visibleAppId()
+        };
+        ws.open(PROPS_ID);
+        fillPictureFacts(props);
+    }
+
+    /** Dimensions and size the caller did not have: from the picture itself (and its HEAD). */
+    function fillPictureFacts(p) {
+        const src = p.info.src;
+        if (!src) {
+            if (typeof p.info.resolveSrc === 'function') {
+                Promise.resolve().then(p.info.resolveSrc).then((url) => {
+                    if (props === p && url) { p.info.src = url; fillPictureFacts(p); }
+                }).catch(() => { /* the facts the list had */ });
+            }
+            return;
+        }
+        if (!p.width || !p.height) {
+            const img = new Image();
+            img.decoding = 'async';
+            img.onload = () => { if (props === p && img.naturalWidth) { p.width = img.naturalWidth; p.height = img.naturalHeight; renderProps(); } };
+            img.src = src;
+        }
+        if (p.size == null && /^\/[^/\\]/.test(src)) {
+            fetch(src, { method: 'HEAD', credentials: 'same-origin' }).then((r) => {
+                const n = Number(r.ok && r.headers.get('content-length'));
+                if (props === p && n > 0) { p.size = n; renderProps(); }
+            }).catch(() => { /* not known */ });
+        }
+    }
+
+    function renderProps() {
+        const page = ws.pageOf ? ws.pageOf(PROPS_ID) : null;
+        if (!page || !props) return;
+        const p = props;
+        const edit = page.querySelector('.wpp-name');
+        // the name box is drawn once per opening (its text and selection stay while facts arrive)
+        if (!edit || edit.dataset.for !== String(p.info.name)) {
+            const created = Number(p.info.created);
+            const row = (label, value) => `<div class="wpp-row"><span class="wpp-label">${esc(label)}</span><span class="wpp-value" data-k="${esc(label)}">${esc(value)}</span></div>`;
+            page.innerHTML = '<div class="wm-form-hdr">Properties</div><div class="wpp-form">'
+                + `<div class="wpp-row is-name"><label class="wpp-label" for="wppName">Name:</label><input id="wppName" class="wm-edit wpp-name" type="text" spellcheck="false" autocomplete="off" data-for="${esc(p.info.name)}" value="${esc(p.base)}"${p.info.rename ? '' : ' readonly'}></div>`
+                + row('File Type:', picType(p.info.name, p.info.mimeType))
+                + row('Dimensions:', '')
+                + row('File Size:', '')
+                + row('Date Created:', created ? fmtDate(created) : '')
+                + row('Protected:', 'No')
+                + '</div>';
+            const input = page.querySelector('.wpp-name');
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveProps(); } });
+            if (p.info.rename) setTimeout(() => { if (props === p && input.isConnected) { input.focus(); input.select(); } }, 0);
+        }
+        const set = (k, v) => { const el = page.querySelector(`.wpp-value[data-k="${k}"]`); if (el) el.textContent = v; };
+        set('Dimensions:', p.width && p.height ? `${p.width} x ${p.height}` : '');
+        set('File Size:', p.size != null ? picSize(p.size) : '');
+    }
+
+    /** ok: a changed name is kept (its extension stays), then the page closes. */
+    async function saveProps() {
+        const p = props;
+        if (!p || p.saving) return;
+        const input = (ws.pageOf(PROPS_ID) || document).querySelector('.wpp-name');
+        const typed = input ? input.value.trim() : p.base;
+        if (p.info.rename && typed && typed !== p.base) {
+            if (/[\\/:*?"<>|]/.test(typed)) {
+                await ws.messageBox({ title: 'Properties', icon: 'error', text: 'A file name cannot contain any of the following characters: \\ / : * ? " < > |' });
+                return;
+            }
+            p.saving = true;
+            try {
+                await busyOf(() => p.info.rename(typed + p.ext));
+            } catch (err) {
+                p.saving = false;
+                await ws.messageBox({ title: 'Properties', icon: 'error', text: `Cannot rename '${p.info.name}'. ${(err && err.message) || ''}`.trim() });
+                return;
+            }
+        }
+        closeProps();
+    }
+
+    /** ok and Cancel are pressed on the page itself: back to the screen under it (hide() runs after) */
+    function closeProps() {
+        ws.back();
+    }
+
+    function visibleAppId() {
+        const pg = document.querySelector('#wmShell .wm-content > .wm-page:not([hidden])');
+        return pg ? pg.dataset.app || '' : '';
+    }
+
+    /** The page went (ok, Cancel, the back key, another app): back on its own screen, the picture again. */
+    function afterProps() {
+        const p = props;
+        if (!p || p.closed) return;
+        p.closed = true;
+        props = null;
+        if (typeof p.info.after !== 'function') return;
+        setTimeout(() => {
+            if (visibleAppId() !== p.under) return; // another app (Start) took its place
+            try { p.info.after(); } catch (err) { console.warn('[wmFileExplorer] properties', err); }
+        }, 0);
+    }
+
+    /** Is this listed item a picture the Properties page describes? */
+    function isPictureItem(i) {
+        if (!i || isFolder(i) || isPhoneRoot(i)) return false;
+        if (isPhoneItem(i)) return !i.phone.dir && PD() && PD().kindOf(i.name, i.mimeType) === 'image';
+        return i.targetKind === 'image' || i.targetKind === 'scrap' || /^image\//.test(i.mimeType || '');
+    }
+
+    /** File Explorer's item to the page: its facts, its picture, its rename. */
+    function itemProperties(i) {
+        let src = null;
+        if (isPhoneItem(i)) src = PS() && PS().fileUrl(i.phone.root, i.phone.path);
+        else if (i.targetKind === 'image' || i.targetKind === 'scrap') {
+            const fn = i.previewImageFilename || i.targetId;
+            if (fn) src = `/images/${encodeURIComponent(fn)}`;
+        }
+        const size = i.sizeBytes != null ? i.sizeBytes : i.size;
+        const renamable = canRename(i) && !readOnly() && !(isPhoneItem(i) && !phoneEditable(i));
+        openPictureProperties({
+            name: i.name,
+            mimeType: i.mimeType,
+            src,
+            width: i.width || (i.metadata && i.metadata.width),
+            height: i.height || (i.metadata && i.metadata.height),
+            size: size != null ? size : null,
+            created: i.createdAt || i.modifiedAt,
+            // a user file's own address comes from the server (vfsClient.downloadFile)
+            resolveSrc: !src && i.targetKind === 'user-file' && i.targetId && typeof vfsClient !== 'undefined'
+                ? () => vfsClient.downloadFile(i.targetId).then((r) => (r && r.downloadUrl) || null)
+                : null,
+            rename: renamable ? async (name) => { await renameTo(i, name); load({ keep: true }); } : null
+        });
+    }
+
+    window.wmPictureProperties = { open: openPictureProperties };
 
     /** Send... on the phone: Android's share sheet for the selected files. */
     async function sharePhone(list) {
@@ -1678,7 +1892,10 @@
         if (one && (isPhoneItem(one) || isPhoneRoot(one))) {
             list.push('-');
             if (isPhoneItem(one) && !one.phone.dir) list.push({ label: 'Open in Android app', disabled: !phoneCan('open') || !!phoneBlock(), action: () => openInAndroid(one) });
-            list.push({ label: 'Properties', action: () => phoneProperties(one) });
+            // a picture: Pictures & Videos' Properties page; anything else the bridge's facts
+            list.push({ label: 'Properties', action: () => (isPictureItem(one) ? itemProperties(one) : phoneProperties(one)) });
+        } else if (one && isPictureItem(one)) {
+            list.push('-', { label: 'Properties', action: () => itemProperties(one) });
         }
         return list;
     }
@@ -1942,6 +2159,23 @@
         });
     }
 
-    if (window.wmShell) register();
-    else document.addEventListener('wmShellReady', register, { once: true });
+    function registerProps() {
+        ws.registerApp({
+            id: PROPS_ID,
+            title: 'Pictures & Videos',
+            icon: 'app-pictures',
+            inStart: false,
+            sip: true,
+            titleAction: 'ok',
+            mount(page) { page.classList.add('wm-pic-props'); },
+            show() { renderProps(); },
+            // back key, ok, Cancel or another app: the page is done (the picture view comes back)
+            hide() { afterProps(); },
+            onTitleOk() { saveProps(); return true; },
+            softKeys() { return { left: null, right: { label: 'Cancel', action: closeProps } }; }
+        });
+    }
+
+    if (window.wmShell) { register(); registerProps(); }
+    else document.addEventListener('wmShellReady', () => { register(); registerProps(); }, { once: true });
 })();

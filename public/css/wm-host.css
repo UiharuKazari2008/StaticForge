@@ -425,3 +425,187 @@ html.ui-mobile[data-wm-viewer] .wm-host .wmh-host > .modal {
     padding: 0 !important;
     text-decoration: none !important;
 }
+
+/* ---- a picture's metadata Properties (imagePromptInspector.js; wmHost.js adaptWindow): a WM
+ * property page. The command bar is the Menu soft key, so it goes; the file row is the page's
+ * heading (picture, name, model and size over a 1 unit black rule); prompts and parameters scroll
+ * as one page; Prompt / Director / UC are WM's tabs along the bottom (wm-programs.css / wm65.css
+ * .wm-tab, re-asserted here over wm-studio-tools.css's push-button look). ---- */
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] > .image-prompt-inspector-content {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    overflow: hidden !important;
+    background: #fff !important;
+}
+
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] > .image-prompt-inspector-content > .explorer-actions-header:not(.image-prompt-inspector-findbar) {
+    display: none !important;
+}
+
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .image-prompt-inspector-summary {
+    flex: 0 0 auto !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: calc(5 * var(--wm-px)) !important;
+    margin: 0 !important;
+    padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px)) !important;
+    border: 0 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+}
+
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .image-prompt-inspector-thumb {
+    width: calc(32 * var(--wm-px)) !important;
+    height: calc(32 * var(--wm-px)) !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    object-fit: cover !important;
+    box-shadow: none !important;
+}
+
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .image-prompt-inspector-filename {
+    font-weight: bold !important;
+    color: var(--wm-highlight) !important;
+    -webkit-text-fill-color: var(--wm-highlight) !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .image-prompt-inspector-filename {
+    color: var(--wm65-navy, #00109c) !important;
+    -webkit-text-fill-color: var(--wm65-navy, #00109c) !important;
+}
+
+/* one scrolling page: the shell scrolls, the desktop's inner pane does not */
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .image-prompt-inspector-scroll-inner {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px)) calc(8 * var(--wm-px)) !important;
+}
+
+/* the tabs: the desktop buttons as WM tabs */
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs {
+    flex: 0 0 auto !important;
+    height: calc(22 * var(--wm-px)) !important;
+    border: 0 !important;
+    border-top: calc(1 * var(--wm-px)) solid #000 !important;
+    background: var(--wm-tab-strip) !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs > .wm-tab {
+    min-width: 0 !important;
+    width: auto !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    margin-bottom: 0 !important;
+    border-radius: 0 !important;
+    border-left: 0 !important;
+    border-bottom: 0 !important;
+    background: var(--wm-tab-strip) !important;
+    box-shadow: none !important;
+    font-weight: normal !important;
+    line-height: calc(21 * var(--wm-px)) !important;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs {
+    height: calc(19.5 * var(--wm-px)) !important;
+    border-top: 0 !important;
+    background: var(--wm65-bar) !important;
+    overflow: visible !important;
+}
+
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs > .wm-tab[aria-selected="true"] {
+    background: #fff !important;
+    border-top-color: #fff !important;
+}
+
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs > .wm-tab.hidden {
+    display: none !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs > .wm-tab {
+    border: 0 !important;
+    color: var(--wm65-text) !important;
+    -webkit-text-fill-color: var(--wm65-text) !important;
+    background: var(--wm65-face) !important;
+    line-height: calc(19.5 * var(--wm-px)) !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs > .wm-tab[aria-selected="true"] {
+    background: #fff !important;
+}
+
+/* section headings (Prompt, Parameters ...): WM's caption-coloured bold label, without the
+ * desktop's glyph and trailing line (FA glyphs have no place on the phone) */
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .image-prompt-inspector-section-title {
+    margin: calc(4 * var(--wm-px)) 0 calc(3 * var(--wm-px)) !important;
+    padding: 0 !important;
+    font-weight: bold !important;
+    color: var(--wm-highlight) !important;
+    -webkit-text-fill-color: var(--wm-highlight) !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .image-prompt-inspector-section-title {
+    color: var(--wm65-navy, #00109c) !important;
+    -webkit-text-fill-color: var(--wm65-navy, #00109c) !important;
+}
+
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .image-prompt-inspector-section-title > i,
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .image-prompt-inspector-section-title::after,
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .image-prompt-inspector-section-title::before {
+    display: none !important;
+}
+
+/* 6.5's curved tab edges (wm65.css), which the hosted page's button rules clear */
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs > .wm-tab:not(:first-child)::before,
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs > .wm-tab:last-child::after {
+    background: var(--wm65-art-tabcurve-face-face, url('/static_images/wm65/tabcurve-face-face@2x.png')) 0 0 / 100% 100% no-repeat !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs > .wm-tab:first-child:not([aria-selected="true"])::before,
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs > .wm-tab[aria-selected="true"] + .wm-tab::before,
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs > .wm-tab[aria-selected="true"] + .wm-tab.hidden + .wm-tab::before {
+    background: var(--wm65-art-tabcurve-white-face, url('/static_images/wm65/tabcurve-white-face@2x.png')) 0 0 / 100% 100% no-repeat !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs > .wm-tab[aria-selected="true"]:not(:first-child)::before {
+    background: var(--wm65-art-tabcurve-face-white, url('/static_images/wm65/tabcurve-face-white@2x.png')) 0 0 / 100% 100% no-repeat !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs > .wm-tab:last-child::after {
+    background: var(--wm65-art-tabcurve-face-black, url('/static_images/wm65/tabcurve-face-black@2x.png')) 0 0 / 100% 100% no-repeat !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .wmh-tabs > .wm-tab[aria-selected="true"]:last-child::after {
+    background: url('/static_images/wm65/tabcurve-white-black@2x.png') 0 0 / 100% 100% no-repeat !important;
+}
+
+/* the parameters' FA glyphs (Software's sparkle ...) do not belong on the phone either */
+:is(.wm-host .wmh-host, .wm-studio .wms-tool-host) > .modal[data-wmh-form="inspector"] .image-prompt-inspector-scroll-inner i[class*="fa-"] {
+    display: none !important;
+}
