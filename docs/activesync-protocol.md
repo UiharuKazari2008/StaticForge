@@ -65,3 +65,20 @@ A browser lets only the window in use write the clipboard, so a desktop that is 
 text and writes it at the next click, key or focus. A computer may queue both for an offline partner.
 Device Center lists them under Programs and Services; the phone's ActiveSync program has Send Clipboard
 and Send Link... in its Menu.
+
+## Remote viewer
+
+View only. `public/scripts/comp/activeSyncScreen.js`, `modules/activeSyncScreen.js`, and in the app
+`activesync/ActiveSyncScreen.kt` (permission group "Remote screen").
+
+| Operation (to the phone's page) | Does |
+| --- | --- |
+| `screen.start` | the app shows Android's screen-capture prompt (every time); `{ started: true }` once allowed, `DENIED` otherwise |
+| `screen.stop` | ends the capture |
+
+Event `screen.state { state: 'stopped', reason }` when it ends on the phone. Frames do not ride the
+socket: the app posts JPEGs (long edge 960, about 7 a second at most, only when the screen changes) to
+`POST /api/activesync/screen/<device>/frame` in the page's session, and the desktop window reads
+`GET /api/activesync/screen/<device>/stream` (multipart/x-mixed-replace). With no reader for 8 s the
+server answers `{ stop: true }` and the phone stops. The page must be open on the phone to be asked;
+once allowed the capture lives in the foreground service and follows the user into other programs.

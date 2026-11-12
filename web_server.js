@@ -2210,6 +2210,8 @@ require('./modules/programFaultReports').mountProgramFaultReports(app, authMiddl
 require('./modules/slideshowDevices').mountPreviewRoutes(app, authMiddleware, globalResources);
 // modules/activeSyncTransfers.js — ActiveSync file bodies between a phone and the desktop (Yozora #747)
 require('./modules/activeSyncTransfers').mount(app, authMiddleware, globalResources);
+// modules/activeSyncScreen.js — ActiveSync remote viewer: a phone's screen frames for the desktop (Yozora #747)
+require('./modules/activeSyncScreen').mount(app, authMiddleware, globalResources);
 
 app.use('/images/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;

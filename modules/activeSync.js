@@ -638,6 +638,12 @@ function isDeviceSession(globalResources, wsServer, deviceId, sessionId) {
     return liveSockets(wsServerOf(globalResources, wsServer), 'device', deviceId).some((s) => s.info.sessionId === sessionId);
 }
 
+/** Is the device connected (guest or partner) with this permission granted? */
+function devicePermits(globalResources, wsServer, deviceId, permission) {
+    const sess = deviceSession(wsServerOf(globalResources, wsServer), deviceId);
+    return !!(sess && sess.session !== 'pending' && sess.permissions.includes(permission));
+}
+
 // told when a queued item got its answer (ok or refused), so what it pointed at can be released
 const queueListeners = [];
 function onQueueItemDone(fn) {
@@ -907,6 +913,7 @@ module.exports = {
     queueFor,
     deviceOnline,
     isDeviceSession,
+    devicePermits,
     onQueueItemDone,
     reply,
     event,
