@@ -984,7 +984,7 @@
             { label: 'Insert', disabled: true, submenu: () => [] },
             { label: 'My Text', submenu: () => MY_TEXT.map((t) => ({ label: t, action: () => insertText(t) })) },
             { label: 'Save to Drafts', disabled: !s, action: () => { setDraft(s.id, inputEl().value.trim() ? inputEl().value : ''); } },
-            { label: 'Spell Check', disabled: true },
+            { label: 'Spell Check', disabled: !(window.wmMessaging && typeof window.wmMessaging.spellCheckField === 'function'), action: () => window.wmMessaging.spellCheckField(inputEl()) },
             '-',
             { label: 'Close', action: () => { popLayer(); sh.syncHistory(); } },
             { label: 'Message Options', action: () => push('opts') },

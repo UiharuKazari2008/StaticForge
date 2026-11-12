@@ -1075,3 +1075,58 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-text {
 html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-selected .msg-pick-count {
     color: inherit;
 }
+
+/* Options > Accounts > Signatures... (#757): the signature box under the two check boxes */
+/* outranks wm-programs.css .wm-edit (one 20-unit line), which loads after this file */
+textarea.wm-edit.wm-msgopt-sig {
+    display: block;
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    width: 100%;
+    height: calc(110 * var(--wm-px));
+    margin-top: calc(4 * var(--wm-px));
+    box-sizing: border-box;
+    resize: none;
+    font: inherit;
+    white-space: pre-wrap;
+}
+
+textarea.wm-edit.wm-msgopt-sig:disabled {
+    color: #848284;
+    background: #fff;
+}
+
+/* Message Options' help mark at the right of its heading (device 165521: the round blue ?) */
+.wm-msg .msg-head .msg-head-help {
+    float: right;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin: calc(3 * var(--wm-px)) calc(5 * var(--wm-px)) 0 0;
+    padding: 0;
+    border: 0;
+    background: none;
+}
+
+.wm-msg .msg-head .msg-head-help img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* a message sent with Priority High / Low (#757): outres 10003 / 10004 in front of its subject */
+.wm-msg .msg-row .msg-prio {
+    display: inline-block;
+    /* the glyph sits in the middle of a 16-unit icon: shown at its own size, the empty sides cut */
+    width: calc(6 * var(--wm-px));
+    height: calc(12 * var(--wm-px));
+    margin-right: calc(1 * var(--wm-px));
+    vertical-align: middle;
+    background: no-repeat center / calc(16 * var(--wm-px)) calc(16 * var(--wm-px));
+}
+
+.wm-msg .msg-row .msg-prio[data-prio="high"] {
+    background-image: image-set(url('/static_images/wm61/msg-prio-high.png') 1x, url('/static_images/wm61/msg-prio-high@2x.png') 2x, url('/static_images/wm61/msg-prio-high@4x.png') 4x);
+}
+
+.wm-msg .msg-row .msg-prio[data-prio="low"] {
+    background-image: image-set(url('/static_images/wm61/msg-prio-low.png') 1x, url('/static_images/wm61/msg-prio-low@2x.png') 2x, url('/static_images/wm61/msg-prio-low@4x.png') 4x);
+}

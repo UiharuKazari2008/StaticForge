@@ -364,6 +364,13 @@ function capabilitiesOf(reply) {
     return caps;
 }
 
+/** Message Options > Priority (#757): the two headers mail programs read for it; normal adds none. */
+function importanceHeaders(importance) {
+    if (importance === 'high') return { Importance: 'High', 'X-Priority': '1 (Highest)' };
+    if (importance === 'low') return { Importance: 'Low', 'X-Priority': '5 (Lowest)' };
+    return {};
+}
+
 function buildOutboundMessage({ fromAddress, to, cc, subject, body, format, domain, extraHeaders }) {
     const date = new Date().toUTCString();
     const host = domain || addresses.DEFAULT_DOMAIN;
@@ -597,7 +604,7 @@ async function submitOutbound(input) {
             body: outboundBody,
             format: input.format,
             domain: cfg.domain,
-            extraHeaders: input.extraHeaders || input.headers
+            extraHeaders: Object.assign({}, input.extraHeaders || input.headers || {}, importanceHeaders(input.importance))
         });
         socket.write(`${stuffDots(message)}\r\n.\r\n`);
         await expectCode(reader, socket, [250], 'DATA end');

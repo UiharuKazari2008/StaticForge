@@ -6994,6 +6994,60 @@
         ]
       },
       "notes": "16 frames of 84 x 80 in a strip (42 x 40 at 1x)."
+    },
+    "msg-prio-high": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll ico_10003_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Messaging list: a high-priority message (Message Options > Priority: High)."
+    },
+    "msg-prio-low": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll ico_10004_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Messaging list: a low-priority message (Message Options > Priority: Low)."
     }
   },
   "notDelivered": {

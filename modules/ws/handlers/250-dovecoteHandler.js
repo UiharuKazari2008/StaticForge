@@ -211,7 +211,9 @@ async function handleSendMail(handlersCtx, ws, message) {
             body: message.body,
             format: message.format,
             replyToId: message.replyTo,
-            attachments: decodeAttachments(message.attachments)
+            attachments: decodeAttachments(message.attachments),
+            // the phone's Message Options > Priority: 'high' | 'low' (normal sends nothing)
+            importance: message.priority
         });
         if (result.outbound) await result.outbound;
         const { outbound: _outbound, ...data } = result;

@@ -269,6 +269,7 @@ function toSummary(row) {
         format: row.format,
         read: !!row.read,
         flagged: !!row.flagged,
+        importance: row.importance === 'high' || row.importance === 'low' ? row.importance : null,
         fwdFromOwner: row.fwd_from_owner || null,
         readByRecipient: !!row.recipient_read_at,
         attachments,
@@ -362,18 +363,18 @@ function insertRow(row) {
             to_list, cc_list, from_label, route, label_suspicious, spam_meta, original_to,
             own_domain_from,
             subject, body, format, reply_to_id, fwd_from_owner, fwd_from_message_id,
-            read, flagged, created_at, updated_at, deleted_at, paired_message_id, attachments
+            read, flagged, created_at, updated_at, deleted_at, paired_message_id, attachments, importance
         ) VALUES (
             @id, @owner, @folder, @archive_subfolder, @thread_id, @from_owner, @to_owner,
             @to_list, @cc_list, @from_label, @route, @label_suspicious, @spam_meta, @original_to,
             @own_domain_from,
             @subject, @body, @format, @reply_to_id, @fwd_from_owner, @fwd_from_message_id,
-            @read, @flagged, @created_at, @updated_at, @deleted_at, @paired_message_id, @attachments
+            @read, @flagged, @created_at, @updated_at, @deleted_at, @paired_message_id, @attachments, @importance
         )
     `).run(Object.assign({
         paired_message_id: null, attachments: null, to_list: null, cc_list: null,
         from_label: null, route: 'internal', label_suspicious: 0, spam_meta: null,
-        original_to: null, own_domain_from: 0
+        original_to: null, own_domain_from: 0, importance: null
     }, row));
 }
 
@@ -669,7 +670,8 @@ function markPairedReadReceipt(owner, row) {
  * VFS paths or base64) — this layer only enforces size limits and storage.
  * Attachment bytes are stored once and shared by every copy.
  */
-function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachments }) {
+function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachments, importance }) {
+    const importanceValue = importance === 'high' || importance === 'low' ? importance : null;
     if (!isValidOwner(fromOwner)) throw new DovecoteError('Unknown sender mailbox', 'UNKNOWN_SENDER');
     const { toList, ccList, externalTo, externalCc } = classifySendRecipients(to, cc);
     const delivered = toList.concat(ccList);
@@ -718,7 +720,8 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
                 reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
                 read: 1, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
                 paired_message_id: sentFolder === 'sent' ? (inboxIds[0] || null) : null,
-                attachments: storedAttachments()
+                attachments: storedAttachments(),
+                importance: importanceValue
             });
             if (sentFolder !== 'sent') return;
             delivered.forEach((recipient, index) => {
@@ -729,7 +732,8 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
                     subject: subjectText, body: bodyText, format: formatValue,
                     reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
                     read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
-                    paired_message_id: sentId, attachments: attachmentsJson
+                    paired_message_id: sentId, attachments: attachmentsJson,
+                    importance: importanceValue
                 });
             });
         });
@@ -764,7 +768,8 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
         cc: externalCc,
         subject: subjectText,
         body: bodyText,
-        format: formatValue
+        format: formatValue,
+        importance: importanceValue
     }).then(() => {
         writeCopies('sent');
         audit(fromOwner, 'send_mail', sentId, true, `to=${storedTo.join(',')} cc=${storedCc.join(',')}`);

@@ -111,6 +111,9 @@ function createDovecoteTables() {
     // Null on rows written before multi-recipient mail; readers fall back to to_owner.
     addColumnIfMissing('dovecote_message', 'to_list', 'to_list TEXT');
     addColumnIfMissing('dovecote_message', 'cc_list', 'cc_list TEXT');
+    // Message Options > Priority on the phone (#757): 'high' / 'low', null = normal; outbound mail carries it
+    // as Importance / X-Priority.
+    addColumnIfMissing('dovecote_message', 'importance', 'importance TEXT');
     // Display From header on inbound gateway mail. from_owner stays the envelope.
     addColumnIfMissing('dovecote_message', 'from_label', 'from_label TEXT');
     // Path the copy actually took. Null on rows from before this column = internal.

@@ -900,13 +900,49 @@
         return items;
     }
 
+    /**
+     * Options > Accounts > Signatures... (device: the account, "Use signature with this account", "Use when
+     * replying and forwarding", the signature box) and Security... (device: encrypt / sign outgoing
+     * messages, algorithms, certificates). They open over the Accounts tab; ok goes back to it. The
+     * signature is Dovecote Express's (userGlobalSettings.mail), so the desktop and the phone share one.
+     */
+    function messagingSubRender(el, d) {
+        if (d.sub === 'signatures') {
+            const g = d.sig || { signature: '', signatureOutgoing: true, signatureSkipReplies: false };
+            el.innerHTML = `${ui.text('Select an account:')}
+                ${ui.comboHtml('sigAcct', 'Dreamscape Mail', true)}
+                ${ui.check('sigUse', 'Use signature with this account', g.signatureOutgoing !== false)}
+                ${ui.check('sigReply', 'Use when replying and forwarding', !g.signatureSkipReplies)}
+                <textarea class="wm-edit wm-msgopt-sig" name="sig" rows="7" spellcheck="false" aria-label="Signature"></textarea>`;
+            const box = el.querySelector('textarea[name="sig"]');
+            box.value = g.signature || '';
+            const sync = () => { box.disabled = !el.querySelector('input[name="sigUse"]').checked; el.querySelector('input[name="sigReply"]').disabled = box.disabled; };
+            el.querySelector('input[name="sigUse"]').addEventListener('change', (e) => { g.signatureOutgoing = e.target.checked; sync(); });
+            el.querySelector('input[name="sigReply"]').addEventListener('change', (e) => { g.signatureSkipReplies = !e.target.checked; });
+            box.addEventListener('input', () => { g.signature = box.value; });
+            d.sig = g;
+            sync();
+            return;
+        }
+        // security: no certificates on this phone, so the device's choices show unavailable
+        el.innerHTML = `${ui.check('enc', 'Encrypt outgoing messages', false, 'disabled')}
+            ${ui.check('sign', 'Sign outgoing messages', false, 'disabled')}
+            ${ui.buttons([['alg', 'Choose Algorithm...', true]], false)}
+            ${ui.gap()}
+            ${ui.check('rev', 'Check sender certificate revocation', false, 'disabled')}
+            ${ui.buttons([['cert', 'Choose Certificate...', true]], false)}
+            ${ui.note('No certificates are installed on this device.')}`;
+    }
+
     function messagingOptionsRender(el, tab, d, api) {
+        d.rerender = api.rerender;
+        if (tab === 'accounts' && d.sub) { messagingSubRender(el, d); return; }
         if (tab === 'accounts') {
             const rows = messagingAccounts().map((a) => ({ key: a.label, label: `${a.radio ? '* ' : '\u2002 '}${a.label}`, selected: d.acctSel === a.label }));
             rows.push({ key: '__new', label: '\u2002 New Account...', selected: d.acctSel === '__new' });
             el.innerHTML = `${ui.text('Tap an account to change settings.')}
                 ${ui.listbox(rows, { maxHeight: 210 }).replace('class="wm-listbox"', 'class="wm-listbox wm-msgopt-accts"')}
-                ${ui.buttons([['security', 'Security...', true], ['signatures', 'Signatures...', true]])}
+                ${ui.buttons([['security', 'Security...'], ['signatures', 'Signatures...']])}
                 ${ui.check('picker', 'Display account picker when opening Messaging', d.picker)}`;
             ui.bindListbox(el.querySelector('.wm-listbox'), (key) => {
                 d.acctSel = key;
@@ -914,6 +950,19 @@
                 if (key === '__new' && m && typeof m.setupAccount === 'function') m.setupAccount();
             });
             el.querySelector('input[name="picker"]').addEventListener('change', (e) => { d.picker = e.target.checked; });
+            el.querySelector('[data-act="security"]').addEventListener('click', () => { d.sub = 'security'; api.rerender(); });
+            el.querySelector('[data-act="signatures"]').addEventListener('click', async () => {
+                if (!d.sig) {
+                    try {
+                        const c = window.wsClient;
+                        const data = c && typeof c.getUserGlobalSettings === 'function' ? await c.getUserGlobalSettings() : null;
+                        d.sig = Object.assign({ signature: '', signatureOutgoing: true, signatureSkipReplies: false }, (data && data.settings && data.settings.mail) || {});
+                    } catch (_) { d.sig = { signature: '', signatureOutgoing: true, signatureSkipReplies: false }; }
+                    d.sigInitial = JSON.stringify(d.sig);
+                }
+                d.sub = 'signatures';
+                api.rerender();
+            });
             return;
         }
         if (tab === 'message') {
@@ -960,6 +1009,24 @@
     }
 
     async function messagingOptionsCommit(d) {
+        // ok on Signatures / Security: save the signature, back to the Accounts tab
+        if (d.sub) {
+            if (d.sub === 'signatures' && d.sig && JSON.stringify(d.sig) !== d.sigInitial) {
+                try {
+                    const c = window.wsClient;
+                    if (c) await c.updateUserGlobalSettings({ mail: { signature: d.sig.signature, signatureOutgoing: d.sig.signatureOutgoing !== false, signatureSkipReplies: !!d.sig.signatureSkipReplies } });
+                    d.sigInitial = JSON.stringify(d.sig);
+                    if (window.wmMessaging && typeof window.wmMessaging.loadSignature === 'function') window.wmMessaging.loadSignature();
+                } catch (_) {
+                    const s1 = sh();
+                    if (s1 && typeof s1.messageBox === 'function') await s1.messageBox({ title: 'Messaging', icon: 'error', text: 'The signature could not be saved.' });
+                    return false;
+                }
+            }
+            d.sub = null;
+            if (typeof d.rerender === 'function') d.rerender();
+            return false;
+        }
         const was = JSON.parse(d.initial);
         const keys = [];
         if (d.all !== was.all && lsPut(d.key, d.all ? '1' : '0')) {
@@ -973,7 +1040,7 @@
         put('warnDelete', d.warnDelete ? '1' : '0', was.warnDelete ? '1' : '0');
         put('afterDelete', d.afterDelete, was.afterDelete);
         put('emptyDeleted', d.emptyDeleted, was.emptyDeleted);
-        d.initial = JSON.stringify(Object.assign({}, d, { initial: undefined }));
+        d.initial = JSON.stringify(Object.assign({}, d, { initial: undefined, sub: undefined, sig: undefined, sigInitial: undefined, rerender: undefined }));
         return keys;
     }
 

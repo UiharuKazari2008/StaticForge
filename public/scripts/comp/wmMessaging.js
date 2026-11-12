@@ -421,6 +421,16 @@
             if (isCurrent()) ws.refreshSoftKeys();
             return true;
         }
+        // Drafts live on this phone (Save to Drafts, #757): Dreamscape Mail keeps no drafts folder on the server
+        if (folder === 'drafts' && isMine()) {
+            loading = false;
+            mail = draftRows();
+            hasMore = false;
+            nextCursor = null;
+            renderList();
+            if (isCurrent()) ws.refreshSoftKeys();
+            return true;
+        }
         const request = { folder, limit: Math.max(PAGE_LIMIT, opts.keep ? mail.length : 0) };
         if (!isMine()) request.viewAsOwner = owner;
         let ok = true;
@@ -542,6 +552,16 @@
 
     async function deleteIds(ids, opts = {}) {
         if (!ids.length || !isMine()) return;
+        if (folder === 'drafts') {
+            if (opts.fromList && optOn(OPT.warnDelete)) {
+                const yes = await ws.messageBox({ title: 'Messaging', icon: 'question', text: ids.length === 1 ? 'Delete the selected message?' : `Delete the ${ids.length} selected messages?`, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false });
+                if (!yes) return;
+            }
+            ids.forEach((id) => dropDraft(String(id).replace(/^draft:/, '')));
+            if (top() === 'read') popLayer();
+            loadFolder({ keep: true });
+            return;
+        }
         const permanent = folder === 'deleted';
         if (permanent) {
             const yes = await ws.messageBox({
@@ -743,7 +763,7 @@
 
     function rowHtml(m) {
         const id = esc(m.id);
-        const out = folder === 'sent' || folder === 'outbox';
+        const out = folder === 'sent' || folder === 'outbox' || !!m.draft;
         const who = out ? listOf(m.to).map(personName).join('; ') : senderText(m);
         const unread = !m.read && !out;
         // a message with attachments has the envelope with the paper clip (its unread state is the bold)
@@ -753,10 +773,10 @@
         // each to insert on a throttled phone (image selection runs as the list is parsed)
         return `<div class="msg-row${unread ? ' is-unread' : ''}${on ? ' is-selected' : ''}" role="option" data-id="${id}" aria-selected="${on}">
             <span class="msg-ico" data-ico="${icon}"></span>
-            <span class="msg-from">${esc(who || '(no sender)')}</span>
+            <span class="msg-from">${esc(who || (out ? '' : '(no sender)'))}</span>
             <span class="msg-date">${esc(listDate(m.createdAt))}</span>
             <span class="msg-size">${m.size != null ? sizeText(m.size) : ''}</span>
-            <span class="msg-subj">${esc(m.subject || '(no subject)')}</span>
+            <span class="msg-subj">${m.importance ? `<span class="msg-prio" data-prio="${m.importance === 'high' ? 'high' : 'low'}" aria-label="${m.importance === 'high' ? 'High priority' : 'Low priority'}"></span>` : ''}${esc(m.subject || '(no subject)')}</span>
         </div>`;
     }
 
@@ -829,7 +849,7 @@
             countEl.textContent = `${n} Items.`;
             return;
         }
-        const out = folder === 'sent' || folder === 'outbox';
+        const out = folder === 'sent' || folder === 'outbox' || folder === 'drafts';
         // the inbox's unread count is the mailbox's own (the list holds one page of it)
         const box = mailboxes.find((x) => x.owner === owner);
         const unread = out ? 0 : (folder === 'inbox' && box && !hasMore ? box.unread || 0 : mail.filter((m) => !m.read).length);
@@ -1097,6 +1117,7 @@
 
     async function openMessage(m) {
         if (!m) return;
+        if (m.draft) { openDraft(m); return; }
         selectedId = String(m.id);
         const token = ++readToken;
         reading = Object.assign({}, m);
@@ -1377,7 +1398,9 @@
         view.querySelector('.msg-field.is-cc').hidden = !init.cc;
         view.querySelector('[name="subject"]').value = init.subject || '';
         const body = view.querySelector('[name="body"]');
-        body.value = init.body || '';
+        // the signature goes under the new text, above a quoted message (device)
+        const sig = init.noSignature ? '' : signatureFor(compose.mode);
+        body.value = sig ? (init.body ? sig + init.body : sig) : (init.body || '');
         pushLayer('compose');
         requestAnimationFrame(() => {
             const first = init.to ? body : view.querySelector('[name="to"]');
@@ -1419,6 +1442,168 @@
             subject: prefixed('RE', full.subject),
             body: quoted(full)
         });
+    }
+
+    // ---- Drafts, Spell Check, Voice Note, signature (#757) ----
+
+    const DRAFTS_KEY = 'wmMailDrafts';
+
+    function readDrafts() {
+        try {
+            const list = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '[]');
+            return Array.isArray(list) ? list : [];
+        } catch (_) { return []; }
+    }
+
+    function writeDrafts(list) {
+        try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(list.slice(0, 100))); return true; } catch (_) { return false; }
+    }
+
+    function draftRows() {
+        return readDrafts().sort((a, b) => b.at - a.at).map((d) => ({
+            id: 'draft:' + d.id, to: d.to, cc: d.cc, subject: d.subject, createdAt: new Date(d.at).toISOString(),
+            read: true, draft: true,
+            size: String(d.body || '').length + (d.attachments || []).reduce((n, a) => n + Math.round(String(a.base64 || '').length * 0.75), 0),
+            attachments: d.attachments || []
+        }));
+    }
+
+    function dropDraft(id) {
+        writeDrafts(readDrafts().filter((d) => d.id !== id));
+    }
+
+    /** Menu > Save to Drafts: the message as it stands goes to Drafts and the page closes (device). */
+    async function saveDraft() {
+        if (!compose) return;
+        const f = composeFields();
+        const id = compose.draftId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+        // attachments past ~300 KB stay out: the phone's own storage holds the drafts
+        const attachments = compose.attachments.filter((a) => String(a.base64 || '').length < 400000);
+        const rec = { id, mode: compose.mode, replyTo: compose.replyTo, priority: compose.priority, to: f.to, cc: f.cc, subject: f.subject, body: f.body, attachments, at: Date.now() };
+        const list = readDrafts();
+        const at = list.findIndex((d) => d.id === id);
+        if (at >= 0) list[at] = rec; else list.unshift(rec);
+        if (!writeDrafts(list)) {
+            await ws.messageBox({ title: 'Messaging', icon: 'error', text: 'The message could not be saved. The device memory is full.' });
+            return;
+        }
+        if (attachments.length < compose.attachments.length) await ws.messageBox({ title: 'Messaging', icon: 'info', text: 'The message was saved to Drafts without its larger attachments.' });
+        popLayer();
+        if (isMail() && folder === 'drafts') loadFolder({ keep: true });
+    }
+
+    function openDraft(m) {
+        const d = readDrafts().find((x) => 'draft:' + x.id === String(m.id));
+        if (!d) return;
+        newMessage({ mode: d.mode || 'new', replyTo: d.replyTo || null, to: d.to, cc: d.cc, subject: d.subject, body: d.body, attachments: d.attachments, noSignature: true });
+        compose.draftId = d.id;
+        compose.priority = d.priority || 'normal';
+    }
+
+    /**
+     * Menu > Spell Check (device: each word it does not know is selected with a menu of suggestions,
+     * Ignore and Ignore All; at the end "Spell check is complete."). The words come from Dreamscape's
+     * spell engine on the server (WS spell_check_text, modules/spellChecker.js).
+     */
+    async function spellCheckField(field) {
+        if (!field) return;
+        let words;
+        try {
+            const r = await busyOf(() => send('spell_check_text', { text: field.value }, true));
+            if (r && r.success === false) throw new Error(r.error || 'unavailable');
+            words = (r && Array.isArray(r.words)) ? r.words : [];
+        } catch (_) {
+            await ws.messageBox({ title: 'Messaging', icon: 'info', text: 'Spell check is not available right now.' });
+            return;
+        }
+        const ignored = new Set();
+        let shift = 0;
+        for (const w of words) {
+            if (ignored.has(w.word.toLowerCase())) continue;
+            const at = w.start + shift;
+            // the text changed under the check (typed meanwhile): stop where it no longer matches
+            if (field.value.slice(at, at + w.word.length) !== w.word) break;
+            field.focus();
+            field.setSelectionRange(at, at + w.word.length);
+            const choice = await new Promise((resolve) => {
+                let settled = false;
+                const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+                const items = (w.suggestions || []).map((x) => ({ label: String(x), action: () => done({ replace: String(x) }) }));
+                if (!items.length) items.push({ label: '(No Suggestions)', disabled: true });
+                items.push('-', { label: 'Ignore', action: () => done({ ignore: false }) }, { label: 'Ignore All', action: () => done({ ignore: true }) }, { label: 'Cancel', action: () => done(null) });
+                ws.dropdown(field, items, 'left');
+                // a tap outside the menu closes it: the check ends
+                const watch = setInterval(() => {
+                    const pop = document.querySelector('#wmShell .wm-popup');
+                    if (!pop || pop.hidden) { clearInterval(watch); setTimeout(() => done(null), 0); }
+                }, 250);
+            });
+            if (!choice) return;
+            if (choice.replace) {
+                field.setRangeText(choice.replace, at, at + w.word.length, 'end');
+                shift += choice.replace.length - w.word.length;
+            } else if (choice.ignore) {
+                ignored.add(w.word.toLowerCase());
+            }
+        }
+        await ws.messageBox({ title: 'Messaging', icon: 'info', text: 'Spell check is complete.' });
+    }
+
+    /**
+     * Insert > Voice Note: records from the microphone until Stop; the note goes in as an attachment.
+     * The microphone is the browser's (the Android app asks with its own permission).
+     */
+    async function recordVoiceNote() {
+        if (!compose) return;
+        if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function' || typeof MediaRecorder === 'undefined') {
+            await ws.messageBox({ title: 'Messaging', icon: 'error', text: 'This device cannot record voice notes.' });
+            return;
+        }
+        let stream;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (_) {
+            await ws.messageBox({ title: 'Messaging', icon: 'error', text: 'The microphone could not be used. Allow Melaton Mobile to use the microphone, then try again.' });
+            return;
+        }
+        const type = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4'].find((t) => typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(t)) || '';
+        const rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+        const chunks = [];
+        rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+        const started = Date.now();
+        rec.start();
+        const keep = await ws.messageBox({ title: 'Voice Note', icon: 'info', text: 'Recording... Tap Stop when you are done.', buttons: [{ text: 'Stop', value: true, default: true }, { text: 'Cancel', value: false }], cancelValue: false });
+        const stopped = new Promise((resolve) => { rec.onstop = resolve; });
+        rec.stop();
+        await stopped;
+        stream.getTracks().forEach((t) => t.stop());
+        if (!keep || !chunks.length || !compose) return;
+        const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+        const ext = /mp4/.test(blob.type) ? 'm4a' : /ogg/.test(blob.type) ? 'ogg' : 'webm';
+        const base64 = await new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1] || ''); r.readAsDataURL(blob); });
+        const secs = Math.max(1, Math.round((Date.now() - started) / 1000));
+        const hhmm = new Date(started).toTimeString().slice(0, 5).replace(':', '');
+        compose.attachments.push({ name: `Voice Note ${hhmm} (${secs}s).${ext}`, mimeType: blob.type.split(';')[0], base64, size: blob.size });
+        renderAtts();
+    }
+
+    // the signature of Dovecote Express's Mail Options (userGlobalSettings.mail), shared with the desktop;
+    // Options > Accounts > Signatures... sets it here
+    let mailSig = null;
+    async function loadSignature() {
+        try {
+            const c = window.wsClient;
+            const data = c && typeof c.getUserGlobalSettings === 'function' ? await c.getUserGlobalSettings() : null;
+            mailSig = (data && data.settings && data.settings.mail) || null;
+        } catch (_) { mailSig = null; }
+        return mailSig;
+    }
+
+    function signatureFor(mode) {
+        const m = mailSig;
+        if (!m || !m.signature || m.signatureOutgoing === false) return '';
+        if (mode !== 'new' && m.signatureSkipReplies) return '';
+        return '\n\n' + m.signature;
     }
 
     function composeFields() {
@@ -1481,6 +1666,7 @@
             return;
         }
         sending = false;
+        if (compose && compose.draftId) dropDraft(compose.draftId);
         popLayer();
         if (top() === 'read') popLayer();
         if (isMail() && (folder === 'sent' || folder === 'outbox' || owner === human())) loadFolder({ keep: true });
@@ -1733,12 +1919,12 @@
             { label: 'Check Names', action: checkNames },
             { label: 'Insert', submenu: () => [
                 { label: 'Picture', action: () => insertFile('image/*') },
-                { label: 'Voice Note', disabled: true },
+                { label: 'Voice Note', action: recordVoiceNote },
                 { label: 'File', action: () => insertFile('') }
             ] },
             { label: 'My Text', submenu: () => MY_TEXT.map((t) => ({ label: t, action: () => insertMyText(t) })) },
-            { label: 'Save to Drafts', disabled: true },
-            { label: 'Spell Check', disabled: true },
+            { label: 'Save to Drafts', action: saveDraft },
+            { label: 'Spell Check', action: () => spellCheckField(page.querySelector('.msg-view[data-view="compose"] [name="body"]')) },
             ...(is65() ? [] : ['-']),
             { label: 'Cancel Message', action: cancel },
             { label: 'Message Options...', action: () => pushLayer('msgopts') }
@@ -1900,7 +2086,7 @@
                 <div class="msg-manage-box"><div class="mt-tree" role="tree" aria-label="Folders"></div></div>
             </div>
             <div class="msg-view" data-view="msgopts" hidden>
-                <div class="msg-head">Message Options</div>
+                <div class="msg-head">Message Options<button type="button" class="msg-head-help" data-act="msgopts-help" aria-label="Help">${img('app-help')}</button></div>
                 <div class="wm-form msg-opts"></div>
             </div>
             <div class="msg-view" data-view="sender" hidden>
@@ -1925,6 +2111,12 @@
                 </form>
             </div>`;
         onListPointer(p.querySelector('.msg-scroll'));
+        // the heading's ? opens Help on the page, where a Help program is installed
+        p.querySelector('[data-act="msgopts-help"]').addEventListener('click', () => {
+            const H = window.wmHelp;
+            if (H && typeof H.search === 'function') H.search('Message Options');
+            else ws.messageBox({ title: 'Message Options', icon: 'info', text: 'Priority, security, permission and language apply to this message only. Priority goes out with the message as its importance.' });
+        });
         p.querySelector('.msg-read').addEventListener('click', (e) => {
             const att = e.target.closest('.msg-atts .msg-att[data-n]');
             if (att) { openAttachment(Number(att.dataset.n)); return; }
@@ -2136,7 +2328,7 @@
         if (row) openMessage(row);
     }
 
-    window.wmMessaging = { openMail, showTree, closeTree, accountItems, goTo, setupAccount, mailAddress: () => mailAddress() };
+    window.wmMessaging = { openMail, showTree, closeTree, accountItems, goTo, setupAccount, mailAddress: () => mailAddress(), spellCheckField, loadSignature };
 
     // ---------------------------------------------------------------- registration
 
@@ -2152,6 +2344,8 @@
             mount,
             show() {
                 if (!owner) owner = human();
+                // the signature for new messages (Options > Accounts > Signatures..., the desktop's Mail Options)
+                loadSignature();
                 // the app starting: "Select an Account" first (Options > Accounts, on as shipped)
                 if (freshOpen && !skipPicker && optOn(OPT.picker)) {
                     layers = ['accounts'];
