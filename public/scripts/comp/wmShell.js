@@ -34,6 +34,12 @@
     // for the Melaton Default home screen (wmTitanium.js, setTodayView); wm65.css restyles the rest.
     const WM65 = root.dataset.wmVersion === '6.5';
     const FLAG65 = '/static_images/wm65/start-flag.png';
+    // The Start mark: 6.1's flag was in colour, so 6.1 shows the four-colour Melaton emblem (19 /
+    // 38 / 76 px files for the 19-unit box of the flag's cell, wm-shell.css .wm-start.is-melaton);
+    // 6.5 is where the flag went white, so 6.5 keeps the one-colour emblem
+    const EMBLEM61 = '/static_images/wm61/start-melaton@4x.png';
+    const EMBLEM61_SRCSET = '/static_images/wm61/start-melaton.png 19w, /static_images/wm61/start-melaton@2x.png 38w, /static_images/wm61/start-melaton@4x.png 76w';
+    const EMBLEM = WM65 ? '/static_images/melaton/melaton-white-256.png' : EMBLEM61;
     // 6.5 keeps its own Today items list (order, on / off, "Melaton Default"): its home screen has
     // the clock in the middle of the list, which is not 6.1's top-down order
     const TODAY_ITEMS_KEY = WM65 ? 'wmTodayItems65' : 'wmTodayItems';
@@ -246,7 +252,14 @@
         const near = k65 < 0.005 ? 1 : Math.max(0, Math.min(1, (45 - Math.abs(dh)) / 30));
         roles['--wm65-near'] = near.toFixed(3);
         // the classic caption band's light end (#5f6ff3: 11.6 deg from the highlight, s 86 l 66.3)
-        roles['--wm65-lb'] = keep(233.5, 86, 66.3, turn(BLUE_HUE + dh + 11.6 * near), Math.min(100, 86 * k65)).toFixed(2);
+        // Classic Blue's own caption text reads at 2.6 : 1 on that end; any other theme gets 4.5 : 1
+        let lb = keep(233.5, 86, 66.3, turn(BLUE_HUE + dh + 11.6 * near), Math.min(100, 86 * k65)) * 100;
+        if (!(dh === 0 && k65 === 1)) {
+            const lumOf = (rgb) => 1.05 / contrastWithWhite(rgb) - 0.05;
+            const text = lumOf(hslToRgb(turn(BLUE_HUE + dh + 21.9 * near), Math.min(100, 42.1 * k65), 85.1));
+            while (lb > 25 && (text + 0.05) / (lumOf(hslToRgb(turn(BLUE_HUE + dh + 11.6 * near), Math.min(100, 86 * k65), 66.3 * lb / 100)) + 0.05) < 4.5) lb -= 1;
+        }
+        roles['--wm65-lb'] = (lb / 100).toFixed(2);
         // 6.1: the bands that carry a white title. The device draws them in the highlight as it
         // is (white on its green is 1.9 : 1); here the message box caption (the highlight with a
         // quarter of white at its left end) and the bubble, notification and volume titles are
@@ -278,6 +291,10 @@
             const file = name.endsWith('-4x') ? `${name.slice(0, -3)}@4x` : `${name}@2x`;
             img.src = `/static_images/wm65/${name.startsWith('tabcurve-') ? '' : 'theme-classicblue-'}${file}.png`;
         }));
+        // Classic Blue is the palest of the ROM's six drawn sets: its list selector averages s 61,
+        // the other five 78 to 96 (mean 86), its menu arrow bars 52 against 58 to 97. Away from blue
+        // the redrawn art takes that ratio (1.4), so a red or green selector is as full as theirs
+        const vivid = 1 + 0.4 * (1 - near);
         Promise.all(ART.map(load)).then((images) => {
             if (art.pending !== artKey) return;
             const vars = {};
@@ -296,7 +313,7 @@
                         const c = rgbToHsl({ r: px[p], g: px[p + 1], b: px[p + 2] });
                         // the greys (white glyphs, black edges, shadows) are not the theme's
                         if (c.s < 3) continue;
-                        const rgb = hslToRgb(turn(BLUE_HUE + dh + (turn(c.h - BLUE_HUE + 180) - 180) * near), Math.min(100, c.s * k65), c.l * lm);
+                        const rgb = hslToRgb(turn(BLUE_HUE + dh + (turn(c.h - BLUE_HUE + 180) - 180) * near), Math.min(100, c.s * k65 * vivid), c.l * lm);
                         px[p] = Math.round(rgb[0] * 255);
                         px[p + 1] = Math.round(rgb[1] * 255);
                         px[p + 2] = Math.round(rgb[2] * 255);
@@ -419,7 +436,7 @@
         shell.innerHTML = `
             <header class="wm-titlebar">
                 <button type="button" class="wm-start" aria-label="Start" aria-haspopup="menu" aria-expanded="false">
-                    <img src="/static_images/melaton/melaton-white-256.png" alt="" draggable="false">
+                    <img src="${EMBLEM}" alt="" draggable="false">
                 </button>
                 <div class="wm-title" role="heading" aria-level="1">Start</div>
                 <div class="wm-status">
@@ -657,7 +674,7 @@
                 if (b && b.text) return b;
             }
         } catch (_) { /* settings not loaded */ }
-        return { text: 'Start', icon: '/static_images/melaton/melaton-white-256.png' };
+        return { text: 'Start', icon: EMBLEM };
     }
 
     function applyStartButton() {
@@ -673,6 +690,13 @@
             else if (b.icon === art('start-flag')) img.setAttribute('srcset', srcset('start-flag'));
             else img.removeAttribute('srcset');
         }
+        // 6.1's colour emblem: the file nearest the box's device size (19 units wide)
+        const emblem61 = !WM65 && b.icon === EMBLEM61;
+        if (img && emblem61) {
+            img.setAttribute('sizes', `${19 * (parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1)}px`);
+            if (img.getAttribute('srcset') !== EMBLEM61_SRCSET) img.setAttribute('srcset', EMBLEM61_SRCSET);
+        } else if (img) img.removeAttribute('sizes');
+        shell.querySelector('.wm-start').classList.toggle('is-melaton', emblem61);
         // the Windows flag keeps WM's own colours and Start-cell metrics (wm-shell.css)
         shell.querySelector('.wm-start').classList.toggle('is-flag', b.icon === art('start-flag'));
         shell.querySelector('.wm-start').setAttribute('aria-label', b.text);
@@ -5848,32 +5872,44 @@
     ];
 
     /**
-     * The picture view's toolbar (Yukimi, Nov 10: favourites, zoom, edit in Studio, delete ...): a
-     * WM tool strip above the soft keys, like the command bar toolbars of WM's Office Mobile. Each
-     * button runs the viewer's own (lightbox.js: Pin, Upscale, Scraps, Destroy, which ask first as
-     * on the desktop) or the Menu's own action (Studio, Director); one the picture has no button
-     * for is greyed. The viewer has no full-screen mode on phones (the WM bars stay), so neither
-     * does the strip; PhotoSwipe's bottom padding makes room for it.
+     * The picture view's toolbar (Yukimi, Nov 10: favourites, zoom, edit in Studio, delete ...).
+     * The device's own picture view has none (6.1 and 6.5 emulators: the picture between the title
+     * bar and Send / Menu, everything else in the Menu), so this one takes the form of the
+     * toolbar the device does have, Media Player's Now Playing strip (wm-media.css .wmp-qbar):
+     * flat 16 px colour icons from the ROM set, no button frames, from the left edge. Each button
+     * runs the viewer's own (lightbox.js: Pin, Destroy, which ask first as on the desktop) or the
+     * Menu's own action (Studio, Director); one the picture has no button for is greyed. Upscale
+     * and Move to Scraps have no ROM icon: they are in the Menu only. The viewer has no
+     * full-screen mode on phones (the WM bars stay), so neither does the strip; PhotoSwipe's
+     * bottom padding makes room for it.
      */
     const VIEWBAR = [
-        // [act, label, lightbox.js button title (null = the shell's own)]
-        ['prev', 'Previous', null], ['next', 'Next', null], '|',
-        ['zoom', 'Zoom', 'Zoom in/out'], ['pin', 'Pin', 'Pin image'], '|',
-        ['studio', 'Edit in DreamStudio', null], ['director', 'Ask the Director', null], ['upscale', 'Upscale', 'Upscale image'], '|',
-        ['scraps', 'Move to Scraps', 'Move to scraps'], ['delete', 'Delete', 'Destroy image']
+        // [act, label, lightbox.js button title (null = the shell's own), ROM icon]
+        ['prev', 'Previous', null, 'wmp-back'], ['next', 'Next', null, 'wmp-forward'], '|',
+        ['zoom', 'Zoom', 'Zoom in/out', 'wmp-search'], ['pin', 'Pin', 'Pin image', 'wmp-favorite'], '|',
+        ['studio', 'Edit in DreamStudio', null, 'app-studio'], ['director', 'Ask the Director', null, 'app-director'], '|',
+        ['delete', 'Delete', 'Destroy image', 'wmp-delete']
     ];
-    const VIEWBAR_H = 24;
     let viewbarPswp = null;
 
     function viewerPswp() {
-        try { return (typeof lightbox !== 'undefined' && lightbox && lightbox.pswp) || window.pswp || null; } catch (_) { return null; }
+        try {
+            const g = (typeof lightbox !== 'undefined' && lightbox && lightbox.pswp) || null;
+            const o = window.pswp || null;
+            // one closing under a newer one (closeOlderViewers) is not the viewer any more
+            if (g && o && g !== o && g.isDestroying && !o.isDestroying) return o;
+            // both open for a moment: the one the strip follows until the older one has closed
+            if (g && o && g !== o && viewbarPswp === o && !o.isDestroying) return o;
+            return g || o;
+        } catch (_) { return null; }
     }
 
     function viewbarState(act, title) {
         const item = viewerItem();
         const pic = item && (item.filename || item.original);
         if (act === 'prev' || act === 'next') return { enabled: viewerSlides() > 1 };
-        if (act === 'studio') return { enabled: !!(item && typeof window.openManualModalWithContent === 'function') };
+        // Studio edits a print by its file: a picture shown by its address alone has none
+        if (act === 'studio') return { enabled: !!(pic && typeof window.openManualModalWithContent === 'function') };
         if (act === 'director') return { enabled: !!(pic && typeof window.askWrenAboutImage === 'function') };
         const b = viewerButton(title);
         return { enabled: !!b, pressed: act === 'pin' ? !!(b && item && item.isPinned) : null };
@@ -5886,7 +5922,7 @@
         if (!viewerActive) return;
         if (!bar.firstChild) {
             bar.innerHTML = VIEWBAR.map((b) => (b === '|' ? '<span class="wm-viewbar-sep" aria-hidden="true"></span>'
-                : `<button type="button" class="wm-viewbar-btn" data-act="${b[0]}" title="${escapeHtml(b[1])}" aria-label="${escapeHtml(b[1])}"></button>`)).join('');
+                : `<button type="button" class="wm-viewbar-btn" data-act="${b[0]}" title="${escapeHtml(b[1])}" aria-label="${escapeHtml(b[1])}">${imgTag(b[3])}</button>`)).join('');
             bar.addEventListener('click', (e) => {
                 const btn = e.target.closest('.wm-viewbar-btn');
                 if (!btn || btn.disabled) return;
@@ -5924,15 +5960,61 @@
         if (act === 'pin') [400, 1200, 2500].forEach((ms) => setTimeout(renderViewbar, ms));
     }
 
-    /** PhotoSwipe's padding on the phone: the title bar above, the toolbar and soft keys below. */
+    /**
+     * PhotoSwipe's padding on the phone: the title bar above, the toolbar and soft keys below, as
+     * the shell draws them (PhotoSwipe fills the window, the shell keeps inside the safe area: on
+     * a phone with a status or navigation band the picture ran under the bars by the band's
+     * height when this counted the bars alone).
+     */
     function viewerPadding() {
         const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
-        return { top: 26 * px, bottom: (26 + VIEWBAR_H) * px, left: 0, right: 0 };
+        const pad = { top: 26 * px, bottom: 50 * px, left: 0, right: 0 };
+        try {
+            const title = shell && shell.querySelector('.wm-titlebar');
+            const keys = shell && shell.querySelector('.wm-softkeys');
+            const t = title && title.getBoundingClientRect();
+            const k = keys && keys.getBoundingClientRect();
+            if (t && t.height) pad.top = Math.max(0, t.bottom);
+            // the strip is 24 px (6.5: 23) over the soft keys; asked before it is shown too
+            if (k && k.height) pad.bottom = Math.max(0, window.innerHeight - k.top + (WM65 ? 23 : 24) * px);
+            if (t && t.width) { pad.left = Math.max(0, t.left); pad.right = Math.max(0, window.innerWidth - t.right); }
+        } catch (_) { /* the bars alone */ }
+        return pad;
+    }
+
+    /**
+     * One picture viewer on the phone (#748): the Pictures program's (lightbox.js PhotoSwipe under
+     * the shell's title bar, toolbar and soft keys). The desktop's Lumen (imageViewer.js
+     * createViewer: Explorer and file associations, the Director's and agents' "open in Lumen",
+     * applets in Internet Explorer, references, Ledge cards) hands its picture here instead of
+     * opening a window. A print of the loaded gallery opens in its place there (swipe to the
+     * next, Pin, Delete ...); anything else opens by its address alone, under its title.
+     */
+    function viewPicture(input) {
+        const o = input || {};
+        const d = o.data && typeof o.data === 'object' ? o.data : {};
+        if (typeof showLightbox !== 'function') return false;
+        const name = d.filename || d.original || d.upscaled || '';
+        let known = null;
+        try { known = name && typeof findImageByFilename === 'function' ? findImageByFilename(name) : null; } catch (_) { known = null; }
+        const src = o.src || d.url || '';
+        if (!known && !src) return false;
+        closeMenus(true);
+        const title = o.title && o.title !== 'Image' && o.title !== 'Gallery Image' ? String(o.title) : '';
+        // one picture at a time: the one on screen closes first (two PhotoSwipes would stack)
+        const p = viewerPswp();
+        const closed = p && !p.isDestroying && typeof p.on === 'function'
+            ? new Promise((resolve) => { p.on('destroy', resolve); setTimeout(resolve, 800); try { p.close(); } catch (_) { resolve(); } })
+            : Promise.resolve();
+        busy(closed.then(() => (known ? showLightbox({ filename: name }) : showLightbox({ url: src, title: title || undefined }))).catch(() => { /* viewer not ready */ }));
+        return true;
     }
 
     /** The viewer that just opened: room for the toolbar, and the toolbar follows its slides. */
     function attachViewbar() {
         const p = viewerPswp();
+        // the strip first: the padding below is measured from it
+        renderViewbar();
         try {
             if (typeof lightbox !== 'undefined' && lightbox && lightbox.options) lightbox.options.paddingFn = viewerPadding;
         } catch (_) { /* no gallery lightbox yet */ }
@@ -5943,6 +6025,9 @@
                 try { if (typeof p.updateSize === 'function') p.updateSize(true); } catch (_) { /* sized at the next resize */ }
             }
             if (typeof p.on === 'function') {
+                // slides are not laid out again while the viewer zooms open: once more after it
+                // (a picture by its address ran under the strip)
+                p.on('openingAnimationEnd', () => { try { p.updateSize(true); } catch (_) { /* sized at the next resize */ } });
                 p.on('change', () => { renderViewbar(); renderSoftKeys(); });
                 p.on('destroy', () => { if (viewbarPswp === p) viewbarPswp = null; });
             }
@@ -6036,7 +6121,7 @@
                     // openInCreator) or with the Director (Glancewell's E-mail: askWrenAboutImage); each
                     // opens its app over the viewer, Back returns here
                     const editPic = item && (item.filename || item.original);
-                    const canStudio = !!(item && typeof window.openManualModalWithContent === 'function');
+                    const canStudio = !!(editPic && typeof window.openManualModalWithContent === 'function');
                     const canDirector = !!(editPic && typeof window.askWrenAboutImage === 'function');
                     if (canStudio || canDirector) {
                         items.push({ label: 'Edit', submenu: () => [
@@ -6067,10 +6152,39 @@
     const openViewers = document.getElementsByClassName('pswp--open');
     const appErrorWindows = document.getElementsByClassName('dreamscape-app-error-window');
 
+    /**
+     * One picture viewer at a time (#748): the desktop stacks its viewers (a Director print list
+     * over the gallery's picture), the phone keeps the newest. The older one is the one the strip
+     * was following (viewbarPswp); it is closed once it has finished opening (PhotoSwipe drops a
+     * close asked for while it zooms open and is left on screen without its instance).
+     */
+    function closeOlderViewer() {
+        const old = viewbarPswp;
+        if (!old || old.isDestroying || typeof old.close !== 'function') return;
+        let other = null;
+        try { if (typeof lightbox !== 'undefined' && lightbox && lightbox.pswp && lightbox.pswp !== old) other = lightbox.pswp; } catch (_) { /* no gallery viewer */ }
+        if (!other && window.pswp && window.pswp !== old) other = window.pswp;
+        if (!other || other.isDestroying) return;
+        if (old.opener && !old.opener.isOpen) return;
+        // the gallery's viewer forgets window.pswp when it goes (photoswipe-lightbox), which by
+        // then names the newer one: put it back, or nothing could close or steer that one
+        const keep = () => { if (!window.pswp && !other.isDestroying && other.element && other.element.isConnected) window.pswp = other; };
+        // and the strip reads the buttons of the one left, once the old one's are off the page
+        if (typeof old.on === 'function') old.on('destroy', () => { keep(); setTimeout(() => { keep(); renderViewbar(); renderSoftKeys(); }, 0); });
+        try { old.close(); } catch (_) { /* closing */ }
+    }
+
     function checkViewer() {
         let open = false;
-        for (const el of openViewers) { if (el.classList.contains('pswp')) { open = true; break; } }
-        if (open === viewerActive) return;
+        let count = 0;
+        for (const el of openViewers) { if (el.classList.contains('pswp')) { open = true; count++; } }
+        if (count > 1) closeOlderViewer();
+        if (open === viewerActive) {
+            // another picture took the open one's place between two polls (viewPicture, a new
+            // print): the strip and the soft keys follow the viewer now on screen
+            if (open) { const p = viewerPswp(); if (p && p !== viewbarPswp) { attachViewbar(); renderSoftKeys(); } }
+            return;
+        }
         viewerActive = open;
         viewerClosing = false;
         closeMenus(true);
@@ -6189,7 +6303,7 @@
                 <path d="M 230 432 A 72 72 0 1 0 300 500" />
             </svg>
             <div class="wm-splash-logo">
-                <img src="/static_images/melaton/melaton-white-256.png" alt="" draggable="false">
+                <img src="/static_images/wm61/boot-melaton.png" alt="" draggable="false">
                 <div class="wm-splash-words">
                     <span class="wm-splash-brand">Melaton</span>
                     <span class="wm-splash-product">Mobile</span>
@@ -6553,6 +6667,8 @@
         applyTheme,
         onPopState,
         thumbFor,
+        viewPicture,
+        viewerPadding,
         bubble: (opts) => bubble(opts || {}),
         /** WM's wait cursor while the user must wait: busy(promise | fn, { delay, timeout }) or busy() -> release. */
         busy: (work, opts) => busy(work, opts || {}),

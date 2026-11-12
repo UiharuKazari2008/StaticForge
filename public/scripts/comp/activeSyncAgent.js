@@ -481,8 +481,10 @@
                 const app = root.AndroidActiveSync;
                 if (app && typeof app.ring === 'function') { app.ring(); return true; }
             } catch (_) { /* older app: the page does what it can */ }
-            if (root.navigator && typeof root.navigator.vibrate === 'function') root.navigator.vibrate([400, 200, 400, 200, 400, 200, 800]);
             const sh = root.wmShell;
+            // the shell's ring pattern (the app's motor through AndroidHaptics, else navigator.vibrate): "find my device" buzzes whatever the mode
+            if (sh && typeof sh.vibrate === 'function') sh.vibrate('ring', { force: true });
+            else if (root.navigator && typeof root.navigator.vibrate === 'function') root.navigator.vibrate([400, 200, 400, 200, 400, 200, 800]);
             if (sh && sh.sounds && typeof sh.sounds.play === 'function') {
                 for (let i = 0; i < 4; i += 1) setTimeout(() => sh.sounds.play('Notification', { force: true }), i * 1500);
             }

@@ -18,6 +18,10 @@ class ImageViewerManager {
 
     // Create a new image viewer instance
     createViewer(imageSrc, title = 'Image', metadata = {}) {
+        // Melaton Mobile (#748): a phone has one picture viewer, the Pictures program's
+        // (wmShell.viewPicture: public/scripts/comp/wmShell.js); no Lumen window is made there
+        if (window.uiShell === 'mobile' && window.wmShell && typeof window.wmShell.viewPicture === 'function'
+            && window.wmShell.viewPicture({ src: imageSrc, title, data: metadata })) return null;
         // Recent Items (public/scripts/comp/recentItems.js): a picture opened in Lumen. A phone
         // picture (explorerPhoneDrive.js) is recorded there by { root, path }, never by its URL,
         // whose token changes every launch

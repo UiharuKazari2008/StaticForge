@@ -248,6 +248,38 @@ html.ui-mobile[data-wm-app="today"][data-wm-boot="reveal"] #wmShell {
     display: none;
 }
 
+/* 6.1's own Start mark, the four-colour Melaton emblem (wmShell.js applyStartButton), takes the
+ * flag's cell: on the device the flag is 42 x 36 device px at 4,8 of the 50 px bar and the rule
+ * is at x 50. The emblem is square: 19 units (between the flag's height and width) on the flag's
+ * centre (12.5, 13 units). 6.5 keeps the white emblem and its own cell. */
+.wm-start.is-melaton {
+    width: calc(25 * var(--wm-px));
+    align-items: flex-start;
+    justify-content: flex-start;
+    border-right: 0;
+    position: relative;
+}
+
+.wm-start.is-melaton img {
+    width: calc(19 * var(--wm-px));
+    height: calc(19 * var(--wm-px));
+    margin: calc(3.5 * var(--wm-px)) 0 0 calc(3 * var(--wm-px));
+}
+
+.wm-start.is-melaton::after {
+    content: '';
+    position: absolute;
+    right: calc(-1 * var(--wm-px));
+    top: calc(3.5 * var(--wm-px));
+    height: calc(19.5 * var(--wm-px));
+    width: calc(1 * var(--wm-px));
+    background: linear-gradient(to bottom, var(--wm-title), var(--wm-button-light) 50%, var(--wm-title));
+}
+
+.wm-titlebar.is-start-open > .wm-start.is-melaton::after {
+    display: none;
+}
+
 .wm-titlebar.is-start-open > .wm-title {
     color: var(--wm-start-rule);
 }
@@ -2078,7 +2110,8 @@ html.ui-mobile[data-wm-boot="splash"] .wm-splash {
     width: 26%;
     max-width: 120px;
     aspect-ratio: 1;
-    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
+    /* the device's flag: a tight shadow down and right (about 2 device px, 0.4 dark) */
+    filter: drop-shadow(calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) calc(0.5 * var(--wm-px)) rgba(0, 0, 0, 0.45));
 }
 
 .wm-splash-words {
@@ -3189,25 +3222,24 @@ html.ui-mobile #confirmationDialog #confirmationMessage::after {
     flex: 0 0 auto;
 }
 
-/* ---- picture view toolbar (Yukimi, Nov 10): a WM tool strip above the soft keys, 24 px, icon
- * buttons 22 x 20 with 11 x 11 black glyphs (our own art, the Pictures tool strip's style); each
- * runs the viewer's own button (lightbox.js). Pressed = the picture is pinned. The viewer leaves
- * room for it (wmShell sets PhotoSwipe's padding). ---- */
+/* ---- picture view toolbar (Yukimi, Nov 10): the device's picture view has no toolbar, so this
+ * one has the form of the toolbar the device does have, Media Player's Now Playing strip
+ * (wm-media.css .wmp-qbar): 24 px on the face colour, flat 25 px buttons with the 16 px ROM icon,
+ * from the left edge, a 5 px gap between groups. Each runs the viewer's own button (lightbox.js).
+ * Pressed = the picture is pinned. The viewer leaves room for it (wmShell viewerPadding). ---- */
 .wm-viewbar {
     position: absolute;
     z-index: 3;
-    left: 0;
-    right: 0;
-    bottom: calc(env(safe-area-inset-bottom) + 26 * var(--wm-px));
+    left: var(--wm-safe-left);
+    right: var(--wm-safe-right);
+    bottom: calc(var(--wm-safe-bottom) + 26 * var(--wm-px));
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: calc(2 * var(--wm-px));
     height: calc(24 * var(--wm-px));
-    padding: 0 calc(3 * var(--wm-px)) 0 calc(env(safe-area-inset-left) + 3 * var(--wm-px));
-    border-top: calc(1 * var(--wm-px)) solid #000;
-    background: var(--wm-tab-strip);
+    padding-left: calc(2 * var(--wm-px));
+    background: var(--wm-tint);
     box-sizing: border-box;
+    overflow: hidden;
 }
 
 .wm-viewbar[hidden] {
@@ -3216,60 +3248,37 @@ html.ui-mobile #confirmationDialog #confirmationMessage::after {
 
 .wm-viewbar-sep {
     flex: 0 0 auto;
-    width: calc(1 * var(--wm-px));
-    height: calc(16 * var(--wm-px));
-    background: #8c8e8c;
+    width: calc(5 * var(--wm-px));
 }
 
 .wm-viewbar-btn {
-    flex: 0 1 calc(22 * var(--wm-px));
-    min-width: calc(18 * var(--wm-px));
-    height: calc(20 * var(--wm-px));
+    flex: 0 0 auto;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: calc(25 * var(--wm-px));
+    height: 100%;
     padding: 0 !important;
-    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border: 0 !important;
     border-radius: 0 !important;
-    background: var(--wm-tint) !important;
-    color: #000 !important;
+    background: none !important;
 }
 
-.wm-viewbar-btn::before {
-    content: '';
-    display: block;
-    width: calc(11 * var(--wm-px));
-    height: calc(11 * var(--wm-px));
-    margin: auto;
-    background: currentColor;
-    -webkit-mask: var(--wm-vb-glyph) center / 100% 100% no-repeat;
-    mask: var(--wm-vb-glyph) center / 100% 100% no-repeat;
+.wm-viewbar-btn img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    pointer-events: none;
 }
 
 .wm-viewbar-btn:active:not(:disabled),
 .wm-viewbar-btn[aria-pressed="true"] {
     background: var(--wm-highlight) !important;
-    color: var(--wm-highlight-text) !important;
 }
 
-.wm-viewbar-btn:disabled {
-    color: #8c8e8c !important;
+.wm-viewbar-btn:disabled img {
+    filter: grayscale(1) brightness(1.15);
+    opacity: 0.55;
 }
-
-/* wide screens (landscape, Fold inner): the buttons keep their size, grouped from the left */
-@media (min-aspect-ratio: 4 / 3) {
-    .wm-viewbar {
-        justify-content: flex-start;
-        gap: calc(4 * var(--wm-px));
-    }
-}
-
-.wm-viewbar-btn[data-act="prev"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M1 1h1v1h-1zM7 1h1v1h-1zM1 2h1v1h-1zM6 2h2v1h-2zM1 3h1v1h-1zM5 3h3v1h-3zM1 4h1v1h-1zM4 4h4v1h-4zM1 5h1v1h-1zM3 5h5v1h-5zM1 6h1v1h-1zM4 6h4v1h-4zM1 7h1v1h-1zM5 7h3v1h-3zM1 8h1v1h-1zM6 8h2v1h-2zM1 9h1v1h-1zM7 9h1v1h-1z'/%3E%3C/svg%3E"); }
-.wm-viewbar-btn[data-act="zoom"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M2 0h5v1h-5zM1 1h1v1h-1zM7 1h1v1h-1zM0 2h1v1h-1zM4 2h1v1h-1zM8 2h1v1h-1zM0 3h1v1h-1zM4 3h1v1h-1zM8 3h1v1h-1zM0 4h1v1h-1zM2 4h5v1h-5zM8 4h1v1h-1zM0 5h1v1h-1zM4 5h1v1h-1zM8 5h1v1h-1zM0 6h1v1h-1zM4 6h1v1h-1zM8 6h1v1h-1zM1 7h1v1h-1zM7 7h1v1h-1zM2 8h5v1h-5zM8 8h2v1h-2zM8 9h3v1h-3zM9 10h2v1h-2z'/%3E%3C/svg%3E"); }
-.wm-viewbar-btn[data-act="pin"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M5 0h1v1h-1zM4 1h3v1h-3zM4 2h3v1h-3zM0 3h11v1h-11zM1 4h9v1h-9zM2 5h7v1h-7zM3 6h5v1h-5zM3 7h5v1h-5zM2 8h3v1h-3zM6 8h3v1h-3zM2 9h2v1h-2zM7 9h2v1h-2zM1 10h1v1h-1zM9 10h1v1h-1z'/%3E%3C/svg%3E"); }
-.wm-viewbar-btn[data-act="studio"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M9 0h1v1h-1zM8 1h3v1h-3zM7 2h3v1h-3zM6 3h3v1h-3zM5 4h3v1h-3zM4 5h3v1h-3zM3 6h3v1h-3zM2 7h3v1h-3zM1 8h4v1h-4zM1 9h2v1h-2zM0 10h3v1h-3z'/%3E%3C/svg%3E"); }
-.wm-viewbar-btn[data-act="director"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M1 1h9v1h-9zM0 2h1v1h-1zM10 2h1v1h-1zM0 3h1v1h-1zM2 3h7v1h-7zM10 3h1v1h-1zM0 4h1v1h-1zM10 4h1v1h-1zM0 5h1v1h-1zM2 5h5v1h-5zM10 5h1v1h-1zM0 6h1v1h-1zM10 6h1v1h-1zM1 7h3v1h-3zM5 7h5v1h-5zM3 8h2v1h-2zM3 9h1v1h-1z'/%3E%3C/svg%3E"); }
-.wm-viewbar-btn[data-act="upscale"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h3v1h-3zM8 0h3v1h-3zM0 1h2v1h-2zM9 1h2v1h-2zM0 2h1v1h-1zM2 2h1v1h-1zM8 2h1v1h-1zM10 2h1v1h-1zM3 3h5v1h-5zM3 4h1v1h-1zM7 4h1v1h-1zM3 5h1v1h-1zM7 5h1v1h-1zM3 6h1v1h-1zM7 6h1v1h-1zM3 7h5v1h-5zM0 8h1v1h-1zM2 8h1v1h-1zM8 8h1v1h-1zM10 8h1v1h-1zM0 9h2v1h-2zM9 9h2v1h-2zM0 10h3v1h-3zM8 10h3v1h-3z'/%3E%3C/svg%3E"); }
-.wm-viewbar-btn[data-act="scraps"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M3 0h5v1h-5zM0 1h11v1h-11zM1 3h9v1h-9zM1 4h1v1h-1zM3 4h1v1h-1zM5 4h1v1h-1zM7 4h1v1h-1zM9 4h1v1h-1zM1 5h1v1h-1zM3 5h1v1h-1zM5 5h1v1h-1zM7 5h1v1h-1zM9 5h1v1h-1zM1 6h1v1h-1zM3 6h1v1h-1zM5 6h1v1h-1zM7 6h1v1h-1zM9 6h1v1h-1zM1 7h1v1h-1zM3 7h1v1h-1zM5 7h1v1h-1zM7 7h1v1h-1zM9 7h1v1h-1zM1 8h1v1h-1zM3 8h1v1h-1zM5 8h1v1h-1zM7 8h1v1h-1zM9 8h1v1h-1zM1 9h9v1h-9z'/%3E%3C/svg%3E"); }
-.wm-viewbar-btn[data-act="delete"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h2v1h-2zM9 0h2v1h-2zM0 1h3v1h-3zM8 1h3v1h-3zM1 2h3v1h-3zM7 2h3v1h-3zM2 3h3v1h-3zM6 3h3v1h-3zM3 4h5v1h-5zM4 5h3v1h-3zM3 6h5v1h-5zM2 7h3v1h-3zM6 7h3v1h-3zM1 8h3v1h-3zM7 8h3v1h-3zM0 9h3v1h-3zM8 9h3v1h-3zM0 10h2v1h-2zM9 10h2v1h-2z'/%3E%3C/svg%3E"); }
-.wm-viewbar-btn[data-act="next"] { --wm-vb-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' shape-rendering='crispEdges'%3E%3Cpath d='M3 1h1v1h-1zM9 1h1v1h-1zM3 2h2v1h-2zM9 2h1v1h-1zM3 3h3v1h-3zM9 3h1v1h-1zM3 4h4v1h-4zM9 4h1v1h-1zM3 5h5v1h-5zM9 5h1v1h-1zM3 6h4v1h-4zM9 6h1v1h-1zM3 7h3v1h-3zM9 7h1v1h-1zM3 8h2v1h-2zM9 8h1v1h-1zM3 9h1v1h-1zM9 9h1v1h-1z'/%3E%3C/svg%3E"); }
 
 /* ---- workspace switch cover (wmShell.js showSwitchCover) ----
  * the white base over the whole screen, bars included, with the wait cursor and the workspace's
@@ -3314,4 +3323,28 @@ html.ui-mobile #confirmationDialog #confirmationMessage::after {
 html.ui-mobile[data-wm-switching] .wm-loading-layer,
 html.ui-mobile[data-wm-switching] .wm-busy-wait {
     display: none;
+}
+
+/* ---- Melaton Mobile 6.5 ---- */
+/* the picture view's toolbar as 6.5's Now Playing strip (wm-media.css): 23 px, buttons 23 px apart
+ * with the 16 px icon 3 px in, 8 px between groups; a disabled tool is the icon's shape in
+ * #848284 with a white edge 1 px down and right */
+html.ui-mobile[data-wm-version="6.5"] .wm-viewbar {
+    height: calc(23 * var(--wm-px));
+    padding-left: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-viewbar-btn {
+    justify-content: flex-start;
+    width: calc(23 * var(--wm-px));
+    padding-left: calc(3 * var(--wm-px)) !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-viewbar-sep {
+    width: calc(8 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-viewbar-btn:disabled img {
+    filter: brightness(0) invert(0.517) drop-shadow(calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #fff);
+    opacity: 1;
 }

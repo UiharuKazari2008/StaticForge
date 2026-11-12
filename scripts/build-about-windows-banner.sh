@@ -22,15 +22,20 @@ FONTS="$CACHE/fonts"
 SEGOE="${SEGOE_UI_TTF:-$HOME/.local/share/fonts/segoeui.ttf}"
 LIGHT="${XDG_CACHE_HOME:-$HOME/.cache}/selawik/selawkl.ttf"
 TAHOMA="$FONTS/tahoma.ttf"
-MARK_IMG="$ROOT/public/static_images/melaton/melaton-glass.png"   # the Melaton flower
+MARK_IMG="${MELATON_MARK:-$ROOT/public/static_images/melaton/melaton-glass.png}"   # the Melaton flower (MELATON_MARK: another master)
 
-# Geometry from Vista's banner (px): flag box 77,16 48x38; "Windows Vista" 28px on baseline 48;
-# "Ultimate" 20px light on the same baseline; copyright right edge 406, baseline 67. The group
-# (mark, name, edition) is centred on the 413 px strip as Vista's is.
+# Geometry from Vista's banner (px): the flag's panes 77,16 41x37 (43x39 with its (R)), 4 px clear
+# before the wordmark, whose caps run y 30..48; "Windows Vista" 28px on baseline 48; "Ultimate"
+# 20px light on the same baseline; copyright right edge 406, baseline 67. The group (mark, name,
+# edition) is centred on the 413 px strip as Vista's is. The flower takes the flag's extent: 39 px
+# (between the panes' 37 high and 41 wide) from y 15, centred where the flag is (y 34), 5 px clear
+# of the name. Under it the flag's own soft shadow: 1 px down and right, dark grey, about half
+# strength one pixel out and gone by the third (measured on basebrd 101 and 120).
 W=413; H=72
-MARK=34; MARK_TOP=19
+MARK=39; MARK_TOP=15
+SHADOW_FILL="#1e2022"; SHADOW_SIGMA=0.9; SHADOW_OPACITY=0.55; SHADOW_DX=1; SHADOW_DY=1
 NAME_PT=28; EDITION_PT=20; BASELINE=48; NAME_KERNING=-0.6
-GAP_MARK=6; GAP_RUNS=6
+GAP_MARK=3; GAP_RUNS=6
 COPY_PT=8; COPY_RIGHT=406; COPY_BASELINE=67
 NAME="Melaton"; EDITION_YEAR="2026"; EDITION_REL="R7"; EDITION="$EDITION_YEAR $EDITION_REL"
 COPYRIGHT="© 2026 Xyridian Corporation"
@@ -69,8 +74,14 @@ edition_x=$(( name_x + name_w + GAP_RUNS ))
 copy_x=$(( COPY_RIGHT - copy_w ))
 
 mkdir -p "$OUT"
+tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+convert "$MARK_IMG" -trim +repage -resize "${MARK}x${MARK}" "PNG32:$tmp/mark.png"
+# the mark's shadow: its alpha in the shadow colour, blurred, on a 4 px margin so the blur has room
+convert "$tmp/mark.png" -bordercolor none -border 4 -channel RGB -fill "$SHADOW_FILL" -colorize 100 +channel \
+    -channel A -gaussian-blur "0x${SHADOW_SIGMA}" -evaluate multiply "$SHADOW_OPACITY" +channel "PNG32:$tmp/shadow.png"
 convert "$BRD/2_101.bmp" -crop "${W}x1+0+0" +repage -scale "${W}x${H}!" \
-    \( "$MARK_IMG" -trim +repage -resize "${MARK}x${MARK}" \) -geometry "+${left}+${MARK_TOP}" -composite \
+    "$tmp/shadow.png" -geometry "+$(( left - 4 + SHADOW_DX ))+$(( MARK_TOP - 4 + SHADOW_DY ))" -composite \
+    "$tmp/mark.png" -geometry "+${left}+${MARK_TOP}" -composite \
     -density 72 \
     -font "$SEGOE" -pointsize "$NAME_PT" -kerning "$NAME_KERNING" -fill white -annotate "+${name_x}+${BASELINE}" "$NAME" \
     -kerning 0 -font "$LIGHT" -pointsize "$EDITION_PT" -fill white -annotate "+${edition_x}+${BASELINE}" "$EDITION_YEAR" \

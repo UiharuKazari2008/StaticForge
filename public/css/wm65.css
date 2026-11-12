@@ -949,6 +949,17 @@ html.ui-mobile[data-wm-version="6.5"] .wm-tab:first-child {
     padding-left: calc(5 * var(--wm-px)) !important;
 }
 
+/* tab widths follow their labels and are seldom whole device pixels: without this the strip's
+   black showed as a hairline between two tabs. Each tab but the last runs one pixel under its
+   neighbour in its own colour */
+html.ui-mobile[data-wm-version="6.5"] .wm-tab:not(:last-child) {
+    box-shadow: 1px 0 0 var(--wm65-face);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-tab[aria-selected="true"]:not(:last-child) {
+    box-shadow: 1px 0 0 #fff;
+}
+
 html.ui-mobile[data-wm-version="6.5"] .wm-tab[aria-selected="true"] {
     background: #fff !important;
 }
@@ -993,7 +1004,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-tab[aria-selected="true"] + .wm-tab::b
 
 html.ui-mobile[data-wm-version="6.5"] .wm-tab:last-child::after {
     left: auto;
-    right: calc(-17.5 * var(--wm-px));
+    right: calc(-17 * var(--wm-px));
     background-image: var(--wm65-art-tabcurve-face-black, url('/static_images/wm65/tabcurve-face-black@2x.png'));
 }
 

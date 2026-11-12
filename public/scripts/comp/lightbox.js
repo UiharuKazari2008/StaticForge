@@ -1908,6 +1908,8 @@ function standaloneUrlTitle(url) {
 
 /** Melaton Mobile: room for the WM title bar and soft-key bar around the picture. */
 function wmViewerPadding() {
+    // the shell measures its own bars (title bar, picture toolbar, soft keys, the safe area): wmShell.js
+    if (window.wmShell && typeof window.wmShell.viewerPadding === 'function') return window.wmShell.viewerPadding();
     const px = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
     return { top: 26 * px, bottom: 26 * px, left: 0, right: 0 };
 }

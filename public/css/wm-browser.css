@@ -104,6 +104,253 @@
     background: transparent;
 }
 
+/* the address bar's own buttons (#748): Back before the lock (6.1, Options > General; shellres.192.dll
+   bitmap 11146, the go arrow's art turned left; grey when the window cannot go back) and the windows
+   view's button before the go arrow (shellres.192.dll icon 13927) */
+.wm-browser .wmb-back,
+.wm-browser .wmb-wins {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin: 0 0 0 calc(2 * var(--wm-px));
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.wm-browser .wmb-back[hidden],
+.wm-browser .wmb-wins[hidden] {
+    display: none;
+}
+
+.wm-browser .wmb-back img,
+.wm-browser .wmb-wins img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.wm-browser .wmb-back:disabled img {
+    filter: grayscale(1);
+    opacity: 0.45;
+}
+
+/* Properties (device, VGA halved): the header, a 32 px page icon at x 5 with the page's title at x 38.5,
+   then one fact a line at x 6, 19 to 20 px apart, and the address in a read-only box (158 x 19 px,
+   1 px black frame, the tab strip's tint) after its label */
+.wm-browser .wmb-props {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: calc(7 * var(--wm-px)) calc(2 * var(--wm-px)) calc(6 * var(--wm-px)) calc(6 * var(--wm-px));
+    color: #000;
+    font: var(--wm-fs) var(--wm-font);
+}
+
+.wm-browser .wmb-pr-top {
+    display: flex;
+    align-items: center;
+    margin: 0 0 calc(4 * var(--wm-px)) calc(-1 * var(--wm-px));
+}
+
+.wm-browser .wmb-pr-ico {
+    flex: 0 0 auto;
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    margin-right: calc(1.5 * var(--wm-px));
+}
+
+.wm-browser .wmb-pr-top span,
+.wm-browser .wmb-pr-row {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: clip;
+}
+
+.wm-browser .wmb-pr-row {
+    height: calc(19.5 * var(--wm-px));
+    line-height: calc(19.5 * var(--wm-px));
+}
+
+.wm-browser .wmb-pr-addr {
+    display: flex;
+    align-items: center;
+    margin-left: calc(-1 * var(--wm-px));
+    height: calc(19.5 * var(--wm-px));
+}
+
+.wm-browser .wmb-pr-addr span {
+    flex: 0 0 auto;
+    margin-right: calc(3.5 * var(--wm-px));
+}
+
+.wm-browser .wmb-pr-url {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: calc(19 * var(--wm-px));
+    box-sizing: border-box;
+    padding: 0 calc(2.5 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: var(--wm-tab-strip);
+    color: #000;
+    font: var(--wm-fs) var(--wm-font);
+}
+
+/* Options (device): bold headings at x 10, a label 15.5 px above its 205 x 20 px combo box at x 8,
+   15 px check boxes at x 8 with the label at x 27.5; the pages' tabs along the bottom (22.5 px, a 1 px
+   black line above, the page on screen white) */
+.wm-browser .wmb-opts {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: calc(6 * var(--wm-px)) calc(8 * var(--wm-px));
+    color: #000;
+    font: var(--wm-fs) var(--wm-font);
+}
+
+.wm-browser .wmb-op-head {
+    margin: calc(2 * var(--wm-px)) calc(2 * var(--wm-px)) calc(8 * var(--wm-px));
+    font-weight: bold;
+}
+
+.wm-browser .wmb-op-head ~ .wmb-op-head {
+    margin-top: calc(14 * var(--wm-px));
+}
+
+.wm-browser .wmb-op-lbl {
+    margin: 0 calc(2 * var(--wm-px)) calc(5 * var(--wm-px));
+}
+
+.wm-browser .wmb-op-combo {
+    width: calc(205 * var(--wm-px));
+    max-width: 100%;
+    height: calc(20 * var(--wm-px));
+}
+
+.wm-browser .wmb-op-check {
+    display: flex;
+    align-items: center;
+    min-height: calc(15 * var(--wm-px));
+}
+
+.wm-browser .wmb-op-tabs {
+    flex: 0 0 auto;
+    display: flex;
+    height: calc(22.5 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+}
+
+.wm-browser .wmb-op-tab {
+    height: 100%;
+    padding: 0 calc(5 * var(--wm-px));
+    border: 0;
+    border-right: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: transparent;
+    color: #000;
+    font: var(--wm-fs) var(--wm-font);
+}
+
+.wm-browser .wmb-op-tab.is-on {
+    background: #fff;
+    margin-top: calc(-1 * var(--wm-px));
+}
+
+/* The windows view (wmBrowser.js "the windows view"): two tiles a row, each a scaled copy of the
+   window's page in a 1 px frame with its title under it; the window on screen wears the highlight;
+   the close corner is the title bar's X glyph on the title bar's colour */
+.wm-browser .wmb-wins-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-content: start;
+    gap: calc(6 * var(--wm-px));
+    padding: calc(6 * var(--wm-px));
+    background: #fff;
+}
+
+.wm-browser .wmb-wt {
+    position: relative;
+    min-width: 0;
+    padding: calc(2 * var(--wm-px));
+    color: #000;
+    font: var(--wm-fs) var(--wm-font);
+}
+
+.wm-browser .wmb-wt.is-current {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-browser .wmb-wt-thumb {
+    position: relative;
+    overflow: hidden;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-browser .wmb-wt-page {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+    pointer-events: none;
+}
+
+.wm-browser .wmb-wt-shot {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 0 0;
+}
+
+.wm-browser .wmb-wt-none {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.wm-browser .wmb-wt-none img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wm-browser .wmb-wt-name {
+    height: calc(15 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    text-align: center;
+}
+
+.wm-browser .wmb-wt-x {
+    position: absolute;
+    right: calc(2 * var(--wm-px));
+    top: calc(2 * var(--wm-px));
+    width: calc(17 * var(--wm-px));
+    height: calc(17 * var(--wm-px));
+    padding: 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: var(--wm-title, #000) center / calc(11.5 * var(--wm-px)) calc(13 * var(--wm-px)) no-repeat;
+    background-image: image-set(var(--wm-art-title-close-1x) 1x, var(--wm-art-title-close-2x) 2x, var(--wm-art-title-close-4x) 4x);
+}
+
+.wm-browser .wmb-wt-new .wmb-wt-thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-style: dotted;
+    min-height: calc(40 * var(--wm-px));
+}
+
 .wm-browser .wmb-view {
     position: relative;
     flex: 1 1 auto;
@@ -1467,4 +1714,41 @@ html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-form.wmb65-other .wm-ch
     min-height: calc(21 * var(--wm-px));
     margin-left: calc(6.5 * var(--wm-px));
     font-size: calc(10.5 * var(--wm-px));
+}
+
+/* #748: no Back button in 6.5's address bar (the bar below has Back); the windows button is the
+   6.1 art in the address bar's 16 px cell */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-wins {
+    margin: 0 calc(1 * var(--wm-px)) 0 calc(3 * var(--wm-px));
+}
+
+/* Options > Other: the zoom button as the windows button. No round "windows" cell exists in the bar's
+   art (bitmap 4599): the Favorites bar's square four-arrows cell (bitmap 4604, cells 14 / 15) stands
+   in until one is chosen */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="zoom"].is-windows {
+    background-image: url('/static_images/wm65/ie-favbar.png');
+    background-image: image-set(url('/static_images/wm65/ie-favbar.png') 1x, url('/static_images/wm65/ie-favbar@2x.png') 2x, url('/static_images/wm65/ie-favbar@4x.png') 4x);
+    --cell: 14;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="zoom"].is-windows:active {
+    --cell: 15;
+}
+
+/* the windows view's new window tile: the Favorites bar's plus (bitmap 4604 cell 3) */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-wt-plus {
+    width: calc(45 * var(--wm-px));
+    height: calc(45 * var(--wm-px));
+    background: url('/static_images/wm65/ie-favbar.png') calc(-135 * var(--wm-px)) 0 / auto calc(45 * var(--wm-px)) no-repeat;
+    background-image: image-set(url('/static_images/wm65/ie-favbar.png') 1x, url('/static_images/wm65/ie-favbar@2x.png') 2x, url('/static_images/wm65/ie-favbar@4x.png') 4x);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-wt {
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+/* Other: the check box under the two choices, as the device's own (x 6, label at x 24.5) */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-form.wmb65-other .wm-check.wmb65-other-check {
+    margin-left: 0;
+    margin-top: calc(4 * var(--wm-px));
 }

@@ -272,6 +272,11 @@
 
     function showPicture() {
         if (!current) return;
+        // the phone's one picture viewer (#748: the Pictures program's), as every other app
+        /* global showLightbox */
+        if (typeof showLightbox === 'function') {
+            try { showLightbox({ url: fullOf(current), title: current.filename || current.hash || 'Reference Image' }); return; } catch (_) { /* the page's own view below */ }
+        }
         const img = page.querySelector('.wrf-picture img');
         img.src = thumbOf(current);
         // the full picture replaces the preview once it has loaded

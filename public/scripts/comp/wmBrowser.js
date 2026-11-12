@@ -142,6 +142,7 @@
             pendingInspectAt: 0,
             lastPushAt: 0, // a page link added an entry
             lastInputAt: 0, // the last tap or key sent to the page
+            remoteY: 0, // how far the web page is scrolled down (the viewer says)
             grimLoading: false, // a Grimoire page on its way (renderLocal)
             localShown: null, // the entry drawn in .wmb-gpage
             dsapShown: null, // the entry the running applet draws
@@ -183,6 +184,20 @@
         const z = localStorage.getItem(ZOOM_KEY);
         if (ZOOMS.some(([k]) => k === z)) zoomKey = z;
         fullScreen = localStorage.getItem(FULL_KEY) === '1';
+    } catch (_) { /* storage off */ }
+
+    // IE's own options (#748), the program's and shared by its windows: one JSON object in OPT_KEY
+    //   leftKey      6.1: what the left soft key does (the device's is Favorites)
+    //   backButton   6.1: a Back button at the left end of the address bar
+    //   zoomWindows  6.5: the bar's zoom button opens the windows view instead of the slider
+    const OPT_KEY = 'wmIeOptions';
+    const LEFT_KEYS = [['favorites', 'Favorites'], ['back', 'Back'], ['home', 'Home'], ['refresh', 'Refresh'], ['windows', 'Windows'], ['newwindow', 'New Window']];
+    const opts = { leftKey: 'favorites', backButton: false, zoomWindows: false };
+    try {
+        const o = JSON.parse(localStorage.getItem(OPT_KEY) || '{}') || {};
+        if (LEFT_KEYS.some(([k]) => k === o.leftKey)) opts.leftKey = o.leftKey;
+        opts.backButton = o.backButton === true;
+        opts.zoomWindows = o.zoomWindows === true;
     } catch (_) { /* storage off */ }
 
     // Melaton Mobile 6.5 (Internet Explorer Mobile 6, #741): see "6.5" below
@@ -712,6 +727,9 @@
             case 'grimoire-browser-history-end':
                 onHistoryEnd(data.dir);
                 break;
+            case 'grimoire-browser-scroll':
+                W.remoteY = Number(data.y) || 0;
+                break;
             case 'grimoire-browser-progress':
                 if (Number(data.value) >= 1) setLoading(false);
                 break;
@@ -1047,7 +1065,8 @@
         if (e.button > 0 || touch) return;
         stopFling();
         const p = localPoint(e);
-        touch = { id: e.pointerId, x0: p.x, y0: p.y, x: p.x, y: p.y, drag: false, held: false, samples: [{ t: performance.now(), x: p.x, y: p.y }] };
+        // atTop: the remote page is at its top (the viewer's grimoire-browser-scroll), for 6.5's pull
+        touch = { id: e.pointerId, x0: p.x, y0: p.y, x: p.x, y: p.y, drag: false, held: false, atTop: !(W.remoteY > 0), samples: [{ t: performance.now(), x: p.x, y: p.y }] };
         try { els.touch.setPointerCapture(e.pointerId); } catch (_) { /* gone */ }
         touch.timer = setTimeout(() => {
             if (!touch || touch.drag) return;
@@ -1064,6 +1083,7 @@
             touch.drag = true;
             clearTimeout(touch.timer);
         }
+        if (touch.drag && v65 && touch.atTop && p.y - touch.y0 > pull65()) { touch.atTop = false; if (!bars65) showBars65(); }
         if (touch.drag) {
             scrollBy(touch.x - p.x, touch.y - p.y, { x: touch.x0, y: touch.y0 });
             touch.samples.push({ t: performance.now(), x: p.x, y: p.y });
@@ -1327,6 +1347,13 @@
         if (v65) { renderSub65(); return; }
         page.classList.add('has-sub');
         els.sub.hidden = false;
+        els.sub.dataset.kind = sub;
+        if (sub === 'props' || sub === 'options' || sub === 'windows') {
+            els.sub.innerHTML = sub === 'props' ? propsHtml61() : sub === 'options' ? optionsHtml61() : windowsHtml();
+            if (sub === 'windows') fillWindows();
+            if (isCurrent()) { ws.refreshSoftKeys(); ws.refreshTitleAction(); }
+            return;
+        }
         const rows = subRows();
         const empty = sub === 'favorites' ? (favoritesLoaded ? 'No favorites.' : '') : 'No history.';
         els.sub.innerHTML = `
@@ -1443,7 +1470,8 @@
                     { label: 'Paste', disabled: !web || !W.frame, action: pasteFromClipboard },
                     { label: 'Clear History', action: clearHistory },
                     '-',
-                    { label: 'Properties', action: properties }
+                    { label: 'Properties', action: properties },
+                    { label: 'Options...', action: () => openSub('options') }
                 ]
             }
         ];
@@ -1482,17 +1510,192 @@
         requestAnimationFrame(layoutFrame);
     }
 
-    function properties() {
-        if (v65) { openSub('props'); return; }
+    /** Tools > Properties: a page of IE in both versions (device), not a message box. */
+    function properties() { openSub('props'); }
+
+    /**
+     * What Properties says of the page of the window on screen, in the device's rows. Type and
+     * protocol are named for what the page is; the size is given where IE holds the page's own
+     * text (a Grimoire page in the phone views), else the device's "Not Available".
+     */
+    function pageFacts() {
         const e = entry();
-        const secure = /^https:/i.test(e.url || '');
-        ws.messageBox({
-            title: 'Properties',
-            icon: 'info',
-            text: e.home
-                ? `${e.title || 'Grimoire'}\n\nAddress: ${e.url}\nLoaded by: ${e.grim.kind === 'dsap' ? 'Dreamscape' : 'Grimoire'}`
-                : `${e.title || hostOf(e.url)}\n\nAddress: ${e.url}\nSecurity: ${secure ? 'Secure (HTTPS)' : 'Not secure'}\nLoaded by: Alchemy`
+        const u = e.url || '';
+        const scheme = ((/^([a-z][a-z0-9+.-]*):/i.exec(u) || [])[1] || '').toLowerCase();
+        const web = !e.home;
+        const kb = (n) => (n < 1024 ? `${n} bytes` : `${Math.round(n / 10.24) / 100} KB (${n} bytes)`);
+        let size = 'Not Available';
+        try { if (e.home && e.html) size = kb(new Blob([e.html]).size); } catch (_) { /* unknown */ }
+        return {
+            name: e.title || (web ? hostOf(u) : 'Grimoire'),
+            address: u,
+            protocol: { https: 'HyperText Transfer Protocol with Privacy', http: 'HyperText Transfer Protocol', edtx: 'Grimoire Document Protocol', rdf: 'Reference Document Protocol', dsap: 'Dreamscape Application Protocol' }[scheme] || 'Not Available',
+            type: web ? 'HTML Document' : scheme === 'dsap' ? 'Dreamscape Application' : scheme === 'rdf' ? 'Reference Document' : 'Grimoire Document',
+            size,
+            encryption: web && scheme === 'https' && !e.pending ? 'Secure (HTTPS)' : 'None',
+            zone: web ? 'Internet' : (v65 ? 'Intranet' : 'Local Intranet')
+        };
+    }
+
+    function saveOpts(patch) {
+        Object.assign(opts, patch);
+        try { localStorage.setItem(OPT_KEY, JSON.stringify(opts)); } catch (_) { /* storage off */ }
+        applyOpts();
+    }
+
+    function applyOpts() {
+        if (!page) return;
+        // 6.1: the Back button before the lock. 6.5 has Back in its bar: no button there
+        els.back.hidden = v65 || !opts.backButton;
+        // the windows button: always in 6.1; in 6.5 unless the bar's zoom button shows the windows
+        els.winsBtn.hidden = v65 && opts.zoomWindows;
+        const z = els.bar65 && els.bar65.querySelector('[data-act="zoom"]');
+        if (z) { z.classList.toggle('is-windows', opts.zoomWindows); z.setAttribute('aria-label', opts.zoomWindows ? 'Windows' : 'Zoom'); }
+        if (opts.zoomWindows) closeZoom65();
+        if (ws && isCurrent()) ws.refreshSoftKeys();
+    }
+
+    /** 6.1: the left soft key of the page, as Options > General sets it. */
+    function leftKey() {
+        const web = !onHome();
+        switch (opts.leftKey) {
+            case 'back': return { label: 'Back', disabled: W.idx < 1, action: goBack };
+            case 'home': return { label: 'Home', action: goHome };
+            case 'refresh': return W.loading && web ? { label: 'Stop', action: stop } : { label: 'Refresh', action: refresh };
+            case 'windows': return { label: 'Windows', action: () => openSub('windows') };
+            case 'newwindow': return { label: 'New Window', disabled: wins.length >= MAX_WINDOWS, action: () => { newWindow(); } };
+            default: return { label: 'Favorites', action: () => openSub('favorites') };
+        }
+    }
+
+    // ---------------------------------------------------------------- pages over the page (6.1): Properties, Options
+
+    let optTab = 'general';
+
+    /** 6.1 Properties (device: header, the page's icon and title, one line a fact, the address in a box). */
+    function propsHtml61() {
+        const f = pageFacts();
+        const row = (k, v) => `<div class="wmb-pr-row">${k}: ${esc(v)}</div>`;
+        return `<div class="wmb-sub-head">Properties</div>
+            <div class="wmb-props">
+                <div class="wmb-pr-top">${img('ie-page', 'wmb-pr-ico')}<span>${esc(f.name)}</span></div>
+                ${row('Protocol', f.protocol)}${row('Type', f.type)}${row('Size', f.size)}${row('Encryption', f.encryption)}${row('Security Zone', f.zone)}
+                <div class="wmb-pr-addr"><span>Address (URL):</span><input type="text" class="wmb-pr-url" readonly value="${esc(f.address)}" aria-label="Address (URL)"></div>
+            </div>`;
+    }
+
+    /** 6.1 Options (device: header, pages General / Memory / Security on tabs at the bottom). The device's
+     *  own choices that IE here does not have (home page, encoding, cookies) are not shown. */
+    function optionsHtml61() {
+        const label = (LEFT_KEYS.find(([k]) => k === opts.leftKey) || LEFT_KEYS[0])[1];
+        const body = optTab === 'memory'
+            ? `<div class="wmb-op-head">History</div>
+               <div class="wmb-op-line"><button type="button" class="wmb-g-btn" data-opt="clear">Clear History</button></div>`
+            : `<div class="wmb-op-head">Soft keys</div>
+               <div class="wmb-op-lbl">Left soft key</div>
+               <button type="button" class="wm-combo wmb-op-combo" data-opt="left"><span>${esc(label)}</span></button>
+               <div class="wmb-op-head">Address bar</div>
+               <label class="wm-check wmb-op-check"><input type="checkbox" data-opt="back"${opts.backButton ? ' checked' : ''}><span>Show back button in address bar</span></label>`;
+        const tab = (k, t) => `<button type="button" class="wmb-op-tab${optTab === k ? ' is-on' : ''}" data-tab="${k}">${t}</button>`;
+        return `<div class="wmb-sub-head">Options</div><div class="wmb-opts">${body}</div><div class="wmb-op-tabs">${tab('general', 'General')}${tab('memory', 'Memory')}</div>`;
+    }
+
+    function optionsClick61(e) {
+        const tab = e.target.closest('.wmb-op-tab');
+        if (tab) { optTab = tab.dataset.tab; renderSub(); return; }
+        const combo = e.target.closest('[data-opt="left"]');
+        if (combo) {
+            e.stopPropagation();
+            ws.dropdown(combo, LEFT_KEYS.map(([k, t]) => ({ label: t, radio: opts.leftKey === k, action: () => { saveOpts({ leftKey: k }); if (sub === 'options') renderSub(); } })), 'left');
+            return;
+        }
+        if (e.target.closest('[data-opt="clear"]')) { clearHistory(); return; }
+        const back = e.target.closest('input[data-opt="back"]');
+        if (back) saveOpts({ backButton: back.checked });
+    }
+
+    // ---------------------------------------------------------------- the windows view
+
+    /**
+     * Every open window as a small picture of its page (#748; asked for "like the Opera Mobile tab
+     * view": tiles with a close corner and a tile for a new window). Opened by the address bar's
+     * windows button (6.1: also the left soft key when set to Windows; 6.5: the bar's zoom button when
+     * Options > Other says so). Drawn with the system's own pieces only: the highlight colours for the
+     * window on screen, the title bar's X glyph for the close corner, 6.5's Favorites "+" cell (bitmap
+     * 4604) for the new window tile (6.1 has no plus art: its tile is words).
+     * The picture is a copy of the window's page box as it stands, scaled down (the box itself stays
+     * where it is and keeps running); a web page is the viewer's last frame; a window whose page has
+     * not been drawn yet shows its page icon.
+     */
+    function winBoxOf(w) {
+        const e = w.entries[w.idx] || homeEntry();
+        if (!w.dom) return null;
+        if (!e.home) return w.dom.frameWrap;
+        if (deskView()) return w.dom.desk;
+        return e.grim.kind === 'home' ? w.dom.home : e.grim.kind === 'dsap' ? w.dom.dsap : e.grim.kind === 'core' ? w.dom.core : w.dom.gpage;
+    }
+
+    function winThumb(w, holder) {
+        const box = winBoxOf(w);
+        const vw = Math.max(1, els.view.clientWidth);
+        const vh = Math.max(1, els.view.clientHeight);
+        const scale = holder.clientWidth / vw;
+        holder.style.height = `${Math.round(vh * scale)}px`;
+        let node = null;
+        if (box && box === w.dom.frameWrap) {
+            try {
+                const c = w.frame && w.frame.contentDocument && w.frame.contentDocument.querySelector('canvas');
+                if (c && c.width > 1) { node = new Image(); node.src = c.toDataURL('image/jpeg', 0.7); node.className = 'wmb-wt-shot'; }
+            } catch (_) { node = null; }
+        } else if (box && (box.childElementCount || box.textContent.trim())) {
+            const copy = box.cloneNode(true);
+            copy.hidden = false;
+            copy.removeAttribute('id');
+            copy.querySelectorAll('[id]').forEach((x) => x.removeAttribute('id'));
+            copy.querySelectorAll('[hidden]').forEach((x) => { if (x.classList.contains('wmb-desk-dsap') && !box.querySelector('.wmb-desk-dsap').hidden) x.hidden = false; });
+            copy.setAttribute('inert', '');
+            node = document.createElement('div');
+            node.className = 'wmb-wt-page';
+            node.style.cssText = `width:${vw}px;height:${vh}px;transform:scale(${scale})`;
+            node.appendChild(copy);
+            const left = box.scrollLeft;
+            const top = w === cur ? box.scrollTop : ((w.scrolls && w.scrolls[Object.keys(w.dom).find((k) => w.dom[k] === box)]) || 0);
+            setTimeout(() => { copy.scrollTop = top; copy.scrollLeft = left; }, 0);
+        }
+        if (!node) { node = document.createElement('div'); node.className = 'wmb-wt-none'; node.innerHTML = img('ie-page'); }
+        holder.replaceChildren(node);
+    }
+
+    function windowsHtml() {
+        const tiles = wins.map((w) => `
+            <div class="wmb-wt${w === cur ? ' is-current' : ''}" data-win="${w.id}" role="button" tabindex="0" aria-label="${esc(winTitle(w))}">
+                <div class="wmb-wt-thumb"></div>
+                ${wins.length > 1 ? '<button type="button" class="wmb-wt-x" aria-label="Close Window"></button>' : ''}
+                <div class="wmb-wt-name">${esc(winTitle(w))}</div>
+            </div>`).join('');
+        const add = wins.length < MAX_WINDOWS ? `<div class="wmb-wt wmb-wt-new" data-new="1" role="button" tabindex="0" aria-label="New Window"><div class="wmb-wt-thumb"><span class="wmb-wt-plus">${v65 ? '' : 'New Window'}</span></div><div class="wmb-wt-name">${v65 ? 'New Window' : ''}</div></div>` : '';
+        return `${v65 ? '' : '<div class="wmb-sub-head">Windows</div>'}<div class="wmb-wins-grid">${tiles}${add}</div>`;
+    }
+
+    function fillWindows() {
+        els.sub.querySelectorAll('.wmb-wt[data-win]').forEach((t) => {
+            const w = wins.find((x) => String(x.id) === t.dataset.win);
+            if (w) winThumb(w, t.querySelector('.wmb-wt-thumb'));
         });
+        const plus = els.sub.querySelector('.wmb-wt-new .wmb-wt-thumb');
+        const first = els.sub.querySelector('.wmb-wt[data-win] .wmb-wt-thumb');
+        if (plus && first) plus.style.height = first.style.height;
+    }
+
+    function windowsClick(e) {
+        const x = e.target.closest('.wmb-wt-x');
+        const tile = e.target.closest('.wmb-wt');
+        if (!tile) return;
+        if (tile.dataset.new) { closeSub(); newWindow(); return; }
+        const id = Number(tile.dataset.win);
+        if (x) { closeWindow(id); if (sub === 'windows') renderSub(); return; }
+        closeSub();
+        switchTo(id);
     }
 
     // ---------------------------------------------------------------- Grimoire pages
@@ -2532,7 +2735,7 @@
     // Messaging is not there); Paste = Copy/Paste; Clear History = Options > Browsing History >
     // Clear; Properties = Tools.
 
-    const SUB65_TITLES = { favorites: 'Favorites', history: 'History', options: 'Options', 'opt-history': 'Browsing History', 'opt-other': 'Other', props: 'Properties' };
+    const SUB65_TITLES = { favorites: 'Favorites', history: 'History', options: 'Options', 'opt-history': 'Browsing History', 'opt-other': 'Other', props: 'Properties', windows: 'Windows' };
     const OPTIONS65 = [['opt-history', 'Browsing History'], ['opt-other', 'Other']];
 
     function title65() {
@@ -2583,6 +2786,11 @@
         bars65 = true;
         chrome65();
         armBars65();
+    }
+
+    /** How far a page at its top is pulled down before the bars come back: 24 units. */
+    function pull65() {
+        return 24 * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1);
     }
 
     // zoom: the slider's place p (0 at the bottom, 1 at the top) and the page's scale; 100 % at the
@@ -2704,6 +2912,7 @@
         if (sub === 'opt-history') return { left: { label: 'Done', action: () => subDone65(true) }, right: { label: 'Clear', action: clearHistory } };
         if (sub === 'opt-other') return { left: { label: 'Done', action: () => subDone65(true) }, right: { label: 'Cancel', action: () => subDone65(false) } };
         if (sub === 'props') return { left: { label: 'Close', action: closeSub }, right: null };
+        if (sub === 'windows') return { left: { label: 'New', disabled: wins.length >= MAX_WINDOWS, action: () => { closeSub(); newWindow(); } }, right: { label: 'Close', action: closeSub } };
         if (sub === 'favform') return { left: { label: subData65 && subData65.at >= 0 ? 'OK' : 'Add', action: () => subDone65(true) }, right: { label: 'Cancel', action: () => subDone65(false) } };
         return none;
     }
@@ -2714,6 +2923,8 @@
         if (sub === 'opt-other') {
             const on = ok && els.sub.querySelector('input[name="wmb65-as"]:checked');
             if (on) setView(on.value);
+            const zw = ok && els.sub.querySelector('input[data-opt="zoomwin"]');
+            if (zw) saveOpts({ zoomWindows: zw.checked });
             openSub('options');
             subSel = 1;
             renderSub();
@@ -2794,19 +3005,20 @@
             html = `<div class="wmb-sub-list" role="listbox"><div class="wmb-sub-row wmb65-two is-selected" role="option" data-i="0"><b>History</b><span>${bytes} bytes</span></div></div>`;
         } else if (sub === 'opt-other') {
             const radio = (v, label) => `<label class="wm-check"><input type="radio" name="wmb65-as" value="${v}"${(v === 'desktop') === (viewMode === 'desktop') ? ' checked' : ''}><span>${label}</span></label>`;
-            html = `<div class="wmb65-form wmb65-other"><div class="wmb65-lbl">Browse websites as:</div>${radio('column', 'Mobile Device')}${radio('desktop', 'Desktop Computer')}</div>`;
+            // device: the two choices, then check boxes 21 px apart (Play Sounds, Show Pictures ...: not here); ours: the zoom button's use
+            html = `<div class="wmb65-form wmb65-other"><div class="wmb65-lbl">Browse websites as:</div>${radio('column', 'Mobile Device')}${radio('desktop', 'Desktop Computer')}
+                <label class="wm-check wmb65-other-check"><input type="checkbox" data-opt="zoomwin"${opts.zoomWindows ? ' checked' : ''}><span>Show windows with the zoom button</span></label></div>`;
         } else if (sub === 'props') {
             const e = entry();
             const scheme = (/^([a-z][a-z0-9+.-]*):/i.exec(e.url || '') || [])[1] || '';
             const proto = /^https$/i.test(scheme) ? 'HyperText Transfer Protocol with Privacy' : /^http$/i.test(scheme) ? 'HyperText Transfer Protocol' : scheme || 'Not Available';
-            const fields = [
-                ['Name:', e.title || (e.home ? 'Grimoire' : hostOf(e.url))],
-                ['Address:', e.url || ''],
-                ['Protocol:', proto],
-                ['Encryption:', !e.home && /^https:/i.test(e.url || '') ? 'Secure (HTTPS)' : 'None'],
-                ['Loaded by:', e.home ? (e.grim.kind === 'dsap' ? 'Dreamscape' : 'Grimoire') : 'Alchemy']
-            ];
+            // device: Name, Address, Type, Size, Protocol, Encryption, Security Zone
+            const f = pageFacts();
+            void e; void proto;
+            const fields = [['Name:', f.name], ['Address:', f.address], ['Type:', f.type], ['Size:', f.size], ['Protocol:', f.protocol], ['Encryption:', f.encryption], ['Security Zone:', f.zone]];
             html = `<div class="wmb65-props">${fields.map(([k, v]) => `<b>${k}</b><span>${esc(v)}</span>`).join('')}</div>`;
+        } else if (sub === 'windows') {
+            html = windowsHtml();
         } else if (sub === 'favform') {
             const d = subData65 || { url: '', title: '' };
             html = `<div class="wmb65-form">
@@ -2816,6 +3028,7 @@
             </div>`;
         }
         els.sub.innerHTML = html;
+        if (sub === 'windows') fillWindows();
         chrome65();
         if (isCurrent()) { ws.refreshSoftKeys(); ws.refreshTitleAction(); }
     }
@@ -2872,7 +3085,8 @@
                 const sip = document.querySelector('#wmShell .wm-sip');
                 if (sip) sip.click();
             } else if (act === 'zoom') {
-                if (zoomOpen65) closeZoom65();
+                if (opts.zoomWindows) openSub('windows');
+                else if (zoomOpen65) closeZoom65();
                 else openZoom65();
             } else if (act === 'menu') {
                 if (menuWasOpen) ws.closeMenus();
@@ -2886,6 +3100,22 @@
             bars65 = false;
             chrome65();
         }, true);
+        // At the top of a page, pulling it down further brings the bars back (#748, asked for by the
+        // owner; the device itself stops dead at the top and only its round button shows them). The
+        // page boxes keep overscroll-behavior: contain, so the browser's own pull to refresh and the
+        // shell's gestures are not in play; nothing moves, the pull is only measured.
+        let pull = null;
+        els.view.addEventListener('touchstart', (e) => {
+            pull = null;
+            if (sub || e.touches.length !== 1 || !W.dom) return;
+            const box = ['home', 'gpage', 'dsap', 'core', 'desk'].map((k) => W.dom[k]).find((b) => !b.hidden && b.contains(e.target));
+            if (box && box.scrollTop <= 0) pull = { y: e.touches[0].clientY, box };
+        }, { passive: true });
+        els.view.addEventListener('touchmove', (e) => {
+            if (!pull) return;
+            if (pull.box.scrollTop > 0) { pull = null; return; }
+            if (e.touches[0].clientY - pull.y > pull65()) { pull = null; if (!bars65) showBars65(); }
+        }, { passive: true });
         page.addEventListener('focusin', chrome65);
         page.addEventListener('focusout', () => setTimeout(chrome65, 0));
 
@@ -2939,9 +3169,15 @@
         const e = entry();
         els.addr.value = e.url || '';
         els.addr.placeholder = 'Enter a web address';
-        const secure = !e.home && /^https:/i.test(e.url || '');
-        els.lock.innerHTML = img(secure ? 'ie-lock' : 'ie-unlock');
-        els.lock.title = secure ? 'Secure connection' : 'Not secure';
+        // the closed lock only for a page Alchemy reports at an https address (not for one merely
+        // typed and still on its way); http: the device's open lock (it shows it on file:// pages
+        // too); Dreamscape's own schemes have their own marks (generated in the lock art's palette)
+        const u = e.url || '';
+        const secure = !e.home && /^https:/i.test(u) && !e.pending;
+        const art = !e.home ? (secure ? 'ie-lock' : 'ie-unlock') : /^dsap:/i.test(u) ? 'ie-proto-dsap' : /^rdf:/i.test(u) ? 'ie-proto-rdf' : 'ie-proto-edtx';
+        els.lock.innerHTML = img(art);
+        els.lock.title = !e.home ? (secure ? 'Secure connection' : 'Not secure') : /^dsap:/i.test(u) ? 'Dreamscape application' : /^rdf:/i.test(u) ? 'Reference document' : 'Grimoire document';
+        if (els.back) els.back.disabled = W.idx < 1;
         renderGoButton();
     }
 
@@ -3207,11 +3443,13 @@
         page.classList.add('wm-browser');
         page.innerHTML = `
             <div class="wmb-bar">
+                <button type="button" class="wmb-back" aria-label="Back" hidden>${img('ie-back')}</button>
                 <span class="wmb-lock" aria-hidden="true"></span>
                 <div class="wmb-addr-box">
                     <input type="url" class="wmb-addr" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Address">
                     <button type="button" class="wmb-addr-drop" aria-label="Recent addresses" aria-haspopup="menu"></button>
                 </div>
+                <button type="button" class="wmb-wins" aria-label="Windows">${img('ie-windows')}</button>
                 <button type="button" class="wmb-go" aria-label="Go"></button>
             </div>
             <div class="wmb-view">
@@ -3221,6 +3459,8 @@
             </div>`;
         els = {
             bar: page.querySelector('.wmb-bar'),
+            back: page.querySelector('.wmb-back'),
+            winsBtn: page.querySelector('.wmb-wins'),
             lock: page.querySelector('.wmb-lock'),
             addr: page.querySelector('.wmb-addr'),
             drop: page.querySelector('.wmb-addr-drop'),
@@ -3240,11 +3480,31 @@
             if (e.key === 'Enter') { e.preventDefault(); submitAddress(); }
             if (e.key === 'Escape') { e.preventDefault(); addrEditing = false; els.addr.blur(); renderAddress(); }
         });
+        // the green arrow: Go while the address is being edited, Refresh otherwise (6.5 device: it
+        // reloads the page; 6.1 device: it opens the same address again). Before #748 it sent the
+        // address through navigate() in both cases: the start page and a running applet answered
+        // "already here" and nothing happened, a Grimoire or web page was added to the history again.
+        let goEditing = false;
+        els.go.addEventListener('pointerdown', () => { goEditing = addrEditing || document.activeElement === els.addr; });
         els.go.addEventListener('click', () => {
-            if (W.loading && !onHome() && !addrEditing) { stop(); return; }
-            if (els.addr.value.trim()) submitAddress();
+            const editing = goEditing || addrEditing;
+            goEditing = false;
+            if (W.loading && !onHome() && !editing) { stop(); return; }
+            const text = els.addr.value.trim();
+            if (!editing || text === (entry().url || '')) {
+                addrEditing = false;
+                els.addr.blur();
+                renderAddress();
+                if (sub) closeSub();
+                refresh();
+                return;
+            }
+            if (text) submitAddress();
             else els.addr.focus();
         });
+        els.back.addEventListener('click', () => { if (W.idx > 0) goBack(); });
+        els.winsBtn.addEventListener('click', () => { if (sub === 'windows') closeSub(); else openSub('windows'); });
+        applyOpts();
         els.drop.addEventListener('click', (e) => {
             e.stopPropagation();
             const typed = readList(TYPED_KEY);
@@ -3255,7 +3515,10 @@
         if (v65) mount65();
 
         els.sub.addEventListener('click', (e) => {
+            if (sub === 'windows') { windowsClick(e); return; }
             if (v65) { subClick65(e); return; }
+            if (sub === 'options') { optionsClick61(e); return; }
+            if (sub === 'props') return;
             const row = e.target.closest('.wmb-sub-row');
             if (!row) return;
             subSel = Number(row.dataset.i);
@@ -3396,16 +3659,16 @@
             onBack: () => (v65 && sub ? (subDone65(false), true) : goBack()),
             softKeys() {
                 if (v65) return softKeys65();
+                // Properties and Options have no soft keys (device); the windows view: New / Close
+                if (sub === 'props' || sub === 'options') return { left: null, right: null };
+                if (sub === 'windows') return { left: { label: 'New', disabled: wins.length >= MAX_WINDOWS, action: () => { closeSub(); newWindow(); } }, right: { label: 'Close', action: closeSub } };
                 if (sub) {
                     return {
                         left: { label: 'Go', disabled: subSel < 0, action: () => openSubRow(subSel) },
                         right: { label: 'Menu', menu: subMenu }
                     };
                 }
-                return {
-                    left: { label: 'Favorites', action: () => openSub('favorites') },
-                    right: { label: 'Menu', menu: mainMenu }
-                };
+                return { left: leftKey(), right: { label: 'Menu', menu: mainMenu } };
             }
         });
 
