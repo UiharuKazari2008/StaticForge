@@ -50,12 +50,14 @@
         let id = '';
         // the app owns the device's id when it can (window.AndroidActiveSync.getDeviceId(), 32 hex), so its
         // background service and a reinstalled WebView profile stay one device; else this profile keeps one
+        try { id = root.localStorage.getItem(ID_KEY) || ''; } catch (_) { /* private mode */ }
         try {
             const app = root.AndroidActiveSync;
+            // an id this page already used (a partnership may hang on it) is handed to the app once
+            if (app && typeof app.adoptDeviceId === 'function' && /^[0-9a-f]{32}$/.test(id)) app.adoptDeviceId(id);
             const own = app && typeof app.getDeviceId === 'function' ? String(app.getDeviceId() || '').toLowerCase() : '';
             if (/^[0-9a-f]{32}$/.test(own)) return own;
         } catch (_) { /* older app */ }
-        try { id = root.localStorage.getItem(ID_KEY) || ''; } catch (_) { /* private mode */ }
         if (!/^[0-9a-f]{32}$/.test(id)) {
             const bytes = new Uint8Array(16);
             root.crypto.getRandomValues(bytes);
