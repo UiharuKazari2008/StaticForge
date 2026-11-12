@@ -496,6 +496,25 @@ class ServiceWorkerManager {
     flushUpdatesAfterDesktop() {
         if (this._launchRedirectStarted || this._isBeforeDesktop()) return;
         this._flushPendingCacheUpdates();
+        this._tidyRemovedPackages();
+    }
+
+    /**
+     * Packages this client no longer keeps (another Melaton Mobile version, a lower density, one
+     * removed in Applied Updates, the build-only animation frames) leave the cache now, not at the
+     * worker's daily tidy (#774): its maintenance drops every row its manifest does not list.
+     */
+    _tidyRemovedPackages() {
+        let due = false;
+        try { due = localStorage.getItem('melatonPackagesTidy') === '1' || localStorage.getItem('melatonPackagesTidied') !== 'v1'; } catch (_) { due = false; }
+        if (!due || !navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+        setTimeout(() => {
+            try {
+                navigator.serviceWorker.controller.postMessage({ type: 'SW_MAINTENANCE', force: true });
+                localStorage.removeItem('melatonPackagesTidy');
+                localStorage.setItem('melatonPackagesTidied', 'v1');
+            } catch (_) { /* next boot */ }
+        }, 15000);
     }
 
     isBootComplete() {

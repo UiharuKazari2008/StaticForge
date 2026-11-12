@@ -1580,7 +1580,7 @@
         }
         const info = new Map((d.pkgInfo || []).map((x) => [x.id, x]));
         const label = (id) => (pk.PACKAGES.find((p) => p.id === id) || { label: id }).label;
-        const size = (id) => (info.has(id) ? mb(info.get(id).bytes) : '');
+        const size = (id) => (info.has(id) && info.get(id).bytes > 0 ? mb(info.get(id).bytes) : '');
         const active = pk.current();
         const auto = new Set(pk.automatic());
         if (d.addPkgs) {
@@ -1607,12 +1607,13 @@
             });
             return;
         }
-        const rows = active.map((id) => ({ key: id, label: `${label(id)}${size(id) ? `  ${size(id)}` : ''}${auto.has(id) ? '  (in use)' : '  (added)'}`, selected: id === d.pkgSel }));
+        // the name, and (added) for the ones picked here: in use is the rule, said once below
+        const rows = active.map((id) => ({ key: id, label: `${label(id)}${auto.has(id) ? '' : ' (added)'}`, selected: id === d.pkgSel }));
         el.innerHTML = `${ui.sub('Applied Updates')}
             ${rows.length ? ui.listbox(rows, { maxHeight: 200 }) : ui.text(d.pkgLoading ? 'Checking Melaton Update...' : 'Only the core of Melaton is on this device.')}
             ${ui.buttons([['pkg-remove', 'Remove', !(d.pkgSel && !auto.has(d.pkgSel) && active.includes(d.pkgSel))]])}
             ${ui.gap()}
-            ${ui.buttons([['pkg-more', 'Add an update package from Melaton Update...']], false)}
+            <div class="wm-sys-pkg-more">${ui.buttons([['pkg-more', 'Add an update package from Melaton Update...']], false)}</div>
             ${ui.note('Packages in use come with this Melaton Mobile and its screen. Removed packages are deleted the next time Melaton tidies its files.')}`;
         const box = el.querySelector('.wm-listbox');
         if (box) ui.bindListbox(box, (key) => { d.pkgSel = key; d.rerender(); });

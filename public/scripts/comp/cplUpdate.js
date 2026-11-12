@@ -330,7 +330,7 @@
                 .catch(() => { /* sizes stay blank */ });
         }
         const info = new Map(pkgInfo.map((x) => [x.id, x]));
-        const size = (id) => (info.has(id) ? mbText(info.get(id).bytes) : '');
+        const size = (id) => (info.has(id) && info.get(id).bytes > 0 ? mbText(info.get(id).bytes) : '');
         const active = pk.current();
         const auto = new Set(pk.automatic());
         if (pkgAdding) {
@@ -339,7 +339,7 @@
             return `<div class="cpl-vpage cpl-vwide">
                 <h1 class="cpl-vtitle">Add an update package from Melaton Update</h1>
                 <p class="cpl-vtext">Packages hold Melaton Mobile's pictures for a version and a screen density (HiDPI = 2x, UHiDPI = 4x).</p>
-                <table class="cpl-vtable"><tr class="is-head"><td>Name</td><td>Size</td></tr>${rows || '<tr><td colspan="2">Every package is already on this computer.</td></tr>'}</table>
+                <table class="cpl-vtable cpl-wu-pkgs"><colgroup><col style="width:80%"><col style="width:20%"></colgroup><tr class="is-head"><td>Name</td><td>Size</td></tr>${rows || '<tr><td colspan="2">Every package is already on this computer.</td></tr>'}</table>
                 <div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-pkg="add"${choices.length ? '' : ' disabled'}>Add</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-pkg="cancel">Cancel</button></div>
             </div>`;
         }
@@ -350,7 +350,7 @@
         return `<div class="cpl-vpage cpl-vwide">
             <h1 class="cpl-vtitle">Applied updates</h1>
             <p class="cpl-vtext">The update packages on this computer besides Melaton itself. Packages in use come with the Melaton Mobile this computer runs and its screen.</p>
-            <table class="cpl-vtable"><tr class="is-head"><td>Name</td><td>Size</td><td>Status</td></tr>${rows || '<tr><td colspan="3">Only Melaton itself is on this computer.</td></tr>'}</table>
+            <table class="cpl-vtable cpl-wu-pkgs"><colgroup><col style="width:62%"><col style="width:18%"><col style="width:20%"></colgroup><tr class="is-head"><td>Name</td><td>Size</td><td>Status</td></tr>${rows || '<tr><td colspan="3">Only Melaton itself is on this computer.</td></tr>'}</table>
             <div class="cpl-vbuttons">
                 <button type="button" class="tbp-button cpl-vbutton" data-cpl-pkg="more">Add an update package from Melaton Update...</button>
                 <button type="button" class="tbp-button cpl-vbutton" data-cpl-pkg="remove"${pkgSel && active.includes(pkgSel) && !auto.has(pkgSel) ? '' : ' disabled'}>Remove</button>

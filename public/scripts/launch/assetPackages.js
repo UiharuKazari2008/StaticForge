@@ -126,7 +126,10 @@
         const was = idsOf(before);
         const now = idsOf(s);
         write(s);
-        return { changed: was.join(',') !== now.join(',') || !before, added: now.filter((id) => !was.includes(id)), removed: was.filter((id) => !now.includes(id)) };
+        const removed = was.filter((id) => !now.includes(id));
+        // serviceWorkerManager drops their files from the cache once the desktop is up
+        if (removed.length) { try { localStorage.setItem('melatonPackagesTidy', '1'); } catch (_) { /* storage off */ } }
+        return { changed: was.join(',') !== now.join(',') || !before, added: now.filter((id) => !was.includes(id)), removed };
     }
 
     /** The page's shell at boot. Melaton Mobile sets the mobile bit (kept from then on). */

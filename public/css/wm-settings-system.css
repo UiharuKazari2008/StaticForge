@@ -385,3 +385,13 @@ html.ui-mobile[data-wm-version="6.5"] .wm-sys-clock-name,
 html.ui-mobile[data-wm-version="6.5"] .wm-sys-clock .wm-check span {
     font-size: calc(11.5 * var(--wm-px));
 }
+
+/* Applied Updates (#774): the long Add button wraps to two lines instead of being cut */
+.wm-sys-pkg-more .wm-button {
+    height: auto;
+    min-height: calc(23 * var(--wm-px));
+    white-space: normal;
+    text-align: center;
+    line-height: 1.2;
+    padding-block: calc(3 * var(--wm-px));
+}
