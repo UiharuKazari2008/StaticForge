@@ -2210,12 +2210,12 @@ html.ui-mobile[data-wm-boot="splash"] .wm-splash {
  * the green field (a top-down ramp, a dark pool at the left, the glow on the big ring at the right,
  * a lighter centre), three rings (centre ~225,517; r 232.9 / 139.6 / 70.0; 9 / 6 / 4 px) whose
  * light green brightness follows the angle as on the ROM (conic stops, hard-ended gaps), and the
- * highlight streak along the big ring. A 480 x 640 box in ROM units covers the screen anchored at
- * the bottom (the ROM's own scaling), so the art scales without a bitmap. Fit: RMSE 0.0295 against
+ * highlight streak along the big ring, all in ROM pixels (--u) at the screen's width, top aligned;
+ * a taller screen gets the rest drawn by the same CSS. No bitmap. Fit: RMSE 0.0295 against
  * the capture. The Melaton emblem and words sit where its logo was. */
 .wm-splash:not(.wm-splash65) {
     container-type: size;
-    background: #48a818;
+    background: #5ac414;
 }
 
 .wm-splash:not(.wm-splash65) .wm-splash-swirl {
@@ -2223,22 +2223,26 @@ html.ui-mobile[data-wm-boot="splash"] .wm-splash {
 }
 
 .wm-s61 {
+    /* one ROM pixel (480 across): the picture is drawn in the ROM's own coordinates, top aligned at
+       the screen's width; on a taller screen the box runs on to the bottom and the CSS draws what
+       the ROM's 640 rows did not have (the gradients carry on, the rings continue) */
+    --u: calc(100cqw / 480);
     position: absolute;
-    left: 50%;
-    bottom: 0;
-    width: max(100cqw, 75cqh);
-    aspect-ratio: 3 / 4;
-    transform: translateX(-50%);
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: max(100%, calc(640 * var(--u)));
     overflow: hidden;
     pointer-events: none;
+    container-type: inline-size;
     background:
-        radial-gradient(ellipse 7% 4.5% at 76% 51.5%, rgba(225,255,200,.6), rgba(198,255,165,0) 100%),
-        radial-gradient(ellipse 38% 26% at 75% 54%, rgba(165,242,105,.75), rgba(131,223,77,.42) 35%, rgba(100,200,50,0) 100%),
-        radial-gradient(ellipse 30% 22% at 64% 65%, rgba(112,214,30,.5), rgba(112,214,30,0) 100%),
-        radial-gradient(ellipse 16% 22% at 100% 36%, rgba(28,128,8,.55), rgba(28,128,8,0) 100%),
-        radial-gradient(ellipse 70% 33% at 0% 55%, rgba(4,100,0,.92), rgba(10,112,0,.55) 45%, rgba(20,120,0,0) 100%),
-        radial-gradient(ellipse 45% 55% at 0% 100%, rgba(30,128,8,.75), rgba(30,128,8,0) 100%),
-        linear-gradient(to bottom, #61b82e 0%, #50aa24 11%, #32961a 22%, #34980f 40%, #48ad0c 60%, #58c10c 78%, #5ac414 100%);
+        radial-gradient(ellipse calc(33.6 * var(--u)) calc(28.8 * var(--u)) at calc(364.8 * var(--u)) calc(329.6 * var(--u)), rgba(225,255,200,.6), rgba(198,255,165,0) 100%),
+        radial-gradient(ellipse calc(182.4 * var(--u)) calc(166.4 * var(--u)) at calc(360.0 * var(--u)) calc(345.6 * var(--u)), rgba(165,242,105,.75), rgba(131,223,77,.42) 35%, rgba(100,200,50,0) 100%),
+        radial-gradient(ellipse calc(144.0 * var(--u)) calc(140.8 * var(--u)) at calc(307.2 * var(--u)) calc(416.0 * var(--u)), rgba(112,214,30,.5), rgba(112,214,30,0) 100%),
+        radial-gradient(ellipse calc(76.8 * var(--u)) calc(140.8 * var(--u)) at calc(480.0 * var(--u)) calc(230.4 * var(--u)), rgba(28,128,8,.55), rgba(28,128,8,0) 100%),
+        radial-gradient(ellipse calc(336.0 * var(--u)) calc(211.2 * var(--u)) at calc(0.0 * var(--u)) calc(352.0 * var(--u)), rgba(4,100,0,.92), rgba(10,112,0,.55) 45%, rgba(20,120,0,0) 100%),
+        radial-gradient(ellipse calc(216.0 * var(--u)) calc(352.0 * var(--u)) at calc(0.0 * var(--u)) calc(640.0 * var(--u)), rgba(30,128,8,.75), rgba(30,128,8,0) 100%),
+        linear-gradient(to bottom, #61b82e calc(0.0 * var(--u)), #50aa24 calc(70.4 * var(--u)), #32961a calc(140.8 * var(--u)), #34980f calc(256.0 * var(--u)), #48ad0c calc(384.0 * var(--u)), #58c10c calc(499.2 * var(--u)), #5ac414 calc(640.0 * var(--u)));
 }
 
 /* the rings cast a drop shadow pushed down for depth (Yukimi): ~22 ROM px below the line, soft,
@@ -2246,7 +2250,7 @@ html.ui-mobile[data-wm-boot="splash"] .wm-splash {
 .wm-s61-rings {
     position: absolute;
     inset: 0;
-    filter: drop-shadow(0 calc(max(100cqw, 75cqh) * 22 / 480) calc(max(100cqw, 75cqh) * 10 / 480) rgba(0, 60, 0, 0.85));
+    filter: drop-shadow(0 calc(100cqw * 22 / 480) calc(100cqw * 10 / 480) rgba(0, 60, 0, 0.85));
 }
 
 .wm-s61-rings > i {
@@ -2255,16 +2259,59 @@ html.ui-mobile[data-wm-boot="splash"] .wm-splash {
     border-radius: 50%;
 }
 
-.wm-s61-rings > i:nth-child(1){left:-2.375%;top:43.141%;width:99.333%;background:conic-gradient(rgba(150,255,115,0.28) 0deg,rgba(150,255,115,0.28) 0deg,rgba(150,255,115,0.44) 15deg,rgba(150,255,115,0.6) 35deg,rgba(150,255,115,0.5) 50deg,rgba(150,255,115,0.3) 65deg,rgba(150,255,115,0.18) 80deg,rgba(150,255,115,0.18) 100deg,rgba(150,255,115,0.14) 125deg,rgba(150,255,115,0.1) 150deg,rgba(150,255,115,0) 270deg,rgba(150,255,115,0) 275deg,rgba(150,255,115,0.04) 290deg,rgba(150,255,115,0.12) 310deg,rgba(150,255,115,0.24) 330deg,rgba(150,255,115,0.28) 360deg);-webkit-mask:radial-gradient(closest-side,transparent 95.386%,#000 96.057%,#000 99.329%,transparent 100%);mask:radial-gradient(closest-side,transparent 95.386%,#000 96.057%,#000 99.329%,transparent 100%);}
-.wm-s61-rings > i:nth-child(2){left:16.792%;top:58.203%;width:59.833%;background:conic-gradient(rgba(150,255,115,0.56) 0deg,rgba(150,255,115,0.56) 0deg,rgba(150,255,115,0.5) 30deg,rgba(150,255,115,0.44) 60deg,rgba(150,255,115,0.36) 90deg,rgba(150,255,115,0.36) 95deg,rgba(150,255,115,0) 95deg,rgba(150,255,115,0) 205deg,rgba(150,255,115,0.12) 205deg,rgba(150,255,115,0.12) 240deg,rgba(150,255,115,0.2) 270deg,rgba(150,255,115,0.2) 270deg,rgba(150,255,115,0.38) 300deg,rgba(150,255,115,0.5) 330deg,rgba(150,255,115,0.56) 360deg);-webkit-mask:radial-gradient(closest-side,transparent 94.429%,#000 95.543%,#000 98.886%,transparent 100%);mask:radial-gradient(closest-side,transparent 94.429%,#000 95.543%,#000 98.886%,transparent 100%);}
-.wm-s61-rings > i:nth-child(3){left:31.792%;top:69.688%;width:30.417%;background:conic-gradient(rgba(150,255,115,0.58) 0deg,rgba(150,255,115,0.58) 5deg,rgba(150,255,115,0) 5deg,rgba(150,255,115,0) 85deg,rgba(150,255,115,0.44) 85deg,rgba(150,255,115,0.46) 120deg,rgba(150,255,115,0.32) 150deg,rgba(150,255,115,0.3) 180deg,rgba(150,255,115,0.36) 210deg,rgba(150,255,115,0.42) 270deg,rgba(150,255,115,0.42) 270deg,rgba(150,255,115,0.56) 300deg,rgba(150,255,115,0.56) 330deg,rgba(150,255,115,0.58) 360deg);-webkit-mask:radial-gradient(closest-side,transparent 91.781%,#000 93.973%,#000 97.808%,transparent 100%);mask:radial-gradient(closest-side,transparent 91.781%,#000 93.973%,#000 97.808%,transparent 100%);}
+.wm-s61-rings > i:nth-child(1){left:calc(-11.4 * var(--u));top:calc(276.1 * var(--u));width:calc(476.8 * var(--u));background:conic-gradient(rgba(150,255,115,0.28) 0deg,rgba(150,255,115,0.28) 0deg,rgba(150,255,115,0.44) 15deg,rgba(150,255,115,0.6) 35deg,rgba(150,255,115,0.5) 50deg,rgba(150,255,115,0.3) 65deg,rgba(150,255,115,0.18) 80deg,rgba(150,255,115,0.18) 100deg,rgba(150,255,115,0.14) 125deg,rgba(150,255,115,0.1) 150deg,rgba(150,255,115,0) 270deg,rgba(150,255,115,0) 275deg,rgba(150,255,115,0.04) 290deg,rgba(150,255,115,0.12) 310deg,rgba(150,255,115,0.24) 330deg,rgba(150,255,115,0.28) 360deg);-webkit-mask:radial-gradient(closest-side,transparent 95.386%,#000 96.057%,#000 99.329%,transparent 100%);mask:radial-gradient(closest-side,transparent 95.386%,#000 96.057%,#000 99.329%,transparent 100%);}
+.wm-s61-rings > i:nth-child(2){left:calc(80.6 * var(--u));top:calc(372.5 * var(--u));width:calc(287.2 * var(--u));background:conic-gradient(rgba(150,255,115,0.56) 0deg,rgba(150,255,115,0.56) 0deg,rgba(150,255,115,0.5) 30deg,rgba(150,255,115,0.44) 60deg,rgba(150,255,115,0.36) 90deg,rgba(150,255,115,0.36) 95deg,rgba(150,255,115,0) 95deg,rgba(150,255,115,0) 205deg,rgba(150,255,115,0.12) 205deg,rgba(150,255,115,0.12) 240deg,rgba(150,255,115,0.2) 270deg,rgba(150,255,115,0.2) 270deg,rgba(150,255,115,0.38) 300deg,rgba(150,255,115,0.5) 330deg,rgba(150,255,115,0.56) 360deg);-webkit-mask:radial-gradient(closest-side,transparent 94.429%,#000 95.543%,#000 98.886%,transparent 100%);mask:radial-gradient(closest-side,transparent 94.429%,#000 95.543%,#000 98.886%,transparent 100%);}
+.wm-s61-rings > i:nth-child(3){left:calc(152.6 * var(--u));top:calc(446 * var(--u));width:calc(146 * var(--u));background:conic-gradient(rgba(150,255,115,0.58) 0deg,rgba(150,255,115,0.58) 5deg,rgba(150,255,115,0) 5deg,rgba(150,255,115,0) 85deg,rgba(150,255,115,0.44) 85deg,rgba(150,255,115,0.46) 120deg,rgba(150,255,115,0.32) 150deg,rgba(150,255,115,0.3) 180deg,rgba(150,255,115,0.36) 210deg,rgba(150,255,115,0.42) 270deg,rgba(150,255,115,0.42) 270deg,rgba(150,255,115,0.56) 300deg,rgba(150,255,115,0.56) 330deg,rgba(150,255,115,0.58) 360deg);-webkit-mask:radial-gradient(closest-side,transparent 91.781%,#000 93.973%,#000 97.808%,transparent 100%);mask:radial-gradient(closest-side,transparent 91.781%,#000 93.973%,#000 97.808%,transparent 100%);}
+
+/* the logo and words in the picture's units, where the ROM has its logo (measured on the emulator:
+ * flag x 34-160; words from x 173, "Windows" caps 100-118, "Mobile" 126-176, rule 189-191,
+ * "Version" 200-218): light grey type (#e7e7e7) with a soft dark halo, and a 3 px faint rule */
+.wm-s61 .wm-splash-logo {
+    left: calc(36 * var(--u));
+    top: calc(82 * var(--u));
+    right: auto;
+    gap: calc(11 * var(--u));
+}
+
+.wm-s61 .wm-splash-logo img {
+    width: calc(124 * var(--u));
+    max-width: none;
+}
+
+.wm-s61 .wm-splash-words {
+    color: #e7e7e7;
+    text-shadow: 0 calc(1 * var(--u)) calc(2 * var(--u)) rgba(0, 40, 0, 0.55), 0 0 calc(3 * var(--u)) rgba(0, 40, 0, 0.35);
+}
+
+.wm-s61 .wm-splash-brand {
+    font-size: calc(27.5 * var(--u));
+    margin: calc(12 * var(--u)) 0 calc(-12 * var(--u)) calc(-2 * var(--u));
+}
+
+.wm-s61 .wm-splash-product {
+    font-size: calc(75 * var(--u));
+    margin-left: calc(-4 * var(--u));
+    padding-bottom: calc(10 * var(--u));
+    border-bottom: 0;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.3) 50%, rgba(255, 255, 255, 0)) 0 100% / 100% calc(3 * var(--u)) no-repeat;
+}
+
+.wm-s61 .wm-splash-version {
+    margin-top: calc(1 * var(--u));
+    margin-left: calc(3 * var(--u));
+    font-size: calc(24 * var(--u));
+    /* the ROM's version line is a condensed cut: "Version" 60 px wide where Segoe UI sets 74 */
+    transform: scaleX(0.81);
+    transform-origin: 0 50%;
+    white-space: nowrap;
+}
 
 .wm-s61 > .wm-s61-glint {
     position: absolute;
-    left: 60.5%;
-    top: 48.8%;
-    width: 32%;
-    height: 5%;
+    left: calc(290.4 * var(--u));
+    top: calc(312.3 * var(--u));
+    width: calc(153.6 * var(--u));
+    height: calc(32 * var(--u));
     transform: rotate(37deg);
     background: radial-gradient(closest-side, rgba(215, 255, 180, 0.6), rgba(170, 245, 120, 0.25) 55%, rgba(170, 245, 120, 0));
 }
