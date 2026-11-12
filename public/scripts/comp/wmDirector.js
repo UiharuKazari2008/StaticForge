@@ -98,11 +98,13 @@
      *   notifyTurns   a turn that ends while the app is in the background raises a notification
      *   printStrip    her prints as a strip under the text box (the desktop's prints sidebar)
      *   wideLog       wide screens show the log beside her (off: the prints gallery column)
+     *   xiWideSolo    the same choice for Yozora, kept apart: beside her is her log (she has no prints),
+     *                 which is what you watch while she works
      *   wideSolo      wide screens show only her: no column, the page behaves as a big phone (Menu > Log
      *                 lays the log over her, Reply opens the composer at the bottom)
      */
     const PREF_KEY = 'wmDirectorPhone';
-    const PREF_DEFAULTS = Object.freeze({ allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, wideLog: false, wideSolo: false });
+    const PREF_DEFAULTS = Object.freeze({ allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, wideLog: false, wideSolo: false, xiWideSolo: false });
     let prefCache = null;
     function prefs() {
         if (prefCache) return prefCache;
@@ -226,6 +228,8 @@
                 this.setStyle(this.el.canvas, 'height', `${Math.round(H * kv)}px`);
                 this.setStyle(this.el.canvas, 'transform', `translate(${Math.round(ax - face[0] * kv)}px, ${Math.round(ay - face[1] * kv)}px)`);
                 this._k = kv;
+                // her thought cloud follows this staging (the desktop placed it for its own)
+                if (typeof this.placeThink === 'function') this.placeThink(face, kv, ax - face[0] * kv, ay - face[1] * kv, box.width);
                 return;
             }
             // portrait: her face at the upper middle, sized from the width (the desktop sizes it from
@@ -244,6 +248,7 @@
             this.setStyle(this.el.canvas, 'height', `${Math.round(H * k)}px`);
             this.setStyle(this.el.canvas, 'transform', `translate(${Math.round(px - face[0] * k)}px, ${Math.round(py - face[1] * k)}px)`);
             this._k = k;
+            if (typeof this.placeThink === 'function') this.placeThink(face, k, px - face[0] * k, py - face[1] * k, box.width);
         };
         // the HUD's second counter is Yozora's files: directorMascot.js writes the prints count on every paint
         const hud = m.updateHud.bind(m);
@@ -1168,8 +1173,9 @@
         const items = sessionPrintList(d);
         const pending = !!(d && d._imagePending === true && d.currentSession && !isDraft(d));
         // only her on wide screens: the wide rules stand down (wm-director.css), so the layout is read again
-        if (page.classList.contains('wmd-solo') !== !!p.wideSolo) {
-            page.classList.toggle('wmd-solo', !!p.wideSolo);
+        const solo = !!(d && d.persona === 'xi' ? p.xiWideSolo : p.wideSolo);
+        if (page.classList.contains('wmd-solo') !== solo) {
+            page.classList.toggle('wmd-solo', solo);
             recheckLayout();
         }
         page.classList.toggle('wmd-vn', vn);
@@ -1325,90 +1331,6 @@
         return rows.slice(-80);
     }
 
-    const textLines = (v) => (typeof v === 'string' && v !== '' ? v.replace(/\n$/, '').split('\n') : []);
-
-    /** A unified diff's body as [kind, text] lines: '' context, 'a' added, 'd' removed, 'h' a hunk break. */
-    function diffLines(text) {
-        const out = [];
-        String(text || '').split('\n').forEach((l) => {
-            if (/^(\+\+\+ |--- |diff --git |index |\\ No newline)/.test(l)) return;
-            if (l.startsWith('@@')) { if (out.length) out.push(['h', '']); return; }
-            if (l[0] === '+') out.push(['a', l.slice(1)]);
-            else if (l[0] === '-') out.push(['d', l.slice(1)]);
-            else out.push(['', l.slice(1)]);
-        });
-        while (out.length && out[out.length - 1][0] === '' && out[out.length - 1][1] === '') out.pop();
-        return out;
-    }
-
-    /** A JSON string value that may have been stored cut off: what can still be read of it. */
-    function looseString(text, key) {
-        const m = new RegExp(`"${key}"\\s*:\\s*"`).exec(text);
-        if (!m) return null;
-        let body = text.slice(m.index + m[0].length);
-        const end = /(?:^|[^\\])(?:\\\\)*"/.exec(body);
-        body = end ? body.slice(0, end.index + end[0].length - 1) : body.replace(/…$/, '').replace(/\\(u[0-9a-fA-F]{0,3})?$/, '');
-        try { return JSON.parse(`"${body}"`); } catch (_) { return null; }
-    }
-
-    /**
-     * One edit as { file, add, del, lines, cut }. Claude's tools carry the old and new text in their
-     * arguments (old_string / new_string, content); Cursor's carry a unified diff in the result
-     * (diffString, linesAdded, linesRemoved). Either may have been stored cut off at 4,000 characters.
-     */
-    function parseChange(row, argsText, resultText) {
-        const none = (file, cut) => ({ file: file || (row && row.detail && /^[/~.\w]/.test(row.detail) && !/\s/.test(row.detail) ? row.detail : ''), add: 0, del: 0, lines: [], cut });
-        const name = row && row.name;
-        const args = String(argsText || '');
-        const result = String(resultText || '');
-        let a = null;
-        try { a = JSON.parse(args); } catch (_) { /* stored cut off */ }
-        const pick = (...keys) => { for (const k of keys) { if (a && typeof a[k] === 'string') return a[k]; } return null; };
-        let file = pick('file_path', 'path', 'target_file', 'filePath', 'relative_workspace_path')
-            || looseString(args, 'file_path') || looseString(args, 'path') || looseString(args, 'target_file') || '';
-        // Cursor: the diff it reports
-        let r = null;
-        try { r = JSON.parse(result); } catch (_) { /* stored cut off, or plain text */ }
-        const diff = (r && typeof r.diffString === 'string' ? r.diffString : null) || (result.includes('"diffString"') ? looseString(result, 'diffString') : null);
-        if (diff) {
-            const lines = diffLines(diff);
-            const num = (k) => (r && Number.isFinite(r[k]) ? r[k] : Number((new RegExp(`"${k}"\\s*:\\s*(\\d+)`).exec(result) || [])[1]));
-            const add = num('linesAdded');
-            const del = num('linesRemoved');
-            const shownAdd = lines.filter((l) => l[0] === 'a').length;
-            const shownDel = lines.filter((l) => l[0] === 'd').length;
-            return {
-                file: file || (r && r.path) || none('', false).file,
-                add: Number.isFinite(add) ? add : shownAdd,
-                del: Number.isFinite(del) ? del : shownDel,
-                lines,
-                // a result stored cut off: say so only when changed lines are missing from it
-                cut: !r && (!Number.isFinite(add) || !Number.isFinite(del) || shownAdd < add || shownDel < del)
-            };
-        }
-        if (!a) return none(file, true);
-        let del = textLines(pick('old_string', 'old_str', 'oldString', 'old_text'));
-        let add = name === 'Delete' ? [] : textLines(pick('new_string', 'new_str', 'newString', 'new_text', 'content', 'contents', 'file_text', 'streamContent'));
-        const patch = pick('patch', 'input');
-        if (patch && !del.length && !add.length) {
-            const m = /^\*\*\* (?:Update|Add|Delete) File: (.+)$/m.exec(patch);
-            if (m && !file) file = m[1].trim();
-            const lines = diffLines(patch.split('\n').filter((l) => !l.startsWith('***')).join('\n'));
-            return { file, add: lines.filter((l) => l[0] === 'a').length, del: lines.filter((l) => l[0] === 'd').length, lines, cut: false };
-        }
-        // the lines both sides share at the ends are context, not change
-        let head = 0;
-        while (head < del.length && head < add.length && del[head] === add[head]) head++;
-        let tail = 0;
-        while (tail < del.length - head && tail < add.length - head && del[del.length - 1 - tail] === add[add.length - 1 - tail]) tail++;
-        const ctx = del.slice(Math.max(0, head - 2), head);
-        const after = tail ? del.slice(del.length - tail, del.length - tail + 2) : [];
-        del = del.slice(head, del.length - tail);
-        add = add.slice(head, add.length - tail);
-        const tag = (k) => (t) => [k, t];
-        return { file: file || none('', false).file, add: add.length, del: del.length, lines: [...ctx.map(tag('')), ...del.map(tag('d')), ...add.map(tag('a')), ...after.map(tag(''))], cut: false };
-    }
-
     /** The files of her last turn's edits: [{ file, name, add, del, hunks }], in the order she touched them. */
     async function loadChanges(d) {
         const sid = d && d.currentSession && d.currentSession.id;
@@ -1420,7 +1342,7 @@
             let c;
             try {
                 const p = await d.directorRequest('director_tool_payload', { sessionId: sid, payloadId: r.payloadId || r.diffId, diffId: r.diffId || '' });
-                c = parseChange(r, p && p.args, p && p.result);
+                c = directorParseChange(r, p && p.args, p && p.result);
                 changeCache.set(id, c);
             } catch (_) {
                 c = { file: '', add: 0, del: 0, lines: [], cut: true };
@@ -1494,15 +1416,8 @@
         paintFilesHud(d);
     }
 
-    const CHANGE_LINES = 600;
-    const MARK = { a: '+', d: '−' };
-    function hunkHtml(h) {
-        const rows = h.lines.slice(0, CHANGE_LINES).map(([k, t]) => (k === 'h' ? '<div class="wmd-ch-gap"></div>'
-            : `<div class="wmd-l ${k}"><u>${MARK[k] || ' '}</u>${esc(t) || ' '}</div>`)).join('');
-        return rows
-            + (h.lines.length > CHANGE_LINES ? `<div class="wmd-l n">(${h.lines.length - CHANGE_LINES} more lines)</div>` : '')
-            + (h.cut ? `<div class="wmd-l n">${h.lines.length ? '(the rest of this change was not kept)' : '(this change is too large to show)'}</div>` : '');
-    }
+    /* global directorParseChange, directorChangeHtml */
+    const hunkHtml = (h) => directorChangeHtml(h, 600);
 
     const changeText = (f) => `${f.file}\n\n` + f.hunks.map((h) => h.lines.map(([k, t]) => (k === 'h' ? '' : `${k === 'a' ? '+' : k === 'd' ? '-' : ' '}${t}`)).join('\n')).join('\n\n');
 
@@ -1803,10 +1718,15 @@
             );
         }
         const p = prefs();
-        items.push('-',
-            { label: 'Prints Strip', checked: !!p.printStrip, disabled: layout === 'wide' && !p.wideLog, action: () => { setPrefs({ printStrip: !p.printStrip }); paintPrints(); after(); } },
-            { label: 'Log Beside Her (wide screens)', checked: !!p.wideLog, disabled: !!p.wideSolo, action: () => { setPrefs({ wideLog: !p.wideLog }); setLogCol(false); paintPrints(); after(); } },
-            { label: 'Only Her (wide screens)', checked: !!p.wideSolo, action: () => { setPrefs({ wideSolo: !p.wideSolo }); setLogCol(false); paintPrints(); after(); } });
+        if (d.persona === 'xi') {
+            // Yozora's own choice: her log beside her (default), or only her
+            items.push('-', { label: 'Only Her (wide screens)', checked: !!p.xiWideSolo, action: () => { setPrefs({ xiWideSolo: !p.xiWideSolo }); setLogCol(false); paintPrints(); after(); } });
+        } else {
+            items.push('-',
+                { label: 'Prints Strip', checked: !!p.printStrip, disabled: layout === 'wide' && !p.wideLog, action: () => { setPrefs({ printStrip: !p.printStrip }); paintPrints(); after(); } },
+                { label: 'Log Beside Her (wide screens)', checked: !!p.wideLog, disabled: !!p.wideSolo, action: () => { setPrefs({ wideLog: !p.wideLog }); setLogCol(false); paintPrints(); after(); } },
+                { label: 'Only Her (wide screens)', checked: !!p.wideSolo, action: () => { setPrefs({ wideSolo: !p.wideSolo }); setLogCol(false); paintPrints(); after(); } });
+        }
         items.push(...toolRows(['Show', 'Send on Enter']));
         // the model the next turn runs on (the desktop header's picker): Engine, Model, Thinking, Context, Fast
         const model = wmRows([d.engineMenuItem(), ...d.modelPrefItems()], null, run);

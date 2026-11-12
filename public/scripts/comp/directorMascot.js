@@ -998,18 +998,28 @@ class DirectorMascot {
         this.setStyle(this.el.head, 'transformOrigin', `${(px / W) * 100}% ${(py / H) * 100}%`);
     }
 
-    // The thought cloud beside her head, in the head's own coordinates (canvas pixels times k): up and
-    // out from her face on the side the chat is, under the banner row, never wider than the room left.
+    // The thought cloud, in the head's own coordinates (canvas pixels times k), anchored by its tail
+    // (Yukimi 2026-11-12): the small bubbles under it end at her temple on the chat's side (or at
+    // manifest.thinkAt [x, y] where a persona's hair or ears want another spot), so it reads as hers on
+    // every persona and at every size. Under the banner row it cannot rise: there it moves out, beside
+    // her head. Never wider than the room left on that side.
     placeThink(face, k, canvasX, canvasY, stageW) {
         const think = this.el && this.el.think;
         if (!think) return;
         const left = this.manifest.anchor === 'left';
+        const side = left ? 1 : -1;
         const top0 = parseInt(this.layer.style.getPropertyValue('--dm-top'), 10) || 12;
         const narrow = stageW < 520;
-        const minScreenY = top0 + (narrow ? 44 : 72);
-        const y = Math.max((face[1] - face[2] * 1.6) * k, minScreenY - canvasY);
-        const out = face[2] * (narrow ? 0.75 : 1.05) * k;
-        const edge = left ? face[0] * k + out : face[0] * k - out;
+        const size = face[2];
+        const at = Array.isArray(this.manifest.thinkAt) ? this.manifest.thinkAt : [face[0] + side * size * 0.62, face[1] - size * 0.72];
+        // the cloud's own height and the two tail bubbles under it (director.css .dm-think)
+        const cloud = (narrow ? 30 : 40) + 34;
+        const wantY = at[1] * k - cloud;
+        const minY = top0 + (narrow ? 44 : 72) - canvasY;
+        const y = Math.max(wantY, minY);
+        // held down by the banner row: it would sit on her face, so it steps out to her side
+        const out = y > wantY ? Math.min(size * 0.28 * k, (y - wantY) * 0.5) : 0;
+        const edge = at[0] * k + side * (10 + out);
         const screenX = canvasX + edge;
         const room = Math.max(120, Math.round((left ? stageW - screenX : screenX) - 12));
         this.setStyle(think, 'top', `${Math.round(y)}px`);

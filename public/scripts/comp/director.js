@@ -6066,6 +6066,64 @@ class Director {
         return 'fas fa-file';
     }
 
+    // An Edit / Write row of Yozora's: its removed and added lines under the row. The payload (the tool's
+    // arguments and result) is read once per edit, when the row first comes on screen, and kept.
+    mountInlineDiff(rowEl, body, row) {
+        const sessionId = this.currentSession && this.currentSession.id;
+        const id = row.payloadId || row.diffId;
+        if (!sessionId || !id) return;
+        if (!this._inlineDiffs) this._inlineDiffs = new Map();
+        const key = `${sessionId}|${id}`;
+        const box = document.createElement('div');
+        box.className = 'director-inline-diff';
+        body.classList.remove('hidden');
+        body.appendChild(box);
+        const fill = (change) => {
+            if (!change || (!change.lines.length && !change.cut)) { box.hidden = true; return; }
+            box.hidden = false;
+            const name = change.file ? change.file.split('/').pop() : '';
+            const counts = `${change.add ? `<i class="wmd-add">+${change.add}</i>` : ''}${change.del ? ` <i class="wmd-del">\u2212${change.del}</i>` : ''}`;
+            box.innerHTML = `<div class="director-inline-diff-head"><b></b><span>${counts}</span></div><div class="director-inline-diff-lines">${directorChangeHtml(change, 80)}</div>`;
+            box.querySelector('b').textContent = name;
+            box.querySelector('b').title = change.file || '';
+        };
+        if (this._inlineDiffs.has(key)) { fill(this._inlineDiffs.get(key)); return; }
+        box.hidden = true;
+        let tries = 0;
+        const load = async () => {
+            tries += 1;
+            try {
+                const payload = await this.directorRequest('director_tool_payload', { sessionId, payloadId: id, diffId: row.diffId || '' });
+                const change = directorParseChange(row, payload && payload.args, payload && payload.result);
+                // a live edit's payload can lag its row by a moment
+                if (!change.lines.length && !change.cut && tries < 3) { setTimeout(load, 1800); return; }
+                this._inlineDiffs.set(key, change);
+                if (box.isConnected) fill(change);
+            } catch (_) {
+                if (tries < 3) setTimeout(load, 2500);
+            }
+        };
+        // read when the row comes on screen (a long chat has dozens of edits)
+        let started = false;
+        const start = () => { if (started) return; started = true; void load(); };
+        const onScreen = () => {
+            if (!rowEl.isConnected) return false;
+            const box0 = rowEl.getBoundingClientRect();
+            return box0.height > 0 && box0.bottom > 0 && box0.top < window.innerHeight;
+        };
+        if (typeof IntersectionObserver === 'function') {
+            const seen = new IntersectionObserver((entries) => {
+                if (!entries.some((entry) => entry.isIntersecting)) return;
+                seen.disconnect();
+                start();
+            });
+            seen.observe(rowEl);
+        }
+        // and once shortly after it is drawn: the observer does not report in every state of the page
+        setTimeout(() => { if (!started && onScreen()) start(); }, 900);
+        if (typeof IntersectionObserver !== 'function') setTimeout(() => { if (!started) start(); }, 2500);
+    }
+
     createTraceRow(row, expandKey, model) {
         if (!row) return null;
         // say {text}: her line while she works reads as a reply line, not a tool call.
@@ -6133,6 +6191,8 @@ class Director {
             line.textContent = detail;
             body.appendChild(line);
             if (!detail) body.classList.add('hidden');
+            // Yozora: what an edit changed, shown under its row as she works (Yukimi 2026-11-12)
+            if (this.persona === 'xi' && row.diffKind === 'diff' && (row.payloadId || row.diffId)) this.mountInlineDiff(messageDiv, body, row);
         } else {
             const text = row.text || row.name || '';
             const line = document.createElement('div');
@@ -9512,4 +9572,102 @@ function directorDocumentPrintUrl() {
         + "<path d='M18 98h30' stroke='#d3382f' stroke-width='4' stroke-linecap='round'/>"
         + "<rect x='68' y='86' width='16' height='16' fill='#d23a22'/></svg>";
     return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+// ---- Yozora's edits as removed / added lines (#744, #752): one parser for the phone's Changes page
+// (wmDirector.js) and the inline diffs under her Edit rows in the log (createTraceRow). ----
+const directorTextLines = (v) => (typeof v === 'string' && v !== '' ? v.replace(/\n$/, '').split('\n') : []);
+
+/** A unified diff's body as [kind, text] lines: '' context, 'a' added, 'd' removed, 'h' a hunk break. */
+function directorDiffLines(text) {
+    const out = [];
+    String(text || '').split('\n').forEach((l) => {
+        if (/^(\+\+\+ |--- |diff --git |index |\\ No newline)/.test(l)) return;
+        if (l.startsWith('@@')) { if (out.length) out.push(['h', '']); return; }
+        if (l[0] === '+') out.push(['a', l.slice(1)]);
+        else if (l[0] === '-') out.push(['d', l.slice(1)]);
+        else out.push(['', l.slice(1)]);
+    });
+    while (out.length && out[out.length - 1][0] === '' && out[out.length - 1][1] === '') out.pop();
+    return out;
+}
+
+/** A JSON string value that may have been stored cut off: what can still be read of it. */
+function directorLooseString(text, key) {
+    const m = new RegExp(`"${key}"\\s*:\\s*"`).exec(text);
+    if (!m) return null;
+    let body = text.slice(m.index + m[0].length);
+    const end = /(?:^|[^\\])(?:\\\\)*"/.exec(body);
+    body = end ? body.slice(0, end.index + end[0].length - 1) : body.replace(/…$/, '').replace(/\\(u[0-9a-fA-F]{0,3})?$/, '');
+    try { return JSON.parse(`"${body}"`); } catch (_) { return null; }
+}
+
+/**
+ * One edit as { file, add, del, lines, cut }. Claude's tools carry the old and new text in their
+ * arguments (old_string / new_string, content); Cursor's carry a unified diff in the result
+ * (diffString, linesAdded, linesRemoved). Either may have been stored cut off at 4,000 characters.
+ */
+function directorParseChange(row, argsText, resultText) {
+    const none = (file, cut) => ({ file: file || (row && row.detail && /^[/~.\w]/.test(row.detail) && !/\s/.test(row.detail) ? row.detail : ''), add: 0, del: 0, lines: [], cut });
+    const name = row && row.name;
+    const args = String(argsText || '');
+    const result = String(resultText || '');
+    let a = null;
+    try { a = JSON.parse(args); } catch (_) { /* stored cut off */ }
+    const pick = (...keys) => { for (const k of keys) { if (a && typeof a[k] === 'string') return a[k]; } return null; };
+    let file = pick('file_path', 'path', 'target_file', 'filePath', 'relative_workspace_path')
+        || directorLooseString(args, 'file_path') || directorLooseString(args, 'path') || directorLooseString(args, 'target_file') || '';
+    // Cursor: the diff it reports
+    let r = null;
+    try { r = JSON.parse(result); } catch (_) { /* stored cut off, or plain text */ }
+    const diff = (r && typeof r.diffString === 'string' ? r.diffString : null) || (result.includes('"diffString"') ? directorLooseString(result, 'diffString') : null);
+    if (diff) {
+        const lines = directorDiffLines(diff);
+        const num = (k) => (r && Number.isFinite(r[k]) ? r[k] : Number((new RegExp(`"${k}"\\s*:\\s*(\\d+)`).exec(result) || [])[1]));
+        const add = num('linesAdded');
+        const del = num('linesRemoved');
+        const shownAdd = lines.filter((l) => l[0] === 'a').length;
+        const shownDel = lines.filter((l) => l[0] === 'd').length;
+        return {
+            file: file || (r && r.path) || none('', false).file,
+            add: Number.isFinite(add) ? add : shownAdd,
+            del: Number.isFinite(del) ? del : shownDel,
+            lines,
+            // a result stored cut off: say so only when changed lines are missing from it
+            cut: !r && (!Number.isFinite(add) || !Number.isFinite(del) || shownAdd < add || shownDel < del)
+        };
+    }
+    if (!a) return none(file, true);
+    let del = directorTextLines(pick('old_string', 'old_str', 'oldString', 'old_text'));
+    let add = name === 'Delete' ? [] : directorTextLines(pick('new_string', 'new_str', 'newString', 'new_text', 'content', 'contents', 'file_text', 'streamContent'));
+    const patch = pick('patch', 'input');
+    if (patch && !del.length && !add.length) {
+        const m = /^\*\*\* (?:Update|Add|Delete) File: (.+)$/m.exec(patch);
+        if (m && !file) file = m[1].trim();
+        const lines = directorDiffLines(patch.split('\n').filter((l) => !l.startsWith('***')).join('\n'));
+        return { file, add: lines.filter((l) => l[0] === 'a').length, del: lines.filter((l) => l[0] === 'd').length, lines, cut: false };
+    }
+    // the lines both sides share at the ends are context, not change
+    let head = 0;
+    while (head < del.length && head < add.length && del[head] === add[head]) head++;
+    let tail = 0;
+    while (tail < del.length - head && tail < add.length - head && del[del.length - 1 - tail] === add[add.length - 1 - tail]) tail++;
+    const ctx = del.slice(Math.max(0, head - 2), head);
+    const after = tail ? del.slice(del.length - tail, del.length - tail + 2) : [];
+    del = del.slice(head, del.length - tail);
+    add = add.slice(head, add.length - tail);
+    const tag = (k) => (t) => [k, t];
+    return { file: file || none('', false).file, add: add.length, del: del.length, lines: [...ctx.map(tag('')), ...del.map(tag('d')), ...add.map(tag('a')), ...after.map(tag(''))], cut: false };
+}
+
+const DIRECTOR_CHANGE_MARK = { a: '+', d: '\u2212' };
+/** A change's lines as .wmd-l rows (wm-director.css), at most `max` of them. */
+function directorChangeHtml(change, max) {
+    const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const cap = max || 600;
+    const rows = change.lines.slice(0, cap).map(([k, t]) => (k === 'h' ? '<div class="wmd-ch-gap"></div>'
+        : `<div class="wmd-l ${k}"><u>${DIRECTOR_CHANGE_MARK[k] || ' '}</u>${esc(t) || ' '}</div>`)).join('');
+    return rows
+        + (change.lines.length > cap ? `<div class="wmd-l n">(${change.lines.length - cap} more lines)</div>` : '')
+        + (change.cut ? `<div class="wmd-l n">${change.lines.length ? '(the rest of this change was not kept)' : '(this change is too large to show)'}</div>` : '');
 }

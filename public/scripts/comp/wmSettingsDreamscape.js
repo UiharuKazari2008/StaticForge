@@ -379,7 +379,7 @@
 
     // ---- Phone (#732): this device's Director options (wmDirector.js wmDirectorPhonePrefs, localStorage)
     const PHONE_KEY = 'wmDirectorPhone';
-    const PHONE_DEFAULTS = { allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, wideLog: false, wideSolo: false };
+    const PHONE_DEFAULTS = { allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, wideLog: false, wideSolo: false, xiWideSolo: false };
     function phoneRead() {
         const api = window.wmDirectorPhonePrefs;
         if (api && typeof api.get === 'function') return api.get();
@@ -400,7 +400,8 @@
         ['notifyTurns', 'Notify me when a turn ends in the background'],
         ['printStrip', 'Show prints under her text box'],
         ['wideLog', 'Show the log beside her on wide screens'],
-        ['wideSolo', 'Show only her on wide screens']
+        ['wideSolo', 'Show only her on wide screens'],
+        ['xiWideSolo', 'Yozora: show only her on wide screens (off: her log beside her)']
     ];
 
     function dirRenderPhone(el, st) {

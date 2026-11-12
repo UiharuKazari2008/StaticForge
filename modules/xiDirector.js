@@ -912,6 +912,27 @@ function claudeToolResultText(content) {
 // unlike Cursor's cursor-agent, whose consumeStreamLine deals with text deltas.
 // Tool calls arrive as assistant content blocks; their results arrive later as a
 // separate `user` event with tool_result blocks keyed by tool_use_id.
+// What a Claude tool call is for, as the log's one line under its name (Cursor's rows carry a
+// description already): the command's own description and the command, the file, the pattern.
+function claudeToolDetail(name, input) {
+    const i = input && typeof input === 'object' ? input : {};
+    const one = (v, max) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max || 300) : '');
+    const root = `${workspacePath(boundGr)}/`;
+    const file = (v) => { const f = one(v, 400); return f.startsWith(root) ? f.slice(root.length) : f; };
+    if (name === 'Bash') {
+        const what = one(i.description, 160);
+        const cmd = typeof i.command === 'string' ? i.command.trim().split('\n').slice(0, 4).join('\n').slice(0, 400) : '';
+        return [what, cmd ? `$ ${cmd}` : ''].filter(Boolean).join('\n');
+    }
+    if (name === 'Edit' || name === 'Write' || name === 'Read' || name === 'NotebookEdit' || name === 'MultiEdit') return file(i.file_path || i.notebook_path);
+    if (name === 'Grep') return [one(i.pattern, 160), i.path ? `in ${file(i.path)}` : (i.glob ? `in ${one(i.glob, 80)}` : '')].filter(Boolean).join(' ');
+    if (name === 'Glob') return [one(i.pattern, 160), i.path ? `in ${file(i.path)}` : ''].filter(Boolean).join(' ');
+    if (name === 'Agent' || name === 'Task') return one(i.description, 200);
+    if (name === 'WebFetch') return one(i.url, 300);
+    if (name === 'WebSearch' || name === 'ToolSearch') return one(i.query, 200);
+    return '';
+}
+
 function consumeClaudeStreamLine(line, state) {
     let evt;
     try {
@@ -938,7 +959,7 @@ function consumeClaudeStreamLine(line, state) {
                     type: 'tool',
                     name: block.name,
                     label: block.name,
-                    detail: '',
+                    detail: claudeToolDetail(block.name, block.input),
                     args: clipText(JSON.stringify(block.input || {})),
                     result: '',
                     replay: null,

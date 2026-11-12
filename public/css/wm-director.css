@@ -2561,15 +2561,18 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip 
     color: #fff;
 }
 
-.wm-director :is(.wmd-files, .wmd-page-changes) i {
+.wm-director :is(.wmd-files, .wmd-page-changes) i,
+.director-inline-diff i {
     font-style: normal;
 }
 
-.wm-director :is(.wmd-files, .wmd-page-changes) .wmd-add {
+.wm-director :is(.wmd-files, .wmd-page-changes) .wmd-add,
+.director-inline-diff .wmd-add {
     color: #7df0a0;
 }
 
-.wm-director :is(.wmd-files, .wmd-page-changes) .wmd-del {
+.wm-director :is(.wmd-files, .wmd-page-changes) .wmd-del,
+.director-inline-diff .wmd-del {
     color: #ffb0a6;
 }
 
@@ -2637,34 +2640,34 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip 
     font: 11px / 1.55 var(--sh-mono);
 }
 
-.wm-director .wmd-l {
+:is(.wm-director, .director-inline-diff) .wmd-l {
     padding-right: 8px;
     white-space: pre;
 }
 
-.wm-director .wmd-l u {
+:is(.wm-director, .director-inline-diff) .wmd-l u {
     display: inline-block;
     width: 16px;
     text-align: center;
     text-decoration: none;
 }
 
-.wm-director .wmd-l.a {
+:is(.wm-director, .director-inline-diff) .wmd-l.a {
     background: rgba(60, 210, 120, 0.16);
     color: #c4f7d2;
 }
 
-.wm-director .wmd-l.d {
+:is(.wm-director, .director-inline-diff) .wmd-l.d {
     background: rgba(255, 90, 80, 0.17);
     color: #ffc9c2;
 }
 
-.wm-director .wmd-l.n {
+:is(.wm-director, .director-inline-diff) .wmd-l.n {
     padding-left: 16px;
     font-style: italic;
 }
 
-.wm-director .wmd-ch-gap {
+:is(.wm-director, .director-inline-diff) .wmd-ch-gap {
     height: 0;
     margin: 6px 0;
     border-top: 1px dashed var(--sh-rim);
@@ -3203,4 +3206,129 @@ html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessio
 html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages-container {
     background: var(--mk-paper);
     color: var(--mk-ink);
+}
+
+/* ======================================================================
+ * Round 4 (#752, Yukimi's Fold screenshot Nov 12)
+ * ====================================================================== */
+/* Yozora's log in the wide column: the column's white WM page (an :is() with an id in it, so it
+   outranked her night face) left her pale text unreadable */
+@container wmd (min-width: 40em) and (aspect-ratio >= 3 / 4) {
+    html.ui-mobile .wm-director:not(.wmd-solo) #directorContainer[data-persona="xi"] #directorSessionChat.director-mascot-on.director-mascot-view :is(.director-chat-messages-container, #directorTaskList) {
+        border-left-color: var(--sh-fire) !important;
+        background: repeating-linear-gradient(0deg, rgba(127, 208, 255, 0.045) 0 1px, transparent 1px 3px), linear-gradient(#141c58, #06081c) !important;
+        color: var(--sh-text) !important;
+    }
+
+    html.ui-mobile .wm-director:not(.wmd-solo) #directorContainer[data-persona="xi"] #directorSessionChat.director-mascot-view #directorComposer {
+        border-left-color: var(--sh-fire) !important;
+    }
+
+    /* the keyboard: the page keeps her scene still and lifts its foreground (wm-shell.css
+       --wm-sip-lift); the column's reply field is in the grid here, so it is lifted by hand */
+    html.ui-mobile .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-view #directorComposer {
+        z-index: 9;
+        transform: translateY(calc(-1 * var(--wm-sip-lift, 0px))) !important;
+    }
+
+    /* the other two: ink on the column's paper, not on bare white */
+    html.ui-mobile .wm-director:not(.wmd-solo) #directorContainer:not([data-persona="xi"]) #directorSessionChat.director-mascot-on.director-mascot-view :is(.director-chat-messages-container, #directorTaskList) {
+        border-left-color: #8a5f14 !important;
+        background: var(--mk-paper) !important;
+        color: var(--mk-ink) !important;
+    }
+}
+
+/* ---- what you sent: a note pinned in the log ---- */
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message.user {
+    padding: 8px 10px;
+    border: 1px solid rgba(120, 90, 40, 0.45);
+    border-left: 3px solid var(--mk-ai);
+    background: linear-gradient(#f8eed2, #efe0b8);
+    box-shadow: 0 1px 2px rgba(60, 30, 10, 0.25);
+}
+
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-message.user .director-user-message-input {
+    color: var(--mk-ink);
+}
+
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message.user {
+    padding: 8px 10px;
+    border: 1px solid var(--sh-rim);
+    border-left: 3px solid var(--sh-fire);
+    background: rgba(127, 208, 255, 0.1);
+}
+
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message.user .director-user-message-input {
+    color: var(--sh-text);
+}
+
+/* ---- Yozora's tool rows: what each call is for stays open, and an edit shows its lines ---- */
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message.tool .director-message-content:not(.hidden) {
+    display: block;
+    overflow: visible;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+}
+
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message.tool .director-tool-detail:empty {
+    display: none;
+}
+
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message.tool .director-expand-button {
+    display: none;
+}
+
+.director-inline-diff {
+    margin-top: 5px;
+    border-left: 2px solid #7fd0ff;
+    background: rgba(4, 6, 22, 0.72);
+    color: #9fb0dc;
+    font: 11px / 1.5 'Cascadia Mono', Consolas, 'Roboto Mono', 'Droid Sans Mono', monospace;
+    white-space: normal;
+}
+
+.director-inline-diff[hidden] {
+    display: none;
+}
+
+.director-inline-diff-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 8px;
+    background: rgba(127, 208, 255, 0.14);
+    color: #fff;
+}
+
+.director-inline-diff-head b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 400;
+}
+
+.director-inline-diff-lines {
+    max-height: 22em;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #7fd0ff transparent;
+}
+
+.director-inline-diff-lines > .wmd-l {
+    min-width: max-content;
+}
+
+/* long paths and links in Yozora's lines wrap in the column (a sideways scroll bar sat under the log) */
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message-content {
+    overflow-wrap: anywhere;
+}
+
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages-container > .scrollable-content {
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #7fd0ff rgba(127, 208, 255, 0.08);
 }
