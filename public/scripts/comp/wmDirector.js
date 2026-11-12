@@ -1806,6 +1806,7 @@
         // the model the next turn runs on (the desktop header's picker): Engine, Model, Thinking, Context, Fast
         const model = wmRows([d.engineMenuItem(), ...d.modelPrefItems()], null, run);
         if (model.length) items.push('-', ...model);
+        if (m && typeof d.openMascotLab === 'function') items.push('-', { label: 'Mascot Test...', action: () => { void d.openMascotLab(); } });
         items.push('-', { label: 'Phone Settings...', action: () => openPhoneSettings() }, { label: 'Director Settings...', action: () => { void d.openDirectorSettings(); } });
         return items;
     }

@@ -644,6 +644,16 @@ class Director {
         return this._domCache[id];
     }
 
+    // Mascot Test (directorMascotLab.js, #767): a panel to try her expressions, kicks and morphs by hand.
+    async openMascotLab() {
+        try {
+            if (!window.directorMascotLab && typeof featureLoader !== 'undefined') await featureLoader.loadFeature('director_mascot_lab');
+            if (window.directorMascotLab) window.directorMascotLab.open(this);
+        } catch (err) {
+            console.warn('[Director] mascot test failed to load:', err);
+        }
+    }
+
     // Initialize Director
     // Persona mascot over the chat area (public/scripts/comp/directorMascot.js, #688).
     setupMascot() {
@@ -1839,6 +1849,12 @@ class Director {
                             loadfn: (item) => { item.checked = !!director.mascot && director.mascot.enabled; }
                         },
                         {
+                            icon: 'fas fa-flask',
+                            text: 'Mascot Test...',
+                            action: 'director-tools-mascot-lab',
+                            hidden: () => !director.mascot
+                        },
+                        {
                             icon: 'fas fa-sliders',
                             text: 'Director Settings...',
                             tooltip: 'New session models, Auto-Repair, and learned rules',
@@ -2047,6 +2063,9 @@ class Director {
                     this.mascot.setView(this.mascot.view === 'mascot' ? 'messages' : 'mascot');
                     if (this.currentSession) this.mascot.onMessages(this.currentSession.messages || []);
                 }
+                break;
+            case 'director-tools-mascot-lab':
+                void this.openMascotLab();
                 break;
             case 'director-tools-mascot':
                 if (this.mascot) this.mascot.setEnabled(!this.mascot.enabled);

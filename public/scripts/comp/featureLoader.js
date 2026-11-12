@@ -342,6 +342,9 @@ const FEATURE_MANIFEST = {
     director_mascot: {
         scripts: ['scripts/comp/directorMascot.js']
     },
+    director_mascot_lab: {
+        scripts: ['scripts/comp/directorMascotLab.js']
+    },
     director_tool_inspector: {
         scripts: ['scripts/comp/directorToolInspector.js']
     }

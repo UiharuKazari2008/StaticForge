@@ -78,7 +78,7 @@ html.ui-mobile.wm-touch {
 }
 
 /* ---- no crossover: only the shell and its hosted surfaces render ---- */
-html.ui-mobile body > *:not(#wmShell):not(script):not(style):not(link):not(template):not(.page-background):not(#galleryWindow):not(.pswp):not(#confirmationDialog):not(#bootMessageBox):not(#toastContainer):not(#pinModal):not(#dreamscapeFatalErrorRoot):not(#dreamscapeConnectivityErrorOverlay):not(#dreamscapeConnectivityErrorWindow):not(.dreamscape-app-error-window):not(#agentClientUpdateDialog):not(.dm-polaroid-fixed) {
+html.ui-mobile body > *:not(#wmShell):not(script):not(style):not(link):not(template):not(.page-background):not(#galleryWindow):not(.pswp):not(#confirmationDialog):not(#bootMessageBox):not(#toastContainer):not(#pinModal):not(#dreamscapeFatalErrorRoot):not(#dreamscapeConnectivityErrorOverlay):not(#dreamscapeConnectivityErrorWindow):not(.dreamscape-app-error-window):not(#agentClientUpdateDialog):not(.dm-polaroid-fixed):not(#directorMascotLab) {
     display: none !important;
 }
 
