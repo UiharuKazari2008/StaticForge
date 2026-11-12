@@ -18,6 +18,11 @@ const DIRECTOR_MASCOT_PREFS_KEY = 'staticforge_director_mascot_v2';   // v2: the
 const DIRECTOR_MASCOT_TICK_MS = 1000;
 const DIRECTOR_MASCOT_SLEEPY_MS = 3 * 60 * 1000;
 
+// Bumps of her own (kicks drawn by the shader, #766) are OFF: Yukimi found them unnatural (2026-11-12).
+// Kicks are the art's own kick poses again, on the stages that have one. The Mascot Test panel can
+// still fire a bump to look at it. Turn this on only when the layer work makes them look right.
+const DIRECTOR_MASCOT_BUMPS = false;
+
 function directorMascotRand(range, fallback) {
     if (!Array.isArray(range) || range.length < 2) return fallback;
     return range[0] + Math.random() * (range[1] - range[0]);
@@ -218,6 +223,8 @@ uniform vec4 F[3];
 uniform vec4 FR[3];
 uniform sampler2D M;
 uniform float useM;
+uniform sampler2D U;
+uniform float useU;
 float sm(float x) { x = clamp(x, 0.0, 1.0); return x * x * (3.0 - 2.0 * x); }
 // What stands in front of her belly and must keep its shape (stage.pin: her chest, an arm): ellipses
 // F[i] (centre xy, radii) with FR[i] (xy where it rests on the belly, zw its pivot, e.g. the shoulder).
@@ -343,6 +350,16 @@ void main() {
     vec2 q = lit > 0.0 ? lumpInv(p) : p;
     vec2 qb = growInv(q, gB1, gB2, fB);
     vec4 b0 = tx(B, qb);
+    // under her pieces the belly has its own picture (the under-layer: the sheet with chest and arm
+    // painted out), so where a piece has moved off its place the belly shows, not a ghost of the piece
+    if (useU > 0.5) {
+        vec2 ub = qb / size;
+        if (ub.x >= 0.0 && ub.y >= 0.0 && ub.x <= 1.0 && ub.y <= 1.0) {
+            vec4 mb = texture2D(M, ub);
+            float under = sm(max(mb.r, mb.g) * 2.0 - 0.3);
+            if (under > 0.0) b0 = mix(b0, texture2D(U, ub), under);
+        }
+    }
     vec4 c = b0;
     if (t < 1.0) {
         vec2 qa = growInv(q, gA1, gA2, fA);
@@ -444,7 +461,7 @@ class DirectorMascotGL {
         gl.enableVertexAttribArray(at);
         gl.vertexAttribPointer(at, 2, gl.FLOAT, false, 0, 0);
         this.u = {};
-        ['A', 'B', 'size', 't', 'gA1', 'gA2', 'fA', 'gB1', 'gB2', 'fB', 'mc', 'ms', 'lit', 'W1', 'W2', 'fW', 'KA', 'M', 'useM'].forEach((name) => { this.u[name] = gl.getUniformLocation(prog, name); });
+        ['A', 'B', 'size', 't', 'gA1', 'gA2', 'fA', 'gB1', 'gB2', 'fB', 'mc', 'ms', 'lit', 'W1', 'W2', 'fW', 'KA', 'M', 'useM', 'U', 'useU'].forEach((name) => { this.u[name] = gl.getUniformLocation(prog, name); });
         this.uL = [0, 1, 2, 3].map((i) => gl.getUniformLocation(prog, `L[${i}]`));
         this.uK1 = [0, 1, 2].map((i) => gl.getUniformLocation(prog, `K1[${i}]`));
         this.uKD = [0, 1, 2].map((i) => gl.getUniformLocation(prog, `KD[${i}]`));
@@ -456,6 +473,8 @@ class DirectorMascotGL {
         gl.uniform1i(this.u.A, 0);
         gl.uniform1i(this.u.B, 1);
         gl.uniform1i(this.u.M, 2);
+        gl.uniform1i(this.u.U, 3);
+        this.under = null;               // { url, tex }: the sheet with her pieces painted out
         this.mask = null;                // { url, tex }: the part mask of the sheet she shows
         gl.disable(gl.BLEND);
         gl.clearColor(0, 0, 0, 0);
@@ -498,7 +517,7 @@ class DirectorMascotGL {
 
     // Sheets are 26 MB each on the GPU: keep the ones on show and the two most recent others.
     trim() {
-        const keep = new Set([this.A && this.A.url, this.B && this.B.url, this.want, this.mask && this.mask.url].filter(Boolean));
+        const keep = new Set([this.A && this.A.url, this.B && this.B.url, this.want, this.mask && this.mask.url, this.under && this.under.url].filter(Boolean));
         const rest = [...this.cache.entries()].filter(([url, e]) => !keep.has(url) && e.tex).sort((a, b) => b[1].used - a[1].used);
         rest.slice(2).forEach(([url, e]) => { this.gl.deleteTexture(e.tex); this.cache.delete(url); });
     }
@@ -570,8 +589,16 @@ class DirectorMascotGL {
     // What keeps its shape while her belly moves (stage.pin): [[cx, cy, rx, ry, restX, restY, pivotX,
     // pivotY], ...] in sheet pixels, and the sheet's part mask (url or null): with it the pieces are
     // their real outlines, without it the ellipses.
-    setPins(list, maskUrl) {
+    setPins(list, maskUrl, underUrl) {
         this.pins = Array.isArray(list) ? list.slice(0, 3) : [];
+        const below = (maskUrl && underUrl) || '';
+        if ((this.under ? this.under.url : '') !== below) {
+            this.under = below ? { url: below, tex: null } : null;
+            if (below) {
+                const held = this.under;
+                this.load(below).then((tex) => { if (this.under === held && tex) { held.tex = tex; this.kick(); } }).catch(() => {});
+            }
+        }
         const want = maskUrl || '';
         if ((this.mask ? this.mask.url : '') !== want) {
             this.mask = want ? { url: want, tex: null } : null;
@@ -795,6 +822,10 @@ class DirectorMascotGL {
         gl.uniform1f(this.u.useM, maskTex ? 1 : 0);
         gl.activeTexture(gl.TEXTURE2);
         gl.bindTexture(gl.TEXTURE_2D, maskTex || b.tex);
+        const underTex = maskTex && this.under && this.under.tex;
+        gl.uniform1f(this.u.useU, underTex ? 1 : 0);
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, underTex || b.tex);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, (this.A || b).tex);
         gl.activeTexture(gl.TEXTURE1);
@@ -1643,13 +1674,14 @@ class DirectorMascot {
         // Random kicks: every stage of every persona (Yukimi 2026-11-12). Where the stage has a drawn
         // kick pose it shows; her own bumps (the shader body) cover the rest and add to it.
         const kicky = b.kicky || {};
-        if (this.stageDef() && Array.isArray(this.stageDef().belly)) {
+        const drawnKick = !!(this.stageDef() && (this.stageDef().kicky || this.stageDef().rubKicky || this.stageDef().gestureKicky));
+        if (this.stageDef() && Array.isArray(this.stageDef().belly) && (DIRECTOR_MASCOT_BUMPS || (drawnKick && kicky.stage === st.stage))) {
             const every = kicky.everySec || [25, 90];
             if (!st.nextKickAt) st.nextKickAt = now + directorMascotRand(every, 45) * 1000;
             if (now >= st.nextKickAt) {
                 st.nextKickAt = now + directorMascotRand(every, 45) * 1000;
                 // now and then two or three come back to back
-                const run = Math.random() < 0.3 ? (Math.random() < 0.35 ? 3 : 2) : 1;
+                const run = DIRECTOR_MASCOT_BUMPS && Math.random() < 0.3 ? (Math.random() < 0.35 ? 3 : 2) : 1;
                 for (let i = 0; i < run; i++) this.later(() => this.kickEvent(), i * 1500);
             }
         }
@@ -2484,7 +2516,7 @@ class DirectorMascot {
                 const def = this.stageDef();
                 const gain = this.growGain();
                 this._gainShown = gain;
-                this.glBody.setPins(def && def.pin, body.parts ? this.manifest.base + body.parts : null);
+                this.glBody.setPins(def && def.pin, body.parts ? this.manifest.base + body.parts : null, body.under ? this.manifest.base + body.under : null);
                 this.glBody.show(src, { ms: from ? ms : 0, centre: from ? this.morphCentre(from, id) : null, kick: from ? this.kickBetween(from, id) : null, cfg: (def && def.grow) || null, gain });
                 [this.el.body, this.el.bodyPrev].forEach((img) => { if (img.hasAttribute('src')) img.removeAttribute('src'); });
                 if (this._camKey !== JSON.stringify(this.camera())) {
@@ -2728,6 +2760,8 @@ class DirectorMascot {
         if (o.big) st.run = Math.max(st.run, 2);
         st.lastKickAt = now;
         const drawn = !!(def.kicky || def.rubKicky || def.gestureKicky);
+        if (!drawn && !DIRECTOR_MASCOT_BUMPS) return;
+        if (!DIRECTOR_MASCOT_BUMPS) st.run = 1;
         if (drawn) {
             const ms = directorMascotRand(kicky.durationMs, 2500);
             st.kickUntil = Math.max(st.kickUntil || 0, now + ms);
@@ -2736,7 +2770,7 @@ class DirectorMascot {
             this.render();
             this.later(() => { if (this.stageState === st && Date.now() >= st.kickUntil) { this._swapMs = 450; this.render(); } }, ms + 20);
         }
-        if (this.glOn() && Array.isArray(def.belly)) {
+        if (DIRECTOR_MASCOT_BUMPS && this.glOn() && Array.isArray(def.belly)) {
             // the drawn pose is the first bump of a run
             const count = Math.max(drawn ? st.run - 1 : st.run, drawn ? 0 : 1);
             const scale = 1 + 0.45 * (st.run - 1);
@@ -2794,12 +2828,17 @@ class DirectorMascot {
     digest() {
         const def = this.stageDef(); const st = this.stageState;
         if (!def || !st) return;
-        if (def.printed) this.showFor('printed', 6);
-        // a print going down is a big event: a run of kicks, each larger than the last, on every
-        // persona (Yumiya's too: her lumps move the surface, these move her outline)
-        this.later(() => { if (this.stageState === st) this.kickEvent({ big: true }); }, def.printed ? 1400 : 500);
-        this.later(() => { if (this.stageState === st) this.kickEvent({ big: true }); }, def.printed ? 2800 : 1900);
-        if (def.printed || def.kicky || def.rubKicky || def.gestureKicky) return;
+        if (def.printed) { this.showFor('printed', 6); if (!DIRECTOR_MASCOT_BUMPS) return; }
+        if (DIRECTOR_MASCOT_BUMPS) {
+            // a print going down is a big event: a run of kicks
+            this.later(() => { if (this.stageState === st) this.kickEvent({ big: true }); }, def.printed ? 1400 : 500);
+            this.later(() => { if (this.stageState === st) this.kickEvent({ big: true }); }, def.printed ? 2800 : 1900);
+            if (def.printed || def.kicky || def.rubKicky || def.gestureKicky) return;
+        } else if (def.kicky || def.rubKicky || def.gestureKicky) {
+            // the art's own kick, once
+            this.later(() => { if (this.stageState === st) this.kickEvent(); }, 500);
+            return;
+        }
         if (this.glOn() && Array.isArray(def.belly)) this.glBody.lumps(def.belly, 6500);
     }
 
