@@ -912,7 +912,34 @@
             tabs: [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items']],
             init: () => ({ useDesktop: todayUsesDesktop(), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall(), opts: todayOptionsStored(), optsFor: null, timeout: todayTimeout() }),
             render(el, tab, d, api) {
-                if (tab === 'wallpaper') { renderWall(el, d, api); return; }
+                // which picture Today shows is chosen on the Wallpaper tab, with its placement and
+                // effect (Yukimi, Nov 11): the device has the choice on Appearance, Melaton has a
+                // Wallpaper tab of its own and keeps the two together
+                if (tab === 'wallpaper') {
+                if (d.browsing) {
+                        const pics = galleryItems(60);
+                        el.innerHTML = `<p>Select a picture for the Today screen.</p>
+                            ${pics.length ? `<div class="wm-picker">${pics.map((it) => { const p = previewPath(it); const full = todayPictureFor(it) || p; return `<button type="button" class="wm-picker-cell${full === d.picture || p === d.picture ? ' is-selected' : ''}" data-path="${esc(full)}" aria-label="${esc(it.filename || '')}"><img src="${esc(p)}" alt="" loading="lazy" draggable="false"></button>`; }).join('')}</div>` : '<p class="wm-form-note">No pictures.</p>'}
+                            <div class="wm-buttons is-right"><button type="button" class="wm-button" data-act="done">Done</button></div>`;
+                        el.querySelectorAll('.wm-picker-cell').forEach((c) => c.addEventListener('click', () => { d.picture = c.dataset.path; d.useDesktop = false; d.browsing = false; api.rerender(); }));
+                        el.querySelector('[data-act="done"]').addEventListener('click', () => { d.browsing = false; api.rerender(); });
+                        return;
+                    }
+                    renderWall(el, d, api);
+                    const pick = document.createElement('div');
+                    pick.className = 'wm-wall-pick';
+                    pick.innerHTML = `${check('desk', 'Use desktop wallpaper', d.useDesktop)}
+                        <div class="wm-buttons is-right"><button type="button" class="wm-button" data-act="browse"${d.useDesktop ? ' disabled' : ''}>Browse</button></div>`;
+                    el.insertBefore(pick, el.firstChild);
+                    pick.querySelector('input[name="desk"]').addEventListener('change', (e) => {
+                        d.useDesktop = e.target.checked;
+                        // a custom picture needs one: Browse opens at once when none is set yet
+                        if (!d.useDesktop && !sameSite(d.picture)) d.browsing = true;
+                        api.rerender();
+                    });
+                    pick.querySelector('[data-act="browse"]').addEventListener('click', () => { d.browsing = true; api.rerender(); });
+                    return;
+                }
                 if (tab === 'items' && d.optsFor) {
                     // an item's Options (WM 6.1: Today > Items > Options...)
                     const id = d.optsFor;
@@ -969,34 +996,15 @@
                     }));
                     return;
                 }
-                if (d.browsing) {
-                    const pics = galleryItems(60);
-                    el.innerHTML = `<p>Select a picture for the Today screen.</p>
-                        ${pics.length ? `<div class="wm-picker">${pics.map((it) => { const p = previewPath(it); const full = todayPictureFor(it) || p; return `<button type="button" class="wm-picker-cell${full === d.picture || p === d.picture ? ' is-selected' : ''}" data-path="${esc(full)}" aria-label="${esc(it.filename || '')}"><img src="${esc(p)}" alt="" loading="lazy" draggable="false"></button>`; }).join('')}</div>` : '<p class="wm-form-note">No pictures.</p>'}
-                        <div class="wm-buttons is-right"><button type="button" class="wm-button" data-act="done">Done</button></div>`;
-                    el.querySelectorAll('.wm-picker-cell').forEach((c) => c.addEventListener('click', () => { d.picture = c.dataset.path; d.useDesktop = false; d.browsing = false; api.rerender(); }));
-                    el.querySelector('[data-act="done"]').addEventListener('click', () => { d.browsing = false; api.rerender(); });
-                    return;
-                }
                 el.innerHTML = `<p>Select a title bar style for your device:</p>
                     <div class="wm-listbox-side">
                         <div class="wm-listbox">${[['flat', 'Flat title bar'], ['glossy', 'Glossy title bar']].map(([v, l]) => `<button type="button" class="wm-listbox-row${d.titleBar === v ? ' is-selected' : ''}" data-tb="${v}">${esc(l)}</button>`).join('')}</div>
                         <div class="wm-preview-box" data-f="preview"></div>
-                    </div>
-                    <div class="wm-form-gap"></div>
-                    ${check('desk', 'Use desktop wallpaper', d.useDesktop)}
-                    <div class="wm-buttons is-right"><button type="button" class="wm-button" data-act="browse"${d.useDesktop ? ' disabled' : ''}>Browse</button></div>`;
+                    </div>`;
                 const prev = el.querySelector('[data-f="preview"]');
                 if (!d.useDesktop && sameSite(d.picture)) prev.style.backgroundImage = `url("${d.picture.replace(/["\\\n]/g, encodeURIComponent)}")`;
                 else prev.textContent = d.useDesktop ? 'Desktop' : '';
                 el.querySelectorAll('[data-tb]').forEach((b) => b.addEventListener('click', () => { d.titleBar = b.dataset.tb; api.rerender(); }));
-                el.querySelector('input[name="desk"]').addEventListener('change', (e) => {
-                    d.useDesktop = e.target.checked;
-                    // a custom picture needs one: Browse opens at once when none is set yet
-                    if (!d.useDesktop && !sameSite(d.picture)) d.browsing = true;
-                    api.rerender();
-                });
-                el.querySelector('[data-act="browse"]').addEventListener('click', () => { d.browsing = true; api.rerender(); });
             },
             async commit(d) {
                 // the Appearance and Items choices are local: they are kept even when the
