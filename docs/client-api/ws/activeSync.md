@@ -14,6 +14,8 @@ and the app's background service speaking the same packets) or a **computer** (a
 lowercase hex digits, made once and kept by the peer. The live state sits on the socket (`clientInfo.as`); devices and
 their partnerships persist.
 
+Only a partner may hold the service's socket: its `as_hello` is refused with `NOT_PARTNER` for any other device.
+
 A device is `pending` from its hello until a computer chose how to connect and the phone's user agreed: `guest` (this
 connection only) or `partner` (stored; later hellos connect at once). Several sockets of one device share that state.
 

@@ -19,6 +19,9 @@
  * and again on the phone. A call marked queue:true for an offline partner waits in the queue table
  * and goes out after the device's next hello.
  *
+ * Only a partner may hold the app's background link (speaker "service"): a guest is connected
+ * while its app is open, and the link's hello is refused (NOT_PARTNER) until a partnership exists.
+ *
  * The live half lives on the socket's clientInfo (info.as), so the online list is always the open
  * sockets. A device may hold several sockets (WebView and service): a call goes to the service
  * when it lists the op, else to the newest socket that does.
@@ -417,6 +420,8 @@ function hello(globalResources, wsServer, clientInfo, data) {
     }
     const d = getDb(globalResources);
     const prev = rowOf(globalResources, id);
+    // the background link is a partner's: a guest is connected only while its app is open (Yukimi, Nov 12)
+    if (as.speaker === 'service' && !(prev && prev.partner)) throw fail('NOT_PARTNER', 'The background connection needs a partnership.');
     const model = clampString(src.model, 64);
     const os = clampString(src.os, 64);
     const app = clampString(src.app, 64);
@@ -816,6 +821,10 @@ async function partnership(globalResources, wsServer, clientInfo, data) {
         if (deviceSession(server, deviceId)) {
             setDeviceSession(server, deviceId, 'pending', []);
             notifyDevice(server, deviceId, 'partnership.changed', { session: 'pending', permissions: [] }, clientInfo);
+            // the background link goes with the partnership: its socket stops being this device
+            for (const s of liveSockets(server, 'device', deviceId)) {
+                if (s.info.as.speaker === 'service') s.info.as = null;
+            }
         }
         scheduleUpdated(globalResources, server);
         return { success: true, device: describeDevice(globalResources, server, rowOf(globalResources, deviceId)) };

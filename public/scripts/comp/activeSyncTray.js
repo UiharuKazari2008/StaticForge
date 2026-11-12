@@ -7,7 +7,8 @@
  *   icon      click: Device Center; right-click: Open, each device, and the icon's own options (open
  *             Device Center for a new device, connect / disconnect balloons, the device's notifications)
  *   balloons  a device connected / disconnected (HKCU\...\Melaton Mobile Device Center\NotifyOnConnect),
- *             battery low (15% and under, not charging, once until it charges again)
+ *             battery low (15% and under, not charging, once until it charges again), battery fully
+ *             charged (100% while charging, once per charge)
  *   new device   one that waits for the choice opens Device Center (OpenOnConnect)
  */
 (function (root) {
@@ -21,6 +22,7 @@
     const LOW_BATTERY = 15;
     const seen = new Map();   // deviceId -> { online, session }
     const lowWarned = new Set();
+    const fullTold = new Set();
     let icon = null;
     let first = true;
 
@@ -64,6 +66,7 @@
                         s.items.push({ separator: true },
                             { text: 'Open Device Center when a new device connects', action: 'opt:OpenOnConnect', showIndicator: true, indicatorMark: 'check', checked: setting('OpenOnConnect') },
                             { text: 'Tell me when a device connects or disconnects', action: 'opt:NotifyOnConnect', showIndicator: true, indicatorMark: 'check', checked: setting('NotifyOnConnect') },
+                            { text: 'Tell me when a device\'s battery is low or fully charged', action: 'opt:NotifyBattery', showIndicator: true, indicatorMark: 'check', checked: setting('NotifyBattery') },
                             { text: 'Show the device\'s notifications here', action: 'opt:ShowNotifications', showIndicator: true, indicatorMark: 'check', checked: setting('ShowNotifications') });
                     }
                 }],
@@ -111,10 +114,19 @@
                 }
             }
             const b = d.online && d.status && d.status.battery;
+            // fully charged: once per charge, said again only after it was unplugged or fell below 95%
+            if (b && b.level != null) {
+                if (b.level >= 100 && b.charging === true && !fullTold.has(d.deviceId)) {
+                    fullTold.add(d.deviceId);
+                    if (!first && setting('NotifyBattery')) balloon('success', 'Battery fully charged', `${d.name} is fully charged.`);
+                } else if (b.charging === false || b.level < 95) {
+                    fullTold.delete(d.deviceId);
+                }
+            }
             if (b && b.level != null) {
                 if (b.level <= LOW_BATTERY && b.charging === false && !lowWarned.has(d.deviceId)) {
                     lowWarned.add(d.deviceId);
-                    if (!first) balloon('warning', 'Battery low', `${d.name} has ${Math.round(b.level)}% battery left.`);
+                    if (!first && setting('NotifyBattery')) balloon('warning', 'Battery low', `${d.name} has ${Math.round(b.level)}% battery left.`);
                 } else if (b.charging || b.level > LOW_BATTERY + 5) {
                     lowWarned.delete(d.deviceId);
                 }

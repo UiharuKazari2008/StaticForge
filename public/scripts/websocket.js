@@ -913,6 +913,15 @@ class WebSocketClient {
 
     static SILENT_TICKER_REQUEST_TYPES = new Set([
         'ping',
+        // ActiveSync (activeSyncAgent.js): the phone link's own traffic, relayed calls included (file
+        // listings, status, notifications); it recurs on its own and is not something the user asked for
+        'as_hello',
+        'as_list',
+        'as_call',
+        'as_partnership',
+        'as_log',
+        'as_synced',
+        'as_forget',
         'get_generation_quips',
         'get_generation_quips_status',
         'get_generation_quips_wiki',
@@ -1368,6 +1377,8 @@ class WebSocketClient {
         if (type === 'replication_delegation_status' || type === 'replication_delegation_status_response') {
             return true;
         }
+        // ActiveSync: requests, their answers and the pushes (as_request, as_event, as_peers_updated)
+        if (type.startsWith('as_')) return true;
         // one push per second for the Sidebar gadgets (modules/sidebarLiveFeed.js)
         if (type === 'sidebar_live' || type === 'sidebar_live_subscribe' || type === 'sidebar_live_subscribe_response') {
             return true;

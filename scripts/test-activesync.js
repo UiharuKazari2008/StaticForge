@@ -157,28 +157,13 @@ async function main() {
     assert.strictEqual(pc.ws.inbox[before].data.event, 'storage.changed');
     assert.deepStrictEqual(pc.ws.inbox[before].data.detail, { root: 'primary' });
 
-    // a second socket of the same device (the background service) joins the guest connection
-    const svc = connect();
-    r = as.hello(gr, server, svc.info, { kind: 'device', id: DEV, name: 'Galaxy Z Fold7', speaker: 'service', ops: ['status.*', 'storage.list', 'device.ring'] });
-    assert.strictEqual(r.session, 'guest');
-    assert.deepStrictEqual(r.device.speakers.sort(), ['service', 'webview']);
-    // an op both list goes to the service (native, alive while the WebView is paused); one only the
-    // WebView lists goes to the WebView
-    let svcAsked = 0;
-    answer(svc, () => { svcAsked += 1; return { entries: [] }; });
-    await as.call(gr, server, pc.info, { to: DEV, op: 'storage.list', args: {} });
-    assert.strictEqual(svcAsked, 1);
-    await rejects(as.call(gr, server, pc.info, { to: DEV, op: 'storage.delete', args: {} }), 'EFAIL'); // the WebView's own answer
-    assert.strictEqual(svcAsked, 1);
-    // the WebView goes away: the service answers, the device stays connected
+    // the background link is a partner's: a guest's service socket is refused
+    const svc0 = connect();
+    assert.throws(() => as.hello(gr, server, svc0.info, { kind: 'device', id: DEV, name: 'Galaxy Z Fold7', speaker: 'service', ops: ['status.*'] }), (e) => e.code === 'NOT_PARTNER');
+    assert.strictEqual(svc0.info.as, undefined);
+    server.clients.delete(svc0.ws);
     server.clients.delete(phone.ws);
     as.onSocketClosed(gr, server, phone.info);
-    r = await as.call(gr, server, pc.info, { to: DEV, op: 'storage.list', args: {} });
-    assert.strictEqual(svcAsked, 2);
-    assert.strictEqual(as.list(gr, server).devices[0].session, 'guest');
-    await rejects(as.partnership(gr, server, pc.info, { action: 'propose', deviceId: DEV, mode: 'partner', name: 'Fold' }), 'OFFLINE'); // the service shows no question
-    server.clients.delete(svc.ws);
-    as.onSocketClosed(gr, server, svc.info);
     assert.strictEqual(as.list(gr, server).devices[0].online, false);
 
     // back as a fresh connection: a guest is forgotten
@@ -202,6 +187,24 @@ async function main() {
     const changed = phone2.ws.inbox.filter((m) => m.type === 'as_event' && m.data.event === 'partnership.changed').pop();
     assert.strictEqual(changed.data.detail.session, 'partner');
     assert.strictEqual(changed.data.from.kind, 'server');
+
+    // the partner's background service joins as a second socket of the same device
+    const svc = connect();
+    r = as.hello(gr, server, svc.info, { kind: 'device', id: DEV, name: 'x', speaker: 'service', ops: ['status.*', 'storage.list', 'device.ring'] });
+    assert.strictEqual(r.session, 'partner');
+    assert.deepStrictEqual(r.device.speakers.sort(), ['service', 'webview']);
+    // an op both list goes to the service (native, alive while the WebView is paused); one only the
+    // WebView lists goes to the WebView
+    let svcAsked = 0;
+    answer(svc, () => { svcAsked += 1; return { entries: [] }; });
+    await as.call(gr, server, pc.info, { to: DEV, op: 'storage.list', args: {} });
+    assert.strictEqual(svcAsked, 1);
+    const gotBefore = got.length;
+    await as.call(gr, server, pc.info, { to: DEV, op: 'storage.stat', args: {} });
+    assert.strictEqual(svcAsked, 1);
+    assert.strictEqual(got.length, gotBefore + 1, 'the WebView answered what the service does not list');
+    server.clients.delete(svc.ws);
+    as.onSocketClosed(gr, server, svc.info);
 
     // a second device may not take the same name
     const other = connect();

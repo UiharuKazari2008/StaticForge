@@ -29,16 +29,21 @@ the WebView.
 7. Reconnect with backoff and say hello again; a partner's waiting items arrive as `as_request`s right after.
 
 The app owns the device id: `window.AndroidActiveSync.getDeviceId()` returns 32 lowercase hex digits made once and
-kept by the app, and `getDeviceName()` the phone's own name (optional). The WebView uses them when the bridge exists,
+kept by the app, and `getDeviceName()` the phone's own name (optional). `ring()` is the native find-my-device ring,
+`setSession(session)` takes the page's connection state. The WebView uses them when the bridge exists,
 so both speakers and a reinstalled WebView profile stay one device. Without the bridge the WebView keeps its own id in
 `localStorage.activeSyncPeerId`.
 
 ## Staying connected
 
-With "Stay connected to the desktop" on (the app's Settings, on by default) the foreground service and its link
-outlive the app's window: the phone stays a connected device after the app is swiped away, until the service's
-notification is closed. A partnership is what makes that useful: a guest connection ends when the last socket drops
-(a server restart, a network change), and only the page can ask the user again.
+The background link is a partner's. The server refuses a service's `as_hello` for a device without a partnership
+(`NOT_PARTNER`), and drops the service's socket as a device when its partnership ends; a guest is connected only while
+its app is open. The page tells the app how it is connected (`AndroidActiveSync.setSession(session)`), and the app
+runs the link only while it is bonded.
+
+For a bonded phone with "Stay connected to the desktop" on (the app's Settings, on by default) the foreground service
+and its link outlive the app's window and start again with the phone (`ActiveSyncBootReceiver`), until the service's
+notification is closed.
 
 ## Rules
 

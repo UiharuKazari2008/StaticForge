@@ -224,7 +224,21 @@
         }
     }
 
+    // the app keeps a background link only for a bonded phone: it hears every change of the connection
+    let toldApp = null;
+    function tellApp() {
+        if (kind !== 'device') return;
+        const session = st.online ? (st.session || 'pending') : '';
+        if (session === toldApp) return;
+        toldApp = session;
+        try {
+            const app = root.AndroidActiveSync;
+            if (app && typeof app.setSession === 'function') app.setSession(session);
+        } catch (_) { /* older app */ }
+    }
+
     function state() {
+        tellApp();
         return { kind: st.kind, id: st.id, name: st.name, online: st.online, session: st.session, permissions: st.permissions.slice(), devices: st.devices.slice(), computers: st.computers.slice() };
     }
 
