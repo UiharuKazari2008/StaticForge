@@ -88,47 +88,60 @@ html.phone-launch .launch-content::before {
     isolation: isolate;
 }
 
-/* the still rings: flattened circles (the water seen at an angle), brightest near the drop */
-.pu-hero::before {
-    content: '';
-    position: absolute;
-    inset: -40% -20%;
-    z-index: -1;
-    background: repeating-radial-gradient(ellipse 100% 42% at var(--pu-drop-x) var(--pu-drop-y),
-        rgba(255, 255, 255, 0) 0 18px,
-        rgba(190, 255, 160, 0.34) 20px,
-        rgba(255, 255, 255, 0.06) 22px,
-        rgba(10, 100, 0, 0.16) 24px,
-        rgba(255, 255, 255, 0) 27px 40px);
-    -webkit-mask-image: radial-gradient(ellipse 55% 40% at var(--pu-drop-x) var(--pu-drop-y), #000 10%, transparent 75%);
-    mask-image: radial-gradient(ellipse 55% 40% at var(--pu-drop-x) var(--pu-drop-y), #000 10%, transparent 75%);
+/* the water: true circles on a plane tilted away in 3D with perspective (Yukimi: the flattened
+ * ellipses had the wrong perspective). Seen at an angle the rings bunch up towards the far edge and
+ * open out towards the viewer, and the spreading ring does the same as it grows. The plane is a
+ * square centred on the drop; --pu-tilt is how far it leans back. */
+.pu-hero {
+    --pu-tilt: perspective(260px) rotateX(66deg);
 }
 
-/* the spreading ring: grows from the drop and fades, once every 3.6 s */
+.pu-hero::before,
 .pu-hero::after {
     content: '';
     position: absolute;
     left: var(--pu-drop-x);
     top: var(--pu-drop-y);
-    width: 320px;
-    height: 134px;
-    margin: -67px 0 0 -160px;
     z-index: -1;
     border-radius: 50%;
+    pointer-events: none;
+}
+
+/* the still rings, brightest near the drop, fading out across the water */
+.pu-hero::before {
+    width: 560px;
+    height: 560px;
+    margin: -280px 0 0 -280px;
+    transform: var(--pu-tilt);
+    background: repeating-radial-gradient(circle at 50% 50%,
+        rgba(255, 255, 255, 0) 0 18px,
+        rgba(190, 255, 160, 0.38) 20px,
+        rgba(255, 255, 255, 0.08) 22px,
+        rgba(10, 100, 0, 0.18) 24px,
+        rgba(255, 255, 255, 0) 27px 40px);
+    -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 12%, transparent 62%);
+    mask-image: radial-gradient(circle at 50% 50%, #000 12%, transparent 62%);
+}
+
+/* the spreading ring: grows from the drop across the water and fades, once every 3.6 s */
+.pu-hero::after {
+    width: 300px;
+    height: 300px;
+    margin: -150px 0 0 -150px;
     box-shadow:
-        0 0 0 2px rgba(255, 255, 255, 0.45),
-        0 0 0 9px rgba(255, 255, 255, 0.08),
-        inset 0 0 0 3px rgba(10, 100, 0, 0.2);
-    transform: scale(0.05);
+        0 0 0 3px rgba(255, 255, 255, 0.5),
+        0 0 0 11px rgba(255, 255, 255, 0.08),
+        inset 0 0 0 4px rgba(10, 100, 0, 0.22);
+    transform: var(--pu-tilt) scale(0.05);
     opacity: 0;
     animation: pu-ripple 3.6s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
     will-change: transform, opacity;
 }
 
 @keyframes pu-ripple {
-    0% { transform: scale(0.05); opacity: 0; }
+    0% { transform: var(--pu-tilt) scale(0.05); opacity: 0; }
     8% { opacity: 1; }
-    100% { transform: scale(1.6); opacity: 0; }
+    100% { transform: var(--pu-tilt) scale(1.6); opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
