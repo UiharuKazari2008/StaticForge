@@ -1157,6 +1157,10 @@
             setTimeout(() => ghost.remove(), STAGE_TICK);
         }
         popEl.hidden = true;
+        // its submenus go with it: a submenu left inside the hidden menu (Messaging's Folders /
+        // accounts list) still matched '.wm-popup:not([hidden])', and the 6.5 Start screen and
+        // home screen took every tap for one that closes a menu (Fold7, Nov 12 2026)
+        popEl.querySelectorAll(':scope > .wm-popup-sub').forEach((n) => n.remove());
         dropdownAnchor = null;
         if (popupOnClose) { const fn = popupOnClose; popupOnClose = null; fn(); }
         shell.querySelector('.wm-startmenu').hidden = true;

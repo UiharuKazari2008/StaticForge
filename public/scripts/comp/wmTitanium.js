@@ -836,7 +836,7 @@
         if (!host || sh.current !== 'today' || !page.classList.contains('is-titanium')) return;
         const t = e.target;
         if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"]')) return;
-        if (document.querySelector('#wmShell .wm-popup:not([hidden]), #wmShell .wm-msgbox-layer:not([hidden])')) return;
+        if (document.querySelector('#wmShell > .wm-popup:not([hidden]), #wmShell .wm-msgbox-layer:not([hidden])')) return;
         const at = tw ? tw.b : sel; // a key while the list moves counts from the item it is going to
         if (e.key === 'ArrowDown') { select(at + 1, true); e.preventDefault(); }
         else if (e.key === 'ArrowUp') { select(at - 1, true); e.preventDefault(); }

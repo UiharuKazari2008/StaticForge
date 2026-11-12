@@ -803,7 +803,7 @@
             id = e.pointerId;
             // a press that stops a coasting grid, or that closes an open menu (the shell closes it on
             // the click), is not a tap on the item under it
-            caught = (!!raf && Math.abs(velocity) > 0.05) || !!document.querySelector('#wmShell .wm-popup:not([hidden]):not(.wm-popup-ghost)');
+            caught = (!!raf && Math.abs(velocity) > 0.05) || !!document.querySelector('#wmShell > .wm-popup:not([hidden]):not(.wm-popup-ghost)');
             stopMotion();
             downX = e.clientX;
             downY = e.clientY;
