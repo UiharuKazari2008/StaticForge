@@ -815,9 +815,44 @@
         }));
     }
 
+    /**
+     * Restart (#760, Yukimi): a cold boot without closing the app, which is the only other way to
+     * restart Melaton Mobile on a phone. The Android app replays its start (AndroidDisplay.coldBoot:
+     * the maker's logo, the server check, /launch with its installer, the splash); a browser, or an
+     * app build without the bridge, goes through /launch the same way.
+     */
+    function coldBoot() {
+        try { if (typeof suppressWebSocketReconnectForReload === 'function') suppressWebSocketReconnectForReload(); } catch (_) { /* reload anyway */ }
+        // the leave guard reads the window property; app.js's own flag is a top-level let
+        window.bypassConfirmation = true;
+        try { if (typeof bypassConfirmation !== 'undefined') bypassConfirmation = true; } catch (_) { /* window flag is enough */ }
+        window.melatonRestarting = true;
+        const a = window.AndroidDisplay;
+        if (a && typeof a.coldBoot === 'function') {
+            try { a.coldBoot(); return; } catch (_) { /* fall back to /launch */ }
+        }
+        location.replace('/launch');
+    }
+
+    async function askColdBoot() {
+        const yes = await ui.messageBox({
+            title: 'Restart', icon: 'question',
+            text: 'Melaton Mobile will restart. Programs that are open will close. Restart now?',
+            buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }]
+        });
+        if (yes) coldBoot();
+    }
+
     function powerRender(el, tab, d, api) {
         d.rerender = api.rerender;
         d.tab = tab;
+        if (tab === 'restart') {
+            el.innerHTML = `${ui.text('Restart Melaton Mobile. It starts again from the beginning, as when the device is turned on. Programs that are open will close.')}
+                ${ui.gap()}
+                ${ui.buttons([['restart', 'Restart']], false)}`;
+            el.querySelector('[data-act="restart"]').addEventListener('click', () => { void askColdBoot(); });
+            return;
+        }
         if (!(window.wmShell && window.wmShell.version === '6.5')) {
             if (tab === 'battery') { el.innerHTML = batteryHtml61(d); bindLow(el, d); }
             else powerAdvanced61(el, d, api);
@@ -1055,7 +1090,7 @@
 
     wmSettings.registerPage({
         id: 'power', tab: 'system', label: 'Power', icon: 'set-power',
-        tabs: [['battery', 'Battery'], ['advanced', 'Advanced']],
+        tabs: [['battery', 'Battery'], ['advanced', 'Advanced'], ['restart', 'Restart']],
         init: powerInit,
         render: powerRender,
         commit: powerCommit
