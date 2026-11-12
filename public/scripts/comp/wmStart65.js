@@ -768,21 +768,34 @@
         let caught = false; // the press stopped a moving grid: not a tap
         let holdTimer = 0;
         let samples = [];
+        let lastSeen = 0; // time of the tracked pointer's last event
 
         const end = () => {
             clearTimeout(holdTimer);
             holdTimer = 0;
             id = null;
         };
+        // the press is dropped when its capture goes without a lift, when Start leaves the screen
+        // and when the page is hidden: nothing may be left waiting for a finger that is gone
+        const drop = () => { if (id === null) return; if (drag) endDrag(false); panning = false; held = false; end(); };
+        view.addEventListener('lostpointercapture', (e) => { if (e.pointerId === id) setTimeout(() => { if (id === e.pointerId) drop(); }, 0); });
+        document.addEventListener('visibilitychange', () => { if (document.hidden) drop(); });
+        new MutationObserver(() => { if ((root.dataset.wmApp || '') !== 'start') drop(); }).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
 
         view.addEventListener('pointerdown', (e) => {
             // a second finger puts a lifted icon back
             if (id !== null && drag && e.pointerId !== id) { endDrag(false); return; }
+            // a press whose lift never arrived (Start closed or hidden under the finger, the pointer
+            // capture lost: seen on the Fold, where Start then took no taps until a reload): a new
+            // primary pointer, or any press half a second after the last sign of the old one, means
+            // the old one is gone
+            if (id !== null && (e.isPrimary || e.timeStamp - lastSeen > 500)) { if (drag) endDrag(false); end(); }
             if (id !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
+            lastSeen = e.timeStamp;
             id = e.pointerId;
             // a press that stops a coasting grid, or that closes an open menu (the shell closes it on
             // the click), is not a tap on the item under it
-            caught = (!!raf && Math.abs(velocity) > 0.05) || !!document.querySelector('#wmShell .wm-popup:not([hidden])');
+            caught = (!!raf && Math.abs(velocity) > 0.05) || !!document.querySelector('#wmShell .wm-popup:not([hidden]):not(.wm-popup-ghost)');
             stopMotion();
             downX = e.clientX;
             downY = e.clientY;
@@ -804,6 +817,7 @@
 
         view.addEventListener('pointermove', (e) => {
             if (e.pointerId !== id) return;
+            lastSeen = e.timeStamp;
             if (held) {
                 // the hold is complete: the finger moving on lifts the icon (6.5.3's drag)
                 // (once per press: an icon put back by the back key stays put until the finger lifts)

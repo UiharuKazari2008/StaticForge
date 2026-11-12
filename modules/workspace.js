@@ -174,6 +174,18 @@ function normalizeWorkspaceMobileToday(raw) {
         }
         out.options = opts;
     }
+    // Melaton Mobile 6.5's Start screen order (wmStart65.js wmStart65Layout): the programs moved to
+    // the top, latest first, and each folder's own order; item keys such as "a:notes", "folder:games"
+    if (raw.start65 && typeof raw.start65 === 'object' && !Array.isArray(raw.start65)) {
+        const keys = (list) => (Array.isArray(list) ? list.filter((k) => str(k, 80)).slice(0, 300) : []);
+        const order = {};
+        if (raw.start65.order && typeof raw.start65.order === 'object' && !Array.isArray(raw.start65.order)) {
+            for (const [folder, list] of Object.entries(raw.start65.order).slice(0, 60)) {
+                if (str(folder, 80) !== null) order[folder] = keys(list);
+            }
+        }
+        out.start65 = { v: 1, top: keys(raw.start65.top), order };
+    }
     if (raw.useDesktop === '1' || raw.useDesktop === '0') out.useDesktop = raw.useDesktop;
     const bg = str(raw.background, 400);
     if (bg && /^\/[^/]/.test(bg)) out.background = bg;

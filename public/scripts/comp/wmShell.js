@@ -4349,7 +4349,7 @@
      */
     // items65: 6.5's own list; a workspace record without it (saved by 6.1, or by a server that does
     // not know the field yet) leaves this device's 6.5 list alone
-    const TODAY_PREF = [['items', 'wmTodayItems', true], ['items65', 'wmTodayItems65', true, true], ['options', 'wmTodayOptions', true], ['background', TODAY_BG_KEY, false], ['useDesktop', 'wmTodayUseDesktop', false]];
+    const TODAY_PREF = [['items', 'wmTodayItems', true], ['items65', 'wmTodayItems65', true, true], ['start65', 'wmStart65Layout', true, true], ['options', 'wmTodayOptions', true], ['background', TODAY_BG_KEY, false], ['useDesktop', 'wmTodayUseDesktop', false]];
     const TODAY_PREF_KEYS = new Set(TODAY_PREF.map(([, key]) => key));
     let todayPrefsFor = null;
 
@@ -6719,9 +6719,10 @@
             if (!vv) return 0;
             const kb = window.innerHeight - vv.height * (vv.scale || 1);
             // a few px of rounding (or Chrome's URL bar in flight) is not a keyboard; the height is
-            // fractional (377.24 CSS px on the A53): rounded up plus 1 px tucked under the keyboard,
-            // or a device row of the page showed between the soft keys and the keyboard
-            return kb > 60 ? Math.ceil(kb) + 1 : 0;
+            // fractional (377.24 CSS px on the A53): rounded down less 1 px, so the bar's bottom
+            // row is tucked under the keyboard. Rounding up (and adding 1) lifted the bar off the
+            // keyboard: a 2 px strip of the page showed between them (#760)
+            return kb > 60 ? Math.max(0, Math.floor(kb) - 1) : 0;
         };
         const unpan = () => {
             if (resetQueued) return;
@@ -6759,8 +6760,9 @@
             const d = (e && e.detail) || {};
             const px = Number(d.height);
             if (!Number.isFinite(px)) return;
-            // the app sends device px over the WebView; 0 while the keyboard is down
-            native = d.visible && px > 0 ? Math.ceil(px / (window.devicePixelRatio || 1)) + 1 : 0;
+            // the app sends device px over the WebView; 0 while the keyboard is down. Rounded down
+            // less 1 px like vvHeight: the bar ends under the keyboard's top edge, never above it
+            native = d.visible && px > 0 ? Math.max(0, Math.floor(px / (window.devicePixelRatio || 1)) - 1) : 0;
             apply();
         });
         // focus moving between fields while the keyboard stays up: keep the new one in view
