@@ -1720,6 +1720,48 @@
         if (mailNewAgain) { mailNewAgain = false; mailNewCheck(); }
     }
 
+    /**
+     * Connecting (Yukimi, Nov 12 2026, #760): while Melaton is not connected to Dreamscape yet, or
+     * reconnecting, or installing, the connectivity icon plays the ROM's own connecting animation
+     * for the link in use (shellres.192 icons: data 4724-4743, the turning arrows that settle into
+     * the data arrows; Wi-Fi 4698-4709) and goes back to the plain icon once the link is up. With no
+     * network at all there is nothing to connect over: the plain icon stays.
+     */
+    const SYNC_FRAMES = { data: 20, wifi: 12 };
+    const SYNC_FRAME_MS = 100;
+    let syncNow = null;
+    let syncTimer = null;
+    let syncFrame = 0;
+
+    function syncKind(dev) {
+        const ws = window.wsClient;
+        const up = !!(ws && typeof ws.isConnected === 'function' && ws.isConnected() && ws.initializationCompleted);
+        const installing = swDownloading() != null;
+        if (up && !installing) return null;
+        if (dev.airplane || (dev.link && /-off$/.test(dev.link.icon)) || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
+        return dev.active === 'wifi' || (dev.link && dev.link.icon.startsWith('wifi')) ? 'wifi' : 'data';
+    }
+
+    function paintSync(el, kind) {
+        if (kind === syncNow) return;
+        clearInterval(syncTimer);
+        syncTimer = null;
+        syncNow = kind;
+        if (!kind) { el.style.removeProperty('background-image'); return; }
+        syncFrame = 0;
+        const n = SYNC_FRAMES[kind];
+        const tick = () => {
+            const name = `status-${kind}-sync-${String(syncFrame).padStart(2, '0')}`;
+            // 6.5's own frames (its shellres.192, same ids; @2x / @4x only, as its other status art)
+            el.style.backgroundImage = WM65
+                ? `image-set(url("/static_images/wm65/${name}@2x.png") 2x, url("/static_images/wm65/${name}@4x.png") 4x)`
+                : `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x, url("${ART}${name}@4x.png") 4x)`;
+            syncFrame = (syncFrame + 1) % n;
+        };
+        tick();
+        syncTimer = setInterval(tick, SYNC_FRAME_MS);
+    }
+
     function refreshStatus() {
         if (!shell) return;
         applyStartButton();
@@ -1730,6 +1772,7 @@
         // the phone's own link when the Android app or the browser says what it is; else Dreamscape's
         data.dataset.icon = dev.link ? dev.link.icon : connected ? 'data-on' : 'data-off';
         data.title = dev.link ? dev.link.text : connected ? 'Connected' : 'Not connected';
+        paintSync(data, syncKind(dev));
         // Settings > Screen > Status Icons > Always show the mobile network icon: on Wi-Fi the
         // connectivity icon is Wi-Fi's, so the mobile network's type (available) shows beside it
         const cellEl = shell.querySelector('[data-role="cell"]');
@@ -3295,6 +3338,9 @@
             sections.push(connected
                 ? `Connected to Dreamscape at ${host}.${rtt != null ? ` Round trip ${rtt} ms.` : ''}`
                 : (ws && ws.connectionUi && ws.connectionUi.message) || `Not connected to Dreamscape at ${host}.`);
+            // the install / update download the connecting icon also stands for
+            const inst = swDownloading();
+            if (inst != null) sections.push(`Installing Melaton Mobile... ${Math.round(inst)}%`);
             // WM 6.1's Connectivity bubble (shellres 5588-5635): Wireless Manager at the right, a rule,
             // the sessions, then Settings | Hide
             if (!connected) sections.push({ links: [{ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() }] });
@@ -4839,17 +4885,20 @@
             if (current === 'today') today.refresh();
         }
 
-        function connectionText() {
-            const ws = window.wsClient;
-            const swm = window.serviceWorkerManager;
-            if (swm && swm.bootComplete === false && swm._bootOrchestrating && Number(swm.updateProgress) > 0 && Number(swm.updateProgress) < 100) {
-                return { text: `Installing... ${Math.round(swm.updateProgress)}%`, plain: false };
-            }
-            if (!ws) return { text: 'Not connected', plain: false };
-            if (ws.isConnected() && ws.initializationCompleted) return { text: 'Connected', plain: false };
-            if (ws.isConnected()) return { text: 'Connecting...', plain: false };
-            if (ws.connectionPhase === 'failed') return { text: 'Not connected', plain: false, tap: 'reconnect' };
-            return { text: (ws.connectionUi && ws.connectionUi.message) || 'Connecting...', plain: false };
+        /**
+         * The phone line under the time (6.1's phone row, 6.5's clock panel), as the device shows it:
+         * the carrier, or the radio's state (Yukimi, #760). Connecting / installing is the
+         * connectivity icon's animation and its bubble now (paintSync).
+         */
+        function carrierText() {
+            const dev = deviceView();
+            const c = dev.cell;
+            if (!c || c.present === false || dev.airplane || c.radioOn === false) return { text: 'Phone off', plain: false };
+            if (c.simState === 'absent') return { text: 'No SIM card', plain: false };
+            if (c.simState === 'locked') return { text: 'SIM locked', plain: false };
+            if (typeof c.operator === 'string' && c.operator.trim()) return { text: c.operator.trim(), plain: false };
+            if (c.searching === true) return { text: 'Searching...', plain: false };
+            return { text: 'No service', plain: false };
         }
 
         function tasksText() {
@@ -4993,7 +5042,7 @@
                 setText(page.querySelector('[data-f="day"]'), fmtDay.format(now));
                 setText(page.querySelector('[data-f="date"]'), fmtDate.format(now));
                 setText(page.querySelector('[data-f="time"]'), fmtTime.format(now));
-                setText(page.querySelector('[data-f="connection"]'), connectionText().text);
+                setText(page.querySelector('[data-f="connection"]'), carrierText().text);
                 const acc = window.meletonAccounts;
                 setText(page.querySelector('[data-f="owner"]'), acc && typeof acc.name === 'function' ? acc.name() : 'Owner');
                 if (mailUnread == null) {
@@ -5045,7 +5094,7 @@
                 try { if (typeof workspaces !== 'undefined' && typeof activeWorkspace !== 'undefined' && workspaces[activeWorkspace]) workspace = workspaces[activeWorkspace].name || ''; } catch (_) { /* not loaded yet */ }
                 const tasks = tasksText();
                 return {
-                    connection: connectionText(),
+                    connection: carrierText(),
                     owner: acc && typeof acc.name === 'function' ? acc.name() : '',
                     mailUnread,
                     tasks: tasks === 'No tasks' ? '' : tasks,
