@@ -28,6 +28,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `search_index_trigger` | `search_index_trigger_response` | admin/destructive | Starts an indexing sync; blocked for readonly (Yozora #700) |
 | `search_tags` | `search_tags_response` | session | Handler: handleSearchTags |
 | `spellcheck_add_word` | `spellcheck_add_word_response` | admin/destructive | Handler: handleAddWordToDictionary |
+| `spell_check_text` | `spell_check_text_response` | session | Unknown words in a text with suggestions (Messaging / Text Messages, #757) |
 
 ## Response envelope
 
@@ -461,3 +462,21 @@ Additional response/push types from handler:
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
+### `spell_check_text`
+
+**Auth:** Signed-in session (unauthenticated → `{ success: false, code: "NOT_SIGNED_IN" }`)
+
+**Handler:** modules/ws/handlers/303-spellCheckHandler.js (spell engine `modules/spellChecker.js`, Yozora #757)
+
+Spell check for text a person writes (Melaton Mobile Messaging and Text Messages): the words the engine does not know, in order, each with its place in the text.
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `text` | The text (top level or under `data`); cut at 20000 characters |
+
+**Success response:** `spell_check_text_response` with `data: { success: true, words: [{ word, start, end, suggestions[≤5] }] }`
+
+**Errors:** in the same response with `success: false`: `NOT_SIGNED_IN`, `UNAVAILABLE` (no spell engine), `ERROR`.
