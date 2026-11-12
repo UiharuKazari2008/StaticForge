@@ -182,6 +182,8 @@ function directorMascotTypedHtml(raw, count, start = 0) {
 //   kicks     a kick pose is the same picture pushed out from inside (manifest.kicks, measured by
 //             scripts/director-mascot-build.js): while the sheets change, each is moved along the kick,
 //             so her sash and seams bend into it instead of fading (Yukimi 2026-11-12);
+//   bumps     kicks of her own (every stage of every persona, #766): up to four pushes at once, each
+//             with its own place, size and timing, bending her outline and everything on it;
 //   physics   in her later stages the belly has weight (Yukimi 2026-11-11): a damped spring carries it, so
 //             when she bounces it lags behind her, overshoots and settles, stretching as it swings.
 // It draws only while something moves. Without WebGL (or after a lost context) the <img> layers and the
@@ -207,8 +209,11 @@ uniform float lit;
 uniform vec4 W1;
 uniform vec4 W2;
 uniform vec2 fW;
-uniform vec4 K1;
-uniform vec4 K2;
+uniform vec4 K1[3];
+uniform vec2 KD[3];
+uniform vec2 KA;
+uniform vec4 P1[4];
+uniform vec2 PD[4];
 float sm(float x) { x = clamp(x, 0.0, 1.0); return x * x * (3.0 - 2.0 * x); }
 // g1: the disc that moves (centre xy, radius) and how much (scale - 1); f: the point it scales about
 // g2: nothing above y moves (with a ramp), and the part of the radius that moves whole (the rest
@@ -236,14 +241,31 @@ vec2 swayInv(vec2 p) {
     }
     return q;
 }
-// a kick: K1 where (centre xy, radius, on), K2 how far (xy) and how much of it each sheet is moved
-// (z for the sheet she leaves, w for the one she takes; negative pulls a kicked sheet back in)
-vec2 kickInv(vec2 p, float amount) {
-    if (K1.w == 0.0 || amount == 0.0) return p;
+// bumps: kicks drawn on whatever sheet she shows. P1[i] where (centre xy, radius, on), PD[i] how far
+// right now (the push times its own rise, hold and fall)
+vec2 bumpInv(vec2 p) {
     vec2 q = p;
     for (int i = 0; i < 3; i++) {
-        float w = 1.0 - sm(length(q - K1.xy) / K1.z);
-        q = p - K2.xy * w * amount;
+        vec2 d = vec2(0.0);
+        for (int j = 0; j < 4; j++) {
+            if (P1[j].w > 0.5) d += PD[j] * (1.0 - sm(length(q - P1[j].xy) / P1[j].z));
+        }
+        q = p - d;
+    }
+    return q;
+}
+// a kick: up to three pushes, K1[i] where (centre xy, radius, on) and KD[i] how far; KA how much of
+// them each sheet is moved (x for the sheet she leaves, y for the one she takes; negative pulls a
+// kicked sheet back in)
+vec2 kickInv(vec2 p, float amount) {
+    if (amount == 0.0) return p;
+    vec2 q = p;
+    for (int i = 0; i < 3; i++) {
+        vec2 d = vec2(0.0);
+        for (int j = 0; j < 3; j++) {
+            if (K1[j].w > 0.5) d += KD[j] * (1.0 - sm(length(q - K1[j].xy) / K1[j].z));
+        }
+        q = p - d * amount;
     }
     return q;
 }
@@ -274,7 +296,7 @@ vec4 tx(sampler2D s, vec2 q) {
     return texture2D(s, u);
 }
 void main() {
-    vec2 p = swayInv(v * size);
+    vec2 p = bumpInv(swayInv(v * size));
     vec2 q = lit > 0.0 ? lumpInv(p) : p;
     vec2 qb = growInv(q, gB1, gB2, fB);
     vec4 b0 = tx(B, qb);
@@ -283,14 +305,14 @@ void main() {
         vec2 qa = growInv(q, gA1, gA2, fA);
         vec4 a0 = tx(A, qa);
         c = mix(a0, b0, t);
-        if (K1.w > 0.5) {
+        if (KA.x != 0.0 || KA.y != 0.0) {
             // a kick: only where the two sheets differ (her tails, her face, the rest of her dress are
             // the same picture and stay put) each sheet is moved along the kick, so what it bends is
             // one picture on its way, not two crossing
             float diff = sm((dot(abs(a0 - b0), vec4(1.0)) - 0.05) / 0.18);
             if (diff > 0.0) {
-                vec4 ak = tx(A, kickInv(qa, K2.z));
-                vec4 bk = tx(B, kickInv(qb, K2.w));
+                vec4 ak = tx(A, kickInv(qa, KA.x));
+                vec4 bk = tx(B, kickInv(qb, KA.y));
                 c = mix(c, mix(ak, bk, t), diff);
             }
         } else if (mc.z > 0.5) {
@@ -333,6 +355,7 @@ class DirectorMascotGL {
         this.B = null;                   // the sheet she shows: { url, tex, cfg, gain, tween }
         this.morph = null;
         this.lump = null;
+        this.bumps = [];                 // kicks of her own: { c, d, R, start, rise, hold, fall }
         this.sway = null;                // belly physics: { belly, x, y, vx, vy, freq, damp, last }
         this.seq = 0;
         this.ok = false;
@@ -356,8 +379,12 @@ class DirectorMascotGL {
         gl.enableVertexAttribArray(at);
         gl.vertexAttribPointer(at, 2, gl.FLOAT, false, 0, 0);
         this.u = {};
-        ['A', 'B', 'size', 't', 'gA1', 'gA2', 'fA', 'gB1', 'gB2', 'fB', 'mc', 'ms', 'lit', 'W1', 'W2', 'fW', 'K1', 'K2'].forEach((name) => { this.u[name] = gl.getUniformLocation(prog, name); });
+        ['A', 'B', 'size', 't', 'gA1', 'gA2', 'fA', 'gB1', 'gB2', 'fB', 'mc', 'ms', 'lit', 'W1', 'W2', 'fW', 'KA'].forEach((name) => { this.u[name] = gl.getUniformLocation(prog, name); });
         this.uL = [0, 1, 2, 3].map((i) => gl.getUniformLocation(prog, `L[${i}]`));
+        this.uK1 = [0, 1, 2].map((i) => gl.getUniformLocation(prog, `K1[${i}]`));
+        this.uKD = [0, 1, 2].map((i) => gl.getUniformLocation(prog, `KD[${i}]`));
+        this.uP1 = [0, 1, 2, 3].map((i) => gl.getUniformLocation(prog, `P1[${i}]`));
+        this.uPD = [0, 1, 2, 3].map((i) => gl.getUniformLocation(prog, `PD[${i}]`));
         gl.uniform1i(this.u.A, 0);
         gl.uniform1i(this.u.B, 1);
         gl.disable(gl.BLEND);
@@ -407,7 +434,7 @@ class DirectorMascotGL {
     }
 
     // Show a sheet. o: { ms, centre [x, y] | null, sA [from, to], sB [from, to], cfg (stage.grow), gain, gainTo, gainMs,
-    // kick { c, R, d, out } (a kick starting, out true, or ending: the sheets deform along it) }.
+    // kick { pushes [{ c, R, d }], out } (a kick starting, out true, or ending: the sheets deform along it) }.
     // Resolves true once it is on screen (the morph has started), false when it could not be loaded.
     show(url, o = {}) {
         const token = ++this.seq;
@@ -467,6 +494,15 @@ class DirectorMascotGL {
     lumps(belly, ms) {
         if (!this.ok || !Array.isArray(belly)) return;
         this.lump = { belly, start: performance.now(), ms };
+        this.kick();
+    }
+
+    // A kick of her own: the picture is pushed by d (sheet pixels) around c with radius R. It snaps out
+    // (a little past its size), holds with a tremble, and sinks back. o: { rise, hold, fall } in ms.
+    bump(c, d, R, o = {}) {
+        if (!this.ok) return;
+        if (this.bumps.length >= 4) this.bumps.shift();
+        this.bumps.push({ c, d, R, start: performance.now(), rise: o.rise || 120, hold: o.hold || 400, fall: o.fall || 460 });
         this.kick();
     }
 
@@ -550,12 +586,17 @@ class DirectorMascotGL {
         // a kick under way: the sheet she leaves is moved toward the kick (or back from it), the one she
         // takes arrives from the other side, and they meet as the same picture
         if (m && m.kick && this.A) {
-            const kc = m.kick;
-            gl.uniform4f(this.u.K1, kc.c[0], kc.c[1], kc.R, 1);
-            gl.uniform4f(this.u.K2, kc.d[0], kc.d[1], kc.out ? t : -t, kc.out ? -(1 - t) : (1 - t));
+            const list = m.kick.pushes;
+            for (let i = 0; i < 3; i++) {
+                const kc = list[i];
+                if (kc) { gl.uniform4f(this.uK1[i], kc.c[0], kc.c[1], kc.R, 1); gl.uniform2f(this.uKD[i], kc.d[0], kc.d[1]); }
+                else { gl.uniform4f(this.uK1[i], 0, 0, 1, 0); gl.uniform2f(this.uKD[i], 0, 0); }
+            }
+            // t = 0 is exactly the sheet she leaves; the smallest amount keeps the shader on this path
+            const out = m.kick.out;
+            gl.uniform2f(this.u.KA, (out ? 1 : -1) * Math.max(t, 0.0001), (out ? -1 : 1) * (1 - t));
         } else {
-            gl.uniform4f(this.u.K1, 0, 0, 1, 0);
-            gl.uniform4f(this.u.K2, 0, 0, 0, 0);
+            gl.uniform2f(this.u.KA, 0, 0);
         }
         // lumps: three bulges that drift around the belly and swell in turn
         let lit = 0;
@@ -586,6 +627,38 @@ class DirectorMascotGL {
             }
         }
         gl.uniform1f(this.u.lit, lit);
+        // kicks of her own: each push at its own point of its rise, hold and fall
+        if (this.bumps.length) {
+            this.bumps = this.bumps.filter((bp) => now - bp.start < bp.rise + bp.hold + bp.fall);
+            const g = this.gainOf(b, now);
+            const cfg = b.cfg;
+            const fx = cfg ? (cfg.f || cfg.a) : null;
+            for (let i = 0; i < 4; i++) {
+                const bp = this.bumps[i];
+                if (!bp) { gl.uniform4f(this.uP1[i], 0, 0, 1, 0); gl.uniform2f(this.uPD[i], 0, 0); continue; }
+                const age = now - bp.start;
+                let a;
+                if (age < bp.rise) {
+                    // out fast and a little too far, then back to size
+                    const x = age / bp.rise - 1;
+                    a = 1 + 2.4 * x * x * x + 1.4 * x * x;
+                } else if (age < bp.rise + bp.hold) {
+                    a = 1 + 0.07 * Math.sin((age - bp.rise) / 55);
+                } else {
+                    const x = (age - bp.rise - bp.hold) / bp.fall;
+                    a = 1 - x * x * (3 - 2 * x);
+                }
+                // her size moves the place and the reach with her belly (as the lumps' do)
+                const cx = fx ? fx[0] + (bp.c[0] - fx[0]) * g : bp.c[0];
+                const cy = fx ? fx[1] + (bp.c[1] - fx[1]) * g : bp.c[1];
+                gl.uniform4f(this.uP1[i], cx, cy, bp.R * g, 1);
+                gl.uniform2f(this.uPD[i], bp.d[0] * a * g, bp.d[1] * a * g);
+            }
+            if (this.bumps.length) moving = true;
+        } else if (this._bumpsWere) {
+            for (let i = 0; i < 4; i++) { gl.uniform4f(this.uP1[i], 0, 0, 1, 0); gl.uniform2f(this.uPD[i], 0, 0); }
+        }
+        this._bumpsWere = this.bumps.length > 0;
         // belly physics: one damped spring per axis, stepped in real time (small fixed steps)
         const sw = this.sway;
         if (sw) {
@@ -1298,20 +1371,22 @@ class DirectorMascot {
         return 1 + (def.grow.max - 1) * f;
     }
 
-    // A kick starting or ending between two poses (manifest.kicks["plain|kicked"], sized sheets share
-    // their pose's entry): { c, R, d, out } for the shader, or null for any other change.
+    // A kick starting or ending between two poses (manifest.kicks["plain|kicked"]: the pushes fitted to
+    // the art, one per place the sheets differ; sized sheets share their pose's entry): { pushes, out }
+    // for the shader, or null for any other change.
     kickBetween(a, b) {
         const kicks = this.manifest && this.manifest.kicks;
         if (!kicks || !a || !b) return null;
         const plain = (id) => String(id).replace(/_(?:g|p)\d$/, '');
         const from = plain(a); const to = plain(b);
-        if (kicks[`${from}|${to}`]) return { ...kicks[`${from}|${to}`], out: true };
-        if (kicks[`${to}|${from}`]) return { ...kicks[`${to}|${from}`], out: false };
-        // from another pose of the stage (a gesture into the plain kick): the kicked pose's own push
-        const into = Object.keys(kicks).find((key) => key.endsWith(`|${to}`));
-        if (into) return { ...kicks[into], out: true };
-        const outOf = Object.keys(kicks).find((key) => key.endsWith(`|${from}`));
-        if (outOf) return { ...kicks[outOf], out: false };
+        const list = (key) => (Array.isArray(kicks[key]) && kicks[key].length ? kicks[key] : null);
+        if (list(`${from}|${to}`)) return { pushes: list(`${from}|${to}`), out: true };
+        if (list(`${to}|${from}`)) return { pushes: list(`${to}|${from}`), out: false };
+        // from another pose of the stage (a gesture into the plain kick): the kicked pose's own pushes
+        const into = Object.keys(kicks).find((key) => key.endsWith(`|${to}`) && list(key));
+        if (into) return { pushes: list(into), out: true };
+        const outOf = Object.keys(kicks).find((key) => key.endsWith(`|${from}`) && list(key));
+        if (outOf) return { pushes: list(outOf), out: false };
         return null;
     }
 
@@ -1467,21 +1542,17 @@ class DirectorMascot {
             this.render();
             return;
         }
-        // Random kicks.
-        const kicky = b.kicky;
-        if (kicky && kicky.stage === st.stage && this.stageDef() && (this.stageDef().kicky || this.stageDef().rubKicky || this.stageDef().gestureKicky)) {
-            if (!st.nextKickAt) st.nextKickAt = now + directorMascotRand(kicky.everySec, 45) * 1000;
+        // Random kicks: every stage of every persona (Yukimi 2026-11-12). Where the stage has a drawn
+        // kick pose it shows; her own bumps (the shader body) cover the rest and add to it.
+        const kicky = b.kicky || {};
+        if (this.stageDef() && Array.isArray(this.stageDef().belly)) {
+            const every = kicky.everySec || [25, 90];
+            if (!st.nextKickAt) st.nextKickAt = now + directorMascotRand(every, 45) * 1000;
             if (now >= st.nextKickAt) {
-                st.kickUntil = now + directorMascotRand(kicky.durationMs, 2500);
-                if (!st.firstKickAt) st.firstKickAt = now;
-                st.nextKickAt = now + directorMascotRand(kicky.everySec, 45) * 1000;
-                if (kicky.jiggle) this.act('jiggle');
-                // Half the kicks catch her off guard (Yukimi: sometimes surprised / "oh").
-                if (Math.random() < 0.5) this.cue({ expression: 'surprised', holdMs: 1400 });
-                // The kick fades in and back out instead of popping.
-                this._swapMs = 450;
-                this.render();
-                this.later(() => { this._swapMs = 450; this.render(); }, st.kickUntil - now + 20);
+                st.nextKickAt = now + directorMascotRand(every, 45) * 1000;
+                // now and then two or three come back to back
+                const run = Math.random() < 0.3 ? (Math.random() < 0.35 ? 3 : 2) : 1;
+                for (let i = 0; i < run; i++) this.later(() => this.kickEvent(), i * 1500);
             }
         }
         // Random rubs / gestures (chance per minute).
@@ -2539,26 +2610,75 @@ class DirectorMascot {
         }, DURATION * 0.52);
     }
 
+    // One kick. Kicks that come back to back stack (a run): each is larger than the one before and
+    // brings another bump with it, so a run reads as an event (Yukimi 2026-11-12). The drawn kick pose
+    // shows where the stage has one (it deforms into place: manifest.kicks); her own bumps (the shader
+    // body) are extra, each at its own spot on the belly's far side with its own timing.
+    kickEvent(o = {}) {
+        const st = this.stageState; const def = this.stageDef();
+        if (!st || !def || this._shown === false) return;
+        const now = Date.now();
+        const kicky = (this.manifest.behaviour && this.manifest.behaviour.kicky) || {};
+        st.run = now - (st.lastKickAt || 0) < 7000 ? Math.min(3, (st.run || 1) + 1) : 1;
+        if (o.big) st.run = Math.max(st.run, 2);
+        st.lastKickAt = now;
+        const drawn = !!(def.kicky || def.rubKicky || def.gestureKicky);
+        if (drawn) {
+            const ms = directorMascotRand(kicky.durationMs, 2500);
+            st.kickUntil = Math.max(st.kickUntil || 0, now + ms);
+            if (!st.firstKickAt) st.firstKickAt = now;
+            this._swapMs = 450;
+            this.render();
+            this.later(() => { if (this.stageState === st && Date.now() >= st.kickUntil) { this._swapMs = 450; this.render(); } }, ms + 20);
+        }
+        if (this.glOn() && Array.isArray(def.belly)) {
+            // the drawn pose is the first bump of a run
+            const count = Math.max(drawn ? st.run - 1 : st.run, drawn ? 0 : 1);
+            const scale = 1 + 0.45 * (st.run - 1);
+            for (let i = 0; i < count; i++) this.later(() => { if (this.stageState === st) this.bumpOnce(scale); }, (drawn ? 240 : 0) + i * (170 + Math.random() * 120));
+        }
+        if (kicky.jiggle !== false || st.run > 1) this.act('jiggle');
+        // half of them catch her off guard; a run always does
+        if (st.run > 1 || Math.random() < 0.5) this.cue({ expression: 'surprised', holdMs: st.run > 1 ? 1800 : 1400 });
+    }
+
+    // One bump of her own: on the far side of her belly from her (toward the top and the front, where
+    // the outline shows), not where the last one was. The push leaves the belly swinging.
+    bumpOnce(scale) {
+        const def = this.stageDef(); const st = this.stageState;
+        if (!def || !st || !this.glOn() || !Array.isArray(def.belly)) return;
+        const [cx, cy, r] = def.belly;
+        const front = this.manifest.anchor === 'left' ? 0 : Math.PI;
+        const up = this.manifest.anchor === 'left' ? -1 : 1;
+        let ang = 0;
+        for (let tries = 0; tries < 6; tries++) {
+            // from 80 degrees above straight ahead to 50 below
+            ang = front + up * (Math.random() * 2.27 - 0.87);
+            if (st.lastBumpAng == null || Math.abs(ang - st.lastBumpAng) > 0.45) break;
+        }
+        st.lastBumpAng = ang;
+        const dir = [Math.cos(ang), Math.sin(ang)];
+        // pronounced: a tenth of the belly's radius and more, half as much again per kick of a run
+        // (the reach widens with it, so the picture never folds over itself)
+        const size = r * (0.1 + Math.random() * 0.04) * scale;
+        this.glBody.bump([cx + dir[0] * r, cy + dir[1] * r], [dir[0] * size, dir[1] * size], r * (0.3 + 0.09 * scale), { hold: 260 + Math.random() * 420 });
+        const order = directorMascotGrowth(this.manifest).order;
+        const at = order.indexOf(st.stage);
+        if (at >= 1 && order.length > 1) this.glBody.wobble(def.belly, dir[0] * 0.45 * scale, dir[1] * 0.45 * scale, at / (order.length - 1));
+    }
+
     // What her belly does once a print is down (#742): the stage's own after-print body where the set
     // has one (Yumiya's lumpy belly), else a kick where the stage has a kicky pose (Chiyo, Yozora),
     // else lumps that wander over the belly for a while (the shader body; Yumiya's lower stage).
     digest() {
         const def = this.stageDef(); const st = this.stageState;
         if (!def || !st) return;
-        if (def.printed) { this.showFor('printed', 6); return; }
-        if (def.kicky || def.rubKicky || def.gestureKicky) {
-            this.later(() => {
-                if (this.stageState !== st) return;
-                const now = Date.now();
-                st.kickUntil = now + 2800;
-                if (!st.firstKickAt) st.firstKickAt = now;
-                this._swapMs = 450;
-                this.render();
-                this.act('jiggle');
-                this.later(() => { this._swapMs = 450; this.render(); }, 2820);
-            }, 500);
-            return;
-        }
+        if (def.printed) this.showFor('printed', 6);
+        // a print going down is a big event: a run of kicks, each larger than the last, on every
+        // persona (Yumiya's too: her lumps move the surface, these move her outline)
+        this.later(() => { if (this.stageState === st) this.kickEvent({ big: true }); }, def.printed ? 1400 : 500);
+        this.later(() => { if (this.stageState === st) this.kickEvent({ big: true }); }, def.printed ? 2800 : 1900);
+        if (def.printed || def.kicky || def.rubKicky || def.gestureKicky) return;
         if (this.glOn() && Array.isArray(def.belly)) this.glBody.lumps(def.belly, 6500);
     }
 

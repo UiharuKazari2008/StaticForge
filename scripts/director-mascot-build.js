@@ -392,8 +392,8 @@ async function buildMeta() {
         }
         // Kicks (#766): a kick is the same picture pushed out from inside, so the pose change is drawn as
         // a deformation, not a blend. For each un-kicked / kicked pair of a stage: where the two sheets
-        // differ (c), how wide (R), and how far her outline moved there (d, a vector out from the belly's
-        // middle, measured along rays through c on both sheets). The shader moves the picture by d while
+        // differ (c), how wide (R), and how far the picture moved there (d), fitted to the art below; a list,
+        // one entry per place the sheets differ. The shader moves the picture by d while
         // it changes sheets, so her sash and seams bend into the kick instead of fading into it.
         m.kicks = {};
         for (const [stageId] of Object.entries(GROW[persona])) {
@@ -412,57 +412,100 @@ async function buildMeta() {
                     if (d > 90) { const px = (i / 4) % W; const py = Math.floor(i / 4 / W); sx += px; sy += py; n += 1; hits.push(px, py); }
                 }
                 if (n < 30) continue;
-                const cx = sx / n; const cy = sy / n;
-                let spread = 0;
-                for (let k = 0; k < hits.length; k += 2) spread += (hits[k] - cx) ** 2 + (hits[k + 1] - cy) ** 2;
-                spread = Math.sqrt(spread / n);
-                // Fit the push to the art: move the plain sheet by d with the shader's own fall-off
-                // (1 - smoothstep(r / R)) about the middle of what differs, and keep the size, width
-                // and angle that leave it closest to the kicked sheet. (Her outline alone is no
-                // measure: tails and sleeves stand behind the belly.)
-                const bx = stage.belly[0] / 2; const by = stage.belly[1] / 2;
-                const base = Math.atan2(cy - by, cx - bx);
+                // A kick sheet can differ in more than one place (Yozora: the bulge at her side and the
+                // sash bending over a second bump): each place gets its own push. Places = groups of
+                // differing pixels that touch on a 10 px grid.
+                const CELL = 10;
+                const cells = new Map();
+                for (let k = 0; k < hits.length; k += 2) {
+                    const key = `${Math.floor(hits[k] / CELL)},${Math.floor(hits[k + 1] / CELL)}`;
+                    if (!cells.has(key)) cells.set(key, []);
+                    cells.get(key).push(hits[k], hits[k + 1]);
+                }
+                const groups = [];
+                const seen = new Set();
+                for (const key of cells.keys()) {
+                    if (seen.has(key)) continue;
+                    const group = [];
+                    const queue = [key];
+                    seen.add(key);
+                    while (queue.length) {
+                        const cur = queue.pop();
+                        group.push(...cells.get(cur));
+                        const [gx, gy] = cur.split(',').map(Number);
+                        for (let oy = -2; oy <= 2; oy += 1) {
+                            for (let ox = -2; ox <= 2; ox += 1) {
+                                const next = `${gx + ox},${gy + oy}`;
+                                if (cells.has(next) && !seen.has(next)) { seen.add(next); queue.push(next); }
+                            }
+                        }
+                    }
+                    if (group.length / 2 >= 24) groups.push(group);
+                }
+                groups.sort((g1, g2) => g2.length - g1.length);
                 const sm = (x) => { const v = Math.max(0, Math.min(1, x)); return v * v * (3 - 2 * v); };
                 const px = (img, x, y, ch) => {
                     const xi = Math.max(0, Math.min(W - 1, Math.round(x))); const yi = Math.max(0, Math.min(H - 1, Math.round(y)));
                     return img.data[(yi * W + xi) * 4 + ch];
                 };
-                const cost = (dx, dy, R) => {
-                    const reach = Math.ceil(Math.max(R, spread * 2.5));
-                    let sum = 0;
-                    for (let y = Math.max(0, Math.round(cy - reach)); y < Math.min(H, cy + reach); y += 2) {
-                        for (let x = Math.max(0, Math.round(cx - reach)); x < Math.min(W, cx + reach); x += 2) {
-                            const w = 1 - sm(Math.hypot(x - cx, y - cy) / R);
-                            const ax = x - dx * w; const ay = y - dy * w;
-                            const i = (y * W + x) * 4;
-                            sum += Math.abs(px(A, ax, ay, 0) - B.data[i]) + Math.abs(px(A, ax, ay, 1) - B.data[i + 1])
-                                + Math.abs(px(A, ax, ay, 2) - B.data[i + 2]) + Math.abs(px(A, ax, ay, 3) - B.data[i + 3]);
+                const pushes = [];
+                for (const group of groups.slice(0, 3)) {
+                    let gx = 0, gy = 0;
+                    const gn = group.length / 2;
+                    for (let k = 0; k < group.length; k += 2) { gx += group[k]; gy += group[k + 1]; }
+                    const cx = gx / gn; const cy = gy / gn;
+                    let spread = 0;
+                    for (let k = 0; k < group.length; k += 2) spread += (group[k] - cx) ** 2 + (group[k + 1] - cy) ** 2;
+                    spread = Math.sqrt(spread / gn);
+                    // Fit the push to the art: move the plain sheet by d with the shader's own fall-off
+                    // (1 - smoothstep(r / R)) about the middle of this place, and keep the size, width
+                    // and angle that leave it closest to the kicked sheet. (Her outline alone is no
+                    // measure: tails and sleeves stand behind the belly.)
+                    const cost = (dx, dy, R) => {
+                        const reach = Math.ceil(Math.max(R, spread * 2.5));
+                        let sum = 0;
+                        for (let y = Math.max(0, Math.round(cy - reach)); y < Math.min(H, cy + reach); y += 2) {
+                            for (let x = Math.max(0, Math.round(cx - reach)); x < Math.min(W, cx + reach); x += 2) {
+                                const w = 1 - sm(Math.hypot(x - cx, y - cy) / R);
+                                const ax = x - dx * w; const ay = y - dy * w;
+                                const i = (y * W + x) * 4;
+                                sum += Math.abs(px(A, ax, ay, 0) - B.data[i]) + Math.abs(px(A, ax, ay, 1) - B.data[i + 1])
+                                    + Math.abs(px(A, ax, ay, 2) - B.data[i + 2]) + Math.abs(px(A, ax, ay, 3) - B.data[i + 3]);
+                            }
+                        }
+                        return sum;
+                    };
+                    const still = cost(0, 0, 100);
+                    let fit = { cost: still, score: still, d: 0, ang: 0, R: 100 };
+                    // A line sliding along itself matches as well as one moving sideways, so the angle is
+                    // held: at her outline a kick pushes straight out from the belly's middle (a little
+                    // either way); only a bump inside the belly (her sash bending) may point anywhere.
+                    // A longer push has to earn its length.
+                    const bx = stage.belly[0] / 2; const by = stage.belly[1] / 2;
+                    const radial = Math.atan2(cy - by, cx - bx);
+                    const rim = Math.hypot(cx - bx, cy - by) > (stage.belly[2] / 2) * 0.6;
+                    const angles = [];
+                    if (rim) { for (let off = -0.3; off <= 0.3001; off += 0.1) angles.push(radial + off); }
+                    else { for (let ang = 0; ang < Math.PI * 2 - 0.001; ang += Math.PI / 12) angles.push(ang); }
+                    for (const R of [40, 55, 70, 95, 125, 160, 200, 250]) {
+                        for (const ang of angles) {
+                            for (let d = 2; d <= 44; d += 2) {
+                                const c0 = cost(Math.cos(ang) * d, Math.sin(ang) * d, R);
+                                const score = c0 * (1 + d * 0.006);
+                                if (score < fit.score) fit = { cost: c0, score, d, ang, R };
+                            }
                         }
                     }
-                    return sum;
-                };
-                const still = cost(0, 0, 100);
-                let fit = { cost: still, d: 0, ang: base, R: 100 };
-                for (const R of [50, 70, 95, 125, 160, 200, 250]) {
-                    for (let off = -0.5; off <= 0.5001; off += 0.125) {
-                        for (let d = 2; d <= 44; d += 2) {
-                            const c0 = cost(Math.cos(base + off) * d, Math.sin(base + off) * d, R);
-                            if (c0 < fit.cost) fit = { cost: c0, d, ang: base + off, R };
-                        }
+                    const at = [Math.round(cx * 2), Math.round(cy * 2)];
+                    if (fit.d < 2 || fit.cost > still * 0.92) {
+                        console.log(`${persona}: ${from}|${to} at ${at}: no push fits (${Math.round((fit.cost / still) * 100)} % left), left to the blend`);
+                        continue;
                     }
+                    const push = { c: at, R: fit.R * 2, d: [Math.round(Math.cos(fit.ang) * fit.d * 2), Math.round(Math.sin(fit.ang) * fit.d * 2)], fit: Math.round((fit.cost / still) * 100) };
+                    pushes.push(push);
+                    console.log(`${persona}: ${from}|${to} kick at ${push.c} R ${push.R} moves ${push.d} (${push.fit} % of the difference left)`);
                 }
-                if (fit.d < 3 || fit.cost > still * 0.9) {
-                    console.log(`${persona}: ${from}|${to} no push fits this kick (${Math.round((fit.cost / still) * 100)} % left): left to the blend`);
-                    continue;
-                }
-                const R = fit.R * 2;
-                m.kicks[`${from}|${to}`] = {
-                    c: [Math.round(cx * 2), Math.round(cy * 2)],
-                    R,
-                    d: [Math.round(Math.cos(fit.ang) * fit.d * 2), Math.round(Math.sin(fit.ang) * fit.d * 2)],
-                    fit: Math.round((fit.cost / still) * 100)
-                };
-                console.log(`${persona}: ${from}|${to} kick at ${m.kicks[`${from}|${to}`].c} R ${R} moves ${m.kicks[`${from}|${to}`].d} (${m.kicks[`${from}|${to}`].fit} % of the difference left)`);
+                if (pushes.length) m.kicks[`${from}|${to}`] = pushes;
             }
         }
         writeManifest(persona, m);
