@@ -29,6 +29,9 @@
 
     // tasks other files add to a tile: { id, text, icon, when(device) -> bool, run(device, center) }
     const extraTasks = { programs: [], media: [], files: [], settings: [] };
+    // wmdc.exe.mui DIALOG 102 (Connection Settings), from the VM (~/.cache/vista-vm/wmdc-ref/res/pe); OK carries
+    // BS_DEFPUSHBUTTON, the default the dialog manager gives IDOK
+    const CONNECTION_SETTINGS_TPL = {"t":"Connection Settings","w":304,"h":159,"f":["MS Shell Dlg",8],"s":13116360,"c":[[1011,"S",5,4,8,8,1342177419,"Device status icon",0],[1002,"S",5,5,21,20,1342177411,"#2000",0],[1003,"S",31,4,255,10,1342308352,"Waiting for device to connect",0],[1014,"S",31,14,255,10,1073872896,"Some settings may be disabled by Group Policy",0],[-1,"S",5,30,294,1,1342177424,"",0],[1006,"B",5,39,281,9,1342252035,"Allow &USB connections",0],[1007,"B",5,52,281,9,1342251011,"Allow co&nnections to one of the following:",0],[1012,"S",17,60,8,8,1342177419,"Connection selection dropdown",0],[1008,"C",17,63,135,92,1344339971,"",0],[-1,"S",5,79,281,10,1342308352,"This computer is connected &to:",0],[1009,"C",5,89,147,92,1344339971,"",0],[1016,"B",6,107,280,11,1342242819,"Allow auto&matic device authentication",0],[1013,"B",6,120,280,11,1342242819,"Allow &data connections on device when connected to PC",0],[-1,"S",5,133,294,1,1342177424,"",0],[1,"B",194,141,50,14,1342242817,"OK",0],[2,"B",249,141,50,14,1342242816,"Cancel",0]]};
     const TILES = [
         { id: 'programs', title: 'Programs and Services', icon: 'programs-64.png' },
         { id: 'media', title: 'Pictures, Music and Video', icon: 'media-64.png' },
@@ -86,9 +89,10 @@
             m.dataset.taskbarIcon = `${A}/activesync-32.png`;
             // one size: a stored place is kept, a stored size never applies
             m.dataset.windowDefaultWidth = '800';
-            m.dataset.windowDefaultHeight = '616';
+            m.dataset.windowDefaultHeight = '600';
+            m.dataset.windowFixedSize = 'true';
             m.style.width = '800px';
-            m.style.height = '616px'; // the shared 75 px caption and toolbar, the 534 px stage, the 7 px frame
+            m.style.height = '600px'; // the VM's 800 x 600: caption and toolbar band to y=57, the 784 x 535 client, the 8 px frame
             m.setAttribute('role', 'dialog');
             m.setAttribute('aria-label', NAME);
             m.innerHTML = `
@@ -103,12 +107,13 @@
                 <div class="modal-focus-overlay"></div>
                 <div class="modal-window-controls">
                     <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
+                    <button type="button" class="btn-secondary maximize-btn btn-small" title="Maximize" disabled><i class="fa-regular fa-window-maximize"></i></button>
                     <button type="button" class="btn-danger close-btn btn-small asdc-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
                 </div>
                 <div class="modal-content asdc-client">
                     <div class="asdc-root">
                         <div class="asdc-stage">
-                            <div class="asdc-logo"><img src="/static_images/melaton/melaton-glass-256.png" alt=""><b>Melaton</b><i>Mobile</i></div>
+                            <div class="asdc-logo"><img src="/static_images/wm61/boot-melaton.png" alt=""><b>Melaton</b><i>Mobile</i></div>
                             <img class="asdc-device" alt="" draggable="false">
                             <div class="asdc-status"><img alt=""><span></span></div>
                             <div class="asdc-body"></div>
@@ -445,24 +450,69 @@
             this.render();
         }
 
+        /**
+         * Connection Settings: WMDC's own dialog (wmdc.exe.mui DIALOG 102, drawn by vistaDialogTemplate),
+         * its strings from the string table (3000-3007). The status line is bold, as WMDC sets it; the
+         * picture is the program's icon 2000. The device's own link is the "USB" connection here; the
+         * values are kept under HKCU\Software\Xyridian\Melaton Mobile Device Center (the tray's
+         * OpenOnConnect / NotifyOnConnect sit there too, with no page of their own, as in WMDC).
+         */
         async connectionSettings() {
             const reg = root.melatonRegistry;
-            const get = (n) => (reg ? reg.get(REG, n, 1) : 1) !== 0;
-            const id = `asdcConn${Date.now()}`;
-            const html = `<p><b>${this.device() && this.device().online ? 'Connected' : 'Waiting for device to connect'}</b></p>
-                <label class="asdc-check"><input type="checkbox" id="${id}Open"${get('OpenOnConnect') ? ' checked' : ''}> Open Mobile Device Center when a new device connects</label>
-                <label class="asdc-check"><input type="checkbox" id="${id}Notify"${get('NotifyOnConnect') ? ' checked' : ''}> Show a notification when a device connects or disconnects</label>`;
-            const read = () => ({ open: doc.getElementById(`${id}Open`), notify: doc.getElementById(`${id}Notify`) });
-            let picked = null;
-            const grab = () => { const r = read(); if (r.open && r.notify) picked = { OpenOnConnect: r.open.checked ? 1 : 0, NotifyOnConnect: r.notify.checked ? 1 : 0 }; };
-            doc.addEventListener('change', grab, true);
-            let ok;
-            try {
-                ok = await call('showConfirmationDialog', html, [{ text: 'OK', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], null, { title: 'Connection Settings', width: 420 });
-            } finally {
-                doc.removeEventListener('change', grab, true);
-            }
-            if (ok === true && picked && reg) void reg.set(REG, picked);
+            if (root.featureLoader && !root.vistaDialogTemplate) { try { await root.featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* no dialog */ } }
+            if (!root.vistaDialogTemplate) return;
+            const get = (n, d) => { const v = reg ? reg.get(REG, n, d) : d; return v == null ? d : v; };
+            const PORTS = ['Bluetooth', 'Infrared (IR)'];
+            const NETWORKS = ['Automatic', 'The Internet', 'Work Network'];
+            const statusText = (ctx) => {
+                if (!ctx.get(1006) && !ctx.get(1007)) return 'Connection disabled';
+                return this.device() && this.device().online ? 'Device connected' : 'Waiting for device to connect';
+            };
+            root.vistaDialogTemplate.openDialog({
+                id: 'asdcConnectionSettings',
+                owner: this.modal,
+                icon: `${A}/activesync-16.png`,
+                captionIcon: true,
+                help: true,
+                tpl: CONNECTION_SETTINGS_TPL,
+                overrides: { 1011: { skip: true }, 1012: { skip: true }, 1002: { image: `${A}/activesync-32.png` } },
+                init: (ctx) => {
+                    ctx.el(1003).style.fontWeight = 'bold';
+                    ctx.set(1006, get('AllowUSB', 1) !== 0);
+                    ctx.set(1007, get('AllowOther', 1) !== 0);
+                    ctx.options(1008, PORTS, PORTS.includes(get('OtherPort', 'Bluetooth')) ? get('OtherPort', 'Bluetooth') : 'Bluetooth');
+                    ctx.options(1009, NETWORKS, NETWORKS.includes(get('ConnectedTo', 'Automatic')) ? get('ConnectedTo', 'Automatic') : 'Automatic');
+                    ctx.set(1016, get('AutoAuthenticate', 1) !== 0);
+                    ctx.set(1013, get('AllowDataConnections', 0) !== 0);
+                    const sync = () => {
+                        ctx.el(1008).disabled = !ctx.get(1007);
+                        ctx.text(1003, statusText(ctx));
+                    };
+                    ctx.on(1006, 'change', sync);
+                    ctx.on(1007, 'change', sync);
+                    sync();
+                    // the line follows a device coming and going while the dialog is open
+                    const a = as();
+                    if (a) {
+                        const off = a.on('state', () => { if (!ctx.modal.isConnected) { off(); return; } ctx.text(1003, statusText(ctx)); });
+                        ctx.store.off = off;
+                    }
+                },
+                ok: (ctx) => {
+                    if (reg) {
+                        void reg.set(REG, {
+                            AllowUSB: ctx.get(1006) ? 1 : 0,
+                            AllowOther: ctx.get(1007) ? 1 : 0,
+                            OtherPort: String(ctx.get(1008) || 'Bluetooth'),
+                            ConnectedTo: String(ctx.get(1009) || 'Automatic'),
+                            AutoAuthenticate: ctx.get(1016) ? 1 : 0,
+                            AllowDataConnections: ctx.get(1013) ? 1 : 0
+                        });
+                    }
+                    return true;
+                },
+                close: (ctx) => { if (ctx.store.off) ctx.store.off(); }
+            });
         }
 
         async about() {

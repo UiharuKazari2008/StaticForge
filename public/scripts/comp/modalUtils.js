@@ -7807,7 +7807,14 @@ const START_MENU_PACKAGE_APPS = [
     ['ispy', 'Image Search'],
     ['character-db', 'Characters'],
     ['expanders', 'Expanders'],
-    ['presets', 'Spellbook']
+    ['presets', 'Spellbook'],
+    // Yukimi, Nov 11: the server's own tools are the suite's too, not Accessories
+    ['control-panel', 'Server Manager'],
+    ['data-management', 'Data Management'],
+    ['config-editor', 'Runes'],
+    ['event-viewer', 'Periscope'],
+    ['emotion', 'eMotion LIVE'],
+    ['import', 'Import']
 ];
 // Other publishers' program folders, the same way (Yozora #719: the AmusementVISION suite's XLink)
 const START_MENU_VENDOR_FOLDERS = [
@@ -7831,28 +7838,81 @@ function getStartMenuPackageItems(apps = START_MENU_PACKAGE_APPS) {
         .filter(Boolean);
 }
 
+// Melaton's own programs where the Vista VM's Start menu keeps their counterparts (Yukimi, Nov 11: Device
+// Center out of Accessories, the simulators in SideShow's folder). Everything else in the Toolbox stays in
+// Accessories. 'top' = the top level of All Programs; a folder id = that folder; label = the VM's name.
+const START_MENU_SYSTEM_PLACES = {
+    'mobile-device-center': { at: 'top' },         // Windows Mobile Device Center
+    calendar: { at: 'top' },                       // Windows Calendar
+    contacts: { at: 'top' },                       // Windows Contacts
+    'media-player': { at: 'top' },                 // Windows Media Player
+    'remote-desktop-connection': { at: 'accessories' },
+    charmap: { at: 'system-tools' },               // Accessories > System Tools > Character Map
+    taskmgr: { at: 'system-tools' },               // not listed on Vista; System Tools is its nearest home
+    perfmon: { at: 'administrative-tools' },       // Administrative Tools > Reliability and Performance Monitor
+    'sideshow-simulator-landscape': { at: 'sideshow-simulator', label: 'Device Simulator (Landscape)' },
+    'sideshow-simulator-portrait': { at: 'sideshow-simulator', label: 'Device Simulator (Portrait)' }
+};
+
+function startMenuSystemPlace(item) {
+    return (item && item.launchId && START_MENU_SYSTEM_PLACES[item.launchId]) || null;
+}
+
+/** The Toolbox's programs and the top level's, each once: the pool the placed programs come from. */
+function getStartMenuSystemPool() {
+    const run = startMenuShellConfig.find((item) => item.launchId === 'run');
+    const byId = new Map();
+    flattenToolsSubmenuItems(buildToolsSubmenuItems())
+        .concat(run ? [run] : [], getAllAppsMenuItems())
+        .forEach((item) => {
+            if (!item || item.separator || typeof item.action !== 'function' || !isStartMenuItemLaunchable(item) || isStartMenuPackageApp(item)) return;
+            const key = item.launchId || item.text;
+            if (!byId.has(key)) byId.set(key, item);
+        });
+    return Array.from(byId.values());
+}
+
+function getStartMenuPlacedItems(at) {
+    return getStartMenuSystemPool()
+        .filter((item) => { const place = startMenuSystemPlace(item); return place && place.at === at; })
+        .map((item) => { const place = startMenuSystemPlace(item); return place.label ? { ...item, text: place.label, fullName: place.label } : item; })
+        .sort(byStartMenuLabel);
+}
+
 function getStartMenuAccessoriesItems() {
     const run = startMenuShellConfig.find((item) => item.launchId === 'run');
-    return flattenToolsSubmenuItems(buildToolsSubmenuItems())
+    const items = flattenToolsSubmenuItems(buildToolsSubmenuItems())
         .concat(run ? [run] : [])
-        .filter((item) => item && !item.separator && typeof item.action === 'function' && isStartMenuItemLaunchable(item) && !isStartMenuPackageApp(item))
+        .filter((item) => item && !item.separator && typeof item.action === 'function' && isStartMenuItemLaunchable(item) && !isStartMenuPackageApp(item) && !startMenuSystemPlace(item))
+        .concat(getStartMenuPlacedItems('accessories'))
         .sort(byStartMenuLabel);
+    // Vista: the folder's programs, then its folders
+    const systemTools = getStartMenuPlacedItems('system-tools');
+    if (systemTools.length) items.push({ folder: true, folderId: 'system-tools', text: 'System Tools', children: systemTools });
+    return items;
 }
 
 /** Apps by name (or in the organizer's order, Teleport among them), then the folders, like Vista's All Programs. */
 function getStartMenuProgramsTree() {
     const custom = Array.isArray(startMenuCustomLayout) && startMenuCustomLayout.length > 0;
+    const placedElsewhere = (item) => { const place = startMenuSystemPlace(item); return !!place && place.at !== 'top'; };
     const entries = getOrganizedAllAppsMenuItems()
-        .filter((item) => !isStartMenuPackageApp(item))
+        .filter((item) => !isStartMenuPackageApp(item) && !placedElsewhere(item))
         .map((item) => (item.isCustomFolder
-            ? { folder: true, folderId: `custom-${item.folderId}`, text: item.text, children: (item.customFolderItems || []).filter((child) => !isStartMenuPackageApp(child)) }
+            ? { folder: true, folderId: `custom-${item.folderId}`, text: item.text, children: (item.customFolderItems || []).filter((child) => !isStartMenuPackageApp(child) && !placedElsewhere(child)) }
             : item));
+    const listed = new Set(entries.map((item) => item.launchId).filter(Boolean));
+    getStartMenuPlacedItems('top').forEach((item) => { if (!listed.has(item.launchId)) entries.push(item); });
     if (!custom) entries.sort(byStartMenuLabel);
-    // folders after the apps, by name: Accessories, Dreamscape 2026 R7, then other publishers' (AmusementVISION 2024)
+    // folders after the apps: Accessories, Administrative Tools, Dreamscape 2026 R7, other publishers'
+    // (AmusementVISION 2024), Games, Melaton SideShow (the VM's Windows SideShow > Device Simulator 3.0)
     entries.push({ folder: true, folderId: 'accessories', text: 'Accessories', children: getStartMenuAccessoriesItems() });
+    entries.push({ folder: true, folderId: 'administrative-tools', text: 'Administrative Tools', children: getStartMenuPlacedItems('administrative-tools') });
     entries.push({ folder: true, folderId: 'dreamscape-r7', text: START_MENU_PACKAGE_FOLDER, children: getStartMenuPackageItems() });
     START_MENU_VENDOR_FOLDERS.forEach((f) => entries.push({ folder: true, folderId: f.folderId, text: f.text, children: getStartMenuPackageItems(f.apps) }));
     entries.push({ folder: true, folderId: 'games', text: 'Games', children: startMenuGameLaunchables.filter(isStartMenuItemLaunchable).sort(byStartMenuLabel) });
+    const simulators = getStartMenuPlacedItems('sideshow-simulator');
+    entries.push({ folder: true, folderId: 'sideshow', text: 'Melaton SideShow', children: simulators.length ? [{ folder: true, folderId: 'sideshow-simulator', text: 'Device Simulator 3.0', children: simulators }] : [] });
     return entries.filter((entry) => !entry.folder || entry.children.length > 0);
 }
 
@@ -8011,13 +8071,13 @@ function renderStartMenuHome(list) {
 }
 
 function renderStartMenuPrograms(list) {
-    getStartMenuProgramsTree().forEach((entry) => {
-        list.appendChild(createStartMenuListRow(entry, 'program'));
+    // folders nest (Accessories > System Tools, Melaton SideShow > Device Simulator 3.0), each level 24 px in
+    const add = (entry, depth, parentFolder) => {
+        list.appendChild(createStartMenuListRow(entry, 'program', depth ? { depth, parentFolder } : undefined));
         if (!entry.folder || !startMenuOpenFolders.has(entry.folderId)) return;
-        entry.children.forEach((child) => {
-            list.appendChild(createStartMenuListRow(child, 'program', { depth: 1, parentFolder: entry.folderId }));
-        });
-    });
+        entry.children.forEach((child) => add(child, depth + 1, entry.folderId));
+    };
+    getStartMenuProgramsTree().forEach((entry) => add(entry, 0, null));
 }
 
 // ---- Start Search ----

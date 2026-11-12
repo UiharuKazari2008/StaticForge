@@ -5,7 +5,8 @@
  * title toolbar.
  */
 /* Back, bread crumbs and Help live in the shared title toolbar (modal-window-title-toolbar.css):
-   plain shared buttons, nothing restyled here but the crumbs' text and Help at the far end */
+   plain shared buttons; on the Vista desktop they wear WMDC's own art (below), as Explorer's and
+   Control Panel's shared buttons wear their orbs */
 .modal.asdc-window > .modal-content.asdc-client { padding: 0 !important; overflow: hidden; }
 .asdc-window .modal-window-title-toolbar .asdc-crumbs { display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0 8px; white-space: nowrap; }
 .asdc-window .modal-window-title-toolbar .asdc-crumbs img { width: 6px; height: 9px; }
@@ -14,11 +15,13 @@
 .asdc-window .modal-window-title-toolbar .asdc-help { margin-left: auto; }
 
 /* ---- stage ---- */
-.asdc-stage { position: relative; width: 786px; height: 534px; overflow: hidden; background: #5cb531 url(background.png) no-repeat; }
-.asdc-logo { position: absolute; left: 78px; top: 28px; width: 176px; height: 62px; }
-.asdc-logo img { position: absolute; left: 4px; top: 6px; width: 46px; height: 46px; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .35)); }
-.asdc-logo b { position: absolute; left: 68px; top: 3px; font: 12px/1 'Segoe UI', sans-serif; color: #fff; text-shadow: 0 1px 1px rgba(0, 0, 0, .3); }
-.asdc-logo i { position: absolute; left: 64px; top: 13px; font: normal 35px/1 'Segoe UI', sans-serif; letter-spacing: -1px; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
+.asdc-stage { position: relative; width: 784px; height: 535px; overflow: hidden; background: #5cb531 url(background.png) no-repeat 0 0 / 100% 100%; } /* WinForms stretches the 786 x 534 bitmap over the 784 x 535 client (VM) */
+/* the Windows Mobile mark on the VM: the flag 81..134 x 31..83, "Windows" from (150, 40), "Mobile" cap 51..76 from x=151;
+   the flower is the Windows Mobile style one (wm61/boot-melaton.png, #748) */
+.asdc-logo { position: absolute; left: 78px; top: 28px; width: 190px; height: 60px; }
+.asdc-logo img { position: absolute; left: -1px; top: -1px; width: 60px; height: 60px; } /* the leaves fill less of their box than the flag: centred on the flag (107, 57) at its full extent */
+.asdc-logo b { position: absolute; left: 71px; top: 9px; font: normal 12px/1 'Segoe UI', sans-serif; color: #fff; text-shadow: 0 1px 1px rgba(0, 0, 0, .3); }
+.asdc-logo i { position: absolute; left: 70px; top: 15px; font: normal 36px/1 'Segoe UI', sans-serif; letter-spacing: -.5px; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
 .asdc-device { position: absolute; left: 22px; top: 134px; width: 256px; height: 256px; }
 .asdc-status { position: absolute; left: 87px; top: 446px; height: 32px; display: flex; align-items: center; gap: 13px; letter-spacing: .25px; font-size: 15px; color: #1e1e1e; white-space: nowrap; }
 .asdc-status[data-status="notconnected"] { left: 70px; }
@@ -71,3 +74,95 @@
 .asdc-bar { display: block; width: 200px; height: 14px; margin: 3px 0 1px; border: 1px solid #7da065; background: #fff; }
 .asdc-bar i { display: block; height: 100%; background: linear-gradient(#5fb0ee, #2a7fd0); }
 .asdc-bar.is-full i { background: linear-gradient(#f06a5f, #c82a22); }
+
+/* ---- the Vista desktop: WMDC's frame on the VM (800 x 600, from the outer edge): the caption icon at
+   (8, 6) and the title after it, Explorer's Back orb at (8, 29), the bread crumbs from x=47 with the
+   6 x 9 arrow at (91, 38), Help (35 x 23, its own ▾) at (757, 31), the client edge at y=57. One glass
+   wash as Explorer's, no mid-caption line, no toolbar face. vista-explorer.css leaves this window's
+   toolbar buttons out of the generic Vista toolbar faces (its :not() list), as Explorer's. ---- */
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible:not(.modal-maximized) {
+    --modal-title-chrome-height: 56px;
+}
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible:not(.modal-maximized) .modal-window-title {
+    height: 57px;
+    min-height: 57px;
+    padding: 0;
+    background: linear-gradient(180deg, hsl(0 0% 100% / 24%), hsl(0 0% 100% / 30%) 12%, hsl(0 0% 100% / 20%) 46%, hsl(0 0% 100% / 24%));
+}
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-main {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 28px;
+    min-height: 0;
+    margin: 0;
+    padding: 6px 0 0 7px;
+    gap: 5px;
+    align-items: flex-start;
+    border: 0;
+    background: none;
+    box-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-main > .icon-image { display: block; width: 16px; height: 16px; margin: 0; }
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-main > .icon-fa { display: none; }
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-main > span { line-height: 16px; }
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar {
+    position: absolute;
+    top: 29px;
+    left: 7px;
+    right: 7px;
+    width: auto;
+    height: 27px;
+    min-height: 0;
+    padding: 0;
+    gap: 0;
+    align-items: flex-start;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    overflow: visible;
+}
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar > .asdc-back {
+    flex: none;
+    width: 29px;
+    min-width: 29px;
+    height: 27px;
+    min-height: 27px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
+    box-shadow: none;
+    filter: none;
+    opacity: 1;
+}
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar > .asdc-back:hover:not(:disabled) { background-position: 0 -27px; box-shadow: none; }
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar > .asdc-back:active:not(:disabled) { background-position: 0 -54px; }
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar > .asdc-back:disabled { background-position: 0 -81px; opacity: 1; }
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar > :is(.asdc-back, .asdc-help) i { display: none; }
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar .asdc-crumbs {
+    align-self: flex-start;
+    height: 27px;
+    margin: 0 0 0 10px;
+    gap: 0;
+    font: 13px/1 'Segoe UI', sans-serif;
+    color: #4c5258;
+    text-shadow: 0 0 10px #fff, 0 0 6px #fff, 0 0 3px #fff;
+}
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar .asdc-crumbs > span:last-child { color: #1e1e1e; }
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar .asdc-crumbs > img { margin: 0 7px 0 9px; }
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar > .asdc-help {
+    flex: none;
+    width: 35px;
+    min-width: 35px;
+    height: 23px;
+    min-height: 23px;
+    margin: 2px 0 0 auto;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: url('/melaton-apps/activesync/assets/help.png') no-repeat 0 0;
+    box-shadow: none;
+    filter: none;
+}
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar > .asdc-help:is(:hover, [data-state="open"]) { background-image: url('/melaton-apps/activesync/assets/help-hot.png'); box-shadow: none; }
