@@ -10,7 +10,9 @@
  *   activeSync.kind                    'device' | 'computer' | null
  *   activeSync.state()                 { kind, id, name, online, session, permissions, devices, computers }
  *   activeSync.on(event, fn)           'state' (anything in state() changed), 'event' ({ from, event, detail }),
- *                                      'request' ({ from, op }) ; returns an off()
+ *                                      'request' ({ from, op }), 'transfer' (true / false: data started /
+ *                                      stopped moving) ; returns an off()
+ *   activeSync.transferring()          true while requests or calls that move data run (and 1.5 s after)
  *   activeSync.registerOp(name, fn)    fn(args, from) -> result (or a promise); throw { code, message }
  *   activeSync.call(to, op, args, { timeoutMs, queue })   the other side's result; rejects { code, message }
  *   activeSync.emit(event, detail)     news for the other kind (as_event)
@@ -244,6 +246,32 @@
         return { kind: st.kind, id: st.id, name: st.name, online: st.online, session: st.session, permissions: st.permissions.slice(), devices: st.devices.slice(), computers: st.computers.slice() };
     }
 
+    // ---------------------------------------------------------------- data moving (#771)
+
+    // Requests and calls that move ActiveSync data to or from the server (files, storage, the Studio
+    // session, clipboard, sync): Melaton Mobile's connectivity icon plays the shell's sync sequence
+    // while any runs, and a moment after (a quick listing still shows). Status, partnership, ring,
+    // remote screen and folder watches are not data.
+    const NOT_DATA = /^(status|partnership|device|screen)\.|^storage\.(watch|unwatch)$/;
+    const TRANSFER_LINGER_MS = 1500;
+    let moving = 0;
+    let movingUntil = 0;
+    let movingTimer = null;
+    function track(op, promise) {
+        if (NOT_DATA.test(String(op))) return promise;
+        moving += 1;
+        if (moving === 1 && Date.now() >= movingUntil) fire('transfer', true);
+        const done = () => {
+            moving -= 1;
+            if (moving) return;
+            movingUntil = Date.now() + TRANSFER_LINGER_MS;
+            clearTimeout(movingTimer);
+            movingTimer = setTimeout(() => { if (!moving) fire('transfer', false); }, TRANSFER_LINGER_MS);
+        };
+        return Promise.resolve(promise).then((v) => { done(); return v; }, (e) => { done(); throw e; });
+    }
+    const transferring = () => moving > 0 || Date.now() < movingUntil;
+
     // ---------------------------------------------------------------- requests
 
     function registerOp(name, fn) {
@@ -279,7 +307,7 @@
         if (!permitted(d.op, d.from)) { answer(false, err('NOT_PERMITTED', 'The device does not allow this.')); return; }
         fire('request', { from: d.from, op: d.op });
         try {
-            const result = await fn(d.args || {}, d.from || {});
+            const result = await track(d.op, fn(d.args || {}, d.from || {}));
             answer(true, result == null ? null : result);
         } catch (e) {
             answer(false, err(e && e.code, e && e.message));
@@ -300,8 +328,8 @@
 
     function call(to, op, args, opts) {
         const o = opts || {};
-        return send('as_call', { to, op, args: args || {}, ...(o.timeoutMs ? { timeoutMs: o.timeoutMs } : {}), ...(o.queue ? { queue: true } : {}) })
-            .then((res) => (res.queued ? { queued: true } : res.result));
+        return track(op, send('as_call', { to, op, args: args || {}, ...(o.timeoutMs ? { timeoutMs: o.timeoutMs } : {}), ...(o.queue ? { queue: true } : {}) })
+            .then((res) => (res.queued ? { queued: true } : res.result)));
     }
 
     function emit(event, detail) {
@@ -537,6 +565,7 @@
         registerOp,
         call,
         emit,
+        transferring,
         device: (id) => st.devices.find((d) => d.deviceId === id) || null,
         refresh: () => send('as_list', {}).then((res) => { takeLists(res); fire('state', state()); return state(); }),
         propose: (deviceId, mode, opts) => partnershipCall(Object.assign({ action: 'propose', deviceId, mode }, opts || {})),

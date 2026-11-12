@@ -1780,42 +1780,52 @@
     }
 
     /**
-     * Connecting (Yukimi, Nov 12 2026, #760): while Melaton is not connected to Dreamscape yet, or
-     * reconnecting, or installing, the connectivity icon plays the ROM's own connecting animation
-     * for the link in use (shellres.192 icons: data 4724-4743, the turning arrows that settle into
-     * the data arrows; Wi-Fi 4698-4709) and goes back to the plain icon once the link is up. With no
-     * network at all there is nothing to connect over: the plain icon stays.
+     * The connectivity icon's two animations, as 6.1 / 6.5 shell32 draws them (#771, read from its
+     * table and code; scripts/build-wm-sprite-strips.sh builds them in the shell's frame order):
+     *   A: connected, the arrows run out, the bare badge, the arrows run back in, connected held;
+     *      200 ms a frame. The shell plays it while a call is dialled over a data link; Melaton plays
+     *      it while connecting to Dreamscape, reconnecting or installing (Yukimi, Nov 12 2026).
+     *   B: the turning arrows, the bare badge, the rest of the turn, its first frame held; 150 ms a
+     *      frame. The shell plays it while ActiveSync synchronizes over the link; so does Melaton,
+     *      while ActiveSync moves data (activeSync.transferring(): files, storage, session, sync).
+     * For the link in use: the plain data arrows, Wi-Fi, or the mobile network type's badge. With no
+     * network at all there is nothing to show it on: the plain icon stays.
      */
-    const SYNC_FRAMES = { data: 20, wifi: 12, type: 13 };
-    const SYNC_FRAME_MS = 100;
+    const SEQ = {
+        conn: { ms: 200, data: 24, wifi: 16, type: 16 },
+        xfer: { ms: 150, data: 26, wifi: 18, type: 18 }
+    };
     let syncNow = null;
+    let transferWired = false;
 
     function syncKind(dev) {
         const ws = window.wsClient;
         const up = !!(ws && typeof ws.isConnected === 'function' && ws.isConnected() && ws.initializationCompleted);
         const installing = swDownloading() != null;
-        if (up && !installing) return null;
+        const as = window.activeSync;
+        if (!transferWired && as && typeof as.on === 'function') { transferWired = true; as.on('transfer', () => refreshStatus()); }
+        const mode = !up || installing ? 'conn' : as && typeof as.transferring === 'function' && as.transferring() ? 'xfer' : null;
+        if (!mode) return null;
         if (dev.airplane || (dev.link && /-off$/.test(dev.link.icon)) || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
-        if (dev.active === 'wifi' || (dev.link && dev.link.icon.startsWith('wifi'))) return 'wifi';
-        // off Wi-Fi: the mobile network's own icon with the turning arrows under it (Yukimi):
-        // 4G, NR, H+ ... as the ROM draws its G / E / 3G connecting frames (4763-4775: the badge
-        // stays, the arrows turn), status-data-<type>-sync-NN
+        if (dev.active === 'wifi' || (dev.link && dev.link.icon.startsWith('wifi'))) return `wifi-${mode}`;
         const t = dev.type && DATA_ICON[dev.type];
-        return t ? `data-${t}` : 'data';
+        return t ? `data-${t}-${mode}` : `data-${mode}`;
     }
 
     function paintSync(el, kind) {
         if (kind === syncNow) return;
         syncNow = kind;
         if (!kind) { el.classList.remove('wm-strip'); el.style.removeProperty('--strip'); return; }
-        // the frames as one strip (scripts/build-wm-sprite-strips.sh), stepped by CSS (.wm-strip);
-        // 6.5's own frames (its shellres.192, same ids; @2x / @4x only, as its other status art)
-        const name = `status-${kind}-sync-strip`;
+        const mode = kind.endsWith('-xfer') ? 'xfer' : 'conn';
+        const seq = SEQ[mode];
+        const n = kind.startsWith('wifi-') ? seq.wifi : kind === `data-${mode}` ? seq.data : seq.type;
+        // one strip per sequence; 6.5's own frames (its shellres.192; @2x / @4x only, as its other status art)
+        const name = `status-${kind}-strip`;
         el.style.setProperty('--strip', WM65
             ? `image-set(url("/static_images/wm65/${name}@2x.png") 2x, url("/static_images/wm65/${name}@4x.png") 4x)`
             : `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x, url("${ART}${name}@4x.png") 4x)`);
-        el.style.setProperty('--n', String(SYNC_FRAMES[kind] || SYNC_FRAMES.type));
-        el.style.setProperty('--ms', String(SYNC_FRAME_MS));
+        el.style.setProperty('--n', String(n));
+        el.style.setProperty('--ms', String(seq.ms));
         el.classList.add('wm-strip');
     }
 
