@@ -511,6 +511,61 @@
     margin-top: var(--spacing-sm);
 }
 
+/* #756: an Alchemy tab another device took (grimoireRemoteBrowser.js grimoireShowTransferredPage), as IE7's information pages */
+.tag-wiki-display-content .grimoire-transferred {
+    min-height: 100%;
+    box-sizing: border-box;
+    padding: 24px 32px;
+    background: #fff;
+    color: #000;
+    font: 13px/1.45 "Segoe UI", Tahoma, sans-serif;
+    text-align: left;
+}
+
+.tag-wiki-display-content .grimoire-transferred-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.tag-wiki-display-content .grimoire-transferred-icon {
+    width: 32px;
+    height: 32px;
+    flex: none;
+}
+
+.tag-wiki-display-content .grimoire-transferred-title {
+    margin: 0;
+    font: 18pt "Segoe UI", Tahoma, sans-serif;
+    color: #4465a2;
+}
+
+.tag-wiki-display-content .grimoire-transferred-detail,
+.tag-wiki-display-content .grimoire-transferred-url {
+    margin: 0 0 6px 44px;
+}
+
+.tag-wiki-display-content .grimoire-transferred-url {
+    color: #575757;
+    word-break: break-all;
+}
+
+.tag-wiki-display-content .grimoire-transferred hr {
+    margin: 14px 0 10px 44px;
+    border: 0;
+    border-top: 1px solid #c6c6c6;
+}
+
+.tag-wiki-display-content .grimoire-transferred-actions {
+    margin: 0 0 0 44px;
+    padding: 0 0 0 16px;
+}
+
+.tag-wiki-display-content .grimoire-transferred-actions a {
+    color: #0066cc;
+}
+
 .tag-wiki-empty-results {
     display: flex;
     align-items: center;

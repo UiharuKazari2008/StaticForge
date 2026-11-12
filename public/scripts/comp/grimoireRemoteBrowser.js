@@ -1014,6 +1014,20 @@ function grimoireBackgroundRemoteMessage(found, data) {
         shell._grimoireIeFeeds = [];
         shell._grimoireIeZoomSent = false;
         grimoireSyncAudio();
+        // a viewer that (re)connected behind another tab is not captured (#756)
+        if (typeof GrimoireTabs !== 'undefined') GrimoireTabs.postVisibility(shell, true);
+        return true;
+    }
+    if (type === 'grimoire-browser-memory') {
+        shell._alchemyMemory = { level: data.level, usedMb: data.usedMb, limitMb: data.limitMb };
+        if (data.level !== 'over') shell._alchemyMemoryLimit = null;
+        return true;
+    }
+    if (type === 'grimoire-browser-memory-limit') {
+        // asked when the tab shows (grimoireTabs.js activate)
+        shell._alchemyMemory = { level: 'over', usedMb: data.usedMb, limitMb: data.limitMb };
+        shell._alchemyMemoryLimit = { usedMb: data.usedMb, limitMb: data.limitMb };
+        tabs.emit();
         return true;
     }
     if (type === 'grimoire-browser-status') {
@@ -1029,6 +1043,11 @@ function grimoireBackgroundRemoteMessage(found, data) {
     if (type === 'grimoire-browser-closed') {
         shell._grimoireRemoteSessionId = '';
         if (shell === tab.state) tabs.close(tab);
+        return true;
+    }
+    if (type === 'grimoire-browser-transferred') {
+        grimoireShowTransferredPage(shell, data, found.host);
+        tabs.emit();
         return true;
     }
     if (type === 'grimoire-browser-dialog' && data.id && shell._grimoireDialogId !== data.id) {
@@ -1346,6 +1365,24 @@ function grimoireBindRemoteBrowserMessages() {
             grimoireOpenStandaloneWindow(data.url, session);
             return;
         }
+        if (data.type === 'grimoire-browser-memory') {
+            found.shell._alchemyMemory = { level: data.level, usedMb: data.usedMb, limitMb: data.limitMb };
+            if (data.level !== 'over') found.shell._alchemyMemoryLimit = null;
+            if (found.host.ieChrome && typeof found.host.ieChrome.showMemory === 'function' && (found.host.activePane || found.host) === found.shell) found.host.ieChrome.showMemory(found.shell);
+            return;
+        }
+        if (data.type === 'grimoire-browser-memory-limit') {
+            found.shell._alchemyMemory = { level: 'over', usedMb: data.usedMb, limitMb: data.limitMb };
+            if (found.host.ieChrome && typeof found.host.ieChrome.showMemory === 'function') found.host.ieChrome.showMemory(found.shell);
+            grimoireShowMemoryLimit(found.shell, { usedMb: data.usedMb, limitMb: data.limitMb }, found.host);
+            return;
+        }
+        if (data.type === 'grimoire-browser-transferred') {
+            grimoireStopNavigationSpinner(found.host);
+            grimoireShowTransferredPage(found.shell, data, found.host);
+            if (found.host.tabs) found.host.tabs.emit();
+            return;
+        }
         if (data.type === 'grimoire-browser-closed') {
             found.shell._grimoireRemoteSessionId = '';
             // WikiWindowInstance.close: public/scripts/comp/tagWikiSearchModal.js (popups are always standalone windows)
@@ -1442,12 +1479,15 @@ async function grimoireLoadAlchemySettings() {
     // wsClient: public/scripts/websocket.js
     const data = await wsClient.getUserGlobalSettings();
     grimoireAlchemySettings = (data && data.settings && data.settings.alchemy) || { bookmarks: [] };
+    // grimoireTabs.js suspendAfterMs reads the suspend time from here (#756)
+    window.grimoireAlchemyPerformance = grimoireAlchemySettings.performance || null;
     return grimoireAlchemySettings;
 }
 
 async function grimoireSaveAlchemySettings(patch) {
     const data = await wsClient.updateUserGlobalSettings({ alchemy: patch });
     if (data && data.settings && data.settings.alchemy) grimoireAlchemySettings = data.settings.alchemy;
+    if (grimoireAlchemySettings) window.grimoireAlchemyPerformance = grimoireAlchemySettings.performance || null;
     return grimoireAlchemySettings;
 }
 
@@ -1753,6 +1793,166 @@ function grimoireOpenStandaloneWindow(url, popup, windowTitle) {
     grimoireOpenRemoteBrowser(win, webUrl, { host: win, session, popup: !!popup });
 }
 
+/**
+ * Another device took this Alchemy page (#756, Other Devices / Send to Device): the tab keeps its place and
+ * says where the page went, like IE's information pages; Take it back moves the page here again.
+ * A Grimoire page is never taken (it is copied), so this only shows for Alchemy.
+ */
+function grimoireShowTransferredPage(shell, info, hostArg) {
+    if (!shell || !shell.displayArea) return;
+    const data = info || {};
+    const alchemyId = data.alchemyId || shell._grimoireRemoteSessionId || '';
+    const url = data.url || grimoireShellWebUrl(shell) || '';
+    // the session is someone else's now: let go of the frame without closing the page
+    shell._grimoireRemoteSessionId = '';
+    shell._grimoireRemoteViewQuery = '';
+    if (grimoireAudioShell === shell) grimoireAudioShell = null;
+    const frame = grimoireRemoteFrame(shell);
+    if (frame) frame.remove();
+    shell.displayArea.querySelectorAll(':scope > :is(.alchemy-scrollbar, .alchemy-scrollbar-corner, .grimoire-nav-error, .grimoire-transferred)').forEach((el) => el.remove());
+    shell._alchemyScroll = null;
+    shell._browsingTransferred = { alchemyId, url, to: data.to || '', at: data.at || Date.now() };
+    grimoireSyncAudio();
+
+    const page = document.createElement('div');
+    page.className = 'grimoire-transferred';
+    const head = document.createElement('div');
+    head.className = 'grimoire-transferred-head';
+    const icon = document.createElement('img');
+    icon.className = 'grimoire-transferred-icon';
+    icon.src = '/static_images/vista-icons/msgbox-info-32.png';
+    icon.alt = '';
+    const title = document.createElement('h1');
+    title.className = 'grimoire-transferred-title';
+    title.textContent = 'This tab has been transferred to another device';
+    head.append(icon, title);
+    const when = new Date(data.at || Date.now());
+    const detail = document.createElement('p');
+    detail.className = 'grimoire-transferred-detail';
+    detail.textContent = (data.to ? 'It is open on ' + data.to : 'It is open on another device')
+        + ' since ' + when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '.';
+    const addr = document.createElement('p');
+    addr.className = 'grimoire-transferred-url';
+    addr.textContent = url;
+    const hr = document.createElement('hr');
+    const list = document.createElement('ul');
+    list.className = 'grimoire-transferred-actions';
+    const item = (label, fn) => {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.href = '#';
+        a.textContent = label;
+        a.addEventListener('click', (ev) => { ev.preventDefault(); fn(); });
+        li.appendChild(a);
+        list.appendChild(li);
+        return a;
+    };
+    const host = hostArg || grimoireHostOf(shell) || shell;
+    item('Take it back to this computer', async () => {
+        if (!window.browsingSessions || !alchemyId) {
+            if (grimoireNormalizeWebUrl(url)) grimoireOpenRemoteBrowser(shell, url, { host, skipHistory: true });
+            return;
+        }
+        try {
+            const owner = window.browsingSessions.ownerForShell(shell);
+            const res = await window.browsingSessions.takeBack(alchemyId, { windowId: owner.windowId, tabId: owner.tabId });
+            const tab = res && res.tab;
+            if (tab && tab.session) grimoireOpenRemoteBrowser(shell, tab.url || url, { host, session: tab.session, skipHistory: true });
+            else if (grimoireNormalizeWebUrl((tab && tab.url) || url)) grimoireOpenRemoteBrowser(shell, (tab && tab.url) || url, { host, skipHistory: true });
+        } catch (_) {
+            // closed on the other device: open the address here instead
+            if (grimoireNormalizeWebUrl(url)) grimoireOpenRemoteBrowser(shell, url, { host, skipHistory: true });
+        }
+    });
+    if (host.tabs && host.tabs.count() > 1) {
+        item('Close this tab', () => {
+            const tab = host.tabs.backgroundTabOf(shell) || host.tabs.active;
+            host.tabs.close(tab);
+        });
+    }
+    page.append(head, detail, addr, hr, list);
+    shell.displayArea.appendChild(page);
+    if (window.browsingSessions) window.browsingSessions.changed();
+}
+
+/**
+ * A tab reached the memory limit of Internet Properties > Advanced > Alchemy performance (#756): Alchemy froze the
+ * page; this asks whether to let this tab have more while it stays open, or close it. Closing the box keeps the
+ * page paused (the status bar's cell still shows it); Allow more lifts the limit for this tab only.
+ */
+const GRIMOIRE_MEMORY_TPL = { t: 'Grimoire', w: 262, h: 86, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
+    [6430, 'S', 7, 7, 21, 20, 0x50000003, '#32515', 0],
+    [901, 'S', 36, 7, 219, 10, 0x50020000, 'This webpage is using a lot of memory', 0],
+    [902, 'S', 36, 20, 219, 36, 0x50020000, '', 0],
+    [1, 'B', 105, 64, 88, 14, 0x50010001, '&Allow more for this tab', 0],
+    [2, 'B', 197, 64, 58, 14, 0x50010000, '&Close tab', 0]
+] };
+const grimoireMemoryAsking = new WeakSet();
+
+async function grimoireShowMemoryLimit(shell, info, hostArg) {
+    if (!shell || grimoireMemoryAsking.has(shell)) return;
+    shell._alchemyMemoryLimit = null;
+    grimoireMemoryAsking.add(shell);
+    try {
+        if (window.featureLoader) await window.featureLoader.loadFeature('browsing_sessions_ui');
+        const V = window.vistaDialogTemplate;
+        if (!V) return;
+        const host = hostArg || grimoireHostOf(shell) || shell;
+        const url = grimoireShellWebUrl(shell) || '';
+        let site = url;
+        try { site = new URL(url).hostname || url; } catch (_) { /* as is */ }
+        await new Promise((resolve) => {
+            V.openDialog({
+                id: 'grimoireMemoryLimit',
+                tpl: GRIMOIRE_MEMORY_TPL,
+                title: 'Grimoire',
+                bareCaption: true,
+                init(ctx) {
+                    ctx.text(902, `${site} is using ${info.usedMb} MB, more than the ${info.limitMb} MB a tab may use (Internet Options). Grimoire has paused it.`);
+                },
+                ok() {
+                    const frame = grimoireRemoteFrame(shell);
+                    if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'grimoire-browser-memory-override' }, '*');
+                    resolve();
+                },
+                cancel() {
+                    resolve();
+                },
+                buttons: {
+                    2: (ctx) => {
+                        ctx.close();
+                        const tabs = host.tabs;
+                        const tab = tabs ? (tabs.backgroundTabOf(shell) || tabs.active) : null;
+                        if (tabs && tabs.count() > 1 && tab) tabs.close(tab);
+                        else grimoireCloseRemoteBrowser(shell).then(() => { if (typeof shell.goHome === 'function') shell.goHome(); });
+                        resolve();
+                    }
+                }
+            });
+        });
+    } finally {
+        grimoireMemoryAsking.delete(shell);
+    }
+}
+window.grimoireShowMemoryLimit = grimoireShowMemoryLimit;
+
+/** A tab of this client was taken while its viewer was not connected: find it by its page and say so. */
+function grimoireOnBrowsingTabTaken(msg) {
+    const id = msg && msg.alchemyId;
+    if (!id || typeof grimoireAllWindows !== 'function') return;
+    for (const win of grimoireAllWindows()) {
+        const shells = [win, win.rightPane].concat(win.tabs ? win.tabs.backgroundShells() : []).filter(Boolean);
+        const shell = shells.find((s) => s._grimoireRemoteSessionId === id);
+        if (shell) {
+            grimoireShowTransferredPage(shell, { alchemyId: id, to: msg.to || '', at: Date.now() }, win);
+            if (win.tabs) win.tabs.emit();
+            return;
+        }
+    }
+}
+if (window.browsingSessions) window.browsingSessions.on('tabTaken', grimoireOnBrowsingTabTaken);
+else document.addEventListener('DOMContentLoaded', () => { if (window.browsingSessions) window.browsingSessions.on('tabTaken', grimoireOnBrowsingTabTaken); }, { once: true });
+
 function grimoireShowBrowserUnavailable(host, shell, url) {
     host.setAddress({ displayUrl: url, mode: grimoireWebMode(url) }, { force: true });
     // showGrimoireNavigateErrorPage: public/scripts/comp/tagWikiSearchModal.js
@@ -1774,6 +1974,8 @@ async function grimoireOpenRemoteBrowser(shell, url, options) {
     if (!shell || !shell.displayArea || (!webUrl && !opts.session)) return;
 
     grimoireBindRemoteBrowserMessages();
+    shell._browsingTransferred = null;
+    if (shell.displayArea) shell.displayArea.querySelectorAll(':scope > .grimoire-transferred').forEach((el) => el.remove());
     // exitAddressEdit / setNavigationLoading: public/scripts/comp/tagWikiSearchModal.js
     host.exitAddressEdit();
     grimoireStartNavigationSpinner(host, webUrl, true);
@@ -1806,7 +2008,9 @@ async function grimoireOpenRemoteBrowser(shell, url, options) {
                 url: webUrl,
                 width: Math.max(320, shell.displayArea.clientWidth || 1280),
                 height: Math.max(240, shell.displayArea.clientHeight || 800),
-                popup: !!opts.popup
+                popup: !!opts.popup,
+                // the device, IE window and tab that own the page (#756; browsingSessions.js)
+                owner: window.browsingSessions ? window.browsingSessions.ownerForShell(shell) : null
             })
         });
         let response;

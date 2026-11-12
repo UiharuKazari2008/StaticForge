@@ -66,8 +66,21 @@
             if (this.suspendTimer && typeof this.suspendTimer.unref === 'function') this.suspendTimer.unref();
         }
 
-        /** Minutes a background tab may sit unused before it is suspended (localStorage alchemyTabSuspendMinutes, 0 = never). */
+        /** Tell a shell's Alchemy viewer whether its tab shows (services/grimoire-browser viewer.html 'visibility'). */
+        static postVisibility(shell, hidden) {
+            if (!shell || !shell._grimoireRemoteSessionId || typeof root.grimoireRemoteFrame !== 'function') return;
+            const frame = root.grimoireRemoteFrame(shell);
+            if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'grimoire-browser-visibility', hidden: !!hidden }, '*');
+        }
+
+        /**
+         * Minutes a background tab may sit unused before it is suspended: Internet Properties > Advanced >
+         * Alchemy performance (userGlobalSettings.alchemy.performance.suspendMinutes, #756), else the old
+         * localStorage alchemyTabSuspendMinutes; 0 = never.
+         */
         static suspendAfterMs() {
+            const perf = root.grimoireAlchemyPerformance;
+            if (perf && Number.isFinite(Number(perf.suspendMinutes))) return Number(perf.suspendMinutes) > 0 ? Number(perf.suspendMinutes) * 60000 : 0;
             let minutes = DEFAULT_SUSPEND_MINUTES;
             try {
                 const raw = root.localStorage.getItem('alchemyTabSuspendMinutes');
@@ -224,6 +237,8 @@
 
             old.state = this.capture(old);
             old.lastActive = Date.now();
+            // the tab behind is not captured any more; the one in front is (#756, one capture per window)
+            [old.state, old.state.rightPane].forEach((shell) => GrimoireTabs.postVisibility(shell, true));
             show(old.wrap, false);
             show(old.rightWrap, false);
             // audio stays with the page that plays it (grimoireRemoteBrowser.js)
@@ -246,7 +261,13 @@
             }
 
             host.syncAddressAndControlsToActive();
+            [host, host.rightPane].forEach((shell) => GrimoireTabs.postVisibility(shell, false));
             this.resume(tab);
+            if (host.ieChrome && typeof host.ieChrome.showMemory === 'function') host.ieChrome.showMemory(host.activePane || host);
+            // a page that hit its memory limit while behind asks now that it shows
+            [host, host.rightPane].forEach((shell) => {
+                if (shell && shell._alchemyMemoryLimit && typeof root.grimoireShowMemoryLimit === 'function') root.grimoireShowMemoryLimit(shell, shell._alchemyMemoryLimit, host);
+            });
             if (host.ieChrome) {
                 host.ieChrome.applyZoom(host);
                 if (host.rightPane) host.ieChrome.applyZoom(host.rightPane);

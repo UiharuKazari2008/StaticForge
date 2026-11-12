@@ -384,8 +384,102 @@
 
     const dropSession = (id) => fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id), { method: 'DELETE', credentials: 'same-origin', keepalive: true }).catch(() => {});
 
+    /** The owner block for a window's Alchemy page (#756): this phone, its IE, the window as a tab. */
+    function sessionOwner(w) {
+        return window.browsingSessions ? window.browsingSessions.owner('wmie', 'wmie:' + w.id) : null;
+    }
+
+    /** What this phone reports to the browsing-session registry (#756): its IE windows as the tabs of one window. */
+    function sessionSnapshot() {
+        const tabs = [];
+        for (const w of wins) {
+            if (w.closed || w.transferred) continue;
+            const history = w.entries.filter((e) => e && e.url && !e.home).map((e) => ({ type: webUrl(e.url) ? 'web' : 'page', url: e.url, title: e.title || '' }));
+            const top = w.entries[w.idx];
+            if (!top || top.home) { if (!w.session) continue; }
+            tabs.push({
+                id: 'wmie:' + w.id,
+                alchemyId: (w.session && w.session.id) || '',
+                url: (top && top.url) || '',
+                title: winTitle(w),
+                history,
+                historyIndex: Math.max(0, history.findIndex((h) => top && h.url === top.url)),
+                active: w === cur
+            });
+        }
+        return tabs.length ? [{ id: 'wmie', title: 'Internet Explorer', tabs }] : [];
+    }
+
+    /** The page reached the memory limit set in Internet Options (#756): Alchemy paused it; allow more, or close the window. */
+    async function askMemoryLimit(data) {
+        const w = W;
+        if (w.askingMemory) return;
+        // a window not on screen asks when it shows
+        if (w !== cur) { w.memoryLimit = data; return; }
+        w.askingMemory = true;
+        let host = '';
+        try { host = new URL(entry().url).hostname; } catch (_) { host = entry().url || 'This page'; }
+        const allow = await ws.messageBox({
+            title: 'Internet Explorer',
+            icon: 'warning',
+            text: `${host} is using ${data.usedMb} MB, more than the ${data.limitMb} MB a page may use. Internet Explorer has paused it.`,
+            buttons: [{ text: 'Allow more', value: true, default: true }, { text: 'Close', value: false }]
+        });
+        w.askingMemory = false;
+        if (allow) { postTo(w, { type: 'grimoire-browser-memory-override' }); return; }
+        if (wins.length > 1) closeWindow(w.id);
+        else inWin(w, () => { closeSession(); goHome(); });
+    }
+
+    /** Another device took this window's page (#756): the window says so; Take it back moves it here again. */
+    function showTransferred(data) {
+        const w = W;
+        const alchemyId = (w.session && w.session.id) || data.alchemyId || '';
+        const url = data.url || (entry() && entry().url) || '';
+        w.session = null;
+        w.ready = false;
+        if (w.frame) { w.frame.remove(); w.frame = null; }
+        w.chromeAt = -1;
+        setLoading(false);
+        w.transferred = { alchemyId, url, to: data.to || '' };
+        if (!w.dom) return;
+        w.dom.frameWrap.querySelectorAll('.wmb-transferred').forEach((el) => el.remove());
+        const box = document.createElement('div');
+        box.className = 'wmb-transferred';
+        const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+        box.innerHTML = `<p class="wmb-transferred-title">This tab has been transferred to another device</p>
+            <p>It is open on ${esc(data.to || 'another device')}.</p><p class="wmb-transferred-url">${esc(url)}</p>
+            <p><a href="#" data-act="back">Take it back to this phone</a></p>`;
+        box.querySelector('[data-act="back"]').addEventListener('click', (ev) => {
+            ev.preventDefault();
+            inWin(w, () => takeBackTransferred());
+        });
+        w.dom.frameWrap.appendChild(box);
+        if (window.browsingSessions) window.browsingSessions.changed();
+    }
+
+    async function takeBackTransferred() {
+        const w = W;
+        const t = w.transferred;
+        if (!t) return;
+        clearTransferred(w);
+        if (t.alchemyId && window.browsingSessions) {
+            try {
+                const res = await window.browsingSessions.takeBack(t.alchemyId, { windowId: 'wmie', tabId: 'wmie:' + w.id });
+                if (res && res.tab && res.tab.session) { inWin(w, () => attachSession(res.tab.session)); return; }
+            } catch (_) { /* gone: open the address */ }
+        }
+        if (webUrl(t.url)) inWin(w, () => openSession(webUrl(t.url)));
+    }
+
+    function clearTransferred(w) {
+        w.transferred = null;
+        if (w.dom) w.dom.frameWrap.querySelectorAll('.wmb-transferred').forEach((el) => el.remove());
+    }
+
     /** The viewer of W's session (a new one, or a page's own new window handed over by Alchemy). */
     function attachSession(payload) {
+        clearTransferred(W);
         W.session = { id: payload.sessionId || '', viewUrl: payload.viewUrl, query: String(payload.viewUrl).split('?')[1] || '' };
         W.chromeAt = W.idx;
         W.chromeBase = W.idx;
@@ -439,7 +533,8 @@
                         method: 'POST',
                         credentials: 'same-origin',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url: asked, width: g.L, height: g.Lh, popup: false })
+                        // the phone, its IE and this window own the page (#756; browsingSessions.js)
+                        body: JSON.stringify({ url: asked, width: g.L, height: g.Lh, popup: false, owner: sessionOwner(w) })
                     });
                 } catch (_) {
                     await inWin(w, () => cannotConnect());
@@ -758,6 +853,15 @@
                 // a window the page opened goes with it (a sign-in window closing itself); else the start page
                 if (W.popup && wins.length > 1) closeWindow(W.id);
                 else goHome();
+                break;
+            case 'grimoire-browser-transferred':
+                showTransferred(data);
+                break;
+            case 'grimoire-browser-memory':
+                W.memory = { level: data.level, usedMb: data.usedMb, limitMb: data.limitMb };
+                break;
+            case 'grimoire-browser-memory-limit':
+                askMemoryLimit(data);
                 break;
             case 'grimoire-browser-reopen':
                 if (webUrl(data.url)) { entry().pending = true; openSession(webUrl(data.url)); }
@@ -1348,6 +1452,11 @@
         page.classList.add('has-sub');
         els.sub.hidden = false;
         els.sub.dataset.kind = sub;
+        if (SESSION_SUBS.has(sub)) {
+            els.sub.innerHTML = `<div class="wmb-sub-head">${esc(SESSION_SUB_TITLES[sub])}</div>${sessionSubHtml()}`;
+            if (isCurrent()) { ws.refreshSoftKeys(); ws.refreshTitleAction(); }
+            return;
+        }
         if (sub === 'props' || sub === 'options' || sub === 'windows') {
             els.sub.innerHTML = sub === 'props' ? propsHtml61() : sub === 'options' ? optionsHtml61() : windowsHtml();
             if (sub === 'windows') fillWindows();
@@ -1436,7 +1545,9 @@
             { label: 'New Window', disabled: wins.length >= MAX_WINDOWS, action: () => { newWindow(); } },
             {
                 label: 'Windows',
+                // Other Devices (#756) closes the list, under a rule
                 submenu: () => wins.map((w) => Object.assign({ label: menuLabel(winTitle(w)), action: () => { switchTo(w.id); } }, v65 ? { checked: w === cur } : { radio: w === cur }))
+                    .concat(window.browsingSessions ? ['-', { label: 'Other Devices...', action: openDevices }] : [])
             },
             { label: 'Close Window', disabled: wins.length < 2, action: () => { closeWindow(); } }
         ];
@@ -1469,6 +1580,7 @@
                     { label: 'Copy Link', action: () => copyText(entry().url) },
                     { label: 'Paste', disabled: !web || !W.frame, action: pasteFromClipboard },
                     { label: 'Clear History', action: clearHistory },
+                    { label: 'Add-ons', submenu: addonItems },
                     '-',
                     { label: 'Properties', action: properties },
                     { label: 'Options...', action: () => openSub('options') }
@@ -1588,6 +1700,10 @@
      *  own choices that IE here does not have (home page, encoding, cookies) are not shown. */
     function optionsHtml61() {
         const label = (LEFT_KEYS.find(([k]) => k === opts.leftKey) || LEFT_KEYS[0])[1];
+        if (optTab === 'sessions' || optTab === 'alchemy') {
+            const tabs = (k, t) => `<button type="button" class="wmb-op-tab${optTab === k ? ' is-on' : ''}" data-tab="${k}">${t}</button>`;
+            return `<div class="wmb-sub-head">Options</div><div class="wmb-opts">${optTab === 'sessions' ? sessionsFormHtml() : alchemyFormHtml()}</div><div class="wmb-op-tabs">${tabs('general', 'General')}${tabs('memory', 'Memory')}${tabs('sessions', 'Sessions')}${tabs('alchemy', 'Alchemy')}</div>`;
+        }
         const body = optTab === 'memory'
             ? `<div class="wmb-op-head">History</div>
                <div class="wmb-op-line"><button type="button" class="wmb-g-btn" data-opt="clear">Clear History</button></div>`
@@ -1597,12 +1713,18 @@
                <div class="wmb-op-head">Address bar</div>
                <label class="wm-check wmb-op-check"><input type="checkbox" data-opt="back"${opts.backButton ? ' checked' : ''}><span>Show back button in address bar</span></label>`;
         const tab = (k, t) => `<button type="button" class="wmb-op-tab${optTab === k ? ' is-on' : ''}" data-tab="${k}">${t}</button>`;
-        return `<div class="wmb-sub-head">Options</div><div class="wmb-opts">${body}</div><div class="wmb-op-tabs">${tab('general', 'General')}${tab('memory', 'Memory')}</div>`;
+        return `<div class="wmb-sub-head">Options</div><div class="wmb-opts">${body}</div><div class="wmb-op-tabs">${tab('general', 'General')}${tab('memory', 'Memory')}${window.browsingSessions ? tab('sessions', 'Sessions') + tab('alchemy', 'Alchemy') : ''}</div>`;
     }
 
     function optionsClick61(e) {
         const tab = e.target.closest('.wmb-op-tab');
-        if (tab) { optTab = tab.dataset.tab; renderSub(); return; }
+        if (tab) {
+            optTab = tab.dataset.tab;
+            if (optTab === 'sessions' || optTab === 'alchemy') { loadSessionOptions().then(() => { if (sub === 'options') renderSub(); }); return; }
+            renderSub();
+            return;
+        }
+        if (sessionFormClick(e)) return;
         const combo = e.target.closest('[data-opt="left"]');
         if (combo) {
             e.stopPropagation();
@@ -1612,6 +1734,343 @@
         if (e.target.closest('[data-opt="clear"]')) { clearHistory(); return; }
         const back = e.target.closest('input[data-opt="back"]');
         if (back) saveOpts({ backButton: back.checked });
+    }
+
+    // ---------------------------------------------------------------- browsing sessions (#756)
+    //
+    // Other Devices (the bottom of the Windows list), Restore Session (the first time IE opens after the
+    // phone starts, when this phone or, with "pass to the next device", any device left pages behind),
+    // and Options' Sessions and Alchemy pages: the desktop's Internet Options settings in the device's form.
+
+    const SESSION_SUBS = new Set(['devices', 'restore']);
+    const SESSION_SUB_TITLES = { devices: 'Other Devices', restore: 'Restore Session' };
+    let devicesData = null; // browsingSessions.list() for Other Devices
+    let restoreData = null; // the restorable sessions on show
+    let sessionOpts = null; // { sessions, alchemy, extensions }
+    let restoreAsked = false;
+    const QUALITY = [[40, 'Low'], [55, 'Medium'], [70, 'High'], [85, 'Highest']];
+    const MAX_FPS = [[15, '15'], [24, '24'], [30, '30'], [45, '45'], [60, '60']];
+    const MIN_FPS = [[5, '5'], [10, '10'], [15, '15'], [20, '20']];
+    const MEMORY = [[0, 'No limit'], [256, '256 MB'], [512, '512 MB'], [1024, '1 GB'], [2048, '2 GB']];
+    const SUSPEND = [[0, 'Never'], [5, '5 minutes'], [10, '10 minutes'], [20, '20 minutes'], [60, '1 hour']];
+    const MAX_TABS = [[2, '2'], [4, '4'], [6, '6'], [8, '8'], [12, '12']];
+    const UNIT_MIN = { m: 1, h: 60, d: 1440 };
+
+    async function openDevices() {
+        if (!window.browsingSessions) return;
+        try { devicesData = await busyOf(() => window.browsingSessions.list()); } catch (_) { devicesData = null; }
+        if (!devicesData) { await ws.messageBox({ title: 'Internet Explorer', icon: 'error', text: 'Other Devices cannot be shown. The server cannot be reached right now.' }); return; }
+        openSub('devices');
+    }
+
+    function otherSessions() {
+        return ((devicesData && devicesData.sessions) || []).filter((x) => !x.own);
+    }
+
+    function sessionStateText(x) {
+        if (x.state === 'live') return 'Online';
+        const mins = Math.max(1, Math.round(((x.killAt || x.expiresAt) - Date.now()) / 60000));
+        if (x.state === 'idle') return `Disconnected, closes in ${mins >= 120 ? Math.round(mins / 60) + ' h' : mins + ' min'}`;
+        return 'Closed, ' + new Date(x.expiresAt).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) + ' last day';
+    }
+
+    function sessionSubHtml() {
+        if (sub === 'devices') {
+            const list = otherSessions();
+            if (!list.length) return '<div class="wmb-sub-list"><div class="wmb-sub-empty">No other device has pages open.</div></div>';
+            let i = 0;
+            return `<div class="wmb-sub-list wmb-devices" role="listbox">${list.map((x) => `
+                <div class="wmb-dev-head">${img(x.deviceKind === 'mobile' ? 'app-ie' : 'ie-page', 'wmb-sub-ico')}<b>${esc(x.deviceName)}</b><span>${esc(sessionStateText(x))}</span></div>
+                ${(x.windows || []).map((w) => (w.tabs || []).map((t) => `
+                    <div class="wmb-sub-row${i === subSel ? ' is-selected' : ''}" role="option" data-i="${i++}" data-dev-s="${esc(x.id)}" data-dev-t="${esc(t.id)}">
+                        ${img('ie-page', 'wmb-sub-ico')}<span class="wmb-sub-title">${esc(t.title || t.url)}</span><span class="wmb-sub-meta">${esc(t.kind === 'alchemy' ? hostOf(t.url) : 'Grimoire')}</span>
+                    </div>`).join('')).join('')}`).join('')}</div>`;
+        }
+        const sessions = restoreData || [];
+        let n = 0;
+        return `<div class="wmb-restore"><p>Internet Explorer was closed with these pages open. Select the ones you want to open again.</p>${sessions.map((x) => (x.windows || []).map((w) => {
+            n += 1;
+            return `<div class="wmb-rs-win">Window ${n} (${esc(x.own ? 'this device' : x.deviceName)})</div>${(w.tabs || []).map((t) => `
+                <label class="wm-check wmb-rs-tab"><input type="checkbox" data-rs-s="${esc(x.id)}" data-rs-t="${esc(t.id)}" checked><span>${esc(t.title || t.url)}</span></label>`).join('')}`;
+        }).join('')).join('')}</div>`;
+    }
+
+    function sessionSubKeys() {
+        if (sub === 'devices') {
+            const rows = els.sub ? els.sub.querySelectorAll('.wmb-sub-row[data-dev-s]') : [];
+            return { left: { label: 'Open', disabled: !rows.length || subSel < 0, action: () => { const r = rows[subSel]; if (r) takeDeviceTab(r.dataset.devS, r.dataset.devT); } }, right: { label: 'Close', action: closeSub } };
+        }
+        return {
+            left: { label: 'Restore', action: restoreChecked },
+            right: { label: 'Menu', menu: () => [{ label: 'New', action: () => restoreNewOrDiscard(true) }, { label: 'Discard', action: () => restoreNewOrDiscard(false) }] }
+        };
+    }
+
+    function sessionSubClick(e) {
+        if (sub !== 'devices') return;
+        const row = e.target.closest('.wmb-sub-row[data-dev-s]');
+        if (!row) return;
+        subSel = Number(row.dataset.i);
+        takeDeviceTab(row.dataset.devS, row.dataset.devT);
+    }
+
+    /** A taken tab (Other Devices, Restore, Send to Device) in a window of its own, or the start page's window. */
+    function openTakenTab(t) {
+        const blank = onHome() && !W.session && W.entries.length <= 1 && W === cur;
+        let w = blank ? cur : null;
+        if (!w) {
+            if (wins.length >= MAX_WINDOWS) return false;
+            const id = newWindow();
+            w = wins.find((x) => x.id === id);
+        }
+        if (!w) return false;
+        inWin(w, () => {
+            const history = (t.history || []).filter((h) => h && h.url && h.type === 'web').map((h) => ({ url: h.url, title: h.title || '' }));
+            if (t.session) {
+                W.entries = history.length ? history : [{ url: t.url || '', title: t.title || '' }];
+                const at = W.entries.findIndex((h) => h.url === t.url);
+                W.idx = at >= 0 ? at : W.entries.length - 1;
+                W.entries[W.idx].pending = true;
+                attachSession(t.session);
+                setLoading(true);
+                render();
+                step();
+            } else if (!openAddress(t.url)) {
+                cannotOpen(t.url);
+            }
+        });
+        return true;
+    }
+
+    async function takeDeviceTab(sessionId, tabId) {
+        let res;
+        try {
+            res = await busyOf(() => window.browsingSessions.take(sessionId, tabId, { windowId: 'wmie', size: { width: geometry().L, height: geometry().Lh } }));
+        } catch (_) {
+            await ws.messageBox({ title: 'Internet Explorer', icon: 'error', text: 'That page is no longer open on the other device.' });
+            return;
+        }
+        closeSub();
+        if (res && res.tab && !openTakenTab(res.tab)) await ws.messageBox({ title: 'Internet Explorer', icon: 'error', text: `Every window is in use (${MAX_WINDOWS}). Close a window, then try again.` });
+    }
+
+    async function restoreChecked() {
+        const pick = {};
+        els.sub.querySelectorAll('input[data-rs-s]').forEach((b) => {
+            if (!pick[b.dataset.rsS]) pick[b.dataset.rsS] = [];
+            if (b.checked) pick[b.dataset.rsS].push(b.dataset.rsT);
+        });
+        let res;
+        try {
+            res = await busyOf(() => window.browsingSessions.restore(Object.keys(pick), pick));
+        } catch (_) {
+            await ws.messageBox({ title: 'Internet Explorer', icon: 'error', text: 'The session could not be restored.' });
+            return;
+        }
+        closeSub();
+        restoreTabs(res);
+    }
+
+    function restoreTabs(res) {
+        const tabs = [];
+        ((res && res.windows) || []).forEach((w) => (w.tabs || []).forEach((t) => tabs.push(t)));
+        let left = 0;
+        tabs.forEach((t) => { if (!openTakenTab(t)) left += 1; });
+        if (left) ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: `${left} ${left === 1 ? 'page was' : 'pages were'} not opened: Internet Explorer has ${MAX_WINDOWS} windows at most.` });
+    }
+
+    async function restoreNewOrDiscard(keep) {
+        const ids = (restoreData || []).map((x) => x.id);
+        try { await window.browsingSessions.discard(ids, keep); } catch (_) { /* offline */ }
+        closeSub();
+    }
+
+    /** The first time IE shows after the phone starts: Restore Session, unless always restoring (#756). */
+    async function maybeRestore() {
+        if (restoreAsked || !window.browsingSessions) return;
+        const st = window.browsingSessions.state();
+        if (!st.online) return;
+        restoreAsked = true;
+        let list;
+        try { list = await window.browsingSessions.list(); } catch (_) { return; }
+        const sessions = (list && list.restorable) || [];
+        if (!sessions.length) return;
+        const cfg = (list && list.settings) || {};
+        if (cfg.alwaysRestore) {
+            try { restoreTabs(await window.browsingSessions.restore(sessions.map((x) => x.id), null)); } catch (_) { /* offline */ }
+            return;
+        }
+        restoreData = sessions;
+        openSub('restore');
+    }
+
+    // ---- Options: Sessions and Alchemy
+
+    async function loadSessionOptions() {
+        const out = { sessions: null, alchemy: null, extensions: [] };
+        try { out.sessions = (await window.browsingSessions.list()).settings; } catch (_) { out.sessions = null; }
+        try {
+            const data = window.wsClient && typeof window.wsClient.getUserGlobalSettings === 'function' ? await window.wsClient.getUserGlobalSettings() : null;
+            out.alchemy = (data && data.settings && data.settings.alchemy) || null;
+        } catch (_) { out.alchemy = null; }
+        try {
+            const res = await fetch('/api/grimoire-browser/extensions', { credentials: 'same-origin' });
+            out.extensions = res.ok ? ((await res.json()).extensions || []) : [];
+        } catch (_) { out.extensions = []; }
+        sessionOpts = out;
+        return out;
+    }
+
+    function openOption65(key) {
+        if (key === 'opt-sessions' || key === 'opt-alchemy') { busyOf(loadSessionOptions).then(() => openSub(key)); return; }
+        openSub(key);
+    }
+
+    function splitMinutes(m, units) {
+        for (const u of units) if (m % UNIT_MIN[u] === 0 && m / UNIT_MIN[u] >= 1) return { n: m / UNIT_MIN[u], u };
+        return { n: m, u: 'm' };
+    }
+
+    const UNIT_TEXT = { m: 'minutes', h: 'hours', d: 'days' };
+    const combo = (key, text) => `<button type="button" class="wm-combo wmb-op-combo" data-sc="${key}"><span>${esc(text)}</span></button>`;
+    const pick = (list, v) => (list.find(([k]) => Number(k) === Number(v)) || list[0])[1];
+
+    function sessionsFormHtml() {
+        const c = (sessionOpts && sessionOpts.sessions) || { idleMinutes: 15, keepMinutes: 4320, showAtStartup: true, alwaysRestore: false, roam: false };
+        const idle = splitMinutes(c.idleMinutes, ['h', 'm']);
+        const keep = splitMinutes(c.keepMinutes, ['d', 'h', 'm']);
+        const check = (k, t) => `<label class="wm-check wmb-op-check"><input type="checkbox" data-ss="${k}"${c[k] ? ' checked' : ''}><span>${t}</span></label>`;
+        return `<div class="wmb-op-head">Restore Session</div>
+            ${check('showAtStartup', 'Ask to restore the last session')}
+            ${check('alwaysRestore', 'Always restore the last session')}
+            ${check('roam', 'Pass my last session to the next device')}
+            <div class="wmb-op-head">Keep sessions</div>
+            <div class="wmb-op-lbl">Keep pages open after disconnecting for</div>
+            <div class="wmb-op-line"><input type="number" min="1" class="wm-edit wmb-op-num" data-ss="idleN" value="${idle.n}" aria-label="Keep pages open for">${combo('idleU', UNIT_TEXT[idle.u])}</div>
+            <div class="wmb-op-lbl">Then keep their addresses for</div>
+            <div class="wmb-op-line"><input type="number" min="1" class="wm-edit wmb-op-num" data-ss="keepN" value="${keep.n}" aria-label="Keep addresses for">${combo('keepU', UNIT_TEXT[keep.u])}</div>`;
+    }
+
+    function alchemyFormHtml() {
+        const a = (sessionOpts && sessionOpts.alchemy) || {};
+        const perf = a.performance || {};
+        const exts = (sessionOpts && sessionOpts.extensions) || [];
+        return `<div class="wmb-op-head">Alchemy</div>
+            <div class="wmb-op-lbl">Picture quality</div>${combo('jpegQuality', pick(QUALITY, a.jpegQuality || 55))}
+            <div class="wmb-op-lbl">Highest frame rate</div>${combo('maxFps', pick(MAX_FPS, a.maxFps || 30))}
+            <div class="wmb-op-lbl">Lowest frame rate</div>${combo('minFps', pick(MIN_FPS, a.minFps || 10))}
+            <label class="wm-check wmb-op-check"><input type="checkbox" data-sa="audioBackground"${a.audioBackground ? ' checked' : ''}><span>Play sounds in the background</span></label>
+            <div class="wmb-op-head">Performance</div>
+            <div class="wmb-op-lbl">Memory a page may use</div>${combo('tabMemoryMb', pick(MEMORY, perf.tabMemoryMb || 0))}
+            <div class="wmb-op-lbl">Close pages not looked at after</div>${combo('suspendMinutes', pick(SUSPEND, perf.suspendMinutes === undefined ? 20 : perf.suspendMinutes))}
+            <div class="wmb-op-lbl">Pages open at once</div>${combo('maxTabs', pick(MAX_TABS, perf.maxTabs || 4))}
+            <div class="wmb-op-note">Window, process and sandbox options change on a computer, in Internet Options.</div>
+            <div class="wmb-op-head">Add-ons</div>
+            ${exts.length ? exts.map((x) => `<div class="wmb-op-addon">${esc(x.name)}${x.popup ? ' <a href="#" data-addon="' + esc(x.popup) + '">Open</a>' : ''}</div>`).join('') : '<div class="wmb-op-lbl">No add-ons are loaded.</div>'}
+            <div class="wmb-op-line"><button type="button" class="wmb-g-btn" data-sa-clear="1">Clear Cookies and Cache</button></div>`;
+    }
+
+    async function saveAlchemyPatch(patch) {
+        const c = window.wsClient;
+        const data = c ? await c.updateUserGlobalSettings({ alchemy: patch }) : null;
+        if (data && data.settings && data.settings.alchemy && sessionOpts) {
+            sessionOpts.alchemy = data.settings.alchemy;
+            sessionOpts.sessions = data.settings.alchemy.sessions || sessionOpts.sessions;
+        }
+    }
+
+    async function saveSessionsPatch(patch) {
+        const c = Object.assign({}, (sessionOpts && sessionOpts.sessions) || {}, patch);
+        if (c.keepMinutes <= c.idleMinutes) {
+            await ws.messageBox({ title: 'Internet Explorer', icon: 'warning', text: 'Addresses must be kept longer than pages stay open.' });
+            renderSub();
+            return;
+        }
+        try { await saveAlchemyPatch({ sessions: patch }); } catch (_) { await ws.messageBox({ title: 'Internet Explorer', icon: 'error', text: 'The setting could not be saved.' }); }
+        renderSub();
+    }
+
+    function sessionFormClick(e) {
+        const addon = e.target.closest('[data-addon]');
+        if (addon) { e.preventDefault(); openAddon(addon.dataset.addon); return true; }
+        if (e.target.closest('[data-sa-clear]')) {
+            e.preventDefault();
+            busyOf(() => fetch('/api/grimoire-browser/clear-data', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cookies: true, cache: true }) }))
+                .then(() => ws.messageBox({ title: 'Internet Explorer', icon: 'info', text: 'Alchemy\'s cookies and cache were cleared.' }))
+                .catch(() => ws.messageBox({ title: 'Internet Explorer', icon: 'error', text: 'The cookies and cache could not be cleared.' }));
+            return true;
+        }
+        const box = e.target.closest('[data-sc]');
+        if (!box) return false;
+        e.stopPropagation();
+        const key = box.dataset.sc;
+        const a = (sessionOpts && sessionOpts.alchemy) || {};
+        const perf = a.performance || {};
+        const sess = (sessionOpts && sessionOpts.sessions) || {};
+        const list = { jpegQuality: QUALITY, maxFps: MAX_FPS, minFps: MIN_FPS, tabMemoryMb: MEMORY, suspendMinutes: SUSPEND, maxTabs: MAX_TABS }[key];
+        if (list) {
+            const now = key in perf || ['tabMemoryMb', 'suspendMinutes', 'maxTabs'].includes(key) ? (perf[key] !== undefined ? perf[key] : a[key]) : a[key];
+            ws.dropdown(box, list.map(([v, t]) => ({ label: t, radio: Number(now) === Number(v), action: () => {
+                const patch = ['tabMemoryMb', 'suspendMinutes', 'maxTabs'].includes(key) ? { performance: { [key]: v } } : { [key]: v };
+                saveAlchemyPatch(patch).then(renderSub).catch(() => ws.messageBox({ title: 'Internet Explorer', icon: 'error', text: 'The setting could not be saved.' }));
+            } })), 'left');
+            return true;
+        }
+        const units = key === 'idleU' ? ['m', 'h'] : ['m', 'h', 'd'];
+        const field = key === 'idleU' ? 'idleMinutes' : 'keepMinutes';
+        const cur0 = splitMinutes(sess[field] || 1, key === 'idleU' ? ['h', 'm'] : ['d', 'h', 'm']);
+        ws.dropdown(box, units.map((u) => ({ label: UNIT_TEXT[u], radio: cur0.u === u, action: () => saveSessionsPatch({ [field]: Math.max(1, Math.min(field === 'idleMinutes' ? 1440 : Infinity, cur0.n * UNIT_MIN[u])) }) })), 'left');
+        return true;
+    }
+
+    function sessionFormChange(e) {
+        const t = e.target;
+        if (t.dataset.sa) { saveAlchemyPatch({ [t.dataset.sa]: !!t.checked }).catch(() => {}); return; }
+        if (!t.dataset.ss) return;
+        const sess = (sessionOpts && sessionOpts.sessions) || {};
+        if (t.type === 'checkbox') { saveSessionsPatch({ [t.dataset.ss]: !!t.checked }); return; }
+        const n = Math.max(1, Math.round(Number(t.value) || 1));
+        if (t.dataset.ss === 'idleN') {
+            const u = splitMinutes(sess.idleMinutes || 15, ['h', 'm']).u;
+            saveSessionsPatch({ idleMinutes: Math.min(1440, n * UNIT_MIN[u]) });
+        } else {
+            const u = splitMinutes(sess.keepMinutes || 4320, ['d', 'h', 'm']).u;
+            saveSessionsPatch({ keepMinutes: n * UNIT_MIN[u] });
+        }
+    }
+
+    // ---- Tools > Add-ons: an extension's popup in a window of its own, as the desktop's Tools ▾ opens it
+
+    let addonCache = null;
+    function addonItems() {
+        if (!addonCache) {
+            fetch('/api/grimoire-browser/extensions', { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : { extensions: [] })).then((d) => { addonCache = (d.extensions || []).filter((x) => x.popup); }).catch(() => { addonCache = []; });
+            return [{ label: '(Empty)', disabled: true }];
+        }
+        return addonCache.length ? addonCache.map((x) => ({ label: menuLabel(x.name), action: () => openAddon(x.popup) })) : [{ label: '(Empty)', disabled: true }];
+    }
+
+    async function openAddon(url) {
+        if (wins.length >= MAX_WINDOWS) { await ws.messageBox({ title: 'Internet Explorer', icon: 'error', text: `Every window is in use (${MAX_WINDOWS}). Close a window, then try again.` }); return; }
+        const g = geometry();
+        let payload = null;
+        try {
+            const res = await fetch('/api/grimoire-browser/sessions', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, width: g.L, height: g.Lh, popup: true, owner: sessionOwner(cur) }) });
+            payload = res.ok ? await res.json() : null;
+        } catch (_) { payload = null; }
+        if (!payload || !payload.viewUrl) { await cannotConnect(); return; }
+        const id = newWindow();
+        const w = wins.find((x) => x.id === id);
+        if (!w) { dropSession(payload.sessionId); return; }
+        w.popup = true;
+        inWin(w, () => {
+            W.entries = [{ url, title: '', pending: true }];
+            W.idx = 0;
+            attachSession(payload);
+            setLoading(true);
+            render();
+            step();
+        });
     }
 
     // ---------------------------------------------------------------- the windows view
@@ -1674,7 +2133,8 @@
                 <div class="wmb-wt-name">${esc(winTitle(w))}</div>
             </div>`).join('');
         const add = wins.length < MAX_WINDOWS ? `<div class="wmb-wt wmb-wt-new" data-new="1" role="button" tabindex="0" aria-label="New Window"><div class="wmb-wt-thumb"><span class="wmb-wt-plus">${v65 ? '' : 'New Window'}</span></div><div class="wmb-wt-name">${v65 ? 'New Window' : ''}</div></div>` : '';
-        return `${v65 ? '' : '<div class="wmb-sub-head">Windows</div>'}<div class="wmb-wins-grid">${tiles}${add}</div>`;
+        const other = window.browsingSessions ? '<div class="wmb-wins-rule"></div><div class="wmb-wins-other" data-other="1" role="button" tabindex="0">Other Devices</div>' : '';
+        return `${v65 ? '' : '<div class="wmb-sub-head">Windows</div>'}<div class="wmb-wins-grid">${tiles}${add}</div>${other}`;
     }
 
     function fillWindows() {
@@ -1688,6 +2148,7 @@
     }
 
     function windowsClick(e) {
+        if (e.target.closest('.wmb-wins-other')) { openDevices(); return; }
         const x = e.target.closest('.wmb-wt-x');
         const tile = e.target.closest('.wmb-wt');
         if (!tile) return;
@@ -2735,8 +3196,8 @@
     // Messaging is not there); Paste = Copy/Paste; Clear History = Options > Browsing History >
     // Clear; Properties = Tools.
 
-    const SUB65_TITLES = { favorites: 'Favorites', history: 'History', options: 'Options', 'opt-history': 'Browsing History', 'opt-other': 'Other', props: 'Properties', windows: 'Windows' };
-    const OPTIONS65 = [['opt-history', 'Browsing History'], ['opt-other', 'Other']];
+    const SUB65_TITLES = { favorites: 'Favorites', history: 'History', options: 'Options', 'opt-history': 'Browsing History', 'opt-other': 'Other', 'opt-sessions': 'Sessions', 'opt-alchemy': 'Alchemy', props: 'Properties', windows: 'Windows', devices: 'Other Devices', restore: 'Restore Session' };
+    const OPTIONS65 = [['opt-history', 'Browsing History'], ['opt-other', 'Other'], ['opt-sessions', 'Sessions'], ['opt-alchemy', 'Alchemy']];
 
     function title65() {
         if (sub === 'favform') return subData65 && subData65.at >= 0 ? 'Edit Favorite' : 'Add Favorite';
@@ -2870,6 +3331,7 @@
                 label: 'Tools',
                 submenu: [
                     { label: 'Send Link...', action: sendLink65 },
+                    { label: 'Add-ons', submenu: addonItems },
                     { label: 'Properties', action: properties },
                     { label: 'Options', action: () => openSub('options') }
                 ]
@@ -2908,11 +3370,13 @@
                 right: { label: 'Cancel', action: closeSub }
             };
         }
-        if (sub === 'options') return { left: { label: 'Open', action: () => openSub(OPTIONS65[subSel] ? OPTIONS65[subSel][0] : 'options') }, right: { label: 'Close', action: closeSub } };
+        if (sub === 'options') return { left: { label: 'Open', action: () => openOption65(OPTIONS65[subSel] ? OPTIONS65[subSel][0] : 'options') }, right: { label: 'Close', action: closeSub } };
         if (sub === 'opt-history') return { left: { label: 'Done', action: () => subDone65(true) }, right: { label: 'Clear', action: clearHistory } };
         if (sub === 'opt-other') return { left: { label: 'Done', action: () => subDone65(true) }, right: { label: 'Cancel', action: () => subDone65(false) } };
         if (sub === 'props') return { left: { label: 'Close', action: closeSub }, right: null };
         if (sub === 'windows') return { left: { label: 'New', disabled: wins.length >= MAX_WINDOWS, action: () => { closeSub(); newWindow(); } }, right: { label: 'Close', action: closeSub } };
+        if (SESSION_SUBS.has(sub)) return sessionSubKeys();
+        if (sub === 'opt-sessions' || sub === 'opt-alchemy') return { left: { label: 'Done', action: () => openSub('options') }, right: null };
         if (sub === 'favform') return { left: { label: subData65 && subData65.at >= 0 ? 'OK' : 'Add', action: () => subDone65(true) }, right: { label: 'Cancel', action: () => subDone65(false) } };
         return none;
     }
@@ -3019,6 +3483,12 @@
             html = `<div class="wmb65-props">${fields.map(([k, v]) => `<b>${k}</b><span>${esc(v)}</span>`).join('')}</div>`;
         } else if (sub === 'windows') {
             html = windowsHtml();
+        } else if (SESSION_SUBS.has(sub)) {
+            html = sessionSubHtml();
+        } else if (sub === 'opt-sessions') {
+            html = `<div class="wmb65-form wmb-opts">${sessionsFormHtml()}</div>`;
+        } else if (sub === 'opt-alchemy') {
+            html = `<div class="wmb65-form wmb-opts">${alchemyFormHtml()}</div>`;
         } else if (sub === 'favform') {
             const d = subData65 || { url: '', title: '' };
             html = `<div class="wmb65-form">
@@ -3051,7 +3521,7 @@
         if (!row) return;
         subSel = Number(row.dataset.i);
         if (sub === 'favorites' || sub === 'history') openSubRow(subSel);
-        else if (sub === 'options') openSub(OPTIONS65[subSel][0]);
+        else if (sub === 'options') openOption65(OPTIONS65[subSel][0]);
     }
 
     function mount65() {
@@ -3384,6 +3854,10 @@
         cur = w;
         W = w;
         w.shownAt = Date.now();
+        // only the window on screen is captured (#756)
+        if (old.frame && old.frame.contentWindow) old.frame.contentWindow.postMessage({ type: 'grimoire-browser-visibility', hidden: true }, location.origin);
+        if (w.frame && w.frame.contentWindow) w.frame.contentWindow.postMessage({ type: 'grimoire-browser-visibility', hidden: false }, location.origin);
+        if (w.memoryLimit) { const m = w.memoryLimit; w.memoryLimit = null; setTimeout(() => inWin(w, () => askMemoryLimit(m)), 0); }
         if (!page) return true;
         // the window left behind falls silent; its page and applet are let go after WINDOW_IDLE_MS
         inWin(old, () => { clearTimeout(W.idleTimer); W.idleTimer = 0; syncPageShown(); armDsapIdle(); });
@@ -3514,8 +3988,12 @@
 
         if (v65) mount65();
 
+        // the Sessions and Alchemy pages' check boxes and numbers save as they change (#756)
+        els.sub.addEventListener('change', (e) => { if (sub === 'options' || sub === 'opt-sessions' || sub === 'opt-alchemy') sessionFormChange(e); });
         els.sub.addEventListener('click', (e) => {
             if (sub === 'windows') { windowsClick(e); return; }
+            if (SESSION_SUBS.has(sub)) { sessionSubClick(e); return; }
+            if ((sub === 'opt-sessions' || sub === 'opt-alchemy') && sessionFormClick(e)) return;
             if (v65) { subClick65(e); return; }
             if (sub === 'options') { optionsClick61(e); return; }
             if (sub === 'props') return;
@@ -3572,7 +4050,8 @@
                 mq.addEventListener('change', () => { if (page) layoutFrame(); watchDpr(); }, { once: true });
             };
             watchDpr();
-            addEventListener('pagehide', () => wins.forEach((w) => inWin(w, () => { if (W.session) closeSession(); })));
+            // pagehide no longer closes the pages (#756): the registry keeps them for the idle time
+            // (Internet Options > Sessions), so the desktop can take them from Other Devices
             document.addEventListener('visibilitychange', () => wins.forEach((w) => inWin(w, syncAudio)));
         }
         render();
@@ -3603,6 +4082,8 @@
                 wins.forEach((w) => { if (w !== cur) inWin(w, () => { syncPageShown(); armDsapIdle(); }); });
                 if (sub) renderSub();
                 syncAudio();
+                // Restore Session, the first time IE shows after the phone starts (#756)
+                maybeRestore();
             },
             hide() {
                 visible = false;
@@ -3661,6 +4142,7 @@
                 if (v65) return softKeys65();
                 // Properties and Options have no soft keys (device); the windows view: New / Close
                 if (sub === 'props' || sub === 'options') return { left: null, right: null };
+                if (SESSION_SUBS.has(sub)) return sessionSubKeys();
                 if (sub === 'windows') return { left: { label: 'New', disabled: wins.length >= MAX_WINDOWS, action: () => { closeSub(); newWindow(); } }, right: { label: 'Close', action: closeSub } };
                 if (sub) {
                     return {
@@ -3693,9 +4175,41 @@
                 return id;
             },
             closeWindow: (id) => closeWindow(id),
+            sessionSnapshot,
             // tests: the pages seen in the window on screen and where Chromium is
             _state: () => ({ entries: W.entries.map((e) => (e.home ? (e.grim.kind === 'home' ? 'home' : e.url) : e.url)), idx: W.idx, dsap: W.dsapShell && W.dsapShell._dsapState ? W.dsapShell._dsapState.url : null, idle: !!W.idleTimer, inspect: W.pendingInspect, chromeAt: W.chromeAt, chromeBase: W.chromeBase, session: W.session && W.session.id, loading: W.loading, frame: !!W.frame, ready: W.ready, viewMode, zoomKey, geometry: els.view ? geometry() : null, win: cur.id, windows: wins.length, maxWindows: MAX_WINDOWS })
         };
+        if (window.browsingSessions) {
+            window.browsingSessions.register(sessionSnapshot);
+            // IE shown before the server knew this client: ask once it does
+            window.browsingSessions.on('ready', () => { if (visible) maybeRestore(); });
+        }
+        // ActiveSync's Send to Device from the desktop's IE (#756): open.item { kind: 'url', url, title, history, alchemyId, from }.
+        // An Alchemy page moves here (the computer's tab says it was transferred); anything else opens from its address.
+        if (window.activeSync && typeof window.activeSync.registerOp === 'function') {
+            window.activeSync.registerOp('open.item', (args, from) => {
+                const a = args || {};
+                if (a.kind !== 'url' || !a.url) throw Object.assign(new Error('Only web pages can be opened here.'), { code: 'UNSUPPORTED' });
+                const who = String(a.from || (from && from.name) || 'A computer');
+                const go = async () => {
+                    ws.open(APP_ID);
+                    let tab = { url: a.url, title: a.title || '', history: a.history || [] };
+                    if (a.alchemyId && window.browsingSessions) {
+                        try {
+                            const res = await window.browsingSessions.takeBack(a.alchemyId, { windowId: 'wmie', size: { width: geometry().L, height: geometry().Lh } });
+                            if (res && res.tab) tab = res.tab;
+                        } catch (_) { /* the page closed meanwhile: its address */ }
+                    }
+                    if (!openTakenTab(tab)) ws.messageBox({ title: 'Internet Explorer', icon: 'error', text: `Every window is in use (${MAX_WINDOWS}). Close a window, then try again.` });
+                };
+                ws.notify({ title: 'Internet Explorer', icon: 'info', asNote: true, text: `${who} sent a page: ${a.title || a.url}`, buttons: [{ text: 'Open', onClick: () => { go(); } }, { text: 'Dismiss' }] });
+                return { shown: true };
+            });
+            window.browsingSessions.on('tabTaken', (msg) => {
+                const w = wins.find((x) => x.session && x.session.id === (msg && msg.alchemyId));
+                if (w) inWin(w, () => showTransferred({ to: msg.to || '' }));
+            });
+        }
         try {
             // featureLoader.js's global function: on the phone it opens this app
             window.openGrimoireUrl = async (url) => { if (!window.wmBrowser.open(url)) ws.open(APP_ID); };

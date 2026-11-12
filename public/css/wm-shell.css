@@ -742,7 +742,8 @@ html.ui-mobile[data-wm-app="today"] #wmShell > .wm-content {
     background: linear-gradient(to bottom, var(--wm-gloss-top) 0, var(--wm-gloss-bottom) calc(11 * var(--wm-px)), var(--wm-softkey-base) calc(11 * var(--wm-px)), var(--wm-softkey-base) 100%);
     color: #fff;
     display: grid;
-    grid-template-columns: 1fr calc(34 * var(--wm-px)) 1fr;
+    /* the input panel button's cell is 60 units (below), the soft keys share the rest: 90 each on the device */
+    grid-template-columns: 1fr calc(60 * var(--wm-px)) 1fr;
     align-items: stretch;
     position: relative;
     z-index: 3;
@@ -766,17 +767,42 @@ html.ui-mobile[data-wm-app="today"] #wmShell > .wm-content {
     background: rgba(0, 0, 0, 0.18) !important;
 }
 
+/* ---- the input panel button. Device (6.1 VGA, MS_SIPBUTTON): a window of 120 x 52 px at 180,588,
+ * a 60-unit cell in the middle of the bar, the rule included. Its art is a 16-unit cell (the
+ * keyboard in it is 16 x 10.5) at x 112.5, 3 units under the rule. Nothing is drawn for the pen
+ * held on it: the tap acts on pen up. While the input panel is up the cell is lit: the bar's
+ * colour rises in a straight ramp from the cell's edges to 1.43 times at its middle (default
+ * theme: 24,170,24 to 33,243,41), the gloss above it by 1.17 to 1.22 times. The device also
+ * draws a 6.5 x 3.5 unit arrow 4.5 units right of the keyboard then (the input method menu:
+ * Options..., Block Recognizer, Keyboard, Letter Recognizer, Transcriber); the phone's own
+ * keyboard has no such menu to open, so no arrow here. ---- */
 .wm-sip {
     display: flex;
-    align-items: center;
-    justify-content: center;
+    align-items: flex-start;
+    justify-content: flex-start;
+    position: relative;
 }
 
 .wm-sip img {
-    width: calc(17 * var(--wm-px));
-    height: calc(10 * var(--wm-px));
-    object-fit: contain;
+    position: relative;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin: calc(3 * var(--wm-px)) 0 0 calc(22.5 * var(--wm-px));
     pointer-events: none;
+}
+
+/* lit while the keyboard is up (wmShell.js sets aria-pressed from wmSipChange): colour dodge by
+ * a grey g multiplies the bar under it by 1 / (1 - g), so 30 % grey is the 1.43 of the middle */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-sip[aria-pressed="true"]::before {
+    content: '';
+    position: absolute;
+    /* the first unit under the rule stays as it is (device: lit from y 592 of 588) */
+    inset: calc(1 * var(--wm-px)) 0 0 0;
+    pointer-events: none;
+    mix-blend-mode: color-dodge;
+    background:
+        linear-gradient(to right, #000 0, #171717 25%, #2b2b2b 50%, #171717 75%, #000 100%) 0 0 / 100% calc(10 * var(--wm-px)) no-repeat,
+        linear-gradient(to right, #000 0, #363636 25%, #4d4d4d 50%, #363636 75%, #000 100%);
 }
 
 .wm-sip[hidden] {

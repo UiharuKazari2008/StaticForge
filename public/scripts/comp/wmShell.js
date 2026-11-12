@@ -46,7 +46,7 @@
     // the 6.5 order until one is chosen in Settings: the clock is home, in the centre, as on
     // Windows Mobile 6.5 (pictures, music, getting started, phone, voicemail | clock | text,
     // e-mail, calendar, favorites): pictures and the places above it, what arrives below
-    const TODAY_ORDER_65 = ['owner', 'search', 'workspace', 'prints', 'studio', 'director', 'date', 'connection', 'messages', 'calendar', 'tasks', 'weather', 'accounts', 'xlink', 'notes', 'remote-desktop', 'server'];
+    const TODAY_ORDER_65 = ['owner', 'search', 'workspace', 'prints', 'studio', 'director', 'date', 'connection', 'messages', 'calendar', 'tasks', 'weather', 'accounts', 'xlink', 'notes', 'files', 'remote-desktop', 'server'];
     function todayOrder65(ids) {
         const rank = (id) => { const i = TODAY_ORDER_65.indexOf(id); return i < 0 ? TODAY_ORDER_65.length : i; };
         return ids.map((id, i) => [id, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([id]) => id);

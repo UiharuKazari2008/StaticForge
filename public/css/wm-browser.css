@@ -1743,3 +1743,93 @@ html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-form.wmb65-other .wm-ch
     margin-left: 0;
     margin-top: calc(4 * var(--wm-px));
 }
+
+/* #756: a window whose page another device took (wmBrowser.js showTransferred), in the device's page font */
+.wm-browser .wmb-transferred {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
+    background: #fff;
+    color: #000;
+    font-size: var(--wm-fs);
+    line-height: 1.35;
+}
+
+.wm-browser .wmb-transferred p {
+    margin: 0 0 calc(4 * var(--wm-px));
+}
+
+.wm-browser .wmb-transferred-title {
+    font-weight: bold;
+}
+
+.wm-browser .wmb-transferred-url {
+    color: #555;
+    word-break: break-all;
+}
+
+.wm-browser .wmb-transferred a {
+    color: #00f;
+}
+
+/* #756: the Windows list's Other Devices (under a rule), Other Devices, Restore Session, Options' Sessions and Alchemy */
+.wm-browser .wmb-wins-rule {
+    margin: calc(4 * var(--wm-px)) calc(6 * var(--wm-px)) 0;
+    border-top: 1px solid var(--wm-rule, #000);
+}
+
+.wm-browser .wmb-wins-other {
+    padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
+    color: #00f;
+    text-decoration: underline;
+    font-size: var(--wm-fs);
+}
+
+.wm-browser .wmb-dev-head {
+    display: flex;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    background: var(--wm-tint, #dde);
+    font-size: var(--wm-fs);
+}
+
+.wm-browser .wmb-dev-head span {
+    margin-left: auto;
+    color: #555;
+}
+
+.wm-browser .wmb-restore {
+    padding: calc(3 * var(--wm-px)) calc(5 * var(--wm-px));
+    font-size: var(--wm-fs);
+    overflow: auto;
+}
+
+.wm-browser .wmb-restore p {
+    margin: 0 0 calc(4 * var(--wm-px));
+}
+
+.wm-browser .wmb-rs-win {
+    margin-top: calc(4 * var(--wm-px));
+    font-weight: bold;
+}
+
+.wm-browser .wmb-rs-tab {
+    display: flex;
+    padding-left: calc(10 * var(--wm-px));
+}
+
+.wm-browser .wmb-op-num {
+    width: calc(40 * var(--wm-px));
+    margin-right: calc(4 * var(--wm-px));
+}
+
+.wm-browser .wmb-op-note {
+    margin: calc(3 * var(--wm-px)) 0;
+    color: #555;
+}
+
+.wm-browser .wmb-op-addon a {
+    color: #00f;
+}

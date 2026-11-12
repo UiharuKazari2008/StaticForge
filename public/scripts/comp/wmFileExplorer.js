@@ -545,6 +545,8 @@
         if (opts.select || !opts.keep) scrollToSelection();
         if (isCurrent()) ws.refreshSoftKeys();
         fillPage();
+        // a list read again (after an operation here, or on coming back): Today's Files item asks anew
+        if (opts.keep) document.dispatchEvent(new CustomEvent('wmFilesChange', { detail: { path } }));
     }
 
     async function loadMore() {
@@ -1171,6 +1173,7 @@
         // on screen: File Explorer is up and shows the folder the files went to
         const watching = here && !!first && pathNow() === first.dest;
         rxClose(t);
+        if (first) document.dispatchEvent(new CustomEvent('wmFilesChange', { detail: { path: first.dest } }));
         if (here && t.entries.some((e) => e.dest === pathNow())) {
             await load({ keep: true });
             const added = t.listed && watching ? items.filter((i) => !t.listed.has(i.id)) : [];
@@ -1839,6 +1842,47 @@
             startRename([...selected][0]);
         }
     }
+
+    // ---------------------------------------------------------------- for other programs
+
+    /**
+     * Read-only helpers for Today's Files item (wmTodayWidgets.js): the places and list formats of
+     * this program, one page of a folder without touching the list on screen, the phone's volumes,
+     * and the two ways in (a folder listed here, a file opened as a tap on its row opens it).
+     * 'wmFilesChange' { path } on document: a list was read again or files were received.
+     */
+    window.wmFileExplorer = {
+        myDocumentsPath,
+        fmtDate,
+        fmtSize,
+        /** { count, files: newest first } of a folder; hidden files left out as with Show All Files off. */
+        async list(path, limit) {
+            if (typeof vfsClient === 'undefined') throw new Error('The file system is not available.');
+            const res = await vfsClient.listDirectory(path, { offset: 0, limit: limit || PAGE_LIMIT, sortField: 'date', sortDirection: 'desc', search: '' });
+            const list = ((res && res.items) || []).filter((i) => !String(i.name || '').startsWith('.'));
+            const total = Number(res && res.totalCount);
+            return { count: res && res.hasMore && Number.isFinite(total) ? total : list.length, files: list.filter((i) => !isFolder(i)) };
+        },
+        /** The phone's volumes (Android app only): [{ name, path, total, free }] in bytes, 0 = unknown. */
+        async volumes() {
+            if (!window.AndroidPhoneStorage) return [];
+            await phoneState();
+            return rootItems().map((r) => ({ name: r.name, path: r.navPath, total: Number(r.phone.drive.total) || 0, free: Number(r.phone.drive.free) || 0 }));
+        },
+        /** File Explorer on a folder: a place of this workspace (its name for the folder bar) or a phone volume. */
+        openFolder(path, name) {
+            if (!ws) return;
+            ws.open(APP_ID);
+            if (!page || pathNow() === path) return;
+            const vol = rootItems().find((r) => r.navPath === path);
+            if (vol) { void openItem(vol); return; }
+            if (String(path).startsWith('phone:')) return; // a volume that went away: File Explorer as it stands
+            const docs = myDocumentsPath();
+            navigate(path, name, name && path.startsWith(`${docs}/`) ? { trail: trailFor(docs).concat([{ path, name: placeName(path, name) }]) } : {});
+        },
+        /** A listed file (an item of list()) opened as its row would: the picture viewer, Notes, Contacts, or WM's "no application" box. */
+        openFile: (i) => openItem(i)
+    };
 
     // ---------------------------------------------------------------- registration
 

@@ -371,3 +371,38 @@
 .wtw-preview[hidden] {
     display: none;
 }
+
+/* ---- Files: the File Explorer icon | "My Documents: 28 items" over the newest file's name
+ * (ellipsis) and its date at the right, as File Explorer's own rows end */
+.wm-today-block.wtw-files {
+    align-items: flex-start;
+    min-height: calc(21 * var(--wm-px));
+}
+
+.wtw-files-icon {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin-top: calc(1 * var(--wm-px));
+}
+
+.wtw-files-last {
+    display: flex;
+    gap: calc(6 * var(--wm-px));
+    min-width: 0;
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+}
+
+.wtw-files-last[hidden] {
+    display: none;
+}
+
+.wtw-files-last .wtw-sub {
+    flex: 1 1 auto;
+}
+
+.wtw-files-date {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}

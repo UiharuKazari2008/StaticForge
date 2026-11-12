@@ -107,6 +107,20 @@
             ['Use SSL 3.0', 'SSL3', true], ['Use TLS 1.0', 'TLS10', true], ['Warn if changing between secure and not secure mode', 'WarnSecureChange', true]] }
     ];
 
+    let generalTpl = null;
+    function generalWithSessions() {
+        if (generalTpl) return generalTpl;
+        const base = (root.vistaDialogTemplates || {})['inetcpl:100'];
+        if (!base) return undefined;
+        const c = base.c.map((row) => row.slice());
+        const desc = c.find((row) => row[7] === 'Change how webpages are displayed in tabs.');
+        if (desc) desc[4] = 78;
+        const at = c.findIndex((row) => row[0] === 5505);
+        c.splice(at, 0, [5506, 'B', 126, 184, 58, 14, 0x50010000, 'Sess&ions', 0]);
+        generalTpl = Object.assign({}, base, { c });
+        return generalTpl;
+    }
+
     // "@name" rows are Alchemy's own settings (userGlobalSettings.alchemy), the rest registry values
     function inetTree(values, alchemy) {
         let n = 0;
@@ -132,6 +146,20 @@
                     return `<div class="tbp-tree-row is-child cpl-fo-radio"><input type="radio" name="cpl-ia-${row.key}" id="cpl-ia-${n}" data-ia-radio="${row.key}" value="${v}"${Number(alchemy[row.key]) === v ? ' checked' : ''}><label for="cpl-ia-${n}">${esc(label)}</label></div>`;
                 })].join('');
             })].join(''));
+            // Alchemy performance (#756): memory per tab, windows, processes; "*" rows relaunch Alchemy
+            const perf = { ...(io.PERFORMANCE_DEFAULTS || {}), ...(alchemy.performance || {}) };
+            groups.splice(2, 0, [`<div class="tbp-tree-row is-node"><span>Alchemy performance</span></div>`, ...(io.PERFORMANCE_ADVANCED || []).map((row) => {
+                n += 1;
+                if (row.check) {
+                    const on = row.invert ? !perf[row.key] : !!perf[row.key];
+                    const off = row.needs && !perf[row.needs] ? ' disabled' : '';
+                    return `<div class="tbp-tree-row is-child"><input type="checkbox" id="cpl-ia-${n}" data-ia-perf="${row.key}"${row.invert ? ' data-invert="1"' : ''}${row.needs ? ` data-needs="${row.needs}"` : ''}${on ? ' checked' : ''}${off}><label for="cpl-ia-${n}">${esc(row.check)}</label></div>`;
+                }
+                return [`<div class="tbp-tree-row is-child cpl-fo-sub"><img src="/static_images/vista-icons/explorer/folder-16.png" alt="" onerror="this.remove()"><span>${esc(row.sub)}</span></div>`, ...row.choices.map(([v, label]) => {
+                    n += 1;
+                    return `<div class="tbp-tree-row is-child cpl-fo-radio"><input type="radio" name="cpl-ia-perf-${row.key}" id="cpl-ia-${n}" data-ia-perf-radio="${row.key}" value="${v}"${Number(perf[row.key]) === v ? ' checked' : ''}><label for="cpl-ia-${n}">${esc(label)}</label></div>`;
+                })].join('');
+            })].join(''));
         }
         return groups.join('');
     }
@@ -142,7 +170,9 @@
         icon: itemIcon('internet-options'),
         tabs: { general: 'inetcpl:100', security: 'inetcpl:500', privacy: 'inetcpl:5300', content: 'inetcpl:4454', connections: 'inetcpl:200', programs: 'inetcpl:300', advanced: 'inetcpl:600' },
         pages: [
-            { key: 'inetcpl:100', overrides: hide(...POLICY) },
+            // General: the Tabs group also holds Sessions (#756 browsing sessions: Restore Session, idle and storage times),
+            // a button left of Settings as the Browsing history row has Delete and Settings
+            { key: 'inetcpl:100', get tpl() { return generalWithSessions(); }, overrides: hide(...POLICY) },
             { key: 'inetcpl:500', overrides: { ...hide(...POLICY, 5601, 5602, 1575, 1579, 1030), 1518: { html: '<img class="cpl-zone-icon" alt="">' } } },
             { key: 'inetcpl:5300', overrides: hide(...POLICY) },
             { key: 'inetcpl:4454', overrides: hide(...POLICY) },
@@ -169,7 +199,22 @@
             const home = ctx.el(1487, 'inetcpl:100');
             ctx.store.home = '';
             ctx.store.alchemy = null;
-            const fillAdv = (values, alchemy) => { ctx.holder(1439, 'inetcpl:600').innerHTML = inetTree(values, alchemy); };
+            const fillAdv = (values, alchemy) => {
+                const tree = ctx.holder(1439, 'inetcpl:600');
+                tree.innerHTML = inetTree(values, alchemy);
+                // a window per Grimoire window only exists inside a window per computer (#756)
+                if (!tree._perfNeeds) {
+                    tree._perfNeeds = true;
+                    tree.addEventListener('change', (ev) => {
+                        const key = ev.target && ev.target.dataset && ev.target.dataset.iaPerf;
+                        if (!key) return;
+                        tree.querySelectorAll(`[data-needs="${key}"]`).forEach((dep) => {
+                            dep.disabled = !ev.target.checked;
+                            if (!ev.target.checked) dep.checked = false;
+                        });
+                    });
+                }
+            };
             if (io) {
                 io.alchemySettings().then((s) => {
                     ctx.store.alchemy = s;
@@ -190,6 +235,7 @@
             sub(1490, 'inetcpl:100', 'historySettings');
             sub(5503, 'inetcpl:100', 'search');
             sub(5505, 'inetcpl:100', 'tabs');
+            ctx.on(5506, 'click', () => { if (root.browsingRestore) root.browsingRestore.openSettings(ctx.modal); }, 'inetcpl:100');
             sub(1483, 'inetcpl:100', 'colors');
             sub(1495, 'inetcpl:100', 'languages');
             sub(1494, 'inetcpl:100', 'fonts');
@@ -289,11 +335,30 @@
                 if (Number(was[k]) !== Number(i.value)) patch[k] = Number(i.value);
             });
             if (patch.minFps && patch.maxFps === undefined && patch.minFps > Number(was.maxFps)) patch.maxFps = patch.minFps;
+            // Alchemy performance (#756)
+            const wasPerf = { ...((io && io.PERFORMANCE_DEFAULTS) || {}), ...(was.performance || {}) };
+            const perfPatch = {};
+            tree.querySelectorAll('[data-ia-perf]').forEach((i) => {
+                const k = i.dataset.iaPerf;
+                const v = i.dataset.invert ? !i.checked : i.checked;
+                if (!!wasPerf[k] !== v) perfPatch[k] = v;
+            });
+            tree.querySelectorAll('[data-ia-perf-radio]:checked').forEach((i) => {
+                const k = i.dataset.iaPerfRadio;
+                if (Number(wasPerf[k]) !== Number(i.value)) perfPatch[k] = Number(i.value);
+            });
+            const relaunch = ((io && io.PERFORMANCE_ADVANCED) || []).some((row) => row.relaunch && perfPatch[row.key] !== undefined);
+            if (Object.keys(perfPatch).length) patch.performance = perfPatch;
             if (io && Object.keys(patch).length) {
                 try {
                     const saved = await io.saveAlchemy(patch);
                     if (saved) { ctx.store.alchemy = { ...was, ...saved }; ctx.store.home = saved.homePage || ''; }
                 } catch (err) { console.error('Internet Properties: Grimoire settings', err); }
+            }
+            // a "*" option: Alchemy relaunches with it once the user agrees (open pages reload)
+            if (relaunch && root.browsingRestore && typeof root.browsingRestore.confirm === 'function') {
+                const now = await root.browsingRestore.confirm('Alchemy has to restart to use the new performance options. Open webpages reload. Restart Alchemy now?');
+                if (now) fetch('/api/grimoire-browser/restart', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
             }
             const r = R();
             if (!r) return;

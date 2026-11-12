@@ -1,0 +1,35 @@
+/*
+ * Restore Session and Other Devices (Yozora #756; browsingRestore.js, browsingOtherDevices.js).
+ * The tree is Internet Properties' Advanced tree (taskbar-properties.css .tbp-tree-row): a window row
+ * with its check box, then one row per tab with the page icon, title and address.
+ */
+
+.tbp-client .brs-tree .tbp-tree-row label {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.tbp-client .brs-tree .tbp-tree-row img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.tbp-client .brs-tree .brs-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tbp-client .brs-tree .brs-url {
+    margin-left: 6px;
+    color: #6d6d6d;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tbp-client .brs-tree .brs-live {
+    color: #6d6d6d;
+}

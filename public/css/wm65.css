@@ -407,7 +407,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-sip img {
     display: none;
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-sip:active:not([hidden]),
+/* lit while the input panel (the phone's keyboard) is up; the device draws nothing for the pen
+ * held on the button */
 html.ui-mobile[data-wm-version="6.5"] .wm-sip[aria-pressed="true"] {
     background: url('/static_images/wm65/theme-black-siphighlight@2x.png') center / 100% 100% no-repeat;
 }
@@ -1187,7 +1188,7 @@ html.ui-mobile[data-wm-version="6.5"] #wmShell > .wm-wall65 {
     background-color: #000;
 }
 
-html.ui-mobile[data-wm-version="6.5"][data-wm-app="today"] #wmShell > .wm-wall65:not([hidden]),
+html.ui-mobile[data-wm-version="6.5"][data-wm-app="today"]:not([data-wm-viewer]) #wmShell > .wm-wall65:not([hidden]),
 html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] #wmShell > .wm-wall65:not([hidden]) {
     display: block;
 }

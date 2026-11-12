@@ -59,6 +59,23 @@
         { check: 'Play sounds when the window is in the background', key: 'audioBackground' }
     ];
 
+    // Internet Properties > Advanced: Alchemy performance (#756; userGlobalSettings.alchemy.performance, sent to the
+    // service at once). "*" rows relaunch Chromium (the dialog asks first); invert: the row reads the other way round.
+    const PERFORMANCE_ADVANCED = [
+        { sub: 'Maximum memory per tab', key: 'tabMemoryMb', choices: [[0, 'No limit'], [256, '256 MB'], [512, '512 MB'], [1024, '1 GB'], [2048, '2 GB'], [4096, '4 GB']] },
+        { check: 'Give each computer and phone its own browser window', key: 'isolateClients' },
+        { check: 'Give each Grimoire window its own browser window', key: 'isolateWindows', needs: 'isolateClients' },
+        { check: 'Pause pages nobody is watching', key: 'pauseUnwatched' },
+        { sub: 'Suspend background tabs after', key: 'suspendMinutes', choices: [[0, 'Never'], [5, '5 minutes'], [10, '10 minutes'], [20, '20 minutes'], [60, '1 hour']] },
+        { sub: 'Open Alchemy pages at most', key: 'maxTabs', choices: [[2, '2 pages'], [4, '4 pages'], [6, '6 pages'], [8, '8 pages'], [12, '12 pages'], [16, '16 pages']] },
+        { check: 'Run pages without the Chrome sandbox*', key: 'sandbox', invert: true, relaunch: true },
+        { check: 'Keep each website in a process of its own (site isolation)*', key: 'siteIsolation', relaunch: true },
+        { sub: 'Page processes at most*', key: 'rendererLimit', relaunch: true, choices: [[0, 'Automatic'], [2, '2'], [4, '4'], [8, '8'], [16, '16']] },
+        { check: 'Use the graphics card when Alchemy has no display*', key: 'headlessGpu', relaunch: true },
+        { check: 'Let Alchemy update its components*', key: 'componentUpdate', relaunch: true }
+    ];
+    const PERFORMANCE_DEFAULTS = { tabMemoryMb: 0, isolateClients: true, isolateWindows: true, pauseUnwatched: true, suspendMinutes: 20, maxTabs: 4, sandbox: false, siteIsolation: true, rendererLimit: 0, headlessGpu: true, componentUpdate: true };
+
     function esc(v) {
         return String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
@@ -656,6 +673,7 @@
 
     root.cplInternetOptions = {
         alchemySettings, saveAlchemy, currentPage, clearBrowsingData, SEARCH_PROVIDERS, ALCHEMY_ADVANCED, ALCHEMY_DEFAULTS, KEY,
+        PERFORMANCE_ADVANCED, PERFORMANCE_DEFAULTS,
         open: { deleteHistory, historySettings, search, tabs, popups, languages, fonts, colors, accessibility, autoComplete, feeds, privacyAdvanced, reset, addons }
     };
 })(typeof window !== 'undefined' ? window : globalThis);

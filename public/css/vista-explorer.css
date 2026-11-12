@@ -3169,3 +3169,61 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-tile .explorer-item-tile-sub:empty {
     display: none;
 }
+/* Quick Tabs' Other Devices (#756, grimoireIeChrome.js fillOtherDevices): under this window's tabs, a heading as
+   Explorer's group headers (Segoe UI 9pt #1e3287, a fading rule), one line per device with its state, then its
+   tabs as tiles; a tile has no picture, so its box shows the page icon, the address and what opening it does. */
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quickpanel:has(> .grimoire-ie-quick-other) {
+    grid-auto-rows: auto;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quickpanel:has(> .grimoire-ie-quick-other) > .grimoire-ie-quicktile {
+    margin-bottom: 1px;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quick-heading {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    margin: 6px 32px 0 0;
+    color: #1e3287;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quick-heading::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, #a4b0d8, rgb(164 176 216 / 0));
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quick-device {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    padding-left: 2px;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quick-device img {
+    width: 16px;
+    height: 16px;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quick-device-state {
+    color: #6d6d6d;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quick-other-shot {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px;
+    word-break: break-all;
+    color: #575757;
+    font-size: 11px;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quick-other-shot img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quick-other-note {
+    margin-top: auto;
+    color: #1e3287;
+}

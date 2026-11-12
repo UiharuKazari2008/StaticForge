@@ -172,6 +172,7 @@
                 + '<button type="button" class="grimoire-ie-zoom-drop" title="Change Zoom Level" aria-label="Zoom Levels"><span class="grimoire-ie-cmd-drop" aria-hidden="true"></span></button></span>'
                 + '<span class="grimoire-ie-status-grip" aria-hidden="true"></span>';
             this.statusText = this.status.querySelector('.grimoire-ie-status-text');
+            this.memCell = this.status.querySelector('.grimoire-ie-status-cell');
             this.zoneText = this.status.querySelector('.grimoire-ie-zone-text');
             this.zoneIcon = this.status.querySelector('.grimoire-ie-status-zone img');
             this.zoomBtn = this.status.querySelector('.grimoire-ie-zoom-btn');
@@ -337,6 +338,10 @@
 
         onMenuAction(action, item) {
             const shell = this.shell();
+            if (action === 'send-device' && item) {
+                this.sendTabToDevice(null, item.deviceId, item.deviceName);
+                return;
+            }
             if (action === 'home-go' && item) {
                 if (item.homeUrl) this.host.navigate(item.homeUrl);
                 else if (shell && typeof shell.goHome === 'function') shell.goHome();
@@ -450,6 +455,8 @@
             return [
                 { text: 'New Window', subtext: 'Ctrl+N', icon: 'fas fa-window-restore', action: 'page-new-window' },
                 { text: 'Copy Address', icon: 'fas fa-link', action: 'page-copy-address', disabled: !this.currentAddress() },
+                // ActiveSync (#756): the page to a phone; an Alchemy page moves there
+                { text: 'Send to Device', submenu: this.sendItems(null) },
                 { separator: true },
                 { text: 'Split View', action: 'page-split', indicatorStyle: 'box', checked: splitOn, disabled: !splitAvailable }
             ];
@@ -833,9 +840,11 @@
                 this.tabEls.delete(id);
             });
             const many = list.length > 1;
-            if (this.tabTools.hidden === many) this.tabTools.hidden = !many;
+            // Quick Tabs also shows Other Devices (#756), so its button stays while another device has tabs
+            const tools = many || this.otherDeviceTabs() > 0;
+            if (this.tabTools.hidden === tools) this.tabTools.hidden = !tools;
             // a tab opened or closed under Quick Tabs: the grid follows
-            if (this.isQuickTabsOpen() && this.quickCount !== list.length) this.toggleQuickTabs(many);
+            if (this.isQuickTabsOpen() && this.quickCount !== list.length) this.toggleQuickTabs(tools);
             this.tabRow.classList.toggle('has-many-tabs', many);
             // tabs past the strip's end: the one on show scrolls into it
             const current = this.tabStrip.querySelector('.grimoire-ie-tab.is-active');
@@ -922,10 +931,13 @@
                         { text: 'Refresh', action: 'tab-refresh', disabled: !menuTab },
                         { text: 'Refresh All', action: 'tab-refresh-all' },
                         { separator: true },
-                        { text: 'New Tab', action: 'tab-new' }
+                        { text: 'New Tab', action: 'tab-new' },
+                        { separator: true },
+                        { text: 'Send to Device', submenu: this.sendItems(menuTab), disabled: !menuTab }
                     ];
                 },
-                onAction: (action) => {
+                onAction: (action, target, item) => {
+                    if (action === 'send-device' && item && menuTab) { this.sendTabToDevice(menuTab, item.deviceId, item.deviceName); return; }
                     if (action === 'tab-new') tabs.open();
                     else if (action === 'tab-refresh-all') this.refreshTabs(tabs.list());
                     else if (!menuTab) return;
@@ -952,7 +964,7 @@
             if (this.onQuickKey) document.removeEventListener('keydown', this.onQuickKey, true);
             const tabs = this.host.tabs;
             const wrap = this.modal.querySelector('.tag-wiki-panels-wrap');
-            if (!open || !tabs || tabs.count() < 2 || !wrap) return;
+            if (!open || !tabs || (tabs.count() < 2 && !this.otherDeviceTabs()) || !wrap) return;
             const view = document.createElement('div');
             view.className = 'grimoire-ie-quickview';
             const panel = document.createElement('div');
@@ -961,13 +973,19 @@
             const ref = this.host.displayArea;
             const refWidth = Math.max(320, (ref && ref.clientWidth) || 800);
             tabs.list().forEach((tab) => panel.appendChild(this.quickTile(tab, refWidth)));
+            this.fillOtherDevices(panel);
             view.addEventListener('click', (ev) => {
+                const other = ev.target.closest('.grimoire-ie-quicktile[data-other-session]');
+                if (other) {
+                    this.takeOtherTab(other.dataset.otherSession, other.dataset.otherTab);
+                    return;
+                }
                 const tile = ev.target.closest('.grimoire-ie-quicktile');
                 const tab = tile ? this.tabById(tile.dataset.tabId) : null;
                 if (!tab) return;
                 if (ev.target.closest('.grimoire-ie-quicktile-close')) {
                     tabs.close(tab);
-                    this.toggleQuickTabs(tabs.count() > 1);
+                    this.toggleQuickTabs(tabs.count() > 1 || this.otherDeviceTabs() > 0);
                     return;
                 }
                 this.toggleQuickTabs(false);
@@ -984,6 +1002,148 @@
                 this.toggleQuickTabs(false);
             };
             document.addEventListener('keydown', this.onQuickKey, true);
+        }
+
+        /**
+         * The status bar's empty cell shows a tab near its memory limit (#756, Internet Properties > Advanced >
+         * Alchemy performance): the warning icon from 80%, the error icon at the limit; the tooltip says how much.
+         */
+        showMemory(shell) {
+            const cell = this.memCell;
+            if (!cell) return;
+            const m = shell && shell._alchemyMemory;
+            if (!m || m.level === 'ok' || !shell._grimoireRemoteSessionId) {
+                if (cell.firstChild) cell.replaceChildren();
+                cell.removeAttribute('title');
+                return;
+            }
+            const over = m.level === 'over';
+            const img = document.createElement('img');
+            img.alt = '';
+            img.src = over ? '/static_images/vista-icons/error-16.png' : '/static_images/vista-icons/warning-16.png';
+            cell.replaceChildren(img);
+            cell.title = over
+                ? `This tab reached its memory limit (${m.usedMb} MB of ${m.limitMb} MB) and is paused`
+                : `This tab is near its memory limit (${m.usedMb} MB of ${m.limitMb} MB)`;
+        }
+
+        // ---- Send to Device (#756): ActiveSync's open.item to a phone ----
+
+        /** One row per phone ActiveSync knows; a partner that is away gets the page when it connects. */
+        sendItems(tab) {
+            const as = window.activeSync;
+            const st = as && typeof as.state === 'function' ? as.state() : null;
+            const devices = st && st.kind === 'computer' ? (st.devices || []).filter((d) => d.online || d.partner) : [];
+            if (!devices.length) return [{ text: 'No devices connected', disabled: true }];
+            return devices.map((d) => ({ text: d.name || 'Windows Mobile device', subtext: d.online ? '' : 'Sends when it connects', action: 'send-device', deviceId: d.deviceId, deviceName: d.name, tabId: tab ? tab.id : null }));
+        }
+
+        async sendTabToDevice(tab, deviceId, deviceName) {
+            const tabs = this.host.tabs;
+            const shell = !tab || !tabs || tabs.isActive(tab) ? this.host : (tab.state || this.host);
+            const top = shell.history && shell.history[shell.historyIndex];
+            const url = (top && top.type === 'web' && top.url) || (shell._currentAddress && (shell._currentAddress.fullUrl || shell._currentAddress.displayUrl)) || '';
+            if (!url) return;
+            const history = (shell.history || []).filter((h) => h && h.type === 'web' && h.url).map((h) => ({ type: 'web', url: h.url, title: h.title || '' }));
+            const args = {
+                kind: 'url',
+                url,
+                title: shell._grimoireRemoteTitle || (top && top.title) || '',
+                history,
+                alchemyId: shell._grimoireRemoteSessionId || '',
+                from: window.browsingSessions ? window.browsingSessions.deviceName() : 'A computer'
+            };
+            try {
+                await window.activeSync.call(deviceId, 'open.item', args, { queue: true });
+                if (typeof showGlassToast === 'function') showGlassToast('info', null, `Sent to ${deviceName || 'the device'}`, false, 3000);
+            } catch (err) {
+                if (typeof showGlassToast === 'function') showGlassToast('error', null, `Could not send the page: ${(err && err.message) || 'the device did not answer'}`, false, 5000);
+            }
+        }
+
+        // ---- Other Devices (#756): every other client's IE tabs, under this window's own in Quick Tabs ----
+
+        /** How many tabs other clients have (browsingSessions.js keeps the count fresh); 0 without the registry. */
+        otherDeviceTabs() {
+            return Number(GrimoireIeChrome.otherTabs || 0);
+        }
+
+        /** The section: one heading per device (its state, and how long its pages stay), then its tabs as tiles. */
+        async fillOtherDevices(panel) {
+            const bs = window.browsingSessions;
+            if (!bs) return;
+            let res;
+            try { res = await bs.list(); } catch (_) { return; }
+            if (!panel.isConnected) return;
+            panel.querySelectorAll('.grimoire-ie-quick-other').forEach((el) => el.remove());
+            const others = ((res && res.sessions) || []).filter((s) => !s.own);
+            GrimoireIeChrome.noteOtherSessions(others);
+            if (!others.length) return;
+            const head = document.createElement('div');
+            head.className = 'grimoire-ie-quick-other grimoire-ie-quick-heading';
+            head.innerHTML = '<span>Other Devices</span>';
+            panel.appendChild(head);
+            const when = (ms) => new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+            const left = (ms) => {
+                const m = Math.max(1, Math.round((ms - Date.now()) / 60000));
+                return m >= 120 ? `${Math.round(m / 60)} hours` : `${m} ${m === 1 ? 'minute' : 'minutes'}`;
+            };
+            others.forEach((session) => {
+                const dev = document.createElement('div');
+                dev.className = 'grimoire-ie-quick-other grimoire-ie-quick-device';
+                const icon = session.deviceKind === 'mobile' ? '/static_images/activesync/activesync-16.png' : '/static_images/vista-explorer/computer-16.png';
+                const state = session.state === 'live' ? 'Online'
+                    : session.state === 'idle' ? `Disconnected, pages close in ${left(session.killAt || session.expiresAt)}`
+                        : `Closed, kept until ${when(session.expiresAt)}`;
+                dev.innerHTML = `<img src="${icon}" alt="" onerror="this.style.visibility='hidden'"><span class="grimoire-ie-quick-device-name"></span><span class="grimoire-ie-quick-device-state"></span>`;
+                dev.querySelector('.grimoire-ie-quick-device-name').textContent = session.deviceName;
+                dev.querySelector('.grimoire-ie-quick-device-state').textContent = state;
+                panel.appendChild(dev);
+                (session.windows || []).forEach((win) => (win.tabs || []).forEach((tab) => {
+                    const tile = document.createElement('div');
+                    tile.className = 'grimoire-ie-quicktile grimoire-ie-quick-other';
+                    tile.dataset.otherSession = session.id;
+                    tile.dataset.otherTab = tab.id;
+                    tile.title = (tab.kind === 'alchemy' ? 'Move this page here: ' : 'Open a copy here: ') + (tab.title || tab.url);
+                    const title = document.createElement('span');
+                    title.className = 'grimoire-ie-quicktile-title';
+                    title.textContent = tab.title || tab.url || 'Untitled';
+                    const shot = document.createElement('div');
+                    shot.className = 'grimoire-ie-quicktile-shot grimoire-ie-quick-other-shot';
+                    const fav = document.createElement('img');
+                    fav.alt = '';
+                    fav.src = tab.kind === 'alchemy' ? `${ART}/page-ie.png` : BOOKS_ICON;
+                    const url = document.createElement('span');
+                    url.textContent = tab.url || '';
+                    const note = document.createElement('span');
+                    note.className = 'grimoire-ie-quick-other-note';
+                    note.textContent = tab.kind === 'alchemy' ? (tab.alchemyId ? 'Still open there; moves here as it is' : 'Opens again from its address') : 'A copy opens here; the page stays there';
+                    shot.append(fav, url, note);
+                    tile.append(title, shot);
+                    panel.appendChild(tile);
+                }));
+            });
+        }
+
+        /** A tab from Other Devices comes to this window as a new tab (Alchemy moves, Grimoire is copied). */
+        async takeOtherTab(sessionId, tabId) {
+            const bs = window.browsingSessions;
+            const tabs = this.host.tabs;
+            if (!bs || !tabs) return;
+            const winId = (this.modal.dataset && this.modal.dataset.windowIdentifier) || 'grimoire';
+            let res;
+            try {
+                res = await bs.take(sessionId, tabId, { windowId: winId });
+            } catch (_) {
+                if (typeof showGlassToast === 'function') showGlassToast('error', null, 'That tab is no longer open on the other device', false, 4000);
+                this.toggleQuickTabs(tabs.count() > 1 || this.otherDeviceTabs() > 0);
+                return;
+            }
+            this.toggleQuickTabs(false);
+            const tab = res && res.tab;
+            if (!tab) return;
+            if (window.browsingRestore && typeof window.browsingRestore.openTab === 'function') window.browsingRestore.openTab(this.host, tab);
+            else tabs.open(tab.session ? { url: tab.url, session: tab.session } : (/^(https?|chrome)/i.test(tab.url) ? { url: tab.url } : { address: tab.url }));
         }
 
         /** One tile: the title, the close button and a picture of the page (Alchemy's last frame, or the Grimoire page scaled down). */
@@ -1093,6 +1253,37 @@
             if (this.recent) this.recent.classList.toggle('is-disabled', !travel);
         }
     }
+
+    // Other Devices (#756): how many tabs other clients hold, kept fresh from the registry's change pushes,
+    // so the tab tools (Quick Tabs) show while there is something to take
+    GrimoireIeChrome.otherTabs = 0;
+    GrimoireIeChrome.noteOtherSessions = (others) => {
+        const count = (others || []).reduce((n, s) => n + (s.windows || []).reduce((m, w) => m + (w.tabs || []).length, 0), 0);
+        if (count === GrimoireIeChrome.otherTabs) return;
+        GrimoireIeChrome.otherTabs = count;
+        const wins = typeof root.grimoireAllWindows === 'function' ? root.grimoireAllWindows() : [];
+        wins.forEach((win) => { if (win && win.ieChrome && win.tabs) win.ieChrome.renderTabs(); });
+    };
+    let otherTimer = null;
+    const refreshOthers = () => {
+        clearTimeout(otherTimer);
+        otherTimer = setTimeout(() => {
+            const bs = root.browsingSessions;
+            const wins = typeof root.grimoireAllWindows === 'function' ? root.grimoireAllWindows() : [];
+            // only while a Grimoire window is open
+            if (!bs || !wins.some((w) => w && w.modal && !w.modal.classList.contains('hidden'))) return;
+            bs.list().then((res) => GrimoireIeChrome.noteOtherSessions(((res && res.sessions) || []).filter((x) => !x.own))).catch(() => {});
+            wins.forEach((win) => {
+                const chrome = win && win.ieChrome;
+                if (chrome && chrome.isQuickTabsOpen()) chrome.fillOtherDevices(chrome.quickView.querySelector('.grimoire-ie-quickpanel'));
+            });
+        }, 400);
+    };
+    if (root.browsingSessions) {
+        root.browsingSessions.on('changed', refreshOthers);
+        root.browsingSessions.on('ready', refreshOthers);
+    }
+    root.grimoireRefreshOtherDevices = refreshOthers;
 
     root.GrimoireIeChrome = GrimoireIeChrome;
     if (typeof module !== 'undefined' && module.exports) module.exports = GrimoireIeChrome;

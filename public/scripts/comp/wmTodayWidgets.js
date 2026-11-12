@@ -25,6 +25,10 @@
  *                   condition, place, high / low; repaint on wmWeatherChange); tap opens Weather
  *   notes           block: the newest note or one picked in Options..., its first 1 / 2 / 3 / 5
  *                   lines; tap opens that note or Notes (wmNotesApp.list / openNote, wsClient.getNote)
+ *   files           block: My Documents (or Downloads, My Pictures, Scraps: Options...) with its item
+ *                   count over the newest file's name and date; tap opens File Explorer there; the
+ *                   6.5 panel adds a page per recent file and per phone volume
+ *                   (wmFileExplorer.list / volumes / openFolder / openFile)
  *   remote-desktop  row: the last computer (wmRemoteDesktop.lastComputer()); tap reconnects
  *   server          block: Details (state, host uptime, version, CPU, RAM, disk, workers) or One
  *                   line; server_status, get_system_info, sidebar_host_metrics (admin only, never sent
@@ -1119,6 +1123,116 @@
         open('ie');
     }
 
+    // ================================================================ Files
+
+    /**
+     * The folder File Explorer opens in (My Documents) or one picked in Options..., its item count
+     * and its newest files. One listing (wmFileExplorer.list, newest first) kept 3 minutes, asked
+     * again after File Explorer read a list anew or received files (wmFilesChange); only while Today
+     * is on screen, and never within a moment of a tap (the shell would show the wait cursor for
+     * it). The phone's volumes (Android app only) come with it, already cached by the bridge.
+     */
+    const FILES_MS = 3 * 60 * 1000;
+    const FILES_RETRY_MS = 45 * 1000;
+    const FILES_PAGE = 60; // folders list first: enough to reach the files of a workspace's top level
+    const FILES_PLACES = { documents: ['', 'My Documents'], downloads: ['/Downloads', 'Downloads'], pictures: ['/Pictures', 'My Pictures'], scraps: ['/Scraps', 'Scraps'] };
+    const FILES_OPTIONS = [
+        { key: 'folder', label: 'Folder', value: 'documents', choices: Object.keys(FILES_PLACES).map((k) => [k, FILES_PLACES[k][1]]) },
+        { key: 'recent', label: 'Recent files', value: '5', choices: [['0', 'None'], ['3', '3'], ['5', '5']] }
+    ];
+    const files = { key: '', at: 0, busy: 0, stale: false, count: null, list: [], vols: [], tapAt: -1e9 }; // busy: when the request went out, 0 = none
+    let filesEl = null;
+    let filesOption = null;
+    const fe = () => window.wmFileExplorer || null;
+
+    function filesPlace(folder) {
+        const [sub, name] = FILES_PLACES[folder] || FILES_PLACES.documents;
+        return { path: `${fe().myDocumentsPath()}${sub}`, name };
+    }
+
+    function loadFiles(place) {
+        const key = place.path;
+        // another folder or workspace: nothing of the last one stays
+        if (key !== files.key) { files.key = key; files.at = 0; files.count = null; files.list = []; }
+        const now = Date.now();
+        // (a request the server never answers frees the slot after half a minute)
+        if ((files.busy && now - files.busy < 30000) || !online() || sh.current !== 'today' || document.hidden) return;
+        if (document.documentElement.dataset.wmBoot !== 'done') return; // not while the phone starts
+        if (!files.stale && now - files.at < FILES_MS) return;
+        if (performance.now() - files.tapAt < 800) return; // the next repaint asks
+        files.busy = now;
+        files.stale = false;
+        files.at = now;
+        const f = fe();
+        f.list(key, FILES_PAGE).then((res) => {
+            if (files.key !== key) return;
+            files.count = res.count;
+            files.list = res.files.slice(0, 5);
+            // on Today now, not at its next 2 s repaint (only this block, as Weather does)
+            const el = filesEl;
+            if (el && el.isConnected && !el.classList.contains('wm-today-off') && filesOption) el.hidden = renderFiles(el, { option: filesOption }) === false;
+        }).catch(() => { if (files.at === now) files.at = now - FILES_MS + FILES_RETRY_MS; }).finally(() => { if (files.busy === now) files.busy = 0; });
+        f.volumes().then((v) => { files.vols = Array.isArray(v) ? v : []; }).catch(() => { files.vols = []; });
+    }
+
+    const filesCount = (n) => (n == null ? '' : n === 0 ? 'No items' : n === 1 ? '1 item' : `${n} items`);
+    const isPicture = (i) => i.targetKind === 'image' || i.targetKind === 'scrap' || /^image\//.test(i.mimeType || '');
+
+    /** A small picture for a listed file: the gallery's preview, or the VFS's own (same site only). */
+    function filePicture(i) {
+        if (!isPicture(i)) return '';
+        if (i.targetKind === 'image' || i.targetKind === 'scrap') return printPicture({ filename: i.previewImageFilename || i.targetId || i.name });
+        return typeof i.previewUrl === 'string' && /^\/[^/\\]/.test(i.previewUrl) ? i.previewUrl : '';
+    }
+
+    function openFile(i, place) {
+        const f = fe();
+        if (!f) return;
+        // a contact card opens against the folder File Explorer shows: go there instead
+        if (/\.vcf$/i.test(i.name || '')) { f.openFolder(place.path, place.name); return; }
+        void f.openFile(i);
+    }
+
+    let filesPanel = null; // what the Files item shows, for its 6.5 panel
+    function filesTitanium() {
+        const s = filesPanel;
+        const f = fe();
+        if (!s || !f) return null;
+        const explorer = { label: 'Explorer', action: s.open };
+        const pages = [{ title: s.place.name, line2: filesCount(s.count), softKey: explorer, onTap: s.open }];
+        for (const i of s.recent) {
+            const go = () => openFile(i, s.place);
+            pages.push({ title: i.name, line2: [f.fmtDate(i.modifiedAt), f.fmtSize(i.size)].filter(Boolean).join(', '), image: filePicture(i), softKey: { label: 'Open', action: go }, onTap: go });
+        }
+        for (const v of s.vols) {
+            const go = () => f.openFolder(v.path, v.name);
+            pages.push({ title: v.name, line2: v.total ? `${f.fmtSize(v.free)} free of ${f.fmtSize(v.total)}` : '', softKey: { label: 'Explorer', action: go }, onTap: go });
+        }
+        return { label: 'files', icon: 's:fileexp', pages, softKey: explorer, onTap: s.open };
+    }
+
+    function renderFiles(el, { option }) {
+        if (itemOff(el, false)) { filesPanel = null; return false; }
+        const f = fe();
+        if (!f) return false;
+        const place = filesPlace(option('folder'));
+        filesEl = el;
+        filesOption = option;
+        loadFiles(place);
+        const recent = files.list.slice(0, Number(option('recent')) || 0);
+        filesPanel = { place, count: files.count, recent, vols: files.vols, open: () => f.openFolder(filesPanel.place.path, filesPanel.place.name) };
+        shell(el, 'wtw-files', `
+            <img class="wtw-files-icon" ${imgSrcset('app-file-explorer')} alt="">
+            <span class="wtw-lines"><span class="wtw-title"></span><span class="wtw-files-last"><span class="wtw-sub"></span><span class="wtw-files-date"></span></span></span>`, () => { if (filesPanel) filesPanel.open(); });
+        const count = filesCount(files.count);
+        setText(el.querySelector('.wtw-title'), count ? `${place.name}: ${count}` : place.name);
+        const last = recent[0] || null;
+        setText(el.querySelector('.wtw-sub'), last ? last.name : '');
+        setText(el.querySelector('.wtw-files-date'), last ? f.fmtDate(last.modifiedAt) : '');
+        el.querySelector('.wtw-files-last').hidden = !last;
+        return true;
+    }
+
     // ================================================================ registration
 
     function register() {
@@ -1162,6 +1276,12 @@
             id: 'server', label: 'Server Status', after: 'remote-desktop', defaultOn: false, render: renderServer, titanium: serverTitanium,
             options: [{ key: 'view', label: 'Show', value: 'detailed', choices: [['detailed', 'Details (version, CPU, RAM, disk, workers)'], ['compact', 'One line']] }]
         });
+        // Files: off until switched on, as Notes, Remote Desktop and Server Status are
+        sh.registerTodayItem({ id: 'files', label: 'Files', icon: 'app-file-explorer', after: 'server', defaultOn: false, render: renderFiles, titanium: filesTitanium, options: FILES_OPTIONS });
+        document.addEventListener('wmFilesChange', () => { files.stale = true; });
+        const tapped = (e) => { if (e.isTrusted) files.tapAt = performance.now(); };
+        document.addEventListener('click', tapped, true);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Enter') tapped(e); }, true);
     }
 
     // tests: ask the server again on the next paint
@@ -1169,6 +1289,7 @@
         refetch() {
             server.at = 0; server.infoAt = 0; server.workersAt = 0; server.loadDenied = false;
             director.asked = 0; director.at = { wren: 0, kabuki: 0, xi: 0 };
+            files.at = 0;
         }
     };
 

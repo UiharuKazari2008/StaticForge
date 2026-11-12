@@ -290,6 +290,11 @@ const FEATURE_MANIFEST = {
         styles: ['css/taskbar-properties.css', 'css/vista-dialog-template.css'],
         scripts: ['scripts/comp/vistaDialogTemplates.js', 'scripts/comp/vistaDialogTemplate.js']
     },
+    // Restore Session, Browsing Session Settings, Other Devices (#756; browsingRestore.js, browsingOtherDevices.js at boot)
+    browsing_sessions_ui: {
+        depends: ['vista_dialog_templates'],
+        styles: ['css/browsing-sessions.css']
+    },
     // Make Global (Yozora #668): embedded (request body) expanders saved as global ones, an Aero Wizard
     expander_make_global: {
         depends: ['vista_dialog_templates'],
