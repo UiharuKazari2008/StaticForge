@@ -6035,12 +6035,8 @@ class WebSocketClient {
     _wireGenerationCloseGuardBeforeUnload() {
         if (this._generationCloseGuardBeforeUnloadWired) return;
         this._generationCloseGuardBeforeUnloadWired = true;
-        window.addEventListener('beforeunload', (event) => {
-            if (!this.isGenerationCloseBlocked()) return;
-            event.preventDefault();
-            event.returnValue = '';
-            return '';
-        });
+        // No beforeunload prompt (Yukimi, Nov 12 2026): a print in progress no longer holds the tab
+        // with the browser's "Leave site?" dialog. isGenerationCloseBlocked() still reports the guard.
     }
 
     isGenerationCloseBlocked() {

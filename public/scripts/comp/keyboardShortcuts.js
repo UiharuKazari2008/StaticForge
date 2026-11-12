@@ -1454,17 +1454,17 @@ function handleKeyDown(event) {
             break;
             
         case 'CTRL+W':
-            // Close tab - let browser handle, beforeunload will show warning
+            // Close tab - let the browser handle it (no leave prompt)
             // Don't prevent default - let browser show "unsaved changes" dialog
             break;
             
         case 'CTRL+SHIFT+W':
-            // Close window - let browser handle, beforeunload will show warning
+            // Close window - let the browser handle it (no leave prompt)
             // Don't prevent default - let browser show "unsaved changes" dialog
             break;
             
         case 'ALT+F4':
-            // Close window (Windows) - let browser handle, beforeunload will show warning
+            // Close window (Windows) - let the browser handle it (no leave prompt)
             // Don't prevent default - let browser show "unsaved changes" dialog
             break;
             

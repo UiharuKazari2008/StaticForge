@@ -64,17 +64,8 @@ function wireExitConfirmationListeners() {
 
     window.showExitConfirmation = showExitConfirmation;
 
-    window.addEventListener('beforeunload', (event) => {
-        if (typeof __dreamscapeFatalNavBypass !== 'undefined' && __dreamscapeFatalNavBypass) {
-            return;
-        }
-        if (window.bypassConfirmation) {
-            return;
-        }
-        event.preventDefault();
-        event.returnValue = '';
-        return '';
-    });
+    // No beforeunload prompt (Yukimi, Nov 12 2026): leaving, reloading or closing the tab is never
+    // held by the browser's "Leave site?" dialog.
 
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {

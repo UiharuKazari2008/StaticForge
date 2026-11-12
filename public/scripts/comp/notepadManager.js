@@ -121,19 +121,8 @@ class NotepadManager {
         // Initialize notes metadata cache
         await this.initializeNotesMetadataCache();
 
-        // Save pending changes before page unload
-        window.addEventListener('beforeunload', (e) => {
-            if (typeof bypassConfirmation !== 'undefined' && bypassConfirmation) {
-                return;
-            }
-            const hasUnsaved = Array.from(this.notepads.values()).some(n => n.hasUnsavedChanges)
-                || this.notebookHasUnsavedChanges;
-            if (hasUnsaved) {
-                e.preventDefault();
-                e.returnValue = 'You have unsaved changes in notes. Are you sure you want to leave?';
-                return e.returnValue;
-            }
-        });
+        // No beforeunload prompt (Yukimi, Nov 12 2026): unsaved notes no longer hold the tab with the
+        // browser's "Leave site?" dialog
     }
 
     // ===== NOTES METADATA CACHE METHODS =====
