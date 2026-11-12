@@ -85,6 +85,24 @@ function deepMergeAutofillRankingGroup(target, source) {
 function normalizeAutofillRankingClient(raw) {
     const base = raw && typeof raw === 'object' ? raw : {};
     const defaults = DEFAULT_AUTOFILL_RANKING;
+    // JULES: Dedupe typeOrder with Set, matching server normalizeTypeOrder in modules/autofillRankingSettings.js
+    const knownTypes = new Set(AUTOFILL_TYPE_KEYS);
+    const typeOrder = [];
+    const seenTypes = new Set();
+    if (Array.isArray(base.typeOrder)) {
+        for (const key of base.typeOrder) {
+            if (knownTypes.has(key) && !seenTypes.has(key)) {
+                seenTypes.add(key);
+                typeOrder.push(key);
+            }
+        }
+    }
+    for (const key of AUTOFILL_TYPE_KEYS) {
+        if (!seenTypes.has(key)) {
+            seenTypes.add(key);
+            typeOrder.push(key);
+        }
+    }
     const out = {
         rankingVersion: Number.isFinite(Number(base.rankingVersion)) ? Number(base.rankingVersion) : defaults.rankingVersion,
         serverBase: deepMergeAutofillRankingGroup(defaults.serverBase, base.serverBase),
@@ -93,12 +111,9 @@ function normalizeAutofillRankingClient(raw) {
         tiers: deepMergeAutofillRankingGroup(defaults.tiers, base.tiers),
         clientTierBonus: deepMergeAutofillRankingGroup(defaults.clientTierBonus, base.clientTierBonus),
         clientNonTag: deepMergeAutofillRankingGroup(defaults.clientNonTag, base.clientNonTag),
-        typeOrder: Array.isArray(base.typeOrder) ? base.typeOrder.filter(k => AUTOFILL_TYPE_KEYS.includes(k)) : defaults.typeOrder.slice(),
+        typeOrder,
         typeWeights: deepMergeAutofillRankingGroup(defaults.typeWeights, base.typeWeights)
     };
-    for (const key of AUTOFILL_TYPE_KEYS) {
-        if (!out.typeOrder.includes(key)) out.typeOrder.push(key);
-    }
     return out;
 }
 
