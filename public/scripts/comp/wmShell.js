@@ -87,6 +87,14 @@
         '--wm-gloss-top': { dh: -29, s: 55, l: 79 },
         '--wm-gloss-bottom': { dh: -30, s: 45, l: 47 },
         '--wm-softkey-base': { dh: -28, s: 81, l: 33 },
+        // the glossy bars (soft keys; the title bar of the gradient themes): edge and middle of the
+        // gloss's first line, its top and bottom, and of the base under it (device: adb6ad / a0ebaa,
+        // 9cbe9c / 94d794, 315931 / 42be4a, 084d08 / 14a818 on green; the same s and l under
+        // Windows Default's teal)
+        '--wm-gloss-line-edge': { dh: -28, s: 6, l: 70 }, '--wm-gloss-line-centre': { dh: -28, s: 64, l: 78 },
+        '--wm-gloss-top-edge': { dh: -28, s: 21, l: 68 }, '--wm-gloss-top-centre': { dh: -28, s: 46, l: 71 },
+        '--wm-gloss-bottom-edge': { dh: -28, s: 29, l: 27 }, '--wm-gloss-bottom-centre': { dh: -28, s: 49, l: 50 },
+        '--wm-bar-edge': { dh: -28, s: 81, l: 17 }, '--wm-bar-centre': { dh: -28, s: 79, l: 37 },
         '--wm-today-rule': { dh: -26, s: 84, l: 40 },
         '--wm-start-rule': { dh: -28, s: 88, l: 26 },
         '--wm-button-border': { dh: -22, s: 81, l: 17 },

@@ -32,6 +32,15 @@ html.ui-mobile {
     --wm-gloss-top: #c6e7ad;
     --wm-gloss-bottom: #73ae42;
     --wm-softkey-base: #4a9a10;
+    /* the glossy bars' eight colours (wmShell.js ROLES): the gloss's first line, its top and bottom, the base; edge and middle */
+    --wm-gloss-line-edge: #adb6ad;
+    --wm-gloss-line-centre: #a0ebaa;
+    --wm-gloss-top-edge: #9cbe9c;
+    --wm-gloss-top-centre: #94d794;
+    --wm-gloss-bottom-edge: #315931;
+    --wm-gloss-bottom-centre: #42be4a;
+    --wm-bar-edge: #084d08;
+    --wm-bar-centre: #14a818;
     --wm-today-rule: #52be10;
     --wm-start-rule: #397d08;
     --wm-rule: #292c29;
@@ -234,15 +243,15 @@ html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {
     content: '';
     position: absolute;
     right: calc(-1 * var(--wm-px));
-    top: calc(3.5 * var(--wm-px));
-    height: calc(19.5 * var(--wm-px));
+    top: calc(3 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
     width: calc(1 * var(--wm-px));
-    background: linear-gradient(to bottom, var(--wm-title), var(--wm-button-light) 50%, var(--wm-title));
+    background: var(--wm-start-divider, linear-gradient(to bottom, var(--wm-title), var(--wm-button-light) 50%, var(--wm-title)));
 }
 
 /* Start menu open (emulator 2x halved, stock green): a white glow over the 25 px bar (not the rule)
  * from the left edge, opacity falling linearly from 1 at x 0 to 0 at x 90; the title text takes
- * the Start menu's rule colour (#397D08 on green) and the rule after the Start cell goes. The same
+ * the menu text colour (#087D10 on green) and the rule after the Start cell goes. The same
  * on the flat and glossy bars and for every Start button picture. */
 .wm-titlebar::before {
     content: '';
@@ -288,10 +297,10 @@ html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {
     content: '';
     position: absolute;
     right: calc(-1 * var(--wm-px));
-    top: calc(3.5 * var(--wm-px));
-    height: calc(19.5 * var(--wm-px));
+    top: calc(3 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
     width: calc(1 * var(--wm-px));
-    background: linear-gradient(to bottom, var(--wm-title), var(--wm-button-light) 50%, var(--wm-title));
+    background: var(--wm-start-divider, linear-gradient(to bottom, var(--wm-title), var(--wm-button-light) 50%, var(--wm-title)));
 }
 
 .wm-titlebar.is-start-open > .wm-start.is-melaton::after {
@@ -299,7 +308,8 @@ html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {
 }
 
 .wm-titlebar.is-start-open > .wm-title {
-    color: var(--wm-start-rule);
+    /* device: 087d10 on green, 08757b under Windows Default: the menu text colour */
+    color: var(--wm-menu-text);
 }
 
 /* WM's flag is in colour and stays readable on the glow; the white Melaton emblem would vanish
@@ -765,6 +775,71 @@ html.ui-mobile[data-wm-app="today"] #wmShell > .wm-content {
 .wm-softkey.is-pressed,
 .wm-softkey[aria-expanded="true"] {
     background: rgba(0, 0, 0, 0.18) !important;
+}
+
+/* ---- the 6.1 bars as the device draws them (VGA, both theme looks measured; the eight colours are
+ * roles of the workspace colour, wmShell.js).
+ * Soft key bar, every theme: the 1-unit rule (#292c29), 11 units of gloss (its first unit a line
+ * of its own) and 14 of base, each colour rising in a straight line from the screen's edges to
+ * its middle (green theme: base 084d08 to 14a818, gloss line adb6ad to a0ebaa, gloss top 9cbe9c
+ * to 94d794, gloss bottom 315931 to 42be4a). Drawn as the edge
+ * colours with the middle colours over them through a mask that is clear at both edges.
+ * Title bar: "Windows Mobile 6.1" is one flat colour (the Flat style); Windows Default, Guava
+ * Bubbles and Windows Mobile Green draw it exactly as the soft key bar (the Glossy style).
+ * Rule after the Start cell, 1 unit at x 25, y 3..23: flat, the title colour rising to 5ac363 at
+ * the middle and back; glossy, 84c3ce at the top through 5abac6 (y 12) to 18929c at the bottom
+ * (Windows Default's teal), no fade at either end.
+ * A soft key held, or with its menu open: white from the screen's edge, clear at the key's inner
+ * edge, from 1 unit under the rule; the label in the menu text colour. ---- */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-softkeys {
+    background: linear-gradient(to bottom, var(--wm-gloss-line-edge) 0, var(--wm-gloss-line-edge) calc(1 * var(--wm-px)), var(--wm-gloss-top-edge) calc(1 * var(--wm-px)), var(--wm-gloss-bottom-edge) calc(11 * var(--wm-px)), var(--wm-bar-edge) calc(11 * var(--wm-px)), var(--wm-bar-edge) 100%);
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-softkeys::before,
+html.ui-mobile:not([data-wm-version="6.5"])[data-wm-titlebar="glossy"] .wm-titlebar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background: linear-gradient(to bottom, var(--wm-gloss-line-centre) 0, var(--wm-gloss-line-centre) calc(1 * var(--wm-px)), var(--wm-gloss-top-centre) calc(1 * var(--wm-px)), var(--wm-gloss-bottom-centre) calc(11 * var(--wm-px)), var(--wm-bar-centre) calc(11 * var(--wm-px)), var(--wm-bar-centre) 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 50%, transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 50%, transparent 100%);
+}
+
+html.ui-mobile:not([data-wm-version="6.5"])[data-wm-titlebar="glossy"] .wm-titlebar {
+    background: linear-gradient(to bottom, var(--wm-gloss-line-edge) 0, var(--wm-gloss-line-edge) calc(1 * var(--wm-px)), var(--wm-gloss-top-edge) calc(1 * var(--wm-px)), var(--wm-gloss-bottom-edge) calc(11 * var(--wm-px)), var(--wm-bar-edge) calc(11 * var(--wm-px)), var(--wm-bar-edge) 100%);
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-start {
+    --wm-start-divider: linear-gradient(to bottom, var(--wm-title), color-mix(in srgb, var(--wm-gloss-bottom-centre) 88%, #fff) 50%, var(--wm-title));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"])[data-wm-titlebar="glossy"] .wm-start {
+    --wm-start-divider: linear-gradient(to bottom, color-mix(in srgb, var(--wm-gloss-top-centre) 80%, var(--wm-gloss-bottom-centre)) 0, color-mix(in srgb, var(--wm-gloss-bottom-centre) 85%, #fff) 46%, color-mix(in srgb, var(--wm-bar-centre) 93%, #000) 100%);
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-softkey.is-pressed,
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-softkey[aria-expanded="true"] {
+    background: linear-gradient(to right, #fff 0, rgba(255, 255, 255, 0) 100%) 0 calc(1 * var(--wm-px)) / 100% 100% no-repeat !important;
+    color: var(--wm-menu-text);
+    text-shadow: none;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-softkey[data-side="right"].is-pressed,
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-softkey[data-side="right"][aria-expanded="true"] {
+    background: linear-gradient(to left, #fff 0, rgba(255, 255, 255, 0) 100%) 0 calc(1 * var(--wm-px)) / 100% 100% no-repeat !important;
+}
+
+/* the first moments of Today after the splash (below): no bars yet, in either style */
+html.ui-mobile:not([data-wm-version="6.5"])[data-wm-boot="reveal"] .wm-titlebar,
+html.ui-mobile:not([data-wm-version="6.5"])[data-wm-boot="reveal"] .wm-softkeys {
+    background: transparent;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"])[data-wm-boot="reveal"] .wm-titlebar::after,
+html.ui-mobile:not([data-wm-version="6.5"])[data-wm-boot="reveal"] .wm-softkeys::before {
+    display: none;
 }
 
 /* ---- the input panel button. Device (6.1 VGA, MS_SIPBUTTON): a window of 120 x 52 px at 180,588,
@@ -3041,20 +3116,7 @@ html.ui-mobile body > .pswp .pswp__preloader {
     display: none !important;
 }
 
-/* ---- Settings > Screen > Glossy title bar (the glossy WM 6.1 themes, emulator 2x halved):
- * 11 px gloss over a 14 px base, brighter toward the middle, then the 1 px rule; the soft-key
- * bar gets the same centre-bright base ---- */
-html.ui-mobile[data-wm-titlebar="glossy"] .wm-titlebar {
-    background:
-        radial-gradient(ellipse 60% 140% at 50% 100%, color-mix(in srgb, var(--wm-softkey-base) 70%, #fff) 0%, transparent 70%) 0 calc(11 * var(--wm-px)) / 100% calc(14 * var(--wm-px)) no-repeat,
-        linear-gradient(to bottom, var(--wm-gloss-top) 0, var(--wm-gloss-bottom) calc(11 * var(--wm-px)), var(--wm-softkey-base) calc(11 * var(--wm-px)), color-mix(in srgb, var(--wm-softkey-base) 75%, #000) 100%);
-}
-
-html.ui-mobile[data-wm-titlebar="glossy"] .wm-softkeys {
-    background:
-        radial-gradient(ellipse 60% 140% at 50% 100%, color-mix(in srgb, var(--wm-softkey-base) 70%, #fff) 0%, transparent 70%) 0 calc(11 * var(--wm-px)) / 100% calc(14 * var(--wm-px)) no-repeat,
-        linear-gradient(to bottom, var(--wm-gloss-top) 0, var(--wm-gloss-bottom) calc(11 * var(--wm-px)), color-mix(in srgb, var(--wm-softkey-base) 78%, #000) calc(11 * var(--wm-px)), color-mix(in srgb, var(--wm-softkey-base) 60%, #000) 100%);
-}
+/* (Settings > Today > Appearance > Glossy title bar: with the soft key bar, above) */
 
 /* the desktop's question up (wmShell checkTakeover): modal like WM's MessageBox, nothing under it
  * takes a tap (the soft keys are blank meanwhile) */

@@ -972,10 +972,12 @@
     }
 
     /** Receive > File / Pictures: the device's chooser (opened in the menu tap, which it needs). */
-    function pickFromDevice(kind) {
-        if (!canUploadHere() || typeof vfsImportRouter === 'undefined') return;
-        const dest = pathNow();
-        const destTrail = trail.slice();
+    function pickFromDevice(kind, to) {
+        // to: another folder than the one on screen (Today's Files item: Downloads), { path: a
+        // promise of its path, trail(path) }; asked for while the chooser is up
+        if (typeof vfsImportRouter === 'undefined' || (to ? readOnly() : !canUploadHere())) return;
+        const dest = to ? to.path : pathNow();
+        const destTrail = to ? null : trail.slice();
         if (rxInput) rxInput.remove();
         const input = document.createElement('input');
         input.type = 'file';
@@ -991,7 +993,11 @@
         input.addEventListener('change', () => {
             const files = [...(input.files || [])];
             done();
-            if (files.length) receive(files, dest, destTrail, kind);
+            if (!files.length) return;
+            if (!to) { receive(files, dest, destTrail, kind); return; }
+            dest.then((path) => receive(files, path, to.trail(path), kind), (err) => {
+                void ws.messageBox({ title: 'Error Copying File', icon: 'error', text: `Cannot copy ${files.length === 1 ? `'${files[0].name}'` : 'these files'}: ${(err && err.message) || 'The folder cannot be found.'}` });
+            });
         }, { once: true });
         input.click();
     }
@@ -1881,7 +1887,21 @@
             navigate(path, name, name && path.startsWith(`${docs}/`) ? { trail: trailFor(docs).concat([{ path, name: placeName(path, name) }]) } : {});
         },
         /** A listed file (an item of list()) opened as its row would: the picture viewer, Notes, Contacts, or WM's "no application" box. */
-        openFile: (i) => openItem(i)
+        openFile: (i) => openItem(i),
+        /**
+         * Menu > Receive > File ('file') / Pictures ('picture') into this workspace's Downloads,
+         * from anywhere (File Explorer need not be open): the device's chooser, the progress
+         * notification, "Received" with Show. Call it in the tap itself (the chooser needs it).
+         */
+        receive(kind) {
+            if (!ws || typeof vfsClient === 'undefined') return;
+            const docs = myDocumentsPath();
+            pickFromDevice(kind === 'picture' ? 'picture' : 'file', {
+                // the folder's own path, as File Explorer lists it (by id)
+                path: vfsClient.resolvePath(`${docs}/Downloads`),
+                trail: (path) => trailFor(docs).concat([{ path, name: 'Downloads' }])
+            });
+        }
     };
 
     // ---------------------------------------------------------------- registration

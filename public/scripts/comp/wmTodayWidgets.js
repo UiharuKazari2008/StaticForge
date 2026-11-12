@@ -1198,8 +1198,10 @@
         const s = filesPanel;
         const f = fe();
         if (!s || !f) return null;
-        const explorer = { label: 'Explorer', action: s.open };
-        const pages = [{ title: s.place.name, line2: filesCount(s.count), softKey: explorer, onTap: s.open }];
+        // the folder page's soft key receives files from the device into Downloads, whatever folder
+        // the item follows (Yukimi, #748): File Explorer's Menu > Receive, its two choices as a menu
+        const receive = { label: 'Receive', menu: () => [{ label: 'File', action: () => f.receive('file') }, { label: 'Pictures', action: () => f.receive('picture') }] };
+        const pages = [{ title: s.place.name, line2: filesCount(s.count), softKey: receive, onTap: s.open }];
         for (const i of s.recent) {
             const go = () => openFile(i, s.place);
             pages.push({ title: i.name, line2: [f.fmtDate(i.modifiedAt), f.fmtSize(i.size)].filter(Boolean).join(', '), image: filePicture(i), softKey: { label: 'Open', action: go }, onTap: go });
@@ -1208,7 +1210,7 @@
             const go = () => f.openFolder(v.path, v.name);
             pages.push({ title: v.name, line2: v.total ? `${f.fmtSize(v.free)} free of ${f.fmtSize(v.total)}` : '', softKey: { label: 'Explorer', action: go }, onTap: go });
         }
-        return { label: 'files', icon: 's:fileexp', pages, softKey: explorer, onTap: s.open };
+        return { label: 'files', icon: 's:fileexp', pages, softKey: receive, onTap: s.open };
     }
 
     function renderFiles(el, { option }) {
