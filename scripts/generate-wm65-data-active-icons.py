@@ -38,7 +38,7 @@ def save(name, W, px2):
             i = (y//2)*W + x//2
             px4[(y*w4+x)*4:(y*w4+x)*4+4] = px2[i*4:i*4+4]
     png(os.path.join(WM, f'{name}@4x.png'), w4, 64, px4)
-for t in ['g', 'e', '3g', 'h', 'h-plus', '4g', '4g-plus', '5g', '5g-plus', 'nr', 'nr-a', 'uwb']:
+for t in ['g', 'e', '3g', 'h', 'h-plus', '4g', '4g-plus', '5g', '5g-plus', 'nr', 'nr-a', 'uw']:
     W, H, px = rgba(os.path.join(WM, f'status-data-{t}@2x.png'))
     assert H == 32
     for i, v in arrows.items():

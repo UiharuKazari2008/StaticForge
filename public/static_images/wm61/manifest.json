@@ -4470,7 +4470,7 @@
         "4x-point-upscaled",
         "melaton-extension"
       ],
-      "notes": "Melaton extension: the Director (busy pulses). A clapperboard drawn 1-bit in the strokes of outres 32507 (striped clapper y 6..11, slate y 14..29, 4 px sides); the ROM has no matching glyph."
+      "notes": "Melaton extension: the Director. A clapperboard drawn 1-bit in the ROM status glyphs' 2 px strokes on the mail glyph's rows: striped stick between 2 px rails (y 6..13) over a slate with two lines of writing (y 16..29); the ROM has no matching glyph. scripts/generate-wm-director-icon.py (open-N: stick lifted 4 degrees a step)."
     },
     "set-input": {
       "1x": {
@@ -6501,25 +6501,25 @@
       ],
       "notes": "5G NR Advanced, white A beside the box as 5G+'s plus: Melaton extension (WM 6.1 had no such network). Letters as 2 px holes in the ROM box (scripts/generate-wm-data-icons.py). With the data arrows of ico_4776 = connected."
     },
-    "status-data-uwb": {
+    "status-data-uw": {
       "1x": {
         "source": "box-downscaled from @2x",
         "size": [
-          20,
+          17,
           16
         ]
       },
       "2x": {
         "source": "Melaton drawn on shellres.192.dll ico_4945 (3G)",
         "size": [
-          40,
+          34,
           32
         ]
       },
       "4x": {
         "source": "point-upscaled from @2x (1-bit art)",
         "size": [
-          80,
+          68,
           64
         ]
       },
@@ -6528,27 +6528,27 @@
         "4x-point-upscaled",
         "melaton-drawn"
       ],
-      "notes": "5G Ultra Wideband (mmWave); 40 x 32 at 2x, wider than the square cell: Melaton extension (WM 6.1 had no such network). Letters as 2 px holes in the ROM box (scripts/generate-wm-data-icons.py). Letters only = available, not the active link."
+      "notes": "5G Ultra Wideband (mmWave), shown as UW (Yukimi, Nov 12 2026); 34 x 32 at 2x, wider than the square cell: Melaton extension (WM 6.1 had no such network). Letters as 2 px holes in the ROM box (scripts/generate-wm-data-icons.py). Letters only = available, not the active link."
     },
-    "status-data-uwb-active": {
+    "status-data-uw-active": {
       "1x": {
         "source": "box-downscaled from @2x",
         "size": [
-          20,
+          17,
           16
         ]
       },
       "2x": {
         "source": "Melaton drawn on shellres.192.dll ico_4945 (3G) + ico_4776 arrows",
         "size": [
-          40,
+          34,
           32
         ]
       },
       "4x": {
         "source": "point-upscaled from @2x (1-bit art)",
         "size": [
-          80,
+          68,
           64
         ]
       },
@@ -6557,7 +6557,7 @@
         "4x-point-upscaled",
         "melaton-drawn"
       ],
-      "notes": "5G Ultra Wideband (mmWave); 40 x 32 at 2x, wider than the square cell: Melaton extension (WM 6.1 had no such network). Letters as 2 px holes in the ROM box (scripts/generate-wm-data-icons.py). With the data arrows of ico_4776 = connected."
+      "notes": "5G Ultra Wideband (mmWave), shown as UW (Yukimi, Nov 12 2026); 34 x 32 at 2x, wider than the square cell: Melaton extension (WM 6.1 had no such network). Letters as 2 px holes in the ROM box (scripts/generate-wm-data-icons.py). With the data arrows of ico_4776 = connected."
     },
     "app-folder-dreamscape": {
       "1x": {

@@ -21,7 +21,7 @@ for d in wm61 wm65; do
     # connecting (#760): data 20, Wi-Fi 12, each mobile type 13
     strip $d status-data-sync $(seq_names status-data-sync 20 2)
     strip $d status-wifi-sync $(seq_names status-wifi-sync 12 2)
-    for t in g e 3g h h-plus 4g 4g-plus 5g 5g-plus nr nr-a uwb; do
+    for t in g e 3g h h-plus 4g 4g-plus 5g 5g-plus nr nr-a uw; do
         strip $d status-data-$t-sync $(seq_names status-data-$t-sync 13 2)
     done
     # searching for service: 3 frames

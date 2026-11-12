@@ -197,7 +197,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-role="battery"] {
     margin-left: calc(5 * var(--wm-px));
 }
 
-/* the art: shellres.192.dll icon frames. H+, 4G, 4G+, NR, NR-A, UWB, 5G and 5G+ (data types WM 6.5
+/* the art: shellres.192.dll icon frames. H+, 4G, 4G+, NR, NR-A, UW, 5G and 5G+ (data types WM 6.5
  * never had) are Melaton-drawn in the ROM's style: the G / E / 3G / H icons' rounded box with the
  * letters cut out. 2x is the ROM frame; the 1x art serves only a 1x scale. */
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="bluetooth"] { background-image: image-set(url('/static_images/wm65/status-bluetooth@2x.png') 2x, url('/static_images/wm65/status-bluetooth@4x.png') 4x); }
@@ -243,8 +243,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr"] { bac
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-active"] { background-image: image-set(url('/static_images/wm65/status-data-nr-active@2x.png') 2x, url('/static_images/wm65/status-data-nr-active@4x.png') 4x); }
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-a"] { background-image: image-set(url('/static_images/wm65/status-data-nr-a@2x.png') 2x, url('/static_images/wm65/status-data-nr-a@4x.png') 4x); }
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-a-active"] { background-image: image-set(url('/static_images/wm65/status-data-nr-a-active@2x.png') 2x, url('/static_images/wm65/status-data-nr-a-active@4x.png') 4x); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uwb"] { background-image: image-set(url('/static_images/wm65/status-data-uwb@2x.png') 2x, url('/static_images/wm65/status-data-uwb@4x.png') 4x); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uwb-active"] { background-image: image-set(url('/static_images/wm65/status-data-uwb-active@2x.png') 2x, url('/static_images/wm65/status-data-uwb-active@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uw"] { background-image: image-set(url('/static_images/wm65/status-data-uw@2x.png') 2x, url('/static_images/wm65/status-data-uw@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uw-active"] { background-image: image-set(url('/static_images/wm65/status-data-uw-active@2x.png') 2x, url('/static_images/wm65/status-data-uw-active@4x.png') 4x); }
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g"] { background-image: image-set(url('/static_images/wm65/status-data-5g@2x.png') 2x, url('/static_images/wm65/status-data-5g@4x.png') 4x); }
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-active"] { background-image: image-set(url('/static_images/wm65/status-data-5g-active@2x.png') 2x, url('/static_images/wm65/status-data-5g-active@4x.png') 4x); }
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-plus"] { background-image: image-set(url('/static_images/wm65/status-data-5g-plus@2x.png') 2x, url('/static_images/wm65/status-data-5g-plus@4x.png') 4x); }
@@ -292,8 +292,8 @@ html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-
 html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-active"] { background-image: url('/static_images/wm65/status-data-nr-active.png'); }
 html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-a"] { background-image: url('/static_images/wm65/status-data-nr-a.png'); }
 html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-a-active"] { background-image: url('/static_images/wm65/status-data-nr-a-active.png'); }
-html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uwb"] { background-image: url('/static_images/wm65/status-data-uwb.png'); }
-html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uwb-active"] { background-image: url('/static_images/wm65/status-data-uwb-active.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uw"] { background-image: url('/static_images/wm65/status-data-uw.png'); }
+html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uw-active"] { background-image: url('/static_images/wm65/status-data-uw-active.png'); }
 html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g"] { background-image: url('/static_images/wm65/status-data-5g.png'); }
 html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-active"] { background-image: url('/static_images/wm65/status-data-5g-active.png'); }
 html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-plus"] { background-image: url('/static_images/wm65/status-data-5g-plus.png'); }

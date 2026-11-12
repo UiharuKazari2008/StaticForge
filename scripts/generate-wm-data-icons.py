@@ -28,7 +28,8 @@ def box_width(label):
     return 1 + sum(len(G[c][0]) for c in label) + (len(label) - 1) + 2
 def canvas(label):
     # wider than square when the box is (Yukimi): the arrows keep their gap right of the box
-    return 32 + max(0, box_width(label) - 17)
+    w = 32 + max(0, box_width(label) - 17)
+    return w + w % 2  # even, so the 1x halves cleanly
 def draw(label, sup=None, active=False):
     W = canvas(label)
     px = bytearray(W * 32 * 4)
@@ -68,7 +69,7 @@ def save(name, px2, W):
             i = (y//2)*W + x//2
             px4[(y*w4+x)*4:(y*w4+x)*4+4] = px2[i*4:i*4+4]
     png(os.path.join(OUT, f'{name}@4x.png'), w4, 64, px4)
-for name, label, sup in [('nr', 'NR', None), ('nr-a', 'NR', SUP_A), ('uwb', 'UWB', None)]:
+for name, label, sup in [('nr', 'NR', None), ('nr-a', 'NR', SUP_A), ('uw', 'UW', None)]:
     W = canvas(label)
     save(f'status-data-{name}', draw(label, sup), W)
     save(f'status-data-{name}-active', draw(label, sup, True), W)
