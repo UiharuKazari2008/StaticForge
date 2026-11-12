@@ -167,7 +167,7 @@
     const mas = (root.melatonActiveSync = root.melatonActiveSync || {});
     const add = (tile, task) => (typeof mas.addTask === 'function' ? mas.addTask(tile, task) : (mas.pending = mas.pending || []).push([tile, task]));
     add('programs', {
-        id: 'screen-view', text: "View your device's screen", icon: 'item-32.png',
+        id: 'screen-view', text: "View your device's screen", icon: 'camera-32.png',
         when: (d) => d.online && d.permissions.includes('screen'),
         run: (d) => { view(d.deviceId); }
     });

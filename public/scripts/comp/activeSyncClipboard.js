@@ -174,7 +174,7 @@
         const mas = (root.melatonActiveSync = root.melatonActiveSync || {});
         const add = (tile, task) => (typeof mas.addTask === 'function' ? mas.addTask(tile, task) : (mas.pending = mas.pending || []).push([tile, task]));
         const allowed = (d) => d.permissions.includes('clipboard');
-        add('programs', { id: 'clipboard-send', text: 'Send the clipboard text to your device', icon: 'item-32.png', when: allowed, run: (d) => sendClipboard(d.deviceId) });
-        add('programs', { id: 'link-send', text: 'Open a link on your device', icon: 'web-32.png', when: allowed, run: (d) => sendLink(d.deviceId) });
+        add('programs', { id: 'clipboard-send', text: 'Send the clipboard text to your device', icon: 'clipboard-32.png', when: allowed, run: (d) => sendClipboard(d.deviceId) });
+        add('programs', { id: 'link-send', text: 'Open a link on your device', icon: 'ie-32.png', when: allowed, run: (d) => sendLink(d.deviceId) });
     }
 })(typeof window !== 'undefined' ? window : globalThis);
