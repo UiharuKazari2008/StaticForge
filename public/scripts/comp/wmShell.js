@@ -1727,7 +1727,7 @@
      * the data arrows; Wi-Fi 4698-4709) and goes back to the plain icon once the link is up. With no
      * network at all there is nothing to connect over: the plain icon stays.
      */
-    const SYNC_FRAMES = { data: 20, wifi: 12 };
+    const SYNC_FRAMES = { data: 20, wifi: 12, type: 13 };
     const SYNC_FRAME_MS = 100;
     let syncNow = null;
     let syncTimer = null;
@@ -1739,7 +1739,12 @@
         const installing = swDownloading() != null;
         if (up && !installing) return null;
         if (dev.airplane || (dev.link && /-off$/.test(dev.link.icon)) || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
-        return dev.active === 'wifi' || (dev.link && dev.link.icon.startsWith('wifi')) ? 'wifi' : 'data';
+        if (dev.active === 'wifi' || (dev.link && dev.link.icon.startsWith('wifi'))) return 'wifi';
+        // off Wi-Fi: the mobile network's own icon with the turning arrows under it (Yukimi):
+        // 4G, NR, H+ ... as the ROM draws its G / E / 3G connecting frames (4763-4775: the badge
+        // stays, the arrows turn), status-data-<type>-sync-NN
+        const t = dev.type && DATA_ICON[dev.type];
+        return t ? `data-${t}` : 'data';
     }
 
     function paintSync(el, kind) {
@@ -1749,7 +1754,7 @@
         syncNow = kind;
         if (!kind) { el.style.removeProperty('background-image'); return; }
         syncFrame = 0;
-        const n = SYNC_FRAMES[kind];
+        const n = SYNC_FRAMES[kind] || SYNC_FRAMES.type;
         const tick = () => {
             const name = `status-${kind}-sync-${String(syncFrame).padStart(2, '0')}`;
             // 6.5's own frames (its shellres.192, same ids; @2x / @4x only, as its other status art)
