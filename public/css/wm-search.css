@@ -264,7 +264,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-search .wsr-q:focus::placeholder {
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-search .wsr-head {
-    --wsr-line: #080431;
+    --wsr-line: var(--wm65-deep, #080431);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-search .wsr-item::after {

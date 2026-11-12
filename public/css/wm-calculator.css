@@ -195,7 +195,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-mem.is-set {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-display {
     border-width: max(1px, calc(0.5 * var(--wm-px))) 0 0 max(1px, calc(0.5 * var(--wm-px)));
-    color: #080431;
+    color: var(--wm65-deep, #080431);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-calculator .wmc-back {

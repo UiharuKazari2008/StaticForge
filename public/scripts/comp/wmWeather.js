@@ -136,7 +136,7 @@
     }
 
     const iconUrl = (key, hd) => `${ART}wx-${key}${hd ? '@2x' : ''}.png`;
-    const iconImg = (key, cls) => `<img class="${cls}" src="${iconUrl(key)}" srcset="${iconUrl(key)} 1x, ${iconUrl(key, true)} 2x" alt="" draggable="false">`;
+    const iconImg = (key, cls) => `<img class="${cls}" src="${iconUrl(key)}" srcset="${iconUrl(key)} 1x, ${iconUrl(key, true)} 2x, ${ART}wx-${key}@4x.png 4x" alt="" draggable="false">`;
 
     // ---------------------------------------------------------------- units and times
 

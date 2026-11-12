@@ -124,7 +124,8 @@
     width: 16px;
     height: 16px;
     margin-right: 5px;
-    background: url('/static_images/melaton/melaton-glass-256.png') center / 16px 16px no-repeat;
+    /* the 16 px pixel icon, as Setup's caption carries Vista's 16 px flag (32 px on dense screens) */
+    background: image-set(url('/static_images/melaton/melaton-16.png') 1x, url('/static_images/melaton/melaton-32.png') 2x) center / 16px 16px no-repeat;
 }
 
 #miTitle {

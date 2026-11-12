@@ -27,7 +27,9 @@
  *                           of its own; Back is the shell's), per device: wmShell.todaySoftKeys
  *
  * Sounds & Notifications also keeps this device's own sound options (wmShell.sounds: screen taps,
- * hardware buttons, and each phone event's WM sound, repeat, display and vibrate; localStorage).
+ * hardware buttons, and each phone event's WM sound, repeat, display and vibrate; localStorage)
+ * and, on a Vibration tab the device does not have, its vibration (wmShell.vibration: on, the
+ * intensity, calls, errors and warnings; localStorage wmVibration).
  * WM 6.1's Phone item has no Dreamscape analogue and is left out (calls, ring tones, network and
  * SIM services).
  *
@@ -139,6 +141,11 @@
         return s && typeof s.events === 'function' && typeof s.setPrefs === 'function' ? s : null;
     };
     const clone = (o) => JSON.parse(JSON.stringify(o));
+    // the phone's vibration (wmShell.js vibrate, kept per device)
+    const VIB = () => {
+        const sh = window.wmShell;
+        return sh && typeof sh.vibrate === 'function' && sh.vibration && typeof sh.vibration.setPrefs === 'function' ? sh : null;
+    };
 
     function eventList(d) {
         const rows = [];
@@ -167,13 +174,20 @@
             dev: snd ? clone(snd.prefs()) : null,
             phoneEvents: snd ? snd.events() : [],
             wmFiles: snd ? snd.files() : [],
+            vib: VIB() ? clone(VIB().vibration.prefs()) : null,
+            vibCaps: VIB() ? VIB().vibration.caps() : null,
             sel: '',
             stash: new Map()
         };
         d.sel = eventList(d)[0] ? eventList(d)[0].key : '';
-        d.saved = clone({ scheme: d.scheme, sounds: d.sounds, startupSound: d.startupSound, mail: d.mail, bridge: d.bridge, dev: d.dev });
+        d.saved = clone({ scheme: d.scheme, sounds: d.sounds, startupSound: d.startupSound, mail: d.mail, bridge: d.bridge, dev: d.dev, vib: d.vib });
         return d;
     }
+
+    // Screen taps / Hardware buttons: Classic = the device's own clicks (waveapi's TouchSoft /
+    // TouchLoud / KeySoft / KeyLoud), Modern = the one click Melaton played before (hwandsw.wav,
+    // Soft by gain). Not a WM option: kept in this device's sound options (wmSounds.clicks).
+    const CLICK_SETS = [['classic', 'Classic'], ['modern', 'Modern']];
 
     function renderSoundsTab(el, d, api) {
         const none = d.scheme === 'none';
@@ -189,7 +203,8 @@
             ${ui.check('grp-system', 'Events (warnings, system events)', groupOn(d, 'system'), `data-grp="system"${none ? ' disabled' : ''}`)}
             ${ui.check('grp-programs', 'Programs', programs, `data-grp="programs"${none ? ' disabled' : ''}`)}
             ${checkIn('grp-notifications', 'Notifications (mail, prints, balloons)', programs && groupOn(d, 'notifications'), `data-grp="notifications"${none || !programs ? ' disabled' : ''}`)}
-            ${d.dev ? clicks('taps', 'Screen taps', d.dev.taps, d.dev.tapsLoud) + clicks('buttons', 'Hardware buttons', d.dev.buttons, d.dev.buttonsLoud) : ''}
+            ${d.dev ? clicks('taps', 'Screen taps', d.dev.taps, d.dev.tapsLoud) + clicks('buttons', 'Hardware buttons', d.dev.buttons, d.dev.buttonsLoud)
+                + ui.row('Tap and button sounds:', ui.comboHtml('clickset', (CLICK_SETS.find(([v]) => v === d.dev.clicks) || CLICK_SETS[0])[1], !d.dev.taps && !d.dev.buttons), { wide: true }) : ''}
             ${ui.gap()}
             ${ui.row('Sound scheme:', ui.comboHtml('scheme', (schemes.find(([v]) => v === cur) || schemes[0])[1]), { wide: true })}
             ${ui.check('startup', 'Play Melaton Startup sound', d.startupSound, none ? 'disabled' : '')}
@@ -205,6 +220,7 @@
                 el.querySelectorAll(`input[name="${k}-vol"]`).forEach((r) => r.addEventListener('change', () => { if (r.checked) d.dev[`${k}Loud`] = r.value === 'loud'; }));
             }
         }
+        if (d.dev) ui.bindCombo(el.querySelector('[data-act="clickset"]'), CLICK_SETS, d.dev.clicks, (v) => { d.dev.clicks = v; api.rerender(); });
         ui.bindCombo(el.querySelector('[data-act="scheme"]'), schemes, cur, (v) => {
             if (v === 'modified') return;
             // as the Sound dialog: picking the scheme starts from its own sounds
@@ -348,6 +364,43 @@
         body.querySelector('[data-act="play"]').addEventListener('click', () => { const f = eventFile(d, evId); if (f && SND()) SND().preview(f); });
     }
 
+    /**
+     * Vibration: not a WM 6.1 / 6.5 tab (the device has only each notification's Vibrate box and
+     * the volume bubble's Vibrate), built from the Sounds tab's parts: a switch, the intensity as
+     * Screen's trackbar (five steps, amplitude 51 to 255 in the Android app; one strength in a
+     * browser or on a motor without amplitude control), Test (a notification's buzz at the level
+     * shown, whatever the volume bubble says) and what vibrates while the sound is on that has no
+     * box on the Notifications tab.
+     */
+    function renderVibrationTab(el, d, api) {
+        const v = d.vib;
+        const caps = d.vibCaps || { vibrator: false, amplitudeControl: false };
+        const none = !caps.vibrator;
+        const off = none || !v.on;
+        const levels = Array.from({ length: VIB().vibration.levels }, (_, i) => i + 1);
+        el.innerHTML = `${ui.check('vib-on', 'Turn on vibration', v.on && !none, none ? 'disabled' : '')}
+            <div class="wmsp-indent">
+                ${ui.sub('Intensity')}
+                <div data-f="vib-level"></div>
+                ${ui.buttons([['vib-test', 'Test', off]], false)}
+            </div>
+            ${none ? ui.note('This device cannot vibrate.') : (caps.amplitudeControl ? '' : ui.note('This device vibrates at one strength.'))}
+            ${ui.gap()}
+            ${ui.sub('With the sound on, vibrate for')}
+            ${ui.check('vib-calls', 'Incoming calls', v.calls, off ? 'disabled' : '')}
+            ${ui.check('vib-alerts', 'Errors and warnings', v.alerts, off ? 'disabled' : '')}
+            ${ui.note('Each notification has its own Vibrate box on the Notifications tab.')}`;
+        ui.trackbar(el.querySelector('[data-f="vib-level"]'), {
+            steps: levels, value: v.level, lo: 'Low', hi: 'High', label: 'Vibration intensity',
+            disabled: off || !caps.amplitudeControl,
+            onChange: (n) => { v.level = n; }
+        });
+        el.querySelector('input[name="vib-on"]').addEventListener('change', (e) => { v.on = e.target.checked; api.rerender(); });
+        el.querySelector('input[name="vib-calls"]').addEventListener('change', (e) => { v.calls = e.target.checked; });
+        el.querySelector('input[name="vib-alerts"]').addEventListener('change', (e) => { v.alerts = e.target.checked; });
+        el.querySelector('[data-act="vib-test"]').addEventListener('click', () => { if (VIB()) VIB().vibrate('notification', { level: v.level, force: true }); });
+    }
+
     async function commitSounds(d) {
         const v = d.saved;
         if (SND()) SND().stop();
@@ -363,17 +416,20 @@
             if (d.mail.notify !== v.mail.notify) mailApi.setNotify(d.mail.notify);
         }
         // this device's own: taps, buttons and each phone event
-        if (d.dev && SND() && !same(d.dev, v.dev)) SND().setPrefs(d.dev);
-        return [];
+        const keys = [];
+        if (d.dev && SND() && !same(d.dev, v.dev)) { SND().setPrefs(d.dev); keys.push('wmSounds'); }
+        if (d.vib && VIB() && !same(d.vib, v.vib)) { VIB().vibration.setPrefs(d.vib); keys.push(VIB().vibration.key); }
+        return keys;
     }
 
     wmSettings.registerPage({
         id: 'sounds', tab: 'personal', label: 'Sounds & Notifications', icon: 'set-sounds',
-        tabs: [['sounds', 'Sounds'], ['notifications', 'Notifications']],
+        tabs: [['sounds', 'Sounds'], ['notifications', 'Notifications'], ['vibration', 'Vibration']],
         available: () => !!(P() && typeof P().get === 'function' && typeof P().update === 'function'),
         init: readSounds,
         render(el, tab, d, api) {
-            if (tab === 'notifications') renderNotifyTab(el, d, api);
+            if (tab === 'vibration') { if (d.vib) renderVibrationTab(el, d, api); else el.innerHTML = ui.note('This device cannot vibrate.'); }
+            else if (tab === 'notifications') renderNotifyTab(el, d, api);
             else renderSoundsTab(el, d, api);
         },
         commit: commitSounds

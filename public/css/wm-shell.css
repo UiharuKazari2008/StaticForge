@@ -44,6 +44,11 @@ html.ui-mobile {
     /* the tap-and-hold ring's dots and the notification zoom rectangle (wm-stage.css) */
     --wm-hold-ring: #10a618;
     --wm-zoom-rect: #31d339;
+    /* the bands under a white title: the message box caption and the bubble, notification and
+       volume titles. The highlight on the device; applyTheme darkens them until white reads at
+       4.5 : 1 */
+    --wm-caption: var(--wm-highlight);
+    --wm-band: var(--wm-highlight);
     --wm-font: Tahoma, 'Segoe UI', Verdana, sans-serif;
     background: #000;
 }
@@ -1134,7 +1139,7 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-msgbox-title {
     height: calc(23 * var(--wm-px));
     padding: 0 calc(3 * var(--wm-px));
     border-bottom: calc(1 * var(--wm-px)) solid #000;
-    background: linear-gradient(to right, color-mix(in srgb, var(--wm-highlight), #fff 25%), var(--wm-highlight));
+    background: linear-gradient(to right, color-mix(in srgb, var(--wm-caption), #fff 25%), var(--wm-caption));
 }
 
 html.ui-mobile:not([data-wm-version="6.5"]) .wm-msgbox-title span {
@@ -1491,7 +1496,7 @@ html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox .modal-window-title 
     height: calc(23 * var(--wm-px)) !important;
     padding: 0 calc(3 * var(--wm-px)) !important;
     border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
-    background: linear-gradient(to right, color-mix(in srgb, var(--wm-highlight), #fff 25%), var(--wm-highlight)) !important;
+    background: linear-gradient(to right, color-mix(in srgb, var(--wm-caption), #fff 25%), var(--wm-caption)) !important;
 }
 
 html.ui-mobile:not([data-wm-version="6.5"]) #confirmationDialog .modal-window-title-main,
@@ -1599,7 +1604,7 @@ html.ui-mobile body > #toastContainer {
     height: calc(19 * var(--wm-px));
     padding: 0 calc(4 * var(--wm-px)) 0 calc(8 * var(--wm-px));
     border-radius: calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) 0 0;
-    background: linear-gradient(to bottom, var(--wm-highlight), color-mix(in srgb, var(--wm-highlight) 82%, #000));
+    background: linear-gradient(to bottom, var(--wm-band), color-mix(in srgb, var(--wm-band) 82%, #000));
     color: #fff;
     font-weight: bold;
 }
@@ -2677,7 +2682,7 @@ html.ui-mobile body > .pswp .pswp__preloader {
 .wm-bubble-title {
     padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
     border-radius: calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) 0 0;
-    background: linear-gradient(to bottom, var(--wm-highlight), color-mix(in srgb, var(--wm-highlight) 82%, #000));
+    background: linear-gradient(to bottom, var(--wm-band), color-mix(in srgb, var(--wm-band) 82%, #000));
     color: #fff;
     font-weight: bold;
 }
@@ -2839,7 +2844,7 @@ html.ui-mobile body > .pswp .pswp__preloader {
     line-height: calc(18 * var(--wm-px));
     padding: 0 calc(8.5 * var(--wm-px));
     border-radius: calc(3 * var(--wm-px)) calc(3 * var(--wm-px)) 0 0;
-    background: linear-gradient(to bottom, var(--wm-highlight), color-mix(in srgb, var(--wm-highlight) 82%, #000));
+    background: linear-gradient(to bottom, var(--wm-band), color-mix(in srgb, var(--wm-band) 82%, #000));
     color: #fff;
     font-weight: bold;
 }

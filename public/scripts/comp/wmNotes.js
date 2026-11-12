@@ -1023,7 +1023,7 @@
             else if (is65()) {
                 // 6.5: a contact with no picture shows the device's own picture frame
                 pic.src = '/static_images/wm65/pim-contact-picture.png';
-                pic.srcset = '/static_images/wm65/pim-contact-picture.png 1x, /static_images/wm65/pim-contact-picture@2x.png 2x';
+                pic.srcset = '/static_images/wm65/pim-contact-picture.png 1x, /static_images/wm65/pim-contact-picture@2x.png 2x, /static_images/wm65/pim-contact-picture@4x.png 4x';
             }
             pic.classList.toggle('is-frame', !hasPhoto);
             const rows = cardRows(c);

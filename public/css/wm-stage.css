@@ -16,7 +16,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"]) > .w
     border-style: solid;
     border-width: 0;
     border-color: transparent;
-    border-image: url('/static_images/wm65/theme-classicblue-menuselector@2x.png') 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) stretch;
+    border-image: var(--wm65-art-menuselector, url('/static_images/wm65/theme-classicblue-menuselector@2x.png')) 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) stretch;
 }
 
 /* ---- a switch drawn in the device's order (wmShell.js stagePlay): html[data-wm-stage] names the
@@ -43,12 +43,12 @@ html.ui-mobile[data-wm-stage~="body-app"] #wmShell > .wm-content {
 html.ui-mobile[data-wm-version="6.5"][data-wm-stage~="title-home"] .wm-titlebar,
 html.ui-mobile[data-wm-version="6.5"][data-wm-stage~="keys-home"] .wm-softkeys,
 html.ui-mobile[data-wm-version="6.5"][data-wm-bar="glass"] .wm-titlebar {
-    background: rgba(0, 0, 0, 0.392);
+    background: var(--wm65-bar-glass, rgba(0, 0, 0, 0.392));
 }
 
 html.ui-mobile[data-wm-version="6.5"][data-wm-stage~="title-app"] .wm-titlebar,
 html.ui-mobile[data-wm-version="6.5"][data-wm-stage~="keys-app"] .wm-softkeys {
-    background: #000;
+    background: var(--wm65-bar, #000);
 }
 
 html.ui-mobile[data-wm-version="6.5"][data-wm-stage~="body-home"] #wmShell > .wm-wall65:not([hidden]),
@@ -104,7 +104,9 @@ html.ui-mobile[data-wm-reveal="bars"] .wm-splash {
     box-sizing: border-box;
     border: calc(0.5 * var(--wm-px)) solid #000;
     border-radius: 50%;
-    background: rgb(16, 166, 24);
+    /* the theme's colour (applyTheme): rgb(16, 166, 24) on the 6.1 device's green, rgb(16, 36, 165)
+       on 6.5's Classic Blue (SHColor s 79 l 37 in the theme's hue, as the 16-bit screen shows it) */
+    background: var(--wm-hold-ring, rgb(16, 166, 24));
 }
 
 .wm-hold-ring > i[hidden] { display: none; }
@@ -116,10 +118,6 @@ html.ui-mobile[data-wm-reveal="bars"] .wm-splash {
 .wm-hold-ring > i:nth-child(6) { --x: -10.5; --y: 10.5; }
 .wm-hold-ring > i:nth-child(7) { --x: -14; --y: 0; }
 .wm-hold-ring > i:nth-child(8) { --x: -10.5; --y: -10.5; }
-
-html.ui-mobile[data-wm-version="6.5"] .wm-hold-ring > i {
-    background: rgb(16, 36, 165);
-}
 
 /* ---- 6.5 menus (wmShell.js showPopup / closeMenus): the first paint has the frame and the first
  * row only; a chosen menu loses its frame, shadow and fill first, its texts a tick later ---- */
@@ -152,13 +150,13 @@ html.ui-mobile .wm-today-row[data-row="tasks"] { cursor: default; }
 html.ui-mobile .wm-today-row[data-row="tasks"] .wm-today-text { white-space: pre; }
 
 /* ---- 6.1 notification bubble (wmShell.js noteZoom): the zoom rectangle, an outline of one device
- * pixel in the highlight green (49, 211, 57); the bubble is not drawn under it, then its frame and
+ * pixel in the theme's highlight (49, 211, 57 on the device's green); the bubble is not drawn under it, then its frame and
  * title band come, the body a tick later ---- */
 .wm-zoom-rect {
     position: absolute;
     z-index: 40;
     box-sizing: border-box;
-    border: calc(0.5 * var(--wm-px)) solid rgb(49, 211, 57);
+    border: calc(0.5 * var(--wm-px)) solid var(--wm-zoom-rect, rgb(49, 211, 57));
     pointer-events: none;
 }
 
@@ -174,4 +172,13 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-msgbox[data-wm-paint="first"] > 
 html.ui-mobile[data-wm-version="6.5"] .wm-msgbox[data-wm-paint="first"] .wm-msgbox-text {
     max-height: calc(14.5 * var(--wm-px));
     overflow: hidden;
+}
+
+/* ---- an app's own notification (wmShell.js appNote): the lines under its progress bar ---- */
+html.ui-mobile .wm-notify-body .toast-detail {
+    margin-top: calc(4 * var(--wm-px));
+}
+
+html.ui-mobile .wm-notify-body .toast-detail:empty {
+    display: none;
 }

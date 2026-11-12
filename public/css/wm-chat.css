@@ -268,7 +268,7 @@
 .wm-chat .wch-me {
     flex: 0 0 calc(48 * var(--wm-px));
     background: url('/static_images/wm61/chat-buddy.png') center / calc(24 * var(--wm-px)) calc(20 * var(--wm-px)) no-repeat;
-    background-image: image-set(url('/static_images/wm61/chat-buddy.png') 1x, url('/static_images/wm61/chat-buddy@2x.png') 2x);
+    background-image: image-set(url('/static_images/wm61/chat-buddy.png') 1x, url('/static_images/wm61/chat-buddy@2x.png') 2x, url('/static_images/wm61/chat-buddy@4x.png') 4x);
 }
 
 .wm-chat .wch-me.has-photo {
@@ -395,7 +395,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-chat .wch-row.is-selected::before {
     border-style: solid;
     border-width: 0;
     border-color: transparent;
-    border-image: url('/static_images/wm65/theme-classicblue-listviewselector@2x.png') 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) / 0 stretch;
+    border-image: var(--wm65-art-listviewselector, url('/static_images/wm65/theme-classicblue-listviewselector@2x.png')) 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) / 0 stretch;
     pointer-events: none;
 }
 

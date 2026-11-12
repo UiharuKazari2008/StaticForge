@@ -456,7 +456,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-two.is-selected::
     border-style: solid;
     border-width: 0;
     border-color: transparent;
-    border-image: url('/static_images/wm65/theme-classicblue-listviewselector@2x.png') 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) / 0 stretch;
+    border-image: var(--wm65-art-listviewselector, url('/static_images/wm65/theme-classicblue-listviewselector@2x.png')) 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) / 0 stretch;
     pointer-events: none;
 }
 
@@ -508,7 +508,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-head {
     font-size: var(--wm-fs);
     line-height: calc(21 * var(--wm-px));
     /* the device's caption blue here (16 bit: #00109c), not the menu text colour */
-    color: #00109c;
+    color: var(--wm65-navy, #00109c);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-two {
@@ -569,19 +569,19 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg :is(.msg-scroll, .msg-pick, .msg-r
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text)::-webkit-scrollbar-button:single-button:vertical:decrement {
-    background-image: url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png');
+    background-image: image-set(url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png') 2x, url('/static_images/wm65/theme-black-scrollbaruparrowbutton@4x.png') 4x);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text)::-webkit-scrollbar-button:single-button:vertical:increment {
-    background-image: url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png');
+    background-image: image-set(url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png') 2x, url('/static_images/wm65/theme-black-scrollbardownarrowbutton@4x.png') 4x);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
-    background-image: url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png');
+    background-image: image-set(var(--wm65-art-scrollbaruparrowbuttonselected, url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png')) 2x, var(--wm65-art-scrollbaruparrowbuttonselected-4x, url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@4x.png')) 4x);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text)::-webkit-scrollbar-button:single-button:vertical:increment:active {
-    background-image: url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png');
+    background-image: image-set(var(--wm65-art-scrollbardownarrowbuttonselected, url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png')) 2x, var(--wm65-art-scrollbardownarrowbuttonselected-4x, url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@4x.png')) 4x);
 }
 
 /* the folder lists (Folders, Move): the device's tree marks the chosen folder with the flat highlight */

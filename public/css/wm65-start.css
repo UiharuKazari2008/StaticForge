@@ -132,7 +132,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-s65-glow {
     width: calc(96 * var(--wm-px));
     height: calc(79 * var(--wm-px));
     background-image: url("/static_images/wm65/start-selection.png");
-    background-image: image-set(url("/static_images/wm65/start-selection.png") 1x, url("/static_images/wm65/start-selection@2x.png") 2x);
+    background-image: image-set(url("/static_images/wm65/start-selection.png") 1x, url("/static_images/wm65/start-selection@2x.png") 2x, url("/static_images/wm65/start-selection@4x.png") 4x);
     background-size: 100% 100%;
     background-repeat: no-repeat;
     pointer-events: none;

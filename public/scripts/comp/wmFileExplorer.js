@@ -13,7 +13,8 @@
  *                blended 50 % with the highlight (ImageList ILD_BLEND50)
  *   soft keys    Up / Menu. Menu: Go To >, Refresh, Show All Files, Sort By > | Send..., Beam
  *                File..., New Folder, Rename, Delete | Edit > (Undo | Cut, Copy, Paste, Paste
- *                Shortcut | Select All). Submenus open to the left over the menu.
+ *                Shortcut | Select All). Submenus open to the left over the menu. Ours adds
+ *                Receive > (File, Pictures) under Send...: files from the device into the folder.
  *   tap          opens (a folder lists, a picture opens in the viewer, other files: WM's "no
  *                application associated" box); tap-and-hold selects and shows the context menu
  *
@@ -924,35 +925,299 @@
         return parts[0] === 'Workspaces' && parts.length === 3 && ['Pictures', 'Scraps', 'References', 'Notes'].includes(parts[2]);
     }
 
-    /** Upload from Device: the device's own file picker (opened in the menu tap, which it needs), then each file in. */
-    function uploadFromDevice() {
+    // ---------------------------------------------------------------- Receive (files from the device)
+    //
+    // Menu > Receive > File / Pictures (Yukimi, #748): the device's own file picker or picture
+    // selector, then every chosen file into the folder that was on screen, each through
+    // vfsImportRouter.routeFilesToPath: the call the desktop Explorer's upload makes
+    // (explorerApplet.js uploadFilesToPath), one websocket message a file (vfs_upload_file, or the
+    // import of a Pictures / Scraps / References / Notes folder). While it runs: a title bar glyph
+    // (shellres icon 4672, the arrow into a tray, each version's own drawing) and a notification
+    // with the file's name, a bar, the size and the time left (wmShell.appNote); soft keys Hide and
+    // Cancel (asked first, No the default). At the end: the list on screen refreshes, or, when File
+    // Explorer no longer shows that folder, a "Received" notification with Dismiss and Show.
+    //
+    // The server stores a file only when its whole message has arrived, so nothing is ever left
+    // half written. A message already handed to the socket cannot be called back: a file on its way
+    // when Cancel is confirmed still arrives whole, and is then put in the workspace's Trash (plain
+    // folders; an import into Pictures, Scraps, References or Notes stays).
+
+    function rxIcon() {
+        const dir = `/static_images/${ws && ws.version === '6.5' ? 'wm65' : 'wm61'}/status-receive`;
+        return `image-set(url("${dir}.png") 1x, url("${dir}@2x.png") 2x, url("${dir}@4x.png") 4x)`;
+    }
+    const RX_IMPORTS = ['Pictures', 'Scraps', 'References', 'Notes', 'Desktop'];
+    // toasts the import router raises for a file that went in: the list or "Received" says it here
+    const RX_DONE_TOAST = /^(Imported to (Scraps|Pictures)|Reference imported|Vibe imported|Created note from file)$/;
+    let rx = null;      // the transfer under way
+    let rxInput = null; // the picker's input while the device's chooser is up
+
+    const rxNoun = (t, n) => (t.entries.every((e) => e.kind === 'picture') ? (n === 1 ? 'picture' : 'pictures') : (n === 1 ? 'file' : 'files'));
+
+    /**
+     * Whether the chooser may be asked for several files. The Android app answers the page with
+     * WebChromeClient.FileChooserParams.parseResult(), which reads only Intent.getData(); a
+     * chooser opened for several files answers in Intent.getClipData(), so the page was told
+     * nothing was chosen (the dead "Upload from Device"). There one file is asked for at a time
+     * until the app passes the clip data on and says so (window.AndroidFileChooser.multiple()).
+     */
+    function pickerTakesSeveral() {
+        if (!window.AndroidCaption && !window.AndroidDisplay) return true; // a browser
+        try {
+            const fc = window.AndroidFileChooser;
+            return !!(fc && typeof fc.multiple === 'function' && fc.multiple());
+        } catch (_) { return false; }
+    }
+
+    /** Receive > File / Pictures: the device's chooser (opened in the menu tap, which it needs). */
+    function pickFromDevice(kind) {
         if (!canUploadHere() || typeof vfsImportRouter === 'undefined') return;
-        const path = pathNow();
+        const dest = pathNow();
+        const destTrail = trail.slice();
+        if (rxInput) rxInput.remove();
         const input = document.createElement('input');
         input.type = 'file';
-        input.multiple = true;
+        // image/*: Android shows its picture selector, any other its file picker
+        if (kind === 'picture') input.accept = 'image/*';
+        input.multiple = pickerTakesSeveral();
         input.hidden = true;
+        input.dataset.feReceive = kind;
         document.body.appendChild(input);
-        const done = () => input.remove();
+        rxInput = input;
+        const done = () => { input.remove(); if (rxInput === input) rxInput = null; };
         input.addEventListener('cancel', done, { once: true });
-        input.addEventListener('change', async () => {
+        input.addEventListener('change', () => {
             const files = [...(input.files || [])];
             done();
-            if (!files.length) return;
-            const before = new Set(items.map((i) => i.id));
-            for (const file of files) {
-                try {
-                    await busyOf(() => vfsImportRouter.routeFilesToPath(path, [file]));
-                } catch (err) {
-                    await errorBox('Error Copying File', 'copy', { name: file.name }, err);
-                }
-            }
-            if (pathNow() !== path) return;
-            await load({ keep: true });
-            const added = items.filter((i) => !before.has(i.id));
-            if (added.length) { selectOnly(added[0].id); scrollToSelection(); }
+            if (files.length) receive(files, dest, destTrail, kind);
         }, { once: true });
         input.click();
+    }
+
+    function receive(files, dest, destTrail, kind) {
+        const entries = files.map((file) => ({ file, dest, trail: destTrail, kind, state: 'wait', error: '', before: null }));
+        const size = entries.reduce((n, e) => n + (Number(e.file.size) || 0), 0);
+        // files chosen while a transfer runs join it
+        if (rx && !rx.ended) {
+            rx.entries.push(...entries);
+            rx.total += size;
+            rxPaint(rx);
+            return;
+        }
+        const t = {
+            entries,
+            at: 0,
+            total: size,
+            done: 0,
+            startedAt: performance.now(),
+            queued: false,
+            cancelled: false,
+            asking: false,
+            ended: false,
+            note: null,
+            timer: null,
+            // what the folder listed before, to select the first file that came in
+            listed: page && pathNow() === dest ? new Set(items.map((i) => i.id)) : null
+        };
+        rx = t;
+        if (typeof ws.appNote === 'function') {
+            t.note = ws.appNote({
+                title: rxTitle(t),
+                html: rxName(t),
+                progress: 0,
+                detail: rxDetail(t, 0),
+                icon: rxIcon(),
+                softKeys: () => ({
+                    left: { label: 'Hide', action: () => t.note.hide() },
+                    right: { label: 'Cancel', action: () => { void rxAskCancel(t); } }
+                })
+            });
+        }
+        t.timer = setInterval(() => rxPaint(t), 250);
+        void rxRun(t);
+    }
+
+    const rxTitle = (t) => `Receiving ${t.entries.length} ${rxNoun(t, t.entries.length)}`;
+    const rxName = (t) => `<span class="fe-rx-name">${esc((t.entries[Math.min(t.at, t.entries.length - 1)] || { file: {} }).file.name || '')}</span>`;
+
+    /**
+     * How much of the file being sent has left the phone, 0..1: its message waits in the socket's
+     * send buffer (bufferedAmount, about 4/3 of the file as base64) and drains as it goes out.
+     */
+    function rxSent(t) {
+        const e = t.entries[t.at];
+        const sock = window.wsClient && window.wsClient.ws;
+        if (!e || e.state !== 'run' || !sock) return 0;
+        const est = (Number(e.file.size) || 0) * 4 / 3;
+        const buf = Number(sock.bufferedAmount) || 0;
+        if (!t.queued && est > 0 && buf > Math.min(est * 0.5, 65536)) t.queued = true;
+        if (!t.queued || !est) return 0;
+        return Math.max(0, Math.min(1, 1 - buf / est));
+    }
+
+    /** "About 20 seconds remaining": seconds in steps of five, then minutes. */
+    function rxTimeLeft(sec) {
+        if (!Number.isFinite(sec) || sec < 0) return '';
+        if (sec < 60) { const s = Math.max(5, Math.ceil(sec / 5) * 5); return `About ${s} seconds remaining`; }
+        const m = Math.round(sec / 60);
+        return `About ${m} ${m === 1 ? 'minute' : 'minutes'} remaining`;
+    }
+
+    function rxDetail(t, bytes) {
+        const elapsed = (performance.now() - t.startedAt) / 1000;
+        const left = bytes > 0 && elapsed >= 1 && t.total > bytes ? rxTimeLeft((t.total - bytes) * elapsed / bytes) : '';
+        return `<div>${esc(fmtSize(Math.round(bytes)))} of ${esc(fmtSize(t.total))}</div>${left ? `<div>${esc(left)}</div>` : ''}`;
+    }
+
+    function rxPaint(t) {
+        if (!t.note || t.ended) return;
+        const e = t.entries[t.at];
+        const bytes = Math.min(t.total, t.done + (e ? rxSent(t) * (Number(e.file.size) || 0) : 0));
+        // files without a size (0 bytes in all) count by number
+        const part = t.total > 0 ? bytes / t.total : t.at / t.entries.length;
+        t.note.update({ title: rxTitle(t), html: rxName(t), progress: part * 100, detail: rxDetail(t, bytes) });
+    }
+
+    async function rxRun(t) {
+        while (t.at < t.entries.length && !t.cancelled) {
+            const e = t.entries[t.at];
+            e.state = 'run';
+            t.queued = false;
+            rxPaint(t);
+            const plain = !RX_IMPORTS.includes(vfsImportRouter._parsePath(e.dest).systemFolder);
+            // the folder's items of this name before the file goes in (to tell the new one apart):
+            // asked first on the same socket, not waited for (a busy server took 10 s to answer)
+            // (null when the listing fails: then nothing is taken for the new file)
+            if (plain) {
+                e.before = vfsClient.listDirectory(e.dest, { offset: 0, limit: 500, sortField: 'name', sortDirection: 'asc', search: e.file.name })
+                    .then((res) => new Set(((res && res.items) || []).map((i) => i.id)), () => null);
+            }
+            const toasts = new Set([...document.querySelectorAll('#toastContainer > .glass-toast')].map((x) => x.id));
+            try {
+                await vfsImportRouter.routeFilesToPath(e.dest, [e.file]);
+                e.state = 'done';
+            } catch (err) {
+                e.state = 'failed';
+                e.error = (err && err.message) || 'The operation failed.';
+            }
+            document.querySelectorAll('#toastContainer > .glass-toast-success').forEach((x) => {
+                const msg = ((x.querySelector('.toast-message') || {}).textContent || '').trim();
+                if (x.id && !toasts.has(x.id) && RX_DONE_TOAST.test(msg) && typeof window.removeGlassToast === 'function') window.removeGlassToast(x.id);
+            });
+            if (t.cancelled) {
+                // Cancel was confirmed while this file was on its way: it arrived whole after all
+                if (e.state === 'done' && plain) await rxDiscard(e);
+                if (page && isCurrent() && pathNow() === e.dest) await load({ keep: true });
+                return;
+            }
+            t.done += Number(e.file.size) || 0;
+            t.at++;
+        }
+        if (!t.cancelled) await rxFinish(t);
+    }
+
+    /**
+     * The item a received file became in its folder (plain folders), or null. Not waited on for
+     * long: a listing asked right after startup was once never answered.
+     */
+    async function rxItemOf(e) {
+        if (!e || !e.before) return null;
+        const soon = (p) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), 4000))]);
+        const before = await soon(e.before);
+        if (!before) return null;
+        const after = await soon(namesakes(e.dest, e.file.name));
+        return (after || []).find((i) => !before.has(i.id) && String(i.name) === String(e.file.name)) || null;
+    }
+
+    /** A file that arrived after Cancel goes to the Trash, like a file deleted here. */
+    async function rxDiscard(e) {
+        try {
+            const item = await rxItemOf(e);
+            if (item && canTrash(item)) await vfsClient.moveToTrash(refsOf([item]), e.dest);
+        } catch (_) { /* it stays in the folder */ }
+    }
+
+    function rxClose(t) {
+        t.ended = true;
+        clearInterval(t.timer);
+        if (t.note) t.note.close();
+        if (rx === t) rx = null;
+    }
+
+    async function rxAskCancel(t) {
+        if (t.asking || t.ended) return;
+        t.asking = true;
+        const yes = await ws.messageBox({
+            title: 'File Explorer',
+            icon: 'question',
+            text: 'Are you sure you want to cancel?',
+            buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }],
+            cancelValue: false,
+            modal: true
+        });
+        t.asking = false;
+        if (!yes || t.ended) return;
+        // files not yet sent stay on the device; the ones already in stay in the folder
+        t.cancelled = true;
+        rxClose(t);
+        if (page && isCurrent() && t.entries.some((e) => e.state === 'done' && e.dest === pathNow())) await load({ keep: true });
+    }
+
+    async function rxFinish(t) {
+        const got = t.entries.filter((e) => e.state === 'done');
+        const failed = t.entries.filter((e) => e.state === 'failed');
+        const first = got[0] || null;
+        const here = !!page && isCurrent();
+        // on screen: File Explorer is up and shows the folder the files went to
+        const watching = here && !!first && pathNow() === first.dest;
+        rxClose(t);
+        if (here && t.entries.some((e) => e.dest === pathNow())) {
+            await load({ keep: true });
+            const added = t.listed && watching ? items.filter((i) => !t.listed.has(i.id)) : [];
+            if (added.length) { selectOnly(added[0].id); scrollToSelection(); }
+        }
+        if (got.length && !watching && typeof ws.appNote === 'function') {
+            const size = got.reduce((n, e) => n + (Number(e.file.size) || 0), 0);
+            // the item the first file became, looked up meanwhile (Show waits for it)
+            const item = rxItemOf(first).catch(() => null);
+            const note = ws.appNote({
+                title: 'File Explorer',
+                html: `Received ${got.length} ${rxNoun({ entries: got }, got.length)}<br>${esc(fmtSize(size))}`,
+                icon: rxIcon(),
+                softKeys: () => ({
+                    left: { label: 'Dismiss', action: () => note.close() },
+                    right: {
+                        label: 'Show',
+                        action: async () => {
+                            note.close();
+                            ws.open(APP_ID);
+                            const got1 = await busyOf(() => item);
+                            navigate(first.dest, null, { trail: first.trail, select: got1 ? got1.id : undefined });
+                        }
+                    }
+                })
+            });
+        }
+        if (failed.length) {
+            // once, naming the files: a box over File Explorer, a notification anywhere else
+            const lines = failed.slice(0, 6).map((e) => `'${e.file.name}': ${e.error}`);
+            if (failed.length > 6) lines.push(`...and ${failed.length - 6} more`);
+            const text = failed.length === 1 ? `Cannot copy ${lines[0]}` : `Cannot copy these files:\n${lines.join('\n')}`;
+            if (page && isCurrent()) await ws.messageBox({ title: 'Error Copying File', icon: 'error', text, modal: true });
+            else void ws.notify({ title: 'Error Copying File', text, icon: 'error', asNote: true });
+        }
+    }
+
+    /** Menu > Receive: File (the device's file picker) and Pictures (its picture selector). */
+    function receiveItem() {
+        return {
+            label: 'Receive',
+            disabled: !canUploadHere() || typeof vfsImportRouter === 'undefined',
+            submenu: () => [
+                { label: 'File', action: () => pickFromDevice('file') },
+                { label: 'Pictures', action: () => pickFromDevice('picture') }
+            ]
+        };
     }
 
     function startRename(id) {
@@ -1361,9 +1626,9 @@
             { label: 'View', submenu: viewItems },
             '-',
             sendItem(sel),
+            receiveItem(),
             { label: 'Beam File...', disabled: true },
             { label: 'New Folder', disabled: !writable(pathNow()) || readOnly() || (inPhone() && !phoneCan('mkdir')), action: newFolder },
-            { label: 'Upload from Device...', disabled: !canUploadHere(), action: uploadFromDevice },
             { label: 'Rename', disabled: sel.length !== 1 || !canRename(sel[0]) || readOnly(), action: () => startRename(sel[0].id) },
             { label: 'Delete', disabled: !sel.length || !sel.some(canDelete) || readOnly(), action: deleteSelection },
             '-',
@@ -1381,7 +1646,7 @@
                 { label: 'Paste', disabled: !canPaste(), action: () => paste(false) },
                 { label: 'Paste Shortcut', disabled: !canPasteShortcut(), action: () => paste(true) },
                 { label: 'New Folder', disabled: !writable(pathNow()) || readOnly() || (inPhone() && !phoneCan('mkdir')), action: newFolder },
-                { label: 'Upload from Device...', disabled: !canUploadHere(), action: uploadFromDevice }
+                receiveItem()
             ];
         }
         const sel = selectedItems();

@@ -199,11 +199,12 @@
      * Default in 6.1, Vera Wang red and DVF green in 6.5); the workspace colour's saturation scales
      * them (deriveRoles), so a grey workspace gives a grey phone.
      * 6.1: the roles above, plus the tap-and-hold ring's dots (rgb 16 166 24 on the device's green)
-     * and the notification zoom rectangle (the highlight as it is, before the white-text clamp).
+     * and the notification zoom rectangle (the highlight as it is, before the white-text clamp),
+     * and the title bands under white text (--wm-caption, --wm-band: 4.5 : 1).
      * 6.5: wm65.css holds the device's Classic Blue values; three numbers turn them: --wm65-dh, the
      * workspace hue less the Classic Blue highlight's (#2d5ecf, 221.9 deg), --wm65-k, the saturation
-     * factor, --wm65-lm, a lightness factor for the mid tones under white text (1 unless white on
-     * the turned highlight falls under 3 : 1, the 6.1 clamp), and --wm65-near, how much of Classic
+     * factor, --wm65-lm, a lightness factor for the mid tones under white text (they keep the
+     * luminance Classic Blue has; --wm65-lb the same for the caption band's light end), and --wm65-near, how much of Classic
      * Blue's own hue spread (its roles sit up to 23 deg apart) is kept: all of it within 15 deg of
      * the device's blue, none from 45 deg on, like the 6.1 ok / X frame. The ROM's blue selector
      * art (list and menu selectors, menu arrow bars, message box caption, pressed scroll arrows,
@@ -228,15 +229,36 @@
         let k65 = k;
         if (k65 < 0.005) dh = 0;
         if (Math.abs(dh) < 0.75 && Math.abs(k65 - 1) < 0.02) { dh = 0; k65 = 1; }
-        let lm = 100;
-        while (lm > 40 && contrastWithWhite(hslToRgb(turn(BLUE_HUE + dh), Math.min(100, BLUE_S * k65), BLUE_L * lm / 100)) < 3) lm -= 1;
-        lm /= 100;
+        // blue is the darkest hue at a given lightness: turned to green or yellow the same values
+        // are far brighter and white text on them fades. Each is held at the luminance Classic Blue
+        // itself has (white on the highlight 5.8 : 1), as the device's own drawn themes are
+        // (DVF green's selector is l 34 against Classic Blue's 49)
+        const keep = (h0, s0, l0, h, s) => {
+            const want = contrastWithWhite(hslToRgb(h0, s0, l0)) - 0.02;
+            let f = 100;
+            while (f > 25 && contrastWithWhite(hslToRgb(h, s, l0 * f / 100)) < want) f -= 1;
+            return f / 100;
+        };
+        const lm = keep(BLUE_HUE, BLUE_S, BLUE_L, turn(BLUE_HUE + dh), Math.min(100, BLUE_S * k65));
         roles['--wm65-dh'] = `${dh.toFixed(1)}deg`;
         roles['--wm65-k'] = k65.toFixed(3);
         roles['--wm65-lm'] = lm.toFixed(2);
         const near = k65 < 0.005 ? 1 : Math.max(0, Math.min(1, (45 - Math.abs(dh)) / 30));
         roles['--wm65-near'] = near.toFixed(3);
-        const ART = ['listviewselector', 'menuselector', 'menuuparrowbackground-l', 'menuuparrowbackground-m', 'menuuparrowbackground-r', 'menudownarrowbackground-l', 'menudownarrowbackground-m', 'menudownarrowbackground-r', 'msgboxtitle', 'scrollbaruparrowbuttonselected', 'scrollbardownarrowbuttonselected', 'tabcurve-face-face', 'tabcurve-face-white', 'tabcurve-white-face', 'tabcurve-face-black'];
+        // the classic caption band's light end (#5f6ff3: 11.6 deg from the highlight, s 86 l 66.3)
+        roles['--wm65-lb'] = keep(233.5, 86, 66.3, turn(BLUE_HUE + dh + 11.6 * near), Math.min(100, 86 * k65)).toFixed(2);
+        // 6.1: the bands that carry a white title. The device draws them in the highlight as it
+        // is (white on its green is 1.9 : 1); here the message box caption (the highlight with a
+        // quarter of white at its left end) and the bubble, notification and volume titles are
+        // darkened until white reaches 4.5 : 1 on their lightest point
+        const hl = { h: turn(base.h), s: Math.min(100, 64 * k) };
+        let capL = 51;
+        while (capL > 12 && contrastWithWhite(hslToRgb(hl.h, hl.s, capL).map((c) => 0.75 * c + 0.25)) < 4.5) capL -= 1;
+        let bandL = 51;
+        while (bandL > 12 && contrastWithWhite(hslToRgb(hl.h, hl.s, bandL)) < 4.5) bandL -= 1;
+        roles['--wm-caption'] = `hsl(${hl.h.toFixed(1)} ${hl.s.toFixed(1)}% ${capL}%)`;
+        roles['--wm-band'] = `hsl(${hl.h.toFixed(1)} ${hl.s.toFixed(1)}% ${bandL}%)`;
+        const ART = ['listviewselector', 'menuselector', 'menuuparrowbackground-l', 'menuuparrowbackground-m', 'menuuparrowbackground-r', 'menudownarrowbackground-l', 'menudownarrowbackground-m', 'menudownarrowbackground-r', 'msgboxtitle', 'scrollbaruparrowbuttonselected', 'scrollbardownarrowbuttonselected', 'scrollbaruparrowbuttonselected-4x', 'scrollbardownarrowbuttonselected-4x', 'tabcurve-face-face', 'tabcurve-face-white', 'tabcurve-white-face', 'tabcurve-face-black'];
         const art = applyTheme.art || (applyTheme.art = { key: '', vars: {}, pending: '', images: {} });
         const artKey = `${roles['--wm65-dh']}|${roles['--wm65-k']}|${roles['--wm65-lm']}|${roles['--wm65-near']}`;
         const plain = dh === 0 && k65 === 1 && lm === 1;
@@ -252,7 +274,9 @@
             const img = new Image();
             img.onload = () => resolve(img);
             img.onerror = () => resolve(null);
-            img.src = `/static_images/wm65/${name.startsWith('tabcurve-') ? name : `theme-classicblue-${name}`}@2x.png`;
+            // every piece is the ROM's 2x file; the pressed scroll arrows also have a 4x one for dense screens
+            const file = name.endsWith('-4x') ? `${name.slice(0, -3)}@4x` : `${name}@2x`;
+            img.src = `/static_images/wm65/${name.startsWith('tabcurve-') ? '' : 'theme-classicblue-'}${file}.png`;
         }));
         Promise.all(ART.map(load)).then((images) => {
             if (art.pending !== artKey) return;
@@ -645,7 +669,7 @@
         const src = flag65 ? FLAG65 : b.icon;
         if (img && src && img.getAttribute('src') !== src) {
             img.setAttribute('src', src);
-            if (flag65) img.setAttribute('srcset', `${FLAG65} 1x, ${FLAG65.replace('.png', '@2x.png')} 2x`);
+            if (flag65) img.setAttribute('srcset', `${FLAG65} 1x, ${FLAG65.replace('.png', '@2x.png')} 2x, ${FLAG65.replace('.png', '@4x.png')} 4x`);
             else if (b.icon === art('start-flag')) img.setAttribute('srcset', srcset('start-flag'));
             else img.removeAttribute('srcset');
         }
@@ -1221,6 +1245,8 @@
         const t = e.target;
         if (!t || !t.closest || t.closest(HOLD_SKIP)) return;
         if (root.dataset.wmBoot && root.dataset.wmBoot !== 'done') return;
+        holdRing.heldId = null;
+        holdRing.liftAt = 0;
         holdRing.id = e.pointerId;
         holdRing.x = e.clientX;
         holdRing.y = e.clientY;
@@ -1254,6 +1280,8 @@
             const target = holdRing.target;
             const x = holdRing.x;
             const y = holdRing.y;
+            // the pen is still down when the menu comes up under it: its lift must not choose a row
+            holdRing.heldId = holdRing.id;
             holdRingEnd(HOLD_LEAVE_MS);
             if (!target || !target.isConnected) return;
             target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, composed: true, view: window, clientX: x, clientY: y, button: 2 }));
@@ -1271,7 +1299,18 @@
             if (holdRing.id !== e.pointerId) return;
             if (Math.abs(e.clientX - holdRing.x) > HOLD_SLOP || Math.abs(e.clientY - holdRing.y) > HOLD_SLOP) holdRingEnd(0);
         }, true);
-        const up = (e) => { if (holdRing.id === e.pointerId) holdRingEnd(0); };
+        const up = (e) => {
+            if (holdRing.heldId != null && holdRing.heldId === e.pointerId) { holdRing.heldId = null; holdRing.liftAt = Date.now(); }
+            if (holdRing.id === e.pointerId) holdRingEnd(0);
+        };
+        // the click that a lift after a hold may bring (a browser that did not see a long press
+        // of its own, a synthetic pointer): taken, whatever is under the pen by then
+        document.addEventListener('click', (e) => {
+            if (!holdRing.liftAt || Date.now() - holdRing.liftAt > 450) return;
+            holdRing.liftAt = 0;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }, true);
         document.addEventListener('pointerup', up, true);
         document.addEventListener('pointercancel', up, true);
         document.addEventListener('scroll', () => { if (holdRing.id != null) holdRingEnd(0); }, true);
@@ -2669,7 +2708,8 @@
             noteRepeat = setInterval(() => {
                 const n = noteOf(toastId);
                 if (!n || left-- <= 0 || noteShown !== toastId) { clearInterval(noteRepeat); noteRepeat = null; return; }
-                playSystemSound(id, { vibrate: false, again: true });
+                // a repeat buzzes again where the event vibrates (Reminders: Repeat)
+                playSystemSound(id, { again: true });
             }, 4000);
         }
     }
@@ -3050,7 +3090,7 @@
             if (mode === 'vibrate') localStorage.setItem(MODE_KEY, 'vibrate');
             else localStorage.removeItem(MODE_KEY);
         } catch (_) { /* storage off */ }
-        if (mode === 'vibrate') { try { if (navigator.vibrate) navigator.vibrate(200); } catch (_) { /* no motor */ } }
+        if (mode === 'vibrate') vibrate('mode');
     }
 
     let volumeFocus = 'media';
@@ -3331,7 +3371,7 @@
     function waitFrame(img, frame) {
         if (WM65) {
             img.src = `/static_images/wm65/wait-${frame}.png`;
-            img.srcset = `/static_images/wm65/wait-${frame}.png 1x, /static_images/wm65/wait-${frame}@2x.png 2x`;
+            img.srcset = `/static_images/wm65/wait-${frame}.png 1x, /static_images/wm65/wait-${frame}@2x.png 2x, /static_images/wm65/wait-${frame}@4x.png 4x`;
             return;
         }
         img.src = art(`wait-${frame}`);
@@ -3490,9 +3530,25 @@
         SystemDefault: 'beep', SystemStart: 'startup', MenuPopup: 'menu', Notification: 'notification'
     };
     const MSGBOX_SOUND = { info: 'SystemAsterisk', question: 'SystemQuestion', warning: 'SystemExclamation', error: 'SystemHand' };
-    // the screen-tap / hardware-button click (WM's key click; the ROM's hwandsw.wav), soft and loud
-    const SND_CLICK = 'hwandsw.wav';
-    const SND_CLICK_GAIN = { soft: 0.3, loud: 1 };
+    // The screen-tap and hardware-button clicks are not \Windows files: four WAVE resources of
+    // waveapi.dll (8-bit mono 11025 Hz), a soft and a loud sample each, not one sample at two
+    // gains. Its click loader (0x033D08A8 on the 6.1 emulator, disassembled from the slot 1 dump)
+    // reads HKCU\ControlPanel\Volume "Key" / "Screen" (0 off, 1 soft, 2 loud; both 0x10000 = off as
+    // shipped) and loads WAVE 100 KeyLoud (28 ms), 101 KeySoft (32 ms), 102 TouchLoud, 103
+    // TouchSoft (42 ms each). 6.5's resource region holds the same four, byte for byte.
+    const SND_CLICKS = {
+        taps: { soft: 'TouchSoft.wav', loud: 'TouchLoud.wav' },
+        buttons: { soft: 'KeySoft.wav', loud: 'KeyLoud.wav' }
+    };
+    // Settings' "Tap and button sounds": Classic = the device's four above; Modern = what Melaton
+    // played for both before (the ROM's \Windows\hwandsw.wav, one sample: Soft is its gain)
+    const SND_CLICK_MODERN = 'hwandsw.wav';
+    const SND_CLICK_MODERN_GAIN = { soft: 0.3, loud: 1 };
+    const clickSound = (p, kind) => {
+        const loud = (kind === 'buttons' ? p.buttonsLoud : p.tapsLoud) ? 'loud' : 'soft';
+        return p.clicks === 'modern' ? { file: SND_CLICK_MODERN, gain: SND_CLICK_MODERN_GAIN[loud] }
+            : { file: SND_CLICKS[kind === 'buttons' ? 'buttons' : 'taps'][loud], gain: 1 };
+    };
     const SND_PREFS_KEY = 'wmSounds';
     const snd = { ctx: null, buffers: new Map(), last: 0, log: [], preview: null };
 
@@ -3504,6 +3560,7 @@
         return {
             taps: p.taps === true, tapsLoud: p.tapsLoud !== false,
             buttons: p.buttons === true, buttonsLoud: p.buttonsLoud !== false,
+            clicks: p.clicks === 'modern' ? 'modern' : 'classic',
             ev: p.ev && typeof p.ev === 'object' ? p.ev : {}
         };
     }
@@ -3555,7 +3612,8 @@
             // the sounds this device uses (each one picked or WM's own), not the whole list
             const p = soundPrefs();
             const want = new Set(SND_EVENTS.map((e) => eventPrefs(e.id, p).sound).filter((f) => f && WM_SOUNDS.includes(f)));
-            if (p.taps || p.buttons) want.add(SND_CLICK);
+            if (p.taps) want.add(clickSound(p, 'taps').file);
+            if (p.buttons) want.add(clickSound(p, 'buttons').file);
             want.forEach(sndBuffer);
         } catch (_) { /* no audio */ }
     }
@@ -3601,12 +3659,156 @@
         return src;
     }
 
+    /*
+     * Vibration. The Android app (DSApp-Kotlin) gives window.AndroidHaptics: capabilities() ->
+     * JSON { vibrator, amplitudeControl }, vibrate(JSON { timings (ms), amplitudes (0-255, 0 = a
+     * pause), repeat (-1 once, else the index to loop from), usage 'notification' | 'ring' |
+     * 'alarm' | 'touch' }) and cancel(). It works with the page in the background, and Android's
+     * own vibration settings, ringer mode and Do Not Disturb still decide. A browser has
+     * navigator.vibrate: on / off times only, one strength, after a tap, never while hidden.
+     *
+     * Patterns are on, off, on ... ms. The ROM holds one vibration script,
+     * HKCU\ControlPanel\Sounds\SDPUnlock ScriptVibrate "v0.15w0.15v0.15w0.15" (0.15 s on, 0.15 s
+     * off, twice): a notification's buzz here. The others are ours (a WM device's motor is driven
+     * by its OEM's NLED driver; the emulator has none to measure): a reminder is longer, an error
+     * or warning one beat, a call rings as the ring script "apw3r" does (3 s a turn) until
+     * cancelled. WM 6.x has no vibration on screen taps or keys: none here.
+     *
+     * Settings > Sounds & Notifications > Vibration keeps this device's options (localStorage
+     * wmVibration: { on, level 1-5, calls, alerts }); level n is amplitude 255 * n / 5 where the
+     * motor has amplitude control. The volume bubble decides first: Off never vibrates; Vibrate
+     * buzzes for every notification, error and warning box and call; On only for a notification
+     * whose Vibrate box is ticked (Notifications tab), for calls and for errors and warnings when
+     * this tab says so.
+     */
+    const VIB_KEY = 'wmVibration';
+    const VIB_LEVELS = 5;
+    const VIB_PATTERNS = {
+        notification: { on: [150, 150, 150], usage: 'notification' },
+        reminder: { on: [400, 200, 400, 200, 400], usage: 'notification' },
+        alert: { on: [250], usage: 'notification' },
+        ring: { on: [1000, 2000], usage: 'ring', repeat: true, maxMs: 30000 },
+        mode: { on: [200], usage: 'touch' }
+    };
+    const vib = { log: [], last: {}, stop: null, caps: null };
+
+    /** This device's vibration options (Settings > Sounds & Notifications > Vibration), defaults filled in. */
+    function vibrationPrefs() {
+        let p = null;
+        try { p = JSON.parse(localStorage.getItem(VIB_KEY) || 'null'); } catch (_) { p = null; }
+        p = p && typeof p === 'object' ? p : {};
+        const level = Math.round(Number(p.level));
+        return {
+            on: p.on !== false,
+            level: Number.isFinite(level) && level >= 1 && level <= VIB_LEVELS ? level : VIB_LEVELS,
+            calls: p.calls !== false,
+            alerts: p.alerts === true
+        };
+    }
+
+    function saveVibrationPrefs(p) {
+        const o = p && typeof p === 'object' ? p : {};
+        const level = Math.round(Number(o.level));
+        const clean = {
+            on: o.on !== false,
+            level: Number.isFinite(level) && level >= 1 && level <= VIB_LEVELS ? level : VIB_LEVELS,
+            calls: o.calls !== false,
+            alerts: o.alerts === true
+        };
+        try { localStorage.setItem(VIB_KEY, JSON.stringify(clean)); } catch (_) { /* private mode: this session only */ }
+    }
+
+    const hapticsBridge = () => {
+        const b = window.AndroidHaptics;
+        return b && typeof b.vibrate === 'function' ? b : null;
+    };
+
+    /** What can buzz here: { vibrator, amplitudeControl, bridge } (the app's answer, read once). */
+    function vibrationCaps() {
+        const b = hapticsBridge();
+        if (!b) return { vibrator: typeof navigator.vibrate === 'function', amplitudeControl: false, bridge: false };
+        if (!vib.caps) {
+            let c = null;
+            try { c = JSON.parse(b.capabilities()); } catch (_) { c = null; }
+            vib.caps = { vibrator: !(c && c.vibrator === false), amplitudeControl: !!(c && c.amplitudeControl === true), bridge: true };
+        }
+        return { ...vib.caps };
+    }
+
+    function vibrateCancel() {
+        clearTimeout(vib.stop);
+        vib.stop = null;
+        try {
+            const b = hapticsBridge();
+            if (b && typeof b.cancel === 'function') b.cancel();
+            else if (typeof navigator.vibrate === 'function') navigator.vibrate(0);
+        } catch (_) { /* no motor */ }
+    }
+
+    /**
+     * Buzz one named pattern (VIB_PATTERNS) at the Vibration tab's level; true when it was handed
+     * to the motor. opts.level (0-5) instead of the stored one and opts.force (whatever the
+     * volume bubble's mode and the tab's switches) are Settings' Test button; opts.ms ends a
+     * repeating pattern sooner than its own limit. The same pattern within 300 ms is one buzz (a
+     * message box and the desktop's own call for the same box).
+     */
+    function vibrate(kind, opts = {}) {
+        try {
+            const pat = VIB_PATTERNS[kind];
+            if (!pat) return false;
+            const p = vibrationPrefs();
+            const asked = Math.round(Number(opts.level));
+            const level = opts.level != null && Number.isFinite(asked) ? Math.max(0, Math.min(VIB_LEVELS, asked)) : (p.on ? p.level : 0);
+            if (level <= 0) return false;
+            if (!opts.force) {
+                const mode = soundMode();
+                if (mode === 'off') return false;
+                if (kind === 'ring' && mode === 'on' && !p.calls) return false;
+            }
+            const now = Date.now();
+            if (!opts.force && now - (vib.last[kind] || 0) < 300) return false;
+            vib.last[kind] = now;
+            const amp = Math.round((255 * level) / VIB_LEVELS);
+            const b = hapticsBridge();
+            const entry = { kind, level, amplitude: amp, via: b ? 'bridge' : 'navigator', at: now };
+            vib.log.push(entry);
+            if (vib.log.length > 50) vib.log.shift();
+            clearTimeout(vib.stop);
+            vib.stop = null;
+            const limit = pat.repeat ? Math.max(0, Math.min(pat.maxMs, Number(opts.ms) > 0 ? Number(opts.ms) : pat.maxMs)) : 0;
+            let ok;
+            if (b) {
+                ok = b.vibrate(JSON.stringify({
+                    timings: pat.on,
+                    amplitudes: pat.on.map((_, i) => (i % 2 ? 0 : amp)),
+                    repeat: pat.repeat ? 0 : -1,
+                    usage: pat.usage
+                })) !== false;
+            } else {
+                if (typeof navigator.vibrate !== 'function') return false;
+                let seq = pat.on;
+                if (pat.repeat) {
+                    const turn = pat.on.reduce((a, c) => a + c, 0);
+                    seq = [];
+                    for (let t = 0; t + turn <= limit; t += turn) seq.push(...pat.on);
+                }
+                ok = navigator.vibrate(seq) !== false;
+            }
+            entry.ok = ok;
+            if (ok && pat.repeat) vib.stop = setTimeout(vibrateCancel, limit);
+            return ok;
+        } catch (_) {
+            return false;
+        }
+    }
+
     /**
      * Play one phone sound event (SND_EVENTS ids, or the PlaySound names in SND_ALIAS); resolves
      * true when it started. opts.event: the desktop event whose settings decide instead of the
      * event's own (an error notification follows Program Error). A second sound within 300 ms is
      * dropped: a message box and the desktop's own call for the same box are one beep. A
-     * notification's Vibrate runs whatever the sound does.
+     * notification's Vibrate runs whatever the sound does (not with the volume bubble on Off);
+     * opts.vibrate false keeps the motor out of it.
      */
     async function playSystemSound(name, opts = {}) {
         try {
@@ -3614,10 +3816,15 @@
             const ev = id && SND_EVENT.get(id);
             if (!ev) return false;
             const prefs = eventPrefs(id);
-            // the volume bubble's Vibrate: sounds buzz instead (a notification that vibrates anyway once)
-            const buzz = opts.vibrate !== false && (prefs.vibrate || (soundMode() === 'vibrate' && ev.kind === 'note'));
-            if (buzz) {
-                try { if (navigator.vibrate) navigator.vibrate([400, 150, 400]); } catch (_) { /* no motor */ }
+            // the volume bubble's Vibrate: sounds buzz instead. On: a notification whose Vibrate box
+            // is ticked, and an error or warning when the Vibration tab says so
+            if (opts.vibrate !== false) {
+                const quiet = soundMode() === 'vibrate';
+                if (ev.kind === 'note') {
+                    if (prefs.vibrate || quiet) vibrate(id === 'reminder' ? 'reminder' : 'notification');
+                } else if ((id === 'error' || id === 'warning') && (quiet || vibrationPrefs().alerts)) {
+                    vibrate('alert');
+                }
             }
             const event = opts.event || ev.desktop;
             const pers = window.desktopPersonalization;
@@ -3675,8 +3882,9 @@
             const p = soundPrefs();
             const on = kind === 'buttons' ? p.buttons : p.taps;
             if (!on || sndSilentNow() || !snd.ctx || snd.ctx.state !== 'running') return;
-            const loud = kind === 'buttons' ? p.buttonsLoud : p.tapsLoud;
-            sndPlayFile(SND_CLICK, SND_CLICK_GAIN[loud ? 'loud' : 'soft']);
+            const click = clickSound(p, kind);
+            sndNote(kind === 'buttons' ? 'key-click' : 'tap-click', '', `wm61/${click.file}`, Date.now());
+            sndPlayFile(click.file, click.gain);
         } catch (_) { /* no click */ }
     }
 
@@ -3686,8 +3894,12 @@
      * sound map to WM's, Dovecote's new mail to New e-mail message (it calls only when its mail
      * sound is on; its notification, when shown, is the same beep); every other desktop event
      * (logon, prints, recycle ...) has no WM sound or comes as a notification here.
-     * Screen taps and the back key (DSApp sends it as Escape: WM's hardware button) click when
-     * Settings > Sounds & Notifications has them on.
+     * Screen taps and hardware keys click when Settings > Sounds & Notifications has them on. The
+     * device clicks in the drivers, before any window sees the input: a tap is every pen-down,
+     * wherever it lands (on nothing too), a key every key-down of a real key (the input panel's
+     * keys are pen taps: keybd_event's KEYEVENTF_SILENT). Here a key is the back key (DSApp sends
+     * it as Escape) and any key of a hardware keyboard; an on-screen keyboard's keys (keyCode 229)
+     * are Android's own and stay silent.
      */
     const DESKTOP_SOUND = { error: 'SystemHand', 'critical-stop': 'SystemHand', warning: 'SystemExclamation', dialog: 'SystemAsterisk', notify: 'mail' };
     function watchSystemSounds() {
@@ -3698,7 +3910,17 @@
         }, { capture: true, passive: true });
         document.addEventListener('keydown', (e) => {
             unlock();
-            if (e.isTrusted && !e.repeat && e.key === 'Escape') playClick('buttons');
+            if (hardKey(e) && !e.repeat) {
+                keysClicked.add(e.code || e.key);
+                playClick('buttons');
+            }
+        }, { capture: true });
+        // a key-down the shell takes on window (build(): the back key's Escape, keys under the
+        // wait cursor) is stopped there and never comes this far: its key-up, which does, clicks
+        const keysClicked = new Set();
+        const hardKey = (e) => e.isTrusted && !e.isComposing && e.keyCode !== 229 && e.key !== 'Unidentified' && e.key !== 'Process';
+        document.addEventListener('keyup', (e) => {
+            if (!keysClicked.delete(e.code || e.key) && hardKey(e)) playClick('buttons');
         }, { capture: true });
         const ds = window.desktopSounds;
         if (ds && typeof ds.play === 'function' && !ds.wmWrapped) {
@@ -6363,6 +6585,19 @@
             setPrefs: (p) => { saveSoundPrefs(p); sndUnlock(); },
             preview: previewSound,
             stop: stopPreview
+        },
+        /** Buzz a named pattern ('notification' | 'reminder' | 'alert' | 'ring' | 'mode'); opts { level, force, ms }. */
+        vibrate: (kind, opts) => vibrate(kind, opts || {}),
+        /** This device's vibration (Settings > Sounds & Notifications > Vibration; localStorage wmVibration). */
+        vibration: {
+            key: VIB_KEY,
+            levels: VIB_LEVELS,
+            log: vib.log,
+            prefs: vibrationPrefs,
+            setPrefs: saveVibrationPrefs,
+            caps: vibrationCaps,
+            cancel: vibrateCancel,
+            patterns: () => JSON.parse(JSON.stringify(VIB_PATTERNS))
         },
         /** Today's wallpaper placement (Settings > Today > Wallpaper). */
         wallpaper: {

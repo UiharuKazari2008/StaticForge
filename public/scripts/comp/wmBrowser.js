@@ -17,6 +17,10 @@
  * Sharpness: the iframe is laid out at up to 2x the page area and scaled down, and Alchemy's zoom
  * sets the CSS viewport, so View (One Column / Default / Desktop) and Zoom (text size) only change
  * the zoom value.
+ * View > Desktop (#748): every page is the desktop Internet Explorer's, not the phone's. The
+ * Grimoire's pages (the home page too), Fandom, the Apocrypha and the Dreamscape apps are drawn by
+ * the desktop Grimoire's own code and styles on a page 1024 px wide that the user pans (see
+ * "Desktop view" below); a web page gets Alchemy's 1024 px viewport as before.
  * Back key: historyDepth() / onBack() walk the pages seen here (Chromium's own history where the
  * two agree, else a fresh navigation); Favorites and History are layers too.
  * Home: the Grimoire homepage in the start page's layout, and the Grimoire's wiki, search and
@@ -66,6 +70,10 @@
     // View: the page's CSS viewport width. One Column fits the phone (sites' narrow layouts),
     // Default is half again as wide, Desktop is a 1024 px desktop page shrunk to fit.
     const VIEWS = [['column', 'One Column'], ['default', 'Default'], ['desktop', 'Desktop']];
+    // Desktop view: the layout size of a page, the desktop Internet Explorer's page area on a
+    // 1024 x 768 screen (the same 1024 px a web page gets from Alchemy in this view)
+    const DESK_W = 1024;
+    const DESK_H = 768;
     // Zoom: IE Mobile's text sizes
     const ZOOMS = [['largest', 'Largest', 1.5], ['larger', 'Larger', 1.25], ['medium', 'Medium', 1], ['smaller', 'Smaller', 0.85], ['smallest', 'Smallest', 0.7]];
 
@@ -108,7 +116,7 @@
      */
     const MAX_WINDOWS = 8;
     const WINDOW_IDLE_MS = 300000; // a web page or applet in a window that is not on screen is let go after 5 minutes
-    const WIN_BOXES = ['home', 'gpage', 'dsap', 'core', 'frameWrap'];
+    const WIN_BOXES = ['home', 'gpage', 'dsap', 'core', 'desk', 'frameWrap'];
     let winSeq = 0;
     function makeWin() {
         return {
@@ -116,7 +124,7 @@
             closed: false,
             popup: false, // opened by a page (window.open, target=_blank)
             shownAt: 0,
-            dom: null, // { home, gpage, dsap, dsapArea, core, frameWrap, touch }
+            dom: null, // { home, gpage, dsap, dsapArea, core, desk, deskPage, deskDsap, frameWrap, touch }
             scrolls: null,
             entries: [homeEntry()],
             idx: 0,
@@ -142,7 +150,9 @@
             dsapIdleTimer: 0,
             dsapAddrMove: null, // { from, to }: setAddress just moved the address (host.setUrl); addToHistory may follow
             dsapShell: null,
-            coreShown: null // the entry whose box is in .wmb-core
+            dsapDesk: false, // the running applet draws in the Desktop view's page (.wmb-desk-dsap)
+            coreShown: null, // the entry whose box is in .wmb-core
+            deskShown: null // Desktop view: the entry whose page is in .wmb-desk
         };
     }
     let wins = [makeWin()]; // in the order they were opened
@@ -194,6 +204,7 @@
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const isCurrent = () => !!(ws && ws.current === APP_ID);
+    const deskView = () => viewMode === 'desktop';
     const entry = () => W.entries[W.idx] || homeEntry();
     const onHome = () => !!entry().home;
     const srcsetOf = (name) => (window.wmShell ? window.wmShell.art.srcset(name) : `/static_images/wm61/${name}@2x.png 2x`);
@@ -649,6 +660,14 @@
         W.chromeBase = W.chromeAt;
         post({ type: 'grimoire-browser-navigate', url: e.url });
         void dir;
+    }
+
+    /** Desktop view: the page's zoom (6.1 Zoom / 6.5 Text Size, and 6.5's slider), as a web page's in geometry(). */
+    function deskZoom() { return zoomFactor() * (v65 ? pageZoom65 : 1); }
+
+    function applyDeskZoom() {
+        const z = Math.round(deskZoom() * 1000) / 1000;
+        for (const w of wins) if (w.dom) w.dom.deskPage.style.zoom = z === 1 ? '' : String(z);
     }
 
     function setGrimLoading(on) {
@@ -1404,7 +1423,8 @@
             { label: 'Home', action: goHome },
             W.loading && web ? { label: 'Stop', action: stop } : { label: 'Refresh', action: refresh },
             // device (Menu: Zoom Out ... Forward, Refresh, View in one block, a rule, Edit, Tools): the
-            // window rows close the block of page commands, after Refresh
+            // window rows follow the page commands, after Refresh, between two of the menu's rules
+            '-',
             ...windowItems(),
             '-',
             { label: 'Add to Favorites...', action: () => addFavorite() },
@@ -1429,16 +1449,30 @@
         ];
     }
 
+    /**
+     * View is the program's: it applies to every window. A web page takes the new viewport as it is
+     * (Alchemy lays the same page out again, no reload). Between Desktop and the phone views the
+     * Grimoire's pages change renderer: the page of the window on screen is drawn again at once (from
+     * the page cache or the server; an applet starts again from its address), the pages of the
+     * windows behind it when their window is shown.
+     */
     function setView(k) {
+        const was = deskView();
         viewMode = k;
         try { localStorage.setItem(VIEW_KEY, k); } catch (_) { /* storage off */ }
-        layoutFrame();
+        if (was !== deskView() && page) {
+            // an applet draws in the page of the view it was started in
+            wins.forEach((w) => inWin(w, leaveDsap));
+            render();
+        }
+        wins.forEach((w) => inWin(w, layoutFrame));
     }
 
     function setZoom(k) {
         zoomKey = k;
         try { localStorage.setItem(ZOOM_KEY, k); } catch (_) { /* storage off */ }
-        layoutFrame();
+        applyDeskZoom();
+        wins.forEach((w) => inWin(w, layoutFrame));
     }
 
     function toggleFullScreen() {
@@ -1587,6 +1621,12 @@
     function renderLocal(force) {
         const e = entry();
         if (!e.home) return;
+        if (deskView()) {
+            // the desktop Internet Explorer's pages ("Desktop view")
+            if (e.grim.kind === 'dsap') renderDsap(e, force);
+            else renderDesk(e, force);
+            return;
+        }
         if (e.grim.kind === 'home') { renderHomeLists(); return; }
         if (e.grim.kind === 'dsap') { renderDsap(e, force); return; }
         if (e.grim.kind === 'core') { renderCore(e, force); return; }
@@ -1810,12 +1850,12 @@
     }
 
     function dsapNote(text) {
-        els.dsapArea.innerHTML = `<div class="wmb-g-note">${esc(text)}</div>`;
+        (deskView() ? els.deskDsap : els.dsapArea).innerHTML = `<div class="wmb-g-note">${esc(text)}</div>`;
     }
 
     /** Start the entry's applet on screen (again with force: Refresh). */
     function renderDsap(e, force) {
-        if (!force && W.dsapShown === e && W.dsapShell._dsapActive) return;
+        if (!force && W.dsapShown === e && W.dsapShell._dsapActive && W.dsapDesk === deskView()) return;
         const w = W;
         const seq = ++W.dsapLoadSeq;
         let m = null;
@@ -1827,16 +1867,28 @@
         Promise.resolve(window.ensureDsapEntryReady(m.entry)).then((ok) => paint().then(() => ok)).then((ok) => inWin(w, () => {
             if (seq !== W.dsapLoadSeq || entry() !== e) return;
             if (!ok) throw new Error('load');
+            // Desktop view: the applet draws in the desktop page (.wmb-desk-dsap), with the desktop's own
+            // applet styles (wm-dsap.css reaches .wmb-dsap alone)
+            const desk = deskView();
+            if (W.dsapShell._dsapState && W.dsapDesk !== desk) leaveDsap();
+            W.dsapDesk = desk;
+            W.dsapShell.displayArea = desk ? els.deskDsap : els.dsapArea;
             W.dsapShown = e;
             W.dsapAddrMove = null;
             W.dsapActivating = true;
             let done = false;
             try { done = window.activateDsapOnShell(W.dsapShell, e.url, { force: true }); } finally { W.dsapActivating = false; }
             if (!done) throw new Error('activate');
-            // DSAP-SMF applets take WM's white form (wm-dsap.css), not the desktop's grey page
-            const root = W.dsapShell._dsapState && W.dsapShell._dsapState.rootEl;
-            if (root && root.classList.contains('dsap-smf')) els.dsap.style.backgroundColor = '';
-            els.dsap.scrollTop = 0;
+            if (desk) {
+                deskViewport(els.deskDsap);
+                els.desk.scrollTop = 0;
+                els.desk.scrollLeft = 0;
+            } else {
+                // DSAP-SMF applets take WM's white form (wm-dsap.css), not the desktop's grey page
+                const root = W.dsapShell._dsapState && W.dsapShell._dsapState.rootEl;
+                if (root && root.classList.contains('dsap-smf')) els.dsap.style.backgroundColor = '';
+                els.dsap.scrollTop = 0;
+            }
             renderAddress();
             noteHistory(e.url, e.title);
         })).catch((err) => inWin(w, () => {
@@ -1861,6 +1913,7 @@
         }
         if (!W.dom) { W.dsapShown = null; return; }
         if (W.dsapShown || els.dsapArea.childElementCount) els.dsapArea.innerHTML = '';
+        if (els.deskDsap.childElementCount) els.deskDsap.innerHTML = '';
         els.dsap.style.backgroundColor = '';
         W.dsapShown = null;
     }
@@ -1920,16 +1973,18 @@
     function onDsapClick(e) {
         if (e.defaultPrevented) return;
         const a = e.target.closest && e.target.closest('a[href]');
-        if (!a || !els.dsap.contains(a) || a.hasAttribute('download')) return;
+        // the applet's page: .wmb-dsap, or the Desktop view's page
+        const box = W.dsapDesk ? els.desk : els.dsap;
+        if (!a || !(W.dsapDesk ? els.deskDsap : els.dsap).contains(a) || a.hasAttribute('download')) return;
         const href = (a.getAttribute('href') || '').trim();
         if (!href || /^javascript:/i.test(href)) return;
         const label = a.textContent.replace(/\s+/g, ' ').trim();
         if (href.startsWith('#')) {
             e.preventDefault();
             let target = null;
-            try { target = href.length > 1 && els.dsap.querySelector('#' + CSS.escape(href.slice(1))); } catch (_) { target = null; }
-            if (target) els.dsap.scrollTop += target.getBoundingClientRect().top - els.dsap.getBoundingClientRect().top;
-            else els.dsap.scrollTop = 0;
+            try { target = href.length > 1 && box.querySelector('#' + CSS.escape(href.slice(1))); } catch (_) { target = null; }
+            if (target) box.scrollTop += target.getBoundingClientRect().top - box.getBoundingClientRect().top;
+            else box.scrollTop = 0;
             return;
         }
         if (a.classList.contains('tag-wiki-link') && a.dataset.tagName && !a.dataset.tagName.startsWith('#')) {
@@ -2127,25 +2182,32 @@
     }
 
     /** Taps on Fandom / Apocrypha pages, before the desktop's own handlers: every page opens in IE. */
-    function onCoreClick(e) {
+    function onCoreClick(e) { paneClick(e, els.core, true, coreScrollTo); }
+
+    /** box: the page's scroll box; fandom: its documentation links are Fandom pages (else a documentation site's). */
+    function paneClick(e, box, fandom, scrollTo) {
         const t = e.target;
         if (!t || !t.closest) return;
         const swallow = () => { e.preventDefault(); e.stopPropagation(); };
         const view = t.closest('[data-fandom-index-view]');
-        if (view && els.core.contains(view)) {
+        if (view && box.contains(view)) {
             swallow();
             navigate(view.getAttribute('data-fandom-index-view') === 'all' ? FANDOM_HOME + '?all=1' : FANDOM_HOME, 'Fandom Wikis');
             return;
         }
         if (t.closest('[data-action="open-fandom-wiki-import"]')) { swallow(); navigate('dsap://wiki.dyna.dreamscape.jp/import'); return; }
         const a = t.closest('a');
-        if (!a || !els.core.contains(a)) return;
+        if (!a || !box.contains(a)) return;
         swallow();
         const label = a.textContent.replace(/\s+/g, ' ').trim();
         const href = (a.getAttribute('href') || '').trim();
-        if (a.dataset.wikiSite && a.dataset.wikiPage) { navigate(fandomUrl(a.dataset.wikiSite, a.dataset.wikiPage), label); return; }
+        if (a.dataset.wikiSite && a.dataset.wikiPage) {
+            if (fandom) navigate(fandomUrl(a.dataset.wikiSite, a.dataset.wikiPage), label);
+            else openLocal({ kind: 'doc', site: a.dataset.wikiSite, page: a.dataset.wikiPage }, label);
+            return;
+        }
         if (a.classList.contains('tag-wiki-link') && a.dataset.tagName && !a.dataset.tagName.startsWith('#')) { openLocal({ kind: 'wiki', tag: a.dataset.tagName }); return; }
-        if (href.startsWith('#')) { coreScrollTo(href.slice(1)); return; }
+        if (href.startsWith('#')) { scrollTo(href.slice(1)); return; }
         if (!href || /^javascript:/i.test(href)) return;
         if (/^(edtx|rdf|dsap):/i.test(href) || coreAddress(href) || dsapAddress(href)) { navigate(href, label); return; }
         let abs = null;
@@ -2153,6 +2215,294 @@
         // same-origin links (a picture saved with a wiki page) would leave the phone's shell: the picture is on the page already
         if (abs.origin === location.origin) return;
         if (abs.protocol === 'http:' || abs.protocol === 'https:') navigate(abs.href, label);
+    }
+
+
+    // ---------------------------------------------------------------- Desktop view
+
+    /**
+     * View > Desktop (6.5: View > Desktop, Options > Other > Desktop Computer), #748: IE shows every
+     * page the way the desktop Internet Explorer of this app (the Grimoire window,
+     * tagWikiSearchModal.js) shows it, its home page too, instead of the phone's own page builders
+     * (.wmb-home, .wmb-gpage, the one-column .wmb-core and wm-dsap.css).
+     *
+     * The page is .wmb-desk: the desktop window's page nest (.grimoire-window >
+     * .tag-wiki-search-display > .tag-wiki-display-content, which tag-wiki-search.css keys its
+     * document sheet on) laid out DESK_W px wide and at least DESK_H tall, with the desktop's
+     * body text (app.css: var(--font-primary), 16 px, line height 1.25). It is shown at its own
+     * size and the user pans it; 6.1's Zoom, 6.5's Text Size and 6.5's slider scale it
+     * (applyDeskZoom). Measured against the desktop window with a 1024 px page area: every box of
+     * the home page falls on the same pixel.
+     *
+     * Who draws: a desk pane per page (the phone pane of "Fandom and the Apocrypha" with the
+     * desktop search page's methods taken from TagWikiSearchModal.prototype), driven the way
+     * grimoireCoreDomains.js drives a Grimoire window:
+     *   home          showDreamWikiHomepage (drawn again each time the page comes on screen: its
+     *                 Recently visited list is of the moment)
+     *   search        showSearchResultsPage + performSearch (the search home with no query)
+     *   wiki          getTagWikiPageDirectly (a tag with no page found from the search page: the
+     *                 desktop's online lookup page first)
+     *   documentation showStaticWikiSiteIndex / openStaticWikiPage
+     *   Fandom, the Apocrypha   their registry entry's activate, as .wmb-core
+     *   Dreamscape apps         activateDsapOnShell into .wmb-desk-dsap (renderDsap)
+     * Nothing here opens by itself in the pane it is on: what a tap asks for (pane.navigate,
+     * getTagWikiPageDirectly ..., and every link, caught first by onDeskClick) is a new IE page, so
+     * Back, Forward, History, Favorites and the windows work as in the phone views. Each page
+     * keeps its pane and box: Back shows it as it was left. The desktop's context menus stay away
+     * (the search page's gear opens its options as a WM menu).
+     */
+    let DeskPane = null;
+    // the desktop search page (TagWikiSearchModal's own; the rest is WikiDisplayBase's)
+    const DESK_BORROWED = ['showSearchResultsPage', 'searchTagWiki', 'getSourceIcon', 'refreshSearchPageResults', 'getGrimoireFilterOptionsForMenu',
+        'getGrimoireFilterOptions', 'applyGrimoireFilter', 'updateSearchControlsVisibility', 'clearResults', '_showOnlineLookupSorry'];
+
+    function deskPaneClass() {
+        if (DeskPane) return DeskPane;
+        const Base = phonePaneClass();
+        /* global TagWikiSearchModal */
+        if (!Base || typeof TagWikiSearchModal !== 'function') return null;
+        const main = TagWikiSearchModal.prototype;
+        DeskPane = class extends Base {
+            constructor(e, area) {
+                super(e, area);
+                this._own = 0;
+                // what the search page reads on the Grimoire window
+                this.modal = null;
+                this.searchBody = null;
+                this.searchInput = { value: '' };
+                this.currentSearchResults = [];
+                this.currentFilter = '';
+                this.currentSearchType = 'name';
+                this.includeOnline = false;
+                this._searchPageMode = false;
+            }
+            /** The page's own load: the renderers draw here. Outside it they are a tap's request for another page. */
+            own(fn) { this._own++; try { return fn(); } finally { this._own--; } }
+            isSplitMode() { return false; }
+            _sync() {
+                if (!this._loads) deskViewport(this.displayArea);
+                inWin(this._w, () => { if (W.deskShown === this._ie && entry() === this._ie) setGrimLoading(this._loads > 0); });
+            }
+            // IE's entry has the page's address already (a Fandom page names its own, as on the phone pane)
+            setAddress(o) { if (this._ie.grim.kind === 'core') super.setAddress(o); }
+            addToHistory(h) {
+                if (!h) return;
+                let title = '';
+                if (h.type === 'wiki') title = (h.tag && (h.tag.title || h.tag.name)) || '';
+                else if (h.type === 'apocrypha') title = 'Apocrypha';
+                else if (h.type !== 'search' && h.type !== 'home' && h.query === undefined) title = h.title || h.siteName || '';
+                if (title) this._ie.title = String(title).replace(/_/g, ' ');
+                noteHistory(this._ie.url, this._ie.title);
+                inWin(this._w, () => { if (entry() === this._ie) { chrome65(); step(); } });
+            }
+            // the gear's options open as a WM menu (deskGearMenu)
+            showSearchControlsContextMenu() { return null; }
+            _showOnlineLookupPage(tag) { if (this._own) main._showOnlineLookupPage.call(this, tag); }
+            getTagWikiPageDirectly(name, link, o) {
+                if (this._own) return this._track(WikiDisplayBase.prototype.getTagWikiPageDirectly.call(this, name, link, o));
+                if (!name) return undefined;
+                // a tag with no wiki page, tapped on the search page: its page looks the tag up online
+                const online = this._checkingOnlineTag === name;
+                delete this._checkingOnlineTag;
+                inWin(this._w, () => openLocal(Object.assign({ kind: 'wiki', tag: String(name) }, online ? { online: true } : null)));
+                return undefined;
+            }
+            showStaticWikiSiteIndex(id, o) {
+                if (this._own) return this._track(WikiDisplayBase.prototype.showStaticWikiSiteIndex.call(this, id, o));
+                return super.showStaticWikiSiteIndex(id);
+            }
+            openStaticWikiPage(site, page, o) {
+                if (this._own) return super.openStaticWikiPage(site, page, o);
+                if (site && page) {
+                    inWin(this._w, () => {
+                        if (this._ie.grim.kind === 'core') navigate(fandomUrl(site, page));
+                        else openLocal({ kind: 'doc', site: String(site), page: String(page) });
+                    });
+                }
+                return undefined;
+            }
+            performSearch() { return this._track(main.performSearch.call(this)); }
+        };
+        for (const k of DESK_BORROWED) if (typeof main[k] === 'function') DeskPane.prototype[k] = main[k];
+        return DeskPane;
+    }
+
+    /**
+     * A page that brings its own style sheet (the Apocrypha's zine, an applet) may choose its layout
+     * by the window's width (@media (max-width: 768px) ...). The window here is the phone's, the page
+     * DESK_W wide: in the page's own sheets (the <style> elements inside it) such a rule is decided
+     * for a window DESK_W wide: taken out when it does not hold, its rules freed when it does.
+     */
+    function deskViewport(root) {
+        if (!root) return;
+        const holds = (cond) => {
+            // each "(min-width: N)" / "(max-width: N)" of the condition, px (em and rem at 16 px)
+            let any = false;
+            let ok = true;
+            cond.replace(/\(\s*(min|max)-width\s*:\s*([\d.]+)(px|em|rem)\s*\)/gi, (_, kind, n, unit) => {
+                any = true;
+                const px = Number(n) * (unit.toLowerCase() === 'px' ? 1 : 16);
+                if (kind.toLowerCase() === 'min' ? DESK_W < px : DESK_W > px) ok = false;
+                return '';
+            });
+            return any ? ok : null;
+        };
+        root.querySelectorAll('style').forEach((st) => {
+            const sheet = st.sheet;
+            if (!sheet || st.dataset.wmbDesk) return;
+            st.dataset.wmbDesk = '1';
+            try {
+                for (let i = sheet.cssRules.length - 1; i >= 0; i--) {
+                    const r = sheet.cssRules[i];
+                    // one plain condition or several joined by "and"; a list or "not" stays as it is
+                    if (!(r instanceof CSSMediaRule) || /,|\bnot\b|\bor\b/i.test(r.conditionText)) continue;
+                    const on = holds(r.conditionText);
+                    if (on === null) continue;
+                    const inner = on ? [...r.cssRules].map((x) => x.cssText) : [];
+                    sheet.deleteRule(i);
+                    inner.forEach((text, n) => sheet.insertRule(text, i + n));
+                }
+            } catch (_) { /* a sheet that cannot be read stays as it is */ }
+        });
+    }
+
+    /** The page in .wmb-desk-page: area (an entry's own box), or none (an applet's page, or the view is away). */
+    function showDeskArea(area) {
+        if (!W.dom) return;
+        for (const c of [...els.deskPage.children]) if (c !== els.deskDsap && c !== area) c.remove();
+        if (area && area.parentNode !== els.deskPage) els.deskPage.insertBefore(area, els.deskDsap);
+        if (!area) W.deskShown = null;
+    }
+
+    /** Desktop view: show the entry's page (again from the server with force: Refresh). */
+    function renderDesk(e, force) {
+        const g = e.grim;
+        if (!force && W.deskShown === e && e.dArea && e.dArea.parentNode === els.deskPage) return;
+        W.deskShown = e;
+        if (e.dArea && e.dPane && !force && g.kind !== 'home') {
+            // Back / Forward: the page as it was left, where it was panned to
+            showDeskArea(e.dArea);
+            els.desk.scrollLeft = (e.dScroll || [0, 0])[0];
+            els.desk.scrollTop = (e.dScroll || [0, 0])[1];
+            setGrimLoading(e.dPane._loads > 0);
+            return;
+        }
+        const old = e.dPane;
+        const area = document.createElement('div');
+        area.className = 'wmb-desk-area tag-wiki-display-content';
+        e.dArea = area;
+        e.dPane = null;
+        e.dScroll = [0, 0];
+        showDeskArea(area);
+        els.desk.scrollLeft = 0;
+        els.desk.scrollTop = 0;
+        const w = W;
+        const fail = (text) => inWin(w, () => {
+            if (e.dArea !== area) return;
+            area.innerHTML = `<div class="wmb-g-note">${esc(text)}</div>`;
+            if (W.deskShown === e && entry() === e) setGrimLoading(false);
+        });
+        const ws_ = window.wsClient;
+        if (g.kind !== 'home' && (!ws_ || !ws_.isConnected || !ws_.isConnected())) { fail('The page cannot be reached: this phone is not connected to Dreamscape. Try again later.'); return; }
+        setGrimLoading(true);
+        loadGrimFeature().then(() => {
+            if (e.dArea !== area) return;
+            const Pane = deskPaneClass();
+            let m = null;
+            if (g.kind === 'core') { try { m = dsapApi() ? window.resolveDsap(e.url) : null; } catch (_) { m = null; } }
+            if (!Pane || (g.kind === 'core' && !(m && m.entry && typeof m.entry.activate === 'function'))) { fail('The page cannot be displayed.'); return; }
+            inWin(w, () => {
+                const pane = new Pane(e, area);
+                e.dPane = pane;
+                pane._track(null); // the ring stays until a renderer has started
+                const draw = () => pane.own(() => {
+                    if (g.kind === 'home') pane.showDreamWikiHomepage();
+                    else if (g.kind === 'search') {
+                        // as grimoireCoreDomains.js opens en.grimoire.jp/search on a Grimoire window
+                        pane.searchInput.value = g.q || '';
+                        if (!g.q) { pane.showSearchResultsPage('', false); return; }
+                        pane._searchPageMode = true;
+                        pane.showSearchResultsPage(g.q, true);
+                        pane.performSearch().finally(() => {
+                            pane._searchPageMode = false;
+                            if (e.dArea === area) pane.showSearchResultsPage(g.q, false);
+                        });
+                    } else if (g.kind === 'wiki') {
+                        if (g.online) {
+                            delete g.online;
+                            pane._checkingOnlineTag = g.tag;
+                            pane.includeOnline = true;
+                            pane._showOnlineLookupPage(g.tag);
+                        }
+                        pane.getTagWikiPageDirectly(g.tag);
+                    } else if (g.kind === 'site') pane.showStaticWikiSiteIndex(g.site);
+                    else if (g.kind === 'doc') pane.openStaticWikiPage(g.site, g.page);
+                    else m.entry.activate(pane, m);
+                });
+                const failed = (err) => { console.warn('[wmBrowser] desktop page', e.url, err); fail('The page cannot be displayed.'); };
+                try {
+                    /* global wikiPageCache */
+                    if (force && g.kind === 'wiki') {
+                        // Refresh: the server's copy is fetched again (as the phone page's Refresh), then drawn
+                        const tag = pane.buildWikiTagFromTerm(g.tag);
+                        pane._track(Promise.resolve(tag ? pane.getTagWikiPage(tag, { force: true, quiet: true }) : null).catch(() => null).then(() => { if (e.dArea === area) draw(); })).catch(failed);
+                        return;
+                    }
+                    if (force && g.kind === 'doc') { try { wikiPageCache.invalidate(wikiPageCache.staticKey(g.site, g.page)); } catch (_) { /* no cache */ } }
+                    if (force && g.kind === 'core' && old && old.currentStaticWiki) {
+                        try { wikiPageCache.invalidate(wikiPageCache.staticKey(old.currentStaticWiki.siteId, old.currentStaticWiki.pageId)); } catch (_) { /* no cache */ }
+                    }
+                    draw();
+                } catch (err) { failed(err); }
+            });
+        }).catch((err) => { console.warn('[wmBrowser] desktop page', e.url, err); fail('The page cannot be displayed.'); });
+    }
+
+    function deskScrollTo(id) {
+        const area = W.deskShown && W.deskShown.dArea;
+        let target = null;
+        try {
+            target = id && area && (area.querySelector('#' + CSS.escape(id)) || area.querySelector(`[name="${CSS.escape(id)}"]`));
+        } catch (_) { target = null; }
+        if (target) els.desk.scrollTop += target.getBoundingClientRect().top - els.desk.getBoundingClientRect().top;
+        else if (!id) els.desk.scrollTop = 0;
+    }
+
+    /** The search page's gear: the desktop's search options (showSearchControlsContextMenu) as a WM menu. */
+    function deskGearMenu(pane, x, y) {
+        let cfg = null;
+        try { cfg = TagWikiSearchModal.prototype.showSearchControlsContextMenu.call(pane, null, true); } catch (_) { cfg = null; }
+        const src = cfg && cfg.sections && cfg.sections[0] && cfg.sections[0].items;
+        if (!Array.isArray(src)) return;
+        const convert = (items, parent) => items.map((it) => {
+            if (!it || it.separator) return '-';
+            if (typeof it.loadfn === 'function') { try { it.loadfn(it); } catch (_) { /* as is */ } }
+            const row = { label: String(it.text || '').replace(/\.\.\.$/, '') };
+            if (typeof it.optionsfn === 'function') { row.submenu = () => convert(it.optionsfn() || [], it); return row; }
+            if (parent) row.radio = !!it.highlighted;
+            else row.checked = !!it.highlighted;
+            row.action = () => {
+                if (parent && typeof parent.handlerfn === 'function') parent.handlerfn(it);
+                else if (typeof cfg.onAction === 'function') cfg.onAction(it.action, it);
+            };
+            return row;
+        });
+        ws.menuAt(x, y, convert(src, null));
+    }
+
+    /** Taps on a Desktop view page, before the desktop's own handlers: links open as IE pages. */
+    function onDeskClick(e) {
+        const t = e.target;
+        if (!t || !t.closest || els.deskDsap.contains(t)) return;
+        const pane = W.deskShown && W.deskShown.dPane;
+        const gear = t.closest('.search-gear');
+        if (gear && pane) {
+            e.preventDefault();
+            e.stopPropagation();
+            deskGearMenu(pane, e.clientX, e.clientY);
+            return;
+        }
+        paneClick(e, els.desk, entry().grim.kind === 'core', deskScrollTo);
     }
 
     // ---------------------------------------------------------------- 6.5
@@ -2245,6 +2595,7 @@
         if (!v65 || !els.home) return;
         const z = pageZoom65 === 1 ? '' : String(Math.round(pageZoom65 * 100) / 100);
         for (const w of wins) if (w.dom) for (const el of [w.dom.home, w.dom.gpage, w.dom.core, w.dom.dsapArea]) el.style.zoom = z;
+        applyDeskZoom();
         if (els.zthumb65) els.zthumb65.style.top = `calc(${Math.round((1 - pOfZoom65(pageZoom65)) * 1060) / 10} * var(--wm-px))`;
         // Alchemy's page follows shortly after (a new viewport each time is a new layout over there)
         clearTimeout(zoomLayout65);
@@ -2293,8 +2644,11 @@
             { label: 'History', action: () => openSub('history') },
             { label: 'Forward', disabled: W.idx >= W.entries.length - 1, action: goForward },
             { label: 'Refresh', action: refresh },
-            // after Refresh, before View; the device draws no rules in this menu
+            // after Refresh, before View, between two rules (the device's own menu has none; its
+            // submenus draw them, as View's does here)
+            '-',
             ...windowItems(),
+            '-',
             {
                 label: 'View',
                 submenu: [
@@ -2605,16 +2959,22 @@
         const start = home && entry().grim.kind === 'home';
         const app = home && entry().grim.kind === 'dsap';
         const core = home && entry().grim.kind === 'core';
-        els.home.hidden = !start;
-        els.gpage.hidden = !home || start || app || core;
-        els.dsap.hidden = !app;
-        els.core.hidden = !core;
-        if (!core && W.coreShown) { els.core.replaceChildren(); W.coreShown = null; }
-        page.classList.toggle('on-dsap', app);
+        // Desktop view: every Grimoire page, the start page and the applets too, shows in .wmb-desk
+        const desk = home && deskView();
+        els.home.hidden = !start || desk;
+        els.gpage.hidden = !home || start || app || core || desk;
+        els.dsap.hidden = !app || desk;
+        els.core.hidden = !core || desk;
+        els.desk.hidden = !desk;
+        if ((!core || desk) && W.coreShown) { els.core.replaceChildren(); W.coreShown = null; }
+        if (!desk || app) showDeskArea(null);
+        els.deskDsap.hidden = !(desk && app);
+        page.classList.toggle('on-dsap', app && !desk);
+        page.classList.toggle('on-desk', desk);
         // another page on screen: the applet stops (its timers, socket listeners); Back starts it again
         if (!app) leaveDsap();
         els.frameWrap.hidden = home;
-        if (!home || entry().grim.kind === 'home') W.grimLoading = false;
+        if (!home || (entry().grim.kind === 'home' && !desk)) W.grimLoading = false;
         page.classList.toggle('is-loading', (W.loading && !home) || (W.grimLoading && home));
         if (home) renderLocal(false);
         renderAddress();
@@ -2666,11 +3026,12 @@
                 <div class="wmb-gpage" hidden></div>
                 <div class="wmb-dsap form-section-scroll" hidden><div class="wmb-dsap-area"></div></div>
                 <div class="wmb-core" hidden></div>
+                <div class="wmb-desk grimoire-window" hidden><div class="wmb-desk-page tag-wiki-search-display selectable"><div class="wmb-desk-dsap tag-wiki-display-content" hidden></div></div></div>
                 <div class="wmb-frame-wrap" hidden>
                     <div class="wmb-touch"></div>
                 </div>`;
         const q = (sel) => t.content.querySelector(sel);
-        const d = { home: q('.wmb-home'), gpage: q('.wmb-gpage'), dsap: q('.wmb-dsap'), dsapArea: q('.wmb-dsap-area'), core: q('.wmb-core'), frameWrap: q('.wmb-frame-wrap'), touch: q('.wmb-touch') };
+        const d = { home: q('.wmb-home'), gpage: q('.wmb-gpage'), dsap: q('.wmb-dsap'), dsapArea: q('.wmb-dsap-area'), core: q('.wmb-core'), desk: q('.wmb-desk'), deskPage: q('.wmb-desk-page'), deskDsap: q('.wmb-desk-dsap'), frameWrap: q('.wmb-frame-wrap'), touch: q('.wmb-touch') };
         w.dom = d;
         els.view.insertBefore(t.content, els.busy);
         w.dsapShell = makeDsapShell(w);
@@ -2716,6 +3077,13 @@
         d.core.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
         on(d.core, 'scroll', () => { if (W.coreShown && W.coreShown === entry()) W.coreShown.scroll = d.core.scrollTop; }, { passive: true });
 
+        // Desktop view: the desktop Grimoire's pages (their links are caught first, as .wmb-core's) and applets
+        on(d.desk, 'click', onDeskClick, true);
+        on(d.desk, 'click', onDsapClick);
+        d.desk.addEventListener('contextmenu', (e) => { if (!d.deskDsap.contains(e.target)) { e.preventDefault(); e.stopPropagation(); } }, true);
+        on(d.desk, 'contextmenu', (e) => { if (d.deskDsap.contains(e.target)) onDsapContextMenu(e); });
+        on(d.desk, 'scroll', () => { if (W.deskShown && W.deskShown === entry()) W.deskShown.dScroll = [d.desk.scrollLeft, d.desk.scrollTop]; }, { passive: true });
+
         on(d.touch, 'pointerdown', onTouchDown);
         on(d.touch, 'pointermove', onTouchMove);
         on(d.touch, 'pointerup', onTouchUp);
@@ -2723,6 +3091,7 @@
         on(d.touch, 'wheel', onWheel, { passive: false });
         d.touch.addEventListener('contextmenu', (e) => e.preventDefault());
         applyZoom65();
+        applyDeskZoom();
     }
 
     /** A window leaves for good: its Alchemy page, applet, timers and boxes go with it. */
@@ -2733,9 +3102,10 @@
             leaveDsap();
             closeSession();
             // the pages it kept (a Grimoire page's HTML, a Fandom page's pane and box)
-            W.entries.forEach((e) => { e.html = ''; e.area = null; e.pane = null; });
+            W.entries.forEach((e) => { e.html = ''; e.area = null; e.pane = null; e.dArea = null; e.dPane = null; });
             W.localShown = null;
             W.coreShown = null;
+            W.deskShown = null;
         });
         w.closed = true;
         if (w.dom) { for (const k of WIN_BOXES) w.dom[k].remove(); w.dom = null; }
@@ -2770,7 +3140,8 @@
             closeZoom65();
             if (old.dom) {
                 old.scrolls = {};
-                for (const k of ['home', 'gpage', 'dsap', 'core']) old.scrolls[k] = old.dom[k].scrollTop;
+                for (const k of ['home', 'gpage', 'dsap', 'core', 'desk']) old.scrolls[k] = old.dom[k].scrollTop;
+                old.scrolls.deskLeft = old.dom.desk.scrollLeft;
                 for (const k of WIN_BOXES) old.dom[k].hidden = true;
             }
         }
@@ -2786,7 +3157,10 @@
         if (visible && !onHome() && !W.session && !W.creating) { entry().pending = true; openSession(entry().url); }
         render();
         // a box that was hidden may come back at the top: where it was left
-        if (w.scrolls) for (const k of Object.keys(w.scrolls)) if (w.dom[k].scrollTop !== w.scrolls[k]) w.dom[k].scrollTop = w.scrolls[k];
+        if (w.scrolls) {
+            for (const k of Object.keys(w.scrolls)) if (w.dom[k] && w.dom[k].scrollTop !== w.scrolls[k]) w.dom[k].scrollTop = w.scrolls[k];
+            if (w.dom.desk.scrollLeft !== w.scrolls.deskLeft) w.dom.desk.scrollLeft = w.scrolls.deskLeft || 0;
+        }
         if (v65 && visible) showBars65();
         step();
         return true;
@@ -2857,7 +3231,7 @@
             ime: page.querySelector('.wmb-ime')
         };
         // the page boxes are the window's own (buildDom): els.home, els.gpage ... are those of W
-        for (const k of WIN_BOXES.concat(['dsapArea', 'touch'])) Object.defineProperty(els, k, { enumerable: true, get: () => (W.dom ? W.dom[k] : null) });
+        for (const k of WIN_BOXES.concat(['dsapArea', 'deskPage', 'deskDsap', 'touch'])) Object.defineProperty(els, k, { enumerable: true, get: () => (W.dom ? W.dom[k] : null) });
         wins.forEach(buildDom);
 
         els.addr.addEventListener('focus', () => { addrEditing = true; setTimeout(() => els.addr.select(), 0); });

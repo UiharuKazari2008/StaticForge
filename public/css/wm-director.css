@@ -562,7 +562,7 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
 /* a print still on its way: an empty frame with WM's wait cursor art */
 .wm-director .wmd-print.is-pending {
     border: calc(1 * var(--wm-px)) solid #000;
-    background: #fff url('/static_images/wm61/wait-0.png') center / calc(24 * var(--wm-px)) no-repeat;
+    background: #fff image-set(url('/static_images/wm61/wait-0.png') 1x, url('/static_images/wm61/wait-0@2x.png') 2x, url('/static_images/wm61/wait-0@4x.png') 4x) center / calc(24 * var(--wm-px)) no-repeat;
 }
 
 /* ---- History (Open Full History): a WM list, kind in bold over a one-line preview ---- */
@@ -1478,7 +1478,7 @@ html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-sm
 }
 
 .wm-director .wmd-thumb.is-pending {
-    background: #fff url('/static_images/wm61/wait-0.png') center / 22px no-repeat;
+    background: #fff image-set(url('/static_images/wm61/wait-0.png') 1x, url('/static_images/wm61/wait-0@2x.png') 2x, url('/static_images/wm61/wait-0@4x.png') 4x) center / 22px no-repeat;
 }
 
 /* the HUD's chips open Prints */
@@ -1560,7 +1560,7 @@ html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-sm
 
     .wm-director:not(.wmd-solo) .wmd-gallery .wmd-thumb.is-pending {
         border: calc(1 * var(--wm-px)) solid #000;
-        background: #fff url('/static_images/wm61/wait-0.png') center / calc(24 * var(--wm-px)) no-repeat;
+        background: #fff image-set(url('/static_images/wm61/wait-0.png') 1x, url('/static_images/wm61/wait-0@2x.png') 2x, url('/static_images/wm61/wait-0@4x.png') 4x) center / calc(24 * var(--wm-px)) no-repeat;
     }
 
     .wm-director:not(.wmd-solo) .wmd-gallery .wmd-empty {

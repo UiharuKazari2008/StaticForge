@@ -262,6 +262,14 @@
     pointer-events: none;
 }
 
+/* Receive's notification (wmShell.appNote): the name of the file on its way, cut with an ellipsis */
+.wm-notify-body .fe-rx-name {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
 /* ---- Melaton Mobile 6.5 ---- */
 /* Measured on the 6.5 emulator (VGA halved; ~/.cache/wm65/ref/fe-*.png and
  * ~/.cache/claude-run/wm65apps/tools/fe65-*.png). The folder bar is 22 px of tint over a 1 px black
@@ -320,4 +328,24 @@ html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-list.fe-grid .fe-tile {
     border-right-color: transparent !important;
     border-bottom-color: transparent !important;
     color: var(--wm65-text);
+}
+
+/* folder drop-down, the volumes under the rule (~/.cache/wm65/ref/fe-1.png, device px halved): the
+ * 6.1 metrics stay (16 px icon, name 20 px in from the frame) but wm65.css's drop-down row padding
+ * outranked them, so the name ran under the icon. On the device these rows are not menu rows:
+ * 18 px tall in the list's bold 10.5 face (cap height 16 device px against the menu rows' 19), the
+ * icon 2 px in from the frame's inside edge; the rule above is 1 px, 7 px in from both sides, with
+ * no space over or under it. */
+html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="dropdown"] > .wm-popup-item.fe-dd-volume {
+    height: calc(18 * var(--wm-px));
+    padding-left: calc(20 * var(--wm-px)) !important;
+    font-size: calc(10.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="dropdown"] > .wm-popup-item.fe-dd-volume .fe-dd-icon {
+    left: calc(2 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="dropdown"] > .wm-popup-sep:has(+ .fe-dd-volume) {
+    margin: 0 calc(7 * var(--wm-px));
 }

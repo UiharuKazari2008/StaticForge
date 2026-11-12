@@ -9,26 +9,75 @@
  * the ROM file, 1x its Lanczos half.
  */
 
-/* ---- colours: the device's system colours (HKLM\System\GWE SysColor, Classic Blue). The bars
- * are the black theme art and the selectors are blue art, so the roles are pinned here and do not
- * follow the workspace colour (wmShell.js applyTheme sets them inline: hence !important) ---- */
+/* ---- colours: the device's system colours (HKLM\System\GWE SysColor, Classic Blue), pinned over
+ * the 6.1 roles wmShell.js applyTheme sets inline (hence !important). The bars are the black theme
+ * art and stay black in every theme.
+ *
+ * Theme (Yozora #748): a 6.5 theme is a set of base colours (HKLM\Software\Microsoft\Color
+ * MultiColorTheme BaseColor1..4) whose hues the system puts on fixed saturations and lightnesses
+ * (SHColor: highlight s 64 l 52, face s 42 l 85, text s 76 l 11 ...), plus selector art drawn in
+ * the same hue (Classic Blue, DVF green, Vera Wang red ... in the ROM). Here the base is the
+ * workspace colour: every blue below is the device's Classic Blue value turned by --wm65-dh (the
+ * workspace hue less the Classic Blue highlight's 221.9 deg), its saturation times --wm65-k (the
+ * workspace's saturation over the highlight's 64 %, as in 6.1), and the mid tones that carry
+ * white text times --wm65-lm in lightness (they keep the luminance Classic Blue has: blue is the
+ * darkest hue, the same values in green or yellow would wash white text out). Classic Blue's own colours sit 0 to 23 deg apart in hue (its base colours 1, 3
+ * and 4 are three blues); that spread is kept times --wm65-near, 1 within 15 deg of the device's
+ * blue and 0 from 45 deg on, where every role takes the workspace hue itself (the spread turned
+ * a red theme's text brown and its bands orange; 6.1 does the same with its green's shifts).
+ * applyTheme sets the four and redraws the blue art (--wm65-art-*) the same way; with a workspace
+ * in the Classic Blue highlight colour they are 0 / 1 / 1 / 1, no art variable is set, and every
+ * colour and bitmap is the device's own. ---- */
 html.ui-mobile[data-wm-version="6.5"] {
-    --wm-title: #000 !important;
+    --wm65-dh: 0deg;
+    --wm65-k: 1;
+    --wm65-lm: 1;
+    --wm65-near: 1;
+    /* the classic caption band's light end has its own lightness factor (same rule) */
+    --wm65-lb: 1;
+    /* the bars. The theme's task bar and soft key bar art is flat: black in Classic Blue, DVF green
+       and Rock and Republic black, the theme's base colour 1 in Isaac Mizrahi purple (#9951db),
+       Ron Arad orange (#553102) and Vera Wang red (#4e4e4e, the grey bars). Inside a program both
+       bars are that colour; over the home screen, the Start screen and the lock screen (and on
+       the title bar of a window that came up fast, wm-stage.css) they are that colour at
+       100 / 255 over the picture; the tab strip and the notification strip take the bar colour.
+       A workspace keeps Classic Blue's black. */
+    --wm65-bar: #000;
+    --wm65-bar-glass: color-mix(in srgb, var(--wm65-bar) 39.2%, transparent);
+    --wm-title: var(--wm65-bar) !important;
     --wm-rule: #000 !important;
-    --wm-highlight: #2d5ecf !important;
+    /* #2d5ecf */
+    --wm-highlight: hsl(calc(221.9deg + var(--wm65-dh)) calc(64.3% * var(--wm65-k)) calc(49.4% * var(--wm65-lm))) !important;
     --wm-highlight-text: #fff !important;
-    --wm-menu-text: #120c7f !important;
-    --wm-tint: #c9cde9 !important;
-    --wm-tab-strip: #c9cde9 !important;
-    --wm-start-rule: #120c7f !important;
-    --wm-softkey-base: #000 !important;
-    --wm-gloss-top: #000 !important;
-    --wm-gloss-bottom: #000 !important;
-    /* 6.5's own roles */
-    --wm65-text: #090733;
-    --wm65-caption: #374bd3;
-    --wm65-face: #c9cde9;
+    /* #120c7f */
+    --wm-menu-text: hsl(calc(221.9deg + var(--wm65-dh) + 21.2deg * var(--wm65-near)) calc(82.7% * var(--wm65-k)) 27.3%) !important;
+    /* #c9cde9 */
+    --wm-tint: hsl(calc(221.9deg + var(--wm65-dh) + 10.6deg * var(--wm65-near)) calc(42.1% * var(--wm65-k)) 85.1%) !important;
+    --wm-tab-strip: hsl(calc(221.9deg + var(--wm65-dh) + 10.6deg * var(--wm65-near)) calc(42.1% * var(--wm65-k)) 85.1%) !important;
+    --wm-start-rule: hsl(calc(221.9deg + var(--wm65-dh) + 21.2deg * var(--wm65-near)) calc(82.7% * var(--wm65-k)) 27.3%) !important;
+    --wm-softkey-base: var(--wm65-bar) !important;
+    --wm-gloss-top: var(--wm65-bar) !important;
+    --wm-gloss-bottom: var(--wm65-bar) !important;
+    /* the tap-and-hold ring's dots and the notification zoom rectangle (wm-stage.css) */
+    --wm-hold-ring: hsl(calc(221.9deg + var(--wm65-dh) + 10.0deg * var(--wm65-near)) calc(82.3% * var(--wm65-k)) 35.5%) !important;
+    --wm-zoom-rect: var(--wm-highlight) !important;
+    --wm-caption: var(--wm-highlight) !important;
+    --wm-band: var(--wm-highlight) !important;
+    /* 6.5's own roles: window text #090733, caption (page headings) #374bd3, button face #c9cde9 */
+    --wm65-text: hsl(calc(221.9deg + var(--wm65-dh) + 20.8deg * var(--wm65-near)) calc(75.9% * var(--wm65-k)) 11.4%);
+    --wm65-caption: hsl(calc(221.9deg + var(--wm65-dh) + 10.4deg * var(--wm65-near)) calc(63.9% * var(--wm65-k)) calc(52.2% * var(--wm65-lm)));
+    --wm65-face: hsl(calc(221.9deg + var(--wm65-dh) + 10.6deg * var(--wm65-near)) calc(42.1% * var(--wm65-k)) 85.1%);
     --wm65-gray: #999;
+    /* caption text on a blue band #cbc9e9, a pressed button #080431, the classic caption band
+       #5f6ff3 to #142ac1, the volume bubble's title #3951ce to #2138ce, the navy of Messaging's
+       and the file dialogs' captions (16 bit: #00109c) */
+    --wm65-caption-text: hsl(calc(221.9deg + var(--wm65-dh) + 21.9deg * var(--wm65-near)) calc(42.1% * var(--wm65-k)) 85.1%);
+    --wm65-deep: hsl(calc(221.9deg + var(--wm65-dh) + 23.4deg * var(--wm65-near)) calc(84.9% * var(--wm65-k)) 10.4%);
+    --wm65-band-from: hsl(calc(221.9deg + var(--wm65-dh) + 11.6deg * var(--wm65-near)) calc(86.0% * var(--wm65-k)) calc(66.3% * var(--wm65-lb)));
+    --wm65-band-to: hsl(calc(221.9deg + var(--wm65-dh) + 10.5deg * var(--wm65-near)) calc(81.2% * var(--wm65-k)) calc(41.8% * var(--wm65-lm)));
+    --wm65-title-from: hsl(calc(221.9deg + var(--wm65-dh) + 8.4deg * var(--wm65-near)) calc(60.3% * var(--wm65-k)) calc(51.6% * var(--wm65-lm)));
+    --wm65-title-to: hsl(calc(221.9deg + var(--wm65-dh) + 10.1deg * var(--wm65-near)) calc(72.4% * var(--wm65-k)) calc(46.9% * var(--wm65-lm)));
+    --wm65-navy: hsl(calc(221.9deg + var(--wm65-dh) + 11.9deg * var(--wm65-near)) calc(100.0% * var(--wm65-k)) 30.6%);
 }
 
 html.ui-mobile[data-wm-version="6.5"] #wmShell {
@@ -39,7 +88,7 @@ html.ui-mobile[data-wm-version="6.5"] #wmShell {
 html.ui-mobile[data-wm-version="6.5"] .wm-titlebar {
     height: calc(26 * var(--wm-px));
     border-bottom: 0;
-    background: #000;
+    background: var(--wm65-bar);
     color: #fff;
 }
 
@@ -49,7 +98,7 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-app="today"] .wm-titlebar,
 html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] .wm-titlebar,
 html.ui-mobile[data-wm-version="6.5"][data-wm-app="today"] .wm-softkeys,
 html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] .wm-softkeys {
-    background: rgba(0, 0, 0, 0.392);
+    background: var(--wm65-bar-glass);
 }
 
 /* Start cell: the picture in a 16 px cell at x 3, y 5 (the device's flag icon cell), no rule */
@@ -151,55 +200,55 @@ html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-role="battery"] {
 /* the art: shellres.192.dll icon frames. H+, 4G, 4G+, NR, NR-A, UWB, 5G and 5G+ (data types WM 6.5
  * never had) are Melaton-drawn in the ROM's style: the G / E / 3G / H icons' rounded box with the
  * letters cut out. 2x is the ROM frame; the 1x art serves only a 1x scale. */
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="bluetooth"] { background-image: url('/static_images/wm65/status-bluetooth@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-off"] { background-image: url('/static_images/wm65/status-data-off@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-on"] { background-image: url('/static_images/wm65/status-data-on@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-active"] { background-image: url('/static_images/wm65/status-data-active@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="volume"] { background-image: url('/static_images/wm65/status-volume@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="volume-off"] { background-image: url('/static_images/wm65/status-volume-off@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="vibrate"] { background-image: url('/static_images/wm65/status-vibrate@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="notify-many"] { background-image: url('/static_images/wm65/status-notify-many@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-1"] { background-image: url('/static_images/wm65/status-signal-1@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-2"] { background-image: url('/static_images/wm65/status-signal-2@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-3"] { background-image: url('/static_images/wm65/status-signal-3@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-4"] { background-image: url('/static_images/wm65/status-signal-4@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-none"] { background-image: url('/static_images/wm65/status-signal-none@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-off"] { background-image: url('/static_images/wm65/status-signal-off@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-alert"] { background-image: url('/static_images/wm65/status-signal-alert@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="roaming"] { background-image: url('/static_images/wm65/status-roaming@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="wifi-available"] { background-image: url('/static_images/wm65/status-wifi-available@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="wifi-connected"] { background-image: url('/static_images/wm65/status-wifi-connected@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-full"] { background-image: url('/static_images/wm65/status-battery-full@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-3"] { background-image: url('/static_images/wm65/status-battery-3@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-2"] { background-image: url('/static_images/wm65/status-battery-2@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-1"] { background-image: url('/static_images/wm65/status-battery-1@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-empty"] { background-image: url('/static_images/wm65/status-battery-empty@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-charging"] { background-image: url('/static_images/wm65/status-battery-charging@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-unknown"] { background-image: url('/static_images/wm65/status-battery-unknown@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-g"] { background-image: url('/static_images/wm65/status-data-g@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-g-active"] { background-image: url('/static_images/wm65/status-data-g-active@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-e"] { background-image: url('/static_images/wm65/status-data-e@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-e-active"] { background-image: url('/static_images/wm65/status-data-e-active@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-3g"] { background-image: url('/static_images/wm65/status-data-3g@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-3g-active"] { background-image: url('/static_images/wm65/status-data-3g-active@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h"] { background-image: url('/static_images/wm65/status-data-h@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h-active"] { background-image: url('/static_images/wm65/status-data-h-active@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h-plus"] { background-image: url('/static_images/wm65/status-data-h-plus@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h-plus-active"] { background-image: url('/static_images/wm65/status-data-h-plus-active@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g"] { background-image: url('/static_images/wm65/status-data-4g@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g-active"] { background-image: url('/static_images/wm65/status-data-4g-active@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g-plus"] { background-image: url('/static_images/wm65/status-data-4g-plus@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g-plus-active"] { background-image: url('/static_images/wm65/status-data-4g-plus-active@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr"] { background-image: url('/static_images/wm65/status-data-nr@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-active"] { background-image: url('/static_images/wm65/status-data-nr-active@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-a"] { background-image: url('/static_images/wm65/status-data-nr-a@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-a-active"] { background-image: url('/static_images/wm65/status-data-nr-a-active@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uwb"] { background-image: url('/static_images/wm65/status-data-uwb@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uwb-active"] { background-image: url('/static_images/wm65/status-data-uwb-active@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g"] { background-image: url('/static_images/wm65/status-data-5g@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-active"] { background-image: url('/static_images/wm65/status-data-5g-active@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-plus"] { background-image: url('/static_images/wm65/status-data-5g-plus@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-plus-active"] { background-image: url('/static_images/wm65/status-data-5g-plus-active@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="bluetooth"] { background-image: image-set(url('/static_images/wm65/status-bluetooth@2x.png') 2x, url('/static_images/wm65/status-bluetooth@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-off"] { background-image: image-set(url('/static_images/wm65/status-data-off@2x.png') 2x, url('/static_images/wm65/status-data-off@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-on"] { background-image: image-set(url('/static_images/wm65/status-data-on@2x.png') 2x, url('/static_images/wm65/status-data-on@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-active"] { background-image: image-set(url('/static_images/wm65/status-data-active@2x.png') 2x, url('/static_images/wm65/status-data-active@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="volume"] { background-image: image-set(url('/static_images/wm65/status-volume@2x.png') 2x, url('/static_images/wm65/status-volume@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="volume-off"] { background-image: image-set(url('/static_images/wm65/status-volume-off@2x.png') 2x, url('/static_images/wm65/status-volume-off@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="vibrate"] { background-image: image-set(url('/static_images/wm65/status-vibrate@2x.png') 2x, url('/static_images/wm65/status-vibrate@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="notify-many"] { background-image: image-set(url('/static_images/wm65/status-notify-many@2x.png') 2x, url('/static_images/wm65/status-notify-many@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-1"] { background-image: image-set(url('/static_images/wm65/status-signal-1@2x.png') 2x, url('/static_images/wm65/status-signal-1@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-2"] { background-image: image-set(url('/static_images/wm65/status-signal-2@2x.png') 2x, url('/static_images/wm65/status-signal-2@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-3"] { background-image: image-set(url('/static_images/wm65/status-signal-3@2x.png') 2x, url('/static_images/wm65/status-signal-3@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-4"] { background-image: image-set(url('/static_images/wm65/status-signal-4@2x.png') 2x, url('/static_images/wm65/status-signal-4@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-none"] { background-image: image-set(url('/static_images/wm65/status-signal-none@2x.png') 2x, url('/static_images/wm65/status-signal-none@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-off"] { background-image: image-set(url('/static_images/wm65/status-signal-off@2x.png') 2x, url('/static_images/wm65/status-signal-off@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-alert"] { background-image: image-set(url('/static_images/wm65/status-signal-alert@2x.png') 2x, url('/static_images/wm65/status-signal-alert@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="roaming"] { background-image: image-set(url('/static_images/wm65/status-roaming@2x.png') 2x, url('/static_images/wm65/status-roaming@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="wifi-available"] { background-image: image-set(url('/static_images/wm65/status-wifi-available@2x.png') 2x, url('/static_images/wm65/status-wifi-available@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="wifi-connected"] { background-image: image-set(url('/static_images/wm65/status-wifi-connected@2x.png') 2x, url('/static_images/wm65/status-wifi-connected@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-full"] { background-image: image-set(url('/static_images/wm65/status-battery-full@2x.png') 2x, url('/static_images/wm65/status-battery-full@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-3"] { background-image: image-set(url('/static_images/wm65/status-battery-3@2x.png') 2x, url('/static_images/wm65/status-battery-3@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-2"] { background-image: image-set(url('/static_images/wm65/status-battery-2@2x.png') 2x, url('/static_images/wm65/status-battery-2@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-1"] { background-image: image-set(url('/static_images/wm65/status-battery-1@2x.png') 2x, url('/static_images/wm65/status-battery-1@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-empty"] { background-image: image-set(url('/static_images/wm65/status-battery-empty@2x.png') 2x, url('/static_images/wm65/status-battery-empty@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-charging"] { background-image: image-set(url('/static_images/wm65/status-battery-charging@2x.png') 2x, url('/static_images/wm65/status-battery-charging@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="battery-unknown"] { background-image: image-set(url('/static_images/wm65/status-battery-unknown@2x.png') 2x, url('/static_images/wm65/status-battery-unknown@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-g"] { background-image: image-set(url('/static_images/wm65/status-data-g@2x.png') 2x, url('/static_images/wm65/status-data-g@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-g-active"] { background-image: image-set(url('/static_images/wm65/status-data-g-active@2x.png') 2x, url('/static_images/wm65/status-data-g-active@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-e"] { background-image: image-set(url('/static_images/wm65/status-data-e@2x.png') 2x, url('/static_images/wm65/status-data-e@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-e-active"] { background-image: image-set(url('/static_images/wm65/status-data-e-active@2x.png') 2x, url('/static_images/wm65/status-data-e-active@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-3g"] { background-image: image-set(url('/static_images/wm65/status-data-3g@2x.png') 2x, url('/static_images/wm65/status-data-3g@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-3g-active"] { background-image: image-set(url('/static_images/wm65/status-data-3g-active@2x.png') 2x, url('/static_images/wm65/status-data-3g-active@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h"] { background-image: image-set(url('/static_images/wm65/status-data-h@2x.png') 2x, url('/static_images/wm65/status-data-h@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h-active"] { background-image: image-set(url('/static_images/wm65/status-data-h-active@2x.png') 2x, url('/static_images/wm65/status-data-h-active@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h-plus"] { background-image: image-set(url('/static_images/wm65/status-data-h-plus@2x.png') 2x, url('/static_images/wm65/status-data-h-plus@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-h-plus-active"] { background-image: image-set(url('/static_images/wm65/status-data-h-plus-active@2x.png') 2x, url('/static_images/wm65/status-data-h-plus-active@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g"] { background-image: image-set(url('/static_images/wm65/status-data-4g@2x.png') 2x, url('/static_images/wm65/status-data-4g@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g-active"] { background-image: image-set(url('/static_images/wm65/status-data-4g-active@2x.png') 2x, url('/static_images/wm65/status-data-4g-active@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g-plus"] { background-image: image-set(url('/static_images/wm65/status-data-4g-plus@2x.png') 2x, url('/static_images/wm65/status-data-4g-plus@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-4g-plus-active"] { background-image: image-set(url('/static_images/wm65/status-data-4g-plus-active@2x.png') 2x, url('/static_images/wm65/status-data-4g-plus-active@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr"] { background-image: image-set(url('/static_images/wm65/status-data-nr@2x.png') 2x, url('/static_images/wm65/status-data-nr@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-active"] { background-image: image-set(url('/static_images/wm65/status-data-nr-active@2x.png') 2x, url('/static_images/wm65/status-data-nr-active@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-a"] { background-image: image-set(url('/static_images/wm65/status-data-nr-a@2x.png') 2x, url('/static_images/wm65/status-data-nr-a@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-a-active"] { background-image: image-set(url('/static_images/wm65/status-data-nr-a-active@2x.png') 2x, url('/static_images/wm65/status-data-nr-a-active@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uwb"] { background-image: image-set(url('/static_images/wm65/status-data-uwb@2x.png') 2x, url('/static_images/wm65/status-data-uwb@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uwb-active"] { background-image: image-set(url('/static_images/wm65/status-data-uwb-active@2x.png') 2x, url('/static_images/wm65/status-data-uwb-active@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g"] { background-image: image-set(url('/static_images/wm65/status-data-5g@2x.png') 2x, url('/static_images/wm65/status-data-5g@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-active"] { background-image: image-set(url('/static_images/wm65/status-data-5g-active@2x.png') 2x, url('/static_images/wm65/status-data-5g-active@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-plus"] { background-image: image-set(url('/static_images/wm65/status-data-5g-plus@2x.png') 2x, url('/static_images/wm65/status-data-5g-plus@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-plus-active"] { background-image: image-set(url('/static_images/wm65/status-data-5g-plus-active@2x.png') 2x, url('/static_images/wm65/status-data-5g-plus-active@4x.png') 4x); }
 html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="bluetooth"] { background-image: url('/static_images/wm65/status-bluetooth.png'); }
 html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-off"] { background-image: url('/static_images/wm65/status-data-off.png'); }
 html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-on"] { background-image: url('/static_images/wm65/status-data-on.png'); }
@@ -251,14 +300,14 @@ html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-
 html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-plus-active"] { background-image: url('/static_images/wm65/status-data-5g-plus-active.png'); }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="signal-search"] {
-    background-image: url('/static_images/wm65/status-signal-search-1@2x.png');
+    background-image: image-set(url('/static_images/wm65/status-signal-search-1@2x.png') 2x, url('/static_images/wm65/status-signal-search-1@4x.png') 4x);
     animation: wm65-signal-search 1.5s step-end infinite;
 }
 
 @keyframes wm65-signal-search {
-    0% { background-image: url('/static_images/wm65/status-signal-search-1@2x.png'); }
-    33.333% { background-image: url('/static_images/wm65/status-signal-search-2@2x.png'); }
-    66.667% { background-image: url('/static_images/wm65/status-signal-search-3@2x.png'); }
+    0% { background-image: image-set(url('/static_images/wm65/status-signal-search-1@2x.png') 2x, url('/static_images/wm65/status-signal-search-1@4x.png') 4x); }
+    33.333% { background-image: image-set(url('/static_images/wm65/status-signal-search-2@2x.png') 2x, url('/static_images/wm65/status-signal-search-2@4x.png') 4x); }
+    66.667% { background-image: image-set(url('/static_images/wm65/status-signal-search-3@2x.png') 2x, url('/static_images/wm65/status-signal-search-3@4x.png') 4x); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -296,8 +345,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-title-action:active::after {
     image-rendering: pixelated;
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-title-action[data-kind="close"]::after { background-image: url('/static_images/wm65/title-close@2x.png'); }
-html.ui-mobile[data-wm-version="6.5"] .wm-title-action[data-kind="ok"]::after { background-image: url('/static_images/wm65/title-ok@2x.png'); }
+html.ui-mobile[data-wm-version="6.5"] .wm-title-action[data-kind="close"]::after { background-image: image-set(url('/static_images/wm65/title-close@2x.png') 2x, url('/static_images/wm65/title-close@4x.png') 4x); }
+html.ui-mobile[data-wm-version="6.5"] .wm-title-action[data-kind="ok"]::after { background-image: image-set(url('/static_images/wm65/title-ok@2x.png') 2x, url('/static_images/wm65/title-ok@4x.png') 4x); }
 html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-title-action[data-kind="close"]::after { background-image: url('/static_images/wm65/title-close.png'); }
 html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-title-action[data-kind="ok"]::after { background-image: url('/static_images/wm65/title-ok.png'); }
 
@@ -306,7 +355,7 @@ html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-title-action[data-kind="ok"]
 html.ui-mobile[data-wm-version="6.5"] .wm-softkeys {
     height: calc(26 * var(--wm-px));
     border-top: 0;
-    background: #000;
+    background: var(--wm65-bar);
     grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(0, 3fr);
 }
 
@@ -345,7 +394,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-sip::before {
     width: calc(16 * var(--wm-px));
     height: calc(16 * var(--wm-px));
     margin: calc(3 * var(--wm-px)) 0 0 calc(20 * var(--wm-px));
-    background: url('/static_images/wm65/sip-keyboard@2x.png') center / 100% 100% no-repeat;
+    background: image-set(url('/static_images/wm65/sip-keyboard@2x.png') 2x, url('/static_images/wm65/sip-keyboard@4x.png') 4x) center / 100% 100% no-repeat;
     image-rendering: pixelated;
     pointer-events: none;
 }
@@ -423,7 +472,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"]) > .w
     border-style: solid;
     border-width: 0;
     border-color: transparent;
-    border-image: url('/static_images/wm65/theme-classicblue-menuselector@2x.png') 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) stretch;
+    border-image: var(--wm65-art-menuselector, url('/static_images/wm65/theme-classicblue-menuselector@2x.png')) 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) stretch;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"]) > .wm-popup-item:disabled {
@@ -484,18 +533,18 @@ html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"])::aft
     0% {
         height: calc(33.5 * var(--wm-px));
         background:
-            url('/static_images/wm65/theme-black-menuuparrowdisabled@2x.png') center calc(6 * var(--wm-px)) / calc(18.5 * var(--wm-px)) calc(14.5 * var(--wm-px)) no-repeat,
-            url('/static_images/wm65/theme-classicblue-menuuparrowbackground-l@2x.png') calc(-7.5 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
-            url('/static_images/wm65/theme-classicblue-menuuparrowbackground-r@2x.png') calc(100% + 18 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
-            url('/static_images/wm65/theme-classicblue-menuuparrowbackground-m@2x.png') 0 0 / 100% 100% no-repeat;
+            image-set(url('/static_images/wm65/theme-black-menuuparrowdisabled@2x.png') 2x, url('/static_images/wm65/theme-black-menuuparrowdisabled@4x.png') 4x) center calc(6 * var(--wm-px)) / calc(18.5 * var(--wm-px)) calc(14.5 * var(--wm-px)) no-repeat,
+            var(--wm65-art-menuuparrowbackground-l, url('/static_images/wm65/theme-classicblue-menuuparrowbackground-l@2x.png')) calc(-7.5 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            var(--wm65-art-menuuparrowbackground-r, url('/static_images/wm65/theme-classicblue-menuuparrowbackground-r@2x.png')) calc(100% + 18 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            var(--wm65-art-menuuparrowbackground-m, url('/static_images/wm65/theme-classicblue-menuuparrowbackground-m@2x.png')) 0 0 / 100% 100% no-repeat;
     }
     0.5%, 100% {
         height: calc(33.5 * var(--wm-px));
         background:
-            url('/static_images/wm65/theme-black-menuuparrow@2x.png') center calc(6 * var(--wm-px)) / calc(18.5 * var(--wm-px)) calc(14.5 * var(--wm-px)) no-repeat,
-            url('/static_images/wm65/theme-classicblue-menuuparrowbackground-l@2x.png') calc(-7.5 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
-            url('/static_images/wm65/theme-classicblue-menuuparrowbackground-r@2x.png') calc(100% + 18 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
-            url('/static_images/wm65/theme-classicblue-menuuparrowbackground-m@2x.png') 0 0 / 100% 100% no-repeat;
+            image-set(url('/static_images/wm65/theme-black-menuuparrow@2x.png') 2x, url('/static_images/wm65/theme-black-menuuparrow@4x.png') 4x) center calc(6 * var(--wm-px)) / calc(18.5 * var(--wm-px)) calc(14.5 * var(--wm-px)) no-repeat,
+            var(--wm65-art-menuuparrowbackground-l, url('/static_images/wm65/theme-classicblue-menuuparrowbackground-l@2x.png')) calc(-7.5 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            var(--wm65-art-menuuparrowbackground-r, url('/static_images/wm65/theme-classicblue-menuuparrowbackground-r@2x.png')) calc(100% + 18 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            var(--wm65-art-menuuparrowbackground-m, url('/static_images/wm65/theme-classicblue-menuuparrowbackground-m@2x.png')) 0 0 / 100% 100% no-repeat;
     }
 }
 
@@ -503,18 +552,18 @@ html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"])::aft
     0%, 99.5% {
         height: calc(33.5 * var(--wm-px));
         background:
-            url('/static_images/wm65/theme-black-menudownarrow@2x.png') center calc(100% - 7 * var(--wm-px)) / calc(18.5 * var(--wm-px)) calc(14.5 * var(--wm-px)) no-repeat,
-            url('/static_images/wm65/theme-classicblue-menudownarrowbackground-l@2x.png') calc(-7.5 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
-            url('/static_images/wm65/theme-classicblue-menudownarrowbackground-r@2x.png') calc(100% + 18 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
-            url('/static_images/wm65/theme-classicblue-menudownarrowbackground-m@2x.png') 0 0 / 100% 100% no-repeat;
+            image-set(url('/static_images/wm65/theme-black-menudownarrow@2x.png') 2x, url('/static_images/wm65/theme-black-menudownarrow@4x.png') 4x) center calc(100% - 7 * var(--wm-px)) / calc(18.5 * var(--wm-px)) calc(14.5 * var(--wm-px)) no-repeat,
+            var(--wm65-art-menudownarrowbackground-l, url('/static_images/wm65/theme-classicblue-menudownarrowbackground-l@2x.png')) calc(-7.5 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            var(--wm65-art-menudownarrowbackground-r, url('/static_images/wm65/theme-classicblue-menudownarrowbackground-r@2x.png')) calc(100% + 18 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            var(--wm65-art-menudownarrowbackground-m, url('/static_images/wm65/theme-classicblue-menudownarrowbackground-m@2x.png')) 0 0 / 100% 100% no-repeat;
     }
     100% {
         height: calc(33.5 * var(--wm-px));
         background:
-            url('/static_images/wm65/theme-black-menudownarrowdisabled@2x.png') center calc(100% - 7 * var(--wm-px)) / calc(18.5 * var(--wm-px)) calc(14.5 * var(--wm-px)) no-repeat,
-            url('/static_images/wm65/theme-classicblue-menudownarrowbackground-l@2x.png') calc(-7.5 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
-            url('/static_images/wm65/theme-classicblue-menudownarrowbackground-r@2x.png') calc(100% + 18 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
-            url('/static_images/wm65/theme-classicblue-menudownarrowbackground-m@2x.png') 0 0 / 100% 100% no-repeat;
+            image-set(url('/static_images/wm65/theme-black-menudownarrowdisabled@2x.png') 2x, url('/static_images/wm65/theme-black-menudownarrowdisabled@4x.png') 4x) center calc(100% - 7 * var(--wm-px)) / calc(18.5 * var(--wm-px)) calc(14.5 * var(--wm-px)) no-repeat,
+            var(--wm65-art-menudownarrowbackground-l, url('/static_images/wm65/theme-classicblue-menudownarrowbackground-l@2x.png')) calc(-7.5 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            var(--wm65-art-menudownarrowbackground-r, url('/static_images/wm65/theme-classicblue-menudownarrowbackground-r@2x.png')) calc(100% + 18 * var(--wm-px)) 0 / calc(30 * var(--wm-px)) 100% no-repeat,
+            var(--wm65-art-menudownarrowbackground-m, url('/static_images/wm65/theme-classicblue-menudownarrowbackground-m@2x.png')) 0 0 / 100% 100% no-repeat;
     }
 }
 
@@ -567,7 +616,7 @@ html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-row, .wsk .wsk-row, .wm-tas
     border-style: solid;
     border-width: 0;
     border-color: transparent;
-    border-image: url('/static_images/wm65/theme-classicblue-listviewselector@2x.png') 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) / calc(1 * var(--wm-px)) 0 stretch;
+    border-image: var(--wm65-art-listviewselector, url('/static_images/wm65/theme-classicblue-listviewselector@2x.png')) 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) / calc(1 * var(--wm-px)) 0 stretch;
     background-color: transparent !important;
     color: #fff;
 }
@@ -621,24 +670,24 @@ html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-
 
 html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid)::-webkit-scrollbar-button:single-button:vertical:decrement {
     border: 0;
-    background-image: url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png');
+    background-image: image-set(url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png') 2x, url('/static_images/wm65/theme-black-scrollbaruparrowbutton@4x.png') 4x);
     background-size: 100% 100%;
     background-position: center;
 }
 
 html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid)::-webkit-scrollbar-button:single-button:vertical:increment {
     border: 0;
-    background-image: url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png');
+    background-image: image-set(url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png') 2x, url('/static_images/wm65/theme-black-scrollbardownarrowbutton@4x.png') 4x);
     background-size: 100% 100%;
     background-position: center;
 }
 
 html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
-    background-image: url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png');
+    background-image: image-set(var(--wm65-art-scrollbaruparrowbuttonselected, url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png')) 2x, var(--wm65-art-scrollbaruparrowbuttonselected-4x, url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@4x.png')) 4x);
 }
 
 html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid)::-webkit-scrollbar-button:single-button:vertical:increment:active {
-    background-image: url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png');
+    background-image: image-set(var(--wm65-art-scrollbardownarrowbuttonselected, url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png')) 2x, var(--wm65-art-scrollbardownarrowbuttonselected-4x, url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@4x.png')) 4x);
 }
 
 /* ---- text: WM 6.5's system font is Tahoma 8 pt (21 px at 192 dpi = 10.5): title bar, soft keys,
@@ -685,8 +734,8 @@ html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .modal-window-title,
 html.ui-mobile[data-wm-version="6.5"] #bootMessageBox .modal-window-title {
     height: calc(22 * var(--wm-px)) !important;
     padding: 0 calc(3 * var(--wm-px)) 0 calc(2.5 * var(--wm-px)) !important;
-    background: linear-gradient(to right, #5f6ff3, #142ac1) !important;
-    color: #cbc9e9 !important;
+    background: linear-gradient(to right, var(--wm65-band-from), var(--wm65-band-to)) !important;
+    color: var(--wm65-caption-text) !important;
     font-size: calc(12 * var(--wm-px));
     font-weight: bold;
 }
@@ -695,7 +744,7 @@ html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .modal-window-title-ma
 html.ui-mobile[data-wm-version="6.5"] #confirmationDialog #confirmationDialogTitle,
 html.ui-mobile[data-wm-version="6.5"] #bootMessageBox .modal-window-title-main,
 html.ui-mobile[data-wm-version="6.5"] #bootMessageBox .boot-message-box-title {
-    color: #cbc9e9 !important;
+    color: var(--wm65-caption-text) !important;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-title {
@@ -754,7 +803,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-buttons button:focus-visible {
 html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-buttons button:active,
 html.ui-mobile[data-wm-version="6.5"] #bootMessageBox .boot-message-box-buttons button:active,
 html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .modal-content button:active {
-    background: #080431 !important;
+    background: var(--wm65-deep) !important;
     color: #fff !important;
 }
 
@@ -800,9 +849,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-notify-title {
     border-style: solid;
     border-color: transparent;
     border-width: 0 calc(8 * var(--wm-px));
-    border-image: url('/static_images/wm65/theme-classicblue-msgboxtitle@2x.png') 0 16 0 16 fill / 0 calc(8 * var(--wm-px)) stretch;
+    border-image: var(--wm65-art-msgboxtitle, url('/static_images/wm65/theme-classicblue-msgboxtitle@2x.png')) 0 16 0 16 fill / 0 calc(8 * var(--wm-px)) stretch;
     background: none;
-    color: #cbc9e9;
+    color: var(--wm65-caption-text);
     font-weight: bold;
 }
 
@@ -854,12 +903,12 @@ html.ui-mobile[data-wm-version="6.5"] .wm-notify-step {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-notify-step::before {
     top: calc(6.5 * var(--wm-px));
-    background: #cbc9e9;
+    background: var(--wm65-caption-text);
 }
 
 /* the notification strip under the title bar: black like the bars */
 html.ui-mobile[data-wm-version="6.5"] .wm-notify-tray {
-    background: #000;
+    background: var(--wm65-bar);
 }
 
 /* ---- volume bubble: 6.1's callout in 6.5's colours (6.5's own volume panel is not built) ---- */
@@ -868,8 +917,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-volume {
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-volume-title {
-    background: linear-gradient(to bottom, #3951ce, #2138ce);
-    color: #cbc9e9;
+    background: linear-gradient(to bottom, var(--wm65-title-from), var(--wm65-title-to));
+    color: var(--wm65-caption-text);
 }
 
 /* ---- tabs: a 19.5 px black strip; tabs in the button face, the chosen one white and open to
@@ -878,7 +927,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-volume-title {
 html.ui-mobile[data-wm-version="6.5"] .wm-tabs {
     height: calc(19.5 * var(--wm-px));
     border-top: 0;
-    background: #000;
+    background: var(--wm65-bar);
     overflow: visible;
 }
 
@@ -886,7 +935,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-tab {
     position: relative;
     isolation: isolate;
     margin-top: 0 !important;
-    padding: 0 calc(6 * var(--wm-px)) 0 calc(6.5 * var(--wm-px)) !important;
+    /* device (Sounds, Today, 2x): a label ends 12 px before the next curve's edge and starts 11 px
+       after it: 5.5 units after the text, 5 before it */
+    padding: 0 calc(5.5 * var(--wm-px)) 0 calc(5 * var(--wm-px)) !important;
     border: 0 !important;
     background: var(--wm65-face) !important;
     color: var(--wm65-text) !important;
@@ -908,25 +959,42 @@ html.ui-mobile[data-wm-version="6.5"] .wm-tab:last-child::after {
     position: absolute;
     z-index: -1;
     top: 0;
-    left: calc(-17 * var(--wm-px));
+    left: calc(-17.5 * var(--wm-px));
     width: calc(34 * var(--wm-px));
     height: 100%;
-    background: url('/static_images/wm65/tabcurve-face-face@2x.png') 0 0 / 100% 100% no-repeat;
+    background: var(--wm65-art-tabcurve-face-face, url('/static_images/wm65/tabcurve-face-face@2x.png')) 0 0 / 100% 100% no-repeat;
+    pointer-events: none;
+}
+
+/* the first tab, when it is not the chosen one, starts with the same curve a tab has after a
+ * white one: the device draws the white-to-face edge centred on the strip's left end, so its
+ * right half rounds the tab's outer corner (page white above the curve, the edge's shade down
+ * the side); a chosen first tab is white to the screen edge */
+html.ui-mobile[data-wm-version="6.5"] .wm-tab:first-child:not([aria-selected="true"])::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    top: 0;
+    left: calc(-17.5 * var(--wm-px));
+    width: calc(34 * var(--wm-px));
+    height: 100%;
+    background: var(--wm65-art-tabcurve-white-face, url('/static_images/wm65/tabcurve-white-face@2x.png')) 0 0 / 100% 100% no-repeat;
+    clip-path: inset(0 0 0 calc(17.5 * var(--wm-px)));
     pointer-events: none;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-tab[aria-selected="true"]:not(:first-child)::before {
-    background-image: url('/static_images/wm65/tabcurve-face-white@2x.png');
+    background-image: var(--wm65-art-tabcurve-face-white, url('/static_images/wm65/tabcurve-face-white@2x.png'));
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-tab[aria-selected="true"] + .wm-tab::before {
-    background-image: url('/static_images/wm65/tabcurve-white-face@2x.png');
+    background-image: var(--wm65-art-tabcurve-white-face, url('/static_images/wm65/tabcurve-white-face@2x.png'));
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-tab:last-child::after {
     left: auto;
-    right: calc(-17 * var(--wm-px));
-    background-image: url('/static_images/wm65/tabcurve-face-black@2x.png');
+    right: calc(-17.5 * var(--wm-px));
+    background-image: var(--wm65-art-tabcurve-face-black, url('/static_images/wm65/tabcurve-face-black@2x.png'));
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-tab[aria-selected="true"]:last-child::after {
@@ -1251,7 +1319,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-tabs-spin > button::before {
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-tabs-spin > button:active {
-    background: #080431;
+    background: var(--wm65-deep);
 }
 
 /* ---- Settings > Today > Items (device, VGA halved): the list 148 x 169 from x 8, the three

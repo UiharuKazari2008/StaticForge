@@ -390,9 +390,12 @@
      * and the band).
      */
     function preload() {
-        const x2 = (window.devicePixelRatio || 1) > 1 ? '@2x' : '';
+        const dpr = window.devicePixelRatio || 1;
+        // the densities wm-lock65.css offers: the image-set picks the first one at or above the dpr
+        const x2 = dpr > 2 ? '@4x' : dpr > 1 ? '@2x' : '';
+        const x4 = dpr > 2 ? '@4x' : '@2x';
         const names = [`ls-lockslider${x2}`, `ls-lockslider-dwn${x2}`, `ls-locksliderlong${x2}`, `ls-locksliderlong-dwn${x2}`,
-            'ls-timebg@2x', 'ls-arrows-l@2x', 'ls-arrows-r@2x', 'ls-icn-em-up@2x', 'ls-icn-em-dn@2x'];
+            'ls-timebg@2x', `ls-arrows-l${x4}`, `ls-arrows-r${x4}`, `ls-icn-em-up${x4}`, `ls-icn-em-dn${x4}`];
         preload.kept = names.map((n) => { const img = new Image(); img.decoding = 'async'; img.src = `/static_images/wm65/${n}.png`; return img; });
     }
     const whenIdle = () => { if (typeof requestIdleCallback === 'function') requestIdleCallback(preload, { timeout: 4000 }); else setTimeout(preload, 1500); };

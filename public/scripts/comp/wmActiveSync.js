@@ -66,7 +66,7 @@
         const [pic, turning] = picture(st);
         const head = (name, line) => `
             <div class="was-head">
-                <div class="was-pic${turning ? ' is-syncing' : ''}" style="background-image:${ws.art.srcset ? `image-set(url('${ws.art.url(pic)}') 1x, url('${ws.art.url2x(pic)}') 2x)` : `url('${ws.art.url(pic)}')`}"></div>
+                <div class="was-pic${turning ? ' is-syncing' : ''}" style="background-image:${ws.art.srcset ? `image-set(url('${ws.art.url(pic)}') 1x, url('${ws.art.url2x(pic)}') 2x, url('${ws.art.url2x(pic).replace('@2x.png', '@4x.png')}') 4x)` : `url('${ws.art.url(pic)}')`}"></div>
                 <div><div class="was-name">${esc(name)}</div><div class="was-line">${esc(line)}</div></div>
             </div>`;
         if (!st.online) {

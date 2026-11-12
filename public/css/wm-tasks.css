@@ -92,7 +92,7 @@
     top: calc(50% - 6.5 * var(--wm-px));
     width: calc(6 * var(--wm-px));
     height: calc(13 * var(--wm-px));
-    background: url('/static_images/wm61/tasks-barpri@2x.png') 0 0 / calc(12 * var(--wm-px)) calc(13 * var(--wm-px)) no-repeat;
+    background: image-set(url('/static_images/wm61/tasks-barpri@2x.png') 2x, url('/static_images/wm61/tasks-barpri@4x.png') 4x) 0 0 / calc(12 * var(--wm-px)) calc(13 * var(--wm-px)) no-repeat;
 }
 
 .wm-tasks .wtk-pri button[data-pri="low"] > i {
@@ -176,7 +176,7 @@
     width: calc(15 * var(--wm-px));
     height: calc(15 * var(--wm-px));
     /* the bitmap's 1 px margin is drawn white, also on the selected row */
-    background: #fff url('/static_images/wm61/tasks-check@2x.png') 0 0 / calc(30 * var(--wm-px)) calc(15 * var(--wm-px)) no-repeat;
+    background: #fff image-set(url('/static_images/wm61/tasks-check@2x.png') 2x, url('/static_images/wm61/tasks-check@4x.png') 4x) 0 0 / calc(30 * var(--wm-px)) calc(15 * var(--wm-px)) no-repeat;
 }
 
 .wm-tasks .wtk-check.is-on {
@@ -199,7 +199,7 @@
 }
 
 .wm-tasks .wtk-mark[data-mark] {
-    background: url('/static_images/wm61/tasks-pri@2x.png') 0 0 / calc(40 * var(--wm-px)) calc(13 * var(--wm-px)) no-repeat;
+    background: image-set(url('/static_images/wm61/tasks-pri@2x.png') 2x, url('/static_images/wm61/tasks-pri@4x.png') 4x) 0 0 / calc(40 * var(--wm-px)) calc(13 * var(--wm-px)) no-repeat;
 }
 
 .wm-tasks .wtk-mark[data-mark="low"] {
@@ -270,7 +270,7 @@
 .wm-tasks .wtk-bell {
     width: calc(16 * var(--wm-px));
     height: calc(14 * var(--wm-px));
-    background: url('/static_images/wm61/tasks-bell@2x.png') 0 0 / 100% 100% no-repeat;
+    background: image-set(url('/static_images/wm61/tasks-bell@2x.png') 2x, url('/static_images/wm61/tasks-bell@4x.png') 4x) 0 0 / 100% 100% no-repeat;
 }
 
 .wm-tasks .wtk-srow {
@@ -292,7 +292,7 @@
     bottom: calc(2.5 * var(--wm-px));
     width: calc(7 * var(--wm-px));
     height: calc(8 * var(--wm-px));
-    background: url('/static_images/wm61/tasks-chevron@2x.png') 0 0 / calc(14 * var(--wm-px)) calc(8 * var(--wm-px)) no-repeat;
+    background: image-set(url('/static_images/wm61/tasks-chevron@2x.png') 2x, url('/static_images/wm61/tasks-chevron@4x.png') 4x) 0 0 / calc(14 * var(--wm-px)) calc(8 * var(--wm-px)) no-repeat;
 }
 
 .wm-tasks .wtk-chev::before {

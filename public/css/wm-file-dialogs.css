@@ -399,7 +399,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-scroll .wfd-item.is-selected {
  * navy (#00109c), labels are 8 pt (16 px tall "Name:" against our 18), boxes 42 px tall 60 apart
  * from y 124, Save | Cancel 131 x 48 with 13 between, their top at y 362. */
 html.ui-mobile[data-wm-version="6.5"] .wm-fd .wm-form-hdr {
-    color: #00109c;
+    color: var(--wm65-navy, #00109c);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-fd .wfd-save .wfd-row {

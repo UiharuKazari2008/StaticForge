@@ -71,7 +71,12 @@
     // Settings > Screen > Bezel: logo height and model text size, in % of the band (wmShell syncBezel)
     const BEZEL_LOGO_SIZES = [40, 50, 60, 70, 80, 90, 100];
     const BEZEL_MODEL_SIZES = [20, 25, 30, 35, 40, 45, 50];
-    const MELATON_EMBLEM = '/static_images/melaton/melaton-white-256.png';
+    // The Start mark stands for the title bar flag: 6.1's is the glossy colour flag (shellres icon
+    // 4609), so the emblem carries its four colours there (wm61/start-melaton, the same 18-unit
+    // box); 6.5's flag is white, so the one-colour emblem stays
+    const MELATON_EMBLEM = runningVersion() === '6.5'
+        ? '/static_images/melaton/melaton-white-256.png'
+        : '/static_images/wm61/start-melaton@4x.png';
     // WM 6.1's colour Start flag (shellres.192 icon 4609); a user-chosen exception to the copyright
     // rule's emblem mapping, never the default
     const WM_FLAG = '/static_images/wm61/start-flag.png';

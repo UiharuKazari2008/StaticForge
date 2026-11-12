@@ -41,7 +41,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-lock65-wall {
  * screen, status icons only (device: no Start flag, no title, no X; taps do nothing) */
 html.ui-mobile[data-wm-version="6.5"] #wmShell.wm-locked65 > .wm-titlebar {
     z-index: 28;
-    background: rgba(0, 0, 0, 0.392);
+    background: var(--wm65-bar-glass, rgba(0, 0, 0, 0.392));
     pointer-events: none;
 }
 
@@ -97,14 +97,14 @@ html.ui-mobile[data-wm-version="6.5"] .wm-lock65-path > i {
     left: calc(-0.5 * var(--wm-px));
     width: calc(750 * var(--wm-px));
     height: 100%;
-    background: url('/static_images/wm65/ls-arrows-l@2x.png') 0 0 / 100% 100% no-repeat;
+    background: image-set(url('/static_images/wm65/ls-arrows-l@2x.png') 2x, url('/static_images/wm65/ls-arrows-l@4x.png') 4x) 0 0 / 100% 100% no-repeat;
     /* at rest: the last loop frame, all three chevrons (the cpr's static SlidePath picture) */
     transform: translateX(-96%);
     will-change: transform;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-lock65-path[data-side="r"] > i {
-    background-image: url('/static_images/wm65/ls-arrows-r@2x.png');
+    background-image: image-set(url('/static_images/wm65/ls-arrows-r@2x.png') 2x, url('/static_images/wm65/ls-arrows-r@4x.png') 4x);
 }
 
 /* the screen comes up: the 21 entry frames at 28 a second */
@@ -162,7 +162,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-lock65-handle > i {
     position: absolute;
     inset: 0;
     background: url('/static_images/wm65/ls-lockslider@2x.png') 0 0 / 100% 100% no-repeat;
-    background-image: image-set(url('/static_images/wm65/ls-lockslider.png') 1x, url('/static_images/wm65/ls-lockslider@2x.png') 2x);
+    background-image: image-set(url('/static_images/wm65/ls-lockslider.png') 1x, url('/static_images/wm65/ls-lockslider@2x.png') 2x, url('/static_images/wm65/ls-lockslider@4x.png') 4x);
     pointer-events: none;
     transition: opacity 200ms linear;
 }
@@ -174,7 +174,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slide.is-pressed .wm-lock65-han
 
 html.ui-mobile[data-wm-version="6.5"] .wm-lock65-handle > i[data-art="dn"] {
     background-image: url('/static_images/wm65/ls-lockslider-dwn@2x.png');
-    background-image: image-set(url('/static_images/wm65/ls-lockslider-dwn.png') 1x, url('/static_images/wm65/ls-lockslider-dwn@2x.png') 2x);
+    background-image: image-set(url('/static_images/wm65/ls-lockslider-dwn.png') 1x, url('/static_images/wm65/ls-lockslider-dwn@2x.png') 2x, url('/static_images/wm65/ls-lockslider-dwn@4x.png') 4x);
     opacity: 0;
 }
 
@@ -185,12 +185,12 @@ html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slide.is-pressed .wm-lock65-han
 /* with notifications: the long art (lock at the left) and the total at x 26, 21 wide, Tahoma 10 pt */
 html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slider.has-count .wm-lock65-handle > i[data-art="up"] {
     background-image: url('/static_images/wm65/ls-locksliderlong@2x.png');
-    background-image: image-set(url('/static_images/wm65/ls-locksliderlong.png') 1x, url('/static_images/wm65/ls-locksliderlong@2x.png') 2x);
+    background-image: image-set(url('/static_images/wm65/ls-locksliderlong.png') 1x, url('/static_images/wm65/ls-locksliderlong@2x.png') 2x, url('/static_images/wm65/ls-locksliderlong@4x.png') 4x);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slider.has-count .wm-lock65-handle > i[data-art="dn"] {
     background-image: url('/static_images/wm65/ls-locksliderlong-dwn@2x.png');
-    background-image: image-set(url('/static_images/wm65/ls-locksliderlong-dwn.png') 1x, url('/static_images/wm65/ls-locksliderlong-dwn@2x.png') 2x);
+    background-image: image-set(url('/static_images/wm65/ls-locksliderlong-dwn.png') 1x, url('/static_images/wm65/ls-locksliderlong-dwn@2x.png') 2x, url('/static_images/wm65/ls-locksliderlong-dwn@4x.png') 4x);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-lock65-total {
@@ -268,11 +268,11 @@ html.ui-mobile[data-wm-version="6.5"] .wm-lock65-item .wm-lock65-handle > i {
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-lock65-item[data-kind="mail"] .wm-lock65-handle > i[data-art="up"] {
-    background-image: url('/static_images/wm65/ls-icn-em-up@2x.png');
+    background-image: image-set(url('/static_images/wm65/ls-icn-em-up@2x.png') 2x, url('/static_images/wm65/ls-icn-em-up@4x.png') 4x);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-lock65-item[data-kind="mail"] .wm-lock65-handle > i[data-art="dn"] {
-    background-image: url('/static_images/wm65/ls-icn-em-dn@2x.png');
+    background-image: image-set(url('/static_images/wm65/ls-icn-em-dn@2x.png') 2x, url('/static_images/wm65/ls-icn-em-dn@4x.png') 4x);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-lock65-count {

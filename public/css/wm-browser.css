@@ -719,7 +719,8 @@
 /* View > Desktop (wmBrowser.js "Desktop view"): the desktop Internet Explorer's own page, drawn by the
    desktop Grimoire's code and styles (tag-wiki-search.css: its document sheet hangs on
    .grimoire-window .tag-wiki-search-display). The page is 1024 px wide and at least 768 px tall
-   (never less than the screen shows of it), in the desktop's body text (app.css: 16 px, line
+   (never less than the screen shows of it: a percentage is taken in the zoomed page's own
+   measure), in the desktop's body text (app.css: 16 px, line
    height 1.25), and is panned inside this box; the zoom is set on .wmb-desk-page. */
 .wm-browser .wmb-desk {
     position: absolute;
@@ -731,7 +732,6 @@
     font: 16px / 1.25 var(--font-primary);
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    --wmb-desk-zoom: 1;
     /* .grimoire-window is the desktop window's class: its size there (1050 x 750, an id's weight) is not this box's */
     width: auto !important;
     height: auto !important;
@@ -748,9 +748,9 @@
     flex-direction: column;
     flex: none;
     box-sizing: border-box;
-    width: max(1024px, calc(100% / var(--wmb-desk-zoom)));
+    width: max(1024px, 100%);
     min-width: 0;
-    min-height: max(768px, calc(100% / var(--wmb-desk-zoom))) !important;
+    min-height: max(768px, 100%) !important;
     overflow: visible !important;
 }
 

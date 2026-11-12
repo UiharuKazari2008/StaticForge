@@ -1059,17 +1059,17 @@ html.ui-mobile[data-wm-version="6.5"] .wm-calendar :is(.wcl-alist, .wcl-dscroll,
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes)::-webkit-scrollbar-button:single-button:vertical:decrement {
-    background-image: url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png');
+    background-image: image-set(url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png') 2x, url('/static_images/wm65/theme-black-scrollbaruparrowbutton@4x.png') 4x);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes)::-webkit-scrollbar-button:single-button:vertical:increment {
-    background-image: url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png');
+    background-image: image-set(url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png') 2x, url('/static_images/wm65/theme-black-scrollbardownarrowbutton@4x.png') 4x);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
-    background-image: url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png');
+    background-image: image-set(var(--wm65-art-scrollbaruparrowbuttonselected, url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png')) 2x, var(--wm65-art-scrollbaruparrowbuttonselected-4x, url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@4x.png')) 4x);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes)::-webkit-scrollbar-button:single-button:vertical:increment:active {
-    background-image: url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png');
+    background-image: image-set(var(--wm65-art-scrollbardownarrowbuttonselected, url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png')) 2x, var(--wm65-art-scrollbardownarrowbuttonselected-4x, url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@4x.png')) 4x);
 }
