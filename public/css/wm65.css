@@ -1231,7 +1231,10 @@ html.ui-mobile[data-wm-version="6.5"] .wm-splash65-art {
     top: 0;
     width: 100%;
     aspect-ratio: 480 / 640;
-    background: url("/static_images/wm65/boot-splash@2x.png") 0 0 / 100% 100% no-repeat;
+    /* the emulator's splash in CSS (Yukimi, Nov 11 2026): one radial glow measured on the 6.5
+       cold boot (centre 120,108 of 480 x 640, radii 312 x 337, stops sampled along it), RMSE 0.011
+       against the capture; past it the splash's own #ce3408, so a taller screen just carries on */
+    background: radial-gradient(ellipse 65% 52.66% at 25% 16.875%, #ffc700 0%, #ffc700 12%, #ffc300 15.4%, #ffc100 23.1%, #ffbc00 30.8%, #feb200 38.5%, #f7a600 46.2%, #f19600 53.8%, #ef8600 61.5%, #e77502 69.2%, #de6108 76.9%, #dc5008 84.6%, #d63f08 92.3%, #ce3408 100%);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-splash65-mark {
