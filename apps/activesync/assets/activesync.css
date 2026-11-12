@@ -183,3 +183,7 @@ body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.mo
 .asdc-notes span { max-height: 4.05em; overflow: hidden; }
 .asdc-notes small { color: #3d5a2f; }
 .asdc-notes .btn-standard { flex: none; min-width: 64px; }
+
+/* "more»": a tile's whole task list on a page */
+.asdc-more-list { max-height: 330px; overflow-y: auto; }
+.asdc-root .asdc-more-list .asdc-item:first-child { margin-top: 0; }

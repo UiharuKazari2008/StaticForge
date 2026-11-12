@@ -233,9 +233,10 @@
             const connected = !!(dev && dev.online);
             const established = connected && (dev.session === 'guest' || dev.session === 'partner');
             // a page that needs the device ends when it goes
-            if (this.page && this.page !== 'info' && this.page !== 'done' && !connected) { this.page = null; this.busy = false; }
+            if (this.page && this.page !== 'info' && this.page !== 'done' && !this.page.startsWith('more:') && !connected) { this.page = null; this.busy = false; }
             if (this.page === 'info' && !dev) this.page = null;
             if (this.page === 'notifications' && !(dev && dev.online)) this.page = null;
+            if (this.page && this.page.startsWith('more:') && !this.tasks(this.page.slice(5), connected ? dev : null).length) this.page = null;
 
             // bread crumbs
             const crumbs = ['<span>Home</span>'];
@@ -277,6 +278,7 @@
             else if (this.page === 'done') html = `<div class="asdc-page"><h2>You have created a new Melaton Mobile partnership</h2><p>${esc(`${dev ? dev.name : 'Your device'} connects on its own from now on, whenever the Dreamscape app is running on it.`)}</p><div class="asdc-page-buttons"><button type="button" class="btn-standard primary" data-asdc="back">Done</button></div></div>`;
             else if (this.page === 'info') html = this.infoPage(dev);
             else if (this.page === 'notifications') html = this.notificationsPage(dev);
+            else if (this.page && this.page.startsWith('more:')) html = this.morePage(dev, connected);
             else if (connected && !established) html = this.choicePage();
             else html = this.tilesPage(dev, connected);
             if (body.dataset.html !== html) {
@@ -324,6 +326,15 @@
                     <div class="asdc-tile-body">${tasks.slice(0, 3).map((k) => `<button type="button" class="asdc-item" data-asdc="task" data-task="${esc(k.id)}"><img src="${k.icon.includes('/') ? esc(k.icon) : `${A}/${k.icon}`}" alt=""><span>${esc(k.text)}</span></button>`).join('')}
                     ${tasks.length > 3 ? '<button type="button" class="asdc-more" data-asdc="more">more»</button>' : ''}</div>
                 </div>`).join('')}</div>`;
+        }
+
+        /** "more»" on a tile: every task of it on a page of its own (a tile shows three). */
+        morePage(dev, connected) {
+            const id = this.page.slice(5);
+            const tile = TILES.find((t) => t.id === id);
+            const tasks = tile ? this.tasks(id, connected ? dev : null) : [];
+            return `<div class="asdc-page asdc-more-page"><h2>${esc(tile ? tile.title : '')}</h2>
+                <div class="asdc-more-list">${tasks.map((k) => `<button type="button" class="asdc-item" data-asdc="task" data-task="${esc(k.id)}"><img src="${k.icon.includes('/') ? esc(k.icon) : `${A}/${k.icon}`}" alt=""><span>${esc(k.text)}</span></button>`).join('')}</div></div>`;
         }
 
         setupPage(dev) {
@@ -402,7 +413,7 @@
             const dev = this.device();
             if (cmd === 'back') { this.page = null; this.setupError = ''; this.render(); return; }
             if (cmd === 'about') { await this.about(); return; }
-            if (cmd === 'more') { this.openTile(el.closest('.asdc-tile').dataset.tile); return; }
+            if (cmd === 'more') { this.page = `more:${el.closest('.asdc-tile').dataset.tile}`; this.render(); return; }
             if (cmd === 'task') {
                 const id = el.dataset.task;
                 if (id.startsWith('x:')) {

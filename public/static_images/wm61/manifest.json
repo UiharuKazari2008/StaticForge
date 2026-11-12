@@ -7079,37 +7079,58 @@
     },
     "app-folder-android": {
       "1x": {
-        "source": "same as fe-folder (1x)",
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-android-16.png, Lanczos-downscaled",
         "size": [
           16,
           16
         ]
       },
       "2x": {
-        "source": "same as fe-folder (2x)",
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-android.png, Lanczos-downscaled",
         "size": [
           32,
           32
         ]
       },
-      "notes": "The plain WM folder for the Android programs folder (Yozora #747); no art of its own yet."
+      "4x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-android.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Android programs folder. Subject: an open yellow manila Windows folder, exactly like the reference Games folder (same folder shape, colour, angle and back panel), with a small friendly leaf-green robot head (a half-dome with two short antennae on top and two white dot eyes) leaning in front of it at the lower left, where the playing card is in the reference."
     },
     "app-folder-android-lg": {
       "1x": {
-        "source": "fe-folder@2x.png",
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-android.png, Lanczos-downscaled",
         "size": [
           32,
           32
         ]
       },
       "2x": {
-        "source": "fe-folder@4x.png (upscaled)",
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-android.png, Lanczos-downscaled",
         "size": [
           64,
           64
         ]
       },
-      "notes": "The plain WM folder at 32 px for Programs."
+      "4x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-android.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-folder-android. Not ROM art."
     },
     "app-camera": {
       "1x": {
