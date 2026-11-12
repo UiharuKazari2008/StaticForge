@@ -1,0 +1,218 @@
+/*
+ * Melaton Mobile pre-launch installer (Yozora #760 item 2, phoneUpdate.js): a phone maker's
+ * Software Update page. Layout after Samsung Experience's "Downloading updates..." screen (Yukimi's
+ * reference, Nov 11 2026): a light band with the phone drawing, a darker band with the title, then
+ * the status line, the time left, a thin bar, the percent and the bytes, a large grey arrow, and a
+ * button at the foot. Xyridian's colours replace the teal: the logo ring's blue for the bands and
+ * the bar, the star orange for the drawing's arrow. Lengths from the 474 x 844 reference.
+ *
+ * Phone /launch also drops the Dreamscape card for the maker's logo on black (html.phone-launch),
+ * the same picture the Android app's boot cover shows.
+ */
+
+html.phone-launch,
+html.phone-launch body {
+    background: #000 !important;
+}
+
+html.phone-launch .launch-container {
+    background: #000 !important;
+}
+
+html.phone-launch .launch-content {
+    background: none !important;
+    border: 0 !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+}
+
+html.phone-launch .launch-content > .logo,
+html.phone-launch .launch-content > .app-name,
+html.phone-launch #loading {
+    display: none !important;
+}
+
+html.phone-launch .launch-content::before {
+    content: '';
+    display: block;
+    width: min(62vw, 420px);
+    aspect-ratio: 512 / 187;
+    margin: 0 auto;
+    background: url('/static_images/xyridian/xyridian-logo-color-512.png') center / contain no-repeat;
+}
+
+#phoneUpdate[hidden] {
+    display: none !important;
+}
+
+#phoneUpdate {
+    --pu-blue-hi: #3fb4f6;
+    --pu-blue: #1593e6;
+    --pu-blue-deep: #0b6fc7;
+    --pu-orange: #f88800;
+    --pu-ink: #212121;
+    --pu-grey: #757575;
+    --pu-face: #f8f8f8;
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    flex-direction: column;
+    background: var(--pu-face);
+    color: var(--pu-ink);
+    font: 400 16px/1.25 Roboto, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ---- the light band: the phone drawing at the right, the maker's wordmark at the left ---- */
+.pu-hero {
+    position: relative;
+    flex: 0 0 auto;
+    height: calc(180 / 844 * 100vh);
+    min-height: 120px;
+    padding-top: env(safe-area-inset-top);
+    background: linear-gradient(to bottom, var(--pu-blue-hi), var(--pu-blue));
+    overflow: hidden;
+}
+
+.pu-wordmark {
+    position: absolute;
+    left: 46px;
+    bottom: 18px;
+    width: 96px;
+    height: 24px;
+    background: url('/static_images/xyridian/xyridian-wordmark-white-512.png') left center / contain no-repeat;
+    opacity: 0.9;
+}
+
+.pu-device {
+    position: absolute;
+    right: 24px;
+    bottom: 18px;
+    width: 62px;
+    height: 122px;
+}
+
+/* ---- the darker band with the title ---- */
+.pu-band {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    height: calc(80 / 844 * 100vh);
+    min-height: 56px;
+    padding: 0 46px;
+    background: var(--pu-blue-deep);
+    color: #fff;
+    font-size: 27px;
+    font-weight: 400;
+    letter-spacing: 0.005em;
+}
+
+/* ---- the page ---- */
+.pu-body {
+    position: relative;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 46px 0;
+}
+
+.pu-status {
+    font-size: 17px;
+    color: var(--pu-ink);
+}
+
+.pu-time {
+    margin-top: 18px;
+    min-height: 1.2em;
+    font-size: 12px;
+    color: var(--pu-grey);
+    letter-spacing: 0.04em;
+}
+
+.pu-bar {
+    position: relative;
+    height: 4px;
+    margin-top: 12px;
+    background: #6f6f6f;
+}
+
+.pu-bar > span {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    background: var(--pu-blue);
+    transition: width 0.25s linear;
+}
+
+.pu-figures {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 16px;
+    font-size: 12px;
+    color: var(--pu-ink);
+}
+
+/* the large arrow: the reference's light grey, centred in the page */
+.pu-art {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 120px;
+}
+
+.pu-art svg {
+    width: 102px;
+    height: 154px;
+}
+
+.pu-art path,
+.pu-art rect {
+    fill: #dfe2df;
+}
+
+/* ---- the button at the foot (Retry after a failure) ---- */
+.pu-foot {
+    flex: 0 0 auto;
+    padding: 16px 19px 22px;
+    min-height: 54px;
+}
+
+.pu-button {
+    display: block;
+    width: 100%;
+    height: 54px;
+    border: 1px solid #c9c9c9;
+    border-radius: 2px;
+    background: #fff;
+    color: var(--pu-ink);
+    font: 500 15px/1 Roboto, 'Segoe UI', Arial, sans-serif;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
+}
+
+.pu-button:active {
+    background: #ececec;
+}
+
+.pu-button[hidden] {
+    display: none;
+}
+
+/* states: installing has no time line; an error drops the bar and figures */
+#phoneUpdate[data-state="error"] .pu-bar,
+#phoneUpdate[data-state="error"] .pu-figures,
+#phoneUpdate[data-state="error"] .pu-time {
+    visibility: hidden;
+}
+
+#phoneUpdate[data-state="error"] .pu-status {
+    line-height: 1.4;
+}

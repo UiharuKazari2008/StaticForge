@@ -344,12 +344,13 @@ class ServiceWorkerManager {
     }
 
     /**
-     * /launch installs only on a desktop start (desktopStart.js: wide and windowed, the rule
-     * app.html uses for isDesktop). Narrow, phone and maximized starts get the plain launch
-     * card, which hands straight back to /app, so those download updates here instead.
+     * /launch installs on a desktop start (desktopStart.js: wide and windowed, the rule app.html
+     * uses for isDesktop) and on a phone start (Melaton Mobile's pre-launch installer,
+     * phoneUpdate.js, #760). Other narrow and maximized starts get the plain launch card, which
+     * hands straight back to /app, so those download updates here instead.
      */
     _launchInstallsHere() {
-        return window.isDesktop === true;
+        return window.isDesktop === true || (window.uiShell === 'mobile' && (window.innerWidth || 0) < 1200);
     }
 
     _melatonInstallStragglers() {

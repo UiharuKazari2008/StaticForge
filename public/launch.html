@@ -257,6 +257,10 @@
                     if (isF8) globalThis.melatonBootInterrupt = true;
                     else globalThis.melatonBiosKeys.push(key);
                 }, true);
+            } else if ((window.innerWidth || 0) < 1200) {
+                // a phone start: the maker's logo on black (as the Android app's boot cover), and the
+                // pre-launch installer before /app (phoneUpdate.js, launch-phone-update.css, #760)
+                document.documentElement.classList.add('phone-launch');
             }
         })();
     </script>
@@ -267,6 +271,7 @@
     <link rel="stylesheet" href="/css/launch-boot.css">
     <link rel="stylesheet" href="/css/launch-install.css">
     <link rel="stylesheet" href="/css/launch-games.css">
+    <link rel="stylesheet" href="/css/launch-phone-update.css">
 
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#000000">
@@ -788,6 +793,34 @@
         </div>
     </div>
 
+    <!-- Melaton Mobile pre-launch installer (html.phone-launch, phoneUpdate.js, #760): a phone maker's
+         Software Update page in Xyridian's colours, shown only for a large install -->
+    <section id="phoneUpdate" data-state="download" role="dialog" aria-label="Software Update" hidden>
+        <div class="pu-hero">
+            <div class="pu-wordmark" aria-hidden="true"></div>
+            <svg class="pu-device" viewBox="0 0 62 122" aria-hidden="true">
+                <rect x="1" y="1" width="60" height="120" rx="9" fill="#fff"/>
+                <rect x="5" y="15" width="52" height="90" rx="1.5" fill="#0b6fc7"/>
+                <rect x="23" y="7" width="16" height="2.4" rx="1.2" fill="#c9d6e2"/>
+                <circle cx="31" cy="113" r="3.4" fill="none" stroke="#c9d6e2" stroke-width="1.4"/>
+                <path d="M26 44h10v14h7L31 71 19 58h7z" fill="#f88800"/>
+                <rect x="19" y="75" width="24" height="3.4" fill="#f88800"/>
+                <path d="M48 24l1.2 3 3 1.2-3 1.2-1.2 3-1.2-3-3-1.2 3-1.2z" fill="#ffd34a"/>
+            </svg>
+        </div>
+        <div class="pu-band">Software Update</div>
+        <div class="pu-body">
+            <div class="pu-status" aria-live="polite">Downloading updates&hellip;</div>
+            <div class="pu-time">--:--:--</div>
+            <div class="pu-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+            <div class="pu-figures"><span class="pu-left">0%</span><span class="pu-right"></span></div>
+            <div class="pu-art" aria-hidden="true">
+                <svg viewBox="0 0 102 154"><path d="M33 0h36v76h33L51 132 0 76h33z"/><rect x="0" y="142" width="102" height="12"/></svg>
+            </div>
+        </div>
+        <div class="pu-foot"><button type="button" class="pu-button" hidden></button></div>
+    </section>
+
     <!-- Melaton boot (html.melaton-boot only): boot screen, then teal or the boot menu -->
     <div id="melatonBoot" data-screen="black" aria-live="polite">
         <!-- Boot drawing is a 640x480 bitmap, nearest-neighbor stretched to the window.
@@ -1100,6 +1133,7 @@
         })();
     </script>
     <script src="/scripts/launch/updateEngine.js"></script>
+    <script src="/scripts/launch/phoneUpdate.js"></script>
     <script src="/scripts/launch/launchGames.js"></script>
     <script src="/scripts/launch/biosFont.js"></script>
     <script src="/scripts/launch/phoenixBios.js"></script>
@@ -1264,14 +1298,23 @@
             try {
                 sessionStorage.setItem('dreamscapeLaunchHandoff', '1');
             } catch (e) { /* ignore */ }
-            // This card never installs (melatonBoot.js does, on desktop starts). An install flag
-            // left from a desktop start would send /app straight back here on every boot.
-            try {
-                localStorage.removeItem('melatonInstall');
-            } catch (e) { /* ignore */ }
             var go = function () {
                 window.location.replace('/app');
             };
+            // A phone start installs here first (phoneUpdate.js, #760): Melaton Mobile then boots
+            // with every file present. Any other narrow start never installs on this card, and an
+            // install flag left from a desktop start would send /app straight back here.
+            if (document.documentElement.classList.contains('phone-launch') && window.melatonPhoneUpdate) {
+                if (redirectToApp.running) return;
+                redirectToApp.running = true;
+                window.melatonPhoneUpdate.run().catch(function (err) {
+                    console.warn('[launch] phone install', err);
+                }).then(go);
+                return;
+            }
+            try {
+                localStorage.removeItem('melatonInstall');
+            } catch (e) { /* ignore */ }
             if (document.startViewTransition) {
                 document.startViewTransition(go);
             } else {
