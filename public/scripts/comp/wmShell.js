@@ -1817,9 +1817,15 @@
     function syncIconUnit() {
         const dpr = window.devicePixelRatio || 1;
         const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
-        const k = Math.max(1, Math.round((16 * px * dpr) / 32));
-        const unit = `${(2 * k) / dpr}px`;
-        if (root.style.getPropertyValue('--wm-icon-unit') !== unit) root.style.setProperty('--wm-icon-unit', unit);
+        const want = 16 * px * dpr; // the icon's size in device px
+        // under 24 device px a whole 2x icon (32 px) would be up to twice its slot (a mouse-driven
+        // window at one device px a unit: 16 px wanted, 32 drawn, the icons overflowing the bar):
+        // the 1x art's own size where that is within a sixth, else the plain unit
+        let unit = `${(2 * Math.max(1, Math.round(want / 32))) / dpr}px`;
+        if (want < 24) unit = Math.abs(want - 16) / want < 1 / 6 ? `${1 / dpr}px` : '';
+        if (root.style.getPropertyValue('--wm-icon-unit') !== unit) {
+            if (unit) root.style.setProperty('--wm-icon-unit', unit); else root.style.removeProperty('--wm-icon-unit');
+        }
     }
 
     function snapStatusIcons() {
