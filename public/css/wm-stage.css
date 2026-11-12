@@ -192,3 +192,198 @@ html.ui-mobile #wmShell img[src*="/static_images/wm65/"],
 html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
     pointer-events: none;
 }
+
+/* ---- the task switcher (wmShell.js, hold on Start): Melaton's own add-on, built from the version's
+ * own pieces. A band over the soft key bar, drawn as that bar (6.1: its rule, 11 units of gloss and
+ * the base; the colours rise to the screen's middle), 54 units: the rule, 3, a 32-unit program
+ * icon, 2, one label line of 13, 3. Cells of 66 units, the bar's white bold text; the program on
+ * screen is selected as an icon view's item (the icon under the highlight's dither, the label in
+ * the highlight). At the right end, after a rule, the title bar's X button: close all ---- */
+.wm-taskstrip {
+    position: absolute;
+    z-index: 8;
+    left: var(--wm-safe-left);
+    right: var(--wm-safe-right);
+    bottom: calc(var(--wm-safe-bottom) + 26 * var(--wm-px));
+    height: calc(54 * var(--wm-px));
+    box-sizing: border-box;
+    border-top: calc(1 * var(--wm-px)) solid var(--wm-rule);
+    display: flex;
+    align-items: stretch;
+    background: linear-gradient(to bottom, var(--wm-gloss-line-edge) 0, var(--wm-gloss-line-edge) calc(1 * var(--wm-px)), var(--wm-gloss-top-edge) calc(1 * var(--wm-px)), var(--wm-gloss-bottom-edge) calc(11 * var(--wm-px)), var(--wm-bar-edge) calc(11 * var(--wm-px)), var(--wm-bar-edge) 100%);
+    color: #fff;
+    cursor: default;
+}
+
+.wm-taskstrip[hidden] {
+    display: none;
+}
+
+.wm-taskstrip::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(to bottom, var(--wm-gloss-line-centre) 0, var(--wm-gloss-line-centre) calc(1 * var(--wm-px)), var(--wm-gloss-top-centre) calc(1 * var(--wm-px)), var(--wm-gloss-bottom-centre) calc(11 * var(--wm-px)), var(--wm-bar-centre) calc(11 * var(--wm-px)), var(--wm-bar-centre) 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 50%, transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 50%, transparent 100%);
+}
+
+.wm-ts-list {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    touch-action: pan-x;
+    overscroll-behavior: contain;
+}
+
+.wm-ts-list::-webkit-scrollbar {
+    display: none;
+}
+
+.wm-ts-item {
+    flex: 0 0 auto;
+    width: calc(66 * var(--wm-px));
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    padding: calc(3 * var(--wm-px)) calc(1 * var(--wm-px)) 0 !important;
+    box-sizing: border-box;
+    color: inherit;
+    font-weight: bold;
+    text-shadow: 0 0 calc(1 * var(--wm-px)) rgba(0, 0, 0, 0.35);
+    outline: none;
+    -webkit-touch-callout: none;
+}
+
+.wm-ts-icon {
+    position: relative;
+    flex: 0 0 auto;
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
+.wm-ts-icon img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+.wm-ts-label {
+    max-width: 100%;
+    box-sizing: border-box;
+    margin-top: calc(2 * var(--wm-px));
+    padding: 0 calc(1 * var(--wm-px));
+    font-size: var(--wm-fs);
+    line-height: calc(13 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-ts-item.is-selected .wm-ts-icon::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-conic-gradient(var(--wm-highlight) 0 25%, transparent 0 50%) 0 0 / 2px 2px;
+    -webkit-mask: var(--wm-icon-mask) center / contain no-repeat;
+    mask: var(--wm-icon-mask) center / contain no-repeat;
+}
+
+.wm-ts-item.is-selected .wm-ts-label {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+    text-shadow: none;
+}
+
+.wm-ts-side {
+    flex: 0 0 auto;
+    width: calc(27 * var(--wm-px));
+    box-sizing: border-box;
+    border-left: calc(1 * var(--wm-px)) solid var(--wm-rule);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.wm-ts-side > .wm-title-action {
+    align-self: center;
+    margin: 0;
+}
+
+.wm-ts-side > .wm-title-action:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+/* the X under the arrow keys: the look it has under the pen (the title bar button held) */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-ts-side > .wm-title-action:focus-visible::before {
+    background:
+        linear-gradient(to top, var(--wm-button-fill-top), var(--wm-button-fill-bottom)) content-box,
+        linear-gradient(to top, var(--wm-button-light), var(--wm-button-ring-bottom)) padding-box;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-ts-side > .wm-title-action:focus-visible::after {
+    background: var(--wm-button-pressed-glyph);
+}
+
+/* ---- Melaton Mobile 6.5 ---- */
+/* the task switcher in 6.5: the black bar of its soft keys, no rules, white labels in the Start
+ * screen's letters, the list view selector behind the program on screen, the title bar's X glyph
+ * (grey when nothing runs, as a soft key that is off). Black over Today and Start too: on the
+ * bars' see-through look there (tried) the Start icons under the strip run into its own */
+html.ui-mobile[data-wm-version="6.5"] .wm-taskstrip {
+    height: calc(53 * var(--wm-px));
+    border-top: 0;
+    background: var(--wm65-bar);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-taskstrip::before {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ts-item {
+    font-weight: normal;
+    text-shadow: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ts-label {
+    font: calc(9 * var(--wm-px)) / calc(13 * var(--wm-px)) var(--wm-font);
+    -webkit-text-stroke: calc(0.4 * var(--wm-px)) #fff;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ts-item.is-selected {
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: var(--wm65-art-listviewselector, url('/static_images/wm65/theme-classicblue-listviewselector@2x.png')) 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) stretch;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ts-item.is-selected .wm-ts-icon::after {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ts-item.is-selected .wm-ts-label {
+    background: none;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ts-side {
+    border-left: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ts-side > .wm-title-action:disabled {
+    opacity: 0.6;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ts-side > .wm-title-action:focus-visible::before {
+    opacity: 1;
+}

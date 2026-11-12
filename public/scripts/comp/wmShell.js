@@ -46,7 +46,7 @@
     // the 6.5 order until one is chosen in Settings: the clock is home, in the centre, as on
     // Windows Mobile 6.5 (pictures, music, getting started, phone, voicemail | clock | text,
     // e-mail, calendar, favorites): pictures and the places above it, what arrives below
-    const TODAY_ORDER_65 = ['owner', 'search', 'workspace', 'prints', 'studio', 'director', 'date', 'connection', 'text', 'messages', 'calendar', 'tasks', 'weather', 'accounts', 'xlink', 'notes', 'files', 'remote-desktop', 'server'];
+    const TODAY_ORDER_65 = ['owner', 'search', 'workspace', 'prints', 'studio', 'director', 'date', 'connection', 'text', 'messages', 'calendar', 'ie', 'favorites', 'tasks', 'weather', 'accounts', 'xlink', 'notes', 'files', 'remote-desktop', 'server'];
     function todayOrder65(ids) {
         const rank = (id) => { const i = TODAY_ORDER_65.indexOf(id); return i < 0 ? TODAY_ORDER_65.length : i; };
         return ids.map((id, i) => [id, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([id]) => id);
@@ -541,6 +541,8 @@
 
         shell.querySelector('.wm-start').addEventListener('click', (e) => {
             e.stopPropagation();
+            // the lift after a hold (the task switcher came up), or a tap while the switcher is open
+            if (taskSwitcherStartClick()) return;
             toggleStartMenu();
         });
         // WM opens Start from the title too: a tap on the title bar's left part (the title, up to
@@ -619,6 +621,7 @@
             closeMenus();
         }, true);
         bindHoldRing();
+        bindTaskSwitcher();
         window.addEventListener('keydown', (e) => {
             if (busyBlocksKey()) {
                 // busy: keys (soft keys, back, Enter) wait with the taps
@@ -680,6 +683,10 @@
             closed = true;
         } else if (openPopup) {
             closeMenus(true);
+            closed = true;
+        } else if (taskSwitch.open) {
+            // the task switcher (hold on Start) is a layer of its own
+            closeTaskSwitcher(true);
             closed = true;
         } else if (noteTrayOpen || noteShownNote()) {
             // a notification bubble or the tray: back hides it (the notification stays in the title bar)
@@ -1369,7 +1376,8 @@
         holdRingEnd(0);
         if (!shell || !e.isPrimary) return;
         const t = e.target;
-        if (!t || !t.closest || t.closest(HOLD_SKIP)) return;
+        // the title bar has no ring, but for the Start button: its hold brings the task switcher
+        if (!t || !t.closest || (t.closest(HOLD_SKIP) && !taskSwitcherHoldTarget(t))) return;
         if (root.dataset.wmBoot && root.dataset.wmBoot !== 'done') return;
         holdRing.heldId = null;
         holdRing.liftAt = 0;
@@ -1669,7 +1677,7 @@
         // an app can hold back steps of its own (File Explorer: the folders visited)
         const app = current && current !== 'today' && apps.get(current);
         const own = app && typeof app.historyDepth === 'function' ? Math.max(0, Number(app.historyDepth()) || 0) : 0;
-        return Math.max(0, stack.length - 1) + own + (openPopup ? 1 + sub : 0) + (viewerActive && !viewerClosing ? 1 : 0);
+        return Math.max(0, stack.length - 1) + own + (openPopup ? 1 + sub : 0) + (viewerActive && !viewerClosing ? 1 : 0) + (taskSwitch.open ? 1 : 0);
     }
 
     function historyDepth() {
@@ -1703,6 +1711,285 @@
             }
         });
     }
+
+    // ================================================================ task switcher (begin)
+    //
+    // Melaton's own add-on (Yozora #748, Yukimi): Windows Mobile 6.5 has no list of the running
+    // programs on its Start screen, and phone makers put quick task switchers of their own on top.
+    // Ours: tap-and-hold on the Start button (the hold timing and ring of dots of bindHoldRing; a
+    // mouse press of the same length) brings a strip over the soft key bar with the running
+    // programs, most recently used first, and the title bar's X at its right end as "close all".
+    // No device has this layout, so every piece is one the version already has: the bar's own
+    // look, 32-unit program icons with one label line, the list selection on the program on
+    // screen, the corner button. What runs, its names and how a program ends are Task Manager's
+    // (window.wmTaskManager.running / end: every program that was on screen and has not been ended;
+    // the shell's own screens are not tasks). Close all asks as the device's End All Tasks does.
+    // A tap switches, tap-and-hold on a program gives Task Manager's menu (Switch To, End Task).
+    // It comes and goes in one paint; it is a layer (closeTopLayer, desiredDepth): back closes it.
+    const taskSwitch = { el: null, open: false, mru: [], held: false, timer: null, asking: false };
+
+    function taskSwitcherNote() {
+        const id = root.dataset.wmApp;
+        if (!id || SHELL_SCREENS.has(id)) return;
+        const at = taskSwitch.mru.indexOf(id);
+        if (at >= 0) taskSwitch.mru.splice(at, 1);
+        taskSwitch.mru.unshift(id);
+    }
+
+    /** The running programs as Task Manager lists them, the most recently used first. */
+    function taskSwitcherTasks() {
+        let list = null;
+        try { if (window.wmTaskManager) list = window.wmTaskManager.running(); } catch (_) { list = null; }
+        if (!list) list = openedApps.filter((id) => apps.has(id)).map((id) => ({ id, title: apps.get(id).startLabel || apps.get(id).title }));
+        const rank = (id) => { const i = taskSwitch.mru.indexOf(id); return i < 0 ? 1e6 : i; };
+        return list.filter((t) => !SHELL_SCREENS.has(t.id))
+            .map((t, i) => ({ id: t.id, title: t.title, icon: (apps.get(t.id) || {}).icon || 'app-programs', i }))
+            .sort((a, b) => (rank(a.id) - rank(b.id)) || (a.i - b.i))
+            .map((t) => ({ id: t.id, title: t.title, icon: t.icon }));
+    }
+
+    /** The hold on Start may bring the switcher: not under the lock screen, a message box or a wait. */
+    function taskSwitcherCanOpen() {
+        if (!shell || (root.dataset.wmBoot && root.dataset.wmBoot !== 'done') || root.dataset.wmTakeover || root.hasAttribute('data-wm-dialog')) return false;
+        if (busyCount > 0 || switchCoverFor) return false;
+        const box = shell.querySelector('.wm-msgbox-layer');
+        if (box && !box.hidden) return false;
+        try { if (window.wmLock && window.wmLock.isLocked) return false; } catch (_) { /* no lock screen */ }
+        const start = shell.querySelector('.wm-start');
+        return !!(start && !start.disabled && start.getClientRects().length);
+    }
+
+    /** bindHoldRing: where the ring of dots shows although the bar or the strip around has none. */
+    function taskSwitcherHoldTarget(t) {
+        if (t.closest('.wm-ts-item')) return true;
+        return !!t.closest('.wm-start') && !taskSwitch.open && taskSwitcherCanOpen();
+    }
+
+    function taskSwitcherRender() {
+        const el = taskSwitch.el;
+        if (!el) return;
+        const tasks = taskSwitcherTasks();
+        const old = el.querySelector('.wm-ts-list');
+        const x = old ? old.scrollLeft : 0;
+        const focused = document.activeElement && el.contains(document.activeElement) ? document.activeElement.dataset.app : null;
+        // the 32-unit art of a shell icon (its -lg pair), as the Programs grid shows it
+        const large = (name) => (!String(name).startsWith('/') && HD_ART.has(`${name}-lg`) ? `${name}-lg` : name);
+        el.innerHTML = `<div class="wm-ts-list" role="listbox" aria-label="Running programs">${tasks.map((t) => {
+            const n = large(t.icon);
+            return `<button type="button" class="wm-ts-item${t.id === current ? ' is-selected' : ''}" role="option" aria-selected="${t.id === current}" data-app="${escapeHtml(t.id)}"><span class="wm-ts-icon" style="--wm-icon-mask:url('${escapeHtml(art(n))}')">${imgTag(n)}</span><span class="wm-ts-label">${escapeHtml(t.title)}</span></button>`;
+        }).join('')}</div><div class="wm-ts-side"><button type="button" class="wm-title-action wm-ts-all" data-kind="close" aria-label="End All Tasks"${tasks.length ? '' : ' disabled'}></button></div>`;
+        const list = el.querySelector('.wm-ts-list');
+        list.scrollLeft = x;
+        if (focused) {
+            const again = [...list.children].find((b) => b.dataset.app === focused) || list.firstElementChild || el.querySelector('.wm-ts-all');
+            try { if (again) again.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
+        }
+    }
+
+    function openTaskSwitcher() {
+        if (taskSwitch.open) return true;
+        if (!taskSwitcherCanOpen()) return false;
+        closeMenus(true);
+        if (!taskSwitch.el) {
+            const el = document.createElement('div');
+            el.className = 'wm-taskstrip';
+            el.hidden = true;
+            el.setAttribute('role', 'dialog');
+            el.setAttribute('aria-label', 'Running programs');
+            // the ring of dots only on a program (taskSwitcherHoldTarget)
+            el.setAttribute('data-wm-no-hold', '');
+            shell.appendChild(el);
+            taskSwitch.el = el;
+            el.addEventListener('click', (e) => {
+                if (!taskSwitch.open) return;
+                e.stopPropagation();
+                if (taskSwitch.held) { taskSwitch.held = false; return; }
+                if (e.target.closest('.wm-ts-all')) { void taskSwitcherEndAll(); return; }
+                const item = e.target.closest('.wm-ts-item');
+                if (item) taskSwitcherChoose(item.dataset.app);
+            });
+            el.addEventListener('pointerdown', (e) => {
+                const item = e.target.closest('.wm-ts-item');
+                if (item) taskSwitcherMouseHold(e, (x, y) => taskSwitcherMenu(item.dataset.app, x, y));
+            });
+            el.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                const item = e.target.closest('.wm-ts-item');
+                if (!item || !taskSwitch.open) return;
+                taskSwitch.held = !e.isTrusted;
+                taskSwitcherMenu(item.dataset.app, e.clientX, e.clientY);
+            });
+            // a wheel moves the strip sideways
+            el.addEventListener('wheel', (e) => {
+                const list = el.querySelector('.wm-ts-list');
+                if (!list || list.scrollWidth <= list.clientWidth) return;
+                e.preventDefault();
+                list.scrollLeft += (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * (e.deltaMode === 1 ? 16 : 1);
+            }, { passive: false });
+        }
+        taskSwitch.open = true;
+        taskSwitcherRender();
+        taskSwitch.el.hidden = false;
+        const first = taskSwitch.el.querySelector('.wm-ts-item.is-selected, .wm-ts-item');
+        if (first) {
+            try { first.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
+            if (first.scrollIntoView) first.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+        syncHistory();
+        return true;
+    }
+
+    function closeTaskSwitcher(silent) {
+        if (!taskSwitch.open) return false;
+        taskSwitch.open = false;
+        clearTimeout(taskSwitch.timer);
+        taskSwitch.el.hidden = true;
+        taskSwitch.el.innerHTML = '';
+        if (!silent) syncHistory();
+        return true;
+    }
+
+    function taskSwitcherChoose(id) {
+        closeTaskSwitcher(true);
+        if (id && id !== current && apps.has(id)) open(id, { fromStart: true });
+        else syncHistory();
+    }
+
+    function taskSwitcherMenu(id, x, y) {
+        if (!taskSwitch.open || !id) return;
+        window.wmShell.menuAt(x, y, [
+            { label: 'Switch To', action: () => taskSwitcherChoose(id) },
+            { label: 'End Task', action: () => { void taskSwitcherEnd([id]); } }
+        ]);
+    }
+
+    /** End programs Task Manager's way (its end(): a hosted program closes its windows itself). */
+    async function taskSwitcherEnd(ids) {
+        const tm = window.wmTaskManager;
+        await busy(() => {
+            ids.forEach((id) => {
+                try { if (tm && typeof tm.end === 'function') tm.end(id); else endApp(id); } catch (err) { console.warn('[wmShell] end task', id, err); }
+            });
+        }, { paint: true });
+        if (taskSwitch.open) taskSwitcherRender();
+        // hosted windows close on their own timers: list again once they had the chance
+        setTimeout(() => { if (taskSwitch.open) taskSwitcherRender(); }, 1100);
+    }
+
+    /**
+     * Close all: every running program ends, and the phone is back on Today / the home screen.
+     * It asks first, in the words of the device's Task Manager for Menu > End All Tasks (6.1
+     * emulator: "Confirm End", the warning sign, Yes as the default button, No); No leaves the
+     * strip as it was.
+     */
+    async function taskSwitcherEndAll() {
+        if (taskSwitch.asking) return;
+        let ids = taskSwitcherTasks().map((t) => t.id);
+        if (!ids.length) return;
+        taskSwitch.asking = true;
+        let yes = false;
+        try {
+            yes = await messageBox({ title: 'Confirm End', text: 'Do you really want to end all running applications?', icon: 'warning', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }], cancelValue: false });
+        } finally { taskSwitch.asking = false; }
+        if (!yes) return;
+        ids = taskSwitcherTasks().map((t) => t.id);
+        closeTaskSwitcher(true);
+        await taskSwitcherEnd(ids);
+        open('today');
+    }
+
+    /** A mouse button held as long as the pen's hold (the ring of dots is the pen's and finger's). */
+    function taskSwitcherMouseHold(e, fn) {
+        if (e.pointerType !== 'mouse' || e.button !== 0) return;
+        clearTimeout(taskSwitch.timer);
+        const { clientX: x, clientY: y, pointerId: id } = e;
+        const stop = () => {
+            clearTimeout(taskSwitch.timer);
+            document.removeEventListener('pointermove', move, true);
+            document.removeEventListener('pointerup', stop, true);
+            document.removeEventListener('pointercancel', stop, true);
+        };
+        const move = (m) => { if (m.pointerId === id && (Math.abs(m.clientX - x) > HOLD_SLOP || Math.abs(m.clientY - y) > HOLD_SLOP)) stop(); };
+        document.addEventListener('pointermove', move, true);
+        document.addEventListener('pointerup', stop, true);
+        document.addEventListener('pointercancel', stop, true);
+        taskSwitch.timer = setTimeout(() => { stop(); taskSwitch.held = true; fn(x, y); }, HOLD_FIRST_MS + 8 * HOLD_STEP_MS + HOLD_MENU_MS);
+    }
+
+    /** The Start button's click: true = it was the lift after a hold, or it closed the switcher. */
+    function taskSwitcherStartClick() {
+        if (taskSwitch.held) { taskSwitch.held = false; return true; }
+        return closeTaskSwitcher();
+    }
+
+    function bindTaskSwitcher() {
+        const start = shell.querySelector('.wm-start');
+        taskSwitcherNote();
+        try { new MutationObserver(taskSwitcherNote).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] }); } catch (_) { /* Task Manager's order then */ }
+        // a new press: the last hold is over
+        document.addEventListener('pointerdown', () => { taskSwitch.held = false; }, true);
+        // the click a mouse button brings when it is let go after a hold: taken before anything
+        // closes on it (the menu that came up under the pointer, the strip)
+        window.addEventListener('click', (e) => {
+            if (!taskSwitch.held) return;
+            taskSwitch.held = false;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }, true);
+        start.addEventListener('pointerdown', (e) => {
+            if (taskSwitch.open || !taskSwitcherCanOpen()) return;
+            taskSwitcherMouseHold(e, () => { if (!openTaskSwitcher()) taskSwitch.held = false; });
+        });
+        // the pen's and the finger's hold: bindHoldRing asks for the menu when the ring is whole
+        start.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (e.isTrusted) return;
+            if (!taskSwitch.open && openTaskSwitcher()) taskSwitch.held = true;
+        });
+        // the arrow keys walk the strip while it is up, wherever the focus was left (the lift
+        // after the hold gives it to the Start button); Enter is the focused program's own click
+        window.addEventListener('keydown', (e) => {
+            if (!taskSwitch.open || openPopup || e.altKey || e.ctrlKey || e.metaKey) return;
+            const keys = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1, Home: -1e6, End: 1e6 };
+            if (!(e.key in keys)) return;
+            const el = taskSwitch.el;
+            const stops = [...el.querySelectorAll('.wm-ts-item, .wm-ts-all:not(:disabled)')];
+            if (!stops.length) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const at = stops.indexOf(document.activeElement);
+            // the first arrow lands on the selected program
+            const from = at >= 0 || Math.abs(keys[e.key]) > 1 ? Math.max(0, at) + keys[e.key] : Math.max(0, stops.findIndex((b) => b.classList.contains('is-selected')));
+            const to = stops[Math.max(0, Math.min(stops.length - 1, from))];
+            // the selection goes with the keys, as in a list view
+            if (to.classList.contains('wm-ts-item')) stops.forEach((b) => { if (b.classList.contains('wm-ts-item')) { b.classList.toggle('is-selected', b === to); b.setAttribute('aria-selected', String(b === to)); } });
+            to.focus({ preventScroll: true });
+            if (to.scrollIntoView) to.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }, true);
+        // a tap elsewhere puts the strip away (Start closes it itself; its menu stays with it)
+        document.addEventListener('click', (e) => {
+            if (!taskSwitch.open) return;
+            const t = e.target;
+            if (t && t.closest && t.closest('.wm-taskstrip, #wmShell .wm-popup, #wmShell .wm-msgbox-layer, #wmShell .wm-start, #wmShell .wm-title')) return;
+            closeTaskSwitcher();
+        }, true);
+        // the lock screen, a message box or another program coming up on its own: the strip goes
+        try {
+            const box = shell.querySelector('.wm-msgbox-layer');
+            const mo = new MutationObserver(() => {
+                if (!taskSwitch.open) return;
+                let locked = false;
+                try { locked = !!(window.wmLock && window.wmLock.isLocked); } catch (_) { locked = false; }
+                // (its own question stands over it)
+                if (locked || root.dataset.wmTakeover || root.hasAttribute('data-wm-dialog') || (box && !box.hidden && !taskSwitch.asking)) closeTaskSwitcher();
+                else taskSwitcherRender();
+            });
+            mo.observe(root, { attributes: true, attributeFilter: ['data-wm-app', 'data-wm-dialog', 'data-wm-takeover'] });
+            mo.observe(shell, { attributes: true, attributeFilter: ['class'] });
+            if (box) mo.observe(box, { attributes: true, attributeFilter: ['hidden'] });
+        } catch (_) { /* it stays until a tap */ }
+    }
+    // ================================================================ task switcher (end)
 
     // ---------------------------------------------------------------- status icons
 
@@ -7109,6 +7396,18 @@
         batteryLowKey: BATTERY_LOW_KEY,
         /** Tap-and-hold: ms from pen down to the menu, when the ring of dots is whole (bindHoldRing). */
         holdMs: HOLD_FIRST_MS + 8 * HOLD_STEP_MS + HOLD_MENU_MS,
+        /**
+         * The task switcher (hold on Start): a strip of the running programs over the soft key bar.
+         * open() -> false when it may not come up (lock screen, message box, busy); close();
+         * isOpen; tasks() -> [{ id, title, icon }] most recent first; endAll().
+         */
+        taskSwitcher: {
+            open: () => openTaskSwitcher(),
+            close: () => closeTaskSwitcher(),
+            get isOpen() { return taskSwitch.open; },
+            tasks: () => taskSwitcherTasks(),
+            endAll: () => taskSwitcherEndAll()
+        },
         /** A context menu at a point (tap-and-hold), kept on screen. */
         menuAt: (x, y, items) => {
             showPopup('context', items, null);

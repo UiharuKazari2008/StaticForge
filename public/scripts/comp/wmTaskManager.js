@@ -47,7 +47,7 @@
     let lastSample = performance.now();
 
     // the shell's own screens (Today, Programs, Settings, Help) and its pages over an app are not tasks
-    const SHELL_SCREENS = new Set(['today', 'programs', 'settings', 'help', 'pv-goto', 'pv-vindex', 'wm-op', 'wm-file']);
+    const SHELL_SCREENS = new Set(['today', 'start', 'programs', 'settings', 'help', 'pv-goto', 'pv-vindex', 'wm-op', 'wm-file']);
 
     function noteCurrent() {
         const id = root.dataset.wmApp;
@@ -218,6 +218,13 @@
     }
 
     async function endAll() {
+        // device (6.1 Task Manager > Menu > End All Tasks): "Confirm End", the warning sign, Yes as default
+        const yes = await ws.messageBox({
+            title: 'Confirm End', icon: 'warning', modal: true,
+            text: 'Do you really want to end all running applications?',
+            buttons: [{ text: 'Yes', value: true, default: true }, { text: 'No', value: false }]
+        });
+        if (!yes) return;
         await ws.busy(() => { [...running.keys()].filter((id) => id !== APP_ID).forEach(end); }, { paint: true });
         render();
         setTimeout(render, 1100);
