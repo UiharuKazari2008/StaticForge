@@ -214,7 +214,18 @@ uniform vec2 KD[3];
 uniform vec2 KA;
 uniform vec4 P1[4];
 uniform vec2 PD[4];
+uniform vec4 F[2];
 float sm(float x) { x = clamp(x, 0.0, 1.0); return x * x * (3.0 - 2.0 * x); }
+// What stands in front of her belly and must not move with it (her chest: stage.pin, ellipses
+// centre xy and radii): kicks, bumps and the swing fade to nothing there; growth carries it as one
+// piece (growInv).
+float pin(vec2 q) {
+    float w = 1.0;
+    for (int i = 0; i < 2; i++) {
+        if (F[i].z > 0.0) w *= sm((length((q - F[i].xy) / F[i].zw) - 0.8) / 0.45);
+    }
+    return w;
+}
 // g1: the disc that moves (centre xy, radius) and how much (scale - 1); f: the point it scales about
 // g2: nothing above y moves (with a ramp), and the part of the radius that moves whole (the rest
 // fades out: it has to be wider than the largest move, or the picture folds over itself)
@@ -225,7 +236,19 @@ vec2 growInv(vec2 p, vec4 g1, vec3 g2, vec2 f) {
         float r = length(q - g1.xy) / g1.z;
         float w = r >= 1.0 ? 0.0 : (r <= g2.z ? 1.0 : 1.0 - sm((r - g2.z) / (1.0 - g2.z)));
         float k = g1.w * w * sm((q.y - g2.x) / g2.y);
-        q = p - (q - f) * k;
+        vec2 d = (q - f) * k;
+        // her chest rides on the belly as one piece (Yukimi: it may move, but not be stretched): inside
+        // the pinned ellipse everything moves as the belly does where the chest rests on it
+        if (F[0].z > 0.0) {
+            float pw = sm((length((q - F[0].xy) / F[0].zw) - 0.8) / 0.45);
+            if (pw < 1.0) {
+                vec2 rest = F[0].xy + vec2(0.0, F[0].w * 0.75);
+                float rr = length(rest - g1.xy) / g1.z;
+                float rw = rr >= 1.0 ? 0.0 : (rr <= g2.z ? 1.0 : 1.0 - sm((rr - g2.z) / (1.0 - g2.z)));
+                d = mix((rest - f) * g1.w * rw * sm((rest.y - g2.x) / g2.y), d, pw);
+            }
+        }
+        q = p - d;
     }
     return q;
 }
@@ -236,7 +259,7 @@ vec2 swayInv(vec2 p) {
     vec2 q = p;
     for (int i = 0; i < 4; i++) {
         float r = length(q - W1.xy) / W1.z;
-        float w = r >= 1.0 ? 0.0 : (1.0 - sm(r)) * sm(length(q - fW) / W1.z * 1.2);
+        float w = r >= 1.0 ? 0.0 : (1.0 - sm(r)) * sm(length(q - fW) / W1.z * 1.2) * pin(q);
         q = p - (W2.xy + (q - W1.xy) * W2.zw) * w;
     }
     return q;
@@ -250,7 +273,7 @@ vec2 bumpInv(vec2 p) {
         for (int j = 0; j < 4; j++) {
             if (P1[j].w > 0.5) d += PD[j] * (1.0 - sm(length(q - P1[j].xy) / P1[j].z));
         }
-        q = p - d;
+        q = p - d * pin(q);
     }
     return q;
 }
@@ -265,7 +288,7 @@ vec2 kickInv(vec2 p, float amount) {
         for (int j = 0; j < 3; j++) {
             if (K1[j].w > 0.5) d += KD[j] * (1.0 - sm(length(q - K1[j].xy) / K1[j].z));
         }
-        q = p - d * amount;
+        q = p - d * amount * pin(q);
     }
     return q;
 }
@@ -385,6 +408,8 @@ class DirectorMascotGL {
         this.uKD = [0, 1, 2].map((i) => gl.getUniformLocation(prog, `KD[${i}]`));
         this.uP1 = [0, 1, 2, 3].map((i) => gl.getUniformLocation(prog, `P1[${i}]`));
         this.uPD = [0, 1, 2, 3].map((i) => gl.getUniformLocation(prog, `PD[${i}]`));
+        this.uF = [0, 1].map((i) => gl.getUniformLocation(prog, `F[${i}]`));
+        this.pins = [];
         gl.uniform1i(this.u.A, 0);
         gl.uniform1i(this.u.B, 1);
         gl.disable(gl.BLEND);
@@ -497,6 +522,12 @@ class DirectorMascotGL {
         this.kick();
     }
 
+    // What does not move with her belly (stage.pin): [[cx, cy, rx, ry], ...] in sheet pixels.
+    setPins(list) {
+        this.pins = Array.isArray(list) ? list.slice(0, 2) : [];
+        this.kick();
+    }
+
     // A kick of her own: the picture is pushed by d (sheet pixels) around c with radius R. It snaps out
     // (a little past its size), holds with a tremble, and sinks back. o: { rise, hold, fall } in ms.
     bump(c, d, R, o = {}) {
@@ -572,6 +603,7 @@ class DirectorMascotGL {
         gl.viewport(0, 0, this.canvas.width, this.canvas.height);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.uniform2f(this.u.size, this.size[0], this.size[1]);
+        for (let i = 0; i < 2; i++) { const f = this.pins[i]; if (f) gl.uniform4f(this.uF[i], f[0], f[1], f[2], f[3]); else gl.uniform4f(this.uF[i], 0, 0, 0, 1); }
         gl.uniform1f(this.u.t, t);
         grow(this.A, this.u.gA1, this.u.gA2, this.u.fA);
         grow(b, this.u.gB1, this.u.gB2, this.u.fB);
@@ -1584,7 +1616,7 @@ class DirectorMascot {
             this._gainShown = 1;
             if (this.glOn()) this.glBody.setGain(null, 1, 0);
         }
-        this._growthArmed = false;   // the next chat's stage is set quietly from its own cards
+        this._growthArmedUntil = 0; this._growthSeen = undefined;   // the next chat's stage is set quietly from its own cards
         this._bubble = { think: '', say: '' };
         this._rowSeen = -1;
         this._thinking = null;
@@ -2074,10 +2106,13 @@ class DirectorMascot {
 
     onTurnEnd(ok) {
         // The settled messages (onMessages) carry the new report card; the stage moves then.
-        if (ok !== false) this._growthArmed = true;
+        if (ok !== false) this._growthArmedUntil = Date.now() + 30000;
         if (ok !== false) this.showFor('celebrate', 3);
         this.setWorking(false);
         this.turnDoneAt = Date.now();
+        // the turn's messages may have come while she was still working (onMessages skipped them)
+        this.later(() => { if (!this.working && Array.isArray(this._messages)) this.onMessages(this._messages); }, 700);
+        this.later(() => { if (!this.working && Array.isArray(this._messages)) this.onMessages(this._messages); }, 4000);
         this.cue(ok === false ? { expression: 'frustrated', action: 'slump', holdMs: 4000 } : { expression: 'happy', action: 'bounce', holdMs: 3500 });
     }
 
@@ -2108,8 +2143,11 @@ class DirectorMascot {
         this.growthPoints = total;
         const target = directorMascotStageFor(m, total);
         const step = target ? directorMascotStepFor(m, target, total) : '';
-        const armed = this._growthArmed === true;
-        this._growthArmed = false;
+        // armed by a finished turn until its messages have arrived (they can come before or after the
+        // turn's end: a flag that the first call cleared left her unchanged until the app was reopened)
+        const armed = Date.now() < (this._growthArmedUntil || 0) && this._growthSeen !== undefined && total !== this._growthSeen;
+        if (armed) this._growthArmedUntil = 0;
+        this._growthSeen = total;
         if (this.glOn() && target === st.stage && !st.transition) {
             // the shader body: every point shows. After a completed turn she swells to it (once the
             // celebrate pose is over); opening a chat sets it at once.
@@ -2380,6 +2418,7 @@ class DirectorMascot {
                 const def = this.stageDef();
                 const gain = this.growGain();
                 this._gainShown = gain;
+                this.glBody.setPins(def && def.pin);
                 this.glBody.show(src, { ms: from ? ms : 0, centre: from ? this.morphCentre(from, id) : null, kick: from ? this.kickBetween(from, id) : null, cfg: (def && def.grow) || null, gain });
                 [this.el.body, this.el.bodyPrev].forEach((img) => { if (img.hasAttribute('src')) img.removeAttribute('src'); });
                 if (this._camKey !== JSON.stringify(this.camera())) {

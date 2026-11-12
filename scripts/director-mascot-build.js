@@ -354,6 +354,14 @@ async function buildGrow(only) {
  * disc, and for every other pose of the stage the middle of what differs from the stage's body
  * (`morphs["body|pose"]`): a pose change grows out of / shrinks into that point.
  */
+// Her chest per stage (sheet pixels, placed by eye over the art): the shader body pins it, so growth,
+// kicks and the belly's swing pass under it instead of dragging it (Yukimi 2026-11-12).
+const PIN = {
+    xi: { base: [[897, 520, 270, 125]], bigger: [[897, 520, 270, 125]] },
+    kabuki: { base: [[1605, 492, 270, 105]], bigger: [[1605, 492, 270, 105]], bigger2: [[1545, 440, 480, 160]] },
+    wren: { base: [[1177, 627, 270, 120]], bigger: [[1177, 627, 270, 120]], stuffed: [[1177, 627, 270, 120]] }
+};
+
 async function buildMeta() {
     for (const persona of Object.keys(GROW)) {
         const m = readManifest(persona);
@@ -363,6 +371,8 @@ async function buildMeta() {
             if (!stage) continue;
             stage.grow = { a: cfg.a, R: cfg.R, yTop: cfg.yTop, ramp: cfg.ramp, max: cfg.up[1], min: cfg.down ? cfg.down[1] : 1 };
             stage.belly = BELLY[persona][stageId];
+            // what stands in front of her belly and must not move with it: her chest, [cx, cy, rx, ry]
+            if (PIN[persona] && PIN[persona][stageId]) stage.pin = PIN[persona][stageId];
             if (ARRIVE[persona][stageId]) stage.arrive = ARRIVE[persona][stageId];
             const small = async (id) => {
                 const b = m.bodies[id];

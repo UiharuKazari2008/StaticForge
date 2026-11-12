@@ -3332,3 +3332,9 @@ html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessio
     scrollbar-width: thin;
     scrollbar-color: #7fd0ff rgba(127, 208, 255, 0.08);
 }
+
+/* list items in Yozora's replies were drawn in the page's dim list colour (unreadable on her night face) */
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message-content :is(li, ul, ol, p, li::marker) {
+    color: var(--sh-text);
+    opacity: 1;
+}
