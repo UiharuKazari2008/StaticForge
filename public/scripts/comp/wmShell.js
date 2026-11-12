@@ -316,6 +316,45 @@
                     ctx.drawImage(img, 0, 0);
                     const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
                     const px = data.data;
+                    if (ART[i].startsWith('tabcurve-')) {
+                        // a tab's edge curve carries corners in the tab face colour: they must be
+                        // the very colour the tabs are filled with (--wm65-face), or the corners
+                        // show as wedges of another shade. The art's own face colour (its most
+                        // frequent coloured pixel) is mapped onto it, channel by channel, white
+                        // and black staying where they are
+                        const count = new Map();
+                        for (let p = 0; p < px.length; p += 4) {
+                            if (px[p + 3] < 255) continue;
+                            const mx = Math.max(px[p], px[p + 1], px[p + 2]);
+                            const mn = Math.min(px[p], px[p + 1], px[p + 2]);
+                            if (mx - mn < 8) continue;
+                            const key = (px[p] << 16) | (px[p + 1] << 8) | px[p + 2];
+                            count.set(key, (count.get(key) || 0) + 1);
+                        }
+                        let from = null;
+                        let most = 0;
+                        count.forEach((n, key) => { if (n > most) { most = n; from = [key >> 16, (key >> 8) & 255, key & 255]; } });
+                        const probe = document.createElement('i');
+                        probe.style.cssText = 'position:absolute;visibility:hidden;color:var(--wm65-face)';
+                        (shell || document.body).appendChild(probe);
+                        const to = (getComputedStyle(probe).color.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+                        probe.remove();
+                        if (from && to.length === 3) {
+                            const map = (v, a, b) => (v <= a ? (a ? v * b / a : b) : b + (v - a) * (255 - b) / ((255 - a) || 1));
+                            for (let p = 0; p < px.length; p += 4) {
+                                if (!px[p + 3]) continue;
+                                const mx = Math.max(px[p], px[p + 1], px[p + 2]);
+                                const mn = Math.min(px[p], px[p + 1], px[p + 2]);
+                                if (mx - mn < 3) continue; // white, black and the shadow's greys
+                                px[p] = Math.round(map(px[p], from[0], to[0]));
+                                px[p + 1] = Math.round(map(px[p + 1], from[1], to[1]));
+                                px[p + 2] = Math.round(map(px[p + 2], from[2], to[2]));
+                            }
+                        }
+                        ctx.putImageData(data, 0, 0);
+                        vars[`--wm65-art-${ART[i]}`] = `url("${canvas.toDataURL('image/png')}")`;
+                        return;
+                    }
                     for (let p = 0; p < px.length; p += 4) {
                         if (!px[p + 3]) continue;
                         const c = rgbToHsl({ r: px[p], g: px[p + 1], b: px[p + 2] });
@@ -6194,6 +6233,35 @@
         } catch (_) { return null; }
     }
 
+    /**
+     * What the Properties page shows of the picture on screen (wmPictureProperties.open): its file
+     * name, address and size, its date, and on close the picture again (opening the page closes
+     * the view, as any app opened over it does).
+     */
+    function viewerPictureFacts() {
+        try {
+            const p = (typeof lightbox !== 'undefined' && lightbox && lightbox.pswp) || window.pswp;
+            const d = p && p.currSlide && p.currSlide.data;
+            if (!d) return null;
+            const rec = d.data && typeof d.data === 'object' ? d.data : {};
+            const file = rec.upscaled || rec.original || rec.filename || d.filename || '';
+            const src = typeof d.src === 'string' ? d.src : '';
+            const inline = /^(data|blob):/i.test(src);
+            const name = file || rec.title || (src && !inline ? decodeURIComponent(src.split('/').pop().split('?')[0]) : '') || 'Picture';
+            const t = Number(rec.mtime) || Number((/^(\d{12,13})_/.exec(file) || [])[1]) || 0;
+            const meta = rec.metadata || {};
+            return {
+                name,
+                src: src || (file ? `/images/${encodeURIComponent(file)}` : ''),
+                width: Number(d.width) || Number(rec.width) || Number(meta.actual_width) || 0,
+                height: Number(d.height) || Number(rec.height) || Number(meta.actual_height) || 0,
+                size: Number(rec.size || rec.file_size || meta.file_size) || null,
+                created: t,
+                after: () => { viewPicture({ data: file ? { filename: file } : {}, src, title: rec.title || (file ? '' : name) }); }
+            };
+        } catch (_) { return null; }
+    }
+
     function viewerSave() {
         if (viewerButton('Download image')) { viewerPress('Download image'); return; }
         const f = viewerSlideFile();
@@ -6245,6 +6313,12 @@
                             { label: 'DreamStudio', disabled: !canStudio, action: () => { window.openManualModalWithContent({ type: 'image', image: item }); } },
                             { label: 'Director', disabled: !canDirector, action: () => window.askWrenAboutImage(editPic) }
                         ] });
+                    }
+                    // the device's Menu: ... Edit | Properties | Options...: Pictures & Videos'
+                    // Properties page (wmFileExplorer.js); ok / Cancel bring the picture back
+                    const facts = viewerPictureFacts();
+                    if (facts && window.wmPictureProperties) {
+                        items.push('-', { label: 'Properties', action: () => window.wmPictureProperties.open(facts) });
                     }
                     items.push('-');
                     let sep = false;

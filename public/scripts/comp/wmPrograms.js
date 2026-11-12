@@ -286,6 +286,14 @@
         let spin = strip.querySelector('.wm-tabs-spin');
         tabs.forEach((t) => { t.hidden = false; });
         if (spin) spin.hidden = true;
+        // 6.5: a tab's width follows its label and is seldom a whole number of device pixels; its
+        // blended edge column showed as a light hairline against the black strip and beside the
+        // edge curves. Each tab is widened to the next whole device pixel
+        if (v65) {
+            const dpr = window.devicePixelRatio || 1;
+            tabs.forEach((t) => { t.style.width = ''; });
+            tabs.map((t) => t.getBoundingClientRect().width).forEach((w, i) => { tabs[i].style.width = `${Math.ceil(w * dpr - 0.01) / dpr}px`; });
+        }
         const widths = tabs.map((t) => t.getBoundingClientRect().width);
         const total = widths.reduce((n, w) => n + w, 0);
         const width = strip.clientWidth;

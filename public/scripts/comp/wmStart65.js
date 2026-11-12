@@ -132,8 +132,16 @@
     // is Text and E-mail, the Dreamscape folder stands where Office Mobile does); the Director and
     // Studio, pinned at the top of the 6.1 Start menu, follow Settings. Everything else comes
     // after, by name, as the device's programs without a rank do.
-    const RANK = ['a:today', 'a:messaging', 'a:contacts', 'a:browser', 'a:calendar', 'a:settings', 'a:director', 'a:studio',
-        'a:gallery', 'a:windows-media', 'a:calculator', 'folder:games', 'a:notes', 'a:tasks', 'folder:dreamscape', 'a:fileexplorer',
+    // Yukimi (Nov 12): the screen must feel like the device's, with Settings where the hand expects
+    // it. So the device's programs keep the device's CELLS, and Melaton's own take the cells of the
+    // device programs it has no equal of: the Director and Studio stand where Phone and Text do
+    // (cells 2 and 3), Messaging is E-mail, so Contacts, Internet Explorer, Calendar and Settings
+    // (cell 8: second in the third row of three) fall where the device has them; Weather has Getting
+    // Started's cell before Pictures and Media; PayPass, Remote Desktop and XLink have the cells of
+    // Marketplace, Messenger and My Phone before Calculator; the Dreamscape folder has Office Mobile's.
+    const RANK = ['a:today', 'a:director', 'a:studio', 'a:messaging', 'a:contacts', 'a:browser', 'a:calendar', 'a:settings',
+        'a:weather', 'a:gallery', 'a:windows-media', 'a:paypass-mobile', 'a:remote-desktop-mobile', 'a:xlink-mobile',
+        'a:calculator', 'folder:games', 'a:notes', 'a:tasks', 'folder:dreamscape', 'a:fileexplorer',
         'a:activesync', 'a:taskmgr', 'a:search', 'a:help'];
 
     // ---------------------------------------------------------------- items
