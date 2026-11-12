@@ -322,6 +322,12 @@
      * routes it into the phone app), after setPersona when the item shows another persona.
      */
     async function openDirector(m) {
+        // the phone Director's own open: her persona once she can be chosen, then THAT session's
+        // messages (openSessionInWindow left it on her front page, or on Yumiya right after a load, #763)
+        const app = window.wmDirectorApp;
+        if (m && m.id && app && typeof app.openSession === 'function') {
+            try { if (await app.openSession(m.persona, m.id)) return; } catch (err) { console.warn('[wmTodayWidgets] Director', err); }
+        }
         const inst = window.directorInstance;
         if (!m || !inst || typeof inst.openSessionInWindow !== 'function') { open('director'); return; }
         try {
