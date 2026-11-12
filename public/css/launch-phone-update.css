@@ -67,21 +67,76 @@ html.phone-launch .launch-content::before {
     padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* ---- the light band: the phone drawing at the right, the maker's wordmark at the left ---- */
+/* ---- the light band: the phone drawing at the right, the maker's wordmark at the left, and
+ * ripples on water (Yukimi: like a stone dropped in a lake): still rings fading out from the drop,
+ * and one ring at a time spreading from it. Transform / opacity only, so it costs no main-thread
+ * frames while the install runs. ---- */
 .pu-hero {
+    --pu-drop-x: 50%;
+    --pu-drop-y: 60%;
     position: relative;
     flex: 0 0 auto;
-    height: calc(180 / 844 * 100vh);
-    min-height: 120px;
+    height: calc(150 / 844 * 100vh);
+    min-height: 112px;
     padding-top: env(safe-area-inset-top);
-    background: linear-gradient(to bottom, var(--pu-blue-hi), var(--pu-blue));
+    background:
+        radial-gradient(ellipse 60% 70% at var(--pu-drop-x) var(--pu-drop-y), rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 70%),
+        linear-gradient(to bottom, var(--pu-blue-hi), var(--pu-blue));
     overflow: hidden;
+    isolation: isolate;
+}
+
+/* the still rings: flattened circles (the water seen at an angle), brightest near the drop */
+.pu-hero::before {
+    content: '';
+    position: absolute;
+    inset: -40% -20%;
+    z-index: -1;
+    background: repeating-radial-gradient(ellipse 100% 42% at var(--pu-drop-x) var(--pu-drop-y),
+        rgba(255, 255, 255, 0) 0 18px,
+        rgba(255, 255, 255, 0.28) 20px,
+        rgba(255, 255, 255, 0.06) 22px,
+        rgba(9, 92, 170, 0.14) 24px,
+        rgba(255, 255, 255, 0) 27px 40px);
+    -webkit-mask-image: radial-gradient(ellipse 55% 40% at var(--pu-drop-x) var(--pu-drop-y), #000 10%, transparent 75%);
+    mask-image: radial-gradient(ellipse 55% 40% at var(--pu-drop-x) var(--pu-drop-y), #000 10%, transparent 75%);
+}
+
+/* the spreading ring: grows from the drop and fades, once every 3.6 s */
+.pu-hero::after {
+    content: '';
+    position: absolute;
+    left: var(--pu-drop-x);
+    top: var(--pu-drop-y);
+    width: 320px;
+    height: 134px;
+    margin: -67px 0 0 -160px;
+    z-index: -1;
+    border-radius: 50%;
+    box-shadow:
+        0 0 0 2px rgba(255, 255, 255, 0.45),
+        0 0 0 9px rgba(255, 255, 255, 0.08),
+        inset 0 0 0 3px rgba(9, 92, 170, 0.18);
+    transform: scale(0.05);
+    opacity: 0;
+    animation: pu-ripple 3.6s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+    will-change: transform, opacity;
+}
+
+@keyframes pu-ripple {
+    0% { transform: scale(0.05); opacity: 0; }
+    8% { opacity: 1; }
+    100% { transform: scale(1.6); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pu-hero::after { animation: none; }
 }
 
 .pu-wordmark {
     position: absolute;
-    left: 46px;
-    bottom: 18px;
+    left: 24px;
+    bottom: 14px;
     width: 96px;
     height: 24px;
     background: url('/static_images/xyridian/xyridian-wordmark-white-512.png') left center / contain no-repeat;
@@ -90,10 +145,10 @@ html.phone-launch .launch-content::before {
 
 .pu-device {
     position: absolute;
-    right: 24px;
-    bottom: 18px;
-    width: 62px;
-    height: 122px;
+    right: 20px;
+    bottom: 12px;
+    width: 52px;
+    height: 102px;
 }
 
 /* ---- the darker band with the title ---- */
@@ -101,12 +156,12 @@ html.phone-launch .launch-content::before {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    height: calc(80 / 844 * 100vh);
-    min-height: 56px;
-    padding: 0 46px;
+    height: calc(60 / 844 * 100vh);
+    min-height: 50px;
+    padding: 0 24px;
     background: var(--pu-blue-deep);
     color: #fff;
-    font-size: 27px;
+    font-size: 24px;
     font-weight: 400;
     letter-spacing: 0.005em;
 }
@@ -117,7 +172,7 @@ html.phone-launch .launch-content::before {
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-    padding: 24px 46px 0;
+    padding: 16px 24px 0;
 }
 
 .pu-status {
@@ -126,7 +181,7 @@ html.phone-launch .launch-content::before {
 }
 
 .pu-time {
-    margin-top: 18px;
+    margin-top: 8px;
     min-height: 1.2em;
     font-size: 12px;
     color: var(--pu-grey);
@@ -136,7 +191,7 @@ html.phone-launch .launch-content::before {
 .pu-bar {
     position: relative;
     height: 4px;
-    margin-top: 12px;
+    margin-top: 6px;
     background: #6f6f6f;
 }
 
@@ -153,7 +208,7 @@ html.phone-launch .launch-content::before {
 .pu-figures {
     display: flex;
     justify-content: space-between;
-    margin-top: 16px;
+    margin-top: 8px;
     font-size: 12px;
     color: var(--pu-ink);
 }
@@ -180,14 +235,14 @@ html.phone-launch .launch-content::before {
 /* ---- the button at the foot (Retry after a failure) ---- */
 .pu-foot {
     flex: 0 0 auto;
-    padding: 16px 19px 22px;
-    min-height: 54px;
+    padding: 12px 16px 16px;
+    min-height: 48px;
 }
 
 .pu-button {
     display: block;
     width: 100%;
-    height: 54px;
+    height: 48px;
     border: 1px solid #c9c9c9;
     border-radius: 2px;
     background: #fff;
