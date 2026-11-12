@@ -216,15 +216,27 @@ uniform vec4 P1[4];
 uniform vec2 PD[4];
 uniform vec4 F[3];
 uniform vec4 FR[3];
+uniform sampler2D M;
+uniform float useM;
 float sm(float x) { x = clamp(x, 0.0, 1.0); return x * x * (3.0 - 2.0 * x); }
 // What stands in front of her belly and must keep its shape (stage.pin: her chest, an arm): ellipses
 // F[i] (centre xy, radii) with FR[i] (xy where it rests on the belly, zw its pivot, e.g. the shoulder).
 // Kicks, bumps and the swing fade to nothing there; growth moves each as one piece (growInv).
-float pinAt(vec2 q, vec4 e) {
+// 1 outside piece j, 0 inside it. With a part mask (M: red = her chest, green = an arm or hand, cut by
+// Segment Anything, scripts/director-mascot-build.js parts) the piece is its real outline; without
+// one, the ellipse.
+float pinE(vec2 q, vec4 e) {
     return e.z > 0.0 ? sm((length((q - e.xy) / e.zw) - 0.88) / 0.24) : 1.0;
 }
+float pinOf(vec2 q, int j) {
+    // with a part mask the pieces are drawn as layers over the belly (main): nothing fades under them
+    if (useM > 0.5) return 1.0;
+    if (j == 0) return pinE(q, F[0]);
+    if (j == 1) return pinE(q, F[1]);
+    return pinE(q, F[2]);
+}
 float pin(vec2 q) {
-    return pinAt(q, F[0]) * pinAt(q, F[1]) * pinAt(q, F[2]);
+    return pinOf(q, 0) * pinOf(q, 1) * pinOf(q, 2);
 }
 float growK(vec2 x, vec4 g1, vec3 g2) {
     float r = length(x - g1.xy) / g1.z;
@@ -246,8 +258,8 @@ vec2 growInv(vec2 p, vec4 g1, vec3 g2, vec2 f) {
         // where the belly takes its resting point; one with a pivot swings about it (an arm from its
         // shoulder), so the far end follows the belly and the near end stays on her
         for (int j = 0; j < 3; j++) {
-            if (F[j].z <= 0.0) continue;
-            float pw = pinAt(q, F[j]);
+            if (F[j].z <= 0.0 || useM > 0.5) continue;
+            float pw = pinOf(q, j);
             if (pw >= 1.0) continue;
             vec2 rest = FR[j].xy;
             vec2 dr = (rest - f) * growK(rest, g1, g2);
@@ -353,6 +365,28 @@ void main() {
             c = mix(c, mix(a, b, t), diff);
         }
     }
+    // Her pieces as layers (part mask): each is drawn whole, on top, moved to where the belly takes its
+    // resting point (an arm swings about its pivot). Cut on its real outline, so nothing is stretched,
+    // crushed or blended; the belly underneath grows, kicks and swings freely.
+    if (useM > 0.5) {
+        vec2 p0 = v * size;
+        for (int j = 0; j < 2; j++) {
+            if (F[j].z <= 0.0) continue;
+            vec2 rest = FR[j].xy;
+            vec2 dr = (rest - fB) * growK(rest, gB1, gB2);
+            vec2 arm = rest - FR[j].zw;
+            float len = dot(arm, arm);
+            vec2 qj = p0 - dr;
+            if (len > 1.0) {
+                for (int n = 0; n < 3; n++) qj = p0 - dr * clamp(dot(qj - FR[j].zw, arm) / len, 0.0, 1.25);
+            }
+            vec2 u = qj / size;
+            if (u.x < 0.0 || u.y < 0.0 || u.x > 1.0 || u.y > 1.0) continue;
+            vec4 mm = texture2D(M, u);
+            float a = sm((j == 0 ? mm.r : mm.g) * 2.0 - 0.5);
+            if (a > 0.0) c = mix(c, tx(B, qj), a);
+        }
+    }
     if (lit > 0.0) {
         float h = lumpH(q);
         float h2 = lumpH(q + vec2(-7.0, -9.0));
@@ -410,7 +444,7 @@ class DirectorMascotGL {
         gl.enableVertexAttribArray(at);
         gl.vertexAttribPointer(at, 2, gl.FLOAT, false, 0, 0);
         this.u = {};
-        ['A', 'B', 'size', 't', 'gA1', 'gA2', 'fA', 'gB1', 'gB2', 'fB', 'mc', 'ms', 'lit', 'W1', 'W2', 'fW', 'KA'].forEach((name) => { this.u[name] = gl.getUniformLocation(prog, name); });
+        ['A', 'B', 'size', 't', 'gA1', 'gA2', 'fA', 'gB1', 'gB2', 'fB', 'mc', 'ms', 'lit', 'W1', 'W2', 'fW', 'KA', 'M', 'useM'].forEach((name) => { this.u[name] = gl.getUniformLocation(prog, name); });
         this.uL = [0, 1, 2, 3].map((i) => gl.getUniformLocation(prog, `L[${i}]`));
         this.uK1 = [0, 1, 2].map((i) => gl.getUniformLocation(prog, `K1[${i}]`));
         this.uKD = [0, 1, 2].map((i) => gl.getUniformLocation(prog, `KD[${i}]`));
@@ -421,6 +455,8 @@ class DirectorMascotGL {
         this.pins = [];
         gl.uniform1i(this.u.A, 0);
         gl.uniform1i(this.u.B, 1);
+        gl.uniform1i(this.u.M, 2);
+        this.mask = null;                // { url, tex }: the part mask of the sheet she shows
         gl.disable(gl.BLEND);
         gl.clearColor(0, 0, 0, 0);
         this.ok = true;
@@ -462,7 +498,7 @@ class DirectorMascotGL {
 
     // Sheets are 26 MB each on the GPU: keep the ones on show and the two most recent others.
     trim() {
-        const keep = new Set([this.A && this.A.url, this.B && this.B.url, this.want].filter(Boolean));
+        const keep = new Set([this.A && this.A.url, this.B && this.B.url, this.want, this.mask && this.mask.url].filter(Boolean));
         const rest = [...this.cache.entries()].filter(([url, e]) => !keep.has(url) && e.tex).sort((a, b) => b[1].used - a[1].used);
         rest.slice(2).forEach(([url, e]) => { this.gl.deleteTexture(e.tex); this.cache.delete(url); });
     }
@@ -531,9 +567,19 @@ class DirectorMascotGL {
         this.kick();
     }
 
-    // What does not move with her belly (stage.pin): [[cx, cy, rx, ry], ...] in sheet pixels.
-    setPins(list) {
+    // What keeps its shape while her belly moves (stage.pin): [[cx, cy, rx, ry, restX, restY, pivotX,
+    // pivotY], ...] in sheet pixels, and the sheet's part mask (url or null): with it the pieces are
+    // their real outlines, without it the ellipses.
+    setPins(list, maskUrl) {
         this.pins = Array.isArray(list) ? list.slice(0, 3) : [];
+        const want = maskUrl || '';
+        if ((this.mask ? this.mask.url : '') !== want) {
+            this.mask = want ? { url: want, tex: null } : null;
+            if (want) {
+                const holder = this.mask;
+                this.load(want).then((tex) => { if (this.mask === holder && tex) { holder.tex = tex; this.kick(); } }).catch(() => {});
+            }
+        }
         this.kick();
     }
 
@@ -745,6 +791,10 @@ class DirectorMascotGL {
         } else {
             gl.uniform4f(this.u.W1, 0, 0, 1, 0);
         }
+        const maskTex = this.mask && this.mask.tex;
+        gl.uniform1f(this.u.useM, maskTex ? 1 : 0);
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, maskTex || b.tex);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, (this.A || b).tex);
         gl.activeTexture(gl.TEXTURE1);
@@ -2434,7 +2484,7 @@ class DirectorMascot {
                 const def = this.stageDef();
                 const gain = this.growGain();
                 this._gainShown = gain;
-                this.glBody.setPins(def && def.pin);
+                this.glBody.setPins(def && def.pin, body.parts ? this.manifest.base + body.parts : null);
                 this.glBody.show(src, { ms: from ? ms : 0, centre: from ? this.morphCentre(from, id) : null, kick: from ? this.kickBetween(from, id) : null, cfg: (def && def.grow) || null, gain });
                 [this.el.body, this.el.bodyPrev].forEach((img) => { if (img.hasAttribute('src')) img.removeAttribute('src'); });
                 if (this._camKey !== JSON.stringify(this.camera())) {
@@ -2725,15 +2775,17 @@ class DirectorMascot {
         const dir = [Math.cos(ang), Math.sin(ang)];
         // pronounced: a tenth of the belly's radius and more, half as much again per kick of a run
         // (the reach widens with it, so the picture never folds over itself)
-        // sized for a belly of up to 420 px: on the huge ones the same kick is a smaller part of her
-        // (Yukimi: the intense ones deformed Yumiya far too much), and a run grows by less there
-        const rr = Math.min(r, 420);
-        const run = r > 420 ? 1 + (scale - 1) * 0.55 : scale;
-        const size = rr * (0.1 + Math.random() * 0.04) * run;
-        this.glBody.bump([cx + dir[0] * r, cy + dir[1] * r], [dir[0] * size, dir[1] * size], rr * (0.3 + 0.09 * run), { hold: 260 + Math.random() * 420 });
+        // No larger than the art's own kick (Yukimi 2026-11-12: the big ones were overdone): the drawn
+        // kick poses push her outline by about 40 px (manifest.kicks), and that is the most a bump may
+        // be, for every persona and however long the run. A run only brings the later ones up to it.
+        let drawnMax = 0;
+        Object.values(this.manifest.kicks || {}).forEach((list) => (Array.isArray(list) ? list : []).forEach((push) => { drawnMax = Math.max(drawnMax, Math.hypot(push.d[0], push.d[1])); }));
+        if (!drawnMax) drawnMax = 40;
+        const size = Math.min(drawnMax, drawnMax * (0.6 + Math.random() * 0.15) * Math.min(scale, 1.45));
+        this.glBody.bump([cx + dir[0] * r, cy + dir[1] * r], [dir[0] * size, dir[1] * size], Math.max(110, size * 3.4), { hold: 260 + Math.random() * 420 });
         const order = directorMascotGrowth(this.manifest).order;
         const at = order.indexOf(st.stage);
-        if (at >= 1 && order.length > 1) this.glBody.wobble(def.belly, dir[0] * 0.45 * scale, dir[1] * 0.45 * scale, at / (order.length - 1));
+        if (at >= 1 && order.length > 1) this.glBody.wobble(def.belly, dir[0] * 0.35, dir[1] * 0.35, at / (order.length - 1));
     }
 
     // What her belly does once a print is down (#742): the stage's own after-print body where the set

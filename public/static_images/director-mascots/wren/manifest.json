@@ -32,7 +32,8 @@
    "belly": [
     1340,
     1030
-   ]
+   ],
+   "parts": "parts-base.png"
   },
   "bigger": {
    "body": "body-bigger.webp",
@@ -41,7 +42,8 @@
    "belly": [
     1600,
     1185
-   ]
+   ],
+   "parts": "parts-bigger.png"
   },
   "bigger_vore": {
    "body": "body-bigger_vore.webp",
@@ -50,7 +52,8 @@
    "belly": [
     1600,
     1185
-   ]
+   ],
+   "parts": "parts-bigger_vore.png"
   },
   "mask": {
    "body": "body-mask.webp",
@@ -59,7 +62,8 @@
    "belly": [
     1340,
     1030
-   ]
+   ],
+   "parts": "parts-mask.png"
   },
   "mask_bigger": {
    "body": "body-mask_bigger.webp",
@@ -68,7 +72,8 @@
    "belly": [
     1600,
     1185
-   ]
+   ],
+   "parts": "parts-mask_bigger.png"
   },
   "mask_wings": {
    "body": "body-mask_wings.webp",
@@ -77,7 +82,8 @@
    "belly": [
     1340,
     1030
-   ]
+   ],
+   "parts": "parts-mask_wings.png"
   },
   "mask_wings_bigger": {
    "body": "body-mask_wings_bigger.webp",
@@ -86,7 +92,8 @@
    "belly": [
     1600,
     1185
-   ]
+   ],
+   "parts": "parts-mask_wings_bigger.png"
   },
   "bigger_vore_mask": {
    "body": "body-bigger_vore_mask.webp",
@@ -95,7 +102,8 @@
    "belly": [
     1600,
     1185
-   ]
+   ],
+   "parts": "parts-bigger_vore_mask.png"
   },
   "bigger_vore_wings": {
    "body": "body-bigger_vore_wings.webp",
@@ -104,7 +112,8 @@
    "belly": [
     1600,
     1185
-   ]
+   ],
+   "parts": "parts-bigger_vore_wings.png"
   },
   "base_g1": {
    "body": "body-base_g1.webp",

@@ -31,7 +31,8 @@
    "belly": [
     1385,
     1066
-   ]
+   ],
+   "parts": "parts-base.png"
   },
   "bigger": {
    "body": "body-bigger.webp",
@@ -46,7 +47,8 @@
    "belly": [
     1317,
     1113
-   ]
+   ],
+   "parts": "parts-bigger.png"
   },
   "bigger_kicky": {
    "body": "body-bigger_kicky.webp",
@@ -61,7 +63,8 @@
    "belly": [
     1317,
     1113
-   ]
+   ],
+   "parts": "parts-bigger_kicky.png"
   },
   "bigger_rub": {
    "body": "body-bigger_rub.webp",
@@ -76,7 +79,8 @@
    "belly": [
     1317,
     1113
-   ]
+   ],
+   "parts": "parts-bigger_rub.png"
   },
   "bigger_rub_kicky": {
    "body": "body-bigger_rub_kicky.webp",
@@ -91,7 +95,8 @@
    "belly": [
     1317,
     1113
-   ]
+   ],
+   "parts": "parts-bigger_rub_kicky.png"
   },
   "bigger2": {
    "body": "body-bigger2.webp",
@@ -105,7 +110,8 @@
    "belly": [
     1057,
     1356
-   ]
+   ],
+   "parts": "parts-bigger2.png"
   },
   "base_g1": {
    "body": "body-base_g1.webp",

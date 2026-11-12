@@ -559,6 +559,94 @@ async function preview(dir) {
     }
 }
 
+/**
+ * Part masks (#766): what must keep its shape while her belly grows (her chest, an arm) is cut out
+ * precisely by Segment Anything, not guessed with ellipses.
+ *   sam-jobs <dir>   writes each pose sheet as <dir>/<persona>-<bodyId>.png and <dir>/jobs.json (point
+ *                    prompts from the PIN table: inside the piece, and not on the belly / other pieces)
+ *   (scripts/director-mascot-sam.py runs the model over <dir>, on any machine with torch; it writes
+ *   <persona>-<bodyId>-<part>.png masks)
+ *   parts <dir>      packs the masks as parts-<bodyId>.png beside the sheets (half size; red = chest,
+ *                    green = arm or hand, blue = belly; soft edges) and names it in manifest.bodies
+ * A pose whose arm is somewhere else (a gesture) keeps only the pieces that match the stage's own.
+ */
+const PARTS_OFF = ['xi'];
+const partName = (pin, j) => (j === 0 ? 'chest' : (pin.length > 7 ? 'arm' : 'hand'));
+
+async function buildSamJobs(dir) {
+    fs.mkdirSync(dir, { recursive: true });
+    const jobs = [];
+    for (const persona of Object.keys(PIN)) {
+        const m = readManifest(persona);
+        for (const [stageId, stage] of Object.entries(m.stages)) {
+            const pins = PIN[persona][stageId];
+            if (!pins || !Array.isArray(stage.belly)) continue;
+            for (const bodyId of stageBodies(stage)) {
+                if (!m.bodies[bodyId] || jobs.some((job) => job.persona === persona && job.bodyId === bodyId)) continue;
+                const file = `${persona}-${bodyId}.png`;
+                await sharp(path.join(OUT, persona, m.bodies[bodyId].body)).flatten({ background: '#808890' }).png().toFile(path.join(dir, file));
+                const parts = pins.map((q, j) => {
+                    const pos = [];
+                    if (q.length > 7) { for (const t of [0.25, 0.5, 0.75, 0.95]) pos.push([q[6] + (q[4] - q[6]) * t, q[7] + (q[5] - q[7]) * t]); }
+                    else pos.push([q[0], q[1]], [q[0] - q[2] * 0.5, q[1]], [q[0] + q[2] * 0.5, q[1]]);
+                    return { name: partName(q, j), small: j > 0, pos, neg: [[stage.belly[0], stage.belly[1]]].concat(pins.filter((_, k) => k !== j).map((o) => [o[0], o[1]])) };
+                });
+                parts.push({ name: 'belly', small: false, pos: [[stage.belly[0], stage.belly[1]], [stage.belly[0] + stage.belly[2] * 0.4, stage.belly[1]], [stage.belly[0], stage.belly[1] + stage.belly[2] * 0.4]], neg: pins.map((o) => [o[0], o[1]]) });
+                jobs.push({ persona, stageId, bodyId, base: bodyId === stage.body, file, parts });
+            }
+        }
+    }
+    fs.writeFileSync(path.join(dir, 'jobs.json'), JSON.stringify(jobs));
+    console.log(`${jobs.length} sheets in ${dir}`);
+}
+
+async function buildParts(dir) {
+    const jobs = JSON.parse(fs.readFileSync(path.join(dir, 'jobs.json'), 'utf8'));
+    for (const persona of Object.keys(PIN)) {
+        const m = readManifest(persona);
+        const W = Math.round(m.size[0] / 2); const H = Math.round(m.size[1] / 2);
+        const mask = async (job, name) => {
+            const file = path.join(dir, job.file.replace('.png', `-${name}.png`));
+            if (!fs.existsSync(file)) return null;
+            return sharp(file).resize(W, H, { fit: 'fill' }).greyscale().raw().toBuffer();
+        };
+        const count = (buf) => { let n = 0; for (let i = 0; i < buf.length; i++) if (buf[i] > 127) n += 1; return n; };
+        const overlap = (a, b) => { let both = 0, any = 0; for (let i = 0; i < a.length; i++) { const x = a[i] > 127, y = b[i] > 127; if (x && y) both += 1; if (x || y) any += 1; } return any ? both / any : 0; };
+        const mine = jobs.filter((job) => job.persona === persona);
+        for (const job of mine) {
+            const base = mine.find((other) => other.stageId === job.stageId && other.base) || job;
+            const names = job.parts.map((part) => part.name);
+            const channel = async (name) => {
+                if (!name) return null;
+                const own = await mask(job, name);
+                if (!own) return null;
+                // the opaque sheet is about a third of the frame: a "piece" larger than a fifth of it is the figure
+                if (name !== 'belly' && count(own) > W * H * 0.2) { console.log(`${persona} ${job.bodyId}: ${name} mask is the whole figure, dropped`); return null; }
+                if (job !== base && name !== 'belly') {
+                    const ref = await mask(base, name);
+                    if (ref && overlap(own, ref) < 0.55) { console.log(`${persona} ${job.bodyId}: ${name} is elsewhere in this pose, not pinned`); return null; }
+                }
+                return own;
+            };
+            const r = await channel('chest');
+            const g = await channel(names.find((name) => name === 'arm' || name === 'hand'));
+            const b = await channel('belly');
+            const out = Buffer.alloc(W * H * 3);
+            for (let i = 0; i < W * H; i++) { out[i * 3] = r ? r[i] : 0; out[i * 3 + 1] = g && !(r && r[i] > 127) ? g[i] : 0; out[i * 3 + 2] = b ? b[i] : 0; }
+            // Yozora's sash runs under her chest: where the chest layer moves off it, the belly has nothing
+            // of its own to show and her chest's stripe ghosts through. Until the hidden areas are painted
+            // in (the next step), her sheets keep the ellipse pins and get no mask.
+            if (PARTS_OFF.includes(persona)) { delete m.bodies[job.bodyId].parts; continue; }
+            const name = `parts-${job.bodyId}.png`;
+            await sharp(out, { raw: { width: W, height: H, channels: 3 } }).blur(1.2).png({ compressionLevel: 9 }).toFile(path.join(OUT, persona, name));
+            m.bodies[job.bodyId].parts = name;
+            // the sized sheets (_g1, _p2 ...) of the image fallback are not warped by the shader: no mask
+            console.log(`${persona} ${job.bodyId}: ${name} chest ${r ? count(r) : 0} piece ${g ? count(g) : 0} belly ${b ? count(b) : 0}`);
+        }
+        writeManifest(persona, m);
+    }
+}
+
 (async () => {
     const [cmd, arg] = process.argv.slice(2);
     if (cmd === 'faces' || cmd === 'all') await buildFaces();
@@ -566,8 +654,10 @@ async function preview(dir) {
     if (cmd === 'grow' || cmd === 'all') await buildGrow(cmd === 'grow' ? arg : null);
     if (cmd === 'meta' || cmd === 'all') await buildMeta();
     if (cmd === 'preview') await preview(arg || path.join(ROOT, 'tmp/mascot-preview'));
-    if (!['faces', 'stuffed', 'grow', 'meta', 'all', 'preview'].includes(cmd)) {
-        console.log('usage: director-mascot-build.js faces | stuffed | grow [persona] | meta | all | preview <dir>');
+    if (cmd === 'sam-jobs') await buildSamJobs(arg || path.join(ROOT, 'tmp/mascot-sam'));
+    if (cmd === 'parts') await buildParts(arg || path.join(ROOT, 'tmp/mascot-sam'));
+    if (!['faces', 'stuffed', 'grow', 'meta', 'all', 'preview', 'sam-jobs', 'parts'].includes(cmd)) {
+        console.log('usage: director-mascot-build.js faces | stuffed | grow [persona] | meta | all | preview <dir> | sam-jobs <dir> | parts <dir>');
         process.exit(1);
     }
 })().catch((err) => { console.error(err); process.exit(1); });
