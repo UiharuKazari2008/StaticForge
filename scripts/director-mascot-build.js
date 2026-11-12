@@ -390,6 +390,81 @@ async function buildMeta() {
                 }
             }
         }
+        // Kicks (#766): a kick is the same picture pushed out from inside, so the pose change is drawn as
+        // a deformation, not a blend. For each un-kicked / kicked pair of a stage: where the two sheets
+        // differ (c), how wide (R), and how far her outline moved there (d, a vector out from the belly's
+        // middle, measured along rays through c on both sheets). The shader moves the picture by d while
+        // it changes sheets, so her sash and seams bend into the kick instead of fading into it.
+        m.kicks = {};
+        for (const [stageId] of Object.entries(GROW[persona])) {
+            const stage = m.stages[stageId];
+            if (!stage || !Array.isArray(stage.belly)) continue;
+            const pairs = [[stage.body, stage.kicky], [stage.rub, stage.rubKicky], [stage.gesture, stage.gestureKicky]]
+                .filter(([from, to]) => from && to && m.bodies[from] && m.bodies[to]);
+            for (const [from, to] of pairs) {
+                const load = async (id) => sharp(path.join(OUT, persona, m.bodies[id].body)).resize(Math.round(m.size[0] / 2), Math.round(m.size[1] / 2)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+                const A = await load(from); const B = await load(to);
+                const W = A.info.width; const H = A.info.height;
+                let sx = 0, sy = 0, n = 0;
+                const hits = [];
+                for (let i = 0; i < A.data.length; i += 4) {
+                    const d = Math.abs(A.data[i] - B.data[i]) + Math.abs(A.data[i + 1] - B.data[i + 1]) + Math.abs(A.data[i + 2] - B.data[i + 2]) + Math.abs(A.data[i + 3] - B.data[i + 3]);
+                    if (d > 90) { const px = (i / 4) % W; const py = Math.floor(i / 4 / W); sx += px; sy += py; n += 1; hits.push(px, py); }
+                }
+                if (n < 30) continue;
+                const cx = sx / n; const cy = sy / n;
+                let spread = 0;
+                for (let k = 0; k < hits.length; k += 2) spread += (hits[k] - cx) ** 2 + (hits[k + 1] - cy) ** 2;
+                spread = Math.sqrt(spread / n);
+                // Fit the push to the art: move the plain sheet by d with the shader's own fall-off
+                // (1 - smoothstep(r / R)) about the middle of what differs, and keep the size, width
+                // and angle that leave it closest to the kicked sheet. (Her outline alone is no
+                // measure: tails and sleeves stand behind the belly.)
+                const bx = stage.belly[0] / 2; const by = stage.belly[1] / 2;
+                const base = Math.atan2(cy - by, cx - bx);
+                const sm = (x) => { const v = Math.max(0, Math.min(1, x)); return v * v * (3 - 2 * v); };
+                const px = (img, x, y, ch) => {
+                    const xi = Math.max(0, Math.min(W - 1, Math.round(x))); const yi = Math.max(0, Math.min(H - 1, Math.round(y)));
+                    return img.data[(yi * W + xi) * 4 + ch];
+                };
+                const cost = (dx, dy, R) => {
+                    const reach = Math.ceil(Math.max(R, spread * 2.5));
+                    let sum = 0;
+                    for (let y = Math.max(0, Math.round(cy - reach)); y < Math.min(H, cy + reach); y += 2) {
+                        for (let x = Math.max(0, Math.round(cx - reach)); x < Math.min(W, cx + reach); x += 2) {
+                            const w = 1 - sm(Math.hypot(x - cx, y - cy) / R);
+                            const ax = x - dx * w; const ay = y - dy * w;
+                            const i = (y * W + x) * 4;
+                            sum += Math.abs(px(A, ax, ay, 0) - B.data[i]) + Math.abs(px(A, ax, ay, 1) - B.data[i + 1])
+                                + Math.abs(px(A, ax, ay, 2) - B.data[i + 2]) + Math.abs(px(A, ax, ay, 3) - B.data[i + 3]);
+                        }
+                    }
+                    return sum;
+                };
+                const still = cost(0, 0, 100);
+                let fit = { cost: still, d: 0, ang: base, R: 100 };
+                for (const R of [50, 70, 95, 125, 160, 200, 250]) {
+                    for (let off = -0.5; off <= 0.5001; off += 0.125) {
+                        for (let d = 2; d <= 44; d += 2) {
+                            const c0 = cost(Math.cos(base + off) * d, Math.sin(base + off) * d, R);
+                            if (c0 < fit.cost) fit = { cost: c0, d, ang: base + off, R };
+                        }
+                    }
+                }
+                if (fit.d < 3 || fit.cost > still * 0.9) {
+                    console.log(`${persona}: ${from}|${to} no push fits this kick (${Math.round((fit.cost / still) * 100)} % left): left to the blend`);
+                    continue;
+                }
+                const R = fit.R * 2;
+                m.kicks[`${from}|${to}`] = {
+                    c: [Math.round(cx * 2), Math.round(cy * 2)],
+                    R,
+                    d: [Math.round(Math.cos(fit.ang) * fit.d * 2), Math.round(Math.sin(fit.ang) * fit.d * 2)],
+                    fit: Math.round((fit.cost / still) * 100)
+                };
+                console.log(`${persona}: ${from}|${to} kick at ${m.kicks[`${from}|${to}`].c} R ${R} moves ${m.kicks[`${from}|${to}`].d} (${m.kicks[`${from}|${to}`].fit} % of the difference left)`);
+            }
+        }
         writeManifest(persona, m);
     }
 }

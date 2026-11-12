@@ -179,6 +179,9 @@ function directorMascotTypedHtml(raw, count, start = 0) {
 //             a kick, the mask, the next stage's belly) shrinks into / grows out of its own middle while
 //             it blends (a true linear blend: no see-through dip half way);
 //   lumps     bulges that wander over her belly after she swallows a print, lit from the upper left.
+//   kicks     a kick pose is the same picture pushed out from inside (manifest.kicks, measured by
+//             scripts/director-mascot-build.js): while the sheets change, each is moved along the kick,
+//             so her sash and seams bend into it instead of fading (Yukimi 2026-11-12);
 //   physics   in her later stages the belly has weight (Yukimi 2026-11-11): a damped spring carries it, so
 //             when she bounces it lags behind her, overshoots and settles, stretching as it swings.
 // It draws only while something moves. Without WebGL (or after a lost context) the <img> layers and the
@@ -204,6 +207,8 @@ uniform float lit;
 uniform vec4 W1;
 uniform vec4 W2;
 uniform vec2 fW;
+uniform vec4 K1;
+uniform vec4 K2;
 float sm(float x) { x = clamp(x, 0.0, 1.0); return x * x * (3.0 - 2.0 * x); }
 // g1: the disc that moves (centre xy, radius) and how much (scale - 1); f: the point it scales about
 // g2: nothing above y moves (with a ramp), and the part of the radius that moves whole (the rest
@@ -228,6 +233,17 @@ vec2 swayInv(vec2 p) {
         float r = length(q - W1.xy) / W1.z;
         float w = r >= 1.0 ? 0.0 : (1.0 - sm(r)) * sm(length(q - fW) / W1.z * 1.2);
         q = p - (W2.xy + (q - W1.xy) * W2.zw) * w;
+    }
+    return q;
+}
+// a kick: K1 where (centre xy, radius, on), K2 how far (xy) and how much of it each sheet is moved
+// (z for the sheet she leaves, w for the one she takes; negative pulls a kicked sheet back in)
+vec2 kickInv(vec2 p, float amount) {
+    if (K1.w == 0.0 || amount == 0.0) return p;
+    vec2 q = p;
+    for (int i = 0; i < 3; i++) {
+        float w = 1.0 - sm(length(q - K1.xy) / K1.z);
+        q = p - K2.xy * w * amount;
     }
     return q;
 }
@@ -267,7 +283,17 @@ void main() {
         vec2 qa = growInv(q, gA1, gA2, fA);
         vec4 a0 = tx(A, qa);
         c = mix(a0, b0, t);
-        if (mc.z > 0.5) {
+        if (K1.w > 0.5) {
+            // a kick: only where the two sheets differ (her tails, her face, the rest of her dress are
+            // the same picture and stay put) each sheet is moved along the kick, so what it bends is
+            // one picture on its way, not two crossing
+            float diff = sm((dot(abs(a0 - b0), vec4(1.0)) - 0.05) / 0.18);
+            if (diff > 0.0) {
+                vec4 ak = tx(A, kickInv(qa, K2.z));
+                vec4 bk = tx(B, kickInv(qb, K2.w));
+                c = mix(c, mix(ak, bk, t), diff);
+            }
+        } else if (mc.z > 0.5) {
             float diff = sm((dot(abs(a0 - b0), vec4(1.0)) - 0.10) / 0.30);
             vec4 a = tx(A, mc.xy + (qa - mc.xy) / ms.x);
             vec4 b = tx(B, mc.xy + (qb - mc.xy) / ms.y);
@@ -330,7 +356,7 @@ class DirectorMascotGL {
         gl.enableVertexAttribArray(at);
         gl.vertexAttribPointer(at, 2, gl.FLOAT, false, 0, 0);
         this.u = {};
-        ['A', 'B', 'size', 't', 'gA1', 'gA2', 'fA', 'gB1', 'gB2', 'fB', 'mc', 'ms', 'lit', 'W1', 'W2', 'fW'].forEach((name) => { this.u[name] = gl.getUniformLocation(prog, name); });
+        ['A', 'B', 'size', 't', 'gA1', 'gA2', 'fA', 'gB1', 'gB2', 'fB', 'mc', 'ms', 'lit', 'W1', 'W2', 'fW', 'K1', 'K2'].forEach((name) => { this.u[name] = gl.getUniformLocation(prog, name); });
         this.uL = [0, 1, 2, 3].map((i) => gl.getUniformLocation(prog, `L[${i}]`));
         gl.uniform1i(this.u.A, 0);
         gl.uniform1i(this.u.B, 1);
@@ -380,7 +406,8 @@ class DirectorMascotGL {
         rest.slice(2).forEach(([url, e]) => { this.gl.deleteTexture(e.tex); this.cache.delete(url); });
     }
 
-    // Show a sheet. o: { ms, centre [x, y] | null, sA [from, to], sB [from, to], cfg (stage.grow), gain, gainTo, gainMs }.
+    // Show a sheet. o: { ms, centre [x, y] | null, sA [from, to], sB [from, to], cfg (stage.grow), gain, gainTo, gainMs,
+    // kick { c, R, d, out } (a kick starting, out true, or ending: the sheets deform along it) }.
     // Resolves true once it is on screen (the morph has started), false when it could not be loaded.
     show(url, o = {}) {
         const token = ++this.seq;
@@ -403,7 +430,7 @@ class DirectorMascotGL {
                 // o.leave { cfg, gainTo }: how the sheet she leaves moves while it blends away
                 if (o.leave) { this.A.cfg = o.leave.cfg; this.A.gain = 1; this.A.tween = { from: 1, to: o.leave.gainTo, start: now, ms: o.ms }; }
                 this.B = next;
-                this.morph = { start: now, ms: o.ms, centre: o.centre || null, a: o.sA || [1, 0.86], b: o.sB || [0.86, 1] };
+                this.morph = { start: now, ms: o.ms, centre: o.kick ? null : (o.centre || null), a: o.sA || [1, 0.86], b: o.sB || [0.86, 1], kick: o.kick || null };
             }
             if (o.gainTo != null && this.B.url === url && this.B === next) this.B.tween = { from: next.gain, to: o.gainTo, start: now, ms: o.gainMs || 600 };
             this.trim();
@@ -519,6 +546,16 @@ class DirectorMascotGL {
         } else {
             gl.uniform3f(this.u.mc, 0, 0, 0);
             gl.uniform2f(this.u.ms, 1, 1);
+        }
+        // a kick under way: the sheet she leaves is moved toward the kick (or back from it), the one she
+        // takes arrives from the other side, and they meet as the same picture
+        if (m && m.kick && this.A) {
+            const kc = m.kick;
+            gl.uniform4f(this.u.K1, kc.c[0], kc.c[1], kc.R, 1);
+            gl.uniform4f(this.u.K2, kc.d[0], kc.d[1], kc.out ? t : -t, kc.out ? -(1 - t) : (1 - t));
+        } else {
+            gl.uniform4f(this.u.K1, 0, 0, 1, 0);
+            gl.uniform4f(this.u.K2, 0, 0, 0, 0);
         }
         // lumps: three bulges that drift around the belly and swell in turn
         let lit = 0;
@@ -1259,6 +1296,23 @@ class DirectorMascot {
         const span = points[at + 1] != null ? points[at + 1] - from : 30;
         const f = Math.max(0, Math.min(1, ((Number(this.growthPoints) || 0) - from) / Math.max(1, span)));
         return 1 + (def.grow.max - 1) * f;
+    }
+
+    // A kick starting or ending between two poses (manifest.kicks["plain|kicked"], sized sheets share
+    // their pose's entry): { c, R, d, out } for the shader, or null for any other change.
+    kickBetween(a, b) {
+        const kicks = this.manifest && this.manifest.kicks;
+        if (!kicks || !a || !b) return null;
+        const plain = (id) => String(id).replace(/_(?:g|p)\d$/, '');
+        const from = plain(a); const to = plain(b);
+        if (kicks[`${from}|${to}`]) return { ...kicks[`${from}|${to}`], out: true };
+        if (kicks[`${to}|${from}`]) return { ...kicks[`${to}|${from}`], out: false };
+        // from another pose of the stage (a gesture into the plain kick): the kicked pose's own push
+        const into = Object.keys(kicks).find((key) => key.endsWith(`|${to}`));
+        if (into) return { ...kicks[into], out: true };
+        const outOf = Object.keys(kicks).find((key) => key.endsWith(`|${from}`));
+        if (outOf) return { ...kicks[outOf], out: false };
+        return null;
     }
 
     // Where a change between two poses grows from: the middle of what differs (manifest.morphs), or
@@ -2255,7 +2309,7 @@ class DirectorMascot {
                 const def = this.stageDef();
                 const gain = this.growGain();
                 this._gainShown = gain;
-                this.glBody.show(src, { ms: from ? ms : 0, centre: from ? this.morphCentre(from, id) : null, cfg: (def && def.grow) || null, gain });
+                this.glBody.show(src, { ms: from ? ms : 0, centre: from ? this.morphCentre(from, id) : null, kick: from ? this.kickBetween(from, id) : null, cfg: (def && def.grow) || null, gain });
                 [this.el.body, this.el.bodyPrev].forEach((img) => { if (img.hasAttribute('src')) img.removeAttribute('src'); });
                 if (this._camKey !== JSON.stringify(this.camera())) {
                     this._camKey = JSON.stringify(this.camera());
