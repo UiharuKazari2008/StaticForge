@@ -341,6 +341,10 @@
     function columnsFor() {
         const unit = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
         const w = (view && view.clientWidth) || window.innerWidth || 0;
+        // a phone-width screen keeps the device's three columns whatever its unit (Yukimi: the
+        // Fold7 cover screen, 480 CSS px at a small --wm-px, got four); wider screens (the Fold
+        // opened, a tablet) take as many as fit at the 72-unit pitch
+        if (w < 600) return 3;
         return Math.max(3, Math.floor((w / unit - 24) / 72));
     }
 
