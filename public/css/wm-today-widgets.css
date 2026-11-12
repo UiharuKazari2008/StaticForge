@@ -406,3 +406,164 @@
     flex: 0 0 auto;
     white-space: nowrap;
 }
+
+/* ---- Internet Explorer: Today's own search box (wm-shell.css .wm-today-search) with the
+ * Grimoire's button before the web's, over a Today row: the IE icon and the page on show */
+.wm-today-block.wtw-ie {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+}
+
+/* a unit taller than the Live Search box (17): IE's 16 unit page icon fits inside the frame */
+.wtw-ie-search {
+    height: calc(18 * var(--wm-px));
+}
+
+.wtw-ie-grim {
+    flex: 0 0 auto;
+    width: calc(18 * var(--wm-px)) !important;
+    height: calc(16 * var(--wm-px)) !important;
+    align-self: center;
+    background: center / calc(16 * var(--wm-px)) no-repeat image-set(url('/static_images/wm61/ie-proto-edtx.png') 1x, url('/static_images/wm61/ie-proto-edtx@2x.png') 2x, url('/static_images/wm61/ie-proto-edtx@4x.png') 4x) !important;
+}
+
+.wtw-ie-grim:active {
+    background-color: var(--wm-highlight) !important;
+}
+
+/* the page on show, as a Today row (wm-shell.css .wm-today-row: 21 high, 16 unit icon, bold) */
+.wtw-ie-win {
+    display: flex !important;
+    align-items: center;
+    gap: calc(7 * var(--wm-px));
+    width: 100%;
+    min-height: calc(21 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px)) 0 calc(3 * var(--wm-px)) !important;
+    box-sizing: border-box;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+
+.wtw-ie-win:active {
+    background: var(--wm-highlight) !important;
+}
+
+.wtw-ie-win img {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wtw-ie-win .wtw-title {
+    flex: 1 1 auto;
+}
+
+/* ---- Favorites: a strip of program icons (32 units, Programs' size), the one last touched
+ * named under it; Small: 16 unit icons in one Today row with the name beside them */
+.wm-today-block.wtw-favs {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    min-height: calc(21 * var(--wm-px));
+    padding: 0;
+}
+
+.wtw-favs-strip {
+    display: flex;
+    flex-wrap: wrap;
+    padding: calc(2 * var(--wm-px)) calc(2 * var(--wm-px)) 0;
+}
+
+.wtw-fav {
+    flex: 0 0 auto;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: calc(36 * var(--wm-px));
+    height: calc(36 * var(--wm-px));
+    padding: 0 !important;
+}
+
+.wtw-fav img {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    object-fit: contain;
+}
+
+.wtw-fav:active,
+.wtw-fav:focus-visible {
+    background: var(--wm-highlight) !important;
+}
+
+.wtw-favs-name {
+    padding: 0 calc(4 * var(--wm-px)) calc(2 * var(--wm-px));
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wtw-favs.is-small {
+    flex-direction: row;
+    align-items: center;
+}
+
+.wtw-favs.is-small .wtw-favs-strip {
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0 calc(1 * var(--wm-px));
+}
+
+.wtw-favs.is-small .wtw-fav {
+    width: calc(22 * var(--wm-px));
+    height: calc(21 * var(--wm-px));
+}
+
+.wtw-favs.is-small .wtw-fav img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wtw-favs.is-small .wtw-favs-name {
+    flex: 1 1 calc(60 * var(--wm-px));
+    min-width: 0;
+    padding: 0 calc(4 * var(--wm-px));
+}
+
+/* no favourite yet: one Today row that opens the item's Options */
+.wtw-favs-none {
+    display: none !important;
+    align-items: center;
+    gap: calc(7 * var(--wm-px));
+    width: 100%;
+    min-height: calc(21 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px)) 0 calc(3 * var(--wm-px)) !important;
+    box-sizing: border-box;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+
+.wtw-favs-none img {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wtw-favs-none:active {
+    background: var(--wm-highlight) !important;
+}
+
+.wtw-favs.is-empty .wtw-favs-none {
+    display: flex !important;
+}
+
+.wtw-favs.is-empty .wtw-favs-strip,
+.wtw-favs.is-empty .wtw-favs-name {
+    display: none;
+}

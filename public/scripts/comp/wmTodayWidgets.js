@@ -29,6 +29,14 @@
  *                   count over the newest file's name and date; tap opens File Explorer there; the
  *                   6.5 panel adds a page per recent file and per phone volume
  *                   (wmFileExplorer.list / volumes / openFolder / openFile)
+ *   ie              block: a search box with the Grimoire's and the web's (Bing) buttons, Enter =
+ *                   the engine of Options...; under it the page IE shows, " (+X)" more windows, or
+ *                   another device's last tab (browsingSessions.list, kept 3 minutes); the 6.5
+ *                   panel: the page (New Window) | Resume session from <device> (Ignore) | Web
+ *                   Search (Search Grimoire) | Favorites | History (Other Devices)
+ *   favorites       block: programs picked from Start's list in Options... (Android programs too)
+ *                   as a strip of icons; the 6.5 panel is the device's Favorites: a page each,
+ *                   "Add/Remove", soft key Change (wmSettings.programItems, wmTodayFavorites)
  *   remote-desktop  row: the last computer (wmRemoteDesktop.lastComputer()); tap reconnects
  *   server          block: Details (state, host uptime, version, CPU, RAM, disk, workers) or One
  *                   line; server_status, get_system_info, sidebar_host_metrics (admin only, never sent
@@ -1241,6 +1249,492 @@
         return true;
     }
 
+    // ================================================================ Internet Explorer
+
+    /**
+     * Internet Explorer item (Yukimi, #748). 6.1: a search box with two buttons at its end, the
+     * Grimoire's (IE's edtx page icon) and the web's (the Live Search button of Today's own search
+     * row); Enter searches with the engine picked in Options... Under it the page of the window IE
+     * has on screen, " (+X)" for X more windows; with nothing open here, the last active tab of
+     * another device's session (browsingSessions, #756), which a tap brings to this phone.
+     * 6.5 panel: Internet Explorer or the open page (New Window) | Resume session from <device>
+     * (Ignore) | Web Search (Search Grimoire) | Favorites | History (Other Devices), every page
+     * drawn as the device's Favorites panel draws its own (a 16 unit icon and one bold line).
+     * Window titles are read from wmBrowser.windows() on Today's own repaint; the other devices'
+     * sessions come from one browsingSessions.list() kept 3 minutes, asked again after the
+     * server's "sessions changed" push, only while Today is on screen.
+     */
+    const IE_HOME = 'edtx://en.grimoire.jp/index.dtxt'; // the start page of a new window (wmBrowser.js GRIM_HOME_URL)
+    const IE_MS = 3 * 60 * 1000;
+    const IE_CHANGED_MS = 15 * 1000;
+    const IE_IGNORE_KEY = 'wmTodayIeIgnore';
+    const IE_ENGINES = {
+        bing: { name: 'Bing', page: 'Web Search', key: 'Search Web', hint: 'Search the web', ask: 'Search the web for:', icon: 'app-search', url: (q) => (q ? `https://www.bing.com/search?q=${encodeURIComponent(q)}` : 'https://www.bing.com/') },
+        grimoire: { name: 'Grimoire', page: 'Grimoire Search', key: 'Search Grimoire', hint: 'Search the Grimoire', ask: 'Search the Grimoire for:', icon: 'ie-proto-edtx', url: (q) => (q ? `edtx://en.grimoire.jp/search?q=${encodeURIComponent(q)}` : 'edtx://en.grimoire.jp/search') }
+    };
+    const IE_OPTIONS = [{ key: 'engine', label: 'Search with', value: 'bing', choices: [['bing', 'Bing'], ['grimoire', 'Grimoire']] }];
+    const ie = { at: 0, busy: 0, stale: false, sessions: null, wired: false };
+    let ieEl = null;
+    let ieOption = null;
+    let iePanel = null; // what the item shows, for its 6.5 panel
+    const ieApp = () => window.wmBrowser || null;
+    // the 4x file of a 6.1 icon as a path (a panel page's small icon is one file)
+    const artBest = (name) => { const set = sh.art.srcset(name).split(',').map((s) => s.trim().split(' ')[0]).filter(Boolean); return set[set.length - 1] || sh.art.url(name); };
+
+    function loadRemote() {
+        const b = window.browsingSessions;
+        if (!b || typeof b.list !== 'function') return;
+        if (!ie.wired && typeof b.on === 'function') { ie.wired = true; b.on('changed', () => { ie.stale = true; }); }
+        const now = Date.now();
+        if ((ie.busy && now - ie.busy < 30000) || !online() || sh.current !== 'today' || document.hidden) return;
+        if (document.documentElement.dataset.wmBoot !== 'done') return; // not while the phone starts
+        if (now - ie.at < (ie.stale ? IE_CHANGED_MS : IE_MS)) return;
+        if (performance.now() - files.tapAt < 800) return; // the next repaint asks
+        let st = null;
+        try { st = b.state(); } catch (_) { st = null; }
+        if (!st || !st.online) return; // the server does not know this client yet
+        ie.busy = now;
+        ie.stale = false;
+        ie.at = now;
+        b.list().then((res) => {
+            ie.sessions = res && Array.isArray(res.sessions) ? res.sessions : [];
+            const el = ieEl;
+            if (el && el.isConnected && !el.classList.contains('wm-today-off') && ieOption) el.hidden = renderIe(el, { option: ieOption }) === false;
+        }).catch(() => { if (ie.at === now) ie.at = now - IE_MS + FILES_RETRY_MS; }).finally(() => { if (ie.busy === now) ie.busy = 0; });
+    }
+
+    /** The sessions put aside with Ignore (their ids, kept on the phone until they end). */
+    function ieIgnored() {
+        try {
+            const v = JSON.parse(localStorage.getItem(IE_IGNORE_KEY) || '[]');
+            return Array.isArray(v) ? v.filter((id) => typeof id === 'string') : [];
+        } catch (_) { return []; }
+    }
+    function ieIgnore(ids) {
+        try { if (ids.length) localStorage.setItem(IE_IGNORE_KEY, JSON.stringify(ids.slice(-20))); else localStorage.removeItem(IE_IGNORE_KEY); } catch (_) { /* this load only */ }
+    }
+
+    /** Another device's session with pages open: { id, device, tab, more } (not the one ignored), or null. */
+    function remoteSession() {
+        const b = window.browsingSessions;
+        if (!b || !ie.sessions) return null;
+        let own = '';
+        try { own = b.deviceId(); } catch (_) { own = ''; }
+        const tabsOf = (x) => (x.windows || []).reduce((all, w) => all.concat((w && w.tabs) || []), []).filter((t) => t && t.id && (t.title || t.url));
+        const list = ie.sessions.filter((x) => x && x.id && !x.own && x.deviceId !== own && x.state !== 'stored' && tabsOf(x).length);
+        const ignored = ieIgnored();
+        // an ignored session that ended is forgotten
+        const left = ignored.filter((id) => list.some((x) => x.id === id));
+        if (left.length !== ignored.length) ieIgnore(left);
+        const x = list.find((s) => !left.includes(s.id));
+        if (!x) return null;
+        const tabs = tabsOf(x);
+        return { id: x.id, device: x.deviceName || 'another device', tab: tabs.find((t) => t.active) || tabs[0], more: tabs.length - 1 };
+    }
+
+    /** { title, more, has, remote }: the window on screen in IE here, else another device's last tab. */
+    function ieModel() {
+        const b = ieApp();
+        let wins = [];
+        try { wins = (b && typeof b.windows === 'function' && b.windows()) || []; } catch (_) { wins = []; }
+        const cur = wins.find((w) => w.current) || wins[0] || null;
+        const has = !!cur && !!cur.url && cur.url !== IE_HOME;
+        const remote = remoteSession();
+        const local = { title: has ? (cur.title || cur.url) : 'Internet Explorer', more: Math.max(0, wins.length - 1), has, remote, shown: null };
+        // nothing open here: what the other device shows last
+        if (!has && wins.length <= 1 && remote) return { ...local, shown: remote, line: `${remote.tab.title || remote.tab.url}${remote.more > 0 ? ` (+${remote.more})` : ''}` };
+        return { ...local, line: `${local.title}${local.more > 0 ? ` (+${local.more})` : ''}` };
+    }
+
+    /**
+     * IE's own entry points for Today, called when wmBrowser has them (takeTab, otherDevices,
+     * openFavorites, openHistory, search); until then the nearest thing it does have.
+     */
+    function ieCall(name, args, otherwise) {
+        const b = ieApp();
+        if (b && typeof b[name] === 'function') {
+            try { return b[name](...args); } catch (err) { console.warn('[wmTodayWidgets] Internet Explorer', name, err); }
+            return undefined;
+        }
+        return otherwise();
+    }
+
+    function ieSearch(engine, text) {
+        const e = IE_ENGINES[engine] || IE_ENGINES.bing;
+        const q = String(text || '').trim();
+        ieCall('search', [engine, q], () => { const b = ieApp(); if (!b || typeof b.open !== 'function' || !b.open(e.url(q))) open('browser'); });
+    }
+
+    /** The 6.5 panel's search: WM asks for the words, then IE shows the result. */
+    async function ieAskSearch(engine) {
+        const e = IE_ENGINES[engine] || IE_ENGINES.bing;
+        const q = await sh.messageBox({ title: e.page, text: e.ask, input: { value: '' }, buttons: [{ text: 'Search', value: true, default: true }, { text: 'Cancel', value: false }], cancelValue: false, modal: true });
+        if (q) ieSearch(engine, q);
+    }
+
+    /** That session's tab comes to this phone (Other Devices' own take, wmBrowser.takeTab). */
+    function ieResume(r) {
+        if (!r || !r.tab) { open('browser'); return; }
+        ie.stale = true;
+        ieCall('takeTab', [r.id, r.tab.id], () => {
+            // IE without takeTab: the page's address opens here and the other device keeps its page
+            const b = ieApp();
+            const m = ieModel();
+            const ok = b && r.tab.url && (m.has && typeof b.newWindow === 'function' ? b.newWindow(r.tab.url) != null : typeof b.open === 'function' && b.open(r.tab.url));
+            if (!ok) open('browser');
+        });
+    }
+
+    function ieNewWindow() {
+        const b = ieApp();
+        if (!b || typeof b.newWindow !== 'function') { open('browser'); return; }
+        if (b.newWindow() == null) void sh.messageBox({ title: 'Internet Explorer', icon: 'error', text: 'Every window is in use. Close a window, then try again.' });
+    }
+
+    /**
+     * A panel whose pages changed while it is on show (a session ended, a favourite was removed):
+     * the home screen redraws the page at once but keeps the right soft key of the page that was
+     * there, so the keys are drawn again after its repaint.
+     */
+    const panelSig = {};
+    function panelChanged(id, pages) {
+        const sig = pages.map((pg) => `${pg.title}|${pg.softKey ? pg.softKey.label : ''}`).join('\n');
+        if (panelSig[id] === sig) return;
+        const first = panelSig[id] == null;
+        panelSig[id] = sig;
+        if (!first) setTimeout(() => { if (sh.current === 'today') sh.refreshSoftKeys(); }, 0);
+    }
+
+    /**
+     * A panel's tap that opens a program or a box: the home screen acts when the pen lifts, and the
+     * click that follows would land on what has just opened (a link of IE's start page, a note of
+     * Notes). It opens after that click; the Enter key, which has none, waits 120 ms.
+     */
+    function afterTap(fn) {
+        return () => {
+            let done = false;
+            const run = () => {
+                if (done) return;
+                done = true;
+                document.removeEventListener('click', run, true);
+                fn();
+            };
+            document.addEventListener('click', run, true);
+            setTimeout(run, 120);
+        };
+    }
+
+    function ieTitanium({ option }) {
+        const m = iePanel;
+        if (!m) return null;
+        const tap = IE_ENGINES[option('engine')] ? option('engine') : 'bing';
+        const other = tap === 'bing' ? 'grimoire' : 'bing';
+        const show = () => open('browser');
+        const pages = [{ smallIcon: 'ti-2552', title: m.has ? m.title : 'Internet Explorer', softKey: { label: 'New Window', action: ieNewWindow }, onTap: afterTap(show) }];
+        const r = m.remote;
+        if (r) {
+            pages.push({
+                // "Resume session from <device>" over two lines: a computer's name does not fit beside the words
+                smallIcon: artBest('ie-windows'), title: 'Resume session', line2: `from ${r.device}`,
+                // (the session on show when the key is pressed: the shell keeps a key until it draws its keys again)
+                softKey: { label: 'Ignore', action: () => { const now = remoteSession(); if (now) ieIgnore(ieIgnored().filter((id) => id !== now.id).concat(now.id)); document.dispatchEvent(new CustomEvent('wmSettingsChange', { detail: { keys: [IE_IGNORE_KEY] } })); } },
+                onTap: afterTap(() => ieResume(r))
+            });
+        }
+        pages.push({ smallIcon: artBest(IE_ENGINES[tap].icon), title: IE_ENGINES[tap].page, softKey: { label: IE_ENGINES[other].key, action: () => { void ieAskSearch(other); } }, onTap: afterTap(() => { void ieAskSearch(tap); }) });
+        // Favorites has no right soft key (Yukimi's list leaves it blank)
+        pages.push({ smallIcon: artBest('ie-favorite'), title: 'Favorites', softKey: { label: '', disabled: true }, onTap: afterTap(() => ieCall('openFavorites', [], show)) });
+        pages.push({ smallIcon: artBest('ie-page'), title: 'History', softKey: { label: 'Other Devices', action: () => ieCall('otherDevices', [], show) }, onTap: afterTap(() => ieCall('openHistory', [], show)) });
+        panelChanged('ie', pages);
+        // (the panel's own tap is the Enter key's: the page on show answers it)
+        return { label: 'internet explorer', icon: 's:ie', pages, softKey: pages[0].softKey, onTap: (pg) => (pg && typeof pg.onTap === 'function' ? pg.onTap() : show()) };
+    }
+
+    function renderIe(el, { option }) {
+        if (itemOff(el, false)) { iePanel = null; return false; }
+        if (!ieApp()) return false;
+        ieEl = el;
+        ieOption = option;
+        loadRemote();
+        const engine = IE_ENGINES[option('engine')] ? option('engine') : 'bing';
+        if (el.dataset.wtwBuilt !== 'wtw-ie') {
+            el.dataset.wtwBuilt = 'wtw-ie';
+            el.classList.add('wtw', 'wtw-ie');
+            // the search box is Today's own (wm-shell.css .wm-today-search), with the Grimoire's button before the web's
+            el.innerHTML = `
+                <form class="wm-today-search wtw-ie-search" role="search">
+                    <input type="search" enterkeyhint="search" autocomplete="off">
+                    <button type="button" class="wtw-ie-grim" data-engine="grimoire" aria-label="Search the Grimoire"></button>
+                    <button type="button" class="wm-today-search-go" data-engine="bing" aria-label="Search the web with Bing"></button>
+                </form>
+                <button type="button" class="wtw-ie-win"><img ${imgSrcset('app-ie')} alt=""><span class="wtw-title"></span></button>`;
+            const input = el.querySelector('input');
+            const go = (eng) => { const q = input.value; input.value = ''; input.blur(); ieSearch(eng, q); };
+            el.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); go(el.dataset.engine || 'bing'); });
+            el.querySelectorAll('button[data-engine]').forEach((b) => b.addEventListener('click', () => go(b.dataset.engine)));
+            el.querySelector('.wtw-ie-win').addEventListener('click', () => { const m = iePanel; if (m && m.shown) ieResume(m.shown); else open('browser'); });
+        }
+        if (el.dataset.engine !== engine) {
+            el.dataset.engine = engine;
+            const input = el.querySelector('input');
+            input.placeholder = IE_ENGINES[engine].hint;
+            input.setAttribute('aria-label', IE_ENGINES[engine].hint);
+        }
+        const m = ieModel();
+        iePanel = m;
+        setText(el.querySelector('.wtw-title'), m.line);
+        return true;
+    }
+
+    // ================================================================ Favorites
+
+    /**
+     * Favorites item (Yukimi, #748): programs picked from Start's list (Programs and its folders,
+     * the phone's Android programs among them: wmSettings.programItems, wmShell.listApps).
+     * 6.5: the device's Favorites panel (HKLM\Software\Microsoft\CHome\CHomeFavs, layout
+     * FavoritesExpanded of Titanium_480x640.cpr): the star (2550) at the top right, a page per
+     * favourite with its 16 unit icon at 10,31 and its name in bold from 32, a last page
+     * "Add/Remove" (2551), the right soft key "Change" on every page; the device's pages are
+     * Internet Explorer's favourites and "Change" opens its "Change Favorites" list, ours are
+     * programs and it opens the item's Options. 6.1: the favourites as a strip of icons, the one
+     * last touched named; tap starts it, tap-and-hold moves or removes it.
+     * The list is kept on the phone (wmTodayFavorites: { v, list: [item key], seen }): it is too long
+     * for a Today option (120 letters). Options... draws two check lists (Programs, Android); what
+     * it stores (the unchecked keys) is taken over into the list here and removed from the options.
+     */
+    const FAV_KEY = 'wmTodayFavorites';
+    const FAV_GROUPS = ['favapps', 'favandroid'];
+    const FAV_APPS = { key: 'favapps', label: 'Programs', type: 'checks', get choices() { return favChoices('favapps'); }, get value() { return favUnchecked('favapps'); } };
+    const FAV_ANDROID = { key: 'favandroid', label: 'Android', type: 'checks', get choices() { return favChoices('favandroid'); }, get value() { return favUnchecked('favandroid'); } };
+    const FAV_SIZE = { key: 'size', label: 'Icons', value: 'large', choices: [['large', 'Large'], ['small', 'Small, with the name beside them']] };
+    const FAV_OPTIONS = [FAV_APPS, FAV_SIZE];
+    const fav = { at: 0, map: null, raw: null, state: null, checked: [], sel: '' };
+    let favPanel = null; // the favourites on show, for the 6.5 panel
+    const favGroup = (key) => (String(key).startsWith('a:android:') ? 'favandroid' : 'favapps');
+
+    /** Everything Start lists, by item key: { key, label, img: { src, srcset }, small, folder?, launch? }. Read at most every 5 s. */
+    function favCatalog() {
+        if (fav.map && Date.now() - fav.at < 5000) return fav.map;
+        const S = window.wmSettings;
+        if (!S || typeof S.programItems !== 'function') return fav.map || new Map();
+        const map = new Map();
+        const add = (it) => {
+            // (a key with a comma cannot be listed in an option; games are listed but not playable yet)
+            if (!it || !it.key || !it.label || !it.img || it.key.includes(',') || map.has(it.key)) return;
+            if (!it.folder && !it.key.startsWith('a:') && !it.launch) return;
+            // the 16 unit icon of the same 6.1 art ("app-notes" beside "app-notes-lg")
+            const m = /^\/static_images\/wm61\/(.+)-lg\.png$/.exec(it.img.src || '');
+            map.set(it.key, { key: it.key, label: it.label, img: it.img, small: m ? { src: sh.art.url(m[1]), srcset: sh.art.srcset(m[1]) } : it.img, folder: it.folder || null, launch: it.launch || null });
+        };
+        try {
+            const top = S.programItems() || [];
+            top.forEach(add);
+            top.filter((i) => i.folder).forEach((f) => (S.programItems(f.folder) || []).forEach(add));
+            // Start's own screens and the programs Settings holds (Today, Programs, Settings, Task Manager, Accounts)
+            sh.listApps().forEach((a) => {
+                if (!a.inStart || a.id === 'start') return;
+                const icon = String(a.icon || 'app-programs');
+                const own = icon.startsWith('/');
+                add({ key: `a:${a.id}`, label: a.startLabel || a.title || a.id, img: own ? { src: icon, srcset: '' } : { src: sh.art.url(`${icon}-lg`), srcset: sh.art.srcset(`${icon}-lg`) } });
+            });
+        } catch (err) { console.warn('[wmTodayWidgets] favorites', err); }
+        fav.map = map;
+        fav.at = Date.now();
+        // the Android list is offered once the phone has programs to list
+        const android = [...map.keys()].some((k) => favGroup(k) === 'favandroid');
+        const at = FAV_OPTIONS.indexOf(FAV_ANDROID);
+        if (android && at < 0) FAV_OPTIONS.splice(1, 0, FAV_ANDROID);
+        else if (!android && at >= 0) FAV_OPTIONS.splice(at, 1);
+        return map;
+    }
+
+    const favColl = new Intl.Collator(undefined, { sensitivity: 'base' });
+    function favChoices(group) {
+        return [...favCatalog().values()].filter((it) => favGroup(it.key) === group).sort((a, b) => favColl.compare(a.label, b.label)).map((it) => [it.key, it.label]);
+    }
+    /** A check list's value when Options has stored none: every key that is not a favourite. */
+    function favUnchecked(group) {
+        const on = new Set(favList());
+        return favChoices(group).map(([k]) => k).filter((k) => !on.has(k)).join(',');
+    }
+
+    function favSave(list, seen) {
+        fav.state = { v: 1, list: list.slice(0, 60), seen: seen || (fav.state && fav.state.seen) || {} };
+        fav.raw = JSON.stringify(fav.state);
+        try { localStorage.setItem(FAV_KEY, fav.raw); } catch (_) { /* this load only */ }
+    }
+
+    /** The favourites' keys in order, after taking over what Options... stored since the last look. */
+    function favList() {
+        let raw = null;
+        try { raw = localStorage.getItem(FAV_KEY); } catch (_) { raw = null; }
+        if (raw !== fav.raw || !fav.state) {
+            let s = null;
+            try { s = JSON.parse(raw || 'null'); } catch (_) { s = null; }
+            fav.state = { v: 1, list: s && Array.isArray(s.list) ? s.list.filter((k) => typeof k === 'string') : [], seen: (s && s.seen && typeof s.seen === 'object' && s.seen) || {} };
+            fav.raw = raw;
+        }
+        let all = null;
+        try { all = JSON.parse(localStorage.getItem(sh.todayOptionsKey || 'wmTodayOptions') || 'null'); } catch (_) { all = null; }
+        const stored = (all && all.favorites) || null;
+        if (!stored || !FAV_GROUPS.some((g) => typeof stored[g] === 'string')) return fav.state.list;
+        let list = fav.state.list.slice();
+        const seen = { ...fav.state.seen };
+        const map = favCatalog();
+        const fresh = [];
+        for (const g of FAV_GROUPS) {
+            const text = stored[g];
+            if (typeof text !== 'string') continue;
+            if (text !== seen[g]) {
+                // a new answer from Options...: its unchecked keys leave, the newly checked join at
+                // the end in the order they were checked (keys that are not on its list stay)
+                const off = new Set(text.split(',').filter(Boolean));
+                list = list.filter((k) => !off.has(k));
+                for (const k of map.keys()) if (favGroup(k) === g && !off.has(k) && !list.includes(k)) fresh.push(k);
+                seen[g] = text;
+            }
+            delete stored[g];
+        }
+        const rank = (k) => { const i = fav.checked.indexOf(k); return i < 0 ? fav.checked.length : i; };
+        fresh.sort((a, b) => rank(a) - rank(b) || favColl.compare(map.get(a).label, map.get(b).label));
+        list = list.concat(fresh);
+        fav.checked = [];
+        favSave(list, seen);
+        // the options keep no copy: the list above is the one Options... shows next time
+        try { localStorage.setItem(sh.todayOptionsKey || 'wmTodayOptions', JSON.stringify(all)); } catch (_) { /* storage off */ }
+        return fav.state.list;
+    }
+
+    /** The favourites that Start still lists, in order. */
+    function favItems() {
+        const map = favCatalog();
+        return favList().map((k) => map.get(k)).filter(Boolean);
+    }
+
+    function favStart(it) {
+        if (!it) return;
+        if (it.folder) {
+            // a folder of Programs: 6.5 opens it on Start; 6.1's Programs opens at its top until it can open a folder
+            const S = window.wmSettings;
+            if (sh.version === '6.5' && window.wmStart65 && typeof window.wmStart65.openFolder === 'function' && window.wmStart65.openFolder(it.folder)) return;
+            if (S && typeof S.openProgramsFolder === 'function') { S.openProgramsFolder(it.folder); return; }
+            open('programs');
+            return;
+        }
+        if (it.key.startsWith('a:')) { open(it.key.slice(2)); return; }
+        // a Dreamscape page: its own route (Internet Explorer's mobile view), under the wait cursor
+        if (it.launch && typeof it.launch.action === 'function') sh.busy(() => it.launch.action(), { paint: true, timeout: 15000 });
+    }
+
+    /**
+     * The item's Options (Settings > Today > Items > Favorites > Options...). Settings has no call
+     * for an item's options yet (wmSettings.openTodayOptions when it has): its Items list is opened
+     * and the row and its Options... button are pressed here.
+     */
+    function favOptions() {
+        const S = window.wmSettings;
+        if (!S) return;
+        if (typeof S.openTodayOptions === 'function') { S.openTodayOptions('favorites'); return; }
+        if (typeof S.open !== 'function') return;
+        S.open('today', 'items');
+        let tries = 0;
+        const press = () => {
+            const pg = [...document.querySelectorAll('#wmShell .wm-page')].find((p) => !p.hidden && p.querySelector('.wm-listbox-row input[name="it-favorites"]'));
+            const box = pg && pg.querySelector('input[name="it-favorites"]');
+            const row = box && box.closest('.wm-listbox-row');
+            if (!row) { if (++tries < 20) setTimeout(press, 100); return; }
+            if (!row.classList.contains('is-selected')) row.click();
+            const btn = pg.querySelector('.wm-button[data-act="options"]');
+            if (btn && !btn.disabled) btn.click();
+        };
+        setTimeout(press, 0);
+    }
+
+    function favMove(key, by) {
+        const list = favList().slice();
+        const map = favCatalog();
+        const i = list.indexOf(key);
+        if (i < 0) return;
+        if (!by) list.splice(i, 1);
+        else {
+            // over the next favourite that is on show (one that left Start keeps its place)
+            let j = i + by;
+            while (j >= 0 && j < list.length && !map.has(list[j])) j += by;
+            if (j < 0 || j >= list.length) return;
+            list.splice(j, 0, list.splice(i, 1)[0]);
+        }
+        // (seen is cleared: the same answer from Options... counts again after a change made here)
+        favSave(list, {});
+        document.dispatchEvent(new CustomEvent('wmSettingsChange', { detail: { keys: [FAV_KEY] } }));
+    }
+
+    function favMenu(it, items) {
+        const i = items.indexOf(it);
+        return [
+            { label: 'Open', action: () => favStart(it) },
+            '-',
+            { label: 'Move Left', disabled: i <= 0, action: () => favMove(it.key, -1) },
+            { label: 'Move Right', disabled: i < 0 || i >= items.length - 1, action: () => favMove(it.key, 1) },
+            { label: 'Remove', action: () => favMove(it.key, 0) },
+            '-',
+            { label: 'Options...', action: favOptions }
+        ];
+    }
+
+    function favTitanium() {
+        const items = favPanel;
+        if (!items) return null;
+        const change = { label: 'Change', action: favOptions };
+        // a panel page's small icon is one file: the densest of the set
+        const one = (ic) => { const set = String(ic.srcset || '').split(',').map((s) => s.trim().split(' ')[0]).filter(Boolean); return set[set.length - 1] || ic.src; };
+        const pages = items.map((it) => ({ smallIcon: one(it.small), title: it.label, softKey: change, onTap: afterTap(() => favStart(it)) }));
+        pages.push({ smallIcon: 'ti-2551', title: 'Add/Remove', softKey: change, onTap: afterTap(favOptions) });
+        panelChanged('favorites', pages);
+        return { label: 'favorites', icon: 'ti-2550', pages, softKey: change, onTap: (pg) => (pg && typeof pg.onTap === 'function' ? pg.onTap() : favOptions()) };
+    }
+
+    function renderFavorites(el, { option }) {
+        if (itemOff(el, false)) { favPanel = null; return false; }
+        if (!window.wmSettings || typeof window.wmSettings.programItems !== 'function') return false;
+        const items = favItems();
+        favPanel = items;
+        if (el.dataset.wtwBuilt !== 'wtw-favs') {
+            el.dataset.wtwBuilt = 'wtw-favs';
+            el.classList.add('wtw', 'wtw-favs');
+            el.innerHTML = `<button type="button" class="wtw-favs-none"><img ${imgSrcset('ie-favorite')} alt=""><span class="wtw-title">Tap here to add favorites</span></button>
+                <span class="wtw-favs-strip"></span><span class="wtw-favs-name"></span>`;
+            el.querySelector('.wtw-favs-none').addEventListener('click', favOptions);
+            const strip = el.querySelector('.wtw-favs-strip');
+            const of = (e) => { const b = e.target.closest('.wtw-fav'); return b ? (favPanel || []).find((it) => it.key === b.dataset.key) : null; };
+            const name = (it) => { if (!it) return; fav.sel = it.key; setText(el.querySelector('.wtw-favs-name'), it.label); };
+            strip.addEventListener('pointerdown', (e) => name(of(e)));
+            strip.addEventListener('focusin', (e) => name(of(e)));
+            strip.addEventListener('click', (e) => { const it = of(e); if (it) { name(it); favStart(it); } });
+            strip.addEventListener('contextmenu', (e) => {
+                const it = of(e);
+                if (!it) return;
+                e.preventDefault();
+                name(it);
+                sh.menuAt(e.clientX, e.clientY, favMenu(it, favPanel || []));
+            });
+        }
+        const small = option('size') === 'small';
+        el.classList.toggle('is-small', small);
+        el.classList.toggle('is-empty', !items.length);
+        const strip = el.querySelector('.wtw-favs-strip');
+        const sig = `${small ? 's' : 'l'}|${items.map((it) => `${it.key}|${it.label}|${it.img.src}`).join('|')}`;
+        if (strip.dataset.sig !== sig) {
+            strip.dataset.sig = sig;
+            strip.innerHTML = items.map((it) => {
+                const ic = small ? it.small : it.img;
+                return `<button type="button" class="wtw-fav" data-key="${esc(it.key)}" aria-label="${esc(it.label)}"><img src="${esc(ic.src)}"${ic.srcset ? ` srcset="${esc(ic.srcset)}"` : ''} alt="" draggable="false"></button>`;
+            }).join('');
+        }
+        const sel = items.find((it) => it.key === fav.sel) || items[0] || null;
+        setText(el.querySelector('.wtw-favs-name'), sel ? sel.label : '');
+        return true;
+    }
+
     // ================================================================ registration
 
     function register() {
@@ -1287,6 +1781,16 @@
         // Files: off until switched on, as Notes, Remote Desktop and Server Status are
         sh.registerTodayItem({ id: 'files', label: 'Files', icon: 'app-file-explorer', after: 'server', defaultOn: false, render: renderFiles, titanium: filesTitanium, options: FILES_OPTIONS });
         document.addEventListener('wmFilesChange', () => { files.stale = true; });
+        // Internet Explorer and Favorites: off until switched on, as Files is
+        sh.registerTodayItem({ id: 'ie', label: 'Internet Explorer', icon: 'app-ie', after: 'files', defaultOn: false, render: renderIe, titanium: ieTitanium, options: IE_OPTIONS });
+        sh.registerTodayItem({ id: 'favorites', label: 'Favorites', icon: 'ie-favorite', after: 'ie', defaultOn: false, render: renderFavorites, titanium: favTitanium, options: FAV_OPTIONS });
+        // the order the Options' boxes are checked in is the order the new favourites take
+        document.addEventListener('change', (e) => {
+            const t = e.target;
+            if (!t || !t.matches || !t.matches('input[name="opt-favapps"], input[name="opt-favandroid"]')) return;
+            fav.checked = fav.checked.filter((k) => k !== t.value);
+            if (t.checked) fav.checked.push(t.value);
+        }, true);
         const tapped = (e) => { if (e.isTrusted) files.tapAt = performance.now(); };
         document.addEventListener('click', tapped, true);
         document.addEventListener('keydown', (e) => { if (e.key === 'Enter') tapped(e); }, true);
@@ -1298,6 +1802,7 @@
             server.at = 0; server.infoAt = 0; server.workersAt = 0; server.loadDenied = false;
             director.asked = 0; director.at = { wren: 0, kabuki: 0, xi: 0 };
             files.at = 0;
+            ie.at = 0; fav.at = 0;
         }
     };
 

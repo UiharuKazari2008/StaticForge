@@ -713,7 +713,13 @@
         const p = panels[sel];
         const pg = p && p.pages[pageIndex(p)];
         const act = (pg && pg.onTap) || (p && p.onTap);
-        if (typeof act === 'function') { try { act(pg); } catch (err) { console.warn('[wmTitanium] tap', p.id, err); } }
+        if (typeof act !== 'function') return;
+        // the panel opens on the pen's lift; the click that follows it must not land on the program
+        // that has just come up (a tap on the IE panel went on to follow a link on IE's start page)
+        const eat = (e) => { e.stopPropagation(); e.preventDefault(); };
+        window.addEventListener('click', eat, { capture: true, once: true });
+        setTimeout(() => window.removeEventListener('click', eat, { capture: true }), 400);
+        try { act(pg); } catch (err) { console.warn('[wmTitanium] tap', p.id, err); }
     }
 
     /** List position p (rows): the selection moves on once the next item has travelled a whole row. */
