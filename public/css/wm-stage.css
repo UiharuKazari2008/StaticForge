@@ -182,3 +182,13 @@ html.ui-mobile .wm-notify-body .toast-detail {
 html.ui-mobile .wm-notify-body .toast-detail:empty {
     display: none;
 }
+
+/* The shell's own art (ROM icons under /static_images/wm61 and wm65) is never a touch target of
+ * its own: the control it sits in takes the touch. A long press that lands on an <img> makes the
+ * Android app offer "Save Image" (its WebView context menu for pictures), which belongs to real
+ * pictures only (thumbnails and prints come from other paths and keep it) */
+html.ui-mobile #wmShell img[src*="/static_images/wm61/"],
+html.ui-mobile #wmShell img[src*="/static_images/wm65/"],
+html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
+    pointer-events: none;
+}

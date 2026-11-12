@@ -94,7 +94,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-s65-icon {
     height: calc(45 * var(--wm-px));
     /* ScaleStyle="Fit": other art (a Dreamscape app's own icon) is fitted into the 90x90 box */
     object-fit: contain;
-    pointer-events: auto;
+    /* not a touch target of its own: the cell's ::before takes the taps. A long press that lands on
+       an <img> makes the Android app offer "Save Image" (its WebView context menu for pictures) */
+    pointer-events: none;
 }
 
 /* Tahoma 7 pt, white, centred, wrapped. On the emulator the glyphs are 18 px tall-set (9 units:
