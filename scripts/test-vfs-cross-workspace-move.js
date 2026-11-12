@@ -48,10 +48,15 @@ const wmCalls = [];
 const refCalls = [];
 const noteCalls = [];
 
+const gallery = {
+    'ws-a': { files: ['print.png'], scraps: ['scrap.png'] },
+    'ws-b': { files: [], scraps: [] }
+};
+
 const vfs = new VfsManager({
     getWorkspaceManager: () => ({
         getWorkspaces: () => ({ 'ws-a': { name: 'A' }, 'ws-b': { name: 'B' } }),
-        _readWorkspaceGalleryFilenames: async () => [],
+        _readWorkspaceGalleryFilenames: async (workspaceId, bucket) => gallery[workspaceId]?.[bucket] || [],
         moveToWorkspaceArray: (type, items, targetWsId, sourceWsId) => {
             wmCalls.push({ type, items, targetWsId, sourceWsId });
             return items.length;
@@ -137,6 +142,18 @@ async function run() {
         id: 'file-1',
         fields: { folder_id: null, scope: 'workspace', workspace_id: 'ws-b' }
     });
+
+    // A name the source gallery does not hold is refused: moveToWorkspaceArray would
+    // otherwise add it to the target workspace as a phantom entry.
+    wmCalls.length = 0;
+    await assert.rejects(
+        () => vfs.moveItems(
+            [{ targetKind: 'image', targetId: 'not-here.png', name: 'not-here.png', workspaceId: 'ws-a' }],
+            DEST
+        ),
+        /Not found in workspace ws-a/
+    );
+    assert.deepStrictEqual(wmCalls, []);
 
     // A kind this path does not own still says why.
     await assert.rejects(

@@ -769,8 +769,15 @@ class VfsManager {
         switch (ref.targetKind) {
             case 'image':
             case 'scrap': {
-                const type = ref.targetKind === 'scrap' ? 'scraps' : 'files';
-                const movedCount = wm.moveToWorkspaceArray(type, [targetId], targetWsId, sourceWsId);
+                const bucket = ref.targetKind === 'scrap' ? 'scraps' : 'files';
+                // moveToWorkspaceArray counts what it is asked to move, not what the source
+                // really holds, so a name that is not in the source gallery would land in the
+                // target as a phantom. Check the membership first.
+                const present = await wm._readWorkspaceGalleryFilenames(sourceWsId, bucket);
+                if (!(present || []).includes(targetId)) {
+                    throw new Error(`Not found in workspace ${sourceWsId}: ${name}`);
+                }
+                const movedCount = wm.moveToWorkspaceArray(bucket, [targetId], targetWsId, sourceWsId);
                 if (!movedCount) throw new Error(`Not found in workspace ${sourceWsId}: ${name}`);
                 return movedItem();
             }
