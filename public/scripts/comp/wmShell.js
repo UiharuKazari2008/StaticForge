@@ -6452,8 +6452,8 @@
                 if (root.dataset.wmBoot !== 'splash') return;
                 let frame = 0;
                 const tick = () => {
-                    bootWait.src = art(`wait-${frame}`);
-                    bootWait.srcset = srcset(`wait-${frame}`);
+                    // the version's own wheel (6.5: the four coloured dots), as the busy cursor
+                    waitFrame(bootWait, frame);
                     frame = (frame + 1) % 16;
                 };
                 tick();
@@ -6719,7 +6719,7 @@
         // menu (the title bar's ok / X are inline in wm-shell.css)
         ['menu-check', 'menu-submenu-arrow'].forEach((n) => ['', '@2x', '@4x'].forEach((x) => { const img = new Image(); img.src = `/static_images/wm61/${n}${x}.png`; }));
         // the wait cursor's frames: a busy() right after boot must not show an empty frame while they download
-        for (let f = 0; f < 16; f++) { const img = new Image(); img.decoding = 'async'; img.srcset = srcset(`wait-${f}`); img.src = art(`wait-${f}`); }
+        for (let f = 0; f < 16; f++) { const img = new Image(); img.decoding = 'async'; waitFrame(img, f); }
         watchTodayPrefs();
         registerTodayApp();
         registerGalleryApp();
