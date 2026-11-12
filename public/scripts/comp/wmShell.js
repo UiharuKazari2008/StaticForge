@@ -642,7 +642,7 @@
 
     function backKey() {
         // with a history entry for the layer, go back through history so the entries stay in step
-        if (historyDepth() > 0) { history.back(); return; }
+        if (historyDepth() > 0) { if (!window.melatonRestarting) history.back(); return; }
         if (closeTopLayer()) syncHistory({ noPush: true });
     }
 
@@ -1582,6 +1582,8 @@
             const noPush = syncNoPush;
             syncNoPush = false;
             if (ignorePops > 0) return;
+            // a restart is on its way (restartClientNavigate): a history.go() now cancels its reload
+            if (window.melatonRestarting) return;
             const want = desiredDepth();
             const have = historyDepth();
             if (want > have && !noPush) {

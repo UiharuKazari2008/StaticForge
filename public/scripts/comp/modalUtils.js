@@ -7482,6 +7482,12 @@ function restartClientNavigate() {
     if (typeof bypassConfirmation !== 'undefined') {
         bypassConfirmation = true;
     }
+    // exitConfirmation's beforeunload reads the window property, not app.js's `let`
+    window.bypassConfirmation = true;
+    // a history move after this cancels the reload: Melaton Mobile's Settings page closed and
+    // synced its history right after "Restart now? Yes" (history.go), and the phone never
+    // restarted. wmShell leaves history alone from here on.
+    window.melatonRestarting = true;
     if (window.isDesktop) {
         location.replace('/launch');
     } else {
