@@ -560,12 +560,42 @@
     window.wmDirectorApp = {
         attach: attachItems,
         handOff,
-        newSessionWith: async (p) => { if (p) await switchPersona(p); await newSession(); },
+        newSessionWith: async (p) => { if (p) await choosePersona(p); await newSession(); },
         // Messaging's Director accounts (#763): open THAT session in the app (her persona first),
         // and the session row's own menu (Fork, Move to workspace, Auto-Repair, Nuke, Delete)
         openSession: (p, id) => openSessionOf(p, id),
         sessionMenuRows: (p, id, session) => sessionRowsFor(p, id, session)
     };
+
+    /**
+     * Whether persona p can be chosen yet. director.js setPersona returns without a word while it
+     * cannot: Chiyo until the engine list (customProviders / Director Settings) has arrived, Yozora
+     * until Xi is on and the window is open. Right after a load, a Messaging row or Today item tapped
+     * for her landed on Yumiya's new-session page instead (#763).
+     */
+    function personaReady(d, p, ms = 12000) {
+        const ok = () => (p === 'kabuki' ? d.kabukiAvailable() : p === 'xi' ? d._xiEnabled === true && d.directorWindowIsOpen() : true);
+        if (ok()) return Promise.resolve(true);
+        return new Promise((resolve) => {
+            const t0 = Date.now();
+            const tick = () => {
+                if (ok()) resolve(true);
+                else if (Date.now() - t0 > ms) resolve(false);
+                else setTimeout(tick, 100);
+            };
+            tick();
+        });
+    }
+
+    /** The Director on persona p (waiting until she can be chosen); false when she still cannot be. */
+    async function choosePersona(p) {
+        const d = dir();
+        if (!d || !p || d.persona === p) return !!d;
+        if (!d.directorWindowIsOpen()) await d.openDirectorWindow();
+        if (!(await busyOf(() => personaReady(d, p), { paint: true }))) return false;
+        await switchPersona(p);
+        return d.persona === p;
+    }
 
     /** The app in front on persona p's session id, its messages on screen (the Sessions page's tap). */
     function openSessionOf(p, id) {
@@ -573,7 +603,7 @@
         return handOff(async (d) => {
             if (!d) return false;
             if (!d.directorWindowIsOpen()) await d.openDirectorWindow();
-            if (p && d.persona !== p) await switchPersona(p);
+            if (p && d.persona !== p && !(await choosePersona(p))) return false;
             if (!sessionById(id)) { try { await busyOf(() => d.loadDirectorSessions()); } catch (_) { /* below */ } }
             if (!sessionById(id)) return false;
             await openSession(id);
@@ -602,7 +632,7 @@
             if (d.persona !== p) {
                 // Yozora's chats need the window (director.js setPersona): the app comes up for them
                 if (p === 'xi' && !d.directorWindowIsOpen()) { await openSessionOf(p, id); return; }
-                await switchPersona(p);
+                await choosePersona(p);
             }
             if (!sessionById(id)) { try { await busyOf(() => d.loadDirectorSessions()); } catch (_) { /* below */ } }
         };
@@ -884,9 +914,22 @@
         if (contextMenu._wmDirectorPatched) return true;
         contextMenu._wmDirectorPatched = true;
         const open = contextMenu._openMenu.bind(contextMenu);
+        // A hold is a finger that stays put. One that has dragged (scrolling the log) is not a hold, even
+        // if it then rests: the desktop's long-press timer does not watch for that, so it is watched here.
+        const touch = { x: 0, y: 0, moved: false };
+        window.addEventListener('touchstart', (e) => {
+            const t = e.touches && e.touches[0];
+            if (t) { touch.x = t.clientX; touch.y = t.clientY; touch.moved = false; }
+        }, { capture: true, passive: true });
+        window.addEventListener('touchmove', (e) => {
+            const t = e.touches && e.touches[0];
+            if (t && (Math.abs(t.clientX - touch.x) > 10 || Math.abs(t.clientY - touch.y) > 10)) touch.moved = true;
+        }, { capture: true, passive: true });
+        window.addEventListener('scroll', () => { touch.moved = true; }, { capture: true, passive: true });
         contextMenu._openMenu = function (event, target, trigger, isTouch, isProxyEvent) {
             const mine = isCurrent() && target && ((page && page.contains(target)) || (target.closest && target.closest('#confirmationDialog')));
             if (!mine) return open(event, target, trigger, isTouch, isProxyEvent);
+            if (trigger !== 'click' && touch.moved && event && (isTouch || /^touch|^contextmenu$/.test(String(event.type || '')))) return undefined;
             const config = trigger === 'click'
                 ? (this.clickMenuConfigs && this.clickMenuConfigs[target.dataset.clickMenu])
                 : (this.configs && this.configs[target.dataset.contextMenu]);

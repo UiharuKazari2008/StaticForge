@@ -3338,3 +3338,24 @@ html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessio
     color: var(--sh-text);
     opacity: 1;
 }
+
+/* Yozora's log: every kind of text in a reply, a thought or a tool row is light on her night face
+   (headings, tables, quotes and expanded thoughts kept the page's dark ink) */
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message :is(.director-message-content, .director-thinking-full, .director-thinking-line, .director-tool-detail, .director-user-message-input),
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message-content :is(p, li, span, strong, em, b, i, h1, h2, h3, h4, h5, h6, td, th, blockquote, dt, dd, div):not(.director-inline-diff):not(.director-inline-diff *) {
+    color: var(--sh-text);
+    opacity: 1;
+}
+
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message :is(.director-thinking-full, .director-thinking-line, .director-tool-detail) {
+    color: var(--sh-dim);
+}
+
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message-content :is(table, th, td, blockquote, hr) {
+    border-color: var(--sh-rim);
+    background: none;
+}
+
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message-content th {
+    background: rgba(127, 208, 255, 0.12);
+}
