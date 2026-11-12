@@ -16,6 +16,11 @@
  *     label is full white and slides 1:1 under the band's glass (dim inside it), the selected
  *     item's label waits centred in the band, and the selection moves on when the next item has
  *     travelled one full row; a drag starts after 36 px
+ *   - when the finger lifts, the list runs to an item on its own clock (startTween): a flick goes
+ *     5.9 items for each px/ms of the finger's speed at 30 + 175 ms an item, fast at first and
+ *     still moving when it stops; a lift without speed returns to the item in the band in
+ *     310 ms; a tap on another item or a key takes 45 ms an item. Then the panel grows in from
+ *     80 % (zoomIn) and the right soft key changes last (Yozora #748)
  *   - left / right on a panel with pages: after 45 px the page follows the finger, the next one a
  *     screen width behind; past half the width it carries on, short of it the page slides back
  *   - soft keys: left the Today key, right the panel's own (Set, Compose, Messaging, Library ...);
@@ -39,6 +44,19 @@
     const BAND = 70;     // focus band (140)
     const DRAG_START = 18; // a drag starts after 36 VGA px of travel
     const SLIDE_START = 22.5; // a page starts to follow the finger after 45
+    // The list's own moves, timed on the 6.5 emulator (device frames with device times, 100+ lifts;
+    // the device draws about ten frames a second, the clocks below are what its positions fit):
+    const EXTRA = BAND - ROW;   // what the item in the band has over a condensed one (72 px)
+    const FLING_ROWS = 11.8;    // items a flick travels per WM unit/ms of finger speed (5.9 per VGA px/ms)
+    const FLICK_MIN = 0.08;     // slower than this is no flick (0.15 px/ms: none, 0.19 px/ms: one item)
+    const FLING_BASE_MS = 30;   // a flick over n items lasts 30 + 175 n ms (220, 375, 555, 730, 905,
+    const FLING_ROW_MS = 175;   // 1080, 1255 ms for 1..7 items) ...
+    const FLING_POW = 0.57;     // ... and is at (t / T) ^ 0.57 of the way: within 1 % for every lift
+    const TAP_ROW_MS = 45;      // tap on another item, up / down key: there in about 50, 90, 130 ms for 1, 2, 3
+    const BACK_MS = 310;        // lift without speed: back to the item in the band, whatever the distance
+    const ZOOM_MS = 150;        // the panel grows from 80 % to full size, evenly (wm-titanium.css)
+    const KEY_MS = 70;          // the right soft key changes 210 - 230 ms after the list stops
+    const FADE_MS = 120;        // the arriving item's label fades out under the glass (by eye, not timed)
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     // wm65 art by name ('ti-2051'); 's:owner' / 'x:app-studio-lg' / 'p:wren' = a 6.5 Start icon / a 6.1 set
     // icon / a Director persona's picture; 'w:rain' = a weather condition (ti-w-*)
@@ -62,7 +80,10 @@
     let pos = 0;         // list position in rows while dragging / settling (sel at rest)
     let pageAt = new Map(); // panel id -> page index
     let dragging = false;
-    let settle = 0;      // rAF id of the settle animation
+    let settle = 0;      // rAF id of the list's own move (tw)
+    let tw = null;       // that move: { a: item it left, b: item it goes to, n, D, e0, p, ... }
+    let skSel = 0;       // the panel whose right soft key is up (it changes after the panel has grown in)
+    const rowEl = new Map(); // panel id -> its condensed row
     let panelsKey = '';
     let homeDone = false;
 
@@ -344,19 +365,22 @@
             if (c.textContent !== (p.count || '')) c.textContent = p.count || '';
         });
         have.forEach((el) => el.remove());
+        rowEl.clear();
+        for (const el of list.children) rowEl.set(el.dataset.id, el);
     }
 
     /** Place every row for the list position `pos` (rows) around the band. */
     function place() {
         const top = focusTop();
-        const list = host.querySelector('.wm-ti-list');
         const e = (pos - sel) * ROW;
         const rest = !dragging && !settle;
         host.style.setProperty('--wm-ti-top', String(top));
         host.classList.toggle('is-rest', rest);
         panels.forEach((p, i) => {
-            const el = list.querySelector(`[data-id="${CSS.escape(p.id)}"]`);
+            const el = rowEl.get(p.id);
             if (!el) return;
+            el.classList.remove('is-under');
+            if (el.style.opacity) el.style.opacity = '';
             let y;
             if (i < sel) y = top - ROW * (sel - i) - e;
             else if (i > sel) y = top + BAND + ROW * (i - sel - 1) - e;
@@ -487,48 +511,208 @@
 
     function select(i, animate) {
         i = Math.max(0, Math.min(panels.length - 1, i));
-        if (!animate) { cancelAnimationFrame(settle); settle = 0; sel = i; pos = i; place(); drawExpanded(); sh.refreshSoftKeys(); return; }
-        settleTo(i);
+        if (!animate) {
+            cancelAnimationFrame(settle); settle = 0; tw = null;
+            clearTimeout(zoomTimer); zoomTimer = 0; host.classList.remove('is-zoom');
+            sel = i; pos = i; skSel = i; place(); drawExpanded(); sh.refreshSoftKeys();
+            return;
+        }
+        // a second key while the list still moves: the first move is over at once (device: three
+        // down keys 100 ms apart each landed on their item)
+        if (tw) { const b = tw.b; cancelAnimationFrame(settle); settle = 0; tw = null; sel = b; pos = b; }
+        if (i === sel) { if (host.classList.contains('is-rest')) return; place(); drawExpanded(); zoomIn(); return; }
+        startTween(sel, i, { tap: true });
     }
 
-    /** Ease the list to item `target`, the selection stepping on as each row passes (as a drag does). */
-    function settleTo(target) {
+    // ---------------------------------------------------------------- the list's own move
+    //
+    // What the device does once the finger is off (rows found in device frames, rec/ + col*.txt in
+    // the #748 scroll study):
+    //   - the item that was in the band (a) and the one the move ends on (b) are fixed at the lift.
+    //     A flick goes round(5.9 x finger speed in px/ms) items from a, whatever the finger's
+    //     offset was; under 0.16 px/ms, or after a pause, it is not a flick and b = a. At an end
+    //     of the list the move keeps the pace of the items it asked for and stops at the last one.
+    //   - the list is then a plain stack: every item one row high, a's slot shrinking from the
+    //     band's height and b's growing to it by the same progress p that carries b's row to the
+    //     band; labels sit at the top of their slots, dim under the glass; b's own label fades
+    //     out as it arrives.
+    //   - p runs on a clock, not from the finger's speed: (t / T) ^ 0.57 with T = 30 + 175 n ms for
+    //     n items, so a long flick starts at about 9 items a second, is at 3.5 when it stops, and
+    //     it stops without easing to rest; nothing overshoots, at the ends either. The device
+    //     shows its first frame of this about 100 ms after the lift, where the curve is already
+    //     past where the finger left the list; drawn at a phone's frame rate the list waits
+    //     where the finger left it until the curve reaches that point (p0), then follows it.
+    //   - b = a: the list returns in 310 ms from any offset, slow - fast - slow.
+    //   - a tap on another item and the up / down keys use the same stack at 45 ms an item.
+    //   - a touch does not stop the move. A tap on an item while it runs ends it on the next item
+    //     to reach the band; a tap on the band lets it finish and opens the item it ends on; a
+    //     finger that travels the drag distance takes the list over where it is.
+    // None of these times is scaled: the same lifts gave the same positions at every recorder
+    // rate, and they hold from 1 to 8 items.
+
+    /** Start the move from item a to item b. o.tap: a tap or key; o.nv: the items the flick asked for; o.at: when (ms). */
+    function startTween(a, b, o) {
         cancelAnimationFrame(settle);
-        const sel0 = settle ? -1 : sel; // the item that was in the band when the move began
-        const from = pos;
-        const dist = target - from;
-        if (Math.abs(dist) < 0.001) { settle = 0; sel = target; pos = target; place(); drawExpanded(); sh.refreshSoftKeys(); return; }
-        const ms = Math.min(420, 140 + 70 * Math.abs(dist));
-        const t0 = performance.now();
-        const step = (now) => {
-            const k = Math.min(1, (now - t0) / ms);
-            const eased = 1 - (1 - k) * (1 - k);
-            moveTo(from + dist * eased);
-            if (k < 1) { settle = requestAnimationFrame(step); place(); return; }
-            settle = 0;
-            const moved = sel0 !== target;
-            sel = target;
-            pos = target;
-            place();
-            drawExpanded();
-            if (moved) zoomIn(); else sh.refreshSoftKeys();
-        };
-        settle = requestAnimationFrame(step);
+        flushZoom();
+        const n = Math.abs(b - a);
+        const e = (pos - a) * ROW; // where the finger left the list: units past a's place, + toward later items
+        // the clock starts when the finger left the glass, not when the event got here
+        tw = { a, b, n, e0: e, D: 0, p: 0, p0: 0, gain: 1, Tv: 0, end: BACK_MS, t0: (o && o.at) || performance.now(), open: false, nv: n };
+        if (n) {
+            const nv = Math.max(n, (o && o.nv) || n);
+            tw.D = b > a ? BAND + ROW * (n - 1) : ROW * n;                 // b's row to the band top, from a's rest layout
+            tw.nv = nv;
+            tw.gain = (tw.D + ROW * (nv - n)) / tw.D;
+            tw.Tv = o && o.tap ? TAP_ROW_MS * nv : FLING_BASE_MS + FLING_ROW_MS * nv;
+            tw.end = tw.Tv * Math.pow(1 / tw.gain, 1 / FLING_POW);
+            tw.p0 = Math.max(0, Math.min(0.999, (b > a ? e : -e) / tw.D));
+            tw.p = tw.p0;
+        }
+        sel = a;
+        placeTween(tw.p, 1);
+        settle = requestAnimationFrame(tweenStep);
+    }
+
+    function tweenStep(now) {
+        if (!tw) return;
+        const t = Math.max(0, now - tw.t0);
+        let p;
+        if (tw.n) p = Math.max(tw.p0, Math.min(1, tw.gain * Math.pow(t / tw.Tv, FLING_POW)));
+        else { const k = Math.pow(Math.min(1, t / BACK_MS), 1.3); p = k * k * (3 - 2 * k); } // 13 %, 65 %, 100 % of the way at 103, 206, 310 ms
+        if (t >= tw.end || p >= 1) { arrive(); return; }
+        tw.p = p;
+        placeTween(p, Math.min(1, (tw.end - t) / FADE_MS));
+        settle = requestAnimationFrame(tweenStep);
+    }
+
+    /** Row tops (WM units) of the stack at progress p of the move. */
+    function tweenYs(top, p) {
+        const { a, b, n } = tw;
+        const ys = new Array(panels.length);
+        if (a === b) {
+            const e = tw.e0 * (1 - p);
+            for (let i = 0; i < ys.length; i++) ys[i] = i <= a ? top - e - ROW * (a - i) : top - e + BAND + ROW * (i - a - 1);
+            return ys;
+        }
+        const grow = ROW + EXTRA * p;         // b's slot
+        const shrink = ROW + EXTRA * (1 - p); // a's slot
+        if (b > a) {
+            const yb = top + tw.D * (1 - p);
+            const ya = yb - ROW * (n - 1) - shrink;
+            for (let i = 0; i < ys.length; i++) ys[i] = i > b ? yb + grow + ROW * (i - b - 1) : i > a ? yb - ROW * (b - i) : ya - ROW * (a - i);
+        } else {
+            const yb = top - tw.D * (1 - p);
+            const ya = yb + grow + ROW * (n - 1);
+            for (let i = 0; i < ys.length; i++) ys[i] = i <= b ? yb - ROW * (b - i) : i < a ? yb + grow + ROW * (i - b - 1) : i === a ? ya : ya + shrink + ROW * (i - a - 1);
+        }
+        return ys;
+    }
+
+    /** Draw the stack: transforms only. fade: what is left of the arriving label (1 .. 0). */
+    function placeTween(p, fade) {
+        const top = focusTop();
+        const ys = tweenYs(top, p);
+        host.style.setProperty('--wm-ti-top', String(top));
+        host.classList.remove('is-rest');
+        panels.forEach((pn, i) => {
+            const el = rowEl.get(pn.id);
+            if (!el) return;
+            const y = ys[i];
+            el.style.transform = `translate3d(0, calc(${y} * var(--wm-px)), 0)`;
+            const under = y + ROW / 2 > top && y + ROW / 2 < top + BAND;
+            el.classList.toggle('is-under', under);
+            el.classList.remove('is-sel');
+            if (el.dataset.far !== '0') el.dataset.far = '0';
+            const o = i === tw.b && fade < 1 ? String(Math.round(fade * (under ? 55 : 100)) / 100) : '';
+            if (el.style.opacity !== o) el.style.opacity = o;
+        });
+    }
+
+    /** The move is over: b is in the band, its panel grows in. */
+    function arrive() {
+        const b = tw.b;
+        const open = tw.open;
+        cancelAnimationFrame(settle);
+        settle = 0;
+        tw = null;
+        sel = b;
+        pos = b;
         place();
+        drawExpanded();
+        zoomIn(open);
+    }
+
+    /** A tap on an item while the list runs: it ends on the next item to reach the band. */
+    function stopAtNext() {
+        if (!tw || !tw.n) return;
+        const top = focusTop();
+        const ys = tweenYs(top, tw.p);
+        const dir = tw.b > tw.a ? 1 : -1;
+        let j = tw.b;
+        for (let i = tw.a + dir; i !== tw.b; i += dir) { if (dir > 0 ? ys[i] >= top : ys[i] <= top) { j = i; break; } }
+        if (j === tw.b) return;
+        const n = Math.abs(j - tw.a);
+        const D = dir > 0 ? BAND + ROW * (n - 1) : ROW * n;
+        const p = Math.max(0.001, Math.min(0.999, 1 - Math.abs(ys[j] - top) / D));
+        const T = FLING_BASE_MS + FLING_ROW_MS * n;
+        Object.assign(tw, { b: j, n, D, gain: 1, Tv: T, end: T, p0: p, p, t0: performance.now() - T * Math.pow(p, 1 / FLING_POW) });
+    }
+
+    /** A finger takes the running list over: the item nearest the band is the one it holds. */
+    function takeOver() {
+        if (!tw) return sel;
+        const top = focusTop();
+        const ys = tweenYs(top, tw.p);
+        let best = tw.a;
+        ys.forEach((y, i) => { if (Math.abs(y - top) < Math.abs(ys[best] - top)) best = i; });
+        cancelAnimationFrame(settle);
+        settle = 0;
+        tw = null;
+        sel = best;
+        pos = best;
+        return best;
     }
 
     /**
-     * The panel arriving in the band (device: the band is empty while the list slides, then the
-     * content grows from about 65 % to full size, the text toward the left edge and the icon toward
-     * the right, slowing down, 0.4 - 0.5 s; the right soft key changes only after it). 350 ms here.
+     * The panel arriving in the band. Device: the band is empty until the list stops, then the
+     * whole panel, text and icon as one picture, is there at 80 % about the middle of the band and
+     * grows evenly to full size in 150 ms (text bounds against the full-size frame: 0.85 at 35 ms,
+     * 0.94 at 100, 0.97 at 127, 0.98 at 139, 1 by 210; the anchor came out at x 221 - 250 of 480,
+     * y 322 - 344 where the band's middle is 320); so the text moves out toward the left edge and
+     * the icon toward the right. It plays after every move, a return to the same item included.
+     * The right soft key changes 210 - 230 ms after the stop; a tap made on the band while the
+     * list ran opens the item then.
      */
     let zoomTimer = 0;
-    function zoomIn() {
+    function zoomIn(open) {
         clearTimeout(zoomTimer);
         host.classList.remove('is-zoom');
         void host.offsetWidth; // restart the animation
         host.classList.add('is-zoom');
-        zoomTimer = setTimeout(() => { host.classList.remove('is-zoom'); sh.refreshSoftKeys(); }, 350);
+        zoomTimer = setTimeout(() => {
+            zoomTimer = 0;
+            host.classList.remove('is-zoom');
+            skSel = sel;
+            sh.refreshSoftKeys();
+            if (open) openSelected();
+        }, ZOOM_MS + KEY_MS);
+    }
+
+    /** The list moves on before the panel has finished arriving: its soft key is up at once. */
+    function flushZoom() {
+        if (!zoomTimer) return;
+        clearTimeout(zoomTimer);
+        zoomTimer = 0;
+        host.classList.remove('is-zoom');
+        skSel = sel;
+        sh.refreshSoftKeys();
+    }
+
+    function openSelected() {
+        const p = panels[sel];
+        const pg = p && p.pages[pageIndex(p)];
+        const act = (pg && pg.onTap) || (p && p.onTap);
+        if (typeof act === 'function') { try { act(pg); } catch (err) { console.warn('[wmTitanium] tap', p.id, err); } }
     }
 
     /** List position p (rows): the selection moves on once the next item has travelled a whole row. */
@@ -544,24 +728,23 @@
         let x0 = 0;
         let pos0 = 0;
         let axis = '';   // '' until the travel passes a start distance, then 'y' (the list) or 'x' (the pages)
-        let lastY = 0;
         let lastX = 0;
         let lastT = 0;
-        let vel = 0;  // rows per ms
         let velX = 0; // px per ms
         let inBand = false;
+        let trail = [];  // the finger's last points { t, y }, for its speed at the lift
         host.addEventListener('pointerdown', (e) => {
             if (id != null || (e.pointerType === 'mouse' && e.button !== 0)) return;
             if (e.target.closest('.wm-ti-arrow') || slide.active) return;
             id = e.pointerId;
-            y0 = lastY = e.clientY;
+            y0 = e.clientY;
             x0 = lastX = e.clientX;
             lastT = e.timeStamp;
-            vel = 0;
             velX = 0;
             axis = '';
-            cancelAnimationFrame(settle);
-            settle = 0;
+            trail = [{ t: e.timeStamp, y: e.clientY }];
+            // a list on its way is not stopped by the touch (device): it goes on until the finger
+            // has travelled the drag distance, or ends early on the tap
             pos0 = pos;
             const top = focusTop();
             const y = (e.clientY - host.getBoundingClientRect().top) / unit();
@@ -574,9 +757,13 @@
             const dx = (e.clientX - x0) / u;
             if (!axis) {
                 const p = panels[sel];
-                if (inBand && p && p.pages.length > 1 && Math.abs(dx) >= SLIDE_START && Math.abs(dx) > Math.abs(dy)) axis = 'x';
-                else if (Math.abs(dy) >= DRAG_START) { axis = 'y'; dragging = true; }
-                else return;
+                if (inBand && !tw && p && p.pages.length > 1 && Math.abs(dx) >= SLIDE_START && Math.abs(dx) > Math.abs(dy)) axis = 'x';
+                else if (Math.abs(dy) >= DRAG_START) {
+                    axis = 'y';
+                    if (tw) pos0 = takeOver();
+                    flushZoom();
+                    dragging = true;
+                } else return;
                 try { host.setPointerCapture(id); } catch (_) { /* capture is a nicety */ }
             }
             const dt = e.timeStamp - lastT;
@@ -587,15 +774,34 @@
                 slideMove(x || (dx < 0 ? -0.01 : 0.01));
                 return;
             }
-            if (dt > 0) { vel = 0.7 * vel + 0.3 * (-(e.clientY - lastY) / u / ROW / dt); lastY = e.clientY; lastT = e.timeStamp; }
+            trail.push({ t: e.timeStamp, y: e.clientY });
+            if (trail.length > 24) trail.shift();
             moveTo(pos0 - dy / ROW);
             place();
         });
+        // the finger's speed when it lifts, WM units a ms, + toward later items: its travel over the
+        // last 100 ms; a finger that stood still for 80 ms has none (device: after a 400 ms hold the
+        // list always returned to the item in the band, 66 of the 68 px to the next one included)
+        const liftSpeed = (now) => {
+            const last = trail[trail.length - 1];
+            if (!last || now - last.t > 80) return 0;
+            let first = last;
+            for (let i = trail.length - 1; i >= 0 && last.t - trail[i].t <= 100; i--) first = trail[i];
+            const dt = last.t - first.t;
+            return dt > 0 ? -(last.y - first.y) / unit() / dt : 0;
+        };
         const end = (e) => {
             if (e.pointerId !== id) return;
             id = null;
             if (!axis) {
-                if (e.type === 'pointerup') tap(e);
+                if (e.type !== 'pointerup') return;
+                if (!tw) { tap(e); return; }
+                // the list is running: a tap on the band opens the item it ends on, a tap anywhere
+                // else ends the move on the next item
+                const top = focusTop();
+                const y = (e.clientY - host.getBoundingClientRect().top) / unit();
+                if (y >= top && y < top + BAND) tw.open = true;
+                else stopAtNext();
                 return;
             }
             if (axis === 'x') {
@@ -606,9 +812,11 @@
                 return;
             }
             dragging = false;
-            // a flick carries on (about a fifth of a second of its speed), then the nearest item
-            const carry = e.timeStamp - lastT < 80 ? vel * 180 : 0;
-            settleTo(Math.max(0, Math.min(panels.length - 1, Math.round(pos + carry))));
+            // from the item in the band: as many items as the flick's speed asks for, or back to it
+            const v = e.type === 'pointerup' ? liftSpeed(e.timeStamp) : 0;
+            const n = Math.abs(v) >= FLICK_MIN ? Math.round(Math.abs(v) * FLING_ROWS) : 0;
+            const b = Math.max(0, Math.min(panels.length - 1, sel + (v > 0 ? n : -n)));
+            startTween(sel, b, { nv: n, at: e.timeStamp });
         };
         host.addEventListener('pointerup', end);
         host.addEventListener('pointercancel', end);
@@ -619,13 +827,7 @@
         const r = host.getBoundingClientRect();
         const y = (e.clientY - r.top) / u;
         const top = focusTop();
-        if (y >= top && y < top + BAND) {
-            const p = panels[sel];
-            const pg = p && p.pages[pageIndex(p)];
-            const act = (pg && pg.onTap) || (p && p.onTap);
-            if (typeof act === 'function') { try { act(pg); } catch (err) { console.warn('[wmTitanium] tap', p.id, err); } }
-            return;
-        }
+        if (y >= top && y < top + BAND) { openSelected(); return; }
         const i = y < top ? sel - Math.ceil((top - y) / ROW) : sel + 1 + Math.floor((y - top - BAND) / ROW);
         if (i >= 0 && i < panels.length && i !== sel) select(i, true);
     }
@@ -635,8 +837,9 @@
         const t = e.target;
         if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"]')) return;
         if (document.querySelector('#wmShell .wm-popup:not([hidden]), #wmShell .wm-msgbox-layer:not([hidden])')) return;
-        if (e.key === 'ArrowDown') { select(sel + 1, true); e.preventDefault(); }
-        else if (e.key === 'ArrowUp') { select(sel - 1, true); e.preventDefault(); }
+        const at = tw ? tw.b : sel; // a key while the list moves counts from the item it is going to
+        if (e.key === 'ArrowDown') { select(at + 1, true); e.preventDefault(); }
+        else if (e.key === 'ArrowUp') { select(at - 1, true); e.preventDefault(); }
         else if (e.key === 'ArrowLeft') { turnPage(-1); e.preventDefault(); }
         else if (e.key === 'ArrowRight') { turnPage(1); e.preventDefault(); }
         else if (e.key === 'Enter') { const p = panels[sel]; if (p && typeof p.onTap === 'function') { p.onTap(p.pages[pageIndex(p)]); e.preventDefault(); } }
@@ -663,14 +866,18 @@
                 if (!homeDone && panels.length) { homeDone = true; at = panels.findIndex((p) => p.clock); }
                 sel = Math.max(0, at);
                 pos = sel;
+                skSel = sel;
             }
+            if (!zoomTimer) skSel = sel;
             drawRows();
             place();
             drawExpanded();
         },
         softKeys(keys) {
             if (!host || host.hidden) return keys;
-            const p = panels[sel];
+            // the key of the panel that has arrived: it stays while the list moves and changes after
+            // the next panel has grown in
+            const p = panels[skSel] || panels[sel];
             const pg = p && p.pages[pageIndex(p)];
             return { left: keys.left, right: (pg && pg.softKey) || (p && p.softKey) || keys.right };
         }
@@ -684,7 +891,11 @@
         sh.setTodayView(view);
     }
 
-    window.wmTitanium = { enabled, select: (i) => select(i, true), panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel };
+    window.wmTitanium = {
+        enabled, select: (i) => select(i, true), panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel,
+        // where the list is (tests): the move under way { a, b, n, p } or null, and the dragged position in rows
+        motion: () => ({ sel, pos, dragging, move: tw ? { a: tw.a, b: tw.b, n: tw.n, asked: tw.nv, p: tw.p } : null })
+    };
 
     if (window.wmShell) init();
     else document.addEventListener('wmShellReady', init, { once: true });
