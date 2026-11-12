@@ -1829,6 +1829,62 @@
         el.classList.add('wm-strip');
     }
 
+    /**
+     * The data call (Yukimi, Nov 12 2026, #771): on a real device the type badge with the arrows
+     * shows while a data call is up, and Connection Manager drops the call once nothing uses it, so
+     * most of the time the large badge shows (the shell's "available" icon). Melaton: data moving
+     * (websocket messages other than pings and quiet polls, network fetches) holds the call up for
+     * DATA_RELEASE_MS after the last of it (the device's CacheTime is 600 s; Yukimi chose 15 s).
+     */
+    const DATA_RELEASE_MS = 15000;
+    let dataUsedAt = 0;
+    let dataReleaseTimer = null;
+    const QUIET_WS = new Set(['sidebar_live']);
+    function dataUsed() {
+        const was = Date.now() - dataUsedAt < DATA_RELEASE_MS;
+        dataUsedAt = Date.now();
+        clearTimeout(dataReleaseTimer);
+        dataReleaseTimer = setTimeout(() => refreshStatus(), DATA_RELEASE_MS + 50);
+        if (!was && shell) refreshStatus();
+    }
+    let dataWatchWs = null;
+    let dataWatchFetch = false;
+    function watchDataUse() {
+        const ws = window.wsClient;
+        if (ws && ws !== dataWatchWs && typeof ws._recordWsMessage === 'function') {
+            dataWatchWs = ws;
+            const record = ws._recordWsMessage.bind(ws);
+            // websocket.js already leaves pings, pongs and the silent ticker polls out of its counts
+            ws._recordWsMessage = (direction, message) => {
+                const before = ws.connectionStats ? ws.connectionStats.messagesIn + ws.connectionStats.messagesOut : 0;
+                record(direction, message);
+                const after = ws.connectionStats ? ws.connectionStats.messagesIn + ws.connectionStats.messagesOut : before + 1;
+                if (after !== before && !(message && QUIET_WS.has(message.type))) dataUsed();
+            };
+        }
+        if (!dataWatchFetch) {
+            dataWatchFetch = true;
+            // a request starting raises the call at once (resource timing only reports at the end)
+            if (typeof window.fetch === 'function') {
+                const f = window.fetch;
+                window.fetch = function (...args) { dataUsed(); return f.apply(this, args); };
+            }
+            if (window.XMLHttpRequest && XMLHttpRequest.prototype.send) {
+                const send = XMLHttpRequest.prototype.send;
+                XMLHttpRequest.prototype.send = function (...args) { dataUsed(); return send.apply(this, args); };
+            }
+        }
+        if (dataWatchFetch === true && typeof PerformanceObserver === 'function') {
+            dataWatchFetch = 'observed';
+            try {
+                // bytes that came over the network (a service worker or HTTP cache answer has none)
+                new PerformanceObserver((list) => { if (list.getEntries().some((e) => e.transferSize > 0)) dataUsed(); })
+                    .observe({ type: 'resource', buffered: false });
+            } catch (_) { /* no resource timing */ }
+        }
+    }
+    const dataCallUp = () => Date.now() - dataUsedAt < DATA_RELEASE_MS;
+
     const put = (el, key, v) => { if (el.dataset[key] !== v) el.dataset[key] = v; };
     const tip = (el, v) => { if (el.title !== v) el.title = v; };
     const hide = (el, h) => { h = !!h; if (el.hidden !== h) el.hidden = h; };
@@ -1842,16 +1898,19 @@
         const connected = !!(ws && typeof ws.isConnected === 'function' && ws.isConnected());
         const data = shell.querySelector('[data-role="data"]');
         const dev = deviceView();
-        // the phone's own link when the Android app or the browser says what it is; else Dreamscape's
-        put(data, 'icon', dev.link ? dev.link.icon : connected ? 'data-on' : 'data-off');
-        tip(data, dev.link ? dev.link.text : connected ? 'Connected' : 'Not connected');
+        watchDataUse();
+        // the phone's own link when the Android app or the browser says what it is; else Dreamscape's.
+        // On the mobile network with no data moving lately the call is down: the large badge.
+        const idleCell = dev.active === 'cellular' && dev.type && DATA_ICON[dev.type] && !dataCallUp();
+        put(data, 'icon', idleCell ? `data-${DATA_ICON[dev.type]}-avail` : dev.link ? dev.link.icon : connected ? 'data-on' : 'data-off');
+        tip(data, idleCell ? `${DATA_NAME[dev.type]} available` : dev.link ? dev.link.text : connected ? 'Connected' : 'Not connected');
         paintSync(data, syncKind(dev));
         // Settings > Screen > Status Icons > Always show the mobile network icon: on Wi-Fi the
         // connectivity icon is Wi-Fi's, so the mobile network's type (available) shows beside it
         const cellEl = shell.querySelector('[data-role="cell"]');
         let cellIcon = null;
         if (lsFlag('wmShowCellIcon', false) && dev.active === 'wifi' && dev.type && DATA_ICON[dev.type] && !dev.airplane
-            && dev.cell && dev.cell.dataEnabled !== false && dev.cell.radioOn !== false) cellIcon = `data-${DATA_ICON[dev.type]}`;
+            && dev.cell && dev.cell.dataEnabled !== false && dev.cell.radioOn !== false) cellIcon = `data-${DATA_ICON[dev.type]}-avail`;
         hide(cellEl, !cellIcon);
         if (cellIcon) { put(cellEl, 'icon', cellIcon); tip(cellEl, `${DATA_NAME[dev.type]} available`); }
         const sig = shell.querySelector('[data-role="signal"]');
@@ -2377,7 +2436,7 @@
         else if (active === 'ethernet') link = { icon: 'data-on', text: 'Wired network: connected' };
         else if (active === 'vpn') link = { icon: 'data-on', text: 'VPN: connected' };
         else if (active === 'none' || cell || wifi) {
-            if (type && !airplane && cell.dataEnabled !== false) link = { icon: `data-${DATA_ICON[type]}`, text: `${DATA_NAME[type]} available` };
+            if (type && !airplane && cell.dataEnabled !== false) link = { icon: `data-${DATA_ICON[type]}-avail`, text: `${DATA_NAME[type]} available` };
             else if (wifi && wifi.enabled === true) link = { icon: 'wifi-available', text: 'Wi-Fi on, not connected' };
             else if (active === 'none') link = { icon: 'data-off', text: 'No network connection' };
         }
