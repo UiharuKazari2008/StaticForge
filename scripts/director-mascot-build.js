@@ -573,6 +573,21 @@ async function preview(dir) {
  *                    her, the chest and arm move on top (directorMascot.js)
  * A pose whose arm is somewhere else (a gesture) keeps only the pieces that match the stage's own.
  */
+// More guide points for the belly mask where the first cut was wrong (sheet pixels, placed on the grid):
+// Yozora's belly is the whole of her dress below the sash, both sides of the red stripe; Yumiya's is the
+// bare belly, stopping at the hem (the dark dress above it is not belly).
+const BELLY_YES = {
+    xi: { base: [[760, 1050], [700, 1300], [1250, 1100], [1000, 1500]], bigger: [[760, 1100], [700, 1400], [1500, 1300], [1100, 1700]] }
+};
+// A second cut joined to the belly: the model stops at Yozora's red stripe, so the panel of her dress
+// on the other side of it is asked for on its own (the closing then takes the stripe between them).
+const BELLY_MORE = {
+    xi: { base: [[740, 1100], [720, 1350], [760, 950]], bigger: [[740, 1150], [720, 1450], [760, 980]] }
+};
+const BELLY_NOT = {
+    xi: { base: [[600, 900], [1550, 600]], bigger: [[600, 900]] },
+    wren: { base: [[1150, 820], [1000, 900]], bigger: [[1150, 820], [1000, 900]], stuffed: [[1150, 820], [1000, 900]] }
+};
 const partName = (pin, j) => (j === 0 ? 'chest' : (pin.length > 7 ? 'arm' : 'hand'));
 
 async function buildSamJobs(dir) {
@@ -595,7 +610,14 @@ async function buildSamJobs(dir) {
                     else pos.push([q[0], q[1]], [q[0] - q[2] * 0.5, q[1]], [q[0] + q[2] * 0.5, q[1]]);
                     return { name: partName(q, j), small: j > 0, pos, neg: [[stage.belly[0], stage.belly[1]]].concat(pins.filter((_, k) => k !== j).map((o) => [o[0], o[1]])) };
                 });
-                parts.push({ name: 'belly', small: false, pos: [[stage.belly[0], stage.belly[1]], [stage.belly[0] + stage.belly[2] * 0.4, stage.belly[1]], [stage.belly[0], stage.belly[1] + stage.belly[2] * 0.4]], neg: pins.map((o) => [o[0], o[1]]) });
+                // the belly: its middle, all four sides (so the whole of it is taken, both sides of a stripe or
+                // sash drawn across it), plus any points given for this stage; not the pieces, nor BELLY_NOT
+                const [bx, by, br] = stage.belly;
+                const extra = (BELLY_YES[persona] && BELLY_YES[persona][stageId]) || [];
+                const not = (BELLY_NOT[persona] && BELLY_NOT[persona][stageId]) || [];
+                parts.push({ name: 'belly', small: false, pos: [[bx, by], [bx + br * 0.45, by], [bx - br * 0.45, by], [bx, by + br * 0.45], [bx, by - br * 0.4], ...extra], neg: pins.map((o) => [o[0], o[1]]).concat(not) });
+                const more = BELLY_MORE[persona] && BELLY_MORE[persona][stageId];
+                if (more) parts.push({ name: 'belly2', small: false, pos: more, neg: pins.map((o) => [o[0], o[1]]) });
                 jobs.push({ persona, stageId, bodyId, base: bodyId === stage.body, file, parts });
             }
         }
@@ -636,6 +658,8 @@ async function buildParts(dir) {
             const g = await channel(names.find((name) => name === 'arm' || name === 'hand'));
             let b = await channel('belly');
             if (b) b = Buffer.from(b);
+            const b2 = b ? await mask(job, 'belly2') : null;
+            if (b2 && count(b2) < W * H * 0.2) for (let i = 0; i < W * H; i++) if (b2[i] > 127) b[i] = 255;
             // The belly layer is one solid shape with everything drawn on it (her sash, the stripe, seams,
             // its own outline): the model's mask leaves those out as holes and slits, and a belly with holes
             // grows around them. So: close slits up to ~36 px wide (grow, then shrink back), fill what is

@@ -29,7 +29,7 @@ if len(sys.argv) > 2 and sys.argv[2] == 'under':
         sheet = cv2.resize(sheet, (w, h), interpolation=cv2.INTER_AREA)
         hole = np.zeros((h, w), dtype=np.uint8)
         for part in job['parts']:
-            if part['name'] == 'belly':
+            if part['name'].startswith('belly'):
                 continue
             path = os.path.join(folder, job['file'].replace('.png', '-' + part['name'] + '.png'))
             if not os.path.exists(path):
@@ -48,7 +48,7 @@ if len(sys.argv) > 2 and sys.argv[2] == 'under':
 sam = sam_model_registry['vit_b'](checkpoint='sam_vit_b.pth')
 sam.eval()
 predictor = SamPredictor(sam)
-COLOUR = {'chest': (200, 80, 255), 'arm': (255, 220, 80), 'hand': (255, 220, 80), 'belly': (80, 255, 120)}
+COLOUR = {'chest': (200, 80, 255), 'arm': (255, 220, 80), 'hand': (255, 220, 80), 'belly': (80, 255, 120), 'belly2': (80, 200, 255)}
 
 for job in json.load(open(os.path.join(folder, 'jobs.json'))):
     image = cv2.imread(os.path.join(folder, job['file']))
