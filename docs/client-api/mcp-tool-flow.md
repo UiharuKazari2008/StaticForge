@@ -85,10 +85,12 @@ Paths are display paths from the VFS root (`/`, `/@desktop`, `/Workspaces/<id>/P
 | `vfs_stat` | `path` | `entry` (kind, size, mimeType, modifiedAt …) and, for folders, `stats` (itemCount / totalSizeBytes). `/` returns stats only. |
 | `vfs_mkdir` | `path` (new folder) **or** `path` (parent) + `name` | `path` of the new folder |
 | `vfs_rename` | `path`, `name` (a bare name, not a path) | in-place rename; `path` of the renamed entry |
-| `vfs_move` | `path` or `paths[]`, `dest` (folder path) | `dest`, `count` |
+| `vfs_move` | `path` or `paths[]`, `dest` (folder path, or another workspace) | `dest`, `count` |
 | `vfs_copy` | `path` or `paths[]`, `dest`, optional `mode` `duplicate` (default) / `shortcut` | `dest`, `count` |
 | `vfs_write` | `path` (destination **folder**), `name`, then `fileData` (base64, `data:` prefix allowed) **or** `sourcePath`; optional `mimeType` | `path` of the saved file |
 | `vfs_delete` | `path` or `paths[]` | `trashed`, `results` |
+
+`vfs_move` crosses workspaces when `dest` is another workspace (its home, its Desktop, or a folder in it): a picture, scrap, reference, vibe, note or VFS user file moves there through the same call the desktop's Move to Workspace makes (gallery membership, reference database, notes database). A folder shortcut crosses too. `vfs_copy` does not cross workspaces.
 
 `vfs_write` takes `fileData` or `sourcePath`, not both. `sourcePath` is a file on the Director computer under `~/.cache/dreamscape-director/` (absolute, or relative to that folder; symlinks are resolved before the containment check) so a large file is not pasted through the model. Paths outside that tree, the Director `key`, `.cursor/mcp.json`, directories, and files over 64 MB are refused. `name` defaults to the `sourcePath` basename. Mime falls back from `mimeType` → extension → `application/octet-stream`.
 

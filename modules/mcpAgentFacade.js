@@ -2657,7 +2657,7 @@ const TOOL_DEFS = [
     {
         name: 'vfs_move',
         core: true,
-        description: 'Move files or folders into dest (a folder path, or a folder name in the same parent). Pass path or paths[] (a name path or an item id). Wraps vfs_move_items.',
+        description: 'Move files or folders into dest (a folder path, or a folder name in the same parent). Pass path or paths[] (a name path or an item id). dest may be another workspace (a workspace home or its Desktop / a folder in it): a picture, scrap, reference, vibe, note or VFS user file moves there, the same move the desktop Move to Workspace makes. Wraps vfs_move_items.',
         scope: 'vfs',
         inputSchema: {
             type: 'object',

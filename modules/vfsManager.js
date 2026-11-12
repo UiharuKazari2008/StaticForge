@@ -740,6 +740,75 @@ class VfsManager {
         return this.makeFolderItem(folder, { workspaceId: targetWsId });
     }
 
+    /**
+     * Cross-workspace move for the workspace-owned surfaces and for VFS user files.
+     *
+     * Pictures and Scraps are the workspace's gallery filename lists, References and
+     * Notes live in their own databases: none of them is a vfs entry row, so the move
+     * is the same one the desktop's Move to Workspace makes — WorkspaceManager
+     * moveToWorkspaceArray for the gallery, the reference database for references and
+     * vibes, notesDatabase for notes (modules/workspace.js moveToWorkspaceArray).
+     * Returns null for a kind this path does not own, so the caller can say why.
+     */
+    async _transferSurfaceItemCrossWorkspace(ref, location, wm, targetWsId) {
+        const sourceWsId = ref.workspaceId;
+        const targetId = ref.targetId || ref.id;
+        const name = ref.name || targetId;
+        const movedItem = (extra = {}) => ({
+            id: `${ref.targetKind}-${targetId}`,
+            name,
+            kind: 'file',
+            targetKind: ref.targetKind,
+            targetId,
+            workspaceId: targetWsId,
+            fromWorkspaceId: sourceWsId,
+            moved: true,
+            ...extra
+        });
+
+        switch (ref.targetKind) {
+            case 'image':
+            case 'scrap': {
+                const type = ref.targetKind === 'scrap' ? 'scraps' : 'files';
+                const movedCount = wm.moveToWorkspaceArray(type, [targetId], targetWsId, sourceWsId);
+                if (!movedCount) throw new Error(`Not found in workspace ${sourceWsId}: ${name}`);
+                return movedItem();
+            }
+            case 'reference': {
+                const refDb = this.globalResources.getReferenceMetadataDatabase();
+                refDb.removeReferenceFromWorkspace(targetId, sourceWsId);
+                refDb.addReferenceToWorkspace(targetId, targetWsId);
+                return movedItem();
+            }
+            case 'vibe': {
+                const refDb = this.globalResources.getReferenceMetadataDatabase();
+                refDb.removeVibeFromWorkspace(targetId, sourceWsId);
+                refDb.addVibeToWorkspace(targetId, targetWsId);
+                return movedItem();
+            }
+            case 'note': {
+                const notesDb = this.globalResources.getNotesDatabase();
+                const note = await notesDb.getNote(targetId);
+                if (!note) throw new Error(`Note not found: ${name}`);
+                await notesDb.updateNote(targetId, { workspace_id: targetWsId });
+                return movedItem();
+            }
+            case 'user-file': {
+                const existing = await vfsDatabase.getUserFileById(targetId);
+                if (!existing || existing.trashed_at) throw new Error(`Not found: ${name}`);
+                const scope = location.scope === 'workspace' ? 'workspace' : 'root';
+                await vfsDatabase.updateUserFile(targetId, {
+                    folder_id: location.folderId ?? null,
+                    scope,
+                    workspace_id: scope === 'workspace' ? targetWsId : null
+                });
+                return movedItem();
+            }
+            default:
+                return null;
+        }
+    }
+
     async _getOrCreateSurfaceFolder(scope, workspaceId) {
         const folders = await vfsDatabase.getFoldersByParent(scope, workspaceId, null);
         const existing = folders.find(f => this._isHiddenSurfaceFolder(f));
@@ -3087,9 +3156,14 @@ class VfsManager {
                     ));
                     continue;
                 }
+                const surfaceMoved = await this._transferSurfaceItemCrossWorkspace(ref, location, wm, wsId);
+                if (surfaceMoved) {
+                    results.push(surfaceMoved);
+                    continue;
+                }
                 throw new Error(
-                    'Cross-workspace move is only supported for folder shortcuts. '
-                    + 'Use Move to Workspace on the desktop for other item types.'
+                    'Cross-workspace move is only supported for folder shortcuts, gallery pictures, scraps, '
+                    + 'references, vibes, notes and VFS files.'
                 );
             }
 
