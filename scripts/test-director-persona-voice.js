@@ -54,7 +54,7 @@ PERSONAS.forEach((persona) => {
 
     // 3. She is carrying in her own description, not only at the rungs.
     assert.ok(CARRY_RE.test(cfg.self), `${persona}: self describes the body she carries`);
-    assert.ok(/kick|move/i.test(cfg.self), `${persona}: self says the weight is moving`);
+    assert.ok(/kick|mov/i.test(cfg.self), `${persona}: self says the weight is moving`);
 
     // 4. Kicks are claimed only where the manifest has a kicky pose: Chiyo from her second stage,
     //    Yozora from her first, and Yumiya's load shifts instead (her art has no kicky body).
@@ -64,6 +64,19 @@ PERSONAS.forEach((persona) => {
     } else {
         assert.ok(/shift|settle|lump|movement/i.test(cfg.looks.bigger + cfg.looks.stuffed), `${persona}: movement is described without a kicky pose`);
     }
+
+    // 5. What she is carrying, said straight (Yukimi 2026-11-12): the work, never a child, and Yumiya's
+    //    is vore - she is the one who is not carrying anything tender.
+    assert.ok(cfg.carry, `${persona}: says what she is carrying`);
+    assert.ok(/not a (child|baby)|never (call it|say it is)/i.test(cfg.carry), `${persona}: the carry line rules out a child`);
+    assert.ok(/straight/i.test(cfg.carry), `${persona}: the carry line is played straight`);
+    assert.ok(/never (wink|explain|let a line suggest)/i.test(cfg.carry), `${persona}: and is never explained or winked at`);
+    if (persona === 'wren') {
+        assert.ok(/vore/i.test(cfg.carry) && /vore/i.test(cfg.self), 'Yumiya is the vore one, in her carry line and in who she is');
+        assert.ok(!/solemnity of a woman well along/.test(cfg.self), 'Yumiya is not framed as expecting');
+    } else {
+        assert.ok(/solemnity of a woman well along/.test(cfg.self), `${persona}: carries like a woman well along`);
+    }
 });
 
 // 5. The body-sense line reaches every persona's prompt, and no stage forgives a promised kick.
@@ -72,10 +85,28 @@ PERSONAS.forEach((persona) => {
     const joined = out.join('\n');
     assert.ok(joined.includes('You feel your own size from the inside'), `${persona}: prompt has the body-sense line`);
     assert.ok(joined.includes('never promise a kick on cue'), `${persona}: prompt forbids kicks on cue`);
-    assert.ok(/amp the picture and the closeness|bigger belly than the last/.test(joined), `${persona}: prompt has the amp ladder`);
+    assert.ok(/amp the picture and the closeness|amp the picture, the belly and the closeness|bigger belly than the last/.test(joined), `${persona}: prompt has the amp ladder`);
 });
 
-// 6. The in-between sizes are read off the points she is actually on.
+// 6. Turned all the way up on purpose, and never over into explicit (Yukimi 2026-11-12). Every prompt
+//    for every stage of every persona is checked, so a later edit cannot quietly push it over.
+const EXPLICIT_RE = /\b(sex|sexual|sexy|aroused|arousal|nipples?|breasts?|tits|penis|cock|pussy|vagina|cum|orgasm|climax|erotic|erotica|lewd|naked|nude|undress(ed|ing)?|strip(tease|ped)|fuck(ing|ed)?|moan(s|ing)?|sexy)\b/i;
+PERSONAS.forEach((persona) => {
+    const cfg = voice.PERSONA_VOICES[persona];
+    const fields = [cfg.direction, cfg.self, cfg.want, cfg.carry, cfg.bond, cfg.stages, cfg.looks, cfg.near];
+    const all = JSON.stringify(fields);
+    assert.ok(!EXPLICIT_RE.test(all), `${persona}: nothing explicit in the voice block`);
+    cfg.order.forEach((stage) => {
+        const at = cfg.points[cfg.order.indexOf(stage)];
+        const prompt = voice.personaVoiceLines(persona, { stage, points: at, nextAt: cfg.points[cfg.order.indexOf(stage) + 1] }, {}).join('\n');
+        assert.ok(!EXPLICIT_RE.test(prompt), `${persona}/${stage}: nothing explicit in the built prompt`);
+        assert.ok(prompt.includes('Do not tone any of this down'), `${persona}/${stage}: the tone line rides on every turn`);
+        assert.ok(prompt.includes('never being explicit'), `${persona}/${stage}: and states the ceiling`);
+        assert.ok(prompt.includes('never step outside the character to admit what this is'), `${persona}/${stage}: she never breaks to wink at it`);
+    });
+});
+
+// 7. The in-between sizes are read off the points she is actually on.
 assert.ok(/none of this stage's 2 in-between sizes yet, and the next one is 7 points away/
     .test(voice.inBetweenLine(voice.PERSONA_VOICES.kabuki, { stage: 'base', points: 0 })), 'base at 0 points: nothing taken yet');
 assert.ok(/she has taken 1 of 2 in-between sizes inside this stage, and the next one is 6 points away/
@@ -88,7 +119,7 @@ assert.ok(/she has taken 2 of 2 in-between sizes/.test(
     voice.inBetweenLine(voice.PERSONA_VOICES.xi, { stage: 'bigger', points: 44 })), 'Yozora at 44 points, both taken');
 assert.strictEqual(voice.inBetweenLine(voice.PERSONA_VOICES.xi, { stage: 'stuffed', points: 5 }), '', 'a stage she does not have reports nothing');
 
-// 7. The stage she is on is the only one she may speak from, and the state line still counts her up.
+// 8. The stage she is on is the only one she may speak from, and the state line still counts her up.
 const kabukiBase = voice.personaVoiceLines('kabuki', { stage: 'base', points: 0, nextAt: 20 }, {}).join('\n');
 assert.ok(kabukiBase.includes('Growth stage: 1/3 "base"'), 'base is stated');
 assert.ok(kabukiBase.includes('exactly at this stage and no further'), 'base is capped');
@@ -100,7 +131,7 @@ const kabukiStray = voice.personaVoiceLines('kabuki', { stage: 'stuffed', points
 assert.ok(kabukiStray.includes('the stage the client sent is not one this persona has'), 'another persona\'s stage is not accepted');
 assert.ok(kabukiStray.includes('speak from Stage 1 of 3'), 'and she falls back to her first stage');
 
-// 8. Yozora (the coding agent) gets the coding ladder, not the print one.
+// 9. Yozora (the coding agent) gets the coding ladder, not the print one.
 const xi = voice.personaVoiceLines('xi', { stage: 'bigger', points: 20, nextAt: 20 }, { coding: true }).join('\n');
 assert.ok(xi.includes('The code, the facts and the commands stay exact'), 'Yozora keeps the coding ladder');
 assert.ok(!xi.includes('amp the picture and the closeness'), 'Yozora does not get the print amp line');
