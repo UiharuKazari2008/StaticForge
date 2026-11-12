@@ -629,9 +629,11 @@ img.wm-strip {
 .wm-status-icon[data-icon="data-nr-uw"] { background-image: image-set(url('/static_images/wm61/status-data-nr-uw.png') 1x, url('/static_images/wm61/status-data-nr-uw@2x.png') 2x, url('/static_images/wm61/status-data-nr-uw@4x.png') 4x); }
 .wm-status-icon[data-icon="data-nr-uw-active"] { background-image: image-set(url('/static_images/wm61/status-data-nr-uw-active.png') 1x, url('/static_images/wm61/status-data-nr-uw-active@2x.png') 2x, url('/static_images/wm61/status-data-nr-uw-active@4x.png') 4x); }
 .wm-status-icon[data-icon="data-nr-uw-avail"] { background-image: image-set(url('/static_images/wm61/status-data-nr-uw-avail.png') 1x, url('/static_images/wm61/status-data-nr-uw-avail@2x.png') 2x, url('/static_images/wm61/status-data-nr-uw-avail@4x.png') 4x); }
-/* 6.1 badges wider than the square cell (Yukimi: wider is fine): UWB, LTE and LTE+ 20 x 16 px; 5G UW
+/* large badges with a mark keep the parent's box, the mark outside it: 40 px wide, 20 x 16 (both versions) */
+.wm-status-icon:is([data-icon="data-h-plus-avail"], [data-icon="data-4g-plus-avail"], [data-icon="data-5g-plus-avail"], [data-icon="data-nr-a-avail"], [data-icon="data-uw-avail"], [data-icon="data-lte-plus-avail"], [data-icon="data-5g-uw-avail"], [data-icon="data-nr-uw-avail"]) { width: calc(20 * var(--wm-icon-unit, var(--wm-px))); }
+/* 6.1 badges wider than the square cell (Yukimi: wider is fine): UWB 20 x 16 px; 5G UW
  * and NR UW 23 x 16 (their arrows move clear of the stacked U / W). 6.5's all fit 16. */
-.wm-status-icon:is([data-icon="data-uw"], [data-icon="data-uw-active"], [data-icon="data-lte"], [data-icon="data-lte-active"], [data-icon="data-lte-plus"], [data-icon="data-lte-plus-active"]) { width: calc(20 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon:is([data-icon="data-uw"], [data-icon="data-uw-active"]) { width: calc(20 * var(--wm-icon-unit, var(--wm-px))); }
 .wm-status-icon:is([data-icon="data-5g-uw"], [data-icon="data-5g-uw-active"], [data-icon="data-nr-uw"], [data-icon="data-nr-uw-active"]) { width: calc(23 * var(--wm-icon-unit, var(--wm-px))); }
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon:is([data-icon="data-uw"], [data-icon="data-uw-active"], [data-icon="data-lte"], [data-icon="data-lte-active"], [data-icon="data-lte-plus"], [data-icon="data-lte-plus-active"], [data-icon="data-5g-uw"], [data-icon="data-5g-uw-active"], [data-icon="data-nr-uw"], [data-icon="data-nr-uw-active"]) { width: calc(16 * var(--wm-icon-unit, var(--wm-px))); }
 .wm-status-icon[data-icon="data-5g"] { background-image: image-set(url('/static_images/wm61/status-data-5g.png') 1x, url('/static_images/wm61/status-data-5g@2x.png') 2x, url('/static_images/wm61/status-data-5g@4x.png') 4x); }

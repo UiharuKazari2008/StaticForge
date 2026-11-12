@@ -10,7 +10,8 @@
 # borders, letters cut out); 6.5: the 17-row rounded box of the ROM's 3G (status-data-3g@2x) and
 # the compact 9-row glyphs of its NR / UWB badges (2 px strokes). 5G and NR boxes are the repo's own
 # badges; the + is taken from the 4G+ badge. The stacked U / W are white, outside the box, as the
-# NR-A's A. Where the marks would meet 6.1's arrows (they sit right of the box there) the canvas
+# NR-A's A. 6.1's + is redrawn (Yukimi: 2 px strokes with 3 px arms, so it reads as a plus) on its
+# H+ / 4G+ / 5G+ too. Where the marks would meet 6.1's arrows (they sit right of the box there) the canvas
 # widens and the arrows move right.
 # Then: generate-wm-data-sync-frames.py, generate-wm-data-anim-frames.py, build-wm-sprite-strips.sh.
 import struct, zlib, subprocess, sys, os
@@ -43,18 +44,23 @@ def save(name, a):
     png(f'{p}.png', w1, 16, p1)
 def blank(w): return [[0] * w for _ in range(32)]
 def box_cols(a):
-    # the box: columns lit on its top row
-    xs = [x for x in range(len(a[0])) if a[0 if not V65 else 1][x] > 127]
-    return xs[0], xs[-1]
+    # the box: the first run of lit columns on its top row (a mark to its right is not the box)
+    row = a[0 if not V65 else 1]
+    x0 = next(x for x in range(len(row)) if row[x] > 127)
+    x1 = x0
+    while x1 + 1 < len(row) and row[x1 + 1] > 127: x1 += 1
+    return x0, x1
 # ---- 6.1: generate-wm-data-icons.py's box and glyphs ('1' = letter hole), rows 0..11 at y 2
 G61 = {
- 'L': ['110000']*10 + ['111111']*2,
- 'T': ['11111111']*2 + ['00011000']*10,
- 'E': ['111111']*2 + ['110000']*3 + ['111110']*2 + ['110000']*3 + ['111111']*2,
+ # LTE in 4G's 17 px box (Yukimi: the square size): 4 px L, T (2 px stem) and E
+ 'L': ['1100']*10 + ['1111']*2,
+ 'T': ['1111']*2 + ['0110']*10,
+ 'E': ['1111']*2 + ['1100']*3 + ['1111']*2 + ['1100']*3 + ['1111']*2,
  'U': ['110011']*10 + ['111111', '011110'],
  'W': ['11000011']*4 + ['11011011']*6 + ['11111111', '01100110'],
  'B': ['111110','111111','110011','110011','111111','111110','111111','110011','110011','110011','111111','111110'],
 }
+PLUS61 = ['...##...', '...##...', '...##...', '########', '########', '...##...', '...##...', '...##...']
 SUP61_U = ['##..##', '##..##', '##..##', '##..##', '##..##', '######', '.####.']
 SUP61_W = ['##....##', '##....##', '##.##.##', '##.##.##', '########', '###..###', '##....##']
 def label61(text):
@@ -141,10 +147,19 @@ if V65:
         put(a, SUP65_U, w + 1, 1); put(a, SUP65_W, w + 1, 8)
         made[t] = finish(t, a, w + 7)
 else:
+    # the + on 6.1's own H+ / 4G+ / 5G+: cleared and drawn again, one column right of the box
+    for t in ('h-plus', '4g-plus', '5g-plus'):
+        bw, bh, a = rgba(f'status-data-{t}@2x.png')
+        x0, x1 = box_cols(a)
+        for y in range(bh):
+            for x in range(x1 + 1, bw): a[y][x] = 0
+        a = [row + [0] * max(0, 40 - len(row)) for row in a] + [[0] * 40 for _ in range(32 - bh)]
+        put(a, PLUS61, x1 + 2, 0)
+        made[t] = finish(t, a, bw)
     a, w = label61('UWB'); made['uw'] = finish('uw', a, 32 + max(0, w - 17))
-    a, w = label61('LTE'); made['lte'] = finish('lte', a, 32 + max(0, w - 17))
+    a, w = label61('LTE'); made['lte'] = finish('lte', a, 32 + max(0, w - 17))  # w = 17: square
     a, w = label61('LTE')
-    for y, dx, v in plus_mark(): a[y][w + dx] = v
+    put(a, PLUS61, w + 1, 0)
     made['lte-plus'] = finish('lte-plus', a, 32 + max(0, w - 17))
     for t, base in (('5g-uw', '5g'), ('nr-uw', 'nr')):
         a, w = from_badge(base)
