@@ -247,6 +247,10 @@ function snippetOf(body) {
 
 function toSummary(row) {
     const spamMeta = spamMetaOf(row.spam_meta);
+    const attachments = attachmentsMetaOf(row.attachments);
+    // bytes of the body and its attachments (the phone's list shows "3K", #757)
+    const size = Buffer.byteLength(String(row.body || ''), 'utf8')
+        + attachments.reduce((sum, a) => sum + (a && Number(a.size) > 0 ? Number(a.size) : 0), 0);
     return {
         id: row.id,
         owner: row.owner,
@@ -267,7 +271,8 @@ function toSummary(row) {
         flagged: !!row.flagged,
         fwdFromOwner: row.fwd_from_owner || null,
         readByRecipient: !!row.recipient_read_at,
-        attachments: attachmentsMetaOf(row.attachments),
+        attachments,
+        size,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         spamScore: spamMeta.score,

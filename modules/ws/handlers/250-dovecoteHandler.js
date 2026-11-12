@@ -2,6 +2,7 @@ const wsPacketRegistry = require('../wsPacketRegistry');
 const dovecoteMail = require('../../dovecoteMail');
 const { renderMailBody } = require('../../dovecoteRender');
 const mailboxEvents = require('../../dovecoteMailboxEvents');
+const mailGateway = require('../../mailGateway');
 
 const DOVECOTE_DESTRUCTIVE = { destructive: true };
 
@@ -31,13 +32,23 @@ function resolveViewOwner(message) {
     return dovecoteMail.HUMAN_OWNER;
 }
 
+function externalAddress(owner) {
+    try {
+        return mailGateway.toExternal(owner) || null;
+    } catch (_) {
+        return null;
+    }
+}
+
 async function handleListMailboxes(handlersCtx, ws, message) {
     try {
         const mailboxes = dovecoteMail.listMailboxes().map((entry) => ({
             owner: entry.owner,
             label: MAILBOX_LABELS[entry.owner] || entry.owner,
             unread: entry.unread,
-            spamUnread: entry.spamUnread || 0
+            spamUnread: entry.spamUnread || 0,
+            // the outside address (mailGateway mapping), e.g. the phone's account line
+            address: externalAddress(entry.owner)
         }));
         handlersCtx.sendToClient(ws, {
             type: 'dovecote_list_mailboxes_response',
@@ -363,7 +374,8 @@ function bindMailboxPush(handlersCtx) {
                 owner: entry.owner,
                 label: MAILBOX_LABELS[entry.owner] || entry.owner,
                 unread: entry.unread,
-                spamUnread: entry.spamUnread || 0
+                spamUnread: entry.spamUnread || 0,
+                address: externalAddress(entry.owner)
             }));
             const inbox = {};
             const unreadInbox = {};

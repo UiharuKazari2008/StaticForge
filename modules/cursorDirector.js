@@ -1727,6 +1727,22 @@ function getActiveAccountId(gr, persona = 'wren') {
     return 'default';
 }
 
+// The last thing said in a session, one line (the phone's Messaging rows, #757): the newest
+// assistant reply's text or the person's own message.
+function sessionLastLine(chat) {
+    const list = (chat && Array.isArray(chat.messages)) ? chat.messages : [];
+    for (let i = list.length - 1, seen = 0; i >= 0 && seen < 40; i--, seen++) {
+        const m = list[i];
+        if (!m || m.message_type === 'Attachment') continue;
+        let text = '';
+        if (m.role === 'assistant') text = (m.data && typeof m.data.Description === 'string' && m.data.Description) || (typeof m.content === 'string' ? m.content : '');
+        else if (m.role === 'user') text = typeof m.content === 'string' ? m.content : '';
+        text = text.replace(/[`*~]+/g, '').replace(/(^|\s)[#>|]+/g, '$1').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\s+/g, ' ').trim();
+        if (text) return text.length > 140 ? `${text.slice(0, 139)}...` : text;
+    }
+    return '';
+}
+
 function publicSession(chat) {
     return {
         id: chat.id,
@@ -1748,6 +1764,7 @@ function publicSession(chat) {
         choice: sessionChoice(chat),
         ...sessionContext(chat),
         updated_at: chat.updated_at || chat.created_at || null,
+        last_line: sessionLastLine(chat),
         archived: !!chat.archived,
         archived_at: chat.archived_at || null,
         sessionType: sessionType(chat),

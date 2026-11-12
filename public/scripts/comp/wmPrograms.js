@@ -1729,7 +1729,7 @@
             const { def, tab, draft, tabs } = open;
             // the title bar reads "Settings" on every applet, as on the device (the applet's name is
             // the page heading under it); the applet name there was cut short by the status icons
-            if (sh.current === 'settings') sh.setTitle('Settings');
+            if (sh.current === 'settings') sh.setTitle(def.title || 'Settings'); // a program's own page (Messaging's Options, #757) carries its name
             // a redraw (a tap on a list row, a check box) keeps where the page and its lists were
             // scrolled: the same tab redrawn, not a new one (Today > Items read from the top again)
             const keep = page.dataset.setPage === `${def.id}:${tab}`

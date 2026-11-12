@@ -2866,6 +2866,46 @@
       ],
       "notes": "Messaging account picker: an e-mail account (Dreamscape: an agent's Dovecote mailbox)."
     },
+    "msg-acct-sms": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll ico_10010_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Messaging account picker: Text Messages (Dreamscape: the Chat applet's persona chats), #757."
+    },
+    "msg-acct-setup": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll ico_10013_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Messaging account picker: Setup E-mail (Tap to setup a new account), #757."
+    },
     "msg-unread": {
       "1x": {
         "source": "box-downscaled from @2x",
@@ -2964,7 +3004,7 @@
       "flags": [
         "1x-downscaled-from-2x"
       ],
-      "notes": "Folder: Sent Items."
+      "notes": "Folder: Sent Items. Frame 1 (blue arrow) is the device's Outbox picture; wmMessaging.js uses it for Outbox (#757)."
     },
     "msg-folder-folder": {
       "1x": {
@@ -3006,6 +3046,26 @@
       ],
       "notes": "Folder: Deleted Items."
     },
+    "msg-folder-drafts": {
+      "1x": {
+        "source": "box-downscaled from @2x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll bitmap 22002 frame 6, #FF00FF key made transparent",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x"
+      ],
+      "notes": "Messaging folder tree: Drafts (folder, envelope and pencil), #757."
+    },
     "msg-folder-account": {
       "1x": {
         "source": "box-downscaled from @2x",
@@ -3044,7 +3104,7 @@
       "flags": [
         "1x-downscaled-from-2x"
       ],
-      "notes": "Folder: Outbox."
+      "notes": "Folder: Outbox. Frame 7 (envelope and arrow) is the device's Sent Items picture; wmMessaging.js uses it for Sent Items (#757)."
     },
     "notes-folders": {
       "1x": {

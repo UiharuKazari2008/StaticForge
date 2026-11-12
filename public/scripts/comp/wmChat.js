@@ -23,6 +23,14 @@
  *                picture (a chat's persona is a gallery picture), Name, Verbosity, Mind Seed, Story So
  *                Far, Viewer Context. ok / Create starts it; the persona's first words stream in.
  *
+ * #757: Chat is Messaging's Text Messages account (the account picker, Go To and the folder tree name
+ * it), drawn as the device's Text Messages (Yukimi's 31 screenshots, tmp/wmss 173927-174305): the list
+ * rows are conversations (envelope, "Name (unread)", date, size, the last line; unread bold), the
+ * status line "1 conversation selected", the conversation an HTML-style thread ("Conversation with
+ * <persona>", an "Older" link, "Name (M/D):" headers in link green over each message, unread bold,
+ * the selected one on pale blue) over a white reply box. Unread = persona lines newer than when the
+ * conversation was last open (localStorage wmChatSeen). The menus follow 173945 / 174005.
+ *
  * Desktop routes that open the chat windows (Start menu 'chat', a picture's "Chat" action:
  * chatSystem.showAllChats / openChatModal / openChatInterfaceModal) open this app on phones, so the
  * desktop window never opens unseen. Only on phones. Styles: public/css/wm-chat.css.
@@ -35,6 +43,11 @@
     const APP_ID = 'chat';
     const ART = '/static_images/wm61/';
     const SORT_KEY = 'wmChatSort';
+    const SEEN_KEY = 'wmChatSeen'; // { chatId: ms } when each conversation was last read
+    const DRAFTS_KEY = 'wmChatDrafts'; // { chatId: text } Save to Drafts
+    const SMS_TITLE = 'Text Messages';
+    // WM 6.1's My Text phrases (Menu > My Text)
+    const MY_TEXT = ['Yes.', 'No.', 'I\'m running late.', 'Where are you?', 'Can you talk?', 'Call me.', 'Thank you.', 'I\'ll be there.', 'Talk to you later.', 'I love you.'];
     const ACTIONS_KEY = 'wmChatShowActions';
     const PREVIEW_ROWS = 12; // messages read per chat for the list's last line
     const VISIBLE = new Set(['speechdirect', 'speech', 'reply', 'actions', 'sfx', 'myname']);
@@ -52,13 +65,17 @@
     let sessions = []; // the server's chat rows, newest first
     let loaded = false;
     let selectedId = null;
-    let filter = '*'; // '*' or a persona name
     let sort = stored(SORT_KEY) === 'name' ? 'name' : 'date';
     let showActions = stored(ACTIONS_KEY) === '1';
     const previews = new Map(); // chatId -> { stamp, text }
     let previewGen = 0;
 
-    let layers = []; // 'conv' | 'new'
+    let smsFolder = 'inbox'; // the Text Messages folder on screen (only the Inbox holds chats)
+    let selEntry = -1; // the selected message of the conversation
+    let unreadFrom = 0; // the conversation's lines after this time read bold (when it was opened)
+    let seen = null; // SEEN_KEY, read on first use
+
+    let layers = []; // 'conv' | 'new' | 'opts'
     let conv = null; // { id, session, entries: [], hasMore, offset }
     let draft = null; // the new-chat form { filename, name, seed, story, viewer, verbosity }
     let creating = false; // a create_chat_session in flight: its stream belongs to the new chat
@@ -120,6 +137,42 @@
         return p && p.profile_photo_base64 ? `data:image/jpeg;base64,${p.profile_photo_base64}` : null;
     }
 
+    /** ms of a date value (0 when unknown). */
+    const msOf = (v) => { const d = toDate(v); return d ? d.getTime() : 0; };
+
+    function seenMap() {
+        if (seen) return seen;
+        try { seen = JSON.parse(stored(SEEN_KEY) || 'null'); } catch (_) { seen = null; }
+        if (!seen || typeof seen !== 'object') seen = null;
+        return seen;
+    }
+    function saveSeen() { if (seen) store(SEEN_KEY, JSON.stringify(seen)); }
+    /** The first list ever read here counts as read (nothing goes bold from before Text Messages existed). */
+    function baselineSeen() {
+        if (seenMap()) return;
+        seen = {};
+        const now = Date.now();
+        sessions.forEach((x) => { seen[x.id] = Math.max(now, msOf(x.updated_at)); });
+        saveSeen();
+    }
+    const seenOf = (id) => { const m = seenMap(); return m && m[id] ? Number(m[id]) || 0 : 0; };
+    function markSeen(id, at) {
+        if (!id || id === 'new') return;
+        seenMap();
+        if (!seen) seen = {};
+        seen[id] = Math.max(Number(at) || Date.now(), seen[id] || 0);
+        saveSeen();
+    }
+    /** The persona's lines in a list of entries that came after the conversation was last read. */
+    const unreadIn = (id, ents) => { const t = seenOf(id); return ents.filter((e) => e.kind === 'them' && msOf(e.at) > t).length; };
+
+    function draftsOf() { try { return JSON.parse(stored(DRAFTS_KEY) || '{}') || {}; } catch (_) { return {}; } }
+    function setDraft(id, text) {
+        const d = draftsOf();
+        if (text) d[id] = text; else delete d[id];
+        store(DRAFTS_KEY, JSON.stringify(d));
+    }
+
     function connected() {
         const c = wsc();
         return !!(c && typeof c.isConnected === 'function' && c.isConnected());
@@ -145,7 +198,7 @@
 
     function failBox(text, err) {
         const why = err && (err.message || err.error) ? `\n\n${err.message || err.error}` : '';
-        return sh.notify({ title: 'Chat', icon: 'error', text: `${text}${why}` });
+        return sh.notify({ title: SMS_TITLE, icon: 'error', text: `${text}${why}` });
     }
 
     /** What a list of chat events says: the speech line, the actions and sound effects (the desktop's rules). */
@@ -207,6 +260,7 @@
         if (!r || !r.success) throw new Error((r && (r.message || r.error)) || 'The chats could not be read.');
         sessions = Array.isArray(r.sessions) ? r.sessions : [];
         loaded = true;
+        baselineSeen();
         return true;
     }
 
@@ -226,7 +280,7 @@
                     if (!r || !r.success || !Array.isArray(r.messages)) continue;
                     const ents = entriesOf(r.messages.slice().reverse());
                     const last = [...ents].reverse().find((e) => e.says || e.actions);
-                    previews.set(s.id, { stamp: s.updated_at, text: last ? (last.says || `*${last.actions}*`) : '', mine: !!(last && last.kind === 'me') });
+                    previews.set(s.id, { stamp: s.updated_at, text: last ? (last.says || `*${last.actions}*`) : '', mine: !!(last && last.kind === 'me'), unread: unreadIn(s.id, ents), bytes: ents.reduce((n, e) => n + String(e.says || '').length + String(e.actions || '').length, 0) });
                     if (gen === previewGen && view() === 'list') paintRowPreview(s.id);
                 } catch (_) { /* the row keeps its placeholder */ }
             }
@@ -247,14 +301,15 @@
         conv.hasMore = rows.length === 50;
         conv.entries = entriesOf(conv.rows);
         const last = [...conv.entries].reverse().find((e) => e.says || e.actions);
-        if (last) previews.set(id, { stamp: conv.session && conv.session.updated_at, text: last.says || `*${last.actions}*`, mine: last.kind === 'me' });
+        if (last) previews.set(id, { stamp: conv.session && conv.session.updated_at, text: last.says || `*${last.actions}*`, mine: last.kind === 'me', unread: 0, bytes: conv.entries.reduce((n, e) => n + String(e.says || '').length + String(e.actions || '').length, 0) });
     }
 
     // ---------------------------------------------------------------- list
 
     function visibleSessions() {
+        // only the Inbox holds conversations: Deleted Items, Drafts, Outbox and Sent Items stay empty
+        if (smsFolder !== 'inbox') return [];
         let list = sessions.slice();
-        if (filter !== '*') list = list.filter((s) => personaOf(s) === filter);
         if (sort === 'name') {
             const coll = new Intl.Collator(undefined, { sensitivity: 'base' });
             list.sort((a, b) => coll.compare(titleOf(a), titleOf(b)));
@@ -262,28 +317,37 @@
         return list;
     }
 
+    /** A conversation row (173927): envelope, "Name (unread)", date, size; the last line under it. */
     function rowHtml(s) {
         const p = previews.get(s.id);
         const sel = s.id === selectedId;
-        const line = p ? (p.text ? `${p.mine ? 'Me: ' : ''}${p.text}` : 'No messages') : '';
-        return `<div class="wch-row${sel ? ' is-selected' : ''}" role="option" aria-selected="${sel}" data-id="${esc(s.id)}">`
-            + `<img class="wch-pic" src="${esc(pictureOf(s.filename))}" alt="" draggable="false" loading="lazy" onerror="this.src='/static_images/icon-96x96.png'">`
-            + `<span class="wch-name">${esc(titleOf(s))}</span><span class="wch-date">${esc(listDate(s.updated_at || s.created_at))}</span>`
+        const unread = p ? p.unread || 0 : 0;
+        const line = p ? (p.text || '') : '';
+        const kb = `${Math.max(1, Math.ceil(((p && p.bytes) || 0) / 1024))}K`;
+        return `<div class="wch-row${sel ? ' is-selected' : ''}${unread ? ' is-unread' : ''}" role="option" aria-selected="${sel}" data-id="${esc(s.id)}">`
+            + `<span class="wch-ico" data-ico="${unread ? 'msg-unread' : 'msg-read'}"></span>`
+            + `<span class="wch-namecell"><span class="wch-name">${esc(titleOf(s))}</span>${unread ? `<span class="wch-count">(${unread})</span>` : ''}</span>`
+            + `<span class="wch-date">${esc(listDate(s.updated_at || s.created_at))}</span><span class="wch-size">${kb}</span>`
             + `<span class="wch-last">${esc(line)}</span></div>`;
     }
+
+    const FOLDER_LABELS = { deleted: 'Deleted Items', drafts: 'Drafts', inbox: 'Inbox', outbox: 'Outbox', sent: 'Sent Items' };
 
     function renderList() {
         if (!page) return;
         const list = visibleSessions();
+        // the device keeps a conversation selected: the first one when none is
+        if (!selectedId || !list.some((s) => s.id === selectedId)) selectedId = list.length ? list[0].id : null;
         const box = page.querySelector('.wch-list');
         box.innerHTML = list.map(rowHtml).join('');
         const empty = page.querySelector('.wch-empty');
         empty.hidden = !!list.length || !loaded;
-        empty.textContent = filter !== '*' ? `No chats with ${filter}.` : 'To start a chat, tap New, then choose a picture for the persona.';
-        page.querySelector('.wch-status').textContent = `Chat\u2003${list.length} ${list.length === 1 ? 'Item' : 'Items'}.`;
-        page.querySelector('.wch-folder-name').textContent = filter === '*' ? 'All Chats' : filter;
-        page.querySelector('.wch-sort span').textContent = sort === 'name' ? 'Name' : 'Date';
-        if (selectedId && !list.some((s) => s.id === selectedId)) selectedId = null;
+        empty.textContent = smsFolder !== 'inbox' ? 'No messages.' : 'To start a conversation, tap Menu, then New, and choose a picture for the persona.';
+        const n = selectedId ? 1 : 0;
+        page.querySelector('.wch-status').textContent = `${n} conversation${n === 1 ? '' : 's'} selected`;
+        page.querySelector('.wch-folder-name').textContent = FOLDER_LABELS[smsFolder] || 'Inbox';
+        page.querySelector('.wch-sort span').textContent = sort === 'name' ? 'From' : 'Received';
+        if (isCurrent()) sh.refreshSoftKeys();
     }
 
     function paintRowPreview(id) {
@@ -328,9 +392,11 @@
         page.querySelector('.wch-listview').hidden = v !== 'list';
         page.querySelector('.wch-convview').hidden = v !== 'conv';
         page.querySelector('.wch-newview').hidden = v !== 'new';
+        page.querySelector('.wch-optsview').hidden = v !== 'opts';
         page.dataset.view = v;
+        if (v === 'opts') renderOpts();
         if (isCurrent()) {
-            sh.setTitle(v === 'new' ? 'New Chat' : 'Chat');
+            sh.setTitle(v === 'new' ? 'New Chat' : SMS_TITLE);
             sh.refreshSoftKeys();
         }
     }
@@ -343,7 +409,7 @@
 
     function popLayer() {
         const v = layers.pop();
-        if (v === 'conv') conv = null;
+        if (v === 'conv') { markConvSeen(); conv = null; selEntry = -1; }
         if (v === 'new') draft = null;
         showLayer();
         if (view() === 'list') renderList();
@@ -353,30 +419,45 @@
 
     async function openConversation(session, opts = {}) {
         if (!session) return;
+        if (conv && conv.id !== session.id) markConvSeen();
         conv = { id: session.id, session, entries: [], rows: [], hasMore: false, offset: 0 };
         selectedId = session.id;
+        selEntry = -1;
+        // what came since the last visit reads bold while the conversation is open
+        unreadFrom = seenOf(session.id);
         renderConvHead();
         renderEntries();
+        const box = inputEl();
+        box.value = draftsOf()[session.id] || '';
+        fitInput();
         if (opts.replace) { layers = ['conv']; showLayer(); sh.syncHistory(); } else push('conv');
         try {
             await sh.busy(() => loadConversation(false), { paint: true });
         } catch (err) { failBox('The conversation could not be read.', err); }
         renderEntries(true);
+        markConvSeen();
         if (isCurrent()) sh.refreshSoftKeys();
     }
 
+    /** The conversation as read now: its persona lines stop counting as unread. */
+    function markConvSeen() {
+        if (!conv || conv.id === 'new') return;
+        const last = conv.entries.reduce((m, e) => Math.max(m, msOf(e.at)), 0);
+        markSeen(conv.id, Math.max(last, Date.now()));
+        const p = previews.get(conv.id);
+        if (p) p.unread = 0;
+    }
+
+
     function renderConvHead() {
-        if (!page || !conv) return;
-        const s = conv.session || {};
-        const img = page.querySelector('.wch-head-pic');
-        img.src = pictureOf(s.filename);
-        page.querySelector('.wch-head-name').textContent = titleOf(s);
-        const sub = [s.character_name && s.chat_name && s.character_name !== s.chat_name ? s.character_name : '', s.model || ''].filter(Boolean).join(' \u00b7 ');
-        page.querySelector('.wch-head-sub').textContent = sub;
-        const me = userPicture();
-        const mine = page.querySelector('.wch-me');
-        mine.style.backgroundImage = me ? `url("${me}")` : '';
-        mine.classList.toggle('has-photo', !!me);
+        // the header is part of the thread (renderEntries); the reply box has no picture column
+    }
+
+    /** "(10/19)" for an earlier day, "(4:50 PM)" today, as the thread's headers give it. */
+    function headDate(v) {
+        const d = toDate(v);
+        if (!d) return '';
+        return sameDay(d, new Date()) ? fmtTime(d) : `${d.getMonth() + 1}/${d.getDate()}`;
     }
 
     function entryHtml(e, n, live) {
@@ -387,8 +468,11 @@
         if (showActions && e.sfx) body += `<div class="wch-sfx">~${esc(e.sfx)}~</div>`;
         if (!body) body = live ? '<div class="wch-says wch-typing">...</div>' : '';
         if (!body) return '';
-        return `<div class="wch-entry is-${e.kind}${live ? ' is-live' : ''}" data-n="${n}">`
-            + `<div class="wch-who"><b>${esc(who)}:</b>${e.at && !live ? `<span class="wch-at">${esc(entryDate(e.at))}</span>` : ''}</div>${body}</div>`;
+        const unread = e.kind === 'them' && (live || msOf(e.at) > unreadFrom);
+        const date = live ? '' : headDate(e.at);
+        return `<div class="wch-entry is-${e.kind}${live ? ' is-live' : ''}${unread ? ' is-unread' : ''}${n >= 0 && n === selEntry ? ' is-selected' : ''}" data-n="${n}">`
+            + `<span class="wch-eico" data-ico="${unread ? 'msg-unread' : 'msg-read'}"></span>`
+            + `<div class="wch-who"><span class="wch-link">${esc(who)}${date ? ` (${esc(date)})` : ''}:</span></div>${body}</div>`;
     }
 
     function liveEntry() {
@@ -403,13 +487,20 @@
         const box = page.querySelector('.wch-history');
         const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
         const list = conv ? conv.entries : [];
-        let html = conv && conv.hasMore ? '<button type="button" class="wch-more">Older messages...</button>' : '';
+        const persona = personaOf(conv && conv.session);
+        let html = `<p class="wch-convhead"><i>Conversation with <span class="wch-link wch-plink" role="link">${esc(persona)}</span></i></p>`;
+        html += conv && conv.hasMore ? '<p class="wch-olderp"><a class="wch-more" role="link">Older</a></p>' : '';
         html += list.map((e, n) => entryHtml(e, n, false)).join('');
         const live = liveEntry();
         if (live) html += entryHtml(live, -1, true);
-        if (!list.length && !live) html += `<p class="wch-none">${conv && conv.id === 'new' ? '' : 'No messages yet. Type below and tap Send.'}</p>`;
         box.innerHTML = html;
         if (toEnd || atEnd) box.scrollTop = box.scrollHeight;
+    }
+
+    function selectEntry(n) {
+        selEntry = n;
+        page.querySelectorAll('.wch-entry').forEach((el) => el.classList.toggle('is-selected', Number(el.dataset.n) === n && n >= 0));
+        if (isCurrent()) sh.refreshSoftKeys();
     }
 
     /** Only the streaming entry changes while a reply arrives. */
@@ -423,8 +514,6 @@
         if (old) {
             if (html) old.outerHTML = html; else old.remove();
         } else if (html) {
-            const none = box.querySelector('.wch-none');
-            if (none) none.remove();
             box.insertAdjacentHTML('beforeend', html);
         }
         if (atEnd) box.scrollTop = box.scrollHeight;
@@ -454,6 +543,7 @@
         if (!connected()) { failBox('The message was not sent: the server connection is down.'); return; }
         t.value = '';
         fitInput();
+        setDraft(id, '');
         conv.entries.push({ kind: 'me', says: text, ids: [], at: Date.now(), pending: true });
         // the reply streams in; Send waits for it (the desktop's rule), at most two minutes
         waiting.set(id, setTimeout(() => { waiting.delete(id); if (conv && conv.id === id) { renderEntries(); sh.refreshSoftKeys(); } }, 120000));
@@ -593,7 +683,7 @@
 
     async function deleteChat(s) {
         if (!s) return;
-        const yes = await sh.messageBox({ title: 'Chat', icon: 'warning', text: `"${titleOf(s)}" will be deleted with all its messages. This cannot be undone. Continue?`, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }] });
+        const yes = await sh.messageBox({ title: SMS_TITLE, icon: 'warning', text: `The conversation with ${personaOf(s)} ("${titleOf(s)}") will be deleted with all its messages. This cannot be undone. Continue?`, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }] });
         if (!yes) return;
         try {
             await sh.busy(async () => {
@@ -610,7 +700,7 @@
 
     async function restartChat(s) {
         if (!s) return;
-        const yes = await sh.messageBox({ title: 'Restart Chat', icon: 'question', text: 'Restart this chat? This will clear all its messages.', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }] });
+        const yes = await sh.messageBox({ title: SMS_TITLE, icon: 'question', text: 'Restart this conversation? This will clear all its messages.', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }] });
         if (!yes) return;
         try {
             await sh.busy(async () => {
@@ -626,7 +716,7 @@
 
     async function deleteEntry(e) {
         if (!e || !e.ids.length) return;
-        const yes = await sh.messageBox({ title: 'Chat', icon: 'warning', text: 'Delete this message? This cannot be undone.', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }] });
+        const yes = await sh.messageBox({ title: SMS_TITLE, icon: 'warning', text: 'Delete this message? This cannot be undone.', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }] });
         if (!yes) return;
         try {
             await sh.busy(async () => {
@@ -637,6 +727,7 @@
                 await loadConversation(false);
             }, { paint: true });
         } catch (err) { failBox('The message could not be deleted.', err); }
+        selEntry = -1;
         renderEntries();
     }
 
@@ -796,36 +887,121 @@
 
     // ---------------------------------------------------------------- menus
 
+    const msgApi = () => window.wmMessaging || null;
+    /** Messaging's Go To: Folders... then the accounts, ours marked (164304 / 173945). */
+    function goToItems() {
+        const m = msgApi();
+        const accts = m && typeof m.accountItems === 'function' ? m.accountItems('sms') : [];
+        return [{ label: 'Folders...', action: () => openTree() }, '-'].concat(accts);
+    }
+
+    function openTree(anchor) {
+        const m = msgApi();
+        if (!m || typeof m.showTree !== 'function') return;
+        m.showTree(anchor || page.querySelector('.wch-folder'), { acct: 'sms', folder: smsFolder, onPick: (f) => setFolder(f) });
+    }
+
+    function setFolder(f) {
+        smsFolder = FOLDER_LABELS[f] ? f : 'inbox';
+        renderList();
+    }
+
+    function sortItems() {
+        return [['date', 'Received'], ['name', 'From']].map(([k, l]) => ({ label: l, radio: sort === k, action: () => setSort(k) }));
+    }
+
+    function optionsAction() {
+        const st = window.wmSettings;
+        if (st && typeof st.open === 'function') st.open('messaging-options', null, { direct: true });
+    }
+
+    function markRead(s) {
+        if (!s) return;
+        const p = previews.get(s.id);
+        markSeen(s.id, Math.max(Date.now(), msOf(s.updated_at)));
+        if (p) p.unread = 0;
+        renderList();
+    }
+
+    /** The list menu (173945): New, Delete, Mark as Read, Move... | Go To, Tools | Select Messages, Reply. */
     function listMenu() {
         const s = selectedSession();
-        const personas = [...new Set(sessions.map(personaOf))].sort((a, b) => a.localeCompare(b));
+        const p = s ? previews.get(s.id) : null;
         return [
-            { label: 'Open', disabled: !s, action: () => openConversation(s) },
-            { label: 'New Chat...', action: newChat },
+            { label: 'New', action: newChat },
+            { label: 'Delete', disabled: !s, action: () => deleteChat(s) },
+            { label: 'Mark as Read', disabled: !(p && p.unread), action: () => markRead(s) },
+            { label: 'Move...', disabled: true },
             '-',
-            { label: 'Restart Chat...', disabled: !s, action: () => restartChat(s) },
-            { label: 'Delete Chat', disabled: !s, action: () => deleteChat(s) },
+            { label: 'Go To', submenu: goToItems },
+            { label: 'Tools', submenu: () => [
+                { label: 'Sort By', submenu: sortItems },
+                { label: 'Manage Folders...', disabled: true },
+                '-',
+                { label: 'Empty Deleted Items', disabled: true },
+                { label: 'Restart Conversation...', disabled: !s, action: () => restartChat(s) },
+                '-',
+                { label: 'New Account...', disabled: !(msgApi() && msgApi().setupAccount), action: () => msgApi().setupAccount() },
+                { label: 'Options...', disabled: !(window.wmSettings && typeof window.wmSettings.open === 'function'), action: optionsAction }
+            ] },
             '-',
-            { label: 'Show', submenu: () => [{ label: 'All Chats', radio: filter === '*', action: () => setFilter('*') }].concat(personas.map((p) => ({ label: p, radio: filter === p, action: () => setFilter(p) }))) },
-            { label: 'Sort By', submenu: () => [['date', 'Date'], ['name', 'Name']].map(([k, l]) => ({ label: l, radio: sort === k, action: () => setSort(k) })) },
-            '-',
-            { label: 'Refresh', action: () => refresh() }
+            { label: 'Select Messages', submenu: () => [{ label: 'All', disabled: true }, { label: 'All Below', disabled: true }, { label: 'Several', disabled: true }] },
+            { label: 'Reply', submenu: () => [
+                { label: 'Reply', disabled: !s, action: () => openConversation(s) },
+                { label: 'Reply All', disabled: true },
+                { label: 'Forward', disabled: !(s && p && p.text), action: () => forwardText(p.text) }
+            ] }
         ];
     }
 
+    /** Forward: the text in a new e-mail (Messaging), as the device forwards a text message. */
+    function forwardText(text) {
+        if (!text || typeof window.wmMessagingCompose !== 'function') return;
+        window.wmMessagingCompose({ body: text });
+    }
+
+    function entryText(e) {
+        return e ? [e.says, e.actions ? `*${e.actions}*` : '', e.sfx ? `~${e.sfx}~` : ''].filter(Boolean).join('\n') : '';
+    }
+
+    function insertText(t) {
+        const box = inputEl();
+        const a = box.selectionStart == null ? box.value.length : box.selectionStart;
+        const b = box.selectionEnd == null ? a : box.selectionEnd;
+        box.value = box.value.slice(0, a) + t + box.value.slice(b);
+        box.selectionStart = box.selectionEnd = a + t.length;
+        fitInput();
+        if (isCurrent()) sh.refreshSoftKeys();
+    }
+
+    /** The conversation menu (174005). */
     function convMenu() {
         const s = conv && conv.id !== 'new' ? (sessionById(conv.id) || conv.session) : null;
+        const en = conv && selEntry >= 0 ? conv.entries[selEntry] : null;
         return [
-            { label: 'Send', disabled: !canSend(), action: send },
-            { label: 'Clear Text', disabled: !inputEl().value, action: () => { inputEl().value = ''; fitInput(); sh.refreshSoftKeys(); } },
+            { label: 'Delete', disabled: !(en && en.ids.length), action: () => deleteEntry(en) },
+            { label: 'Forward', disabled: !en || typeof window.wmMessagingCompose !== 'function', action: () => forwardText(entryText(en)) },
+            { label: 'Insert', disabled: true, submenu: () => [] },
+            { label: 'My Text', submenu: () => MY_TEXT.map((t) => ({ label: t, action: () => insertText(t) })) },
+            { label: 'Save to Drafts', disabled: !s, action: () => { setDraft(s.id, inputEl().value.trim() ? inputEl().value : ''); } },
+            { label: 'Spell Check', disabled: true },
             '-',
-            { label: 'Show Actions and Sounds', checked: showActions, action: toggleActions },
-            { label: 'Older Messages', disabled: !(conv && conv.hasMore), action: loadOlder },
-            '-',
-            { label: 'New Chat with Persona...', disabled: !s, action: () => openForm(s.filename, s.character_name) },
-            { label: 'Restart Chat...', disabled: !s, action: () => restartChat(s) },
-            { label: 'Delete Chat', disabled: !s, action: () => deleteChat(s) }
+            { label: 'Close', action: () => { popLayer(); sh.syncHistory(); } },
+            { label: 'Message Options', action: () => push('opts') },
+            { label: 'Copy to SIM', disabled: true }
         ];
+    }
+
+    /** Message Options: what the thread shows of a reply besides its words. */
+    function renderOpts() {
+        const box = page.querySelector('.wch-optsview');
+        const ui = window.wmSettings && window.wmSettings.ui;
+        const check = (name, label, on, attrs = '') => (ui ? ui.check(name, label, on, attrs) : `<label class="wm-check"><input type="checkbox" name="${name}"${on ? ' checked' : ''} ${attrs}><span>${esc(label)}</span></label>`);
+        box.innerHTML = `<div class="wm-form-hdr">Message Options</div><div class="wch-form-scroll"><div class="wm-form">
+            ${check('actions', 'Show actions and sound effects', showActions)}
+            ${check('receipt', 'Request message delivery notification', false, 'disabled')}
+        </div></div>`;
+        box.querySelector('input[name="actions"]').addEventListener('change', (e) => { if (e.target.checked !== showActions) toggleActions(); });
     }
 
     function formMenu() {
@@ -837,7 +1013,6 @@
         ];
     }
 
-    function setFilter(f) { filter = f; renderList(); }
     function setSort(k) { sort = k; store(SORT_KEY, k); renderList(); }
 
     async function loadOlder() {
@@ -890,36 +1065,38 @@
         p.innerHTML = `
             <div class="wch-listview">
                 <div class="wm-pv-bar wch-bar">
-                    <button type="button" class="wm-pv-folder wch-folder" aria-haspopup="menu"><span class="wch-folder-name">All Chats</span><i class="wm-pv-arrow"></i></button>
-                    <button type="button" class="wm-pv-sort wch-sort" aria-haspopup="menu"><span>Date</span><i class="wm-pv-arrow"></i></button>
+                    <button type="button" class="wm-pv-folder wch-folder" aria-haspopup="tree"><span class="wch-folder-name">Inbox</span><i class="wm-pv-arrow"></i></button>
+                    <button type="button" class="wm-pv-sort wch-sort" aria-haspopup="menu"><span>Received</span><i class="wm-pv-arrow"></i></button>
                 </div>
                 <div class="wch-scroll"><div class="wch-list" role="listbox" aria-label="Chats"></div><p class="wch-empty" hidden></p></div>
                 <div class="wch-status"></div>
             </div>
             <div class="wch-convview" hidden>
-                <div class="wch-head"><img class="wch-head-pic" alt="" draggable="false" onerror="this.src='/static_images/icon-96x96.png'"><div class="wch-head-text"><div class="wch-head-name"></div><div class="wch-head-sub"></div></div></div>
                 <div class="wch-history" role="log" aria-live="polite"></div>
-                <div class="wch-compose"><span class="wch-me" aria-hidden="true"></span><textarea class="wch-input" rows="1" enterkeyhint="send" autocomplete="off" aria-label="Message"></textarea></div>
+                <div class="wch-compose"><textarea class="wch-input" rows="2" enterkeyhint="send" autocomplete="off" aria-label="Message"></textarea></div>
             </div>
-            <div class="wch-newview" hidden></div>`;
+            <div class="wch-newview" hidden></div>
+            <div class="wch-optsview" hidden></div>`;
 
         p.querySelector('.wch-folder').addEventListener('click', (e) => {
             e.stopPropagation();
-            const personas = [...new Set(sessions.map(personaOf))].sort((a, b) => a.localeCompare(b));
-            sh.dropdown(e.currentTarget, [{ label: 'All Chats', radio: filter === '*', action: () => setFilter('*') }].concat(personas.map((n) => ({ label: n, radio: filter === n, action: () => setFilter(n) }))), 'left');
+            openTree(e.currentTarget);
         });
         p.querySelector('.wch-sort').addEventListener('click', (e) => {
             e.stopPropagation();
-            sh.dropdown(e.currentTarget, [['date', 'Date'], ['name', 'Name']].map(([k, l]) => ({ label: l, radio: sort === k, action: () => setSort(k) })), 'right');
+            const btn = e.currentTarget;
+            btn.querySelector('span').textContent = 'Sort By';
+            sh.dropdown(btn, sortItems(), 'right', () => renderList());
         });
         const scroll = p.querySelector('.wch-scroll');
         onHold(scroll, '.wch-row', (row, x, y) => {
             selectRow(row.dataset.id);
             const s = sessionById(row.dataset.id);
             sh.menuAt(x, y, [
-                { label: 'Open', action: () => openConversation(s) },
-                { label: 'Restart Chat...', action: () => restartChat(s) },
-                { label: 'Delete Chat', action: () => deleteChat(s) }
+                { label: 'Delete', action: () => deleteChat(s) },
+                { label: 'Reply', action: () => openConversation(s) },
+                { label: 'Mark as Read', disabled: !((previews.get(s.id) || {}).unread), action: () => markRead(s) },
+                { label: 'Restart Conversation...', action: () => restartChat(s) }
             ]);
         });
         scroll.addEventListener('click', (e) => {
@@ -930,11 +1107,17 @@
         });
 
         const hist = p.querySelector('.wch-history');
-        hist.addEventListener('click', (e) => { if (e.target.closest('.wch-more')) loadOlder(); });
+        hist.addEventListener('click', (e) => {
+            if (e.target.closest('.wch-more')) { loadOlder(); return; }
+            if (e.target.closest('.wch-plink')) { showPersonaPicture(); return; }
+            const el = e.target.closest('.wch-entry');
+            if (el && Number(el.dataset.n) >= 0) selectEntry(Number(el.dataset.n));
+        });
         onHold(hist, '.wch-entry', (el, x, y) => {
             const n = Number(el.dataset.n);
             const en = conv && n >= 0 ? conv.entries[n] : null;
             if (!en) return;
+            selectEntry(n);
             sh.menuAt(x, y, [
                 { label: 'Copy Text', action: () => copyEntry(en) },
                 { label: 'Delete Message', disabled: !en.ids.length, action: () => deleteEntry(en) }
@@ -1009,7 +1192,7 @@
             titleKind: () => (view() === 'list' ? 'close' : 'ok'),
             onTitleOk() {
                 if (view() === 'new') { createChat(); return true; }
-                if (view() === 'conv') { popLayer(); return true; }
+                if (view() === 'conv' || view() === 'opts') { popLayer(); return true; }
                 return false;
             },
             historyDepth: () => layers.length,
@@ -1022,11 +1205,60 @@
                 const v = view();
                 if (v === 'conv') return { left: { label: 'Send', disabled: !canSend(), action: send }, right: { label: 'Menu', menu: convMenu } };
                 if (v === 'new') return { left: { label: 'Create', disabled: creating, action: createChat }, right: { label: 'Menu', menu: formMenu } };
-                return { left: { label: 'New', action: newChat }, right: { label: 'Menu', menu: listMenu } };
+                if (v === 'opts') return { left: null, right: null };
+                const s = selectedSession();
+                return { left: { label: 'Reply', disabled: !s, action: () => openConversation(s) }, right: { label: 'Menu', menu: listMenu } };
             }
         });
         void shown;
     }
+
+    /** The persona's picture (the gallery picture the chat was made from) in the shell's picture view. */
+    function showPersonaPicture() {
+        const s = conv && conv.session;
+        if (!s || !s.filename || typeof showLightbox !== 'function') return; // eslint-disable-line no-undef
+        try { showLightbox({ url: pictureOf(s.filename), title: personaOf(s) }); } catch (_) { /* no viewer */ } // eslint-disable-line no-undef
+    }
+
+    const norm = (t) => String(t || '').trim().toLowerCase();
+
+    /**
+     * Messaging and Contacts (#757): Text Messages is this app. openWith(name) opens the newest
+     * conversation with that persona (Contacts' Send Text Message); unread() is the account picker's count.
+     */
+    window.wmChatApp = {
+        showList() {
+            if (!sh) return;
+            sh.open(APP_ID);
+            if (layers.length) { if (view() === 'conv') markConvSeen(); layers = []; conv = null; draft = null; showLayer(); sh.syncHistory(); }
+            smsFolder = 'inbox';
+            renderList();
+        },
+        setFolder(f) { setFolder(f); },
+        hasPersona(name) {
+            const n = norm(name);
+            return !!n && sessions.some((x) => norm(personaOf(x)) === n || norm(titleOf(x)) === n);
+        },
+        async openWith(name) {
+            if (!sh) return false;
+            const n = norm(name);
+            if (!n) return false;
+            if (!loaded) { try { await ensureChat(); await loadSessions(); } catch (_) { return false; } }
+            const s = sessions.find((x) => norm(personaOf(x)) === n) || sessions.find((x) => norm(titleOf(x)) === n);
+            if (!s) return false;
+            sh.open(APP_ID);
+            smsFolder = 'inbox';
+            openConversation(s, { replace: true });
+            return true;
+        },
+        unread() {
+            return sessions.reduce((n, x) => n + ((previews.get(x.id) || {}).unread || 0), 0);
+        },
+        async refresh() {
+            try { if (await ensureChat()) { await loadSessions(); await loadPreviews(); } } catch (_) { /* keeps the old count */ }
+            if (page && view() === 'list') renderList();
+        }
+    };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

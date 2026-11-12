@@ -991,6 +991,7 @@
             const rows = [];
             const act = (ic, label, value, kind) => rows.push({ ic, label, value, kind });
             if (c.home.mobile) { act('contacts-mobile', 'Call mobile', c.home.mobile, 'call'); act('contacts-sms', 'Send text message', c.home.mobile, 'sms'); }
+            else if (canText(c)) act('contacts-sms', 'Send text message', 'Text Messages', 'sms');
             if (c.work.phone) act('contacts-work', 'Call work', c.work.phone, 'call');
             if (c.home.phone) act('contacts-home', 'Call home', c.home.phone, 'call');
             c.emails.forEach((m) => act('contacts-email', 'Send e-mail', m, 'mail'));
@@ -1043,6 +1044,14 @@
             box.querySelectorAll('.ct-btab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === cardTab)));
         }
 
+        /** A contact can be texted: a mobile number, or a Text Messages (Chat) persona of that name (#757). */
+        function canText(c) {
+            if (!c) return false;
+            if (c.home && c.home.mobile) return true;
+            const chat = window.wmChatApp;
+            return !!(chat && typeof chat.hasPersona === 'function' && chat.hasPersona(VC().displayName(c)));
+        }
+
         async function noPhone(number) {
             await ws.messageBox({ title: 'Phone', icon: 'info', text: `Cannot call ${number}: this phone has no line to dial with.` });
         }
@@ -1055,6 +1064,12 @@
                 if (window.wmBrowser && window.wmBrowser.open(site)) return;
                 window.open(site, '_blank', 'noopener');
                 return;
+            }
+            // Text Messages (the Chat applet, #757): the conversation with the persona of that name
+            if (r.kind === 'sms') {
+                const who = r.name || (current && VC().displayName(current.c)) || '';
+                const chat = window.wmChatApp;
+                if (chat && typeof chat.openWith === 'function' && (await chat.openWith(who, r.value))) return;
             }
             // Messaging writes the message when it offers a compose entry point
             if (r.kind === 'mail' && typeof window.wmMessagingCompose === 'function') {
@@ -1421,7 +1436,7 @@
                 { label: 'Edit', disabled: ro, action: () => openForm(e) },
                 { label: 'View All Calls', disabled: true },
                 { label: 'Save to SIM', disabled: true },
-                { label: 'Send Text Message...', disabled: !(e && e.c.home.mobile), action: () => runRow({ kind: 'sms', value: e.c.home.mobile }) },
+                { label: 'Send Text Message...', disabled: !(e && canText(e.c)), action: () => runRow({ kind: 'sms', value: e.c.home.mobile, name: VC().displayName(e.c) }) },
                 { label: 'Send Contact', submenu: () => sendContactRows(e) },
                 { label: 'Delete Contact', disabled: ro, action: () => deleteContact(e) },
                 '-',
@@ -1491,7 +1506,7 @@
                         { label: 'Call Home', disabled: !c.home.phone, action: () => runRow({ kind: 'call', value: c.home.phone }) },
                         { label: 'Call Mobile', disabled: !c.home.mobile, action: () => runRow({ kind: 'call', value: c.home.mobile }) },
                         { label: 'Send E-mail', disabled: !mail, action: () => runRow({ kind: 'mail', value: mail }) },
-                        { label: 'Send Text Message', disabled: !c.home.mobile, action: () => runRow({ kind: 'sms', value: c.home.mobile }) },
+                        { label: 'Send Text Message', disabled: !canText(c), action: () => runRow({ kind: 'sms', value: c.home.mobile, name: VC().displayName(c) }) },
                         '-',
                         { label: 'Send Contact', submenu: () => sendContactRows(en) },
                         { label: 'Copy Contact', disabled: readOnly(), action: () => copyContact(en) },
@@ -1602,6 +1617,19 @@
                     }
                 });
             },
+            /** Messaging's sender card (Save, #757): a new contact with that name and e-mail address filled in. */
+            async newContact(init = {}) {
+                if (!ws) return;
+                if (ws.current !== APP_ID) ws.open(APP_ID);
+                if (view() === 'edit' && formChanged() && !(await saveForm())) return;
+                if (!(await ensureVCard())) return;
+                layers = [];
+                openForm(null);
+                const parts = String(init.name || '').trim().split(/\s+/).filter(Boolean);
+                if (parts.length) { draft.first = parts[0]; draft.last = parts.slice(1).join(' '); }
+                if (init.email) draft.emails = [String(init.email)];
+                renderForm();
+            },
             /** File Explorer: a .vcf file (in Contacts or anywhere else). */
             async openFile(item, folder) {
                 if (!ws || !item) return;
@@ -1648,7 +1676,7 @@
     }
 
     window.wmNotesApp = { openNote: (id, wsId, name) => Notes.openNote(id, wsId, name), newest: () => Notes.newest(), list: () => Notes.list() };
-    window.wmContactsApp = { openFile: (item, folder) => Contacts.openFile(item, folder) };
+    window.wmContactsApp = { openFile: (item, folder) => Contacts.openFile(item, folder), newContact: (init) => Contacts.newContact(init) };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

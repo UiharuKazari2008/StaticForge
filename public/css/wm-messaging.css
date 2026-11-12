@@ -63,25 +63,39 @@
 
 .wm-msg .msg-row {
     display: grid;
-    grid-template-columns: calc(21 * var(--wm-px)) minmax(0, 1fr) auto;
-    grid-template-rows: calc(15 * var(--wm-px)) calc(15 * var(--wm-px));
+    /* measured (164304, 173927): 28 px pitch with the 1 px #848284 rule, two 14 px lines; the
+     * envelope at x 2, the name from x 26.5, the date right-aligned to x 186, the size ("3K")
+     * right-aligned to x 235 */
+    grid-template-columns: calc(26.5 * var(--wm-px)) minmax(0, 1fr) auto calc(49 * var(--wm-px));
+    grid-template-rows: calc(14 * var(--wm-px)) calc(13 * var(--wm-px));
     align-items: center;
-    padding: calc(1 * var(--wm-px)) calc(3 * var(--wm-px)) calc(1 * var(--wm-px)) 0;
+    height: calc(28 * var(--wm-px));
+    box-sizing: border-box;
+    padding: 0 calc(5 * var(--wm-px)) 0 0;
     border-bottom: calc(1 * var(--wm-px)) solid #848284;
     white-space: nowrap;
     cursor: default;
     -webkit-touch-callout: none;
     user-select: none;
-    /* a 50-row page laid out whole cost ~150 ms on a throttled phone: off-screen rows skip layout
-       (the intrinsic size is the content box: the two 15 px lines) */
+    /* a 50-row page laid out whole cost ~150 ms on a throttled phone: off-screen rows skip layout */
     content-visibility: auto;
-    contain-intrinsic-size: auto calc(30 * var(--wm-px));
+    contain-intrinsic-size: auto calc(28 * var(--wm-px));
 }
 
 .wm-msg .msg-row .msg-ico {
-    grid-row: 1;
+    grid-row: 1 / 3;
     grid-column: 1;
-    margin-left: calc(2 * var(--wm-px));
+    align-self: start;
+    margin: calc(2.5 * var(--wm-px)) 0 0 calc(2 * var(--wm-px));
+}
+
+/* the folder bar has no folder picture on the device (164304): "Inbox" from x 8.5 */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-bar .msg-folder img {
+    display: none;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-bar .msg-folder {
+    padding-left: calc(8.5 * var(--wm-px)) !important;
 }
 
 /* the list's envelopes (wmMessaging.js rowHtml data-ico) */
@@ -117,18 +131,302 @@
     grid-row: 1;
     grid-column: 3;
     padding-left: calc(6 * var(--wm-px));
+    overflow: hidden;
+}
+
+.wm-msg .msg-size {
+    grid-row: 1;
+    grid-column: 4;
+    text-align: right;
+}
+
+/* a Director session has no size: the date takes the column's place */
+.wm-msg .msg-row.is-nosize {
+    grid-template-columns: calc(26.5 * var(--wm-px)) minmax(0, 1fr) auto 0;
 }
 
 .wm-msg .msg-subj {
     grid-row: 2;
-    grid-column: 2 / 4;
+    grid-column: 2 / 5;
 }
 
-/* unread: bold sender, subject and date (Outlook Mobile) */
+/* unread: bold sender, subject, date and size (Outlook Mobile) */
 .wm-msg .msg-row.is-unread .msg-from,
 .wm-msg .msg-row.is-unread .msg-subj,
-.wm-msg .msg-row.is-unread .msg-date {
+.wm-msg .msg-row.is-unread .msg-date,
+.wm-msg .msg-row.is-unread .msg-size {
     font-weight: bold;
+}
+
+.wm-msg .msg-sort[hidden] {
+    display: none !important;
+}
+
+/* 6.1: the list field is the theme's white-to-tint gradient (164304, as Text Messages' list) */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-scroll {
+    background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+}
+
+/* the status line under the list (164304, 165048): a 1 px black rule and 19 px of the bar tint;
+ * "Connecting..." while it loads, then "<account>  1 Items, 1 Unread." */
+.wm-msg .msg-status {
+    flex: 0 0 auto;
+    display: flex;
+    gap: calc(6 * var(--wm-px));
+    box-sizing: border-box;
+    height: calc(20 * var(--wm-px));
+    padding: 0 calc(2 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tint);
+    line-height: calc(19 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* ---- the folder tree under the bar (165105 "Show", 173942): 1 px black frame, 16 px rows; the
+ * root expander boxes at x 9 joined by dotted lines, each level 19.5 px in (icon at 20.5, text at
+ * 40 for the accounts); the folder on screen has the highlight on its name only, unread counts in
+ * blue after it. Also Manage Folders' box (165113). */
+.wm-msgtree {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    bottom: 0;
+    width: calc(202 * var(--wm-px));
+    max-width: 100%;
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    color: #000;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-msgtree .mt-tree {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.wm-msg .mt-row,
+.wm-msgtree .mt-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: calc(16 * var(--wm-px));
+    padding-left: calc((38.5 + 19.5 * var(--depth, 0)) * var(--wm-px));
+    white-space: nowrap;
+    cursor: default;
+    user-select: none;
+}
+
+.wm-msg .mt-row > i,
+.wm-msgtree .mt-row > i {
+    position: absolute;
+    pointer-events: none;
+}
+
+/* an ancestor's line running past this row, the row's own connector, its dotted arm */
+.wm-msg .mt-v,
+.wm-msgtree .mt-v,
+.wm-msg .mt-c,
+.wm-msgtree .mt-c {
+    left: calc((9 + 19.5 * var(--d, 0)) * var(--wm-px));
+    top: 0;
+    bottom: 0;
+    border-left: calc(1 * var(--wm-px)) dotted #a5a2a5;
+}
+
+.wm-msg .mt-c.is-first,
+.wm-msgtree .mt-c.is-first {
+    top: 50%;
+}
+
+.wm-msg .mt-c.is-last,
+.wm-msgtree .mt-c.is-last {
+    bottom: 50%;
+}
+
+.wm-msg .mt-h,
+.wm-msgtree .mt-h {
+    left: calc((9 + 19.5 * var(--d, 0)) * var(--wm-px));
+    top: 50%;
+    width: calc(10.5 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) dotted #a5a2a5;
+}
+
+/* the expander: a 9 px box (18 device px), 1 px grey frame, a black minus (and the plus's upright
+ * when shut) */
+.wm-msg .mt-box,
+.wm-msgtree .mt-box {
+    position: absolute;
+    left: calc((5 + 19.5 * var(--d, 0)) * var(--wm-px));
+    top: calc(3.5 * var(--wm-px));
+    width: calc(9 * var(--wm-px)) !important;
+    height: calc(9 * var(--wm-px)) !important;
+    min-width: 0 !important;
+    margin: 0;
+    padding: 0 !important;
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #848284 !important;
+    border-radius: 0;
+    background: #fff !important;
+    z-index: 1;
+}
+
+.wm-msg .mt-box::before,
+.wm-msgtree .mt-box::before,
+.wm-msg .mt-box::after,
+.wm-msgtree .mt-box::after {
+    content: '';
+    position: absolute;
+    background: #000;
+}
+
+.wm-msg .mt-box::before,
+.wm-msgtree .mt-box::before {
+    left: 20%;
+    right: 20%;
+    top: calc(50% - 1px);
+    height: calc(1 * var(--wm-px));
+}
+
+.wm-msg .mt-box::after,
+.wm-msgtree .mt-box::after {
+    top: 20%;
+    bottom: 20%;
+    left: calc(50% - 1px);
+    width: calc(1 * var(--wm-px));
+}
+
+.wm-msg .mt-box.is-open::after,
+.wm-msgtree .mt-box.is-open::after {
+    display: none;
+}
+
+.wm-msg .mt-ico,
+.wm-msgtree .mt-ico {
+    position: absolute;
+    left: calc((20.5 + 19.5 * var(--depth, 0)) * var(--wm-px));
+    top: 0;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wm-msg .mt-ico img,
+.wm-msgtree .mt-ico img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.wm-msg .mt-label,
+.wm-msgtree .mt-label {
+    padding: 0 calc(1.5 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+}
+
+.wm-msg .mt-row.is-current .mt-label,
+.wm-msgtree .mt-row.is-current .mt-label {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+    font-weight: bold;
+}
+
+.wm-msg .mt-count,
+.wm-msgtree .mt-count {
+    margin-left: calc(3 * var(--wm-px));
+    color: #00f;
+}
+
+/* Manage Folders: a check box where the icon was, the icon and name one column on */
+.wm-msg .mt-row.has-check {
+    padding-left: calc((38.5 + 16 + 19.5 * var(--depth, 0)) * var(--wm-px));
+}
+
+.wm-msg .mt-row.has-check .mt-ico {
+    left: calc((20.5 + 16 + 19.5 * var(--depth, 0)) * var(--wm-px));
+}
+
+.wm-msg .mt-check {
+    appearance: none;
+    -webkit-appearance: none;
+    position: absolute;
+    left: calc((21 + 19.5 * var(--depth, 0)) * var(--wm-px));
+    top: calc(1.5 * var(--wm-px));
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+    margin: 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff center / 100% 100% no-repeat;
+    outline: none;
+    z-index: 1;
+}
+
+.wm-msg .mt-check:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11'%3E%3Cpath d='M2 5.2 4.3 7.5 9 2.8' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E");
+}
+
+.wm-msg .msg-manage-text {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: calc(9 * var(--wm-px)) calc(8.5 * var(--wm-px)) calc(19 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+}
+
+.wm-msg .msg-manage-box {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0 calc(8.5 * var(--wm-px)) calc(9 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    overflow: auto;
+    padding-top: calc(1 * var(--wm-px));
+    /* the box is a tree control: 12 px type on 17 px rows (165125), the chosen folder not bold */
+    font-size: calc(12 * var(--wm-px));
+}
+
+.wm-msg .msg-manage-box .mt-row {
+    height: calc(17 * var(--wm-px));
+}
+
+.wm-msg .msg-manage-box .mt-row.is-current .mt-label {
+    font-weight: normal;
+}
+
+/* ---- Message Options (165521): label lines over full-width combo boxes */
+.wm-msg .msg-opts {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: calc(1 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
+}
+
+.wm-msg .msg-opt {
+    display: block;
+    margin-bottom: calc(7.5 * var(--wm-px));
+}
+
+/* 41 px a group (165521): the label on a 17 px line, the combo 16.5 px */
+.wm-msg .msg-opt > span {
+    display: block;
+    padding-left: calc(1 * var(--wm-px));
+    line-height: calc(17 * var(--wm-px));
+}
+
+.wm-msg .msg-opt .wm-combo {
+    width: 100%;
+    height: calc(16.5 * var(--wm-px)) !important;
+}
+
+/* the sender's card (165456): the name in black bold, no rule; the Send e-mail row selected */
+.wm-msg .msg-head.is-card {
+    height: calc(20.5 * var(--wm-px));
+    line-height: calc(19 * var(--wm-px));
+    color: #000;
+    border-bottom: 0;
+    padding-left: calc(3.5 * var(--wm-px));
 }
 
 .wm-msg .msg-row.is-selected {
@@ -188,6 +486,16 @@
     font-weight: bold;
 }
 
+/* "Text Messages (7)": the count in blue (173612), on the highlight too */
+.wm-msg .msg-pick-count {
+    color: #00f;
+}
+
+/* the account's address under its name is grey (173612) */
+.wm-msg .msg-pick-sub.is-dim {
+    color: #b5b2b5;
+}
+
 /* account rows: 31 px, two lines, 1 px #848284 rule at the bottom */
 .wm-msg .msg-pick-row.is-two {
     grid-template-rows: calc(17 * var(--wm-px)) calc(13 * var(--wm-px));
@@ -216,41 +524,69 @@
     color: var(--wm-highlight-text);
 }
 
-/* ---- reading page */
+/* ---- reading page (165429-165447): the header band in the bar tint, text in the menu text colour:
+ * "Sent:" at x 5 with the date from x 37 (the time under it), the sender as an underlined link in a
+ * focus rectangle (14 px type), the subject (13 px, plain); the body under it (View > Text Size) */
 
 .wm-msg .msg-read {
     padding: 0;
 }
 
 .wm-msg .msg-hdr {
-    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px)) calc(6 * var(--wm-px)) calc(5 * var(--wm-px));
     background: var(--wm-tint);
+    color: var(--wm-menu-text);
     border-bottom: calc(1 * var(--wm-px)) solid var(--wm-rule, #000);
 }
 
-.wm-msg .msg-hdr-from {
-    font-weight: bold;
-    font-size: calc(13 * var(--wm-px));
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.wm-msg .msg-hdr-line {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.wm-msg .msg-hdr-sent {
+    display: grid;
+    grid-template-columns: calc(32 * var(--wm-px)) minmax(0, 1fr);
+    line-height: calc(11.5 * var(--wm-px));
 }
 
 .wm-msg .msg-hdr-k {
-    color: #4a494a;
+    color: inherit;
+}
+
+.wm-msg .msg-hdr-from {
+    margin-top: calc(10 * var(--wm-px));
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.wm-msg .msg-sender {
+    display: inline-block;
+    max-width: calc(100% - 2 * var(--wm-px));
+    box-sizing: border-box;
+    padding: 0 calc(1 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #424142;
+    font-size: calc(14 * var(--wm-px));
+    line-height: calc(16 * var(--wm-px));
+    text-decoration: underline;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: top;
+    outline: none;
+    cursor: default;
 }
 
 .wm-msg .msg-hdr-subj {
-    font-weight: bold;
     margin-top: calc(3 * var(--wm-px));
+    font-size: calc(13 * var(--wm-px));
+    line-height: calc(16 * var(--wm-px));
     overflow-wrap: anywhere;
 }
+
+.wm-msg .msg-read .msg-body {
+    font-size: calc(12 * var(--wm-px));
+    line-height: 1.25;
+}
+
+.wm-msg .msg-read[data-size="largest"] .msg-body { font-size: calc(16 * var(--wm-px)); }
+.wm-msg .msg-read[data-size="larger"] .msg-body { font-size: calc(14 * var(--wm-px)); }
+.wm-msg .msg-read[data-size="smaller"] .msg-body { font-size: calc(10.5 * var(--wm-px)); }
+.wm-msg .msg-read[data-size="smallest"] .msg-body { font-size: calc(9 * var(--wm-px)); }
 
 .wm-msg .msg-atts {
     padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
@@ -371,6 +707,64 @@
     outline: none;
 }
 
+/* ---- new message, 6.1 (165506): the device's form has 6.5's measures: captions right-aligned to
+ * x 44 in the menu text colour, From over two lines ("Name <address> (account)"), To / Subject 24 px
+ * with 14 px type, 1 px #c6c3c6 rules from x 47.5, a black rule 4 px under the last field */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-field {
+    grid-template-columns: calc(46 * var(--wm-px)) minmax(0, 1fr);
+    height: calc(24 * var(--wm-px));
+    padding-right: calc(4 * var(--wm-px));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-field[hidden] {
+    display: none;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-field > span {
+    align-self: start;
+    padding: calc(1 * var(--wm-px)) 0 0;
+    line-height: calc(14 * var(--wm-px));
+    color: var(--wm-menu-text);
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-field.is-static {
+    height: auto;
+    min-height: calc(29 * var(--wm-px));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-field.is-static > span {
+    padding-top: 0;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-field input,
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-field output {
+    width: auto;
+    height: calc(24 * var(--wm-px));
+    margin-left: calc(1.5 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px));
+    border-bottom-color: #c6c3c6;
+    font-size: calc(14 * var(--wm-px));
+    line-height: calc(23 * var(--wm-px));
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-field.is-static output {
+    height: auto;
+    min-height: calc(29 * var(--wm-px));
+    padding: calc(1 * var(--wm-px)) calc(3 * var(--wm-px)) calc(1 * var(--wm-px)) calc(1 * var(--wm-px));
+    color: #000;
+    font-size: var(--wm-fs);
+    line-height: calc(14 * var(--wm-px));
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-text {
+    margin-top: calc(4 * var(--wm-px));
+    padding: calc(3 * var(--wm-px)) calc(6.5 * var(--wm-px));
+    font-size: calc(14 * var(--wm-px));
+    line-height: calc(17 * var(--wm-px));
+}
+
 /* ---- Melaton Mobile 6.5 ----
  * Windows Mobile 6.5 Professional's Messaging, measured on its emulator (VGA: one unit = 2 device px;
  * captures in ~/.cache/claude-run/wm65apps/pim/emu). The folder bar and the menus are the shell's
@@ -431,6 +825,10 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row .msg-date {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row .msg-subj {
     grid-column: 2 / 4;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row .msg-size {
+    display: none;
 }
 
 /* the selector: the theme's list view selector (474 x 72 at 2x: 8 clear rows, 56 of blue, 8 of
@@ -644,4 +1042,36 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-text {
     color: var(--wm65-text);
     font-size: calc(14 * var(--wm-px));
     line-height: calc(17 * var(--wm-px));
+}
+
+/* ---- Options (wmSettingsSystem.js 'messaging-options'), Address tab: the address books box with
+ * Add... beside it (165151) */
+.wm-msgopt-books {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: calc(6 * var(--wm-px));
+    align-items: start;
+}
+
+.wm-msgopt-books .wm-buttons {
+    margin: 0;
+}
+
+.wm-msgopt-books .wm-button {
+    min-width: calc(60 * var(--wm-px));
+}
+
+/* Accounts tab: the accounts box reaches down to the buttons (165139), 15 px rows, none selected */
+.wm-msgopt-accts {
+    height: calc(209 * var(--wm-px));
+    max-height: none !important;
+}
+
+.wm-msgopt-accts .wm-listbox-row {
+    min-height: calc(15 * var(--wm-px));
+}
+
+/* 6.5: on the blue selector the count turns white (blue on blue cannot be read) */
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-selected .msg-pick-count {
+    color: inherit;
 }

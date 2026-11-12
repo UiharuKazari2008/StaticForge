@@ -33,6 +33,11 @@
     overflow: hidden;
 }
 
+/* "Inbox" from x 8.5, as Messaging's bar (173927) */
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-chat .wch-folder {
+    padding-left: calc(8.5 * var(--wm-px)) !important;
+}
+
 .wm-chat .wch-folder-name {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -51,21 +56,28 @@
     background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
 }
 
-/* two-line rows (Outlook Mobile: 15 + 15 px and a 1 px #848284 rule); the persona's picture in the
- * icon column, 26 px so the face reads */
+/* Text Messages' conversation rows (173927, as Outlook Mobile's: 15 + 15 px and a 1 px #848284
+ * rule): the envelope (closed = unread), "Name (unread)" (the name cut short, the count kept), the
+ * date from x ~140, the size at the right; the last line under it; unread rows bold */
 .wm-chat .wch-row {
     display: grid;
-    grid-template-columns: calc(31 * var(--wm-px)) minmax(0, 1fr) auto;
-    grid-template-rows: calc(15 * var(--wm-px)) calc(15 * var(--wm-px));
+    /* measured (164304, 173927): 28 px pitch with the 1 px #848284 rule, two 14 px lines; the
+     * envelope at x 2, the name from x 26.5, the date right-aligned to x 186, the size ("3K")
+     * right-aligned to x 235 */
+    grid-template-columns: calc(26.5 * var(--wm-px)) minmax(0, 1fr) auto calc(49 * var(--wm-px));
+    grid-template-rows: calc(14 * var(--wm-px)) calc(13 * var(--wm-px));
     align-items: center;
-    padding: calc(1 * var(--wm-px)) calc(3 * var(--wm-px)) calc(1 * var(--wm-px)) 0;
+    height: calc(28 * var(--wm-px));
+    box-sizing: border-box;
+    padding: 0 calc(5 * var(--wm-px)) 0 0;
     border-bottom: calc(1 * var(--wm-px)) solid #848284;
     white-space: nowrap;
     cursor: default;
     -webkit-touch-callout: none;
     user-select: none;
+    /* a 50-row page laid out whole cost ~150 ms on a throttled phone: off-screen rows skip layout */
     content-visibility: auto;
-    contain-intrinsic-size: auto calc(30 * var(--wm-px));
+    contain-intrinsic-size: auto calc(28 * var(--wm-px));
 }
 
 .wm-chat .wch-row.is-selected {
@@ -73,18 +85,34 @@
     color: var(--wm-highlight-text);
 }
 
-.wm-chat .wch-pic {
+.wm-chat .wch-ico,
+.wm-chat .wch-eico {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    background: no-repeat center / 100% 100%;
+}
+
+.wm-chat .wch-ico {
     grid-row: 1 / 3;
     grid-column: 1;
-    width: calc(26 * var(--wm-px));
-    height: calc(26 * var(--wm-px));
-    margin-left: calc(2 * var(--wm-px));
-    object-fit: cover;
-    object-position: center 20%;
-    border: calc(1 * var(--wm-px)) solid #848284;
-    box-sizing: border-box;
-    background: #fff;
-    pointer-events: none;
+    align-self: start;
+    margin: calc(2.5 * var(--wm-px)) 0 0 calc(2 * var(--wm-px));
+}
+
+.wm-chat [data-ico="msg-read"] {
+    background-image: image-set(url('/static_images/wm61/msg-read.png') 1x, url('/static_images/wm61/msg-read@2x.png') 2x, url('/static_images/wm61/msg-read@4x.png') 4x);
+}
+
+.wm-chat [data-ico="msg-unread"] {
+    background-image: image-set(url('/static_images/wm61/msg-unread.png') 1x, url('/static_images/wm61/msg-unread@2x.png') 2x, url('/static_images/wm61/msg-unread@4x.png') 4x);
+}
+
+.wm-chat .wch-namecell {
+    grid-row: 1;
+    grid-column: 2;
+    display: flex;
+    min-width: 0;
+    gap: calc(3 * var(--wm-px));
 }
 
 .wm-chat .wch-name,
@@ -94,20 +122,33 @@
 }
 
 .wm-chat .wch-name {
-    grid-row: 1;
-    grid-column: 2;
-    font-weight: bold;
+    min-width: 0;
+}
+
+.wm-chat .wch-count {
+    flex: 0 0 auto;
 }
 
 .wm-chat .wch-date {
     grid-row: 1;
     grid-column: 3;
     padding-left: calc(6 * var(--wm-px));
+    overflow: hidden;
+}
+
+.wm-chat .wch-size {
+    grid-row: 1;
+    grid-column: 4;
+    text-align: right;
 }
 
 .wm-chat .wch-last {
     grid-row: 2;
-    grid-column: 2 / 4;
+    grid-column: 2 / 5;
+}
+
+.wm-chat .wch-row.is-unread > span {
+    font-weight: bold;
 }
 
 .wm-chat .wch-empty {
@@ -117,10 +158,11 @@
     line-height: calc(15 * var(--wm-px));
 }
 
-/* status line: 1 px black rule, 19 px tint, "Chat  3 Items." from x 2 */
+/* status line: 1 px black rule, 19 px tint, "1 conversation selected" from x 2 */
 .wm-chat .wch-status {
     flex: 0 0 auto;
-    height: calc(19 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    box-sizing: border-box;
     line-height: calc(19 * var(--wm-px));
     padding: 0 calc(2 * var(--wm-px));
     border-top: calc(1 * var(--wm-px)) solid #000;
@@ -129,93 +171,78 @@
     overflow: hidden;
 }
 
-/* ---- conversation ---- */
-
-/* Messenger's band: white to pale pink, 1 px #B5CFDE rule; the persona's picture and name */
-.wm-chat .wch-head {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    gap: calc(5 * var(--wm-px));
-    min-height: calc(34 * var(--wm-px));
-    padding: 0 calc(4 * var(--wm-px)) 0 calc(2 * var(--wm-px));
-    border-bottom: calc(1 * var(--wm-px)) solid #b5cfde;
-    background: linear-gradient(to bottom, #fff 0%, #f7f3f7 40%, #f7ebef 100%);
-    box-sizing: border-box;
-}
-
-.wm-chat .wch-head-pic {
-    flex: 0 0 auto;
-    width: calc(30 * var(--wm-px));
-    height: calc(30 * var(--wm-px));
-    object-fit: cover;
-    object-position: center 20%;
-    border: calc(1 * var(--wm-px)) solid #848284;
-    box-sizing: border-box;
-    background: #fff;
-}
-
-.wm-chat .wch-head-text {
-    min-width: 0;
-}
-
-.wm-chat .wch-head-name {
-    font-weight: bold;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.wm-chat .wch-head-sub {
-    font-size: calc(11 * var(--wm-px));
-    color: #636563;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.wm-chat .wch-head-sub:empty {
-    display: none;
-}
-
-/* the thread, oldest first: "Name:" in bold over the text; the persona's lines on the list tint */
+/* ---- conversation (173945-174305): one HTML-style page; "Conversation with <persona>" (bold
+ * italic, the name a link), a blank line, "Older" (a blue link), a blank line, then each message:
+ * the envelope at x 2 (open = read), "Name (10/19):" in bold underlined link green from x 20.5 and
+ * the text under it (bold while unread); the selected message on pale blue with a focus
+ * rectangle round its name. 12 px type on 15 px lines. */
 .wm-chat .wch-history {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     background: #fff;
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
     user-select: text;
     -webkit-user-select: text;
 }
 
+.wm-chat .wch-convhead {
+    margin: 0 0 calc(15 * var(--wm-px));
+    padding: 0 calc(2 * var(--wm-px));
+    font-weight: bold;
+    overflow-wrap: anywhere;
+}
+
+.wm-chat .wch-link {
+    color: #008000;
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+.wm-chat .wch-olderp {
+    margin: 0 0 calc(15 * var(--wm-px));
+    padding: 0 calc(2 * var(--wm-px));
+}
+
+.wm-chat .wch-more {
+    color: #00f;
+    text-decoration: underline;
+    cursor: default;
+}
+
 .wm-chat .wch-entry {
-    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) calc(3 * var(--wm-px));
-    border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6;
-    line-height: calc(15 * var(--wm-px));
+    position: relative;
+    padding: 0 calc(4 * var(--wm-px)) 0 calc(20.5 * var(--wm-px));
     overflow-wrap: anywhere;
     -webkit-touch-callout: none;
 }
 
-.wm-chat .wch-entry.is-them {
-    background: color-mix(in srgb, #fff 55%, var(--wm-tint));
+.wm-chat .wch-eico {
+    position: absolute;
+    left: calc(2 * var(--wm-px));
+    top: 0;
 }
 
-.wm-chat .wch-who {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: calc(6 * var(--wm-px));
+.wm-chat .wch-who .wch-link {
+    display: inline-block;
+    padding: 0 calc(0.5 * var(--wm-px));
+    margin-left: calc(-0.5 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid transparent;
+    line-height: calc(13 * var(--wm-px));
 }
 
-.wm-chat .wch-entry.is-them .wch-who b {
-    color: var(--wm-highlight);
+.wm-chat .wch-entry.is-selected {
+    background: #d6ebff;
 }
 
-.wm-chat .wch-at {
-    flex: 0 0 auto;
-    font-size: calc(11 * var(--wm-px));
-    color: #848284;
+.wm-chat .wch-entry.is-selected .wch-who .wch-link {
+    border-color: #424142;
+}
+
+.wm-chat .wch-entry.is-unread .wch-says {
+    font-weight: bold;
 }
 
 .wm-chat .wch-says {
@@ -234,65 +261,39 @@
     letter-spacing: calc(2 * var(--wm-px));
 }
 
-.wm-chat .wch-none {
-    margin: 0;
-    padding: calc(40 * var(--wm-px)) calc(8 * var(--wm-px)) 0;
-    text-align: center;
-    color: #636563;
-}
-
-.wm-chat .wch-none:empty {
-    display: none;
-}
-
-.wm-chat .wch-more {
-    display: block;
-    width: 100%;
-    height: calc(20 * var(--wm-px));
-    border-bottom: calc(1 * var(--wm-px)) solid #d6d3d6 !important;
-    color: var(--wm-highlight) !important;
-    font-weight: bold;
-    text-align: center;
-}
-
-/* Messenger's compose panel: 38 px; a 48 px white column with the buddy glyph (or the user's own
- * picture), the box with a 1 px #0082FF top and left edge on the pale pink field */
+/* the reply box: white, a 1 px rule in a light highlight tint over it (174305), ~37 px tall */
 .wm-chat .wch-compose {
     flex: 0 0 auto;
     display: flex;
     align-items: stretch;
-    min-height: calc(38 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid color-mix(in srgb, var(--wm-highlight) 55%, #fff);
     background: #fff;
-}
-
-.wm-chat .wch-me {
-    flex: 0 0 calc(48 * var(--wm-px));
-    background: url('/static_images/wm61/chat-buddy.png') center / calc(24 * var(--wm-px)) calc(20 * var(--wm-px)) no-repeat;
-    background-image: image-set(url('/static_images/wm61/chat-buddy.png') 1x, url('/static_images/wm61/chat-buddy@2x.png') 2x, url('/static_images/wm61/chat-buddy@4x.png') 4x);
-}
-
-.wm-chat .wch-me.has-photo {
-    background-size: calc(30 * var(--wm-px)) calc(30 * var(--wm-px));
 }
 
 .wm-chat .wch-input {
     flex: 1 1 auto;
     min-width: 0;
     box-sizing: border-box;
-    min-height: calc(38 * var(--wm-px));
+    min-height: calc(37 * var(--wm-px));
     margin: 0;
-    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
     border: 0;
-    border-top: calc(1 * var(--wm-px)) solid #0082ff;
-    border-left: calc(1 * var(--wm-px)) solid #0082ff;
     border-radius: 0;
     outline: none;
     resize: none;
-    background: linear-gradient(to bottom, #fff7ff 0%, #f7f3f7 40%, #efebef 100%);
+    background: #fff;
     color: #000;
-    font: var(--wm-fs) / calc(15 * var(--wm-px)) var(--wm-font);
+    font: calc(12 * var(--wm-px)) / calc(15 * var(--wm-px)) var(--wm-font);
     user-select: text;
     -webkit-user-select: text;
+}
+
+.wm-chat .wch-optsview {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
 }
 
 /* ---- new chat form ---- */
@@ -348,15 +349,9 @@
     width: 100%;
 }
 
-/* landscape and wide screens: the thread reads in a column, not across the whole screen */
+/* landscape and wide screens: the empty list's line sits higher */
 @media (min-aspect-ratio: 4/3) {
-    .wm-chat .wch-entry {
-        padding-left: calc(8 * var(--wm-px));
-        padding-right: calc(8 * var(--wm-px));
-    }
-
-    .wm-chat .wch-empty,
-    .wm-chat .wch-none {
+    .wm-chat .wch-empty {
         padding-top: calc(40 * var(--wm-px));
     }
 }

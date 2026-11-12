@@ -866,31 +866,124 @@
     }
 
     // ================================================================ Messaging > Tools > Options
-    // A page of Messaging's own (hidden: not in the Settings grids), opened from its menu. Message:
-    // whether the title bar's envelope stands for any unread message, or (as shipped) only for
-    // mail that came in since this client started (wmShell.js mailNewCheck).
-    wmSettings.registerPage({
-        id: 'messaging-options', tab: 'personal', label: 'Options', icon: 'app-messaging', hidden: true,
-        tabs: [['message', 'Message']],
-        init() {
-            const key = (sh() && sh().mailIconAllKey) || 'wmMailIconAll';
-            let on = false;
-            try { on = localStorage.getItem(key) === '1'; } catch (_) { on = false; }
-            return { key, all: on, initial: on };
-        },
-        render(el, tab, d) {
-            el.innerHTML = `${ui.check('mail-icon-all', 'Show the unread message icon for any unread message', d.all)}
-                ${ui.note('When this is off, the icon shows only for messages received since Melaton Mobile started.')}`;
+    // A page of Messaging's own (hidden: not in the Settings grids), opened from its menu; the device's
+    // four tabs (Yozora #757, screenshots 165113-165157): Accounts (the accounts, "Display account
+    // picker when opening Messaging"), Message (reply with the body, warn before deleting, what follows
+    // a delete, and Melaton's own unread icon choice), Address and Storage. wmMessaging.js reads the
+    // same keys. The title bar reads "Messaging" as on the device.
+    const MSG = {
+        picker: 'wmMsgPicker', replyBody: 'wmMsgReplyBody', warnDelete: 'wmMsgWarnDelete',
+        afterDelete: 'wmMsgAfterDelete', emptyDeleted: 'wmMsgEmptyDeleted'
+    };
+    const lsGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+    const lsPut = (k, v) => { try { localStorage.setItem(k, v); return true; } catch (_) { return false; } };
+
+    function messagingOptionsInit() {
+        const key = (sh() && sh().mailIconAllKey) || 'wmMailIconAll';
+        const d = {
+            key,
+            all: lsGet(key) === '1',
+            picker: lsGet(MSG.picker) !== '0',
+            replyBody: lsGet(MSG.replyBody) !== '0',
+            warnDelete: lsGet(MSG.warnDelete) !== '0',
+            afterDelete: lsGet(MSG.afterDelete) === 'list' ? 'list' : 'next',
+            emptyDeleted: lsGet(MSG.emptyDeleted) === 'immediate' ? 'immediate' : 'manual',
+            acctSel: 'mail'
+        };
+        d.initial = JSON.stringify(d);
+        return d;
+    }
+
+    function messagingAccounts() {
+        const m = window.wmMessaging;
+        const items = m && typeof m.accountItems === 'function' ? m.accountItems('mail') : [];
+        return items;
+    }
+
+    function messagingOptionsRender(el, tab, d, api) {
+        if (tab === 'accounts') {
+            const rows = messagingAccounts().map((a) => ({ key: a.label, label: `${a.radio ? '* ' : '\u2002 '}${a.label}`, selected: d.acctSel === a.label }));
+            rows.push({ key: '__new', label: '\u2002 New Account...', selected: d.acctSel === '__new' });
+            el.innerHTML = `${ui.text('Tap an account to change settings.')}
+                ${ui.listbox(rows, { maxHeight: 210 }).replace('class="wm-listbox"', 'class="wm-listbox wm-msgopt-accts"')}
+                ${ui.buttons([['security', 'Security...', true], ['signatures', 'Signatures...', true]])}
+                ${ui.check('picker', 'Display account picker when opening Messaging', d.picker)}`;
+            ui.bindListbox(el.querySelector('.wm-listbox'), (key) => {
+                d.acctSel = key;
+                const m = window.wmMessaging;
+                if (key === '__new' && m && typeof m.setupAccount === 'function') m.setupAccount();
+            });
+            el.querySelector('input[name="picker"]').addEventListener('change', (e) => { d.picker = e.target.checked; });
+            return;
+        }
+        if (tab === 'message') {
+            el.innerHTML = `${ui.check('replyBody', 'When replying to e-mail, include body', d.replyBody)}
+                ${ui.check('keepSent', 'Keep copies of sent items in Sent folder', true, 'disabled')}
+                ${ui.check('warnDelete', 'Warn when deleting messages in the message list', d.warnDelete)}
+                ${ui.gap()}
+                ${ui.text('After deleting or moving a message:')}
+                ${ui.comboHtml('afterDelete', d.afterDelete === 'list' ? 'Return to message list' : 'Show next message')}
+                ${ui.gap()}
+                ${ui.check('mail-icon-all', 'Show the unread message icon for any unread message', d.all)}
+                ${ui.note('When this is off, the icon shows only for messages received since Melaton Mobile started. Dreamscape Mail always keeps a copy of what you send.')}`;
+            ['replyBody', 'warnDelete'].forEach((k) => el.querySelector(`input[name="${k}"]`).addEventListener('change', (e) => { d[k] = e.target.checked; }));
             el.querySelector('input[name="mail-icon-all"]').addEventListener('change', (e) => { d.all = e.target.checked; });
-        },
-        async commit(d) {
-            if (d.all === d.initial) return [];
-            try { localStorage.setItem(d.key, d.all ? '1' : '0'); } catch (_) { return []; }
-            d.initial = d.all;
+            ui.bindCombo(el.querySelector('[data-act="afterDelete"]'), [['next', 'Show next message'], ['list', 'Return to message list']], d.afterDelete, (v) => { d.afterDelete = v; });
+            return;
+        }
+        if (tab === 'address') {
+            el.innerHTML = `${ui.text('In Contacts, get e-mail addresses from:')}
+                ${ui.comboHtml('addrField', 'All e-mail fields', true)}
+                ${ui.text('Check names using these address books:')}
+                <div class="wm-msgopt-books">
+                    <div class="wm-listbox wm-msgopt-booklist" style="height:calc(232 * var(--wm-px))"></div>
+                    ${ui.buttons([['add', 'Add...', true]], false)}
+                </div>`;
+            return;
+        }
+        // storage
+        el.innerHTML = `${ui.text('Main memory (... MB free)').replace('<p>', '<p data-f="mem">')}
+            ${ui.text('Current size of attachments (0.00 MB)')}
+            ${ui.check('card', 'When available, use this storage card to store attachments', false, 'disabled')}
+            ${ui.text('Empty deleted items:')}
+            ${ui.comboHtml('emptyDeleted', d.emptyDeleted === 'immediate' ? 'Immediately' : 'Manually')}`;
+        ui.bindCombo(el.querySelector('[data-act="emptyDeleted"]'), [['manual', 'Manually'], ['immediate', 'Immediately']], d.emptyDeleted, (v) => { d.emptyDeleted = v; });
+        const mem = el.querySelector('[data-f="mem"]');
+        if (navigator.storage && typeof navigator.storage.estimate === 'function') {
+            navigator.storage.estimate().then((e) => {
+                if (!mem.isConnected) return;
+                const free = Math.max(0, (Number(e.quota) || 0) - (Number(e.usage) || 0)) / 1048576;
+                mem.textContent = `Main memory (${free.toFixed(2)} MB free)`;
+            }).catch(() => { mem.textContent = 'Main memory'; });
+        } else mem.textContent = 'Main memory';
+        void api;
+    }
+
+    async function messagingOptionsCommit(d) {
+        const was = JSON.parse(d.initial);
+        const keys = [];
+        if (d.all !== was.all && lsPut(d.key, d.all ? '1' : '0')) {
+            keys.push(d.key);
             const s1 = sh();
             if (s1 && typeof s1.refreshStatus === 'function') s1.refreshStatus();
-            return [d.key];
         }
+        const put = (k, v, old) => { if (v !== old && lsPut(MSG[k], v)) keys.push(MSG[k]); };
+        put('picker', d.picker ? '1' : '0', was.picker ? '1' : '0');
+        put('replyBody', d.replyBody ? '1' : '0', was.replyBody ? '1' : '0');
+        put('warnDelete', d.warnDelete ? '1' : '0', was.warnDelete ? '1' : '0');
+        put('afterDelete', d.afterDelete, was.afterDelete);
+        put('emptyDeleted', d.emptyDeleted, was.emptyDeleted);
+        d.initial = JSON.stringify(Object.assign({}, d, { initial: undefined }));
+        return keys;
+    }
+
+    wmSettings.registerPage({
+        id: 'messaging-options', tab: 'personal', label: 'Options', icon: 'app-messaging', hidden: true,
+        title: 'Messaging',
+        tabs: [['accounts', 'Accounts'], ['message', 'Message'], ['address', 'Address'], ['storage', 'Storage']],
+        init: messagingOptionsInit,
+        render: messagingOptionsRender,
+        commit: messagingOptionsCommit
     });
 
     wmSettings.registerPage({
