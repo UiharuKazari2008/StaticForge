@@ -1722,18 +1722,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-wins {
     margin: 0 calc(1 * var(--wm-px)) 0 calc(3 * var(--wm-px));
 }
 
-/* Options > Other: the zoom button as the windows button. No round "windows" cell exists in the bar's
-   art (bitmap 4599): the Favorites bar's square four-arrows cell (bitmap 4604, cells 14 / 15) stands
-   in until one is chosen */
-html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="zoom"].is-windows {
-    background-image: url('/static_images/wm65/ie-favbar.png');
-    background-image: image-set(url('/static_images/wm65/ie-favbar.png') 1x, url('/static_images/wm65/ie-favbar@2x.png') 2x, url('/static_images/wm65/ie-favbar@4x.png') 4x);
-    --cell: 14;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="zoom"].is-windows:active {
-    --cell: 15;
-}
+/* Options > Other: the zoom button as the windows button. The bar's art (bitmap 4599) has no round
+   "windows" cell and none may be drawn: the button keeps the magnifier until an art is chosen
+   (.is-windows marks it) */
 
 /* the windows view's new window tile: the Favorites bar's plus (bitmap 4604 cell 3) */
 html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-wt-plus {
