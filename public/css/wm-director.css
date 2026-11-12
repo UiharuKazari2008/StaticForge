@@ -254,7 +254,8 @@
     position: absolute !important;
     left: 0 !important;
     right: 0 !important;
-    bottom: 0 !important;
+    /* on the soft keys when the keyboard is up (the page runs on behind them: sipOverlay) */
+    bottom: var(--wm-sip-lift, 0px) !important;
     top: auto !important;
     width: auto !important;
     max-width: none !important;
@@ -397,6 +398,8 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
 .wm-director .wmd-page {
     position: absolute;
     inset: 0;
+    /* a page is foreground: it ends on the soft keys when the keyboard is up (sipOverlay) */
+    bottom: var(--wm-sip-lift, 0px);
     z-index: 30;
     display: flex;
     flex-direction: column;
@@ -1350,7 +1353,7 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
     position: absolute;
     left: 6px;
     right: 6px;
-    bottom: 6px;
+    bottom: calc(6px + var(--wm-sip-lift, 0px));
     z-index: 7;
     display: none;
     flex-direction: column;

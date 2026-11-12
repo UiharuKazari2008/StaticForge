@@ -271,15 +271,20 @@
             const l = this.layer.getBoundingClientRect();
             if (!l.height) return;
             const dock = page.querySelector('.wmd-dock');
-            const dh = dock && getComputedStyle(dock).display !== 'none' ? dock.getBoundingClientRect().height : 0;
+            const dr = dock && getComputedStyle(dock).display !== 'none' ? dock.getBoundingClientRect() : null;
             // wide: the composer is in the column, not under her box (the desktop lifted the box over it)
             const was = layout === 'wide' ? 0 : (parseInt(box.style.bottom, 10) || 0);
-            const bottom = Math.round(Math.max(was, dh ? dh + 18 : 0, 12));
+            // 12 px over the dock's top (the dock rides up on the soft keys when the keyboard is up)
+            const bottom = Math.round(Math.max(was, dr && dr.height ? l.bottom - dr.top + 12 : 0, 12));
             box.style.bottom = `${bottom}px`;
             if (this._tab !== 'card') {
                 // a phone's share of the scene, and never over the title banner row (short landscape)
                 const share = layout === 'wide' ? 0.42 : 0.34;
-                const topRoom = (parseInt(this.layer.style.getPropertyValue('--dm-top'), 10) || 12) + 64;
+                let topRoom = (parseInt(this.layer.style.getPropertyValue('--dm-top'), 10) || 12) + 64;
+                // ... nor over her task checklist (the keyboard up leaves little room between them)
+                const tasks = page.querySelector('#directorTaskList');
+                const tr = tasks && tasks.getClientRects().length ? tasks.getBoundingClientRect() : null;
+                if (tr && tr.height) topRoom = Math.max(topRoom, Math.round(tr.bottom - l.top + 8));
                 const room = l.height - bottom - topRoom;
                 box.style.maxHeight = `${Math.round(Math.max(72, Math.min(l.height * share, 360, room)))}px`;
             }
@@ -1940,6 +1945,8 @@
         if (typeof ResizeObserver === 'function') {
             new ResizeObserver(() => { const d = dir(); if (shown && d && d.mascot && d.mascot._result) d.mascot.placeResult(); }).observe(page.querySelector('.wmd-dock'));
         }
+        // the keyboard (WM's SIP) lifted the composer and the dock with the soft keys: her box goes over them
+        document.addEventListener('wmSipChange', () => { const d = dir(); if (shown && d && d.mascot && d.mascot._result) d.mascot.placeResult(); });
         // the HUD's chips (turns, prints, context): a tap opens Prints, as the desktop quick bar's Prints
         page.querySelector('.wmd-host').addEventListener('click', (e) => {
             const chip = e.target.closest && e.target.closest('.dm-vn-layer .dm-hud');
@@ -2052,6 +2059,8 @@
             icon: 'app-director',
             inStart: 'top',
             sip: true,
+            // her scene stays put under the keyboard; the composer, her text box and pages go up (wm-director.css)
+            sipOverlay: true,
             mount,
             show(p) {
                 page = p;

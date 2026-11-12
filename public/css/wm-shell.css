@@ -120,7 +120,7 @@ html.ui-mobile body {
     background: #fff;
     box-shadow:
         inset 0 var(--wm-safe-top) #000,
-        inset 0 calc(-1 * var(--wm-safe-bottom)) #000,
+        inset 0 calc(-1 * var(--wm-band-bottom, var(--wm-safe-bottom))) #000,
         inset var(--wm-safe-left) 0 #000,
         inset calc(-1 * var(--wm-safe-right)) 0 #000;
 }
@@ -134,7 +134,7 @@ html.ui-mobile[data-wm-app="today"] #wmShell {
     background: transparent;
     box-shadow:
         inset 0 calc(var(--wm-safe-top) + 1px) #000,
-        inset 0 calc(-1 * var(--wm-safe-bottom) - 1px) #000,
+        inset 0 calc(-1 * var(--wm-band-bottom, var(--wm-safe-bottom)) - 1px) #000,
         inset var(--wm-safe-left) 0 #000,
         inset calc(-1 * var(--wm-safe-right)) 0 #000;
 }
@@ -143,13 +143,31 @@ html.ui-mobile[data-wm-app="today"] #wmShell {
 html.ui-mobile[data-wm-app="today"][data-wm-boot="reveal"] #wmShell {
     box-shadow:
         inset 0 var(--wm-safe-top) #000,
-        inset 0 calc(-1 * var(--wm-safe-bottom)) #000,
+        inset 0 calc(-1 * var(--wm-band-bottom, var(--wm-safe-bottom))) #000,
         inset var(--wm-safe-left) 0 #000,
         inset calc(-1 * var(--wm-safe-right)) 0 #000;
 }
 
 #wmShell > * {
     pointer-events: auto;
+}
+
+/* ---- the phone keyboard as the SIP (wmShell watchSip): the soft-key bar sits on the keyboard and
+ * the app's window ends above it, as WM resized the foreground window to the SIP's visible rect.
+ * --wm-sip is the keyboard's height over the page; lifting --wm-safe-bottom moves the bar and
+ * everything anchored to it (popups, the picture toolbar, 6.5 menus). The black system band keeps
+ * the real inset (it would be keyboard tall), the page background (wallpaper) does not move. ---- */
+html.ui-mobile[data-wm-sip] #wmShell {
+    --wm-band-bottom: env(safe-area-inset-bottom);
+    --wm-safe-bottom: max(env(safe-area-inset-bottom), var(--wm-sip, 0px));
+    /* how far the bar went up */
+    --wm-sip-lift: calc(max(env(safe-area-inset-bottom), var(--wm-sip, 0px)) - env(safe-area-inset-bottom));
+}
+
+/* an app with a scene (registerApp sipOverlay: the Director) keeps its page at full height behind
+ * the bar and the keyboard: the scene stays put, the app lifts its own foreground by --wm-sip-lift */
+html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {
+    margin-bottom: calc(-1 * var(--wm-sip-lift, 0px));
 }
 
 :where(#wmShell) button {
