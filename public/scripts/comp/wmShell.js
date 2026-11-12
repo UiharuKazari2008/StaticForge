@@ -6382,8 +6382,10 @@
         const mark = () => { if (!done) { done = true; root.dataset.wmSplashPainted = '1'; } };
         Promise.all(imgs.map((img) => (typeof img.decode === 'function' ? img.decode() : Promise.resolve()).catch(() => null)))
             .then(() => requestAnimationFrame(() => requestAnimationFrame(mark)));
-        // a missing frame callback (a paused view) or a stuck decode never holds the cover for good
-        setTimeout(mark, 3000);
+        // a stuck decode never holds the cover for good, but only frames count: a timer started here
+        // fired before the page's first paint (scripts hold the main thread to ~6 s on the A53) and the
+        // cover lifted onto black. The app has its own 30 s limit for a view that never draws.
+        requestAnimationFrame(() => setTimeout(mark, 2500));
     }
 
     function setBoot(phase) {
