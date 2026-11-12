@@ -957,8 +957,8 @@
     }
 
     /**
-     * WM submenu (Menu > Edit ▸ on the device): opens to the left over its parent, its bottom on
-     * the row that opened it. It lives inside the parent popup, so taps in it count as inside.
+     * WM submenu (Menu > Edit ▸ on the device): opens over its parent; 6.1 level with the row that
+     * opened it (moved up to fit), 6.5 with its bottom on that row. It lives inside the parent popup, so taps in it count as inside.
      */
     function closeSubmenu(parentPop) {
         parentPop.querySelectorAll(':scope > .wm-popup-sub').forEach((n) => n.remove());
@@ -980,9 +980,22 @@
         const rr = row.getBoundingClientRect();
         const sw = sub.offsetWidth;
         const sh = sub.offsetHeight;
-        let left = pr.left + pr.width * 0.35 - sw;
-        if (left < 2) left = Math.min(pr.right - pr.width * 0.35, window.innerWidth - sw - 2);
-        let top = rr.bottom - sh;
+        let left;
+        let top;
+        if (document.documentElement.dataset.wmVersion === '6.5') {
+            left = pr.left + pr.width * 0.35 - sw;
+            if (left < 2) left = Math.min(pr.right - pr.width * 0.35, window.innerWidth - sw - 2);
+            top = rr.bottom - sh;
+        } else {
+            // 6.1 (Yukimi's WVGA captures, #757: Reply, Go To, Tools, Select Messages): the list starts 48 units
+            // in from the parent's left edge; one that would leave the screen ends 50 units short of its right
+            // edge. Its top is level with the row, moved up only as far as it must to end above the soft keys.
+            const u = shell.getBoundingClientRect().width / 240;
+            left = pr.left + 48 * u;
+            if (left + sw > window.innerWidth) left = window.innerWidth - 50 * u - sw;
+            top = rr.top;
+            if (top + sh > pr.bottom) top = pr.bottom - sh;
+        }
         top = Math.max(2, Math.min(top, window.innerHeight - sh - 2));
         sub.style.left = `${Math.max(2, left)}px`;
         sub.style.top = `${top}px`;
@@ -6345,11 +6358,7 @@
                     <p class="wm-splash65-copy">&copy; 2009 Xyridian Corporation. All rights reserved.&nbsp; This computer program is protected by U.S. and international copyright laws.</p>
                 </div>`;
         } else splash.innerHTML = `
-            <svg class="wm-splash-swirl" viewBox="0 0 480 640" aria-hidden="true" preserveAspectRatio="xMidYMax slice">
-                <circle cx="248" cy="508" r="214" />
-                <circle cx="232" cy="500" r="146" />
-                <path d="M 230 432 A 72 72 0 1 0 300 500" />
-            </svg>
+            <div class="wm-s61" aria-hidden="true"><span class="wm-s61-rings"><i></i><i></i><i></i></span><b class="wm-s61-glint"></b></div>
             <div class="wm-splash-logo">
                 <img src="/static_images/wm61/boot-melaton.png" alt="" draggable="false">
                 <div class="wm-splash-words">

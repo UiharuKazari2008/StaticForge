@@ -2205,6 +2205,70 @@ html.ui-mobile[data-wm-boot="splash"] .wm-splash {
     display: block;
 }
 
+/* 6.1: the emulator's own splash in CSS, not the workspace colour (Yukimi, Nov 11 2026). Measured
+ * on the Device Emulator's soft / hard reset splash (480 x 640, identical) with its logo lifted out:
+ * the green field (a top-down ramp, a dark pool at the left, the glow on the big ring at the right,
+ * a lighter centre), three rings (centre ~225,517; r 232.9 / 139.6 / 70.0; 9 / 6 / 4 px) whose
+ * light green brightness follows the angle as on the ROM (conic stops, hard-ended gaps), and the
+ * highlight streak along the big ring. A 480 x 640 box in ROM units covers the screen anchored at
+ * the bottom (the ROM's own scaling), so the art scales without a bitmap. Fit: RMSE 0.0295 against
+ * the capture. The Melaton emblem and words sit where its logo was. */
+.wm-splash:not(.wm-splash65) {
+    container-type: size;
+    background: #48a818;
+}
+
+.wm-splash:not(.wm-splash65) .wm-splash-swirl {
+    display: none;
+}
+
+.wm-s61 {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: max(100cqw, 75cqh);
+    aspect-ratio: 3 / 4;
+    transform: translateX(-50%);
+    overflow: hidden;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse 7% 4.5% at 76% 51.5%, rgba(225,255,200,.6), rgba(198,255,165,0) 100%),
+        radial-gradient(ellipse 38% 26% at 75% 54%, rgba(165,242,105,.75), rgba(131,223,77,.42) 35%, rgba(100,200,50,0) 100%),
+        radial-gradient(ellipse 30% 22% at 64% 65%, rgba(112,214,30,.5), rgba(112,214,30,0) 100%),
+        radial-gradient(ellipse 16% 22% at 100% 36%, rgba(28,128,8,.55), rgba(28,128,8,0) 100%),
+        radial-gradient(ellipse 70% 33% at 0% 55%, rgba(4,100,0,.92), rgba(10,112,0,.55) 45%, rgba(20,120,0,0) 100%),
+        radial-gradient(ellipse 45% 55% at 0% 100%, rgba(30,128,8,.75), rgba(30,128,8,0) 100%),
+        linear-gradient(to bottom, #61b82e 0%, #50aa24 11%, #32961a 22%, #34980f 40%, #48ad0c 60%, #58c10c 78%, #5ac414 100%);
+}
+
+/* the rings cast a drop shadow pushed down for depth (Yukimi): ~22 ROM px below the line, soft,
+ * as deep as the line is bright. On the wrapper, so the rings' masks do not cut it off. */
+.wm-s61-rings {
+    position: absolute;
+    inset: 0;
+    filter: drop-shadow(0 calc(max(100cqw, 75cqh) * 22 / 480) calc(max(100cqw, 75cqh) * 10 / 480) rgba(0, 60, 0, 0.85));
+}
+
+.wm-s61-rings > i {
+    position: absolute;
+    aspect-ratio: 1;
+    border-radius: 50%;
+}
+
+.wm-s61-rings > i:nth-child(1){left:-2.375%;top:43.141%;width:99.333%;background:conic-gradient(rgba(150,255,115,0.28) 0deg,rgba(150,255,115,0.28) 0deg,rgba(150,255,115,0.44) 15deg,rgba(150,255,115,0.6) 35deg,rgba(150,255,115,0.5) 50deg,rgba(150,255,115,0.3) 65deg,rgba(150,255,115,0.18) 80deg,rgba(150,255,115,0.18) 100deg,rgba(150,255,115,0.14) 125deg,rgba(150,255,115,0.1) 150deg,rgba(150,255,115,0) 270deg,rgba(150,255,115,0) 275deg,rgba(150,255,115,0.04) 290deg,rgba(150,255,115,0.12) 310deg,rgba(150,255,115,0.24) 330deg,rgba(150,255,115,0.28) 360deg);-webkit-mask:radial-gradient(closest-side,transparent 95.386%,#000 96.057%,#000 99.329%,transparent 100%);mask:radial-gradient(closest-side,transparent 95.386%,#000 96.057%,#000 99.329%,transparent 100%);}
+.wm-s61-rings > i:nth-child(2){left:16.792%;top:58.203%;width:59.833%;background:conic-gradient(rgba(150,255,115,0.56) 0deg,rgba(150,255,115,0.56) 0deg,rgba(150,255,115,0.5) 30deg,rgba(150,255,115,0.44) 60deg,rgba(150,255,115,0.36) 90deg,rgba(150,255,115,0.36) 95deg,rgba(150,255,115,0) 95deg,rgba(150,255,115,0) 205deg,rgba(150,255,115,0.12) 205deg,rgba(150,255,115,0.12) 240deg,rgba(150,255,115,0.2) 270deg,rgba(150,255,115,0.2) 270deg,rgba(150,255,115,0.38) 300deg,rgba(150,255,115,0.5) 330deg,rgba(150,255,115,0.56) 360deg);-webkit-mask:radial-gradient(closest-side,transparent 94.429%,#000 95.543%,#000 98.886%,transparent 100%);mask:radial-gradient(closest-side,transparent 94.429%,#000 95.543%,#000 98.886%,transparent 100%);}
+.wm-s61-rings > i:nth-child(3){left:31.792%;top:69.688%;width:30.417%;background:conic-gradient(rgba(150,255,115,0.58) 0deg,rgba(150,255,115,0.58) 5deg,rgba(150,255,115,0) 5deg,rgba(150,255,115,0) 85deg,rgba(150,255,115,0.44) 85deg,rgba(150,255,115,0.46) 120deg,rgba(150,255,115,0.32) 150deg,rgba(150,255,115,0.3) 180deg,rgba(150,255,115,0.36) 210deg,rgba(150,255,115,0.42) 270deg,rgba(150,255,115,0.42) 270deg,rgba(150,255,115,0.56) 300deg,rgba(150,255,115,0.56) 330deg,rgba(150,255,115,0.58) 360deg);-webkit-mask:radial-gradient(closest-side,transparent 91.781%,#000 93.973%,#000 97.808%,transparent 100%);mask:radial-gradient(closest-side,transparent 91.781%,#000 93.973%,#000 97.808%,transparent 100%);}
+
+.wm-s61 > .wm-s61-glint {
+    position: absolute;
+    left: 60.5%;
+    top: 48.8%;
+    width: 32%;
+    height: 5%;
+    transform: rotate(37deg);
+    background: radial-gradient(closest-side, rgba(215, 255, 180, 0.6), rgba(170, 245, 120, 0.25) 55%, rgba(170, 245, 120, 0));
+}
+
 .wm-splash-swirl {
     position: absolute;
     inset: 0;

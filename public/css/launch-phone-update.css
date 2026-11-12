@@ -3,8 +3,9 @@
  * Software Update page. Layout after Samsung Experience's "Downloading updates..." screen (Yukimi's
  * reference, Nov 11 2026): a light band with the phone drawing, a darker band with the title, then
  * the status line, the time left, a thin bar, the percent and the bytes, a large grey arrow, and a
- * button at the foot. Xyridian's colours replace the teal: the logo ring's blue for the bands and
- * the bar, the star orange for the drawing's arrow. Lengths from the 474 x 844 reference.
+ * button at the foot. The 6.1 boot splash's greens replace the teal (Yukimi, Nov 11 2026; wm-shell.css .wm-s61): its
+ * light top for the ripple band, the dark pool for the title band, the rings' light green for the
+ * ripples and the bar; Xyridian's star orange stays for the drawing's arrow. Lengths from the 474 x 844 reference.
  *
  * Phone /launch also drops the Dreamscape card for the maker's logo on black (html.phone-launch),
  * the same picture the Android app's boot cover shows.
@@ -47,9 +48,10 @@ html.phone-launch .launch-content::before {
 }
 
 #phoneUpdate {
-    --pu-blue-hi: #3fb4f6;
-    --pu-blue: #1593e6;
-    --pu-blue-deep: #0b6fc7;
+    --pu-hi: #61b82e;
+    --pu-mid: #3ea30f;
+    --pu-deep: #1b7d0b;
+    --pu-bar: #4cb414;
     --pu-orange: #f88800;
     --pu-ink: #212121;
     --pu-grey: #757575;
@@ -81,7 +83,7 @@ html.phone-launch .launch-content::before {
     padding-top: env(safe-area-inset-top);
     background:
         radial-gradient(ellipse 60% 70% at var(--pu-drop-x) var(--pu-drop-y), rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 70%),
-        linear-gradient(to bottom, var(--pu-blue-hi), var(--pu-blue));
+        linear-gradient(to bottom, var(--pu-hi), var(--pu-mid));
     overflow: hidden;
     isolation: isolate;
 }
@@ -94,9 +96,9 @@ html.phone-launch .launch-content::before {
     z-index: -1;
     background: repeating-radial-gradient(ellipse 100% 42% at var(--pu-drop-x) var(--pu-drop-y),
         rgba(255, 255, 255, 0) 0 18px,
-        rgba(255, 255, 255, 0.28) 20px,
+        rgba(190, 255, 160, 0.34) 20px,
         rgba(255, 255, 255, 0.06) 22px,
-        rgba(9, 92, 170, 0.14) 24px,
+        rgba(10, 100, 0, 0.16) 24px,
         rgba(255, 255, 255, 0) 27px 40px);
     -webkit-mask-image: radial-gradient(ellipse 55% 40% at var(--pu-drop-x) var(--pu-drop-y), #000 10%, transparent 75%);
     mask-image: radial-gradient(ellipse 55% 40% at var(--pu-drop-x) var(--pu-drop-y), #000 10%, transparent 75%);
@@ -116,7 +118,7 @@ html.phone-launch .launch-content::before {
     box-shadow:
         0 0 0 2px rgba(255, 255, 255, 0.45),
         0 0 0 9px rgba(255, 255, 255, 0.08),
-        inset 0 0 0 3px rgba(9, 92, 170, 0.18);
+        inset 0 0 0 3px rgba(10, 100, 0, 0.2);
     transform: scale(0.05);
     opacity: 0;
     animation: pu-ripple 3.6s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
@@ -159,7 +161,7 @@ html.phone-launch .launch-content::before {
     height: calc(60 / 844 * 100vh);
     min-height: 50px;
     padding: 0 24px;
-    background: var(--pu-blue-deep);
+    background: var(--pu-deep);
     color: #fff;
     font-size: 24px;
     font-weight: 400;
@@ -201,7 +203,7 @@ html.phone-launch .launch-content::before {
     top: 0;
     bottom: 0;
     width: 0;
-    background: var(--pu-blue);
+    background: var(--pu-bar);
     transition: width 0.25s linear;
 }
 
