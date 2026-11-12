@@ -141,3 +141,17 @@ html.ui-mobile[data-wm-version="6.5"] .wm-s65-glow {
 html.ui-mobile[data-wm-version="6.5"] .wm-s65-glow[hidden] {
     display: none;
 }
+
+/* An icon lifted to be dragged to a new place (Windows Mobile 6.5.3's reordering, wmStart65.js
+ * startDrag). The lifted look is NOT measured (no 6.5.3 device could be run): a tenth larger,
+ * above the others, the selection glow going with it; the others slide to make room. */
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-cell.is-lifted {
+    z-index: 2;
+    scale: 1.1;
+    transition: scale 120ms ease-out;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-cell.is-lifted,
+html.ui-mobile[data-wm-version="6.5"] .wm-s65-glow.is-lifted {
+    will-change: translate;
+}

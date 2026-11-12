@@ -1294,9 +1294,11 @@
      * event at the pen point. Edit fields keep the browser's own press (selection, paste); the
      * bars, menus and message boxes have no ring (buttons on the device do not either).
      */
-    const HOLD_FIRST_MS = WM65 ? 500 : 250;
-    const HOLD_STEP_MS = WM65 ? 90 : 70;
-    const HOLD_MENU_MS = WM65 ? 130 : 0;   // from the whole ring to the menu
+    // 6.5 as recorded on a device instance at full speed (Start screen, three holds): first dot ~430 ms,
+    // menu 950-980 ms after pen down (the earlier VM recordings ran slower: 500 / 1460-1570)
+    const HOLD_FIRST_MS = WM65 ? 430 : 250;
+    const HOLD_STEP_MS = WM65 ? 60 : 70;
+    const HOLD_MENU_MS = WM65 ? 50 : 0;    // from the whole ring to the menu
     const HOLD_LEAVE_MS = WM65 ? 0 : 80;   // the ring stays this long after the menu (6.1)
     const HOLD_SLOP = 8;                   // CSS px the pen may wander
     const HOLD_SKIP = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], .wm-titlebar, .wm-softkeys, .wm-viewbar, .wm-popup, .wm-msgbox-layer, .wm-busy, .wm-splash, .wm-switch, .wm-lock65, .wm-bubble, .wm-notify, .wm-notify-tray, .wrd-touch, .wmb-touch, .wmb-core, [data-wm-no-hold]';

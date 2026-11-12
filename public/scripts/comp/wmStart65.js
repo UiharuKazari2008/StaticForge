@@ -22,12 +22,41 @@
  *   - tap: the glow moves to the item and it opens; the grid scrolls so the selected cell is
  *     whole (Settings in row 2 moved the grid up 45 px). A folder (Settings, Games, Office
  *     Mobile) opens in place: its name in the title bar, left soft key Back.
- *   - tap-and-hold: the glow moves to the item and a menu with one row, Move to Top, opens.
  *   - title bar "Start" with X (closes Start, back to the program under it); left soft key
  *     Lock, no right soft key.
- * Not measured (the emulator's screenshot latency hides them): the hold time, the fling's
- * deceleration, the length of the return from an overscroll, where Move to Top puts the item
- * (taken as: first after Today, whose rank in the ROM is the largest integer).
+ * Not measured (the emulator's screenshot latency hides them): the fling's deceleration, the
+ * length of the return from an overscroll.
+ *
+ * The order (Yozora #748; device instance of the emulator manager, CE OS 5.2.21234, 16 ms
+ * recordings and the registry under HKLM\Security\Shell\StartInfo\Start):
+ *   - every item has a Rank, read as a signed number, the largest first: Today 2147483647, the
+ *     ROM's programs 900000998 (Phone) down to 900000728 (Help) in steps of 10; a program
+ *     without one (Search Widget, SimTkUI) counts as 0 and follows them, by name; a program
+ *     added later takes InstallRank, which starts at 0xFFFFFFFF (-1) and counts down: new
+ *     programs land at the very end, in the order they were added (Zebra then Aardvark, added
+ *     in that order, were listed in that order). Folders (Games, Office Mobile, Settings and
+ *     its three folders) list their own items by name.
+ *   - tap-and-hold (ring of dots, then the menu while the pen is still down; the glow moves to
+ *     the item when the menu shows): "Move to Top" on any item, Today included. It marks the
+ *     item Favorite with the time (FavoriteOrder): favourites are listed first, the latest
+ *     first, before Today. A favourite's menu is "Move to Top" and "Move Down", the first
+ *     favourite's "Move Down" alone: it takes the mark away and the item is back at its rank.
+ *     Nothing else reorders in this build, and no setting does.
+ *   - in a folder "Move to Top" puts the program (or the folder: Connections) at the top of
+ *     Start itself; it stays listed in its folder, where nothing moves. Once it is on Start a
+ *     hold on it in the folder does nothing at all (no menu, the glow stays where it was).
+ *   - both commands redraw in one frame (about 70 ms after the pen lifts), nothing slides. The
+ *     glow keeps its place in the grid (the same index: another program is under it now). The
+ *     grid is shown from its top when that cell is whole there, else with the cell's top 204 px
+ *     (102 units) under the grid's top edge, even when that is past the grid's end (the last
+ *     item: 166 px of empty space under it, at rest until the next pan lets go). Back from a
+ *     folder places the folder's cell by the same rule.
+ *   - the menu hangs to the left of the pen: its frame's top right corner is 5 px right of and
+ *     11 px under the pen (pen 240,360: frame 14..245 x 371..436), never left of x 14.
+ *   - the order is in the registry: it was the same after Start was closed and opened again.
+ * Dragging an icon to a new place is Windows Mobile 6.5.3's (Yukimi asked for it too): no
+ * 6.5.3 device could be run, so that part follows its documentation only and nothing of it is
+ * measured (see startDrag).
  */
 (function () {
     'use strict';
@@ -35,9 +64,17 @@
     if (window.uiShell !== 'mobile' || root.dataset.wmVersion !== '6.5') return;
 
     const ART65 = '/static_images/wm65/';
+    // the first format (Move to Top lists per folder): read when nothing newer is stored, never written
     const ORDER_KEY = 'wmStart65Order';
+    // { v: 1, top: [keys moved to the top of Start, the latest first], order: { '<folder>': [keys] } }
+    const LAYOUT_KEY = 'wmStart65Layout';
     // start distance of a pan and the hold time (see the header: the first is between 15 and 20 units)
     const PAN_START = 16;
+    // after a completed hold the icon lifts once the finger has gone this far (units; not measured)
+    const DRAG_START = 6;
+    // a lifted icon this near the grid's top or bottom edge scrolls it (units; not measured)
+    const DRAG_EDGE = 24;
+    const REFLOW_MS = 160;
     // the shell's tap-and-hold time: its ring of dots is whole then (wmShell.js bindHoldRing)
     const HOLD_MS = ((window.wmShell && window.wmShell.holdMs) || 800);
     // fling: speed falls by e every FRICTION_MS; past an end a critically damped spring pulls back
@@ -84,15 +121,20 @@
     const APP_ART65 = {
         today: 'today', gallery: 'photos', fileexplorer: 'fileexp', messaging: 'msg', browser: 'ie', notes: 'notes',
         contacts: 'contacts', calendar: 'calendar', calculator: 'calc', taskmgr: 'taskmgr', 'windows-media': 'wmp',
-        settings: 'settings', help: 'help', tasks: 'tasks', search: 'search'
+        settings: 'settings', help: 'help', tasks: 'tasks', search: 'search', activesync: 'async'
     };
-    // WM 6.5's own order (HKLM\Security\Shell\StartInfo ranks: Today, Phone, Text, E-mail, Contacts,
-    // Internet Explorer, Calendar, Settings, Getting Started, Pictures & Videos, Windows Media ...
-    // Calculator, Games, Notes, Tasks, Office Mobile, File Explorer ... Task Manager, Search, Help)
-    // for the apps that have a place in it; the Director and Studio, pinned at the top of the 6.1
-    // Start menu, follow Settings. Everything else comes after, by name, as unranked programs do.
+    // WM 6.5's own order, read from a factory device (ranks under HKLM\Security\Shell\StartInfo and
+    // the screen): Today, Phone, Text, E-mail, Contacts, Internet Explorer, Calendar, Settings,
+    // Getting Started, Pictures & Videos, Windows Media, Marketplace, Messenger, Microsoft My Phone,
+    // Windows Live, Calculator, Games, Notes, Tasks, Office Mobile, File Explorer, ActiveSync,
+    // Internet Sharing, Task Manager, Search Phone, Help, then the programs without a rank by name
+    // (Search Widget, SimTkUI). Here: the apps that have a place in it, in that order (Messaging
+    // is Text and E-mail, the Dreamscape folder stands where Office Mobile does); the Director and
+    // Studio, pinned at the top of the 6.1 Start menu, follow Settings. Everything else comes
+    // after, by name, as the device's programs without a rank do.
     const RANK = ['a:today', 'a:messaging', 'a:contacts', 'a:browser', 'a:calendar', 'a:settings', 'a:director', 'a:studio',
-        'a:gallery', 'a:windows-media', 'a:calculator', 'folder:games', 'a:notes', 'a:tasks', 'folder:dreamscape', 'a:fileexplorer', 'a:taskmgr', 'a:search', 'a:help'];
+        'a:gallery', 'a:windows-media', 'a:calculator', 'folder:games', 'a:notes', 'a:tasks', 'folder:dreamscape', 'a:fileexplorer',
+        'a:activesync', 'a:taskmgr', 'a:search', 'a:help'];
 
     // ---------------------------------------------------------------- items
     // The same programs the 6.1 Start menu and Programs screen list. wmPrograms.js keeps its tables
@@ -192,8 +234,8 @@
         return { key: `a:${a.id}`, label: a.id === 'today' ? 'Today' : appLabel(a), img: n ? art65(n) : art61(a.icon || 'app-programs'), app: a.id };
     }
 
-    /** The items of the Start screen (folder null) or of one of its folders, in their order. */
-    function itemsFor(folder) {
+    /** The items of the Start screen (folder null) or of one of its folders, in the default order. */
+    function baseItems(folder) {
         if (folder && String(folder).startsWith('settings')) return settingsItems(folder);
         const apps = sh.listApps();
         const have = new Set(apps.map((a) => a.id));
@@ -230,29 +272,78 @@
             desktopLaunchables('toolbox').forEach(desktopItem);
         }
         const coll = new Intl.Collator(undefined, { sensitivity: 'base' });
-        const moved = movedKeys(folder);
         const rank = (it) => {
-            if (it.key === 'a:today') return -1e6;
-            const m = moved.indexOf(it.key);
-            if (m >= 0) return -1e5 + m;
             const r = folder ? -1 : RANK.indexOf(it.key);
             return r >= 0 ? r : 1e6;
         };
         return items.sort((x, y) => rank(x) - rank(y) || coll.compare(x.label, y.label));
     }
 
-    // Move to Top: the keys moved, the latest first, per folder ('' = Start itself)
-    function movedAll() {
-        try {
-            const v = JSON.parse(localStorage.getItem(ORDER_KEY) || 'null');
-            return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
-        } catch (_) { return {}; }
+    // ---- the user's order. Stored per device, as the device keeps its own in its registry:
+    // top: the keys moved to the top of Start (Move to Top), the latest first, whatever folder
+    // they are from; order: a folder's keys as they were left by dragging ('' is Start itself).
+    // A key nothing answers to is skipped (and kept: the program may come back); a program that is
+    // in no stored order goes to the end, where the device puts a new program.
+    const strings = (l) => (Array.isArray(l) ? l.filter((k) => typeof k === 'string' && k.length < 120).slice(0, 400) : []);
+    function layout() {
+        const read = (key) => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { return null; } };
+        const plain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+        const out = { top: [], order: {} };
+        const now = read(LAYOUT_KEY);
+        if (plain(now)) {
+            out.top = strings(now.top);
+            if (plain(now.order)) for (const [f, l] of Object.entries(now.order)) { if (Array.isArray(l)) out.order[f] = strings(l); }
+            return out;
+        }
+        // the first format: Start's list is the same thing; a folder's list was that folder's own
+        // top, which the device does not have: kept as the folder's order, so nothing moves
+        const old = read(ORDER_KEY);
+        if (plain(old)) for (const [f, l] of Object.entries(old)) { if (!Array.isArray(l)) continue; if (f === '') out.top = strings(l); else out.order[f] = strings(l); }
+        return out;
     }
-    const movedKeys = (folder) => { const l = movedAll()[folder || '']; return Array.isArray(l) ? l : []; };
-    function moveToTop(folder, key) {
-        const all = movedAll();
-        all[folder || ''] = [key].concat(movedKeys(folder).filter((k) => k !== key));
-        try { localStorage.setItem(ORDER_KEY, JSON.stringify(all)); } catch (_) { /* this session only */ }
+    function saveLayout(l) {
+        try { localStorage.setItem(LAYOUT_KEY, JSON.stringify({ v: 1, top: l.top, order: l.order })); } catch (_) { /* this session only */ }
+        try { document.dispatchEvent(new CustomEvent('wmSettingsChange', { detail: { keys: [LAYOUT_KEY] } })); } catch (_) { /* no listener */ }
+    }
+
+    const FOLDER_IDS = ['games', 'dreamscape', 'settings', 'settings:connections', 'settings:personal', 'settings:system'];
+
+    /** A folder's items in the stored order: the default order when it was never dragged. */
+    function orderedItems(folder, lay) {
+        const base = baseItems(folder);
+        const order = lay.order[folder || ''];
+        if (!order || !order.length) return base;
+        const at = new Map(order.map((k, i) => [k, i]));
+        const pos = (it) => (at.has(it.key) ? at.get(it.key) : 1e6);
+        // Array.prototype.sort is stable: the items the order does not know keep the default order
+        return base.sort((x, y) => pos(x) - pos(y));
+    }
+
+    /** The programs moved to the top of Start, the first one first (each with .from: its folder, '' for Start). */
+    function topItems(lay) {
+        if (!lay.top.length) return [];
+        const found = new Map();
+        for (const f of [null].concat(FOLDER_IDS)) {
+            for (const it of baseItems(f)) { if (lay.top.includes(it.key) && !found.has(it.key)) found.set(it.key, Object.assign({}, it, { from: f || '', top: true })); }
+        }
+        return lay.top.filter((k) => found.has(k)).map((k) => found.get(k));
+    }
+
+    /** The items of the Start screen (folder null) or of one of its folders, as they are shown. */
+    function itemsFor(folder) {
+        const lay = layout();
+        const own = orderedItems(folder, lay);
+        if (folder) return own;
+        const top = topItems(lay);
+        const keys = new Set(top.map((it) => it.key));
+        return top.concat(own.filter((it) => !keys.has(it.key)));
+    }
+
+    /** Move to Top (up) and Move Down: the key joins the head of Start's top list, or leaves the list. */
+    function setTop(key, up) {
+        const lay = layout();
+        lay.top = (up ? [key] : []).concat(lay.top.filter((k) => k !== key));
+        saveLayout(lay);
     }
 
     // ---------------------------------------------------------------- the screen
@@ -263,7 +354,7 @@
     let glow = null; // the selection image
     let items = [];
     let selected = 0;
-    const path = []; // open folders: [{ id, label, parentY, parentSel }]
+    const path = []; // open folders: [{ id, label, parentKey, parentSel }]
     let y = 0; // scroll offset, CSS px (list drawn at -y)
     let maxY = 0;
     let raf = 0;
@@ -272,8 +363,14 @@
     let shownApp = ''; // the program on screen before the shell's last switch (html[data-wm-app], read late)
 
     const folderNow = () => (path.length ? path[path.length - 1].id : null);
-    // one design unit (--wm-px) in CSS px, read from the layout: an icon is 45 units wide
-    const unit = () => { const ic = list && list.querySelector('.wm-s65-icon'); return (ic ? ic.offsetWidth / 45 : 1) || 1; };
+    // one design unit (--wm-px) in CSS px; when the property is not a plain length, read from the
+    // layout: an icon is 45 units wide (to the nearest CSS px: 68 for 67.5)
+    const unit = () => {
+        const v = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px'));
+        if (v > 0) return v;
+        const ic = list && list.querySelector('.wm-s65-icon');
+        return (ic ? ic.offsetWidth / 45 : 1) || 1;
+    };
 
     function place(yNew) {
         y = yNew;
@@ -388,7 +485,8 @@
     }
 
     function openFolder(it) {
-        path.push({ id: it.folder, label: it.label, parentY: y, parentSel: selected });
+        endDrag(false);
+        path.push({ id: it.folder, label: it.label, parentKey: it.key, parentSel: selected });
         stopMotion();
         render();
         place(0);
@@ -397,14 +495,45 @@
         sh.refreshSoftKeys();
     }
 
-    /** Back from a folder: the grid as it was left, the folder's item selected. */
+    /** Where item k of the grid is: its column, row and box in the list, CSS px. */
+    function slotPos(k) {
+        const u = unit();
+        const c = k % cols;
+        const r = Math.floor(k / cols);
+        const m = c % 2 === 1 ? 1 : 0;
+        const pitch = list.clientWidth / (cols + 1 / 3);
+        return { c, r, m, left: c * pitch, top: (r * 83 + m * 41.5) * u, w: pitch * 4 / 3, h: 83 * u };
+    }
+
+    /**
+     * The grid after it was listed again (Move to Top, Move Down, back from a folder), as the
+     * device shows it: from the top when the selected cell is whole there, else with that cell's
+     * top 102 units under the grid's top edge (recorded: the icon's top at y 260 of the screen
+     * every time), not held back at the grid's end: the last item rests with empty space under
+     * it until the next pan lets go. The 102 is taken as the middle of the grid's window less
+     * 32 units ((268 - 64) / 2), so a taller screen keeps the cell near its middle (not measured:
+     * the device has one height).
+     */
+    function settle() {
+        stopMotion();
+        select(selected, false);
+        if (!items.length) { place(0); return; }
+        const p = slotPos(selected);
+        const vh = view.clientHeight;
+        place(p.top + p.h <= vh ? 0 : Math.max(0, p.top - (vh - 64 * unit()) / 2));
+    }
+
+    /** Back from a folder: the folder's item selected, the grid placed for it (settle). */
     function closeFolder() {
         const f = path.pop();
         if (!f) return false;
-        stopMotion();
+        endDrag(false);
         render();
-        place(Math.max(0, Math.min(maxY, f.parentY)));
-        select(f.parentSel, false);
+        // the folder's own item, wherever it is now (a program moved to the top from inside the
+        // folder shifts it: the device's glow was on Games, one place further)
+        const at = items.findIndex((n) => n.key === f.parentKey);
+        selected = at >= 0 ? at : f.parentSel;
+        settle();
         // the left soft key is Lock again (the back key's path does not redraw the keys itself)
         sh.refreshSoftKeys();
         return true;
@@ -429,24 +558,203 @@
         if (!window.wmSettings.open(g.key, null, { direct: true })) resume = false;
     }
 
+    /**
+     * Tap-and-hold, as recorded on the device: the glow moves to the item and the menu opens,
+     * "Move to Top" (not for the first of the moved items) and "Move Down" (moved items only).
+     * In a folder the command puts the program at the top of Start and the folder stays as it
+     * is; a program that is on Start's top already gets nothing there, not even the glow.
+     * Returns false when the device shows no menu.
+     */
     function holdMenu(i, x, yPt) {
         const it = items[i];
-        if (!it) return;
+        if (!it) return false;
+        const folder = folderNow();
+        const top = topItems(layout()).map((t) => t.key);
+        const at = top.indexOf(it.key);
+        if (folder && at >= 0) return false;
         select(i, true);
-        if (it.key === 'a:today') return; // already the first item, always
-        sh.menuAt(x, yPt, [{
-            label: 'Move to Top',
-            action: () => {
-                moveToTop(folderNow(), it.key);
-                stopMotion();
-                render();
-                place(0);
-                select(items.findIndex((n) => n.key === it.key), true);
-            }
-        }]);
+        const run = (up) => () => {
+            setTop(it.key, up);
+            if (folder) return;
+            // one redraw, nothing slides; the glow keeps its place in the grid (another program
+            // is under it now)
+            render();
+            settle();
+        };
+        const rows = [];
+        if (at !== 0) rows.push({ label: 'Move to Top', action: run(true) });
+        if (at >= 0) rows.push({ label: 'Move Down', action: run(false) });
+        sh.menuAt(x, yPt, rows);
+        // Start's menu hangs to the left of the pen: the frame's top right corner 2.5 units right
+        // of and 5.5 under it, its left edge never under 7 units (pen 240,360 on the device: frame
+        // 14..245 x 371..436; pen 95,100: 14..232). The shell keeps it inside the page when it
+        // would not fit under the pen (not seen on the device)
+        const pop = document.querySelector('#wmShell .wm-popup');
+        const shell = document.getElementById('wmShell');
+        if (pop && shell && !pop.hidden) {
+            const sr = shell.getBoundingClientRect();
+            const vr = view.getBoundingClientRect();
+            const u = unit();
+            pop.style.left = `${Math.max(7 * u, x - sr.left + 2.5 * u - pop.offsetWidth)}px`;
+            const t = yPt + 5.5 * u;
+            if (t + pop.offsetHeight <= vr.bottom) pop.style.top = `${t - sr.top}px`;
+        }
+        return true;
     }
 
-    /** The finger: pan past the start distance, fling on release, tap, tap-and-hold. */
+    // ---- dragging an icon to a new place: Windows Mobile 6.5.3's way of ordering Start (this
+    // ROM, 6.5, has the two menu commands only). No 6.5.3 device could be run, so NOTHING here is
+    // measured: after a completed hold the icon lifts once the finger moves on (the menu, if
+    // one opened, closes), follows the finger a little larger, the others make room at the place
+    // nearest to it, the grid scrolls when the icon is near its top or bottom edge, and letting
+    // go puts it there. Let go outside the grid, a second finger, the back key or leaving Start
+    // put everything back. A folder's icons move within the folder. On Start the moved-to-top
+    // programs are the head of the list: an icon dropped among them joins them (it gets "Move
+    // Down"), one of them dropped below leaves them; a program that is only a guest there (it
+    // lives in a folder) stays among them.
+    let drag = null;
+
+    function startDrag(i, e) {
+        const cell = list.querySelector(`.wm-s65-cell[data-i="${i}"]`);
+        const it = items[i];
+        if (!cell || !it || items.length < 2) return false;
+        stopMotion();
+        sh.closeMenus();
+        select(i, false);
+        const tops = folderNow() ? 0 : items.filter((n) => n.top).length;
+        drag = {
+            i, cell, x0: e.clientX, y0: e.clientY, scroll0: y, slot: i, tops,
+            // a guest from a folder stays among the moved-to-top programs
+            lo: 0, hi: it.top && it.from ? tops - 1 : items.length - 1,
+            px: e.clientX, py: e.clientY, raf: 0, last: 0
+        };
+        list.classList.add('is-dragging');
+        cell.classList.add('is-lifted');
+        glow.classList.add('is-lifted');
+        sh.syncHistory();
+        dragMove(e.clientX, e.clientY);
+        return true;
+    }
+
+    /** The order of the cells while the lifted one stands at a slot: item indexes by position. */
+    function dragOrder(i, slot) {
+        const arr = items.map((_, k) => k).filter((k) => k !== i);
+        arr.splice(slot, 0, i);
+        return arr;
+    }
+
+    function dragMove(px, py) {
+        if (!drag) return;
+        drag.px = px;
+        drag.py = py;
+        const dx = px - drag.x0;
+        const dy = py - drag.y0 + (y - drag.scroll0);
+        drag.cell.style.translate = `${dx}px ${dy}px`;
+        glow.style.translate = `${dx}px ${dy}px`;
+        // the place whose middle is nearest to the middle of the lifted icon's cell
+        const from = slotPos(drag.i);
+        const cx = from.left + from.w / 2 + dx;
+        const cy = from.top + from.h / 2 + dy;
+        let best = drag.slot;
+        let bestD = Infinity;
+        for (let k = drag.lo; k <= drag.hi; k++) {
+            const p = slotPos(k);
+            const d = Math.hypot(p.left + p.w / 2 - cx, p.top + p.h / 2 - cy);
+            if (d < bestD) { bestD = d; best = k; }
+        }
+        if (best !== drag.slot) reflow(best);
+        // near the top or bottom edge the grid scrolls under the icon, faster the nearer
+        const vr = view.getBoundingClientRect();
+        const edge = DRAG_EDGE * unit();
+        const over = py < vr.top + edge ? (py - (vr.top + edge)) / edge : (py > vr.bottom - edge ? (py - (vr.bottom - edge)) / edge : 0);
+        drag.speed = Math.max(-1, Math.min(1, over)) * 0.5 * unit();
+        if (drag.speed && !drag.raf) {
+            drag.last = performance.now();
+            const step = (now) => {
+                if (!drag) return;
+                drag.raf = 0;
+                if (!drag.speed) return;
+                // the first frame's time may be before the time the loop was asked for
+                const dt = Math.max(0, Math.min(34, now - drag.last));
+                drag.last = now;
+                const next = Math.max(0, Math.min(maxY, y + drag.speed * dt));
+                if (next !== y) { place(next); dragMove(drag.px, drag.py); }
+                if (drag && drag.speed && !drag.raf) drag.raf = requestAnimationFrame(step);
+            };
+            drag.raf = requestAnimationFrame(step);
+        }
+    }
+
+    /** The other cells make room: each slides from where it is to its new place (transforms only). */
+    function reflow(slot) {
+        const arr = dragOrder(drag.i, slot);
+        drag.slot = slot;
+        const moved = [];
+        arr.forEach((k, pos) => {
+            if (k === drag.i) return;
+            const el = list.querySelector(`.wm-s65-cell[data-i="${k}"]`);
+            if (!el) return;
+            const p = slotPos(pos);
+            if (Number(el.style.getPropertyValue('--c')) === p.c && Number(el.style.getPropertyValue('--r')) === p.r) return;
+            moved.push([el, p, el.getBoundingClientRect()]);
+        });
+        for (const [el, p] of moved) {
+            el.style.transition = 'none';
+            el.style.translate = '0px 0px';
+            el.style.setProperty('--c', String(p.c));
+            el.style.setProperty('--r', String(p.r));
+            el.style.setProperty('--m', String(p.m));
+        }
+        for (const m of moved) m.push(m[0].getBoundingClientRect());
+        for (const [el, , was, now] of moved) el.style.translate = `${was.left - now.left}px ${was.top - now.top}px`;
+        void list.offsetWidth;
+        for (const [el] of moved) {
+            el.style.transition = `translate ${REFLOW_MS}ms ease-out`;
+            el.style.translate = '0px 0px';
+        }
+    }
+
+    /** The drag is over: the new order is stored and listed (commit), or everything is put back. */
+    function endDrag(commit) {
+        if (!drag) return false;
+        const d = drag;
+        drag = null;
+        if (d.raf) cancelAnimationFrame(d.raf);
+        list.classList.remove('is-dragging');
+        const keep = y;
+        if (commit && d.slot !== d.i) {
+            const seq = dragOrder(d.i, d.slot).map((k) => items[k]);
+            const lay = layout();
+            const folder = folderNow();
+            if (folder) {
+                lay.order[folder] = seq.map((it) => it.key);
+            } else {
+                // the head of the list is the moved-to-top programs: the dropped icon joins them
+                // when it lands before the last of them, and leaves them when it lands after
+                const it = items[d.i];
+                const tops = it.top ? (d.slot < d.tops ? d.tops : d.tops - 1) : (d.slot < d.tops ? d.tops + 1 : d.tops);
+                const gone = lay.top.filter((k) => !seq.some((n) => n.key === k));
+                lay.top = seq.slice(0, tops).map((n) => n.key).concat(gone);
+                // Start's own order keeps a place for the programs at the top (Move Down puts one
+                // back where it was): the others take the remaining places in their new sequence
+                const rest = seq.slice(tops).map((n) => n.key);
+                const moving = new Set(rest);
+                let j = 0;
+                lay.order[''] = orderedItems(null, lay).map((n) => (moving.has(n.key) ? rest[j++] : n.key)).concat(rest.slice(j));
+            }
+            saveLayout(lay);
+            selected = d.slot;
+        } else {
+            selected = d.i;
+        }
+        render();
+        place(Math.max(0, Math.min(maxY, keep)));
+        select(selected, false);
+        sh.syncHistory();
+        return true;
+    }
+
+    /** The finger: pan past the start distance, fling on release, tap, tap-and-hold, drag after a hold. */
     function bindTouch() {
         let id = null;
         let downX = 0;
@@ -456,6 +764,7 @@
         let cell = -1;
         let panning = false;
         let held = false;
+        let lifted = false; // this press lifted an icon
         let caught = false; // the press stopped a moving grid: not a tap
         let holdTimer = 0;
         let samples = [];
@@ -467,6 +776,8 @@
         };
 
         view.addEventListener('pointerdown', (e) => {
+            // a second finger puts a lifted icon back
+            if (id !== null && drag && e.pointerId !== id) { endDrag(false); return; }
             if (id !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
             id = e.pointerId;
             // a press that stops a coasting grid, or that closes an open menu (the shell closes it on
@@ -477,6 +788,7 @@
             downY = e.clientY;
             panning = false;
             held = false;
+            lifted = false;
             samples = [];
             const c = e.target.closest('.wm-s65-cell');
             cell = c ? Number(c.dataset.i) : -1;
@@ -491,7 +803,14 @@
         });
 
         view.addEventListener('pointermove', (e) => {
-            if (e.pointerId !== id || held) return;
+            if (e.pointerId !== id) return;
+            if (held) {
+                // the hold is complete: the finger moving on lifts the icon (6.5.3's drag)
+                // (once per press: an icon put back by the back key stays put until the finger lifts)
+                if (drag) dragMove(e.clientX, e.clientY);
+                else if (!lifted && cell >= 0 && Math.hypot(e.clientX - downX, e.clientY - downY) > DRAG_START * unit()) lifted = startDrag(cell, e);
+                return;
+            }
             if (!panning) {
                 if (Math.abs(e.clientY - downY) <= PAN_START * unit()) return;
                 // the pan starts where the finger is now: the grid does not jump by the start distance
@@ -512,6 +831,12 @@
             const wasCaught = caught;
             const hit = cell;
             end();
+            if (drag) {
+                // let go over the grid: the icon stays there; anywhere else (the bars): back
+                const vr = view.getBoundingClientRect();
+                endDrag(!cancelled && e.clientX >= vr.left && e.clientX <= vr.right && e.clientY >= vr.top && e.clientY <= vr.bottom);
+                return;
+            }
             if (wasPanning) {
                 // the speed of the pan's last 120 ms; a finger that rested before it lifted does not fling
                 let v = 0;
@@ -552,6 +877,7 @@
             openItem(Number(c.dataset.i));
         });
         view.addEventListener('wheel', (e) => {
+            if (drag) return;
             stopMotion();
             place(Math.max(0, Math.min(maxY, y + e.deltaY)));
         }, { passive: true });
@@ -577,7 +903,7 @@
         shownApp = root.dataset.wmApp || '';
         new MutationObserver(() => { shownApp = root.dataset.wmApp || ''; }).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
         // the X ends Start (its page is made again on the next open): listeners outside the page are set once
-        window.addEventListener('resize', () => { if (page && page.isConnected && !page.hidden) { if (columnsFor() !== cols) render(); else measure(); place(Math.max(0, Math.min(maxY, y))); } });
+        window.addEventListener('resize', () => { if (page && page.isConnected && !page.hidden) { endDrag(false); if (columnsFor() !== cols) render(); else measure(); place(Math.max(0, Math.min(maxY, y))); } });
         sh.registerApp({
             id: 'start',
             title: 'Start',
@@ -608,16 +934,17 @@
                 place(0);
                 select(0, false);
             },
-            hide() { stopMotion(); },
+            hide() { endDrag(false); stopMotion(); },
             softKeys() {
                 if (path.length) return { left: { label: 'Back', action: () => { if (closeFolder()) sh.syncHistory(); } }, right: null };
                 return { left: { label: 'Lock', action: lock }, right: null };
             },
             titleKind: () => 'close',
-            historyDepth: () => path.length,
+            // a lifted icon is a step of its own: the back key puts it back
+            historyDepth: () => path.length + (drag ? 1 : 0),
             // X in a folder goes back to Start, as in Programs (Yukimi, Nov 10); X on Start closes it
             closeGoesBack: true,
-            onBack: () => closeFolder()
+            onBack: () => endDrag(false) || closeFolder()
         });
     }
 
@@ -631,6 +958,17 @@
             if (i < 0) return false;
             select(i, false);
             openFolder(items[i]);
+            return true;
+        },
+        /**
+         * The order as stored on this device ({ top, order }) and a way back to the default one.
+         * The device has no command for that (each program is moved down by hand), so there is no
+         * screen for it here either.
+         */
+        order: () => layout(),
+        resetOrder() {
+            saveLayout({ top: [], order: {} });
+            if (page && page.isConnected && sh && sh.current === 'start') { endDrag(false); render(); place(Math.max(0, Math.min(maxY, y))); select(selected, false); }
             return true;
         }
     };
