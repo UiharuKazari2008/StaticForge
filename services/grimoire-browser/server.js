@@ -1045,8 +1045,10 @@ async function captureStill(session) {
     try {
         const metrics = await session.cdp.send('Page.getLayoutMetrics');
         view = metrics && metrics.cssVisualViewport;
-        // a pinch-zoomed page (pageScaleFactor) is left to the frames
-        if (!view || Math.abs((view.scale || 1) - 1) > 0.001 || session.stillGen !== gen) return;
+        // a pinch-zoomed page (pageScaleFactor) is left to the frames; a mobile page with no viewport meta is one
+        // Chromium itself draws smaller (a 980 px layout fitted to the phone) and gets its still at that scale
+        const mobile = session.viewKind === 'mobile';
+        if (!view || (!mobile && Math.abs((view.scale || 1) - 1) > 0.001) || session.stillGen !== gen) return;
         // the capture emulates the scaled device for a moment; the screencast sends a frame of
         // that size, which the frame handler drops (and only that size)
         session.stillSide = { w: Math.round(meta.deviceWidth * scale), h: Math.round(meta.deviceHeight * scale) };
@@ -1054,7 +1056,10 @@ async function captureStill(session) {
             format: 'jpeg',
             quality: session.settings.jpegQuality,
             captureBeyondViewport: false,
-            clip: { x: view.pageX, y: view.pageY, width: meta.deviceWidth, height: meta.deviceHeight, scale }
+            // the clip scale multiplies the device scale: a mobile page already has the viewer's (mobileDeviceScale)
+            clip: mobile
+                ? { x: view.pageX, y: view.pageY, width: view.clientWidth, height: view.clientHeight, scale: scale * (view.scale || 1) / mobileDeviceScale(session) }
+                : { x: view.pageX, y: view.pageY, width: meta.deviceWidth, height: meta.deviceHeight, scale }
         });
     } finally {
         session.stillBusy = false;
@@ -1248,7 +1253,7 @@ function popupCount() {
 
 async function adoptPopup(announce, page, parentId) {
     try {
-        const child = await createSession({ width: 480, height: 640, popup: true, parentId, owner: announce.owner }, page);
+        const child = await createSession({ width: 480, height: 640, popup: true, parentId, owner: announce.owner, viewKind: announce.viewKind }, page);
         if (!sessions.get(announce.id)) {
             closeSession(child.id);
             return;
@@ -1611,7 +1616,50 @@ async function applySiteUserAgent(session, url) {
     const plain = PLAIN_UA_HOSTS.test(host);
     if (!pageUserAgent || session.plainUa === plain) return;
     session.plainUa = plain;
-    await session.page.setUserAgent(plain ? plainUserAgent : pageUserAgent, plain ? plainUserAgentMetadata : pageUserAgentMetadata).catch(() => {});
+    await applyIdentity(session, plain).catch(() => {});
+}
+
+// View kind (Yozora #748): a session asks for the phone version of sites (viewKind 'mobile': Internet Explorer
+// Mobile's Mobile view) or is the desktop browser it always was ('desktop', and every session that names none).
+// Mobile = Android Chrome's user agent and client hints with the Alchemy token and brand kept, phone device
+// metrics (the viewport meta is honoured, overlay scrollbars, text autosizing) and touch (pointer: coarse,
+// hover: none, ontouchstart). The viewer's input stays mouse and wheel.
+let mobileUserAgent = '';
+let mobileUserAgentMetadata = null;
+let plainMobileUserAgent = '';
+let plainMobileUserAgentMetadata = null;
+const MOBILE_PLATFORM = 'Linux armv8l';
+const MOBILE_TOUCH_POINTS = 5;
+
+function viewKindOf(value) {
+    return value === 'mobile' ? 'mobile' : 'desktop';
+}
+
+function sessionIdentity(session, plain) {
+    if (session.viewKind === 'mobile' && mobileUserAgent) {
+        return plain ? [plainMobileUserAgent, plainMobileUserAgentMetadata] : [mobileUserAgent, mobileUserAgentMetadata];
+    }
+    return plain ? [plainUserAgent, plainUserAgentMetadata] : [pageUserAgent, pageUserAgentMetadata];
+}
+
+async function applyIdentity(session, plain) {
+    const [userAgent, userAgentMetadata] = sessionIdentity(session, plain);
+    await session.page.setUserAgent(userAgent, userAgentMetadata);
+    // navigator.platform too; Puppeteer's call has no platform. Back to desktop, the same call without one
+    // puts the page's own override right (it outlives Puppeteer's).
+    if (session.viewKind === 'mobile' && mobileUserAgent && session.cdp) {
+        session.mobileIdentity = true;
+        await session.cdp.send('Emulation.setUserAgentOverride', { userAgent, platform: MOBILE_PLATFORM, userAgentMetadata }).catch(() => {});
+    } else if (session.mobileIdentity && session.cdp) {
+        session.mobileIdentity = false;
+        await session.cdp.send('Emulation.setUserAgentOverride', { userAgent, userAgentMetadata }).catch(() => {});
+    }
+}
+
+// The device scale a mobile page sees (window.devicePixelRatio, which picture of a srcset): the viewer's own
+// pixels per CSS pixel when it said so (still-scale: a phone at its pixel ratio), never under the zoom.
+function mobileDeviceScale(session) {
+    return Math.max(session.zoom || 1, Math.min(ZOOM_MAX, session.clientScale || 0));
 }
 let extensions = [];
 const ownPages = new WeakSet();
@@ -2071,6 +2119,23 @@ async function launchBrowser() {
         brands: pageUserAgentMetadata.brands.slice(0, 2),
         fullVersionList: pageUserAgentMetadata.fullVersionList.slice(0, 2)
     });
+    // the phone identity (viewKind 'mobile'): Chrome for Android's reduced user agent, the same Alchemy token and brands
+    const mobileChromeUa = chromeUa.replace(/\([^)]*\)/, '(Linux; Android 10; K)').replace(/ Safari\//, ' Mobile Safari/');
+    mobileUserAgent = mobileChromeUa + ' Alchemy/' + uaVersion;
+    mobileUserAgentMetadata = Object.assign({}, pageUserAgentMetadata, {
+        platform: 'Android',
+        platformVersion: '16.0.0',
+        architecture: '',
+        model: '',
+        mobile: true,
+        bitness: '',
+        formFactors: ['Mobile']
+    });
+    plainMobileUserAgent = mobileChromeUa;
+    plainMobileUserAgentMetadata = Object.assign({}, mobileUserAgentMetadata, {
+        brands: mobileUserAgentMetadata.brands.slice(0, 2),
+        fullVersionList: mobileUserAgentMetadata.fullVersionList.slice(0, 2)
+    });
     browser = instance;
     return browser;
 }
@@ -2156,6 +2221,33 @@ const ZOOM_MAX = 4;
 
 async function applyViewport(session) {
     const zoom = session.zoom || 1;
+    if (session.viewKind === 'mobile') {
+        // straight to CDP: Puppeteer's setViewport reloads the page by itself when isMobile / hasTouch change,
+        // and waits for the load; the reload here is the session's own (view-kind)
+        const width = Math.max(80, Math.round(session.width / zoom));
+        const height = Math.max(60, Math.round(session.height / zoom));
+        await session.cdp.send('Emulation.setDeviceMetricsOverride', {
+            width,
+            height,
+            deviceScaleFactor: mobileDeviceScale(session),
+            mobile: true,
+            screenOrientation: width > height ? { type: 'landscapePrimary', angle: 90 } : { type: 'portraitPrimary', angle: 0 }
+        });
+        await session.cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: MOBILE_TOUCH_POINTS });
+        session.mobileMetrics = true;
+        return;
+    }
+    if (session.mobileMetrics) {
+        // back to desktop: Puppeteer skips a viewport it believes is still set, so the phone's is taken off here
+        session.mobileMetrics = false;
+        await session.cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false }).catch(() => {});
+        await session.cdp.send('Emulation.setDeviceMetricsOverride', {
+            width: Math.max(80, Math.round(session.width / zoom)),
+            height: Math.max(60, Math.round(session.height / zoom)),
+            deviceScaleFactor: zoom,
+            mobile: false
+        }).catch(() => {});
+    }
     await session.page.setViewport({
         width: Math.max(80, Math.round(session.width / zoom)),
         height: Math.max(60, Math.round(session.height / zoom)),
@@ -2239,6 +2331,9 @@ async function createSession(body, adoptedPage) {
         width,
         height,
         zoom: 1,
+        // 'mobile': the phone identity (Internet Explorer Mobile's Mobile view); a popup is what its opener is
+        viewKind: body && body.viewKind !== undefined ? viewKindOf(body.viewKind)
+            : viewKindOf(body && body.parentId && sessions.get(String(body.parentId)) && sessions.get(String(body.parentId)).viewKind),
         feeds: [],
         feedsKey: '[]',
         settings: sessionSettings(body && body.settings, DEFAULT_SETTINGS),
@@ -2278,6 +2373,12 @@ async function createSession(body, adoptedPage) {
         closing: false
     };
     sessions.set(id, session);
+    if (session.viewKind === 'mobile') {
+        // before the first page loads; the viewer's pixel ratio may come with the request (viewScale)
+        session.clientScale = Math.max(0, Math.min(STILL_MAX_SCALE, Number(body && body.viewScale) || 0));
+        await applyIdentity(session, false).catch(() => {});
+        await applyViewport(session).catch(() => {});
+    }
     armDownloads(session);
     armFileChooser(session);
 
@@ -2301,7 +2402,9 @@ async function createSession(body, adoptedPage) {
             try { picked = JSON.parse(ev.payload); } catch (_) {}
             if (!picked || !Array.isArray(picked.options)) return;
             session.selectContextId = ev.executionContextId;
-            broadcast(session, { type: 'select', options: picked.options, selected: picked.selected, x: Number(picked.x) || 0, y: Number(picked.y) || 0 });
+            // the list's place in the picture (a mobile page drawn smaller: see onViewerMessage)
+            const pageScale = session.viewKind === 'mobile' ? Number(session.meta && session.meta.pageScaleFactor) || 1 : 1;
+            broadcast(session, { type: 'select', options: picked.options, selected: picked.selected, x: (Number(picked.x) || 0) * pageScale, y: (Number(picked.y) || 0) * pageScale });
             return;
         }
         if (ev && ev.name === '__alchemyClipboard' && sessions.get(id)) {
@@ -2455,6 +2558,7 @@ function sessionPublic(session) {
         viewers: session.sockets.size,
         popup: !!session.popup,
         parentId: session.parentId || '',
+        viewKind: session.viewKind || 'desktop',
         owner: session.owner || null,
         leaseUntil: session.owner ? session.leaseUntil : 0
     };
@@ -2466,6 +2570,16 @@ async function onViewerMessage(session, raw) {
     if (!msg || typeof msg !== 'object') return;
     touch(session);
     const page = session.page;
+    // A mobile page with no viewport meta is drawn smaller (pageScaleFactor under 1): the viewer's positions are
+    // the picture's, Chromium's pointer positions are in the page's own CSS pixels (wheel distances are not).
+    if (session.viewKind === 'mobile' && (msg.type === 'mouse' || msg.type === 'wheel' || msg.type === 'inspect')) {
+        const pageScale = Number(session.meta && session.meta.pageScaleFactor) || 1;
+        if (Math.abs(pageScale - 1) > 0.001) {
+            for (const key of ['x', 'y']) {
+                if (typeof msg[key] === 'number' && Number.isFinite(msg[key])) msg[key] /= pageScale;
+            }
+        }
+    }
     if (msg.type === 'dialog-reply') {
         if (session.dialog && session.dialog.id === msg.id) session.dialog.settle(msg);
         return;
@@ -2776,7 +2890,30 @@ async function onViewerMessage(session, raw) {
         if (Math.abs(scale - (session.clientScale || 0)) < 0.01) return;
         session.clientScale = scale;
         session.stillGen = (session.stillGen || 0) + 1;
+        // a mobile page is laid out for the viewer's pixel ratio (mobileDeviceScale)
+        if (session.viewKind === 'mobile') await changeViewport(session);
         armStill(session);
+        return;
+    }
+    // Mobile or desktop version of sites (#748): the identity and the device metrics change and the page loads
+    // again, so the site answers the new one (what was typed into the page and its scroll position are lost,
+    // as with Refresh; the session, its history and its cookies stay).
+    if (msg.type === 'view-kind') {
+        const kind = viewKindOf(msg.value);
+        if (kind === (session.viewKind || 'desktop')) return;
+        session.viewKind = kind;
+        // the viewer's size, zoom and pixel ratio for the new view come with it, so the page loads once, as it will be shown
+        if (msg.width || msg.height) {
+            session.width = clampSize(msg.width, session.width, 320, 1920);
+            session.height = clampSize(msg.height, session.height, 240, 1440);
+        }
+        if (Number(msg.zoom) > 0) session.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Number(msg.zoom)));
+        if (Number(msg.scale) > 0) session.clientScale = Math.min(STILL_MAX_SCALE, Number(msg.scale));
+        await applyIdentity(session, !!session.plainUa).catch(() => {});
+        await changeViewport(session);
+        broadcast(session, { type: 'view-kind', value: kind });
+        if (session.navigating && session.navTarget) requestNavigate(session, session.navTarget, false);
+        else if (session.url) requestNavigate(session, session.url, true);
         return;
     }
     if (msg.type === 'zoom') {
@@ -2975,6 +3112,7 @@ async function handleRequest(req, res) {
             const session = await createSession(body);
             sendJson(res, 201, {
                 id: session.id,
+                viewKind: session.viewKind || 'desktop',
                 viewerToken: session.viewerToken,
                 viewPath: '/view/' + session.id + '?t=' + session.viewerToken
             });

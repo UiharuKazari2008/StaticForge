@@ -261,12 +261,17 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
         const height = req.body && req.body.height;
         const popup = !!(req.body && req.body.popup);
         const owner = req.body && req.body.owner && typeof req.body.owner === 'object' ? req.body.owner : null;
+        // #748: Internet Explorer Mobile's Mobile view asks for the phone version of sites (viewKind 'mobile', with
+        // the phone's pixel ratio); nothing is sent for anyone else, and the service stays the desktop browser
+        const mobileView = req.body && req.body.viewKind === 'mobile'
+            ? { viewKind: 'mobile', viewScale: Math.max(1, Math.min(4, Number(req.body.viewScale) || 1)) }
+            : null;
         const { bookmarks, audioEnabled, audioVolume, audioBackground, homePage, searchProvider, sessions: _sessions, performance, ...settings } = config.alchemy;
         try {
             const upstream = await serviceFetch(config, '/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url, width, height, popup, settings, owner, performance })
+                body: JSON.stringify(Object.assign({ url, width, height, popup, settings, owner, performance }, mobileView))
             });
             const payload = await upstream.json().catch(() => ({}));
             if (!upstream.ok) {
@@ -275,6 +280,8 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
             }
             res.status(201).json({
                 sessionId: payload.id,
+                // what the service made (an older service names none: desktop)
+                viewKind: payload.viewKind === 'mobile' ? 'mobile' : 'desktop',
                 viewUrl: '/api/grimoire-browser/view/' + payload.id + '?t=' + encodeURIComponent(payload.viewerToken)
             });
         } catch (err) {

@@ -104,9 +104,10 @@
     background: transparent;
 }
 
-/* the address bar's own buttons (#748): Back before the lock (6.1, Options > General; shellres.192.dll
-   bitmap 11146, the go arrow's art turned left; grey when the window cannot go back) and the windows
-   view's button before the go arrow (shellres.192.dll icon 13927) */
+/* the address bar's own buttons (#748): Back before the lock (6.1, Options > General; ie-back2: the Help
+   viewer's Back arrow, shellresapps.96.dll / .192.dll bitmap 12801 cell 0; grey when the window cannot
+   go back) and the windows view's button before the go arrow (ie-wins: two of the window of
+   shellres.192.dll icon 13927, its 64 px picture made smaller, one behind the other) */
 .wm-browser .wmb-back,
 .wm-browser .wmb-wins {
     flex: 0 0 auto;
@@ -1722,9 +1723,18 @@ html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-wins {
     margin: 0 calc(1 * var(--wm-px)) 0 calc(3 * var(--wm-px));
 }
 
-/* Options > Other: the zoom button as the windows button. The bar's art (bitmap 4599) has no round
-   "windows" cell and none may be drawn: the button keeps the magnifier until an art is chosen
-   (.is-windows marks it) */
+/* Options > Other: the zoom button as the windows button (.is-windows). The bar's art (bitmap 4599)
+   has no round "windows" cell: ie-bar-windows is the bar's own round button with the glyph taken out
+   (from the cells of 4599) and two windows drawn in the glyphs' white; cell 0, pressed 1 */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="zoom"].is-windows {
+    background-image: url('/static_images/wm65/ie-bar-windows.png');
+    background-image: image-set(url('/static_images/wm65/ie-bar-windows.png') 1x, url('/static_images/wm65/ie-bar-windows@2x.png') 2x, url('/static_images/wm65/ie-bar-windows@4x.png') 4x);
+    --cell: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb65-btn[data-act="zoom"].is-windows:active {
+    --cell: 1;
+}
 
 /* the windows view's new window tile: the Favorites bar's plus (bitmap 4604 cell 3) */
 html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-wt-plus {

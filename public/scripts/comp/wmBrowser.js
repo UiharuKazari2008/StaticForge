@@ -70,6 +70,15 @@
     // View: the page's CSS viewport width. One Column fits the phone (sites' narrow layouts),
     // Default is half again as wide, Desktop is a 1024 px desktop page shrunk to fit.
     const VIEWS = [['column', 'One Column'], ['default', 'Default'], ['desktop', 'Desktop']];
+    // Automatic (#748, the choice of a new user): One Column on a phone-sized screen, Desktop on a wide
+    // one (a foldable opened to its inner screen, a tablet), chosen again when the screen changes size.
+    // Wide = at least AUTO_DESKTOP_UNITS design units across, and no less on the screen's shorter side
+    // (a phone turned on its side stays a phone). 480 units is twice the QVGA width the shell is drawn
+    // for: 720 CSS px at the touch size of 1.5 px a unit.
+    const VIEW_AUTO = 'auto';
+    const AUTO_DESKTOP_UNITS = 480;
+    const AUTO_SETTLE_MS = 400; // a fold or a turn is over
+    const TOUCH_UNIT_PX = 1.5;
     // Desktop view: the layout size of a page, the desktop Internet Explorer's page area on a
     // 1024 x 768 screen (the same 1024 px a web page gets from Alchemy in this view)
     const DESK_W = 1024;
@@ -175,12 +184,14 @@
     // the newest inspect request: 'tap' | { x, y } (tap-and-hold at a point). The viewer keeps one too and
     // answers only the newest, so a single slot (with a time limit) stays in step with it.
     const INSPECT_MS = 1500;
+    // viewChoice is what the user picked (stored), viewMode the view in use (Automatic resolved)
+    let viewChoice = VIEW_AUTO;
     let viewMode = 'column';
     let zoomKey = 'medium';
     let fullScreen = false;
     try {
         const v = localStorage.getItem(VIEW_KEY);
-        if (VIEWS.some(([k]) => k === v)) viewMode = v;
+        if (v === VIEW_AUTO || VIEWS.some(([k]) => k === v)) viewChoice = v;
         const z = localStorage.getItem(ZOOM_KEY);
         if (ZOOMS.some(([k]) => k === z)) zoomKey = z;
         fullScreen = localStorage.getItem(FULL_KEY) === '1';
@@ -220,10 +231,34 @@
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const isCurrent = () => !!(ws && ws.current === APP_ID);
     const deskView = () => viewMode === 'desktop';
+    /** The shell's width in design units, and whether the screen is a wide one (see AUTO_DESKTOP_UNITS). */
+    function screenUnits() {
+        const px = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
+        const shell = document.getElementById('wmShell');
+        const w = (shell && shell.clientWidth) || window.innerWidth || 0;
+        // the screen's own shorter side (the keyboard does not change it), where the page fills the
+        // screen's width as it does on a phone; in a window of another width (a desktop browser,
+        // split screen) the width alone decides
+        const sw = window.screen.width || 0;
+        const fills = sw > 0 && Math.abs(sw - (window.innerWidth || 0)) <= 2;
+        const short = fills ? Math.min(sw, window.screen.height || sw) : w;
+        return { px, w: w / px, short: short / px };
+    }
+    function wideScreen() {
+        const u = screenUnits();
+        return u.w >= AUTO_DESKTOP_UNITS && u.short >= AUTO_DESKTOP_UNITS;
+    }
+    const resolveView = () => (viewChoice === VIEW_AUTO ? (wideScreen() ? 'desktop' : 'column') : viewChoice);
+    viewMode = resolveView();
+    // what a web page asks Alchemy for: the phone version of a site in the phone views, the desktop one in Desktop
+    const webKind = () => (deskView() ? 'desktop' : 'mobile');
+    let alchemyKinds = false; // the server answers with the kind it made (older ones make desktop pages only)
     const entry = () => W.entries[W.idx] || homeEntry();
     const onHome = () => !!entry().home;
     const srcsetOf = (name) => (window.wmShell ? window.wmShell.art.srcset(name) : `/static_images/wm61/${name}@2x.png 2x`);
     const img = (name, cls) => `<img class="${cls || ''}" src="/static_images/wm61/${name}.png" srcset="${srcsetOf(name)}" alt="" draggable="false">`;
+    // the address bar's Back and windows buttons: their own 1x / 2x / 4x files
+    const img4 = (name) => `<img src="/static_images/wm61/${name}.png" srcset="/static_images/wm61/${name}.png 1x, /static_images/wm61/${name}@2x.png 2x, /static_images/wm61/${name}@4x.png 4x" alt="" draggable="false">`;
 
     function readList(key) {
         try { const v = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(v) ? v : []; } catch (_) { return []; }
@@ -326,7 +361,11 @@
     function geometry() {
         const W = Math.max(1, els.view.clientWidth);
         const H = Math.max(1, els.view.clientHeight);
-        const base = viewMode === 'desktop' ? Math.max(W, 1024) : viewMode === 'default' ? Math.round(W * 1.5) : W;
+        // Desktop on a phone-sized screen is a 1024 px page shrunk to fit; on a wide screen the page
+        // is as wide as the screen at the shell's touch size (1.5 CSS px a unit: the screen's own CSS
+        // width on a phone or tablet), so sites lay out for the width there really is
+        const base = viewMode === 'desktop' ? (wideScreen() ? Math.max(W, Math.round(W / screenUnits().px * TOUCH_UNIT_PX)) : Math.max(W, 1024))
+            : viewMode === 'default' ? Math.round(W * 1.5) : W;
         const V = base / (zoomFactor() * (v65 ? pageZoom65 : 1));
         let s = Math.min(2, Math.max(1, window.devicePixelRatio || 1), V / W);
         // Alchemy's frames are 320..1920 x 240..1440
@@ -356,6 +395,33 @@
     }
 
     function post(msg) { postTo(W, msg); }
+
+    /**
+     * The page of W asks for the kind of site the view shows (#748): a session made for the other
+     * kind (the view changed, the screen was unfolded, a page taken from another device) is told, and
+     * Alchemy changes its identity (user agent, client hints, device metrics, touch) and loads the
+     * page again so the site answers it. What was typed into the page and its scroll position go, as
+     * with Refresh; its history and sign-ins stay. Only the window on screen: a page behind it
+     * changes when its window is shown.
+     */
+    function syncViewKind() {
+        const s = W.session;
+        if (!s || !W.ready || !visible || W !== cur) return;
+        const kind = webKind();
+        if (s.kind === kind) return;
+        s.kind = kind;
+        // the address may change with the answer (en. to en.m.): the same entry, not a new page
+        const e = W.entries[W.chromeAt >= 0 ? W.chromeAt : W.idx];
+        if (alchemyKinds && e && !e.home) e.pending = true;
+        const g = geometry();
+        fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(s.id) + '/input?' + s.query, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            // with the frame's size, zoom and still scale in the new view: the page loads once, as it will be shown
+            body: JSON.stringify({ type: 'view-kind', value: kind, width: g.L, height: g.Lh, zoom: g.z, scale: g.d })
+        }).catch(() => {});
+    }
 
     // ---------------------------------------------------------------- sessions
 
@@ -480,7 +546,8 @@
     /** The viewer of W's session (a new one, or a page's own new window handed over by Alchemy). */
     function attachSession(payload) {
         clearTransferred(W);
-        W.session = { id: payload.sessionId || '', viewUrl: payload.viewUrl, query: String(payload.viewUrl).split('?')[1] || '' };
+        // kind: 'mobile' | 'desktop' as the session was made, '' when not known (a page's own window, a page taken over)
+        W.session = { id: payload.sessionId || '', viewUrl: payload.viewUrl, query: String(payload.viewUrl).split('?')[1] || '', kind: payload.viewKind || '' };
         W.chromeAt = W.idx;
         W.chromeBase = W.idx;
         const frame = document.createElement('iframe');
@@ -534,7 +601,8 @@
                         credentials: 'same-origin',
                         headers: { 'Content-Type': 'application/json' },
                         // the phone, its IE and this window own the page (#756; browsingSessions.js)
-                        body: JSON.stringify({ url: asked, width: g.L, height: g.Lh, popup: false, owner: sessionOwner(w) })
+                        // viewKind: the phone or the desktop version of the site; viewScale: this phone's pixels per page pixel
+                        body: JSON.stringify({ url: asked, width: g.L, height: g.Lh, popup: false, owner: sessionOwner(w), viewKind: webKind(), viewScale: g.d })
                     });
                 } catch (_) {
                     await inWin(w, () => cannotConnect());
@@ -542,6 +610,7 @@
                 }
                 payload = {};
                 try { payload = await res.json(); } catch (_) { /* empty */ }
+                if (payload.viewKind) alchemyKinds = true;
                 // the window was closed while its page was made: the new session is let go
                 if (w.closed) { if (payload.sessionId) dropSession(payload.sessionId); return false; }
                 if (res.status === 429 && !freed) {
@@ -809,6 +878,7 @@
             case 'grimoire-browser-ready':
                 W.ready = true;
                 layoutFrame();
+                syncViewKind();
                 syncAudio();
                 if (settings) post({ type: 'grimoire-browser-settings', settings });
                 break;
@@ -1570,7 +1640,8 @@
             '-',
             {
                 label: 'View',
-                submenu: VIEWS.map(([k, label]) => ({ label, radio: viewMode === k, action: () => setView(k) }))
+                // the device's three views, then Automatic (#748: One Column, or Desktop on a wide screen)
+                submenu: VIEWS.concat([[VIEW_AUTO, 'Automatic']]).map(([k, label]) => ({ label, radio: viewChoice === k, action: () => setView(k) }))
                     .concat(['-', { label: 'Full Screen', checked: fullScreen, action: toggleFullScreen }])
             },
             { label: 'Zoom', submenu: ZOOMS.map(([k, label]) => ({ label, radio: zoomKey === k, action: () => setZoom(k) })) },
@@ -1597,15 +1668,32 @@
      * windows behind it when their window is shown.
      */
     function setView(k) {
-        const was = deskView();
-        viewMode = k;
+        viewChoice = k;
         try { localStorage.setItem(VIEW_KEY, k); } catch (_) { /* storage off */ }
+        applyView();
+    }
+
+    /**
+     * The view in use follows the choice (Automatic: the screen as it is now). A web page between a
+     * phone view and Desktop asks for the other kind of site and loads again (syncViewKind).
+     */
+    function applyView() {
+        const was = deskView();
+        viewMode = resolveView();
         if (was !== deskView() && page) {
             // an applet draws in the page of the view it was started in
             wins.forEach((w) => inWin(w, leaveDsap));
             render();
         }
-        wins.forEach((w) => inWin(w, layoutFrame));
+        wins.forEach((w) => inWin(w, () => { layoutFrame(); syncViewKind(); }));
+    }
+
+    // Automatic: the screen changed size (a foldable opened or closed, the phone turned): once it has settled
+    let autoTimer = 0;
+    function onScreenResize() {
+        if (viewChoice !== VIEW_AUTO) return;
+        clearTimeout(autoTimer);
+        autoTimer = setTimeout(() => { autoTimer = 0; if (viewChoice === VIEW_AUTO && resolveView() !== viewMode) applyView(); }, AUTO_SETTLE_MS);
     }
 
     function setZoom(k) {
@@ -3323,8 +3411,10 @@
                 submenu: [
                     { label: 'Text Size', submenu: ZOOMS.map(([k, label]) => ({ label, radio: zoomKey === k, action: () => setZoom(k) })) },
                     '-',
-                    { label: 'Mobile', checked: viewMode === 'column', action: () => setView('column') },
-                    { label: 'Desktop', checked: viewMode === 'desktop', action: () => setView('desktop') }
+                    { label: 'Mobile', checked: viewChoice !== VIEW_AUTO && viewChoice !== 'desktop', action: () => setView('column') },
+                    { label: 'Desktop', checked: viewChoice === 'desktop', action: () => setView('desktop') },
+                    // #748: Mobile, or Desktop on a wide screen
+                    { label: 'Automatic', checked: viewChoice === VIEW_AUTO, action: () => setView(VIEW_AUTO) }
                 ]
             },
             {
@@ -3386,7 +3476,8 @@
         if (sub === 'opt-history') { openSub('options'); return; }
         if (sub === 'opt-other') {
             const on = ok && els.sub.querySelector('input[name="wmb65-as"]:checked');
-            if (on) setView(on.value);
+            // the choice as it stands is left alone (Default, kept from 6.1, shows as Mobile Device)
+            if (on && on.value !== (viewChoice === VIEW_AUTO || viewChoice === 'desktop' ? viewChoice : 'column')) setView(on.value);
             const zw = ok && els.sub.querySelector('input[data-opt="zoomwin"]');
             if (zw) saveOpts({ zoomWindows: zw.checked });
             openSub('options');
@@ -3468,9 +3559,11 @@
             if (!readList(HISTORY_KEY).length) bytes = 0;
             html = `<div class="wmb-sub-list" role="listbox"><div class="wmb-sub-row wmb65-two is-selected" role="option" data-i="0"><b>History</b><span>${bytes} bytes</span></div></div>`;
         } else if (sub === 'opt-other') {
-            const radio = (v, label) => `<label class="wm-check"><input type="radio" name="wmb65-as" value="${v}"${(v === 'desktop') === (viewMode === 'desktop') ? ' checked' : ''}><span>${label}</span></label>`;
-            // device: the two choices, then check boxes 21 px apart (Play Sounds, Show Pictures ...: not here); ours: the zoom button's use
-            html = `<div class="wmb65-form wmb65-other"><div class="wmb65-lbl">Browse websites as:</div>${radio('column', 'Mobile Device')}${radio('desktop', 'Desktop Computer')}
+            const chosen = viewChoice === VIEW_AUTO || viewChoice === 'desktop' ? viewChoice : 'column';
+            const radio = (v, label) => `<label class="wm-check"><input type="radio" name="wmb65-as" value="${v}"${v === chosen ? ' checked' : ''}><span>${label}</span></label>`;
+            // device: the two choices, then check boxes 21 px apart (Play Sounds, Show Pictures ...: not here); ours: Automatic
+            // (#748: Mobile Device, or Desktop Computer on a wide screen) and the zoom button's use
+            html = `<div class="wmb65-form wmb65-other"><div class="wmb65-lbl">Browse websites as:</div>${radio('column', 'Mobile Device')}${radio('desktop', 'Desktop Computer')}${radio(VIEW_AUTO, 'Automatic')}
                 <label class="wm-check wmb65-other-check"><input type="checkbox" data-opt="zoomwin"${opts.zoomWindows ? ' checked' : ''}><span>Show windows with the zoom button</span></label></div>`;
         } else if (sub === 'props') {
             const e = entry();
@@ -3865,6 +3958,8 @@
         w.dsapIdleTimer = 0;
         // its web page was let go while it was behind: it comes back from its address
         if (visible && !onHome() && !W.session && !W.creating) { entry().pending = true; openSession(entry().url); }
+        // the view changed while this window was behind: its page asks for the other kind of site now
+        syncViewKind();
         render();
         // a box that was hidden may come back at the top: where it was left
         if (w.scrolls) {
@@ -3914,16 +4009,17 @@
 
     function mount(p) {
         page = p;
+        viewMode = resolveView();
         page.classList.add('wm-browser');
         page.innerHTML = `
             <div class="wmb-bar">
-                <button type="button" class="wmb-back" aria-label="Back" hidden>${img('ie-back')}</button>
+                <button type="button" class="wmb-back" aria-label="Back" hidden>${img4('ie-back2')}</button>
                 <span class="wmb-lock" aria-hidden="true"></span>
                 <div class="wmb-addr-box">
                     <input type="url" class="wmb-addr" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Address">
                     <button type="button" class="wmb-addr-drop" aria-label="Recent addresses" aria-haspopup="menu"></button>
                 </div>
-                <button type="button" class="wmb-wins" aria-label="Windows">${img('ie-windows')}</button>
+                <button type="button" class="wmb-wins" aria-label="Windows">${img4('ie-wins')}</button>
                 <button type="button" class="wmb-go" aria-label="Go"></button>
             </div>
             <div class="wmb-view">
@@ -3986,7 +4082,8 @@
             ws.dropdown(els.addr.parentElement, items, 'left');
         });
 
-        if (v65) mount65();
+        // the bar's zoom button takes its stored use (windows) once the bar is there
+        if (v65) { mount65(); applyOpts(); }
 
         // the Sessions and Alchemy pages' check boxes and numbers save as they change (#756)
         els.sub.addEventListener('change', (e) => { if (sub === 'options' || sub === 'opt-sessions' || sub === 'opt-alchemy') sessionFormChange(e); });
@@ -4044,6 +4141,8 @@
                 else focusIme();
             }, true);
             addEventListener('message', onMessage);
+            // the shell's own signal for a new screen size (wmShell syncPixelScale, syncBezel)
+            addEventListener('resize', onScreenResize);
             // a new pixel ratio (another screen, browser zoom) changes the frame size, not the page area
             const watchDpr = () => {
                 const mq = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
@@ -4077,6 +4176,9 @@
                 // the session was let go while away: the page comes back from its address
                 if (!onHome() && !sub && !W.session && !W.creating) { entry().pending = true; openSession(entry().url); }
                 if (v65) { bars65 = true; armBars65(); setTimeout(chrome65, 0); }
+                // Automatic: the screen may have changed while IE was behind another program
+                if (viewChoice === VIEW_AUTO && resolveView() !== viewMode) applyView();
+                else syncViewKind();
                 render();
                 // the windows behind the one on screen: their pages and applets wait their own, longer time
                 wins.forEach((w) => { if (w !== cur) inWin(w, () => { syncPageShown(); armDsapIdle(); }); });
@@ -4175,9 +4277,20 @@
                 return id;
             },
             closeWindow: (id) => closeWindow(id),
+            // Today's Internet Explorer item (wmTodayWidgets.js)
+            openFavorites() { ws.open(APP_ID); openSub('favorites'); },
+            openHistory() { ws.open(APP_ID); openSub('history'); },
+            otherDevices() { ws.open(APP_ID); return openDevices(); },
+            takeTab(sessionId, tabId) { ws.open(APP_ID); return takeDeviceTab(sessionId, tabId); },
+            /** engine 'grimoire': the start page's own search (the Grimoire's search page); 'web': the web search. In the window on screen, as open(url). */
+            search(engine, text) {
+                const q = String(text == null ? '' : text).trim();
+                if (!q) return false;
+                return window.wmBrowser.open(engine === 'web' ? 'https://www.bing.com/search?q=' + encodeURIComponent(q) : 'edtx://en.grimoire.jp/search?q=' + encodeURIComponent(q));
+            },
             sessionSnapshot,
             // tests: the pages seen in the window on screen and where Chromium is
-            _state: () => ({ entries: W.entries.map((e) => (e.home ? (e.grim.kind === 'home' ? 'home' : e.url) : e.url)), idx: W.idx, dsap: W.dsapShell && W.dsapShell._dsapState ? W.dsapShell._dsapState.url : null, idle: !!W.idleTimer, inspect: W.pendingInspect, chromeAt: W.chromeAt, chromeBase: W.chromeBase, session: W.session && W.session.id, loading: W.loading, frame: !!W.frame, ready: W.ready, viewMode, zoomKey, geometry: els.view ? geometry() : null, win: cur.id, windows: wins.length, maxWindows: MAX_WINDOWS })
+            _state: () => ({ entries: W.entries.map((e) => (e.home ? (e.grim.kind === 'home' ? 'home' : e.url) : e.url)), idx: W.idx, dsap: W.dsapShell && W.dsapShell._dsapState ? W.dsapShell._dsapState.url : null, idle: !!W.idleTimer, inspect: W.pendingInspect, chromeAt: W.chromeAt, chromeBase: W.chromeBase, session: W.session && W.session.id, loading: W.loading, frame: !!W.frame, ready: W.ready, viewMode, viewChoice, viewKind: W.session ? W.session.kind : null, wide: wideScreen(), zoomKey, geometry: els.view ? geometry() : null, win: cur.id, windows: wins.length, maxWindows: MAX_WINDOWS })
         };
         if (window.browsingSessions) {
             window.browsingSessions.register(sessionSnapshot);
