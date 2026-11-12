@@ -6379,7 +6379,8 @@
         const splash = shell.querySelector('.wm-splash');
         const imgs = splash ? [...splash.querySelectorAll('img')] : [];
         let done = false;
-        const mark = () => { if (!done) { done = true; root.dataset.wmSplashPainted = '1'; } };
+        // the value is the page time it was set (ms since navigation start), for boot timing checks
+        const mark = () => { if (!done) { done = true; root.dataset.wmSplashPainted = String(Math.max(1, Math.round(performance.now()))); } };
         Promise.all(imgs.map((img) => (typeof img.decode === 'function' ? img.decode() : Promise.resolve()).catch(() => null)))
             .then(() => requestAnimationFrame(() => requestAnimationFrame(mark)));
         // a stuck decode never holds the cover for good, but only frames count: a timer started here
