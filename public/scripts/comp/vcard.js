@@ -9,12 +9,19 @@
  *   melatonVCard.blank()                       an empty card with a fresh UID
  *
  * A group is a card with X-ADDRESSBOOKSERVER-KIND:group and its members' UIDs.
+ *
+ * Chat personas (Yozora #763, modules/chatPersonaContacts.js) get a card with CATEGORIES:Chat
+ * Personas and X-DREAMSCAPE-CHAT-ID (the chat), X-DREAMSCAPE-CHAT-NAME (the persona name last
+ * written) and X-DREAMSCAPE-CHAT-DELETED (when its chat was deleted): card.categories, chatId,
+ * chatName, chatDeleted. Other X- lines are kept as they came (card.extra), so a card saved here
+ * keeps what another program wrote.
  */
 (function (root) {
     'use strict';
 
     const vEsc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
     const vUnesc = (s) => String(s || '').replace(/\\n/gi, '\n').replace(/\\([,;\\:])/g, '$1');
+    const splitComma = (v) => { const out = []; let cur = ''; for (let i = 0; i < v.length; i += 1) { const ch = v[i]; if (ch === '\\' && i + 1 < v.length) { cur += ch + v[i + 1]; i += 1; } else if (ch === ',') { out.push(cur); cur = ''; } else cur += ch; } out.push(cur); return out.map(vUnesc); };
     const splitSemi = (v) => { const out = []; let cur = ''; for (let i = 0; i < v.length; i += 1) { const ch = v[i]; if (ch === '\\' && i + 1 < v.length) { cur += ch + v[i + 1]; i += 1; } else if (ch === ';') { out.push(cur); cur = ''; } else cur += ch; } out.push(cur); return out.map(vUnesc); };
 
     function blank() {
@@ -23,7 +30,8 @@
             first: '', middle: '', last: '', prefix: '', suffix: '', nickname: '', fn: '', emails: [], prefEmail: 0,
             home: { street: '', city: '', region: '', postal: '', country: '', phone: '', fax: '', mobile: '', url: '' },
             work: { company: '', title: '', department: '', office: '', street: '', city: '', region: '', postal: '', country: '', phone: '', fax: '', pager: '', url: '' },
-            gender: '', birthday: '', anniversary: '', spouse: '', children: [], notes: '', photo: ''
+            gender: '', birthday: '', anniversary: '', spouse: '', children: [], notes: '', photo: '',
+            categories: [], chatId: '', chatName: '', chatDeleted: '', extra: []
         };
     }
 
@@ -79,7 +87,12 @@
                 }
                 case 'X-ADDRESSBOOKSERVER-KIND': case 'KIND': c.group = /group/i.test(value); break;
                 case 'X-ADDRESSBOOKSERVER-MEMBER': case 'MEMBER': c.members.push(value.replace(/^urn:uuid:/i, '')); break;
+                case 'CATEGORIES': splitComma(value).forEach((x) => { const t = x.trim(); if (t && !c.categories.includes(t)) c.categories.push(t); }); break;
+                case 'X-DREAMSCAPE-CHAT-ID': c.chatId = value.trim(); break;
+                case 'X-DREAMSCAPE-CHAT-NAME': c.chatName = vUnesc(value); break;
+                case 'X-DREAMSCAPE-CHAT-DELETED': c.chatDeleted = value.trim(); break;
                 default:
+                    if (/^X-/.test(name) && c.extra.length < 64) c.extra.push(line);
             }
         }
         return cards;
@@ -125,7 +138,12 @@
             const m = /^data:image\/(png|jpeg|gif);base64,(.+)$/.exec(c.photo || '');
             if (m) L.push(`PHOTO;ENCODING=b;TYPE=${m[1].toUpperCase()}:${m[2]}`);
         }
+        if (c.categories && c.categories.length) L.push(`CATEGORIES:${c.categories.map(vEsc).join(',')}`);
         if (c.notes) L.push(`NOTE:${vEsc(c.notes)}`);
+        if (c.chatId) L.push(`X-DREAMSCAPE-CHAT-ID:${String(c.chatId).replace(/[\r\n]/g, '')}`);
+        if (c.chatName) L.push(`X-DREAMSCAPE-CHAT-NAME:${vEsc(c.chatName)}`);
+        if (c.chatDeleted) L.push(`X-DREAMSCAPE-CHAT-DELETED:${String(c.chatDeleted).replace(/[\r\n]/g, '')}`);
+        (c.extra || []).forEach((x) => { if (/^X-[^:]*:/i.test(x)) L.push(String(x).replace(/[\r\n]/g, '')); });
         L.push(`REV:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`, 'END:VCARD');
         return `${L.map(fold).join('\r\n')}\r\n`;
     }

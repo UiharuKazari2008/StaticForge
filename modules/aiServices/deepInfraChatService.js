@@ -6,8 +6,16 @@
 // rows become user messages, assistant event rows of one reply become one assistant message
 // holding that reply's JSON event array. The provider row and key come from
 // customModelProviders (config.json row + secure.config.json customModelProviders.keys[]).
-// Model: config `chatModel`, else that provider row's defaultModel (the Director engines'
-// default), else the preset default. Provider: config `chatProvider`, default 'deepinfra'.
+// Engine (Yozora #763): the Control Panel "Chat" page / phone Messaging Options save provider,
+// model and effort on the chat.db persona row (chatDatabase.getChatEngineSettings(), cached).
+// Provider: that saved provider when it exists and has a key, else config `chatProvider`,
+// default 'deepinfra'. Model: the saved model (when saved for this provider), else config
+// `chatModel`, else that provider row's defaultModel, else the preset default.
+// Effort: the saved effort is sent as reasoning_effort ('default' sends none); a 400 that
+// names reasoning is retried once without it (tokenRouterBridge pattern).
+// Existing chats: a chat whose stored provider is the chosen engine keeps its own model; a chat
+// started on another provider follows the chosen engine + model on its next turn (resolved per
+// request, so cached services follow a change at once).
 // Images are not sent by default (the default model is text only; the persona prompt carries
 // the image's generation tags). Set config `chatSendImages: true` with a vision model to send
 // the character picture and the viewer avatar as image_url parts.
@@ -157,30 +165,83 @@ class DeepInfraChatService {
         try { return this.globalResources.getConfig({ path: key }); } catch (_) { return undefined; }
     }
 
-    getProviderId() {
+    // Saved Control Panel choice ({ provider, model, effort }); empty strings when unset.
+    engineSettings() {
+        try {
+            const chatDb = this.globalResources.getChatDatabase && this.globalResources.getChatDatabase();
+            if (chatDb && typeof chatDb.getChatEngineSettings === 'function') {
+                return chatDb.getChatEngineSettings() || {};
+            }
+        } catch (_) { /* no chat db yet */ }
+        return {};
+    }
+
+    configProviderId() {
         const id = String(this.readConfig('chatProvider') || 'deepinfra').trim().toLowerCase();
         return id || 'deepinfra';
+    }
+
+    getProviderId() {
+        const saved = String(this.engineSettings().provider || '').trim().toLowerCase();
+        if (saved && customModelProviders.hasKey(this.globalResources, saved)) {
+            const row = customModelProviders.lookup(this.globalResources, saved);
+            if (row && row.id) return row.id;
+        }
+        return this.configProviderId();
     }
 
     getProvider() {
         return customModelProviders.requireReady(this.globalResources, this.getProviderId());
     }
 
-    // config chatModel, else the provider row's defaultModel, else the DeepInfra preset default.
+    // Saved model (for this provider), else config chatModel, else the provider row's
+    // defaultModel, else the DeepInfra preset default.
     getDefaultModel() {
+        const providerId = this.getProviderId();
+        const saved = this.engineSettings();
+        const savedProvider = String(saved.provider || '').trim().toLowerCase();
+        const savedModel = String(saved.model || '').trim();
+        if (savedModel && (!savedProvider || savedProvider === providerId)) return savedModel;
+        // config chatModel belongs to config chatProvider
         const configured = String(this.readConfig('chatModel') || '').trim();
-        if (configured) return configured;
-        const row = customModelProviders.lookup(this.globalResources, this.getProviderId());
-        if (row && row.defaultModel) return row.defaultModel;
+        if (configured && providerId === this.configProviderId()) return configured;
+        return this.providerDefaultModel(providerId);
+    }
+
+    providerDefaultModel(providerId) {
+        const row = customModelProviders.lookup(this.globalResources, providerId);
+        const preferred = row ? customModelProviders.preferredModel(row) : '';
+        if (preferred) return preferred;
         const preset = customModelProviders.PRESETS.find((item) => item.id === 'deepinfra');
         return (preset && preset.defaultModel) || 'deepseek-ai/DeepSeek-V4.1-Flash';
     }
 
+    // 'none' | 'low' | 'medium' | 'high', or '' for the provider's default.
+    getEffort() {
+        const effort = String(this.engineSettings().effort || '').trim().toLowerCase();
+        return customModelProviders.EFFORTS.includes(effort) ? effort : '';
+    }
+
     // Old Grok sessions keep their row; their grok-* model id never reaches DeepInfra.
+    // A session stored on another provider follows the chosen engine and its model.
     modelForSession(sessionData) {
         const wanted = String((sessionData && sessionData.model) || '').trim();
         if (sessionData && sessionData.provider === this.getProviderId() && wanted && !/^grok/i.test(wanted)) return wanted;
         return this.getDefaultModel();
+    }
+
+    // Chat-completions body for one turn (reasoning_effort only when an effort is chosen).
+    buildRequestBody(chat, messages, stream) {
+        const body = {
+            model: this.modelForSession({ provider: chat && chat.sessionProvider, model: chat && chat.model }),
+            messages,
+            max_tokens: MAX_TOKENS,
+            stream
+        };
+        if (stream) body.stream_options = { include_usage: true };
+        const effort = this.getEffort();
+        if (effort) body.reasoning_effort = effort;
+        return body;
     }
 
     sendImages() {
@@ -201,6 +262,8 @@ class DeepInfraChatService {
         return {
             chatId: sessionData.id,
             model: this.modelForSession(sessionData),
+            // the provider the model belongs to; complete() re-resolves both per turn
+            sessionProvider: this.getProviderId(),
             systemPrompt: enhanced + '\n' + FORMAT_REMINDER,
             sessionData,
             personaSettings
@@ -275,27 +338,32 @@ class DeepInfraChatService {
     async complete(chat, messages, onStreamUpdate) {
         const provider = this.getProvider();
         const stream = typeof onStreamUpdate === 'function';
-        const body = {
-            model: chat.model || this.getDefaultModel(),
-            messages,
-            max_tokens: MAX_TOKENS,
-            stream
-        };
-        if (stream) body.stream_options = { include_usage: true };
-        const res = await fetch(provider.chatUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${provider.apiKey}`
-            },
-            body: JSON.stringify(body),
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-        });
-        customModelProviders.noteRateLimit(provider.id, res.headers);
-        customModelProviders.noteKeyResult(provider.id, provider.apiKey, res.status);
-        if (!res.ok) {
-            let detail = '';
+        const body = this.buildRequestBody(chat, messages, stream);
+        let res;
+        let detail = '';
+        for (let attempt = 0; attempt < 2; attempt++) {
+            res = await fetch(provider.chatUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${provider.apiKey}`
+                },
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+            });
+            customModelProviders.noteRateLimit(provider.id, res.headers);
+            customModelProviders.noteKeyResult(provider.id, provider.apiKey, res.status);
+            if (res.ok) break;
+            detail = '';
             try { detail = (await res.text()).slice(0, 300); } catch (_) { /* none */ }
+            // A model without the reasoning knob: retry once without it.
+            if (res.status === 400 && body.reasoning_effort && /reasoning/i.test(detail)) {
+                delete body.reasoning_effort;
+                continue;
+            }
+            break;
+        }
+        if (!res.ok) {
             const error = new Error(`${provider.name} chat request failed (HTTP ${res.status})${detail ? `: ${detail}` : ''}`);
             error.status = res.status;
             throw error;

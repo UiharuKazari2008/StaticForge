@@ -398,10 +398,316 @@
         pick(t) { markSel(t); }
     };
 
+    // ---- Chat (Yozora #763) --------------------------------------------------------------------
+    // Melaton's own item: the chat personas' engine, model and effort (stored on the server, so
+    // the phone's Messaging Options show the same: wsClient.getChatEngineSettings /
+    // saveChatEngineSettings / getChatEngineModels), My info (wsClient.getPersonaSettings /
+    // savePersonaSettings, the row the Memories applet's persona form edits too; saves merge) and
+    // the desktop Chat window's own view choices (localStorage, chatSystem.js).
+
+    const CHAT_ICON = '/static_images/app_icons/48/vista-messenger.webp';
+    const CHAT_ICON16 = '/static_images/app_icons/16/vista-messenger.webp';
+    const CHAT_EFFORT_NAMES = { default: 'Default', none: 'None', low: 'Low', medium: 'Medium', high: 'High' };
+    const CHAT_VERBOSITY = [[1, 'Brief'], [2, 'Direct'], [3, 'Expressive'], [4, 'Elaborate'], [5, 'Poetic']];
+    const CHAT_VIEW_KEYS = [['chat-show-actions-sfx', 'Show actions and sound effects in conversations'], ['chat-show-metadata', 'Show 4th wall events (emotion, location, plans and memories)']];
+    const chatState = { loaded: false, loading: false, error: '', engine: null, models: {}, modelsError: {}, draft: null, status: '' };
+
+    function chatLocal(key) {
+        try { return localStorage.getItem(key) === 'true'; } catch (_) { return false; }
+    }
+
+    function chatDraftFrom(engine, persona) {
+        const v = Number(persona.default_verbosity);
+        return {
+            provider: (engine && engine.settings && engine.settings.provider) || '',
+            model: (engine && engine.settings && engine.settings.model) || '',
+            effort: (engine && engine.settings && engine.settings.effort) || 'default',
+            userName: persona.user_name || '',
+            backstory: persona.backstory || '',
+            verbosity: v >= 1 && v <= 5 ? v : 3,
+            photo: persona.profile_photo_base64 || '',
+            photoChanged: false,
+            view: Object.fromEntries(CHAT_VIEW_KEYS.map(([k]) => [k, chatLocal(k)]))
+        };
+    }
+
+    async function chatLoad() {
+        const ws = root.wsClient;
+        if (chatState.loading) return;
+        chatState.loading = true;
+        chatState.error = '';
+        try {
+            if (!ws || typeof ws.getChatEngineSettings !== 'function') throw new Error('Melaton is not connected to the server.');
+            const [engine, persona] = await Promise.all([ws.getChatEngineSettings(), ws.getPersonaSettings()]);
+            if (!engine || engine.success === false) throw new Error((engine && engine.error) || 'The chat settings could not be read.');
+            chatState.engine = engine;
+            chatState.draft = chatDraftFrom(engine, (persona && persona.settings) || {});
+            chatState.loaded = true;
+        } catch (err) {
+            chatState.error = err && err.message ? err.message : String(err);
+        }
+        chatState.loading = false;
+        rerender();
+        if (chatState.loaded) void chatLoadModels(chatProviderId());
+    }
+
+    /** The engine the draft names ('' is the server's default engine). */
+    function chatProviderId() {
+        const e = chatState.engine;
+        const d = chatState.draft;
+        return (d && d.provider) || (e && e.serverDefault && e.serverDefault.provider) || '';
+    }
+
+    async function chatLoadModels(id, force) {
+        if (!id || (!force && chatState.models[id])) return;
+        const ws = root.wsClient;
+        try {
+            const res = await ws.getChatEngineModels(id, { force: !!force });
+            chatState.models[id] = res.models || [];
+            chatState.modelsError[id] = res.models && res.models.length ? '' : (res.error || 'No models are listed.');
+        } catch (err) {
+            chatState.models[id] = [];
+            chatState.modelsError[id] = err && err.message ? err.message : 'The model list could not be read.';
+        }
+        if (CP() && CP().currentPage() === 'chat' && chatProviderId() === id) rerender();
+    }
+
+    function chatDefaultModel(id) {
+        const e = chatState.engine;
+        const p = e && (e.providers || []).find((x) => x.id === id);
+        return (p && p.defaultModel) || (e && e.effective && e.effective.provider === id ? e.effective.model : '');
+    }
+
+    function chatModelName(id, model) {
+        const m = (chatState.models[id] || []).find((x) => x.id === model);
+        return m && m.name ? m.name : String(model || '').split('/').pop();
+    }
+
+    function chatEngineSection() {
+        const e = chatState.engine;
+        const d = chatState.draft;
+        const id = chatProviderId();
+        const keyed = (e.providers || []).filter((p) => p.hasKey);
+        const def = e.serverDefault || {};
+        const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`;
+        const engines = [opt('', `Default (${def.providerName || def.provider || 'server'})`, d.provider)]
+            .concat(keyed.map((p) => opt(p.id, p.name, d.provider)));
+        if (d.provider && !keyed.some((p) => p.id === d.provider)) engines.push(opt(d.provider, `${d.provider} (no key)`, d.provider));
+        const list = chatState.models[id];
+        const defModel = chatDefaultModel(id);
+        const models = [opt('', defModel ? `Default (${chatModelName(id, defModel)})` : 'Default', d.model)];
+        if (d.model && !(list || []).some((m) => m.id === d.model)) models.push(opt(d.model, d.model, d.model));
+        (list || []).forEach((m) => models.push(opt(m.id, m.name && m.name !== m.id ? `${m.name} (${m.id})` : m.id, d.model)));
+        const modelNote = !list ? 'Loading the list of models...' : (chatState.modelsError[id] || '');
+        return `
+            <div class="cpl-vsection"><span>Chat engine</span></div>
+            <table class="cpl-power-grid cpl-chat-grid">
+                <tr><td><label for="cpl-chat-engine">Engine:</label></td><td><select class="cpl-vselect cpl-chat-wide" id="cpl-chat-engine" data-chat="provider">${engines.join('')}</select></td></tr>
+                <tr><td><label for="cpl-chat-model">Model:</label></td><td><select class="cpl-vselect cpl-chat-wide" id="cpl-chat-model" data-chat="model">${models.join('')}</select>
+                    <button type="button" class="cpl-vlink cpl-chat-refresh" data-cpl-vpage="chatmodels">Refresh</button>
+                    ${modelNote ? `<div class="cpl-chat-note">${esc(modelNote)}</div>` : ''}</td></tr>
+                <tr><td><label for="cpl-chat-effort">Effort:</label></td><td><select class="cpl-vselect" id="cpl-chat-effort" data-chat="effort">${(e.efforts || Object.keys(CHAT_EFFORT_NAMES)).map((x) => opt(x, CHAT_EFFORT_NAMES[x] || x, d.effort)).join('')}</select></td></tr>
+            </table>
+            <p class="cpl-vtext cpl-vindent">New conversations use this engine and model. A conversation started on another engine moves to this one with its next message. Effort sets how long the model thinks before it answers; Default leaves it to the model.</p>`;
+    }
+
+    function chatInfoSection() {
+        const d = chatState.draft;
+        const pic = d.photo ? `data:image/jpeg;base64,${d.photo}` : '/static_images/account-pictures/guest.png';
+        return `
+            <div class="cpl-vsection"><span>My info</span></div>
+            <p class="cpl-vtext">Personas see your name, picture and story when you talk to them.</p>
+            <div class="cpl-chat-info">
+                <div class="cpl-chat-photo">
+                    <span class="cpl-ua-picture"><img src="${esc(pic)}" alt=""><img class="cpl-ua-frame" src="/static_images/vista-cpl/usertile-frame-48.png" alt=""></span>
+                    <div class="cpl-chat-photo-links">
+                        <button type="button" class="cpl-vlink" data-cpl-vpage="chatphoto">Browse for a picture...</button>
+                        ${d.photo ? '<button type="button" class="cpl-vlink" data-cpl-vpage="chatnophoto">Remove picture</button>' : ''}
+                    </div>
+                    <input type="file" accept="image/*" class="cpl-chat-file" hidden>
+                </div>
+                <table class="cpl-power-grid cpl-chat-grid">
+                    <tr><td><label for="cpl-chat-name">Name:</label></td><td><input type="text" class="tbp-edit cpl-vedit" id="cpl-chat-name" data-chat="userName" maxlength="80" spellcheck="false" value="${esc(d.userName)}"></td></tr>
+                    <tr><td class="is-top"><label for="cpl-chat-backstory">About me:</label></td><td><textarea class="cpl-chat-backstory" id="cpl-chat-backstory" data-chat="backstory" rows="5" maxlength="4000">${esc(d.backstory)}</textarea></td></tr>
+                    <tr><td><label for="cpl-chat-verbosity">Default verbosity:</label></td><td><select class="cpl-vselect" id="cpl-chat-verbosity" data-chat="verbosity">${CHAT_VERBOSITY.map(([n, t]) => `<option value="${n}"${n === d.verbosity ? ' selected' : ''}>${n} ${esc(t)}</option>`).join('')}</select></td></tr>
+                </table>
+            </div>`;
+    }
+
+    function chatViewSection() {
+        const d = chatState.draft;
+        return `
+            <div class="cpl-vsection"><span>Conversation window</span></div>
+            ${CHAT_VIEW_KEYS.map(([k, t], i) => `<div class="cpl-vcheck"><input type="checkbox" id="cpl-chat-view-${i}" data-chat-view="${k}"${d.view[k] ? ' checked' : ''}><label for="cpl-chat-view-${i}">${esc(t)}</label></div>`).join('')}`;
+    }
+
+    pages.chat = {
+        title: () => 'Chat',
+        icon16: CHAT_ICON16,
+        tasks: () => K.tasks([[
+            { t: 'Open Chat', a: 'js:chatopen' },
+            { t: 'Refresh the list of models', a: 'js:chatmodels' }
+        ]], [{ t: 'Mail', a: 'item:mail' }, { t: 'User Accounts', a: 'item:user-accounts' }]),
+        body: () => {
+            let inner;
+            if (chatState.error) {
+                inner = `<p class="cpl-vtext">${esc(chatState.error)}</p>
+                    <div class="cpl-vbuttons is-left"><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="chatretry">Try again</button></div>`;
+            } else if (!chatState.loaded) {
+                inner = '<p class="cpl-vtext">Reading the chat settings...</p>';
+            } else {
+                inner = `${chatEngineSection()}${chatInfoSection()}${chatViewSection()}
+                    <div class="cpl-vbuttons">${chatState.status ? `<span class="cpl-chat-status">${esc(chatState.status)}</span>` : ''}<button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="chatsave">Save changes</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="chatcancel">Cancel</button></div>`;
+            }
+            return `<div class="cpl-vpage cpl-chat">
+                <h1 class="cpl-vtitle">Change chat settings</h1>
+                <p class="cpl-vtext">Choose the engine and model the chat personas use, and tell them about yourself. These settings are shared with Text Messages on your phone.</p>
+                ${inner}
+            </div>`;
+        },
+        mount(main) {
+            if (!chatState.loaded && !chatState.loading && !chatState.error) void chatLoad();
+            const sync = (ev) => {
+                const t = ev.target;
+                const d = chatState.draft;
+                if (!d || !t || !t.dataset) return;
+                if (t.dataset.chatView) { d.view[t.dataset.chatView] = t.checked; return; }
+                const k = t.dataset.chat;
+                if (!k) return;
+                chatState.status = '';
+                if (k === 'verbosity') d.verbosity = Number(t.value) || 3;
+                else d[k] = t.value;
+                if (k === 'provider' && ev.type === 'change') {
+                    d.model = '';
+                    rerender();
+                    void chatLoadModels(chatProviderId());
+                }
+            };
+            main.addEventListener('input', sync);
+            main.addEventListener('change', sync);
+            const file = main.querySelector('.cpl-chat-file');
+            if (file) file.addEventListener('change', () => void chatPickPhoto(file.files && file.files[0]));
+        }
+    };
+
+    /** A picked picture, drawn into at most 512 px as a JPEG (the chat sends it to vision models). */
+    function chatPickPhoto(f) {
+        if (!f || !chatState.draft) return Promise.resolve();
+        return new Promise((resolve) => {
+            const url = URL.createObjectURL(f);
+            const img = new Image();
+            img.onload = () => {
+                const scale = Math.min(1, 512 / Math.max(img.naturalWidth, img.naturalHeight));
+                const c = doc.createElement('canvas');
+                c.width = Math.max(1, Math.round(img.naturalWidth * scale));
+                c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+                const g = c.getContext('2d');
+                g.fillStyle = '#fff';
+                g.fillRect(0, 0, c.width, c.height);
+                g.drawImage(img, 0, 0, c.width, c.height);
+                chatState.draft.photo = c.toDataURL('image/jpeg', 0.9).split(',')[1] || '';
+                chatState.draft.photoChanged = true;
+                chatState.status = '';
+                URL.revokeObjectURL(url);
+                rerender();
+                resolve();
+            };
+            img.onerror = () => {
+                URL.revokeObjectURL(url);
+                msg('Melaton cannot open this picture. Choose a JPEG, PNG, GIF or WebP picture.', 'Chat');
+                resolve();
+            };
+            img.src = url;
+        });
+    }
+
+    handlers.chat = {
+        chatopen() {
+            const open = async () => {
+                if (root.featureLoader) await root.featureLoader.loadFeature('chat');
+                if (root.chatSystem && typeof root.chatSystem.showAllChats === 'function') root.chatSystem.showAllChats();
+            };
+            void open();
+        },
+        chatmodels() {
+            const id = chatProviderId();
+            if (!id) return;
+            delete chatState.models[id];
+            rerender();
+            void chatLoadModels(id, true);
+        },
+        chatretry() {
+            chatState.error = '';
+            rerender();
+        },
+        chatphoto() {
+            const f = doc.querySelector('#melatonControlPanelModal .cpl-chat-file');
+            if (f) { f.value = ''; f.click(); }
+        },
+        chatnophoto() {
+            if (!chatState.draft) return;
+            chatState.draft.photo = '';
+            chatState.draft.photoChanged = true;
+            rerender();
+        },
+        chatcancel() {
+            chatState.loaded = false;
+            chatState.draft = null;
+            chatState.status = '';
+            if (CP()) CP().navigate('home');
+        },
+        async chatsave(btn) {
+            const d = chatState.draft;
+            const ws = root.wsClient;
+            if (!d || !ws) return;
+            if (btn) btn.disabled = true;
+            try {
+                const engine = await ws.saveChatEngineSettings({ provider: d.provider, model: d.model, effort: d.effort });
+                if (!engine || engine.success === false) throw new Error((engine && engine.error) || 'The chat engine could not be saved.');
+                const persona = { user_name: d.userName.trim(), backstory: d.backstory, default_verbosity: d.verbosity };
+                if (d.photoChanged) persona.profile_photo_base64 = d.photo;
+                const res = await ws.savePersonaSettings(persona);
+                if (!res || res.success === false) throw new Error((res && res.message) || 'My info could not be saved.');
+                d.photoChanged = false;
+                chatState.engine = engine;
+                CHAT_VIEW_KEYS.forEach(([k]) => { try { localStorage.setItem(k, d.view[k] ? 'true' : 'false'); } catch (_) { /* storage blocked */ } });
+                // an open Chat window follows at once
+                const list = doc.getElementById('chatMessagesList');
+                if (list) {
+                    list.classList.toggle('show-actions-sfx', !!d.view['chat-show-actions-sfx']);
+                    list.classList.toggle('show-metadata', !!d.view['chat-show-metadata']);
+                }
+                if (root.chatSystem) {
+                    root.chatSystem.personaSettings = Object.assign({}, root.chatSystem.personaSettings || {}, persona, { profile_photo_base64: d.photo });
+                    if (root.chatSystem.currentChatId && typeof root.chatSystem.renderChatMessages === 'function') {
+                        try { root.chatSystem.renderChatMessages(); } catch (_) { /* window closed */ }
+                    }
+                }
+                root.dispatchEvent(new CustomEvent('melaton-chat-settings', { detail: { engine: engine.settings, effective: engine.effective } }));
+                chatState.status = 'Your changes have been saved.';
+            } catch (err) {
+                msg(err && err.message ? err.message : String(err), 'Chat');
+            }
+            if (btn) btn.disabled = false;
+            rerender();
+        }
+    };
+
     function register() {
         const cp = CP();
         if (!cp) return false;
         Object.entries(pages).forEach(([id, page]) => cp.registerPage(id, page));
+        // the Chat item reads the server's settings afresh each time it opens
+        cp.registerItem({
+            id: 'chat',
+            name: 'Chat',
+            image: CHAT_ICON,
+            description: 'Choose the engine, model and effort the chat personas use, and change your name, picture and story.',
+            open: () => {
+                Object.assign(chatState, { loaded: false, loading: false, error: '', draft: null, status: '' });
+                cp.navigate('chat');
+            }
+        });
         return true;
     }
 

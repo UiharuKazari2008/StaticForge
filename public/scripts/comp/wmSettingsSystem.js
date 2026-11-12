@@ -979,10 +979,17 @@
                 ${ui.listbox(rows, { maxHeight: 210 }).replace('class="wm-listbox"', 'class="wm-listbox wm-msgopt-accts"')}
                 ${ui.buttons([['security', 'Security...'], ['signatures', 'Signatures...']])}
                 ${ui.check('picker', 'Display account picker when opening Messaging', d.picker)}`;
-            ui.bindListbox(el.querySelector('.wm-listbox'), (key) => {
+            ui.bindListbox(el.querySelector('.wm-listbox'), async (key) => {
                 d.acctSel = key;
                 const m = window.wmMessaging;
                 if (key === '__new' && m && typeof m.setupAccount === 'function') m.setupAccount();
+                // the device opens a tapped account's settings: Text Messages' own pages (#763);
+                // what was changed here is kept first (ok on those pages comes back to this tab)
+                if (key === 'Text Messages' && typeof wmSettings.openChatOptions === 'function') {
+                    const keys = await messagingOptionsCommit(d);
+                    if (Array.isArray(keys) && keys.length) ui.changed(keys);
+                    wmSettings.openChatOptions('messaging-options');
+                }
             });
             el.querySelector('input[name="picker"]').addEventListener('change', (e) => { d.picker = e.target.checked; });
             el.querySelector('[data-act="security"]').addEventListener('click', () => { d.sub = 'security'; api.rerender(); });
@@ -1087,6 +1094,279 @@
         render: messagingOptionsRender,
         commit: messagingOptionsCommit
     });
+
+    // ================================================================ Messaging > Options > Text Messages
+    // Yozora #763: the Text Messages account's own settings (tap "Text Messages" on Options' Accounts
+    // tab, or Text Messages' Menu > Tools > Account Options...), three tabs in WM 6.1's Messaging
+    // Options style: Messages (what a thread shows of a reply, the default verbosity of new chats),
+    // My Info (the name, picture and backstory the personas know the user by: persona_settings, the
+    // same store as Memories' LinkXi persona) and Engine (the chat engine, model and reasoning effort,
+    // shared with the desktop Control Panel's Chat page: get/save_chat_engine_settings). ok saves and
+    // goes back to Options' Accounts tab when it was opened from there.
+    const CHAT_KEYS = { actions: 'wmChatShowActions', events: 'wmChatShowEvents' };
+    const CHAT_VERBOSITY = [['1', 'Brief'], ['2', 'Direct'], ['3', 'Expressive'], ['4', 'Elaborate'], ['5', 'Poetic']];
+    const CHAT_EFFORTS = { default: 'Default', none: 'None', low: 'Low', medium: 'Medium', high: 'High' };
+    let chatOptsFrom = null; // 'messaging-options' when Options' Accounts tab opened the page
+
+    /** The chat engine calls (agent A's wsClient methods; the bare packets when this client's copy predates them). */
+    const chatEngine = {
+        data: (r) => (r && r.data && typeof r.data === 'object' && r.data.success !== undefined ? r.data : r),
+        async get() {
+            const c = window.wsClient;
+            if (!c) throw new Error('Not connected.');
+            if (typeof c.getChatEngineSettings === 'function') return c.getChatEngineSettings();
+            return this.data(await c.sendMessage('get_chat_engine_settings', {}, false));
+        },
+        async save(settings) {
+            const c = window.wsClient;
+            if (!c) throw new Error('Not connected.');
+            if (typeof c.saveChatEngineSettings === 'function') return c.saveChatEngineSettings(settings);
+            return this.data(await c.sendMessage('save_chat_engine_settings', { settings }, false));
+        },
+        async models(provider) {
+            const c = window.wsClient;
+            if (!c || !provider) return { models: [] };
+            if (typeof c.getChatEngineModels === 'function') return c.getChatEngineModels(provider);
+            const b = this.data(await c.sendMessage('director_get_models', { engine: `custom:${provider}`, force: false }, false)) || {};
+            return { models: Array.isArray(b.models) ? b.models.map((m) => ({ id: m.id, name: m.name || m.id, default: m.default === true })) : [], error: b.error || null };
+        }
+    };
+
+    function chatOptionsInit() {
+        const d = {
+            actions: lsGet(CHAT_KEYS.actions) === '1',
+            events: lsGet(CHAT_KEYS.events) === '1',
+            from: chatOptsFrom,
+            persona: null, // persona_settings as read (null until it comes)
+            me: { user_name: '', backstory: '', default_verbosity: '3', photo: '' },
+            engine: null, // get_chat_engine_settings as read
+            pick: { provider: '', model: '', effort: 'default' },
+            models: {}, // provider -> [{ id, name, default }] | 'loading' | 'error'
+            loadError: ''
+        };
+        chatOptsFrom = null;
+        d.initial = { actions: d.actions, events: d.events };
+        chatOptionsLoad(d);
+        return d;
+    }
+
+    async function chatOptionsLoad(d) {
+        const c = window.wsClient;
+        const [p, e] = await Promise.allSettled([
+            c && typeof c.getPersonaSettings === 'function' ? c.getPersonaSettings() : Promise.reject(new Error('Not connected.')),
+            chatEngine.get()
+        ]);
+        if (p.status === 'fulfilled' && p.value && p.value.success !== false) {
+            const s = p.value.settings || {};
+            d.persona = s;
+            d.me = { user_name: s.user_name || '', backstory: s.backstory || '', default_verbosity: String(s.default_verbosity || '3'), photo: s.profile_photo_base64 || '' };
+            if (!CHAT_VERBOSITY.some(([v]) => v === d.me.default_verbosity)) d.me.default_verbosity = '3';
+            d.meInitial = JSON.stringify(d.me);
+        } else d.loadError = 'Your information could not be read.';
+        if (e.status === 'fulfilled' && e.value && e.value.success !== false) {
+            d.engine = e.value;
+            const s = e.value.settings || {};
+            d.pick = { provider: s.provider || '', model: s.model || '', effort: s.effort || 'default' };
+            d.pickInitial = JSON.stringify(d.pick);
+            chatOptionsModels(d, chatProviderOf(d));
+        } else d.engineError = 'The chat engine settings could not be read.';
+        if (typeof d.rerender === 'function') d.rerender();
+    }
+
+    /** The provider a pick means ('' = the server's default engine). */
+    function chatProviderOf(d) {
+        const e = d.engine || {};
+        return d.pick.provider || (e.serverDefault && e.serverDefault.provider) || (e.effective && e.effective.provider) || '';
+    }
+
+    async function chatOptionsModels(d, provider) {
+        if (!provider || Array.isArray(d.models[provider]) || d.models[provider] === 'loading') return;
+        d.models[provider] = 'loading';
+        try {
+            const r = await chatEngine.models(provider);
+            d.models[provider] = Array.isArray(r && r.models) ? r.models : [];
+        } catch (_) { d.models[provider] = 'error'; }
+        if (typeof d.rerender === 'function') d.rerender();
+    }
+
+    /** A gallery picture as My Info's photo: its preview, cut square to 160 px, as JPEG base64. */
+    function chatPhotoFrom(filename) {
+        return new Promise((resolve, reject) => {
+            const stem = String(filename).replace(/\.(png|jpe?g|webp)$/i, '');
+            const img = new Image();
+            img.onload = () => {
+                try {
+                    const s = Math.min(img.naturalWidth, img.naturalHeight);
+                    const cv = document.createElement('canvas');
+                    cv.width = 160; cv.height = 160;
+                    // the face is near the top of a portrait print
+                    cv.getContext('2d').drawImage(img, (img.naturalWidth - s) / 2, Math.max(0, (img.naturalHeight - s) * 0.2), s, s, 0, 0, 160, 160);
+                    resolve(cv.toDataURL('image/jpeg', 0.85).split(',')[1]);
+                } catch (err) { reject(err); }
+            };
+            img.onerror = () => reject(new Error('The picture could not be read.'));
+            img.src = `/previews/${encodeURIComponent(`${stem}.webp`)}`;
+        });
+    }
+
+    function chatPickPhoto(d) {
+        const fd = window.wmFileDialogs;
+        if (!fd || typeof fd.open !== 'function') return;
+        const fileOf = (i) => {
+            if (!i) return null;
+            if (i.targetKind === 'image' || i.targetKind === 'scrap') return i.previewImageFilename || i.targetId || null;
+            if (i.shortcutType === 'image' && i.shortcutData && i.shortcutData.filename) return i.shortcutData.filename;
+            return null;
+        };
+        fd.open({
+            title: 'Choose a Picture',
+            appTitle: 'Messaging',
+            typeLabel: 'Pictures',
+            pictures: true,
+            accept: (i) => !!fileOf(i),
+            onPick(item) {
+                const f = fileOf(item);
+                if (!f) return false;
+                chatPhotoFrom(f).then((b64) => { d.me.photo = b64; if (typeof d.rerender === 'function') d.rerender(); }, () => {
+                    const s1 = sh();
+                    if (s1) s1.messageBox({ title: 'Messaging', icon: 'error', text: 'The picture could not be used.', modal: true });
+                });
+                return true;
+            }
+        });
+    }
+
+    function chatOptionsRender(el, tab, d, api) {
+        d.rerender = api.rerender;
+        if (tab === 'messages') {
+            const verb = (CHAT_VERBOSITY.find(([v]) => v === d.me.default_verbosity) || CHAT_VERBOSITY[2])[1];
+            el.innerHTML = `${ui.check('actions', 'Show actions and sound effects', d.actions)}
+                ${ui.check('events', 'Show 4th wall events (memory, emotion, plans)', d.events)}
+                ${ui.check('receipt', 'Request message delivery notification', false, 'disabled')}
+                ${ui.gap()}
+                ${ui.text('Verbosity of new conversations:')}
+                ${ui.comboHtml('verbosity', verb, !d.persona)}`;
+            el.querySelector('input[name="actions"]').addEventListener('change', (e) => { d.actions = e.target.checked; });
+            el.querySelector('input[name="events"]').addEventListener('change', (e) => { d.events = e.target.checked; });
+            ui.bindCombo(el.querySelector('[data-act="verbosity"]'), CHAT_VERBOSITY, d.me.default_verbosity, (v) => { d.me.default_verbosity = v; });
+            return;
+        }
+        if (tab === 'myinfo') {
+            if (!d.persona) { el.innerHTML = ui.text(d.loadError || 'Reading your information...'); return; }
+            const pic = d.me.photo ? `data:image/jpeg;base64,${d.me.photo}` : '';
+            const nameId = ui.uid('wmChatMe');
+            el.innerHTML = `${ui.row('Name:', ui.edit(nameId, d.me.user_name, 'name="user_name" placeholder="How the personas call you"'), { wide: true, for: nameId })}
+                <div class="wm-chatopt-pic">
+                    <span class="wm-chatopt-photo">${pic ? `<img src="${pic}" alt="" draggable="false">` : ''}</span>
+                    ${ui.buttons([['photo', 'Change...'], ['nophoto', 'Remove', !d.me.photo]], false)}
+                </div>
+                ${ui.sub('Backstory:')}
+                <textarea class="wm-edit wm-chatopt-area" name="backstory" rows="6" aria-label="Backstory" placeholder="Who you are to the personas"></textarea>`;
+            const box = el.querySelector('textarea[name="backstory"]');
+            box.value = d.me.backstory;
+            box.addEventListener('input', () => { d.me.backstory = box.value; });
+            el.querySelector('input[name="user_name"]').addEventListener('input', (e) => { d.me.user_name = e.target.value; });
+            el.querySelector('[data-act="photo"]').addEventListener('click', () => chatPickPhoto(d));
+            el.querySelector('[data-act="nophoto"]').addEventListener('click', () => { d.me.photo = ''; api.rerender(); });
+            return;
+        }
+        // engine
+        if (!d.engine) { el.innerHTML = ui.text(d.engineError || 'Reading the chat engine settings...'); return; }
+        const e = d.engine;
+        const def = e.serverDefault || {};
+        const provs = (Array.isArray(e.providers) ? e.providers : []).filter((p) => p && p.hasKey !== false);
+        const engines = [['', `Default (${def.providerName || def.provider || 'server'})`]].concat(provs.map((p) => [p.id, p.name || p.id]));
+        const provider = chatProviderOf(d);
+        const row = provs.find((p) => p.id === provider);
+        const list = d.models[provider];
+        const defModel = (row && row.defaultModel) || (Array.isArray(list) && (list.find((m) => m.default) || {}).id) || '';
+        const models = [['', `Default${defModel ? ` (${defModel})` : ''}`]].concat(Array.isArray(list) ? list.map((m) => [m.id, m.name && m.name !== m.id ? `${m.name}` : m.id]) : []);
+        if (d.pick.model && !models.some(([v]) => v === d.pick.model)) models.push([d.pick.model, d.pick.model]);
+        const efforts = (Array.isArray(e.efforts) && e.efforts.length ? e.efforts : Object.keys(CHAT_EFFORTS)).map((k) => [k, CHAT_EFFORTS[k] || k]);
+        const labelOf = (opts, v) => (opts.find(([k]) => k === v) || opts[0] || ['', ''])[1];
+        const modelLabel = list === 'loading' ? 'Reading the models...' : labelOf(models, d.pick.model);
+        el.innerHTML = `${ui.text('Engine:')}
+            ${ui.comboHtml('engine', labelOf(engines, d.pick.provider))}
+            ${ui.gap()}
+            ${ui.text('Model:')}
+            ${ui.comboHtml('model', modelLabel, list === 'loading')}
+            ${ui.gap()}
+            ${ui.text('Reasoning effort:')}
+            ${ui.comboHtml('effort', labelOf(efforts, d.pick.effort))}
+            ${list === 'error' ? ui.note('The models could not be read. The engine\'s default model is used.') : ''}
+            ${ui.note('Used by every Text Messages conversation and the desktop Chat.')}`;
+        ui.bindCombo(el.querySelector('[data-act="engine"]'), engines, d.pick.provider, (v) => {
+            if (v === d.pick.provider) return;
+            d.pick.provider = v;
+            d.pick.model = '';
+            chatOptionsModels(d, chatProviderOf(d));
+            api.rerender();
+        });
+        ui.bindCombo(el.querySelector('[data-act="model"]'), models, d.pick.model, (v) => { d.pick.model = v; });
+        ui.bindCombo(el.querySelector('[data-act="effort"]'), efforts, d.pick.effort, (v) => { d.pick.effort = v; });
+    }
+
+    async function chatOptionsCommit(d) {
+        const keys = [];
+        const s1 = sh();
+        const fail = async (text) => { if (s1) await s1.messageBox({ title: 'Messaging', icon: 'error', text, modal: true }); };
+        if (d.actions !== d.initial.actions && lsPut(CHAT_KEYS.actions, d.actions ? '1' : '0')) keys.push(CHAT_KEYS.actions);
+        if (d.events !== d.initial.events && lsPut(CHAT_KEYS.events, d.events ? '1' : '0')) keys.push(CHAT_KEYS.events);
+        d.initial = { actions: d.actions, events: d.events };
+        const c = window.wsClient;
+        if (d.persona && JSON.stringify(d.me) !== d.meInitial) {
+            const was = JSON.parse(d.meInitial);
+            const changed = {};
+            if (d.me.user_name !== was.user_name) changed.user_name = d.me.user_name.trim();
+            if (d.me.backstory !== was.backstory) changed.backstory = d.me.backstory;
+            if (d.me.default_verbosity !== was.default_verbosity) changed.default_verbosity = parseInt(d.me.default_verbosity, 10) || 3;
+            if (d.me.photo !== was.photo) changed.profile_photo_base64 = d.me.photo;
+            try {
+                const r = c ? await c.savePersonaSettings(changed) : null;
+                if (!r || r.success === false) throw new Error((r && (r.message || r.error)) || 'refused');
+                d.meInitial = JSON.stringify(d.me);
+                // the desktop chat (and Text Messages' "Me" picture) read this copy
+                const cs = window.chatSystem;
+                if (cs) cs.personaSettings = Object.assign({}, cs.personaSettings || {}, changed);
+            } catch (_) {
+                await fail('Your information could not be saved.');
+                return false;
+            }
+        }
+        if (d.engine && JSON.stringify(d.pick) !== d.pickInitial) {
+            try {
+                const r = await chatEngine.save({ provider: d.pick.provider, model: d.pick.model, effort: d.pick.effort });
+                if (!r || r.success === false) throw new Error((r && r.error) || 'refused');
+                d.pickInitial = JSON.stringify(d.pick);
+            } catch (err) {
+                await fail(`The chat engine could not be changed.${err && err.message && err.message !== 'refused' ? `\n\n${err.message}` : ''}`);
+                return false;
+            }
+        }
+        window.dispatchEvent(new CustomEvent('wmChatOptionsChange', { detail: { keys } }));
+        // back to Options' Accounts tab when that is where it was opened from
+        if (d.from === 'messaging-options' && typeof wmSettings.open === 'function') {
+            if (keys.length) ui.changed(keys);
+            wmSettings.open('messaging-options', 'accounts', { direct: true });
+            return [];
+        }
+        return keys;
+    }
+
+    wmSettings.registerPage({
+        id: 'chat-options', tab: 'personal', label: 'Text Messages', icon: 'app-messaging', hidden: true,
+        title: 'Messaging',
+        tabs: [['messages', 'Messages'], ['myinfo', 'My Info'], ['engine', 'Engine']],
+        init: chatOptionsInit,
+        render: chatOptionsRender,
+        commit: chatOptionsCommit
+    });
+
+    /** Open the Text Messages account's settings (from Options' Accounts tab: ok comes back there). */
+    wmSettings.openChatOptions = (from, tab) => {
+        chatOptsFrom = from || null;
+        return wmSettings.open('chat-options', tab || null, { direct: true });
+    };
 
     wmSettings.registerPage({
         id: 'power', tab: 'system', label: 'Power', icon: 'set-power',

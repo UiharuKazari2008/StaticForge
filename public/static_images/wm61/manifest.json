@@ -4359,6 +4359,34 @@
       ],
       "notes": "New e-mail / unread messages: the white envelope WM 6.1 shows in the title bar (Messaging). Replaces the colour app-messaging icon there."
     },
+    "status-sms": {
+      "1x": {
+        "source": "2x2-downscaled from @2x, alpha thresholded at 50% (1-bit)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "outres.192.dll ico_32508_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x (1-bit art)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "1x-downscaled-from-2x",
+        "4x-point-upscaled"
+      ],
+      "notes": "New text message: the phone and envelope WM 6.1 shows in the title bar while text messages are unread (Text Messages = Chat, #763). 6.5's own drawing (its outres.192 32508, anti-aliased) is public/static_images/wm65/status-sms*.png."
+    },
     "status-reminder": {
       "1x": {
         "source": "notify.dll ico_8300_0_16x16",

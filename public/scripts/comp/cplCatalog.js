@@ -229,7 +229,11 @@
                 // Vista's Windows CardSpace: Melaton's is Dreamscape CardSpace, the accounts and keys
                 // Dreamscape logs on with (cplAuthentication.js)
                 { item: 'authentication', links: [
-                    { t: 'Manage the accounts and keys that are used to log on to Dreamscape services', a: 'item:authentication' }] }
+                    { t: 'Manage the accounts and keys that are used to log on to Dreamscape services', a: 'item:authentication' }] },
+                // Melaton's chat personas (cplPages3.js, Yozora #763)
+                { item: 'chat', links: [
+                    { t: 'Choose the chat engine and model', a: 'item:chat' },
+                    { t: 'Change your name and picture for chat', a: 'item:chat' }] }
             ] },
         { id: 'appearance', name: 'Appearance and Personalization', art: 'appearance-and-personalization',
             home: [
@@ -303,6 +307,7 @@
             // items without a Vista home live here instead
             items: [
                 { item: 'mail', links: [] },
+                { item: 'chat', links: [] },
                 { item: 'runes', links: [] }
             ] }
     ];
@@ -365,6 +370,7 @@
         // Melaton's own
         { id: 'remote-access', cats: ['system', 'network'] },
         { id: 'mail', cats: ['users', 'additional'] },
+        { id: 'chat', cats: ['users', 'additional'] },
         { id: 'runes', cats: ['system', 'additional'] },
         // Management Tools (the Dreamscape service pages) is listed in Administrative Tools
         { id: 'dreamscape-services', cats: ['system', 'additional'], hidden: true },

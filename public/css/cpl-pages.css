@@ -254,9 +254,14 @@
 #melatonControlPanelModal .cpl-power-grid {
     margin: 16px 0 8px 14px;
     border-collapse: collapse;
+    /* 7.css draws every .win7 table as a list view (frame, white fill); Vista's label/control
+       grids have neither (Edit Plan Settings, System Settings, Chat) */
+    border: 0;
+    background: none;
 }
 
 #melatonControlPanelModal .cpl-power-grid td {
+    border: 0;
     padding: 4px 12px 4px 0;
     white-space: nowrap;
 }
@@ -470,4 +475,93 @@
     align-items: center;
     gap: 4px;
     padding: 6px 8px;
+}
+
+/* ---- Chat (cplPages3.js, Yozora #763): engine, My info, conversation window ---- */
+
+#melatonControlPanelModal .cpl-chat-grid td.is-top {
+    vertical-align: top;
+    padding-top: 6px;
+}
+
+#melatonControlPanelModal .cpl-chat-grid select.cpl-chat-wide {
+    width: 300px;
+}
+
+#melatonControlPanelModal .cpl-chat-grid input.cpl-vedit {
+    width: 300px;
+    margin-top: 0;
+}
+
+#melatonControlPanelModal .cpl-chat-refresh {
+    margin-left: 8px;
+}
+
+#melatonControlPanelModal .cpl-chat-note {
+    margin-top: 3px;
+    color: #6d6d6d;
+    white-space: normal;
+    max-width: 380px;
+}
+
+#melatonControlPanelModal .cpl-chat-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 8px 0 0 14px;
+}
+
+#melatonControlPanelModal .cpl-chat-info .cpl-chat-grid {
+    margin: 0;
+}
+
+#melatonControlPanelModal .cpl-chat-photo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 128px;
+    padding-top: 6px;
+}
+
+#melatonControlPanelModal .cpl-chat-photo .cpl-ua-picture {
+    margin: 0;
+}
+
+#melatonControlPanelModal .cpl-chat-photo-links {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+/* Vista's multi-line edit: the edit box border, Segoe 9 pt */
+#melatonControlPanelModal textarea.cpl-chat-backstory {
+    box-sizing: border-box;
+    width: 300px;
+    min-height: 80px;
+    padding: 2px 3px;
+    border: 1px solid #abadb3;
+    border-top-color: #abadb3;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: 12px/15px var(--cpl-font);
+    resize: vertical;
+    white-space: pre-wrap;
+}
+
+#melatonControlPanelModal textarea.cpl-chat-backstory:hover,
+#melatonControlPanelModal textarea.cpl-chat-backstory:focus {
+    border-color: #3d7bad;
+    outline: none;
+}
+
+#melatonControlPanelModal .cpl-chat .cpl-vcheck {
+    margin-left: 14px;
+}
+
+#melatonControlPanelModal .cpl-chat-status {
+    margin-right: auto;
+    align-self: center;
 }

@@ -54,6 +54,10 @@ async function createChatTables() {
         )
     `);
     
+    // Chat engine choice on the persona row (Yozora #763)
+    await addPersonaEngineColumns();
+    await refreshChatEngineCache();
+
     // Chat sessions table
     await db.exec(`
         CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -131,14 +135,62 @@ async function closeChatDatabase() {
 }
 
 // Persona Settings Functions
+// One row (id 1) holds "My info" (user_name, profile_photo_base64, backstory, default_verbosity)
+// and the chat engine choice (chat_provider, chat_model, chat_effort; Yozora #763). Saves MERGE:
+// only keys present in the input are written, so the Memories applet's persona form never wipes
+// the engine and the Control Panel's engine page never wipes My info.
+const PERSONA_FIELDS = ['user_name', 'profile_photo_base64', 'backstory', 'default_verbosity', 'chat_provider', 'chat_model', 'chat_effort'];
+const CHAT_EFFORTS = ['default', 'none', 'low', 'medium', 'high'];
+let chatEngineCache = { provider: '', model: '', effort: 'default' };
+
+function normalizeChatEngine(row) {
+    const provider = String((row && row.chat_provider) || '').trim().toLowerCase();
+    const model = String((row && row.chat_model) || '').trim();
+    const effortText = String((row && row.chat_effort) || '').trim().toLowerCase();
+    return {
+        provider: /^[a-z0-9][a-z0-9_-]{0,63}$/.test(provider) ? provider : '',
+        model: model.slice(0, 300),
+        effort: CHAT_EFFORTS.includes(effortText) ? effortText : 'default'
+    };
+}
+
+async function addPersonaEngineColumns() {
+    const cols = await db.all('PRAGMA table_info(persona_settings)');
+    const have = new Set(cols.map((col) => col.name));
+    for (const [name, type] of [['chat_provider', 'TEXT'], ['chat_model', 'TEXT'], ['chat_effort', 'TEXT']]) {
+        if (!have.has(name)) await db.exec(`ALTER TABLE persona_settings ADD COLUMN ${name} ${type}`);
+    }
+}
+
+async function readPersonaRow() {
+    return db.get('SELECT * FROM persona_settings ORDER BY id DESC LIMIT 1');
+}
+
+async function refreshChatEngineCache() {
+    try {
+        chatEngineCache = normalizeChatEngine(await readPersonaRow());
+    } catch (error) {
+        console.error('❌ Error reading chat engine settings:', error.message);
+    }
+    return chatEngineCache;
+}
+
+// Synchronous copy for the chat service (modules/aiServices/deepInfraChatService.js).
+function getChatEngineSettings() {
+    return { ...chatEngineCache };
+}
+
 async function getPersonaSettings() {
     try {
-        const result = await db.get('SELECT * FROM persona_settings ORDER BY id DESC LIMIT 1');
+        const result = await readPersonaRow();
         return result || {
             user_name: '',
             profile_photo_base64: '',
             backstory: '',
-            default_verbosity: 3
+            default_verbosity: 3,
+            chat_provider: '',
+            chat_model: '',
+            chat_effort: 'default'
         };
     } catch (error) {
         console.error('❌ Error getting persona settings:', error.message);
@@ -148,21 +200,50 @@ async function getPersonaSettings() {
 
 async function savePersonaSettings(settings) {
     try {
+        const input = settings && typeof settings === 'object' ? settings : {};
+        const current = (await readPersonaRow()) || {};
+        const merged = {};
+        for (const key of PERSONA_FIELDS) {
+            merged[key] = Object.prototype.hasOwnProperty.call(input, key) && input[key] !== undefined
+                ? input[key]
+                : (current[key] !== undefined ? current[key] : null);
+        }
+        if (merged.default_verbosity == null) merged.default_verbosity = 3;
+        const id = current.id || 1;
         await db.run(`
-            INSERT OR REPLACE INTO persona_settings 
-            (id, user_name, profile_photo_base64, backstory, default_verbosity, updated_at)
-            VALUES (1, ?, ?, ?, ?, strftime('%s', 'now'))
-        `, [
-            settings.user_name,
-            settings.profile_photo_base64,
-            settings.backstory,
-            settings.default_verbosity
-        ]);
+            INSERT INTO persona_settings
+            (id, user_name, profile_photo_base64, backstory, default_verbosity, chat_provider, chat_model, chat_effort, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now'))
+            ON CONFLICT(id) DO UPDATE SET
+                user_name = excluded.user_name,
+                profile_photo_base64 = excluded.profile_photo_base64,
+                backstory = excluded.backstory,
+                default_verbosity = excluded.default_verbosity,
+                chat_provider = excluded.chat_provider,
+                chat_model = excluded.chat_model,
+                chat_effort = excluded.chat_effort,
+                updated_at = excluded.updated_at
+        `, [id, ...PERSONA_FIELDS.map((key) => merged[key])]);
+        chatEngineCache = normalizeChatEngine(merged);
         return true;
     } catch (error) {
         console.error('❌ Error saving persona settings:', error.message);
         return false;
     }
+}
+
+// { provider, model, effort } -> merged into the persona row. Omitted keys stay.
+async function saveChatEngineSettings(engine) {
+    const input = engine && typeof engine === 'object' ? engine : {};
+    const patch = {};
+    if (input.provider !== undefined) patch.chat_provider = String(input.provider || '').trim().toLowerCase();
+    if (input.model !== undefined) patch.chat_model = String(input.model || '').trim();
+    if (input.effort !== undefined) {
+        const effort = String(input.effort || '').trim().toLowerCase();
+        patch.chat_effort = CHAT_EFFORTS.includes(effort) ? effort : 'default';
+    }
+    const ok = await savePersonaSettings(patch);
+    return ok ? getChatEngineSettings() : null;
 }
 
 // Chat Session Functions
@@ -411,6 +492,42 @@ async function getLastChatMessage(chatSessionId) {
     }
 }
 
+/**
+ * A persona's live state for its contact card (modules/chatPersonaContacts.js, Yozora #763): the
+ * newest assistant row of each state event type, the memory rows (newest first), and when the chat
+ * last had a message.
+ */
+async function getPersonaStateRows(chatSessionId, eventTypes, memoryLimit = 200) {
+    try {
+        const types = Array.isArray(eventTypes) && eventTypes.length ? eventTypes : ['emotion'];
+        const marks = types.map(() => '?').join(',');
+        const latest = await db.all(`
+            SELECT m.event_type, m.content, m.event_metadata, m.created_at
+            FROM chat_messages m
+            JOIN (
+                SELECT event_type, MAX(id) AS id FROM chat_messages
+                WHERE chat_session_id = ? AND message_type = 'assistant' AND event_type IN (${marks})
+                GROUP BY event_type
+            ) t ON m.id = t.id
+        `, [chatSessionId, ...types]);
+        const memories = await db.all(`
+            SELECT content, event_metadata, created_at FROM chat_messages
+            WHERE chat_session_id = ? AND message_type = 'assistant' AND event_type = 'memory'
+            ORDER BY id DESC LIMIT ?
+        `, [chatSessionId, memoryLimit]);
+        const stats = await db.get(`
+            SELECT COUNT(*) AS count, MAX(created_at) AS last_at,
+                MAX(CASE WHEN message_type = 'user' THEN created_at END) AS last_user_at,
+                MAX(CASE WHEN message_type = 'assistant' THEN created_at END) AS last_assistant_at
+            FROM chat_messages WHERE chat_session_id = ?
+        `, [chatSessionId]);
+        return { latest: latest || [], memories: memories || [], stats: stats || {} };
+    } catch (error) {
+        console.error('❌ Error getting persona state rows:', error.message);
+        return { latest: [], memories: [], stats: {} };
+    }
+}
+
 async function getConversationData(chatSessionId) {
     try {
         return await db.get(`
@@ -493,6 +610,9 @@ module.exports = {
     closeChatDatabase,
     getPersonaSettings,
     savePersonaSettings,
+    getChatEngineSettings,
+    saveChatEngineSettings,
+    CHAT_EFFORTS,
     createChatSession,
     getChatSession,
     getChatSessionsByFilename,
@@ -505,6 +625,7 @@ module.exports = {
     getChatMessageCount,
     deleteChatMessage,
     getLastChatMessage,
+    getPersonaStateRows,
     getConversationData,
     updateConversationData,
     cleanupExpiredMessages,

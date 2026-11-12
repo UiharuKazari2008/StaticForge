@@ -3577,3 +3577,49 @@ html.ui-mobile[data-wm-version="6.5"] .wm-viewbar-btn:disabled img {
     filter: brightness(0) invert(0.517) drop-shadow(calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #fff);
     opacity: 1;
 }
+
+/* Dreamscape Mainframe Server box (wmShell mainframeBox): the server's boot, the desktop window's
+ * building-blocks icon as a 32 px well on the left, WM's progress bar (1 px black frame,
+ * highlight fill) under the stage line. The Connection box stays down while it is up. */
+.wm-mainframe-layer {
+    z-index: 22;
+}
+
+.wm-mainframe-up .wm-loading-layer {
+    display: none;
+}
+
+.wm-mainframe-layer .wm-mainframe-blocks {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    flex: 0 0 auto;
+    image-rendering: pixelated;
+}
+
+.wm-mainframe-layer .wm-msgbox-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.wm-mainframe-layer .wm-mainframe-heading {
+    font-weight: bold;
+}
+
+.wm-mainframe-layer .wm-mainframe-stage {
+    margin-top: calc(6 * var(--wm-px));
+}
+
+.wm-mainframe-layer .wm-mainframe-meter {
+    height: calc(10 * var(--wm-px));
+    margin-top: calc(4 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    overflow: hidden;
+}
+
+.wm-mainframe-layer .wm-mainframe-meter > div {
+    height: 100%;
+    width: 0;
+    background: var(--wm-highlight);
+    transition: width 0.35s ease;
+}

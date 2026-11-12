@@ -9,7 +9,7 @@ Emulator. Yozora #709.
   as the ROM draws them; colour icons go through 4x-UltraSharp
   (`~/.cache/wm61/up4/run.js`).
 - Every title-bar status icon is a white 1-bit glyph, as WM 6.1 draws them (never a
-  colour app icon): `status-mail` is outres 32507, `status-reminder` notify.dll 8300,
+  colour app icon): `status-mail` is outres 32507, `status-sms` (new text message) 32508, `status-reminder` notify.dll 8300,
   `status-notify-many` shellres 4673; `status-prints` and `status-director` are Melaton
   extensions drawn in the same strokes (`~/.cache/wm61/tools/draw-status-melaton.py`).
 - Straight-alpha PNG32. Magenta keys and icon AND masks are converted to alpha.

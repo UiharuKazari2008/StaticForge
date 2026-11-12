@@ -15,6 +15,11 @@
  *   context menu    Open, Print, Action > (Send E-mail, Send E-mail To, Call This Contact...),
  *                   This Is Me, Send Contact, then Explorer's own
  *
+ * Chat personas (Yozora #763): a card with X-DREAMSCAPE-CHAT-ID (modules/chatPersonaContacts.js
+ * makes one per persona) shows the persona's state under its name in the preview pane, gets
+ * Action > Send Text Message (the chat), and a Persona page in its Properties (apps/contacts).
+ * The state is read from the server when shown: personaState(chatId) -> get_chat_persona_state.
+ *
  * The cards are read here (melatonVCard, vcard.js); the sheets and dialogs are the contacts
  * package's (apps/contacts), started with an action: melatonApps.launch({ packageId: 'contacts',
  * args: { action, files, folder } }).
@@ -220,6 +225,79 @@
         return true;
     }
 
+    // ---- chat personas (#763) -----------------------------------------------------------------
+
+    const personaCache = new Map(); // chatId -> { at, p }
+    const PERSONA_TTL = 15000;
+
+    const isPersona = (c) => !!(c && c.chatId && !c.group);
+
+    /** The persona's state (get_chat_persona_state), or null; cached a few seconds. */
+    function personaState(chatId, fresh) {
+        const id = Number(chatId);
+        if (!Number.isInteger(id) || id <= 0) return Promise.resolve(null);
+        const hit = personaCache.get(id);
+        if (hit && !fresh && Date.now() - hit.at < PERSONA_TTL) return hit.p;
+        const ws = root.wsClient;
+        if (!ws || typeof ws.sendMessage !== 'function') return Promise.resolve(null);
+        const p = Promise.resolve(ws.sendMessage('get_chat_persona_state', { chatId: id }, false))
+            .then((r) => {
+                const st = (r && (r.state || (r.data && r.data.state))) || null;
+                return st && st.exists !== undefined ? st : null;
+            })
+            .catch(() => { personaCache.delete(id); return null; });
+        personaCache.set(id, { at: Date.now(), p });
+        return p;
+    }
+
+    function shortWhen(isoText) {
+        if (!isoText) return '';
+        const d = new Date(isoText);
+        if (Number.isNaN(d.getTime())) return '';
+        return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    }
+
+    /** The state as [label, value] rows (empty values left out); the same rows on every surface. */
+    function personaRows(st, opts = {}) {
+        if (!st || !st.exists) return [];
+        const rows = [];
+        const add = (label, value) => { if (value) rows.push([label, value]); };
+        const feel = st.emotion ? `${st.emotion}${st.emotionIntensity != null && !Number.isNaN(st.emotionIntensity) ? ` (${st.emotionIntensity}%)` : ''}` : '';
+        add('Feeling', feel);
+        add('Trust', st.trust ? `${st.trust}${st.trustValue != null ? ` (${st.trustValue}/100)` : ''}` : (st.trustValue != null ? `${st.trustValue}/100` : ''));
+        add('Location', st.location);
+        add('Time of day', st.timeOfDay);
+        if (opts.environment) add('Surroundings', st.environment);
+        add('Plan', st.currentPlan);
+        add('Later', st.futurePlans);
+        add('Carrying', st.inventory);
+        add('Last seen', shortWhen(st.lastSeen));
+        return rows;
+    }
+
+    /** Open the persona's chat: Text Messages on a phone, the chat window on the desktop. */
+    async function openPersonaChat(card) {
+        if (!isPersona(card)) return false;
+        const id = Number(card.chatId);
+        const phone = root.wmChatApp;
+        if (phone) {
+            if (typeof phone.openWithId === 'function' && (await phone.openWithId(id))) return true;
+            const name = card.chatName || (V() ? V().displayName(card) : '');
+            if (typeof phone.openWith === 'function' && (await phone.openWith(name))) return true;
+            return false;
+        }
+        // the chat window is a feature of its own, loaded on first use (Start menu's Chat does the same)
+        if (!root.chatSystem && root.featureLoader) {
+            try { await root.featureLoader.loadFeature('chat'); } catch (_) { return false; }
+        }
+        const cs = root.chatSystem;
+        if (!cs || typeof cs.selectChatSession !== 'function') return false;
+        if (typeof cs.openChatInterfaceModal === 'function') cs.openChatInterfaceModal();
+        if (typeof cs.loadAllChatSessions === 'function') await cs.loadAllChatSessions();
+        await cs.selectChatSession(id);
+        return true;
+    }
+
     // ---- the preview pane --------------------------------------------------------------------
 
     function previewPane() {
@@ -242,14 +320,32 @@
             }
             return;
         }
-        const stamp = `${c.uid}|${c.photo ? c.photo.length : 0}|${V().displayName(c)}`;
+        const stamp = `${c.uid}|${c.photo ? c.photo.length : 0}|${V().displayName(c)}|${c.chatId || ''}|${c.chatDeleted || ''}`;
         if (pane.dataset.uid === stamp) return;
         pane.dataset.uid = stamp;
         pane.innerHTML = `<div class="explorer-preview-contact">
             <div class="explorer-preview-picture"><img class="explorer-preview-photo" alt=""><img class="explorer-preview-badge" src="${ART}/contact-32.png" alt=""></div>
             <div class="explorer-preview-name">${esc(V().displayName(c))}</div>
             ${c.group ? '' : '<a href="#" class="explorer-preview-link" data-contact-action="open">Trusted Contact</a>'}
+            ${isPersona(c) ? '<div class="explorer-preview-persona"></div>' : ''}
         </div>`;
+        if (isPersona(c)) {
+            const box = pane.querySelector('.explorer-preview-persona');
+            if (c.chatDeleted) box.innerHTML = '<div class="explorer-preview-persona-note">This persona\'s chat was deleted.</div>';
+            else {
+                void personaState(c.chatId).then((st) => {
+                    if (pane.dataset.uid !== stamp || !box.isConnected) return;
+                    if (!st || !st.exists) { box.innerHTML = '<div class="explorer-preview-persona-note">This persona\'s chat was deleted.</div>'; return; }
+                    const rows = personaRows(st);
+                    box.innerHTML = (rows.length
+                        ? `<dl class="explorer-preview-props">${rows.map(([k, v]) => `<dt>${esc(k)}:</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join('')}</dl>`
+                        : '<div class="explorer-preview-persona-note">No messages yet.</div>')
+                        + '<a href="#" class="explorer-preview-link explorer-preview-chat">Send Text Message</a>';
+                    const chat = box.querySelector('.explorer-preview-chat');
+                    if (chat) chat.addEventListener('click', (ev) => { ev.preventDefault(); void openPersonaChat(c); });
+                });
+            }
+        }
         void framedPicture(c, 128).then((url) => {
             const img = pane.querySelector('.explorer-preview-photo');
             if (img && pane.dataset.uid === stamp) img.src = url;
@@ -388,7 +484,7 @@
                 { text: 'Send E-mail', action: 'explorer-contact-email', disabled: !hasMail },
                 { text: 'Send E-mail To...', disabled: true },
                 { text: 'Call This Contact...', action: 'explorer-contact-call', disabled: !(c && (c.home.phone || c.work.phone || c.home.mobile)) }
-            ] },
+            ].concat(isPersona(c) ? [{ text: 'Send Text Message', action: 'explorer-contact-chat', disabled: !!c.chatDeleted }] : []) },
             { text: 'This Is Me', action: 'explorer-contact-me', image: `${ART}/contact-16.png`, disabled: !!(c && c.group) },
             { text: 'Send Contact', action: 'explorer-contact-send', disabled: !!(c && c.group) }
         ];
@@ -410,6 +506,14 @@
 
     async function run(app, verb, items) {
         if (!app) return;
+        if (verb === 'chat') {
+            const one = (items || []).filter(isCardFile)[0];
+            const c = one ? cardOf(one) : null;
+            if (c && !(await openPersonaChat(c)) && typeof root.showConfirmationDialog === 'function') {
+                await root.showConfirmationDialog(`<p>The chat with ${esc(V().displayName(c))} could not be opened.</p>`, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'Melaton Contacts', width: 400 });
+            }
+            return;
+        }
         if (verb === 'delete') { await app.deleteSelection(); return; }
         if (verb === 'default-program') {
             if (root.melatonControlPanel) root.melatonControlPanel.open('default-programs-assoc');
@@ -458,6 +562,10 @@
         detailsName,
         changed,
         framedPicture,
+        isPersona,
+        personaState,
+        personaRows,
+        openPersonaChat,
         ART
     };
     root.explorerContacts = api;

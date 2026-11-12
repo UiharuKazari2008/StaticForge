@@ -140,7 +140,15 @@
 
     // ---- the animated icon ----------------------------------------------------------------
 
-    function createBlocksIcon(canvas) {
+    /**
+     * opts.cell: block size in canvas px (default 5 = the desktop's 48 px icon; Melaton Mobile's
+     * message box draws a 32 px one with cell 3). The canvas is sized to match.
+     */
+    function createBlocksIcon(canvas, opts) {
+        const CELL = Math.max(2, Math.round((opts && opts.cell) || 5));
+        const SIZE = COLS * CELL + BORDER * 2;
+        canvas.width = SIZE;
+        canvas.height = SIZE;
         const ctx = canvas.getContext('2d');
         let pieces = [];
         let index = 0;
@@ -161,6 +169,21 @@
         }
 
         function drawCell(x, y, color, bright) {
+            if (CELL < 4) {
+                // small icon: face + one-pixel highlight / shadow corners only
+                const px = BORDER + x * CELL;
+                const py = BORDER + (ROWS - 1 - y) * CELL;
+                if (py < BORDER) return;
+                ctx.fillStyle = bright ? shade(color, 0.55) : color;
+                ctx.fillRect(px, py, CELL, CELL);
+                ctx.fillStyle = shade(color, bright ? 0.8 : 0.5);
+                ctx.fillRect(px, py, CELL - 1, 1);
+                ctx.fillRect(px, py, 1, CELL - 1);
+                ctx.fillStyle = shade(color, -0.5);
+                ctx.fillRect(px + 1, py + CELL - 1, CELL - 1, 1);
+                ctx.fillRect(px + CELL - 1, py + 1, 1, CELL - 1);
+                return;
+            }
             // y from the floor → canvas rows from the top
             const px = BORDER + x * CELL;
             const py = BORDER + (ROWS - 1 - y) * CELL;
@@ -268,7 +291,7 @@
             timer = null;
         }
 
-        return { start, stop, render };
+        return { start, stop, render, get running() { return !!timer; } };
     }
 
     // ---- the window --------------------------------------------------------------------------
@@ -337,7 +360,7 @@
         else modal.classList.add('hidden');
     }
 
-    const api = { update, hide, isOpen, tileWell, ORIENTATIONS, _test: { createBlocksIcon, SIZE } };
+    const api = { update, hide, isOpen, tileWell, ORIENTATIONS, createBlocksIcon, _test: { createBlocksIcon, SIZE } };
     if (root) root.mainframeServerWindow = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

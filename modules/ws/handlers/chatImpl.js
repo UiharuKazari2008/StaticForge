@@ -1,6 +1,12 @@
 // Chat WebSocket implementations (migrated from websocketHandlers.js)
 const fs = require('fs');
 const path = require('path');
+const personaContacts = require('../../chatPersonaContacts');
+
+// A chat persona's contact card (Yozora #763): never in the way of the chat itself.
+function personaContact(what, fn) {
+    Promise.resolve().then(fn).catch((err) => console.warn(`[chat] persona contact (${what}) failed:`, (err && err.message) || err));
+}
 
 // Chat personas run on DeepInfra (AIServiceManager.getChatService(), Yozora #736). Clients still
 // send provider 'grok' and a grok-* model from older builds; those are ignored.
@@ -10,6 +16,10 @@ function chatServiceFor(handler) {
 
 function chatModelFromClient(handler, clientModel) {
     const wanted = typeof clientModel === 'string' ? clientModel.trim() : '';
+    // A saved Control Panel / Messaging Options engine (#763) wins over the client's copy of the
+    // server default (optionsData.chatModel), which goes stale after a change.
+    const saved = chatServiceFor(handler).engineSettings();
+    if (saved && (saved.provider || saved.model)) return chatServiceFor(handler).getDefaultModel();
     if (wanted && !/^grok/i.test(wanted) && wanted.includes('/')) return wanted;
     return chatServiceFor(handler).getDefaultModel();
 }
@@ -127,6 +137,8 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
             handler.sendError(ws, 'Failed to create chat session', null, message.requestId);
             return;
         }
+        // the card goes to the workspace this client is on; made once the persona has named itself
+        const contactWorkspace = personaContacts.workspaceForClient(clientInfo, data.workspace);
 
         // Send initial response
         handler.sendToClient(ws, {
@@ -457,6 +469,7 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
             });
 
             console.log('✅ Initial persona establishment completed for chat session:', chatId);
+            personaContact('create', () => personaContacts.ensureContact(chatId, contactWorkspace));
 
         } catch (initialGenError) {
             console.error('❌ Error during initial persona establishment:', initialGenError);
@@ -475,6 +488,7 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
                 await handler.globalResources.getChatDatabase().addChatMessage(chatId, 'assistant', 'Error: ' + errorText, JSON.stringify(errorResponse));
             } catch (_) { /* the failure message below still goes out */ }
             sendChatFailure(handler, ws, chatId, errorText, null, errorResponse);
+            personaContact('create', () => personaContacts.ensureContact(chatId, contactWorkspace));
         }
     } catch (error) {
         console.error('❌ Error creating chat session:', error);
@@ -556,6 +570,7 @@ async function handleDeleteChatSession(handler, ws, message, clientInfo, wsServe
         // Clean up SI service cache for this chat
         if (success) {
             handler.globalResources.getAiServiceManager().forceCleanupService(chatId);
+            personaContact('delete', () => personaContacts.markDeleted(chatId));
         }
 
         handler.sendToClient(ws, {
@@ -631,6 +646,7 @@ async function handleUpdateChatContext(handler, ws, message, clientInfo, wsServe
         }
 
         const success = await handler.globalResources.getChatDatabase().updateChatSession(chatId, updates);
+        if (success && characterName !== undefined) personaContact('rename', () => personaContacts.syncName(chatId));
 
         handler.sendToClient(ws, {
             type: 'update_chat_context_response',
@@ -820,6 +836,8 @@ async function handleSendChatMessage(handler, ws, message, clientInfo, wsServer)
 
             // Stop keep-alive when complete
             handler.stopKeepAliveInterval(message.requestId);
+            // the persona may have renamed itself (a myname event): its card follows
+            personaContact('rename', () => personaContacts.syncName(chatId));
 
         } catch (aiError) {
             console.error('❌ SI service error:', aiError);

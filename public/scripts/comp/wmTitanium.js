@@ -142,7 +142,8 @@
             // the last five messages of the inbox, a page each: subject over sender and time
             const n = st.mailUnread;
             const list = recentMail();
-            const go = () => sh.open('messaging');
+            // the key and the panel open Messaging on Dreamscape Mail's Inbox, not the account picker (#763)
+            const go = () => { const a = window.wmMessaging; if (a && typeof a.goTo === 'function') a.goTo('mail'); else sh.open('messaging'); };
             const openMail = (m) => { const a = window.wmMessaging; if (a && typeof a.openMail === 'function') a.openMail(m.id); else go(); };
             return {
                 label: 'e-mail', count: n ? String(n) : '', icon: 'ti-2008',

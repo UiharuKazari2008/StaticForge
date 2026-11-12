@@ -985,6 +985,7 @@
             if (e.key) selectedKey = e.key;
             renderCard();
             push('card');
+            loadPersonaState(e);
         }
 
         function cardRows(c) {
@@ -1008,7 +1009,54 @@
             info('Anniversary', c.anniversary);
             info('Spouse', c.spouse);
             info('Children', c.children.join(', '));
+            // a chat persona's card (#763): its state as the server has it, read when the card opens
+            if (c.chatId && !c.group) {
+                const st = personaStates.get(String(c.chatId));
+                if (c.chatDeleted || (st && st.exists === false)) info('Chat', 'Deleted');
+                else if (st) {
+                    // a row cut short opens whole when tapped
+                    const full = (label, value) => { if (value) rows.push({ ic: null, label, value, kind: 'info', full: true }); };
+                    personaInfoRows(st).forEach(([label, value]) => full(label, value));
+                    (st.memories || []).slice(0, 3).forEach((m) => full('Memory', m.content));
+                }
+            }
             return rows;
+        }
+
+        // ---- chat personas (#763)
+
+        const personaStates = new Map(); // chatId -> get_chat_persona_state's state
+
+        function personaInfoRows(st) {
+            const rows = [];
+            const add = (label, value) => { if (value) rows.push([label, value]); };
+            add('Feeling', st.emotion ? `${st.emotion}${st.emotionIntensity != null ? ` (${st.emotionIntensity}%)` : ''}` : '');
+            add('Trust', st.trust ? `${st.trust}${st.trustValue != null ? ` (${st.trustValue}/100)` : ''}` : (st.trustValue != null ? `${st.trustValue}/100` : ''));
+            add('Location', st.location);
+            add('Time of day', st.timeOfDay);
+            add('Surroundings', st.environment);
+            add('Plan', st.currentPlan);
+            add('Later', st.futurePlans);
+            add('Carrying', st.inventory);
+            if (st.lastSeen) {
+                const d = new Date(st.lastSeen);
+                if (!Number.isNaN(d.getTime())) add('Last seen', `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+            }
+            return rows;
+        }
+
+        /** Read the persona's state for the card on show; the card is drawn again when it comes. */
+        function loadPersonaState(e) {
+            const c = e && e.c;
+            if (!c || !c.chatId || c.group || c.chatDeleted || !wsc() || typeof wsc().sendMessage !== 'function') return;
+            const id = Number(c.chatId);
+            if (!Number.isInteger(id) || id <= 0) return;
+            Promise.resolve(wsc().sendMessage('get_chat_persona_state', { chatId: id }, false)).then((r) => {
+                const st = r && (r.state || (r.data && r.data.state));
+                if (!st) return;
+                personaStates.set(String(c.chatId), st);
+                if (current === e && view() === 'card') renderCard();
+            }).catch(() => { /* the card shows what it has */ });
         }
 
         function renderCard() {
@@ -1048,6 +1096,7 @@
         function canText(c) {
             if (!c) return false;
             if (c.home && c.home.mobile) return true;
+            if (c.chatId && !c.chatDeleted && window.wmChatApp) return true;
             const chat = window.wmChatApp;
             return !!(chat && typeof chat.hasPersona === 'function' && chat.hasPersona(VC().displayName(c)));
         }
@@ -1057,6 +1106,7 @@
         }
 
         async function runRow(r) {
+            if (r && r.kind === 'info' && r.full) { await ws.messageBox({ title: r.label, icon: 'info', text: r.value }); return; }
             if (!r || r.kind === 'info') return;
             if (r.kind === 'call') { await noPhone(r.value); return; }
             if (r.kind === 'web') {
@@ -1067,8 +1117,14 @@
             }
             // Text Messages (the Chat applet, #757): the conversation with the persona of that name
             if (r.kind === 'sms') {
-                const who = r.name || (current && VC().displayName(current.c)) || '';
+                const card = r.card || (current && current.c);
+                const who = r.name || (card && (card.chatName || VC().displayName(card))) || '';
                 const chat = window.wmChatApp;
+                // a persona's card opens its own chat (#763), whatever the card is called now
+                if (chat && card && card.chatId && !(card.home && card.home.mobile)) {
+                    if (typeof chat.openWithId === 'function' && (await chat.openWithId(Number(card.chatId)))) return;
+                    if (card.chatName && typeof chat.openWith === 'function' && (await chat.openWith(card.chatName))) return;
+                }
                 if (chat && typeof chat.openWith === 'function' && (await chat.openWith(who, r.value))) return;
             }
             // Messaging writes the message when it offers a compose entry point
@@ -1436,7 +1492,7 @@
                 { label: 'Edit', disabled: ro, action: () => openForm(e) },
                 { label: 'View All Calls', disabled: true },
                 { label: 'Save to SIM', disabled: true },
-                { label: 'Send Text Message...', disabled: !(e && canText(e.c)), action: () => runRow({ kind: 'sms', value: e.c.home.mobile, name: VC().displayName(e.c) }) },
+                { label: 'Send Text Message...', disabled: !(e && canText(e.c)), action: () => runRow({ kind: 'sms', value: e.c.home.mobile, name: VC().displayName(e.c), card: e.c }) },
                 { label: 'Send Contact', submenu: () => sendContactRows(e) },
                 { label: 'Delete Contact', disabled: ro, action: () => deleteContact(e) },
                 '-',
@@ -1506,7 +1562,7 @@
                         { label: 'Call Home', disabled: !c.home.phone, action: () => runRow({ kind: 'call', value: c.home.phone }) },
                         { label: 'Call Mobile', disabled: !c.home.mobile, action: () => runRow({ kind: 'call', value: c.home.mobile }) },
                         { label: 'Send E-mail', disabled: !mail, action: () => runRow({ kind: 'mail', value: mail }) },
-                        { label: 'Send Text Message', disabled: !canText(c), action: () => runRow({ kind: 'sms', value: c.home.mobile, name: VC().displayName(c) }) },
+                        { label: 'Send Text Message', disabled: !canText(c), action: () => runRow({ kind: 'sms', value: c.home.mobile, name: VC().displayName(c), card: c }) },
                         '-',
                         { label: 'Send Contact', submenu: () => sendContactRows(en) },
                         { label: 'Copy Contact', disabled: readOnly(), action: () => copyContact(en) },
@@ -1532,7 +1588,13 @@
             const card = p.querySelector('.ct-cardview');
             card.querySelector('.ct-card-summary').addEventListener('click', (e) => {
                 const r = e.target.closest('.ct-crow');
-                if (!r || r.classList.contains('is-info')) return;
+                if (!r) return;
+                if (r.classList.contains('is-info')) {
+                    // a persona's state row (#763) opens whole; other info rows do nothing, as on WM
+                    const row = cardRows(current.c)[Number(r.dataset.n)];
+                    if (row && row.full) runRow(row);
+                    return;
+                }
                 card.querySelectorAll('.ct-crow').forEach((x) => x.classList.toggle('is-selected', x === r));
                 card.querySelector('.ct-card-head').classList.remove('is-selected');
                 runRow(cardRows(current.c)[Number(r.dataset.n)]);

@@ -46,7 +46,7 @@
     // the 6.5 order until one is chosen in Settings: the clock is home, in the centre, as on
     // Windows Mobile 6.5 (pictures, music, getting started, phone, voicemail | clock | text,
     // e-mail, calendar, favorites): pictures and the places above it, what arrives below
-    const TODAY_ORDER_65 = ['owner', 'search', 'workspace', 'prints', 'studio', 'director', 'date', 'connection', 'messages', 'calendar', 'tasks', 'weather', 'accounts', 'xlink', 'notes', 'files', 'remote-desktop', 'server'];
+    const TODAY_ORDER_65 = ['owner', 'search', 'workspace', 'prints', 'studio', 'director', 'date', 'connection', 'text', 'messages', 'calendar', 'tasks', 'weather', 'accounts', 'xlink', 'notes', 'files', 'remote-desktop', 'server'];
     function todayOrder65(ids) {
         const rank = (id) => { const i = TODAY_ORDER_65.indexOf(id); return i < 0 ? TODAY_ORDER_65.length : i; };
         return ids.map((id, i) => [id, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([id]) => id);
@@ -60,7 +60,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uwb", "status-data-uwb-active", "status-director", "status-mail", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-error", "status-update", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
+    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uwb", "status-data-uwb-active", "status-director", "status-mail", "status-sms", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-error", "status-update", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -446,11 +446,16 @@
 
     // Title-bar status icons are WM 6.1's white 1-bit glyphs: new mail is outres 32507 (the title-bar
     // envelope), prints and the Director are Melaton glyphs drawn in the same style (manifest.json)
-    const STATUS_APP_ICONS = { mail: 'status-mail', prints: 'status-prints', director: 'status-director', update: 'status-update', latency: 'status-signal-alert' };
-    const STATUS_APP_ROLES = ['mail', 'prints', 'director', 'update', 'latency'];
+    // a new text message (Text Messages = Chat, #763) is outres 32508, the phone and envelope
+    const STATUS_APP_ICONS = { mail: 'status-mail', sms: 'status-sms', prints: 'status-prints', director: 'status-director', update: 'status-update', latency: 'status-signal-alert' };
+    const STATUS_APP_ROLES = ['mail', 'sms', 'prints', 'director', 'update', 'latency'];
     // the Director's clapper while a turn runs: the stick claps (open frames, closed, open again)
     const DIRECTOR_CLAP = ['status-director-open-2', 'status-director-open-1', 'status-director-open-0', 'status-director', 'status-director-open-0', 'status-director-open-1'];
-    const artImageSet = (name) => `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x${HD_ART.has(name) ? `, url("${ART}${name}@4x.png") 4x` : ''})`;
+    // 6.5's own drawing of a glyph where its ROM differs (outres.192 32508 is anti-aliased there)
+    const ART65 = new Set(['status-sms']);
+    const artImageSet = (name) => (WM65 && ART65.has(name)
+        ? `image-set(url("/static_images/wm65/${name}.png") 1x, url("/static_images/wm65/${name}@2x.png") 2x, url("/static_images/wm65/${name}@4x.png") 4x)`
+        : `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x${HD_ART.has(name) ? `, url("${ART}${name}@4x.png") 4x` : ''})`);
 
     // ---------------------------------------------------------------- frame
 
@@ -489,6 +494,7 @@
                 <div class="wm-status">
                     <button type="button" class="wm-status-icon" data-role="notify" hidden aria-label="Notifications"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="mail" hidden aria-label="Messages"></button>
+                    <button type="button" class="wm-status-icon wm-status-app" data-role="sms" hidden aria-label="New text messages"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="prints" hidden aria-label="Prints"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="director" hidden aria-label="Director"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="update" hidden aria-label="Updates ready"></button>
@@ -1861,6 +1867,9 @@
         // any unread mail, if the user asked for that (Messaging > Tools > Options); else only mail
         // that came in since this client started and is still unread (mailNewCheck)
         mailEl.hidden = !(lsFlag(MAIL_ICON_ALL_KEY, false) ? shellMailUnread > 0 : shellMailNew);
+        // unread text messages (Text Messages = Chat): the phone-and-envelope glyph until they are read
+        // (while the new text message notification waits, its own glyph stands for them: one, not two)
+        shell.querySelector('[data-role="sms"]').hidden = !(smsUnread() > 0) || notes.some((n) => { const o = appNotes.get(n.id); return !!(o && o.event === 'text'); });
         paintBezelLed();
         if (noteTrayOpen) renderNotes(); else fitStatus();
         const bubble = shell.querySelector('.wm-bubble');
@@ -2386,6 +2395,8 @@
     let shellDirectorStatus = null;
     let shellDirectorAsked = false;
     let shellMailUnread = 0;
+    /** Unread text messages: the persona lines Text Messages (wmChat.js) has not shown yet. */
+    const smsUnread = () => { try { const c = window.wmChatApp; return c && typeof c.unread === 'function' ? Number(c.unread()) || 0 : 0; } catch (_) { return 0; } };
     const GEN_REQUEST_TYPES = new Set(['generate_image', 'generate_preset', 'reroll_image', 'upscale_image', 'expand_image', 'reroll_expanded_image', 'enhance_image', 'max_enhance_image', 'animate_image']);
 
     /** { running, persona, name } from director_computer_status (null before the first answer). */
@@ -2739,6 +2750,49 @@
         }
     }
 
+    /**
+     * Dreamscape Mainframe Server as a Melaton Mobile message box: the desktop window's
+     * (mainframeServerWindow.js) wording and its building-blocks icon on the left, drawn as a
+     * 32 px well, with WM's progress bar. websocket.js _updatePreStartupStageProgress drives it
+     * while the server boots; the Connection box stays down under it. null percent = hide.
+     */
+    let mainframeLayer = null;
+    let mainframeIcon = null;
+    function mainframeBox(percent, stageMessage) {
+        if (!shell) return;
+        if (percent == null || !Number.isFinite(Number(percent))) {
+            if (mainframeIcon) mainframeIcon.stop();
+            if (mainframeLayer) mainframeLayer.hidden = true;
+            shell.classList.remove('wm-mainframe-up');
+            return;
+        }
+        if (!mainframeLayer) {
+            mainframeLayer = document.createElement('div');
+            mainframeLayer.className = 'wm-msgbox-layer wm-mainframe-layer';
+            mainframeLayer.hidden = true;
+            mainframeLayer.innerHTML = '<div class="wm-msgbox" role="alertdialog" aria-busy="true"><div class="wm-msgbox-title"><span>Dreamscape Mainframe Server</span></div>'
+                + '<div class="wm-msgbox-body"><canvas class="wm-mainframe-blocks" aria-hidden="true"></canvas><div class="wm-msgbox-text">'
+                + '<div class="wm-mainframe-heading">The domain controller is starting.</div>'
+                + '<div>Logons are held until the directory is ready.</div>'
+                + '<div class="wm-mainframe-stage"></div>'
+                + '<div class="wm-mainframe-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100"><div></div></div>'
+                + '</div></div></div>';
+            shell.appendChild(mainframeLayer);
+            const blocks = window.mainframeServerWindow && window.mainframeServerWindow.createBlocksIcon;
+            if (blocks) mainframeIcon = blocks(mainframeLayer.querySelector('canvas'), { cell: 3 });
+        }
+        const pct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+        const stage = String(stageMessage || '').replace(/\s*\(\d+%\)\s*$/, '');
+        mainframeLayer.querySelector('.wm-mainframe-stage').textContent = stage ? `${stage} (${pct}%)` : `${pct}%`;
+        mainframeLayer.querySelector('.wm-mainframe-meter > div').style.width = `${pct}%`;
+        mainframeLayer.querySelector('.wm-mainframe-meter').setAttribute('aria-valuenow', String(pct));
+        if (mainframeLayer.hidden) {
+            mainframeLayer.hidden = false;
+            shell.classList.add('wm-mainframe-up');
+        }
+        if (mainframeIcon && !mainframeIcon.running) mainframeIcon.start();
+    }
+
     function hideLoadingBox() {
         clearInterval(loadingTimer);
         loadingTimer = null;
@@ -2851,6 +2905,9 @@
      */
     function noteEvent(n) {
         const t = String((n && n.title) || '');
+        // an app's own notification may name its class (Text Messages' replies: 'text')
+        const own = n && appNotes.get(n.id);
+        if (own && own.event && SND_EVENT.has(own.event)) return own.event;
         if (n.type === 'reminder') return 'reminder';
         if (/^(you have mail|new mail|new e-?mail)/i.test(t)) return 'mail';
         if (/^(generation|print|upscal\w*) (failed|error)/i.test(t)) return 'print-error';
@@ -2916,7 +2973,7 @@
         return artImageSet((n && NOTE_KIND_ICON[n.type]) || 'status-notify-many');
     }
 
-    const STATUS_APP_LABEL = { mail: 'Messages', prints: 'Prints', director: 'Director', update: 'Updates', latency: 'High Latency' };
+    const STATUS_APP_LABEL = { mail: 'Messages', sms: 'Text Messages', prints: 'Prints', director: 'Director', update: 'Updates', latency: 'High Latency' };
 
     /** The bubble icon: pending notifications plus any status icons folded into it by fitStatus. */
     function paintNotifyIcon() {
@@ -3140,7 +3197,7 @@
     const appNotes = new Map(); // toast id -> { icon, softKeys }
     function appNote(opts = {}) {
         if (typeof window.showGlassToast !== 'function') return null;
-        const st = { icon: opts.icon || null, softKeys: opts.softKeys || null };
+        const st = { icon: opts.icon || null, softKeys: opts.softKeys || null, event: opts.event || null };
         const bar = opts.progress != null && opts.progress !== false;
         let id = null;
         try {
@@ -3497,6 +3554,10 @@
         } else if (role === 'prints') {
             const n = printsInProgress();
             bubble({ title: 'Prints', role, anchor, sections: [n ? `${n} ${n === 1 ? 'print is' : 'prints are'} in progress.` : 'No prints in progress.', { links: [{ label: 'Pictures', action: () => open('gallery') }] }], buttons: [{ text: 'Hide' }] });
+        } else if (role === 'sms') {
+            const n = smsUnread();
+            const chat = window.wmChatApp;
+            bubble({ title: 'Text Messages', role, anchor, sections: [n ? `${n} new text ${n === 1 ? 'message' : 'messages'}.` : 'No unread messages.', ...(chat && typeof chat.showList === 'function' ? [{ links: [{ label: 'Text Messages', action: () => { closeBubble(); chat.showList(); } }] }] : [])], buttons: [{ text: 'Hide' }] });
         } else if (role === 'mail') {
             bubble({ title: 'Messaging', role, anchor, sections: [shellMailUnread ? `${shellMailUnread} unread ${shellMailUnread === 1 ? 'message' : 'messages'}.` : 'No unread messages.', ...(apps.has('messaging') ? [{ links: [{ label: 'Messaging', action: () => open('messaging') }] }] : [])], buttons: [{ text: 'Hide' }] });
         }
@@ -5042,6 +5103,15 @@
                     e.stopPropagation();
                     showPopup('right', workspaceMenu(), null);
                 });
+                // the Messaging row opens Messaging on the account with news: unread text messages
+                // alone open Text Messages, else Dreamscape Mail's Inbox (not the account picker, #763)
+                page.querySelector('[data-row="messages"]').addEventListener('click', () => {
+                    const chat = window.wmChatApp;
+                    const msg = window.wmMessaging;
+                    if (smsUnread() > 0 && !(mailUnread > 0) && chat && typeof chat.showList === 'function') chat.showList();
+                    else if (msg && typeof msg.goTo === 'function') msg.goTo('mail');
+                    else open('messaging');
+                });
                 // the Tasks row opens Tasks (device); the list changing repaints the row
                 page.querySelector('[data-row="tasks"]').addEventListener('click', () => {
                     if (window.wmTasks && typeof window.wmTasks.open === 'function') window.wmTasks.open();
@@ -5098,12 +5168,14 @@
                 if (mailUnread == null) {
                     if (window.wsClient && window.wsClient.initializationCompleted) loadMail();
                 } else {
-                    setText(page.querySelector('[data-f="messages"]'), mailUnread ? `${mailUnread} unread ${mailUnread === 1 ? 'message' : 'messages'}` : 'No unread messages');
+                    // unread e-mail and unread text messages (Text Messages = Chat, #763) together
+                    const unread = mailUnread + smsUnread();
+                    setText(page.querySelector('[data-f="messages"]'), unread ? `${unread} unread ${unread === 1 ? 'message' : 'messages'}` : 'No unread messages');
                 }
                 const tasks = tasksText();
                 setText(page.querySelector('[data-f="tasks"]'), tasks);
                 page.querySelector('[data-row="tasks"]').hidden = tasks === 'No tasks' && todayOption('tasks', 'empty') === 'hide';
-                if (mailUnread != null) page.querySelector('[data-row="messages"]').hidden = !mailUnread && todayOption('messages', 'empty') === 'hide';
+                if (mailUnread != null) page.querySelector('[data-row="messages"]').hidden = !(mailUnread + smsUnread()) && todayOption('messages', 'empty') === 'hide';
                 // the Director, NovelAI balance and calendar items are widgets now (wmTodayWidgets.js,
                 // wmAccounts.js: registerTodayItem)
                 const wsEl = page.querySelector('[data-f="workspace"]');
@@ -5147,6 +5219,7 @@
                     connection: carrierText(),
                     owner: acc && typeof acc.name === 'function' ? acc.name() : '',
                     mailUnread,
+                    smsUnread: smsUnread(),
                     tasks: tasks === 'No tasks' ? '' : tasks,
                     workspace,
                     workspaceMenu: () => workspaceMenu(),
@@ -5235,13 +5308,17 @@
             if (Array.isArray(list)) {
                 list.forEach((it) => { if (it && it.id && it.on === false) off.add(it.id); });
                 if (raw !== itemsKey) {
-                    // the rows in the stored order; rows not in the list keep their place at the end
+                    // the rows in the stored order; rows not in the list keep their place at the end,
+                    // or go after the row they name (an item newer than the list: 6.5's text, #763)
                     list.forEach((it) => {
                         const row = page.querySelector(`[data-row="${CSS.escape(String(it.id))}"]`);
                         if (row) page.appendChild(row);
                     });
-                    page.querySelectorAll(':scope > [data-row]').forEach((row) => {
-                        if (!list.some((it) => it && it.id === row.dataset.row)) page.appendChild(row);
+                    [...page.querySelectorAll(':scope > [data-row]')].forEach((row) => {
+                        if (list.some((it) => it && it.id === row.dataset.row)) return;
+                        const w = todayWidgets.find((x) => x.id === row.dataset.row);
+                        const at = w && w.after && list.some((it) => it && it.id === w.after) ? page.querySelector(`:scope > [data-row="${CSS.escape(String(w.after))}"]`) : null;
+                        if (at) at.after(row); else page.appendChild(row);
                     });
                 }
             }
@@ -6900,6 +6977,8 @@
         open,
         back,
         messageBox,
+        /** Dreamscape Mainframe Server box while the server boots: mainframeBox(percent, stage); null hides. */
+        mainframeBox: (percent, stage) => mainframeBox(percent, stage),
         /** A WM notification: notify({ title, text, icon: 'info' | 'warning' | 'error' | 'success', timeout, buttons }). */
         notify: (opts) => notify(opts || {}),
         /** An app's own notification with a live progress bar, soft keys and title bar glyph (appNote above). */

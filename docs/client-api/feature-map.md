@@ -161,7 +161,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Feature | REST | WS | Push | Client-only |
 |---------|------|-----|------|-------------|
 | User global settings | — | `get_user_global_settings`, `update_user_global_settings` | — | Settings modals |
-| Persona | — | `get_persona_settings`, `save_persona_settings` | — | — |
+| Persona | — | `get_persona_settings`, `save_persona_settings`, `get_chat_engine_settings`, `save_chat_engine_settings` | — | Control Panel > Chat (cplPages3.js) |
 | Text replacements CRUD | — | `get_text_replacements`, … | — | Text replacement manager |
 | Favorites | — | `favorites_*` | — | — |
 | Config editor | — | `config_editor_*` | — | Config editor applet |

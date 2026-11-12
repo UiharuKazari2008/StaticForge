@@ -349,6 +349,87 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-chat .wch-folder {
     width: 100%;
 }
 
+/* the desktop's 4th wall events under a reply (Message Options), grey like its actions */
+.wm-chat .wch-meta {
+    color: #636563;
+    white-space: pre-wrap;
+}
+
+.wm-chat .wch-meta-name {
+    font-weight: bold;
+}
+
+/* ---- Edit Persona / Persona State (#763): WM forms like New Chat ---- */
+
+.wm-chat .wch-editview,
+.wm-chat .wch-stateview {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+}
+
+.wm-chat .wch-state-name {
+    font-weight: bold;
+}
+
+.wm-chat .wch-state-when {
+    color: #636563;
+}
+
+.wm-chat .wch-state .wm-form-sub {
+    font-weight: bold;
+}
+
+.wm-chat .wch-state-val {
+    margin: 0 0 calc(4 * var(--wm-px));
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.wm-chat .wch-state-none {
+    color: #636563;
+}
+
+.wm-chat .wch-state-list {
+    margin: 0 0 calc(4 * var(--wm-px));
+    padding-left: calc(12 * var(--wm-px));
+    overflow-wrap: anywhere;
+}
+
+.wm-chat .wch-state-rule {
+    margin: calc(4 * var(--wm-px)) 0;
+    border-top: calc(1 * var(--wm-px)) solid #848284;
+}
+
+/* ---- the new text message notification's body (#763): sender over the text, all of it a tap
+ * target (the bubble forwards the tap to the toast's own button) ---- */
+.wch-note-open {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #000;
+    font: inherit;
+    text-align: left;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.wch-note-from {
+    display: block;
+    font-weight: bold;
+}
+
+.wch-note-text {
+    display: block;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 /* landscape and wide screens: the empty list's line sits higher */
 @media (min-aspect-ratio: 4/3) {
     .wm-chat .wch-empty {

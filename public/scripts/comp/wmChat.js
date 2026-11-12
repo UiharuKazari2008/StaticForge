@@ -49,6 +49,9 @@
     // WM 6.1's My Text phrases (Menu > My Text)
     const MY_TEXT = ['Yes.', 'No.', 'I\'m running late.', 'Where are you?', 'Can you talk?', 'Call me.', 'Thank you.', 'I\'ll be there.', 'Talk to you later.', 'I love you.'];
     const ACTIONS_KEY = 'wmChatShowActions';
+    const EVENTS_KEY = 'wmChatShowEvents'; // the desktop's "4th wall events" (memory, emotion, plans ...)
+    // the desktop's metadata events (chatSystem.js CHAT_METADATA_EVENT_TYPES) and their names there
+    const META = { memory: 'Memory', environment: 'Environment', sensory: 'Sensory', emotion: 'Emotion', location: 'Location', timeofday: 'Time', innerspeech: 'Inner Thought', currplan: 'Current Plan', futureplans: 'Future Plans', trustlevel: 'Trust', inventory: 'Inventory', offlinemessage: 'Message' };
     const PREVIEW_ROWS = 12; // messages read per chat for the list's last line
     const VISIBLE = new Set(['speechdirect', 'speech', 'reply', 'actions', 'sfx', 'myname']);
     const SAYS = ['speechdirect', 'speech', 'reply'];
@@ -67,6 +70,7 @@
     let selectedId = null;
     let sort = stored(SORT_KEY) === 'name' ? 'name' : 'date';
     let showActions = stored(ACTIONS_KEY) === '1';
+    let showEvents = stored(EVENTS_KEY) === '1';
     const previews = new Map(); // chatId -> { stamp, text }
     let previewGen = 0;
 
@@ -75,9 +79,11 @@
     let unreadFrom = 0; // the conversation's lines after this time read bold (when it was opened)
     let seen = null; // SEEN_KEY, read on first use
 
-    let layers = []; // 'conv' | 'new' | 'opts'
+    let layers = []; // 'conv' | 'new' | 'opts' | 'edit' | 'state'
     let conv = null; // { id, session, entries: [], hasMore, offset }
     let draft = null; // the new-chat form { filename, name, seed, story, viewer, verbosity }
+    let editing = null; // Edit Persona: { id, name, seed, story, viewer, verbosity }
+    let stateOf = null; // Persona State: { id, session, rows, loading }
     let creating = false; // a create_chat_session in flight: its stream belongs to the new chat
     const streams = new Map(); // chatId -> { events: [], waitingSince }
     const waiting = new Map(); // chatId -> timer: a reply is on its way (Send waits)
@@ -164,7 +170,7 @@
         saveSeen();
     }
     /** The persona's lines in a list of entries that came after the conversation was last read. */
-    const unreadIn = (id, ents) => { const t = seenOf(id); return ents.filter((e) => e.kind === 'them' && msOf(e.at) > t).length; };
+    const unreadIn = (id, ents) => { const t = seenOf(id); return ents.filter((e) => e.kind === 'them' && (e.says || e.actions) && msOf(e.at) > t).length; };
 
     function draftsOf() { try { return JSON.parse(stored(DRAFTS_KEY) || '{}') || {}; } catch (_) { return {}; } }
     function setDraft(id, text) {
@@ -233,8 +239,9 @@
             [...byTime.keys()].sort((a, b) => a - b).forEach((t) => {
                 const ms = byTime.get(t);
                 const x = eventsText(ms, (m) => m.event_type);
-                if (!x.says && !x.actions && !x.sfx) return;
-                out.push({ kind: 'them', ...x, ids: ms.map((m) => m.id).filter((id) => id != null), at: ms[0].created_at });
+                const meta = ms.filter((m) => META[m.event_type] && m.content).map((m) => ({ type: m.event_type, text: String(m.content) }));
+                if (!x.says && !x.actions && !x.sfx && !meta.length) return;
+                out.push({ kind: 'them', ...x, meta, ids: ms.map((m) => m.id).filter((id) => id != null), at: ms[0].created_at });
             });
             group = [];
         };
@@ -265,11 +272,11 @@
     }
 
     /** The list's second line: the last thing said in each chat, read a few rows at a time. */
-    async function loadPreviews() {
+    async function loadPreviews(only) {
         const gen = ++previewGen;
         const todo = sessions.filter((s) => {
             const p = previews.get(s.id);
-            return !p || p.stamp !== s.updated_at;
+            return (!p || p.stamp !== s.updated_at) && (!only || only(s));
         }).slice(0, 40);
         let at = 0;
         const worker = async () => {
@@ -286,6 +293,40 @@
             }
         };
         await Promise.all([worker(), worker(), worker()]);
+        if (gen === previewGen) unreadChanged();
+    }
+
+    /** The unread count changed: the title bar glyph, Today and its 6.5 panel follow. */
+    function unreadChanged() {
+        if (!sh) return;
+        if (typeof sh.refreshStatus === 'function') sh.refreshStatus();
+        const ti = window.wmTitanium;
+        if (ti && typeof ti.refresh === 'function') { try { ti.refresh(); } catch (_) { /* next pass */ } }
+    }
+
+    /**
+     * Unread texts without opening Chat (#763: Today's Messages row, the title bar, the 6.5 text
+     * panel): the chat list once, then the threads that changed since they were last read (reading
+     * a thread marks nothing). Not the desktop chat feature: that loads when Chat opens.
+     */
+    let bgDone = false;
+    async function bgUnread() {
+        if (bgDone || !connected()) return false;
+        bgDone = true;
+        try { await loadSessions(); } catch (_) { bgDone = false; return false; }
+        await loadPreviews((s) => msOf(s.updated_at) > seenOf(s.id));
+        unreadChanged();
+        return true;
+    }
+
+    function scheduleBgUnread() {
+        let tries = 0;
+        const t = setInterval(() => {
+            const c = wsc();
+            const ready = document.documentElement.dataset.wmBoot === 'done' && c && c.initializationCompleted && connected();
+            if (bgDone || ++tries > 40) { clearInterval(t); return; }
+            if (ready) { clearInterval(t); setTimeout(() => { if (!loaded) bgUnread(); }, 8000); }
+        }, 3000);
     }
 
     async function loadConversation(more) {
@@ -393,8 +434,11 @@
         page.querySelector('.wch-convview').hidden = v !== 'conv';
         page.querySelector('.wch-newview').hidden = v !== 'new';
         page.querySelector('.wch-optsview').hidden = v !== 'opts';
+        page.querySelector('.wch-editview').hidden = v !== 'edit';
+        page.querySelector('.wch-stateview').hidden = v !== 'state';
         page.dataset.view = v;
         if (v === 'opts') renderOpts();
+        if (v === 'state') renderState();
         if (isCurrent()) {
             sh.setTitle(v === 'new' ? 'New Chat' : SMS_TITLE);
             sh.refreshSoftKeys();
@@ -411,6 +455,8 @@
         const v = layers.pop();
         if (v === 'conv') { markConvSeen(); conv = null; selEntry = -1; }
         if (v === 'new') draft = null;
+        if (v === 'edit') editing = null;
+        if (v === 'state') stateOf = null;
         showLayer();
         if (view() === 'list') renderList();
     }
@@ -446,6 +492,7 @@
         markSeen(conv.id, Math.max(last, Date.now()));
         const p = previews.get(conv.id);
         if (p) p.unread = 0;
+        readFresh(conv.id);
     }
 
 
@@ -466,6 +513,8 @@
         if (e.says) body += `<div class="wch-says">${esc(e.says)}</div>`;
         if (showActions && e.actions) body += `<div class="wch-act">*${esc(e.actions)}*</div>`;
         if (showActions && e.sfx) body += `<div class="wch-sfx">~${esc(e.sfx)}~</div>`;
+        // the desktop's 4th wall events, each on its own line under the reply (Message Options)
+        if (showEvents && e.meta && e.meta.length) body += e.meta.map((m) => `<div class="wch-meta"><span class="wch-meta-name">${esc(META[m.type])}:</span> ${esc(m.text)}</div>`).join('');
         if (!body) body = live ? '<div class="wch-says wch-typing">...</div>' : '';
         if (!body) return '';
         const unread = e.kind === 'them' && (live || msOf(e.at) > unreadFrom);
@@ -648,16 +697,105 @@
         const said = st ? eventsText(st.events, (e) => e.type).says : '';
         if (creating && conv && conv.pendingId === id) { streams.delete(id); return; } // create() reloads
         const viewing = showingChat(id) && isCurrent() && !document.hidden;
+        if (!viewing && said) arrived(id, said, st && st.events);
         finishReply(id);
-        if (!viewing && said) {
-            const s = sessionById(id);
-            sh.notify({ title: s ? titleOf(s) : 'Chat', text: said.length > 140 ? `${said.slice(0, 137)}...` : said, icon: 'info', buttons: [{ text: 'Open', onClick: () => openFromNotice(id) }] });
-        }
     }
 
     function onMessageResponse(msg) {
         const d = msg && msg.data;
-        if (d && d.chatId && d.streaming === false) finishReply(d.chatId);
+        if (!(d && d.chatId && d.streaming === false)) return;
+        // streaming off on the server: the whole reply comes at once (chatImpl.js extractEventsByType)
+        const r = d.response || {};
+        const first = (k) => (Array.isArray(r[k]) && r[k].length ? String(r[k][0]) : '');
+        const said = first('speechdirect') || first('speech') || first('reply');
+        const viewing = showingChat(d.chatId) && isCurrent() && !document.hidden;
+        if (!viewing && said && d.success !== false) arrived(d.chatId, said, null);
+        finishReply(d.chatId);
+    }
+
+    // ---------------------------------------------------------------- new text message (#763)
+
+    /**
+     * A persona's reply that came while its conversation was not on screen (another program in
+     * front, the list, another conversation, the phone asleep): WM's new text message. The thread
+     * counts it unread (Today's Messages row, Messaging's picker, the title bar's phone-and-envelope
+     * glyph, outres 32508) and a notification comes up, titled as the device's (outres 33321 "New Text
+     * Message" / 33322 "New Text Messages") with the sender and the text, in the 'text' class:
+     * Settings > Sounds & Notifications' "Messaging: New text message" decides its sound, repeat,
+     * whether the bubble shows and vibration (wmShell noteEvent / playSystemSound). Tapping the text
+     * opens that conversation; with several waiting it opens Text Messages.
+     */
+    const fresh = new Map(); // chatId -> { said, at }: replies not read yet, in arrival order
+    let smsNote = null;
+    const SMS_ICON = 'status-sms';
+
+    function arrived(id, said, events) {
+        void events;
+        const p = previews.get(id);
+        const line = said.length > 160 ? `${said.slice(0, 157)}...` : said;
+        // the list's row: the new line, one more unread (until loadPreviews reads the thread again)
+        previews.set(id, { stamp: p ? p.stamp : null, text: said, mine: false, unread: ((p && p.unread) || 0) + 1, bytes: (p && p.bytes) || said.length });
+        fresh.delete(id);
+        fresh.set(id, { said: line, at: Date.now() });
+        showSmsNote();
+        if (view() === 'list' && page) paintRowPreview(id);
+        if (typeof sh.refreshStatus === 'function') sh.refreshStatus();
+    }
+
+    function closeSmsNote() {
+        if (smsNote) { try { smsNote.close(); } catch (_) { /* gone */ } }
+        smsNote = null;
+    }
+
+    function showSmsNote() {
+        closeSmsNote(); // a new arrival is a new notification: it sounds and comes up again
+        if (!fresh.size || typeof sh.appNote !== 'function') return;
+        const n = fresh.size;
+        const [id, last] = [...fresh.entries()].pop();
+        const s = sessionById(id);
+        const html = n === 1
+            ? `<button type="button" class="wch-note-open"><span class="wch-note-from">From: ${esc(personaOf(s))}</span><span class="wch-note-text">${esc(last.said)}</span></button>`
+            : `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} new text messages.</span></button>`;
+        const open = () => { const one = fresh.size === 1 ? [...fresh.keys()][0] : null; closeSmsNote(); if (one != null) openFromNotice(one); else if (window.wmChatApp) window.wmChatApp.showList(); };
+        const icon = SMS_ICON;
+        const note = sh.appNote({
+            title: n === 1 ? 'New Text Message' : 'New Text Messages',
+            html,
+            icon,
+            event: 'text',
+            softKeys: () => ({
+                left: { label: 'Dismiss', action: () => closeSmsNote() },
+                right: { label: 'Menu', menu: () => [
+                    { label: n === 1 ? 'Reply' : 'View', action: open },
+                    { label: 'Hide', action: () => { if (smsNote) smsNote.hide(); } }
+                ] }
+            })
+        });
+        if (!note) return;
+        smsNote = note;
+        // the bubble's copy forwards a tap on its button to this toast's own button
+        const el = document.getElementById(note.id);
+        if (el) el.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.wch-note-open')) open(); });
+    }
+
+    /** A conversation read: its replies are no longer new (the notification follows). */
+    function readFresh(id) {
+        if (!fresh.delete(id)) return;
+        if (fresh.size) showSmsNoteQuiet(); else closeSmsNote();
+        if (typeof sh.refreshStatus === 'function') sh.refreshStatus();
+    }
+
+    /** What is still waiting, without a new sound: the note's text changes in place. */
+    function showSmsNoteQuiet() {
+        if (!smsNote || !fresh.size) { closeSmsNote(); return; }
+        const n = fresh.size;
+        const [id, last] = [...fresh.entries()].pop();
+        smsNote.update({
+            title: n === 1 ? 'New Text Message' : 'New Text Messages',
+            html: n === 1
+                ? `<button type="button" class="wch-note-open"><span class="wch-note-from">From: ${esc(personaOf(sessionById(id)))}</span><span class="wch-note-text">${esc(last.said)}</span></button>`
+                : `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} new text messages.</span></button>`
+        });
     }
 
     async function openFromNotice(id) {
@@ -920,6 +1058,7 @@
         const p = previews.get(s.id);
         markSeen(s.id, Math.max(Date.now(), msOf(s.updated_at)));
         if (p) p.unread = 0;
+        readFresh(s.id);
         renderList();
     }
 
@@ -940,9 +1079,12 @@
                 '-',
                 { label: 'Empty Deleted Items', disabled: true },
                 { label: 'Restart Conversation...', disabled: !s, action: () => restartChat(s) },
+                { label: 'Edit Persona...', disabled: !s, action: () => openEdit(s) },
+                { label: 'Persona State...', disabled: !s, action: () => openState(s) },
                 '-',
                 { label: 'New Account...', disabled: !(msgApi() && msgApi().setupAccount), action: () => msgApi().setupAccount() },
-                { label: 'Options...', disabled: !(window.wmSettings && typeof window.wmSettings.open === 'function'), action: optionsAction }
+                { label: 'Options...', disabled: !(window.wmSettings && typeof window.wmSettings.open === 'function'), action: optionsAction },
+                { label: 'Account Options...', disabled: !(window.wmSettings && typeof window.wmSettings.openChatOptions === 'function'), action: () => window.wmSettings.openChatOptions() }
             ] },
             '-',
             { label: 'Select Messages', submenu: () => [{ label: 'All', disabled: true }, { label: 'All Below', disabled: true }, { label: 'Several', disabled: true }] },
@@ -985,6 +1127,7 @@
             { label: 'My Text', submenu: () => MY_TEXT.map((t) => ({ label: t, action: () => insertText(t) })) },
             { label: 'Save to Drafts', disabled: !s, action: () => { setDraft(s.id, inputEl().value.trim() ? inputEl().value : ''); } },
             { label: 'Spell Check', disabled: !(window.wmMessaging && typeof window.wmMessaging.spellCheckField === 'function'), action: () => window.wmMessaging.spellCheckField(inputEl()) },
+            { label: 'Persona', disabled: !s, submenu: () => personaItems(s) },
             '-',
             { label: 'Close', action: () => { popLayer(); sh.syncHistory(); } },
             { label: 'Message Options', action: () => push('opts') },
@@ -999,9 +1142,15 @@
         const check = (name, label, on, attrs = '') => (ui ? ui.check(name, label, on, attrs) : `<label class="wm-check"><input type="checkbox" name="${name}"${on ? ' checked' : ''} ${attrs}><span>${esc(label)}</span></label>`);
         box.innerHTML = `<div class="wm-form-hdr">Message Options</div><div class="wch-form-scroll"><div class="wm-form">
             ${check('actions', 'Show actions and sound effects', showActions)}
+            ${check('events', 'Show 4th wall events (memory, emotion, plans)', showEvents)}
             ${check('receipt', 'Request message delivery notification', false, 'disabled')}
         </div></div>`;
         box.querySelector('input[name="actions"]').addEventListener('change', (e) => { if (e.target.checked !== showActions) toggleActions(); });
+        box.querySelector('input[name="events"]').addEventListener('change', (e) => {
+            showEvents = e.target.checked;
+            store(EVENTS_KEY, showEvents ? '1' : '0');
+            renderEntries();
+        });
     }
 
     function formMenu() {
@@ -1022,6 +1171,185 @@
         try { await sh.busy(() => loadConversation(true), { paint: true }); } catch (err) { failBox('Older messages could not be read.', err); return; }
         renderEntries();
         box.scrollTop = box.scrollHeight - fromEnd;
+    }
+
+    // ---------------------------------------------------------------- persona (#763)
+
+    /**
+     * Edit Persona: the fields a chat was made with (Name, Verbosity, Mind Seed, Story So Far, Viewer
+     * Context), changed on the server with update_chat_context (chatImpl.js handleUpdateChatContext;
+     * a new Name renames the chat too). The persona's picture is the gallery picture the chat was
+     * made from: the server has no call to change it, so it shows and does not change.
+     */
+    function openEdit(s) {
+        if (!s) return;
+        const v = String(s.verbosity_level || '3');
+        editing = { id: s.id, filename: s.filename, name: s.character_name || s.chat_name || '', verbosity: VERBOSITY.some(([k]) => k === v) ? v : '3', seed: s.text_context_info || '', story: s.story_context || '', viewer: s.text_viewer_info || '' };
+        editing.initial = JSON.stringify([editing.name, editing.verbosity, editing.seed, editing.story, editing.viewer]);
+        renderEdit();
+        if (view() === 'edit') showLayer(); else push('edit');
+    }
+
+    function renderEdit() {
+        const ui = window.wmSettings && window.wmSettings.ui;
+        const box = page.querySelector('.wch-editview');
+        if (!editing) { box.innerHTML = ''; return; }
+        const e = editing;
+        const verb = (VERBOSITY.find(([v]) => v === e.verbosity) || VERBOSITY[2])[1];
+        box.innerHTML = `
+            <div class="wm-form-hdr">Edit Persona</div>
+            <div class="wch-form-scroll"><div class="wm-form wch-form">
+                <div class="wch-form-pic">
+                    <img src="${esc(pictureOf(e.filename))}" alt="" draggable="false" onerror="this.src='/static_images/icon-96x96.png'">
+                    <div><div class="wch-form-file">${esc(e.filename || '')}</div></div>
+                </div>
+                <div class="wm-form-row is-wide"><label for="wchEName">Name:</label><input id="wchEName" class="wm-edit" type="text" autocomplete="off" data-e="name" value="${esc(e.name)}"></div>
+                <div class="wm-form-row is-wide"><span class="wm-form-label">Verbosity:</span>${ui ? ui.comboHtml('everbosity', verb) : `<button type="button" class="wm-combo" data-act="everbosity"><span>${esc(verb)}</span></button>`}</div>
+                <div class="wm-form-sub"><label for="wchESeed">Mind Seed:</label></div>
+                <textarea id="wchESeed" class="wm-edit wch-area" data-e="seed" rows="3"></textarea>
+                <div class="wm-form-sub"><label for="wchEStory">Story So Far:</label></div>
+                <textarea id="wchEStory" class="wm-edit wch-area" data-e="story" rows="3"></textarea>
+                <div class="wm-form-sub"><label for="wchEViewer">Viewer Context:</label></div>
+                <textarea id="wchEViewer" class="wm-edit wch-area" data-e="viewer" rows="3"></textarea>
+            </div></div>`;
+        box.querySelector('[data-e="seed"]').value = e.seed;
+        box.querySelector('[data-e="story"]').value = e.story;
+        box.querySelector('[data-e="viewer"]').value = e.viewer;
+        if (ui) ui.bindCombo(box.querySelector('[data-act="everbosity"]'), VERBOSITY, e.verbosity, (v) => { if (editing) editing.verbosity = v; });
+    }
+
+    function readEdit() {
+        if (!editing || !page) return;
+        const v = (f) => { const el = page.querySelector(`.wch-editview [data-e="${f}"]`); return el ? el.value : ''; };
+        editing.name = v('name');
+        editing.seed = v('seed');
+        editing.story = v('story');
+        editing.viewer = v('viewer');
+    }
+
+    async function saveEdit() {
+        if (!editing || editing.saving) return;
+        readEdit();
+        const e = editing;
+        if (JSON.stringify([e.name, e.verbosity, e.seed, e.story, e.viewer]) === e.initial) { popLayer(); sh.syncHistory(); return; }
+        if (!connected()) { failBox('The persona was not changed: the server connection is down.'); return; }
+        e.saving = true;
+        try {
+            await sh.busy(async () => {
+                const r = await wsc().sendMessage('update_chat_context', {
+                    chatId: e.id,
+                    characterName: e.name.trim(),
+                    verbosityLevel: parseInt(e.verbosity, 10) || 3,
+                    textContextInfo: e.seed.trim(),
+                    storyContext: e.story.trim(),
+                    textViewerInfo: e.viewer.trim()
+                });
+                const d = r && r.data && r.data.success !== undefined ? r.data : r;
+                if (!d || d.success === false) throw new Error((d && (d.message || d.error)) || 'The server refused.');
+                try { await loadSessions(); } catch (_) { /* the old row */ }
+            }, { paint: true });
+        } catch (err) {
+            e.saving = false;
+            failBox('The persona could not be changed.', err);
+            return;
+        }
+        if (conv && conv.id === e.id) { conv.session = sessionById(e.id) || conv.session; }
+        popLayer();
+        sh.syncHistory();
+        if (view() === 'conv') renderEntries();
+        else if (view() === 'state' && stateOf) { stateOf.session = sessionById(stateOf.id) || stateOf.session; renderState(); }
+    }
+
+    function editMenu() {
+        return [
+            { label: 'Save', action: saveEdit },
+            '-',
+            { label: 'Cancel', action: () => { popLayer(); sh.syncHistory(); } }
+        ];
+    }
+
+    /**
+     * Persona State: what the persona's 4th wall events last said (emotion, location, plans, trust,
+     * inventory, memories; chatSystem.js shows them in the thread only), then the fields the chat was
+     * made with and its engine. Read from the conversation's last 200 rows; nothing is written.
+     */
+    async function openState(s) {
+        if (!s) return;
+        stateOf = { id: s.id, session: s, rows: null, loading: true };
+        if (view() === 'state') showLayer(); else push('state');
+        const token = stateOf;
+        try {
+            const r = await sh.busy(() => wsc().getChatMessages(s.id, 200, 0), { paint: true });
+            if (stateOf !== token) return;
+            if (!r || !r.success) throw new Error((r && (r.message || r.error)) || 'The conversation could not be read.');
+            token.rows = Array.isArray(r.messages) ? r.messages : []; // newest first
+        } catch (err) {
+            if (stateOf !== token) return;
+            token.error = (err && err.message) || 'The conversation could not be read.';
+        }
+        token.loading = false;
+        if (view() === 'state') renderState();
+    }
+
+    function renderState() {
+        const box = page.querySelector('.wch-stateview');
+        const st = stateOf;
+        if (!st) { box.innerHTML = ''; return; }
+        const s = sessionById(st.id) || st.session || {};
+        const latest = {};
+        const memories = [];
+        for (const m of st.rows || []) {
+            const t = m.event_type;
+            if (m.message_type !== 'assistant' || !META[t] || !m.content) continue;
+            if (t === 'memory') { if (memories.length < 8) memories.push(String(m.content)); continue; }
+            if (!(t in latest)) latest[t] = String(m.content);
+        }
+        const item = (label, text) => (text ? `<div class="wm-form-sub">${esc(label)}:</div><p class="wch-state-val">${esc(text)}</p>` : '');
+        const now = ['emotion', 'location', 'timeofday', 'environment', 'sensory', 'trustlevel', 'inventory', 'currplan', 'futureplans', 'innerspeech', 'offlinemessage'].map((t) => item(META[t], latest[t])).join('');
+        const verb = (VERBOSITY.find(([v]) => v === String(s.verbosity_level || '')) || [null, ''])[1];
+        const engine = [s.provider, s.model].filter(Boolean).join(', ');
+        const body = st.loading ? '<p>Reading the conversation...</p>'
+            : st.error ? `<p>${esc(st.error)}</p>`
+                : `${now || '<p class="wch-state-none">The persona has not said how she is yet.</p>'}
+                ${memories.length ? `<div class="wm-form-sub">Memories:</div><ul class="wch-state-list">${memories.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`;
+        box.innerHTML = `
+            <div class="wm-form-hdr">Persona State</div>
+            <div class="wch-form-scroll"><div class="wm-form wch-state">
+                <div class="wch-form-pic">
+                    <img src="${esc(pictureOf(s.filename))}" alt="" draggable="false" onerror="this.src='/static_images/icon-96x96.png'">
+                    <div><div class="wch-state-name">${esc(personaOf(s))}</div>${s.updated_at ? `<div class="wch-state-when">${esc(entryDate(s.updated_at))}</div>` : ''}</div>
+                </div>
+                ${body}
+                <div class="wch-state-rule"></div>
+                ${item('Verbosity', verb)}
+                ${item('Mind Seed', s.text_context_info)}
+                ${item('Story So Far', s.story_context)}
+                ${item('Viewer Context', s.text_viewer_info)}
+                ${item('Engine', engine)}
+                ${s.total_tokens ? item('Tokens Used', Number(s.total_tokens).toLocaleString()) : ''}
+            </div></div>`;
+    }
+
+    function stateMenu() {
+        const s = stateOf && sessionById(stateOf.id);
+        return [
+            { label: 'Edit Persona...', disabled: !s, action: () => openEdit(s) },
+            { label: 'Refresh', disabled: !s, action: () => openState(s) },
+            '-',
+            { label: 'Close', action: () => { popLayer(); sh.syncHistory(); } }
+        ];
+    }
+
+    /** The persona's own items (the conversation's and the list's menus). */
+    function personaItems(s) {
+        return [
+            { label: 'Edit Persona...', disabled: !s, action: () => openEdit(s) },
+            { label: 'Persona State...', disabled: !s, action: () => openState(s) },
+            { label: 'View Picture', disabled: !(s && s.filename), action: () => showPersonaPicture(s) },
+            '-',
+            { label: 'Restart Conversation...', disabled: !s, action: () => restartChat(s) },
+            { label: 'Delete Conversation...', disabled: !s, action: () => deleteChat(s) }
+        ];
     }
 
     // ---------------------------------------------------------------- page
@@ -1076,7 +1404,9 @@
                 <div class="wch-compose"><textarea class="wch-input" rows="2" enterkeyhint="send" autocomplete="off" aria-label="Message"></textarea></div>
             </div>
             <div class="wch-newview" hidden></div>
-            <div class="wch-optsview" hidden></div>`;
+            <div class="wch-optsview" hidden></div>
+            <div class="wch-editview" hidden></div>
+            <div class="wch-stateview" hidden></div>`;
 
         p.querySelector('.wch-folder').addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1096,7 +1426,10 @@
                 { label: 'Delete', action: () => deleteChat(s) },
                 { label: 'Reply', action: () => openConversation(s) },
                 { label: 'Mark as Read', disabled: !((previews.get(s.id) || {}).unread), action: () => markRead(s) },
-                { label: 'Restart Conversation...', action: () => restartChat(s) }
+                { label: 'Restart Conversation...', action: () => restartChat(s) },
+                '-',
+                { label: 'Edit Persona...', action: () => openEdit(s) },
+                { label: 'Persona State...', action: () => openState(s) }
             ]);
         });
         scroll.addEventListener('click', (e) => {
@@ -1173,6 +1506,15 @@
         if (!sh || typeof sh.registerApp !== 'function') return;
         hookStream();
         patchDesktop();
+        scheduleBgUnread();
+        // Messaging > Options > Text Messages saved (wmSettingsSystem.js chat-options)
+        window.addEventListener('wmChatOptionsChange', () => {
+            showActions = stored(ACTIONS_KEY) === '1';
+            showEvents = stored(EVENTS_KEY) === '1';
+            if (page && view() === 'conv') renderEntries();
+            if (page && view() === 'opts') renderOpts();
+        });
+        registerToday();
         if (!wrapLoader()) { let n = 0; const t = setInterval(() => { if (wrapLoader() || ++n > 60) clearInterval(t); }, 500); }
         sh.registerApp({
             id: APP_ID,
@@ -1185,14 +1527,15 @@
                 shown = true;
                 showLayer();
                 if (view() === 'list') refresh({ quiet: loaded });
-                else if (view() === 'conv') renderEntries();
+                else if (view() === 'conv') { renderEntries(); markConvSeen(); }
             },
             hide() { shown = false; },
             // WM: X on the list, ok on a conversation and on the new chat form (ok creates it)
             titleKind: () => (view() === 'list' ? 'close' : 'ok'),
             onTitleOk() {
                 if (view() === 'new') { createChat(); return true; }
-                if (view() === 'conv' || view() === 'opts') { popLayer(); return true; }
+                if (view() === 'edit') { saveEdit(); return true; }
+                if (view() === 'conv' || view() === 'opts' || view() === 'state') { popLayer(); return true; }
                 return false;
             },
             historyDepth: () => layers.length,
@@ -1206,6 +1549,8 @@
                 if (v === 'conv') return { left: { label: 'Send', disabled: !canSend(), action: send }, right: { label: 'Menu', menu: convMenu } };
                 if (v === 'new') return { left: { label: 'Create', disabled: creating, action: createChat }, right: { label: 'Menu', menu: formMenu } };
                 if (v === 'opts') return { left: null, right: null };
+                if (v === 'edit') return { left: { label: 'Save', disabled: !!(editing && editing.saving), action: saveEdit }, right: { label: 'Menu', menu: editMenu } };
+                if (v === 'state') return { left: { label: 'Edit', disabled: !stateOf || !sessionById(stateOf.id), action: () => { const s = stateOf && sessionById(stateOf.id); if (s) openEdit(s); } }, right: { label: 'Menu', menu: stateMenu } };
                 const s = selectedSession();
                 return { left: { label: 'Reply', disabled: !s, action: () => openConversation(s) }, right: { label: 'Menu', menu: listMenu } };
             }
@@ -1214,10 +1559,66 @@
     }
 
     /** The persona's picture (the gallery picture the chat was made from) in the shell's picture view. */
-    function showPersonaPicture() {
-        const s = conv && conv.session;
+    function showPersonaPicture(of) {
+        const s = of || (conv && conv.session);
         if (!s || !s.filename || typeof showLightbox !== 'function') return; // eslint-disable-line no-undef
         try { showLightbox({ url: pictureOf(s.filename), title: personaOf(s) }); } catch (_) { /* no viewer */ } // eslint-disable-line no-undef
+    }
+
+    /** Conversations with unread persona lines, newest first: { id, name, text, at } (6.5's text panel). */
+    function unreadList() {
+        return sessions.filter((x) => ((previews.get(x.id) || {}).unread || 0) > 0)
+            .map((x) => ({ id: x.id, name: personaOf(x), text: (previews.get(x.id) || {}).text || '', unread: previews.get(x.id).unread, at: Math.max(msOf(x.updated_at), (fresh.get(x.id) || {}).at || 0) }))
+            .sort((a, b) => b.at - a.at);
+    }
+
+    async function openChatById(id) {
+        if (!sh) return false;
+        if (!sessionById(id)) { try { await loadSessions(); } catch (_) { return false; } }
+        const s = sessionById(id);
+        if (!s) return false;
+        sh.open(APP_ID);
+        smsFolder = 'inbox';
+        openConversation(s, { replace: true });
+        return true;
+    }
+
+    /**
+     * 6.5's home screen "text" panel (device CHome\CText: icon 2007 chNotifications_textmessage, after
+     * the clock and before e-mail): a page per unread conversation (the persona, the last line, the
+     * time); a tap opens that conversation, the soft key Text Messages. Only in 6.5: 6.1's Today
+     * counts texts in its Messaging row.
+     */
+    function registerToday() {
+        if (sh.version !== '6.5' || typeof sh.registerTodayItem !== 'function') return;
+        const when = (ms) => {
+            if (!ms) return '';
+            const d = new Date(ms);
+            return sameDay(d, new Date()) ? fmtTime(d) : fmtShortDate(d);
+        };
+        const showList = () => window.wmChatApp.showList();
+        sh.registerTodayItem({
+            id: 'text',
+            label: 'Text',
+            icon: 'ti-2007',
+            after: 'connection',
+            text: () => { const n = window.wmChatApp.unread(); return n ? `${n} new text ${n === 1 ? 'message' : 'messages'}` : 'No new messages'; },
+            onTap: showList,
+            titanium() {
+                const list = unreadList();
+                const n = list.reduce((k, x) => k + x.unread, 0);
+                return {
+                    label: 'text',
+                    icon: 'ti-2007',
+                    count: n ? String(n) : '',
+                    pages: list.length
+                        ? list.map((x) => ({ title: x.name, line2: x.text, line3: when(x.at), onTap: () => { openChatById(x.id); } }))
+                        : [{ title: 'No New Messages' }],
+                    softKey: { label: 'Messaging', action: showList },
+                    onTap: showList
+                };
+            }
+        });
     }
 
     const norm = (t) => String(t || '').trim().toLowerCase();
@@ -1254,6 +1655,10 @@
         unread() {
             return sessions.reduce((n, x) => n + ((previews.get(x.id) || {}).unread || 0), 0);
         },
+        unreadList: () => unreadList(),
+        openChat: (id) => openChatById(id),
+        // Contacts' persona cards (#763, wmNotes.js): that conversation by its chat id
+        openWithId: (id) => openChatById(id),
         async refresh() {
             try { if (await ensureChat()) { await loadSessions(); await loadPreviews(); } } catch (_) { /* keeps the old count */ }
             if (page && view() === 'list') renderList();

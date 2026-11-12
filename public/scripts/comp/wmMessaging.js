@@ -458,6 +458,7 @@
     }
 
     async function loadDirector(opts = {}) {
+        watchDirectorRows();
         const p = dirP;
         const token = ++listToken;
         if (p === 'xi' && !xiOn()) { dirLists.xi = []; loading = false; renderList(); return true; }
@@ -1794,11 +1795,24 @@
         ];
     }
 
+    /**
+     * The Director's own session menu for a row (Fork, Move to workspace, Auto-Repair, Nuke, Delete:
+     * director.js directorSessionContextConfig through wmDirectorApp.sessionMenuRows, #763). The list
+     * reads again when the Director answers one of them (watchDirectorRows).
+     */
+    function dirSessionRows(s) {
+        const app = window.wmDirectorApp;
+        if (!s || s.draft || !app || typeof app.sessionMenuRows !== 'function') return [];
+        try { return app.sessionMenuRows(dirP, s.id, s) || []; } catch (err) { console.warn('[wmMessaging] session menu', err); return []; }
+    }
+
     function directorListMenu() {
         const s = (dirRows().find((x) => String(x.id) === String(selectedId))) || null;
+        const rows = dirSessionRows(s);
         return [
             { label: 'New', action: () => newDirectorSession(dirP) },
             { label: 'Open', disabled: !s, action: () => openDirectorRow(s) },
+            ...(rows.length ? [{ label: 'Session', submenu: () => dirSessionRows(s) }] : []),
             '-',
             { label: 'Go To', submenu: goToItems },
             { label: 'Tools', submenu: () => [{ label: 'New Account...', action: setupAccount }, optionsItem()] },
@@ -1862,7 +1876,8 @@
         if (!isMail()) {
             const s = m;
             if (!s) return [{ label: 'New', action: () => newDirectorSession(dirP) }, { label: 'Send/Receive', action: sendReceive }];
-            return [{ label: 'Open', action: () => openDirectorRow(s) }, { label: 'New', action: () => newDirectorSession(dirP) }];
+            const rows = dirSessionRows(s);
+            return [{ label: 'Open', action: () => openDirectorRow(s) }, { label: 'New', action: () => newDirectorSession(dirP) }, ...(rows.length ? ['-', ...rows] : [])];
         }
         if (!m) return [{ label: 'Send/Receive', action: sendReceive }, { label: 'Folders...', action: () => showTree(page.querySelector('.msg-folder')) }];
         if (is65()) {
@@ -1972,8 +1987,15 @@
         openDirectorSession(dirP, s.id);
     }
 
-    /** The Director app on that persona and session (the Today widget's hand-off, wmTodayWidgets.js). */
+    /**
+     * The Director app on that persona and THAT session, its messages on screen (#763: the phone's
+     * openSessionInWindow only brought the Director up on her front page): wmDirectorApp.openSession.
+     */
     async function openDirectorSession(p, id) {
+        const app = window.wmDirectorApp;
+        if (app && typeof app.openSession === 'function') {
+            try { if (await app.openSession(p, id)) return; } catch (err) { console.warn('[wmMessaging] Director', err); }
+        }
         const inst = window.directorInstance;
         if (!inst || typeof inst.openSessionInWindow !== 'function') { ws.open('director'); return; }
         try {
@@ -1983,6 +2005,20 @@
             console.warn('[wmMessaging] Director', err);
             ws.open('director');
         }
+    }
+
+    /** A session changed by the Director (a menu row run from here, or elsewhere): the list reads again. */
+    let dirWatch = false;
+    function watchDirectorRows() {
+        const c = wsc();
+        if (dirWatch || !c || typeof c.on !== 'function') return;
+        dirWatch = true;
+        let timer = null;
+        const again = () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => { if (!isMail() && page) loadDirector({ keep: true }); }, 400);
+        };
+        ['director_delete_session_response', 'director_fork_session_response', 'director_move_session_response', 'director_session_renamed', 'director_session_repair', 'director_create_session_response'].forEach((t) => c.on(t, again));
     }
 
     /** New: the Director app's own New Session with that persona. */
@@ -2328,7 +2364,7 @@
         if (row) openMessage(row);
     }
 
-    window.wmMessaging = { openMail, showTree, closeTree, accountItems, goTo, setupAccount, mailAddress: () => mailAddress(), spellCheckField, loadSignature };
+    window.wmMessaging = { openMail, showTree, closeTree, accountItems, goTo, openAccount: (key, f) => goTo(key || 'mail', f), setupAccount, mailAddress: () => mailAddress(), spellCheckField, loadSignature };
 
     // ---------------------------------------------------------------- registration
 

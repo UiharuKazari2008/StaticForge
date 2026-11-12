@@ -38,7 +38,29 @@
     // the sheet's pages: wab32res.dll.mui dialogs, their tab names its strings (4416, 4458, 4016-4018, 4091, 4028, 4457)
     const CONTACT_PAGES = [['wab32res:6007', 'Summary'], ['wab32res:114', 'Name and E-mail'], ['wab32res:115', 'Home'], ['wab32res:116', 'Work'], ['wab32res:6066', 'Family'], ['wab32res:117', 'Notes'], ['wab32res:119', 'IDs']];
     const GROUP_PAGES = [['wab32res:118', 'Contact Group'], ['wab32res:2379', 'Contact Group Details']];
-    const P = { sum: 'wab32res:6007', name: 'wab32res:114', home: 'wab32res:115', work: 'wab32res:116', family: 'wab32res:6066', notes: 'wab32res:117', ids: 'wab32res:119', group: 'wab32res:118', gdet: 'wab32res:2379' };
+    // the Persona page: Summary's metrics (labels 15 / 50 DLU right-aligned, read-only values at 71,
+    // the picture at 227, 13), multi-line values two lines tall
+    const LBL = 0x50020002;
+    const HDR = 0x58020002;
+    const RO = 0x50010880;
+    const ROML = 0x50010884;
+    const PERSONA_TPL = { t: 'Persona', w: 318, h: 203, f: ['Segoe UI', 9], s: 0x800000C8, c: [
+        [2871, 'WAB User Tile Control', 227, 13, 80, 80, 0x58000000, 'Picture', 0],
+        [-1, 'S', 15, 15, 50, 8, LBL, 'Persona:', 0], [3001, 'E', 71, 15, 150, 8, RO, '', 0],
+        [-1, 'S', 15, 27, 50, 8, LBL, 'Last seen:', 0], [3002, 'E', 71, 27, 150, 8, RO, '', 0],
+        [-1, 'S', 15, 51, 50, 8, HDR, 'Now', 0],
+        [-1, 'S', 15, 63, 50, 8, LBL, 'Feeling:', 0], [3003, 'E', 71, 63, 150, 16, ROML, '', 0],
+        [-1, 'S', 15, 81, 50, 8, LBL, 'Trust:', 0], [3004, 'E', 71, 81, 150, 8, RO, '', 0],
+        [-1, 'S', 15, 99, 50, 8, LBL, 'Location:', 0], [3005, 'E', 71, 99, 236, 16, ROML, '', 0],
+        [-1, 'S', 15, 117, 50, 8, LBL, 'Time of day:', 0], [3006, 'E', 71, 117, 236, 8, RO, '', 0],
+        [-1, 'S', 15, 129, 50, 8, LBL, 'Plan:', 0], [3007, 'E', 71, 129, 236, 16, ROML, '', 0],
+        [-1, 'S', 15, 147, 50, 8, LBL, 'Later:', 0], [3008, 'E', 71, 147, 236, 8, RO, '', 0],
+        [-1, 'S', 15, 159, 50, 8, LBL, 'Carrying:', 0], [3009, 'E', 71, 159, 236, 8, RO, '', 0],
+        [3020, 'B', 15, 178, 80, 12, 0x50010000, 'Send Text &Message', 0],
+        [3021, 'B', 101, 178, 80, 12, 0x50010000, '&Memories...', 0],
+        [3022, 'S', 187, 180, 120, 8, 0x50020000, '', 0]
+    ] };
+    const P = { persona: 'wcon:persona', sum: 'wab32res:6007', name: 'wab32res:114', home: 'wab32res:115', work: 'wab32res:116', family: 'wab32res:6066', notes: 'wab32res:117', ids: 'wab32res:119', group: 'wab32res:118', gdet: 'wab32res:2379' };
 
     function blobToBase64(blob) {
         return new Promise((resolve, reject) => {
@@ -72,7 +94,7 @@
     }
 
     function message(text, title = 'Melaton Contacts') {
-        return call('showConfirmationDialog', `<p>${esc(text).replace(/\n/g, '<br>')}</p>`, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title, width: 400 });
+        return call('showConfirmationDialog', `<p>${esc(text).replace(/\n/g, '<br>')}</p>`, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title, width: 400, icon: 'fas fa-circle-info' });
     }
 
     // ---- the folder ----------------------------------------------------------------------------
@@ -203,6 +225,8 @@
         const name = () => VC().displayName(c);
         const title = `${isNew ? (c.group ? 'New Contact Group' : 'New Contact') : name()} Properties`; // string 4068
         const pages = (c.group ? GROUP_PAGES : CONTACT_PAGES).map(([key, t]) => ({ key, title: t }));
+        const persona = !c.group && !!c.chatId && !!root.explorerContacts && typeof root.explorerContacts.personaState === 'function';
+        if (persona) pages.push({ key: P.persona, title: 'Persona', tpl: PERSONA_TPL });
         const set = (ctx, id, v, page) => { const e = ctx.el(id, page); if (e) e.value = v || ''; };
         const get = (ctx, id, page) => { const e = ctx.el(id, page); return e ? String(e.value || '').trim() : ''; };
         const choosePic = (ctx, redraw) => choosePicture(ctx.modal, (data) => { c.photo = data; redraw(); ctx.dirty(); });
@@ -328,6 +352,7 @@
                 const ids = ctx.el(96, P.ids);
                 if (ids && ids.tagName === 'SELECT') ids.innerHTML = (c.emails.length ? c.emails : ['[None - digital IDs without associated E-mail addresses]']).map((e) => `<option>${esc(e)}</option>`).join(''); // 4306
                 listView(ctx, 2475, P.ids, [], -1, () => {});
+                if (persona) personaPage(ctx, c);
             },
             async apply(ctx) {
                 if (c.group) {
@@ -365,6 +390,54 @@
         });
         // a new contact's sheet opens with OK ready (Vista: Apply is not needed to add it)
         if (ctx0 && isNew) ctx0.dirty();
+    }
+
+    /** The Persona page (#763): the state as the server has it now; nothing on it is edited. */
+    function personaPage(ctx, c) {
+        const EC = root.explorerContacts;
+        const pg = P.persona;
+        const put = (id, v) => { const e = ctx.el(id, pg); if (e) { e.value = v || ''; e.title = v || ''; } };
+        pictureControl(ctx, pg, c, null);
+        put(3001, c.chatName || VC().displayName(c));
+        const chatBtn = ctx.el(3020, pg);
+        const memBtn = ctx.el(3021, pg);
+        if (memBtn) memBtn.disabled = true;
+        let memories = [];
+        const note = (t) => ctx.text(3022, t, pg);
+        if (c.chatDeleted) {
+            if (chatBtn) chatBtn.disabled = true;
+            note('This persona\'s chat was deleted.');
+            return;
+        }
+        note('Reading the persona\'s state...');
+        ctx.on(3020, 'click', async () => {
+            if (!(await EC.openPersonaChat(c))) await message(`The chat with ${VC().displayName(c)} could not be opened.`);
+        }, pg);
+        ctx.on(3021, 'click', () => {
+            if (!memories.length) return;
+            const list = memories.map((m) => `<li>${esc(m.content)}</li>`).join('');
+            void call('showConfirmationDialog', `<p>What ${esc(c.chatName || VC().displayName(c))} remembers most:</p><ol class="wcon-memories">${list}</ol>`, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'Memories', width: 440, icon: 'fas fa-circle-info' });
+        }, pg);
+        void EC.personaState(c.chatId, true).then((st) => {
+            if (!st || !st.exists) {
+                note(st ? 'This persona\'s chat was deleted.' : 'The persona\'s state could not be read.');
+                if (chatBtn && st) chatBtn.disabled = true;
+                return;
+            }
+            const rows = Object.fromEntries(EC.personaRows(st));
+            put(3001, st.name || c.chatName || VC().displayName(c));
+            put(3002, rows['Last seen'] || '');
+            put(3003, rows.Feeling);
+            put(3004, rows.Trust);
+            put(3005, rows.Location);
+            put(3006, rows['Time of day']);
+            put(3007, rows.Plan);
+            put(3008, rows.Later);
+            put(3009, rows.Carrying);
+            memories = st.memories || [];
+            if (memBtn) memBtn.disabled = !memories.length;
+            note(st.messageCount ? '' : 'No messages yet.');
+        });
     }
 
     function go(url) {

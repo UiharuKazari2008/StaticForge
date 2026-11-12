@@ -557,7 +557,82 @@
 
     // newSessionWith(persona): the menu's New Session for that persona (her selected first), as the
     // 6.5 home screen's Director pages start one (wmTodayWidgets.js); the app must be in front
-    window.wmDirectorApp = { attach: attachItems, handOff, newSessionWith: async (p) => { if (p) await switchPersona(p); await newSession(); } };
+    window.wmDirectorApp = {
+        attach: attachItems,
+        handOff,
+        newSessionWith: async (p) => { if (p) await switchPersona(p); await newSession(); },
+        // Messaging's Director accounts (#763): open THAT session in the app (her persona first),
+        // and the session row's own menu (Fork, Move to workspace, Auto-Repair, Nuke, Delete)
+        openSession: (p, id) => openSessionOf(p, id),
+        sessionMenuRows: (p, id, session) => sessionRowsFor(p, id, session)
+    };
+
+    /** The app in front on persona p's session id, its messages on screen (the Sessions page's tap). */
+    function openSessionOf(p, id) {
+        if (id == null) return Promise.resolve(false);
+        return handOff(async (d) => {
+            if (!d) return false;
+            if (!d.directorWindowIsOpen()) await d.openDirectorWindow();
+            if (p && d.persona !== p) await switchPersona(p);
+            if (!sessionById(id)) { try { await busyOf(() => d.loadDirectorSessions()); } catch (_) { /* below */ } }
+            if (!sessionById(id)) return false;
+            await openSession(id);
+            return true;
+        });
+    }
+
+    /**
+     * The session menu for a row of persona p shown outside the app (Messaging). With the Director on
+     * another persona the rows are worked out as hers (director.js reads this.persona and
+     * directorSessions), and each action first switches the Director to her, then runs the same row.
+     */
+    function sessionRowsFor(p, id, session) {
+        const d = dir();
+        if (!d || id == null) return [];
+        if (!p || (d.persona === p && sessionById(id))) return sessionMenuRows(id);
+        const as = (fn) => {
+            const was = { persona: d.persona, sessions: d.directorSessions };
+            try {
+                d.persona = p;
+                d.directorSessions = session ? [session] : (d.directorSessions || []);
+                return fn();
+            } finally { d.persona = was.persona; d.directorSessions = was.sessions; }
+        };
+        const ready = async () => {
+            if (d.persona !== p) {
+                // Yozora's chats need the window (director.js setPersona): the app comes up for them
+                if (p === 'xi' && !d.directorWindowIsOpen()) { await openSessionOf(p, id); return; }
+                await switchPersona(p);
+            }
+            if (!sessionById(id)) { try { await busyOf(() => d.loadDirectorSessions()); } catch (_) { /* below */ } }
+        };
+        // a row by its labels, from the menu as the Director sees it now
+        const find = (path) => {
+            let rows = sessionMenuRows(id);
+            let row = null;
+            for (const label of path) {
+                row = rows.find((r) => r && r !== '-' && r.label === label) || null;
+                if (!row) return null;
+                if (row.submenu && label !== path[path.length - 1]) rows = row.submenu() || [];
+            }
+            return row;
+        };
+        const wrap = (rows, path) => rows.map((r) => {
+            if (!r || r === '-') return r;
+            const here = path.concat(r.label);
+            const out = { ...r };
+            if (typeof r.submenu === 'function') out.submenu = () => wrap(as(() => r.submenu()) || [], here);
+            if (typeof r.action === 'function') {
+                out.action = async () => {
+                    await ready();
+                    const row = find(here);
+                    if (row && typeof row.action === 'function') row.action();
+                };
+            }
+            return out;
+        });
+        return wrap(as(() => sessionMenuRows(id)), []);
+    }
 
     // ---------------------------------------------------------------- composer
 

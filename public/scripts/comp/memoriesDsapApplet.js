@@ -464,7 +464,7 @@ ${memoriesDsapBuildTabBar(tab)}
                 <td colspan="2">
                     <input type="file" id="linkxiPersonaProfilePhoto" accept="image/*" class="hidden">
                     <div class="memories-linkxi-photo-preview" id="linkxiPersonaProfilePhotoPreview" title="Click to upload">
-                        <i class="fas fa-camera"></i>
+                        <img src="/static_images/account-pictures/guest.png" alt="">
                         <span>Upload Photo</span>
                     </div>
                 </td>
@@ -3233,7 +3233,7 @@ const memoriesDsapDriver = {
             if (settings.profile_photo_base64) {
                 preview.innerHTML = `<img src="data:image/jpeg;base64,${settings.profile_photo_base64}" alt="Profile Photo">`;
             } else {
-                preview.innerHTML = '<i class="fas fa-camera"></i><span>Upload Photo</span>';
+                preview.innerHTML = '<img src="/static_images/account-pictures/guest.png" alt=""><span>Upload Photo</span>';
             }
         }
     },

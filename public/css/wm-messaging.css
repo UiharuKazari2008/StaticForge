@@ -1130,3 +1130,42 @@ textarea.wm-edit.wm-msgopt-sig:disabled {
 .wm-msg .msg-row .msg-prio[data-prio="low"] {
     background-image: image-set(url('/static_images/wm61/msg-prio-low.png') 1x, url('/static_images/wm61/msg-prio-low@2x.png') 2x, url('/static_images/wm61/msg-prio-low@4x.png') 4x);
 }
+
+/* Options > Accounts > Text Messages (#763): My Info's picture beside its buttons, the backstory box */
+.wm-chatopt-pic {
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) 0;
+}
+
+.wm-chatopt-pic .wm-buttons {
+    margin: 0;
+}
+
+.wm-chatopt-photo {
+    flex: 0 0 auto;
+    width: calc(48 * var(--wm-px));
+    height: calc(48 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-chatopt-photo img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+textarea.wm-edit.wm-chatopt-area {
+    display: block;
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    width: 100%;
+    height: calc(96 * var(--wm-px));
+    box-sizing: border-box;
+    resize: none;
+    font: inherit;
+    white-space: pre-wrap;
+}

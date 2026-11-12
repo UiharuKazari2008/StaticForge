@@ -428,6 +428,8 @@ class BannerManager {
             // Persona operations
             'get_persona_settings': 'Get Persona Settings',
             'save_persona_settings': 'Save Persona Settings',
+            'get_chat_engine_settings': 'Get Chat Engine',
+            'save_chat_engine_settings': 'Save Chat Engine',
 
             // Chat operations
             'create_chat_session': 'Create Chat Session',
@@ -847,6 +849,7 @@ class WebSocketClient {
         'get_presets',
         'get_autofill_ranking',
         'get_persona_settings',
+        'get_chat_engine_settings',
         'get_user_global_settings',
         'test_autofill_ranking',
         'director_get_sessions',
@@ -1214,6 +1217,10 @@ class WebSocketClient {
         if (patch.maxAttempts !== undefined) this.connectionUi.maxAttempts = patch.maxAttempts;
         this._renderConnectionDial();
         this._updateModemTrayIcon();
+        // Melaton Mobile's Mainframe Server box goes once the socket is up (a missed ready status)
+        if (phase === 'connected' && (typeof document !== 'undefined' && document.documentElement && document.documentElement.classList.contains('ui-mobile') && window.wmShell && window.wmShell.mainframeBox) && this.isConnected()) {
+            window.wmShell.mainframeBox(null);
+        }
         // Clear after render so a transient "connected" beat cannot pop the dial mid-quiet reconnect
         if (phase === 'idle') {
             this._clearTrayOnlyReconnect();
@@ -3413,6 +3420,9 @@ class WebSocketClient {
             this._updatePreStartupStageProgress(data.isReady === false ? progress : null, message);
             this._renderConnectionDial();
         }
+        else if ((typeof document !== 'undefined' && document.documentElement && document.documentElement.classList.contains('ui-mobile') && window.wmShell && window.wmShell.mainframeBox)) {
+            this._updatePreStartupStageProgress(data.isReady === false ? progress : null, message);
+        }
     }
 
     /**
@@ -3543,9 +3553,16 @@ class WebSocketClient {
      * bottom-right quadrant; the logon dialog never shows a bar. null hides it.
      */
     _updatePreStartupStageProgress(progressPercent, message) {
+        const booting = !!(this.lastServerStartupStatus && this.lastServerStartupStatus.isReady === false);
+        // Melaton Mobile: the same window as a WM message box (wmShell mainframeBox), in place
+        // of the Connection box's "Compiling client files…" line
+        if ((typeof document !== 'undefined' && document.documentElement && document.documentElement.classList.contains('ui-mobile') && window.wmShell && window.wmShell.mainframeBox)) {
+            const up = typeof progressPercent === 'number' && Number.isFinite(progressPercent) && booting;
+            window.wmShell.mainframeBox(up ? progressPercent : null, message);
+            return;
+        }
         const win = window.mainframeServerWindow;
         if (!win) return;
-        const booting = !!(this.lastServerStartupStatus && this.lastServerStartupStatus.isReady === false);
         const show = typeof progressPercent === 'number' && Number.isFinite(progressPercent)
             && booting && window.isDesktop && this._shouldUsePreStartupDialog();
         if (show) win.update(progressPercent, message);
@@ -8403,8 +8420,40 @@ class WebSocketClient {
         return this.sendMessage('get_persona_settings', {}, false); // Background operation
     }
 
+    // Only the keys passed are written; the rest keep their stored value (#763).
     async savePersonaSettings(settings) {
         return this.sendMessage('save_persona_settings', { settings });
+    }
+
+    // Chat engine shared by the desktop Control Panel "Chat" page and phone Messaging Options
+    // (Yozora #763). -> { success, settings: { provider, model, effort }, effective: { provider,
+    // providerName, model, effort }, providers: [{ id, name, kind, logo, hasKey, defaultModel }],
+    // efforts: ['default','none','low','medium','high'] }
+    static chatReplyData(reply) {
+        return reply && reply.data && typeof reply.data === 'object' && reply.data.success !== undefined ? reply.data : reply;
+    }
+
+    async getChatEngineSettings() {
+        return WebSocketClient.chatReplyData(await this.sendMessage('get_chat_engine_settings', {}, false));
+    }
+
+    // { provider?, model?, effort? } (omitted = unchanged, '' = server default) -> same shape as get.
+    async saveChatEngineSettings(settings) {
+        return WebSocketClient.chatReplyData(await this.sendMessage('save_chat_engine_settings', { settings: settings || {} }, false));
+    }
+
+    // One engine's model catalog (director_get_models with engine custom:<id>).
+    // -> { success, models: [{ id, name, provider, default, released }], error }
+    async getChatEngineModels(providerId, options = {}) {
+        const id = String(providerId || '').trim().toLowerCase();
+        const body = WebSocketClient.chatReplyData(await this.sendMessage('director_get_models', {
+            engine: `custom:${id}`,
+            force: options.force === true
+        }, false)) || {};
+        const models = Array.isArray(body.models) ? body.models.map((m) => ({
+            id: m.id, name: m.name || m.id, provider: m.provider || '', default: m.default === true, released: m.released || 0
+        })) : [];
+        return { success: !body.error || models.length > 0, models, error: body.error || null };
     }
 
     async getUserGlobalSettings() {
