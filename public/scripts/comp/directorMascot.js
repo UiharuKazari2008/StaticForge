@@ -22,6 +22,8 @@ const DIRECTOR_MASCOT_SLEEPY_MS = 3 * 60 * 1000;
 // Kicks are the art's own kick poses again, on the stages that have one. The Mascot Test panel can
 // still fire a bump to look at it. Turn this on only when the layer work makes them look right.
 const DIRECTOR_MASCOT_BUMPS = false;
+// Chest / arm pins and the Segment Anything part masks (#766): off until the layered drawing passes.
+const DIRECTOR_MASCOT_PINS = false;
 
 function directorMascotRand(range, fallback) {
     if (!Array.isArray(range) || range.length < 2) return fallback;
@@ -2516,7 +2518,10 @@ class DirectorMascot {
                 const def = this.stageDef();
                 const gain = this.growGain();
                 this._gainShown = gain;
-                this.glBody.setPins(def && def.pin, body.parts ? this.manifest.base + body.parts : null, body.under ? this.manifest.base + body.under : null);
+                // Pinned pieces and part masks are OFF (Yukimi 2026-11-12): she grows with the plain warp again
+                // (arms and chest stretch with the belly) until the layered drawing is right. See DIRECTOR_MASCOT_PINS.
+                if (DIRECTOR_MASCOT_PINS) this.glBody.setPins(def && def.pin, body.parts ? this.manifest.base + body.parts : null, body.under ? this.manifest.base + body.under : null);
+                else this.glBody.setPins(null, null, null);
                 this.glBody.show(src, { ms: from ? ms : 0, centre: from ? this.morphCentre(from, id) : null, kick: from ? this.kickBetween(from, id) : null, cfg: (def && def.grow) || null, gain });
                 [this.el.body, this.el.bodyPrev].forEach((img) => { if (img.hasAttribute('src')) img.removeAttribute('src'); });
                 if (this._camKey !== JSON.stringify(this.camera())) {
