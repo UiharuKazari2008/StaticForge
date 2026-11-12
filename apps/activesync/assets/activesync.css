@@ -96,14 +96,14 @@ body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.mo
     height: 28px;
     min-height: 0;
     margin: 0;
-    padding: 6px 0 0 7px;
+    padding: 5px 0 0 7px; /* the title's glyphs from y=9 (VM), the icon still at y=6 */
     gap: 5px;
     align-items: flex-start;
     border: 0;
     background: none;
     box-shadow: none;
 }
-body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-main > .icon-image { display: block; width: 16px; height: 16px; margin: 0; }
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-main > .icon-image { display: block; width: 16px; height: 16px; margin: 1px 0 0; }
 body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-main > .icon-fa { display: none; }
 body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-main > span { line-height: 16px; }
 body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar {
@@ -146,10 +146,10 @@ body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.mo
     margin: 0 0 0 10px;
     gap: 0;
     font: 13px/1 'Segoe UI', sans-serif;
-    color: #4c5258;
-    text-shadow: 0 0 10px #fff, 0 0 6px #fff, 0 0 3px #fff;
+    color: #1f2224; /* the strokes' core on the VM: Home #1f2224, the last crumb #1c1f23 */
+    text-shadow: none; /* WMDC draws the crumbs plain on the glass, no glow (VM) */
 }
-body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar .asdc-crumbs > span:last-child { color: #1e1e1e; }
+body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar .asdc-crumbs > span:last-child { color: #1c1f23; }
 body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar .asdc-crumbs > img { margin: 0 7px 0 9px; }
 body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.modal.toolbar-visible .modal-window-title-toolbar > .asdc-help {
     flex: none;

@@ -1806,6 +1806,9 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:disabled,
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:disabled {
     border-image-source: var(--caption-face-disabled);
+    /* the disabled face and the greyed glyph are the whole disabled look: a window without a
+       maximize box (WMDC on the VM) keeps the full glass button, not app.css's 40 % fade */
+    opacity: 1;
 }
 
 /* hot / pressed: the same 9-slice on ::before, faded in 0.1 s and out 0.3 s */
