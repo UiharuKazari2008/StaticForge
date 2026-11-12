@@ -18,6 +18,33 @@ import numpy as np
 from segment_anything import SamPredictor, sam_model_registry
 
 folder = sys.argv[1] if len(sys.argv) > 1 else '.'
+
+if len(sys.argv) > 2 and sys.argv[2] == 'under':
+    # The under-layer: each sheet with her chest and arm painted out, at half size. Only a thin band
+    # beside each piece is ever seen (as far as the piece moves when she grows), so the fill has to
+    # carry the belly's colours and lines across the piece's edge, not invent what is deep under it.
+    for job in json.load(open(os.path.join(folder, 'jobs.json'))):
+        sheet = cv2.imread(os.path.join(folder, job['file'].replace('.png', '.rgba.png')), cv2.IMREAD_UNCHANGED)
+        h, w = sheet.shape[0] // 2, sheet.shape[1] // 2
+        sheet = cv2.resize(sheet, (w, h), interpolation=cv2.INTER_AREA)
+        hole = np.zeros((h, w), dtype=np.uint8)
+        for part in job['parts']:
+            if part['name'] == 'belly':
+                continue
+            path = os.path.join(folder, job['file'].replace('.png', '-' + part['name'] + '.png'))
+            if not os.path.exists(path):
+                continue
+            mask = cv2.resize(cv2.imread(path, cv2.IMREAD_GRAYSCALE), (w, h), interpolation=cv2.INTER_NEAREST)
+            if (mask > 127).sum() > w * h * 0.2:
+                continue
+            hole |= (mask > 127).astype(np.uint8) * 255
+        # take the piece's own outline with it
+        hole = cv2.dilate(hole, np.ones((9, 9), np.uint8))
+        colour = cv2.inpaint(sheet[:, :, :3], hole, 7, cv2.INPAINT_TELEA)
+        alpha = cv2.inpaint(sheet[:, :, 3], hole, 7, cv2.INPAINT_TELEA)
+        cv2.imwrite(os.path.join(folder, job['file'].replace('.png', '.under.png')), np.dstack([colour, alpha]))
+        print(job['file'], 'under', int((hole > 0).sum()), flush=True)
+    sys.exit(0)
 sam = sam_model_registry['vit_b'](checkpoint='sam_vit_b.pth')
 sam.eval()
 predictor = SamPredictor(sam)

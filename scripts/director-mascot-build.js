@@ -566,11 +566,13 @@ async function preview(dir) {
  *                    prompts from the PIN table: inside the piece, and not on the belly / other pieces)
  *   (scripts/director-mascot-sam.py runs the model over <dir>, on any machine with torch; it writes
  *   <persona>-<bodyId>-<part>.png masks)
+ *   (python director-mascot-sam.py <dir> under paints the pieces out of each sheet: <sheet>.under.png)
  *   parts <dir>      packs the masks as parts-<bodyId>.png beside the sheets (half size; red = chest,
- *                    green = arm or hand, blue = belly; soft edges) and names it in manifest.bodies
+ *                    green = arm or hand, blue = belly with its outline; soft edges) and names it in
+ *                    manifest.bodies. The shader draws them as layers: the belly grows over the rest of
+ *                    her, the chest and arm move on top (directorMascot.js)
  * A pose whose arm is somewhere else (a gesture) keeps only the pieces that match the stage's own.
  */
-const PARTS_OFF = ['xi'];
 const partName = (pin, j) => (j === 0 ? 'chest' : (pin.length > 7 ? 'arm' : 'hand'));
 
 async function buildSamJobs(dir) {
@@ -585,6 +587,8 @@ async function buildSamJobs(dir) {
                 if (!m.bodies[bodyId] || jobs.some((job) => job.persona === persona && job.bodyId === bodyId)) continue;
                 const file = `${persona}-${bodyId}.png`;
                 await sharp(path.join(OUT, persona, m.bodies[bodyId].body)).flatten({ background: '#808890' }).png().toFile(path.join(dir, file));
+                // the sheet as it is (with its alpha), for the under-layer fill
+                await sharp(path.join(OUT, persona, m.bodies[bodyId].body)).png().toFile(path.join(dir, file.replace('.png', '.rgba.png')));
                 const parts = pins.map((q, j) => {
                     const pos = [];
                     if (q.length > 7) { for (const t of [0.25, 0.5, 0.75, 0.95]) pos.push([q[6] + (q[4] - q[6]) * t, q[7] + (q[5] - q[7]) * t]); }
@@ -630,16 +634,28 @@ async function buildParts(dir) {
             };
             const r = await channel('chest');
             const g = await channel(names.find((name) => name === 'arm' || name === 'hand'));
-            const b = await channel('belly');
+            let b = await channel('belly');
+            // the belly layer takes its own outline with it: grown by 3 px (half-size pixels) into the line
+            if (b) {
+                for (let pass = 0; pass < 3; pass++) {
+                    const next = Buffer.from(b);
+                    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) { const i = y * W + x; if (b[i] < 128 && (b[i - 1] > 127 || b[i + 1] > 127 || b[i - W] > 127 || b[i + W] > 127)) next[i] = 255; }
+                    b = next;
+                }
+            }
             const out = Buffer.alloc(W * H * 3);
             for (let i = 0; i < W * H; i++) { out[i * 3] = r ? r[i] : 0; out[i * 3 + 1] = g && !(r && r[i] > 127) ? g[i] : 0; out[i * 3 + 2] = b ? b[i] : 0; }
-            // Yozora's sash runs under her chest: where the chest layer moves off it, the belly has nothing
-            // of its own to show and her chest's stripe ghosts through. Until the hidden areas are painted
-            // in (the next step), her sheets keep the ellipse pins and get no mask.
-            if (PARTS_OFF.includes(persona)) { delete m.bodies[job.bodyId].parts; continue; }
             const name = `parts-${job.bodyId}.png`;
             await sharp(out, { raw: { width: W, height: H, channels: 3 } }).blur(1.2).png({ compressionLevel: 9 }).toFile(path.join(OUT, persona, name));
             m.bodies[job.bodyId].parts = name;
+            // the under-layer: the sheet with those pieces painted out (director-mascot-sam.py under), shown
+            // where a piece has moved off its place, so no ghost of it is left on the belly
+            const under = path.join(dir, job.file.replace('.png', '.under.png'));
+            if (fs.existsSync(under)) {
+                const underName = `under-${job.bodyId}.webp`;
+                await sharp(under).webp({ quality: 88, alphaQuality: 90 }).toFile(path.join(OUT, persona, underName));
+                m.bodies[job.bodyId].under = underName;
+            } else delete m.bodies[job.bodyId].under;
             // the sized sheets (_g1, _p2 ...) of the image fallback are not warped by the shader: no mask
             console.log(`${persona} ${job.bodyId}: ${name} chest ${r ? count(r) : 0} piece ${g ? count(g) : 0} belly ${b ? count(b) : 0}`);
         }
