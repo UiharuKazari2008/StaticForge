@@ -865,15 +865,63 @@
         }
     });
 
-    // ---------------------------------------------------------------- Bluetooth (#771)
-    // WM's Bluetooth applet: Mode (Turn on Bluetooth; Melaton adds the title bar's Show Bluetooth
-    // Status, moved from Screen > Status Bar) and Devices (what the phone reports: Android lists the
-    // devices themselves in its own Bluetooth settings).
+    // ---------------------------------------------------------------- Bluetooth (#771, #772)
+    // WM's Bluetooth applet on the phone's own Bluetooth (window.AndroidBluetooth, DSApp
+    // BluetoothControl): Devices (Add new device..., the paired devices; tap = the device's page,
+    // hold = Connect / Disconnect, Info, Delete), Mode (Turn on Bluetooth, Make this device visible to
+    // other devices, and the title bar's Show Bluetooth Status, moved from Screen). Without the app's
+    // Bluetooth bridge the page says what the phone reports and links Android's own settings.
 
     const BT_STATUS = [['on', 'When Powered On'], ['connected', 'When Connected'], ['never', 'Never']];
     function btStatusMode() {
         const v = lsGet('wmBluetoothStatus') || (lsGet('wmShowBluetoothIcon') === '0' ? 'never' : null);
         return v === 'connected' || v === 'never' ? v : 'on';
+    }
+    const btBridge = () => (root.AndroidBluetooth && typeof root.AndroidBluetooth.getState === 'function' ? root.AndroidBluetooth : null);
+    function btState() {
+        const b = btBridge();
+        if (!b) return null;
+        try { return JSON.parse(b.getState()); } catch (_) { return null; }
+    }
+    const btName = (dv) => dv.name || dv.address;
+    const BT_KIND = { audio: 'Audio', phone: 'Phone', computer: 'Computer', peripheral: 'Input device', wearable: 'Wearable', health: 'Health', imaging: 'Imaging', toy: 'Toy', other: 'Other' };
+    const BT_SERVICE = { a2dp: 'Wireless Stereo', headset: 'Hands Free', le_audio: 'LE Audio', hid: 'Input Device' };
+    function btCall(fn, address) {
+        const b = btBridge();
+        if (!b || typeof b[fn] !== 'function') return null;
+        try { return JSON.parse(b[fn](address)); } catch (_) { return null; }
+    }
+    /** One action on a device, and what to say when Android keeps it for its own settings. */
+    async function btAct(fn, dv) {
+        const r = btCall(fn, dv.address);
+        if (r && r.ok) return true;
+        const sh = shell();
+        if (r && r.via === 'settings' && sh) await sh.messageBox({ title: 'Bluetooth', icon: 'info', text: `Android does not let other apps ${fn === 'unpair' ? 'delete' : fn} this device. Finish in Android's Bluetooth settings, which are open now.` });
+        return false;
+    }
+    async function btDelete(dv, after) {
+        const sh = shell();
+        const yes = sh ? await sh.messageBox({ title: 'Bluetooth', icon: 'question', text: `Delete ${btName(dv)}? You will need to pair it again to use it.`, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }] }) : true;
+        if (yes && await btAct('unpair', dv) && after) after();
+    }
+    /** Repaints the page on the app's Bluetooth events while `el` is on screen. */
+    function btLive(el, repaint) {
+        let t = null;
+        const on = () => { if (!el.isConnected) { root.removeEventListener('dreamscape:bluetooth', on); return; } clearTimeout(t); t = setTimeout(repaint, 120); };
+        root.addEventListener('dreamscape:bluetooth', on);
+    }
+    /** Tap and hold a list row: its menu (WM's hold, with the shell's ring timing). */
+    function btHold(row, menu) {
+        let timer = null;
+        const cancel = () => { clearTimeout(timer); timer = null; };
+        row.addEventListener('pointerdown', (e) => {
+            cancel();
+            const x = e.clientX; const y = e.clientY;
+            timer = setTimeout(() => { timer = null; row._held = true; menu(x, y); }, ((root.wmShell && root.wmShell.holdMs) || 600));
+        });
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => row.addEventListener(t, cancel));
+        row.addEventListener('click', (e) => { if (row._held) { row._held = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+        row.addEventListener('contextmenu', (e) => { e.preventDefault(); cancel(); menu(e.clientX, e.clientY); });
     }
 
     wmSettings.registerPage({
@@ -881,40 +929,149 @@
         tab: 'connections',
         label: 'Bluetooth',
         icon: 'set-bluetooth',
-        tabs: [['bt-mode', 'Mode'], ['bt-devices', 'Devices']],
-        init: () => ({ status: btStatusMode(), turnOn: null }),
-        render(el, tab, d) {
+        tabs: [['bt-devices', 'Devices'], ['bt-mode', 'Mode']],
+        init: () => ({ status: btStatusMode(), turnOn: null, visible: null, sub: null, address: null, pick: null, pairing: null }),
+        softKeys(d) {
+            if (d.sub === 'add') {
+                return {
+                    left: { label: 'Cancel', action: () => { const b = btBridge(); if (b) b.cancelDiscovery(); d.sub = null; d.pick = null; if (d.rerender) d.rerender(); } },
+                    right: { label: 'Pair', disabled: !d.pick, action: () => d.pair && d.pair() }
+                };
+            }
+            return null;
+        },
+        render(el, tab, d, api) {
             el.classList.add('wm-setc');
+            d.rerender = api.rerender;
+            // the search's Cancel | Pair, else the page's usual keys
+            const keys = () => { const sh = shell(); if (sh && typeof sh.refreshSoftKeys === 'function') sh.refreshSoftKeys(); };
+            setTimeout(keys, 0);
             const r = radios();
             const present = !!(r && radioPresent(r, 'bluetooth'));
-            if (tab === 'bt-devices') {
-                const lines = !r ? 'Bluetooth is switched in the Dreamscape app for Android.'
+            const st = btState();
+            if (tab === 'bt-mode') {
+                if (d.turnOn == null) d.turnOn = st ? !!st.on : !!(r && r.bluetooth);
+                if (d.visible == null) d.visible = !!(st && st.discoverable);
+                const state = st ? (st.on ? (st.devices.some((x) => x.connected) ? 'On, a device is connected' : 'On') : 'Off')
+                    : !r ? 'Unknown' : !present ? 'Not available' : r.bluetooth ? (r.bluetoothConnected === true ? 'On, a device is connected' : 'On') : 'Off';
+                el.innerHTML = `${ui.check('btOn', 'Turn on Bluetooth', d.turnOn, present || st ? '' : 'disabled')}
+                    ${ui.check('btVisible', 'Make this device visible to other devices', d.visible, st && st.on ? '' : 'disabled')}
+                    ${ui.facts([['Status:', state], ...(st && st.name ? [['Device name:', st.name]] : [])])}
+                    ${ui.note('To connect to a Bluetooth device, tap the Devices tab.')}
+                    <div class="wm-form-gap"></div>
+                    <p>Show Bluetooth Status:</p>
+                    ${ui.comboHtml('btstatus', (BT_STATUS.find(([k]) => k === d.status) || BT_STATUS[0])[1])}`;
+                el.querySelector('input[name="btOn"]').addEventListener('change', (e) => { d.turnOn = e.target.checked; });
+                el.querySelector('input[name="btVisible"]').addEventListener('change', (e) => {
+                    d.visible = e.target.checked;
+                    // Android asks itself, and the phone stays visible for two minutes
+                    if (d.visible && btBridge()) btBridge().setDiscoverable(120);
+                });
+                ui.bindCombo(el.querySelector('[data-act="btstatus"]'), BT_STATUS, d.status, (v) => { d.status = v; });
+                btLive(el, () => { const s2 = btState(); if (s2) { const cb = el.querySelector('input[name="btVisible"]'); if (cb) { cb.checked = d.visible = !!s2.discoverable; cb.disabled = !s2.on; } } });
+                return;
+            }
+            // ---- Devices
+            if (!st) {
+                const lines = !r ? 'Bluetooth devices are listed here in the Dreamscape app for Android.'
                     : !present ? 'This phone has no Bluetooth.'
                     : !r.bluetooth ? 'Bluetooth is off. Turn it on on the Mode tab.'
-                    : r.bluetoothAccess === false ? 'Allow the Dreamscape app to see nearby devices to show connections.'
                     : r.bluetoothConnected === true ? 'A device is connected.' : 'No device is connected.';
-                el.innerHTML = `${ui.sub('Devices')}<p>${esc(lines)}</p>
-                    ${ui.note('To pair or connect a device, use Bluetooth Settings.')}
-                    <div class="wm-form-gap"></div>
-                    <button type="button" class="wm-button" data-act="bt-settings"${device() && typeof device().openSettings === 'function' ? '' : ' disabled'}>Bluetooth Settings</button>`;
+                el.innerHTML = `<p>${esc(lines)}</p>${ui.note('This version of the app cannot list devices; use Bluetooth Settings.')}
+                    ${ui.buttons([['bt-settings', 'Bluetooth Settings', !(device() && typeof device().openSettings === 'function')]], false)}`;
                 el.querySelector('[data-act="bt-settings"]').addEventListener('click', () => openAndroidSettings('bluetooth'));
                 return;
             }
-            if (d.turnOn == null) d.turnOn = !!(r && r.bluetooth);
-            const state = !r ? 'Unknown' : !present ? 'Not available' : r.bluetooth ? (r.bluetoothConnected === true ? 'On, a device is connected' : 'On') : 'Off';
-            el.innerHTML = `${ui.check('btOn', 'Turn on Bluetooth', d.turnOn, present ? '' : 'disabled')}
-                ${ui.value('Status:', state)}
-                ${ui.note('To connect to a Bluetooth device, use the Devices tab.')}
-                <div class="wm-form-gap"></div>
-                <p>Show Bluetooth Status:</p>
-                ${ui.comboHtml('btstatus', (BT_STATUS.find(([k]) => k === d.status) || BT_STATUS[0])[1])}`;
-            el.querySelector('input[name="btOn"]').addEventListener('change', (e) => { d.turnOn = e.target.checked; });
-            ui.bindCombo(el.querySelector('[data-act="btstatus"]'), BT_STATUS, d.status, (v) => { d.status = v; });
+            if (!st.access) {
+                el.innerHTML = `<p>Allow the Dreamscape app to find and connect to nearby devices to list them here.</p>${ui.buttons([['bt-allow', 'Allow']], false)}`;
+                el.querySelector('[data-act="bt-allow"]').addEventListener('click', () => btBridge().requestAccess());
+                btLive(el, api.rerender);
+                return;
+            }
+            if (!st.on) {
+                el.innerHTML = `<p>Bluetooth is off. Turn it on on the Mode tab to see your devices.</p>`;
+                btLive(el, api.rerender);
+                return;
+            }
+            const dv = d.address && (st.devices.find((x) => x.address === d.address) || st.found.find((x) => x.address === d.address));
+            if (d.sub === 'info' && dv) {
+                setHeader(el, btName(dv));
+                const services = dv.profiles.map((p) => BT_SERVICE[p] || p).join(', ') || 'None in use';
+                el.innerHTML = `${ui.facts([['Name:', btName(dv)], ['Address:', dv.address], ['Type:', BT_KIND[dv.kind] || 'Other'],
+                        ['Status:', dv.connected ? 'Connected' : 'Not connected'], ['Services:', services], ...(dv.battery != null ? [['Battery:', `${dv.battery}%`]] : [])])}
+                    <div class="wm-form-gap"></div>
+                    ${ui.buttons([[dv.connected ? 'bt-disconnect' : 'bt-connect', dv.connected ? 'Disconnect' : 'Connect'], ['bt-delete', 'Delete']])}`;
+                el.querySelector('[data-act="bt-connect"],[data-act="bt-disconnect"]').addEventListener('click', () => btAct(dv.connected ? 'disconnect' : 'connect', dv));
+                el.querySelector('[data-act="bt-delete"]').addEventListener('click', () => btDelete(dv, () => { d.sub = null; api.rerender(); }));
+                btLive(el, api.rerender);
+                return;
+            }
+            if (d.sub === 'add') {
+                setHeader(el, 'Add new device');
+                const pick = (key) => { d.pick = key; keys(); };
+                d.pair = () => {
+                    const it = st.found.find((x) => x.address === d.pick);
+                    if (!it) return;
+                    const res = btCall('pair', it.address);
+                    d.pairing = res && res.ok ? it.address : null;
+                    api.rerender();
+                };
+                // devices without a name stay out, as in Android's own list
+                const named = st.found.filter((x) => x.name);
+                const rows = named.map((x) => ({ key: x.address, label: `${btName(x)}${x.bonding ? ' (pairing...)' : ''}`, selected: x.address === d.pick }));
+                const hidden = st.found.length - named.length;
+                el.innerHTML = `<p>Select a Bluetooth device to connect with.</p>
+                    ${rows.length ? ui.listbox(rows, { maxHeight: 220 }) : ''}
+                    <p class="wm-setc-gap-top">${esc(st.discovering ? 'Searching for Bluetooth devices...' : rows.length ? 'Search finished.' : 'No devices found. Make sure the device is on and visible.')}</p>
+                    ${hidden ? ui.note(`${hidden} device${hidden === 1 ? '' : 's'} without a name not shown.`) : ''}
+                    ${d.pairing ? ui.note('Follow the phone\'s prompt to finish pairing.') : ''}
+                    ${ui.buttons([['bt-refresh', 'Refresh', st.discovering]])}`;
+                if (rows.length) ui.bindListbox(el.querySelector('.wm-listbox'), pick);
+                el.querySelector('[data-act="bt-refresh"]').addEventListener('click', () => { btBridge().startDiscovery(); });
+                // paired: back to the list
+                if (d.pairing && st.devices.some((x) => x.address === d.pairing)) { d.pairing = null; d.pick = null; d.sub = null; btBridge().cancelDiscovery(); setTimeout(api.rerender, 0); return; }
+                btLive(el, api.rerender);
+                return;
+            }
+            d.sub = null;
+            setHeader(el, 'Bluetooth');
+            const rows = [{ key: '+add', label: 'Add new device...' }, ...st.devices.map((x) => ({ key: x.address, label: `${btName(x)}${x.connected ? '  (Connected)' : ''}` }))];
+            el.innerHTML = `<p>Tap Add new device to search for other Bluetooth devices. Tap a device to modify its settings.</p>
+                ${ui.listbox(rows, { maxHeight: 260 })}`;
+            const box = el.querySelector('.wm-listbox');
+            ui.bindListbox(box, (key) => {
+                if (key === '+add') { d.sub = 'add'; d.pick = null; d.pairing = null; btBridge().startDiscovery(); }
+                else { d.sub = 'info'; d.address = key; }
+                api.rerender();
+            });
+            box.querySelectorAll('.wm-listbox-row').forEach((row) => {
+                const it = st.devices.find((x) => x.address === row.dataset.key);
+                if (!it) return;
+                btHold(row, (x, y) => {
+                    const sh = shell();
+                    if (!sh || typeof sh.menuAt !== 'function') return;
+                    sh.menuAt(x, y, [
+                        { label: it.connected ? 'Disconnect' : 'Connect', action: () => btAct(it.connected ? 'disconnect' : 'connect', it) },
+                        { label: 'Info', action: () => { d.sub = 'info'; d.address = it.address; api.rerender(); } },
+                        { label: 'Delete', action: () => btDelete(it, api.rerender) }
+                    ]);
+                });
+            });
+            btLive(el, api.rerender);
         },
         commit(d) {
+            // ok on a device's page or the search goes back to the list, as on the device
+            if (d.sub) {
+                if (d.sub === 'add' && btBridge()) btBridge().cancelDiscovery();
+                d.sub = null; d.pick = null; d.pairing = null;
+                if (d.rerender) d.rerender();
+                return false;
+            }
             const keys = [];
             const r = radios();
-            if (r && d.turnOn != null && !!r.bluetooth !== d.turnOn) setRadio('bluetooth', d.turnOn);
+            const st = btState();
+            const on = st ? !!st.on : !!(r && r.bluetooth);
+            if ((st || r) && d.turnOn != null && on !== d.turnOn) setRadio('bluetooth', d.turnOn);
             const v = d.status === 'on' ? null : d.status;
             if ((lsGet('wmBluetoothStatus') || null) !== v || lsGet('wmShowBluetoothIcon') != null) {
                 lsSet('wmBluetoothStatus', v);
