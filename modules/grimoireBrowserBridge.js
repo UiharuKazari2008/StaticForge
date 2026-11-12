@@ -55,6 +55,63 @@ function normalizeAlchemyHomePage(raw) {
     return /^(https?|edtx):\/\/\S+$/i.test(url) ? url.slice(0, 2000) : '';
 }
 
+// Browsing sessions (Yozora #756): how long a disconnected device keeps its Alchemy tabs in memory, and how long
+// their addresses and history are kept after that (no upper limit; always longer than the idle time).
+const SESSION_DEFAULTS = Object.freeze({ idleMinutes: 15, keepMinutes: 3 * 24 * 60, showAtStartup: true, alwaysRestore: false, roam: false });
+
+function normalizeSessionSettings(raw) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    const idleMinutes = clampInt(src.idleMinutes, SESSION_DEFAULTS.idleMinutes, 1, 24 * 60);
+    const keepMinutes = clampInt(src.keepMinutes, SESSION_DEFAULTS.keepMinutes, 5, 10 * 365 * 24 * 60);
+    return {
+        idleMinutes,
+        keepMinutes: Math.max(keepMinutes, idleMinutes + 1),
+        showAtStartup: src.showAtStartup !== false,
+        alwaysRestore: src.alwaysRestore === true,
+        roam: src.roam === true
+    };
+}
+
+// Alchemy performance (#756 slice 6). Flags marked in PERFORMANCE_RELAUNCH need Chromium to restart.
+const PERFORMANCE_DEFAULTS = Object.freeze({
+    tabMemoryMb: 0,
+    isolateClients: true,
+    isolateWindows: true,
+    sandbox: false,
+    siteIsolation: true,
+    rendererLimit: 0,
+    pauseUnwatched: true,
+    suspendMinutes: 20,
+    maxTabs: 4,
+    lowBackgroundFps: true,
+    headlessGpu: true,
+    componentUpdate: true
+});
+const PERFORMANCE_RELAUNCH = ['sandbox', 'siteIsolation', 'rendererLimit', 'headlessGpu', 'componentUpdate'];
+
+function normalizePerformanceSettings(raw) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    const bool = (key) => (typeof src[key] === 'boolean' ? src[key] : PERFORMANCE_DEFAULTS[key]);
+    const tab = clampInt(src.tabMemoryMb, 0, 0, 65536);
+    const out = {
+        tabMemoryMb: tab > 0 ? Math.max(64, tab) : 0,
+        isolateClients: bool('isolateClients'),
+        isolateWindows: bool('isolateWindows'),
+        sandbox: bool('sandbox'),
+        siteIsolation: bool('siteIsolation'),
+        rendererLimit: clampInt(src.rendererLimit, 0, 0, 64),
+        pauseUnwatched: bool('pauseUnwatched'),
+        suspendMinutes: clampInt(src.suspendMinutes, PERFORMANCE_DEFAULTS.suspendMinutes, 0, 24 * 60),
+        maxTabs: clampInt(src.maxTabs, PERFORMANCE_DEFAULTS.maxTabs, 1, 32),
+        lowBackgroundFps: bool('lowBackgroundFps'),
+        headlessGpu: bool('headlessGpu'),
+        componentUpdate: bool('componentUpdate')
+    };
+    // a window per IE window only exists inside a window per client
+    if (!out.isolateClients) out.isolateWindows = false;
+    return out;
+}
+
 /** userGlobalSettings.alchemy: stream settings, bookmarks, and Grimoire's home page and search provider (modules/websocketHandlers.js). */
 function normalizeAlchemySettings(raw) {
     const src = raw && typeof raw === 'object' ? raw : {};
@@ -68,14 +125,22 @@ function normalizeAlchemySettings(raw) {
         audioBackground: src.audioBackground === true,
         bookmarks: normalizeAlchemyBookmarks(src.bookmarks),
         homePage: normalizeAlchemyHomePage(src.homePage),
-        searchProvider: ALCHEMY_SEARCH_PROVIDERS.includes(src.searchProvider) ? src.searchProvider : 'grimoire'
+        searchProvider: ALCHEMY_SEARCH_PROVIDERS.includes(src.searchProvider) ? src.searchProvider : 'grimoire',
+        sessions: normalizeSessionSettings(src.sessions),
+        performance: normalizePerformanceSettings(src.performance)
     };
     if (out.minFps > out.maxFps) out.minFps = out.maxFps;
     return out;
 }
 
 function mergeAlchemySettingsPatch(existing, patch) {
-    return normalizeAlchemySettings({ ...normalizeAlchemySettings(existing), ...(patch && typeof patch === 'object' ? patch : {}) });
+    const base = normalizeAlchemySettings(existing);
+    const p = patch && typeof patch === 'object' ? patch : {};
+    const merged = { ...base, ...p };
+    // the nested groups merge field by field, so a dialog can send only what it shows
+    if (p.sessions && typeof p.sessions === 'object') merged.sessions = { ...base.sessions, ...p.sessions };
+    if (p.performance && typeof p.performance === 'object') merged.performance = { ...base.performance, ...p.performance };
+    return normalizeAlchemySettings(merged);
 }
 
 function readJson(file) {
@@ -195,12 +260,13 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
         const width = req.body && req.body.width;
         const height = req.body && req.body.height;
         const popup = !!(req.body && req.body.popup);
-        const { bookmarks, audioEnabled, audioVolume, audioBackground, homePage, searchProvider, ...settings } = config.alchemy;
+        const owner = req.body && req.body.owner && typeof req.body.owner === 'object' ? req.body.owner : null;
+        const { bookmarks, audioEnabled, audioVolume, audioBackground, homePage, searchProvider, sessions: _sessions, performance, ...settings } = config.alchemy;
         try {
             const upstream = await serviceFetch(config, '/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url, width, height, popup, settings })
+                body: JSON.stringify({ url, width, height, popup, settings, owner, performance })
             });
             const payload = await upstream.json().catch(() => ({}));
             if (!upstream.ok) {
@@ -377,7 +443,8 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
             return;
         }
         try {
-            const upstream = await serviceFetch(config, '/browser/restart', { method: 'POST' });
+            // the restart launches with the performance options of Internet Properties (#756)
+            const upstream = await serviceFetch(config, '/browser/restart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ performance: config.alchemy.performance }) });
             res.status(upstream.ok ? 200 : upstream.status).json(upstream.ok ? { ok: true } : { error: 'remote browser could not restart' });
         } catch (_) {
             res.status(502).json({ error: 'remote browser unreachable' });
@@ -674,7 +741,86 @@ async function proxySessionFile(req, res, suffix) {
     }
 }
 
+// ---- service calls for the browsing-session registry (modules/browsingSessions.js, #756) ----
+
+async function serviceJson(pathname, options) {
+    const config = grimoireBrowserConfig();
+    if (!config.enabled) {
+        const error = new Error('remote browser is not configured');
+        error.status = 503;
+        throw error;
+    }
+    const res = await serviceFetch(config, pathname, options);
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        const error = new Error(payload.error || ('remote browser answered ' + res.status));
+        error.status = res.status;
+        throw error;
+    }
+    return payload;
+}
+
+function viewUrlFor(id, viewerToken) {
+    return '/api/grimoire-browser/view/' + id + '?t=' + encodeURIComponent(viewerToken);
+}
+
+/** Every Alchemy session the service holds, with its owner. */
+async function listServiceSessions() {
+    const payload = await serviceJson('/sessions', { method: 'GET' });
+    return Array.isArray(payload.sessions) ? payload.sessions : [];
+}
+
+/** Keep owned sessions open for ttlMs more. */
+async function leaseServiceSessions(ids, ttlMs) {
+    if (!ids.length) return { renewed: [], missing: [] };
+    return serviceJson('/sessions/lease', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, ttlMs })
+    });
+}
+
+/** A new owner for a session: the old viewer is told and loses its token; the new one gets a view URL. */
+async function transferServiceSession(id, owner, size) {
+    if (!sessionIdOk(id)) throw new Error('bad session id');
+    closeRelay(id);
+    const payload = await serviceJson('/sessions/' + id + '/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ owner }, size || {}))
+    });
+    return { sessionId: id, viewUrl: viewUrlFor(id, payload.viewerToken), url: payload.url || '', title: payload.title || '' };
+}
+
+/** The performance options to the service as soon as they are saved (#756); the relaunch ones wait for a restart. */
+function pushPerformance(performance) {
+    const config = grimoireBrowserConfig();
+    if (!config.enabled) return Promise.resolve(null);
+    return serviceFetch(config, '/browser/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ performance: normalizePerformanceSettings(performance) })
+    }).then((res) => res.json().catch(() => null)).catch(() => null);
+}
+
+async function closeServiceSession(id) {
+    if (!sessionIdOk(id)) return;
+    closeRelay(id);
+    const config = grimoireBrowserConfig();
+    if (!config.enabled) return;
+    const res = await serviceFetch(config, '/sessions/' + id, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) throw new Error('remote browser could not close the session');
+}
+
 module.exports = {
+    listServiceSessions,
+    leaseServiceSessions,
+    transferServiceSession,
+    closeServiceSession,
+    pushPerformance,
+    normalizeSessionSettings,
+    normalizePerformanceSettings,
+    PERFORMANCE_RELAUNCH,
     grimoireBrowserConfig,
     mountGrimoireBrowserBridge,
     normalizeAlchemySettings,

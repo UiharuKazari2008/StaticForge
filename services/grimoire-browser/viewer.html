@@ -348,6 +348,13 @@
     } else if (msg.type === 'closed') {
       closed = true;
       postParent({ type: 'grimoire-browser-closed' });
+    } else if (msg.type === 'memory' || msg.type === 'memory-limit') {
+      // the tab's memory against Internet Properties' limit (#756): the IE status bar shows it, the limit asks
+      postParent({ type: msg.type === 'memory' ? 'grimoire-browser-memory' : 'grimoire-browser-memory-limit', level: msg.level || 'over', usedMb: msg.usedMb || 0, limitMb: msg.limitMb || 0 });
+    } else if (msg.type === 'transferred') {
+      // another device took this page (#756); the parent shows "This tab has been transferred to another device"
+      closed = true;
+      postParent({ type: 'grimoire-browser-transferred', to: msg.to || '', kind: msg.kind || '', at: msg.at || Date.now(), url: lastUrl });
     } else if (msg.type === 'file-chooser' && msg.id) {
       // an upload field: the desktop picks the files (grimoireRemoteBrowser.js, #628)
       postParent({ type: 'grimoire-browser-file-chooser', id: msg.id, multiple: !!msg.multiple, accept: msg.accept || '' });
@@ -924,6 +931,11 @@
     if (!data || typeof data !== 'object') return;
     if (data.type === 'grimoire-browser-navigate' && typeof data.url === 'string') {
       send({ type: 'navigate', url: data.url });
+    } else if (data.type === 'grimoire-browser-visibility') {
+      // the tab went behind another or came back (#756): only what shows is captured
+      send({ type: 'visibility', hidden: !!data.hidden });
+    } else if (data.type === 'grimoire-browser-memory-override') {
+      send({ type: 'memory-override' });
     } else if (data.type === 'grimoire-browser-reload') {
       send({ type: 'reload' });
     } else if (data.type === 'grimoire-browser-zoom' && typeof data.value === 'number') {

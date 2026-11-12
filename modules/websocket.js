@@ -351,6 +351,8 @@ class WebSocketServer {
                     require('./slideshowDevices').onSocketClosed(this.globalResources, this, info);
                     // an ActiveSync peer (phone or desktop tab) is gone: its waiting calls fail now
                     require('./activeSync').onSocketClosed(this.globalResources, this, info);
+                    // its IE windows go idle, then stored (#756 browsing sessions)
+                    require('./browsingSessions').onSocketClosed(info, ws);
                 }
             });
 

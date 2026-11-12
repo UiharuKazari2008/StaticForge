@@ -76,6 +76,12 @@ const ALCHEMY_CDP_PORT = Math.max(0, Number(process.env.ALCHEMY_CDP_PORT || 9339
 // modules/alchemyOwnedTab.js opens its tab with this marker; it is never closed for being over the window cap.
 const ALCHEMY_OWNED_MARKER = '#alchemy-owned';
 const DIALOG_MS = 5 * 60 * 1000;
+// Owned sessions (Yozora #756): Dreamscape's browsing-session registry (modules/browsingSessions.js) keeps them
+// alive with leases while the owning device is connected or inside its idle time. A new session gets this long
+// before its first lease; a lapsed lease closes it (Dreamscape down for that long cannot keep pages open forever).
+const LEASE_GRACE_MS = 2 * 60 * 1000;
+const LEASE_MAX_MS = 10 * 60 * 1000;
+
 const DATA_DIR = path.join(os.homedir(), '.local', 'share', 'dreamscape');
 const PROFILE_DIR = process.env.ALCHEMY_PROFILE_DIR || path.join(DATA_DIR, 'alchemy-profile');
 const EXTENSIONS_DIR = process.env.ALCHEMY_EXTENSIONS_DIR || path.join(DATA_DIR, 'alchemy-extensions');
@@ -94,6 +100,63 @@ const FAKE_CAMERA_FILE = path.join(DATA_DIR, 'alchemy-fake-camera.y4m');
 const FAKE_CAMERA_LOGO = path.join(__dirname, '..', '..', 'public', 'static_images', 'app_icons', 'alchemy.png');
 const JPEG_QUALITY = Math.min(90, Math.max(30, Number(process.env.GRIMOIRE_BROWSER_JPEG_QUALITY || 55)));
 const DEFAULT_SETTINGS = Object.freeze({ jpegQuality: JPEG_QUALITY, minFps: 10, maxFps: 30, regionQuality: 78 });
+
+// Performance options (#756 slice 6; Internet Properties > Advanced > Alchemy performance). Dreamscape sends them
+// with every new session and with a restart; they are kept here so a fresh start launches with them.
+const PERF_FILE = path.join(DATA_DIR, 'alchemy-performance.json');
+const PERF_DEFAULTS = Object.freeze({
+    tabMemoryMb: 0, isolateClients: true, isolateWindows: true, sandbox: !NO_SANDBOX, siteIsolation: true,
+    rendererLimit: 0, pauseUnwatched: true, maxTabs: MAX_SESSIONS, headlessGpu: true, componentUpdate: true
+});
+const PERF_RELAUNCH = ['sandbox', 'siteIsolation', 'rendererLimit', 'headlessGpu', 'componentUpdate'];
+const MEMORY_CHECK_MS = 5000;
+
+function readPerf() {
+    try {
+        return normalizePerf(JSON.parse(fs.readFileSync(PERF_FILE, 'utf8')));
+    } catch (_) {
+        return normalizePerf({});
+    }
+}
+
+function normalizePerf(raw) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    const out = {};
+    for (const [key, def] of Object.entries(PERF_DEFAULTS)) {
+        if (typeof def === 'boolean') out[key] = typeof src[key] === 'boolean' ? src[key] : def;
+        else out[key] = Number.isFinite(Number(src[key])) ? Math.max(0, Math.round(Number(src[key]))) : def;
+    }
+    out.maxTabs = Math.max(1, Math.min(32, out.maxTabs || MAX_SESSIONS));
+    out.rendererLimit = Math.min(64, out.rendererLimit);
+    if (!out.isolateClients) out.isolateWindows = false;
+    return out;
+}
+
+let perf = readPerf();
+// the options Chromium was launched with (the relaunch ones only change on a restart)
+let launchedPerf = null;
+
+/** New options from Dreamscape; the ones that need a relaunch wait for one (pendingRelaunch). */
+function takePerf(raw) {
+    if (!raw || typeof raw !== 'object') return;
+    const next = normalizePerf(Object.assign({}, perf, raw));
+    if (JSON.stringify(next) === JSON.stringify(perf)) return;
+    perf = next;
+    try {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+        fs.writeFileSync(PERF_FILE, JSON.stringify(perf));
+    } catch (err) {
+        console.warn('[grimoire-browser] could not keep the performance options:', err.message);
+    }
+    // a page over a new, higher limit thaws
+    for (const session of sessions.values()) {
+        if (session.memFrozen && (!perf.tabMemoryMb || (session.memMb || 0) < perf.tabMemoryMb)) thawSession(session).catch(() => {});
+    }
+}
+
+function pendingRelaunch() {
+    return !!launchedPerf && PERF_RELAUNCH.some((key) => launchedPerf[key] !== perf[key]);
+}
 
 // Runs in the 'alchemy' isolated world, top frame only: report document.title changes (Chrome does not send target title updates for every change).
 function watchTitle() {
@@ -1185,7 +1248,7 @@ function popupCount() {
 
 async function adoptPopup(announce, page, parentId) {
     try {
-        const child = await createSession({ width: 480, height: 640, popup: true, parentId }, page);
+        const child = await createSession({ width: 480, height: 640, popup: true, parentId, owner: announce.owner }, page);
         if (!sessions.get(announce.id)) {
             closeSession(child.id);
             return;
@@ -1472,6 +1535,27 @@ function touch(session) {
     session.idleAt = Date.now() + IDLE_MS;
 }
 
+/** The device / IE window / tab that owns a session (#756); null for sessions nobody owns (agents, old clients). */
+function normalizeOwner(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const deviceId = String(raw.deviceId || '').toLowerCase();
+    if (!/^[a-f0-9]{16,32}$/.test(deviceId)) return null;
+    const text = (value, max) => String(value || '').replace(/[\u0000-\u001f]/g, '').slice(0, max);
+    return {
+        deviceId,
+        deviceName: text(raw.deviceName, 80),
+        deviceKind: raw.deviceKind === 'mobile' ? 'mobile' : 'desktop',
+        clientSession: text(raw.clientSession, 64),
+        windowId: text(raw.windowId, 64),
+        tabId: text(raw.tabId, 64)
+    };
+}
+
+function sessionExpired(session, now) {
+    if (session.owner) return (session.leaseUntil || 0) < now;
+    return session.idleAt < now;
+}
+
 async function closeSession(id) {
     const session = sessions.get(id);
     if (!session) return;
@@ -1696,18 +1780,54 @@ function streamAudio(res) {
     res.once('close', end);
 }
 
-// Windowed Chrome stops painting a background tab, so every session gets its own window.
-async function openPage(instance) {
+/**
+ * Which Chrome window a session's page goes in (#756, Internet Properties > Advanced > Alchemy performance):
+ *   isolateClients + isolateWindows   one window per Melaton IE window (its tabs are Chrome tabs)
+ *   isolateClients only               one window per client
+ *   neither                           one window for every client: only the tab in front paints, so only the
+ *                                     active client's current tab streams
+ * A page nobody owns (agent tabs, old clients) keeps a window of its own.
+ */
+function windowGroup(owner) {
+    if (!owner) return '';
+    if (!perf.isolateClients) return 'all';
+    const client = owner.clientSession || owner.deviceId;
+    return perf.isolateWindows ? client + '/' + (owner.windowId || '') : client;
+}
+
+function targetIdOf(page) {
+    const target = page && page.target ? page.target() : null;
+    return (target && (target._targetId || (target._targetInfo && target._targetInfo.targetId))) || '';
+}
+
+let openChain = Promise.resolve();
+
+// Windowed Chrome stops painting a background tab: a page in a shared window is brought to the front when its
+// viewer shows it (onViewerMessage 'visibility'); a page of its own group gets a window.
+async function openPage(instance, owner) {
     if (!HEADFUL) return instance.newPage();
-    const marker = 'about:blank#alchemy-' + crypto.randomBytes(8).toString('hex');
-    const client = await instance.target().createCDPSession();
-    try {
-        await client.send('Target.createTarget', { url: marker, newWindow: true });
-    } finally {
-        client.detach().catch(() => {});
-    }
-    const target = await instance.waitForTarget((t) => t.url() === marker, { timeout: 10000 });
-    return target.page();
+    const group = windowGroup(owner);
+    const run = openChain.then(async () => {
+        const marker = 'about:blank#alchemy-' + crypto.randomBytes(8).toString('hex');
+        const sibling = group ? [...sessions.values()].find((x) => x.group === group && x.page && !x.page.isClosed()) : null;
+        const client = await instance.target().createCDPSession();
+        try {
+            const anchor = sibling ? targetIdOf(sibling.page) : '';
+            if (anchor) {
+                // a new tab opens in the window used last: make it the sibling's
+                await client.send('Target.activateTarget', { targetId: anchor }).catch(() => {});
+                await client.send('Target.createTarget', { url: marker, newWindow: false });
+            } else {
+                await client.send('Target.createTarget', { url: marker, newWindow: true });
+            }
+        } finally {
+            client.detach().catch(() => {});
+        }
+        const target = await instance.waitForTarget((t) => t.url() === marker, { timeout: 10000 });
+        return target.page();
+    });
+    openChain = run.catch(() => {});
+    return run;
 }
 
 function ensureBrowser() {
@@ -1859,7 +1979,8 @@ async function launchBrowser() {
         '--disable-dev-shm-usage',
         '--no-first-run',
         '--no-default-browser-check',
-        '--disable-features=WebAuthentication,WebAuthnConditionalUI,DisableLoadExtensionCommandLineSwitch',
+        // site isolation off (#756): pages of several sites share renderers, so fewer processes each with the extensions' scripts
+        '--disable-features=WebAuthentication,WebAuthnConditionalUI,DisableLoadExtensionCommandLineSwitch' + (perf.siteIsolation ? '' : ',IsolateOrigins,site-per-process'),
         '--disable-background-networking',
         '--disable-sync',
         '--disable-popup-blocking',
@@ -1867,7 +1988,12 @@ async function launchBrowser() {
     ];
     if (extensionDirs) args.push('--disable-extensions-except=' + extensionDirs, '--load-extension=' + extensionDirs);
     else args.push('--disable-extensions');
-    if (NO_SANDBOX) args.push('--no-sandbox', '--disable-setuid-sandbox');
+    if (!perf.sandbox) args.push('--no-sandbox', '--disable-setuid-sandbox');
+    if (!perf.siteIsolation) args.push('--disable-site-isolation-trials');
+    if (perf.rendererLimit) args.push('--renderer-process-limit=' + perf.rendererLimit);
+    if (!perf.componentUpdate) args.push('--disable-component-update');
+    if (!HEADFUL && !perf.headlessGpu) args.push('--disable-gpu');
+    launchedPerf = Object.assign({}, perf);
     // Loopback only: Dreamscape drives one Alchemy-owned tab here (identity-gated MCP); cookies never leave Chromium.
     if (ALCHEMY_CDP_PORT) args.push('--remote-debugging-address=127.0.0.1', '--remote-debugging-port=' + ALCHEMY_CDP_PORT);
     const env = Object.assign({}, process.env);
@@ -1950,6 +2076,7 @@ async function launchBrowser() {
 }
 
 async function startScreencast(session) {
+    session.casting = true;
     await session.cdp.send('Page.startScreencast', {
         format: 'jpeg',
         quality: session.settings.jpegQuality,
@@ -1960,8 +2087,65 @@ async function startScreencast(session) {
 }
 
 async function restartScreencast(session) {
+    // a paused capture (nobody watching, or frozen over its memory limit) stays paused; it starts with the new settings when shown
+    if (!session.casting && (perf.pauseUnwatched || session.memFrozen)) return;
     try { await session.cdp.send('Page.stopScreencast'); } catch (_) {}
     await startScreencast(session);
+}
+
+/**
+ * Pages nobody looks at are not captured (#756 "Pause pages nobody is watching", on by default): no viewer, or
+ * every viewer hidden (a background tab: grimoireTabs.js tells its viewer). One capture per IE window this way.
+ */
+function syncCapture(session) {
+    if (!sessions.get(session.id) || session.closing || session.memFrozen) return;
+    const watched = session.sockets.size > 0 && !session.viewHidden;
+    if (!perf.pauseUnwatched || watched) {
+        if (!session.casting) startScreencast(session).catch(() => {});
+        return;
+    }
+    if (!session.casting) return;
+    session.casting = false;
+    session.cdp.send('Page.stopScreencast').catch(() => {});
+}
+
+// ---- memory per tab (#756 "Maximum memory per tab") ----
+// A tab's memory is its page's JavaScript heap (Performance.getMetrics JSHeapTotalSize): with shared renderers
+// (site isolation off) a process size is not one tab's. Only tabs open on a client count. Over the limit the page
+// is frozen and its viewer asks whether to allow more for this tab (memory-override), as long as it stays open.
+
+async function checkMemory(session) {
+    if (!session.cdp || session.closing || !sessions.get(session.id)) return;
+    if (!session.perfEnabled) {
+        await session.cdp.send('Performance.enable').catch(() => {});
+        session.perfEnabled = true;
+    }
+    let metrics = null;
+    try { metrics = await session.cdp.send('Performance.getMetrics'); } catch (_) { return; }
+    const heap = ((metrics && metrics.metrics) || []).find((m) => m.name === 'JSHeapTotalSize');
+    session.memMb = heap ? Math.round(heap.value / 1048576) : 0;
+    const limit = perf.tabMemoryMb || 0;
+    const level = !limit || session.memOverride ? 'ok' : session.memMb >= limit ? 'over' : session.memMb >= limit * 0.8 ? 'warn' : 'ok';
+    if (level !== session.memLevel || level === 'warn') broadcast(session, { type: 'memory', level, usedMb: session.memMb, limitMb: limit });
+    session.memLevel = level;
+    if (level === 'over' && !session.memFrozen) await freezeSession(session);
+}
+
+async function freezeSession(session) {
+    session.memFrozen = true;
+    session.casting = false;
+    await session.cdp.send('Page.stopScreencast').catch(() => {});
+    await session.cdp.send('Page.setWebLifecycleState', { state: 'frozen' }).catch(() => {});
+    broadcast(session, { type: 'memory-limit', usedMb: session.memMb, limitMb: perf.tabMemoryMb || 0 });
+}
+
+async function thawSession(session) {
+    if (!session.memFrozen) return;
+    session.memFrozen = false;
+    await session.cdp.send('Page.setWebLifecycleState', { state: 'active' }).catch(() => {});
+    session.memLevel = 'ok';
+    broadcast(session, { type: 'memory', level: 'ok', usedMb: session.memMb, limitMb: perf.tabMemoryMb || 0 });
+    syncCapture(session);
 }
 
 // Grimoire's zoom (the IE7 status bar's 100% ▾): Chrome's own page zoom is a narrower CSS viewport drawn
@@ -2017,7 +2201,8 @@ async function capturePrintPage(session) {
 // adoptedPage: a popup page that is already open (adoptPopup); popup sessions close with their page.
 async function createSession(body, adoptedPage) {
     const popup = !!(adoptedPage || (body && body.popup));
-    if ((popup ? popupCount() : sessions.size - popupCount()) >= MAX_SESSIONS) {
+    if (body && body.performance) takePerf(body.performance);
+    if ((popup ? popupCount() : sessions.size - popupCount()) >= (perf.maxTabs || MAX_SESSIONS)) {
         const error = new Error('too many browser sessions');
         error.status = 429;
         throw error;
@@ -2031,7 +2216,8 @@ async function createSession(body, adoptedPage) {
     const width = clampSize(body && body.width, 1280, 320, 1920);
     const height = clampSize(body && body.height, 800, 240, 1440);
     const instance = await ensureBrowser();
-    const page = adoptedPage || await openPage(instance);
+    const ownerForPage = normalizeOwner(body && body.owner);
+    const page = adoptedPage || await openPage(instance, ownerForPage);
     ownPages.add(page);
     if (pageUserAgent) await page.setUserAgent(pageUserAgent, pageUserAgentMetadata);
     await page.evaluateOnNewDocument(blockPasskeys);
@@ -2058,6 +2244,17 @@ async function createSession(body, adoptedPage) {
         settings: sessionSettings(body && body.settings, DEFAULT_SETTINGS),
         sockets: new Set(),
         idleAt: Date.now() + IDLE_MS,
+        // a popup or adopted tab belongs to whoever owns the page that opened it
+        group: adoptedPage ? '' : windowGroup(ownerForPage),
+        casting: false,
+        viewHidden: false,
+        memMb: 0,
+        memLevel: 'ok',
+        memFrozen: false,
+        memOverride: false,
+        owner: normalizeOwner(body && body.owner) || (body && body.parentId && sessions.get(String(body.parentId)) && sessions.get(String(body.parentId)).owner
+            ? Object.assign({}, sessions.get(String(body.parentId)).owner) : null),
+        leaseUntil: Date.now() + LEASE_GRACE_MS,
         meta: null,
         downloads: new Map(),
         downloadDir: '',
@@ -2239,6 +2436,8 @@ async function createSession(body, adoptedPage) {
     });
 
     await startScreencast(session);
+    // a page nobody opens a viewer for stops being captured after a while (syncCapture)
+    setTimeout(() => syncCapture(session), 15000).unref();
 
     if (url !== 'about:blank') requestNavigate(session, url, false);
     armHealth(session);
@@ -2253,7 +2452,11 @@ function sessionPublic(session) {
         title: session.title,
         width: session.width,
         height: session.height,
-        viewers: session.sockets.size
+        viewers: session.sockets.size,
+        popup: !!session.popup,
+        parentId: session.parentId || '',
+        owner: session.owner || null,
+        leaseUntil: session.owner ? session.leaseUntil : 0
     };
 }
 
@@ -2285,6 +2488,19 @@ async function onViewerMessage(session, raw) {
     }
     if (msg.type === 'ping') {
         broadcast(session, { type: 'pong', t: msg.t });
+        return;
+    }
+    // the tab went behind another, or came to the front (#756): only what shows is captured, and a page in a
+    // shared Chrome window comes to the front of it so it paints
+    if (msg.type === 'visibility') {
+        session.viewHidden = !!msg.hidden;
+        if (!session.viewHidden && HEADFUL && session.group && session.page) session.page.bringToFront().catch(() => {});
+        syncCapture(session);
+        return;
+    }
+    if (msg.type === 'memory-override') {
+        session.memOverride = true;
+        await thawSession(session);
         return;
     }
     if (msg.type === 'rtt') {
@@ -2590,7 +2806,9 @@ async function handleRequest(req, res) {
             ok: true,
             browser: !!(browser && browser.connected),
             sessions: sessions.size,
-            chrome: chromeBin
+            chrome: chromeBin,
+            performance: perf,
+            pendingRelaunch: pendingRelaunch()
         });
         return;
     }
@@ -2600,6 +2818,9 @@ async function handleRequest(req, res) {
             sendJson(res, 401, { error: 'unauthorized' });
             return;
         }
+        let body = {};
+        try { body = (await readBody(req)) || {}; } catch (_) {}
+        if (body.performance) takePerf(body.performance);
         try {
             await restartBrowser();
             sendJson(res, 200, { ok: true });
@@ -2626,6 +2847,19 @@ async function handleRequest(req, res) {
         return;
     }
 
+    // Performance options without a new session (#756): Internet Properties' Apply
+    if (req.method === 'POST' && pathname === '/browser/settings') {
+        if (!adminOk(req)) {
+            sendJson(res, 401, { error: 'unauthorized' });
+            return;
+        }
+        let body = {};
+        try { body = (await readBody(req)) || {}; } catch (_) {}
+        takePerf(body.performance);
+        sendJson(res, 200, { ok: true, performance: perf, pendingRelaunch: pendingRelaunch() });
+        return;
+    }
+
     if (req.method === 'GET' && pathname === '/extensions') {
         if (!adminOk(req)) {
             sendJson(res, 401, { error: 'unauthorized' });
@@ -2648,6 +2882,86 @@ async function handleRequest(req, res) {
         } catch (err) {
             sendJson(res, 502, { error: err.message || 'page info failed' });
         }
+        return;
+    }
+
+    // Every session with its owner (#756: Other Devices, the browsing-session registry).
+    if (req.method === 'GET' && pathname === '/sessions') {
+        if (!adminOk(req)) {
+            sendJson(res, 401, { error: 'unauthorized' });
+            return;
+        }
+        sendJson(res, 200, { sessions: [...sessions.values()].map(sessionPublic) });
+        return;
+    }
+
+    // Leases (#756): Dreamscape renews the sessions whose device is connected or still inside its idle time.
+    if (req.method === 'POST' && pathname === '/sessions/lease') {
+        if (!adminOk(req)) {
+            sendJson(res, 401, { error: 'unauthorized' });
+            return;
+        }
+        let body = {};
+        try { body = (await readBody(req)) || {}; } catch (_) {}
+        const ttl = Math.max(15000, Math.min(LEASE_MAX_MS, Number(body.ttlMs) || LEASE_GRACE_MS));
+        const until = Date.now() + ttl;
+        const renewed = [];
+        for (const id of Array.isArray(body.ids) ? body.ids.slice(0, 500) : []) {
+            const session = sessions.get(String(id));
+            if (!session) continue;
+            if (!session.owner && body.owner !== false) continue;
+            session.leaseUntil = until;
+            renewed.push(session.id);
+            // a popup lives as long as its parent's lease
+            for (const child of sessions.values()) {
+                if (child.parentId === session.id) child.leaseUntil = until;
+            }
+        }
+        sendJson(res, 200, { ok: true, renewed, missing: (Array.isArray(body.ids) ? body.ids : []).filter((id) => !sessions.has(String(id))) });
+        return;
+    }
+
+    const transfer = pathname.match(/^\/sessions\/([a-f0-9]{32})\/transfer$/);
+    if (transfer && req.method === 'POST') {
+        if (!adminOk(req)) {
+            sendJson(res, 401, { error: 'unauthorized' });
+            return;
+        }
+        const session = sessions.get(transfer[1]);
+        if (!session) {
+            sendJson(res, 404, { error: 'not found' });
+            return;
+        }
+        let body = {};
+        try { body = (await readBody(req)) || {}; } catch (_) {}
+        const owner = normalizeOwner(body.owner);
+        if (!owner) {
+            sendJson(res, 400, { error: 'owner required' });
+            return;
+        }
+        // the old viewer hears where the page went, then loses its token (#756: "This tab has been transferred")
+        broadcast(session, { type: 'transferred', to: owner.deviceName || 'another device', kind: owner.deviceKind, at: Date.now() });
+        session.viewerToken = crypto.randomBytes(24).toString('hex');
+        for (const ws of session.sockets) {
+            try { ws.close(4001, 'transferred'); } catch (_) {}
+        }
+        session.sockets.clear();
+        session.owner = owner;
+        session.leaseUntil = Date.now() + LEASE_GRACE_MS;
+        for (const child of sessions.values()) {
+            if (child.parentId === session.id) {
+                child.owner = Object.assign({}, owner);
+                child.viewerToken = crypto.randomBytes(24).toString('hex');
+                for (const ws of child.sockets) { try { ws.close(4001, 'transferred'); } catch (_) {} }
+                child.sockets.clear();
+            }
+        }
+        if (body.width || body.height) {
+            session.width = clampSize(body.width, session.width, 320, 1920);
+            session.height = clampSize(body.height, session.height, 240, 1440);
+            applyViewport(session).then(() => restartScreencast(session)).catch(() => {});
+        }
+        sendJson(res, 200, Object.assign(sessionPublic(session), { viewerToken: session.viewerToken }));
         return;
     }
 
@@ -2799,6 +3113,9 @@ async function handleRequest(req, res) {
 function attachViewer(ws, session) {
     session.sockets.add(ws);
     touch(session);
+    session.viewHidden = false;
+    syncCapture(session);
+    if (session.memFrozen) ws.send(JSON.stringify({ type: 'memory-limit', usedMb: session.memMb, limitMb: perf.tabMemoryMb || 0 }));
     if (session.meta) ws.send(JSON.stringify({ type: 'meta', metadata: session.meta }));
     if (session.url || session.navigating || session.navTarget) {
         ws.send(JSON.stringify({
@@ -2897,6 +3214,8 @@ function attachViewer(ws, session) {
     });
     ws.on('close', () => {
         session.sockets.delete(ws);
+        // a moment's grace: a viewer reconnecting (a reload, a transfer) finds the capture still on
+        setTimeout(() => syncCapture(session), 2000);
     });
 }
 
@@ -2944,9 +3263,15 @@ async function main() {
     setInterval(() => {
         const now = Date.now();
         for (const [id, session] of sessions) {
-            if (session.idleAt < now) closeSession(id);
+            if (sessionExpired(session, now)) closeSession(id);
         }
     }, 15000).unref();
+
+    setInterval(() => {
+        for (const session of sessions.values()) {
+            if (session.sockets.size && !session.popup) checkMemory(session).catch(() => {});
+        }
+    }, MEMORY_CHECK_MS).unref();
 
     server.listen(PORT, HOST, () => {
         const bound = server.address();

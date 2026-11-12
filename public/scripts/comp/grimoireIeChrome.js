@@ -1096,7 +1096,9 @@
                     : session.state === 'idle' ? `Disconnected, pages close in ${left(session.killAt || session.expiresAt)}`
                         : `Closed, kept until ${when(session.expiresAt)}`;
                 dev.innerHTML = `<img src="${icon}" alt="" onerror="this.style.visibility='hidden'"><span class="grimoire-ie-quick-device-name"></span><span class="grimoire-ie-quick-device-state"></span>`;
-                dev.querySelector('.grimoire-ie-quick-device-name').textContent = session.deviceName;
+                // this computer's own earlier session (a restart it was not restored from) says so
+                dev.querySelector('.grimoire-ie-quick-device-name').textContent = session.deviceId && session.deviceId === res.deviceId
+                    ? 'This computer (earlier session)' : session.deviceName;
                 dev.querySelector('.grimoire-ie-quick-device-state').textContent = state;
                 panel.appendChild(dev);
                 (session.windows || []).forEach((win) => (win.tabs || []).forEach((tab) => {
@@ -1107,7 +1109,8 @@
                     tile.title = (tab.kind === 'alchemy' ? 'Move this page here: ' : 'Open a copy here: ') + (tab.title || tab.url);
                     const title = document.createElement('span');
                     title.className = 'grimoire-ie-quicktile-title';
-                    title.textContent = tab.title || tab.url || 'Untitled';
+                    title.textContent = (tab.title && tab.title !== tab.url ? tab.title : '')
+                        || (/^edtx:\/\/en\.grimoire\.jp\/?(index\.dtxt)?$/i.test(tab.url || '') ? 'Grimoire' : '') || tab.url || 'Untitled';
                     const shot = document.createElement('div');
                     shot.className = 'grimoire-ie-quicktile-shot grimoire-ie-quick-other-shot';
                     const fav = document.createElement('img');

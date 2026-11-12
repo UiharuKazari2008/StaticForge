@@ -749,6 +749,11 @@ class WebSocketMessageHandlers {
         }
         if (patch.alchemy && typeof patch.alchemy === 'object') {
             out.alchemy = mergeAlchemySettingsPatch(out.alchemy, patch.alchemy);
+            // Alchemy's performance options reach the service at once (#756); a relaunch waits for Internet Properties' restart
+            if (patch.alchemy.performance) {
+                const perf = out.alchemy.performance;
+                setImmediate(() => { require('./grimoireBrowserBridge').pushPerformance(perf).catch(() => {}); });
+            }
         }
         if (patch.mail && typeof patch.mail === 'object') {
             out.mail = normalizeMailSettings({ ...out.mail, ...patch.mail });

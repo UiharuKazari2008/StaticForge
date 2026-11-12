@@ -208,7 +208,9 @@
             const rows = tabs.map((tab) => {
                 n += 1;
                 const live = tab.alchemyId ? ' <span class="brs-live">(still open)</span>' : '';
-                return `<div class="tbp-tree-row is-child brs-tab"><input type="checkbox" id="brs-${n}" data-session="${esc(session.id)}" data-tab="${esc(tab.id)}" data-win="${winId}" checked><label for="brs-${n}"><img src="${tabIcon(tab)}" alt="" width="16" height="16"><span class="brs-title">${esc(tab.title || tab.url || 'Untitled')}</span>${live}<span class="brs-url">${esc(tab.url)}</span></label></div>`;
+                // a page without a title of its own reads as its address once (Grimoire's home: "Grimoire")
+                const title = tab.title && tab.title !== tab.url ? tab.title : (/^edtx:\/\/en\.grimoire\.jp\/?(index\.dtxt)?$/i.test(tab.url) ? 'Grimoire' : '');
+                return `<div class="tbp-tree-row is-child brs-tab"><input type="checkbox" id="brs-${n}" data-session="${esc(session.id)}" data-tab="${esc(tab.id)}" data-win="${winId}" checked><label for="brs-${n}"><img src="${tabIcon(tab)}" alt="" width="16" height="16"><span class="brs-title">${esc(title || tab.url || 'Untitled')}</span>${live}${title ? `<span class="brs-url">${esc(tab.url)}</span>` : ''}</label></div>`;
             }).join('');
             return `<div class="tbp-tree-row is-node brs-win"><input type="checkbox" id="${winId}" data-win-box="${winId}" checked><label for="${winId}"><img src="${IE_ART}/page.png" alt="" width="16" height="16" onerror="this.remove()"><span>${head}</span></label></div>${rows}`;
         }).join('')).join('');
