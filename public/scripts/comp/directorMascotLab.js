@@ -131,7 +131,11 @@ html.ui-mobile #directorMascotLab { top: auto; bottom: 46px; left: 4px; right: 4
         const ring = (cls, cx, cy, rx, ry) => `<i class="${cls}" style="left:${(cx - rx) * k}px;top:${(cy - ry) * k}px;width:${rx * 2 * k}px;height:${ry * 2 * k}px"></i>`;
         let html = '';
         if (Array.isArray(def.belly)) html += ring('', def.belly[0], def.belly[1], def.belly[2], def.belly[2]);
-        (def.pin || []).forEach((p) => { html += ring('pin', p[0], p[1], p[2], p[3]); });
+        (def.pin || []).forEach((p) => {
+            html += ring('pin', p[0], p[1], p[2], p[3]);
+            if (p.length > 5) html += ring('kick', p[4], p[5], 8, 8);
+            if (p.length > 7) html += ring('', p[6], p[7], 8, 8);
+        });
         Object.values(m.manifest.kicks || {}).forEach((list) => (Array.isArray(list) ? list : []).forEach((p) => { html += ring('kick', p.c[0], p.c[1], p.R, p.R); }));
         if (overlay.innerHTML !== html) overlay.innerHTML = html;
     }
@@ -173,7 +177,7 @@ html.ui-mobile #directorMascotLab { top: auto; bottom: 46px; left: 4px; right: 4
             <h4>Eating</h4><div class="dml-row">${btn('eatPrint', 'eat a print')}${btn('eatDoc', 'eat a document')}</div>
             <h4>Morph</h4><div class="dml-row"><label><input type="checkbox" data-in="freeze"${frozen ? ' checked' : ''}> hold at</label><input type="range" data-in="t" min="0" max="1" step="0.01" value="0.5"></div>
             <p class="dml-note">Tick hold, then pick a pose: the change stops where the slider is.</p>
-            <h4>Guides</h4><div class="dml-row"><label><input type="checkbox" data-in="overlay"${overlay ? ' checked' : ''}> belly (green), chest (pink), drawn kicks (yellow)</label></div>
+            <h4>Guides</h4><div class="dml-row"><label><input type="checkbox" data-in="overlay"${overlay ? ' checked' : ''}> belly (green), pinned pieces (pink; dots: rest yellow, pivot green), drawn kicks (yellow)</label></div>
             <p class="dml-note">${m.glOn() ? 'Shader body on.' : 'Shader body OFF: only drawn poses show (no growth, bumps or morphs).'} Stage ${esc(m.stageState.stage)}, sheet ${esc(m._glId || '')}.</p>`;
     }
 

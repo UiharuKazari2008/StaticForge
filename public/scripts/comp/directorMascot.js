@@ -214,17 +214,22 @@ uniform vec2 KD[3];
 uniform vec2 KA;
 uniform vec4 P1[4];
 uniform vec2 PD[4];
-uniform vec4 F[2];
+uniform vec4 F[3];
+uniform vec4 FR[3];
 float sm(float x) { x = clamp(x, 0.0, 1.0); return x * x * (3.0 - 2.0 * x); }
-// What stands in front of her belly and must not move with it (her chest: stage.pin, ellipses
-// centre xy and radii): kicks, bumps and the swing fade to nothing there; growth carries it as one
-// piece (growInv).
+// What stands in front of her belly and must keep its shape (stage.pin: her chest, an arm): ellipses
+// F[i] (centre xy, radii) with FR[i] (xy where it rests on the belly, zw its pivot, e.g. the shoulder).
+// Kicks, bumps and the swing fade to nothing there; growth moves each as one piece (growInv).
+float pinAt(vec2 q, vec4 e) {
+    return e.z > 0.0 ? sm((length((q - e.xy) / e.zw) - 0.88) / 0.24) : 1.0;
+}
 float pin(vec2 q) {
-    float w = 1.0;
-    for (int i = 0; i < 2; i++) {
-        if (F[i].z > 0.0) w *= sm((length((q - F[i].xy) / F[i].zw) - 0.8) / 0.45);
-    }
-    return w;
+    return pinAt(q, F[0]) * pinAt(q, F[1]) * pinAt(q, F[2]);
+}
+float growK(vec2 x, vec4 g1, vec3 g2) {
+    float r = length(x - g1.xy) / g1.z;
+    float w = r >= 1.0 ? 0.0 : (r <= g2.z ? 1.0 : 1.0 - sm((r - g2.z) / (1.0 - g2.z)));
+    return g1.w * w * sm((x.y - g2.x) / g2.y);
 }
 // g1: the disc that moves (centre xy, radius) and how much (scale - 1); f: the point it scales about
 // g2: nothing above y moves (with a ramp), and the part of the radius that moves whole (the rest
@@ -237,16 +242,19 @@ vec2 growInv(vec2 p, vec4 g1, vec3 g2, vec2 f) {
         float w = r >= 1.0 ? 0.0 : (r <= g2.z ? 1.0 : 1.0 - sm((r - g2.z) / (1.0 - g2.z)));
         float k = g1.w * w * sm((q.y - g2.x) / g2.y);
         vec2 d = (q - f) * k;
-        // her chest rides on the belly as one piece (Yukimi: it may move, but not be stretched): inside
-        // the pinned ellipse everything moves as the belly does where the chest rests on it
-        if (F[0].z > 0.0) {
-            float pw = sm((length((q - F[0].xy) / F[0].zw) - 0.8) / 0.45);
-            if (pw < 1.0) {
-                vec2 rest = F[0].xy + vec2(0.0, F[0].w * 0.75);
-                float rr = length(rest - g1.xy) / g1.z;
-                float rw = rr >= 1.0 ? 0.0 : (rr <= g2.z ? 1.0 : 1.0 - sm((rr - g2.z) / (1.0 - g2.z)));
-                d = mix((rest - f) * g1.w * rw * sm((rest.y - g2.x) / g2.y), d, pw);
-            }
+        // pinned pieces move whole (Yukimi: they may move, never be stretched or crushed): each goes
+        // where the belly takes its resting point; one with a pivot swings about it (an arm from its
+        // shoulder), so the far end follows the belly and the near end stays on her
+        for (int j = 0; j < 3; j++) {
+            if (F[j].z <= 0.0) continue;
+            float pw = pinAt(q, F[j]);
+            if (pw >= 1.0) continue;
+            vec2 rest = FR[j].xy;
+            vec2 dr = (rest - f) * growK(rest, g1, g2);
+            vec2 arm = rest - FR[j].zw;
+            float len = dot(arm, arm);
+            if (len > 1.0) dr *= clamp(dot(q - FR[j].zw, arm) / len, 0.0, 1.25);
+            d = mix(dr, d, pw);
         }
         q = p - d;
     }
@@ -408,7 +416,8 @@ class DirectorMascotGL {
         this.uKD = [0, 1, 2].map((i) => gl.getUniformLocation(prog, `KD[${i}]`));
         this.uP1 = [0, 1, 2, 3].map((i) => gl.getUniformLocation(prog, `P1[${i}]`));
         this.uPD = [0, 1, 2, 3].map((i) => gl.getUniformLocation(prog, `PD[${i}]`));
-        this.uF = [0, 1].map((i) => gl.getUniformLocation(prog, `F[${i}]`));
+        this.uF = [0, 1, 2].map((i) => gl.getUniformLocation(prog, `F[${i}]`));
+        this.uFR = [0, 1, 2].map((i) => gl.getUniformLocation(prog, `FR[${i}]`));
         this.pins = [];
         gl.uniform1i(this.u.A, 0);
         gl.uniform1i(this.u.B, 1);
@@ -524,7 +533,7 @@ class DirectorMascotGL {
 
     // What does not move with her belly (stage.pin): [[cx, cy, rx, ry], ...] in sheet pixels.
     setPins(list) {
-        this.pins = Array.isArray(list) ? list.slice(0, 2) : [];
+        this.pins = Array.isArray(list) ? list.slice(0, 3) : [];
         this.kick();
     }
 
@@ -603,7 +612,14 @@ class DirectorMascotGL {
         gl.viewport(0, 0, this.canvas.width, this.canvas.height);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.uniform2f(this.u.size, this.size[0], this.size[1]);
-        for (let i = 0; i < 2; i++) { const f = this.pins[i]; if (f) gl.uniform4f(this.uF[i], f[0], f[1], f[2], f[3]); else gl.uniform4f(this.uF[i], 0, 0, 0, 1); }
+        for (let i = 0; i < 3; i++) {
+            const f = this.pins[i];
+            if (!f) { gl.uniform4f(this.uF[i], 0, 0, 0, 1); gl.uniform4f(this.uFR[i], 0, 0, 0, 0); continue; }
+            // [cx, cy, rx, ry, restX, restY, pivotX, pivotY]: rest defaults to the bottom of the ellipse, no pivot
+            const rx = f.length > 5 ? f[4] : f[0]; const ry = f.length > 5 ? f[5] : f[1] + f[3] * 0.75;
+            gl.uniform4f(this.uF[i], f[0], f[1], f[2], f[3]);
+            gl.uniform4f(this.uFR[i], rx, ry, f.length > 7 ? f[6] : rx, f.length > 7 ? f[7] : ry);
+        }
         gl.uniform1f(this.u.t, t);
         grow(this.A, this.u.gA1, this.u.gA2, this.u.fA);
         grow(b, this.u.gB1, this.u.gB2, this.u.fB);
@@ -2678,7 +2694,17 @@ class DirectorMascot {
         }
         if (kicky.jiggle !== false || st.run > 1) this.act('jiggle');
         // half of them catch her off guard; a run always does
-        if (st.run > 1 || Math.random() < 0.5) this.cue({ expression: 'surprised', holdMs: st.run > 1 ? 1800 : 1400 });
+        const set = this.faceSet();
+        const has = (key) => !!(set && set.expressions && set.expressions[key]);
+        if (st.run >= 3) {
+            // the big one: caught out, then she feels it
+            this.cue({ expression: 'surprised', action: 'slump', holdMs: 900 });
+            this.later(() => { if (this.stageState === st) this.cue({ expression: has('frustrated') ? 'frustrated' : 'surprised', action: 'shake', holdMs: 2600 }); }, 900);
+        } else if (st.run === 2) {
+            this.cue({ expression: 'surprised', action: 'nod', holdMs: 2200 });
+        } else if (Math.random() < 0.5) {
+            this.cue({ expression: 'surprised', holdMs: 1400 });
+        }
     }
 
     // One bump of her own: on the far side of her belly from her (toward the top and the front, where
@@ -2699,8 +2725,12 @@ class DirectorMascot {
         const dir = [Math.cos(ang), Math.sin(ang)];
         // pronounced: a tenth of the belly's radius and more, half as much again per kick of a run
         // (the reach widens with it, so the picture never folds over itself)
-        const size = r * (0.1 + Math.random() * 0.04) * scale;
-        this.glBody.bump([cx + dir[0] * r, cy + dir[1] * r], [dir[0] * size, dir[1] * size], r * (0.3 + 0.09 * scale), { hold: 260 + Math.random() * 420 });
+        // sized for a belly of up to 420 px: on the huge ones the same kick is a smaller part of her
+        // (Yukimi: the intense ones deformed Yumiya far too much), and a run grows by less there
+        const rr = Math.min(r, 420);
+        const run = r > 420 ? 1 + (scale - 1) * 0.55 : scale;
+        const size = rr * (0.1 + Math.random() * 0.04) * run;
+        this.glBody.bump([cx + dir[0] * r, cy + dir[1] * r], [dir[0] * size, dir[1] * size], rr * (0.3 + 0.09 * run), { hold: 260 + Math.random() * 420 });
         const order = directorMascotGrowth(this.manifest).order;
         const at = order.indexOf(st.stage);
         if (at >= 1 && order.length > 1) this.glBody.wobble(def.belly, dir[0] * 0.45 * scale, dir[1] * 0.45 * scale, at / (order.length - 1));

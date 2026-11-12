@@ -354,12 +354,25 @@ async function buildGrow(only) {
  * disc, and for every other pose of the stage the middle of what differs from the stage's body
  * (`morphs["body|pose"]`): a pose change grows out of / shrinks into that point.
  */
-// Her chest per stage (sheet pixels, placed by eye over the art): the shader body pins it, so growth,
-// kicks and the belly's swing pass under it instead of dragging it (Yukimi 2026-11-12).
+// What keeps its shape while her belly grows, per stage (sheet pixels, placed by eye over the art on a
+// 100 px grid): [cx, cy, rx, ry, restX, restY, pivotX, pivotY]. Her chest rides on the belly (rest = where
+// it sits on it); an arm swings from its shoulder (pivot) with the hand staying on the belly (rest).
+// The shader body moves each as one piece (Yukimi 2026-11-12: no stretched chests, no crushed arms).
 const PIN = {
-    xi: { base: [[897, 520, 270, 125]], bigger: [[897, 520, 270, 125]] },
-    kabuki: { base: [[1605, 492, 270, 105]], bigger: [[1605, 492, 270, 105]], bigger2: [[1545, 440, 480, 160]] },
-    wren: { base: [[1177, 627, 270, 120]], bigger: [[1177, 627, 270, 120]], stuffed: [[1177, 627, 270, 120]] }
+    xi: {
+        base: [[897, 520, 270, 125], [600, 900, 130, 360, 665, 880, 560, 600]],
+        bigger: [[897, 520, 270, 125], [600, 900, 130, 360, 665, 880, 560, 600]]
+    },
+    kabuki: {
+        base: [[1600, 492, 225, 95]],
+        bigger: [[1560, 485, 220, 90]],
+        bigger2: [[1560, 520, 530, 215], [1045, 640, 70, 50, 1045, 680]]
+    },
+    wren: {
+        base: [[1190, 665, 250, 88], [930, 950, 180, 330, 1090, 1000, 900, 640]],
+        bigger: [[1190, 665, 250, 88], [930, 950, 180, 330, 1190, 1010, 900, 640]],
+        stuffed: [[1190, 665, 250, 88], [930, 950, 180, 330, 1190, 1010, 900, 640]]
+    }
 };
 
 async function buildMeta() {
