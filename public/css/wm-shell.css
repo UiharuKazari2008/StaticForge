@@ -570,65 +570,84 @@ img.wm-strip {
 @keyframes wm-strip { from { background-position: 0 0; } to { background-position: calc(var(--n) / (var(--n) - 1) * 100%) 0; } }
 @keyframes wm-strip-img { from { object-position: 0 0; } to { object-position: calc(var(--n) / (var(--n) - 1) * 100%) 0; } }
 
-.wm-status-icon[data-icon="bluetooth"] { background-image: image-set(url('/static_images/wm61/status-bluetooth.png') 1x, url('/static_images/wm61/status-bluetooth@2x.png') 2x, url('/static_images/wm61/status-bluetooth@4x.png') 4x); }
-.wm-status-icon[data-icon="data-off"] { background-image: image-set(url('/static_images/wm61/status-data-off.png') 1x, url('/static_images/wm61/status-data-off@2x.png') 2x, url('/static_images/wm61/status-data-off@4x.png') 4x); }
-.wm-status-icon[data-icon="data-on"] { background-image: image-set(url('/static_images/wm61/status-data-on.png') 1x, url('/static_images/wm61/status-data-on@2x.png') 2x, url('/static_images/wm61/status-data-on@4x.png') 4x); }
-.wm-status-icon[data-icon="data-active"] { background-image: image-set(url('/static_images/wm61/status-data-active.png') 1x, url('/static_images/wm61/status-data-active@2x.png') 2x); }
-.wm-status-icon[data-icon="volume"] { background-image: image-set(url('/static_images/wm61/status-volume.png') 1x, url('/static_images/wm61/status-volume@2x.png') 2x, url('/static_images/wm61/status-volume@4x.png') 4x); }
-.wm-status-icon[data-icon="volume-off"] { background-image: image-set(url('/static_images/wm61/status-volume-off.png') 1x, url('/static_images/wm61/status-volume-off@2x.png') 2x, url('/static_images/wm61/status-volume-off@4x.png') 4x); }
-.wm-status-icon[data-icon="vibrate"] { background-image: image-set(url('/static_images/wm61/status-vibrate.png') 1x, url('/static_images/wm61/status-vibrate@2x.png') 2x, url('/static_images/wm61/status-vibrate@4x.png') 4x); }
-.wm-status-icon[data-icon="notify-many"] { background-image: image-set(url('/static_images/wm61/status-notify-many.png') 1x, url('/static_images/wm61/status-notify-many@2x.png') 2x, url('/static_images/wm61/status-notify-many@4x.png') 4x); }
+/* ---- status atlas (scripts/build-wm-status-atlas.py: generated, do not edit) ---- */
+/* 72 icons, one image per density (512 x 160 px at 2x); the per-icon art stays as the source */
+.wm-status-icon[data-icon] { background-image: image-set(url('/static_images/wm61/status-atlas.png') 1x, url('/static_images/wm61/status-atlas@2x.png') 2x, url('/static_images/wm61/status-atlas@4x.png') 4x); background-size: calc(256 * var(--wm-icon-unit, var(--wm-px))) calc(80 * var(--wm-icon-unit, var(--wm-px))); background-repeat: no-repeat; }
+.wm-status-icon[data-icon="bluetooth"] { background-position: calc(0 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-off"] { background-position: calc(-16 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-on"] { background-position: calc(-32 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="volume"] { background-position: calc(-48 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="volume-off"] { background-position: calc(-64 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="vibrate"] { background-position: calc(-80 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="notify-many"] { background-position: calc(-96 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="signal-1"] { background-position: calc(-112 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="signal-2"] { background-position: calc(-128 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="signal-3"] { background-position: calc(-144 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="signal-4"] { background-position: calc(-160 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="signal-none"] { background-position: calc(-176 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="signal-off"] { background-position: calc(-192 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="signal-alert"] { background-position: calc(-208 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="roaming"] { background-position: calc(-224 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="wifi-available"] { background-position: calc(-240 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="wifi-connected"] { background-position: calc(0 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="battery-full"] { background-position: calc(-16 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="battery-3"] { background-position: calc(-32 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="battery-2"] { background-position: calc(-48 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="battery-1"] { background-position: calc(-64 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="battery-empty"] { background-position: calc(-80 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="battery-charging"] { background-position: calc(-96 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="battery-unknown"] { background-position: calc(-112 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-g"] { background-position: calc(-128 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-g-active"] { background-position: calc(-144 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-e"] { background-position: calc(-160 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-e-active"] { background-position: calc(-176 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-3g"] { background-position: calc(-192 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-3g-active"] { background-position: calc(-208 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-h"] { background-position: calc(-224 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-h-active"] { background-position: calc(-240 * var(--wm-icon-unit, var(--wm-px))) calc(-16 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-h-plus"] { background-position: calc(0 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-h-plus-active"] { background-position: calc(-16 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-4g"] { background-position: calc(-32 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-4g-active"] { background-position: calc(-48 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-4g-plus"] { background-position: calc(-64 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-4g-plus-active"] { background-position: calc(-80 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-nr"] { background-position: calc(-96 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-nr-active"] { background-position: calc(-112 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-nr-a"] { background-position: calc(-128 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-nr-a-active"] { background-position: calc(-144 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-uw"] { background-position: calc(-160 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-uw-active"] { background-position: calc(-180 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-lte"] { background-position: calc(-200 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-lte-active"] { background-position: calc(-216 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-lte-avail"] { background-position: calc(-232 * var(--wm-icon-unit, var(--wm-px))) calc(-32 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-lte-plus"] { background-position: calc(0 * var(--wm-icon-unit, var(--wm-px))) calc(-48 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-lte-plus-active"] { background-position: calc(-16 * var(--wm-icon-unit, var(--wm-px))) calc(-48 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-lte-plus-avail"] { background-position: calc(-32 * var(--wm-icon-unit, var(--wm-px))) calc(-48 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-5g-uw"] { background-position: calc(-52 * var(--wm-icon-unit, var(--wm-px))) calc(-48 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-5g-uw-active"] { background-position: calc(-75 * var(--wm-icon-unit, var(--wm-px))) calc(-48 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-5g-uw-avail"] { background-position: calc(-98 * var(--wm-icon-unit, var(--wm-px))) calc(-48 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-nr-uw"] { background-position: calc(-118 * var(--wm-icon-unit, var(--wm-px))) calc(-48 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-nr-uw-active"] { background-position: calc(-141 * var(--wm-icon-unit, var(--wm-px))) calc(-48 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-nr-uw-avail"] { background-position: calc(-164 * var(--wm-icon-unit, var(--wm-px))) calc(-48 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-5g"] { background-position: calc(-184 * var(--wm-icon-unit, var(--wm-px))) calc(-48 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-5g-active"] { background-position: calc(-200 * var(--wm-icon-unit, var(--wm-px))) calc(-48 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-5g-plus"] { background-position: calc(-216 * var(--wm-icon-unit, var(--wm-px))) calc(-48 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-5g-plus-active"] { background-position: calc(-232 * var(--wm-icon-unit, var(--wm-px))) calc(-48 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-g-avail"] { background-position: calc(0 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-e-avail"] { background-position: calc(-16 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-3g-avail"] { background-position: calc(-32 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-h-avail"] { background-position: calc(-48 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-h-plus-avail"] { background-position: calc(-64 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-4g-avail"] { background-position: calc(-84 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-4g-plus-avail"] { background-position: calc(-100 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-5g-avail"] { background-position: calc(-120 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-5g-plus-avail"] { background-position: calc(-136 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-nr-avail"] { background-position: calc(-156 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-nr-a-avail"] { background-position: calc(-172 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="data-uw-avail"] { background-position: calc(-192 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
+/* ---- end of status atlas ---- */
 /* device status (#709): battery, signal, roaming, data type and Wi-Fi from the Android app or the
  * browser. ROM art; signal bars, H+, LTE (4G) and 5G are Melaton-drawn in the same style. */
-.wm-status-icon[data-icon="signal-1"] { background-image: image-set(url('/static_images/wm61/status-signal-1.png') 1x, url('/static_images/wm61/status-signal-1@2x.png') 2x, url('/static_images/wm61/status-signal-1@4x.png') 4x); }
-.wm-status-icon[data-icon="signal-2"] { background-image: image-set(url('/static_images/wm61/status-signal-2.png') 1x, url('/static_images/wm61/status-signal-2@2x.png') 2x, url('/static_images/wm61/status-signal-2@4x.png') 4x); }
-.wm-status-icon[data-icon="signal-3"] { background-image: image-set(url('/static_images/wm61/status-signal-3.png') 1x, url('/static_images/wm61/status-signal-3@2x.png') 2x, url('/static_images/wm61/status-signal-3@4x.png') 4x); }
-.wm-status-icon[data-icon="signal-4"] { background-image: image-set(url('/static_images/wm61/status-signal-4.png') 1x, url('/static_images/wm61/status-signal-4@2x.png') 2x, url('/static_images/wm61/status-signal-4@4x.png') 4x); }
-.wm-status-icon[data-icon="signal-none"] { background-image: image-set(url('/static_images/wm61/status-signal-none.png') 1x, url('/static_images/wm61/status-signal-none@2x.png') 2x, url('/static_images/wm61/status-signal-none@4x.png') 4x); }
-.wm-status-icon[data-icon="signal-off"] { background-image: image-set(url('/static_images/wm61/status-signal-off.png') 1x, url('/static_images/wm61/status-signal-off@2x.png') 2x, url('/static_images/wm61/status-signal-off@4x.png') 4x); }
-.wm-status-icon[data-icon="signal-alert"] { background-image: image-set(url('/static_images/wm61/status-signal-alert.png') 1x, url('/static_images/wm61/status-signal-alert@2x.png') 2x, url('/static_images/wm61/status-signal-alert@4x.png') 4x); }
-.wm-status-icon[data-icon="roaming"] { background-image: image-set(url('/static_images/wm61/status-roaming.png') 1x, url('/static_images/wm61/status-roaming@2x.png') 2x, url('/static_images/wm61/status-roaming@4x.png') 4x); }
-.wm-status-icon[data-icon="wifi-available"] { background-image: image-set(url('/static_images/wm61/status-wifi-available.png') 1x, url('/static_images/wm61/status-wifi-available@2x.png') 2x, url('/static_images/wm61/status-wifi-available@4x.png') 4x); }
-.wm-status-icon[data-icon="wifi-connected"] { background-image: image-set(url('/static_images/wm61/status-wifi-connected.png') 1x, url('/static_images/wm61/status-wifi-connected@2x.png') 2x, url('/static_images/wm61/status-wifi-connected@4x.png') 4x); }
-.wm-status-icon[data-icon="battery-full"] { background-image: image-set(url('/static_images/wm61/status-battery-full.png') 1x, url('/static_images/wm61/status-battery-full@2x.png') 2x, url('/static_images/wm61/status-battery-full@4x.png') 4x); }
-.wm-status-icon[data-icon="battery-3"] { background-image: image-set(url('/static_images/wm61/status-battery-3.png') 1x, url('/static_images/wm61/status-battery-3@2x.png') 2x, url('/static_images/wm61/status-battery-3@4x.png') 4x); }
-.wm-status-icon[data-icon="battery-2"] { background-image: image-set(url('/static_images/wm61/status-battery-2.png') 1x, url('/static_images/wm61/status-battery-2@2x.png') 2x, url('/static_images/wm61/status-battery-2@4x.png') 4x); }
-.wm-status-icon[data-icon="battery-1"] { background-image: image-set(url('/static_images/wm61/status-battery-1.png') 1x, url('/static_images/wm61/status-battery-1@2x.png') 2x, url('/static_images/wm61/status-battery-1@4x.png') 4x); }
-.wm-status-icon[data-icon="battery-empty"] { background-image: image-set(url('/static_images/wm61/status-battery-empty.png') 1x, url('/static_images/wm61/status-battery-empty@2x.png') 2x, url('/static_images/wm61/status-battery-empty@4x.png') 4x); }
-.wm-status-icon[data-icon="battery-charging"] { background-image: image-set(url('/static_images/wm61/status-battery-charging.png') 1x, url('/static_images/wm61/status-battery-charging@2x.png') 2x, url('/static_images/wm61/status-battery-charging@4x.png') 4x); }
-.wm-status-icon[data-icon="battery-unknown"] { background-image: image-set(url('/static_images/wm61/status-battery-unknown.png') 1x, url('/static_images/wm61/status-battery-unknown@2x.png') 2x, url('/static_images/wm61/status-battery-unknown@4x.png') 4x); }
-.wm-status-icon[data-icon="data-g"] { background-image: image-set(url('/static_images/wm61/status-data-g.png') 1x, url('/static_images/wm61/status-data-g@2x.png') 2x, url('/static_images/wm61/status-data-g@4x.png') 4x); }
-.wm-status-icon[data-icon="data-g-active"] { background-image: image-set(url('/static_images/wm61/status-data-g-active.png') 1x, url('/static_images/wm61/status-data-g-active@2x.png') 2x, url('/static_images/wm61/status-data-g-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-e"] { background-image: image-set(url('/static_images/wm61/status-data-e.png') 1x, url('/static_images/wm61/status-data-e@2x.png') 2x, url('/static_images/wm61/status-data-e@4x.png') 4x); }
-.wm-status-icon[data-icon="data-e-active"] { background-image: image-set(url('/static_images/wm61/status-data-e-active.png') 1x, url('/static_images/wm61/status-data-e-active@2x.png') 2x, url('/static_images/wm61/status-data-e-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-3g"] { background-image: image-set(url('/static_images/wm61/status-data-3g.png') 1x, url('/static_images/wm61/status-data-3g@2x.png') 2x, url('/static_images/wm61/status-data-3g@4x.png') 4x); }
-.wm-status-icon[data-icon="data-3g-active"] { background-image: image-set(url('/static_images/wm61/status-data-3g-active.png') 1x, url('/static_images/wm61/status-data-3g-active@2x.png') 2x, url('/static_images/wm61/status-data-3g-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-h"] { background-image: image-set(url('/static_images/wm61/status-data-h.png') 1x, url('/static_images/wm61/status-data-h@2x.png') 2x, url('/static_images/wm61/status-data-h@4x.png') 4x); }
-.wm-status-icon[data-icon="data-h-active"] { background-image: image-set(url('/static_images/wm61/status-data-h-active.png') 1x, url('/static_images/wm61/status-data-h-active@2x.png') 2x, url('/static_images/wm61/status-data-h-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-h-plus"] { background-image: image-set(url('/static_images/wm61/status-data-h-plus.png') 1x, url('/static_images/wm61/status-data-h-plus@2x.png') 2x, url('/static_images/wm61/status-data-h-plus@4x.png') 4x); }
-.wm-status-icon[data-icon="data-h-plus-active"] { background-image: image-set(url('/static_images/wm61/status-data-h-plus-active.png') 1x, url('/static_images/wm61/status-data-h-plus-active@2x.png') 2x, url('/static_images/wm61/status-data-h-plus-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-4g"] { background-image: image-set(url('/static_images/wm61/status-data-4g.png') 1x, url('/static_images/wm61/status-data-4g@2x.png') 2x, url('/static_images/wm61/status-data-4g@4x.png') 4x); }
-.wm-status-icon[data-icon="data-4g-active"] { background-image: image-set(url('/static_images/wm61/status-data-4g-active.png') 1x, url('/static_images/wm61/status-data-4g-active@2x.png') 2x, url('/static_images/wm61/status-data-4g-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-4g-plus"] { background-image: image-set(url('/static_images/wm61/status-data-4g-plus.png') 1x, url('/static_images/wm61/status-data-4g-plus@2x.png') 2x, url('/static_images/wm61/status-data-4g-plus@4x.png') 4x); }
-.wm-status-icon[data-icon="data-4g-plus-active"] { background-image: image-set(url('/static_images/wm61/status-data-4g-plus-active.png') 1x, url('/static_images/wm61/status-data-4g-plus-active@2x.png') 2x, url('/static_images/wm61/status-data-4g-plus-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-nr"] { background-image: image-set(url('/static_images/wm61/status-data-nr.png') 1x, url('/static_images/wm61/status-data-nr@2x.png') 2x, url('/static_images/wm61/status-data-nr@4x.png') 4x); }
-.wm-status-icon[data-icon="data-nr-active"] { background-image: image-set(url('/static_images/wm61/status-data-nr-active.png') 1x, url('/static_images/wm61/status-data-nr-active@2x.png') 2x, url('/static_images/wm61/status-data-nr-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-nr-a"] { background-image: image-set(url('/static_images/wm61/status-data-nr-a.png') 1x, url('/static_images/wm61/status-data-nr-a@2x.png') 2x, url('/static_images/wm61/status-data-nr-a@4x.png') 4x); }
-.wm-status-icon[data-icon="data-nr-a-active"] { background-image: image-set(url('/static_images/wm61/status-data-nr-a-active.png') 1x, url('/static_images/wm61/status-data-nr-a-active@2x.png') 2x, url('/static_images/wm61/status-data-nr-a-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-uw"] { background-image: image-set(url('/static_images/wm61/status-data-uw.png') 1x, url('/static_images/wm61/status-data-uw@2x.png') 2x, url('/static_images/wm61/status-data-uw@4x.png') 4x); }
-.wm-status-icon[data-icon="data-uw-active"] { background-image: image-set(url('/static_images/wm61/status-data-uw-active.png') 1x, url('/static_images/wm61/status-data-uw-active@2x.png') 2x, url('/static_images/wm61/status-data-uw-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-lte"] { background-image: image-set(url('/static_images/wm61/status-data-lte.png') 1x, url('/static_images/wm61/status-data-lte@2x.png') 2x, url('/static_images/wm61/status-data-lte@4x.png') 4x); }
-.wm-status-icon[data-icon="data-lte-active"] { background-image: image-set(url('/static_images/wm61/status-data-lte-active.png') 1x, url('/static_images/wm61/status-data-lte-active@2x.png') 2x, url('/static_images/wm61/status-data-lte-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-lte-avail"] { background-image: image-set(url('/static_images/wm61/status-data-lte-avail.png') 1x, url('/static_images/wm61/status-data-lte-avail@2x.png') 2x, url('/static_images/wm61/status-data-lte-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-lte-plus"] { background-image: image-set(url('/static_images/wm61/status-data-lte-plus.png') 1x, url('/static_images/wm61/status-data-lte-plus@2x.png') 2x, url('/static_images/wm61/status-data-lte-plus@4x.png') 4x); }
-.wm-status-icon[data-icon="data-lte-plus-active"] { background-image: image-set(url('/static_images/wm61/status-data-lte-plus-active.png') 1x, url('/static_images/wm61/status-data-lte-plus-active@2x.png') 2x, url('/static_images/wm61/status-data-lte-plus-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-lte-plus-avail"] { background-image: image-set(url('/static_images/wm61/status-data-lte-plus-avail.png') 1x, url('/static_images/wm61/status-data-lte-plus-avail@2x.png') 2x, url('/static_images/wm61/status-data-lte-plus-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-5g-uw"] { background-image: image-set(url('/static_images/wm61/status-data-5g-uw.png') 1x, url('/static_images/wm61/status-data-5g-uw@2x.png') 2x, url('/static_images/wm61/status-data-5g-uw@4x.png') 4x); }
-.wm-status-icon[data-icon="data-5g-uw-active"] { background-image: image-set(url('/static_images/wm61/status-data-5g-uw-active.png') 1x, url('/static_images/wm61/status-data-5g-uw-active@2x.png') 2x, url('/static_images/wm61/status-data-5g-uw-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-5g-uw-avail"] { background-image: image-set(url('/static_images/wm61/status-data-5g-uw-avail.png') 1x, url('/static_images/wm61/status-data-5g-uw-avail@2x.png') 2x, url('/static_images/wm61/status-data-5g-uw-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-nr-uw"] { background-image: image-set(url('/static_images/wm61/status-data-nr-uw.png') 1x, url('/static_images/wm61/status-data-nr-uw@2x.png') 2x, url('/static_images/wm61/status-data-nr-uw@4x.png') 4x); }
-.wm-status-icon[data-icon="data-nr-uw-active"] { background-image: image-set(url('/static_images/wm61/status-data-nr-uw-active.png') 1x, url('/static_images/wm61/status-data-nr-uw-active@2x.png') 2x, url('/static_images/wm61/status-data-nr-uw-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-nr-uw-avail"] { background-image: image-set(url('/static_images/wm61/status-data-nr-uw-avail.png') 1x, url('/static_images/wm61/status-data-nr-uw-avail@2x.png') 2x, url('/static_images/wm61/status-data-nr-uw-avail@4x.png') 4x); }
 /* large badges with a mark keep the parent's box, the mark outside it: 40 px wide, 20 x 16 (both versions) */
 .wm-status-icon:is([data-icon="data-h-plus-avail"], [data-icon="data-4g-plus-avail"], [data-icon="data-5g-plus-avail"], [data-icon="data-nr-a-avail"], [data-icon="data-uw-avail"], [data-icon="data-lte-plus-avail"], [data-icon="data-5g-uw-avail"], [data-icon="data-nr-uw-avail"]) { width: calc(20 * var(--wm-icon-unit, var(--wm-px))); }
 /* 6.1 badges wider than the square cell (Yukimi: wider is fine): UWB 20 x 16 px; 5G UW
@@ -636,23 +655,7 @@ img.wm-strip {
 .wm-status-icon:is([data-icon="data-uw"], [data-icon="data-uw-active"]) { width: calc(20 * var(--wm-icon-unit, var(--wm-px))); }
 .wm-status-icon:is([data-icon="data-5g-uw"], [data-icon="data-5g-uw-active"], [data-icon="data-nr-uw"], [data-icon="data-nr-uw-active"]) { width: calc(23 * var(--wm-icon-unit, var(--wm-px))); }
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon:is([data-icon="data-uw"], [data-icon="data-uw-active"], [data-icon="data-lte"], [data-icon="data-lte-active"], [data-icon="data-lte-plus"], [data-icon="data-lte-plus-active"], [data-icon="data-5g-uw"], [data-icon="data-5g-uw-active"], [data-icon="data-nr-uw"], [data-icon="data-nr-uw-active"]) { width: calc(16 * var(--wm-icon-unit, var(--wm-px))); }
-.wm-status-icon[data-icon="data-5g"] { background-image: image-set(url('/static_images/wm61/status-data-5g.png') 1x, url('/static_images/wm61/status-data-5g@2x.png') 2x, url('/static_images/wm61/status-data-5g@4x.png') 4x); }
-.wm-status-icon[data-icon="data-5g-active"] { background-image: image-set(url('/static_images/wm61/status-data-5g-active.png') 1x, url('/static_images/wm61/status-data-5g-active@2x.png') 2x, url('/static_images/wm61/status-data-5g-active@4x.png') 4x); }
-.wm-status-icon[data-icon="data-5g-plus"] { background-image: image-set(url('/static_images/wm61/status-data-5g-plus.png') 1x, url('/static_images/wm61/status-data-5g-plus@2x.png') 2x, url('/static_images/wm61/status-data-5g-plus@4x.png') 4x); }
-.wm-status-icon[data-icon="data-5g-plus-active"] { background-image: image-set(url('/static_images/wm61/status-data-5g-plus-active.png') 1x, url('/static_images/wm61/status-data-5g-plus-active@2x.png') 2x, url('/static_images/wm61/status-data-5g-plus-active@4x.png') 4x); }
 /* the large badges: a network type there, no data call up (shell32 / tapres.192; #771) */
-.wm-status-icon[data-icon="data-g-avail"] { background-image: image-set(url('/static_images/wm61/status-data-g-avail.png') 1x, url('/static_images/wm61/status-data-g-avail@2x.png') 2x, url('/static_images/wm61/status-data-g-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-e-avail"] { background-image: image-set(url('/static_images/wm61/status-data-e-avail.png') 1x, url('/static_images/wm61/status-data-e-avail@2x.png') 2x, url('/static_images/wm61/status-data-e-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-3g-avail"] { background-image: image-set(url('/static_images/wm61/status-data-3g-avail.png') 1x, url('/static_images/wm61/status-data-3g-avail@2x.png') 2x, url('/static_images/wm61/status-data-3g-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-h-avail"] { background-image: image-set(url('/static_images/wm61/status-data-h-avail.png') 1x, url('/static_images/wm61/status-data-h-avail@2x.png') 2x, url('/static_images/wm61/status-data-h-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-h-plus-avail"] { background-image: image-set(url('/static_images/wm61/status-data-h-plus-avail.png') 1x, url('/static_images/wm61/status-data-h-plus-avail@2x.png') 2x, url('/static_images/wm61/status-data-h-plus-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-4g-avail"] { background-image: image-set(url('/static_images/wm61/status-data-4g-avail.png') 1x, url('/static_images/wm61/status-data-4g-avail@2x.png') 2x, url('/static_images/wm61/status-data-4g-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-4g-plus-avail"] { background-image: image-set(url('/static_images/wm61/status-data-4g-plus-avail.png') 1x, url('/static_images/wm61/status-data-4g-plus-avail@2x.png') 2x, url('/static_images/wm61/status-data-4g-plus-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-5g-avail"] { background-image: image-set(url('/static_images/wm61/status-data-5g-avail.png') 1x, url('/static_images/wm61/status-data-5g-avail@2x.png') 2x, url('/static_images/wm61/status-data-5g-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-5g-plus-avail"] { background-image: image-set(url('/static_images/wm61/status-data-5g-plus-avail.png') 1x, url('/static_images/wm61/status-data-5g-plus-avail@2x.png') 2x, url('/static_images/wm61/status-data-5g-plus-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-nr-avail"] { background-image: image-set(url('/static_images/wm61/status-data-nr-avail.png') 1x, url('/static_images/wm61/status-data-nr-avail@2x.png') 2x, url('/static_images/wm61/status-data-nr-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-nr-a-avail"] { background-image: image-set(url('/static_images/wm61/status-data-nr-a-avail.png') 1x, url('/static_images/wm61/status-data-nr-a-avail@2x.png') 2x, url('/static_images/wm61/status-data-nr-a-avail@4x.png') 4x); }
-.wm-status-icon[data-icon="data-uw-avail"] { background-image: image-set(url('/static_images/wm61/status-data-uw-avail.png') 1x, url('/static_images/wm61/status-data-uw-avail@2x.png') 2x, url('/static_images/wm61/status-data-uw-avail@4x.png') 4x); }
 .wm-status-icon[data-icon="signal-search"] {
     --strip: image-set(url('/static_images/wm61/status-signal-search-strip.png') 1x, url('/static_images/wm61/status-signal-search-strip@2x.png') 2x, url('/static_images/wm61/status-signal-search-strip@4x.png') 4x);
     --n: 3;
