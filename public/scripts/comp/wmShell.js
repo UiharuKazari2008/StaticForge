@@ -6355,7 +6355,7 @@
             splash.innerHTML = `<div class="wm-splash65-art">
                     <img class="wm-splash65-mark" src="/static_images/melaton/melaton-white-256.png" alt="" draggable="false">
                     <span class="wm-splash65-word">Melaton</span>
-                    <p class="wm-splash65-copy">&copy; 2009 Xyridian Corporation. All rights reserved.&nbsp; This computer program is protected by U.S. and international copyright laws.</p>
+                    <p class="wm-splash65-copy">&copy; ${new Date().getFullYear()} Xyridian Corporation. All rights reserved.&nbsp; This computer program is protected by U.S. and international copyright laws.</p>
                 </div>`;
         } else splash.innerHTML = `
             <div class="wm-s61"><span class="wm-s61-rings" aria-hidden="true"><i></i><i></i><i></i></span><b class="wm-s61-glint" aria-hidden="true"></b>

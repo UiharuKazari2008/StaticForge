@@ -2280,7 +2280,7 @@ html.ui-mobile[data-wm-boot="splash"] .wm-splash {
 
 .wm-s61 .wm-splash-words {
     color: #e7e7e7;
-    text-shadow: 0 calc(1 * var(--u)) calc(2 * var(--u)) rgba(0, 40, 0, 0.55), 0 0 calc(3 * var(--u)) rgba(0, 40, 0, 0.35);
+    text-shadow: 0 calc(2 * var(--u)) calc(8 * var(--u)) rgba(0, 40, 0, 0.75), 0 0 calc(4 * var(--u)) rgba(0, 40, 0, 0.3);
 }
 
 .wm-s61 .wm-splash-brand {
