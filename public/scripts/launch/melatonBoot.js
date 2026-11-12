@@ -125,11 +125,13 @@
     const SETUP_RESUME_KEY = 'melatonSetup';
 
     // Vista "Installing Windows..." checklist; weight = share of the strip's second bar
+    // copying (the download) is 0-75 %, expanding and installing 75-100 %, as Melaton Mobile's
+    // Software Update screen (Yozora #774)
     const INSTALL_STEPS = [
-        { id: 'copy', label: 'Copying Melaton files', weight: 0.8 },
-        { id: 'expand', label: 'Expanding Melaton files', weight: 0.08 },
-        { id: 'features', label: 'Installing features', weight: 0.03 },
-        { id: 'updates', label: 'Installing updates', weight: 0.06 },
+        { id: 'copy', label: 'Copying Melaton files', weight: 0.75 },
+        { id: 'expand', label: 'Expanding Melaton files', weight: 0.11 },
+        { id: 'features', label: 'Installing features', weight: 0.04 },
+        { id: 'updates', label: 'Installing updates', weight: 0.07 },
         { id: 'complete', label: 'Completing installation', weight: 0.03 }
     ];
 

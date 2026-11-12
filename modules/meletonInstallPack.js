@@ -7,6 +7,10 @@
  * fonts, audio) are stored as-is so the pack does not spend CPU growing them.
  * The agent bundle (modules/agentAssetBundle.js) stays a separate lazy zip.
  *
+ * Named packs (Yozora #774): one per asset package set (public/scripts/launch/assetPackages.js),
+ * pack-<name>.zip + pack-<name>-meta.json beside the default pack.zip (the set of a client from
+ * before packages: everything). Every function takes options.name / a name; none = the default.
+ *
  * public/scripts/launch/updateEngine.js (manifestHashMaterial, fileGroup)
  */
 const fs = require('fs');
@@ -29,26 +33,33 @@ const STORE_EXT = new Set([
 ]);
 
 let outputDir = null;
-let building = false;
-let ready = null;
+// name -> { building, ready }; '' = the default pack
+const packs = new Map();
+function state(name) {
+    const key = name || '';
+    if (!packs.has(key)) packs.set(key, { building: false, ready: null });
+    return packs.get(key);
+}
 
 function init(options = {}) {
     if (options.outputDir) outputDir = options.outputDir;
-    ready = readMeta();
+    const st = state('');
+    st.ready = readMeta('');
     // never serve a pack from before auth rows were left out (it holds /protected files)
-    if (ready && ready.authExcluded !== true) ready = null;
+    if (st.ready && st.ready.authExcluded !== true) st.ready = null;
 }
 
 function directory() {
     return outputDir;
 }
 
-function zipPath() {
-    return path.join(outputDir, PACK_NAME);
+const safeName = (name) => String(name || '').replace(/[^a-z0-9-]/gi, '').slice(0, 40);
+function zipPath(name) {
+    return path.join(outputDir, name ? `pack-${safeName(name)}.zip` : PACK_NAME);
 }
 
-function metaPath() {
-    return path.join(outputDir, META_NAME);
+function metaPath(name) {
+    return path.join(outputDir, name ? `pack-${safeName(name)}-meta.json` : META_NAME);
 }
 
 function hashManifest(files) {
@@ -62,27 +73,48 @@ function extensionOf(url) {
     return clean.slice(dot + 1).toLowerCase();
 }
 
-function readMeta() {
+function readMeta(name) {
     if (!outputDir) return null;
     try {
-        const meta = JSON.parse(fs.readFileSync(metaPath(), 'utf8'));
+        const meta = JSON.parse(fs.readFileSync(metaPath(name), 'utf8'));
         if (!meta || !meta.hash || !Number.isFinite(meta.bytes)) return null;
-        if (!fs.existsSync(zipPath())) return null;
+        if (!fs.existsSync(zipPath(name))) return null;
         return meta;
     } catch (_) {
         return null;
     }
 }
 
-function status() {
+function status(name) {
+    const st = state(name);
+    // a named pack written by an earlier process is picked up from disk
+    if (name && !st.ready && !st.building) {
+        const meta = readMeta(name);
+        if (meta && meta.authExcluded === true) st.ready = meta;
+    }
+    const { building, ready } = st;
     return {
         ready: !building && !!ready,
         building,
         hash: ready ? ready.hash : null,
         bytes: ready ? ready.bytes : 0,
         count: ready ? ready.count : 0,
-        path: ready ? zipPath() : null
+        path: ready ? zipPath(name) : null
     };
+}
+
+/** Named packs not in keep[] are deleted (the default pack always stays). */
+function prune(keep) {
+    if (!outputDir) return;
+    const wanted = new Set((keep || []).map(safeName));
+    let names = [];
+    try { names = fs.readdirSync(outputDir); } catch (_) { return; }
+    for (const f of names) {
+        const m = /^pack-([a-z0-9-]+?)(?:-meta\.json|\.zip)$/i.exec(f);
+        if (!m || wanted.has(m[1]) || state(m[1]).building) continue;
+        try { fs.unlinkSync(path.join(outputDir, f)); } catch (_) { /* gone */ }
+        packs.delete(m[1]);
+    }
 }
 
 function yieldTick() {
@@ -278,25 +310,27 @@ async function rebuild(options = {}) {
     const dir = options.outputDir || outputDir;
     if (!dir) throw new Error('meletonInstallPack: outputDir is required');
     outputDir = dir;
+    const name = options.name || '';
+    const st = state(name);
     const manifest = Array.isArray(options.manifest) ? options.manifest : [];
     const hash = hashManifest(manifest);
-    const current = !options.force && readMeta();
+    const current = !options.force && readMeta(name);
     // A pack written before auth rows were left out still holds them: rebuild it once
     if (current && current.hash === hash && current.authExcluded === true
         && !unresolvedNowResolve(current, manifest, options.resolveFile)) {
-        ready = current;
+        st.ready = current;
         return { rebuilt: false, hash, bytes: current.bytes, count: current.count, skipped: 0 };
     }
 
-    building = true;
-    ready = null;
+    st.building = true;
+    st.ready = null;
     fs.mkdirSync(dir, { recursive: true });
     const { files, skipped, unresolved } = await collectListing(manifest, options.resolveFile);
 
-    const tmpZip = path.join(dir, `${PACK_NAME}.tmp`);
+    const tmpZip = `${zipPath(name)}.tmp`;
     try {
         const bytes = await writeZip(tmpZip, { hash, files }, options.log);
-        fs.renameSync(tmpZip, zipPath());
+        fs.renameSync(tmpZip, zipPath(name));
         const meta = {
             hash,
             bytes,
@@ -306,15 +340,15 @@ async function rebuild(options = {}) {
             authExcluded: true,
             builtAt: Date.now()
         };
-        fs.writeFileSync(metaPath(), JSON.stringify(meta));
-        ready = meta;
+        fs.writeFileSync(metaPath(name), JSON.stringify(meta));
+        st.ready = meta;
         return { rebuilt: true, hash, bytes, count: files.length, skipped };
     } catch (error) {
         try { fs.unlinkSync(tmpZip); } catch (_) { /* no partial */ }
-        ready = readMeta();
+        st.ready = readMeta(name);
         throw error;
     } finally {
-        building = false;
+        st.building = false;
     }
 }
 
@@ -337,6 +371,7 @@ module.exports = {
     rebuild,
     buildSubset,
     status,
+    prune,
     hashManifest,
     directory,
     ZIP_LEVEL,

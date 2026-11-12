@@ -219,6 +219,8 @@
         })();
     </script>
 
+    <!-- the client's asset packages (#774): the cookie that picks its manifest and install pack -->
+    <script src="/scripts/launch/assetPackages.js"></script>
     <!-- Melaton boot (desktop starts, PWA and tabs): Vista boot screen, boot menu, recovery.
          public/scripts/launch/melatonBoot.js, Yozora #411. Narrow / phone starts keep the card. -->
     <script src="/scripts/launch/desktopStart.js"></script>
@@ -232,6 +234,8 @@
             if (reviewScreen || (window.melatonDesktopStart && window.melatonDesktopStart.isDesktopStart(window))) {
                 document.documentElement.classList.add('melaton-boot');
                 window.melatonBootActive = true;
+                // a desktop start: core only, unless this client also runs Melaton Mobile (#774)
+                try { if (window.melatonPackages) window.melatonPackages.noteBoot({ shell: 'desktop' }); } catch (e4) { /* everything */ }
                 // Capture-phase, before the boot script loads, so F8 can interrupt a start in
                 // progress and the BIOS keys (F2 Setup, ESC Boot Menu, F12 network) are not lost
                 // while the POST is still loading (melatonBoot.js replays melatonBiosKeys).
@@ -258,6 +262,13 @@
                     else globalThis.melatonBiosKeys.push(key);
                 }, true);
             } else if ((window.innerWidth || 0) < 1200) {
+                // a phone's first start installs Melaton Mobile's art with the rest (#774): its
+                // version and density, not every version's (app.html re-checks it at each boot)
+                try {
+                    var wmv = '6.1';
+                    try { if (localStorage.getItem('wmVersion') === '6.5') wmv = '6.5'; } catch (e2) { /* 6.1 */ }
+                    if (window.melatonPackages) window.melatonPackages.noteBoot({ shell: 'mobile', version: wmv, touch: (navigator.maxTouchPoints || 0) > 0 });
+                } catch (e3) { /* no packages: everything */ }
                 // a phone start: the maker's logo on black (as the Android app's boot cover), and the
                 // pre-launch installer before /app (phoneUpdate.js, launch-phone-update.css, #760)
                 document.documentElement.classList.add('phone-launch');

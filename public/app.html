@@ -44,6 +44,8 @@
         })();
     </script>
     <script src="/scripts/comp/fatalErrorBootstrap.js"></script>
+    <!-- which asset packages this client keeps (Melaton Mobile's art per version and density), before anything is fetched (#774) -->
+    <script src="/scripts/launch/assetPackages.js"></script>
 
     <!-- Global desktop mode detection - set at the very top before any other scripts -->
     <script>
@@ -200,6 +202,17 @@
         if (globalThis.uiShell === 'mobile' && (touchFirst || touchScreen)) {
             document.documentElement.classList.add('wm-touch');
         }
+        // the client's asset packages (#774): Melaton Mobile here sets the mobile bit (kept), its
+        // version and density tier; the cookie tells the server's manifest and install pack
+        try {
+            if (globalThis.melatonPackages) {
+                globalThis.melatonPackageBoot = globalThis.melatonPackages.noteBoot({
+                    shell: globalThis.uiShell,
+                    version: document.documentElement.dataset.wmVersion,
+                    touch: document.documentElement.classList.contains('wm-touch')
+                });
+            }
+        } catch (e) { /* no packages: the server gives everything */ }
         if (!galleryWindowPreference && isWideScreen) {
             // only a wide first load stores a choice: a phone's load used to store 'maximized'
             // and kept a later wide load of the same browser out of the desktop

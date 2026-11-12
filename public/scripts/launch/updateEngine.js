@@ -53,9 +53,10 @@
 
     const config = {
         silentMax: 20,
-        // A POST body listing fewer files than this gets a zip of just those files.
-        // More than this uses the full pack built at asset recreation.
-        subsetMax: 120,
+        // A POST body listing up to this many files gets a zip of just those files (Yozora #774:
+        // the installer asks for what it needs, not the whole pack). More uses the client's full
+        // pack: the one of its asset package set (assetPackages.js; the server reads its cookie).
+        subsetMax: 4000,
         stallMs: 60000,
         packReadyWaitMs: 180000,
         manifestTimeoutMs: 30000,

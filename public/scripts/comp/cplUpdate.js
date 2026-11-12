@@ -290,6 +290,7 @@
                 <div class="cpl-task-group">
                     <ul class="cpl-task-list">
                         <li><button type="button" class="cpl-link cpl-link--icon" data-cpl-wu="check"><img src="/static_images/vista-ie/refresh.png" alt="">Check for updates</button></li>
+                        <li><button type="button" class="cpl-link" data-cpl-action="nav" data-cpl-arg="update-applied">Applied updates</button></li>
                     </ul>
                 </div>
                 <div class="cpl-task-group cpl-task-group--see-also">
@@ -308,7 +309,90 @@
             mount,
             unmount
         });
+        registerApplied(cpl);
         return true;
+    }
+
+    // ---- Applied updates (Yozora #774): the asset packages this computer keeps
+    // (assetPackages.js). A computer that also runs Melaton Mobile (a phone with a desktop in DeX)
+    // adds Melaton Mobile's packages here, so they are on it before it starts on the phone screen.
+    let pkgInfo = null;
+    let pkgSel = null;
+    let pkgAdding = null;
+    const mbText = (b) => `${(Number(b || 0) / 1048576).toFixed(1)} MB`;
+    function appliedBody() {
+        const pk = root.melatonPackages;
+        if (!pk) return '<div class="cpl-vpage"><h1 class="cpl-vtitle">Applied updates</h1><p class="cpl-vtext">Update packages are not available in this version of Melaton.</p></div>';
+        if (!pkgInfo) {
+            pkgInfo = [];
+            fetch('/install/packages', { cache: 'no-store', credentials: 'same-origin' }).then((r) => r.json())
+                .then((j) => { pkgInfo = j && j.packages ? j.packages : []; if (root.melatonControlPanel) root.melatonControlPanel.open('update-applied'); })
+                .catch(() => { /* sizes stay blank */ });
+        }
+        const info = new Map(pkgInfo.map((x) => [x.id, x]));
+        const size = (id) => (info.has(id) ? mbText(info.get(id).bytes) : '');
+        const active = pk.current();
+        const auto = new Set(pk.automatic());
+        if (pkgAdding) {
+            const choices = pk.PACKAGES.filter((p) => !active.includes(p.id));
+            const rows = choices.map((p) => `<tr><td><input type="checkbox" id="cpl-pkg-${esc(p.id)}" data-pkg="${esc(p.id)}"${pkgAdding.has(p.id) ? ' checked' : ''}><label for="cpl-pkg-${esc(p.id)}"> ${esc(p.label)}</label></td><td>${esc(size(p.id))}</td></tr>`).join('');
+            return `<div class="cpl-vpage cpl-vwide">
+                <h1 class="cpl-vtitle">Add an update package from Melaton Update</h1>
+                <p class="cpl-vtext">Packages hold Melaton Mobile's pictures for a version and a screen density (HiDPI = 2x, UHiDPI = 4x).</p>
+                <table class="cpl-vtable"><tr class="is-head"><td>Name</td><td>Size</td></tr>${rows || '<tr><td colspan="2">Every package is already on this computer.</td></tr>'}</table>
+                <div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-pkg="add"${choices.length ? '' : ' disabled'}>Add</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-pkg="cancel">Cancel</button></div>
+            </div>`;
+        }
+        const rows = active.map((id) => {
+            const p = pk.PACKAGES.find((x) => x.id === id) || { label: id };
+            return `<tr data-pkg-row="${esc(id)}"${id === pkgSel ? ' class="is-selected"' : ''}><td>${esc(p.label)}</td><td>${esc(size(id))}</td><td>${auto.has(id) ? 'In use' : 'Added'}</td></tr>`;
+        }).join('');
+        return `<div class="cpl-vpage cpl-vwide">
+            <h1 class="cpl-vtitle">Applied updates</h1>
+            <p class="cpl-vtext">The update packages on this computer besides Melaton itself. Packages in use come with the Melaton Mobile this computer runs and its screen.</p>
+            <table class="cpl-vtable"><tr class="is-head"><td>Name</td><td>Size</td><td>Status</td></tr>${rows || '<tr><td colspan="3">Only Melaton itself is on this computer.</td></tr>'}</table>
+            <div class="cpl-vbuttons">
+                <button type="button" class="tbp-button cpl-vbutton" data-cpl-pkg="more">Add an update package from Melaton Update...</button>
+                <button type="button" class="tbp-button cpl-vbutton" data-cpl-pkg="remove"${pkgSel && active.includes(pkgSel) && !auto.has(pkgSel) ? '' : ' disabled'}>Remove</button>
+            </div>
+            <p class="cpl-vtext">Removed packages are deleted the next time Melaton tidies its files.</p>
+        </div>`;
+    }
+    function appliedMount(el) {
+        const cpl = root.melatonControlPanel;
+        const reopen = () => cpl.open('update-applied');
+        el.querySelectorAll('[data-pkg-row]').forEach((tr) => tr.addEventListener('click', () => { pkgSel = tr.dataset.pkgRow; reopen(); }));
+        el.querySelectorAll('input[data-pkg]').forEach((cb) => cb.addEventListener('change', () => { if (cb.checked) pkgAdding.add(cb.dataset.pkg); else pkgAdding.delete(cb.dataset.pkg); }));
+        el.querySelectorAll('[data-cpl-pkg]').forEach((b) => b.addEventListener('click', async () => {
+            const pk = root.melatonPackages;
+            const what = b.dataset.cplPkg;
+            if (what === 'more') { pkgAdding = new Set(); reopen(); return; }
+            if (what === 'cancel') { pkgAdding = null; reopen(); return; }
+            if (what === 'remove') { if (pkgSel) pk.unpin(pkgSel); pkgSel = null; reopen(); return; }
+            if (what === 'add') {
+                const ids = [...pkgAdding]; pkgAdding = null;
+                let change = null;
+                for (const id of ids) { const c = pk.pin(id); change = change ? { added: change.added.concat(c.added), removed: [] } : c; }
+                reopen();
+                const manager = sw();
+                if (change && change.added.length && manager && typeof manager.applyPackageChange === 'function') {
+                    const ask = (text) => (typeof root.showConfirmationDialog === 'function'
+                        ? root.showConfirmationDialog(text, [{ text: 'Restart now', value: true }, { text: 'Later', value: false }])
+                        : Promise.resolve(false));
+                    const done = await manager.applyPackageChange(change, { confirmLarge: ({ bytes }) => ask(`The packages are ${mbText(bytes)}. Melaton must restart to install them. Restart now?`) }).catch(() => null);
+                    if (done && done.action === 'later' && typeof root.showGlassToast === 'function') root.showGlassToast('info', 'Melaton Update', 'The packages are installed the next time Melaton restarts.', false, 5000);
+                }
+            }
+        }));
+    }
+    function registerApplied(cpl) {
+        cpl.registerPage('update-applied', {
+            parent: 'update',
+            title: () => 'Applied updates',
+            tasks: () => '',
+            body: appliedBody,
+            mount: appliedMount
+        });
     }
 
     /** Open the page on the prepare stage; refreshServerCacheAndCheck drives compile then check. */

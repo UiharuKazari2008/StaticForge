@@ -1542,7 +1542,7 @@
             ${ui.gap()}
             ${ui.value('Current version:', names.get(wmSettings.version()), { wide: true })}
             ${ui.gap()}
-            ${ui.note('Melaton Mobile restarts to change its version. Your settings and programs are kept.')}`;
+            ${ui.note('Melaton Mobile restarts to change its version, and installs the new version\'s pictures as it starts. Your settings and programs are kept.')}`;
         el.querySelectorAll('input[name="wm-version"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) d.version = r.value; }));
     }
 
@@ -1563,9 +1563,67 @@
         return [wmSettings.keys.version];
     }
 
+    // Applied Updates (Yozora #774): the asset packages on this device (assetPackages.js), the
+    // automatic ones (this Melaton Mobile's version and screen density: "in use") and the ones
+    // added here; "Add an update package from Melaton Update" picks more (a phone that also runs a
+    // desktop, a screen that changes scale). Adding downloads now when small, else asks to restart.
+    const mb = (b) => `${(Number(b || 0) / 1048576).toFixed(1)} MB`;
+    function appliedRender(el, d) {
+        const pk = window.melatonPackages;
+        if (!pk) { el.innerHTML = ui.text('Update packages are not available in this version of Melaton.'); return; }
+        if (!d.pkgInfo && !d.pkgLoading) {
+            d.pkgLoading = true;
+            fetch('/install/packages', { cache: 'no-store', credentials: 'same-origin' })
+                .then((r) => r.json()).then((j) => { d.pkgInfo = j && j.packages ? j.packages : []; })
+                .catch(() => { d.pkgInfo = []; })
+                .finally(() => { d.pkgLoading = false; if (d.rerender) d.rerender(); });
+        }
+        const info = new Map((d.pkgInfo || []).map((x) => [x.id, x]));
+        const label = (id) => (pk.PACKAGES.find((p) => p.id === id) || { label: id }).label;
+        const size = (id) => (info.has(id) ? mb(info.get(id).bytes) : '');
+        const active = pk.current();
+        const auto = new Set(pk.automatic());
+        if (d.addPkgs) {
+            const choices = pk.PACKAGES.filter((p) => !active.includes(p.id));
+            el.innerHTML = `${ui.sub('Add an update package from Melaton Update')}
+                ${choices.length ? ui.listbox(choices.map((p) => ({ key: p.id, label: `${p.label}${size(p.id) ? `  (${size(p.id)})` : ''}`, checked: d.addPkgs.has(p.id) })), { maxHeight: 220 }) : ui.text('Every package is already on this device.')}
+                ${ui.note('Packages hold Melaton Mobile\'s pictures for a version and a screen density (HiDPI = 2x, UHiDPI = 4x).')}
+                ${ui.buttons([['pkg-cancel', 'Cancel'], ['pkg-add', 'Add', !choices.length]])}`;
+            const box = el.querySelector('.wm-listbox');
+            if (box) ui.bindListbox(box, null, (key, on) => { if (on) d.addPkgs.add(key); else d.addPkgs.delete(key); });
+            el.querySelector('[data-act="pkg-cancel"]').addEventListener('click', () => { d.addPkgs = null; d.rerender(); });
+            el.querySelector('[data-act="pkg-add"]').addEventListener('click', async () => {
+                const ids = [...d.addPkgs]; d.addPkgs = null;
+                let change = null;
+                for (const id of ids) { const c = pk.pin(id); change = change ? { added: change.added.concat(c.added), removed: [] } : c; }
+                d.rerender();
+                const m = swm();
+                if (change && change.added.length && m && typeof m.applyPackageChange === 'function') {
+                    const done = await m.applyPackageChange(change, {
+                        confirmLarge: ({ bytes }) => ui.messageBox({ title: 'Melaton Update', icon: 'question', text: `The packages are ${mb(bytes)}. Melaton Mobile must restart to install them. Restart now?`, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }] })
+                    }).catch(() => null);
+                    if (done && done.action === 'later') ui.messageBox({ title: 'Melaton Update', icon: 'info', text: 'The packages are installed the next time Melaton Mobile restarts.' });
+                }
+            });
+            return;
+        }
+        const rows = active.map((id) => ({ key: id, label: `${label(id)}${size(id) ? `  ${size(id)}` : ''}${auto.has(id) ? '  (in use)' : '  (added)'}`, selected: id === d.pkgSel }));
+        el.innerHTML = `${ui.sub('Applied Updates')}
+            ${rows.length ? ui.listbox(rows, { maxHeight: 200 }) : ui.text(d.pkgLoading ? 'Checking Melaton Update...' : 'Only the core of Melaton is on this device.')}
+            ${ui.buttons([['pkg-remove', 'Remove', !(d.pkgSel && !auto.has(d.pkgSel) && active.includes(d.pkgSel))]])}
+            ${ui.gap()}
+            ${ui.buttons([['pkg-more', 'Add an update package from Melaton Update...']], false)}
+            ${ui.note('Packages in use come with this Melaton Mobile and its screen. Removed packages are deleted the next time Melaton tidies its files.')}`;
+        const box = el.querySelector('.wm-listbox');
+        if (box) ui.bindListbox(box, (key) => { d.pkgSel = key; d.rerender(); });
+        el.querySelector('[data-act="pkg-more"]').addEventListener('click', () => { d.addPkgs = new Set(); d.rerender(); });
+        el.querySelector('[data-act="pkg-remove"]').addEventListener('click', () => { if (d.pkgSel) pk.unpin(d.pkgSel); d.pkgSel = null; d.rerender(); });
+    }
+
     function updateRender(el, tab, d, api) {
         d.rerender = api.rerender;
         if (tab === 'version') { versionRender(el, d); return; }
+        if (tab === 'applied') { appliedRender(el, d); return; }
         if (tab === 'schedule') {
             el.innerHTML = `${ui.text('Melaton downloads updates in the background and installs them when Melaton restarts (recommended).')}
                 ${ui.radio('sched', 'auto', 'Automatic', true, 'disabled')}
@@ -1597,7 +1655,7 @@
 
     wmSettings.registerPage({
         id: 'update', tab: 'system', label: 'Melaton Update', icon: 'set-update',
-        tabs: [['update', 'Update'], ['schedule', 'Schedule'], ['version', 'Version']],
+        tabs: [['update', 'Update'], ['schedule', 'Schedule'], ['applied', 'Applied Updates'], ['version', 'Version']],
         init: updateInit,
         render: updateRender,
         commit(d) {
@@ -1679,6 +1737,8 @@
     wmSettings.registerPage({
         id: 'remove-programs', tab: 'system', label: 'Remove Programs', icon: 'set-remove-programs',
         tabs: [],
+        // the phone's Android programs add an Android tab (wmAndroidApps.js, #773)
+        ownTab: ['programs', 'Programs'],
         init: removeInit,
         render: removeRender
     });

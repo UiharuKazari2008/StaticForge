@@ -74,6 +74,9 @@ function pathnameMatchesAssetUrl(assetPath, rawUrl) {
 }
 
 const INSTALLER_FILE_THRESHOLD = 20;
+// a package added while running (#774) downloads without a restart up to this size
+const PACKAGE_QUIET_FILES = 600;
+const PACKAGE_QUIET_BYTES = 12 * 1024 * 1024;
 const DOWNLOAD_STALL_MS = 60000;
 const LOGIN_BOOT_SESSION_KEY = 'dreamscapeLoginBoot';
 const LEGACY_INSTALL_WIZARD_SESSION_KEY = 'dreamscapeOsInstallWizard';
@@ -413,7 +416,44 @@ class ServiceWorkerManager {
     }
 
     _runtimeHoldsLargeUpdate(files) {
+        // a package the user asked for (applyPackageChange) downloads as it is, whatever its size
+        if (this._packageInstall) return false;
         return !window.isLoginPage && this.bootComplete && this._needsLaunchInstaller(files);
+    }
+
+    /**
+     * The client's asset packages changed (Yozora #774, assetPackages.js): the screen scale moved
+     * to another density, or Melaton Update > Applied Updates added one. Packages added: their
+     * files are downloaded now when that is small (PACKAGE_QUIET_FILES / _BYTES); a larger set asks
+     * opts.confirmLarge({ files, bytes, ids }) whether to restart, where the installer takes it
+     * (it asks the server for just those files). Returns { action: 'none' | 'downloaded' |
+     * 'restart' | 'later' | 'failed', files, bytes }.
+     */
+    async applyPackageChange(change, opts = {}) {
+        const pk = window.melatonPackages;
+        if (!pk || !change || !Array.isArray(change.added) || !change.added.length) return { action: 'none', files: 0, bytes: 0 };
+        const added = new Set(change.added);
+        let rows = [];
+        try { rows = await this._fetchManifest({ full: true }); } catch (_) { rows = []; }
+        if (!Array.isArray(rows) || !rows.length) return { action: 'failed', files: 0, bytes: 0 };
+        const mine = rows.filter((r) => added.has(pk.packageOf(r.url)));
+        let needed = [];
+        try { needed = await this.getFilesNeedingUpdate(mine); } catch (_) { needed = mine; }
+        const bytes = needed.reduce((n, f) => n + (Number(f.size) || 0), 0);
+        if (!needed.length) return { action: 'none', files: 0, bytes: 0 };
+        const quiet = needed.length <= PACKAGE_QUIET_FILES && bytes <= PACKAGE_QUIET_BYTES;
+        if (!quiet) {
+            const yes = opts.confirmLarge ? await opts.confirmLarge({ files: needed.length, bytes, ids: change.added }) : false;
+            if (yes) { this.forceRestart(); return { action: 'restart', files: needed.length, bytes }; }
+            return { action: 'later', files: needed.length, bytes };
+        }
+        this._packageInstall = true;
+        try {
+            await this.updateStaticCache(needed, true);
+        } finally {
+            this._packageInstall = false;
+        }
+        return { action: 'downloaded', files: needed.length, bytes };
     }
 
     /**
@@ -1788,6 +1828,12 @@ class ServiceWorkerManager {
     async updateStaticCache(files, noToast = false, cacheOptions = null) {
         if (this.agentSession) {
             return;
+        }
+        // the server's broadcast lists every client's files: keep this client's packages (#774,
+        // assetPackages.js); a phone never downloads the other version's or density's art
+        if (Array.isArray(files) && window.melatonPackages && typeof window.melatonPackages.filterRows === 'function') {
+            files = window.melatonPackages.filterRows(files);
+            if (!files.length) return;
         }
         if (!window.isLoginPage && this._isBeforeDesktop()) {
             await this._holdCacheUpdateUntilDesktop(files, noToast, cacheOptions);

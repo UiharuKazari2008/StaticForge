@@ -115,7 +115,12 @@
         for (const group of ['features', 'updates']) await engine.installGroup(e, group).catch(() => null);
     }
 
-    /** The Software Update screen: download (bytes), then install (expand + both groups). */
+    /**
+     * The Software Update screen: one bar, download 0-75 % (bytes), then extracting and installing
+     * 75-100 % (Yozora #774). The download asks for the files this phone needs (a subset zip, its
+     * own package set's pack past updateEngine's subsetMax), never the whole server pack.
+     */
+    const DOWNLOAD_SHARE = 0.75;
     async function install(engine, e, found, v) {
         const manifest = found.manifest || found.files;
         const total = found.bytes || 0;
@@ -130,19 +135,20 @@
                 const f = p.fraction || 0;
                 const got = p.total ? p.received : f * total;
                 const of = p.total || total;
-                v.set({ fraction: f, left: `${Math.floor(f * 100)}%`, right: `${mb(got)}/${mb(of)}`, time: eta(startedAt, f) });
+                const all = f * DOWNLOAD_SHARE;
+                v.set({ fraction: all, left: `${Math.floor(all * 100)}%`, right: `${mb(got)}/${mb(of)}`, time: eta(startedAt, f) });
             }
         }).catch((err) => ({ ok: false, error: String(err && err.message || err) }));
         if (!copied || !copied.ok) return { ok: false, why: copied && copied.stalled ? 'stalled' : 'download' };
 
-        // installing: expanding is the first half, the two groups the rest
+        // extracting and installing, 75-100 %: expanding is half of it, the two groups the rest
         const share = { expand: [0, 0.5], features: [0.5, 0.8], updates: [0.8, 1] };
         const step = (name) => (p) => {
             const [a, b] = share[name];
-            const f = a + (b - a) * (p.fraction || 0);
+            const f = DOWNLOAD_SHARE + (1 - DOWNLOAD_SHARE) * (a + (b - a) * (p.fraction || 0));
             v.set({ fraction: f, left: `${Math.floor(f * 100)}%` });
         };
-        v.set({ state: 'install', title: 'Installing updates…', time: '', fraction: 0, left: '0%', right: `${found.files.length} files` });
+        v.set({ state: 'install', title: 'Installing updates…', time: '', fraction: DOWNLOAD_SHARE, left: `${Math.round(DOWNLOAD_SHARE * 100)}%`, right: `${found.files.length} files` });
         const expanded = await engine.expandPack(e, manifest, { onProgress: step('expand') }).catch(() => null);
         if (!expanded || !expanded.ok) return { ok: false, why: 'verify' };
         const stragglers = new Set((expanded.missing || []).concat(copied.absent || []));
@@ -195,8 +201,8 @@
         if (!v) return;
         v.show();
         const s = state || 'download';
-        if (s === 'download') v.set({ state: s, title: 'Downloading updates…', time: '00:03:12', fraction: 0.31, left: '31%', right: `${mb(41.9e6)}/${mb(135.2e6)}`, button: null });
-        else if (s === 'install') v.set({ state: s, title: 'Installing updates…', time: '', fraction: 0.62, left: '62%', right: '5725 files', button: null });
+        if (s === 'download') v.set({ state: s, title: 'Downloading updates…', time: '00:03:12', fraction: 0.23, left: '23%', right: `${mb(41.9e6)}/${mb(135.2e6)}`, button: null });
+        else if (s === 'install') v.set({ state: s, title: 'Installing updates…', time: '', fraction: 0.86, left: '86%', right: '5725 files', button: null });
         else if (s === 'done') v.set({ state: s, title: 'Software updated', time: '', fraction: 1, left: '100%', right: '', button: null });
         else v.set({ state: 'error', title: FAIL_TEXT.download, time: '', button: 'RETRY' });
     }
