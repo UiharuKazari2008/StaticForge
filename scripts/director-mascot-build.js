@@ -635,13 +635,49 @@ async function buildParts(dir) {
             const r = await channel('chest');
             const g = await channel(names.find((name) => name === 'arm' || name === 'hand'));
             let b = await channel('belly');
-            // the belly layer takes its own outline with it: grown by 3 px (half-size pixels) into the line
+            if (b) b = Buffer.from(b);
+            // The belly layer is one solid shape with everything drawn on it (her sash, the stripe, seams,
+            // its own outline): the model's mask leaves those out as holes and slits, and a belly with holes
+            // grows around them. So: close slits up to ~36 px wide (grow, then shrink back), fill what is
+            // enclosed, and grow 3 px into the outline.
             if (b) {
-                for (let pass = 0; pass < 3; pass++) {
-                    const next = Buffer.from(b);
-                    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) { const i = y * W + x; if (b[i] < 128 && (b[i - 1] > 127 || b[i + 1] > 127 || b[i - W] > 127 || b[i + W] > 127)) next[i] = 255; }
-                    b = next;
+                const grow = (src, r, on) => {
+                    // separable square max (on = 255) or min (on = 0) filter
+                    const pass = (buf, step, len, lines) => {
+                        const res = Buffer.from(buf);
+                        for (let line = 0; line < lines; line++) {
+                            let last = -1e9;
+                            const at = (k) => (step === 1 ? line * W + k : k * W + line);
+                            for (let k = 0; k < len; k++) { if ((buf[at(k)] > 127) === (on === 255)) last = k; if (k - last <= r) res[at(k)] = on; }
+                            last = 1e9;
+                            for (let k = len - 1; k >= 0; k--) { if ((buf[at(k)] > 127) === (on === 255)) last = k; if (last - k <= r) res[at(k)] = on; }
+                        }
+                        return res;
+                    };
+                    return pass(pass(src, 1, W, H), W, H, W);
+                };
+                b = grow(grow(b, 18, 255), 18, 0);
+                // holes: whatever of the outside cannot be reached from the frame's edge
+                const seen = new Uint8Array(W * H); const stack = [];
+                for (let x = 0; x < W; x++) stack.push(x, (H - 1) * W + x);
+                for (let y = 0; y < H; y++) stack.push(y * W, y * W + W - 1);
+                while (stack.length) {
+                    const i = stack.pop();
+                    if (seen[i] || b[i] > 127) continue;
+                    seen[i] = 1;
+                    const x = i % W;
+                    if (x > 0) stack.push(i - 1); if (x < W - 1) stack.push(i + 1); if (i >= W) stack.push(i - W); if (i < W * H - W) stack.push(i + W);
                 }
+                for (let i = 0; i < W * H; i++) if (!seen[i]) b[i] = 255;
+                // round the square corners the closing leaves (a blocky edge shows as steps when she grows)
+                b = await sharp(b, { raw: { width: W, height: H, channels: 1 } }).blur(7).threshold(128).raw().toBuffer();
+                // into its outline and the cloth lying on its edge (Yumiya's red hem): they move with it
+                b = grow(Buffer.from(b), 12, 255);
+                b = await sharp(b, { raw: { width: W, height: H, channels: 1 } }).blur(4).threshold(128).raw().toBuffer();
+                b = Buffer.from(b);
+                // only her: nothing outside the sheet's own pixels
+                const alpha = await sharp(path.join(OUT, persona, m.bodies[job.bodyId].body)).resize(W, H, { fit: 'fill' }).ensureAlpha().extractChannel(3).raw().toBuffer();
+                for (let i = 0; i < W * H; i++) if (alpha[i] < 24) b[i] = 0;
             }
             const out = Buffer.alloc(W * H * 3);
             for (let i = 0; i < W * H; i++) { out[i * 3] = r ? r[i] : 0; out[i * 3 + 1] = g && !(r && r[i] > 127) ? g[i] : 0; out[i * 3 + 2] = b ? b[i] : 0; }
