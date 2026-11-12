@@ -1279,7 +1279,12 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-boot="splash"] .wm-splash65-copy {
     to { visibility: visible; }
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-boot-wait { display: none; }
+/* the wait cursor while Melaton Mobile loads (Yukimi, Nov 11 2026: the 6.5 emulator's splash shows
+ * none, but it marks the later boot as on 6.1): 6.5's own 40 x 40 wheel (wmShell art wait-N) */
+html.ui-mobile[data-wm-version="6.5"] .wm-boot-wait {
+    width: calc(40 * var(--wm-px));
+    height: calc(40 * var(--wm-px));
+}
 
 /* ---- Pictures (the gallery app) ----
  * Windows Mobile 6.5's Pictures & Videos against 6.1's (emulator): a plain white field with no cell

@@ -6605,6 +6605,10 @@
         }
         const ready = !!(ws && ws.initializationCompleted);
         const elapsed = Date.now() - bootStart;
+        // Today shows in its own layout from its first frame (Yukimi): the workspace's copy of the
+        // layout is loaded before the splash goes, not by the 500 ms poll after Today was drawn in
+        // the last one used (watchTodayPrefs); the splash's own limit still ends a boot without it
+        if (ready && elapsed >= BOOT_MIN_SPLASH_MS && !loadTodayPrefs(false) && elapsed < BOOT_MAX_SPLASH_MS) return;
         if ((ready && elapsed >= BOOT_MIN_SPLASH_MS) || elapsed >= BOOT_MAX_SPLASH_MS) {
             let done = null;
             try { done = sessionStorage.getItem(INSTALL_DONE_KEY); } catch (_) { /* storage off */ }
