@@ -459,7 +459,7 @@
             <main class="wm-content"></main>
             <footer class="wm-softkeys">
                 <button type="button" class="wm-softkey" data-side="left"></button>
-                <button type="button" class="wm-sip" aria-label="Input panel">${imgTag('sip-keyboard')}</button>
+                <button type="button" class="wm-sip" aria-label="Input panel" aria-pressed="false">${imgTag('sip-keyboard')}</button>
                 <button type="button" class="wm-softkey" data-side="right"></button>
             </footer>
             <div class="wm-viewbar" role="toolbar" aria-label="Picture" hidden></div>
@@ -513,13 +513,42 @@
                 else statusBubble(b.dataset.role, b);
             });
         });
-        shell.querySelector('.wm-sip').addEventListener('click', () => {
+        // The input panel button. Device (6.1 and 6.5, MS_SIPBUTTON): a tap opens the panel, a tap
+        // while it is up closes it, both on pen up; nothing is drawn for the pen held on it; while
+        // the panel is up the cell is lit. Here the panel is the phone's own keyboard: it is up
+        // while html[data-wm-sip] is set (watchSip), which aria-pressed follows for the lit cell.
+        const sipBtn = shell.querySelector('.wm-sip');
+        const sipTyping = (el) => !!el && el !== document.body && el.matches('input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([disabled]), textarea:not([disabled]), [contenteditable=""], [contenteditable="true"]');
+        let sipField = null;  // the field the keyboard was last up for
+        let sipWasUp = false; // the keyboard's state when the finger went down
+        sipBtn.addEventListener('pointerdown', () => {
+            sipWasUp = root.hasAttribute('data-wm-sip');
+            if (sipTyping(document.activeElement)) sipField = document.activeElement;
+        });
+        // the button never takes the focus: the field keeps it, and the keyboard, until the tap ends
+        sipBtn.addEventListener('mousedown', (e) => e.preventDefault());
+        sipBtn.addEventListener('click', () => {
+            if (sipWasUp || root.hasAttribute('data-wm-sip')) {
+                // the panel closes: the field lets go of the keyboard
+                sipWasUp = false;
+                const el = document.activeElement;
+                if (sipTyping(el)) { sipField = el; el.blur(); }
+                return;
+            }
             // the current app's page only: a field on a hidden page must not take the keyboard
             const app = current && apps.get(current);
             const scope = (app && app.page) || shell.querySelector('.wm-content');
-            const input = [...scope.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([disabled]), textarea:not([disabled])')]
+            const last = sipField && sipField.isConnected && scope.contains(sipField) && !sipField.disabled && sipField.getClientRects().length ? sipField : null;
+            const input = last || [...scope.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([disabled]), textarea:not([disabled])')]
                 .find((el) => el.getClientRects().length) || shell.querySelector('.wm-searchbar:not([hidden]) input');
-            if (input) input.focus();
+            if (!input) return;
+            // a field that kept the focus while the keyboard went down (the phone's back key) takes
+            // the keyboard again only on a new focus
+            if (document.activeElement === input) input.blur();
+            input.focus();
+        });
+        document.addEventListener('wmSipChange', (e) => {
+            sipBtn.setAttribute('aria-pressed', e.detail && e.detail.height > 0 ? 'true' : 'false');
         });
         document.addEventListener('click', (e) => {
             // a tap outside an open bubble hides it (its own buttons and links close it too)
@@ -6340,6 +6369,23 @@
         shell.appendChild(wait);
     }
 
+    /**
+     * html[data-wm-splash-painted] once the splash's pictures have decoded and a frame with them has
+     * gone out: the Android app keeps its boot cover (the maker's logo) up until then, so the hand-over
+     * never shows a black page or a half-drawn splash (6.5's splash has no 6.1 logo image to wait on).
+     */
+    function markSplashPainted() {
+        if (root.dataset.wmSplashPainted) return;
+        const splash = shell.querySelector('.wm-splash');
+        const imgs = splash ? [...splash.querySelectorAll('img')] : [];
+        let done = false;
+        const mark = () => { if (!done) { done = true; root.dataset.wmSplashPainted = '1'; } };
+        Promise.all(imgs.map((img) => (typeof img.decode === 'function' ? img.decode() : Promise.resolve()).catch(() => null)))
+            .then(() => requestAnimationFrame(() => requestAnimationFrame(mark)));
+        // a missing frame callback (a paused view) or a stuck decode never holds the cover for good
+        setTimeout(mark, 3000);
+    }
+
     function setBoot(phase) {
         if (root.dataset.wmBoot === phase) return;
         root.dataset.wmBoot = phase;
@@ -6353,6 +6399,7 @@
         }
         clearTimeout(bootWaitDelay);
         bootWaitDelay = null;
+        if (phase === 'splash') markSplashPainted();
         if (phase === 'splash' && bootWait) {
             // WM 6.1: the splash alone at first, then the wait wheel a few seconds in while the
             // shell loads, until Today is drawn (the splash ends at finishBoot)
