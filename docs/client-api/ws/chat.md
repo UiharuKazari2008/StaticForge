@@ -8,10 +8,12 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 
 | Request type | Typical response | Auth | Notes |
 |---|---|---|---|
+| `chat_persona_contacts_backfill` | `chat_persona_contacts_backfill_response` | admin/destructive | One-off: a Contacts card for every chat without one (#763) |
 | `create_chat_session` | `create_chat_session_response` | admin/destructive | Handler: handleCreateChatSession |
 | `delete_chat_message` | `delete_chat_message_response` | admin/destructive | Handler: handleDeleteChatMessage |
 | `delete_chat_session` | `delete_chat_session_response` | admin/destructive | Handler: handleDeleteChatSession |
 | `get_chat_messages` | `get_chat_messages_response` | session | Handler: handleGetChatMessages |
+| `get_chat_persona_state` | `get_chat_persona_state_response` | session | The persona's state for its contact card (#763) |
 | `get_chat_session` | `get_chat_session_response` | session | Handler: handleGetChatSession |
 | `get_chat_sessions` | `get_chat_sessions_response` | session | Handler: handleGetChatSessions |
 | `restart_chat_session` | `restart_chat_session_response` | admin/destructive | Handler: handleRestartChatSession |
@@ -223,3 +225,41 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
+### `chat_persona_contacts_backfill`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/ws/handlers/52-chatPersonaContactsHandler.js → `handleBackfill` (modules/chatPersonaContacts.js `backfill`, Yozora #763)
+
+One-off: makes a contact card for every chat session that has none, all in that workspace's Contacts folder.
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `workspaceId` | Required; unknown workspace → error |
+| `dryRun` | Optional boolean; `true` reports what would be made without writing |
+
+**Success response:** `chat_persona_contacts_backfill_response` `{ success: true, ...result }`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED`.
+
+### `get_chat_persona_state`
+
+**Auth:** Session required
+
+**Handler:** modules/ws/handlers/52-chatPersonaContactsHandler.js → `handleGetChatPersonaState` (modules/chatPersonaContacts.js `getPersonaState`, Yozora #763)
+
+The persona's state for its contact card (Contacts' Persona page, the phone's contact card), read from chat.db.
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `chatId` | Required positive integer |
+
+**Success response:** `get_chat_persona_state_response` `{ success: true, state }`; `state` is `{ exists: false, chatId }` for an unknown chat.
+
+**Errors:** `type: "error"` via `sendError()` (`Chat ID is required`, `Failed to get the persona state`).

@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-11-11T07:15:00-05:00",
+  "updated_at": "2026-11-12T07:30:00-05:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
-  "last_breakfast_at": "2026-11-11T07:15:00-05:00",
+  "last_breakfast_at": "2026-11-12T07:30:00-05:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Nov11 7am loop on host dreamscape. Live tree at 81aaa430 = origin = GitHub, 22 dirty public/ files under live Claude locks .agent-claude-wm65 (05:23) and .agent-claude-wm732 (Nov10 20:12): no snapshot/ff. Docs from detached worktree: rest-api.md VisionCaster OSD/live routes (#734) and ActiveSync transfer pointer (#747). Pile open=[].",
+  "cake_note": "Nov12 7am loop on host dreamscape. Live tree at 1695699a = origin = GitHub, clean; live Claude lock .agent-claude-wm732 (Nov10 20:12) respected: no snapshot; lands from detached worktree ~/wt/n12. Landed Jules 6185962378463007847 perf(autofill) client typeOrder Set dedupe (#769). Docs: rest-api.md ActiveSync remote viewer (#747) and VFS Sequenzia drive routes (#749); ws/chat.md persona contact packets (#763); ws/search.md spell_check_text (#757). Pile open=[].",
   "eaten": [
     {
       "id": "sf-22",

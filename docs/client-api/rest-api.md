@@ -1201,6 +1201,16 @@ Every mutation broadcasts WS `vfs_updated` `{ path: <parent folder> }` to connec
 
 The Director computer mounts this at `~/.cache/dreamscape-director/vfs/` (`/workspace/vfs` in the jail); MCP `get_session_state` reports it as `vfsMount` and `vfs_read` returns `fsPath` when it is live — see [agent-session.md](./agent-session.md) and [ws/director.md](./ws/director.md).
 
+### `/{vfsPathUuid}/sequenzia/*` — Sequenzia network drive (#749)
+
+Registered by `modules/vfsSequenzia.js`. Sequenzia shows in Explorer under Computer as `/~sequenzia` (superclass > class > channel `c<id>` > virtual folder `f<fid>`), read-only, through Sequenzia's client API as one Sequenzia user; the exchange key stays on the server (`<.cache>/packages/.data/sequenzia/config.json`). **Administrators only**: the drive carries one person's Sequenzia rights. Listing goes through the normal VFS packets (`vfs_list_directory`, `vfs_get_path_stats`; items are `targetKind` `sequenzia-folder` / `sequenzia-entry` with `downloadUrl`, `viewUrl`, `previewUrl`).
+
+| Route | Auth | Notes |
+|-------|------|-------|
+| `GET /{vfsPathUuid}/sequenzia/status` | Session | `{ success, status }`. Non-admins always get `{ configured: false, online: false }` |
+| `GET /{vfsPathUuid}/sequenzia/file/:eid/:name` | Admin | The record's bytes streamed from Sequenzia (`Range` passes through). `eid` is 1-12 digits (else `400`); `?inline=1` for view instead of download. `404` unknown, `502` Sequenzia unreachable or refused |
+| `GET /{vfsPathUuid}/sequenzia/preview/:host/*` | Admin | The CDN's small preview for an entry. Bad preview path `400`; unknown CDN host `404`; `502` unreachable; `503` Sequenzia not set up |
+
 ### `GET /{vfsPathUuid}/previews/:fileId`
 
 **Auth required.** Image preview for VFS file.
@@ -1290,6 +1300,17 @@ Routes from `modules/avOsdHttp.js` (registered in `web_server.js`). The VisionCa
 ### ActiveSync file transfer (#747)
 
 The chunked `/api/activesync/file|transfer|upload/...` routes from `modules/activeSyncTransfers.js` (phone to desktop and desktop to phone) are documented in [ws/activeSync.md](./ws/activeSync.md).
+
+### ActiveSync remote viewer (#747)
+
+`modules/activeSyncScreen.js`: a phone's screen shown in a desktop window (Device Center > Programs and Services). View only; nothing is stored, the latest frame lives in memory until the feed ends. The desktop asks the phone with the ActiveSync `screen.start` operation (see [ws/activeSync.md](./ws/activeSync.md)) and the phone asks its user through Android's own prompt.
+
+| Route | Auth | Notes |
+|-------|------|-------|
+| `POST /api/activesync/screen/:deviceId/frame` | The device's own page session; the device must be connected (guest or partner) with the `screen` permission | Body: one JPEG (raw bytes, max 1.5 MB). → `{ viewers: n }`, or `{ stop: true }` once nobody has watched for 8 s (the phone stops capturing). Errors `{ success: false, code, error }`: `400 BAD_REQUEST` (bad device id / not a JPEG), `403 NOT_DEVICE` (another session), `409 NOT_PERMITTED`, `413 TOO_LARGE` |
+| `GET /api/activesync/screen/:deviceId/stream` | Admin session | `multipart/x-mixed-replace; boundary=asframe` of JPEG frames (an `<img>` shows it as it arrives), the latest frame first when one is under 20 s old. `no-store`, `X-Accel-Buffering: no`. Errors: `403 INSUFFICIENT_PERMISSIONS`, `400 BAD_REQUEST`, `409 NOT_PERMITTED` (the device does not share its screen) |
+
+A feed with no viewers and no frame for 20 s is forgotten.
 
 ---
 
