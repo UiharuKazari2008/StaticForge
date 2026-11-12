@@ -6381,12 +6381,29 @@
         let done = false;
         // the value is the page time it was set (ms since navigation start), for boot timing checks
         const mark = () => { if (!done) { done = true; root.dataset.wmSplashPainted = String(Math.max(1, Math.round(performance.now()))); } };
+        // A frame with the splash committed is not yet a splash on screen: after the boot's long
+        // main-thread stall the WebView took about a second (A53) to raster it, showing black, then
+        // the splash without its emblem. Frames flowing steadily again (8 in a row, each under
+        // 100 ms apart) is the sign raster has caught up; 4 s after the first frame it counts anyway.
+        const settle = () => {
+            let prev = 0;
+            let steady = 0;
+            const t0 = performance.now();
+            const step = (now) => {
+                if (done) return;
+                steady = prev && now - prev < 100 ? steady + 1 : 0;
+                prev = now;
+                if (steady >= 8 || now - t0 > 4000) { mark(); return; }
+                requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+        };
         Promise.all(imgs.map((img) => (typeof img.decode === 'function' ? img.decode() : Promise.resolve()).catch(() => null)))
-            .then(() => requestAnimationFrame(() => requestAnimationFrame(mark)));
+            .then(settle);
         // a stuck decode never holds the cover for good, but only frames count: a timer started here
-        // fired before the page's first paint (scripts hold the main thread to ~6 s on the A53) and the
-        // cover lifted onto black. The app has its own 30 s limit for a view that never draws.
-        requestAnimationFrame(() => setTimeout(mark, 2500));
+        // fired before the page's first paint (scripts hold the main thread to ~6 s on the A53). The app
+        // has its own 30 s limit for a view that never draws.
+        requestAnimationFrame(() => setTimeout(mark, 5000));
     }
 
     function setBoot(phase) {
