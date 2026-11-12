@@ -562,10 +562,10 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     background: var(--wm-highlight);
 }
 
-/* a print still on its way: an empty frame with WM's wait cursor art */
+/* a print still on its way: an empty frame (the turning wait cursor: end of this file) */
 .wm-director .wmd-print.is-pending {
     border: calc(1 * var(--wm-px)) solid #000;
-    background: #fff image-set(url('/static_images/wm61/wait-0.png') 1x, url('/static_images/wm61/wait-0@2x.png') 2x, url('/static_images/wm61/wait-0@4x.png') 4x) center / calc(24 * var(--wm-px)) no-repeat;
+    background: #fff;
 }
 
 /* ---- History (Open Full History): a WM list, kind in bold over a one-line preview ---- */
@@ -1481,7 +1481,7 @@ html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-sm
 }
 
 .wm-director .wmd-thumb.is-pending {
-    background: #fff image-set(url('/static_images/wm61/wait-0.png') 1x, url('/static_images/wm61/wait-0@2x.png') 2x, url('/static_images/wm61/wait-0@4x.png') 4x) center / 22px no-repeat;
+    background: #fff;
 }
 
 /* the HUD's chips open Prints */
@@ -1563,7 +1563,7 @@ html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-sm
 
     .wm-director:not(.wmd-solo) .wmd-gallery .wmd-thumb.is-pending {
         border: calc(1 * var(--wm-px)) solid #000;
-        background: #fff image-set(url('/static_images/wm61/wait-0.png') 1x, url('/static_images/wm61/wait-0@2x.png') 2x, url('/static_images/wm61/wait-0@4x.png') 4x) center / calc(24 * var(--wm-px)) no-repeat;
+        background: #fff;
     }
 
     .wm-director:not(.wmd-solo) .wmd-gallery .wmd-empty {
@@ -3358,4 +3358,33 @@ html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessio
 
 #directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message-content th {
     background: rgba(127, 208, 255, 0.12);
+}
+
+/* a print still on its way: the wait cursor turns over the empty frame (its strip, as the shell's
+ * busy cursor: wm-shell.css .wm-strip); 6.5 shows its own ring of dots */
+.wm-director :is(.wmd-print, .wmd-thumb).is-pending {
+    --wmd-wait: calc(24 * var(--wm-px));
+    --strip: image-set(url('/static_images/wm61/wait-strip.png') 1x, url('/static_images/wm61/wait-strip@2x.png') 2x, url('/static_images/wm61/wait-strip@4x.png') 4x);
+    --n: 16;
+    --ms: 140;
+    position: relative;
+    background-image: none !important;
+}
+.wm-director .wmd-thumb.is-pending { --wmd-wait: 22px; }
+.wm-director:not(.wmd-solo) .wmd-gallery .wmd-thumb.is-pending { --wmd-wait: calc(24 * var(--wm-px)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-director :is(.wmd-print, .wmd-thumb).is-pending {
+    --strip: image-set(url('/static_images/wm65/wait-strip.png') 1x, url('/static_images/wm65/wait-strip@2x.png') 2x, url('/static_images/wm65/wait-strip@4x.png') 4x);
+    --ms: 90;
+}
+.wm-director :is(.wmd-print, .wmd-thumb).is-pending::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--wmd-wait);
+    height: var(--wmd-wait);
+    transform: translate(-50%, -50%);
+    background: var(--strip) 0 0 / calc(var(--n) * 100%) 100% no-repeat;
+    animation: wm-strip calc(var(--n) * var(--ms) * 1ms) steps(var(--n)) infinite;
+    pointer-events: none;
 }

@@ -1147,32 +1147,13 @@
     left: 50%;
     top: 45%;
     z-index: 4;
-    width: calc(32 * var(--wm-px));
-    height: calc(32 * var(--wm-px));
-    margin: calc(-16 * var(--wm-px)) 0 0 calc(-16 * var(--wm-px));
+    width: calc(var(--wms-wait) * var(--wm-px));
+    height: calc(var(--wms-wait) * var(--wm-px));
+    margin: calc(var(--wms-wait) / -2 * var(--wm-px)) 0 0 calc(var(--wms-wait) / -2 * var(--wm-px));
     pointer-events: none;
-    background: center / contain no-repeat image-set(url('/static_images/wm61/wait-0.png') 1x, url('/static_images/wm61/wait-0@2x.png') 2x, url('/static_images/wm61/wait-0@4x.png') 4x);
-    /* the shell's wait cursor: all 16 frames, 90 ms each (wmShell.js setBootPhase) */
-    animation: wms-wait 1.44s steps(1) infinite;
-}
-
-@keyframes wms-wait {
-    0% { background-image: image-set(url('/static_images/wm61/wait-0.png') 1x, url('/static_images/wm61/wait-0@2x.png') 2x, url('/static_images/wm61/wait-0@4x.png') 4x); }
-    6.25% { background-image: image-set(url('/static_images/wm61/wait-1.png') 1x, url('/static_images/wm61/wait-1@2x.png') 2x, url('/static_images/wm61/wait-1@4x.png') 4x); }
-    12.5% { background-image: image-set(url('/static_images/wm61/wait-2.png') 1x, url('/static_images/wm61/wait-2@2x.png') 2x, url('/static_images/wm61/wait-2@4x.png') 4x); }
-    18.75% { background-image: image-set(url('/static_images/wm61/wait-3.png') 1x, url('/static_images/wm61/wait-3@2x.png') 2x, url('/static_images/wm61/wait-3@4x.png') 4x); }
-    25% { background-image: image-set(url('/static_images/wm61/wait-4.png') 1x, url('/static_images/wm61/wait-4@2x.png') 2x, url('/static_images/wm61/wait-4@4x.png') 4x); }
-    31.25% { background-image: image-set(url('/static_images/wm61/wait-5.png') 1x, url('/static_images/wm61/wait-5@2x.png') 2x, url('/static_images/wm61/wait-5@4x.png') 4x); }
-    37.5% { background-image: image-set(url('/static_images/wm61/wait-6.png') 1x, url('/static_images/wm61/wait-6@2x.png') 2x, url('/static_images/wm61/wait-6@4x.png') 4x); }
-    43.75% { background-image: image-set(url('/static_images/wm61/wait-7.png') 1x, url('/static_images/wm61/wait-7@2x.png') 2x, url('/static_images/wm61/wait-7@4x.png') 4x); }
-    50% { background-image: image-set(url('/static_images/wm61/wait-8.png') 1x, url('/static_images/wm61/wait-8@2x.png') 2x, url('/static_images/wm61/wait-8@4x.png') 4x); }
-    56.25% { background-image: image-set(url('/static_images/wm61/wait-9.png') 1x, url('/static_images/wm61/wait-9@2x.png') 2x, url('/static_images/wm61/wait-9@4x.png') 4x); }
-    62.5% { background-image: image-set(url('/static_images/wm61/wait-10.png') 1x, url('/static_images/wm61/wait-10@2x.png') 2x, url('/static_images/wm61/wait-10@4x.png') 4x); }
-    68.75% { background-image: image-set(url('/static_images/wm61/wait-11.png') 1x, url('/static_images/wm61/wait-11@2x.png') 2x, url('/static_images/wm61/wait-11@4x.png') 4x); }
-    75% { background-image: image-set(url('/static_images/wm61/wait-12.png') 1x, url('/static_images/wm61/wait-12@2x.png') 2x, url('/static_images/wm61/wait-12@4x.png') 4x); }
-    81.25% { background-image: image-set(url('/static_images/wm61/wait-13.png') 1x, url('/static_images/wm61/wait-13@2x.png') 2x, url('/static_images/wm61/wait-13@4x.png') 4x); }
-    87.5% { background-image: image-set(url('/static_images/wm61/wait-14.png') 1x, url('/static_images/wm61/wait-14@2x.png') 2x, url('/static_images/wm61/wait-14@4x.png') 4x); }
-    93.75% { background-image: image-set(url('/static_images/wm61/wait-15.png') 1x, url('/static_images/wm61/wait-15@2x.png') 2x, url('/static_images/wm61/wait-15@4x.png') 4x); }
+    /* the shell's wait cursor: its 16-frame strip, 90 ms a frame (wm-shell.css .wm-strip) */
+    background: var(--strip) 0 0 / calc(var(--n) * 100%) 100% no-repeat;
+    animation: wm-strip calc(var(--n) * var(--ms) * 1ms) steps(var(--n)) infinite;
 }
 
 /* the tab strip fits a 360 px phone: tabs share the width */
@@ -2522,11 +2503,11 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
         display: block;
         position: absolute;
         z-index: 4;
-        width: calc(32 * var(--wm-px));
-        height: calc(32 * var(--wm-px));
+        width: calc(var(--wms-wait) * var(--wm-px));
+        height: calc(var(--wms-wait) * var(--wm-px));
         pointer-events: none;
-        background: center / contain no-repeat image-set(url('/static_images/wm61/wait-0.png') 1x, url('/static_images/wm61/wait-0@2x.png') 2x, url('/static_images/wm61/wait-0@4x.png') 4x);
-        animation: wms-wait 1.44s steps(1) infinite;
+        background: var(--strip) 0 0 / calc(var(--n) * 100%) 100% no-repeat;
+        animation: wm-strip calc(var(--n) * var(--ms) * 1ms) steps(var(--n)) infinite;
     }
 }
 
@@ -2551,8 +2532,8 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
     }
 
     .wm-studio.wms-generating .wms-wait {
-        left: calc(100% - var(--wms-print-w) / 2 - 16 * var(--wm-px));
-        top: calc(45% - 16 * var(--wm-px));
+        left: calc(100% - var(--wms-print-w) / 2 - var(--wms-wait) / 2 * var(--wm-px));
+        top: calc(45% - var(--wms-wait) / 2 * var(--wm-px));
     }
 }
 
@@ -2573,7 +2554,7 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
     }
 
     .wm-studio.wms-generating .wms-wait {
-        left: calc(50% - 16 * var(--wm-px));
+        left: calc(50% - var(--wms-wait) / 2 * var(--wm-px));
         top: auto;
         bottom: calc(var(--wms-print-h) / 2 - 6 * var(--wm-px));
     }
@@ -2930,4 +2911,16 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge:is(.full-mode
     .wm-studio.wms-fold-settings > * {
         --wms-band-h: calc(28 * var(--wm-px));
     }
+}
+
+/* the wait cursor's strip: 6.1's 32 px wheel; 6.5 its own 40 px ring of dots (as the shell's busy cursor) */
+.wm-studio .wms-wait {
+    --wms-wait: 32;
+    --strip: image-set(url('/static_images/wm61/wait-strip.png') 1x, url('/static_images/wm61/wait-strip@2x.png') 2x, url('/static_images/wm61/wait-strip@4x.png') 4x);
+    --n: 16;
+    --ms: 90;
+}
+html.ui-mobile[data-wm-version="6.5"] .wm-studio .wms-wait {
+    --wms-wait: 40;
+    --strip: image-set(url('/static_images/wm65/wait-strip.png') 1x, url('/static_images/wm65/wait-strip@2x.png') 2x, url('/static_images/wm65/wait-strip@4x.png') 4x);
 }

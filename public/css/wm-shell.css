@@ -547,6 +547,29 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
     image-rendering: pixelated;
 }
 
+/*
+ * Frame animations as one strip each (scripts/build-wm-sprite-strips.sh: frames side by side,
+ * <name>-strip.png / @2x / @4x), stepped by CSS: one image to fetch and decode and no timer per
+ * frame. Set --strip (an image-set of the strip, backgrounds only), --n (frames) and --ms (per
+ * frame). Frame k sits at k / (n - 1) of the way along, so steps(n) over n / (n - 1) * 100% lands
+ * on each frame in turn. <img>: the strip is its src / srcset, cut to one frame by object-fit.
+ */
+.wm-strip,
+.wm-status-icon[data-icon="signal-search"] {
+    background-image: var(--strip) !important;
+    background-size: calc(var(--n) * 100%) 100% !important;
+    background-repeat: no-repeat !important;
+    animation: wm-strip calc(var(--n) * var(--ms) * 1ms) steps(var(--n)) infinite;
+}
+img.wm-strip {
+    background: none !important;
+    object-fit: cover;
+    object-position: 0 0;
+    animation-name: wm-strip-img;
+}
+@keyframes wm-strip { from { background-position: 0 0; } to { background-position: calc(var(--n) / (var(--n) - 1) * 100%) 0; } }
+@keyframes wm-strip-img { from { object-position: 0 0; } to { object-position: calc(var(--n) / (var(--n) - 1) * 100%) 0; } }
+
 .wm-status-icon[data-icon="bluetooth"] { background-image: image-set(url('/static_images/wm61/status-bluetooth.png') 1x, url('/static_images/wm61/status-bluetooth@2x.png') 2x, url('/static_images/wm61/status-bluetooth@4x.png') 4x); }
 .wm-status-icon[data-icon="data-off"] { background-image: image-set(url('/static_images/wm61/status-data-off.png') 1x, url('/static_images/wm61/status-data-off@2x.png') 2x, url('/static_images/wm61/status-data-off@4x.png') 4x); }
 .wm-status-icon[data-icon="data-on"] { background-image: image-set(url('/static_images/wm61/status-data-on.png') 1x, url('/static_images/wm61/status-data-on@2x.png') 2x, url('/static_images/wm61/status-data-on@4x.png') 4x); }
@@ -602,13 +625,9 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
 .wm-status-icon[data-icon="data-5g-plus"] { background-image: image-set(url('/static_images/wm61/status-data-5g-plus.png') 1x, url('/static_images/wm61/status-data-5g-plus@2x.png') 2x, url('/static_images/wm61/status-data-5g-plus@4x.png') 4x); }
 .wm-status-icon[data-icon="data-5g-plus-active"] { background-image: image-set(url('/static_images/wm61/status-data-5g-plus-active.png') 1x, url('/static_images/wm61/status-data-5g-plus-active@2x.png') 2x, url('/static_images/wm61/status-data-5g-plus-active@4x.png') 4x); }
 .wm-status-icon[data-icon="signal-search"] {
-    background-image: image-set(url('/static_images/wm61/status-signal-search-1.png') 1x, url('/static_images/wm61/status-signal-search-1@2x.png') 2x, url('/static_images/wm61/status-signal-search-1@4x.png') 4x);
-    animation: wm-signal-search 1.5s step-end infinite;
-}
-@keyframes wm-signal-search {
-    0% { background-image: image-set(url('/static_images/wm61/status-signal-search-1.png') 1x, url('/static_images/wm61/status-signal-search-1@2x.png') 2x, url('/static_images/wm61/status-signal-search-1@4x.png') 4x); }
-    33.333% { background-image: image-set(url('/static_images/wm61/status-signal-search-2.png') 1x, url('/static_images/wm61/status-signal-search-2@2x.png') 2x, url('/static_images/wm61/status-signal-search-2@4x.png') 4x); }
-    66.667% { background-image: image-set(url('/static_images/wm61/status-signal-search-3.png') 1x, url('/static_images/wm61/status-signal-search-3@2x.png') 2x, url('/static_images/wm61/status-signal-search-3@4x.png') 4x); }
+    --strip: image-set(url('/static_images/wm61/status-signal-search-strip.png') 1x, url('/static_images/wm61/status-signal-search-strip@2x.png') 2x, url('/static_images/wm61/status-signal-search-strip@4x.png') 4x);
+    --n: 3;
+    --ms: 500;
 }
 @media (prefers-reduced-motion: reduce) {
     .wm-status-icon[data-icon="signal-search"] { animation: none; }
@@ -2137,11 +2156,12 @@ div.wm-today-row {
     width: calc(16 * var(--wm-px)) !important;
     height: calc(15 * var(--wm-px)) !important;
     align-self: center;
-    background: center / contain no-repeat image-set(url('/static_images/wm61/today-search-button.png') 1x, url('/static_images/wm61/today-search-button@2x.png') 2x, url('/static_images/wm61/today-search-button@4x.png') 4x) !important;
+    /* normal | pressed in one sprite (scripts/build-wm-sprite-strips.sh): no blank first press */
+    background: 0 0 / 200% 100% no-repeat image-set(url('/static_images/wm61/today-search-button-strip.png') 1x, url('/static_images/wm61/today-search-button-strip@2x.png') 2x, url('/static_images/wm61/today-search-button-strip@4x.png') 4x) !important;
 }
 
 .wm-today-search-go:active {
-    background-image: image-set(url('/static_images/wm61/today-search-button-pressed.png') 1x, url('/static_images/wm61/today-search-button-pressed@2x.png') 2x, url('/static_images/wm61/today-search-button-pressed@4x.png') 4x) !important;
+    background-position: 100% 0 !important;
 }
 
 /* newest prints: one row of square tiles under the items */

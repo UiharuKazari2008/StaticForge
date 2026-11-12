@@ -60,7 +60,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uwb", "status-data-uwb-active", "status-director", "status-mail", "status-sms", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-error", "status-update", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
+    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uwb", "status-data-uwb-active", "status-director", "status-mail", "status-sms", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-error", "status-update", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -449,8 +449,9 @@
     // a new text message (Text Messages = Chat, #763) is outres 32508, the phone and envelope
     const STATUS_APP_ICONS = { mail: 'status-mail', sms: 'status-sms', prints: 'status-prints', director: 'status-director', update: 'status-update', latency: 'status-signal-alert' };
     const STATUS_APP_ROLES = ['mail', 'sms', 'prints', 'director', 'update', 'latency'];
-    // the Director's clapper while a turn runs: the stick claps (open frames, closed, open again)
-    const DIRECTOR_CLAP = ['status-director-open-2', 'status-director-open-1', 'status-director-open-0', 'status-director', 'status-director-open-0', 'status-director-open-1'];
+    // the Director's clapper while a turn runs: the stick claps (open frames, closed, open again);
+    // status-director-clap-strip holds them in that order (scripts/build-wm-sprite-strips.sh)
+    const DIRECTOR_CLAP_FRAMES = 6;
     // 6.5's own drawing of a glyph where its ROM differs (outres.192 32508 is anti-aliased there)
     const ART65 = new Set(['status-sms']);
     const artImageSet = (name) => (WM65 && ART65.has(name)
@@ -1788,8 +1789,6 @@
     const SYNC_FRAMES = { data: 20, wifi: 12, type: 13 };
     const SYNC_FRAME_MS = 100;
     let syncNow = null;
-    let syncTimer = null;
-    let syncFrame = 0;
 
     function syncKind(dev) {
         const ws = window.wsClient;
@@ -1807,34 +1806,35 @@
 
     function paintSync(el, kind) {
         if (kind === syncNow) return;
-        clearInterval(syncTimer);
-        syncTimer = null;
         syncNow = kind;
-        if (!kind) { el.style.removeProperty('background-image'); return; }
-        syncFrame = 0;
-        const n = SYNC_FRAMES[kind] || SYNC_FRAMES.type;
-        const tick = () => {
-            const name = `status-${kind}-sync-${String(syncFrame).padStart(2, '0')}`;
-            // 6.5's own frames (its shellres.192, same ids; @2x / @4x only, as its other status art)
-            el.style.backgroundImage = WM65
-                ? `image-set(url("/static_images/wm65/${name}@2x.png") 2x, url("/static_images/wm65/${name}@4x.png") 4x)`
-                : `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x, url("${ART}${name}@4x.png") 4x)`;
-            syncFrame = (syncFrame + 1) % n;
-        };
-        tick();
-        syncTimer = setInterval(tick, SYNC_FRAME_MS);
+        if (!kind) { el.classList.remove('wm-strip'); el.style.removeProperty('--strip'); return; }
+        // the frames as one strip (scripts/build-wm-sprite-strips.sh), stepped by CSS (.wm-strip);
+        // 6.5's own frames (its shellres.192, same ids; @2x / @4x only, as its other status art)
+        const name = `status-${kind}-sync-strip`;
+        el.style.setProperty('--strip', WM65
+            ? `image-set(url("/static_images/wm65/${name}@2x.png") 2x, url("/static_images/wm65/${name}@4x.png") 4x)`
+            : `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x, url("${ART}${name}@4x.png") 4x)`);
+        el.style.setProperty('--n', String(SYNC_FRAMES[kind] || SYNC_FRAMES.type));
+        el.style.setProperty('--ms', String(SYNC_FRAME_MS));
+        el.classList.add('wm-strip');
     }
+
+    const put = (el, key, v) => { if (el.dataset[key] !== v) el.dataset[key] = v; };
+    const tip = (el, v) => { if (el.title !== v) el.title = v; };
+    const hide = (el, h) => { h = !!h; if (el.hidden !== h) el.hidden = h; };
 
     function refreshStatus() {
         if (!shell) return;
         applyStartButton();
+        // every 2 s: write only what changed (an attribute write, even of the same value,
+        // invalidates the [data-icon] rules and lays the title bar out again)
         const ws = window.wsClient;
         const connected = !!(ws && typeof ws.isConnected === 'function' && ws.isConnected());
         const data = shell.querySelector('[data-role="data"]');
         const dev = deviceView();
         // the phone's own link when the Android app or the browser says what it is; else Dreamscape's
-        data.dataset.icon = dev.link ? dev.link.icon : connected ? 'data-on' : 'data-off';
-        data.title = dev.link ? dev.link.text : connected ? 'Connected' : 'Not connected';
+        put(data, 'icon', dev.link ? dev.link.icon : connected ? 'data-on' : 'data-off');
+        tip(data, dev.link ? dev.link.text : connected ? 'Connected' : 'Not connected');
         paintSync(data, syncKind(dev));
         // Settings > Screen > Status Icons > Always show the mobile network icon: on Wi-Fi the
         // connectivity icon is Wi-Fi's, so the mobile network's type (available) shows beside it
@@ -1842,41 +1842,41 @@
         let cellIcon = null;
         if (lsFlag('wmShowCellIcon', false) && dev.active === 'wifi' && dev.type && DATA_ICON[dev.type] && !dev.airplane
             && dev.cell && dev.cell.dataEnabled !== false && dev.cell.radioOn !== false) cellIcon = `data-${DATA_ICON[dev.type]}`;
-        cellEl.hidden = !cellIcon;
-        if (cellIcon) { cellEl.dataset.icon = cellIcon; cellEl.title = `${DATA_NAME[dev.type]} available`; }
+        hide(cellEl, !cellIcon);
+        if (cellIcon) { put(cellEl, 'icon', cellIcon); tip(cellEl, `${DATA_NAME[dev.type]} available`); }
         const sig = shell.querySelector('[data-role="signal"]');
-        sig.hidden = !dev.signal;
-        if (dev.signal) { sig.dataset.icon = dev.signal.icon; sig.title = dev.signal.text; }
-        shell.querySelector('[data-role="roaming"]').hidden = !(dev.cell && dev.cell.roaming === true && dev.signal && dev.signal.icon !== 'signal-off');
+        hide(sig, !dev.signal);
+        if (dev.signal) { put(sig, 'icon', dev.signal.icon); tip(sig, dev.signal.text); }
+        hide(shell.querySelector('[data-role="roaming"]'), !(dev.cell && dev.cell.roaming === true && dev.signal && dev.signal.icon !== 'signal-off'));
         const bat = shell.querySelector('[data-role="battery"]');
-        bat.hidden = !dev.battery;
-        if (dev.battery) { bat.dataset.icon = dev.battery.icon; bat.title = dev.battery.text; }
+        hide(bat, !dev.battery);
+        if (dev.battery) { put(bat, 'icon', dev.battery.icon); tip(bat, dev.battery.text); }
         batteryLowCheck(dev.battery);
         const vol = shell.querySelector('[data-role="volume"]');
         const mode = soundMode();
-        vol.dataset.icon = mode === 'off' ? 'volume-off' : mode === 'vibrate' ? 'vibrate' : 'volume';
+        put(vol, 'icon', mode === 'off' ? 'volume-off' : mode === 'vibrate' ? 'vibrate' : 'volume');
         // pending things, as WM shows a notification glyph: the Director (an open clapper that claps
         // while a turn runs; closed while it is idle and its app is open), prints in progress,
         // unread mail, an update downloaded and ready to install
         const dir = directorState();
         directorTurnWatch(dir);
         const dirOpen = stack.includes('director') || openedApps.includes('director');
-        shell.querySelector('[data-role="director"]').hidden = !((dir && dir.running) || dirOpen);
+        hide(shell.querySelector('[data-role="director"]'), !((dir && dir.running) || dirOpen));
         paintDirectorClap(!!(dir && dir.running));
         let updateReady = false;
         try { updateReady = !!(window.serviceWorkerManager && window.serviceWorkerManager.hasPendingUpdates()); } catch (_) { updateReady = false; }
-        shell.querySelector('[data-role="update"]').hidden = !updateReady;
+        hide(shell.querySelector('[data-role="update"]'), !updateReady);
         // high latency on the link (websocket.js _latencyNotice): the alert icon for a minute after the last warning
         const lat = window.wsClient && window.wsClient._latencyNotice;
-        shell.querySelector('[data-role="latency"]').hidden = !(lat && Date.now() - lat.at < 60000);
-        shell.querySelector('[data-role="prints"]').hidden = !printsInProgress();
+        hide(shell.querySelector('[data-role="latency"]'), !(lat && Date.now() - lat.at < 60000));
+        hide(shell.querySelector('[data-role="prints"]'), !printsInProgress());
         const mailEl = shell.querySelector('[data-role="mail"]');
         // any unread mail, if the user asked for that (Messaging > Tools > Options); else only mail
         // that came in since this client started and is still unread (mailNewCheck)
-        mailEl.hidden = !(lsFlag(MAIL_ICON_ALL_KEY, false) ? shellMailUnread > 0 : shellMailNew);
+        hide(mailEl, !(lsFlag(MAIL_ICON_ALL_KEY, false) ? shellMailUnread > 0 : shellMailNew));
         // unread text messages (Text Messages = Chat): the phone-and-envelope glyph until they are read
         // (while the new text message notification waits, its own glyph stands for them: one, not two)
-        shell.querySelector('[data-role="sms"]').hidden = !(smsUnread() > 0) || notes.some((n) => { const o = appNotes.get(n.id); return !!(o && o.event === 'text'); });
+        hide(shell.querySelector('[data-role="sms"]'), !(smsUnread() > 0) || notes.some((n) => { const o = appNotes.get(n.id); return !!(o && o.event === 'text'); }));
         paintBezelLed();
         if (noteTrayOpen) renderNotes(); else fitStatus();
         const bubble = shell.querySelector('.wm-bubble');
@@ -1900,8 +1900,6 @@
      * open at 4x, #723).
      */
     let fitQueued = false;
-    let clapTimer = null;
-    let clapFrame = 0;
     /**
      * Director: Turn finished (a phone sound event): running -> idle plays its sound and, with
      * Display message on screen, posts a notification (off by default: the clapper already stops).
@@ -1925,17 +1923,19 @@
         const el = shell && shell.querySelector('[data-role="director"]');
         if (!el) return;
         if (!working || el.hidden) {
-            if (clapTimer) { clearInterval(clapTimer); clapTimer = null; }
-            if (el.dataset.clap !== 'closed') { el.dataset.clap = 'closed'; el.style.backgroundImage = artImageSet('status-director'); }
+            if (el.dataset.clap !== 'closed') {
+                el.dataset.clap = 'closed';
+                el.classList.remove('wm-strip');
+                el.style.backgroundImage = artImageSet('status-director');
+            }
             return;
         }
-        if (clapTimer) return;
+        if (el.dataset.clap === 'working') return;
         el.dataset.clap = 'working';
-        clapTimer = setInterval(() => {
-            if (document.hidden) return;
-            clapFrame = (clapFrame + 1) % DIRECTOR_CLAP.length;
-            el.style.backgroundImage = artImageSet(DIRECTOR_CLAP[clapFrame]);
-        }, 140);
+        el.style.setProperty('--strip', artImageSet('status-director-clap-strip'));
+        el.style.setProperty('--n', String(DIRECTOR_CLAP_FRAMES));
+        el.style.setProperty('--ms', '140');
+        el.classList.add('wm-strip');
     }
 
     /*
@@ -2660,7 +2660,6 @@
     let switchCoverFor = null;
     let switchCoverAt = 0;
     let switchCoverTimer = null;
-    let switchCoverFrames = null;
 
     function showSwitchCover(id) {
         let cover = shell.querySelector('.wm-switch');
@@ -2676,11 +2675,7 @@
         try { if (typeof workspaces !== 'undefined' && workspaces[id]) name = workspaces[id].name || ''; } catch (_) { name = ''; }
         cover.querySelector('.wm-switch-text').textContent = name ? `Loading ${name}...` : 'Loading workspace...';
         const img = cover.querySelector('.wm-switch-wait');
-        let frame = 0;
-        clearInterval(switchCoverFrames);
-        const tick = () => { waitFrame(img, frame); frame = (frame + 1) % 16; };
-        tick();
-        switchCoverFrames = setInterval(tick, WAIT_FRAME_MS);
+        waitStrip(img);
         cover.hidden = false;
         closeMenus(true);
         root.dataset.wmSwitching = '1';
@@ -2692,9 +2687,7 @@
 
     function hideSwitchCover() {
         clearTimeout(switchCoverTimer);
-        clearInterval(switchCoverFrames);
         switchCoverTimer = null;
-        switchCoverFrames = null;
         switchCoverFor = null;
         delete root.dataset.wmSwitching;
         const cover = shell && shell.querySelector('.wm-switch');
@@ -2729,10 +2722,8 @@
         loadingLayer.querySelector('.wm-msgbox-title span').textContent = caption || 'Please Wait';
         if (loadingLayer.hidden !== false || !loadingTimer) {
             loadingLayer.hidden = false;
-            let f = 0;
-            const img = loadingLayer.querySelector('.wm-loading-wait');
-            const tick = () => { img.src = art(`wait-${f}`); img.srcset = srcset(`wait-${f}`); f = (f + 1) % 16; };
-            tick();
+            // the version's own wheel (6.1 at 6.1's size, 6.5's four dots), as the busy cursor
+            waitStrip(loadingLayer.querySelector('.wm-loading-wait'));
             clearInterval(loadingTimer);
             loadingTimer = setInterval(() => {
                 for (const t of [...loadingToasts]) {
@@ -2752,7 +2743,6 @@
                 const title = ((t.querySelector('.toast-title') || {}).textContent || '').trim();
                 const msg = ((t.querySelector('.toast-message') || {}).textContent || '').replace(/\s+/g, ' ').trim();
                 loadingLayer.querySelector('.wm-msgbox-text').textContent = [title, msg].filter(Boolean).join('\n') || 'Loading...';
-                tick();
             }, 90);
         }
     }
@@ -3592,7 +3582,7 @@
     let busyCount = 0;
     let busyPopped = false;
     let busyShowTimer = null;
-    let busyFrameTimer = null;
+    let busyShown = false;
 
     function paintBusy() {
         const layer = shell && shell.querySelector('.wm-busy');
@@ -3603,9 +3593,8 @@
         shell.querySelector('.wm-content').setAttribute('aria-busy', on ? 'true' : 'false');
         if (!on) {
             clearTimeout(busyShowTimer);
-            clearInterval(busyFrameTimer);
             busyShowTimer = null;
-            busyFrameTimer = null;
+            busyShown = false;
             img.hidden = true;
             img.removeAttribute('src');
             img.removeAttribute('srcset');
@@ -3617,28 +3606,26 @@
     const WAIT_FRAME_MS = WM65 ? 90 : 140;
 
     /** One of the wait cursor's 16 frames: 6.1's wheel, or 6.5's four coloured dots going round (shellres.192 bitmaps 4896-4911, 80 x 80). */
-    function waitFrame(img, frame) {
-        if (WM65) {
-            img.src = `/static_images/wm65/wait-${frame}.png`;
-            img.srcset = `/static_images/wm65/wait-${frame}.png 1x, /static_images/wm65/wait-${frame}@2x.png 2x, /static_images/wm65/wait-${frame}@4x.png 4x`;
-            return;
-        }
-        img.src = art(`wait-${frame}`);
-        img.srcset = srcset(`wait-${frame}`);
+    /**
+     * The wait cursor on an <img>: one strip of its 16 frames (scripts/build-wm-sprite-strips.sh),
+     * stepped by CSS (.wm-strip) at the version's frame time. One image and no timer per frame.
+     */
+    function waitStrip(img) {
+        const d = WM65 ? '/static_images/wm65/' : ART;
+        img.src = `${d}wait-strip.png`;
+        img.srcset = `${d}wait-strip.png 1x, ${d}wait-strip@2x.png 2x, ${d}wait-strip@4x.png 4x`;
+        img.style.setProperty('--n', '16');
+        img.style.setProperty('--ms', String(WAIT_FRAME_MS));
+        img.classList.add('wm-strip');
     }
 
     function showBusyCursor() {
         busyShowTimer = null;
-        if (busyCount <= 0 || busyFrameTimer) return;
+        if (busyCount <= 0 || busyShown) return;
         const img = shell.querySelector('.wm-busy-wait');
-        let frame = 0;
-        const tick = () => {
-            waitFrame(img, frame);
-            frame = (frame + 1) % 16;
-        };
-        tick();
+        waitStrip(img);
         img.hidden = false;
-        busyFrameTimer = setInterval(tick, WAIT_FRAME_MS);
+        busyShown = true;
     }
 
     /** Resolves after the next frame is painted (a timer stands in where rAF does not run: hidden tabs). */
@@ -3658,7 +3645,7 @@
         const timeout = Number.isFinite(opts.timeout) ? opts.timeout : 30000;
         busyCount++;
         paintBusy();
-        if (!busyFrameTimer) {
+        if (!busyShown) {
             clearTimeout(busyShowTimer);
             busyShowTimer = null;
             if (delay === 0) showBusyCursor();
@@ -6540,7 +6527,6 @@
     const INSTALL_DONE_KEY = 'wmInstallDone';
     let bootStart = 0;
     let bootTimer = null;
-    let waitTimer = null;
     let bootWaitDelay = null;
     const BOOT_WAIT_DELAY_MS = 2500;
     let installKind = null;
@@ -6655,8 +6641,6 @@
         const bootWait = shell.querySelector('.wm-boot-wait');
         // the wheel stays from the splash through Today's fill-in (reveal) until done
         if (!(phase === 'reveal' && bootWait && !bootWait.hidden)) {
-            clearInterval(waitTimer);
-            waitTimer = null;
             if (bootWait) bootWait.hidden = true;
         }
         clearTimeout(bootWaitDelay);
@@ -6668,15 +6652,9 @@
             bootWaitDelay = setTimeout(() => {
                 bootWaitDelay = null;
                 if (root.dataset.wmBoot !== 'splash') return;
-                let frame = 0;
-                const tick = () => {
-                    // the version's own wheel (6.5: the four coloured dots), as the busy cursor
-                    waitFrame(bootWait, frame);
-                    frame = (frame + 1) % 16;
-                };
-                tick();
+                // the version's own wheel (6.5: the four coloured dots), as the busy cursor
+                waitStrip(bootWait);
                 bootWait.hidden = false;
-                waitTimer = setInterval(tick, WAIT_FRAME_MS);
             }, BOOT_WAIT_DELAY_MS);
         }
         if (phase === 'install') {
@@ -6687,14 +6665,7 @@
             // wceload shows no soft keys while it copies (only the SIP button)
             softKeys = { left: null, right: null };
             shell.querySelectorAll('.wm-softkey').forEach((b) => { b.textContent = ''; b.disabled = true; });
-            const img = shell.querySelector('.wm-installer-wait');
-            let frame = 0;
-            const tick = () => {
-                waitFrame(img, frame);
-                frame = (frame + 1) % 16;
-            };
-            tick();
-            waitTimer = setInterval(tick, WAIT_FRAME_MS);
+            waitStrip(shell.querySelector('.wm-installer-wait'));
         }
     }
 
@@ -6720,7 +6691,6 @@
         installKind = kind;
         installMax = 0;
         setBoot('install');
-        clearInterval(waitTimer);
         const inst = shell.querySelector('.wm-installer');
         inst.querySelector('.wm-installer-progress').hidden = true;
         inst.querySelector('.wm-installer-wait').hidden = true;
@@ -6938,8 +6908,8 @@
         // the menus' tick and submenu arrow are CSS masks: fetched with the shell, not on the first
         // menu (the title bar's ok / X are inline in wm-shell.css)
         ['menu-check', 'menu-submenu-arrow'].forEach((n) => ['', '@2x', '@4x'].forEach((x) => { const img = new Image(); img.src = `/static_images/wm61/${n}${x}.png`; }));
-        // the wait cursor's frames: a busy() right after boot must not show an empty frame while they download
-        for (let f = 0; f < 16; f++) { const img = new Image(); img.decoding = 'async'; waitFrame(img, f); }
+        // the wait cursor's strip: a busy() right after boot must not show an empty frame while it downloads
+        { const img = new Image(); img.decoding = 'async'; waitStrip(img); }
         watchTodayPrefs();
         registerTodayApp();
         registerGalleryApp();
