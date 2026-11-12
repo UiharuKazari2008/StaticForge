@@ -11,6 +11,7 @@
  *                         without setting up your device" (a guest, for this connection)
  *   connected             the tiles; a tile opens under the pointer and lists its tasks. Other files
  *                         add tasks with melatonActiveSync.addTask(tile, task)
+ *   notifications         the device's own notifications (activeSyncNotifications.js), with Dismiss
  *   bread crumbs          Home > Quick Connect (a guest) or Home > the partnership's name; with
  *                         several devices the last crumb is a menu of them
  *
@@ -75,6 +76,10 @@
                 const off = a.on('state', () => this.render());
                 app.signal.addEventListener('abort', off);
                 a.refresh().catch(() => { /* a read-only logon lists nothing */ });
+            }
+            if (root.activeSyncNotifications) {
+                const offN = root.activeSyncNotifications.on(() => this.render());
+                app.signal.addEventListener('abort', offN);
             }
             this.render();
         }
@@ -149,7 +154,8 @@
                     sections: [{ type: 'list', initfn: (s) => { s.items = [{ text: `About ${NAME}`, action: 'about' }]; } }]
                 });
             }
-            const tick = setInterval(() => this.tick(), 110);
+            // the Connecting picture steps about every 290 ms on the VM (rec5: 6877, 7171, 7464 ... ms)
+            const tick = setInterval(() => this.tick(), 290);
             this.app.signal.addEventListener('abort', () => clearInterval(tick));
             q('.asdc-close').addEventListener('click', () => this.app.exit(), sig);
             doc.addEventListener('staticforge:modal-lifecycle', (e) => {
@@ -208,6 +214,10 @@
                 if (dev) out.push({ id: 'info', text: 'Device information', icon: 'item-32.png' });
                 if (dev && dev.partner) out.push({ id: 'end', text: 'End a partnership', icon: 'end-partnership-32.png' });
             }
+            if (tile === 'programs' && dev && dev.online && dev.permissions.includes('notify') && root.activeSyncNotifications) {
+                const n = root.activeSyncNotifications.count(dev.deviceId);
+                out.push({ id: 'notifications', text: n ? `View notifications on your device (${n})` : 'View notifications on your device', icon: 'item-32.png' });
+            }
             for (const t of extraTasks[tile] || []) {
                 if (!dev || (typeof t.when === 'function' && !t.when(dev))) continue;
                 out.push({ id: `x:${tile}:${t.id}`, text: typeof t.text === 'function' ? t.text(dev) : t.text, icon: t.icon || 'item-32.png', extra: t });
@@ -225,6 +235,7 @@
             // a page that needs the device ends when it goes
             if (this.page && this.page !== 'info' && this.page !== 'done' && !connected) { this.page = null; this.busy = false; }
             if (this.page === 'info' && !dev) this.page = null;
+            if (this.page === 'notifications' && !(dev && dev.online)) this.page = null;
 
             // bread crumbs
             const crumbs = ['<span>Home</span>'];
@@ -265,6 +276,7 @@
             else if (this.page === 'guest') html = `<div class="asdc-page"><h2>Connecting...</h2><p>Answer the question on your device to continue.</p></div>`;
             else if (this.page === 'done') html = `<div class="asdc-page"><h2>You have created a new Melaton Mobile partnership</h2><p>${esc(`${dev ? dev.name : 'Your device'} connects on its own from now on, whenever the Dreamscape app is running on it.`)}</p><div class="asdc-page-buttons"><button type="button" class="btn-standard primary" data-asdc="back">Done</button></div></div>`;
             else if (this.page === 'info') html = this.infoPage(dev);
+            else if (this.page === 'notifications') html = this.notificationsPage(dev);
             else if (connected && !established) html = this.choicePage();
             else html = this.tilesPage(dev, connected);
             if (body.dataset.html !== html) {
@@ -352,6 +364,19 @@
             return `<div class="asdc-page" style="top:70px"><h2>Device information</h2><dl class="asdc-info">${rows.join('')}</dl><div class="asdc-page-buttons"><button type="button" class="btn-standard primary" data-asdc="back">Close</button></div></div>`;
         }
 
+        notificationsPage(dev) {
+            const list = root.activeSyncNotifications ? root.activeSyncNotifications.list(dev.deviceId) : [];
+            const rows = list.map((n) => `
+                <li>
+                    <img src="${n.icon ? esc(n.icon) : `${A}/item-32.png`}" alt="" width="32" height="32">
+                    <div><b>${esc(n.title || n.app)}</b><span>${esc(n.text)}</span><small>${esc(n.title ? `${n.app} \u2022 ${when(n.time)}` : when(n.time))}</small></div>
+                    <button type="button" class="btn-standard" data-asdc="notif-dismiss" data-key="${esc(n.key)}">Dismiss</button>
+                </li>`).join('');
+            return `<div class="asdc-page asdc-page--wide" style="top:60px"><h2>Notifications on ${esc(dev.name)}</h2>
+                ${list.length ? `<ul class="asdc-notes">${rows}</ul>` : '<p>There are no notifications on your device.</p>'}
+                <div class="asdc-page-buttons"><button type="button" class="btn-standard primary" data-asdc="back">Close</button></div></div>`;
+        }
+
         openTile(id) {
             if (this.open === id) return;
             this.open = id;
@@ -393,6 +418,11 @@
             if (!a) return;
             if (cmd === 'setup') { this.page = 'setup'; this.setupError = ''; this.pendingName = ''; this.render(); return; }
             if (cmd === 'info') { this.page = 'info'; this.render(); return; }
+            if (cmd === 'notifications') { this.page = 'notifications'; this.render(); return; }
+            if (cmd === 'notif-dismiss' && dev && root.activeSyncNotifications) {
+                try { await root.activeSyncNotifications.dismiss(dev.deviceId, el.dataset.key); } catch (e) { await this.messageBox((e && e.message) || 'The notification could not be dismissed.', null, 'error'); }
+                return;
+            }
             if (cmd === 'connection') { await this.connectionSettings(); return; }
             if (cmd === 'guest' && dev) {
                 this.page = 'guest';

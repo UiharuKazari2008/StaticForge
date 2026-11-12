@@ -4,7 +4,8 @@
  * Device Center (apps/activesync) when a new device connects. Desktop tabs only
  * (activeSync.kind === 'computer', public/scripts/comp/activeSyncAgent.js).
  *
- *   icon      click: Device Center; right-click: Open, each device, Connection settings via the window
+ *   icon      click: Device Center; right-click: Open, each device, and the icon's own options (open
+ *             Device Center for a new device, connect / disconnect balloons, the device's notifications)
  *   balloons  a device connected / disconnected (HKCU\...\Melaton Mobile Device Center\NotifyOnConnect),
  *             battery low (15% and under, not charging, once until it charges again)
  *   new device   one that waits for the choice opens Device Center (OpenOnConnect)
@@ -31,9 +32,12 @@
         }
     }
 
+    // the popup renders its text as HTML: a device's name is escaped, always
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
     function balloon(type, title, text) {
         if (!icon || !root.PopoverManager || typeof root.PopoverManager.showPopover !== 'function') return;
-        root.PopoverManager.showPopover(icon, type, title, text, false, 8000, `<img src="${ART}/activesync-32.png" alt="" width="32" height="32">`, null, { popupId: 'activesync', position: 'top' });
+        root.PopoverManager.showPopover(icon, type, esc(title), esc(text), false, 8000, `<img src="${ART}/activesync-32.png" alt="" width="32" height="32">`, null, { popupId: 'activesync', position: 'top' });
     }
 
     function line(d) {
@@ -56,9 +60,21 @@
                         const devices = a.state().devices.filter((d) => d.online || d.partner);
                         s.items = [{ text: 'Open Melaton Mobile Device Center', action: 'open', default: true }];
                         if (devices.length) s.items.push({ separator: true }, ...devices.map((d) => ({ text: line(d), action: `dev:${d.deviceId}` })));
+                        // what this icon does on its own (Device Center's Connection Settings is WMDC's dialog and has no place for these)
+                        s.items.push({ separator: true },
+                            { text: 'Open Device Center when a new device connects', action: 'opt:OpenOnConnect', showIndicator: true, indicatorMark: 'check', checked: setting('OpenOnConnect') },
+                            { text: 'Tell me when a device connects or disconnects', action: 'opt:NotifyOnConnect', showIndicator: true, indicatorMark: 'check', checked: setting('NotifyOnConnect') },
+                            { text: 'Show the device\'s notifications here', action: 'opt:ShowNotifications', showIndicator: true, indicatorMark: 'check', checked: setting('ShowNotifications') });
                     }
                 }],
-                onAction: (action) => openCenter(action.startsWith('dev:') ? action.slice(4) : null)
+                onAction: (action) => {
+                    if (action.startsWith('opt:')) {
+                        const name = action.slice(4);
+                        if (root.melatonRegistry) void root.melatonRegistry.set(REG, { [name]: setting(name) ? 0 : 1 });
+                        return;
+                    }
+                    openCenter(action.startsWith('dev:') ? action.slice(4) : null);
+                }
             });
         }
         return icon;

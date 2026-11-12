@@ -86,6 +86,14 @@ Device: `status.get`, `partnership.propose`, `storage.hello|list|stat|mkdir|rena
 events `storage.changed`, `storage.config`), `stream.send`, `stream.receive`, `studio.getSession`, `studio.setSession { session }`,
 `clipboard.set { text }`, `device.ring`.
 
+Device, notifications (permission `notify`; the app's notification listener, DSApp-Kotlin
+`activesync/ActiveSyncNotifications.kt`, when "Send notifications to the desktop" is on and Android's notification
+access was allowed): `notify.list` -> `{ notifications: [{ key, package, app, title, text, time, category?, icon? }] }`,
+`notify.dismiss { key }`; events `notify.posted` (one such object) and `notify.removed { key }`. `icon` is a 48 px PNG
+data URL sent once per app and connection. Ongoing notifications, group summaries and the app's own are left out. The
+desktop keeps a list per device and shows a tray popup (`public/scripts/comp/activeSyncNotifications.js`); a removal
+drops it from the list and closes its popup.
+
 Computer: `studio.getSession`, `studio.setSession { session }`.
 
 On a desktop `window.phoneStorage` is `public/scripts/comp/activeSyncRemoteStorage.js`: the bridge's interface over these

@@ -27,6 +27,7 @@ const TRAY_POPUP_CATALOG = [
     { id: 'windows-update', label: 'Melaton Update' },
     { id: 'mail', label: 'Mail' },
     { id: 'activesync', label: 'Mobile devices' },
+    { id: 'activesync-notify', label: 'Phone notifications' },
     { id: 'generation-complete', label: 'Generation Complete' },
     { id: 'balance-updated', label: 'Balance Updated' },
     { id: 'remote-access', label: 'Remote Access' },

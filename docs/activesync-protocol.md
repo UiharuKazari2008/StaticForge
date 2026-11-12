@@ -33,6 +33,13 @@ kept by the app, and `getDeviceName()` the phone's own name (optional). The WebV
 so both speakers and a reinstalled WebView profile stay one device. Without the bridge the WebView keeps its own id in
 `localStorage.activeSyncPeerId`.
 
+## Staying connected
+
+With "Stay connected to the desktop" on (the app's Settings, on by default) the foreground service and its link
+outlive the app's window: the phone stays a connected device after the app is swiped away, until the service's
+notification is closed. A partnership is what makes that useful: a guest connection ends when the last socket drops
+(a server restart, a network change), and only the page can ask the user again.
+
 ## Rules
 
 - Never guess a status field: leave it out when the platform does not say.
