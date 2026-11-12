@@ -483,13 +483,7 @@
             });
         });
 
-        registerOp('clipboard.set', async (args, from) => {
-            const text = String((args && args.text) || '');
-            if (!text) throw err('EMPTY', 'Nothing to copy.');
-            await root.navigator.clipboard.writeText(text);
-            if (root.wmShell && root.wmShell.notify) root.wmShell.notify({ title: 'ActiveSync', text: `Text from ${(from && from.name) || 'the computer'} is on the clipboard.`, icon: 'info', timeout: 5000 });
-            return true;
-        });
+        // clipboard.set and open.url: public/scripts/comp/activeSyncClipboard.js (both kinds of peer)
 
         registerOp('device.ring', async () => {
             // the app rings for real (ringtone on the alarm stream, whatever the ringer mode)

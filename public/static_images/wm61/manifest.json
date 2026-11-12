@@ -7076,6 +7076,146 @@
         "1x-downscaled-from-2x"
       ],
       "notes": "Messaging list: a low-priority message (Message Options > Priority: Low)."
+    },
+    "app-folder-android": {
+      "1x": {
+        "source": "same as fe-folder (1x)",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "same as fe-folder (2x)",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "notes": "The plain WM folder for the Android programs folder (Yozora #747); no art of its own yet."
+    },
+    "app-folder-android-lg": {
+      "1x": {
+        "source": "fe-folder@2x.png",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "fe-folder@4x.png (upscaled)",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "notes": "The plain WM folder at 32 px for Programs."
+    },
+    "app-camera": {
+      "1x": {
+        "source": "shellres.dll ico_8263 16x16",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "shellres.dll ico_8263 32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "shellres.dll ico_8263 64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [],
+      "notes": "Camera (camera.lnk -> shellres.dll,-8263). Linked-out Android camera (wmAndroidApps.js)."
+    },
+    "app-camera-lg": {
+      "1x": {
+        "source": "shellres.dll ico_8263 32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.dll ico_8263 64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "point-upscaled from @2x",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "4x-point-upscaled"
+      ],
+      "notes": "Camera (camera.lnk -> shellres.dll,-8263). Linked-out Android camera (wmAndroidApps.js)."
+    },
+    "app-marketplace": {
+      "1x": {
+        "source": "resampled from wm65 start-marketplace@4x",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "resampled from wm65 start-marketplace@4x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "resampled from wm65 start-marketplace@4x",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "resampled-from-6.5"
+      ],
+      "notes": "Marketplace is a 6.5 program with no 6.1 icon; resampled from the 6.5 Start icon (wm65/start-marketplace@4x). Linked-out Play Store (wmAndroidApps.js)."
+    },
+    "app-marketplace-lg": {
+      "1x": {
+        "source": "resampled from wm65 start-marketplace@4x",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "resampled from wm65 start-marketplace@4x",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "resampled from wm65 start-marketplace@4x",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "resampled-from-6.5"
+      ],
+      "notes": "Marketplace is a 6.5 program with no 6.1 icon; resampled from the 6.5 Start icon (wm65/start-marketplace@4x). Linked-out Play Store (wmAndroidApps.js)."
     }
   },
   "notDelivered": {

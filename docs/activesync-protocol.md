@@ -50,3 +50,18 @@ notification is closed.
 - Never guess a status field: leave it out when the platform does not say.
 - File contents never travel in `as_call` arguments (1 MB cap): they go through the HTTP endpoints in [client-api/ws/activeSync.md](./client-api/ws/activeSync.md#file-bodies-http). A service answers `stream.send` by posting the file in ordered chunks of about 1 MB and stops on a 410; it answers `stream.receive` by fetching `.../data` in ranges and writing them.
 - A guest connection ends with the last socket of the device; only a partnership survives a reconnect.
+
+## Clipboard and links
+
+`public/scripts/comp/activeSyncClipboard.js` registers the same two operations on both kinds of peer
+(permission group "Clipboard and links"):
+
+| Operation | Arguments | Does |
+| --- | --- | --- |
+| `clipboard.set` | `{ text }` (200,000 characters at most) | puts the text on the receiver's clipboard |
+| `open.url` | `{ url }` (http or https only) | opens it: Internet Explorer on the phone, an Alchemy tab on the desktop |
+
+A browser lets only the window in use write the clipboard, so a desktop that is not in front keeps the
+text and writes it at the next click, key or focus. A computer may queue both for an offline partner.
+Device Center lists them under Programs and Services; the phone's ActiveSync program has Send Clipboard
+and Send Link... in its Menu.

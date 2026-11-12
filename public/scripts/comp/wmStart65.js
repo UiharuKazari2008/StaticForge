@@ -236,7 +236,7 @@
     }
 
     function appItem(a) {
-        const n = APP_ART65[a.id];
+        const n = APP_ART65[a.id] || a.art65; // art65: an app that names its own 6.5 Start icon (wmAndroidApps.js)
         // Settings is a folder of Start once its applets can be listed
         if (a.id === 'settings' && settingsGrid()) return { key: 'a:settings', label: a.title || 'Settings', img: art65('settings'), folder: 'settings' };
         return { key: `a:${a.id}`, label: a.id === 'today' ? 'Today' : appLabel(a), img: n ? art65(n) : art61(a.icon || 'app-programs'), app: a.id };
@@ -249,7 +249,15 @@
         const have = new Set(apps.map((a) => a.id));
         const items = [];
         // the apps pinned on the 6.1 Start menu stay on Start itself; the rest of the suite is in its folder
-        const inFolder = (a) => (DREAMSCAPE_APPS.has(a.id) && a.inStart !== 'top' && a.inStart !== 'bottom' ? 'dreamscape' : null);
+        // a folder other files added to Programs (wmSettings.addProgramFolder: the phone's Android programs)
+        const extra = new Map((window.wmSettings && typeof window.wmSettings.programFolders === 'function' ? window.wmSettings.programFolders() : []).filter((f) => f.extra).map((f) => [f.id, f]));
+        const inFolder = (a) => {
+            if (a.inStart !== 'top' && a.inStart !== 'bottom') {
+                if (DREAMSCAPE_APPS.has(a.id)) return 'dreamscape';
+                if (a.programsFolder && extra.has(a.programsFolder)) return a.programsFolder;
+            }
+            return null;
+        };
         const desktopItem = (l) => {
             if (!l || !l.launchId || !l.text || !l.imageIcon) return;
             const mapped = MAPPED[l.launchId];
@@ -275,6 +283,9 @@
             if (!folder) {
                 if (desktopLaunchables('games').length) items.push({ key: 'folder:games', label: FOLDERS.games.label, img: FOLDERS.games.icon(), folder: 'games' });
                 items.push({ key: 'folder:dreamscape', label: FOLDERS.dreamscape.label, img: FOLDERS.dreamscape.icon(), folder: 'dreamscape' });
+                for (const [id, f] of extra) {
+                    if (apps.some((a) => a.inStart && inFolder(a) === id)) items.push({ key: `folder:${id}`, label: f.label, img: art61(`app-folder-${id}`), folder: id });
+                }
             }
             desktopLaunchables().forEach(desktopItem);
             desktopLaunchables('toolbox').forEach(desktopItem);

@@ -1609,6 +1609,13 @@
     function open(id, opts = {}) {
         if (!apps.has(id)) return;
         closeMenus(true);
+        // a program that is not a page of the shell (registerApp({ launch })): one of the phone's own
+        // Android programs (wmAndroidApps.js). It starts, and the shell stays where it is.
+        const starter = apps.get(id);
+        if (typeof starter.launch === 'function') {
+            try { starter.launch(); } catch (err) { console.warn('[wmShell] launch', id, err); }
+            return;
+        }
         // an app opened over the picture view (Start menu) replaces it
         if (viewerActive) { viewerClosing = true; closeViewer(); }
         // Start menu and Today rows switch apps: the stack keeps Today at the bottom
@@ -6974,6 +6981,8 @@
 
     window.wmShell = {
         registerApp,
+        /** Take a registered program out again (an Android program that was hidden or uninstalled). */
+        removeApp: (id) => { const a = apps.get(id); if (a && typeof a.launch === 'function') apps.delete(id); },
         open,
         back,
         messageBox,
@@ -7014,7 +7023,7 @@
         openedApps: () => openedApps.slice(),
         /** An app's page, made (mounted) without bringing the app up. */
         pageOf: (id) => (apps.has(id) ? pageFor(apps.get(id)) : null),
-        listApps: () => [...apps.values()].map((a) => ({ id: a.id, title: a.title, startLabel: a.startLabel, icon: a.icon, inStart: a.inStart, sip: !!a.sip, programsFolder: a.programsFolder || null })),
+        listApps: () => [...apps.values()].map((a) => ({ id: a.id, title: a.title, startLabel: a.startLabel, icon: a.icon, inStart: a.inStart, sip: !!a.sip, programsFolder: a.programsFolder || null, art65: a.art65 || null })),
         /** The unread mail icon's "any unread message" switch (Messaging > Tools > Options). */
         mailIconAllKey: MAIL_ICON_ALL_KEY,
         /** The low battery warning level in percent, and its storage key (Settings > Power). */

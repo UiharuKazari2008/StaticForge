@@ -6,7 +6,8 @@
  * Melaton Mobile Device Center (apps/activesync). Measured on the Device Emulator (WM 6.1 VGA
  * halved; ~/.cache/wm61/ref/activesync-*.png): a white page of 4 px margins, the status picture
  * (\Windows\Syncconnected.bmp / Syncnotconnect.bmp / Syncyellow.bmp, SyncAnimation.gif while
- * something is in flight), soft keys Sync | Menu (Options..., Status...).
+ * something is in flight), soft keys Sync | Menu (Options..., Status..., Send Clipboard,
+ * Send Link...: activeSyncClipboard.js).
  *
  *   no computer yet    the device's own text for a device without a partnership
  *   waiting            a computer has to choose how to connect (its Device Center shows the choice)
@@ -156,11 +157,17 @@
         await run(() => as.hello());
     }
 
+    const canSend = (st) => !!(window.activeSyncClipboard && st.online && (st.session === 'guest' || st.session === 'partner') && st.computers.length);
+
     function menuItems() {
         const st = as.state();
         return [
             { label: 'Options...', action: () => { view = 'options'; render(); ws.syncHistory(); }, disabled: st.session !== 'partner' },
-            { label: 'Status...', action: showStatus, disabled: !st.online }
+            { label: 'Status...', action: showStatus, disabled: !st.online },
+            '-',
+            // activeSyncClipboard.js: to the computer this phone is connected to
+            { label: 'Send Clipboard', action: () => { const c = window.activeSyncClipboard; const t = c && c.targets()[0]; if (t) void c.sendClipboard(t.id); }, disabled: !canSend(st) },
+            { label: 'Send Link...', action: () => { const c = window.activeSyncClipboard; const t = c && c.targets()[0]; if (t) void c.sendLink(t.id); }, disabled: !canSend(st) }
         ];
     }
 

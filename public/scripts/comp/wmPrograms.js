@@ -433,6 +433,8 @@
         dreamscape: { label: 'Dreamscape', icon: () => wmLargeIcon('app-folder-dreamscape') }
     };
     const FOLDER_ORDER = ['games', 'dreamscape'];
+    // more folders from other files (wmSettings.addProgramFolder): shown once a program is filed in them
+    const EXTRA_FOLDERS = new Set();
     const DREAMSCAPE_APPS = new Set(['studio', 'director', 'spellcaster', 'phasewalker', 'atelier', 'reference', 'characters', 'expanders', 'spellbook', 'emotion', 'teleport', 'chat']);
     const DREAMSCAPE_DESKTOP = new Set(['explore-gallery', 'novels', 'ispy', 'image-search']);
     // WM 6.1 art for desktop entries the phone lists as they are (the dsap apps)
@@ -492,7 +494,10 @@
             desktopLaunchables('toolbox').forEach(desktopItem);
         } else {
             if (desktopLaunchables('games').length) items.push({ key: 'folder:games', label: 'Games', img: wmLargeIcon('app-games'), folder: 'games' });
-            for (const [id, f] of Object.entries(PROGRAM_FOLDERS)) items.push({ key: `folder:${id}`, label: f.label, img: f.icon(), folder: id });
+            for (const [id, f] of Object.entries(PROGRAM_FOLDERS)) {
+                if (EXTRA_FOLDERS.has(id) && !shellApps.some((a) => a.inStart && appFolder(a) === id)) continue;
+                items.push({ key: `folder:${id}`, label: f.label, img: f.icon(), folder: id });
+            }
             // no Toolbox folder: its programs sit here with the rest
             for (const a of shellApps) {
                 if (!a.inStart || SHELL_ONLY.has(a.id) || IN_SETTINGS_APPS.has(a.id) || appFolder(a)) continue;
@@ -1149,7 +1154,8 @@
                     }));
                     return;
                 }
-                const apps = sh.listApps().filter((a) => a.inStart && a.inStart !== 'system' && !SHELL_ONLY.has(a.id));
+                // the phone's own Android programs have their own list (Settings > System > Android Programs)
+                const apps = sh.listApps().filter((a) => a.inStart && a.inStart !== 'system' && !SHELL_ONLY.has(a.id) && !String(a.id).startsWith('android:'));
                 el.innerHTML = `<p>Checked items appear in the Start menu. Others appear in Programs.</p>
                     <div class="wm-listbox" style="max-height:calc(190 * var(--wm-px))">${apps.map((a) => `<div class="wm-listbox-row">${check(`sm-${a.id}`, a.startLabel || a.title || a.id, d.ids.has(a.id), `data-id="${esc(a.id)}"`)}</div>`).join('')}</div>`;
                 el.querySelectorAll('input[data-id]').forEach((c) => c.addEventListener('change', () => {
@@ -1738,6 +1744,20 @@
                 .concat(SETTINGS_LINKS.filter((l) => !l.app || have.has(l.app)).map((l) => ({ key: l.id, tab: l.tab, label: l.label, icon: l.icon, app: l.app || null, open: l.open || null })));
         },
         programItems: (folder) => programItems(folder),
+        /** A folder of Programs for programs registered with programsFolder: id ({ label, icon: art name }). */
+        addProgramFolder: (id, f) => {
+            if (!id || !f || !f.label || PROGRAM_FOLDERS[id]) return;
+            PROGRAM_FOLDERS[id] = { label: f.label, icon: () => wmLargeIcon(f.icon || 'app-programs') };
+            EXTRA_FOLDERS.add(id);
+            FOLDER_ORDER.push(id);
+        },
+        programFolders: () => Object.entries(PROGRAM_FOLDERS).map(([id, f]) => ({ id, label: f.label, extra: EXTRA_FOLDERS.has(id) })),
+        /** A Settings grid item that opens a program: { id, tab, label, icon, app } (or open()). */
+        addLink: (link) => {
+            if (!link || !link.id || !PAGE_GRIDS.has(link.tab) || SETTINGS_LINKS.some((l) => l.id === link.id)) return;
+            SETTINGS_LINKS.push(link);
+            if (settingsHost) settingsHost.refresh();
+        },
         ui
     });
 
