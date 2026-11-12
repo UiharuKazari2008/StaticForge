@@ -137,12 +137,12 @@
     // device programs it has no equal of: the Director and Studio stand where Phone and Text do
     // (cells 2 and 3), Messaging is E-mail, so Contacts, Internet Explorer, Calendar and Settings
     // (cell 8: second in the third row of three) fall where the device has them; Weather has Getting
-    // Started's cell before Pictures and Media; PayPass, Remote Desktop and XLink have the cells of
-    // Marketplace, Messenger and My Phone before Calculator; the Dreamscape folder has Office Mobile's.
+    // Started's cell before Pictures and Media.
+    // Yukimi (Nov 12, second pass): the Dreamscape folder, File Explorer and Games stand in the three
+    // cells before Calculator; PayPass, Remote Desktop and XLink are unranked and come last, by name.
     const RANK = ['a:today', 'a:director', 'a:studio', 'a:messaging', 'a:contacts', 'a:browser', 'a:calendar', 'a:settings',
-        'a:weather', 'a:gallery', 'a:windows-media', 'a:paypass-mobile', 'a:remote-desktop-mobile', 'a:xlink-mobile',
-        'a:calculator', 'folder:games', 'a:notes', 'a:tasks', 'folder:dreamscape', 'a:fileexplorer',
-        'a:activesync', 'a:taskmgr', 'a:search', 'a:help'];
+        'a:weather', 'a:gallery', 'a:windows-media', 'folder:dreamscape', 'a:fileexplorer', 'folder:games',
+        'a:calculator', 'a:notes', 'a:tasks', 'a:activesync', 'a:taskmgr', 'a:search', 'a:help'];
 
     // ---------------------------------------------------------------- items
     // The same programs the 6.1 Start menu and Programs screen list. wmPrograms.js keeps its tables
