@@ -95,8 +95,17 @@
 
     // ---------------------------------------------------------------- applied at load
 
+    /**
+     * The text size is kept per screen (Yukimi, Nov 11 2026): a phone-width screen (the Fold's
+     * cover screen, any phone) keeps wmScale, a wider one (the Fold opened, a tablet) has its own
+     * wmScaleMain. Folding or unfolding switches between them live (watchScaleScreen).
+     */
+    const SCALE_WIDE_MIN = 600;
+    const wideScreen = () => (window.innerWidth || 0) >= SCALE_WIDE_MIN;
+    const scaleKey = () => (wideScreen() ? `${K.scale}Main` : K.scale);
+
     function storedScale() {
-        const v = Number(lsGet(K.scale));
+        const v = Number(lsGet(scaleKey()));
         return SCALES.includes(v) ? v : null;
     }
 
@@ -139,6 +148,27 @@
     }
 
     applyScale();
+    // the screen the page is on changed class (folded / unfolded): that screen's own text size
+    // wmScreensSeen: the classes this device has shown the page on ('cover' / 'main'), so the
+    // Screen page names the two screens only on a device that has both (a foldable)
+    const noteScreen = () => {
+        const seen = new Set(String(lsGet('wmScreensSeen') || '').split(',').filter(Boolean));
+        const now = wideScreen() ? 'main' : 'cover';
+        if (!seen.has(now)) { seen.add(now); lsSet('wmScreensSeen', [...seen].join(',')); }
+        return seen.size > 1;
+    };
+    (function watchScaleScreen() {
+        let last = scaleKey();
+        noteScreen();
+        window.addEventListener('resize', () => {
+            const k = scaleKey();
+            if (k === last) return;
+            last = k;
+            noteScreen();
+            applyScale();
+            changed([k]);
+        });
+    })();
     applyTitleBar();
     applyCamera();
 
@@ -1327,6 +1357,7 @@
                 const n = SCALES.length;
                 const pos = (i) => `calc(4 * var(--wm-px) + (100% - 8 * var(--wm-px)) * ${i / (n - 1)})`;
                 el.innerHTML = `<p>Adjust the text size to see more content or increase the readability in many programs.</p>
+                    ${noteScreen() ? `<p>${wideScreen() ? 'This size is for the main screen. The cover screen keeps its own.' : 'This size is for the cover screen. The main screen keeps its own.'}</p>` : ''}
                     <div class="wm-slider-scale"><span>Smallest</span><span>Largest</span></div>
                     <div class="wm-slider" role="slider" tabindex="0" aria-label="Text size" aria-valuemin="0" aria-valuemax="${n - 1}">
                         <div class="wm-slider-track"></div>
@@ -1407,9 +1438,10 @@
                     keys.push(K.camera);
                 }
                 if (d.scale === currentScale() && storedScale() !== null) return keys;
-                lsSet(K.scale, String(d.scale));
+                const sk = scaleKey();
+                lsSet(sk, String(d.scale));
                 applyScale();
-                return keys.concat(K.scale);
+                return keys.concat(sk);
             }
         },
         {
