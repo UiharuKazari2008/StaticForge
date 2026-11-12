@@ -1,5 +1,5 @@
 /**
- * Melaton Mobile Settings: Connections pages (Connections, Network Cards, Domain Enroll, Wireless Manager, Remote Access, Grimoire) (Yozora #709).
+ * Melaton Mobile Settings: Connections pages (Connections, Network Cards, Domain Enroll, Wireless Manager, Remote Access, Grimoire, Cellular, Bluetooth) (Yozora #709, #771).
  * Pages for the Settings app (wmPrograms.js), added through window.wmSettings.registerPage /
  * extendPage and drawn with window.wmSettings.ui so they look like WM 6.1's own pages. Every
  * value is read and saved through the desktop's own store (one source of truth).
@@ -803,6 +803,125 @@
             // the phone's Internet Explorer (wmBrowser.js) keeps its own copy: hand it the saved settings
             try { window.dispatchEvent(new CustomEvent('wm-alchemy-settings', { detail: { settings: saved } })); } catch (_) { /* no listener */ }
             return [];
+        }
+    });
+
+    // ---------------------------------------------------------------- Cellular (#771)
+    // How the title bar draws the mobile network (wmShell typeIcon / typeName read the same keys):
+    // the type icon beside Wi-Fi (moved from Screen > Status Bar), LTE for 4G, the 5G / 5G+ indicator
+    // for 3GPP NR / NR-A / UWB (mmWave apart as 5G UW), NR UW for UWB.
+
+    const lsGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+    const lsSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (_) { /* storage off */ } };
+    const CELL_KEYS = { showCell: 'wmShowCellIcon', lte: 'wmCellLte', fiveG: 'wmCell5g', fiveGUw: 'wmCell5gUw', nrUw: 'wmCellNrUw' };
+    const shell = () => root.wmShell || null;
+
+    wmSettings.registerPage({
+        id: 'cellular',
+        tab: 'connections',
+        label: 'Cellular',
+        icon: 'set-cellular',
+        tabs: [],
+        init: () => {
+            const d = {};
+            for (const [k, key] of Object.entries(CELL_KEYS)) d[k] = lsGet(key) === '1';
+            return d;
+        },
+        render(el, tab, d) {
+            el.classList.add('wm-setc');
+            const sh = shell();
+            const dev = sh && typeof sh.deviceView === 'function' ? sh.deviceView() : null;
+            let now = 'No mobile network information';
+            if (dev && dev.cell) {
+                const name = dev.type && sh.typeName ? sh.typeName(dev.type) : null;
+                const op = dev.cell.operator ? `${String(dev.cell.operator).trim()}, ` : '';
+                now = dev.airplane ? 'Flight mode' : name ? `${op}${name}${dev.active === 'cellular' ? ', in use' : ', available'}` : `${op}no data service`;
+            }
+            el.innerHTML = `${ui.sub('Mobile network')}${ui.value('Network:', now)}
+                <div class="wm-form-gap"></div>
+                ${ui.sub('Data type indicator')}
+                ${ui.check('cellShow', 'Always show mobile data availability (when connected to Wireless LAN)', d.showCell)}
+                ${ui.check('cellLte', 'Show LTE in place of 4G', d.lte)}
+                ${ui.check('cell5g', 'Show 5G/5G+ Indicator in place of 3GPP NR/NR-A/UWB', d.fiveG)}
+                <div class="wm-setc-indent">${ui.check('cell5gUw', 'Separate mmWave data type from 5G+ as 5G UW', d.fiveGUw, d.fiveG ? '' : 'disabled')}</div>
+                ${ui.check('cellNrUw', 'Show NR UW in place of UWB icon', d.nrUw, d.fiveG ? 'disabled' : '')}`;
+            const bind = (name, k, after) => el.querySelector(`input[name="${name}"]`).addEventListener('change', (e) => { d[k] = e.target.checked; if (after) after(); });
+            bind('cellShow', 'showCell');
+            bind('cellLte', 'lte');
+            bind('cell5g', 'fiveG', () => {
+                el.querySelector('input[name="cell5gUw"]').disabled = !d.fiveG;
+                el.querySelector('input[name="cellNrUw"]').disabled = d.fiveG;
+            });
+            bind('cell5gUw', 'fiveGUw');
+            bind('cellNrUw', 'nrUw');
+        },
+        commit(d) {
+            const keys = [];
+            for (const [k, key] of Object.entries(CELL_KEYS)) {
+                const v = d[k] ? '1' : null;
+                if ((lsGet(key) === '1' ? '1' : null) !== v) { lsSet(key, v); keys.push(key); }
+            }
+            return keys;
+        }
+    });
+
+    // ---------------------------------------------------------------- Bluetooth (#771)
+    // WM's Bluetooth applet: Mode (Turn on Bluetooth; Melaton adds the title bar's Show Bluetooth
+    // Status, moved from Screen > Status Bar) and Devices (what the phone reports: Android lists the
+    // devices themselves in its own Bluetooth settings).
+
+    const BT_STATUS = [['on', 'When Powered On'], ['connected', 'When Connected'], ['never', 'Never']];
+    function btStatusMode() {
+        const v = lsGet('wmBluetoothStatus') || (lsGet('wmShowBluetoothIcon') === '0' ? 'never' : null);
+        return v === 'connected' || v === 'never' ? v : 'on';
+    }
+
+    wmSettings.registerPage({
+        id: 'bluetooth',
+        tab: 'connections',
+        label: 'Bluetooth',
+        icon: 'set-bluetooth',
+        tabs: [['bt-mode', 'Mode'], ['bt-devices', 'Devices']],
+        init: () => ({ status: btStatusMode(), turnOn: null }),
+        render(el, tab, d) {
+            el.classList.add('wm-setc');
+            const r = radios();
+            const present = !!(r && radioPresent(r, 'bluetooth'));
+            if (tab === 'bt-devices') {
+                const lines = !r ? 'Bluetooth is switched in the Dreamscape app for Android.'
+                    : !present ? 'This phone has no Bluetooth.'
+                    : !r.bluetooth ? 'Bluetooth is off. Turn it on on the Mode tab.'
+                    : r.bluetoothAccess === false ? 'Allow the Dreamscape app to see nearby devices to show connections.'
+                    : r.bluetoothConnected === true ? 'A device is connected.' : 'No device is connected.';
+                el.innerHTML = `${ui.sub('Devices')}<p>${esc(lines)}</p>
+                    ${ui.note('To pair or connect a device, use Bluetooth Settings.')}
+                    <div class="wm-form-gap"></div>
+                    <button type="button" class="wm-button" data-act="bt-settings"${device() && typeof device().openSettings === 'function' ? '' : ' disabled'}>Bluetooth Settings</button>`;
+                el.querySelector('[data-act="bt-settings"]').addEventListener('click', () => openAndroidSettings('bluetooth'));
+                return;
+            }
+            if (d.turnOn == null) d.turnOn = !!(r && r.bluetooth);
+            const state = !r ? 'Unknown' : !present ? 'Not available' : r.bluetooth ? (r.bluetoothConnected === true ? 'On, a device is connected' : 'On') : 'Off';
+            el.innerHTML = `${ui.check('btOn', 'Turn on Bluetooth', d.turnOn, present ? '' : 'disabled')}
+                ${ui.value('Status:', state)}
+                ${ui.note('To connect to a Bluetooth device, use the Devices tab.')}
+                <div class="wm-form-gap"></div>
+                <p>Show Bluetooth Status:</p>
+                ${ui.comboHtml('btstatus', (BT_STATUS.find(([k]) => k === d.status) || BT_STATUS[0])[1])}`;
+            el.querySelector('input[name="btOn"]').addEventListener('change', (e) => { d.turnOn = e.target.checked; });
+            ui.bindCombo(el.querySelector('[data-act="btstatus"]'), BT_STATUS, d.status, (v) => { d.status = v; });
+        },
+        commit(d) {
+            const keys = [];
+            const r = radios();
+            if (r && d.turnOn != null && !!r.bluetooth !== d.turnOn) setRadio('bluetooth', d.turnOn);
+            const v = d.status === 'on' ? null : d.status;
+            if ((lsGet('wmBluetoothStatus') || null) !== v || lsGet('wmShowBluetoothIcon') != null) {
+                lsSet('wmBluetoothStatus', v);
+                lsSet('wmShowBluetoothIcon', null); // the old on / off check box: now this setting
+                keys.push('wmBluetoothStatus');
+            }
+            return keys;
         }
     });
 })();

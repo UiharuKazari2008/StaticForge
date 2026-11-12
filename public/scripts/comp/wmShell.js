@@ -60,7 +60,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-error", "status-update", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
+    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-error", "status-update", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1808,7 +1808,7 @@
         if (!mode) return null;
         if (dev.airplane || (dev.link && /-off$/.test(dev.link.icon)) || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
         if (dev.active === 'wifi' || (dev.link && dev.link.icon.startsWith('wifi'))) return `wifi-${mode}`;
-        const t = dev.type && DATA_ICON[dev.type];
+        const t = dev.type && typeIcon(dev.type);
         return t ? `data-${t}-${mode}` : `data-${mode}`;
     }
 
@@ -1901,18 +1901,18 @@
         watchDataUse();
         // the phone's own link when the Android app or the browser says what it is; else Dreamscape's.
         // On the mobile network with no data moving lately the call is down: the large badge.
-        const idleCell = dev.active === 'cellular' && dev.type && DATA_ICON[dev.type] && !dataCallUp();
-        put(data, 'icon', idleCell ? `data-${DATA_ICON[dev.type]}-avail` : dev.link ? dev.link.icon : connected ? 'data-on' : 'data-off');
-        tip(data, idleCell ? `${DATA_NAME[dev.type]} available` : dev.link ? dev.link.text : connected ? 'Connected' : 'Not connected');
+        const idleCell = dev.active === 'cellular' && dev.type && typeIcon(dev.type) && !dataCallUp();
+        put(data, 'icon', idleCell ? `data-${typeIcon(dev.type)}-avail` : dev.link ? dev.link.icon : connected ? 'data-on' : 'data-off');
+        tip(data, idleCell ? `${typeName(dev.type)} available` : dev.link ? dev.link.text : connected ? 'Connected' : 'Not connected');
         paintSync(data, syncKind(dev));
         // Settings > Screen > Status Icons > Always show the mobile network icon: on Wi-Fi the
         // connectivity icon is Wi-Fi's, so the mobile network's type (available) shows beside it
         const cellEl = shell.querySelector('[data-role="cell"]');
         let cellIcon = null;
-        if (lsFlag('wmShowCellIcon', false) && dev.active === 'wifi' && dev.type && DATA_ICON[dev.type] && !dev.airplane
-            && dev.cell && dev.cell.dataEnabled !== false && dev.cell.radioOn !== false) cellIcon = `data-${DATA_ICON[dev.type]}-avail`;
+        if (lsFlag('wmShowCellIcon', false) && dev.active === 'wifi' && dev.type && typeIcon(dev.type) && !dev.airplane
+            && dev.cell && dev.cell.dataEnabled !== false && dev.cell.radioOn !== false) cellIcon = `data-${typeIcon(dev.type)}-avail`;
         hide(cellEl, !cellIcon);
-        if (cellIcon) { put(cellEl, 'icon', cellIcon); tip(cellEl, `${DATA_NAME[dev.type]} available`); }
+        if (cellIcon) { put(cellEl, 'icon', cellIcon); tip(cellEl, `${typeName(dev.type)} available`); }
         const sig = shell.querySelector('[data-role="signal"]');
         hide(sig, !dev.signal);
         if (dev.signal) { put(sig, 'icon', dev.signal.icon); tip(sig, dev.signal.text); }
@@ -2353,7 +2353,26 @@
     // 5G carrier style (Yukimi, Nov 10): NR for 5G (NSA and standalone), NR-A for NR Advanced,
     // UW for mmWave (Yukimi, Nov 12: UW, not UWB); an older app's '5G+' (both of the latter) shows NR-A
     const DATA_ICON = { GPRS: 'g', EDGE: 'e', '3G': '3g', HSPA: 'h', 'HSPA+': 'h-plus', LTE: '4g', 'LTE+': '4g-plus', '5G': 'nr', '5G+': 'nr-a', '5G-A': 'nr-a', '5G UW': 'uw' };
-    const DATA_NAME = { GPRS: 'GPRS', EDGE: 'EDGE', '3G': '3G', HSPA: 'HSPA', 'HSPA+': 'HSPA+', LTE: 'LTE', 'LTE+': 'LTE+', '5G': '5G NR', '5G+': '5G NR-A', '5G-A': '5G NR-A', '5G UW': '5G UW' };
+    const DATA_NAME = { GPRS: 'GPRS', EDGE: 'EDGE', '3G': '3G', HSPA: 'HSPA', 'HSPA+': 'HSPA+', LTE: 'LTE', 'LTE+': 'LTE+', '5G': '5G NR', '5G+': '5G NR-A', '5G-A': '5G NR-A', '5G UW': '5G UWB' };
+    /*
+     * Settings > Connections > Cellular (wmSettingsConnections.js, #771) picks how a type is drawn:
+     *   wmCellLte   LTE / LTE+ in place of 4G / 4G+
+     *   wmCell5g    5G / 5G+ in place of NR / NR-A / UWB; wmCell5gUw keeps mmWave apart as 5G UW
+     *   wmCellNrUw  NR UW (stacked) in place of UWB (when the 5G indicator is off)
+     * typeIcon(dataType) -> the badge key (status-data-<key>), typeName(dataType) -> the words.
+     */
+    function typeIcon(type) {
+        let k = DATA_ICON[type];
+        if (!k) return null;
+        if (lsFlag('wmCellLte', false)) k = { '4g': 'lte', '4g-plus': 'lte-plus' }[k] || k;
+        if (lsFlag('wmCell5g', false)) k = { nr: '5g', 'nr-a': '5g-plus', uw: lsFlag('wmCell5gUw', false) ? '5g-uw' : '5g-plus' }[k] || k;
+        else if (lsFlag('wmCellNrUw', false) && k === 'uw') k = 'nr-uw';
+        return k;
+    }
+    function typeName(type) {
+        const k = typeIcon(type);
+        return { lte: 'LTE', 'lte-plus': 'LTE+', '5g': '5G', '5g-plus': '5G+', '5g-uw': '5G UW', 'nr-uw': 'NR UW' }[k] || DATA_NAME[type] || type;
+    }
 
     function takeDeviceStatus(s) {
         if (typeof s === 'string') { try { s = JSON.parse(s); } catch (_) { return; } }
@@ -2377,11 +2396,19 @@
         if (!dv || typeof dv.getRadios !== 'function') return null;
         try { return JSON.parse(dv.getRadios()); } catch (_) { return null; }
     }
+    /** 'on' | 'connected' | 'never'; the older check box (wmShowBluetoothIcon '0') reads as never. */
+    function bluetoothStatusMode() {
+        let v = null;
+        try { v = localStorage.getItem('wmBluetoothStatus'); if (!v && localStorage.getItem('wmShowBluetoothIcon') === '0') v = 'never'; } catch (_) { v = null; }
+        return v === 'connected' || v === 'never' ? v : 'on';
+    }
     function takeRadios(r) {
         radiosNow = r || null;
         const icon = shell && shell.querySelector('.wm-status-icon[data-role="bluetooth"]');
         if (!icon) return;
-        const show = !!(radiosNow && radiosNow.bluetooth) && lsFlag('wmShowBluetoothIcon', true);
+        // Settings > Connections > Bluetooth: Show Bluetooth Status: When Powered On / When Connected / Never
+        const mode = bluetoothStatusMode();
+        const show = !!(radiosNow && radiosNow.bluetooth) && (mode === 'on' || (mode === 'connected' && radiosNow.bluetoothConnected === true));
         if (icon.hidden === show) { icon.hidden = !show; fitStatus(); }
         const bubble = shell.querySelector('.wm-bubble');
         if (bubble && !bubble.hidden && bubble.dataset.role === 'bluetooth') statusBubble('bluetooth', icon, true);
@@ -2432,11 +2459,11 @@
         // connectivity: the link in use, else what could be used
         let link = null;
         if (active === 'wifi') link = { icon: 'wifi-connected', text: wifiName ? `Wi-Fi: ${wifiName}` : 'Wi-Fi: connected' };
-        else if (active === 'cellular') link = { icon: type ? `data-${DATA_ICON[type]}-active` : 'data-on', text: type ? `${DATA_NAME[type]}: connected` : 'Cellular data: connected' };
+        else if (active === 'cellular') link = { icon: type ? `data-${typeIcon(type)}-active` : 'data-on', text: type ? `${typeName(type)}: connected` : 'Cellular data: connected' };
         else if (active === 'ethernet') link = { icon: 'data-on', text: 'Wired network: connected' };
         else if (active === 'vpn') link = { icon: 'data-on', text: 'VPN: connected' };
         else if (active === 'none' || cell || wifi) {
-            if (type && !airplane && cell.dataEnabled !== false) link = { icon: `data-${DATA_ICON[type]}-avail`, text: `${DATA_NAME[type]} available` };
+            if (type && !airplane && cell.dataEnabled !== false) link = { icon: `data-${typeIcon(type)}-avail`, text: `${typeName(type)} available` };
             else if (wifi && wifi.enabled === true) link = { icon: 'wifi-available', text: 'Wi-Fi on, not connected' };
             else if (active === 'none') link = { icon: 'data-off', text: 'No network connection' };
         }
@@ -3487,6 +3514,14 @@
         if (apps.has('settings')) open('settings');
     }
 
+    /** Settings > Bluetooth (wmSettingsConnections.js, #771): the Bluetooth bubble's Settings link. */
+    function openBluetoothSettings() {
+        closeBubble();
+        const ws = window.wmSettings;
+        if (ws && typeof ws.open === 'function' && ws.open('bluetooth')) return;
+        openWirelessManager();
+    }
+
     function statusBubble(role, anchor, update) {
         if (role === 'volume') { if (!update) toggleVolume(anchor); return; }
         closeVolume();
@@ -3565,7 +3600,7 @@
             if (rd.bluetooth && rd.bluetoothConnected === true) lines.push('A device is connected.');
             else if (rd.bluetooth && rd.bluetoothConnected === false) lines.push('No device is connected.');
             lines.push({ links: [{ label: 'Wireless Manager', action: openWirelessManager }] });
-            bubble({ title: 'Bluetooth', role, anchor, sections: lines, buttons: [{ text: 'Hide' }] });
+            bubble({ title: 'Bluetooth', role, anchor, sections: lines, footLinks: [{ label: 'Settings', action: openBluetoothSettings }], buttons: [{ text: 'Hide' }] });
         } else if (role === 'battery') {
             const b = deviceView().battery;
             const lines = [];
@@ -7068,6 +7103,9 @@
         /** The low battery warning level in percent, and its storage key (Settings > Power). */
         batteryLowLevel,
         refreshStatus: () => refreshStatus(),
+        deviceView: () => deviceView(),
+        radios: () => radiosNow || readRadios(),
+        typeName: (t) => typeName(t),
         batteryLowKey: BATTERY_LOW_KEY,
         /** Tap-and-hold: ms from pen down to the menu, when the ring of dots is whole (bindHoldRing). */
         holdMs: HOLD_FIRST_MS + 8 * HOLD_STEP_MS + HOLD_MENU_MS,

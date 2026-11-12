@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Usage: python3 scripts/generate-wm-data-anim-frames.py <shellres.192.dll resource dump> public/static_images/wm61|wm65
+# Usage: python3 scripts/generate-wm-data-anim-frames.py <shellres.192.dll resource dump> public/static_images/wm61|wm65 [type ...]
 # The frames of the shell's data icon sequence A (shell32's table: connected, arrows run out, badge,
 # arrows run back in, connected; Melaton plays it while connecting) and the first frames of its
 # sequence B that the repo lacked, from the ROM's own shellres.192 icons (the dump holds 14_<id>.bin
@@ -61,7 +61,8 @@ arrows = []
 for k in range(10):
     f = rom(4777 + k)
     arrows.append({i: bytes(f[i*4:i*4+4]) for i in range(1024) if f[i*4+3] and f[i*4:i*4+4] != g[i*4:i*4+4]})
-for t in ['g', 'e', '3g', 'h', 'h-plus', '4g', '4g-plus', '5g', '5g-plus', 'nr', 'nr-a', 'uw']:
+TYPES = sys.argv[3:] or ['g', 'e', '3g', 'h', 'h-plus', '4g', '4g-plus', '5g', '5g-plus', 'nr', 'nr-a', 'uw', 'lte', 'lte-plus', '5g-uw', 'nr-uw']
+for t in TYPES:
     W, H, badge = rgba(os.path.join(WM, f'status-data-{t}@2x.png'))
     for i in range(0, len(badge), 4):
         if badge[i + 3] == 0: badge[i:i + 4] = b'\0\0\0\0'

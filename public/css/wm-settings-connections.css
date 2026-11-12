@@ -266,3 +266,8 @@ html.ui-mobile .wm-setc .wm-wl-state {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* Cellular: a dependent option sits under the one it depends on (#771) */
+.wm-setc .wm-setc-indent {
+    padding-left: calc(16 * var(--wm-px));
+}

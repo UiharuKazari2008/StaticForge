@@ -1261,10 +1261,9 @@
         },
         {
             id: 'screen', tab: 'system', label: 'Screen', icon: 'set-screen',
-            tabs: [['textsize', 'Text Size'], ['bezel', 'Bezel'], ['statusbar', 'Status Bar']],
+            tabs: [['textsize', 'Text Size'], ['bezel', 'Bezel']],
             init: () => ({
                 scale: currentScale(), camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
-                showBt: lsGet(K.showBluetoothIcon) !== '0', showCell: lsGet(K.showCellIcon) === '1',
                 logoOpacity: Math.min(100, Math.max(10, Number(lsGet(K.bezelLogoOpacity)) || 55)),
                 logoSize: BEZEL_LOGO_SIZES.includes(Number(lsGet(K.bezelLogoSize))) ? Number(lsGet(K.bezelLogoSize)) : 70,
                 logoPos: lsGet(K.bezelLogoPos) || 'auto',
@@ -1359,15 +1358,7 @@
                     if (statusShown) { /* the controls stay visible, disabled, so the dependency is clear */ }
                     return;
                 }
-                // Status Bar: the title bar's icons (the phone's own bars are on Bezel)
-                if (tab === 'statusbar') {
-                    el.innerHTML = `<div class="wm-form-sub">Status icons</div>
-                        ${check('wmShowBt', 'Show the Bluetooth icon while Bluetooth is on', d.showBt)}
-                        ${check('wmShowCell', 'Always show the mobile network icon (also on Wi-Fi)', d.showCell)}`;
-                    el.querySelector('input[name="wmShowBt"]').addEventListener('change', (e) => { d.showBt = e.target.checked; });
-                    el.querySelector('input[name="wmShowCell"]').addEventListener('change', (e) => { d.showCell = e.target.checked; });
-                    return;
-                }
+                // (the title bar's status icon options moved to Connections > Cellular and Bluetooth, #771)
                 const n = SCALES.length;
                 const pos = (i) => `calc(4 * var(--wm-px) + (100% - 8 * var(--wm-px)) * ${i / (n - 1)})`;
                 el.innerHTML = `<p>Adjust the text size to see more content or increase the readability in many programs.</p>
@@ -1416,14 +1407,6 @@
                 const bars = systemBars();
                 if (d.bars && bars && (d.bars.hideStatus !== bars.hideStatus || d.bars.hideNavigation !== bars.hideNavigation)) {
                     try { window.AndroidDisplay.setSystemBars(!!d.bars.hideStatus, !!d.bars.hideNavigation); } catch (_) { /* older app */ }
-                }
-                if (d.showBt !== (lsGet(K.showBluetoothIcon) !== '0')) {
-                    lsSet(K.showBluetoothIcon, d.showBt ? null : '0');
-                    keys.push(K.showBluetoothIcon);
-                }
-                if (d.showCell !== (lsGet(K.showCellIcon) === '1')) {
-                    lsSet(K.showCellIcon, d.showCell ? '1' : null);
-                    keys.push(K.showCellIcon);
                 }
                 // Bezel: logo, model text, LED (wmShell syncBezel / paintBezelLed read them)
                 const bezelSets = [

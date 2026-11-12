@@ -69,7 +69,7 @@ def save(name, px2, W):
             i = (y//2)*W + x//2
             px4[(y*w4+x)*4:(y*w4+x)*4+4] = px2[i*4:i*4+4]
     png(os.path.join(OUT, f'{name}@4x.png'), w4, 64, px4)
-for name, label, sup in [('nr', 'NR', None), ('nr-a', 'NR', SUP_A), ('uw', 'UW', None)]:
+for name, label, sup in [('nr', 'NR', None), ('nr-a', 'NR', SUP_A), ('uw', 'UWB', None)]:
     W = canvas(label)
     save(f'status-data-{name}', draw(label, sup), W)
     save(f'status-data-{name}-active', draw(label, sup, True), W)

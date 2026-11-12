@@ -37,7 +37,7 @@ for d in wm61 wm65; do
     strip $d status-wifi-conn status-wifi-connected ${W[@]:0:5} status-wifi-available status-wifi-available ${W[@]:5:5} $(rep 3 status-wifi-connected)
     W=$(seq_names status-wifi-sync 12 2); W=($W)
     strip $d status-wifi-xfer status-wifi-turn ${W[@]:0:6} status-wifi-available status-wifi-available ${W[@]:6:6} $(rep 3 status-wifi-turn)
-    for t in g e 3g h h-plus 4g 4g-plus 5g 5g-plus nr nr-a uw; do
+    for t in g e 3g h h-plus 4g 4g-plus 5g 5g-plus nr nr-a uw lte lte-plus 5g-uw nr-uw; do
         T=$(seq_names status-data-$t-anim 10 2); T=($T)
         strip $d status-data-$t-conn status-data-$t-active ${T[@]:0:5} status-data-$t status-data-$t ${T[@]:5:5} $(rep 3 status-data-$t-active)
         T=$(seq_names status-data-$t-sync 13 2); T=($T)

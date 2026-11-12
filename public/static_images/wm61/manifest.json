@@ -7237,6 +7237,60 @@
         "resampled-from-6.5"
       ],
       "notes": "Marketplace is a 6.5 program with no 6.1 icon; resampled from the 6.5 Start icon (wm65/start-marketplace@4x). Linked-out Play Store (wmAndroidApps.js)."
+    },
+    "set-bluetooth": {
+      "1x": {
+        "source": "shellres.192.dll ico_13909_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13909_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "Lanczos-upscaled from @2x",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Bluetooth (Settings grid, Melaton Mobile Settings app; #771)."
+    },
+    "set-cellular": {
+      "1x": {
+        "source": "shellres.192.dll ico_13953_0_32x32",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "shellres.192.dll ico_13953_1_64x64",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "Lanczos-upscaled from @2x",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "1x-uses-native-32px-frame"
+      ],
+      "notes": "Settings applet icon: Cellular (the Phone applet's icon; 13954, the phone with signal, has no 64 px frame) (Settings grid, Melaton Mobile Settings app; #771)."
     }
   },
   "notDelivered": {
