@@ -1256,25 +1256,71 @@ async function handle(req, res, secret) {
     }
 }
 
-// Starts once per process on a random loopback port. The jail shares the host
-// network (--share-net), so the CLI reaches it at 127.0.0.1.
+// Starts once per process on a loopback port. The jail shares the host network (--share-net), so
+// the CLI reaches it at 127.0.0.1.
+//
+// The port and the secret are kept across restarts (BRIDGE_STATE, mode 0600). A detached Yozora turn
+// is launched with this bridge's address and secret in its environment and outlives the server: on a
+// random port with a per-boot secret, a restart left her CLI calling an address nobody listened on,
+// ten "connection refused" retries later the turn was dead. Now the next boot listens on the same
+// port with the same secret (xiDirector.js prepareXi starts it when a run is alive), and her CLI's
+// retries find it again. The port is taken afresh only when the saved one is in use.
+const BRIDGE_STATE = require('path').join(require('os').homedir(), '.cache', 'dreamscape-xi', 'bridge.json');
+
+function readBridgeState() {
+    try {
+        const saved = JSON.parse(require('fs').readFileSync(BRIDGE_STATE, 'utf8'));
+        const port = Number(saved && saved.port);
+        const secret = saved && typeof saved.secret === 'string' ? saved.secret : '';
+        if (Number.isInteger(port) && port > 1023 && port < 65536 && /^[0-9a-f]{32,}$/.test(secret)) return { port, secret };
+    } catch (_) { /* none yet, or unreadable: a fresh one */ }
+    return null;
+}
+
+function writeBridgeState(port, secret) {
+    try {
+        const fs = require('fs');
+        fs.mkdirSync(require('path').dirname(BRIDGE_STATE), { recursive: true });
+        fs.writeFileSync(BRIDGE_STATE, JSON.stringify({ port, secret, at: new Date().toISOString() }), { mode: 0o600 });
+        fs.chmodSync(BRIDGE_STATE, 0o600);
+    } catch (error) {
+        console.error(`TokenRouter bridge: could not keep its address (${error.message}); a restart will move it`);
+    }
+}
+
 function ensureBridge() {
     if (bridge) return bridge.ready;
-    const secret = crypto.randomBytes(24).toString('hex');
+    const saved = readBridgeState();
+    const state = { secret: saved ? saved.secret : crypto.randomBytes(24).toString('hex') };
     const server = http.createServer((req, res) => {
-        handle(req, res, secret).catch((error) => sendError(res, 500, error.message));
+        handle(req, res, state.secret).catch((error) => sendError(res, 500, error.message));
     });
     server.keepAliveTimeout = 65000;
     server.requestTimeout = 0;
     const ready = new Promise((resolve, reject) => {
-        server.once('error', (error) => {
+        const up = () => {
+            server.unref();
+            const port = server.address().port;
+            if (!saved || saved.port !== port || saved.secret !== state.secret) writeBridgeState(port, state.secret);
+            resolve({ port, secret: state.secret, url: `http://127.0.0.1:${port}` });
+        };
+        const fail = (error) => {
             bridge = null;
             reject(error);
+        };
+        if (!saved) {
+            server.once('error', fail);
+            server.listen(0, '127.0.0.1', up);
+            return;
+        }
+        // the saved port first; taken by something else: a new port and a new secret
+        server.once('error', (error) => {
+            if (!error || error.code !== 'EADDRINUSE') { fail(error); return; }
+            state.secret = crypto.randomBytes(24).toString('hex');
+            server.once('error', fail);
+            server.listen(0, '127.0.0.1', up);
         });
-        server.listen(0, '127.0.0.1', () => {
-            server.unref();
-            resolve({ port: server.address().port, secret, url: `http://127.0.0.1:${server.address().port}` });
-        });
+        server.listen(saved.port, '127.0.0.1', up);
     });
     bridge = { server, ready };
     return ready;

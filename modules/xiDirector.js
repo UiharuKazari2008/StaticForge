@@ -1163,6 +1163,17 @@ function prepareXi(gr) {
         console.error(`Xi CLI config skipped: ${err.message}`);
     }
     const attached = reattachAll();
+    // A turn that outlived the restart may be on a bridged engine (TokenRouter, a custom provider): its
+    // CLI is calling the bridge's saved address right now, so the bridge comes back before it gives up
+    // (tokenRouterBridge.js ensureBridge keeps the port and the secret).
+    if (attached > 0) {
+        try {
+            tokenRouter.bindGlobalResources(gr);
+            tokenRouter.ensureBridge().catch((error) => console.error(`Xi bridge after restart: ${error.message}`));
+        } catch (error) {
+            console.error(`Xi bridge after restart: ${error.message}`);
+        }
+    }
     return { enabled: true, attached, cursorLogin };
 }
 
