@@ -711,6 +711,21 @@ function liveTicket(cabinetId, width, prev) {
     return { ticket, url: `/quickcast/live/${ticket}` };
 }
 
+/**
+ * What the monitor shows for a picked cabinet: its scene, unless the satellite's program has gone to a
+ * scene that is no cabinet's (Intro, GettingReady, Win, a break slate, picked on the unit's SCENE page or
+ * by its macros): then that program scene, so the monitor follows what goes on air.
+ */
+let progCache = { name: '', at: 0 };
+async function monitorScene(c) {
+    if (Date.now() - progCache.at > 700) {
+        try { progCache = { name: (await link.request('GetCurrentProgramScene', {}, 3000)).currentProgramSceneName || '', at: Date.now() }; } catch (_) { progCache.at = Date.now(); }
+    }
+    const pgm = progCache.name;
+    if (!pgm || pgm === c.scene || pgm === avOsd.OVERLAY_SCENE) return c.scene;
+    return readConfig().cabinets.some((x) => x.scene === pgm) ? c.scene : pgm;
+}
+
 async function liveStream(ticket, req, res) {
     const t = liveTickets.get(String(ticket || ''));
     if (!t || t.res) { res.status(404).end(); return; }
@@ -719,12 +734,13 @@ async function liveStream(ticket, req, res) {
     res.writeHead(200, { 'Content-Type': `multipart/x-mixed-replace; boundary=${boundary}`, 'Cache-Control': 'no-store', Connection: 'close', 'X-Accel-Buffering': 'no' });
     let open = true;
     req.on('close', () => { open = false; liveTickets.delete(ticket); });
-    const scene = cabinetOf(t.cabinet).scene;
+    const cab = cabinetOf(t.cabinet);
     while (open && !t.closed) {
         const t0 = Date.now();
         touch();
         try {
             if (!link.online) await link.connect();
+            const scene = await monitorScene(cab);
             const r = await link.request('GetSourceScreenshot', { sourceName: scene, imageFormat: 'jpg', imageWidth: t.width, imageCompressionQuality: 70 }, 5000);
             const buf = Buffer.from(String(r.imageData || '').replace(/^data:image\/\w+;base64,/, ''), 'base64');
             if (!open || t.closed) break;
@@ -744,7 +760,7 @@ async function preview(cabinetId, width) {
     if (!link.online) throw fail(`No control link to ${satelliteName()}`, 'QUICKCAST_OBS_DOWN');
     const c = cabinetOf(cabinetId);
     const w = Math.max(160, Math.min(1280, Number(width) || 640));
-    const r = await link.request('GetSourceScreenshot', { sourceName: c.scene, imageFormat: 'jpg', imageWidth: w, imageCompressionQuality: 72 });
+    const r = await link.request('GetSourceScreenshot', { sourceName: await monitorScene(c), imageFormat: 'jpg', imageWidth: w, imageCompressionQuality: 72 });
     return { cabinet: c.id, image: r.imageData || '', at: Date.now() };
 }
 
