@@ -2,9 +2,9 @@
  * Text Messaging: the RCS provider (Yozora #779, modules/textMessaging.js).
  *
  * Android gives third-party apps no RCS, and RCS needs Google Messages as the phone's default app.
- * So the server pairs with Google Messages as a "Messages for web" client: tools/rcs-bridge (Go,
+ * So the server pairs with Google Messages as a "Messages for web" client: services/rcs-bridge (Go,
  * mautrix-gmessages' libgm) does the protocol, this module runs it and speaks JSON lines with it
- * (see tools/rcs-bridge/main.go). Like BlueBubbles nothing is copied here: the phone is the store,
+ * (see services/rcs-bridge/main.go). Like BlueBubbles nothing is copied here: the phone is the store,
  * every conversation and its whole history read through it. Pairing is a QR code the phone scans in
  * Google Messages > Device pairing (shown on the desktop: Dreamscape CardSpace / Device Center).
  *
