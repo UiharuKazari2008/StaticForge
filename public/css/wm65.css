@@ -787,29 +787,42 @@ html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .modal-content button:
     color: #fff !important;
 }
 
-/* ---- status bubbles and notifications: the theme's toast border (rounded, 1 px black line,
- * soft shadow; -box is the ROM's top half mirrored for the bottom, as the device draws it) 10 px
- * from the screen edges and 16 px under the title bar, with the message box title art (389 x 46
- * at 2x: 21.5 px of blue and a 1 px grey rule) as its caption, Tahoma bold 10.5 in the caption
- * text colour ---- */
+/* ---- status bubbles and notifications (Yukimi, Nov 13: artifacts round the frames). Drawn as the
+ * 6.5 emulator draws them (~/.cache/wm65/ref/notify b1.png, n1.png), in CSS, not 9-sliced art: the
+ * theme's toast border and title art cut at a fractional --wm-px left see-through seams across the
+ * body and down the title band.
+ *   status bubble (b1): under the title bar, 10 px from the sides, white, 1 px black frame rounded
+ *     all round, a soft shadow, the blue title band (the message box title art, one image)
+ *   notification (n1): docked on the soft key bar, 5 px from the sides, the frame rounded at the top
+ *     only and open at the bottom, no shadow, the same title band ---- */
 html.ui-mobile[data-wm-version="6.5"] .wm-bubble,
 html.ui-mobile[data-wm-version="6.5"] .wm-notify {
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-image: none;
+    background: #fff;
+    color: var(--wm65-text);
+    font-size: var(--wm-fs);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-bubble {
     left: calc(env(safe-area-inset-left) + 10 * var(--wm-px));
     right: calc(env(safe-area-inset-right) + 10 * var(--wm-px));
     top: calc(var(--wm-safe-top, env(safe-area-inset-top)) + 42 * var(--wm-px));
     bottom: auto;
-    border: calc(1 * var(--wm-px)) solid transparent;
     border-radius: calc(8 * var(--wm-px));
-    border-image: url('/static_images/wm65/theme-classicblue-toastborder-box@2x.png') 40 38 40 38 fill / calc(20 * var(--wm-px)) calc(19 * var(--wm-px)) / calc(8 * var(--wm-px)) calc(7 * var(--wm-px)) stretch;
-    background: none;
-    color: var(--wm65-text);
-    font-size: var(--wm-fs);
-    padding-bottom: calc(11 * var(--wm-px));
+    box-shadow: 0 calc(1 * var(--wm-px)) calc(5 * var(--wm-px)) rgba(0, 0, 0, 0.5);
+    padding-bottom: calc(4 * var(--wm-px));
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-notify {
-    max-height: calc(100% - 80 * var(--wm-px));
-    padding-bottom: calc(5 * var(--wm-px));
+    left: calc(env(safe-area-inset-left) + 5 * var(--wm-px));
+    right: calc(env(safe-area-inset-right) + 5 * var(--wm-px));
+    top: auto;
+    border-bottom: 0;
+    border-radius: calc(8 * var(--wm-px)) calc(8 * var(--wm-px)) 0 0;
+    box-shadow: none;
+    max-height: calc(70% - 26 * var(--wm-px));
+    padding-bottom: 0;
 }
 
 /* 6.5 bubbles have no tail */
@@ -817,20 +830,19 @@ html.ui-mobile[data-wm-version="6.5"] .wm-bubble .wm-bubble-tail {
     display: none;
 }
 
+/* the title band: the theme's message box title art as one picture (its colours follow the theme),
+ * rounded with the frame; Tahoma bold in the caption colour */
 html.ui-mobile[data-wm-version="6.5"] .wm-bubble-title,
 html.ui-mobile[data-wm-version="6.5"] .wm-notify-title {
     display: flex;
     align-items: center;
     box-sizing: border-box;
-    height: calc(23 * var(--wm-px));
-    /* the art's rounded ends are its 8 px side borders; the title starts 1 px after the left one */
-    padding: 0 0 calc(1 * var(--wm-px)) calc(1 * var(--wm-px));
-    border-radius: 0;
-    border-style: solid;
-    border-color: transparent;
-    border-width: 0 calc(8 * var(--wm-px));
-    border-image: var(--wm65-art-msgboxtitle, url('/static_images/wm65/theme-classicblue-msgboxtitle@2x.png')) 0 16 0 16 fill / 0 calc(8 * var(--wm-px)) stretch;
-    background: none;
+    height: calc(20 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px)) calc(1 * var(--wm-px)) calc(8 * var(--wm-px));
+    border: 0;
+    border-image: none;
+    border-radius: calc(7 * var(--wm-px)) calc(7 * var(--wm-px)) 0 0;
+    background: var(--wm65-art-msgboxtitle, url('/static_images/wm65/theme-classicblue-msgboxtitle@2x.png')) center / 100% 100% no-repeat;
     color: var(--wm65-caption-text);
     font-weight: bold;
 }
