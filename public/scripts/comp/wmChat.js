@@ -441,7 +441,8 @@
         if (v === 'opts') renderOpts();
         if (v === 'state') renderState();
         if (isCurrent()) {
-            sh.setTitle(v === 'new' ? 'New Chat' : SMS_TITLE);
+            // the title bar: just "Messenger" (Yukimi, Nov 13; "Dreamscape Messenger" did not fit)
+            sh.setTitle(v === 'new' ? 'New Chat' : 'Messenger');
             sh.refreshSoftKeys();
         }
     }
@@ -603,7 +604,9 @@
         try {
             await ensureChat();
             // wsClient.sendMessage (not ...WithCallback): no wait cursor over a reply that streams
-            const r = await wsc().sendChatMessage(id, text);
+            // the whole reply at once, as an IM arrives (Yukimi, Nov 13): the server assembles it, the
+            // thread shows the typing line meanwhile
+            const r = await wsc().sendChatMessage(id, text, { whole: true });
             // the AI failing answers { success: false, error } (chatImpl.js handleSendChatMessage)
             if (r && r.success === false) throw new Error(r.error || r.message || 'The persona could not answer.');
         } catch (err) {
@@ -699,7 +702,10 @@
         if (creating && conv && conv.pendingId === id) { streams.delete(id); return; } // create() reloads
         const viewing = showingChat(id) && isCurrent() && !document.hidden;
         if (!viewing && said) arrived(id, said, st && st.events);
-        finishReply(id);
+        // read as it lands when its conversation is in front, with the event's sound and no bubble, as the
+        // device does in an open conversation (no sound for what you send: the device has none)
+        if (viewing && said && sh.sounds && typeof sh.sounds.play === 'function') sh.sounds.play('chat');
+        finishReply(id).then(() => { if (viewing && showingChat(id)) markConvSeen(); });
     }
 
     function onMessageResponse(msg) {
@@ -711,7 +717,8 @@
         const said = first('speechdirect') || first('speech') || first('reply');
         const viewing = showingChat(d.chatId) && isCurrent() && !document.hidden;
         if (!viewing && said && d.success !== false) arrived(d.chatId, said, null);
-        finishReply(d.chatId);
+        if (viewing && said && d.success !== false && sh.sounds && typeof sh.sounds.play === 'function') sh.sounds.play('chat');
+        finishReply(d.chatId).then(() => { if (viewing && showingChat(d.chatId)) markConvSeen(); });
     }
 
     // ---------------------------------------------------------------- new text message (#763)

@@ -8591,8 +8591,9 @@ class WebSocketClient {
         return this.sendMessage('restart_chat_session', { chatId });
     }
 
-    async sendChatMessage(chatId, message) {
-        return this.sendMessage('send_chat_message', { chatId, message });
+    // opts.whole: the server answers with the finished reply instead of streaming it (Messenger on the phone)
+    async sendChatMessage(chatId, message, opts) {
+        return this.sendMessage('send_chat_message', Object.assign({ chatId, message }, opts && opts.whole ? { whole: true } : {}));
     }
 
     async getChatMessages(chatId, limit = 50, offset = 0) {

@@ -222,6 +222,8 @@
             }
         }
         if (!conv || conv.accountId !== d.accountId || conv.guid !== g) return;
+        // a new message in the conversation on screen: the text-message sound, no bubble (the device's way)
+        if (!updated && !m.fromMe && !document.hidden && isCurrent() && view() === 'conv' && sh && sh.sounds && typeof sh.sounds.play === 'function') sh.sounds.play('sms');
         const list = conv.messages;
         let at = list.findIndex((x) => x.guid === m.guid);
         // our own send: the server's copy takes the place of the one Send put up

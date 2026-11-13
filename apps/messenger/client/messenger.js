@@ -630,7 +630,8 @@
             if (!m.fromMe) this.typingWho.delete(d.chatGuid);
             this.renderThread(true);
             this.renderTyping();
-            if (!m.fromMe) this.markRead();
+            // read as it lands in the open conversation: the row was never marked unread, so markRead would skip it
+            if (!m.fromMe) { const open = this.chat(); if (open) open.unread = true; this.markRead(); }
         }
 
         onUpdated(d) {

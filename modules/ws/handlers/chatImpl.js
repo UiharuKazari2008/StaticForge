@@ -688,6 +688,9 @@ async function handleSendChatMessage(handler, ws, message, clientInfo, wsServer)
 
         // Use unified SI service manager
         let aiResponse;
+        // whole: the client wants the reply as one message, as an IM arrives (Melaton Mobile's
+        // Messenger, Yukimi Nov 13): the server assembles it and answers once
+        const streamIt = chatStreamingEnabled(handler) && data.whole !== true;
         try {
             // Establish persona if needed (only for first message)
             if (await handler.globalResources.getPromptManager().needsPersonaEstablishment(chatId)) {
@@ -699,7 +702,7 @@ async function handleSendChatMessage(handler, ws, message, clientInfo, wsServer)
                 );
             }
 
-            if (chatStreamingEnabled(handler)) {
+            if (streamIt) {
                 console.log(`📡 Streaming enabled for ${session.provider}`);
                 // Send initial streaming message
                 handler.sendToClient(ws, {
@@ -732,8 +735,8 @@ async function handleSendChatMessage(handler, ws, message, clientInfo, wsServer)
 
             console.log('📝 SI response received, length:', responseContent.length);
 
-            // Send streaming complete message only if streaming was enabled
-            if (chatStreamingEnabled(handler)) {
+            // Send streaming complete message only if this reply streamed
+            if (streamIt) {
                 handler.sendToClient(ws, {
                     type: 'chat_streaming_complete',
                     requestId: message.requestId,
