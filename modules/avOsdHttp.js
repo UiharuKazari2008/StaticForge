@@ -290,7 +290,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
     $('strip').className = s ? 'hw on' : 'hw';
     if (s) {
       $('striph').textContent = 'STATUS  ' + (bx.name || '');
-      $('stripb').innerHTML = [['PROGRAM', s.program], ['FORMAT', s.format], ['RUNNING', s.fps + ' FPS'], ['FRAME TIME', s.frame + ' MS'], ['CPU', s.cpu + ' %']].concat(s.game ? [['GAME', s.game]] : []).concat(s.net ? [['NETWORK', s.net]] : []).concat([['ADDRESS', s.addr]])
+      $('stripb').innerHTML = (s.take ? [['SCENE', s.program], ['RESOLUTION', s.res || s.format], ['CLOCK', s.clock || '-']] : [['PROGRAM', s.program], ['FORMAT', s.format], ['RUNNING', s.fps + ' FPS'], ['FRAME TIME', s.frame + ' MS'], ['CPU', s.cpu + ' %']].concat(s.game ? [['GAME', s.game]] : []).concat(s.net ? [['NETWORK', s.net]] : []).concat([['ADDRESS', s.addr]]))
         .map(function (r) { return '<span>' + r[0] + '</span><b>' + esc(String(r[1] == null ? '-' : r[1]).toUpperCase()) + '</b>'; }).join('');
     }
     $('toast').className = v.toast ? 'hw on' : 'hw';

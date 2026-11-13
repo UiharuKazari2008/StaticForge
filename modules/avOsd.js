@@ -1306,7 +1306,7 @@ async function buildStrip(b) {
                 net = n && n.toggle ? (n.toggle.find((o) => o.active) || {}).label || '' : n && n.status ? n.status.text : '';
             } catch (_) { /* no XLink */ }
         }
-        b.strip = { game, net, unit: boxName(b), format: `${v.outputHeight}p${fpsText(v.fpsNumerator, v.fpsDenominator)}`, fps: round1(st.activeFps || 0), cpu: round1(st.cpuUsage || 0), frame: round1(st.averageFrameRenderTime || 0), program: pg.currentProgramSceneName, addr: target ? target.host : '' };
+        b.strip = { game, net, unit: boxName(b), format: `${v.outputHeight}p${fpsText(v.fpsNumerator, v.fpsDenominator)}`, res: `${v.outputWidth}x${v.outputHeight}`, clock: `${fpsText(v.fpsNumerator, v.fpsDenominator)} FPS`, fps: round1(st.activeFps || 0), cpu: round1(st.cpuUsage || 0), frame: round1(st.averageFrameRenderTime || 0), program: pg.currentProgramSceneName, addr: target ? target.host : '' };
     } catch (_) { b.strip = null; }
 }
 
@@ -1329,7 +1329,8 @@ function emit(b) {
         }
     }
     // the STATUS box: while INFO is on, or for a few seconds after a scene switch
-    if ((b.info || Date.now() < (b.infoFlashUntil || 0)) && b.strip) out.strip = b.strip;
+    // INFO on: the full STATUS box; the flash on a take: only scene, resolution and clock rate
+    if ((b.info || Date.now() < (b.infoFlashUntil || 0)) && b.strip) out.strip = b.info ? b.strip : { ...b.strip, take: true };
     if (b.standby) out.standby = { phase: b.standby.phase, since: b.standby.since };
     if (b.powerOff) out.powerOff = true;
     if (b.nosig) out.nosig = b.nosig;

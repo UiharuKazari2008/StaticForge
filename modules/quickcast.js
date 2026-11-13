@@ -337,6 +337,7 @@ let leaseTimer = null;
 let launching = null;        // Promise while OBS is being started
 let launchStartedAt = 0;
 let launchStep = '';         // what the engine start is doing (front panel boot progress)
+let launchError = '';        // the last engine start that failed (front panel alarm until the next start)
 let engineHung = false;      // an OBS process on Ruiko whose control port does not answer (front panel ALARM)
 let hungCheckAt = 0;         // last process check while the control port is silent
 const STUCK_WAIT_MS = 20000; // an already running engine gets this long to answer before it is restarted
@@ -551,7 +552,7 @@ async function status(opts = {}) {
     const base = {
         busy,
         satellite: { name: satelliteName(), model: unitModel(satelliteName()), kind: unitInfo(satelliteName(), 'satellite').kind, host: `${cfg.obs.host}:${Number(cfg.obs.port) || 4455}` },
-        obs: { state: launching ? 'launching' : stopping ? 'stopping' : 'offline', version: link.version, error: link.lastError, launchingFor: launching ? Date.now() - launchStartedAt : 0, launchStep: launching ? launchStep : '', hung: engineHung },
+        obs: { state: launching ? 'launching' : stopping ? 'stopping' : 'offline', version: link.version, error: link.lastError, launchingFor: launching ? Date.now() - launchStartedAt : 0, launchStep: launching ? launchStep : '', hung: engineHung, launchError: launching ? '' : launchError },
         cabinets: cfg.cabinets.map((c) => ({ id: c.id, name: c.name, scene: c.scene, icon: c.icon, short: c.short, present: false })),
         key: { set: !!cfg.youtube.streamKey, hint: keyHint(cfg.youtube.streamKey) },
         watchUrl: cfg.youtube.watchUrl || '',
@@ -571,6 +572,7 @@ async function status(opts = {}) {
             return base;
         }
         engineHung = false;
+        launchError = '';
     }
     base.obs.state = 'online';
     base.obs.version = link.version;
@@ -697,8 +699,12 @@ const LIVE_FPS_MAX = 25;
  * the cabinet's scene at /quickcast/live/<ticket>. A browser <img> plays MJPEG natively; RTSP would need
  * a transcoder. Frames come from OBS on Ruiko (never a mux PC), as fast as it answers up to 25 fps.
  */
-function liveTicket(cabinetId, width) {
+function liveTicket(cabinetId, width, prev) {
     const c = cabinetOf(cabinetId);
+    // the monitor moved to another input: end its previous stream now (the browser does not always drop
+    // an MJPEG <img> connection when its src changes, and a stale one holds the link to OBS)
+    const old = prev && liveTickets.get(String(prev));
+    if (old) { old.closed = true; liveTickets.delete(String(prev)); try { if (old.res) old.res.end(); } catch (_) { /* gone */ } }
     for (const [t, x] of liveTickets) if (!x.res && Date.now() - x.at > 30000) liveTickets.delete(t);
     const ticket = crypto.randomBytes(18).toString('base64url');
     liveTickets.set(ticket, { cabinet: c.id, width: Math.max(160, Math.min(1280, Number(width) || 640)), at: Date.now(), res: null });
@@ -714,14 +720,14 @@ async function liveStream(ticket, req, res) {
     let open = true;
     req.on('close', () => { open = false; liveTickets.delete(ticket); });
     const scene = cabinetOf(t.cabinet).scene;
-    while (open) {
+    while (open && !t.closed) {
         const t0 = Date.now();
         touch();
         try {
             if (!link.online) await link.connect();
             const r = await link.request('GetSourceScreenshot', { sourceName: scene, imageFormat: 'jpg', imageWidth: t.width, imageCompressionQuality: 70 }, 5000);
             const buf = Buffer.from(String(r.imageData || '').replace(/^data:image\/\w+;base64,/, ''), 'base64');
-            if (!open) break;
+            if (!open || t.closed) break;
             res.write(`--${boundary}\r\nContent-Type: image/jpeg\r\nContent-Length: ${buf.length}\r\n\r\n`);
             res.write(buf);
             res.write('\r\n');
@@ -1042,12 +1048,20 @@ async function cabinetXlinkDo(req) {
     return { ok: r.ok, code: r.code, failure: r.failure, menu: await cabinetXlinkMenu(c.id, false) };
 }
 
-/** Start OBS on Ruiko without picking a cabinet. */
+/**
+ * Start the satellite's engine without picking a cabinet. Answers at once: the start (and any stuck-engine
+ * restart) can take a couple of minutes, its progress is on the front panel (status obs.launchStep) and a
+ * failure is obs.launchError, so no request sits open in the client's ticker meanwhile.
+ */
 async function launch() {
     touch();
     if (link.online) return { ok: true, already: true };
-    await ensureObs(true);
-    return { ok: true };
+    launchError = '';
+    void ensureObs(true).then(() => { launchError = ''; }).catch((e) => {
+        launchError = e.message;
+        console.warn(`[visioncaster] satellite engine start failed: ${e.message}`);
+    });
+    return { ok: true, starting: true };
 }
 
 let stopping = false;

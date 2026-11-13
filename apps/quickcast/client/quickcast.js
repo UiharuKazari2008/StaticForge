@@ -407,7 +407,10 @@
             // REALTIME by default; a lower rate is remembered when chosen
             this.pvRate = PV_RATES.some((r) => r.id === lsGet('visioncaster.pvRate', 'rt')) ? lsGet('visioncaster.pvRate', 'rt') : 'rt';
             this.rtFor = '';
+            this.rtTicket = '';
             const pic = () => this.el('.qc-pic');
+            // a REALTIME stream that breaks (input change, link drop): ask for a fresh one on the next tick
+            pic().addEventListener('error', () => { if (this.rtFor) this.rtFor = ''; }, { signal: sig });
             const stopRt = () => { if (this.rtFor) { this.rtFor = ''; pic().removeAttribute('src'); } };
             const shot = async () => {
                 if (sig.aborted) { stopRt(); return; }
@@ -420,7 +423,9 @@
                 if (ready && rate.id === 'rt') {
                     if (this.rtFor !== c) {
                         try {
-                            const t = await this.send('quickcast_live_ticket', { cabinet: c, width: 960 });
+                            const t = await this.send('quickcast_live_ticket', { cabinet: c, width: 960, prev: this.rtTicket || undefined });
+                            if (this.cabinet !== c) { this.rtTicket = t.ticket; this.shotT = setTimeout(shot, 50); return; } // moved on meanwhile
+                            this.rtTicket = t.ticket;
                             this.rtFor = c;
                             pic().src = t.url;
                             this.previewFor = c;
@@ -1302,6 +1307,7 @@
                 }
                 // the engine process is there but its control port is silent (stuck): an alarm, not a dark panel
                 if (target === 'sat' && st0.obs && st0.obs.hung && obsSt !== 'online') { dm(unit, 'ENGINE NO RESPONSE', 'PRESS PWR OR RESET'); return; }
+                if (target === 'sat' && st0.obs && st0.obs.launchError && obsSt === 'offline') { dm(unit, 'ENGINE START FAILED', 'PRESS PWR OR RESET'); return; }
                 if (v && v.shutdown) { const st = v.shutdown.steps || []; dm(unit, 'SHUTTING DOWN', st[st.length - 1] || ''); return; }
                 // a unit that is not on (satellite engine stopped, mixer powered off, no cabinet, unit unreachable)
                 // shows nothing: the display has no power
@@ -1350,6 +1356,8 @@
             let bootHold = 0;       // satellite: engine up, self test not started yet
             let powerSeen = '';     // 'off' / 'on' for powerKey, to catch a power up
             let powerKey = '';
+            let offSince = 0;       // when the unit was first seen off (a power up needs a real, settled off)
+            let viewKey = '';       // which unit lastView belongs to
             const leds = () => {
                 if (!m.isConnected) return;
                 if (resetting) { setTimeout(leds, 500); return; }
@@ -1364,23 +1372,31 @@
                 if (!inFlight && Date.now() - (this.fpViewAt || 0) > (booting ? 900 : 3000) && (sat || this.cabinet)) {
                     this.fpViewAt = Date.now();
                     const want = `${target}:${this.cabinet || ''}`;
-                    void this.send('quickcast_osd_view', { target, cabinet: this.cabinet || '' }).then((v) => { if (!inFlight && want === `${target}:${this.cabinet || ''}`) lastView = v; }).catch(() => {});
+                    void this.send('quickcast_osd_view', { target, cabinet: this.cabinet || '' }).then((v) => { if (!inFlight && want === `${target}:${this.cabinet || ''}`) { lastView = v; viewKey = want; } }).catch(() => {});
                 }
                 if (sat && lastView && lastView.post) bootHold = 0;
                 // power up (off -> on): the panel runs its system test ("vegas": every lamp and dot) first
+                // Only a real power up counts: the same unit, off for a settled while (a control link that
+                // drops for a poll during a take is not a power cycle), then on. Another input / cabinet
+                // taken = a different unit: start over, never compare against the previous one's state.
                 const key = `${target}:${this.cabinet || ''}`;
-                const pNow = sat ? (linkSt === 'launching' || linkSt === 'online' ? 'on' : linkSt === 'offline' && !(lastView && (lastView.post || lastView.shutdown)) ? 'off' : '')
-                    : (!this.cabinet || !lastView ? '' : lastView.powerOff ? 'off' : 'on');
-                if (key !== powerKey) { powerKey = key; powerSeen = pNow; }
-                else if (pNow) {
-                    const up = powerSeen === 'off' && pNow === 'on';
-                    powerSeen = pNow;
-                    if (up) {
-                        if (sat) bootHold = Date.now() + 90000; // until the engine's self test takes over (or 90 s)
-                        void lampTest(false);
-                        setTimeout(leds, 500);
-                        return;
-                    }
+                if (key !== powerKey) {
+                    powerKey = key;
+                    powerSeen = '';
+                    offSince = 0;
+                    if (viewKey !== key) { lastView = null; this.fpViewAt = 0; }
+                }
+                const mine = !!lastView && viewKey === key;
+                const pNow = sat ? (linkSt === 'launching' || linkSt === 'online' ? 'on' : linkSt === 'offline' && !(mine && (lastView.post || lastView.shutdown)) ? 'off' : '')
+                    : (!this.cabinet || !mine ? '' : lastView.powerOff ? 'off' : 'on');
+                let up = false;
+                if (pNow === 'off') { if (powerSeen !== 'off') offSince = Date.now(); powerSeen = 'off'; }
+                else if (pNow === 'on') { up = powerSeen === 'off' && Date.now() - offSince >= 8000; powerSeen = 'on'; }
+                if (up) {
+                    if (sat) bootHold = Date.now() + 90000; // until the engine's self test takes over (or 90 s)
+                    void lampTest(false);
+                    setTimeout(leds, 500);
+                    return;
                 }
                 if (sat && linkSt !== 'online' && linkSt !== 'launching') bootHold = 0;
                 if (!inFlight) lcd(lastView);
@@ -1392,7 +1408,7 @@
                 const al = m.querySelector('[data-led="alarm"]');
                 const inStandby = !!(lastView && (lastView.standby || lastView.powerOff) && !sat);
                 const noVideo = !!(lastView && lastView.nosig && sat);
-                const hung = sat && !!(st.obs && st.obs.hung) && linkSt !== 'online';
+                const hung = sat && !!(st.obs && (st.obs.hung || st.obs.launchError)) && linkSt !== 'online';
                 al.className = `qc-led ${inStandby ? '' : fault || hung ? 'is-red is-blink' : bad || noVideo ? 'is-red' : ''}`; // no alarm states in standby
                 m.classList.toggle('qc-fp-sat', sat);
                 // the unit's own indicators: each pipeline stage it owns, plus the satellite's air / uplink lamps
@@ -1427,7 +1443,8 @@
                 lastView = null;
                 bootHold = 0;
                 lcd(null);
-                void this.send('quickcast_osd_view', { target, cabinet: this.cabinet || '' }).then((v) => { lastView = v; lcd(v); }).catch((e) => lcd(null, e.message));
+                const want = `${target}:${this.cabinet || ''}`;
+                void this.send('quickcast_osd_view', { target, cabinet: this.cabinet || '' }).then((v) => { if (want !== `${target}:${this.cabinet || ''}`) return; lastView = v; viewKey = want; lcd(v); }).catch((e) => lcd(null, e.message));
             };
             // one key on the wire at a time, plus at most one waiting: a held key never piles up
             let inFlight = false;
@@ -1438,7 +1455,7 @@
                 if (b) { b.classList.add('is-on'); setTimeout(() => b.classList.remove('is-on'), 110); }
                 if (inFlight) { next = k; return; }
                 inFlight = true;
-                try { lastView = await this.send('quickcast_osd_key', { target, cabinet: this.cabinet || '', key: k }); lcd(lastView); } catch (e) { lcd(null, e.message); }
+                try { const want = `${target}:${this.cabinet || ''}`; lastView = await this.send('quickcast_osd_key', { target, cabinet: this.cabinet || '', key: k }); viewKey = want; lcd(lastView); } catch (e) { lcd(null, e.message); }
                 inFlight = false;
                 if (next) { const n = next; next = null; void press(n); }
             };
