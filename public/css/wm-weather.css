@@ -1583,3 +1583,15 @@
     .wm-weather .wxw-moon-side { border-left: 0; box-shadow: none; padding-left: 0; padding-top: calc(6 * var(--u)); border-top: 1px solid rgba(0, 0, 0, 0.7); }
 }
 .wm-weather .wxw-next-summary.is-dry { margin: 0; font-weight: 600; color: #d6dde5; }
+
+/* condition icons: one sheet per density (scripts/build-wm-weather-sprites.sh), --i = the cell.
+   The size comes from each use's class (.wxw-hour-icon, .wxw-day-icon, ...). */
+.wm-weather .wxw-ico {
+    display: inline-block;
+    flex: 0 0 auto;
+    vertical-align: middle;
+    background-image: image-set(url('/static_images/wm61/weather/wx-icons.png') 1x, url('/static_images/wm61/weather/wx-icons@2x.png') 2x, url('/static_images/wm61/weather/wx-icons@4x.png') 4x);
+    background-repeat: no-repeat;
+    background-size: 1100% 100%;
+    background-position: calc(var(--i, 0) * 10%) 0;
+}

@@ -23,11 +23,22 @@ function isAdmin(clientInfo) {
     return !!(clientInfo && clientInfo.userType === 'admin');
 }
 
+/** Without null fields (a forecast is a quarter nulls): the clients read a missing field as no data. */
+function compact(value) {
+    if (Array.isArray(value)) return value.map(compact);
+    if (!value || typeof value !== 'object') return value;
+    const out = {};
+    Object.keys(value).forEach((k) => {
+        if (value[k] !== null && value[k] !== undefined) out[k] = compact(value[k]);
+    });
+    return out;
+}
+
 function reply(handlersCtx, ws, message, data) {
     handlersCtx.sendToClient(ws, {
         type: `${message.type}_response`,
         requestId: message.requestId,
-        data,
+        data: compact(data),
         timestamp: new Date().toISOString()
     });
 }

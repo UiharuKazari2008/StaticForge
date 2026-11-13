@@ -609,7 +609,7 @@ function normaliseApple(body, tz, meta = {}) {
         };
     });
     const days = (body.forecastDaily && body.forecastDaily.days) || [];
-    out.daily = days.map((d) => {
+    out.daily = days.slice(0, 10).map((d) => {
         const cond = appleCondition(d.conditionCode);
         const start = localIso(d.forecastStart, tz);
         const day = appleHourOrDay(d.daytimeForecast, tz);
@@ -708,7 +708,8 @@ async function fetchApple(lat, lon, opts = {}) {
         timezone: tz,
         hourlyStart: new Date(now - 3 * HOUR).toISOString().replace(/\.\d+Z$/, 'Z'),
         hourlyEnd: new Date(now + 72 * HOUR).toISOString().replace(/\.\d+Z$/, 'Z'),
-        dailyEnd: new Date(now + 10 * 24 * HOUR).toISOString().replace(/\.\d+Z$/, 'Z')
+        // the end is exclusive and counts from now: 11 days asked = 10 whole ones
+        dailyEnd: new Date(now + 11 * 24 * HOUR).toISOString().replace(/\.\d+Z$/, 'Z')
     });
     if (place.code) params.set('countryCode', place.code);
     const lang = /^[a-z]{2}(-[A-Z]{2})?$/.test(opts.lang || '') ? opts.lang : 'en';

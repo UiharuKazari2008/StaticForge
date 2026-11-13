@@ -1439,6 +1439,11 @@ workbox.routing.registerRoute(
       else if (url.pathname.startsWith('/melaton-apps/')) {
         response = await fetch(request);
       }
+      // radar frames and map tiles (modules/weatherService.js, #780): never in a cache of ours (a
+      // radar frame lives ~2 h); the browser's HTTP cache keeps them for their max-age
+      else if (url.pathname.startsWith('/weather/')) {
+        response = await fetch(request);
+      }
       // Every cached file has an extension (the manifest's only extensionless entries are the
       // routes above): API calls, /status, /logon-picture and the like go straight to the
       // network instead of queueing three lookups on the static cache (Chrome runs a cache's

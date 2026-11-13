@@ -144,8 +144,12 @@
         return { icon: 'cloudy', text: 'Cloudy', scene: 'cloudy' };
     }
 
+    // single files for other code (Today, the 6.5 home screen: wmWeather.iconUrl)
     const iconUrl = (key, hd) => `${ART}wx-${key}${hd ? '@2x' : ''}.png`;
-    const iconImg = (key, cls) => `<img class="${cls}" src="${iconUrl(key)}" srcset="${iconUrl(key)} 1x, ${iconUrl(key, true)} 2x, ${ART}wx-${key}@4x.png 4x" alt="" draggable="false">`;
+    // the app's own icons come from one sheet (wx-icons.png / @2x / @4x, wm-weather.css .wxw-ico):
+    // one image for every hour, day and place. Order = scripts/build-wm-weather-sprites.sh ICONS.
+    const ICON_CELLS = ['clear-day', 'clear-night', 'partly-day', 'partly-night', 'cloudy', 'fog', 'drizzle', 'rain', 'sleet', 'snow', 'storm'];
+    const iconImg = (key, cls) => `<i class="wxw-ico ${cls}" style="--i:${Math.max(0, ICON_CELLS.indexOf(key))}" aria-hidden="true"></i>`;
 
     // ---------------------------------------------------------------- units and times
 
@@ -1441,8 +1445,13 @@
         const x = (e.clientX - box.left) * scale;
         const i = Math.round(((x - L) / pw) * (n - 1));
         const next = Math.max(0, Math.min(n - 1, i));
-        if (next !== graphPick) { graphPick = next; renderGraph(); }
+        if (next === graphPick) return;
+        graphPick = next;
+        // pointer moves come faster than frames: draw once per frame
+        if (graphFrame) return;
+        graphFrame = (window.requestAnimationFrame || ((f) => setTimeout(f, 16)))(() => { graphFrame = 0; renderGraph(); });
     }
+    let graphFrame = 0;
 
     // ---------------------------------------------------------------- day page
 
@@ -1541,6 +1550,7 @@
     let radarFrame = 0;
     let radarTimer = null;
     let miniMap = null;
+    let miniKey = '';
     let fullMap = null;
     let mapStyle = ['dark', 'light', 'streets'].includes(load('wmWeatherMapStyle', 'dark')) ? load('wmWeatherMapStyle', 'dark') : 'dark';
 
@@ -1569,7 +1579,13 @@
         const pin = host.querySelector('.wxw-map-pin');
         const frameLayers = new Map(); // frame id -> element
 
-        const tileImg = (src, x, y, size) => `<img src="${src}" style="left:${x}px;top:${y}px;width:${size}px;height:${size}px" alt="" draggable="false" decoding="async" loading="eager" onerror="this.style.visibility='hidden'">`;
+        const tileImg = (src, x, y, size, lazy) => `<img ${lazy ? 'data-src' : 'src'}="${src}" style="left:${x}px;top:${y}px;width:${size}px;height:${size}px" alt="" draggable="false" decoding="async" onerror="this.style.visibility='hidden'">`;
+        // a frame's tiles load when it is about to show (it and the next), not all 13 at once
+        const fill = (layer) => {
+            if (!layer || layer.dataset.filled) return;
+            layer.dataset.filled = '1';
+            layer.querySelectorAll('img[data-src]').forEach((img) => { img.src = img.dataset.src; img.removeAttribute('data-src'); });
+        };
 
         function layout() {
             const w = host.clientWidth;
@@ -1606,7 +1622,7 @@
                     if (ty < 0 || ty >= rn) continue;
                     for (let tx = Math.floor(left / size); tx <= Math.floor((left + w) / size); tx++) {
                         const wx = ((tx % rn) + rn) % rn;
-                        html += tileImg(`/weather/tile/radar/${f.id}/${rz}/${wx}/${ty}.png`, Math.round(tx * size - left), Math.round(ty * size - top), size);
+                        html += tileImg(`/weather/tile/radar/${f.id}/${rz}/${wx}/${ty}.png`, Math.round(tx * size - left), Math.round(ty * size - top), size, true);
                     }
                 }
                 layer.innerHTML = html;
@@ -1644,7 +1660,11 @@
         }
 
         function show(id) {
-            const target = id && frameLayers.has(id) ? id : [...frameLayers.keys()].pop();
+            const ids = [...frameLayers.keys()];
+            const target = id && frameLayers.has(id) ? id : ids[ids.length - 1];
+            const at = ids.indexOf(target);
+            fill(frameLayers.get(target));
+            fill(frameLayers.get(ids[(at + 1) % ids.length]));
             frameLayers.forEach((el, fid) => el.classList.toggle('is-on', fid === target));
         }
 
@@ -1772,8 +1792,10 @@
         els.radarCard.hidden = false;
         const draw = () => {
             if (!els.miniMap.isConnected) return;
+            const key = `${p.lat},${p.lon},${radar && radar.frames.length ? radar.frames[radar.frames.length - 1].id : ''},${mapStyle}`;
             if (!miniMap) miniMap = TileMap(els.miniMap, { lat: p.lat, lon: p.lon, zoom: 6, interactive: false });
-            else miniMap.center(p.lat, p.lon, 6);
+            else if (miniKey !== key) miniMap.center(p.lat, p.lon, 6);
+            miniKey = key;
             const f = radar && radar.frames[radar.frames.length - 1];
             els.radarCardTime.textContent = f ? frameLabel(f) : '';
         };

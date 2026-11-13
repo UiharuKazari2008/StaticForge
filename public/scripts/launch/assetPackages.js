@@ -12,7 +12,7 @@
  *   wm65 / wm65-2x / wm65-4x                       the same for 6.5
  *   wmc / wmc-2x / wmc-4x   Melaton Mobile Common: art both versions draw
  *                           (public/static_images/wm-android, the Android programs' WM icons; its
- *                           manifest.json stays core)
+ *                           manifest.json stays core), and Weather's art (static_images/wm61/weather)
  * and 'source': the animation frames the strips and the status atlas are built from (no client
  * loads them; scripts/build-wm-sprite-strips.sh, build-wm-status-atlas.py), shipped to nobody.
  *
@@ -56,8 +56,12 @@
     // the few Melaton Mobile pictures the desktop shows too (ActiveSync's Device Center)
     const DESKTOP_TOO = /^\/static_images\/wm61\/boot-melaton(?:@[24]x)?\.png$/;
 
+    // Weather's art (#780): the app runs under both shells (and 6.5's home screen shows its icons), so
+    // it is Common, though it lives under wm61
+    const COMMON_WM61 = /^\/static_images\/wm61\/weather\//;
     function packageOf(url) {
         const u = String(url || '').split('?')[0];
+        if (COMMON_WM61.test(u)) return /@4x\.png$/i.test(u) ? 'wmc-4x' : /@2x\.png$/i.test(u) ? 'wmc-2x' : 'wmc';
         // both versions' art (the Android programs' icons): Melaton Mobile Common
         const c = /^\/static_images\/wm-android\/(.+)$/.exec(u);
         if (c) {
