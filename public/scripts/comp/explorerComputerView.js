@@ -48,9 +48,18 @@
     function continuity() {
         try {
             const H = root.AndroidHome;
-            if (!H || typeof H.getContinuity !== 'function') return null;
-            const c = JSON.parse(H.getContinuity());
-            return c && c.hybrid && c.external ? c : null;
+            if (H && typeof H.getContinuity === 'function') {
+                const c = JSON.parse(H.getContinuity());
+                return c && c.hybrid && c.external ? c : null;
+            }
+            // an app build before DSApp 4dac430 has no getContinuity: this window on the DeX display (so DeX
+            // has been opened) on a phone whose home screen is Dreamscape is hybrid too
+            if (H && typeof H.isExternalDisplay === 'function' && H.isExternalDisplay() && typeof H.isHome === 'function' && H.isHome()) {
+                const A = root.AndroidActiveSync;
+                const id = A && typeof A.getDeviceId === 'function' ? A.getDeviceId() : '';
+                return id ? { hybrid: true, dexSeen: true, home: true, external: true, deviceId: id } : null;
+            }
+            return null;
         } catch (_) { return null; }
     }
 
@@ -239,9 +248,12 @@
             where the phone is this computer. A phone reached over ActiveSync is a portable device.
             Hybrid (#798): lettered from D: (internal storage, a hard disk), then E:, F: ... */
         phoneDrives() {
-            if (root.phoneStorage && root.phoneStorage.remote) return [];
+            const hybrid = continuity();
+            // over ActiveSync a phone is a portable device, except the hybrid phone this DeX window runs on:
+            // its storage is this computer's own drives (#798)
+            if (root.phoneStorage && root.phoneStorage.remote && !hybrid) return [];
             const list = root.explorerPhoneDrive && root.explorerPhoneDrive.available() ? root.explorerPhoneDrive.computerDrives() : [];
-            if (!continuity()) return list;
+            if (!hybrid) return list;
             const internal = list.filter((d) => d.kind === 'internal');
             const others = list.filter((d) => d.kind !== 'internal');
             let code = 'D'.charCodeAt(0);

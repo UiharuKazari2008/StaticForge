@@ -36,7 +36,13 @@
         hybrid() {
             try {
                 const H = root.AndroidHome;
-                return H && typeof H.getContinuity === 'function' ? JSON.parse(H.getContinuity()) : null;
+                if (H && typeof H.getContinuity === 'function') return JSON.parse(H.getContinuity());
+                // an app build before DSApp 4dac430: worked out from what it does report
+                if (!H || typeof H.isHome !== 'function') return null;
+                const external = typeof H.isExternalDisplay === 'function' && H.isExternalDisplay();
+                const home = H.isHome();
+                const A = root.AndroidActiveSync;
+                return { hybrid: !!(home && external), dexSeen: external, home, external, deviceId: A && typeof A.getDeviceId === 'function' ? A.getDeviceId() : '' };
             } catch (_) { return null; }
         },
         post(msg) {

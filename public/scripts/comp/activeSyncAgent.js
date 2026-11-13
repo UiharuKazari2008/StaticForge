@@ -371,9 +371,14 @@
     function continuityLocal(deviceId) {
         try {
             const H = root.AndroidHome;
-            if (!H || typeof H.getContinuity !== 'function') return false;
-            const c = JSON.parse(H.getContinuity());
-            return !!(c && c.hybrid && c.external && String(c.deviceId).toLowerCase() === String(deviceId).toLowerCase());
+            let c = null;
+            if (H && typeof H.getContinuity === 'function') c = JSON.parse(H.getContinuity());
+            // an app build before DSApp 4dac430: the DeX window (DeX seen) of a phone with Dreamscape as home
+            else if (H && typeof H.isExternalDisplay === 'function' && H.isExternalDisplay() && typeof H.isHome === 'function' && H.isHome()) {
+                const A = root.AndroidActiveSync;
+                c = { hybrid: true, external: true, deviceId: A && typeof A.getDeviceId === 'function' ? A.getDeviceId() : '' };
+            }
+            return !!(c && c.hybrid && c.external && c.deviceId && String(c.deviceId).toLowerCase() === String(deviceId).toLowerCase());
         } catch (_) { return false; }
     }
 

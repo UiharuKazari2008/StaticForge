@@ -615,9 +615,18 @@
     function continuity() {
         try {
             const H = root.AndroidHome;
-            if (!H || typeof H.getContinuity !== 'function') return null;
-            const c = JSON.parse(H.getContinuity());
-            return c && c.hybrid && c.external ? c : null;
+            if (H && typeof H.getContinuity === 'function') {
+                const c = JSON.parse(H.getContinuity());
+                return c && c.hybrid && c.external ? c : null;
+            }
+            // an app build before DSApp 4dac430 has no getContinuity: this window on the DeX display (so DeX
+            // has been opened) on a phone whose home screen is Dreamscape is hybrid too
+            if (H && typeof H.isExternalDisplay === 'function' && H.isExternalDisplay() && typeof H.isHome === 'function' && H.isHome()) {
+                const A = root.AndroidActiveSync;
+                const id = A && typeof A.getDeviceId === 'function' ? A.getDeviceId() : '';
+                return id ? { hybrid: true, dexSeen: true, home: true, external: true, deviceId: id } : null;
+            }
+            return null;
         } catch (_) { return null; }
     }
     function isContinuityDevice(dev) {
