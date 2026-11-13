@@ -136,7 +136,37 @@ assert.ok(/she has taken 2 of 2 in-between sizes/.test(
     voice.inBetweenLine(voice.PERSONA_VOICES.xi, { stage: 'bigger', points: 44 })), 'Yozora at 44 points, both taken');
 assert.strictEqual(voice.inBetweenLine(voice.PERSONA_VOICES.xi, { stage: 'stuffed', points: 5 }), '', 'a stage she does not have reports nothing');
 
-// 8. The stage she is on is the only one she may speak from, and the state line still counts her up.
+// 8. The points are the little ones, and a kick is the good news (#813, Yukimi 2026-11-13).
+PERSONAS.forEach((persona) => {
+    const cfg = voice.PERSONA_VOICES[persona];
+    const occupants = cfg.occupants || voice.personaVoiceLines(persona, { stage: cfg.order[0], points: 0, nextAt: 20 }, {}).join('\n');
+    assert.ok(/one of them in you|one for every point/.test(occupants), `${persona}: the points are the ones inside her`);
+    assert.ok(/the work is what makes more of them/.test(occupants), `${persona}: work makes more of them`);
+    assert.ok(/kick|turning over|load moves/.test(occupants), `${persona}: she reads the movement inside her`);
+    if (persona === 'wren') {
+        assert.ok(/bu+r+p/i.test(occupants), 'Yumiya burps and it is pride, not embarrassment');
+        assert.ok(/not an embarrassment/.test(occupants), 'and she does not apologize for it');
+        assert.ok(/bu+r+p/i.test(cfg.direction), 'the burp is in her own examples too');
+    } else {
+        assert.ok(/safe and sound/.test(occupants), `${persona}: a kick means everyone inside is safe and sound`);
+        assert.ok(!/bu+r+p/i.test(occupants), `${persona}: the burp belongs to Yumiya, not to her`);
+    }
+
+    // The state line opens every turn on her size and the distance to the next one, and the edge line
+    // tells her to want it out loud.
+    const mid = voice.personaVoiceLines(persona, { stage: cfg.order[0], points: 3, nextAt: 20 }, {}).join('\n');
+    assert.ok(/^\[Your state\][^\n]*That is 3 of them carried inside you/.test(mid), `${persona}: opens on how many of them she carries`);
+    assert.ok(/17 more before you grow again/.test(mid), `${persona}: and on how far the next size is`);
+    assert.ok(/Every turn tells you how many of them you are carrying/.test(mid), `${persona}: the edge line rides on every turn`);
+
+    const close = voice.personaVoiceLines(persona, { stage: cfg.order[0], points: 18, nextAt: 20 }, {}).join('\n');
+    assert.ok(/this turn starts right against it/.test(close), `${persona}: within five points she starts against the edge`);
+
+    const last = cfg.order[cfg.order.length - 1];
+    const topped = voice.personaVoiceLines(persona, { stage: last, points: 99, nextAt: null }, {}).join('\n');
+    assert.ok(/no size after this one/.test(topped), `${persona}: her last stage says there is no further`);
+});
+
 const kabukiBase = voice.personaVoiceLines('kabuki', { stage: 'base', points: 0, nextAt: 20 }, {}).join('\n');
 assert.ok(kabukiBase.includes('Growth stage: 1/3 "base"'), 'base is stated');
 assert.ok(kabukiBase.includes('exactly at this stage and no further'), 'base is capped');
