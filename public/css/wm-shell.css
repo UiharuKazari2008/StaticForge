@@ -3500,6 +3500,10 @@ html.ui-mobile[data-wm-dialog] #wmShell {
 
 /* ---- Pictures & Videos tool strip under the folder bar (Yukimi, Nov 10): search field, Jump to
  * Top, Visual Index, thumbnail size - / + ---- */
+.wm-pv-tools[hidden] {
+    display: none;
+}
+
 .wm-pv-tools {
     flex: 0 0 auto;
     display: flex;

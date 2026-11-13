@@ -4398,7 +4398,8 @@
      * Files: every sound of the ROM's \Windows a browser can play, under the ROM's names
      * (public/sounds/wm61): WAVs as they are, WMAs as MP3 (WMA does not decode in browsers, names
      * without the ROM's trailing space). The MIDI call tones (busy, calldrop, dpadctl ...) are not
-     * here: nothing synthesises MIDI. The ROM has no lowbatt / online / startup / shutdown files.
+     * here: nothing synthesises MIDI. The ROM has no lowbatt / startup / shutdown files; online (the
+     * instant-message event's) is Windows Live Messenger's new-message sound from archive.org (#779).
      *
      * Each phone event (SND_EVENTS: WM's notification classes, CE's sound events and Dreamscape's
      * own) has per-device options on Settings > Sounds & Notifications > Notifications
@@ -4417,7 +4418,10 @@
         'Alarm1.mp3', 'Alarm2.wav', 'Alarm3.mp3', 'Alarm4.mp3', 'Alarm5.wav', 'Default.wav', 'drive.mp3',
         'hwandsw.wav', 'Infbeg.wav', 'Infend.wav', 'Loudest.wav', 'MenuPop.wav', 'notify.mp3', 'paloma.mp3',
         'Quietest.wav', 'RecEnd.wav', 'Ring-Standard.mp3', 'Ring-Vision.mp3', 'Ring-WindowsMobile.mp3',
-        'ShutterSound.wav', 'Splat.wav', 'TimerSound.wav', 'type.mp3', 'Voicbeep.wav'
+        'ShutterSound.wav', 'Splat.wav', 'TimerSound.wav', 'type.mp3', 'Voicbeep.wav',
+        // the instant-message event's file (HKCU ControlPanel\Notifications {A877D65D}: online.wma), which
+        // the emulator images lack: Windows Live Messenger's new instant message sound (archive.org, #779)
+        'online.mp3'
     ];
     // WM's Sound list names a file without its extension, first letter capital ("Notify", "Type")
     const wmSoundLabel = (file) => {
@@ -4436,7 +4440,7 @@
         { id: 'beep', label: 'Default beep', kind: 'event', sound: 'Default.wav', desktop: 'dialog' },
         { id: 'director', label: 'Director: Turn finished', kind: 'note', sound: 'Alarm2.wav', display: false, desktop: 'balloon' },
         // #779: Dreamscape Messenger (the chat personas) and Text Messaging notify in classes of their own
-        { id: 'chat', label: 'Dreamscape Messenger: New message', kind: 'note', sound: 'Alarm3.mp3', desktop: 'balloon' },
+        { id: 'chat', label: 'Dreamscape Messenger: New message', kind: 'note', sound: 'online.mp3', desktop: 'balloon' },
         { id: 'error', label: 'Errors', kind: 'event', sound: 'Alarm2.wav', desktop: 'critical-stop' },
         { id: 'info', label: 'Information', kind: 'event', sound: 'Alarm2.wav', desktop: 'dialog' },
         { id: 'menu', label: 'Menu pop-up', kind: 'event', sound: 'MenuPop.wav', play: false, desktop: 'dialog' },
@@ -6216,8 +6220,10 @@
             const img = page.querySelector('.wm-pv-folder img');
             if (img && img.dataset.icon !== icon) { img.dataset.icon = icon; img.src = art(icon); img.srcset = srcset(icon); }
             const sortBtn = page.querySelector('.wm-pv-sort');
-            const idx = page.querySelector('.wm-pv-tool[data-act="index"]');
-            if (idx) idx.disabled = !!g;
+            // the tool row (search, Jump to Top, Visual Index, sizes) is the workspace prints' own:
+            // a storage card shows the folder bar and the grid alone (Yukimi #788)
+            const tools = page.querySelector('.wm-pv-tools');
+            if (tools) tools.hidden = !!g;
             if (g) {
                 if (dropdownAnchor !== sortBtn) sortBtn.querySelector('span').textContent = g.searching() ? 'Relevance' : g.sortLabel();
                 sortBtn.disabled = g.searching();
