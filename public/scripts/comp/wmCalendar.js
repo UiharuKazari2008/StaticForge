@@ -927,7 +927,7 @@
             .slice(0, Math.max(1, n || 1));
     }
 
-    window.wmCalendar = { reload: () => reload(true), upcoming, _state: () => ({ view, date, cals, layer }) };
+    window.wmCalendar = { reload: () => reload(true), upcoming, occurrences: (a, b) => occ(a, b), openEvent: (o) => { ws.open(APP_ID); if (page && o) openSummary(o); }, loaded: () => !!loadedAt, _state: () => ({ view, date, cals, layer }) };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

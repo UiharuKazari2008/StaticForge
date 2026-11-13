@@ -1,6 +1,6 @@
 /**
  * Melaton Mobile: Search (Windows Mobile 6.1 Professional's Search, "Search Phone" on the 6.5
- * Start screen; shfind.exe), Yozora #748.
+ * Start screen; shfind.exe), Yozora #748; a search for anything on the phone and in Dreamscape (#779).
  *
  * Measured on the Device Emulators (VGA halved; captures in ~/.cache/claude-run/wm65apps/progs/emu61
  * s*.png and emu65 b3-*.png):
@@ -15,16 +15,40 @@
  *
  * Ours searches what the phone holds, like the desktop Start menu's search box and with its
  * ranking (runCommandIndex.js runWordPrefixRank: the whole name starts with the text, then every
- * word of the text starts a word of the name, then the keywords; Programs lead, as there):
- *   Programs    the phone's programs (Programs and its folders) and the Settings pages
- *   Notes       the workspace's notes, by name and by text
- *   Tasks       the workspace's tasks (window.wmTasks.search)
- *   Messaging   the subject and sender of the inbox's mail as Messaging lists it (the list request
- *               only: nothing is opened or marked read)
- *   Pictures    the gallery's own search (wsClient.searchFiles: tags and prompt text of the
- *               workspace's images), as rows with the picture's thumbnail; a tap opens the viewer
- *   Help        when a Help program gives window.wmHelp.search
- * A row opens the item in its program. Only on phones. Styles: public/css/wm-search.css.
+ * word of the text starts a word of the name, then the keywords, then the text anywhere in the
+ * item; Programs lead, as there). Each source is one "Type:" entry; "All data" asks them all, in
+ * ALL_ORDER. A source whose program or API is missing is left out of the list (fail soft):
+ *   Programs       the phone's programs (Programs and its folders) and the Settings pages
+ *   Android        the phone's Android programs (window.wmAndroidApps.list), hidden ones too; a
+ *                  hidden one starts through the app bridge (window.AndroidApps.launch)
+ *   Contacts       the workspace's Contacts folder (.vcf, read with window.melatonVCard) and the
+ *                  phone's own contacts when they are shown live (window.wmPhoneData); by name,
+ *                  company, e-mail address and number; a tap opens the card (wmContactsApp.openFile)
+ *   E-mail         Dreamscape Mail: subject, sender and the start of the text of the newest 200
+ *                  messages of every folder but Junk (dovecote_list_mail, headers only: nothing is
+ *                  marked read); a tap opens the message (wmMessaging.openMail)
+ *   Text Messages  iMessage / RCS through the server's search (window.textMessaging.search); the
+ *                  row's second line is the matching text and its date; a tap opens the
+ *                  conversation (wmTextMessaging.openChat)
+ *   Messenger      Dreamscape Messenger's conversations (wsClient.getChatSessions; wmChatApp.openChat)
+ *   Director       the Director sessions of each persona (director_get_sessions; wmDirectorApp.openSession)
+ *   Calendar       the appointments of the year either side of today (wmCalendar.occurrences /
+ *                  openEvent), by subject, location and notes; dated by the next occurrence
+ *   Tasks          the workspace's tasks (window.wmTasks.search)
+ *   Notes          the workspace's notes, by name and by text
+ *   Presets        Studio's presets (window.optionsData.presets), by name and prompt; a tap opens
+ *                  the preset (wmSpellbook.openPreset when there, else Spellcaster's spell page)
+ *   Files          the workspace's files and folders (My Documents and the folders at My Device's
+ *                  root, without Pictures / Scraps / Notes / Trash; vfsClient.listDirectory, walked
+ *                  a level at a time, at most MAX_FOLDERS folders, kept for a minute); a tap opens the
+ *                  file as File Explorer would (wmFileExplorer.openFile / openFolder)
+ *   Help           when a Help program gives window.wmHelp.search
+ *   Pictures       the gallery's own search (wsClient.searchFiles: tags and prompt text of the
+ *                  workspace's images), as rows with the picture's thumbnail; a tap opens the viewer
+ * The quick sources answer under the wait cursor; the slow ones (server searches, file walks) are
+ * added to the list in their place as they come in, so the first rows are never held up by them.
+ * "No items found." only once every source has answered. Only on phones. Styles:
+ * public/css/wm-search.css.
  */
 (function () {
     'use strict';
@@ -35,6 +59,11 @@
     const HISTORY_KEY = 'wmSearchHistory';
     const HISTORY_MAX = 10;
     const PAGE_ROWS = 60; // rows drawn at a time (a picture search can answer thousands)
+    const CACHE_MS = 60000; // contacts and the file tree are read again after a minute
+    const MAX_FOLDERS = 80; // folders the file walk lists at most
+    const MAX_DEPTH = 6;
+    const FIRST_WAIT_MS = 30000; // the wait cursor gives up on a source that never answers
+    const QUICK_WAIT_MS = 1500; // a quick source slower than this (a busy server) is added later too
 
     let ws = null;
     let page = null;
@@ -43,6 +72,7 @@
     let shown = 0;
     let sel = -1;
     let runId = 0;
+    let picked = false; // a row of this search has been tapped
 
     const esc = (s) => ws.escapeHtml(String(s == null ? '' : s));
     const pad = (n) => String(n).padStart(2, '0');
@@ -56,11 +86,33 @@
         const d = Number.isFinite(n) ? new Date(n < 1e11 ? n * 1000 : n) : new Date(v);
         return Number.isNaN(+d) ? null : d;
     };
+    const readJson = (key, fallback) => {
+        try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return v == null ? fallback : v; } catch (_) { return fallback; }
+    };
+    const vfs = () => (typeof vfsClient !== 'undefined' ? vfsClient : null); // eslint-disable-line no-undef
 
     function workspaceId() {
         let w = 'Default';
         try { if (typeof activeWorkspace !== 'undefined' && activeWorkspace) w = activeWorkspace; } catch (_) { /* none */ } // eslint-disable-line no-undef
         return w;
+    }
+
+    /** A read kept for CACHE_MS (one at a time per key; a failed read is not kept). */
+    const cache = new Map();
+    function cached(key, load) {
+        const c = cache.get(key);
+        if (c && c.p) return c.p;
+        if (c && Date.now() - c.at < CACHE_MS) return Promise.resolve(c.data);
+        const p = Promise.resolve().then(load).then((data) => { cache.set(key, { at: Date.now(), data }); return data; }, (err) => { cache.delete(key); throw err; });
+        cache.set(key, { p });
+        return p;
+    }
+
+    /** Runs fn over list with at most n at a time. */
+    async function eachLimit(list, n, fn) {
+        let at = 0;
+        const worker = async () => { while (at < list.length) { const i = at++; await fn(list[i], i); } };
+        await Promise.all(Array.from({ length: Math.min(n, list.length) }, worker));
     }
 
     // ---------------------------------------------------------------- matching (the Start menu's)
@@ -77,12 +129,25 @@
         if (String(label || '').toLowerCase().startsWith(q)) return 0;
         const startsAll = (w) => terms.every((t) => w.some((x) => x.startsWith(t)));
         if (startsAll(words(label))) return 1;
-        if ((keywords || []).some((k) => String(k).toLowerCase().startsWith(q) || startsAll(words(k)))) return 2;
+        if ((keywords || []).some((k) => k && (String(k).toLowerCase().startsWith(q) || startsAll(words(k))))) return 2;
         return -1;
     }
 
     const holdsAll = (q, text) => { const hay = String(text || '').toLowerCase(); return q.split(/\s+/).filter(Boolean).every((t) => hay.includes(t)); };
+    /** rank(), or 3 when every term is somewhere in the item's text. */
+    const rankIn = (q, label, keywords, text) => { const r = rank(q, label, keywords); return r >= 0 ? r : (holdsAll(q, `${label || ''}\n${(keywords || []).join('\n')}\n${text || ''}`) ? 3 : -1); };
     const byRank = (a, b) => (a.rank - b.rank) || String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' });
+
+    /** The text from a little before the first term found, so the match is on the narrow line. */
+    function snippetAround(text, q) {
+        const t = String(text || '').replace(/\s+/g, ' ').trim();
+        const low = t.toLowerCase();
+        const hits = q.split(/\s+/).filter(Boolean).map((x) => low.indexOf(x)).filter((i) => i >= 0);
+        const at = hits.length ? Math.min(...hits) : -1;
+        if (at < 18) return t;
+        const from = t.lastIndexOf(' ', at - 1) > at - 14 ? t.lastIndexOf(' ', at - 1) + 1 : at - 8;
+        return `...${t.slice(from)}`;
+    }
 
     // ---------------------------------------------------------------- sources
 
@@ -97,7 +162,7 @@
             const r = rank(q, label, keywords);
             if (r < 0) return;
             seen.add(key);
-            out.push({ kind: kind || 'Programs', title: label, img, rank: r, open });
+            out.push({ key, kind: kind || 'Programs', title: label, img, rank: r, open });
         };
         const walk = (folder) => {
             let items = [];
@@ -128,6 +193,127 @@
         return out.sort(byRank);
     }
 
+    /**
+     * Every Android program the phone lists, the hidden ones too (wmAndroidApps.js keeps the list,
+     * the names given to programs and the hidden set). A shown one is also a row of Programs: "All
+     * data" keeps that one (same key). A shown program opens through the shell, a hidden one
+     * through the bridge.
+     */
+    function android(q) {
+        const A = window.wmAndroidApps;
+        if (!A || typeof A.list !== 'function') return [];
+        let list = [];
+        try { list = A.list() || []; } catch (_) { list = []; }
+        let store = null;
+        try { store = typeof A.store === 'function' ? A.store() : null; } catch (_) { store = null; }
+        const icons = (store && store.icons) || {};
+        const names = readJson('wmAndroidNames', {}) || {};
+        const hidden = new Set((readJson('wmAndroidHidden', []) || []).map(String));
+        const iconOf = (a) => {
+            const k = icons[a.id] ? a.id : icons[a.package] ? a.package : Object.keys(icons).find((x) => icons[x] && icons[x].package === a.package);
+            return (k && icons[k] && icons[k].icon) || a.icon || null;
+        };
+        const out = [];
+        for (const a of list) {
+            if (!a || !a.id || a.role === 'settings') continue; // Android Settings is a Settings page
+            const label = (typeof names[a.id] === 'string' && names[a.id].trim()) || a.label;
+            const r = rank(q, label, [a.label, a.package]);
+            if (r < 0) continue;
+            const shellId = `android:${a.id}`;
+            const icon = iconOf(a);
+            out.push({
+                key: `a:${shellId}`, kind: 'Android', title: label, img: icon ? { src: icon, srcset: '' } : artImg('app-android'), rank: r,
+                open: () => {
+                    if (!hidden.has(a.id) && ws.listApps().some((x) => x.id === shellId)) { ws.open(shellId, { fromStart: true }); return; }
+                    let ok = false;
+                    try { ok = !!(window.AndroidApps && window.AndroidApps.launch(a.id) === true); } catch (_) { ok = false; }
+                    if (!ok) void ws.messageBox({ title: label, text: `${label} could not be started. It may have been removed from the device.`, icon: 'warning' });
+                }
+            });
+        }
+        return out.sort(byRank);
+    }
+
+    /** The workspace's own folders (its home listing, kept for a minute): a missing folder is never listed. */
+    function homeFolders(wsId) {
+        return cached(`home:${wsId}`, async () => {
+            const res = await vfs().listDirectory(`/Workspaces/${wsId}`, { offset: 0, limit: 500, sortField: 'name', sortDirection: 'asc', search: '' });
+            return ((res && res.items) || []).filter((i) => i && i.kind === 'folder').map((i) => String(i.name || '').toLowerCase());
+        });
+    }
+
+    /** vcard.js comes with Explorer's feature on the desktop; the phone loads it alone (as wmNotes.js does). */
+    let vcardLoading = null;
+    function ensureVCard() {
+        if (window.melatonVCard) return Promise.resolve(true);
+        if (!vcardLoading) {
+            const fl = window.featureLoader;
+            vcardLoading = (fl && typeof fl._loadScript === 'function'
+                ? fl._loadScript('scripts/comp/vcard.js')
+                : new Promise((resolve, reject) => {
+                    const el = document.createElement('script');
+                    el.src = '/scripts/comp/vcard.js';
+                    el.onload = resolve;
+                    el.onerror = reject;
+                    document.body.appendChild(el);
+                })).then(() => !!window.melatonVCard, () => { vcardLoading = null; return false; });
+        }
+        return vcardLoading;
+    }
+
+    /** The Contacts folder's cards: [{ c, item, folder }] (contact groups left out, as Contacts lists people). */
+    function contactCards(wsId) {
+        return cached(`contacts:${wsId}`, async () => {
+            if (!(await ensureVCard())) return [];
+            if (!(await homeFolders(wsId)).includes('contacts')) return [];
+            const VC = window.melatonVCard;
+            const folder = `/Workspaces/${wsId}/Contacts`;
+            const res = await vfs().listDirectory(folder, { offset: 0, limit: 1000, sortField: 'name', sortDirection: 'asc', search: '' });
+            let files = ((res && res.items) || []).filter((i) => /\.vcf$/i.test(i.name || '') && i.kind !== 'folder');
+            // the phone's own mirror file is shown live from the phone instead (wmNotes.js Contacts)
+            const pdm = window.wmPhoneData;
+            const live = !!(pdm && typeof pdm.live === 'function' && pdm.live('contacts'));
+            if (live && typeof pdm.isOwnMirror === 'function') files = files.filter((f) => !pdm.isOwnMirror(f.name));
+            const out = [];
+            await eachLimit(files, 6, async (f) => {
+                try {
+                    const r = await vfs().downloadFile(f.targetId || f.id);
+                    const text = await (await fetch(r.downloadUrl, { credentials: 'same-origin' })).text();
+                    VC.parseVcf(text).forEach((c) => { if (!c.group) out.push({ c, item: f, folder }); });
+                } catch (_) { /* an unreadable card is left out */ }
+            });
+            return out;
+        });
+    }
+
+    async function contacts(q) {
+        if (!vfs() || !window.wmContactsApp) return [];
+        const list = (await contactCards(workspaceId())).slice();
+        const VC = window.melatonVCard;
+        if (!VC) return [];
+        const pdm = window.wmPhoneData;
+        if (pdm && typeof pdm.live === 'function' && pdm.live('contacts') && typeof pdm.contactEntries === 'function') {
+            try { (pdm.contactEntries(VC) || []).forEach((e) => { if (e && e.c) list.push({ c: e.c, item: null }); }); } catch (_) { /* the folder's cards only */ }
+        }
+        const digits = q.replace(/\D/g, '');
+        const isNumber = digits.length >= 2 && q.replace(/[\d\s()+-]/g, '') === '';
+        const out = [];
+        for (const e of list) {
+            const c = e.c;
+            const name = VC.displayName(c) || '';
+            const home = c.home || {};
+            const work = c.work || {};
+            let r = rank(q, name, [c.first, c.last, c.nickname, work.company, VC.email(c)]);
+            if (r < 0 && isNumber && [home.mobile, home.phone, work.phone].some((n) => String(n || '').replace(/\D/g, '').includes(digits))) r = 3;
+            if (r < 0) continue;
+            out.push({
+                kind: 'Contacts', title: name || '(No name)', img: artImg('contacts-card'), rank: r,
+                open: () => { if (e.item) window.wmContactsApp.openFile(e.item, e.folder); else ws.open('contacts'); }
+            });
+        }
+        return out.sort(byRank);
+    }
+
     async function notes(q) {
         const c = window.wsClient;
         if (!c || typeof c.getNotesByWorkspace !== 'function') return [];
@@ -136,8 +322,7 @@
         const list = (res && (res.notes || (res.data && res.data.notes))) || [];
         const out = [];
         for (const n of list) {
-            let r = rank(q, n.name, []);
-            if (r < 0 && holdsAll(q, `${n.name}\n${n.content || ''}`)) r = 3;
+            const r = rankIn(q, n.name, [], n.content);
             if (r < 0) continue;
             out.push({
                 kind: 'Notes', title: n.name || 'Note', img: artImg('notes-note'), rank: r, date: toDate(n.updated_at), size: String(n.content || '').length,
@@ -159,21 +344,188 @@
         return m.from ? (String(m.from).includes('@') ? m.from : `${m.from}@dream.co.jp`) : '';
     }
 
-    async function messages(q) {
+    async function email(q) {
         const c = window.wsClient;
         if (!c || typeof c.sendMessage !== 'function' || !window.wmMessaging) return [];
-        // the inbox as Messaging lists it: headers only (dovecote_get_mail is what marks a message read)
-        const res = await c.sendMessage('dovecote_list_mail', { folder: 'inbox', limit: 200 }, true);
+        // every folder as Messaging lists it: headers and the text's start only (dovecote_get_mail is
+        // what marks a message read). No server-side mail search exists: the newest 200 are looked at.
+        const res = await c.sendMessage('dovecote_list_mail', { limit: 200 }, true);
         const list = (res && (res.mail || (res.data && res.data.mail))) || [];
         const out = [];
         for (const m of list) {
+            if (m.folder === 'spam') continue;
             const from = senderOf(m);
-            let r = rank(q, m.subject, [from]);
-            if (r < 0 && holdsAll(q, `${m.subject || ''}\n${from}`)) r = 3;
+            const r = rankIn(q, m.subject, [from], m.snippet);
             if (r < 0) continue;
             out.push({
-                kind: 'Messaging', title: m.subject || '(no subject)', img: artImg(m.read ? 'msg-read' : 'msg-unread'), rank: r, date: toDate(m.createdAt), from,
+                kind: 'E-mail', title: m.subject || '(no subject)', img: artImg(m.read ? 'msg-read' : 'msg-unread'), rank: r, date: toDate(m.createdAt), size: Number(m.size) || 0,
                 open: () => window.wmMessaging.openMail(m.id)
+            });
+        }
+        return out.sort(byRank);
+    }
+
+    /** The server's search over the Text Messaging accounts (iMessage, RCS): its own order (newest first). */
+    async function texts(q, raw) {
+        const T = window.textMessaging;
+        if (!T || typeof T.search !== 'function') return [];
+        const list = (await T.search(raw || q, { limit: 50 })) || [];
+        return list.filter((x) => x && x.message && x.chatGuid).map((x, i) => {
+            const m = x.message;
+            const text = m.text || m.subject || ((m.attachments || [])[0] || {}).name || '';
+            return {
+                kind: 'Text Messages', title: x.chatTitle || 'Text Message', img: artImg('app-sms'), rank: i, date: toDate(m.date), snippet: snippetAround(text, q),
+                open: () => { if (window.wmTextMessaging) window.wmTextMessaging.openChat(x.accountId, x.chatGuid); }
+            };
+        });
+    }
+
+    /** Dreamscape Messenger's conversations with the chat personas (wmChat.js). */
+    async function chats(q) {
+        const c = window.wsClient;
+        if (!c || typeof c.getChatSessions !== 'function' || !window.wmChatApp) return [];
+        const r = await c.getChatSessions();
+        const list = (r && r.success && Array.isArray(r.sessions)) ? r.sessions : [];
+        const out = [];
+        for (const s of list) {
+            const title = s.chat_name || s.character_name || 'Unnamed Chat';
+            const rk = rank(q, title, [s.character_name]);
+            if (rk < 0) continue;
+            out.push({ kind: 'Messenger', title, img: artImg('app-chat'), rank: rk, date: toDate(s.updated_at || s.created_at), open: () => window.wmChatApp.openChat(s.id) });
+        }
+        return out.sort(byRank);
+    }
+
+    const PERSONAS = [['wren', 'Yumiya'], ['kabuki', 'Chiyo'], ['xi', 'Yozora']];
+    function xiOn() {
+        const st = window.directorInstance && window.directorInstance._status;
+        return !!(st && st.xi && st.xi.enabled === true);
+    }
+
+    /** The Director's sessions, each persona's (Messaging's Director accounts read the same list). */
+    async function director(q) {
+        const c = window.wsClient;
+        if (!c || typeof c.sendMessage !== 'function') return [];
+        const out = [];
+        await Promise.all(PERSONAS.filter(([p]) => p !== 'xi' || xiOn()).map(async ([p, name]) => {
+            let r = null;
+            try { r = await c.sendMessage('director_get_sessions', { persona: p }, true); } catch (_) { return; }
+            const d = r && (Array.isArray(r.sessions) ? r : r.data);
+            for (const s of (d && Array.isArray(d.sessions) ? d.sessions : [])) {
+                if (!s || !s.id) continue;
+                const rk = rankIn(q, s.name, [name], s.last_line);
+                if (rk < 0) continue;
+                out.push({
+                    kind: 'Director', title: s.name || 'Director', img: artImg(`today-persona-${p}`), rank: rk, date: toDate(s.updated_at || s.created_at),
+                    open: async () => {
+                        const app = window.wmDirectorApp;
+                        if (app && typeof app.openSession === 'function') {
+                            try { if (await app.openSession(p, s.id)) return; } catch (err) { console.warn('wmSearch: Director', err); }
+                        }
+                        ws.open('director');
+                    }
+                });
+            }
+        }));
+        return out.sort(byRank);
+    }
+
+    /** The calendar's appointments, each once: its next occurrence, else its last one. */
+    async function calendar(q) {
+        const C = window.wmCalendar;
+        if (!C || typeof C.occurrences !== 'function') return [];
+        if (typeof C.loaded === 'function' && !C.loaded()) await C.reload();
+        const now = new Date();
+        const day = 86400000;
+        const occs = C.occurrences(new Date(+now - 365 * day), new Date(+now + 365 * day)) || [];
+        const pick = new Map();
+        for (const o of occs) {
+            const k = o.ev.uid || o.ev;
+            const cur = pick.get(k);
+            const better = !cur || (o.end >= now ? (cur.end < now || o.start < cur.start) : (cur.end < now && o.start > cur.start));
+            if (better) pick.set(k, o);
+        }
+        const out = [];
+        for (const o of pick.values()) {
+            const ev = o.ev;
+            const r = rankIn(q, ev.summary, [ev.location], ev.description);
+            if (r < 0) continue;
+            out.push({ kind: 'Calendar', title: ev.summary || '(No subject)', img: artImg('app-calendar'), rank: r, date: o.start, open: () => C.openEvent(o) });
+        }
+        return out.sort(byRank);
+    }
+
+    /** Studio's presets as the client holds them (appBootstrap.js; Spellcaster lists the same). */
+    function presets(q) {
+        const list = (window.optionsData && Array.isArray(window.optionsData.presets)) ? window.optionsData.presets : [];
+        const out = [];
+        for (const p of list) {
+            if (!p || !p.name) continue;
+            const r = rankIn(q, p.name, [], p.prompt);
+            if (r < 0) continue;
+            out.push({
+                kind: 'Presets', title: p.name, img: artImg('app-spellbook'), rank: r,
+                open: () => {
+                    if (window.wmSpellbook && typeof window.wmSpellbook.openPreset === 'function') window.wmSpellbook.openPreset(p.name);
+                    else if (window.wmSpellcaster && typeof window.wmSpellcaster.openSpell === 'function') window.wmSpellcaster.openSpell(p.name);
+                    else if (typeof window.showPresetManager === 'function') window.showPresetManager();
+                }
+            });
+        }
+        return out.sort(byRank);
+    }
+
+    // the workspace's system folders the file walk leaves out: other sources search them (Pictures,
+    // Scraps, Notes) or they are not files to find (Trash); at My Device's root the System and
+    // Workspaces folders
+    const SKIP_FOLDERS = new Set(['pictures', 'scraps', 'notes', 'trash', 'system', 'workspaces']);
+
+    /** Every file and folder under My Documents and My Device's own folders: [{ item }] (a minute's cache). */
+    function fileTree(wsId) {
+        return cached(`files:${wsId}`, async () => {
+            const out = [];
+            const seen = new Set();
+            let level = [`/Workspaces/${wsId}`, '/'];
+            let listed = 0;
+            for (let depth = 0; level.length && depth <= MAX_DEPTH && listed < MAX_FOLDERS; depth++) {
+                const next = [];
+                const todo = level.filter((p) => !seen.has(p)).slice(0, MAX_FOLDERS - listed);
+                todo.forEach((p) => seen.add(p));
+                listed += todo.length;
+                await eachLimit(todo, 4, async (path) => {
+                    let res;
+                    try { res = await vfs().listDirectory(path, { offset: 0, limit: 500, sortField: 'name', sortDirection: 'asc', search: '' }); } catch (_) { return; }
+                    for (const i of (res && res.items) || []) {
+                        const name = String((i && i.name) || '');
+                        if (!name || name.startsWith('.')) continue;
+                        if (i.kind === 'folder') {
+                            if (i.system && (path === '/' || SKIP_FOLDERS.has(name.toLowerCase()))) continue;
+                            out.push({ item: i });
+                            // a shortcut to a folder is found, not walked (it can point back up)
+                            if (!i.isShortcut && i.navPath && !/\.(7z|zip|rar|tar|gz)$/i.test(name)) next.push(i.navPath);
+                        } else {
+                            out.push({ item: i });
+                        }
+                    }
+                });
+                level = next;
+            }
+            return out;
+        });
+    }
+
+    async function files(q) {
+        if (!vfs() || !window.wmFileExplorer) return [];
+        const FE = window.wmFileExplorer;
+        const out = [];
+        for (const { item: i } of await fileTree(workspaceId())) {
+            const r = rankIn(q, i.name, [], ''); // "calendar.ics" finds "Yukimi's Calendar.ics"
+            if (r < 0) continue;
+            const folder = i.kind === 'folder';
+            const img = folder ? 'fe-folder' : (i.targetKind === 'image' || i.targetKind === 'scrap' || /^image\//.test(i.mimeType || '')) ? 'app-pictures' : i.targetKind === 'note' ? 'app-notes' : 'fe-file';
+            out.push({
+                kind: 'Files', title: i.name, img: artImg(img), rank: r, date: toDate(i.modifiedAt || i.updatedAt), size: folder ? 0 : Number(i.size || i.sizeBytes) || 0,
+                open: () => { if (folder && i.navPath && !i.isShortcut) FE.openFolder(i.navPath, i.name); else FE.openFile(i); }
             });
         }
         return out.sort(byRank);
@@ -219,18 +571,28 @@
         return list.map((h, i) => ({ kind: 'Help', title: h.title, img: artImg('app-help'), rank: i, date: toDate(h.date), size: Number(h.size) || 0, open: h.open }));
     }
 
-    // the Type list, in the device's order (alphabetical after "All data"); "All data" asks them in
-    // the Start menu's group order with the pictures last
+    // the Type list, in the device's order (alphabetical after "All data"); slow: answers after the
+    // first rows are up (a server search or a walk of many folders)
     const SOURCES = [
+        { id: 'android', label: 'Android', run: android, available: () => !!(window.wmAndroidApps && typeof window.wmAndroidApps.list === 'function') },
+        { id: 'calendar', label: 'Calendar', run: calendar, slow: true, available: () => !!(window.wmCalendar && typeof window.wmCalendar.occurrences === 'function') },
+        { id: 'contacts', label: 'Contacts', run: contacts, slow: true, available: () => !!window.wmContactsApp },
+        { id: 'director', label: 'Director', run: director, slow: true, available: () => !!(window.wmDirectorApp || window.directorInstance) },
+        { id: 'messages', label: 'E-mail', run: email, available: () => !!window.wmMessaging },
+        { id: 'files', label: 'Files', run: files, slow: true, available: () => !!window.wmFileExplorer },
         { id: 'help', label: 'Help', run: help, available: () => !!(window.wmHelp && typeof window.wmHelp.search === 'function') },
-        { id: 'messages', label: 'Messaging', run: messages, available: () => !!window.wmMessaging },
+        { id: 'chats', label: 'Messenger', run: chats, slow: true, available: () => !!window.wmChatApp },
         { id: 'notes', label: 'Notes', run: notes },
-        { id: 'pictures', label: 'Pictures', run: pictures },
-        { id: 'programs', label: 'Programs', run: (q) => Promise.resolve(programs(q)) },
-        { id: 'tasks', label: 'Tasks', run: tasks, available: () => !!(window.wmTasks && typeof window.wmTasks.search === 'function') }
+        { id: 'pictures', label: 'Pictures', run: pictures, slow: true },
+        { id: 'presets', label: 'Presets', run: presets },
+        { id: 'programs', label: 'Programs', run: programs },
+        { id: 'tasks', label: 'Tasks', run: tasks, available: () => !!(window.wmTasks && typeof window.wmTasks.search === 'function') },
+        { id: 'texts', label: 'Text Messages', run: texts, slow: true, available: () => !!(window.textMessaging && typeof window.textMessaging.search === 'function' && window.wmTextMessaging) }
     ];
-    const ALL_ORDER = ['programs', 'notes', 'tasks', 'messages', 'help', 'pictures'];
-    const sources = () => SOURCES.filter((s) => !s.available || s.available());
+    // "All data": Programs lead (the Start menu's order), the people and messages next, the
+    // workspace's things after, the pictures last
+    const ALL_ORDER = ['programs', 'android', 'contacts', 'messages', 'texts', 'chats', 'director', 'calendar', 'tasks', 'notes', 'presets', 'files', 'help', 'pictures'];
+    const sources = () => SOURCES.filter((s) => { try { return !s.available || s.available(); } catch (_) { return false; } });
 
     // ---------------------------------------------------------------- history
 
@@ -252,18 +614,23 @@
         const icon = r.thumb
             ? `<span class="wsr-ico is-thumb"><img src="${esc(r.thumb)}" alt="" draggable="false" loading="lazy"></span>`
             : `<span class="wsr-ico"><img src="${esc(r.img.src)}" srcset="${esc(r.img.srcset || '')}" alt="" draggable="false"></span>`;
+        // a message's row: the matching text where the kind goes, its date at the right
+        const line2 = r.snippet != null
+            ? `<span class="wsr-line2 is-snippet"><span class="wsr-snip">${esc(r.snippet)}</span><span class="wsr-date">${esc(shortDate(r.date))}</span></span>`
+            : `<span class="wsr-line2"><span class="wsr-kind">${esc(r.kind)}</span><span class="wsr-date">${esc(shortDate(r.date))}</span><span class="wsr-size">${esc(sizeText(r.size))}</span></span>`;
         return `<div class="wsr-item${i === sel ? ' is-selected' : ''}" data-i="${i}" role="option" aria-selected="${i === sel}">${icon}`
-            + `<span class="wsr-title">${esc(r.title)}</span><span class="wsr-line2"><span class="wsr-kind">${esc(r.kind)}</span>`
-            + `<span class="wsr-date">${esc(shortDate(r.date))}</span><span class="wsr-size">${esc(sizeText(r.size))}</span></span></div>`;
+            + `<span class="wsr-title">${esc(r.title)}</span>${line2}</div>`;
     }
 
-    function renderResults() {
+    /** keep: a slow source's rows came in; the list keeps its scroll position and selected row. */
+    function renderResults(keep) {
         const box = page.querySelector('.wsr-results');
         if (results == null) { box.innerHTML = ''; return; }
         if (!results.length) { box.innerHTML = '<div class="wsr-none">No items found.</div>'; return; }
-        shown = Math.min(results.length, PAGE_ROWS);
+        const top = box.scrollTop;
+        shown = Math.min(results.length, keep ? Math.max(shown, PAGE_ROWS) : PAGE_ROWS);
         box.innerHTML = results.slice(0, shown).map(rowHtml).join('');
-        box.scrollTop = 0;
+        box.scrollTop = keep ? top : 0;
     }
 
     function more() {
@@ -280,19 +647,68 @@
         page.querySelector('.wsr-type > span').textContent = s ? s.label : 'All data';
     }
 
+    /** The answers so far in the sources' order, each item once (a shown Android program is a Program). */
+    function merge(parts) {
+        const out = [];
+        const keys = new Set();
+        for (const rows of parts) {
+            for (const r of rows || []) {
+                if (r.key) { if (keys.has(r.key)) continue; keys.add(r.key); }
+                out.push(r);
+            }
+        }
+        return out;
+    }
+
     async function search() {
-        const q = field().value.trim();
-        if (!q) return;
+        const raw = field().value.trim();
+        if (!raw) return;
         field().blur();
-        remember(q);
+        remember(raw);
         const id = ++runId;
-        const ql = q.toLowerCase();
+        const ql = raw.toLowerCase();
         const list = type === 'all' ? ALL_ORDER.map((k) => sources().find((s) => s.id === k)).filter(Boolean) : sources().filter((s) => s.id === type);
-        // one source that fails (no connection, no mailbox) leaves the others' answers
-        const work = Promise.all(list.map((s) => Promise.resolve().then(() => s.run(ql)).catch((err) => { console.warn('wmSearch:', s.id, err); return []; })));
-        const parts = await ws.busy(work, { paint: true, timeout: 30000 }).catch(() => []);
+        const parts = list.map(() => null); // null = still asking
+        let drawn = false;
+        picked = false;
+        let ready = null;
+        let patience = false; // QUICK_WAIT_MS has passed: draw what has come
+        const first = new Promise((resolve) => { ready = resolve; });
+        // the first drawing waits for the quick sources (at most QUICK_WAIT_MS while the server is
+        // busy), and for the slow ones too while nothing is found
+        const check = () => {
+            const all = parts.every((p) => p !== null);
+            const quick = patience || list.every((s, i) => s.slow || parts[i] !== null);
+            if (all || (quick && parts.some((p) => p && p.length))) ready();
+        };
+        const quickTimer = setTimeout(() => { patience = true; if (id === runId) check(); }, QUICK_WAIT_MS);
+        list.forEach((s, i) => {
+            // one source that fails (no connection, no mailbox, refused) leaves the others' answers
+            Promise.resolve().then(() => s.run(ql, raw)).catch((err) => { console.warn('wmSearch:', s.id, err); return []; }).then((rows) => {
+                if (id !== runId) return;
+                parts[i] = Array.isArray(rows) ? rows : [];
+                if (drawn) {
+                    // in its place in the list, the list where it was; the first row stays the selected
+                    // one (the device's) until a row has been tapped, then that row stays selected
+                    const was = picked && results && results[sel];
+                    results = merge(parts);
+                    sel = was ? results.indexOf(was) : -1;
+                    if (sel < 0 && results.length) sel = 0;
+                    if (page) renderResults(true);
+                    if (ws.current === APP_ID) ws.refreshSoftKeys();
+                }
+                check();
+            });
+        });
+        check();
+        let timer = null;
+        const limit = new Promise((resolve) => { timer = setTimeout(resolve, FIRST_WAIT_MS); });
+        await ws.busy(Promise.race([first, limit]), { paint: true, timeout: FIRST_WAIT_MS }).catch(() => {});
+        clearTimeout(timer);
+        clearTimeout(quickTimer);
         if (id !== runId) return;
-        results = [].concat(...(parts || []));
+        drawn = true;
+        results = merge(parts);
         sel = results.length ? 0 : -1;
         renderResults();
         ws.refreshSoftKeys();
@@ -302,8 +718,12 @@
         const r = results && results[i];
         if (!r) return;
         sel = i;
+        picked = true;
         page.querySelectorAll('.wsr-item').forEach((el) => { const on = Number(el.dataset.i) === i; el.classList.toggle('is-selected', on); el.setAttribute('aria-selected', String(on)); });
-        try { r.open(); } catch (err) { console.warn('wmSearch: open', err); }
+        try {
+            const p = r.open();
+            if (p && typeof p.catch === 'function') p.catch((err) => console.warn('wmSearch: open', err));
+        } catch (err) { console.warn('wmSearch: open', err); }
     }
 
     function mount(p) {

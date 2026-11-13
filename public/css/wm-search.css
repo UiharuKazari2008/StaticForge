@@ -241,6 +241,19 @@
     padding-left: calc(4 * var(--wm-px));
 }
 
+/* a message's row (Text Messages): the matching text where the kind goes, cut with an ellipsis,
+ * and its date ending where the size column ends */
+.wm-search .wsr-snip {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-search .wsr-line2.is-snippet .wsr-date {
+    padding-left: calc(6 * var(--wm-px));
+}
+
 .wm-search .wsr-item:has(.is-thumb) .wsr-line2 {
     left: calc(35 * var(--wm-px));
     width: calc(155.5 * var(--wm-px));
