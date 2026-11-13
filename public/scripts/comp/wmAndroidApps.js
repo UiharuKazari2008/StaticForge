@@ -91,9 +91,25 @@
     function read() {
         try {
             const list = JSON.parse(bridge.list());
-            return Array.isArray(list) ? list.filter((a) => a && typeof a.id === 'string' && a.label) : [];
+            return withCameraRole(Array.isArray(list) ? list.filter((a) => a && typeof a.id === 'string' && a.label) : []);
         } catch (_) { return []; }
     }
+
+    /**
+     * The app names the camera by Android's default still-camera program; a phone with several
+     * camera programs (the Fold7: Camera and Expert RAW) has no default, so no program had the role
+     * and Camera was missing from Start and Pictures & Videos (#788). Then the phone's own camera
+     * program takes it: Samsung's or Google's, else one labelled Camera.
+     */
+    function withCameraRole(list) {
+        if (list.some((a) => a.role === 'camera')) return list;
+        const known = ['com.sec.android.app.camera', 'com.google.android.GoogleCamera', 'com.android.camera2', 'com.android.camera'];
+        const pick = list.find((a) => known.includes(a.package) && a.profile !== 'work')
+            || list.find((a) => /^camera$/i.test(String(a.label || '').trim()) && a.profile !== 'work');
+        if (pick && !pick.role) pick.role = 'camera';
+        return list;
+    }
+    window.wmAndroidCameraApp = () => read().find((a) => a.role === 'camera') || null;
 
     /** The icon a program shows: its Windows Mobile one from the store, else its own launcher icon. */
     // the program's entry in the store: its exact "package/activity", else one for its package (an

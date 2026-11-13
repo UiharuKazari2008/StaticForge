@@ -19,6 +19,8 @@
     function cameraApp() {
         const b = bridge();
         if (!b || typeof b.list !== 'function' || typeof b.launch !== 'function') return null;
+        // wmAndroidApps.js also names the camera on phones without a default camera program
+        if (typeof window.wmAndroidCameraApp === 'function') return window.wmAndroidCameraApp();
         try {
             const list = JSON.parse(b.list());
             return (Array.isArray(list) ? list : []).find((a) => a && a.role === 'camera') || null;
