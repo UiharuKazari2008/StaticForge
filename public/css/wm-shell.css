@@ -3167,6 +3167,17 @@ html.ui-mobile body > .pswp .pswp__preloader {
     display: none !important;
 }
 
+/* The notification area's unused slots (#811, wmShell fitStatusNow): room on the icons' pitch so
+ * the title ends at the same place whatever is pending; the flex gap after it is the last slot's */
+.wm-status-reserve {
+    flex: 0 0 auto;
+    width: calc(var(--slots, 1) * (16 * var(--wm-icon-unit, var(--wm-px)) + 5 * var(--wm-px)) - 5 * var(--wm-px));
+    height: 1px;
+}
+.wm-status-reserve[hidden] {
+    display: none !important;
+}
+
 /* ---- notification bubble (device: Connectivity / Cannot Connect, 2x halved) ---- */
 .wm-bubble {
     --wm-tail-x: 50%;
