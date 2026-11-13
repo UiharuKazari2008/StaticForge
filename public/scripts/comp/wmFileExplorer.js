@@ -369,6 +369,15 @@
         return isVirtualSurface(i) && !isVfsVirtualEntry(i);
     }
 
+    /**
+     * The Recycle Bin is a workspace's: an item outside every workspace (My Device's own top level)
+     * has none, and the server refuses it ("Workspace required for trash", shown as "Packet handler
+     * failed"). Those are deleted outright, as Windows Mobile deletes.
+     */
+    function trashHere(i, path) {
+        return /^\/Workspaces\/[^/]+/.test(String(path || '')) || !!(i && i.workspaceId);
+    }
+
     function canDelete(i) {
         if (isPhoneRoot(i)) return false;
         if (isPhoneItem(i)) return phoneEditable(i) && (phoneCan('trash') || phoneCan('delete'));
@@ -1389,7 +1398,10 @@
     async function rxDiscard(e) {
         try {
             const item = await rxItemOf(e);
-            if (item && canTrash(item)) await vfsClient.moveToTrash(refsOf([item]), e.dest);
+            if (item && canTrash(item)) {
+                if (trashHere(item, e.dest)) await vfsClient.moveToTrash(refsOf([item]), e.dest);
+                else await vfsClient.permanentlyDelete(refsOf([item]), e.dest);
+            }
         } catch (_) { /* it stays in the folder */ }
     }
 
@@ -1614,8 +1626,10 @@
                 try {
                     if (i.isTrashItem) {
                         await vfsClient.permanentlyDelete([{ id: i.id, trashItemId: i.trashItemId || i.id, isTrashItem: true, targetKind: i.targetKind, targetId: i.targetId, name: i.name, workspaceId: i.workspaceId }], path);
-                    } else if (canTrash(i)) {
+                    } else if (canTrash(i) && trashHere(i, path)) {
                         await vfsClient.moveToTrash(refsOf([i]), path);
+                    } else if (canTrash(i)) {
+                        await vfsClient.permanentlyDelete(refsOf([i]), path);
                     } else if (isLiveDesktopShortcut(i)) {
                         if (typeof desktopShortcuts === 'undefined') throw new Error('The desktop is not loaded.');
                         await desktopShortcuts.removeShortcut(i.id);
