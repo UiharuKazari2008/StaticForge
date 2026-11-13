@@ -168,9 +168,15 @@ function applyReadMark(accountId, chat) {
     const last = chat.last;
     if (!last || last.fromMe || last.dateRead) { chat.unread = false; return; }
     const r = loadReadMarks();
-    chat.readSince = Math.max(r.baseline, r.chats[`${accountId}|${chat.guid}`] || 0);
+    const mark = r.chats[`${accountId}|${chat.guid}`] || 0;
+    // iMessage writes a read date when the message is read on the iPhone or the Mac, so a recent one
+    // without it is unread; forwarded SMS never get one: those count only after the last read here
+    const imessage = String(chat.guid || '').startsWith('iMessage');
+    const floor = imessage ? Date.now() - IMESSAGE_UNREAD_DAYS * 86400000 : r.baseline;
+    chat.readSince = Math.max(floor, mark);
     chat.unread = (Number(last.date) || 0) > chat.readSince;
 }
+const IMESSAGE_UNREAD_DAYS = 14;
 
 /** How many unread messages each unread conversation holds (unreadCount; 1 when it cannot be counted). */
 async function countUnread(accountId, chats) {
@@ -445,7 +451,9 @@ async function listChats(accountId, { folder = 'all', limit = 50, offset = 0 } =
     for (const c of chats) { decorateParticipants(c, ds); c.known = isKnownChat(accountId, c, ds); applyReadMark(accountId, c); }
     await countUnread(accountId, chats);
     if (!offset) {
-        const value = { unread: chats.filter((c) => c.known && c.unread).length, unknownUnread: chats.filter((c) => !c.known && c.unread).length };
+        // unread messages (as e-mail counts them), not conversations
+        const sum = (list) => list.reduce((n, c) => n + (c.unread ? Math.max(1, Number(c.unreadCount) || 1) : 0), 0);
+        const value = { unread: sum(chats.filter((c) => c.known)), unknownUnread: sum(chats.filter((c) => !c.known)) };
         summaries.set(accountId, { at: Date.now(), value });
     }
     if (folder === 'all') return { chats, more: chats.length >= (Number(limit) || 50) };

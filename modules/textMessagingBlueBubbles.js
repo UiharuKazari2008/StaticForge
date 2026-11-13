@@ -317,7 +317,7 @@ class BlueBubblesProvider {
             body: { chatGuid: g, limit: 100, offset: 0, after: Math.max(0, Math.floor(since)), sort: 'DESC', with: [] }
         }).then((rows) => (Array.isArray(rows) ? rows : []), () => [])));
         let n = 0;
-        for (const rows of pages) for (const r of rows) if (!r.isFromMe && !reactionOf(r.associatedMessageType) && !(r.itemType && r.itemType !== 0)) n += 1;
+        for (const rows of pages) for (const r of rows) if (!r.isFromMe && !r.dateRead && !reactionOf(r.associatedMessageType) && !(r.itemType && r.itemType !== 0)) n += 1;
         return n;
     }
 
