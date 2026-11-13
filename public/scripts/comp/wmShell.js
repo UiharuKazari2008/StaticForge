@@ -8016,7 +8016,8 @@
         if (viewerActive) closeViewer();
         // Home while Today is on screen: 6.5's list runs back to the clock; from a program Today comes
         // back with its entrance (wmTitanium.js, #800)
-        const wasToday = current === 'today' && document.visibilityState === 'visible';
+        // (the press itself blinks the page hidden for a moment: wmTitanium tells that from a return)
+        const wasToday = current === 'today';
         if (current !== 'today') open('today');
         const t = apps.get('today');
         const page = t && t.page;

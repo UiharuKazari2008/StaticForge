@@ -63,6 +63,9 @@
     // the clock panel grows in as after any move. ENTER_ROWS: how far below its place the list starts.
     const ENTER_ROWS = 3;
     const ENTER_RECENT_MS = 1500; // a Home press this soon after the page came back belongs to that return
+    // A Home press while Today is in front blinks the page hidden for a moment (Android pauses and
+    // resumes the launcher: 16 ms on the Fold7); hidden longer, the user was in another app
+    const AWAY_MS = 700;
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     // wm65 art by name ('ti-2051'); 's:owner' / 'x:app-studio-lg' / 'p:wren' = a 6.5 Start icon / a 6.1 set
     // icon / a Director persona's picture; 'w:rain' = a weather condition (ti-w-*)
@@ -981,7 +984,10 @@
         const at = Math.max(0, panels.findIndex((p) => p.clock));
         if (!(host && !host.hidden && panels.length)) { homeDone = false; return; } // drawn later: the first draw takes the clock again
         // the press that brought Dreamscape back from an Android app: that return's entrance plays
-        if (Date.now() - shownAt < ENTER_RECENT_MS && host.classList.contains('is-entering')) return;
+        // (now, or when the page shows: the visibility handler)
+        const hiddenNow = document.visibilityState !== 'visible';
+        const span = hiddenNow ? Date.now() - hiddenAt : (Date.now() - shownAt < ENTER_RECENT_MS ? hiddenSpan : 0);
+        if (span > AWAY_MS) { if (!hiddenNow && !host.classList.contains('is-entering')) entrance(); return; }
         // Home while Today is already on screen (#800): the list runs back to the clock (the key's
         // pace, 45 ms an item), then the clock panel grows in
         if (opts && opts.animate) {
@@ -996,7 +1002,7 @@
     /** Today comes back (#800): the empty band, the list scaling in from the top left into the clock. */
     function entrance() {
         if (!host || host.hidden || !panels.length || dragging) return;
-        if (root.dataset.wmBoot || root.dataset.screenOff !== undefined) return; // the boot reveal / a dark screen
+        if ((root.dataset.wmBoot && root.dataset.wmBoot !== 'done') || root.dataset.screenOff !== undefined) return; // the boot reveal / a dark screen
         if (Date.now() - screenOnAt < ENTER_RECENT_MS) return; // the screen just came on: no show for that
         if (slide && slide.active) { cancelAnimationFrame(slide.raf); slide.active = false; slide.x = 0; host.classList.remove('is-sliding'); }
         pageAt.clear();
@@ -1018,12 +1024,16 @@
     // when Today comes back: the page from the background (an Android app, the recents list), or Today
     // from another program
     let shownAt = 0;
+    let hiddenAt = 0;
+    let hiddenSpan = 0;
     let screenOnAt = 0;
     window.addEventListener('melatonscreen', (e) => { if (e && e.detail && e.detail.on) screenOnAt = Date.now(); });
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState !== 'visible') return;
+        if (document.visibilityState !== 'visible') { hiddenAt = Date.now(); return; }
         shownAt = Date.now();
-        if (root.dataset.wmApp === 'today') requestAnimationFrame(entrance);
+        hiddenSpan = hiddenAt ? shownAt - hiddenAt : 0;
+        // back from another app (not the blink of a Home press on Today)
+        if (root.dataset.wmApp === 'today' && hiddenSpan > AWAY_MS) requestAnimationFrame(entrance);
     });
     let lastApp = root.dataset.wmApp || '';
     new MutationObserver(() => {
