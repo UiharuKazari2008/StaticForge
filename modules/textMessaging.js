@@ -29,9 +29,10 @@ const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const { BlueBubblesProvider, handleKey, normalizeUrl } = require('./textMessagingBlueBubbles');
+const { RcsProvider } = require('./textMessagingRcs');
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
-const KINDS = ['bluebubbles'];
+const KINDS = ['bluebubbles', 'rcs'];
 const CONTACT_SCAN_MS = 5 * 60 * 1000;
 const SUMMARY_TTL_MS = 30 * 1000;
 
@@ -167,6 +168,7 @@ function decorateParticipants(chat, ds) {
 
 function isKnownChat(accountId, chat, ds) {
     if (loadKnown().has(`${accountId}|${chat.guid}`)) return true;
+    if (chat.spam) return false;
     if (chat.last && chat.last.fromMe) { markWritten(accountId, chat.guid); return true; }
     return (chat.participants || []).some((p) => p.name || ds.has(handleKey(p.address)));
 }
@@ -176,6 +178,11 @@ function isKnownChat(accountId, chat, ds) {
 function makeProvider(account) {
     const hooks = { emit: (event, payload) => onProviderEvent(account.id, event, payload), log: (m) => log(`${account.id}: ${m}`) };
     if (account.kind === 'bluebubbles') return new BlueBubblesProvider({ id: account.id, url: account.url, password: passwordFor(account.id) }, hooks);
+    if (account.kind === 'rcs') {
+        let cacheDir = null;
+        try { cacheDir = resources().getPath('cache'); } catch (_) { cacheDir = null; }
+        return new RcsProvider({ id: account.id }, hooks, { cacheDir: cacheDir || undefined });
+    }
     return null;
 }
 
@@ -272,7 +279,7 @@ function accountOut(a) {
         service: a.kind === 'bluebubbles' ? 'iMessage' : 'RCS',
         url: a.url || '',
         enabled: a.enabled !== false,
-        hasPassword: !!passwordFor(a.id),
+        hasPassword: a.kind === 'rcs' ? true : !!passwordFor(a.id),
         status: p ? p.status : (a.enabled === false ? 'disabled' : 'error'),
         error: p ? p.error : '',
         identity: p ? p.identity() : '',
@@ -289,6 +296,12 @@ function listAccounts() {
 
 async function testAccount({ kind, url, password, id }) {
     if (!KINDS.includes(kind || 'bluebubbles')) throw Object.assign(new Error('Unknown account kind.'), { code: 'BAD_KIND' });
+    if (kind === 'rcs') {
+        const p = providers.get(id);
+        if (!p) throw Object.assign(new Error('That account is not running.'), { code: 'NO_ACCOUNT' });
+        const st = await p.test();
+        return { identity: p.identity(), features: p.features(), paired: !!(st && st.loggedIn), connected: !!(st && st.connected) };
+    }
     const pass = password || (id ? passwordFor(id) : '');
     const p = new BlueBubblesProvider({ id: id || 'test', url, password: pass }, {});
     const info = await p.test();
@@ -305,18 +318,19 @@ function saveAccount(input) {
     if (id && !ID_RE.test(id)) throw Object.assign(new Error('Bad account id.'), { code: 'BAD_ID' });
     if (!id) {
         const base = kind === 'bluebubbles' ? 'imessage' : kind;
+        if (kind === 'rcs' && cfg.accounts.some((a) => a.kind === 'rcs')) throw Object.assign(new Error('There is already an RCS account.'), { code: 'EXISTS' });
         id = base;
         for (let n = 2; cfg.accounts.some((a) => a.id === id); n += 1) id = `${base}${n}`;
     }
-    const url = normalizeUrl(body.url);
-    if (!url) throw Object.assign(new Error('Type the BlueBubbles server address.'), { code: 'NO_URL' });
+    const url = kind === 'rcs' ? '' : normalizeUrl(body.url);
+    if (kind !== 'rcs' && !url) throw Object.assign(new Error('Type the BlueBubbles server address.'), { code: 'NO_URL' });
     const row = { id, kind, url, enabled: body.enabled !== false };
     const at = cfg.accounts.findIndex((a) => a.id === id);
     if (at >= 0) cfg.accounts[at] = Object.assign({}, cfg.accounts[at], row);
     else cfg.accounts.push(row);
     writeConfig(cfg);
     if (body.password != null && String(body.password) !== '') writePassword(id, String(body.password));
-    if (!passwordFor(id)) throw Object.assign(new Error('Type the BlueBubbles server password.'), { code: 'NO_PASSWORD' });
+    if (kind !== 'rcs' && !passwordFor(id)) throw Object.assign(new Error('Type the BlueBubbles server password.'), { code: 'NO_PASSWORD' });
     startAccount(row);
     broadcast({ event: 'account', accountId: id });
     return accountOut(row);
@@ -396,6 +410,12 @@ async function sendAttachment(accountId, args) {
     return res;
 }
 
+/** RCS: a QR code for Google Messages > Device pairing ('pairing' events follow: { qr } then { paired }). */
+async function pair(accountId) { return provider(accountId).pair(); }
+function pairingQr(accountId) { const p = providers.get(String(accountId || '')); return (p && p.qr) || ''; }
+async function refreshQr(accountId) { return provider(accountId).refreshQr(); }
+async function unpair(accountId) { return provider(accountId).unpair(); }
+
 async function react(accountId, args) { return provider(accountId).react(args); }
 async function edit(accountId, args) { return provider(accountId).edit(args); }
 async function unsend(accountId, args) { return provider(accountId).unsend(args); }
@@ -421,5 +441,5 @@ function _reset() {
 module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
     listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, typing,
-    downloadAttachment, resolveName, handleKey, _reset
+    downloadAttachment, resolveName, handleKey, pair, refreshQr, unpair, pairingQr, _reset
 };

@@ -21,6 +21,8 @@ const textMessaging = require('../../textMessaging');
  *   tm_read     { accountId, chatGuid }
  *   tm_typing   { accountId, chatGuid, typing }
  *   tm_resolve  { accountId, address }                                    { name }
+ *   tm_rcs_pair { accountId } -> { qr }   tm_rcs_refresh_qr { accountId }   tm_rcs_unpair { accountId }
+ *               (RCS accounts: pairing events arrive as tm_event { event: 'pairing', qr | paired })
  *
  * Events: tm_event (see textMessaging.js). Attachments: modules/textMessagingHttp.js.
  * A refusal is an answer { success:false, code, error }, never an error packet.
@@ -65,6 +67,10 @@ function registerPackets(handlersCtx) {
     reg('tm_unsend', async (d) => textMessaging.unsend(d.accountId, d), { destructive: true });
     reg('tm_read', async (d) => textMessaging.markRead(d.accountId, d));
     reg('tm_typing', async (d) => textMessaging.typing(d.accountId, d));
+    // RCS (Google Messages pairing): a QR code for the phone, re-pair, end the pairing
+    reg('tm_rcs_pair', async (d) => textMessaging.pair(String(d.accountId || '')));
+    reg('tm_rcs_refresh_qr', async (d) => textMessaging.refreshQr(String(d.accountId || '')));
+    reg('tm_rcs_unpair', async (d) => textMessaging.unpair(String(d.accountId || '')), { destructive: true });
     reg('tm_resolve', async (d) => ({ name: await textMessaging.resolveName(d.accountId, String(d.address || '')) }));
 }
 

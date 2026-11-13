@@ -46,6 +46,7 @@
     "pako": "^2.1.0",
     "pm2": "^6.0.10",
     "predictionary": "^1.0.0",
+    "qrcode": "^1.5.4",
     "sharp": "^0.32.6",
     "socket.io-client": "^4.8.4",
     "sqlite": "^5.1.1",

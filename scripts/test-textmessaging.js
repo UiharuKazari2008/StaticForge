@@ -91,5 +91,34 @@ function server() {
     assert.strictEqual(events[1][1].message.sender.name, 'Alice');
 
     srv.close();
+
+    // RCS: Google Messages protojson into the same shapes
+    const { RcsProvider, unb64url } = require('../modules/textMessagingRcs');
+    const rev = [];
+    const r = new RcsProvider({ id: 'rcs' }, { emit: (e, d) => rev.push([e, d]) }, { cacheDir: '/nonexistent' });
+    r.onSettings({ SIMCards: [{ SIMData: { formattedPhoneNumber: '(555) 010-7788' } }] });
+    assert.strictEqual(r.identity(), '(555) 010-7788');
+    const conv = { conversationID: 'c1', name: '', isGroupChat: false, unread: true, type: 'RCS', defaultOutgoingID: 'p0', lastMessageTimestamp: '1731400000000000',
+        latestMessage: { displayContent: 'yo', fromMe: '0' }, participants: [{ ID: { participantID: 'p0', number: '+15550107788' }, isMe: true }, { ID: { participantID: 'p1', number: '+15553330003' }, fullName: 'Kenji', contactID: '42' }] };
+    const chat = r.normalizeChat(conv);
+    assert.strictEqual(chat.title, 'Kenji');
+    assert.strictEqual(chat.last.date, 1731400000000);
+    assert.strictEqual(chat.unread, true);
+    const raw = { messageID: 'm1', conversationID: 'c1', participantID: 'p1', timestamp: '1731400001000000', messageStatus: { status: 'INCOMING_COMPLETE' },
+        messageInfo: [{ messageContent: { content: 'look' } }, { mediaContent: { mediaID: 'MID', decryptionKey: 'S0VZ', mimeType: 'image/jpeg', mediaName: 'a.jpg', thumbnailMediaID: 'TID', thumbnailDecryptionKey: 'VEs=' } }],
+        reactions: [{ data: { unicode: '\u2764\uFE0F', type: 'LOVE' }, participantIDs: ['p0'] }], replyMessage: { messageID: 'm0' } };
+    r.onMessage(raw, false);
+    r.onMessage(Object.assign({}, raw), false);
+    r.onMessage(Object.assign({}, raw, { reactions: [] }), false);
+    assert.deepStrictEqual(rev.map((e) => e[0]), ['account', 'message', 'updated'], 'a repeat is quiet, a change is an update');
+    const m = rev[1][1].message;
+    assert.strictEqual(m.sender.name, 'Kenji');
+    assert.strictEqual(m.text, 'look');
+    assert.strictEqual(m.replyTo, 'm0');
+    assert.deepStrictEqual(m.reactions.map((x) => [x.type, x.fromMe]), [['love', true]]);
+    assert.strictEqual(unb64url(m.attachments[0].guid.slice(1)).m, 'MID');
+    assert.ok(m.attachments[0].thumbUrl.endsWith('?thumb=1'));
+    assert.strictEqual(r.normalizeMessage({ messageID: 'm2', conversationID: 'c1', messageStatus: { status: 'OUTGOING_DISPLAYED' }, timestamp: '1' }).dateRead, 1 / 1000 > 0 ? 1 : 1);
+
     console.log('test-textmessaging: ok');
 })().catch((error) => { console.error(error); process.exit(1); });

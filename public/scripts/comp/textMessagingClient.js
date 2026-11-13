@@ -15,8 +15,12 @@
  *   edit(accountId, { messageGuid, text }) / unsend(accountId, { messageGuid })
  *   markRead(accountId, chatGuid) / typing(accountId, chatGuid, bool)  (typing is throttled)
  *   testAccount / saveAccount / deleteAccount / saveSettings({ notifyUnknown })
+ *   pairRcs(accountId) -> { qr }   (show the URL as a QR code; 'pairing' events: { qr } refreshed, { paired: true })
+ *   refreshRcsQr(accountId) / unpairRcs(accountId)
+ *   An RCS account is saveAccount({ kind: 'rcs' }) (one per server); status 'unpaired' until paired.
+ *   messages() pages back with { before: page.cursor } (opaque: a date for iMessage, a cursor for RCS).
  *   on(event, fn) / off(event, fn)
- *       'message' | 'updated' | 'reaction' | 'typing' | 'read' | 'chat' | 'account' | 'settings'
+ *       'message' | 'updated' | 'reaction' | 'typing' | 'read' | 'chat' | 'account' | 'settings' | 'pairing'
  *       | 'resync' | 'unread' (detail = { total, byAccount: { id: { unread, unknownUnread } } })
  *   unread()                        -> the last 'unread' detail
  *   REACTIONS                       [{ type, label, glyph }]
@@ -189,9 +193,14 @@
     const deleteAccount = (id) => call('tm_account_delete', { id }).then((d) => { cache = null; return d; });
     const saveSettings = (s) => call('tm_settings_save', s || {}).then((d) => { cache = null; return d.settings; });
 
+    const pairRcs = (accountId) => call('tm_rcs_pair', { accountId });
+    const refreshRcsQr = (accountId) => call('tm_rcs_refresh_qr', { accountId });
+    const unpairRcs = (accountId) => call('tm_rcs_unpair', { accountId }).then((d) => { cache = null; return d; });
+
     root.textMessaging = {
         accounts, summary, unread, label, chats, chat, messages, send, sendFile, react, edit, unsend,
-        markRead, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, on, off, REACTIONS
+        markRead, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, refreshRcsQr,
+        unpairRcs, on, off, REACTIONS
     };
     wire();
     if (!wired) {

@@ -389,7 +389,9 @@ class BlueBubblesProvider {
         }
         for (const m of out) m.reactions = m.reactions.map(({ _who, ...rest }) => rest);
         out.sort((a, b) => a.date - b.date);
-        return { messages: out, more: list.length >= limit };
+        // the next page: messages before the oldest one here (clients pass page.cursor back as before)
+        const oldest = list.length ? Math.min(...list.map((r) => Number(r.dateCreated) || Infinity)) : null;
+        return { messages: out, more: list.length >= limit, cursor: oldest && Number.isFinite(oldest) ? String(oldest) : null };
     }
 
     async downloadAttachment(guid, { thumb } = {}) {

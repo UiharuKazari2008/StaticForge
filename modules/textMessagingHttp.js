@@ -4,6 +4,7 @@
  *   GET  /api/textmessaging/:accountId/attachment/:guid[?thumb=1]
  *        the provider's file (HEIC comes out as JPEG; ?thumb=1 = a 480 px preview), cached on disk
  *        in .cache/textmessaging-attachments by account + guid. Admins only.
+ *   GET  /api/textmessaging/:accountId/pairing-qr.svg   the RCS account's pairing QR code (no-store)
  *   POST /api/textmessaging/:accountId/send-attachment?chat=<guid>&name=<file>&replyTo=&tempGuid=&audio=1
  *        body = the file (Content-Type = its MIME type), up to 100 MB. -> { success, tempGuid, message }
  */
@@ -77,6 +78,20 @@ function mount(app, authMiddleware, globalResources) {
             await fs.promises.writeFile(`${file}.json`, JSON.stringify({ type, name, at: Date.now() }));
         } catch (error) {
             console.warn('[textMessaging] attachment cache write failed:', error.message);
+        }
+    });
+
+    // RCS pairing: the current Google Messages QR code as SVG (404 when no pairing is under way)
+    app.get('/api/textmessaging/:accountId/pairing-qr.svg', auth, admin, async (req, res) => {
+        const url = textMessaging.pairingQr(req.params.accountId);
+        if (!url) { refuse(res, 404, 'NO_PAIRING', 'No pairing is under way.'); return; }
+        try {
+            const svg = await require('qrcode').toString(url, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' });
+            res.setHeader('Content-Type', 'image/svg+xml');
+            res.setHeader('Cache-Control', 'no-store');
+            res.end(svg);
+        } catch (error) {
+            refuse(res, 500, 'ERROR', error.message);
         }
     });
 
