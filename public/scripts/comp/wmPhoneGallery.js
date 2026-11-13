@@ -281,6 +281,17 @@
         return list;
     }
 
+    // pictures the WebView cannot decode (the Fold's camera writes HEIC): the app's JPEG of them
+    // (?jpeg=1, bridge features.jpeg), else its largest thumbnail
+    const UNDECODABLE = /^image\/(heic|heif|x-adobe-dng|dng|tiff|x-tiff|x-[a-z]+-raw)$/i;
+    const needsJpeg = (e) => !!(e && !e.video && UNDECODABLE.test(String(e.mime || '')));
+    function viewUrl(root, e) {
+        const ps = PS();
+        if (!ps || typeof ps.fileUrl !== 'function') return '';
+        if (!needsJpeg(e)) return ps.fileUrl(root, e.path);
+        if (hello && hello.features && hello.features.jpeg) return `${ps.fileUrl(root, e.path)}?jpeg=1`;
+        return ps.fileUrl(root, e.path, { thumb: 1024 });
+    }
     const thumbUrl = (e) => (PS() && typeof PS().fileUrl === 'function' ? PS().fileUrl(loc.root, e.path, { thumb: 256 }) : '');
     const fileUrl = (root, path) => (PS() && typeof PS().fileUrl === 'function' ? PS().fileUrl(root, path) : '');
 
@@ -444,7 +455,7 @@
     /** A slide for PhotoSwipe (lightbox.js openStandalonePhotoSwipe): the file by the app's URL. */
     function slideOf(root, e) {
         const meta = { isStandalone: true, title: e.name, phoneMedia: { root, path: e.path, name: e.name, mime: e.mime, size: e.size, mtime: e.mtime, taken: e.taken, video: !!e.video, width: e.width, height: e.height } };
-        const src = fileUrl(root, e.path);
+        const src = e.video ? fileUrl(root, e.path) : viewUrl(root, e);
         if (e.video) {
             // the phone's own frame as the poster: Android's WebView draws a grey play sign until it plays
             const poster = PS() && typeof PS().fileUrl === 'function' ? PS().fileUrl(root, e.path, { thumb: 1024 }) : '';
@@ -672,10 +683,13 @@
         return sh.messageBox({ title: TITLE, icon: 'error', text: why ? `${text} ${why}` : text });
     }
 
-    async function fetchFile(root, e, signal) {
-        const res = await fetch(fileUrl(root, e.path), { signal });
+    /** A file's bytes; opts.web: a HEIC (or other picture browsers cannot show) as the app's JPEG. */
+    async function fetchFile(root, e, signal, opts = {}) {
+        const asJpeg = !!(opts.web && needsJpeg(e) && hello && hello.features && hello.features.jpeg);
+        const res = await fetch(asJpeg ? `${fileUrl(root, e.path)}?jpeg=1` : fileUrl(root, e.path), { signal });
         if (!res.ok) throw { code: 'io', message: `The phone answered ${res.status} for ${e.name}.` };
         const blob = await res.blob();
+        if (asJpeg) return new File([blob], e.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg', lastModified: Number(e.mtime) || Date.now() });
         return new File([blob], e.name, { type: e.mime || blob.type, lastModified: Number(e.mtime) || Date.now() });
     }
 
@@ -715,15 +729,16 @@
         const vfs = typeof vfsClient !== 'undefined' ? vfsClient : window.vfsClient;
         if (!wsc || !ws) { void errBox('My Device is not reachable right now.'); return; }
         const r = await job(TITLE, 'Copying', list, async (e, i, signal) => {
-            const file = await fetchFile(root, e, signal);
+            // the gallery takes pictures it can read: a HEIC goes as the app's JPEG
+            const file = await fetchFile(root, e, signal, { web: true });
             const b64 = await toBase64(file);
             if (e.video || !/^image\//.test(file.type)) {
                 // videos go to the workspace's home folder: the gallery holds pictures only
                 if (!vfs || typeof vfs.uploadFile !== 'function') throw { message: 'Files cannot be saved on My Device here.' };
-                await vfs.uploadFile(`/Workspaces/${ws}/`, b64, e.name, file.type || 'application/octet-stream');
+                await vfs.uploadFile(`/Workspaces/${ws}/`, b64, file.name, file.type || 'application/octet-stream');
                 return;
             }
-            const resp = await wsc.uploadWorkspaceImage(b64, ws, e.name, { currentIndex: i, totalCount: list.length });
+            const resp = await wsc.uploadWorkspaceImage(b64, ws, file.name, { currentIndex: i, totalCount: list.length });
             if (!resp || !resp.success) throw { message: (resp && (resp.message || resp.error)) || 'The server did not take it.' };
             e._deviceName = resp.filename || null;
         });
@@ -861,7 +876,7 @@
         const root = loc && loc.root;
         props.open({
             name: e.name,
-            src: fileUrl(root, e.path),
+            src: e.video ? fileUrl(root, e.path) : viewUrl(root, e),
             width: Number(e.width) || 0,
             height: Number(e.height) || 0,
             size: Number(e.size) || null,
@@ -901,9 +916,9 @@
         return rows;
     }
 
-    async function filesOf(list) {
+    async function filesOf(list, opts) {
         const root = loc ? loc.root : null;
-        return sh.busy(Promise.all(list.map((e) => fetchFile(root, e))), { paint: true, timeout: 120000 });
+        return sh.busy(Promise.all(list.map((e) => fetchFile(root, e, undefined, opts))), { paint: true, timeout: 120000 });
     }
 
     async function sendText(list, accountId) {
@@ -955,7 +970,7 @@
         let items;
         try {
             await closeViewer();
-            const files = await filesOf(list.filter((e) => !e.video));
+            const files = await filesOf(list.filter((e) => !e.video), { web: true });
             items = await sh.busy(Promise.all(files.map(directorAttachment)), { paint: true });
         } catch (err) { await errBox('The picture could not be read from the phone.', err); return; }
         void d.attach(items);
