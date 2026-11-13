@@ -63,7 +63,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-error", "status-update", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
+    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => WM_SET.test(name) ? `${name}.png 1x, ${name}@2x.png 2x, ${name}@4x.png 4x` : String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2331,8 +2331,14 @@
         paintDirectorClap(!!(dir && dir.running));
         let updateReady = false;
         try { updateReady = !!(window.serviceWorkerManager && window.serviceWorkerManager.hasPendingUpdates()); } catch (_) { updateReady = false; }
-        // the update icon also stands for a waiting update notice (downloading, stalled, applied ...)
-        hide(shell.querySelector('[data-role="update"]'), !(updateReady || notes.some(isUpdateNote)));
+        // the update icon also stands for a waiting update notice (stalled, applied ...) and, animated,
+        // for updates downloading (its popup shows the progress)
+        const updDl = updateProgressToast();
+        const updEl = shell.querySelector('[data-role="update"]');
+        hide(updEl, !(updateReady || updDl || notes.some(isUpdateNote)));
+        paintUpdateIcon(updEl, !!updDl);
+        const openBub = shell.querySelector('.wm-bubble');
+        if (updDl && openBub && !openBub.hidden && openBub.dataset.role === 'update') statusBubble('update', updEl, true);
         hide(shell.querySelector('[data-role="prints"]'), !printsInProgress());
         const mailEl = shell.querySelector('[data-role="mail"]');
         // any unread mail, if the user asked for that (Messaging > Tools > Options); else only mail
@@ -2395,6 +2401,25 @@
     }
 
     /** The Director icon: the clapper claps while a turn runs, closed otherwise (timers: no rAF in background tabs). */
+    /** The update icon: the download glyph, its arrow dropping into the tray while updates download. */
+    function paintUpdateIcon(el, downloading) {
+        if (!el) return;
+        if (!downloading || el.hidden) {
+            if (el.dataset.dl === '1') {
+                el.dataset.dl = '0';
+                el.classList.remove('wm-strip');
+                el.style.removeProperty('--strip');
+            }
+            return;
+        }
+        if (el.dataset.dl === '1') return;
+        el.dataset.dl = '1';
+        el.style.setProperty('--strip', artImageSet('status-update-dl-strip'));
+        el.style.setProperty('--n', '4');
+        el.style.setProperty('--ms', '220');
+        el.classList.add('wm-strip');
+    }
+
     function paintDirectorClap(working) {
         const el = shell && shell.querySelector('[data-role="director"]');
         if (!el) return;
@@ -3109,6 +3134,25 @@
     const LATENCY_TOAST = /^high latency/i;
     const UPDATE_TOAST = /^(checking for updates|downloading updates|download stalled|up to date|updates? applied|update check failed|updates? (are )?(ready|available))/i;
     const isUpdateNote = (n) => !!n && UPDATE_TOAST.test(String(n.title || ''));
+    // while updates are checked for or download there is no notification and no popup: the update
+    // icon animates and its own popup shows the progress; the result is the notification (Yukimi,
+    // Nov 13). "Up to Date" is no news at all.
+    const UPDATE_QUIET = /^(checking for updates|downloading updates|up to date)/i;
+    /** The service worker's running update toast: { title, text, pct } or null. */
+    function updateProgressToast() {
+        const box = document.getElementById('toastContainer');
+        if (!box) return null;
+        for (const t of box.children) {
+            if (t.classList.contains('removing')) continue;
+            const title = ((t.querySelector('.toast-title') || {}).textContent || '').trim();
+            if (!/^(checking for updates|downloading updates)/i.test(title)) continue;
+            const bar = t.querySelector('.toast-progress-bar');
+            const w = bar ? parseFloat(bar.style.width) : NaN;
+            const text = ((t.querySelector('.toast-message') || {}).textContent || '').replace(/\s+/g, ' ').trim();
+            return { title, text, pct: Number.isFinite(w) ? Math.max(0, Math.min(100, w)) : null };
+        }
+        return null;
+    }
 
     function readToasts() {
         const box = document.getElementById('toastContainer');
@@ -3121,6 +3165,7 @@
             const msgEl = t.querySelector('.toast-message');
             const title = titleEl ? titleEl.textContent.trim() : '';
             if (LATENCY_TOAST.test(title)) continue;
+            if (UPDATE_QUIET.test(title)) { t.dataset.wmBusy = '1'; continue; }
             // a notification: toastManager's timer leaves it until the user dismisses it (WM
             // notifications never close by themselves, Yukimi Nov 13)
             t.dataset.wmNote = '1';
@@ -3162,7 +3207,7 @@
      */
     const toastSeen = new WeakSet();
     let toastDialogs = Promise.resolve();
-    const BACKGROUND_TOAST = /^(connecting|connected|connection|reconnect|offline|high latency|generation complete|you have mail|new mail|update|main battery)/i;
+    const BACKGROUND_TOAST = /^(connecting|connected|connection|reconnect|offline|high latency|generation complete|you have mail|new mail|update|checking for updates|downloading updates|download stalled|up to date|main battery)/i;
 
     /**
      * Loading while Melaton starts (20 s after boot) or while a workspace switch runs is never a
@@ -4167,7 +4212,18 @@
             const links = w ? [{ label: role === 'wxalert' ? 'View Alerts' : 'Open Weather', action: () => { closeBubble(); if (role === 'wxalert' && typeof w.showAlerts === 'function') w.showAlerts(); else w.open(); } }] : [];
             bubble({ title: STATUS_APP_LABEL[role], role, anchor, sections: links.length ? [...sections, { links }] : sections, buttons: [{ text: 'Hide' }] });
         } else if (role === 'update') {
-            // a waiting update notice (downloading, stalled, applied ...) comes up from its icon
+            // updates downloading: the progress lives here, in the icon's own popup
+            const dl = updateProgressToast();
+            if (dl) {
+                const checking = /^checking/i.test(dl.title);
+                const bar = dl.pct == null || checking
+                    ? '<div class="wm-ds-progress is-marquee" role="progressbar" aria-label="Updates"><span></span></div>'
+                    : `<div class="wm-ds-progress" role="progressbar" aria-valuenow="${Math.round(dl.pct)}"><span style="--wm-ds-blocks:${Math.round(dl.pct / 100 * 18)}"></span></div>`;
+                const line = checking ? 'Checking for updates...' : `Downloading updates${dl.text ? `: ${dl.text}` : '...'}`;
+                bubble({ title: 'Updates', role, anchor, sections: [line, { html: bar }], buttons: [{ text: 'Hide' }] });
+                return;
+            }
+            // a waiting update notice (stalled, applied, check failed ...) comes up from its icon
             const waiting = notes.find(isUpdateNote);
             if (waiting) { closeBubble(); showNote(waiting.id); return; }
             const sw = window.serviceWorkerManager;

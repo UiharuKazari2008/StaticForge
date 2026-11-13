@@ -32,6 +32,12 @@ function _clearToastDismissTimer(stored) {
     stored.timeoutId = null;
 }
 
+function _wmKeepsNotification(toastId) {
+    if (typeof window === 'undefined' || window.uiShell !== 'mobile') return false;
+    const el = document.getElementById(toastId);
+    return !!(el && el.dataset.wmNote === '1' && el.dataset.wmBusy !== '1');
+}
+
 function _setToastDismissTimer(toastId, delay) {
     const stored = activeToasts.get(toastId);
     if (!stored || delay === false) return null;
@@ -41,6 +47,10 @@ function _setToastDismissTimer(toastId, delay) {
         if (current?.timeoutId === timeoutId) {
             current.timeoutId = null;
         }
+        // Melaton Mobile: a notification (wmShell marks the toasts it shows as notifications) stays
+        // until the user dismisses it, as on Windows Mobile; only the timer is ignored, code that
+        // closes its own toast still can
+        if (_wmKeepsNotification(toastId)) return;
         removeGlassToast(toastId);
     }, Math.max(0, Number(delay) || 0));
     stored.timeoutId = timeoutId;
