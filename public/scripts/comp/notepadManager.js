@@ -501,6 +501,14 @@ class NotepadManager {
             }
 
             const note = response.note;
+
+            // a note with handwriting or recordings (#785: the phone's Writing mode and voice bar,
+            // Windows Journal's pen) is not plain text: Notepad says so and offers Windows Journal
+            if (NotepadManager.isRichNote(note)) {
+                await this.refuseRichNote(note);
+                return null;
+            }
+
             // Recent Items (public/scripts/comp/recentItems.js): a note opened
             if (window.recentItems) window.recentItems.noteNote(note);
 
@@ -527,6 +535,35 @@ class NotepadManager {
             }
             return null;
         }
+    }
+
+    /** Ink strokes or recordings on a note (notes.ink / metadata.ink, metadata.audio, a voice note). */
+    static isRichNote(note) {
+        if (!note) return false;
+        const meta = note.metadata || {};
+        return note.note_kind === 'voice'
+            || !!(meta.ink && meta.ink.strokes)
+            || (Array.isArray(meta.audio) && meta.audio.length > 0);
+    }
+
+    /** Notepad's error for a rich note, with the way to Windows Journal. */
+    async refuseRichNote(note) {
+        const name = this.escapeHtml(note.name || 'Untitled');
+        let choice = 'journal';
+        if (typeof showConfirmationDialog === 'function') {
+            choice = await showConfirmationDialog(
+                `<p>Notepad cannot open "${name}" because it contains handwriting, drawings or voice recordings.</p><p>Open it in Windows Journal instead.</p>`,
+                [
+                    { text: 'Open in Windows Journal', value: 'journal', className: 'btn-standard primary' },
+                    { text: 'Cancel', value: 'cancel', className: 'btn-standard' }
+                ],
+                null,
+                { title: 'Notepad', width: 400, icon: 'fas fa-circle-xmark' }
+            );
+        }
+        if (choice !== 'journal') return;
+        await this.openNotebook();
+        await this.notebookLoadNote(note.id, true);
     }
 
     // Update element IDs to be unique for this notepad instance
