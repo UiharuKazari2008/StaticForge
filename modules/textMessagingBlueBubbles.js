@@ -313,8 +313,10 @@ class BlueBubblesProvider {
 
     /** Incoming messages after `since` across a conversation's chats (the unread count). */
     async countIncoming(chatGuid, since) {
+        // since: a time, or (guid) => time (a merged conversation counts each chat by its own rule)
+        const at = (g) => Math.max(0, Math.floor(typeof since === 'function' ? since(g) : since));
         const pages = await Promise.all(this.members(chatGuid).map((g) => this.call('POST', 'message/query', {
-            body: { chatGuid: g, limit: 100, offset: 0, after: Math.max(0, Math.floor(since)), sort: 'DESC', with: [] }
+            body: { chatGuid: g, limit: 100, offset: 0, after: at(g), sort: 'DESC', with: [] }
         }).then((rows) => (Array.isArray(rows) ? rows : []), () => [])));
         let n = 0;
         for (const rows of pages) for (const r of rows) if (!r.isFromMe && !r.dateRead && !reactionOf(r.associatedMessageType) && !(r.itemType && r.itemType !== 0)) n += 1;

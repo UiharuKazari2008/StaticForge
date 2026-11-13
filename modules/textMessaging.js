@@ -175,6 +175,8 @@ function applyReadMark(accountId, chat) {
     const floor = imessage ? Date.now() - IMESSAGE_UNREAD_DAYS * 86400000 : r.baseline;
     chat.readSince = Math.max(floor, mark);
     chat.unread = (Number(last.date) || 0) > chat.readSince;
+    // each chat of a merged conversation by its own kind: iMessage by its read dates, SMS from the marks
+    chat.readSinceFor = (g) => Math.max(String(g).startsWith('iMessage') ? Date.now() - IMESSAGE_UNREAD_DAYS * 86400000 : r.baseline, mark);
 }
 const IMESSAGE_UNREAD_DAYS = 14;
 
@@ -184,12 +186,12 @@ async function countUnread(accountId, chats) {
     const todo = chats.filter((c) => c.unread).slice(0, 40);
     await Promise.all(todo.map(async (c) => {
         if (p && typeof p.countIncoming === 'function' && c.readSince != null) {
-            try { c.unreadCount = Math.max(1, await p.countIncoming(c.guid, c.readSince)); } catch (_) { c.unreadCount = 1; }
+            try { c.unreadCount = Math.max(1, await p.countIncoming(c.guid, c.readSinceFor || c.readSince)); } catch (_) { c.unreadCount = 1; }
         } else {
             c.unreadCount = 1;
         }
     }));
-    for (const c of chats) { if (!c.unread) c.unreadCount = 0; delete c.readSince; }
+    for (const c of chats) { if (!c.unread) c.unreadCount = 0; delete c.readSince; delete c.readSinceFor; }
 }
 
 // ---- Dreamscape Contacts (every workspace's Contacts folder) ----
