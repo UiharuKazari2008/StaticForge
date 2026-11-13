@@ -2054,7 +2054,9 @@
             pages.push({ icon: one(it.img), smallIcon: one(it.small), title: it.label, softKey: back, onTap: afterTap(() => favStart(it)), menu: () => [{ label: 'Open', action: () => favStart(it) }, '-', { label: 'Options...', action: () => openItemOptions('music') }] });
         });
         panelChanged('music', pages);
-        return { label: 'music', icon: 'ti-2401', pages, softKey: pages[0].softKey, onTap: (pg) => (pg && typeof pg.onTap === 'function' ? pg.onTap() : null) };
+        // the band's mark beside "music": playing or paused, as e-mail shows its count (none with nothing on)
+        const countIcon = now ? (now.playing ? 'play' : 'pause') : '';
+        return { label: 'music', countIcon, icon: 'ti-2401', pages, softKey: pages[0].softKey, onTap: (pg) => (pg && typeof pg.onTap === 'function' ? pg.onTap() : null) };
     }
 
     /** 6.5 with the home screen off: one row, the device's "Playing: %s" / "Paused: %s". */

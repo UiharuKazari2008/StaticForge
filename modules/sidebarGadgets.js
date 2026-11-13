@@ -660,6 +660,8 @@ module.exports = {
     getClientWeather,
     // Traffic (#795): where a phone outside the Android app is, by its IP (home network = the configured place)
     resolveClientLocation,
+    // Weather: the town for the phone's own position (Melaton Weather's Current location)
+    reverseGeocode,
     getHostLoad,
     getFxRate,
     getQuotes,

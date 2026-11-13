@@ -34,6 +34,8 @@
     const LS_PLACE = 'wmTrafficPlace'; // { place: 'home' | 'work', at } the last place the phone was found at
     const GEO_EVERY_MS = 5 * 60 * 1000; // the phone's position is read at most this often, while on screen
     const DELAY_STATUS_SEC = 15 * 60; // the title bar's car: the commute ahead is this late or more
+    const DRIVE_GEO_MS = 60 * 1000; // while driving the commute: the position every minute (the phone's own, no server)
+    const ON_ROUTE_M = 300; // this close to the route's line counts as driving it
     const TODAY_CHECK_MS = 15 * 60 * 1000; // Today asks for a fresh report at most this often
     const LEAVE_WINDOW_MIN = 30; // the car also shows this long before and after each leave time
     const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -200,7 +202,9 @@
 
     function readPosition(force) {
         if (geoBusy || document.hidden || !configured()) return;
-        if (!force && Date.now() - geoAt < GEO_EVERY_MS) return;
+        // in the drive window inside the app: every minute (the device's own position, no request to the server)
+        const every = inApp() && !geoDenied && driveWindow() ? DRIVE_GEO_MS : GEO_EVERY_MS;
+        if (!force && Date.now() - geoAt < every) return;
         geoAt = Date.now();
         geoBusy = true;
         const before = direction();
@@ -225,7 +229,87 @@
             // refused (no permission, or an app build without the WebView location hand-off): the IP from now on
             if (err && err.code === 1) geoDenied = true;
             byIp();
-        }, { enableHighAccuracy: false, maximumAge: GEO_EVERY_MS, timeout: 20000 });
+        }, { enableHighAccuracy: !!driveWindow(), maximumAge: driveWindow() ? 30000 : GEO_EVERY_MS, timeout: 20000 });
+    }
+
+    // ---------------------------------------------------------------- driving the commute (Yukimi, Nov 13)
+    //
+    // From 30 minutes before a set leave time (set days) until the trip should be over, the phone's position
+    // is read every minute in the app. Within 300 m of the last report's route it is driving it: the time
+    // left comes from that report alone (no request to Google or TomTom): the route's drive time spread
+    // over its length, slow stretches counting 2.2x and jammed ones 4x, from where the phone is to the end.
+
+    /** { direction, leaveAt, until } while a commute can be under way, else null. */
+    function driveWindow(now = new Date()) {
+        const s = settings || {};
+        if (!Array.isArray(s.days) || !s.days.includes(now.getDay())) return null;
+        const t = now.getHours() * 60 + now.getMinutes();
+        for (const [key, dir] of [['leaveHome', 'work'], ['leaveWork', 'home']]) {
+            const m = minutesOf(s[key]);
+            if (m == null) continue;
+            const r = latest[dir];
+            const tripMin = r && r.preferred && r.preferred.durationSec ? r.preferred.durationSec / 60 : 60;
+            if (t >= m - LEAVE_WINDOW_MIN && t <= m + Math.max(120, tripMin + 45)) {
+                const at = new Date(now);
+                at.setHours(Math.floor(m / 60), m % 60, 0, 0);
+                return { direction: dir, leaveAt: at.getTime() };
+            }
+        }
+        return null;
+    }
+
+    /** Where a point lies on a [[lat, lon], ...] line: { distM, alongM, totalM }. */
+    function onLine(line, p) {
+        const R = 6371008.8;
+        const rad = (d) => (d * Math.PI) / 180;
+        const kx = Math.cos(rad(p.lat)) * R * Math.PI / 180;
+        const ky = R * Math.PI / 180;
+        let cum = 0;
+        let best = { distM: Infinity, alongM: 0 };
+        for (let i = 0; i < line.length - 1; i++) {
+            const ax = (line[i][1] - p.lon) * kx; const ay = (line[i][0] - p.lat) * ky;
+            const bx = (line[i + 1][1] - p.lon) * kx; const by = (line[i + 1][0] - p.lat) * ky;
+            const dx = bx - ax; const dy = by - ay;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const t = len > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (len * len))) : 0;
+            const d = Math.hypot(ax + t * dx, ay + t * dy);
+            if (d < best.distM) best = { distM: d, alongM: cum + t * len };
+            cum += len;
+        }
+        return Object.assign(best, { totalM: cum });
+    }
+
+    /** The share of a route's drive time between fractions a and b, slow / jammed stretches weighted. */
+    function timeShare(route, a, b) {
+        const W = { NORMAL: 1, SLOW: 2.2, TRAFFIC_JAM: 4 };
+        const segs = (route.segments || []).filter((sg) => sg.to > sg.from);
+        const weightBetween = (x, y) => {
+            let w = y - x; // NORMAL everywhere ...
+            segs.forEach((sg) => { const o = Math.max(0, Math.min(y, sg.to) - Math.max(x, sg.from)); if (o > 0) w += o * ((W[sg.speed] || 1) - 1); }); // ... plus the extra of slower stretches
+            return w;
+        };
+        const all = weightBetween(0, 1);
+        return all > 0 ? weightBetween(a, b) / all : (b - a);
+    }
+
+    /**
+     * Driving the commute now: { direction, leftSec, arriveAt, toGoM, at } from the phone's last position on
+     * the last report's route, or null (not in the window, no device position, off the route).
+     */
+    function driving() {
+        const win = driveWindow();
+        if (!win || !here || here.source !== 'device' || Date.now() - here.at > 5 * 60 * 1000) return null;
+        // still at Home or already at Work (inside the radius): not on the way
+        if (placeNow()) return null;
+        const r = latest[win.direction];
+        const p = r && r.preferred;
+        if (!p || !Array.isArray(p.line) || p.line.length < 2 || p.durationSec == null) return null;
+        const loc = onLine(p.line, here);
+        if (loc.distM > ON_ROUTE_M || !loc.totalM) return null;
+        const f = Math.max(0, Math.min(1, loc.alongM / loc.totalM));
+        if (f > 0.995) return null; // arrived
+        const leftSec = Math.round(p.durationSec * timeShare(p, f, 1));
+        return { direction: win.direction, leftSec, arriveAt: Date.now() + leftSec * 1000, toGoM: (p.distanceM || loc.totalM) * (1 - f), at: f };
     }
 
     // ---------------------------------------------------------------- direction
@@ -245,6 +329,8 @@
     /** The commute ahead: picked in the app (this visit), else by where the phone is, else by the time. */
     function direction() {
         if (dirPicked) return dirPicked;
+        const dv = driving();
+        if (dv) return dv.direction;
         const p = placeNow() || storedPlace();
         if (p) return p === 'home' ? 'work' : 'home';
         return autoDirection();
@@ -253,6 +339,8 @@
     /** Where the direction came from, for the plate ("At Home", "At Work", "On the road"). */
     function whereText() {
         if (dirPicked) return '';
+        const dv = driving();
+        if (dv) return 'On your route';
         const p = placeNow();
         if (p) return p === 'home' ? 'At Home' : 'At Work';
         if (here) return 'On the road';
@@ -380,9 +468,11 @@
         const p = r.preferred || {};
         els.signal.dataset.level = r.level || 'clear';
         els.dash.classList.toggle('is-checking', !!checking[d]);
-        els.min.textContent = mins(p.durationSec);
-        const arrive = p.durationSec != null ? clock(Date.now() + p.durationSec * 1000) : '';
-        els.lcdSub.textContent = arrive ? `Arrive ${arrive}` : '';
+        const dv = driving();
+        const onIt = dv && dv.direction === d;
+        els.min.textContent = mins(onIt ? dv.leftSec : p.durationSec);
+        const arrive = onIt ? clock(dv.arriveAt) : (p.durationSec != null ? clock(Date.now() + p.durationSec * 1000) : '');
+        els.lcdSub.textContent = arrive ? `Arrive ${arrive}${onIt ? `  \u00b7  ${miles(dv.toGoM)} to go` : ''}` : '';
         const delay = r.delaySec || 0;
         const usual = p.staticSec ? `<small>usually ${esc(mins(p.staticSec))}</small>` : '';
         els.delay.innerHTML = `<span class="trf-delay-badge is-${delay >= 60 ? r.level : 'clear'}">${delay >= 60 ? `+${mins(delay)}` : 'On time'}</span>${usual}`;
@@ -969,6 +1059,11 @@
         const label = d === 'work' ? 'To Work' : 'To Home';
         if (!r || !r.preferred) return { title: `${label}: no report`, sub: configured() ? 'Tap to check the traffic' : 'Tap to set up your commute', level: 'none' };
         const p = r.preferred;
+        const dv = driving();
+        if (dv && dv.direction === d) {
+            // on the way: what is left from here, from the report already on the phone
+            return { title: `${label}: ${minText(dv.leftSec)} left`, sub: [`Arrive ${clock(dv.arriveAt)}`, `${miles(dv.toGoM)} to go`, r.traps && r.traps.filter((t) => t.at > dv.at).length ? `${r.traps.filter((t) => t.at > dv.at).length} camera${r.traps.filter((t) => t.at > dv.at).length > 1 ? 's' : ''} ahead` : ''].filter(Boolean).join(', '), level: r.level };
+        }
         const delay = r.delaySec >= 60 ? ` (+${mins(r.delaySec)})` : '';
         const bits = [];
         const arrive = arriveText(r);
@@ -1011,9 +1106,17 @@
      */
     function statusState() {
         if (!canUse() || !loaded || !configured()) return null;
+        const dv = driving();
         const win = leaveWindow();
-        const d = win ? win.direction : direction();
+        const d = dv ? dv.direction : (win ? win.direction : direction());
         const r = latest[d];
+        if (dv && r && r.preferred) {
+            // driving it: the time left from here, no request (the car shows for the whole drive)
+            const ahead = (r.alerts || []).filter((a) => a.at > dv.at && a.major);
+            const lines = [`${d === 'work' ? 'To Work' : 'To Home'}: ${minText(dv.leftSec)} left, ${miles(dv.toGoM)} to go`, `Arrive ${clock(dv.arriveAt)}.`];
+            if (ahead.length) lines.push(`Ahead: ${ahead[0].label}${ahead[0].street ? ` on ${ahead[0].street}` : ''}.`);
+            return { delayed: true, reason: 'driving', direction: d, title: 'Traffic', lines };
+        }
         // in the window the car needs a current report: one check (at most every 15 min; the server caches)
         if (win && !document.hidden && Date.now() - todayCheckAt > TODAY_CHECK_MS && (!r || Date.now() - Date.parse(r.at) > TODAY_CHECK_MS)) {
             todayCheckAt = Date.now();
@@ -1040,9 +1143,10 @@
         if (!configured() && !isAdmin()) return false;
         readPosition();
         const d = direction();
-        // Today on screen with an old report: one fresh check (at most every 15 min; the server caches too)
+        // Today on screen with an old report: one fresh check (at most every 15 min; the server caches too),
+        // never while driving the route (the time left comes from the report already here)
         const r0 = latest[d];
-        if (configured() && !document.hidden && Date.now() - todayCheckAt > TODAY_CHECK_MS && (!r0 || Date.now() - Date.parse(r0.at) > TODAY_CHECK_MS)) {
+        if (configured() && !driving() && !document.hidden && Date.now() - todayCheckAt > TODAY_CHECK_MS && (!r0 || Date.now() - Date.parse(r0.at) > TODAY_CHECK_MS)) {
             todayCheckAt = Date.now();
             quietCheck(d);
         }
@@ -1080,6 +1184,8 @@
             const w = leaveWindow();
             const key = w ? `${w.direction}:${w.leaveAt}` : '';
             if (key !== windowKey) { windowKey = key; if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus(); if (ws && ws.refreshToday) ws.refreshToday(); }
+            // driving: the phone's position each minute, then the time left everywhere it shows
+            if (driveWindow()) { readPosition(); if (driving()) changed(); }
         }, 60 * 1000);
     }
 
@@ -1099,6 +1205,8 @@
         latest: () => latest,
         direction,
         statusState,
+        /** Driving the commute: { direction, leftSec, arriveAt, toGoM, at } or null. */
+        driving: () => driving(),
         /** Read the phone's position now (Refresh does too). */
         locate: () => readPosition(true),
         refresh: () => check(direction(), false),

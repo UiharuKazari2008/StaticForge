@@ -63,6 +63,39 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-count {
     vertical-align: top;
 }
 
+/* a drawn mark in the count's place (Yukimi, Nov 13: music shows its playback as e-mail shows its
+   count): play is a right-pointing triangle, pause two bars, both white like the count's digits and
+   standing on the count's cap line. Drawn, not ▶/⏸ characters (Android shows those as colour emoji). */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-count[data-icon] {
+    position: relative;
+    width: calc(9 * var(--u));
+    height: calc(10 * var(--u));
+    margin-top: calc(4 * var(--u));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-count[data-icon="play"]::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    border-style: solid;
+    border-width: calc(5 * var(--u)) 0 calc(5 * var(--u)) calc(8 * var(--u));
+    border-color: transparent transparent transparent currentColor;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-count[data-icon="pause"]::before,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-count[data-icon="pause"]::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    width: calc(3 * var(--u));
+    height: calc(10 * var(--u));
+    background: currentColor;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-count[data-icon="pause"]::before { left: 0; }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-count[data-icon="pause"]::after { left: calc(5 * var(--u)); }
+
 /* at rest the items fade with their distance from the band (emulator: the label's brightest
    pixel 255 next to the band, 231-239 one further, 206-222 beyond, over backgrounds of 50-130) */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-row[data-far="2"] { opacity: 0.86; }

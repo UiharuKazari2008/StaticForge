@@ -13,6 +13,8 @@ const sidebarGadgets = require('../../sidebarGadgets');
 //   weather_places_get    {}                                  { places: { home, work }, rain, alerts }
 //   weather_places_save   { places: { home?, work? } }        admins; null clears one (#792)
 //   weather_rain_status   {}                                  rain now / soon at Home and Work
+//   weather_place         { lat, lon }                         { name, region, country }: the town for the phone's
+//                                                             own position (Current location in the app)
 //
 // Broadcasts (weatherService alert monitor, every 5 min on the configured home location):
 //   weather_alert_issued    { alert, place: { id, label, name, ... }, source }   a new alert, once
@@ -138,6 +140,19 @@ async function handlePlacesSave(handlersCtx, ws, message, clientInfo) {
     }
 }
 
+async function handlePlace(handlersCtx, ws, message) {
+    try {
+        const lat = Number(message.lat);
+        const lon = Number(message.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new Error('lat and lon are needed');
+        // rounded to ~1 km: the town, and a cache key many positions share
+        const place = await sidebarGadgets.reverseGeocode(handlersCtx.globalResources, lat.toFixed(2), lon.toFixed(2));
+        reply(handlersCtx, ws, message, place ? { name: place.city, region: place.region || '', country: place.country || '' } : { name: '' });
+    } catch (error) {
+        fail(handlersCtx, ws, message, error, 'The place could not be named');
+    }
+}
+
 async function handleRainStatus(handlersCtx, ws, message) {
     try {
         weatherService.bind(handlersCtx.globalResources);
@@ -166,6 +181,7 @@ function registerPackets(handlersCtx) {
     reg('weather_places_get', handlePlacesGet);
     reg('weather_places_save', handlePlacesSave, { destructive: true });
     reg('weather_rain_status', handleRainStatus);
+    reg('weather_place', handlePlace);
     // the primary location's alerts, broadcast to every client as they are issued
     weatherService.startAlertMonitor();
 }

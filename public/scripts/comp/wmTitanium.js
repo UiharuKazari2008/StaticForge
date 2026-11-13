@@ -418,6 +418,9 @@
             const c = el.lastElementChild;
             if (l.textContent !== p.label) l.textContent = p.label;
             if (c.textContent !== (p.count || '')) c.textContent = p.count || '';
+            // a drawn mark in the count's place (music: play / pause), as the e-mail count sits by its label
+            const ci = p.countIcon || '';
+            if ((c.dataset.icon || '') !== ci) { if (ci) c.dataset.icon = ci; else delete c.dataset.icon; }
         });
         have.forEach((el) => el.remove());
         rowEl.clear();

@@ -82,6 +82,12 @@
     let saved = load(LS.places, []).filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lon));
     let here = load(LS.here, null); // { name, region, country, lat?, lon?, at, gadget? }
     let hereDenied = false;
+    // Current location from the phone itself inside the Dreamscape app (Yukimi, Nov 13: "it needs to use
+    // the current location"): read when Weather opens and every 10 minutes while it is in use
+    const DEVICE_HERE_MS = 10 * 60 * 1000;
+    let deviceDenied = false;
+    let hereForce = false;
+    const inApp = () => !!(window.AndroidCaption || window.AndroidNotification || window.AndroidDevice);
     let selectedId = load(LS.selected, null);
     let unitPicked = load(LS.unit, null);
     let gadgetUnit = null;
@@ -428,7 +434,49 @@
     // the caller does (the Sidebar's and Today's own check, wmTodayWidgets.js isAdmin)
     const isAdmin = () => { try { return localStorage.getItem('userType') === 'admin'; } catch (_) { return false; } };
 
+    /** The phone's own position (Android app): { lat, lon } or null. */
+    function devicePosition() {
+        if (!inApp() || deviceDenied || !navigator.geolocation) return Promise.resolve(null);
+        return new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+                (err) => { if (err && err.code === 1) deviceDenied = true; resolve(null); },
+                { enableHighAccuracy: false, maximumAge: DEVICE_HERE_MS, timeout: 15000 }
+            );
+        });
+    }
+
+    /**
+     * Opening Weather away from Home: Current location is the place shown. The automatic places (Home,
+     * Work, Current location) follow the phone; a saved city picked by hand stays picked.
+     */
+    function followPhone() {
+        if (selectedId && !['home', 'work', 'here'].includes(selectedId)) return;
+        const want = hereInside() || (here && here.name ? 'here' : null);
+        if (want && want !== selectedId) select(want);
+    }
+
     async function resolveHere() {
+        // inside the app: the phone's own position first (named by the server's weather_place)
+        if (inApp() && !deviceDenied) {
+            const force = hereForce;
+            hereForce = false;
+            if (!force && here && here.device && Date.now() - (here.at || 0) < DEVICE_HERE_MS) return;
+            const pos = await devicePosition();
+            if (pos) {
+                const moved = !here || !Number.isFinite(here.lat) || distKm(here, pos) > 1;
+                let name = here && here.device && !moved ? here.name : '';
+                let region = here && here.device && !moved ? here.region : '';
+                let country = here && here.device && !moved ? here.country : '';
+                if (!name && wsClient()) {
+                    try { const n = await ask('weather_place', { lat: pos.lat, lon: pos.lon }, 10000); name = (n && n.name) || ''; region = (n && n.region) || ''; country = (n && n.country) || ''; } catch (_) { /* named below */ }
+                }
+                here = { name: name || 'Current location', region, country, lat: Math.round(pos.lat * 1e4) / 1e4, lon: Math.round(pos.lon * 1e4) / 1e4, at: Date.now(), device: true };
+                save(LS.here, here);
+                followPhone();
+                return;
+            }
+        }
         if (hereDenied || !isAdmin()) return;
         if (here && Number.isFinite(here.lat) && Date.now() - (here.at || 0) < HERE_MS) return;
         if (!wsClient()) return;
@@ -444,6 +492,7 @@
         const next = { name: loc.name, region: loc.region || '', country: loc.country || '', lat: Number(loc.lat), lon: Number(loc.lon), at: Date.now() };
         here = next;
         save(LS.here, here);
+        followPhone();
         if (w.current) {
             cache[keyOf(Object.assign({ id: 'here' }, here))] = { at: Date.now(), data: slim(w) };
             persistCache();
@@ -2747,6 +2796,8 @@
             },
             show() {
                 shown = true;
+                // where the phone is now, before the place to show is picked (Current location away from Home)
+                hereForce = true;
                 els.root.classList.remove('is-paused');
                 syncLayers();
                 render();

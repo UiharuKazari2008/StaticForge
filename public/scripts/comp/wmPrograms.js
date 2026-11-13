@@ -52,6 +52,10 @@
         cameraExtend: 'wmCameraExtendBar',
         // ... and the soft-key bar's background reaches under Android's gesture bar (#795)
         softkeyExtend: 'wmSoftkeyExtend',
+        // Settings > Today > Appearance > Rotation: Today turns with the phone (a foldable: per screen)
+        homeRotate: 'wmHomeRotate',
+        homeRotateCover: 'wmHomeRotateCover',
+        homeRotateMain: 'wmHomeRotateMain',
         showBluetoothIcon: 'wmShowBluetoothIcon',
         showCellIcon: 'wmShowCellIcon',
         bezelLogoOpacity: 'wmBezelLogoOpacity',
@@ -140,6 +144,38 @@
     function applyCamera() {
         root.dataset.wmCamera = cameraStyle();
     }
+
+    // ---- home screen rotation (Yukimi, Nov 13): while the home screen (Today) shows, the Android app
+    // locks the screen upright unless rotation is on for this screen; a foldable keeps one choice for
+    // its cover screen and one for its main screen (AndroidDisplay.getScreenInfo: foldable, screen).
+    // Elsewhere the app turns as Android decides. Defaults: off on a phone and a cover screen, on on
+    // the main screen.
+    function screenInfo() {
+        try {
+            const D = window.AndroidDisplay;
+            if (D && typeof D.getScreenInfo === 'function') return JSON.parse(D.getScreenInfo());
+        } catch (_) { /* older app */ }
+        return null;
+    }
+
+    function homeRotateAllowed(info = screenInfo()) {
+        const on = (k, def) => { const v = lsGet(k); return v === '1' ? true : v === '0' ? false : def; };
+        if (info && info.foldable) return info.screen === 'main' ? on(K.homeRotateMain, true) : on(K.homeRotateCover, false);
+        return on(K.homeRotate, false);
+    }
+
+    let rotationLocked = null;
+    function applyHomeRotation() {
+        const D = window.AndroidDisplay;
+        if (!D || typeof D.setRotationLock !== 'function') return;
+        const lock = root.dataset.wmApp === 'today' && !homeRotateAllowed();
+        if (lock === rotationLocked) return;
+        rotationLocked = lock;
+        try { D.setRotationLock(lock); } catch (_) { /* older app */ }
+    }
+    // the app on screen (wmShell sets data-wm-app) and folding / unfolding (the page resizes)
+    new MutationObserver(applyHomeRotation).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
+    window.addEventListener('resize', () => { rotationLocked = null; applyHomeRotation(); });
 
     // Settings > Screen > Bezel: Extend softkey background under gesture bar (wm-shell.css data-wm-softkey-extend)
     function applySoftkeyExtend() {
@@ -1044,7 +1080,11 @@
         {
             id: 'today', tab: 'personal', label: 'Today', icon: 'set-today',
             tabs: [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items']],
-            init: () => ({ useDesktop: todayUsesDesktop(), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall(), opts: todayOptionsStored(), optsFor: null, timeout: todayTimeout() }),
+            init: () => ({
+                useDesktop: todayUsesDesktop(), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall(), opts: todayOptionsStored(), optsFor: null, timeout: todayTimeout(),
+                // rotation of Today (Yukimi, Nov 13: it applies to the Today screen only, so it lives here)
+                screen: screenInfo(), rotate: homeRotateAllowed(screenInfo()), rotateCover: lsGet(K.homeRotateCover) === '1', rotateMain: lsGet(K.homeRotateMain) !== '0'
+            }),
             render(el, tab, d, api) {
                 // which picture Today shows is chosen on the Wallpaper tab, with its placement and
                 // effect (Yukimi, Nov 11): the device has the choice on Appearance, Melaton has a
@@ -1183,6 +1223,20 @@
                 if (!d.useDesktop && sameSite(d.picture)) prev.style.backgroundImage = `url("${d.picture.replace(/["\\\n]/g, encodeURIComponent)}")`;
                 else prev.textContent = d.useDesktop ? 'Desktop' : '';
                 el.querySelectorAll('[data-tb]').forEach((b) => b.addEventListener('click', () => { d.titleBar = b.dataset.tb; api.rerender(); }));
+                // Rotation: whether Today turns with the phone; a foldable has a choice for each of its screens
+                const canLock = !!(window.AndroidDisplay && typeof window.AndroidDisplay.setRotationLock === 'function');
+                const fold = !!(d.screen && d.screen.foldable);
+                el.insertAdjacentHTML('beforeend', `<div class="wm-form-gap"></div><div class="wm-form-sub">Rotation</div>
+                    ${fold
+                        ? `${check('wmHomeRotateCover', 'Rotate Today on the cover screen', d.rotateCover)}${check('wmHomeRotateMain', 'Rotate Today on the main screen', d.rotateMain)}`
+                        : check('wmHomeRotate', 'Rotate Today with the phone', d.rotate)}
+                    <p class="wm-form-note">${canLock
+                        ? `When off, Today stays upright however the phone is held. Programs still turn as the phone's auto-rotate setting decides.${fold ? ` This phone is on ${d.screen.screen === 'main' ? 'the main screen' : 'the cover screen'} now.` : ''}`
+                        : 'Rotation of Today needs the Dreamscape app.'}</p>`);
+                const bindR = (name, fn) => { const i = el.querySelector(`input[name="${name}"]`); if (i) { i.disabled = !canLock; i.addEventListener('change', () => fn(i.checked)); } };
+                bindR('wmHomeRotate', (v) => { d.rotate = v; });
+                bindR('wmHomeRotateCover', (v) => { d.rotateCover = v; });
+                bindR('wmHomeRotateMain', (v) => { d.rotateMain = v; });
             },
             async commit(d) {
                 // the Appearance and Items choices are local: they are kept even when the
@@ -1195,6 +1249,13 @@
                 lsSet(K.titleBar, d.titleBar);
                 applyTitleBar();
                 const keys = [K.todayUseDesktop, K.todayBackground, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY];
+                // Rotation (a foldable's per-screen choices, or the one for a phone)
+                const rot = d.screen && d.screen.foldable
+                    ? [[K.homeRotateCover, d.rotateCover ? '1' : null], [K.homeRotateMain, d.rotateMain ? null : '0']]
+                    : [[K.homeRotate, d.rotate ? '1' : null]];
+                let rotChanged = false;
+                for (const [k, v] of rot) if ((lsGet(k) || null) !== v) { lsSet(k, v); keys.push(k); rotChanged = true; }
+                if (rotChanged) { rotationLocked = null; applyHomeRotation(); }
                 if (runningVersion() === '6.5' && d.timeout) {
                     lsSet(K.todayTimeout, JSON.stringify({ on: d.timeout.on, hours: d.timeout.hours }));
                     keys.push(K.todayTimeout);
