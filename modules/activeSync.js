@@ -46,6 +46,7 @@ const OP_GROUP = {
     clipboard: 'clipboard',
     open: 'clipboard',
     device: 'control',
+    apps: 'control', // apps.install: an .apk on the phone offered to Android's installer (#795)
     notify: 'notify',
     screen: 'screen',
     sync: 'sync'
@@ -55,7 +56,8 @@ const GUEST_PERMISSIONS = PERMISSIONS.filter((p) => p !== 'sync');
 // what a device may ask of a computer (the desktop tab decides what it implements)
 const DEVICE_TO_COMPUTER = new Set(['status', 'studio', 'clipboard', 'open', 'notify']);
 // ops that may wait for an offline partner
-const QUEUEABLE = new Set(['studio.setSession', 'clipboard.set', 'open.item', 'notify.show', 'stream.receive']);
+// (apps.install after a queued stream.receive: the program sent to a phone that was away installs once it lands)
+const QUEUEABLE = new Set(['studio.setSession', 'clipboard.set', 'open.item', 'notify.show', 'stream.receive', 'apps.install']);
 const SYNC_ITEMS = ['notes', 'contacts', 'favorites', 'files', 'prints'];
 
 const CALL_TIMEOUT_MS = 15000;

@@ -105,3 +105,17 @@ The app answers with ordinary packets on the same socket (it holds the page's se
 
 Google Messages stays the phone's default messaging app (RCS needs it); Yukimi turns its own
 notifications off so a message does not ring twice.
+
+## Programs (Yozora #795)
+
+An Android program (`.apk`) sent from the computer is offered to Android's package installer. Android always asks
+the user to confirm; the app only opens that prompt.
+
+| Operation (to the service) | Arguments | Does |
+| --- | --- | --- |
+| `apps.install` | `{ root, path }` (an `.apk` in shared storage) | opens the installer when the app is on screen, else posts "<app> <version> is ready to install" (tap opens it); without permission to install from Dreamscape, the same path opens Android's Install unknown apps page first. Answers `{ state: prompted \| notified \| needs_permission, package, version, label }`. Needs the `control` and `files` permissions; queueable for a partner that is away (after its `stream.receive`). |
+
+From the desktop: Melaton Mobile Device Center > Programs and Services > Install a program on your device. From
+an agent (application key, admin): upload as for any file (`POST /api/activesync/upload/:deviceId/begin`, chunks,
+then `commit` with `{ install: true, queue: true }`; the file lands under its own name, replacing an older copy),
+or `POST /api/activesync/install/:deviceId { root, path }` for an `.apk` already on the phone.

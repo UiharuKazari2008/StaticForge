@@ -16,12 +16,17 @@
  *   POST   /api/activesync/upload/:deviceId/begin   { root, dir, name, size, conflict, mtime, id? }
  *   POST   /api/activesync/upload/:id/chunk?offset=N        raw bytes, in order; resumable: the
  *                                                           answer says how much is here
- *   POST   /api/activesync/upload/:id/commit  { queue? }    the phone is asked to take it
+ *   POST   /api/activesync/upload/:id/commit  { queue?, install? }    the phone is asked to take it
  *          (stream.receive { transferId, root, dir, name, size, conflict, mtime }) and pulls it:
  *   GET    /api/activesync/transfer/:id/data                the device, with Range
  *          commit answers with the phone's entry, or { queued: true } when the device is an offline
  *          partner and queue was asked: the file waits here until its next hello;
  *   DELETE /api/activesync/upload/:id                       give up
+ *
+ * Programs (#795): commit with install: true sends an .apk and then asks the phone to install it
+ * (apps.install: Android's installer opens, or a tap-to-install notification when the app is in the
+ * background; the user always confirms). A phone that is away gets both queued, in order.
+ *   POST   /api/activesync/install/:deviceId  { root, path }   an .apk already on the phone
  *
  * Files in flight to a phone live in <databases>/activesync-transfers/<id> (+ .json); what nobody
  * collected in 7 days is swept. A device's requests must come from the session of one of its open
@@ -328,20 +333,56 @@ function mount(app, authMiddleware, globalResources) {
         writeMeta(globalResources, meta);
         const args = { transferId: meta.id, root: meta.root, dir: meta.dir, name: meta.name, size: meta.size, conflict: meta.conflict, mtime: meta.mtime };
         const wantQueue = !!(req.body && req.body.queue);
+        const wantInstall = !!(req.body && req.body.install);
+        if (wantInstall && !/\.apk$/i.test(meta.name)) { refuse(res, 400, 'NOT_APK', 'Only an .apk can be installed'); return; }
+        // a program lands under its own name (a newer build replaces the last one sent), so the queued
+        // install finds it where the queued copy put it
+        if (wantInstall) args.conflict = 'replace';
         const online = activeSync.deviceOnline(globalResources, wsServer(), meta.deviceId);
+        const filePath = `${String(meta.dir || '/').replace(/\/+$/, '')}/${meta.name}`;
         try {
             if (!online && wantQueue) {
                 activeSync.queueFor(globalResources, wsServer(), meta.deviceId, 'stream.receive', args);
-                res.json({ success: true, queued: true });
+                if (wantInstall) activeSync.queueFor(globalResources, wsServer(), meta.deviceId, 'apps.install', { root: meta.root, path: filePath });
+                res.json({ success: true, queued: true, install: wantInstall ? 'queued' : undefined });
                 return;
             }
             // the phone pulls at its own pace: an hour per GB is generous on any link
             const timeoutMs = Math.max(120000, Math.ceil(meta.size / (1024 * 1024 * 1024)) * 3600 * 1000);
             const entry = await activeSync.serverCall(globalResources, wsServer(), meta.deviceId, 'stream.receive', args, { timeoutMs, maxTimeoutMs: SEND_CALL_TIMEOUT_MS });
             removeUpload(globalResources, meta.id);
-            res.json({ success: true, entry: entry == null ? null : entry });
+            let install;
+            if (wantInstall) {
+                const at = (entry && entry.path) || filePath;
+                try {
+                    install = await activeSync.serverCall(globalResources, wsServer(), meta.deviceId, 'apps.install', { root: meta.root, path: at }, { timeoutMs: 30000 });
+                } catch (error) {
+                    install = { state: 'failed', code: error.code || 'ERROR', error: error.message };
+                }
+            }
+            res.json({ success: true, entry: entry == null ? null : entry, install });
         } catch (error) {
             removeUpload(globalResources, meta.id);
+            refuse(res, statusOf(error.code), error.code || 'ERROR', error.message);
+        }
+    });
+
+    // an .apk already on the phone: Android's installer, or a tap-to-install notification (#795)
+    app.post('/api/activesync/install/:deviceId', auth, async (req, res) => {
+        if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
+        const deviceId = String(req.params.deviceId || '').toLowerCase();
+        const root = String((req.body && req.body.root) || 'internal');
+        const p = String((req.body && req.body.path) || '');
+        if (!/\.apk$/i.test(p)) { refuse(res, 400, 'NOT_APK', 'Only an .apk can be installed'); return; }
+        try {
+            const online = activeSync.deviceOnline(globalResources, wsServer(), deviceId);
+            if (!online && req.body && req.body.queue) {
+                activeSync.queueFor(globalResources, wsServer(), deviceId, 'apps.install', { root, path: p });
+                res.json({ success: true, queued: true });
+                return;
+            }
+            res.json({ success: true, install: await activeSync.serverCall(globalResources, wsServer(), deviceId, 'apps.install', { root, path: p }, { timeoutMs: 30000 }) });
+        } catch (error) {
             refuse(res, statusOf(error.code), error.code || 'ERROR', error.message);
         }
     });

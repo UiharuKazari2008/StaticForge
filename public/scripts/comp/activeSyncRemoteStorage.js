@@ -173,8 +173,9 @@
     /**
      * A Blob/File into a phone folder: to the server in chunks, then the phone pulls it. The first
      * half of the progress is the way to the server, the second the phone writing it.
-     * opts: { name, conflict, mtime, signal, onProgress(bytes, total), queue, deviceId }.
+     * opts: { name, conflict, mtime, signal, onProgress(bytes, total), queue, deviceId, install }.
      * queue: an offline partner gets it when it next connects ({ queued: true }).
+     * install: an .apk is then offered to Android's installer (#795); the answer carries install.
      */
     async function write(rootId, dir, file, opts = {}) {
         const deviceId = opts.deviceId || (current && current.deviceId);
@@ -216,9 +217,10 @@
                 note(offset / 2);
             }
             progress.set(id, (written) => note(total / 2 + written / 2));
-            const done = await post(`/api/activesync/upload/${id}/commit`, { queue: !!opts.queue }, null, true);
+            const done = await post(`/api/activesync/upload/${id}/commit`, { queue: !!opts.queue, install: !!opts.install }, null, true);
             if (done.status !== 200) throw error(done.data.code, done.data.error);
             note(total);
+            if (opts.install) return { queued: !!done.data.queued, entry: done.data.entry || null, install: done.data.install || (done.data.queued ? 'queued' : null) };
             return done.data.queued ? { queued: true } : done.data.entry;
         } catch (err) {
             giveUp();
@@ -254,6 +256,43 @@
             // openExplorerApplet: public/scripts/comp/featureLoader.js
             return typeof root.openExplorerApplet === 'function' ? root.openExplorerApplet('phone://') : undefined;
         }
+    });
+
+    // Programs and Services: an Android program (.apk) from this computer to the phone (Yukimi, Nov 13,
+    // #795). It goes to Download on the phone and Android's installer opens there, or a notification
+    // waits for a tap when the app is in the background; the user confirms on the phone. A partner
+    // that is away gets it, and the install, when it next connects.
+    addTask('programs', {
+        id: 'install-apk', text: 'Install a program on your device', icon: 'add-programs-32.png',
+        when: (d) => d.partner && d.permissions.includes('files') && d.permissions.includes('control'),
+        run: (d) => new Promise((resolve) => {
+            const pick = document.createElement('input');
+            pick.type = 'file';
+            pick.accept = '.apk,application/vnd.android.package-archive';
+            pick.addEventListener('change', async () => {
+                const file = pick.files && pick.files[0];
+                if (!file) { resolve(); return; }
+                const name = d.name || 'your device';
+                const box = (html, title = 'Melaton Mobile Device Center') => (typeof root.showConfirmationDialog === 'function'
+                    ? root.showConfirmationDialog(html, [{ text: 'OK', value: true, className: 'btn-primary' }], null, { title })
+                    : Promise.resolve());
+                const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+                try {
+                    const r = await write('internal', '/Download', file, { deviceId: d.deviceId, conflict: 'replace', install: true, queue: true });
+                    const st = r && r.install && (r.install.state || r.install);
+                    const msg = r && r.queued ? `${esc(name)} is not connected. ${esc(file.name)} will be copied and offered for installation when it connects.`
+                        : st === 'prompted' ? `${esc(file.name)} was copied to ${esc(name)}. Confirm the installation on the device.`
+                            : st === 'notified' ? `${esc(file.name)} was copied to ${esc(name)}. Tap the notification on the device to install it.`
+                                : st === 'needs_permission' ? `${esc(file.name)} was copied to ${esc(name)}, but the device does not allow Dreamscape to install programs yet. Allow it on the device, then try again.`
+                                    : `${esc(file.name)} was copied to the Download folder of ${esc(name)}, but it could not be offered for installation${r && r.install && r.install.error ? `: ${esc(r.install.error)}` : '.'}`;
+                    await box(msg);
+                } catch (err) {
+                    await box(`${esc(file.name)} could not be sent to ${esc(name)}.<br>${esc((err && err.message) || '')}`);
+                }
+                resolve();
+            }, { once: true });
+            pick.click();
+        })
     });
 
     root.phoneStorage = {
