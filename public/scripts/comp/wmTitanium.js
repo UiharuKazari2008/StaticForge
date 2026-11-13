@@ -61,7 +61,7 @@
     // Coming back to Today (Yukimi, Nov 13, #800): the band is already there, empty; the list scales in
     // from the top left while it runs up into the clock (the lift-without-speed move, BACK_MS), then
     // the clock panel grows in as after any move. ENTER_ROWS: how far below its place the list starts.
-    const ENTER_ROWS = 3;
+    const ENTER_MS = 550;       // the entrance's run up into the clock (and its scale-in, wm-titanium.css)
     const ENTER_RECENT_MS = 1500; // a Home press this soon after the page came back belongs to that return
     // A Home press while Today is in front blinks the page hidden for a moment (Android pauses and
     // resumes the launcher: 16 ms on the Fold7); hidden longer, the user was in another app
@@ -625,7 +625,8 @@
         const n = Math.abs(b - a);
         const e = (pos - a) * ROW; // where the finger left the list: units past a's place, + toward later items
         // the clock starts when the finger left the glass, not when the event got here
-        tw = { a, b, n, e0: e, D: 0, p: 0, p0: 0, gain: 1, Tv: 0, end: BACK_MS, t0: (o && o.at) || performance.now(), open: false, nv: n };
+        const back = (o && o.backMs) || BACK_MS;
+        tw = { a, b, n, e0: e, D: 0, p: 0, p0: 0, gain: 1, Tv: 0, end: back, back, t0: (o && o.at) || performance.now(), open: false, nv: n };
         if (n) {
             const nv = Math.max(n, (o && o.nv) || n);
             tw.D = b > a ? BAND + ROW * (n - 1) : ROW * n;                 // b's row to the band top, from a's rest layout
@@ -646,7 +647,7 @@
         const t = Math.max(0, now - tw.t0);
         let p;
         if (tw.n) p = Math.max(tw.p0, Math.min(1, tw.gain * Math.pow(t / tw.Tv, FLING_POW)));
-        else { const k = Math.pow(Math.min(1, t / BACK_MS), 1.3); p = k * k * (3 - 2 * k); } // 13 %, 65 %, 100 % of the way at 103, 206, 310 ms
+        else { const k = Math.pow(Math.min(1, t / (tw.back || BACK_MS)), 1.3); p = k * k * (3 - 2 * k); } // 13 %, 65 %, 100 % of the way at 103, 206, 310 ms
         if (t >= tw.end || p >= 1) { arrive(); return; }
         tw.p = p;
         placeTween(p, Math.min(1, (tw.end - t) / FADE_MS));
@@ -1016,8 +1017,12 @@
         host.classList.remove('is-entering');
         void host.offsetWidth; // restart the scale-in
         host.classList.add('is-entering');
-        pos = at - ENTER_ROWS; // the list starts lower, as if scrolled, and runs up into the clock
-        startTween(at, at, {});
+        // the list starts all the way below the screen (its first item under the bottom edge) and runs
+        // up into the clock
+        const screenUnits = (host.clientHeight || window.innerHeight) / unit();
+        const below = screenUnits - (focusTop() - ROW * at) + ROW;
+        pos = at - below / ROW;
+        startTween(at, at, { backMs: ENTER_MS });
         sh.refreshSoftKeys();
     }
 
