@@ -39,8 +39,22 @@
         return !!(root.AndroidNotification || root.AndroidCaption || root.AndroidDeviceStatus || root.AndroidPhoneStorage);
     }
 
+    function dexWindow() {
+        try { return !!(root.AndroidHome && typeof root.AndroidHome.isExternalDisplay === 'function' && root.AndroidHome.isExternalDisplay()); } catch (_) { return false; }
+    }
+    /** The phone this DeX window belongs to (its device id), or ''. */
+    function ownDeviceId() {
+        try {
+            const app = root.AndroidActiveSync;
+            const own = app && typeof app.getDeviceId === 'function' ? String(app.getDeviceId() || '').toLowerCase() : '';
+            return /^[0-9a-f]{32}$/.test(own) ? own : '';
+        } catch (_) { return ''; }
+    }
+
     function detectKind() {
         if (root.__activeSyncKind === 'device' || root.__activeSyncKind === 'computer') return root.__activeSyncKind; // tests
+        // the app's window on the DeX desktop (#794) is a computer, linked to this phone as by USB
+        if (inAndroidApp() && dexWindow()) return 'computer';
         if (inAndroidApp()) return 'device';
         let agentTab = false;
         try { agentTab = new URLSearchParams(root.location.search).get('agent') === '1'; } catch (_) { /* no location */ }
@@ -50,6 +64,17 @@
 
     function peerId() {
         let id = '';
+        // the DeX window shares the phone's storage: it keeps an id of its own, apart from the device's
+        if (kind === 'computer' && inAndroidApp()) {
+            try { id = root.localStorage.getItem(`${ID_KEY}:dex`) || ''; } catch (_) { /* private mode */ }
+            if (!/^[0-9a-f]{32}$/.test(id)) {
+                const bytes = new Uint8Array(16);
+                root.crypto.getRandomValues(bytes);
+                id = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+                try { root.localStorage.setItem(`${ID_KEY}:dex`, id); } catch (_) { /* this session only */ }
+            }
+            return id;
+        }
         // the app owns the device's id when it can (window.AndroidActiveSync.getDeviceId(), 32 hex), so its
         // background service and a reinstalled WebView profile stay one device; else this profile keeps one
         try { id = root.localStorage.getItem(ID_KEY) || ''; } catch (_) { /* private mode */ }
@@ -197,6 +222,10 @@
         if (!kind || !client()) return;
         helloAgain = false;
         const data = { kind, id: st.id, ops: [...ops.keys()], speaker: 'webview' };
+        if (kind === 'computer' && inAndroidApp()) {
+            const dev = ownDeviceId();
+            if (dev) Object.assign(data, { link: 'usb', usbDevice: dev, name: 'DeX' });
+        }
         if (kind === 'device') {
             await refreshStorageRoots();
             const f = deviceFacts();

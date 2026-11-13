@@ -80,7 +80,9 @@
                 <p>This device then asks you to allow the connection.</p></div>`;
         }
         const allowed = PERMISSIONS.filter(([id]) => st.permissions.includes(id) && (id !== 'sync' || st.session === 'partner'));
-        return `${head(computerName(st), st.session === 'partner' ? 'Connected' : 'Connected (guest)')}
+        // the phone's own DeX window is linked by USB (#794), any other computer over the network
+        const usb = (st.computers || []).some((c) => c.link === 'usb' && c.usbDevice === st.id);
+        return `${head(computerName(st), `${st.session === 'partner' ? 'Connected' : 'Connected (guest)'}${usb ? ' via USB' : ''}`)}
             <ul class="was-rows">${allowed.map(([, label]) => `<li><span>${esc(label)}</span><span>Allowed</span></li>`).join('')}</ul>`;
     }
 

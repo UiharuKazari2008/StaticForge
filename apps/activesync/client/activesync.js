@@ -357,6 +357,8 @@
             row('Operating system:', esc(dev.os));
             row('Program:', esc(dev.app));
             row('Status:', esc(!dev.online ? 'Not Connected' : dev.session === 'partner' ? 'Connected (partnership)' : dev.session === 'guest' ? 'Connected (guest)' : 'Connected'));
+            // the phone's own DeX window (#794): its link is USB, as a cradle's
+            if (dev.online) row('Connection:', esc(dev.link === 'usb' ? 'USB' : 'Network'));
             if (dev.online && st.battery && st.battery.level != null) {
                 row('Battery:', `<img src="${A}/${batteryArt(st.battery)}-16.png" alt="">${Math.round(st.battery.level)}%${st.battery.charging ? ', charging' : ''}${st.battery.saver ? ', battery saver on' : ''}`);
             }

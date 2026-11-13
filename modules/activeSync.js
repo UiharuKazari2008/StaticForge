@@ -349,7 +349,7 @@ function describeDevice(globalResources, wsServer, row) {
 }
 
 function describeComputer(s) {
-    return { computerId: s.info.as.id, name: s.info.as.name, since: s.info.as.since, clientId: s.info.clientId || null };
+    return { computerId: s.info.as.id, name: s.info.as.name, since: s.info.as.since, clientId: s.info.clientId || null, link: s.info.as.link || 'network', usbDevice: s.info.as.usbDevice || null };
 }
 
 function list(globalResources, wsServer) {
@@ -364,6 +364,8 @@ function list(globalResources, wsServer) {
         seen.add(s.info.as.id);
         computers.push(describeComputer(s));
     }
+    // a device with a computer on its USB link (its own DeX window) is connected by USB
+    for (const d of devices) d.link = d.online && computers.some((c) => c.usbDevice === d.deviceId) ? 'usb' : (d.online ? 'network' : null);
     return { devices, computers };
 }
 
@@ -414,6 +416,10 @@ function hello(globalResources, wsServer, clientInfo, data) {
         status: null
     };
     if (kind === 'computer') {
+        // the DeX window of the phone's own app (#794): the same phone as a device, linked as if by
+        // USB (a cradle), not over the network
+        const usbDevice = String(src.usbDevice || '').toLowerCase();
+        if (src.link === 'usb' && isPeerId(usbDevice)) { as.link = 'usb'; as.usbDevice = usbDevice; }
         clientInfo.as = as;
         scheduleUpdated(globalResources, server);
         return { success: true, kind, id, name, ...list(globalResources, server) };
