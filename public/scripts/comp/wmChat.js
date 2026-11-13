@@ -45,7 +45,8 @@
     const SORT_KEY = 'wmChatSort';
     const SEEN_KEY = 'wmChatSeen'; // { chatId: ms } when each conversation was last read
     const DRAFTS_KEY = 'wmChatDrafts'; // { chatId: text } Save to Drafts
-    const SMS_TITLE = 'Text Messages';
+    // the account's name (#779: Text Messages is the device's own name, now the Text Messaging accounts')
+    const SMS_TITLE = 'Dreamscape Messenger';
     // WM 6.1's My Text phrases (Menu > My Text)
     const MY_TEXT = ['Yes.', 'No.', 'I\'m running late.', 'Where are you?', 'Can you talk?', 'Call me.', 'Thank you.', 'I\'ll be there.', 'Talk to you later.', 'I love you.'];
     const ACTIONS_KEY = 'wmChatShowActions';
@@ -717,17 +718,18 @@
 
     /**
      * A persona's reply that came while its conversation was not on screen (another program in
-     * front, the list, another conversation, the phone asleep): WM's new text message. The thread
-     * counts it unread (Today's Messages row, Messaging's picker, the title bar's phone-and-envelope
-     * glyph, outres 32508) and a notification comes up, titled as the device's (outres 33321 "New Text
-     * Message" / 33322 "New Text Messages") with the sender and the text, in the 'text' class:
-     * Settings > Sounds & Notifications' "Messaging: New text message" decides its sound, repeat,
-     * whether the bubble shows and vibration (wmShell noteEvent / playSystemSound). Tapping the text
-     * opens that conversation; with several waiting it opens Text Messages.
+     * front, the list, another conversation, the phone asleep). The thread counts it unread
+     * (Today's Messaging row, Messaging's picker, the title bar's Messenger buddy glyph,
+     * WLMMessengerResources icon 12000) and a notification comes up in Dreamscape Messenger's own
+     * class, 'chat' (#779: text messages are 'sms'), drawn like the device's new message notice: the
+     * sender and the text, "You have N new messages." with several. Settings > Sounds &
+     * Notifications' "Dreamscape Messenger: New message" decides its sound, repeat, whether the
+     * bubble shows and vibration (wmShell noteEvent / playSystemSound). Tapping the text opens that
+     * conversation; with several waiting it opens the list.
      */
     const fresh = new Map(); // chatId -> { said, at }: replies not read yet, in arrival order
     let smsNote = null;
-    const SMS_ICON = 'status-sms';
+    const SMS_ICON = 'status-messenger';
 
     function arrived(id, said, events) {
         void events;
@@ -755,14 +757,14 @@
         const s = sessionById(id);
         const html = n === 1
             ? `<button type="button" class="wch-note-open"><span class="wch-note-from">From: ${esc(personaOf(s))}</span><span class="wch-note-text">${esc(last.said)}</span></button>`
-            : `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} new text messages.</span></button>`;
+            : `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} new messages.</span></button>`;
         const open = () => { const one = fresh.size === 1 ? [...fresh.keys()][0] : null; closeSmsNote(); if (one != null) openFromNotice(one); else if (window.wmChatApp) window.wmChatApp.showList(); };
         const icon = SMS_ICON;
         const note = sh.appNote({
-            title: n === 1 ? 'New Text Message' : 'New Text Messages',
+            title: SMS_TITLE,
             html,
             icon,
-            event: 'text',
+            event: 'chat',
             softKeys: () => ({
                 left: { label: 'Dismiss', action: () => closeSmsNote() },
                 right: { label: 'Menu', menu: () => [
@@ -791,10 +793,10 @@
         const n = fresh.size;
         const [id, last] = [...fresh.entries()].pop();
         smsNote.update({
-            title: n === 1 ? 'New Text Message' : 'New Text Messages',
+            title: SMS_TITLE,
             html: n === 1
                 ? `<button type="button" class="wch-note-open"><span class="wch-note-from">From: ${esc(personaOf(sessionById(id)))}</span><span class="wch-note-text">${esc(last.said)}</span></button>`
-                : `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} new text messages.</span></button>`
+                : `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} new messages.</span></button>`
         });
     }
 
@@ -1507,7 +1509,7 @@
         hookStream();
         patchDesktop();
         scheduleBgUnread();
-        // Messaging > Options > Text Messages saved (wmSettingsSystem.js chat-options)
+        // Messaging > Options > Dreamscape Messenger saved (wmSettingsSystem.js chat-options)
         window.addEventListener('wmChatOptionsChange', () => {
             showActions = stored(ACTIONS_KEY) === '1';
             showEvents = stored(EVENTS_KEY) === '1';
@@ -1515,6 +1517,7 @@
             if (page && view() === 'opts') renderOpts();
         });
         registerToday();
+        startTextShell();
         if (!wrapLoader()) { let n = 0; const t = setInterval(() => { if (wrapLoader() || ++n > 60) clearInterval(t); }, 500); }
         sh.registerApp({
             id: APP_ID,
@@ -1583,43 +1586,295 @@
         return true;
     }
 
+    const whenShort = (ms) => {
+        if (!ms) return '';
+        const d = new Date(ms);
+        return sameDay(d, new Date()) ? fmtTime(d) : fmtShortDate(d);
+    };
+
     /**
-     * 6.5's home screen "text" panel (device CHome\CText: icon 2007 chNotifications_textmessage, after
-     * the clock and before e-mail): a page per unread conversation (the persona, the last line, the
-     * time); a tap opens that conversation, the soft key Text Messages. Only in 6.5: 6.1's Today
-     * counts texts in its Messaging row.
+     * 6.5's home screen: Dreamscape Messenger's own panel (#779; the device's text panel, CHome\CText,
+     * is Text Messaging's now: registerTextToday below), a page per unread conversation (the
+     * persona, the last line, the time); a tap opens that conversation, the soft key the list. Only
+     * in 6.5: 6.1's Today counts Dreamscape Messenger in its Messaging row.
      */
     function registerToday() {
         if (sh.version !== '6.5' || typeof sh.registerTodayItem !== 'function') return;
-        const when = (ms) => {
-            if (!ms) return '';
-            const d = new Date(ms);
-            return sameDay(d, new Date()) ? fmtTime(d) : fmtShortDate(d);
-        };
         const showList = () => window.wmChatApp.showList();
         sh.registerTodayItem({
-            id: 'text',
-            label: 'Text',
-            icon: 'ti-2007',
-            after: 'connection',
-            text: () => { const n = window.wmChatApp.unread(); return n ? `${n} new text ${n === 1 ? 'message' : 'messages'}` : 'No new messages'; },
+            id: 'messenger',
+            label: SMS_TITLE,
+            icon: 'x:app-chat-lg',
+            after: 'text',
+            text: () => { const n = window.wmChatApp.unread(); return n ? `${n} new ${n === 1 ? 'message' : 'messages'}` : 'No new messages'; },
             onTap: showList,
             titanium() {
                 const list = unreadList();
                 const n = list.reduce((k, x) => k + x.unread, 0);
                 return {
-                    label: 'text',
-                    icon: 'ti-2007',
+                    label: 'messenger',
+                    icon: 'x:app-chat-lg',
                     count: n ? String(n) : '',
                     pages: list.length
-                        ? list.map((x) => ({ title: x.name, line2: x.text, line3: when(x.at), onTap: () => { openChatById(x.id); } }))
+                        ? list.map((x) => ({ title: x.name, line2: x.text, line3: whenShort(x.at), onTap: () => { openChatById(x.id); } }))
                         : [{ title: 'No New Messages' }],
-                    softKey: { label: 'Messaging', action: showList },
+                    softKey: { label: 'Messenger', action: showList },
                     onTap: showList
                 };
             }
         });
     }
+
+    // ---------------------------------------------------------------- Text Messaging in the shell (#779)
+
+    /**
+     * The phone shell's half of Text Messaging (textMessagingClient.js = window.textMessaging; the
+     * accounts' own screens are wmTextMessaging.js): the counts the title bar's new text message
+     * glyph and Today read (window.wmTextShell), the device's "New Text Message" notification in
+     * the 'sms' class (only for a message the server marks notify: an Unknown Sender only with
+     * "Notify me about unknown senders" on), and 6.5's text panel, a page per account.
+     * window.textMessaging is read at call time and its events are bound again when it is replaced
+     * (the test fake).
+     */
+    const tmApi = () => window.textMessaging || null;
+    const tmUi = () => window.wmTextMessaging || null;
+    const tmState = { accounts: [], unread: {}, last: {} };
+    const tmFresh = []; // [{ accountId, chatGuid, from, text }]: arrived, not read yet, oldest first
+    let tmBound = null;
+    let tmTimer = 0;
+    let tmNote = null;
+
+    const tmUnread = (id) => (id == null
+        ? tmState.accounts.reduce((n, a) => n + (Number(tmState.unread[a.id]) || 0), 0)
+        : Number(tmState.unread[id]) || 0);
+    const tmLabel = (a) => {
+        const tm = tmApi();
+        try { if (tm && typeof tm.label === 'function') return tm.label(a); } catch (_) { /* below */ }
+        return { title: (a && a.name) || 'Text Messaging', subline: (a && (a.identity || a.service)) || '' };
+    };
+    const tmPerson = (p) => (p && (p.name || p.address)) || '';
+    function tmFrom(chat, m, title) {
+        if (m && m.fromMe) return 'Me';
+        const who = tmPerson(m && m.sender);
+        if (chat && chat.isGroup) return who || chat.title || title || 'Unknown';
+        return (chat && chat.title) || title || who || 'Unknown';
+    }
+    function tmText(m) {
+        if (!m) return '';
+        if (m.retracted) return 'This message was unsent.';
+        const t = String(m.text || '').replace(/\s+/g, ' ').trim();
+        if (t) return t.length > 160 ? `${t.slice(0, 157)}...` : t;
+        const att = (m.attachments || [])[0];
+        if (!att) return '';
+        if (/^image\//.test(att.mime || '')) return 'Picture';
+        if (/^video\//.test(att.mime || '')) return 'Video';
+        if (/^audio\//.test(att.mime || '')) return 'Voice note';
+        return att.name || 'Attachment';
+    }
+
+    function tmRefreshSoon(ms) {
+        clearTimeout(tmTimer);
+        tmTimer = setTimeout(tmRefresh, ms == null ? 400 : ms);
+    }
+
+    /** The accounts, their unread counts and each one's newest line (Today's pages). */
+    async function tmRefresh() {
+        const tm = tmApi();
+        if (!tm || typeof tm.accounts !== 'function') return;
+        try {
+            let list = null;
+            if (typeof tm.summary === 'function') { try { list = await tm.summary(); } catch (_) { list = null; } }
+            if (!Array.isArray(list)) list = ((await tm.accounts()) || {}).accounts || [];
+            tmState.accounts = list.filter((a) => a && a.enabled !== false);
+            for (const a of tmState.accounts) tmState.unread[a.id] = Number(a.unread) || 0;
+            await Promise.all(tmState.accounts.map(async (a) => {
+                try {
+                    const r = await tm.chats(a.id, { folder: 'inbox', limit: 10 });
+                    const chats = ((r && r.chats) || []).filter((c) => c && c.last);
+                    const c = chats.find((x) => x.unread && !x.last.fromMe) || chats[0];
+                    tmState.last[a.id] = c ? { from: tmFrom(c, c.last), text: tmText(c.last), at: Number(c.last.date) || 0 } : null;
+                } catch (_) { /* keeps the line it had */ }
+            }));
+        } catch (_) { /* not connected yet: the next event tries again */ }
+        if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus();
+    }
+
+    function tmOnUnread(d) {
+        const by = (d && d.byAccount) || {};
+        for (const id of Object.keys(by)) tmState.unread[id] = Number(by[id] && by[id].unread) || 0;
+        if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus();
+    }
+
+    function tmOnMessage(d) {
+        if (!d || !d.message) return;
+        tmRefreshSoon();
+        if (d.message.fromMe || d.notify !== true) return;
+        // the conversation on screen in front: read as it comes, no notice (wmTextMessaging may say so)
+        const ui = tmUi();
+        try { if (ui && (typeof ui.isShowing === 'function' ? ui.isShowing(d.accountId, d.chatGuid) : (typeof ui.isOpen === 'function' && ui.isOpen(d.accountId, d.chatGuid))) && !document.hidden) return; } catch (_) { /* notify */ }
+        tmFresh.push({ accountId: d.accountId, chatGuid: d.chatGuid, from: tmFrom(d.isGroup ? { isGroup: true, title: d.chatTitle } : null, d.message, d.chatTitle), text: tmText(d.message) });
+        if (tmFresh.length > 50) tmFresh.shift();
+        // inside the Android app with the app in the background, the app posts Android's own
+        // notification (its background link): the WM notice waits for the return without a sound of
+        // its own. Nothing here calls an Android notification bridge (toasts never go there on phones)
+        tmShowNote({ silent: inAndroidApp() && document.hidden });
+    }
+
+    const inAndroidApp = () => !!(window.AndroidActiveSync || window.AndroidNotification || window.AndroidDevice);
+
+    function tmOnRead(d) {
+        if (!d) return;
+        tmRefreshSoon();
+        let gone = false;
+        for (let i = tmFresh.length - 1; i >= 0; i--) {
+            const f = tmFresh[i];
+            if (f.chatGuid === d.chatGuid && (!d.accountId || f.accountId === d.accountId)) { tmFresh.splice(i, 1); gone = true; }
+        }
+        if (gone) tmUpdateNote();
+    }
+
+    const TM_EVENTS = [
+        ['message', tmOnMessage], ['read', tmOnRead], ['unread', tmOnUnread],
+        ['account', () => tmRefreshSoon(0)], ['resync', () => tmRefreshSoon()], ['chat', () => tmRefreshSoon()]
+    ];
+
+    function tmBind() {
+        const tm = tmApi();
+        if (!tm || tm === tmBound || typeof tm.on !== 'function') return;
+        if (tmBound && typeof tmBound.off === 'function') TM_EVENTS.forEach(([ev, fn]) => { try { tmBound.off(ev, fn); } catch (_) { /* gone */ } });
+        tmBound = tm;
+        TM_EVENTS.forEach(([ev, fn]) => tm.on(ev, fn));
+        tmRefreshSoon(0);
+    }
+
+    /** Open Text Messaging on an account (the one with the newest unread message without one). */
+    function tmOpenAccount(id) {
+        let acct = id;
+        if (acct == null) {
+            const withNews = tmState.accounts.filter((a) => tmUnread(a.id) > 0).sort((x, y) => ((tmState.last[y.id] || {}).at || 0) - ((tmState.last[x.id] || {}).at || 0));
+            acct = (withNews[0] || tmState.accounts[0] || {}).id;
+        }
+        const ui = tmUi();
+        if (ui && typeof ui.showAccount === 'function' && acct != null) { ui.showAccount(acct, 'inbox'); return; }
+        if (sh) sh.open('messaging');
+    }
+
+    function tmOpenFresh() {
+        const list = tmFresh.slice();
+        tmCloseNote(true);
+        const last = list[list.length - 1];
+        if (!last) { tmOpenAccount(); return; }
+        const one = list.every((f) => f.accountId === last.accountId && f.chatGuid === last.chatGuid);
+        const ui = tmUi();
+        if (one && ui && typeof ui.openChat === 'function') ui.openChat(last.accountId, last.chatGuid);
+        else tmOpenAccount(last.accountId);
+    }
+
+    function tmCloseNote(clear) {
+        if (clear) tmFresh.length = 0;
+        if (tmNote) { try { tmNote.close(); } catch (_) { /* gone */ } }
+        tmNote = null;
+        if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus();
+    }
+
+    /** The device's notice (outres 33321 "New Text Message" / 33322 "New Text Messages"). */
+    function tmNoteParts() {
+        const n = tmFresh.length;
+        const last = tmFresh[n - 1];
+        return {
+            title: n === 1 ? 'New Text Message' : 'New Text Messages',
+            html: n === 1
+                ? `<button type="button" class="wch-note-open"><span class="wch-note-from">From: ${esc(last.from)}</span><span class="wch-note-text">${esc(last.text)}</span></button>`
+                : `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} new text messages.</span></button>`
+        };
+    }
+
+    function tmShowNote(o) {
+        // a new arrival is a new notification: it sounds and comes up again
+        if (tmNote) { try { tmNote.close(); } catch (_) { /* gone */ } tmNote = null; }
+        if (!tmFresh.length || !sh || typeof sh.appNote !== 'function') return;
+        const parts = tmNoteParts();
+        const note = sh.appNote({
+            title: parts.title,
+            html: parts.html,
+            icon: 'status-sms',
+            event: 'sms',
+            silent: !!(o && o.silent),
+            softKeys: () => ({
+                left: { label: 'Dismiss', action: () => tmCloseNote(true) },
+                right: { label: 'Menu', menu: () => [
+                    { label: tmFresh.length === 1 ? 'Reply' : 'View', action: tmOpenFresh },
+                    { label: 'Hide', action: () => { if (tmNote) tmNote.hide(); } }
+                ] }
+            })
+        });
+        if (!note) return;
+        tmNote = note;
+        const el = document.getElementById(note.id);
+        if (el) el.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.wch-note-open')) tmOpenFresh(); });
+        if (typeof sh.refreshStatus === 'function') sh.refreshStatus();
+    }
+
+    /** What is still waiting, without a new sound: the note's text changes in place. */
+    function tmUpdateNote() {
+        if (!tmNote || !tmFresh.length) { tmCloseNote(false); return; }
+        tmNote.update(tmNoteParts());
+    }
+
+    /**
+     * 6.5's text panel (device CHome\CText: icon 2007 chNotifications_textmessage, after the clock and
+     * before e-mail) for Text Messaging: a page per account, left / right between them (arrows,
+     * swipe, the D-pad: wmTitanium.js). A page: the newest sender and line, the account's Apple ID or
+     * number and its unread count. A tap opens that account.
+     */
+    function registerTextToday() {
+        if (sh.version !== '6.5' || typeof sh.registerTodayItem !== 'function') return;
+        sh.registerTodayItem({
+            id: 'text',
+            label: 'Text',
+            icon: 'ti-2007',
+            after: 'connection',
+            text: () => { const n = tmUnread(); return n ? `${n} new text ${n === 1 ? 'message' : 'messages'}` : 'No new messages'; },
+            onTap: () => tmOpenAccount(),
+            titanium() {
+                const n = tmUnread();
+                const pages = tmState.accounts.map((a) => {
+                    const u = tmUnread(a.id);
+                    const last = tmState.last[a.id];
+                    const sub = tmLabel(a).subline;
+                    const open = () => tmOpenAccount(a.id);
+                    const count = u ? `${u} new` : '';
+                    return last
+                        ? { title: last.from, line2: last.text, line3: [sub, count, u ? '' : whenShort(last.at)].filter(Boolean).join(', '), onTap: open }
+                        : { title: 'No New Messages', line2: sub, onTap: open };
+                });
+                return {
+                    label: 'text',
+                    icon: 'ti-2007',
+                    count: n ? String(n) : '',
+                    pages: pages.length ? pages : [{ title: 'No New Messages' }],
+                    softKey: { label: 'Messaging', action: () => tmOpenAccount() },
+                    onTap: () => tmOpenAccount()
+                };
+            }
+        });
+    }
+
+    function startTextShell() {
+        registerTextToday();
+        tmBind();
+        // the client may come after this script, or be replaced (the test fake): bind again then
+        setInterval(tmBind, 3000);
+    }
+
+    /** For wmShell (title bar glyph, Today's Messaging row, the status bubble). */
+    window.wmTextShell = {
+        unread: (id) => tmUnread(id),
+        accounts: () => tmState.accounts.slice(),
+        noteWaiting: () => !!tmNote,
+        openAccount: (id) => tmOpenAccount(id),
+        refresh: () => tmRefresh()
+    };
 
     const norm = (t) => String(t || '').trim().toLowerCase();
 

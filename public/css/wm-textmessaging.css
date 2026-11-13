@@ -1,0 +1,261 @@
+/*
+ * Melaton Mobile: Text Messaging (Yozora #779), wmTextMessaging.js. The page is .wm-chat too: the
+ * folder bar, conversation rows, threaded conversation and reply box are wm-chat.css's (the
+ * device's Text Messages); this file adds what text messages carry beyond that: quotes, pictures
+ * and files, tapbacks, receipts, the typing line, the reply band, the new message form and the
+ * picture view. Lengths are N * --wm-px like wm-shell.css.
+ */
+
+.wm-tm .wtm-newview,
+.wm-tm .wtm-mediaview {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---- conversation additions ---- */
+
+/* a group's members under "Conversation with ..." */
+.wm-tm .wtm-members {
+    margin: calc(-12 * var(--wm-px)) 0 calc(15 * var(--wm-px));
+    padding: 0 calc(2 * var(--wm-px));
+    color: #636563;
+    overflow-wrap: anywhere;
+}
+
+/* the message a reply answers: grey, a rule at the left, one line */
+.wm-tm .wtm-quote {
+    margin: calc(1 * var(--wm-px)) 0;
+    padding: 0 0 0 calc(4 * var(--wm-px));
+    border-left: calc(2 * var(--wm-px)) solid #c6c3c6;
+    color: #636563;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: normal;
+}
+
+.wm-tm .wtm-subject {
+    font-weight: bold;
+}
+
+.wm-tm .wtm-edited {
+    color: #848284;
+    font-weight: normal;
+    font-style: italic;
+}
+
+.wm-tm .wtm-unsent {
+    color: #848284;
+    font-style: italic;
+    font-weight: normal !important;
+}
+
+/* a picture or video: its thumbnail inline, at most 120 x 120 */
+.wm-tm .wtm-att.is-pic {
+    position: relative;
+    display: inline-block;
+    margin: calc(2 * var(--wm-px)) 0;
+    line-height: 0;
+    border: calc(1 * var(--wm-px)) solid #848284;
+    background: #f7f3f7;
+    cursor: default;
+}
+
+.wm-tm .wtm-att.is-pic img {
+    display: block;
+    max-width: calc(120 * var(--wm-px));
+    max-height: calc(120 * var(--wm-px));
+    min-width: calc(24 * var(--wm-px));
+    min-height: calc(24 * var(--wm-px));
+    object-fit: contain;
+}
+
+/* a video's play mark over its frame */
+.wm-tm .wtm-play {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    margin: calc(-8 * var(--wm-px)) 0 0 calc(-5 * var(--wm-px));
+    border-style: solid;
+    border-width: calc(8 * var(--wm-px)) 0 calc(8 * var(--wm-px)) calc(12 * var(--wm-px));
+    border-color: transparent transparent transparent rgba(255, 255, 255, 0.92);
+    filter: drop-shadow(0 0 calc(1 * var(--wm-px)) #000);
+}
+
+/* any other file: Messaging's attachment row (paper clip, name, size); a tap downloads it */
+.wm-tm .wtm-att.is-file {
+    display: flex;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    max-width: 100%;
+    margin: calc(1 * var(--wm-px)) 0;
+    color: #00f;
+    cursor: default;
+}
+
+.wm-tm .wtm-att-ico {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    background: no-repeat center / 100% 100%;
+    background-image: image-set(url('/static_images/wm61/msg-attachment.png') 1x, url('/static_images/wm61/msg-attachment@2x.png') 2x, url('/static_images/wm61/msg-attachment@4x.png') 4x);
+}
+
+.wm-tm .wtm-att-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-decoration: underline;
+}
+
+.wm-tm .wtm-att-size {
+    flex: 0 0 auto;
+    color: #636563;
+}
+
+/* a file on its way up: WM's progress bar (highlight blocks in a sunken box) */
+.wm-tm .wtm-progress {
+    height: calc(8 * var(--wm-px));
+    max-width: calc(120 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) 0;
+    border: calc(1 * var(--wm-px)) solid #848284;
+    background: #fff;
+    overflow: hidden;
+}
+
+.wm-tm .wtm-progress i {
+    display: block;
+    height: 100%;
+    background: repeating-linear-gradient(to right, var(--wm-highlight) 0 calc(6 * var(--wm-px)), transparent calc(6 * var(--wm-px)) calc(8 * var(--wm-px)));
+}
+
+/* tapbacks under the text: the glyph, and how many when more than one */
+.wm-tm .wtm-tapbacks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(3 * var(--wm-px));
+    margin: calc(1 * var(--wm-px)) 0;
+}
+
+.wm-tm .wtm-tb {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(2 * var(--wm-px));
+    height: calc(14 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #c6c3c6;
+    background: #f7f3f7;
+    color: #000;
+    font-size: calc(10 * var(--wm-px));
+    line-height: calc(12 * var(--wm-px));
+    font-weight: bold;
+}
+
+.wm-tm .wtm-tb-n {
+    font-weight: normal;
+}
+
+.wm-tm .wtm-receipt {
+    color: #848284;
+    font-size: calc(10 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+    text-align: right;
+    font-weight: normal;
+}
+
+.wm-tm .wtm-failed {
+    color: #c00;
+    font-weight: normal;
+}
+
+/* group events ("Alice named the conversation"): grey, centred */
+.wm-tm .wtm-event {
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+    color: #636563;
+    font-style: italic;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+.wm-tm .wtm-typing {
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) calc(2 * var(--wm-px)) calc(20.5 * var(--wm-px));
+    color: #848284;
+    font-style: italic;
+}
+
+/* replying to: a band over the reply box with the quoted line and Cancel */
+.wm-tm .wtm-replyband {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    min-height: calc(18 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid color-mix(in srgb, var(--wm-highlight) 55%, #fff);
+    background: var(--wm-tint);
+    font-size: calc(11 * var(--wm-px));
+}
+
+.wm-tm .wtm-replyband-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #424142;
+}
+
+.wm-tm .wtm-replyband-x {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #00f;
+    font: inherit;
+    text-decoration: underline;
+    cursor: default;
+}
+
+/* ---- new message (Messaging's form: From, To, the text) ---- */
+
+.wm-tm .wtm-newview .msg-form {
+    flex: 1 1 auto;
+}
+
+/* ---- picture view: the picture fitted on black, its name under it ---- */
+
+.wm-tm .wtm-mediaview {
+    background: #000;
+    color: #fff;
+}
+
+.wm-tm .wtm-media {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.wm-tm .wtm-media img,
+.wm-tm .wtm-media video {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.wm-tm .wtm-media-name {
+    flex: 0 0 auto;
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+}

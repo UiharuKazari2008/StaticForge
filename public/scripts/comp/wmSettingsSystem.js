@@ -923,9 +923,20 @@
             warnDelete: lsGet(MSG.warnDelete) !== '0',
             afterDelete: lsGet(MSG.afterDelete) === 'list' ? 'list' : 'next',
             emptyDeleted: lsGet(MSG.emptyDeleted) === 'immediate' ? 'immediate' : 'manual',
-            acctSel: 'mail'
+            acctSel: 'mail',
+            // Text Messaging (#779): the server's settings, read below (null until they come)
+            notifyUnknown: null
         };
         d.initial = JSON.stringify(d);
+        const tm = window.textMessaging;
+        if (tm && typeof tm.accounts === 'function') {
+            tm.accounts().then((r) => {
+                const v = !!(r && r.settings && r.settings.notifyUnknown);
+                d.notifyUnknown = v;
+                d.tmInitial = v;
+                if (typeof d.rerender === 'function' && d.tab === 'message') d.rerender();
+            }).catch(() => { /* offline: the box stays unavailable */ });
+        }
         return d;
     }
 
@@ -983,9 +994,10 @@
                 d.acctSel = key;
                 const m = window.wmMessaging;
                 if (key === '__new' && m && typeof m.setupAccount === 'function') m.setupAccount();
-                // the device opens a tapped account's settings: Text Messages' own pages (#763);
-                // what was changed here is kept first (ok on those pages comes back to this tab)
-                if (key === 'Text Messages' && typeof wmSettings.openChatOptions === 'function') {
+                // the device opens a tapped account's settings: Dreamscape Messenger's own pages (#763,
+                // named Text Messages before #779); what was changed here is kept first (ok on those
+                // pages comes back to this tab)
+                if (key === 'Dreamscape Messenger' && typeof wmSettings.openChatOptions === 'function') {
                     const keys = await messagingOptionsCommit(d);
                     if (Array.isArray(keys) && keys.length) ui.changed(keys);
                     wmSettings.openChatOptions('messaging-options');
@@ -1007,7 +1019,13 @@
             });
             return;
         }
+        d.tab = tab;
         if (tab === 'message') {
+            // Text Messaging (#779): an Unknown Sender's message waits in its folder without a notification unless this is on
+            const tmBox = `${ui.gap()}
+                ${ui.text('Text Messaging:')}
+                ${ui.check('tm-notify-unknown', 'Notify me about unknown senders', !!d.notifyUnknown, d.notifyUnknown == null ? 'disabled' : '')}
+                ${ui.note('Messages from people who are not in your contacts go to Unknown Senders.')}`;
             el.innerHTML = `${ui.check('replyBody', 'When replying to e-mail, include body', d.replyBody)}
                 ${ui.check('keepSent', 'Keep copies of sent items in Sent folder', true, 'disabled')}
                 ${ui.check('warnDelete', 'Warn when deleting messages in the message list', d.warnDelete)}
@@ -1016,7 +1034,10 @@
                 ${ui.comboHtml('afterDelete', d.afterDelete === 'list' ? 'Return to message list' : 'Show next message')}
                 ${ui.gap()}
                 ${ui.check('mail-icon-all', 'Show the unread message icon for any unread message', d.all)}
-                ${ui.note('When this is off, the icon shows only for messages received since Melaton Mobile started. Dreamscape Mail always keeps a copy of what you send.')}`;
+                ${ui.note('When this is off, the icon shows only for messages received since Melaton Mobile started. Dreamscape Mail always keeps a copy of what you send.')}
+                ${tmBox}`;
+            const tmEl = el.querySelector('input[name="tm-notify-unknown"]');
+            if (tmEl) tmEl.addEventListener('change', (e) => { d.notifyUnknown = e.target.checked; });
             ['replyBody', 'warnDelete'].forEach((k) => el.querySelector(`input[name="${k}"]`).addEventListener('change', (e) => { d[k] = e.target.checked; }));
             el.querySelector('input[name="mail-icon-all"]').addEventListener('change', (e) => { d.all = e.target.checked; });
             ui.bindCombo(el.querySelector('[data-act="afterDelete"]'), [['next', 'Show next message'], ['list', 'Return to message list']], d.afterDelete, (v) => { d.afterDelete = v; });
@@ -1082,7 +1103,20 @@
         put('warnDelete', d.warnDelete ? '1' : '0', was.warnDelete ? '1' : '0');
         put('afterDelete', d.afterDelete, was.afterDelete);
         put('emptyDeleted', d.emptyDeleted, was.emptyDeleted);
-        d.initial = JSON.stringify(Object.assign({}, d, { initial: undefined, sub: undefined, sig: undefined, sigInitial: undefined, rerender: undefined }));
+        // Text Messaging's own setting is the server's (every client of this account follows it)
+        const tm = window.textMessaging;
+        if (d.notifyUnknown != null && d.notifyUnknown !== d.tmInitial && tm && typeof tm.saveSettings === 'function') {
+            try {
+                await tm.saveSettings({ notifyUnknown: !!d.notifyUnknown });
+                d.tmInitial = d.notifyUnknown;
+                keys.push('textMessaging.notifyUnknown');
+            } catch (err) {
+                const s1 = sh();
+                if (s1 && typeof s1.messageBox === 'function') await s1.messageBox({ title: 'Messaging', icon: 'error', text: `The Text Messaging setting could not be saved.${err && err.message ? `\n\n${err.message}` : ''}`, modal: true });
+                return false;
+            }
+        }
+        d.initial = JSON.stringify(Object.assign({}, d, { initial: undefined, sub: undefined, sig: undefined, sigInitial: undefined, rerender: undefined, tmInitial: undefined, tab: undefined }));
         return keys;
     }
 
@@ -1095,9 +1129,9 @@
         commit: messagingOptionsCommit
     });
 
-    // ================================================================ Messaging > Options > Text Messages
-    // Yozora #763: the Text Messages account's own settings (tap "Text Messages" on Options' Accounts
-    // tab, or Text Messages' Menu > Tools > Account Options...), three tabs in WM 6.1's Messaging
+    // ================================================================ Messaging > Options > Dreamscape Messenger
+    // Yozora #763: the Dreamscape Messenger account's own settings (named Text Messages before #779; tap
+    // it on Options' Accounts tab, or its Menu > Tools > Account Options...), three tabs in WM 6.1's Messaging
     // Options style: Messages (what a thread shows of a reply, the default verbosity of new chats),
     // My Info (the name, picture and backstory the personas know the user by: persona_settings, the
     // same store as Memories' LinkXi persona) and Engine (the chat engine, model and reasoning effort,
@@ -1294,7 +1328,7 @@
             ${ui.text('Reasoning effort:')}
             ${ui.comboHtml('effort', labelOf(efforts, d.pick.effort))}
             ${list === 'error' ? ui.note('The models could not be read. The engine\'s default model is used.') : ''}
-            ${ui.note('Used by every Text Messages conversation and the desktop Chat.')}`;
+            ${ui.note('Used by every Dreamscape Messenger conversation and the desktop Chat.')}`;
         ui.bindCombo(el.querySelector('[data-act="engine"]'), engines, d.pick.provider, (v) => {
             if (v === d.pick.provider) return;
             d.pick.provider = v;
@@ -1325,7 +1359,7 @@
                 const r = c ? await c.savePersonaSettings(changed) : null;
                 if (!r || r.success === false) throw new Error((r && (r.message || r.error)) || 'refused');
                 d.meInitial = JSON.stringify(d.me);
-                // the desktop chat (and Text Messages' "Me" picture) read this copy
+                // the desktop chat (and Dreamscape Messenger's "Me" picture) read this copy
                 const cs = window.chatSystem;
                 if (cs) cs.personaSettings = Object.assign({}, cs.personaSettings || {}, changed);
             } catch (_) {
@@ -1354,7 +1388,7 @@
     }
 
     wmSettings.registerPage({
-        id: 'chat-options', tab: 'personal', label: 'Text Messages', icon: 'app-messaging', hidden: true,
+        id: 'chat-options', tab: 'personal', label: 'Dreamscape Messenger', icon: 'app-messaging', hidden: true,
         title: 'Messaging',
         tabs: [['messages', 'Messages'], ['myinfo', 'My Info'], ['engine', 'Engine']],
         init: chatOptionsInit,
@@ -1362,7 +1396,7 @@
         commit: chatOptionsCommit
     });
 
-    /** Open the Text Messages account's settings (from Options' Accounts tab: ok comes back there). */
+    /** Open the Dreamscape Messenger account's settings (from Options' Accounts tab: ok comes back there). */
     wmSettings.openChatOptions = (from, tab) => {
         chatOptsFrom = from || null;
         return wmSettings.open('chat-options', tab || null, { direct: true });

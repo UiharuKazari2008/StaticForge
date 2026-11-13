@@ -998,10 +998,11 @@
             const rows = [];
             const act = (ic, label, value, kind) => rows.push({ ic, label, value, kind });
             if (c.home.mobile) { act('contacts-mobile', 'Call mobile', c.home.mobile, 'call'); act('contacts-sms', 'Send text message', c.home.mobile, 'sms'); }
-            else if (canText(c)) act('contacts-sms', 'Send text message', 'Text Messages', 'sms');
+            else if (canText(c) && !textAddress(c)) act('contacts-sms', 'Send text message', 'Dreamscape Messenger', 'sms');
             if (c.work.phone) act('contacts-work', 'Call work', c.work.phone, 'call');
             if (c.home.phone) act('contacts-home', 'Call home', c.home.phone, 'call');
-            c.emails.forEach((m) => act('contacts-email', 'Send e-mail', m, 'mail'));
+            // an address can take text messages too (iMessage) when a Text Messaging account is set up (#779)
+            c.emails.forEach((m) => { act('contacts-email', 'Send e-mail', m, 'mail'); if (tmAccounts().length && !c.chatId) act('contacts-sms', 'Send text message', m, 'sms'); });
             if (c.work.url) act('contacts-web', 'Go to web page', c.work.url, 'web');
             if (c.home.url) act('contacts-web', 'Go to web page', c.home.url, 'web');
             const info = (label, value) => { if (value) rows.push({ ic: null, label, value, kind: 'info' }); };
@@ -1098,10 +1099,48 @@
             box.querySelectorAll('.ct-btab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === cardTab)));
         }
 
-        /** A contact can be texted: a mobile number, or a Text Messages (Chat) persona of that name (#757). */
+        /** Text Messaging accounts (#779, wmTextMessaging.js): the list as last read, connected ones first. */
+        function tmAccounts() {
+            const T = window.wmTextMessaging;
+            let list = [];
+            try { list = T && typeof T.accounts === 'function' ? T.accounts() || [] : []; } catch (_) { list = []; }
+            return list.filter((a) => a.status === 'connected').concat(list.filter((a) => a.status !== 'connected'));
+        }
+
+        /** Where a text to the contact goes: the mobile number, else (with a Text Messaging account) the first e-mail address. */
+        function textAddress(c) {
+            if (!c) return '';
+            if (c.home && c.home.mobile) return c.home.mobile;
+            // a chat persona's card keeps opening Dreamscape Messenger
+            if (c.chatId) return '';
+            return tmAccounts().length && c.emails && c.emails.length ? c.emails[0] : '';
+        }
+
+        /** The Text Messaging account to write from: the first connected one, or the choice when several are. */
+        async function pickTmAccount() {
+            const list = tmAccounts();
+            const on = list.filter((a) => a.status === 'connected');
+            if (on.length <= 1) return (on[0] || list[0] || null);
+            const name = (a) => {
+                const t = window.textMessaging;
+                const l = t && typeof t.label === 'function' ? t.label(a) : { subline: a.identity || '' };
+                return a.service || l.subline || a.id;
+            };
+            const pick = await ws.messageBox({
+                title: 'Text Messaging',
+                icon: 'question',
+                text: `Send the text message from which account?\n\n${on.map((a) => { const t = window.textMessaging; const l = t && typeof t.label === 'function' ? t.label(a) : { subline: '' }; return `${name(a)}: ${l.subline || a.id}`; }).join('\n')}`,
+                buttons: on.map((a) => ({ text: name(a), value: a.id })).concat([{ text: 'Cancel', value: null }]),
+                cancelValue: null
+            });
+            return pick ? on.find((a) => a.id === pick) || null : null;
+        }
+
+        /** A contact can be texted: a mobile number, an e-mail address with a Text Messaging account, or a Dreamscape Messenger (Chat) persona of that name (#757). */
         function canText(c) {
             if (!c) return false;
             if (c.home && c.home.mobile) return true;
+            if (textAddress(c)) return true;
             if (c.chatId && !c.chatDeleted && window.wmChatApp) return true;
             const chat = window.wmChatApp;
             return !!(chat && typeof chat.hasPersona === 'function' && chat.hasPersona(VC().displayName(c)));
@@ -1121,7 +1160,18 @@
                 window.open(site, '_blank', 'noopener');
                 return;
             }
-            // Text Messages (the Chat applet, #757): the conversation with the persona of that name
+            if (r.kind === 'sms') {
+                const card = r.card || (current && current.c);
+                // a phone number or an address: Text Messaging (#779) composes to it
+                const T = window.wmTextMessaging;
+                const addr = /[@\d]/.test(String(r.value || '')) ? String(r.value) : '';
+                if (addr && T && typeof T.compose === 'function' && tmAccounts().length) {
+                    const a = await pickTmAccount();
+                    if (!a) return;
+                    if (await T.compose(a.id, [addr])) return;
+                }
+            }
+            // Dreamscape Messenger (the Chat applet, #757): the conversation with the persona of that name
             if (r.kind === 'sms') {
                 const card = r.card || (current && current.c);
                 const who = r.name || (card && (card.chatName || VC().displayName(card))) || '';
@@ -1559,7 +1609,7 @@
                 { label: 'Edit', disabled: ro, action: () => openForm(e) },
                 { label: 'View All Calls', disabled: true },
                 { label: 'Save to SIM', disabled: true },
-                { label: 'Send Text Message...', disabled: !(e && canText(e.c)), action: () => runRow({ kind: 'sms', value: e.c.home.mobile, name: VC().displayName(e.c), card: e.c }) },
+                { label: 'Send Text Message...', disabled: !(e && canText(e.c)), action: () => runRow({ kind: 'sms', value: textAddress(e.c) || e.c.home.mobile, name: VC().displayName(e.c), card: e.c }) },
                 { label: 'Send Contact', submenu: () => sendContactRows(e) },
                 { label: 'Delete Contact', disabled: ro, action: () => deleteContact(e) },
                 '-',
@@ -1629,7 +1679,7 @@
                         { label: 'Call Home', disabled: !c.home.phone, action: () => runRow({ kind: 'call', value: c.home.phone }) },
                         { label: 'Call Mobile', disabled: !c.home.mobile, action: () => runRow({ kind: 'call', value: c.home.mobile }) },
                         { label: 'Send E-mail', disabled: !mail, action: () => runRow({ kind: 'mail', value: mail }) },
-                        { label: 'Send Text Message', disabled: !canText(c), action: () => runRow({ kind: 'sms', value: c.home.mobile, name: VC().displayName(c), card: c }) },
+                        { label: 'Send Text Message', disabled: !canText(c), action: () => runRow({ kind: 'sms', value: textAddress(c) || c.home.mobile, name: VC().displayName(c), card: c }) },
                         '-',
                         { label: 'Send Contact', submenu: () => sendContactRows(en) },
                         { label: 'Copy Contact', disabled: readOnly(), action: () => copyContact(en) },

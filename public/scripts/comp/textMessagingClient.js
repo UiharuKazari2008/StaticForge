@@ -202,6 +202,30 @@
         markRead, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, refreshRcsQr,
         unpairRcs, on, off, REACTIONS
     };
+    // A tapped Android notification (the app's TextMessageNotifier, #779): open that conversation in
+    // Melaton Mobile's Text Messaging once it is loaded. A running page gets 'dreamscapetextmessage';
+    // a page that was started by the tap asks AndroidActiveSync.takePendingTextMessage().
+    let lastOpen = { key: '', at: 0 };
+    function openFromNotification(d) {
+        if (!d || !d.accountId || !d.chatGuid) return;
+        const key = `${d.accountId}|${d.chatGuid}`;
+        if (lastOpen.key === key && Date.now() - lastOpen.at < 5000) return;
+        lastOpen = { key, at: Date.now() };
+        let tries = 0;
+        const go = () => {
+            const app = root.wmTextMessaging;
+            if (app && typeof app.openChat === 'function') { try { app.openChat(d.accountId, d.chatGuid); } catch (error) { console.error('[textMessaging] open failed:', error); } return; }
+            if ((tries += 1) < 240) setTimeout(go, 500);
+        };
+        go();
+    }
+    if (root.addEventListener) root.addEventListener('dreamscapetextmessage', (e) => openFromNotification(e && e.detail));
+    try {
+        const bridge = root.AndroidActiveSync;
+        const raw = bridge && typeof bridge.takePendingTextMessage === 'function' ? bridge.takePendingTextMessage() : '';
+        if (raw) openFromNotification(JSON.parse(raw));
+    } catch (_) { /* an older app */ }
+
     wire();
     if (!wired) {
         // wsClient may come up after this script

@@ -5,7 +5,12 @@
  * (public/scripts/comp/desktop-apps/dovecote.js; server modules/ws/handlers/250-dovecoteHandler.js).
  *
  * Accounts (#757, Yukimi's device screenshots tmp/wmss, Nov 11 2026), in the picker's order:
- *   Text Messages    the Chat applet (wmChat.js: window.wmChatApp), the device's Text Messages
+ *   Text Messaging   one row per Text Messaging account (#779, window.textMessaging: iMessage through
+ *                    BlueBubbles, later RCS), the Apple ID / phone number on the second line; the
+ *                    account opens in wmTextMessaging.js (window.wmTextMessaging), drawn as the
+ *                    device's Text Messages; its folders (Inbox, Sent Items, Unknown Senders) are in
+ *                    the folder tree under it. Keys 'tm:<account id>'
+ *   Dreamscape Messenger  the Chat applet (wmChat.js: window.wmChatApp; was "Text Messages"), key 'sms'
  *   Dreamscape Mail  the signed-in person's mailbox (DESKTOP_DOVECOTE_HUMAN_OWNER) with its outside
  *                    address on the second line (dovecote_list_mailboxes `address`, mailGateway
  *                    toExternal); the agents' mailboxes are not accounts: the folder tree has them
@@ -53,7 +58,7 @@
     const PAGE_LIMIT = 50;
     const SORT_KEY = 'wmMsgSort';
     const MAIL_ACCOUNT = 'Dreamscape Mail';
-    const SMS_ACCOUNT = 'Text Messages';
+    const SMS_ACCOUNT = 'Dreamscape Messenger';
     const PERSONAS = [['wren', 'Yumiya'], ['kabuki', 'Chiyo'], ['xi', 'Yozora']];
     // Options (wmSettingsSystem.js 'messaging-options' writes the same keys)
     const OPT = {
@@ -296,12 +301,54 @@
     const smsUnread = () => { const c = window.wmChatApp; try { return c && typeof c.unread === 'function' ? c.unread() : 0; } catch (_) { return 0; } };
     const mailUnread = (o = human()) => { const box = mailboxes.find((b) => b.owner === o); return box ? box.unread || 0 : 0; };
 
-    /** The accounts in the picker's order: Text Messages, Dreamscape Mail, the Director personas. */
+    // ---- Text Messaging accounts (#779): read through window.textMessaging at call time (a test
+    // tab swaps in a stand-in after load); the list is cached here and refreshed on its 'account'
+    // and 'unread' events
+    let tmAccts = [];
+    let tmShown = 0; // Text Messaging rows in the picker as last drawn
+    let tmWiredTo = null;
+    const tmApi = () => window.textMessaging || null;
+    const tmUnread = (id) => { const t = tmApi(); try { const u = t && typeof t.unread === 'function' ? t.unread() : null; return (u && u.byAccount && u.byAccount[id] && u.byAccount[id].unread) || 0; } catch (_) { return 0; } };
+    function tmLabel(a) {
+        const t = tmApi();
+        try { if (t && typeof t.label === 'function') return t.label(a); } catch (_) { /* below */ }
+        return { title: a.name || 'Text Messaging', subline: a.identity || '' };
+    }
+    function tmRepaint() {
+        if (page && top() === 'accounts') renderAccounts();
+        if (tree) renderTree();
+    }
+    async function loadTmAccounts(force) {
+        const t = tmApi();
+        if (!t || typeof t.accounts !== 'function') { tmAccts = []; return tmAccts; }
+        try { const d = await t.accounts(force); tmAccts = (d && d.accounts) || []; } catch (_) { /* keeps the last list */ }
+        return tmAccts;
+    }
+    const onTmAccount = () => { loadTmAccounts(true).then(tmRepaint); };
+    const onTmUnread = () => tmRepaint();
+    function wireTm() {
+        const t = tmApi();
+        if (!t || t === tmWiredTo || typeof t.on !== 'function') return;
+        if (tmWiredTo && typeof tmWiredTo.off === 'function') { tmWiredTo.off('account', onTmAccount); tmWiredTo.off('unread', onTmUnread); }
+        t.on('account', onTmAccount);
+        t.on('unread', onTmUnread);
+        tmWiredTo = t;
+        loadTmAccounts(false).then(tmRepaint);
+    }
+    /** Text Messaging accounts and Dreamscape Messenger's unread counts for the picker. */
+    function refreshTm() {
+        wireTm();
+        const t = tmApi();
+        loadTmAccounts(false).then(() => { tmRepaint(); if (t && typeof t.summary === 'function') t.summary().then((list) => { if (Array.isArray(list)) tmAccts = list; tmRepaint(); }, () => {}); });
+    }
+
+    /** The accounts in the picker's order: Text Messaging (each account), Dreamscape Messenger, Dreamscape Mail, the Director personas. */
     function accounts() {
-        return [
-            { key: 'sms', name: SMS_ACCOUNT, icon: 'msg-acct-sms', sub: '', unread: smsUnread() },
+        const tms = tmAccts.map((a) => { const l = tmLabel(a); return { key: `tm:${a.id}`, name: l.title, icon: 'msg-acct-sms', sub: l.subline, dim: true, unread: tmUnread(a.id) }; });
+        return tms.concat([
+            { key: 'sms', name: SMS_ACCOUNT, icon: 'app-chat', sub: '', unread: smsUnread() },
             { key: 'mail', name: MAIL_ACCOUNT, icon: 'msg-acct-outlook', sub: mailAddress(), dim: true, unread: mailUnread() }
-        ].concat(personas().map(([p, n]) => ({ key: `dir:${p}`, name: n, icon: `today-persona-${p}`, sub: 'Director', dim: true, unread: 0 })));
+        ]).concat(personas().map(([p, n]) => ({ key: `dir:${p}`, name: n, icon: `today-persona-${p}`, sub: 'Director', dim: true, unread: 0 })));
     }
 
     const currentKey = () => (isMail() ? 'mail' : `dir:${dirP}`);
@@ -312,9 +359,14 @@
         return accounts().map((a) => ({ label: a.name, radio: a.key === now, action: () => goTo(a.key) }));
     }
 
-    /** Another account: Text Messages is the Chat applet; the rest are this app's lists. */
+    /** Another account: Text Messaging is wmTextMessaging.js, Dreamscape Messenger the Chat applet; the rest are this app's lists. */
     function goTo(key, f) {
         closeTree();
+        if (key.startsWith('tm:')) {
+            const t = window.wmTextMessaging;
+            if (t && typeof t.showAccount === 'function') t.showAccount(key.slice(3), f || 'inbox');
+            return;
+        }
         if (key === 'sms') {
             const c = window.wmChatApp;
             if (c && typeof c.showList === 'function') { c.showList(); if (f && typeof c.setFolder === 'function') c.setFolder(f); }
@@ -385,7 +437,7 @@
         }).catch(() => { /* Director not running: Yumiya and Chiyo stay, Yozora waits */ });
     }
 
-    /** Text Messages' unread count for the picker (the Chat applet reads its chats behind it). */
+    /** Dreamscape Messenger's unread count for the picker (the Chat applet reads its chats behind it). */
     function refreshSms() {
         const c = window.wmChatApp;
         if (!c || typeof c.refresh !== 'function') return;
@@ -915,6 +967,15 @@
         const nodes = accounts().map((a) => {
             let children = [];
             if (a.key === 'sms') children = SMS_FOLDERS.map((f) => ({ key: `sms/${f.id}`, label: f.label, icon: f.icon, count: f.id === 'inbox' ? smsUnread() : 0 }));
+            else if (a.key.startsWith('tm:')) {
+                // Text Messaging (#779): Inbox, Sent Items, Unknown Senders (wmTextMessaging.FOLDERS)
+                const T = window.wmTextMessaging;
+                const tf = (T && T.FOLDERS) || [{ id: 'inbox', label: 'Inbox', icon: 'msg-folder-inbox' }, { id: 'sent', label: 'Sent Items', icon: 'msg-folder-outbox' }, { id: 'unknown', label: 'Unknown Senders', icon: 'msg-folder-folder' }];
+                const t = tmApi();
+                let u = null;
+                try { u = t && typeof t.unread === 'function' ? (t.unread().byAccount || {})[a.key.slice(3)] : null; } catch (_) { u = null; }
+                children = tf.map((f) => ({ key: `${a.key}/${f.id}`, label: f.label, icon: f.icon, count: u ? (f.id === 'inbox' ? u.unread || 0 : f.id === 'unknown' ? u.unknownUnread || 0 : 0) : 0 }));
+            }
             else if (a.key === 'mail') {
                 const box = mailboxes.find((b) => b.owner === human());
                 children = FOLDERS.map((f) => ({ key: `mail/${f.id}`, label: f.label, icon: f.icon, count: box ? (f.id === 'inbox' ? box.unread || 0 : f.id === 'spam' ? box.spamUnread || 0 : 0) : 0 }));
@@ -937,14 +998,16 @@
                 }
                 children = sortByLabel(children);
             } else if (a.key.startsWith('dir:')) children = DIR_FOLDERS.map((f) => ({ key: `${a.key}/${f.id}`, label: f.label, icon: f.icon }));
-            return { key: a.key, label: a.name, icon: 'msg-folder-account', children };
+            // several Text Messaging accounts share the name: the tree tells them apart by the Apple ID / number
+            const label = a.key.startsWith('tm:') && tmAccts.length > 1 && a.sub ? `${a.name} (${a.sub})` : a.name;
+            return { key: a.key, label, icon: 'msg-folder-account', children };
         });
         return sortByLabel(nodes).map((n) => Object.assign(n, { current: n.key === cur.acct }));
     }
 
     /** The key of the folder on screen, as the tree names it. */
     function treeCurrent(opts) {
-        if (opts.acct === 'sms') return `sms/${opts.folder || 'inbox'}`;
+        if (opts.acct === 'sms' || String(opts.acct || '').startsWith('tm:')) return `${opts.acct}/${opts.folder || 'inbox'}`;
         if (!isMail()) return `dir:${dirP}/${folder}`;
         return isMine() ? `mail/${folder}` : `box:${owner}/${folder}`;
     }
@@ -977,9 +1040,9 @@
     }
 
     /**
-     * The folder tree under a bar's folder drop-down (Messaging's list and Text Messages): the button
-     * reads "Show" while it is open. opts: { acct: 'sms' | current, folder, onPick(folderId) } (onPick:
-     * a Text Messages folder for the Chat applet).
+     * The folder tree under a bar's folder drop-down (Messaging's list, Dreamscape Messenger, Text
+     * Messaging): the button reads "Show" while it is open. opts: { acct: 'sms' | 'tm:<id>' | current,
+     * folder, onPick(folderId) } (onPick: a folder of that account for the app that opened the tree).
      */
     function showTree(anchor, opts = {}) {
         if (!anchor) return;
@@ -992,7 +1055,7 @@
         const curKey = treeCurrent(o);
         // each opening shows only the account on screen open, as the device does (173942)
         expanded.clear();
-        expanded.add(o.acct === 'sms' ? 'sms' : currentKey());
+        expanded.add(o.acct === 'sms' || String(o.acct || '').startsWith('tm:') ? o.acct : currentKey());
         if (curKey.startsWith('box:')) { expanded.add('mail'); expanded.add('mail/other'); expanded.add(curKey.split('/')[0]); }
         const el = document.createElement('div');
         el.className = 'wm-msgtree';
@@ -1048,7 +1111,8 @@
         // an account: its Inbox; a folder: that folder
         const [head, f] = key.includes('/') ? [key.slice(0, key.indexOf('/')), key.slice(key.indexOf('/') + 1)] : [key, 'inbox'];
         closeTree();
-        if (head === 'sms' && t.opts.acct === 'sms' && typeof t.opts.onPick === 'function') { t.opts.onPick(f); return; }
+        // the app that opened the tree (Dreamscape Messenger, a Text Messaging account) takes its own folders
+        if (head === t.opts.acct && (head === 'sms' || head.startsWith('tm:')) && typeof t.opts.onPick === 'function') { t.opts.onPick(f); return; }
         goTo(head, f);
     }
 
@@ -1067,6 +1131,10 @@
     }
 
     function renderAccounts() {
+        // Text Messaging rows come first and arrive late: the highlight stays on the row it was on
+        const shift = tmAccts.length - tmShown;
+        if (shift && pickIndex >= 0) pickIndex = Math.max(0, pickIndex + shift);
+        tmShown = tmAccts.length;
         const cur = currentKey();
         const rows = accounts().map((a) => ({
             two: true, icon: a.icon, name: a.name, unread: a.unread, sub: a.sub, dim: a.dim,
@@ -2371,6 +2439,9 @@
     function register() {
         ws = window.wmShell;
         if (!ws || typeof ws.registerApp !== 'function') return;
+        // Text Messaging accounts for the picker / Go To / tree, again when window.textMessaging is replaced
+        wireTm();
+        setInterval(wireTm, 3000);
         ws.registerApp({
             id: APP_ID,
             title: 'Messaging',
@@ -2394,6 +2465,7 @@
                 loadMailboxes();
                 probeXi();
                 refreshSms();
+                refreshTm();
                 // behind the picker the list loads without the wait cursor (nothing waits on it yet)
                 loadFolder({ keep: pickerRoot || (isMail() ? mail.length : (dirLists[dirP] || []).length) > 0 });
             },
