@@ -586,7 +586,11 @@
                     if (probe.kind === 'json') return true;
                 }
             };
+            // Continuity (#798): the DeX window of a hybrid phone waits for the phone before it boots on
+            const mc = root.melatonContinuity;
+            const hybridDw = !!(mc && mc.available && mc.role() === 'desktop' && (mc.hybrid() || {}).hybrid);
             const outcome = await bios.post({
+                phoneWait: hybridDw ? () => mc.phoneReady() : undefined,
                 tasks,
                 hasOsAfter,
                 serverDown,

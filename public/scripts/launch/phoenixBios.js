@@ -806,6 +806,11 @@
                     await env.sleep(50);
                 }
                 bios.work = work.results();
+                // Continuity (#798): a hybrid phone's DeX window waits for the phone past the bar
+                if (typeof opts.phoneWait === 'function') {
+                    const reached = await connectingToPhone(run, opts.phoneWait);
+                    if (reached === 'cancelled') return 'cancelled';
+                }
                 // The network card found no server (opts.serverDown → a pxe() reason): no gate or
                 // PIN to ask it, nothing any device can boot; Setup and the Boot Menu still open
                 const down = typeof opts.serverDown === 'function' ? await opts.serverDown(bios.work) : null;
@@ -868,6 +873,26 @@
                 }
                 await halt();
                 bios.request = null;
+            }
+        }
+
+        /**
+         * Continuity (Yozora #798): the DeX window of a hybrid phone shares the phone's connection, so
+         * past the POST bar it waits on a text screen until the phone has reached Today and the shared
+         * channel is ready: "Connecting to Phone... " and an ASCII spinner (/ | \ -). ready() is cheap.
+         */
+        async function connectingToPhone(run, ready) {
+            const spin = ['/', '|', '\\', '-'];
+            let i = 0;
+            bios.state = 'phone';
+            for (;;) {
+                if (run && run.cancelled && run.cancelled()) return 'cancelled';
+                if (await ready()) return true;
+                screen.mode = 'text';
+                screen.clear(C.black, C.grey);
+                screen.put(0, 0, `Connecting to Phone... ${spin[i++ % spin.length]}`);
+                render();
+                await env.sleep(150);
             }
         }
 

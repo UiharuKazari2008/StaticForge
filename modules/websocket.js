@@ -221,6 +221,9 @@ class WebSocketServer {
             if (frameApp) clientInfo.deviceApp = frameApp.slice(0, 64);
 
             this.clients.set(ws, clientInfo);
+            // the request a Continuity sub-client of this socket reuses (#798: modules/ws/virtualSocket.js)
+            ws._dsReq = req;
+            if (ws.virtual) clientInfo.continuitySub = ws.sub;
             try {
                 const { parseAgentClientIdQuery, resumeAgentClientId } = require('./agentClientBridge');
                 resumeAgentClientId(this, parseAgentClientIdQuery(req), clientInfo);
@@ -238,6 +241,8 @@ class WebSocketServer {
             ws.on('message', (data) => {
                 try {
                     const message = JSON.parse(data);
+                    // Continuity (#798): the DeX window's packets, carried by the phone window's socket
+                    if (!ws.virtual && require('./ws/virtualSocket').handle(ws, message, (vws, vreq) => this.wss.emit('connection', vws, vreq))) return;
                     this.handleMessage(ws, message);
                 } catch (error) {
                     console.error('❌ Invalid WebSocket message format:', error);
@@ -308,6 +313,8 @@ class WebSocketServer {
 
             // Handle client disconnect
             ws.on('close', (code, reason) => {
+                // a carrier's Continuity sub-clients end with it (#798)
+                if (!ws.virtual) require('./ws/virtualSocket').closeAll(ws);
                 const info = this.clients.get(ws) || clientInfo;
                 console.log(formatWsDisconnectLog({
                     clientIP: info && info.clientIP,

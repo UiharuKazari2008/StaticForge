@@ -1794,6 +1794,11 @@ class ServiceWorkerManager {
         if (this.agentSession) {
             return;
         }
+        // Continuity (#798): a hybrid phone's DeX window leaves updates to the phone; restarting the phone
+        // restarts it, and it loads what the phone installed (one app, one service worker)
+        if (window.melatonContinuity && typeof window.melatonContinuity.isDexWindow === 'function' && window.melatonContinuity.isDexWindow()) {
+            return;
+        }
         if (!window.isLoginPage && this._isBeforeDesktop()) {
             await this._holdCacheUpdateUntilDesktop(null, noToast);
             return;

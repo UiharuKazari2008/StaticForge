@@ -16,7 +16,7 @@
  *
  * Handoffs registered here: 'browser' { url } (Internet Explorer Mobile on the phone, Alchemy on the
  * desktop), 'explorer' { path }, 'weather'. Programs add their own with registerHandoff.
- * The page's server connection is untouched: each window still has its own (#798 slice F).
+ * Shared connection (slice F, below): the DeX window's server traffic rides the phone window's socket.
  */
 (function (root) {
     'use strict';
@@ -130,6 +130,141 @@
             if (onPhone()) W.open(); else if (typeof W.openDesktop === 'function') W.openDesktop();
         }
     });
+
+    // ================================================================ shared connection (slice F)
+    //
+    // The DeX window of a hybrid phone has no server socket: websocket.js asks transport() for a
+    // WebSocket stand-in (BusSocket) whose packets the phone window carries over its own socket
+    // (sub_open / sub_packet / sub_close, modules/ws/virtualSocket.js). On the server the DeX window is
+    // a client of its own. The phone window says when it is ready (Today reached, its socket up);
+    // the DeX window's BIOS waits for that ("Connecting to Phone...", phoenixBios.js), and when the
+    // phone window goes away (a restart) the DeX window starts again with it.
+
+    const SUB = 'desktop';
+    let phoneReadyNow = false;
+    let lastReadySent = null;
+    const isDw = () => api.available && api.role() === 'desktop' && !!(api.hybrid() || {}).hybrid;
+    const isPhone = () => api.available && api.role() === 'phone';
+    const inApp = () => !!root.wsClient && !root.isLaunchPage;
+
+    // ---- the phone window: readiness and the carrier
+    function phoneReadyState() {
+        const c = root.wsClient;
+        const booted = document.documentElement.dataset.wmBoot === 'done';
+        return !!(booted && c && typeof c.isConnected === 'function' && c.isConnected() && c.ws && c.ws.readyState === 1);
+    }
+    function announceReady(force) {
+        if (!isPhone()) return;
+        const ready = phoneReadyState();
+        if (!force && ready === lastReadySent) return;
+        lastReadySent = ready;
+        api.post({ type: 'phone-ready', ready });
+    }
+    function carrierSend(packet) {
+        const c = root.wsClient;
+        if (!c || !c.ws || c.ws.readyState !== 1) return false;
+        try { c.ws.send(JSON.stringify(packet)); return true; } catch (_) { return false; }
+    }
+    let carrying = false;
+    api.on('phone-ready?', () => announceReady(true));
+    api.on('ws-open', () => {
+        if (!isPhone()) return;
+        carrying = carrierSend({ type: 'sub_open', sub: SUB });
+        api.post(carrying ? { type: 'ws-opened' } : { type: 'ws-closed', reason: 'The phone is not connected' });
+    });
+    api.on('ws-up', (m) => { if (isPhone() && typeof m.data === 'string' && !carrierSend({ type: 'sub_packet', sub: SUB, data: m.data })) api.post({ type: 'ws-closed', reason: 'The phone is not connected' }); });
+    api.on('ws-close', () => { if (isPhone() && carrying) { carrierSend({ type: 'sub_close', sub: SUB }); carrying = false; } });
+    /** websocket.js (phone window): a server packet for a sub-client; true when it was one. */
+    api.fromServer = (message) => {
+        if (!message || (message.type !== 'sub_packet' && message.type !== 'sub_closed')) return false;
+        if (message.sub !== SUB) return true;
+        if (message.type === 'sub_closed') { carrying = false; api.post({ type: 'ws-closed', reason: 'The server ended the shared connection' }); return true; }
+        if (typeof message.data === 'string') api.post({ type: 'ws-down', data: message.data });
+        return true;
+    };
+
+    // ---- the DeX window: readiness, the socket stand-in, restarts
+    api.on('phone-ready', (m) => { phoneReadyNow = !!m.ready; });
+    api.on('peer', (m) => {
+        if (m.role === 'phone' && m.state === 'joined' && isDw()) api.post({ type: 'phone-ready?' });
+        if (m.role === 'phone' && m.state === 'left') {
+            phoneReadyNow = false;
+            // past its boot, the DeX window starts again with the phone (Yukimi: restarting the phone restarts DeX)
+            if (isDw() && inApp()) coldBootDw();
+        }
+    });
+    api.on('phone-restarting', () => { phoneReadyNow = false; if (isDw() && inApp()) coldBootDw(); });
+    let rebooting = false;
+    function coldBootDw() {
+        if (rebooting) return;
+        rebooting = true;
+        const D = root.AndroidDisplay;
+        try { if (D && typeof D.coldBoot === 'function') { D.coldBoot(); return; } } catch (_) { /* fall back */ }
+        location.replace('/launch');
+    }
+    /** The DeX window: true once the phone said it is ready (the BIOS waits on this). */
+    api.phoneReady = () => {
+        if (!phoneReadyNow && isDw()) api.post({ type: 'phone-ready?' });
+        return phoneReadyNow;
+    };
+
+    /** A WebSocket stand-in over the bus (DeX window): what websocket.js uses instead of new WebSocket(). */
+    class BusSocket {
+        constructor() {
+            this.readyState = 0;
+            this.binaryType = 'blob';
+            this.bufferedAmount = 0;
+            this.onopen = null;
+            this.onmessage = null;
+            this.onclose = null;
+            this.onerror = null;
+            this._off = [
+                api.on('ws-opened', () => { if (this.readyState !== 0) return; this.readyState = 1; if (this.onopen) this.onopen({ type: 'open' }); }),
+                api.on('ws-down', (m) => { if (this.readyState === 1 && this.onmessage) this.onmessage({ type: 'message', data: m.data }); }),
+                api.on('ws-closed', (m) => this._closed(1006, m.reason || 'closed')),
+                api.on('peer', (m) => { if (m.role === 'phone' && m.state === 'left') this._closed(1006, 'The phone window closed'); })
+            ];
+            setTimeout(() => { if (!api.post({ type: 'ws-open' })) this._closed(1006, 'No phone window'); }, 0);
+        }
+        send(data) {
+            if (this.readyState !== 1) throw new Error('The shared connection is not open');
+            if (!api.post({ type: 'ws-up', data: String(data) })) this._closed(1006, 'The phone window closed');
+        }
+        close(code = 1000, reason = '') {
+            if (this.readyState >= 2) return;
+            api.post({ type: 'ws-close' });
+            this._closed(code, reason);
+        }
+        _closed(code, reason) {
+            if (this.readyState === 3) return;
+            this.readyState = 3;
+            this._off.forEach((f) => f());
+            if (this.onclose) this.onclose({ type: 'close', code, reason, wasClean: code === 1000 });
+        }
+    }
+    /** websocket.js: a WebSocket stand-in when this is the DeX window of a hybrid phone that is ready, else null. */
+    // (whenever the phone window is there: not yet ready, it answers ws-closed and websocket.js tries again)
+    api.transport = () => (isDw() && api.peers().includes('phone') ? new BusSocket() : null);
+    /** The DeX window of a hybrid phone leaves updates to the phone (serviceWorkerManager.js). */
+    api.isDexWindow = () => isDw();
+
+    // the phone window: say when it is ready, and that it is going
+    if (api.available) {
+        const watch = () => {
+            if (!isPhone()) return;
+            new MutationObserver(() => announceReady(false)).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wm-boot'] });
+            const c = root.wsClient;
+            if (c && typeof c.on === 'function') {
+                c.on('connected', () => { announceReady(false); });
+                c.on('disconnected', () => { carrying = false; api.post({ type: 'ws-closed', reason: 'The phone lost its connection' }); announceReady(false); });
+            }
+            announceReady(true);
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(watch, 0)); else setTimeout(watch, 0);
+        root.addEventListener('pagehide', () => { if (isPhone()) api.post({ type: 'phone-restarting' }); });
+        // the DeX window asks once it is up (the answer may already be waiting)
+        setTimeout(() => { if (isDw()) api.post({ type: 'phone-ready?' }); }, 0);
+    }
 
     root.melatonContinuity = api;
 })(typeof window !== 'undefined' ? window : globalThis);

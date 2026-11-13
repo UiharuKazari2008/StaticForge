@@ -4625,7 +4625,9 @@ class WebSocketClient {
             this._disposeExistingSocket();
             this._connectingSince = Date.now();
             this._armConnectingWatchdog();
-            this.ws = new WebSocket(wsUrl);
+            // Continuity (#798): a hybrid phone's DeX window rides the phone window's socket (melatonContinuity.js)
+            const shared = window.melatonContinuity && typeof window.melatonContinuity.transport === 'function' ? window.melatonContinuity.transport() : null;
+            this.ws = shared || new WebSocket(wsUrl);
             const connectedSocket = this.ws;
 
             this.ws.onopen = async () => {
@@ -4741,6 +4743,8 @@ class WebSocketClient {
                     return;
                 }
                 try {
+                    // Continuity (#798): a packet for the DeX window this phone window carries goes over the bus
+                    if (window.melatonContinuity && typeof window.melatonContinuity.fromServer === 'function' && window.melatonContinuity.fromServer(message)) return;
                     this._recordWsMessage('in', message);
                     // Flash down arrow to indicate inbound traffic. Not for the Sidebar's live feed: a
                     // push every 2 s kept the tray globe (and the frames behind it) busy while idle
