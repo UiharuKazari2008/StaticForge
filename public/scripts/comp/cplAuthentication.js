@@ -1530,11 +1530,12 @@
     const CS = '/static_images/vista-cardspace';
     // #781: one Service keys group holds the keychain services (Claude among them), Cursor (the
     // Director's profiles, no longer its only accounts) and each custom model provider.
+    // The home page's groups: one card per account (Yukimi, #781). Application keys have a page
+    // of their own (Tasks > Application keys), as a table.
     const CARD_KINDS = {
-        service: ['Service keys', 'Service Key'],
-        application: ['Application keys', 'Application Key'],
-        'text-messaging': ['Text Messaging accounts', 'Text Messaging Account'],
-        mail: ['E-mail accounts', 'E-mail Account']
+        service: ['Managed service accounts', 'Managed Service Account'],
+        provider: ['Custom model providers', 'Custom Model Provider'],
+        messaging: ['Messaging services', 'Messaging Service']
     };
     // the driver's forms and the request log: shown in the window's form view while open
     const CS_FORMS = ['secCursorAccountPanel', 'secKeychainEditPanel', 'secKeychainAddPanel', 'secAppkeysCreatePanel', 'secAppkeysEditPanel', 'secAppkeysLogPage'];
@@ -1559,20 +1560,23 @@
     function csKindOf(row) {
         const list = row.closest('.cpl-vault-list');
         if (!list) return 'service';
-        if (list.id === 'cplCustomProviderList' || list.id === 'cplCardExtraList') return 'service';
-        if (list.id === 'cplTextMessagingList') return 'text-messaging';
-        if (list.id === 'cplMailAccountsList') return 'mail';
+        if (list.id === 'cplCustomProviderList') return 'provider';
+        if (list.id === 'cplTextMessagingList' || list.id === 'cplMailAccountsList') return 'messaging';
+        if (list.id === 'cplKeyCardList') return 'service';
         const body = list.dataset.cplVaultFor || '';
-        if (/Cursor/.test(body)) return 'cursor-profile';
-        if (/Keychain/.test(body)) return 'service';
+        // each Cursor profile is a managed service account card of its own
+        if (/Cursor/.test(body)) return 'service';
+        // the keychain's per-service rows stay in the host: their keys are cards (cplKeyCardList)
+        if (/Keychain/.test(body)) return 'keychain-service';
         return 'application';
     }
 
     /** What the details view calls the card, under its picture. */
     function csKindLabel(row) {
         const key = row.dataset.cplVaultKey || '';
-        if (key === 'cursor:') return 'Director Accounts';
-        if (key.startsWith('custom:')) return 'Model Provider';
+        if (key.startsWith('custom:')) return 'Custom Model Provider';
+        if (/^secCursorAccountsTableBody:/.test(key)) return 'Cursor Profile';
+        if (key.startsWith('key:')) return `${row.dataset.cplServiceLabel || 'Service'} Account`;
         return (CARD_KINDS[csKindOf(row)] || CARD_KINDS.service)[1];
     }
 
@@ -1644,9 +1648,17 @@
         const name = csName(row);
         const sub = (row.querySelector('.cpl-vault-sub') || {}).textContent || '';
         const hit = (list, text) => (list.find(([re]) => re.test(text)) || [])[1] || '';
-        if (key === 'cursor:') return { src: CURSOR, logo: true };
+        if (/^secCursorAccountsTableBody:/.test(key)) return { src: CURSOR, logo: true };
         if (key.startsWith('custom:')) return { src: COVER('model-provider'), logo: false };
         if (kind === 'service') {
+            const service = row.dataset.cplServiceLabel || name;
+            const logo = hit(SERVICE_LOGOS, service);
+            if (logo) return { src: logo, logo: true };
+            const cover = hit(SERVICE_COVERS, service);
+            return { src: cover || COVER('service-key'), logo: false };
+        }
+        if (kind === 'provider') return { src: COVER('model-provider'), logo: false };
+        if (kind === 'keychain-service') {
             const logo = hit(SERVICE_LOGOS, name);
             if (logo) return { src: logo, logo: true };
             const cover = hit(SERVICE_COVERS, name);
@@ -1668,6 +1680,20 @@
         return [...holder.querySelectorAll('.cs-nested .cpl-vault-row .cpl-vault-status')].map((el) => el.innerHTML).join('');
     }
 
+    function csCardName(row) {
+        const name = csName(row);
+        return /^secCursorAccountsTableBody:/.test(row.dataset.cplVaultKey || '') ? `Cursor · ${name}` : name;
+    }
+
+    /** CardSpace's cards carry no marks: only a state that needs you (warning, failure) shows a dot. */
+    function csAttentionDots(dot) {
+        if (!dot || !dot.innerHTML) return '';
+        const box = document.createElement('span');
+        box.innerHTML = dot.innerHTML;
+        const keep = [...box.querySelectorAll('.sec-key-dot')].filter((d) => /sec-key-dot-(warn|fail)\b/.test(d.className));
+        return keep.length ? `<span class="cs-card-dots">${keep.map((d) => d.outerHTML).join('')}</span>` : '';
+    }
+
     /** A card: the picture in its dark frame, the name under it (the VM's 130 x 106 cell). */
     function csCard(row, extra) {
         const pic = csPicture(row);
@@ -1677,13 +1703,23 @@
         const tip = (row.querySelector('.cpl-vault-sub') || {}).textContent || '';
         return `<button type="button" class="cs-card${extra || ''}" data-cs-key="${esc(row.dataset.cplVaultKey)}" title="${esc(tip)}">
             <span class="cs-card-pic${logo ? ' is-logo' : ''}"><img src="${esc(picture)}" alt="" draggable="false"></span>
-            <span class="cs-card-name">${esc(csName(row))}</span>${dot && dot.innerHTML ? `<span class="cs-card-dots">${dot.innerHTML}</span>` : ''}</button>`;
+            <span class="cs-card-name">${esc(csCardName(row))}</span>${csAttentionDots(dot)}</button>`;
     }
 
     /** A group per kind of card (as CardSpace's "Your cards:" group), Add a card in its own group after them. */
+    /** Managed accounts: the Director's (Claude, Cursor) first, then the services in keychain order. */
+    function csCardRank(row) {
+        const key = row.dataset.cplVaultKey || '';
+        if (key.startsWith('key:claude:')) return 0;
+        if (/^secCursorAccountsTableBody:/.test(key)) return 1;
+        return 2;
+    }
+
     function csRenderHome() {
+        csBuildKeyCards();
         const groups = Object.keys(CARD_KINDS).map((kind) => {
-            const rows = csRows().filter((r) => csKindOf(r) === kind);
+            const rows = csRows().filter((r) => csKindOf(r) === kind)
+                .map((r, i) => [r, i]).sort((a, b) => (csCardRank(a[0]) - csCardRank(b[0])) || (a[1] - b[1])).map(([r]) => r);
             if (!rows.length) return '';
             return `<div class="cs-group"><div class="cs-group-label"><span>${esc(CARD_KINDS[kind][0])}:</span></div>
                 <div class="cs-cards">${rows.map((r) => csCard(r, r.dataset.cplVaultKey === csSel ? ' is-selected' : '')).join('')}</div></div>`;
@@ -1712,13 +1748,24 @@
             list.innerHTML = csTask('Help', 'data-cs-task="help"');
             return;
         }
+        if (csView === 'appkeys') {
+            const sel = csAppSelected();
+            list.innerHTML = csTask('Edit key', 'data-cs-app="edit"', !!(sel && sel.key))
+                + csTask('Delete key', 'data-cs-app="delete"', !!(sel && sel.key))
+                + (sel && sel.req ? csTask('Approve request', 'data-cs-app="approve"') + csTask('Deny request', 'data-cs-app="deny"') : '')
+                + '<li class="cs-sep"></li>'
+                + csTask('Create an application key', 'data-cs-click="secAppkeysCreateBtn"')
+                + csTask('View the request log', 'data-cs-click="secAppkeysLogBtn"')
+                + '<li class="cs-sep"></li>'
+                + csTask('Help', 'data-cs-task="help"');
+            return;
+        }
         const del = row && csFind(row, /delete|revoke|deny/i);
         const has = (id) => !!(hostEl && hostEl.querySelector(`#${id}`));
         list.innerHTML = csTask('Duplicate card', '', false) + csTask('Delete card', 'data-cs-task="delete"', !!del)
             + '<li class="cs-sep"></li>'
             + csTask('Add a card', 'data-cs-go="add"')
-            + csTask('Save key changes', 'data-cs-click="secKeychainSave"', has('secKeychainSave'))
-            + csTask('View the request log', 'data-cs-click="secAppkeysLogBtn"', has('secAppkeysLogBtn'))
+            + csTask('Application keys', 'data-cs-go="appkeys"', has('secAppkeysTableBody'))
             + csTask('Preferences', 'data-cs-go="prefs"')
             + '<li class="cs-sep"></li>'
             + csTask('Delete all cards', '', false)
@@ -1729,7 +1776,7 @@
     function csRenderFoot() {
         const foot = csEl('.cs-foot');
         if (csView === 'home') {
-            foot.innerHTML = `<button type="button" class="tbp-button cs-foot-btn" data-dialog-primary="1" data-cs-go="details"${csSel && csRow(csSel) ? '' : ' disabled'}>Preview</button>`;
+            foot.innerHTML = `<button type="button" class="tbp-button cs-foot-btn" data-dialog-primary="1" data-cs-go="details"${csSel && csRow(csSel) ? '' : ' disabled'}>Open</button>`;
         } else if (csView === 'details') {
             const row = csSel && csRow(csSel);
             const save = row && csFind(row, /^\s*save\s*$/i);
@@ -1738,7 +1785,15 @@
                 ? '<button type="button" class="tbp-button cs-foot-btn cs-foot-save" data-dialog-primary="1" data-cs-task="save">Save</button><button type="button" class="tbp-button cs-foot-btn" data-cs-go="home">Cancel</button>'
                 : (edit ? '<button type="button" class="tbp-button cs-foot-btn" data-dialog-primary="1" data-cs-task="edit">Edit</button>' : '');
         } else if (csView === 'form') {
-            foot.innerHTML = '<button type="button" class="tbp-button cs-foot-btn" data-cs-task="form-close">Close</button>';
+            // Save / Cancel as CardSpace's Edit a new card; the panel's own submit is hidden and proxied.
+            // After a key is issued (its secret on show) or on the request log, only Close.
+            const submit = csFormSubmit();
+            foot.innerHTML = submit
+                ? '<button type="button" class="tbp-button cs-foot-btn cs-foot-save" data-dialog-primary="1" data-cs-task="form-save">Save</button><button type="button" class="tbp-button cs-foot-btn" data-cs-task="form-close">Cancel</button>'
+                : '<button type="button" class="tbp-button cs-foot-btn" data-dialog-primary="1" data-cs-task="form-close">Close</button>';
+        } else if (csView === 'appkeys') {
+            const sel = csAppSelected();
+            foot.innerHTML = `<button type="button" class="tbp-button cs-foot-btn" data-dialog-primary="1" data-cs-app="edit"${sel && sel.key ? '' : ' disabled'}>Edit</button>`;
         } else if (csView === 'prefs') {
             foot.innerHTML = '<button type="button" class="tbp-button cs-foot-btn" data-dialog-primary="1" data-cs-go="home">OK</button>';
         } else foot.innerHTML = '';
@@ -1770,7 +1825,8 @@
     }
 
     const CS_TEXT = {
-        home: ['Select a card to preview', 'To see or edit card data before you send it, select a card, and then click Preview. To create a new card, click Add a card.'],
+        home: ['Select a card to open', 'To see or edit a card\'s data, select the card, and then click Open. To add an account, click Add a card.'],
+        appkeys: ['Application keys', 'Programs reach Dreamscape with these keys. Select a key, and then click Edit, or use the tasks on the right. Requests waiting for your approval are listed first.'],
         details: ['Card Details', 'This card is kept on the Dreamscape server. To change the card data, use the tasks on the right or click Edit.'],
         add: ['Add a card', 'Select the type of card you want to add.'],
         form: ['', 'Fill in the card data, and then click Save. To leave the card as it was, click Back.'],
@@ -1787,10 +1843,17 @@
             ? 'The requests programs made with their application keys. Inactive keys lists the keys that no longer work.'
             : CS_TEXT[csView][1];
         csEl('.cs-back').disabled = csView === 'home';
+        win.dataset.csFormSide = csView === 'form' && csForm && csForm.id !== 'secAppkeysLogPage' ? '1' : '';
         if (csView === 'home') { csPutBack(); csRenderHome(); }
         if (csView === 'details') csRenderDetails();
         if (csView === 'add') csRenderAdd();
         if (csView === 'prefs') csRenderPrefs();
+        if (csView === 'appkeys') csRenderAppkeys();
+        if (csView === 'form') csRenderFormSide();
+        if (csView === 'add') {
+            const step = CS_ADD_STEPS[csAddStep];
+            if (step && step.title) { csEl('.cs-title').textContent = step.title; csEl('.cs-desc').textContent = step.desc; }
+        }
         csRenderTasks();
         csRenderFoot();
         if (picked) {
@@ -1823,6 +1886,7 @@
         // leaving a form closes it through the driver (its close button), which brings us back
         if (csView === 'form' && next !== 'form' && csForm) { csCloseForm(); return; }
         if (next !== 'details') { csPutBack(); csDiscardDraft(); }
+        if (next === 'add' && csView !== 'add') csAddStep = 'root';
         csView = next;
         csRender();
     }
@@ -1882,7 +1946,7 @@
         const target = csFormTarget();
         if (target) {
             if (csForm === target && csView === 'form') return;
-            if (csView !== 'form') csFormReturn = csView === 'details' ? 'details' : 'home';
+            if (csView !== 'form') csFormReturn = csView === 'details' || csView === 'appkeys' ? csView : 'home';
             csForm = target;
             csMarkForm(target);
             csView = 'form';
@@ -1896,7 +1960,7 @@
         if (csView !== 'form') return;
         csForm = null;
         csUnmarkForm();
-        csView = csFormReturn === 'details' && csSel && csRow(csSel) ? 'details' : 'home';
+        csView = csFormReturn === 'details' && csSel && csRow(csSel) ? 'details' : (csFormReturn === 'appkeys' ? 'appkeys' : 'home');
         if (csView === 'home') csPutBack();
         csRender();
     }
@@ -2136,31 +2200,216 @@
         }, 0);
     }
 
-    /** Add a card's entries: the vault's own add buttons. */
-    const CS_ADD = [
-        ['key:claude', 'Add a Claude account', 'A Claude account the Director signs in with (paste the token from claude setup-token). The selected account runs the Claude engine for Yumiya, Yozora and Rentan.'],
-        ['secCursorAccountsAddBtn', 'Add a Cursor profile', 'A Cursor profile the Director can run Yumiya and Yozora on. Add one to sign in with another profile or to share the work between two.'],
-        ['custom-provider', 'Add a custom model provider', 'Another model host for the Director: its address, its key and the model it uses by default.'],
-        ['secAppkeysCreateBtn', 'Create an application key', 'Application keys let programs reach Dreamscape on your behalf. Each key has its own name and can be revoked at any time.'],
-        ['tm-bluebubbles', 'Add a BlueBubbles server', 'A BlueBubbles server on a Mac brings your iMessage conversations to Melaton Messenger and the phone. Type its address and password.'],
-        ['tm-rcs', 'Add an RCS account (Google Messages)', 'Pair Google Messages on your Android phone by scanning a QR code, and its RCS and SMS conversations join Melaton Messenger.'],
-        ['ma-add', 'Add an e-mail account', 'An IMAP e-mail account (Gmail, iCloud Mail, Outlook.com, Yahoo Mail or your own provider). The server keeps a copy of its mail and sends with it, for the phone and Dovecote Express.']
-    ];
+    // ---- one card per service key (#781): the keychain's services hold several keys each ----
+    // Built from the driver's keychain state into a list of its own in the host (rows like the
+    // vault's, so the details view and tasks work the same). Rebuilt only when that state changes:
+    // the host observer re-renders on every host mutation.
+    let csKeySig = '';
 
-    function csRenderAdd() {
-        csEl('.cs-add').innerHTML = CS_ADD.map(([id, title, text]) => `<button type="button" class="cs-add-item" data-cs-add="${esc(id)}">
-            <img src="${CS}/arrow.png" alt="" class="cs-add-arrow"><span class="cs-add-title">${esc(title)}</span><span class="cs-add-text">${esc(text)}</span></button>`).join('')
-            + csAddKeys();
+    function csKeyServices() {
+        return (driver && driver._state && driver._state.keychain && driver._state.keychain.services) || [];
     }
 
-    /** "Add a service key for:" one link per keychain service (Claude has its own entry above). */
-    function csAddKeys() {
-        const services = ((driver && driver._state && driver._state.keychain && driver._state.keychain.services) || []).filter((sv) => sv.id !== 'claude');
-        if (!services.length) return '';
-        return `<div class="cs-add-keys"><span class="cs-add-keys-label">Add a service key for:</span>${services.map((sv) => `<button type="button" class="cs-task" data-cs-add="key:${esc(sv.id)}">${esc(sv.label || sv.id)}</button>`).join('')}</div>`;
+    function csBuildKeyCards() {
+        if (!hostEl) return;
+        const services = csKeyServices();
+        const sig = JSON.stringify(services.map((sv) => [sv.id, sv.selectedIndex, (sv.keys || []).map((k) => [k.name, k.fingerprint, k.status && k.status.state])]));
+        let list = hostEl.querySelector('#cplKeyCardList');
+        if (list && sig === csKeySig) return;
+        csKeySig = sig;
+        if (!list) {
+            list = document.createElement('div');
+            list.className = 'cpl-vault-list';
+            list.id = 'cplKeyCardList';
+            hostEl.appendChild(list);
+        }
+        const rows = [];
+        services.forEach((sv) => {
+            const keys = sv.keys || [];
+            keys.forEach((k) => {
+                const inUse = k.index === sv.selectedIndex;
+                const label = sv.label || sv.id;
+                const name = keys.length < 2 ? label : (k.name.toLowerCase().startsWith(label.toLowerCase()) ? k.name : `${label} · ${k.name}`);
+                const state = k.status && k.status.state ? k.status.state : 'unchecked';
+                const dot = sv.statusCheck === false ? '' : `<span class="cpl-vault-status"><span class="sec-key-dot sec-key-dot-${esc(state)}" title="${esc(KEY_DOT_WORD[state] || state)}" role="img" aria-label="${esc(KEY_DOT_WORD[state] || state)}"></span></span>`;
+                const field = (l, v) => `<div class="cpl-vault-field"><span class="cpl-vault-label">${esc(l)}:</span><span class="cpl-vault-value">${esc(v)}</span></div>`;
+                const op = (o, text, off) => `<button type="button" data-cs-keyop="${o}" data-cs-service="${esc(sv.id)}" data-cs-index="${k.index}"${off ? ' disabled' : ''}>${esc(text)}</button>`;
+                rows.push(`<div class="cpl-vault-row" data-cpl-vault-key="key:${esc(sv.id)}:${k.index}" data-cpl-service-label="${esc(label)}">
+                    <button type="button" class="cpl-vault-line"><span class="cpl-vault-name">${esc(name)}<span class="cpl-vault-sub">${esc(sv.description || '')}</span></span>${dot}</button>
+                    <div class="cpl-vault-details">${field('Service', label)}${field('Account name', k.name)}${field(sv.keyLabel ? 'Key' : 'Fingerprint', k.fingerprint || '—')}${field('In use', inUse ? 'Yes, this account is the one Dreamscape uses' : 'No')}${sv.statusCheck === false ? '' : field('Status', KEY_DOT_WORD[state] || state)}
+                    <div class="cpl-vault-actions">${op('edit', 'Edit')}${op('use', 'Use this account', inUse)}${op('delete', 'Delete')}</div></div></div>`);
+            });
+        });
+        list.innerHTML = rows.join('');
+    }
+
+    /** Edit / Delete / Use act on the service's pending selection: point it at this key first. */
+    async function csKeyOp(op, serviceId, index) {
+        if (!driver || !driver._state) return;
+        const kc = driver._state.keychain;
+        const before = kc.pendingSelections[serviceId];
+        kc.pendingSelections[serviceId] = index;
+        try {
+            if (op === 'edit') driver._openKeychainEditPanel(hostEl, serviceId);
+            if (op === 'delete') await driver._deleteKeychainKey(hostEl, serviceId);
+            if (op === 'use') await driver._saveKeychainSelections(hostEl);
+        } finally {
+            // a cancelled Use leaves the selection as it was
+            if (op === 'use' && kc.originalSelections[serviceId] !== index) kc.pendingSelections[serviceId] = kc.originalSelections[serviceId];
+            else if (op !== 'use' && kc.pendingSelections[serviceId] === index) kc.pendingSelections[serviceId] = before;
+        }
+    }
+
+    // ---- the Application keys page: the keys as a Vista list, pending requests first ----
+    let csAppSel = null;
+
+    function csAppState() {
+        const st = driver && driver._state && driver._state.appkeys;
+        if (!st) return { keys: [], pending: [] };
+        /* global securityDsapAppkeyIsInactive */
+        const inactive = typeof securityDsapAppkeyIsInactive === 'function' ? securityDsapAppkeyIsInactive : (k) => /expired|replaced|revoked/.test(k.status || '');
+        return { keys: (st.keys || []).filter((k) => !inactive(k)), pending: st.pending || [] };
+    }
+
+    function csAppSelected() {
+        if (!csAppSel) return null;
+        const { keys, pending } = csAppState();
+        if (csAppSel.startsWith('req:')) {
+            const req = pending.find((r) => `req:${r.id}` === csAppSel);
+            return req ? { req } : null;
+        }
+        const key = keys.find((k) => k.id === csAppSel);
+        return key ? { key } : null;
+    }
+
+    function csAppDate(value, fallback) {
+        if (!value) return fallback;
+        const d = new Date(typeof value === 'number' && value < 1e12 ? value * 1000 : value);
+        return Number.isNaN(d.getTime()) ? fallback : d.toLocaleDateString();
+    }
+
+    function csRenderAppkeys() {
+        const pane = csEl('.cs-appkeys');
+        if (!pane) return;
+        const { keys, pending } = csAppState();
+        if (csAppSel && !csAppSelected()) csAppSel = null;
+        const tr = (id, cells, extra) => `<tr data-cs-app-id="${esc(id)}" class="${csAppSel === id ? 'is-selected' : ''}${extra || ''}">${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
+        const dot = (g) => `<span class="sec-key-dot sec-key-dot-${g.state}" title="${esc(g.label)}"></span> ${esc(g.label)}`;
+        const rows = pending.map((r) => tr(`req:${r.id}`, [
+            `${esc(r.appName || 'Program')}<br><span class="cs-app-ua">${esc(r.userAgent || '')}</span>`,
+            esc(r.requestCode || ''), dot({ state: 'warn', label: 'Waiting for approval' }), '—', '—'
+        ], ' is-pending')).concat(keys.map((k) => tr(k.id, [
+            `${esc(k.appName || k.label || 'Program')}<br><span class="cs-app-ua">${esc(k.userAgent || '')}</span>`,
+            esc(k.keyPrefix ? `${k.keyPrefix}…` : ''),
+            dot(appKeyGlance(k.status)),
+            esc(k.persistent || k.isPerpetual ? 'Never' : csAppDate(k.expiresAt, '—')),
+            esc(k.persistent ? '—' : csAppDate(k.refreshBeforeAt, '—'))
+        ])));
+        pane.innerHTML = `<table class="cs-app-table"><thead><tr><th>Program</th><th>Key</th><th>Status</th><th>Expires</th><th>Refresh by</th></tr></thead>
+            <tbody>${rows.join('') || '<tr class="cs-app-empty"><td colspan="5">No application keys.</td></tr>'}</tbody></table>`;
+    }
+
+    function csAppAction(what) {
+        const sel = csAppSelected();
+        if (!sel || !driver) return;
+        const fake = (action, attr, value) => {
+            const b = document.createElement('button');
+            b.dataset.secAction = action;
+            b.dataset[attr] = value;
+            driver._onClick({ target: b });
+        };
+        if (sel.key && what === 'edit') { driver._openAppkeyEdit(hostEl, sel.key.id); return; }
+        if (sel.key && what === 'delete') fake('revoke-appkey', 'secAppkeyId', sel.key.id);
+        if (sel.req && what === 'approve') fake('approve-appkey-req', 'secAppkeyReq', sel.req.id);
+        if (sel.req && what === 'deny') fake('deny-appkey-req', 'secAppkeyReq', sel.req.id);
+    }
+
+    // ---- the form view's left column: the card being made or edited, as Edit a new card ----
+
+    function csFormSubmit() {
+        if (!csForm || csForm.id === 'secAppkeysLogPage') return null;
+        const result = csForm.querySelector('#secAppkeyCreateResult');
+        if (result && !result.classList.contains('hidden') && result.textContent.trim()) return null;
+        return csForm.querySelector('.sec-appkeys-form-actions .sec-btn-primary');
+    }
+
+    function csRenderFormSide() {
+        const side = csEl('.cs-form-side');
+        if (!side) return;
+        if (!csForm || csForm.id === 'secAppkeysLogPage') { side.innerHTML = ''; return; }
+        const kc = (driver && driver._state && driver._state.keychain) || {};
+        const hit = (list, text) => (list.find(([re]) => re.test(text)) || [])[1] || '';
+        let src = COVER('application');
+        let logo = false;
+        let kind = 'Application Key';
+        let name = '';
+        if (csForm.id === 'secCursorAccountPanel') {
+            src = CURSOR; logo = true; kind = 'Cursor Profile';
+            name = (csForm.querySelector('#secCursorAccountNameInput') || {}).value || '';
+        } else if (/Keychain/.test(csForm.id)) {
+            const id = csForm.id === 'secKeychainAddPanel' ? kc.addServiceId : kc.editServiceId;
+            const sv = csKeyServices().find((x) => x.id === id) || {};
+            const label = sv.label || id || 'Service';
+            const l = hit(SERVICE_LOGOS, label);
+            src = l || hit(SERVICE_COVERS, label) || COVER('service-key');
+            logo = !!l;
+            kind = `${label} Account`;
+            name = label;
+        } else if (csForm.id === 'secAppkeysEditPanel') {
+            name = (csForm.querySelector('#secAppkeyEditNameInput') || {}).value || '';
+        }
+        side.innerHTML = `<div class="cs-details-card"><span class="cs-card is-details"><span class="cs-card-pic${logo ? ' is-logo' : ''}"><img src="${esc(src)}" alt="" draggable="false"></span><span class="cs-card-name">${esc(name)}</span></span><div class="cs-details-kind">${esc(kind)}</div></div>`;
+        // "Personalize this card:" over the fields, as the VM's Edit a new card
+        const body = csForm.querySelector('.sec-details-body');
+        if (body && !body.querySelector('.cs-form-head')) {
+            const head = document.createElement('div');
+            head.className = 'cs-group-label cs-form-head';
+            head.innerHTML = '<span>Personalize this card:</span>';
+            body.insertBefore(head, body.firstChild);
+        }
+    }
+
+    // ---- Add a card: what kind of card, then (for two of them) which one ----
+    let csAddStep = 'root';
+    const CS_ADD_STEPS = {
+        root: {
+            items: [
+                ['secAppkeysCreateBtn', 'Create a Personal Application Key', 'Application keys let your programs reach Dreamscape on your behalf. Each key has its own name and access, and you can revoke it at any time.'],
+                ['step:managed', 'Install a Managed Service Account', 'Accounts at the services Dreamscape works with: Claude and Cursor for the Director, NovelAI, OpenAI, Google and the others. To learn which one to choose, click What type of card should I add?'],
+                ['custom-provider', 'Install a Custom Model Provider', 'Another model host for the Director: its address, its key and the model it uses by default.'],
+                ['step:messaging', 'Install a Messaging Service', 'iMessage through a BlueBubbles server, RCS through Google Messages, or an e-mail account, for Melaton Messenger, the phone and Dovecote Express.']
+            ]
+        },
+        managed: {
+            title: 'Install a Managed Service Account',
+            desc: 'Select the service the account is for.',
+            items: () => [
+                ['key:claude', 'Claude', 'A Claude account the Director signs in with (paste the token from claude setup-token). The selected account runs the Claude engine for Yumiya, Yozora and Rentan.'],
+                ['secCursorAccountsAddBtn', 'Cursor', 'A Cursor profile the Director can run Yumiya and Yozora on.']
+            ].concat(csKeyServices().filter((sv) => sv.id !== 'claude').map((sv) => [`key:${sv.id}`, sv.label || sv.id, sv.description || '']))
+        },
+        messaging: {
+            title: 'Install a Messaging Service',
+            desc: 'Select the kind of messaging service.',
+            items: [
+                ['tm-bluebubbles', 'iMessage (BlueBubbles server)', 'A BlueBubbles server on a Mac brings your iMessage conversations to Melaton Messenger and the phone. Type its address and password.'],
+                ['tm-rcs', 'RCS (Google Messages)', 'Pair Google Messages on your Android phone by scanning a QR code, and its RCS and SMS conversations join Melaton Messenger.'],
+                ['ma-add', 'E-mail account', 'An IMAP e-mail account (Gmail, iCloud Mail, Outlook.com, Yahoo Mail or your own provider). The server keeps a copy of its mail and sends with it.']
+            ]
+        }
+    };
+
+    function csRenderAdd() {
+        const step = CS_ADD_STEPS[csAddStep] || CS_ADD_STEPS.root;
+        const items = typeof step.items === 'function' ? step.items() : step.items;
+        const pane = csEl('.cs-add');
+        pane.classList.toggle('is-list', csAddStep !== 'root');
+        pane.innerHTML = items.map(([id, title, text]) => `<button type="button" class="cs-add-item" data-cs-add="${esc(id)}">
+            <img src="${CS}/arrow.png" alt="" class="cs-add-arrow"><span class="cs-add-title">${esc(title)}</span><span class="cs-add-text">${esc(text)}</span></button>`).join('');
     }
 
     function csAdd(id) {
+        if (id.startsWith('step:')) { csAddStep = id.slice(5); csRender(); return; }
         if (id.startsWith('key:')) {
             csGo('home');
             if (driver && typeof driver._openKeychainAddPanel === 'function') driver._openKeychainAddPanel(hostEl, id.slice(4));
@@ -2224,7 +2473,17 @@
             }
             const go = t.closest('[data-cs-go]');
             if (go && !go.disabled) { csGo(go.dataset.csGo); return; }
-            if (t.closest('.cs-back')) { csGo(csView === 'form' ? csFormReturn : 'home'); return; }
+            if (t.closest('.cs-back')) {
+                if (csView === 'add' && csAddStep !== 'root') { csAddStep = 'root'; csRender(); return; }
+                csGo(csView === 'form' ? csFormReturn : 'home');
+                return;
+            }
+            const keyop = t.closest('[data-cs-keyop]');
+            if (keyop && !keyop.disabled) { csKeyOp(keyop.dataset.csKeyop, keyop.dataset.csService, Number(keyop.dataset.csIndex)); return; }
+            const appRow = t.closest('.cs-app-table tbody tr[data-cs-app-id]');
+            if (appRow) { csAppSel = appRow.dataset.csAppId; csRenderAppkeys(); csRenderTasks(); csRenderFoot(); return; }
+            const app = t.closest('[data-cs-app]');
+            if (app && !app.disabled) { csAppAction(app.dataset.csApp); return; }
             const add = t.closest('[data-cs-add]');
             if (add) { csAdd(add.dataset.csAdd); return; }
             const click = t.closest('[data-cs-click]');
@@ -2235,6 +2494,7 @@
                 const which = task.dataset.csTask;
                 if (which === 'help') { if (typeof root.openHelpAndSupport === 'function') root.openHelpAndSupport('cardspace'); return; }
                 if (which === 'form-close') { csCloseForm(); return; }
+                if (which === 'form-save') { const b = csFormSubmit(); if (b) b.click(); return; }
                 const btn = row && (which === 'delete' ? csFind(row, /delete|revoke|deny/i) : which === 'save' ? csFind(row, /^\s*save\s*$/i) : csFind(row, /edit/i));
                 if (btn) btn.click();
             }
@@ -2246,6 +2506,8 @@
             if (pref.checked) void csSecureOn(); else void csSecureOff();
         });
         win.addEventListener('dblclick', (ev) => {
+            const appRow = ev.target.closest('.cs-app-table tbody tr[data-cs-app-id]');
+            if (appRow) { csAppSel = appRow.dataset.csAppId; csAppAction('edit'); return; }
             const card = ev.target.closest('.cs-home .cs-card[data-cs-key]');
             if (card) { csSel = card.dataset.csKey; csGo('details'); }
         });
@@ -2286,6 +2548,8 @@
                     <div class="cs-details"></div>
                     <div class="cs-add"></div>
                     <div class="cs-prefs"></div>
+                    <div class="cs-appkeys"></div>
+                    <div class="cs-form-side"></div>
                     <div class="cs-host cpl-auth-host"></div>
                 </div>
                 <div class="cs-tasks"><div class="cs-tasks-head">Tasks</div><ul class="cs-tasks-list"></ul></div>
@@ -2373,7 +2637,6 @@
         driver._clickMenuTargets = [];
         driver.init(makeHost(hostEl));
         vault();
-        mountCursorCard();
         mountCustomProviders();
         mountTextMessaging();
         mountMailAccounts();

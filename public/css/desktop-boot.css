@@ -1438,3 +1438,60 @@ html.melaton-vga-safe body {
     image-rendering: pixelated;
     -webkit-font-smoothing: none;
 }
+
+/* ---------- Vista Basic, sizable windows on the secure desktop ----------
+   Measured on the VM with DWM off (Notepad, aerohold): the dialog frame above is for fixed-size
+   windows; a sizable window has 1 px edge (#343434 top, #000 sides), 1 px light (white left/top,
+   #3fcef2 right, #28cfe4 bottom), 6 px of #b9d1ea frame on every side, a 26 px caption gradient
+   #98b4d0 -> #b9d1ea (the client starts 28 px down), top corners rounded 6 px, the 28 x 15 close
+   button 10 px in from the outer top-right, the icon 11 px in. Inactive: #4c4c4c edge, #e9ecf3
+   light all round, #d7e4f2 frame. `html body ... :not(#_)` outranks the dialog rules' id. */
+html body .modal.secure-desktop-window.resizeable-window:not(#_) {
+    --window-frame-inset: 7px;
+    --modal-title-chrome-height: 28px;
+    padding: 27px 7px 7px;
+    border: 1px solid;
+    border-color: #343434 #000 #000 !important;
+    border-radius: 6px 6px 0 0;
+    background: linear-gradient(#98b4d0, #b9d1ea) 0 1px / 100% 26px no-repeat, #b9d1ea;
+    box-shadow: inset 1px 1px #fff, inset -1px 0 #3fcef2, inset 0 -1px #28cfe4;
+}
+
+html body .modal.secure-desktop-window.resizeable-window:not(#_, .active-window) {
+    border-color: #4c4c4c !important;
+    background: linear-gradient(#bfcedc, #d7e4f2) 0 1px / 100% 26px no-repeat, #d7e4f2;
+    box-shadow: inset 1px 1px #e9ecf3, inset -1px -1px #e9ecf3;
+}
+
+html body .modal.secure-desktop-window.resizeable-window:not(#_) > .modal-window-title {
+    top: 1px;
+    height: 26px;
+    /* icon 11 px in from the outer edge, as Notepad's (the title row adds its own -4 px) */
+    padding: 0 0 0 14px;
+}
+
+html body .modal.secure-desktop-window.resizeable-window:not(#_) > .modal-window-title .modal-window-title-main {
+    height: 26px;
+    padding: 0;
+    gap: 4px;
+    align-items: center;
+}
+
+html body .modal.secure-desktop-window.resizeable-window:not(#_) > .modal-window-controls {
+    top: 9px;
+    right: 9px;
+}
+
+/* The Aero frame shadow (vista-glass-controls.css --window-frame-shadow, many ids in its :not()s)
+   would replace the Basic lights with a drop shadow; Basic windows have none. */
+.modal.secure-desktop-window {
+    box-shadow: inset 1px 1px #fff, inset -1px 0 #3fcef2, inset 0 -1px #28cfe4 !important;
+}
+
+.modal.secure-desktop-window:not(.active-window) {
+    box-shadow: inset 1px 1px #e2e6ef, inset -1px -1px #e9ecf3 !important;
+}
+
+.modal.secure-desktop-window.resizeable-window:not(.active-window) {
+    box-shadow: inset 1px 1px #e9ecf3, inset -1px -1px #e9ecf3 !important;
+}

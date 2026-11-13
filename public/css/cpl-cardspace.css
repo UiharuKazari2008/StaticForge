@@ -68,7 +68,8 @@
     position: absolute;
     left: 12px;
     top: 52px;
-    width: 545px;
+    /* 545 px at the VM's 740 px client; the window stretches it (#781) */
+    right: 183px;
     line-height: 16px;
 }
 
@@ -76,7 +77,8 @@
     position: absolute;
     left: 12px;
     top: 112px;
-    width: 572px;
+    /* 572 px at the VM's 740 px client: the panel takes what the window gains, Tasks stays 152 px */
+    right: 156px;
     bottom: 52px;
     box-sizing: border-box;
     border: 2px solid #c0c0c0;
@@ -295,7 +297,7 @@
 /* Tasks: links 20 px apart, #b4b4b4 rules between the groups */
 #dreamscapeCardSpaceModal .cs-tasks {
     position: absolute;
-    left: 588px;
+    width: 152px;
     top: 0;
     right: 0;
     bottom: 44px;
@@ -898,3 +900,132 @@
 #dreamscapeCardSpaceModal .sec-key-dot-fail { background: #c62828; }
 #dreamscapeCardSpaceModal .sec-key-dot-warn { background: #e0a020; }
 #dreamscapeCardSpaceModal .sec-key-dot-none { background: transparent; border-style: dashed; }
+
+/* ---- #781 the Application keys page and the form view's card column ---- */
+#dreamscapeCardSpaceModal .cs-panel > :is(.cs-appkeys, .cs-form-side) {
+    display: none;
+}
+
+#dreamscapeCardSpaceModal[data-cs-view="appkeys"] .cs-panel > :not(.cs-appkeys) {
+    display: none;
+}
+
+#dreamscapeCardSpaceModal[data-cs-view="appkeys"] .cs-panel > .cs-appkeys {
+    display: block;
+}
+
+/* Edit a new card (VM edit-new.png): the card at the left, the fields from 120 px */
+#dreamscapeCardSpaceModal[data-cs-view="form"][data-cs-form-side="1"] .cs-panel > .cs-form-side {
+    display: block;
+    right: auto;
+    width: 120px;
+    overflow: hidden;
+}
+
+#dreamscapeCardSpaceModal[data-cs-view="form"][data-cs-form-side="1"] .cs-panel > .cs-host {
+    left: 120px;
+    padding: 0 10px 12px 2px;
+}
+
+#dreamscapeCardSpaceModal .cs-host .cs-form-head {
+    margin: 10px 0 2px 0;
+}
+
+#dreamscapeCardSpaceModal[data-cs-form-side="1"] .cs-host .sec-appkeys-form {
+    gap: 5px;
+    max-width: none;
+}
+
+#dreamscapeCardSpaceModal[data-cs-form-side="1"] .cs-host .sec-appkeys-form > label:not(.sec-check) {
+    grid-template-columns: 98px 1fr;
+    padding-left: 18px;
+    min-height: 23px;
+}
+
+#dreamscapeCardSpaceModal[data-cs-form-side="1"] .cs-host .sec-appkeys-form > label.sec-check {
+    padding-left: 124px;
+}
+
+#dreamscapeCardSpaceModal[data-cs-form-side="1"] .cs-host .sec-appkeys-form > :is(p, .sec-readonly-row, .sec-dsap-setting-hint, .sec-appkeys-scopes, .sec-token-row, label[for]) {
+    margin-left: 18px;
+}
+
+/* the window's Save does the panel's submit */
+#dreamscapeCardSpaceModal .cs-host .sec-appkeys-form-actions {
+    display: none !important;
+}
+
+#dreamscapeCardSpaceModal .cs-app-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+#dreamscapeCardSpaceModal .cs-app-table th {
+    position: sticky;
+    top: 0;
+    height: 24px;
+    padding: 0 6px;
+    border-right: 1px solid #e5e5e5;
+    border-bottom: 1px solid #d5d5d5;
+    background: linear-gradient(#fff, #f3f4f6);
+    color: #4c607a;
+    font-weight: normal;
+    text-align: left;
+}
+
+#dreamscapeCardSpaceModal .cs-app-table th:nth-child(1) { width: 38%; }
+#dreamscapeCardSpaceModal .cs-app-table th:nth-child(2) { width: 18%; }
+#dreamscapeCardSpaceModal .cs-app-table th:nth-child(3) { width: 18%; }
+
+#dreamscapeCardSpaceModal .cs-app-table td {
+    padding: 3px 6px;
+    border: 1px solid transparent;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: top;
+    color: #000;
+}
+
+#dreamscapeCardSpaceModal .cs-app-table .cs-app-ua {
+    color: #6d6d6d;
+}
+
+#dreamscapeCardSpaceModal .cs-app-table tbody tr:hover td {
+    background: #e8f4fd;
+}
+
+#dreamscapeCardSpaceModal .cs-app-table tbody tr.is-selected td {
+    border-color: #84acdd transparent;
+    background: #cce4f7;
+}
+
+#dreamscapeCardSpaceModal .cs-app-table tbody tr.is-pending td:first-child {
+    font-weight: bold;
+}
+
+#dreamscapeCardSpaceModal .cs-app-table .sec-key-dot {
+    vertical-align: -1px;
+}
+
+/* Add a card's second step: the services as a shorter list */
+#dreamscapeCardSpaceModal .cs-add.is-list {
+    padding-top: 14px;
+}
+
+#dreamscapeCardSpaceModal .cs-add.is-list .cs-add-item {
+    margin-bottom: 1px;
+    padding-top: 4px;
+    padding-bottom: 5px;
+}
+
+#dreamscapeCardSpaceModal .cs-add.is-list .cs-add-title {
+    font-size: 13px;
+    line-height: 18px;
+}
+
+/* the form view's card is a span (not a button): give it the card's box */
+#dreamscapeCardSpaceModal .cs-form-side .cs-card {
+    display: block;
+}
