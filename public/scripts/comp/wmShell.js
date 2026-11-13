@@ -63,7 +63,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
+    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "set-buttons", "app-chat", "app-chat-lg", "app-messenger", "app-messenger-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => WM_SET.test(name) ? `${name}.png 1x, ${name}@2x.png 2x, ${name}@4x.png 4x` : String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -487,7 +487,7 @@
     // Traffic (#795): the commute ahead is more than 15 min late (scripts/generate-wm-traffic-status-icon.py)
     // Continuity (#798): this phone carries its DeX window's connection (scripts/generate-wm-continuity-status-icon.py)
     // ActiveSync Received Items (#803): something arrived while the phone was locked or away (the
-    // ActiveSync program's small icon, repllog.exe: scripts/extract-wm-activesync-status-icon.py)
+    // 1-bit white sync arrows like every title-bar glyph: scripts/generate-wm-activesync-status-icon.py)
     const STATUS_APP_ROLES = ['mail', 'sms', 'chat', 'prints', 'director', 'update', 'wxalert', 'rain', 'traffic', 'continuity', 'received'];
     // the Director's clapper while a turn runs: the stick claps (open frames, closed, open again);
     // status-director-clap-strip holds them in that order (scripts/build-wm-sprite-strips.sh)
@@ -3592,6 +3592,260 @@
         if (!dcBoxClose) return false;
         dcBoxClose(value);
         return true;
+    }
+
+    /**
+     * Progress box (Yozora #806, Yukimi Nov 13 2026): work the user just started on the phone (a
+     * print, Recast, Upscale, Expand Canvas, a save to the phone ...) is a WM box over the screen
+     * with its title, a status line, the streaming preview when the work sends one, WM's block
+     * progress bar (marquee while the amount is unknown) and Hide (Cancel too when the work can be
+     * stopped). It closes itself when the work ends. Its own layer under the message box layer, so
+     * an error or a question still comes up over it; several at once show the newest, the next one
+     * comes up when it closes. Hide keeps the work running without its box.
+     *   progressBox({ title, text, pct, preview, onCancel })
+     *     -> { update({ title, text, pct, preview }), setCancel(fn), close(), get open }
+     * pct null = marquee; preview = a URL, data: URL or raw base64 PNG ('' clears it).
+     */
+    let progressLayer = null;
+    const progressBoxes = []; // newest last
+    function progressBox(opts = {}) {
+        if (!shell) return null;
+        const box = {
+            title: String(opts.title || 'Please Wait'),
+            text: String(opts.text || ''),
+            pct: opts.pct == null ? null : Number(opts.pct),
+            preview: opts.preview || '',
+            onCancel: typeof opts.onCancel === 'function' ? opts.onCancel : null,
+            cancelling: false,
+            hidden: false,
+            closed: false
+        };
+        const handle = {
+            update(o = {}) {
+                if (box.closed) return;
+                if (o.title != null && o.title !== '') box.title = String(o.title);
+                if (o.text != null && !box.cancelling) box.text = String(o.text);
+                if (o.pct !== undefined) box.pct = o.pct == null || !Number.isFinite(Number(o.pct)) ? null : Number(o.pct);
+                if (o.preview !== undefined) box.preview = o.preview || '';
+                if (progressTop() === box) paintProgress(o.preview !== undefined);
+            },
+            setCancel(fn) {
+                box.onCancel = typeof fn === 'function' ? fn : null;
+                if (progressTop() === box) paintProgress(false, true);
+            },
+            close() {
+                if (box.closed) return;
+                box.closed = true;
+                const i = progressBoxes.indexOf(box);
+                if (i >= 0) progressBoxes.splice(i, 1);
+                showProgressTop();
+            },
+            get open() { return !box.closed; }
+        };
+        progressBoxes.push(box);
+        showProgressTop();
+        return handle;
+    }
+
+    const progressTop = () => {
+        for (let i = progressBoxes.length - 1; i >= 0; i--) if (!progressBoxes[i].hidden) return progressBoxes[i];
+        return null;
+    };
+
+    let progressShown = null; // the box drawn in the layer
+    function showProgressTop() {
+        const top = progressTop();
+        if (!top) {
+            progressShown = null;
+            if (progressLayer) {
+                progressLayer.hidden = true;
+                const img = progressLayer.querySelector('.wm-progress-preview');
+                // a streamed frame is a large data: URL; let it go
+                if (img) { img.removeAttribute('src'); img.hidden = true; }
+            }
+            return;
+        }
+        if (!progressLayer) {
+            progressLayer = document.createElement('div');
+            progressLayer.className = 'wm-msgbox-layer wm-progress-layer';
+            progressLayer.hidden = true;
+            progressLayer.innerHTML = '<div class="wm-msgbox" role="alertdialog" aria-busy="true"><div class="wm-msgbox-title"><span></span><button type="button" class="wm-title-action" data-kind="ok" aria-label="OK"></button></div>'
+                + '<div class="wm-msgbox-body"><div class="wm-msgbox-text">'
+                + '<div class="wm-progress-text"></div>'
+                + '<img class="wm-progress-preview" alt="" hidden>'
+                + '<div class="wm-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span></span></div>'
+                + '</div></div><div class="wm-msgbox-buttons"></div></div>';
+            shell.appendChild(progressLayer);
+            // the corner's default button (Yukimi, Nov 13): X stops the work when it can be stopped
+            // (in place of a Cancel button), ok otherwise puts the box away while the work goes on
+            progressLayer.querySelector('.wm-title-action').addEventListener('click', () => {
+                const box = progressShown;
+                if (!box) return;
+                if (box.onCancel) cancelProgress(box);
+                else hideProgress(box);
+            });
+        }
+        const fresh = progressShown !== top;
+        progressShown = top;
+        const wasHidden = progressLayer.hidden;
+        // shown first: the bar's blocks are counted from its laid-out width
+        progressLayer.hidden = false;
+        paintProgress(true, true);
+        if (wasHidden) {
+            if (fresh) {
+                const painted = progressLayer.querySelector('.wm-msgbox');
+                painted.dataset.wmPaint = 'first';
+                setTimeout(() => { delete painted.dataset.wmPaint; }, STAGE_TICK);
+            }
+        }
+    }
+
+    function paintProgress(withPreview, withButtons) {
+        const box = progressShown;
+        if (!box || !progressLayer) return;
+        progressLayer.querySelector('.wm-msgbox-title span').textContent = box.title;
+        progressLayer.querySelector('.wm-progress-text').textContent = box.text;
+        const bar = progressLayer.querySelector('.wm-progress-bar');
+        const marquee = box.pct == null;
+        bar.classList.toggle('is-marquee', marquee);
+        if (marquee) {
+            bar.removeAttribute('aria-valuenow');
+            bar.style.removeProperty('--wm-pb-blocks');
+        } else {
+            const pct = Math.max(0, Math.min(100, box.pct));
+            // whole 7 px blocks with 2 px gaps, as many as the bar's width holds at this percent
+            const inner = Math.max(0, bar.clientWidth - 2);
+            const unit = 9 * (parseFloat(getComputedStyle(shell).getPropertyValue('--wm-px')) || 1);
+            const fit = Math.max(1, Math.floor((inner + 2 * (unit / 9)) / unit));
+            bar.style.setProperty('--wm-pb-blocks', String(Math.round(pct / 100 * fit)));
+            bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+        }
+        if (withPreview) {
+            const img = progressLayer.querySelector('.wm-progress-preview');
+            const src = box.preview ? (/^(data:|blob:|https?:\/\/|\/)/.test(String(box.preview)) ? String(box.preview) : `data:image/png;base64,${box.preview}`) : '';
+            if (!src) { img.removeAttribute('src'); img.hidden = true; } else if (img.getAttribute('src') !== src) { img.src = src; img.hidden = false; }
+        }
+        if (withButtons) {
+            const corner = progressLayer.querySelector('.wm-title-action');
+            const stop = !!box.onCancel;
+            corner.dataset.kind = stop ? 'close' : 'ok';
+            corner.setAttribute('aria-label', stop ? 'Cancel' : 'OK');
+            corner.disabled = !!box.cancelling;
+            // work that can be stopped keeps Hide (the corner's X cancels it); otherwise the corner's
+            // ok is the only button
+            const row = progressLayer.querySelector('.wm-msgbox-buttons');
+            row.textContent = '';
+            row.hidden = !stop;
+            if (stop) {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.textContent = 'Hide';
+                b.addEventListener('click', () => hideProgress(box));
+                row.appendChild(b);
+            }
+        }
+    }
+
+    function hideProgress(box) {
+        box.hidden = true;
+        showProgressTop();
+    }
+
+    function cancelProgress(box) {
+        if (box.cancelling || !box.onCancel) return;
+        box.cancelling = true;
+        box.text = 'Canceling...';
+        if (progressShown === box) paintProgress(false, true);
+        try { box.onCancel(); } catch (err) { console.warn('[wmShell] progress cancel', err); }
+    }
+
+    /**
+     * Saves to the phone (#806): a same-origin <a download> (the gallery's Download, the viewer's
+     * Save, Slim / Optimized ...) is fetched here with a Downloading box (bytes so far, Cancel) and
+     * then handed to the phone as a blob: DSApp saves blob: downloads itself (performBlobDownload),
+     * a browser saves it as any download. Anything else (blob:, data:, another site) goes as it was.
+     */
+    const nativeAnchorClick = HTMLAnchorElement.prototype.click;
+    function phoneSaveTarget(a) {
+        if (!a || !a.hasAttribute || !a.hasAttribute('download') || a.dataset.wmNativeDownload === '1') return null;
+        let u;
+        try { u = new URL(a.href, location.href); } catch (_) { return null; }
+        if (u.origin !== location.origin || !/^https?:$/.test(u.protocol)) return null;
+        const name = a.getAttribute('download') || decodeURIComponent(u.pathname.split('/').pop() || '') || 'download';
+        return { url: u.href, name };
+    }
+
+    const fmtBytes = (n) => {
+        if (!(n >= 0)) return '';
+        if (n < 1024) return `${n} bytes`;
+        if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`;
+        return `${(n / 1048576).toFixed(n < 10485760 ? 2 : 1)} MB`;
+    };
+
+    async function saveToPhone(url, name) {
+        const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+        const box = progressBox({ title: 'Downloading', text: name, pct: null, onCancel: ctl ? () => ctl.abort() : null });
+        try {
+            const res = await fetch(url, { credentials: 'same-origin', signal: ctl ? ctl.signal : undefined });
+            if (!res.ok) throw new Error(`The server answered ${res.status}.`);
+            const total = Number(res.headers.get('content-length')) || 0;
+            const type = res.headers.get('content-type') || 'application/octet-stream';
+            let blob;
+            if (res.body && typeof res.body.getReader === 'function') {
+                const reader = res.body.getReader();
+                const parts = [];
+                let got = 0;
+                let paintedAt = 0;
+                for (;;) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    parts.push(value);
+                    got += value.byteLength;
+                    const now = performance.now();
+                    if (box && now - paintedAt > 120) {
+                        paintedAt = now;
+                        box.update({ text: `${name}\n${total ? `${fmtBytes(got)} of ${fmtBytes(total)}` : fmtBytes(got)}`, pct: total ? (got / total) * 100 : null });
+                    }
+                }
+                blob = new Blob(parts, { type });
+            } else {
+                blob = await res.blob();
+            }
+            if (box) box.update({ text: `${name}\n${fmtBytes(blob.size)}`, pct: 100 });
+            const href = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = href;
+            a.download = name;
+            a.dataset.wmNativeDownload = '1';
+            document.body.appendChild(a);
+            nativeAnchorClick.call(a);
+            a.remove();
+            // DSApp reads the blob back from the page a moment later: keep it alive for that
+            setTimeout(() => URL.revokeObjectURL(href), 120000);
+        } catch (err) {
+            if (box) box.close();
+            if (err && err.name === 'AbortError') return;
+            console.warn('[wmShell] save to phone', err);
+            messageBox({ title: 'Download', icon: 'error', text: `Cannot download '${name}'. ${(err && err.message) || ''}`.trim(), modal: true });
+            return;
+        }
+        if (box) box.close();
+    }
+
+    if (window.uiShell === 'mobile' || document.documentElement.classList.contains('ui-mobile')) {
+        HTMLAnchorElement.prototype.click = function wmSaveClick() {
+            const t = phoneSaveTarget(this);
+            if (t) { saveToPhone(t.url, t.name); return; }
+            return nativeAnchorClick.call(this);
+        };
+        document.addEventListener('click', (e) => {
+            if (e.defaultPrevented || e.button !== 0) return;
+            const a = e.target && e.target.closest ? e.target.closest('a[download]') : null;
+            const t = phoneSaveTarget(a);
+            if (!t) return;
+            e.preventDefault();
+            saveToPhone(t.url, t.name);
+        }, true);
     }
 
     function hideLoadingBox() {
@@ -8138,6 +8392,12 @@
         messageBox,
         /** Dreamscape Mainframe Server box while the server boots: mainframeBox(percent, stage); null hides. */
         mainframeBox: (percent, stage) => mainframeBox(percent, stage),
+        /** Work the user started, as a WM box with bar / preview / Hide / Cancel (#806): progressBox({ title, text, pct, preview, onCancel }). */
+        progressBox: (opts) => progressBox(opts || {}),
+        /** A message now answers the user's own action (a tap in the last 6 s, or work under the wait cursor). */
+        answersUser: () => answersUser(),
+        /** Fetch a same-origin file with a Downloading box, then save it on the phone (#806). */
+        saveToPhone: (url, name) => saveToPhone(url, name || 'download'),
         /** "The Domain Controller is unreachable." Retry / Abort box: resolves 'retry' | 'abort'. */
         domainUnreachable: () => domainUnreachable(),
         /** Close an open unreachable box as `value` (websocket.js: 'connected' when the link is back). */
