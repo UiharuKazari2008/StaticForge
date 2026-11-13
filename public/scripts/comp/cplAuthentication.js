@@ -1569,10 +1569,12 @@
             </ul>`;
     }
 
-    function csOpenRelated(which) {
+    async function csOpenRelated(which) {
         // another window cannot sit behind the secure desktop: CardSpace closes first
-        if (typeof root.closeModal === 'function') root.closeModal(win);
-        csClose();
+        await csSecureOff(() => {
+            if (typeof root.closeModal === 'function') root.closeModal(win);
+            csClose();
+        });
         setTimeout(() => {
             if (which === 'pins' && root.cplUserAccounts && typeof root.cplUserAccounts.open === 'function') root.cplUserAccounts.open();
             /* global securityDsapOpenDefender */
@@ -1580,41 +1582,145 @@
         }, 0);
     }
 
-    // ---- the secure desktop: Vista switches to it for CardSpace (the desktop dimmed, CardSpace alone) ----
-    // Above the taskbar (--z-taskbar 2701, its popovers 2710) and under confirmation dialogs (2800)
-    // and toasts, so the driver's own prompts still come up over the window.
-    const SECURE_Z = 2720;
-    let csSecureEl = null;
+    // ---- the secure desktop (Vista's consent / CardSpace desktop), root.melatonSecureDesktop ----
+    // A layer of its own (desktop-boot.css --z-secure-desktop): above every desktop layer and
+    // always-on-top window, below the lock cover, the Welcome screen and the boot covers. A window
+    // tagged .secure-desktop-window stacks from that base in the Vista Basic frame (no DWM there).
+    // Switching cuts to black for SWITCH_MS, then cuts to the other desktop, both ways. While it is
+    // up, dialogs and toasts a secure window brings up (Delete's confirmation, a save toast, the
+    // RCS Google sign-in) are tagged too, so they come up on it instead of behind it.
+    const secureDesktop = (() => {
+        const SWITCH_MS = 500;
+        const SPAWN_MS = 4000;
+        let backdrop = null;
+        let cover = null;
+        let stack = 0;
+        let spawnUntil = 0;
+        let toastTimer = 0;
+        let spawnWatch = null;
+        const tagged = new Set();
+        const owners = new Set();
+
+        function tag(el) {
+            if (!el || !el.classList) return;
+            stack += 1;
+            // integer z from the layer's base (desktop-boot.css --z-secure-desktop 2147481000)
+            el.style.setProperty('--secure-desktop-z', String(2147481010 + stack));
+            el.classList.add('secure-desktop-window');
+            tagged.add(el);
+        }
+
+        function untag(el) {
+            if (!el || !el.classList) return;
+            el.classList.remove('secure-desktop-window');
+            el.style.removeProperty('--secure-desktop-z');
+            tagged.delete(el);
+        }
+
+        function isActive() {
+            return !!(backdrop && backdrop.isConnected);
+        }
+
+        /** A secure window was used: what it opens in the next moments belongs on the secure desktop. */
+        function noteSpawn() {
+            spawnUntil = Date.now() + SPAWN_MS;
+        }
+
+        function tagToasts() {
+            const box = document.querySelector('.toast-container');
+            if (!box) return;
+            tag(box);
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { if (isActive()) untag(box); }, SPAWN_MS + 6000);
+        }
+
+        function watchSpawns() {
+            if (spawnWatch) return;
+            spawnWatch = new MutationObserver((records) => {
+                if (Date.now() > spawnUntil) return;
+                records.forEach((r) => {
+                    const el = r.target;
+                    if (r.type === 'childList') {
+                        r.addedNodes.forEach((n) => {
+                            if (n.nodeType !== 1) return;
+                            if (n.classList.contains('modal') && !n.classList.contains('hidden')) tag(n);
+                            if (n.closest && n.closest('.toast-container')) tagToasts();
+                        });
+                        return;
+                    }
+                    if (el.classList && el.classList.contains('modal') && !el.classList.contains('hidden') && !tagged.has(el)) tag(el);
+                });
+            });
+            spawnWatch.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+        }
+
+        function showCover() {
+            if (!cover) {
+                cover = document.createElement('div');
+                cover.className = 'secure-desktop-switch';
+                cover.setAttribute('aria-hidden', 'true');
+            }
+            document.body.appendChild(cover);
+        }
+
+        const hold = () => new Promise((resolve) => setTimeout(resolve, SWITCH_MS));
+
+        /** Cut to black, run setup (open and tag the windows) under it, hold, cut to the secure desktop. */
+        async function enter(owner, setup) {
+            owners.add(owner);
+            const already = isActive();
+            if (!already) showCover();
+            if (!backdrop) {
+                backdrop = document.createElement('div');
+                backdrop.className = 'secure-desktop-backdrop';
+                backdrop.setAttribute('aria-hidden', 'true');
+                // nothing else is on the secure desktop: clicks there go nowhere
+                ['mousedown', 'click', 'contextmenu', 'dblclick'].forEach((type) => backdrop.addEventListener(type, (ev) => { ev.preventDefault(); ev.stopPropagation(); }));
+            }
+            if (!backdrop.isConnected) document.body.appendChild(backdrop);
+            document.documentElement.classList.add('secure-desktop-active');
+            if (typeof setup === 'function') setup();
+            watchSpawns();
+            if (already) return;
+            await hold();
+            if (cover) cover.remove();
+        }
+
+        /** Cut to black, tear down under it, hold, cut back to the normal desktop. */
+        async function leave(owner, teardown) {
+            owners.delete(owner);
+            if (!isActive()) { if (typeof teardown === 'function') teardown(); return; }
+            showCover();
+            if (typeof teardown === 'function') teardown();
+            if (!owners.size) {
+                [...tagged].forEach(untag);
+                if (spawnWatch) { spawnWatch.disconnect(); spawnWatch = null; }
+                clearTimeout(toastTimer);
+                if (backdrop) backdrop.remove();
+                document.documentElement.classList.remove('secure-desktop-active');
+            }
+            await hold();
+            if (cover) cover.remove();
+        }
+
+        return { enter, leave, tag, untag, isActive, noteSpawn, SWITCH_MS };
+    })();
+    root.melatonSecureDesktop = secureDesktop;
     let csSecureWatch = null;
 
     function csSecureOn() {
-        if (!win || !csSecurePref() || typeof document === 'undefined') return;
-        if (!csSecureEl) {
-            csSecureEl = document.createElement('div');
-            csSecureEl.id = 'cardSpaceSecureDesktop';
-            csSecureEl.className = 'cs-secure-desktop';
-            csSecureEl.setAttribute('aria-hidden', 'true');
-            // the secure desktop has nothing else on it: clicks there go nowhere
-            ['mousedown', 'click', 'contextmenu', 'dblclick'].forEach((type) => csSecureEl.addEventListener(type, (ev) => { ev.preventDefault(); ev.stopPropagation(); }));
-        }
-        csSecureEl.style.zIndex = String(SECURE_Z);
-        if (!csSecureEl.isConnected) document.body.appendChild(csSecureEl);
-        // cpl-cardspace.css lifts .cs-secure to 2721 (!important: the window manager rewrites the inline z)
-        win.classList.add('cs-secure');
-        document.documentElement.classList.add('cardspace-secure-desktop');
-        void csSecureEl.offsetWidth;
-        csSecureEl.classList.add('is-on');
+        if (!win || !csSecurePref() || typeof document === 'undefined') return Promise.resolve();
         if (!csSecureWatch) {
             // closed from anywhere (taskbar, closeModal): back to the normal desktop
-            csSecureWatch = new MutationObserver(() => { if (win.classList.contains('hidden')) csSecureOff(); });
+            csSecureWatch = new MutationObserver(() => { if (win.classList.contains('hidden')) void csSecureOff(); });
             csSecureWatch.observe(win, { attributes: true, attributeFilter: ['class'] });
         }
+        return secureDesktop.enter('cardspace', () => secureDesktop.tag(win));
     }
 
     /**
-     * A web page CardSpace needs (the Google sign-in for RCS pairing): a standalone Alchemy window. On the
-     * secure desktop nothing behind it can be used, so the window comes up at CardSpace's level
-     * (.cs-secure-companion, above CardSpace) until CardSpace leaves the secure desktop.
+     * A web page CardSpace needs (the Google sign-in for RCS pairing): a standalone Alchemy window.
+     * On the secure desktop it comes up there too (tagged, above CardSpace) until CardSpace leaves.
      */
     async function csOpenBrowser(url, title) {
         const fl = root.featureLoader;
@@ -1625,22 +1731,13 @@
         const before = new Set(document.querySelectorAll('.modal'));
         open(url, null, title);
         const made = [...document.querySelectorAll('.modal')].filter((m) => !before.has(m));
-        if (win && win.classList.contains('cs-secure')) made.forEach((m) => m.classList.add('cs-secure-companion'));
+        if (secureDesktop.isActive()) made.forEach((m) => secureDesktop.tag(m));
     }
 
-    function csSecureOff() {
-        document.querySelectorAll('.modal.cs-secure-companion').forEach((m) => m.classList.remove('cs-secure-companion'));
+    /** teardown: what to do under the black (close the window). */
+    function csSecureOff(teardown) {
         if (csSecureWatch) { csSecureWatch.disconnect(); csSecureWatch = null; }
-        if (win && win.classList.contains('cs-secure')) {
-            win.classList.remove('cs-secure');
-            if (typeof root.bringModalToFront === 'function' && !win.classList.contains('hidden')) root.bringModalToFront(win);
-        }
-        if (typeof document !== 'undefined') document.documentElement.classList.remove('cardspace-secure-desktop');
-        if (csSecureEl) {
-            const el = csSecureEl;
-            el.classList.remove('is-on');
-            setTimeout(() => { if (!el.classList.contains('is-on')) el.remove(); }, 260);
-        }
+        return secureDesktop.leave('cardspace', teardown);
     }
 
 
@@ -1788,16 +1885,21 @@
             const pref = ev.target.closest('[data-cs-pref="secure"]');
             if (!pref) return;
             try { localStorage.setItem(SECURE_PREF, pref.checked ? '1' : '0'); } catch (_err) { /* this session only */ }
-            if (pref.checked) csSecureOn(); else csSecureOff();
+            if (pref.checked) void csSecureOn(); else void csSecureOff();
         });
         win.addEventListener('dblclick', (ev) => {
             const card = ev.target.closest('.cs-home .cs-card[data-cs-key]');
             if (card) { csSel = card.dataset.csKey; csGo('details'); }
         });
+        // Windows CardSpace has a close button only; on the secure desktop the switch back cuts to black first
         win.querySelector('.cs-close').addEventListener('click', () => {
-            if (typeof root.closeModal === 'function') root.closeModal(win);
-            csClose();
+            void csSecureOff(() => {
+                if (typeof root.closeModal === 'function') root.closeModal(win);
+                csClose();
+            });
         });
+        // what CardSpace opens next (confirmations, toasts) joins it on the secure desktop
+        ['pointerdown', 'keydown'].forEach((type) => win.addEventListener(type, () => secureDesktop.noteSpawn(), true));
     }
 
     function csBuild() {
@@ -1815,8 +1917,6 @@
             <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${CS}/cardspace-16.png" alt=""><span>Dreamscape CardSpace</span></div></div>
             <div class="modal-focus-overlay"></div>
             <div class="modal-window-controls">
-                <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
-                <button type="button" class="btn-secondary btn-small modal-work-area-maximize" title="Maximize"><i class="fa-regular fa-window-maximize"></i></button>
                 <button type="button" class="btn-danger close-btn btn-small cs-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
             <div class="modal-content win7 tbp-client cs-client">
@@ -1839,7 +1939,7 @@
     }
 
     function csClose() {
-        csSecureOff();
+        if (csSecureWatch) void csSecureOff();
         csUnmarkForm();
         csForm = null;
         csPutBack();
@@ -1859,9 +1959,13 @@
         // closed some other way (the taskbar's Close): let go of the old copy first
         if (!wasOpen && hostEl) csClose();
         if (section) csPendingSection = section;
-        if (typeof root.openModal === 'function') root.openModal(win); else win.classList.remove('hidden');
-        if (typeof root.bringModalToFront === 'function') root.bringModalToFront(win);
-        if (!wasOpen) csSecureOn();
+        const show = () => {
+            if (typeof root.openModal === 'function') root.openModal(win); else win.classList.remove('hidden');
+            if (typeof root.bringModalToFront === 'function') root.bringModalToFront(win);
+        };
+        // to the secure desktop: cut to black, CardSpace opens under it, then the cut back
+        if (!wasOpen && csSecurePref()) await secureDesktop.enter('cardspace', () => { show(); void csSecureOn(); });
+        else show();
         if (!wasOpen) {
             csView = 'home';
             csSel = null;

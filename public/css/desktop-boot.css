@@ -712,8 +712,10 @@ body.vista-logon.workstation-locked:not(.session-suspended) #desktopPreStartupMo
    message boxes) take the Basic frame. Measured on the Vista VM with DWM off: 1 px black edge,
    1 px white light (cyan on the right and bottom), 1 px frame colour, a 23 px caption band
    with the Basic gradient, black 9 pt caption, the 28 x 15 close button 4 px in, no shadow,
-   no client edge. The client areas keep their Vista controls. */
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) {
+   no client edge. The client areas keep their Vista controls.
+   The secure desktop (cplAuthentication.js melatonSecureDesktop) draws every window it hosts
+   (.secure-desktop-window) in the same Basic frame, as Vista's consent desktop has no DWM. */
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) {
     --window-frame-inset: 2px;
     --modal-title-chrome-height: 23px;
     padding: 22px 2px 2px;
@@ -727,22 +729,22 @@ body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) {
     backdrop-filter: none;
 }
 
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal, .active-window) {
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal, .active-window), .modal.secure-desktop-window:not(.active-window)) {
     border-color: #4c4c4c !important;
     background: linear-gradient(#bfcedc 1px, #d7e4f2 22px) 0 0 / 100% 22px no-repeat, #d7e4f2;
     box-shadow: inset 1px 1px #e2e6ef, inset -1px -1px #e9ecf3;
 }
 
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal)::before,
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal)::after,
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-title::before,
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-title::after,
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls::before,
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls::after {
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window)::before,
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window)::after,
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-title::before,
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-title::after,
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls::before,
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls::after {
     content: none;
 }
 
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-title {
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-title {
     top: 0;
     left: 0;
     width: 100%;
@@ -755,7 +757,7 @@ body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-
     box-shadow: none;
 }
 
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-title .modal-window-title-main {
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-title .modal-window-title-main {
     height: 22px;
     min-height: 0;
     padding: 2px 0 0;
@@ -765,17 +767,17 @@ body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-
     text-shadow: none;
 }
 
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-title .modal-window-title-main span {
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-title .modal-window-title-main span {
     font-variation-settings: normal;
     font-weight: 400;
 }
 
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-title .icon-image {
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-title .icon-image {
     width: 16px;
     height: 16px;
 }
 
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls {
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls {
     top: 4px;
     right: 3px;
     padding: 0;
@@ -785,7 +787,7 @@ body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-
     box-shadow: none;
 }
 
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls > button {
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls > button {
     all: unset;
     display: block;
     width: 28px;
@@ -793,13 +795,66 @@ body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-
     background: url('/static_images/vista-logon/basic-close.png') 0 0 / 28px 15px no-repeat;
 }
 
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal, .active-window) > .modal-window-controls > button {
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal, .active-window), .modal.secure-desktop-window:not(.active-window)) > .modal-window-controls > button {
     background-image: url('/static_images/vista-logon/basic-close-inactive.png');
 }
 
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls > button > *,
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls > button::before,
-body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) > .modal-window-controls > button::after {
+/* hot / pressed: uxtheme WINDOW WP_CLOSEBUTTON states 2 / 3 (inactive 6 / 7), drawn on the VM (themeimg) */
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls > button:hover {
+    background-image: url('/static_images/vista-logon/basic-close-hot.png');
+}
+
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls > button:active {
+    background-image: url('/static_images/vista-logon/basic-close-pressed.png');
+}
+
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal, .active-window), .modal.secure-desktop-window:not(.active-window)) > .modal-window-controls > button:hover {
+    background-image: url('/static_images/vista-logon/basic-close-inactive-hot.png');
+}
+
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal, .active-window), .modal.secure-desktop-window:not(.active-window)) > .modal-window-controls > button:active {
+    background-image: url('/static_images/vista-logon/basic-close-inactive-pressed.png');
+}
+
+/* ---------- The secure desktop (cplAuthentication.js melatonSecureDesktop) ----------
+   Its own layer from --z-secure-desktop: above every desktop layer, always-on-top windows,
+   toasts, menus and the PIN prompt, and below the lock cover, the Welcome screen and the boot
+   / shutdown covers (2147482000 and up). A window tagged .secure-desktop-window stacks from
+   that base (--secure-desktop-z, set when tagged) and takes the Basic frame above. The
+   secure desktop has no taskbar: a tagged window shows only its close button. */
+:root {
+    --z-secure-desktop: 2147481000;
+}
+
+.secure-desktop-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-secure-desktop) !important;
+    background: rgba(0, 0, 0, 0.55);
+    cursor: var(--c-default, default);
+}
+
+.secure-desktop-window {
+    /* an integer from melatonSecureDesktop.tag (calc() at this size loses precision) */
+    z-index: var(--secure-desktop-z, 2147481010) !important;
+}
+
+.modal.secure-desktop-window > .modal-window-controls > :not(.close-btn) {
+    display: none !important;
+}
+
+/* the switch: a cut to black, held 500 ms, then a cut to the other desktop */
+.secure-desktop-switch {
+    position: fixed;
+    inset: 0;
+    z-index: 2147481900 !important;
+    background: #000;
+    cursor: none;
+}
+
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls > button > *,
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls > button::before,
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls > button::after {
     display: none;
 }
 

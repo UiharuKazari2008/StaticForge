@@ -810,41 +810,13 @@
     list-style: none;
 }
 
-/* ---- the secure desktop: the desktop dimmed under CardSpace, nothing else usable ---- */
-.cs-secure-desktop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    opacity: 0;
-    transition: opacity 0.25s linear;
-    pointer-events: auto;
-    cursor: var(--c-default, default);
-}
-
-.cs-secure-desktop.is-on {
-    opacity: 1;
-}
+/* the secure desktop's layer, frame and black-cut switch are desktop-boot.css (.secure-desktop-*) */
 
 /* the BlueBubbles card's client options (#779): one check box per line */
 #dreamscapeCardSpaceModal .cpl-tm-options {
     display: flex;
     flex-direction: column;
     gap: 3px;
-}
-
-/* a window CardSpace opened for itself (the Google sign-in in Alchemy, #779): usable on the secure desktop */
-.modal.cs-secure-companion {
-    z-index: 2722 !important;
-}
-
-/* CardSpace alone above the dimmed desktop (cplAuthentication.js SECURE_Z + 1) */
-#dreamscapeCardSpaceModal.cs-secure {
-    z-index: 2721 !important;
-}
-
-/* the secure desktop has no taskbar to minimise to */
-#dreamscapeCardSpaceModal.cs-secure .minimize-btn {
-    display: none !important;
 }
 
 /* the details' edit boxes as Control Panel's (melaton-network.css #melatonControlPanelModal .cpl-ua-input):
