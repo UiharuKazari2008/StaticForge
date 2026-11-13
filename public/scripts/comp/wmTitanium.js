@@ -24,6 +24,7 @@
  *   - left / right on a panel with pages: after 45 px the page follows the finger, the next one a
  *     screen width behind; past half the width it carries on, short of it the page slides back
  *   - soft keys: left the Today key, right the panel's own (Set, Compose, Messaging, Library ...);
+ *     the clock panel's "Set" gives way to a right key chosen in Settings > Buttons (6.1's Today key);
  *     a page may bring its own right key and tap (pages[].softKey / onTap)
  *
  * Panels come from Today's items: the shell's rows (date + connection = the clock panel, as 6.5
@@ -83,6 +84,7 @@
     let settle = 0;      // rAF id of the list's own move (tw)
     let tw = null;       // that move: { a: item it left, b: item it goes to, n, D, e0, p, ... }
     let skSel = 0;       // the panel whose right soft key is up (it changes after the panel has grown in)
+    let menuAt = 0;      // when a tap-and-hold last brought a panel's menu up
     const rowEl = new Map(); // panel id -> its condensed row
     let panelsKey = '';
     let homeDone = false;
@@ -373,6 +375,22 @@
             b.addEventListener('click', (e) => { e.stopPropagation(); turnPage(Number(b.dataset.dir)); });
         });
         bindPointer();
+        // tap-and-hold on the panel: its page's own menu (pages[].menu / panel.menu, an item list or
+        // a function giving one), e.g. Music's Previous / Next; the lift after it opens nothing
+        host.addEventListener('contextmenu', (e) => {
+            // only on the panel in the band (the list under it takes the press: the focus layer lets it through)
+            const y = (e.clientY - host.getBoundingClientRect().top) / unit();
+            const top = focusTop();
+            if (y < top || y >= top + BAND) return;
+            const p = panels[sel];
+            const pg = p && p.pages[pageIndex(p)];
+            let m = (pg && pg.menu) || (p && p.menu);
+            if (typeof m === 'function') { try { m = m(pg); } catch (_) { m = null; } }
+            if (!Array.isArray(m) || !m.length || slide.active || dragging || settle) return;
+            e.preventDefault();
+            menuAt = Date.now();
+            sh.menuAt(e.clientX, e.clientY, m);
+        });
         page.appendChild(host);
     }
 
@@ -443,7 +461,8 @@
         const lines = [pg.title, pg.line2, pg.line3].filter(Boolean).length;
         const pic = pg.image ? `<span class="wm-ti-pic" style="background-image:url('${esc(pg.image)}')"></span>` : '';
         const small = !pg.image && pg.smallIcon ? `<img class="wm-ti-small" src="${esc(artUrl(pg.smallIcon))}" srcset="${esc(artSet(pg.smallIcon))}" alt="" draggable="false">` : '';
-        return `${iconHtml}<div class="wm-ti-text" data-lines="${lines}"${pg.image ? ' data-pic="1"' : ''}${small ? ' data-small="1"' : ''}>${pic}${small}
+        // pg.bare: a picture without the white frame (the Music panel's album art and Play All Songs tile)
+        return `${iconHtml}<div class="wm-ti-text" data-lines="${lines}"${pg.image ? ` data-pic="${pg.bare ? 'bare' : '1'}"` : ''}${small ? ' data-small="1"' : ''}>${pic}${small}
             ${lineHtml('is-1', pg.title)}${lineHtml('is-2', pg.line2)}${lineHtml('is-3', pg.line3)}</div>`;
     }
 
@@ -460,7 +479,7 @@
         const n = p.pages.length;
         const at = pageIndex(p);
         const pg = p.pages[at];
-        const key = JSON.stringify([p.id, p.icon, at, n, pg.time, pg.ampm, pg.date, pg.network, pg.title, pg.line2, pg.line3, pg.image, pg.smallIcon, pg.icon]);
+        const key = JSON.stringify([p.id, p.icon, at, n, pg.time, pg.ampm, pg.date, pg.network, pg.title, pg.line2, pg.line3, pg.image, pg.bare, pg.smallIcon, pg.icon]);
         host.querySelectorAll('.wm-ti-arrow').forEach((a) => { a.hidden = n < 2; });
         if (slide.active || key === expKey) return; // a page on its way keeps what it shows
         expKey = key;
@@ -775,10 +794,12 @@
         let velX = 0; // px per ms
         let inBand = false;
         let trail = [];  // the finger's last points { t, y }, for its speed at the lift
+        let downAt = 0;
         host.addEventListener('pointerdown', (e) => {
             if (id != null || (e.pointerType === 'mouse' && e.button !== 0)) return;
             if (e.target.closest('.wm-ti-arrow') || slide.active) return;
             id = e.pointerId;
+            downAt = Date.now();
             y0 = e.clientY;
             x0 = lastX = e.clientX;
             lastT = e.timeStamp;
@@ -836,7 +857,7 @@
             if (e.pointerId !== id) return;
             id = null;
             if (!axis) {
-                if (e.type !== 'pointerup') return;
+                if (e.type !== 'pointerup' || menuAt >= downAt) return; // a hold that brought a menu
                 if (!tw) { tap(e); return; }
                 // the list is running: a tap on the band opens the item it ends on, a tap anywhere
                 // else ends the move on the next item
@@ -921,6 +942,9 @@
             // the next panel has grown in
             const p = panels[skSel] || panels[sel];
             const pg = p && p.pages[pageIndex(p)];
+            // the clock (home) panel: a right key chosen in Settings > Buttons replaces its "Set", as
+            // the key does on 6.1's Today (Yukimi, Nov 13, #796); <None> leaves it blank
+            if (p && p.clock && keys.custom && keys.custom.right) return { left: keys.left, right: keys.right || { label: '', disabled: true } };
             return { left: keys.left, right: (pg && pg.softKey) || (p && p.softKey) || keys.right };
         }
     };
@@ -933,10 +957,32 @@
         sh.setTodayView(view);
     }
 
+    /**
+     * Home (the phone's Home button, #794): the clock panel in the band at once and every panel back
+     * on its first page, as the device's home screen comes back.
+     */
+    function home() {
+        pageAt.clear();
+        expKey = '';
+        // a page on its way stops where it started, at once
+        if (slide.active) { cancelAnimationFrame(slide.raf); slide.active = false; slide.x = 0; host.classList.remove('is-sliding'); }
+        const at = panels.findIndex((p) => p.clock);
+        if (host && !host.hidden && panels.length) select(at >= 0 ? at : 0, false);
+        else homeDone = false; // drawn later: the first draw takes the clock again
+    }
+
     window.wmTitanium = {
-        enabled, select: (i) => select(i, true), panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel,
+        enabled, home, select: (i) => select(i, true), panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel,
         // where the list is (tests): the move under way { a, b, n, p } or null, and the dragged position in rows
         motion: () => ({ sel, pos, dragging, move: tw ? { a: tw.a, b: tw.b, n: tw.n, asked: tw.nv, p: tw.p } : null })
+    };
+
+    /** A panel's page by number (Music's "Go To Playing", #796): drawn now when the panel is in the band. */
+    window.wmTitanium.showPage = (id, i) => {
+        const p = panels.find((x) => x.id === id);
+        if (!p || slide.active) return;
+        pageAt.set(id, Math.max(0, Math.min(p.pages.length - 1, Number(i) || 0)));
+        if (panels[sel] === p) { drawExpanded(); sh.refreshSoftKeys(); }
     };
 
     if (window.wmShell) init();

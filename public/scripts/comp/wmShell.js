@@ -46,7 +46,7 @@
     // the 6.5 order until one is chosen in Settings: the clock is home, in the centre, as on
     // Windows Mobile 6.5 (pictures, music, getting started, phone, voicemail | clock | text,
     // e-mail, calendar, favorites): pictures and the places above it, what arrives below
-    const TODAY_ORDER_65 = ['owner', 'search', 'workspace', 'prints', 'studio', 'director', 'date', 'connection', 'text', 'messenger', 'messages', 'calendar', 'ie', 'favorites', 'tasks', 'weather', 'accounts', 'xlink', 'notes', 'files', 'remote-desktop', 'server'];
+    const TODAY_ORDER_65 = ['owner', 'search', 'workspace', 'prints', 'music', 'studio', 'director', 'date', 'connection', 'text', 'messenger', 'messages', 'calendar', 'ie', 'favorites', 'tasks', 'weather', 'accounts', 'xlink', 'notes', 'files', 'remote-desktop', 'server'];
     function todayOrder65(ids) {
         const rank = (id) => { const i = TODAY_ORDER_65.indexOf(id); return i < 0 ? TODAY_ORDER_65.length : i; };
         return ids.map((id, i) => [id, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([id]) => id);
@@ -6036,6 +6036,8 @@
                 // Settings > Buttons picks each key (todaySoftKeyFor); Pictures | Menu by default
                 const menu = () => workspaceMenu().concat(['-', { label: 'Reconnect', disabled: !!(window.wsClient && window.wsClient.isConnected()), action: () => window.wsClient && window.wsClient.manualReconnect() }]);
                 const keys = { left: todaySoftKeyFor('left', menu), right: todaySoftKeyFor('right', menu) };
+                // which keys were chosen in Settings > Buttons (6.5's clock panel keeps its "Set" until the right one is, #796)
+                keys.custom = todaySoftKeysChosen();
                 // a notification is waiting: the device's left soft key on Today reads "Notification"
                 // and opens it, whatever the key is set to
                 if (notes.length) keys.left = { label: 'Notification', action: () => noteIconTap() };
@@ -6922,6 +6924,13 @@
         const out = { ...TODAY_KEY_DEFAULT };
         for (const side of ['left', 'right']) if (v && typeof v[side] === 'string' && v[side]) out[side] = v[side];
         return out;
+    }
+
+    /** { left, right }: true for a key the user set in Settings > Buttons (not the default). */
+    function todaySoftKeysChosen() {
+        let v = null;
+        try { v = JSON.parse(localStorage.getItem(TODAY_KEYS_KEY) || 'null'); } catch (_) { v = null; }
+        return { left: !!(v && typeof v.left === 'string' && v.left), right: !!(v && typeof v.right === 'string' && v.right) };
     }
 
     /** The programs a soft key can open: Start menu / Programs apps (not Today itself). */
