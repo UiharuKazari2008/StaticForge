@@ -62,7 +62,7 @@
     // from the top left while it runs up into the clock (the lift-without-speed move, BACK_MS), then
     // the clock panel grows in as after any move. ENTER_ROWS: how far below its place the list starts.
     const ENTER_MS = 550;       // the entrance's run up into the clock (and its scale-in, wm-titanium.css)
-    const ENTER_ZOOM_MS = 300;  // ... then the clock panel grows and fades in (wm-ti-zoom-enter), larger than a move's
+    const ENTER_ZOOM_MS = 450;  // ... then the clock panel grows and fades in (wm-ti-zoom-enter), larger than a move's
     const ENTER_RECENT_MS = 1500; // a Home press this soon after the page came back belongs to that return
     // A Home press while Today is in front blinks the page hidden for a moment (Android pauses and
     // resumes the launcher: 16 ms on the Fold7); hidden longer, the user was in another app

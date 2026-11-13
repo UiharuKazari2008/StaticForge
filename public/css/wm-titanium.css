@@ -317,7 +317,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-entering .wm-ti-exp {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-exp {
     transform-origin: 50% 50%;
-    animation: wm-ti-zoom-enter 0.3s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+    animation: wm-ti-zoom-enter 0.45s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
