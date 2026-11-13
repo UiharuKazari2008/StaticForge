@@ -1825,3 +1825,12 @@ body.windows-classic-theme .dove-move-row.is-selected .dove-move-label {
     flex: 1 1 auto;
     min-width: 0;
 }
+
+/* the tray Inbox flyout: an e-mail account's message names its account after the sender */
+.dove-inbox-flyout-account::before {
+    content: ' - ';
+}
+
+.dove-inbox-flyout-account {
+    color: #6d6d6d;
+}

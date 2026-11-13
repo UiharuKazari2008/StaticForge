@@ -474,6 +474,26 @@ async function composeMessage(accountId, a, body, { needRecipient }) {
             msg.attachments.push({ filename: f.name, path: f.file, contentType: f.type });
         }
     }
+    // threading: a reply's In-Reply-To / References; a draft being re-saved or sent keeps the ones it had
+    if (body.reply && body.reply.uid) {
+        const orig = store.getMessage(accountId, body.reply.folder, Number(body.reply.uid));
+        if (orig && orig.msgid) {
+            msg.inReplyTo = orig.msgid;
+            let refs = '';
+            try { const env = JSON.parse(orig.env || '{}'); refs = Array.isArray(env.references) ? env.references.join(' ') : (env.references || ''); } catch (_) { refs = ''; }
+            msg.references = `${refs} ${orig.msgid}`.trim();
+        }
+    } else if (body.draftUid || body.replaceUid) {
+        const dr = store.listFolders(accountId).find((f) => f.special === '\\Drafts');
+        const row = dr ? store.getMessage(accountId, dr.path, Number(body.draftUid || body.replaceUid)) : null;
+        if (row) {
+            try {
+                const env = JSON.parse(row.env || '{}');
+                if (env.inReplyTo) msg.inReplyTo = env.inReplyTo;
+                if (env.references) msg.references = Array.isArray(env.references) ? env.references.join(' ') : env.references;
+            } catch (_) { /* no threading */ }
+        }
+    }
     return msg;
 }
 
@@ -484,15 +504,6 @@ async function send(accountId, body) {
     const nodemailer = require('nodemailer');
     const MailComposer = require('nodemailer/lib/mail-composer');
     const msg = await composeMessage(accountId, a, body, { needRecipient: true });
-    if (body.reply && body.reply.uid) {
-        const orig = store.getMessage(accountId, body.reply.folder, Number(body.reply.uid));
-        if (orig && orig.msgid) {
-            msg.inReplyTo = orig.msgid;
-            let refs = '';
-            try { const env = JSON.parse(orig.env || '{}'); refs = Array.isArray(env.references) ? env.references.join(' ') : (env.references || ''); } catch (_) { refs = ''; }
-            msg.references = `${refs} ${orig.msgid}`.trim();
-        }
-    }
     const transport = nodemailer.createTransport(smtpOptions(a, sec.smtpPassword || sec.password || ''));
     let info;
     try { info = await transport.sendMail(msg); } catch (error) { throw fail('SMTP_FAILED', `The message could not be sent: ${error.message}`); } finally { transport.close(); }
@@ -526,16 +537,23 @@ async function saveDraft(accountId, body) {
     const drafts = store.listFolders(accountId).find((f) => f.special === '\\Drafts');
     if (!drafts) throw fail('NO_DRAFTS', 'This account has no Drafts folder.');
     const msg = await composeMessage(accountId, a, body, { needRecipient: false });
+    // its own Message-ID, so the copy can be found again on servers that do not report the new UID
+    msg.messageId = `<draft-${randomUUID()}@${String(a.email).split('@')[1] || 'dreamscape'}>`;
     const raw = await new MailComposer(msg).compile().build();
     const c = await opsClient(r0);
     const res = await c.append(drafts.path, raw, ['\\Draft', '\\Seen']);
+    let uid = res && res.uid ? res.uid : null;
+    if (!uid) {
+        const lock = await c.getMailboxLock(drafts.path);
+        try { const hits = await c.search({ header: { 'message-id': msg.messageId } }, { uid: true }); uid = hits && hits.length ? hits[hits.length - 1] : null; } catch (_) { uid = null; } finally { lock.release(); }
+    }
     if (body.replaceUid) {
         const lock = await c.getMailboxLock(drafts.path);
         try { await c.messageDelete(String(body.replaceUid), { uid: true }); } catch (_) { /* already gone */ } finally { lock.release(); }
         store.deleteMessages(accountId, drafts.path, [Number(body.replaceUid)]);
     }
     syncSoon(r0, [drafts.path]);
-    return { folder: drafts.path, uid: res && res.uid ? res.uid : null };
+    return { folder: drafts.path, uid };
 }
 
 /** An attachment's body from the mail server (the copy keeps only its listing), cached on disk. */
