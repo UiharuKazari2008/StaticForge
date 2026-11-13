@@ -879,10 +879,11 @@
         /**
          * Continuity (Yozora #798): the DeX window of a hybrid phone shares the phone's connection, so
          * past the POST bar it waits on a text screen until the phone has reached Today and the shared
-         * channel is ready: "Connecting to Phone... " and an ASCII spinner (/ | \ -). ready() is cheap.
+         * channel is ready: "Connecting to Phone... " and an ASCII spinner turning clockwise through a
+         * full turn (| / - \, as the DHCP spinner), 80 ms a step. ready() is cheap.
          */
         async function connectingToPhone(run, ready) {
-            const spin = ['/', '|', '\\', '-'];
+            const spin = '|/-\\';
             let i = 0;
             bios.state = 'phone';
             for (;;) {
@@ -893,7 +894,7 @@
                 screen.put(0, 0, 'Melaton Mobile Continuity');
                 screen.put(0, 1, `Connecting to Phone... ${spin[i++ % spin.length]}`);
                 render();
-                await env.sleep(150);
+                await env.sleep(80);
             }
         }
 
