@@ -905,11 +905,9 @@ html.ui-mobile #wmShell .wm-edit {
    a check over its icon's corner); Results tab: one row per program, its Android icon, the new
    icon at 48 and 16 units, its name and state. */
 .wm-pi-scroll {
+    /* a WM list box (frame, scroll bar); the Settings host gives it the page's free height */
+    min-height: calc(120 * var(--wm-px));
     max-height: calc(210 * var(--wm-px));
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    border: calc(1 * var(--wm-px)) solid #000;
-    background: #fff;
     margin-bottom: calc(4 * var(--wm-px));
 }
 

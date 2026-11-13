@@ -1817,10 +1817,13 @@
             } catch (err) {
                 console.warn('Settings: could not draw', def.id, tab, err);
             }
+            // list boxes take the page's free height (#775), before their scroll is put back
+            fitLists();
             if (keep) {
                 const now = [...page.querySelectorAll('.wm-set-scroll, .wm-listbox')];
                 if (now.length === keep.length) now.forEach((x, i) => { x.scrollTop = keep[i]; });
             }
+            requestAnimationFrame(fitLists);
             page.querySelectorAll('.wm-tab').forEach((t) => t.addEventListener('click', () => { open.tab = t.dataset.tab; renderPage(); }));
             // more tabs than fit: the spin button (its position is the open page's, kept across redraws)
             if (!open.tabScroll) open.tabScroll = { first: 0 };
@@ -1828,6 +1831,38 @@
             refreshTitleKind();
             if (sh && typeof sh.refreshSoftKeys === 'function') sh.refreshSoftKeys();
         }
+
+        /**
+         * A page's list boxes fill the page (Yukimi, Nov 12, #775): the space left under the form
+         * goes to its list boxes, shared evenly, so a list ends at the tabs with no empty white
+         * under it. Their own max-height is the starting size; a page whose content is taller
+         * than the screen keeps it (the page scrolls). A list box with data-no-fill keeps its size.
+         */
+        function fitLists() {
+            if (!page || !open || page.hidden) return;
+            const sc = page.querySelector('.wm-set-scroll');
+            const form = sc && sc.querySelector(':scope > .wm-form');
+            if (!form) return;
+            const lists = [...form.querySelectorAll('.wm-listbox')].filter((l) => !l.dataset.noFill && l.offsetParent !== null && !l.closest('.wm-popup'));
+            if (!lists.length) return;
+            // back to the size the page drew (a resize fits again from there)
+            for (const l of lists) {
+                if (l.dataset.fitMax === undefined) l.dataset.fitMax = l.style.maxHeight || '';
+                l.style.height = '';
+                l.style.maxHeight = l.dataset.fitMax;
+            }
+            const cs = getComputedStyle(form);
+            const used = form.getBoundingClientRect().height + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
+            const free = Math.floor(sc.clientHeight - used);
+            if (free < 2) return;
+            const share = Math.floor(free / lists.length);
+            for (const l of lists) {
+                const h = Math.floor(l.getBoundingClientRect().height) + share;
+                l.style.height = `${h}px`;
+                l.style.maxHeight = `${h}px`;
+            }
+        }
+        window.addEventListener('resize', () => { if (open) requestAnimationFrame(fitLists); });
 
         function openPage(id, tab, opts) {
             const link = SETTINGS_LINKS.find((l) => l.id === id);

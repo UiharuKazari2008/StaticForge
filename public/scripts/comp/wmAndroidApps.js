@@ -373,18 +373,27 @@
             const byId = new Map(d.list.map((a) => [a.id, a]));
             const anyWm = [...d.sel].some((id) => byId.has(id) && storeKey(byId.get(id)));
             el.innerHTML = `<p>Select the programs to give Windows Mobile icons, then tap Request. The server makes them; you can close Program Icons meanwhile.</p>
-                <div class="wm-pi-scroll"><div class="wm-icongrid wm-pi-grid" role="list">${cells}</div></div>
+                <div class="wm-listbox wm-pi-scroll"><div class="wm-icongrid wm-pi-grid" role="list">${cells}</div></div>
                 ${styleHtml('pi-style', d.mode)}
                 ${ui.check('pi-themed', 'Send themed icons (the program\'s own one-colour mark)', d.themed)}
                 ${ui.buttons([['request', job.id ? 'Request (busy)' : `Request${d.sel.size ? ` (${d.sel.size})` : ''}`, !d.sel.size || !!job.id], ['original', 'Use Android Icon', !anyWm]])}`;
             bindStyle(el, 'pi-style', (v) => { d.mode = v; try { localStorage.setItem(MODE_KEY, v); } catch (_) { /* this visit only */ } });
             el.querySelector('input[name="pi-themed"]').addEventListener('change', (e) => { d.themed = e.target.checked; try { localStorage.setItem(THEMED_KEY, d.themed ? '1' : '0'); } catch (_) { /* this visit only */ } });
+            // a tap marks the cell where it is (no redraw: the grid keeps its scroll position)
+            const syncButtons = () => {
+                const req = el.querySelector('[data-act="request"]');
+                req.textContent = job.id ? 'Request (busy)' : `Request${d.sel.size ? ` (${d.sel.size})` : ''}`;
+                req.disabled = !d.sel.size || !!job.id;
+                el.querySelector('[data-act="original"]').disabled = ![...d.sel].some((id) => byId.has(id) && storeKey(byId.get(id)));
+            };
             el.querySelector('.wm-pi-grid').addEventListener('click', (e) => {
                 const cell = e.target.closest('.wm-pi-cell');
                 if (!cell) return;
                 const id = cell.dataset.id;
                 if (d.sel.has(id)) d.sel.delete(id); else d.sel.add(id);
-                pageApi.rerender();
+                cell.classList.toggle('is-checked', d.sel.has(id));
+                cell.setAttribute('aria-pressed', String(d.sel.has(id)));
+                syncButtons();
             });
             el.querySelector('[data-act="request"]').addEventListener('click', async () => {
                 const chosen = d.list.filter((a) => d.sel.has(a.id));
@@ -482,7 +491,12 @@
                     d.keep.clear();
                     applyStore(j.manifest);
                     pageApi.rerender();
-                    if (j.saved && j.saved.length) void sh.messageBox({ title: 'Program Icons', icon: 'info', text: `${j.saved.length} icon${j.saved.length === 1 ? ' was' : 's were'} saved. Other phones get ${j.saved.length === 1 ? 'it' : 'them'} with their next update.` });
+                    if (j.saved && j.saved.length) {
+                        await sh.messageBox({ title: 'Program Icons', icon: 'info', text: `${j.saved.length} icon${j.saved.length === 1 ? ' was' : 's were'} saved. Melaton Mobile now updates to get ${j.saved.length === 1 ? 'it' : 'them'}; other phones get ${j.saved.length === 1 ? 'it' : 'them'} with their next update.` });
+                        // the server recompiled before answering: this phone's own update (Updates
+                        // ready, then Restart Now) fetches the new icon files
+                        try { const m = window.serviceWorkerManager; if (m && typeof m.checkStaticFileUpdates === 'function') void m.checkStaticFileUpdates(false); } catch (_) { /* the next update gets them */ }
+                    }
                 } catch (err) { void sh.messageBox({ title: 'Program Icons', icon: 'error', text: `The icons could not be saved. ${err.message}` }); }
             });
             el.querySelector('[data-act="discard"]').addEventListener('click', async () => {

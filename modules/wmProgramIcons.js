@@ -72,7 +72,6 @@ const jobs = new Map(); // id -> job
 let running = 0;
 const queue = []; // [{ job, item }]
 let modelsCache = { at: 0, value: null };
-let recompileTimer = null;
 
 const storeDir = () => path.join(projectRoot, 'public', 'static_images', 'wm-android');
 const manifestPath = () => path.join(storeDir(), 'manifest.json');
@@ -122,10 +121,15 @@ function setName(item) {
     return `${pkg}-${item.key.slice(0, 6)}-${Date.now().toString(36)}`;
 }
 
-/** Recompile runtime assets (the SW hash cache and the clients' update manifest), once per burst. */
-function scheduleRecompile() {
-    clearTimeout(recompileTimer);
-    recompileTimer = setTimeout(async () => {
+/**
+ * Recompile runtime assets (the SW hash cache and the clients' update manifest; every client is
+ * told). Resolves when done, so Done can answer after it and the phone's own update check finds
+ * the new icons (Yukimi, Nov 12). Bursts share one run.
+ */
+let recompileRun = null;
+function recompileNow() {
+    if (recompileRun) return recompileRun.then(() => recompileNow());
+    recompileRun = (async () => {
         try {
             const runtimeAssetService = require('./runtimeAssetService');
             const r = await runtimeAssetService.recompileAndRefresh({ showConsoleProgress: false });
@@ -133,8 +137,10 @@ function scheduleRecompile() {
         } catch (err) {
             console.warn('[wmProgramIcons] recompile failed:', err && err.message ? err.message : err);
         }
-    }, 1500);
+    })().finally(() => { recompileRun = null; });
+    return recompileRun;
 }
+const recompileWithin = (ms) => Promise.race([recompileNow(), new Promise((r) => setTimeout(r, ms))]);
 
 // ---------------------------------------------------------------- Play Store context
 
@@ -682,7 +688,7 @@ async function finish(job, accept) {
         manifest.version = (manifest.version || 0) + 1;
         manifest.updatedAt = new Date().toISOString();
         atomicWrite(manifestPath(), `${JSON.stringify(manifest, null, 2)}\n`);
-        scheduleRecompile();
+        await recompileWithin(120000);
     }
     job.state = 'done';
     saveJob(job);
@@ -698,7 +704,6 @@ function removeFromStore(id) {
     manifest.version = (manifest.version || 0) + 1;
     manifest.updatedAt = new Date().toISOString();
     atomicWrite(manifestPath(), `${JSON.stringify(manifest, null, 2)}\n`);
-    scheduleRecompile();
     return true;
 }
 
@@ -766,9 +771,10 @@ function mount(app, authMiddleware, globalResources) {
         saveJob(job);
         res.json({ success: true });
     });
-    app.delete(`${base}/store`, auth, admin, (req, res) => {
+    app.delete(`${base}/store`, auth, admin, async (req, res) => {
         const id = collapse(req.query && req.query.id);
         if (!removeFromStore(id)) return res.status(404).json({ success: false, error: 'That program has no Windows Mobile icon.' });
+        await recompileWithin(120000);
         res.json({ success: true, manifest: publicManifest() });
     });
 }

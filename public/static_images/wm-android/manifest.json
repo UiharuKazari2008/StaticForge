@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "updatedAt": "2026-11-13T00:13:28.033Z",
+  "version": 5,
+  "updatedAt": "2026-11-13T00:42:47.797Z",
   "icons": {
     "com.google.android.youtube": {
       "name": "com-google-android-youtube-ea08c8-mwe848kg",
@@ -22,6 +22,34 @@
       "label": "Blue Archive",
       "model": "gpt-image-2.5-sunburst",
       "updatedAt": "2026-11-13T00:13:28.033Z"
+    },
+    "com.discord/com.discord.main.MainDefault": {
+      "name": "com-discord-fd616d-mwe8s5ih",
+      "package": "com.discord",
+      "label": "Discord",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:32:02.161Z"
+    },
+    "com.microsoft.emmx/com.microsoft.ruby.Main": {
+      "name": "com-microsoft-emmx-489d26-mwe8s601",
+      "package": "com.microsoft.emmx",
+      "label": "Edge",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:32:02.745Z"
+    },
+    "com.twitter.android/com.x.android.main.MainActivity": {
+      "name": "com-twitter-android-47dadd-mwe8s6hz",
+      "package": "com.twitter.android",
+      "label": "X",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:32:03.429Z"
+    },
+    "app.morphe.android.youtube/app.morphe.android.youtube.morphe_original_1": {
+      "name": "app-morphe-android-youtube-471d92-mwe8s72y",
+      "package": "app.morphe.android.youtube",
+      "label": "YouTube",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:32:04.147Z"
     }
   }
 }
