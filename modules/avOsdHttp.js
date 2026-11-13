@@ -97,6 +97,27 @@ body.t-takao .m-logo { height: calc(32 * var(--u)); }
 .m-ft b { color: #e8eef6; font-weight: normal; }
 .drawin .m-box { animation: wipe-down 0.2s steps(7, end) both; }
 .drawin .m-hd { animation: wipe-x 0.2s steps(8, end) 0.15s both; }
+/* power on: boot + self test = the unit's logo centred on black and one hardware OSD box with the progress;
+   a failed test turns the box into CHECK ALARMS with the countdown to program. Nothing else draws over it. */
+#boot { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; background: #000; }
+#boot.on { display: flex; }
+#boot .blogo { display: flex; flex-direction: column; align-items: center; }
+#boot .blogo img { display: block; width: calc(404 * var(--u)); height: auto; }
+body.t-amuvision #boot .blogo img { width: calc(366 * var(--u)); }
+#boot .bsub { margin-top: calc(10 * var(--u)); font-size: calc(20 * var(--u)); color: #9a9a9a; letter-spacing: calc(2 * var(--u)); }
+#boot .bsub span + span::before { content: ' / '; }
+#bbox { position: relative; display: block; margin-top: calc(70 * var(--u)); width: calc(760 * var(--u)); animation: none; }
+#bbox .hw-bd b { font-size: calc(24 * var(--u)); }
+#bbox .bbar { position: relative; display: block; height: calc(16 * var(--u)); margin: calc(12 * var(--u)) 0 calc(6 * var(--u)); border: calc(2 * var(--u)) solid #3a4a64; overflow: hidden; }
+#bbox .bbar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #4f8fe8; }
+#bbox.scan .bbar i { width: 18%; animation: nscan 1.6s steps(16, end) infinite; }
+#bbox .hw-sub { max-width: none; }
+#bbox.pass .hw-hd { background: #1a8a3a; }
+#bbox.pass .bbar i { background: #3bd16a; }
+#bbox.fault .hw-hd { background: #c00; }
+#bbox.fault .hw-bd b { color: #ff6b5e; }
+#bbox.fault .bbar { display: none; }
+#bbox .bcd { color: #ffd54a; }
 /* live cards (?card=): the unit's own system test card / standby slate, drawn live */
 #card { position: absolute; inset: 0; display: none; background: #000; }
 #card.on { display: block; }
@@ -212,6 +233,8 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 <div class="m-hint" id="hint"></div>
 <div class="m-ft"><span><b>&#9650;&#9660;</b> SELECT</span><span><b>&#9668;&#9658;</b> ADJUST</span><span><b>OK</b> ENTER</span><span><b>EXIT</b> BACK</span><span><b>DIAG</b> DIAG</span><span><b>INFO</b> STATUS</span></div>
 </div></div>
+<div id="boot"><div class="blogo"><img id="blogo" alt=""><div class="bsub"><span id="btype"></span><span id="bmodel"></span></div></div>
+<div id="bbox" class="hw on"><div class="hw-hd" id="bhd"></div><div class="hw-bd"><b id="bmain"></b><span class="bbar"><i id="bfill"></i></span><span class="hw-sub" id="bline"></span><span class="hw-sub" id="bsub"></span></div></div></div>
 <div id="card"><div class="bar"><i></i><i></i><b id="cstat"></b></div>
 <div class="brand"><img class="clogo" id="clogo" alt=""><div class="sub"><span id="ctype"></span><span id="cmodel"></span></div></div>
 <div class="press" id="cpress">Press and hold &ldquo;DIAG&rdquo; button to modify settings</div><div class="fmt" id="cfmt"></div>
@@ -273,11 +296,11 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
     } else
     // power on: boot screen, self test, and the latched FAULT card (hidden while the menu is open)
     if (v.post && !(v.open && p)) {
-      var po = v.post;
-      drawCard({ card: 'post', phase: po.phase, unit: { name: bx.name, maker: bx.maker, line: bx.line, model: bx.model, type: bx.type, theme: bx.theme, sw: bx.sw, hw: bx.hw, fw: bx.fw }, status: po.text + (po.holdLeft ? '  (' + po.holdLeft + ')' : ''), tiles: po.tiles || (po.items || []).filter(function (x) { return x.type !== 'AUDIO IN' && x.type !== 'AUDIO OUT'; }).map(function (x) { return { n: x.n, name: x.label, type: x.type, ok: x.state !== 'alarm', size: x.detail, alarm: x.state === 'alarm' ? x.detail : '' }; }) });
-      $('card').className = 'on post ph-' + po.phase + ($('card').classList.contains('drawin') ? ' drawin' : '');
-      $('cpress').innerHTML = po.phase === 'fault' ? '<b class="dna">CHECK ALARMS</b><br>press MENU and open ALARMS to review' : po.phase === 'boot' ? '' : po.phase === 'pass' ? 'All sources OK' : 'Checking every source...';
+      drawBoot(v.post, bx);
+      if (!isCard) { $('card').className = ''; cardShown = ''; }
     } else if (!isCard) { $('card').className = ''; cardShown = ''; }
+    if (!(v.post && !(v.open && p))) $('boot').className = '';
+    var booting = !!(v.post && !(v.open && p)); // the boot screen owns the output: no other notices over it
     if (!(v.standby && !v.post && !(v.open && p))) $('sby').className = 'hw';
     var sd = v.shutdown;
     $('sdn').className = sd ? 'hw on' : 'hw';
@@ -286,24 +309,58 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
       $('sdns').textContent = (sd.steps || []).map(function (t, i, a) { return (i === a.length - 1 ? '> ' : '  ') + t + (i < a.length - 1 ? '  OK' : '...'); }).join('\\n');
     }
     var ns = v.nosig;
-    $('nosig').className = ns && !(v.open && p) ? 'hw on' : 'hw';
+    $('nosig').className = ns && !(v.open && p) && !v.post ? 'hw on' : 'hw';
     if (ns) {
       $('nsh').textContent = 'INPUT ' + (ns.input || '') + (ns.feed ? '  ' + ns.feed : '');
       $('nss').textContent = ns.cabinet === 'off' ? 'CABINET ' + (ns.machine || '') + ' IS POWERED OFF' : ns.cabinet === 'standby' ? 'CABINET ' + (ns.machine || '') + ' IS IN STANDBY' : ns.cabinet === 'booting' ? (ns.machine || '') + ' IS STARTING UP...' : 'SYNCING TO ' + (ns.machine || 'THE SOURCE') + '...';
     }
     var s = v.strip; // sent while INFO is on, or briefly after a scene switch
+    if (booting) s = null;
     $('strip').className = s ? 'hw on' : 'hw';
     if (s) {
       $('striph').textContent = s.take ? 'SCENE TAKE' : 'STATUS  ' + (bx.name || '');
       $('stripb').innerHTML = (s.take ? [['SCENE', s.program], ['RESOLUTION', s.res || s.format], ['CLOCK', s.clock || '-']] : [['PROGRAM', s.program], ['FORMAT', s.format], ['RUNNING', s.fps + ' FPS'], ['FRAME TIME', s.frame + ' MS'], ['CPU', s.cpu + ' %']].concat(s.game ? [['GAME', s.game]] : []).concat(s.net ? [['NETWORK', s.net]] : []).concat([['ADDRESS', s.addr]]))
         .map(function (r) { return '<span>' + r[0] + '</span><b>' + esc(String(r[1] == null ? '-' : r[1]).toUpperCase()) + '</b>'; }).join('');
     }
-    $('toast').className = v.toast ? 'hw on' : 'hw';
+    $('toast').className = v.toast && !booting ? 'hw on' : 'hw';
     $('toasth').textContent = v.toastHead || 'SYSTEM';
     $('toastb').textContent = String(v.toast || '').toUpperCase();
     $('toasts').textContent = v.toastSub || '';
     $('off').className = v.offline && (v.open || v.info) ? 'hw on' : 'hw';
     $('offs').textContent = String(v.offline || '').toUpperCase();
+  }
+  function drawBoot(po, bx) {
+    var art = '/av-osd-art/' + (bx.theme === 'amuvision' ? 'amuvision' : 'takao') + '.png?v=3';
+    if ($('blogo').getAttribute('src') !== art) $('blogo').setAttribute('src', art);
+    $('btype').textContent = bx.type || '';
+    $('bmodel').textContent = bx.model || '';
+    $('boot').className = 'on';
+    var name = bx.name || '';
+    var total = po.total || 0, done = po.done || 0, last = po.last;
+    var box = $('bbox'), cls = 'hw on', hd = '', main = '', line = '', sub = '', pct = 0;
+    if (po.phase === 'boot') {
+      cls += ' scan'; hd = 'SYSTEM START  ' + name; main = po.text || 'STARTING';
+    } else if (po.phase === 'test') {
+      hd = 'SELF TEST  ' + name; main = 'CHECKING SOURCES';
+      if (!total && !last) main = po.text || 'POWER ON SELF TEST';
+      pct = total ? Math.round((done / total) * 100) : 0;
+      if (last) line = (total ? done + '/' + total + '  ' : '') + last.label + '  ' + last.detail;
+      if (!total) cls += ' scan';
+    } else if (po.phase === 'pass') {
+      cls += ' pass'; hd = 'SELF TEST  ' + name; main = 'SELF TEST PASSED'; pct = 100; line = done + ' SOURCES OK';
+    } else if (po.phase === 'fault') {
+      var al = (po.items || []).filter(function (x) { return x.state === 'alarm'; });
+      cls += ' fault'; hd = 'CHECK ALARMS  ' + name;
+      main = (po.alarms || al.length) + ' ALARM' + ((po.alarms || al.length) === 1 ? '' : 'S');
+      line = al.length ? al[0].label + '  ' + al[0].detail + (al.length > 1 ? '  (+' + (al.length - 1) + ')' : '') : '';
+      sub = 'MENU > ALARMS TO REVIEW' + (po.holdLeft ? '   <span class="bcd">CONTINUING IN ' + po.holdLeft + '</span>' : '');
+    }
+    box.className = cls;
+    $('bhd').textContent = hd;
+    $('bmain').textContent = main.toUpperCase();
+    $('bfill').style.width = /scan/.test(cls) ? '' : pct + '%';
+    $('bline').textContent = line.toUpperCase();
+    $('bsub').innerHTML = sub;
   }
   function drawCard(c) {
     var u = c.unit || {};

@@ -410,6 +410,12 @@ async function main() {
     assert.ok(seen.includes('ENDING BROADCAST') && seen.includes('FLUSHING OUTPUTS') && seen.includes('POWERING DOWN'), `shutdown steps shown: ${[...new Set(seen)].join(', ')}`);
     assert.ok(!qc.osd._boxes.get('sat').view.shutdown, 'the SHUTDOWN screen comes down at the end');
 
+    // right after a power-on boot the unit's macros hand over to program: that first take is not flashed
+    qc.osd._boxes.get('sat').handoverAt = Date.now();
+    qc.osd._boxes.get('sat').infoFlashUntil = 0;
+    emit('CurrentProgramSceneChanged', { sceneName: 'Zero' });
+    await new Promise((r) => setTimeout(r, 400));
+    assert.ok(!(qc.osd._boxes.get('sat').view && qc.osd._boxes.get('sat').view.strip), 'no SCENE TAKE for the boot hand-over to program');
     // a take on the unit (program scene change) flashes the STATUS box on its output
     emit('CurrentProgramSceneChanged', { sceneName: 'Chuni' });
     await until(() => qc.osd._boxes.get('sat').view && qc.osd._boxes.get('sat').view.strip);

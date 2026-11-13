@@ -920,8 +920,8 @@
         }
 
         /**
-         * Light the VIDEO bus key for the cabinet mixer's current state: XLink's own report when it has one,
-         * else the mixer's program scene (a cleared / blank / break scene = V-BLK, anything else = GAME).
+         * Light the VIDEO bus key for the cabinet mixer's current state: its program scene (Zero / a cleared /
+         * blank / break scene = V-BLK, anything else = GAME), XLink's own report only when that is unknown.
          * The bus label carries the mixer's program scene.
          */
         litVideoBus() {
@@ -932,11 +932,14 @@
             const label = this.el('.qc-vbus .qc-bus-label');
             if (label) label.innerHTML = pgm ? `VIDEO <small>PGM ${esc(pgm)}</small>` : 'VIDEO';
             if (!v) return;
-            let on = v.buttons.findIndex((b) => b.active);
-            if (on < 0 && pgm) {
-                const blank = /clear|blank|break|v-?blk|black|standby/i.test(pgm);
+            // the mixer's real program scene decides (XLink's own report can lag or disagree): a blank /
+            // break scene ("Zero", the unit's V-BLK) lights V-BLK, anything else GAME; XLink only without one
+            let on = -1;
+            if (pgm) {
+                const blank = /^zero$|clear|blank|break|v-?blk|black|standby/i.test(pgm);
                 on = v.buttons.findIndex((b) => (blank ? /v-?blk|blank/i : /game|auto/i).test(b.label));
             }
+            if (on < 0) on = v.buttons.findIndex((b) => b.active);
             this.el('.qc-vkeys').querySelectorAll('[data-xl="video"]').forEach((k) => {
                 const lit = Number(k.dataset.n) === on;
                 k.classList.toggle('is-on', lit);
@@ -1319,13 +1322,18 @@
                 if (v && v.post) {
                     const p = v.post;
                     const text = p.text || '';
-                    if (p.phase === 'fault') { dm('CHECK ALARMS', text.slice(0, 20), text.slice(20, 40)); return; }
+                    if (p.phase === 'fault') {
+                        const al = (p.items || []).filter((x) => x.state === 'alarm');
+                        dm('CHECK ALARMS', al[0] ? al[0].label.slice(0, 20) : `${p.alarms || ''} ALARMS`, p.holdLeft ? `CONTINUE IN ${p.holdLeft}` : 'MENU > ALARMS');
+                        return;
+                    }
                     if (p.phase === 'pass') { dm(unit, 'SELF TEST', 'PASSED'); return; }
                     if (p.phase === 'test') {
                         // the self test item by item: count checked so far, then the last one and its result
                         const items = p.items || [];
-                        const last = items[items.length - 1];
-                        dm(`SELF TEST ${items.length ? items.length : ''}`.trim(), last ? `${last.label}`.slice(0, 20) : text.slice(0, 20), last ? `${last.state === 'alarm' ? '!' : ''}${last.detail}`.slice(0, 20) : text.slice(20, 40));
+                        const last = p.last || items[items.length - 1];
+                        const done = p.done || items.length;
+                        dm(`SELF TEST ${done ? `${done}${p.total ? `/${p.total}` : ''}` : ''}`.trim(), last ? `${last.label}`.slice(0, 20) : text.slice(0, 20), last ? `${last.state === 'alarm' ? '!' : ''}${last.detail}`.slice(0, 20) : text.slice(20, 40));
                         return;
                     }
                     dm(unit, 'BOOT', text.slice(0, 20)); // boot: splash until its video reaches downstream

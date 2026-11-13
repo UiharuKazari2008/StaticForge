@@ -1159,7 +1159,7 @@ async function powerOn(boxId, opts = {}) {
     b.post.text = 'POWER ON SELF TEST';
     emit(b);
     const items = [];
-    const add = (it) => { items.push(it); b.post.items = items.slice(0, 8); emit(b); };
+    const add = (it) => { items.push(it); b.post.items = items.slice(0, 8); b.post.done = items.length; b.post.last = it; emit(b); };
     try {
         const list = ((await link.request('GetInputList')).inputs || []).filter((i) => i.inputName !== OVERLAY_INPUT && !/^AV Live/.test(i.inputName));
         const v = await link.request('GetVideoSettings');
@@ -1188,6 +1188,12 @@ async function powerOn(boxId, opts = {}) {
         try { const sp = await link.request('GetSpecialInputs'); Object.values(sp || {}).forEach((x) => { if (x) specials.add(x); }); } catch (_) { /* older engine */ }
         let pm = { ports: [], linked: new Map() };
         try { pm = await portMap(link); } catch (_) { /* no ports */ }
+        // how many sources the test will check (the boot screen's progress bar)
+        b.post.total = list.filter((inp) => {
+            const vid = VIDEO_KINDS.has(inp.inputKind) && !['ffmpeg_source', 'window_capture', 'game_capture'].includes(inp.inputKind);
+            return (PORTS[inp.inputKind] || vid) && (usedIn.has(inp.inputName) || specials.has(inp.inputName));
+        }).length;
+        emit(b);
         let n = 0;
         for (const inp of list) {
             const port = PORTS[inp.inputKind];
@@ -1254,6 +1260,7 @@ async function powerOn(boxId, opts = {}) {
         b.post.holdUntil = Date.now() + holdS * 1000;
         saveFault(b);
         while (b.post && Date.now() < b.post.holdUntil) { emit(b); await sleep(1000); }
+        if (b.post && b.post.reason === 'power') b.handoverAt = Date.now(); // its macros take program next
         b.post = null;
         emit(b);
         return b.lastPost;
@@ -1264,6 +1271,7 @@ async function powerOn(boxId, opts = {}) {
     b.post.text = 'SELF TEST PASSED';
     emit(b);
     await sleep(Math.max(2000, holdS * 0));
+    if (b.post && b.post.reason === 'power') b.handoverAt = Date.now();
     b.post = null;
     try { await placeOverlay(b); } catch (_) { /* gone */ }
     emit(b);
@@ -1373,7 +1381,10 @@ function hookUnit(b, link) {
             // the STATUS box shows for INFO_FLASH_MS
             void (async () => {
                 await placeOverlay(b).catch(() => {});
-                if (b.post || BOOT_SCENE_RE.test(String(data.sceneName || ''))) return; // the boot sequence, not a take
+                // the boot sequence (and the unit's own hand-over to program right after it) is not a take
+                if (b.post || b.standby || BOOT_SCENE_RE.test(String(data.sceneName || ''))) return;
+                if (b.handoverAt && Date.now() - b.handoverAt < 20000) { b.handoverAt = 0; return; } // only that first take
+                b.handoverAt = 0;
                 await buildStrip(b);
                 b.infoFlashUntil = Date.now() + INFO_FLASH_MS;
                 emit(b);
