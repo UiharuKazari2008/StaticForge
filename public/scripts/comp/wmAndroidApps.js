@@ -938,10 +938,12 @@
                 const i = phones.findIndex((x, k) => !used.has(k) && types.includes(Number(x.type)));
                 if (i >= 0) { c[grp][key] = phones[i].number; used.add(i); map.phones[`${grp}.${key}`] = i; }
             }
-            // other numbers fill the slots still empty (a second mobile becomes the home number ...)
+            // other voice numbers fill the voice fields still empty (never a fax or pager field: no
+            // number shows under a wrong name); what still has no field stays on the phone as it is
+            const VOICE = new Set(['home.phone', 'home.mobile', 'work.phone']);
             phones.forEach((x, k) => {
-                if (used.has(k)) return;
-                const slot = PHONE_SLOTS.find(([grp, key]) => !c[grp][key] && !(`${grp}.${key}` in map.phones));
+                if (used.has(k) || [PH.FAX_HOME, PH.FAX_WORK, PH.PAGER, PH.WORK_PAGER].includes(Number(x.type))) return;
+                const slot = PHONE_SLOTS.find(([grp, key]) => VOICE.has(`${grp}.${key}`) && !c[grp][key] && !(`${grp}.${key}` in map.phones));
                 if (slot) { c[slot[0]][slot[1]] = x.number; used.add(k); map.phones[`${slot[0]}.${slot[1]}`] = k; }
             });
             const addrs = p.addresses || [];
