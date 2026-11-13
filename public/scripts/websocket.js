@@ -531,6 +531,13 @@ class BannerManager {
             'sidebar_host_metrics': 'Sidebar CPU Meter',
             'sidebar_live_subscribe': 'Sidebar Live Feed',
 
+            // Weather service (#780)
+            'weather_forecast': 'Weather Forecast',
+            'weather_geocode': 'Find a Place',
+            'weather_radar': 'Weather Radar',
+            'weather_alert': 'Weather Alert',
+            'weather_alerts_active': 'Weather Alerts',
+
             // Cursor accounts
             'get_cursor_accounts': 'Get Cursor Accounts',
             'switch_cursor_account': 'Switch Cursor Account',

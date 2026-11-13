@@ -11,9 +11,9 @@ const {
     isPrivateOrLocalIP,
     getConfiguredLocation,
     getClientIPLocation,
-    getCachedWeatherData,
     bindRuntimeGlobalResources
 } = require('./dynamicGenerationHandlers');
+const weatherService = require('./weatherService');
 const { getHostMetrics } = require('./pm2Service');
 
 const GADGET_TYPES = ['calendar', 'calculator', 'clipboard', 'clock', 'contacts', 'cpu', 'currency', 'deskcalc', 'feed', 'hero', 'mail', 'notes', 'outlook', 'puzzle', 'slideshow', 'stocks', 'timer', 'weather'];
@@ -390,40 +390,7 @@ async function reverseGeocode(globalResources, lat, lon) {
     return data;
 }
 
-async function fetchOpenMeteo(lat, lon) {
-    const params = new URLSearchParams({
-        latitude: String(lat),
-        longitude: String(lon),
-        current: 'temperature_2m,apparent_temperature,weather_code,is_day',
-        daily: 'weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_probability_max,uv_index_max',
-        forecast_days: '4',
-        timezone: 'auto'
-    });
-    try {
-        const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, { signal: AbortSignal.timeout(10000) });
-        if (!response.ok) return null;
-        const body = await response.json();
-        if (!body || !body.current) return null;
-        const d = body.daily || {};
-        return {
-            current: { tempC: body.current.temperature_2m, feelsC: body.current.apparent_temperature, code: body.current.weather_code, isDay: body.current.is_day === 1 },
-            daily: (d.time || []).map((date, i) => ({
-                date,
-                code: d.weather_code ? d.weather_code[i] : null,
-                maxC: d.temperature_2m_max ? d.temperature_2m_max[i] : null,
-                minC: d.temperature_2m_min ? d.temperature_2m_min[i] : null,
-                feelsMaxC: d.apparent_temperature_max ? d.apparent_temperature_max[i] : null,
-                feelsMinC: d.apparent_temperature_min ? d.apparent_temperature_min[i] : null,
-                rainChance: d.precipitation_probability_max ? d.precipitation_probability_max[i] : null,
-                uvMax: d.uv_index_max ? d.uv_index_max[i] : null
-            }))
-        };
-    } catch (_e) {
-        return null;
-    }
-}
-
-/** Current conditions and a 4-day forecast for the client, through the shared weather cache. */
+/** Current conditions and a 4-day forecast for the client, from the weather service (modules/weatherService.js). */
 async function getClientWeather(globalResources, clientIP) {
     // dynamic gen only binds its runtime on its own entry points; until one runs after a restart its config reads return nothing
     bindRuntimeGlobalResources(globalResources);
@@ -433,7 +400,14 @@ async function getClientWeather(globalResources, clientIP) {
     }
     const lat = Number(location.lat).toFixed(2);
     const lon = Number(location.lon).toFixed(2);
-    const weather = await getCachedWeatherData(`sidebar_${lat}_${lon}`, () => fetchOpenMeteo(lat, lon));
+    // the weather service picks the provider (Apple Weather when an account is saved, else Open-Meteo)
+    weatherService.bind(globalResources);
+    let weather = null;
+    try {
+        weather = weatherService.gadgetShape(await weatherService.getForecast(lat, lon));
+    } catch (_e) {
+        weather = null;
+    }
     if (!weather) return { available: false };
     const place = location.configured ? await reverseGeocode(globalResources, lat, lon) : null;
     return {
@@ -444,7 +418,10 @@ async function getClientWeather(globalResources, clientIP) {
                 : (location.city || ''),
             region: place ? place.region : (location.region || ''),
             country: place ? place.country : (location.configured ? '' : (location.country || '')),
-            source: location.source || (location.configured ? 'configured' : 'client_ip')
+            source: location.source || (location.configured ? 'configured' : 'client_ip'),
+            // rounded to ~1 km: Melaton Mobile's Weather asks weather_forecast for "Current location" with them
+            lat: Number(lat),
+            lon: Number(lon)
         },
         ...weather
     };

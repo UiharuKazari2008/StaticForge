@@ -378,7 +378,9 @@ ${dsapSmfBuildHeader({
     </div>
     <div class="sec-details-body sec-appkeys-form">
       <label>Name<input type="text" id="secKeychainEditName" class="sec-input" placeholder="Key label"></label>
-      <label>Key value<input type="password" id="secKeychainEditValue" class="sec-input" autocomplete="new-password" placeholder="Leave blank to keep current value"></label>
+      <div id="secKeychainEditFields" class="sec-keychain-fields" style="display:contents"></div>
+      <label><span id="secKeychainEditValueLabel">Key value</span><input type="password" id="secKeychainEditValue" class="sec-input" autocomplete="new-password" placeholder="Leave blank to keep current value"></label>
+      <div id="secKeychainEditFileWrap" class="sec-keychain-file hidden"><button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="keychain-key-file" data-sec-panel="Edit">Choose file…</button><input type="file" id="secKeychainEditFile" class="hidden" hidden></div>
       <label id="secKeychainEditSecondaryWrap" class="hidden"><span id="secKeychainEditSecondaryLabel">Second key</span><input type="password" id="secKeychainEditSecondary" class="sec-input" autocomplete="new-password" placeholder="Leave blank to keep current value"></label>
       <label id="secKeychainEditSecondaryClearWrap" class="sec-check hidden"><input type="checkbox" id="secKeychainEditSecondaryClear"> <span id="secKeychainEditSecondaryClearLabel">Remove it</span></label>
       <div id="secKeychainEditSecondaryHint" class="sec-dsap-setting-hint hidden"></div>
@@ -395,7 +397,9 @@ ${dsapSmfBuildHeader({
     </div>
     <div class="sec-details-body sec-appkeys-form">
       <label>Name<input type="text" id="secKeychainAddName" class="sec-input" placeholder="Key label"></label>
-      <label>Key value<input type="password" id="secKeychainAddValue" class="sec-input" autocomplete="new-password" placeholder="API key or contract ID"></label>
+      <div id="secKeychainAddFields" class="sec-keychain-fields" style="display:contents"></div>
+      <label><span id="secKeychainAddValueLabel">Key value</span><input type="password" id="secKeychainAddValue" class="sec-input" autocomplete="new-password" placeholder="API key or contract ID"></label>
+      <div id="secKeychainAddFileWrap" class="sec-keychain-file hidden"><button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="keychain-key-file" data-sec-panel="Add">Choose file…</button><input type="file" id="secKeychainAddFile" class="hidden" hidden></div>
       <label id="secKeychainAddSecondaryWrap" class="hidden"><span id="secKeychainAddSecondaryLabel">Second key</span><input type="password" id="secKeychainAddSecondary" class="sec-input" autocomplete="new-password" placeholder="Optional"></label>
       <div id="secKeychainAddSecondaryHint" class="sec-dsap-setting-hint hidden"></div>
       <div class="sec-appkeys-form-actions">
@@ -1627,6 +1631,10 @@ const securityDsapDriver = {
         if (action === 'keychain-add') {
             const row = btn.closest('[data-sec-keychain-service]');
             if (row) this._openKeychainAddPanel(root, row.dataset.secKeychainService);
+            return;
+        }
+        if (action === 'keychain-key-file') {
+            this._pickKeychainKeyFile(root, btn.dataset.secPanel === 'Edit' ? 'Edit' : 'Add');
             return;
         }
         if (action === 'keychain-unlock') {
@@ -3820,6 +3828,58 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         if (input && panel === 'Edit') input.placeholder = hasSecondary ? 'Leave blank to keep current value' : 'Optional';
     },
 
+    // A service's plain extra fields (SERVICE_METADATA.fields: Apple Weather's Team ID, Service ID,
+    // Key ID), its key label and a file button for a key that comes as a file (.p8). Yozora #780.
+    _setKeychainExtraFields(root, panel, service, key) {
+        const holder = root.querySelector(`#secKeychain${panel}Fields`);
+        const fields = (service && Array.isArray(service.fields)) ? service.fields : [];
+        if (holder) {
+            const values = (key && key.fields) || {};
+            holder.innerHTML = fields.map((f) => `<label>${securityDsapEscapeHtml(f.label)}<input type="text" class="sec-input" data-sec-keychain-field="${securityDsapEscapeAttr(securityDsapEscapeHtml(f.field))}"${f.upper ? ' data-sec-upper="1"' : ''} autocomplete="off" spellcheck="false" placeholder="${securityDsapEscapeAttr(securityDsapEscapeHtml(f.placeholder || ''))}" value="${securityDsapEscapeAttr(securityDsapEscapeHtml(values[f.field] || ''))}"></label>`).join('');
+        }
+        const label = root.querySelector(`#secKeychain${panel}ValueLabel`);
+        if (label) label.textContent = (service && service.keyLabel) || 'Key value';
+        const fileWrap = root.querySelector(`#secKeychain${panel}FileWrap`);
+        const file = root.querySelector(`#secKeychain${panel}File`);
+        fileWrap?.classList.toggle('hidden', !(service && service.keyFileAccept));
+        if (file) { file.value = ''; file.accept = (service && service.keyFileAccept) || ''; }
+        const value = root.querySelector(`#secKeychain${panel}Value`);
+        if (value && service && service.keyFileAccept && panel === 'Add') value.placeholder = 'Paste the key, or choose its file';
+    },
+
+    _keychainExtraFieldValues(root, panel) {
+        const out = {};
+        root.querySelectorAll(`#secKeychain${panel}Fields [data-sec-keychain-field]`).forEach((input) => {
+            const v = input.value.trim();
+            if (v) out[input.dataset.secKeychainField] = input.dataset.secUpper ? v.toUpperCase() : v;
+        });
+        return Object.keys(out).length ? out : undefined;
+    },
+
+    _pickKeychainKeyFile(root, panel) {
+        const file = root.querySelector(`#secKeychain${panel}File`);
+        if (!file) return;
+        file.onchange = () => {
+            const f = file.files && file.files[0];
+            if (!f) return;
+            if (f.size > 16384) {
+                if (typeof showGlassToast === 'function') showGlassToast('error', 'Error', 'That file is too large to be a key', false, 5000);
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+                const value = root.querySelector(`#secKeychain${panel}Value`);
+                if (value) value.value = String(reader.result || '').trim();
+                // AuthKey_ABC123DEFG.p8 carries its Key ID in the name
+                const m = /AuthKey_([A-Z0-9]{10})\.p8$/i.exec(f.name);
+                const keyId = root.querySelector(`#secKeychain${panel}Fields [data-sec-keychain-field="keyId"]`);
+                if (m && keyId && !keyId.value.trim()) keyId.value = m[1].toUpperCase();
+            };
+            reader.readAsText(f);
+        };
+        file.click();
+    },
+
     _openKeychainEditPanel(root, serviceId) {
         const kc = this._state.keychain;
         const service = kc.services.find((s) => s.id === serviceId);
@@ -3841,6 +3901,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         if (valueInput) valueInput.value = '';
         const key = service.keys?.find((k) => k.index === index);
         this._setKeychainSecondaryFields(root, 'Edit', service, !!(key && key.secondaryFingerprint));
+        this._setKeychainExtraFields(root, 'Edit', service, key);
 
         root.querySelector('#secKeychainAddPanel')?.classList.add('hidden');
         root.querySelector('#secKeychainEditPanel')?.classList.remove('hidden');
@@ -3858,6 +3919,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         if (nameInput) nameInput.value = '';
         if (valueInput) valueInput.value = '';
         this._setKeychainSecondaryFields(root, 'Add', service, false);
+        this._setKeychainExtraFields(root, 'Add', service, null);
 
         root.querySelector('#secKeychainEditPanel')?.classList.add('hidden');
         root.querySelector('#secKeychainAddPanel')?.classList.remove('hidden');
@@ -3873,7 +3935,8 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         const apiKey = root.querySelector('#secKeychainEditValue')?.value?.trim();
         const secondaryKey = root.querySelector('#secKeychainEditSecondary')?.value?.trim();
         const clearSecondary = root.querySelector('#secKeychainEditSecondaryClear')?.checked === true && !secondaryKey;
-        if (!name && !apiKey && !secondaryKey && !clearSecondary) {
+        const fields = this._keychainExtraFieldValues(root, 'Edit');
+        if (!name && !apiKey && !secondaryKey && !clearSecondary && !fields) {
             if (typeof showGlassToast === 'function') showGlassToast('warning', null, 'Enter a new name and/or key value', false, 4000);
             return;
         }
@@ -3886,7 +3949,8 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
                 name: name || undefined,
                 apiKey: apiKey || undefined,
                 secondaryKey: secondaryKey || undefined,
-                clearSecondary: clearSecondary || undefined
+                clearSecondary: clearSecondary || undefined,
+                fields
             });
             if (data?.success) {
                 if (typeof showGlassToast === 'function') showGlassToast('success', null, 'Service key updated', false, 4000, '<i class="fas fa-key-skeleton-left-right"></i>');
@@ -3918,7 +3982,8 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
                 service: serviceId,
                 name,
                 apiKey,
-                secondaryKey: secondaryKey || undefined
+                secondaryKey: secondaryKey || undefined,
+                fields: this._keychainExtraFieldValues(root, 'Add')
             });
             if (data?.success) {
                 if (typeof showGlassToast === 'function') showGlassToast('success', null, 'Service key added', false, 4000, '<i class="fas fa-key-skeleton-left-right"></i>');

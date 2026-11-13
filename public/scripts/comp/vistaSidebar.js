@@ -5,7 +5,7 @@
  *   sidebar_get / sidebar_save        { enabled, closed, side, onTop, gadgets[] }
  *   sidebar_updated (push)            another admin tab saved the same workspace
  *   sidebar_random_image              Slide Show and Picture Puzzle (workspace images or favorites)
- *   sidebar_weather                   Weather from the client IP, like dynamic generation
+ *   sidebar_weather                   Weather from the client IP, like dynamic generation (weather service, #780)
  *   sidebar_host_metrics              CPU Meter, the same host figures as Periscope
  *   sidebar_fx                        Currency (ECB rates)
  *   sidebar_quotes                    Stocks
@@ -1604,7 +1604,7 @@ const vsbWeatherApply = function (inst) {
             return `<div class="vsb-wx-day"><div class="vsb-wx-day-name">${name}</div>
                 <div class="vsb-wx-range"><span class="vsb-wx-hi">${hi(day)}</span><span class="vsb-wx-lo">${lo(day)}</span></div>
                 <img src="${VSB_ASSETS}weather/${VSB_SKY_CODES[dayState] || 26}.png" alt=""></div>`;
-        }).join('') + '</div><div class="vsb-wx-attribution">Data provided by Open-Meteo</div></div>';
+        }).join('') + `</div>${vsbWeatherAttribution(data.attribution)}</div>`;
     }
     html += `<img class="vsb-wx-highlight vsb-wx-highlight-top" src="${base}-highlight-02.png" alt="">`;
     wx.innerHTML = html;
@@ -1614,6 +1614,16 @@ const vsbWeatherApply = function (inst) {
 const VSB_UV_LEVELS = [[3, 'Low'], [6, 'Moderate'], [8, 'High'], [11, 'Very High'], [Infinity, 'Extreme']];
 
 /** What the place line shows when Hide location name is on. */
+// The weather service's provider (modules/weatherService.js, #780): Apple Weather's mark and its
+// data-source link (Apple's attribution terms), else Open-Meteo's name.
+const vsbWeatherAttribution = function (attr) {
+    if (attr && attr.name === 'Apple Weather' && attr.logoDark) {
+        return `<div class="vsb-wx-attribution is-apple"><a href="${escapeHtmlAttribute(attr.url)}" target="_blank" rel="noopener" title="Apple Weather · ${escapeHtmlAttribute(attr.linkText || 'Other data sources')}">`
+            + `<img src="${escapeHtmlAttribute(attr.logoDark)}" srcset="${escapeHtmlAttribute(attr.logoDark)} 1x, ${escapeHtmlAttribute(attr.logoDark2x || attr.logoDark)} 2x" alt="Apple Weather" draggable="false"></a></div>`;
+    }
+    return `<div class="vsb-wx-attribution">Data provided by ${escapeHtml((attr && attr.name) || 'Open-Meteo')}</div>`;
+};
+
 const vsbWeatherPlaceAlt = function (alt, today, condition, hi, lo) {
     if (alt === 'condition') return condition;
     if (!today) return '';

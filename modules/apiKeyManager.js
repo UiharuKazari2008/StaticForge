@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+
 class ApiKeyManager {
     constructor(globalResources) {
         this.globalResources = globalResources;
@@ -6,6 +9,7 @@ class ApiKeyManager {
             openai: 'OPENAI_API_KEY',
             google: 'GOOGLE_API_KEY',
             openweather: 'OPENWEATHER_API_KEY',
+            appleweather: 'APPLE_WEATHER_PRIVATE_KEY',
             exa: 'EXA_API_KEY',
             runpod: 'RUNPOD_API_KEY',
             tokenrouter: 'TOKENROUTER_API_KEY'
@@ -51,6 +55,33 @@ class ApiKeyManager {
                 icon: 'fas fa-robot',
                 requiresRestart: false
             },
+            // Yozora #780: the weather service (modules/weatherService.js) signs WeatherKit requests with the
+            // selected key. The key value is the .p8 private key; the ids are plain fields on the same entry.
+            appleweather: {
+                label: 'Apple Weather',
+                description: 'WeatherKit forecasts, next-hour rain and alerts for the Sidebar and Melaton Mobile Weather (Open-Meteo when no key is set)',
+                icon: 'fas fa-cloud-sun',
+                requiresRestart: false,
+                keyLabel: 'Private key (.p8)',
+                keyFileAccept: '.p8,.pem,.txt',
+                fields: [
+                    { field: 'teamId', label: 'Team ID', placeholder: '10 characters (Membership details)', pattern: '^[A-Z0-9]{10}$', upper: true },
+                    { field: 'serviceId', label: 'Service ID', placeholder: 'com.example.weatherkit', pattern: '^[A-Za-z0-9.-]{3,155}$' },
+                    { field: 'keyId', label: 'Key ID', placeholder: '10 characters (from the key)', pattern: '^[A-Z0-9]{10}$', upper: true }
+                ],
+                normalizeKey: (value) => require('./weatherService').normalisePrivateKey(value),
+                fingerprint: (key) => (key.keyId ? `Key ${key.keyId}` : null)
+            },
+            // Yozora #781: Claude accounts for the Director's Claude engine (Wren, Xi, Rentan). The key is
+            // a `claude setup-token` OAuth token; syncClaudeTokenFile() keeps the selected one in
+            // xiLaunch.MANAGED_CLAUDE_TOKEN_FILE, which every Claude CLI launch reads first.
+            claude: {
+                label: 'Claude',
+                description: 'Claude accounts the Director signs in with (Claude engine for Yumiya, Yozora and Rentan)',
+                icon: 'fas fa-asterisk',
+                requiresRestart: false,
+                keyLabel: 'OAuth token (claude setup-token)'
+            },
             tokenrouter: {
                 label: 'TokenRouter',
                 description: 'Director and Rentan TokenRouter engine (Kimi K3 and other routed models)',
@@ -76,6 +107,49 @@ class ApiKeyManager {
         this.lockChangeHandler = null; // set by globalResources for logging + admin broadcast
 
         this.migrateTokenRouterManagementKeys();
+        this.importClaudeTokenFile();
+        this.syncClaudeTokenFile();
+    }
+
+    // #781: before Claude was a service, the Director read ~/.secrets/claude-max.oauth only. Show that
+    // account in CardSpace as the first Claude key (once, while the service has none).
+    importClaudeTokenFile() {
+        try {
+            if (this.getServiceKeys('claude').length) return;
+            const file = require('./xiLaunch').DEFAULT_CLAUDE_TOKEN_FILE;
+            const token = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim() : '';
+            if (!token) return;
+            const saved = this.globalResources.modifyConfig('secureConfig').append(['claude', 'keys'], { name: 'Claude Max', apiKey: token });
+            if (saved && typeof saved.catch === 'function') {
+                saved.catch((error) => console.warn(`Claude account import not saved: ${error.message}`));
+            }
+            console.log('✓ Imported the Claude Max token as the first Claude account');
+        } catch (error) {
+            console.warn(`Claude account import skipped: ${error.message}`);
+        }
+    }
+
+    // The selected Claude account's token, kept in the file every Claude CLI launch reads
+    // (xiLaunch.resolveClaudeTokenFile). No account selected: the file goes and the old default stays.
+    syncClaudeTokenFile() {
+        try {
+            const file = require('./xiLaunch').MANAGED_CLAUDE_TOKEN_FILE;
+            const keys = this.getServiceKeys('claude');
+            const selected = keys[this.getSelectedIndex('claude')] || keys[0];
+            const token = selected && selected.apiKey ? String(selected.apiKey).trim() : '';
+            if (!token) {
+                fs.rmSync(file, { force: true });
+                return;
+            }
+            let current = '';
+            try { current = fs.readFileSync(file, 'utf8').trim(); } catch (_) { /* first write */ }
+            if (current === token) return;
+            fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+            fs.writeFileSync(file, `${token}\n`, { mode: 0o600 });
+            fs.chmodSync(file, 0o600);
+        } catch (error) {
+            console.warn(`Claude token file not updated: ${error.message}`);
+        }
     }
 
     // #409 briefly kept TokenRouter management keys as their own service. They belong on
@@ -247,6 +321,35 @@ class ApiKeyManager {
         return `••••${key.slice(-4)}`;
     }
 
+    // A service's plain extra fields (SERVICE_METADATA.fields), validated: { field: value }.
+    // existing: the entry being edited (blank keeps its value).
+    cleanFields(service, values, existing) {
+        const meta = this.SERVICE_METADATA[service];
+        const out = {};
+        (meta && meta.fields ? meta.fields : []).forEach((f) => {
+            let v = values && values[f.field] != null ? String(values[f.field]).trim() : '';
+            if (f.upper) v = v.toUpperCase();
+            if (!v && existing && existing[f.field]) v = existing[f.field];
+            if (!v) throw new Error(`${f.label} is required for ${meta.label}`);
+            if (f.pattern && !new RegExp(f.pattern).test(v)) throw new Error(`${f.label} does not look right (${f.placeholder || f.pattern})`);
+            out[f.field] = v;
+        });
+        return out;
+    }
+
+    // What a key's status check covers: the key, plus a service's extra fields (Apple Weather's ids).
+    credentialSecret(service, key) {
+        if (!key || !key.apiKey) return null;
+        const fields = this.SERVICE_METADATA[service]?.fields;
+        if (!fields) return String(key.apiKey).trim();
+        return [String(key.apiKey).trim(), ...fields.map((f) => key[f.field] || '')].join('\n');
+    }
+
+    keyFingerprint(service, key) {
+        const custom = this.SERVICE_METADATA[service]?.fingerprint;
+        return (custom && key && custom(key)) || this.maskKey(key && key.apiKey);
+    }
+
     getServiceKeys(service) {
         const node = this.globalResources.getSecureConfig({ path: service });
         if (!node) {
@@ -289,6 +392,7 @@ class ApiKeyManager {
     }
 
     noteKeysChanged(service) {
+        if (service === 'claude') this.syncClaudeTokenFile();
         try {
             require('./apiKeyHealth').noteKeysChanged(this.globalResources, service);
         } catch (error) {
@@ -335,9 +439,13 @@ class ApiKeyManager {
                 icon: meta.icon,
                 requiresRestart: meta.requiresRestart || this.restartHandlers.has(service),
                 secondary: meta.secondary ? { field, label: meta.secondary.label, optional: meta.secondary.optional === true, hint: meta.secondary.hint || '' } : null,
+                // plain extra fields (Apple Weather's ids) and the key's own label / file types
+                fields: meta.fields ? meta.fields.map((f) => ({ field: f.field, label: f.label, placeholder: f.placeholder || '', upper: f.upper === true })) : null,
+                keyLabel: meta.keyLabel || null,
+                keyFileAccept: meta.keyFileAccept || null,
                 selectedIndex,
                 selectedName: selectedKey?.name || (keys.length ? `Key ${selectedIndex + 1}` : null),
-                selectedFingerprint: selectedKey ? this.maskKey(selectedKey.apiKey) : null,
+                selectedFingerprint: selectedKey ? this.keyFingerprint(service, selectedKey) : null,
                 missingKeys: keys.length === 0,
                 // modules/apiKeyHealth.js — false for google: no probe, no status dot.
                 statusCheck: require('./apiKeyHealth').checksService(service),
@@ -346,9 +454,10 @@ class ApiKeyManager {
                     const row = {
                         index,
                         name: key.name || `Key ${index + 1}`,
-                        fingerprint: this.maskKey(key.apiKey),
-                        status: this.keyStatus(service, 'apiKey', key.apiKey)
+                        fingerprint: this.keyFingerprint(service, key),
+                        status: this.keyStatus(service, 'apiKey', this.credentialSecret(service, key))
                     };
+                    if (meta.fields) row.fields = Object.fromEntries(meta.fields.map((f) => [f.field, key[f.field] || '']));
                     if (field) {
                         row.secondaryFingerprint = key[field] ? this.maskKey(key[field]) : null;
                         row.secondaryStatus = this.keyStatus(service, field, key[field]);
@@ -432,6 +541,7 @@ class ApiKeyManager {
 
         const restartedServices = [];
         for (const change of changed) {
+            if (change.service === 'claude') this.syncClaudeTokenFile();
             // Swapping the active key is an admin correction — clear any tripwire lock.
             this.unlockService(change.service);
             const handler = this.restartHandlers.get(change.service);
@@ -463,8 +573,9 @@ class ApiKeyManager {
 
         const newKey = {
             name: name.trim(),
-            apiKey: apiKey.trim()
+            apiKey: meta.normalizeKey ? meta.normalizeKey(apiKey) : apiKey.trim()
         };
+        if (meta.fields) Object.assign(newKey, this.cleanFields(service, extras?.fields, null));
         const field = meta.secondary?.field;
         const secondary = typeof extras?.secondaryKey === 'string' ? extras.secondaryKey.trim() : '';
         if (field && secondary) newKey[field] = secondary;
@@ -480,7 +591,7 @@ class ApiKeyManager {
             key: {
                 index: newIndex,
                 name: newKey.name,
-                fingerprint: this.maskKey(newKey.apiKey),
+                fingerprint: this.keyFingerprint(service, newKey),
                 secondaryFingerprint: field && newKey[field] ? this.maskKey(newKey[field]) : null
             }
         };
@@ -514,7 +625,11 @@ class ApiKeyManager {
         const secondary = field && typeof extras?.secondaryKey === 'string' ? extras.secondaryKey.trim() : '';
         const clearSecondary = !!(field && extras?.clearSecondary === true && !secondary);
 
-        if (!trimmedName && !trimmedKey && !secondary && !clearSecondary) {
+        const fieldsChanged = !!(meta.fields && extras?.fields && meta.fields.some((f) => {
+            const v = extras.fields[f.field] != null ? String(extras.fields[f.field]).trim() : '';
+            return v && (f.upper ? v.toUpperCase() : v) !== existing[f.field];
+        }));
+        if (!trimmedName && !trimmedKey && !secondary && !clearSecondary && !fieldsChanged) {
             throw new Error('Provide a new name and/or key value to update');
         }
 
@@ -525,8 +640,9 @@ class ApiKeyManager {
 
         const nextKey = {
             name: nextName,
-            apiKey: trimmedKey || existing.apiKey
+            apiKey: trimmedKey ? (meta.normalizeKey ? meta.normalizeKey(trimmedKey) : trimmedKey) : existing.apiKey
         };
+        if (meta.fields) Object.assign(nextKey, this.cleanFields(service, extras?.fields, existing));
         if (field) {
             const kept = clearSecondary ? '' : (secondary || existing[field] || '');
             if (kept) nextKey[field] = kept;
@@ -546,7 +662,7 @@ class ApiKeyManager {
             key: {
                 index: idx,
                 name: nextKey.name,
-                fingerprint: this.maskKey(nextKey.apiKey),
+                fingerprint: this.keyFingerprint(service, nextKey),
                 secondaryFingerprint: field && nextKey[field] ? this.maskKey(nextKey[field]) : null
             }
         };

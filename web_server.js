@@ -75,6 +75,7 @@ const { handleStatusStream } = require('./modules/statusStream');
 const desktopSoundsStatic = require('./modules/desktopSoundsStatic');
 const vistaGadgetStatic = require('./modules/vistaGadgetStatic');
 const vistaGadgetProxy = require('./modules/vistaGadgetProxy');
+const weatherService = require('./modules/weatherService');
 const calendarFeed = require('./modules/calendarFeed');
 const installManifestFilter = require('./modules/installManifestFilter');
 const { browserRequest } = require('./modules/browserHttp');
@@ -4618,6 +4619,13 @@ async function handleAdminUnixSocketMessage(message, socket) {
         // Windows Calendar's Subscribe: an .ics from another site, fetched here (modules/calendarFeed.js)
         app.get('/calendar-feed', authMiddleware, (req, res) => {
             calendarFeed.handle(req, res).catch((err) => {
+                if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
+            });
+        });
+        // radar frames and the base map under them, cached and rate limited (modules/weatherService.js, #780)
+        weatherService.bind(globalResources);
+        app.get('/weather/tile/:kind/:key/:z/:x/:y', authMiddleware, (req, res) => {
+            weatherService.handleTile(req, res).catch((err) => {
                 if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
             });
         });

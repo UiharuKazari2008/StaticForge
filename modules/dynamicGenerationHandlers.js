@@ -3,6 +3,8 @@
 
 const https = require('https');
 const tzLookup = require('tz-lookup');
+// every weather host is asked through the common weather service (Yozora #780)
+const weatherService = require('./weatherService');
 const geo2city = require('geo2city');
 
 const { determineTimePeriod, getSunriseSunset } = require('./dynamicGenerationHandlers.timeCalc');
@@ -13,6 +15,7 @@ const { generatePromptHash, generateRequestHash, generateDirectiveHash } = requi
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) {
     __runtimeGr = globalResources;
+    weatherService.bind(globalResources);
 }
 
 /**
@@ -593,7 +596,7 @@ async function getWeatherFromBestProvider(location, options = {}) {
             const url = `${baseUrl}/${endpoint}?${params.toString()}`;
 
             try {
-                const data = await makeHttpsRequest(url);
+                const data = await weatherService.openMeteoRaw(url);
                 // Transform historical data
                 const result = {
                     timestamp: Date.now(),
@@ -892,7 +895,7 @@ async function getWeatherFromBestProvider(location, options = {}) {
             const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
 
             try {
-                const data = await makeHttpsRequest(url);
+                const data = await weatherService.openMeteoRaw(url);
 
                 // Transform and enhance the data
                 return transformOpenMeteoData(data, options);
@@ -1768,7 +1771,7 @@ async function getWeeklyWeatherForecast(location) {
         const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
 
         try {
-            const data = await makeHttpsRequest(url);
+            const data = await weatherService.openMeteoRaw(url);
 
             const result = {
                 timestamp: Date.now(),
@@ -5217,44 +5220,10 @@ async function getCachedLocation(fetchFunction) {
  * @returns {Promise<Object>} Weather data
  */
 async function getCachedWeatherData(cacheKey, fetchFunction) {
-    const weatherCache = __runtimeGr.getWeatherCache();
-    const lruCache = __runtimeGr.getConfig({ path: 'lruCache' }) || {};
-    const WEATHER_CACHE_DURATION = lruCache.weatherDuration || 3 * 60 * 1000; // 3 minutes
-    const WEATHER_FAILURE_CACHE_DURATION = lruCache.weatherFailureDuration || 15 * 60 * 1000; // 15 minutes
-    
-    const cached = weatherCache.get(cacheKey);
-
-    if (cached) {
-        const cacheAge = Date.now() - cached.timestamp;
-
-        // If we have valid cached data, return it
-        if (cached.data !== null && cacheAge < WEATHER_CACHE_DURATION) {
-            console.log(`🌤️ Using cached weather data for ${cacheKey}`);
-            return cached.data;
-        }
-
-        // If this is a failure cache and it's still within the failure cache duration, don't retry
-        if (cached.data === null && cacheAge < WEATHER_FAILURE_CACHE_DURATION) {
-            console.log(`⚠️ Skipping weather API call for ${cacheKey} - previous failure cached (${Math.round((WEATHER_FAILURE_CACHE_DURATION - cacheAge) / 60000)} min remaining)`);
-            return null;
-        }
-    }
-
-    console.log(`🌤️ Fetching fresh weather data for ${cacheKey}`);
-    const data = await fetchFunction();
-
-    // Cache the result - use longer duration for failures to prevent rapid retries
-    weatherCache.set(cacheKey, {
-        data,
-        timestamp: Date.now(),
-        isFailure: data === null
-    });
-
-    if (data === null) {
-        console.log(`❌ Weather API call failed for ${cacheKey} - will not retry for ${Math.round(WEATHER_FAILURE_CACHE_DURATION / 60000)} minutes`);
-    }
-
-    return data;
+    // the weather service's cache (modules/weatherService.js cached): same durations, failures
+    // remembered for lruCache.weatherFailureDuration, concurrent requests share one fetch
+    if (__runtimeGr) weatherService.bind(__runtimeGr);
+    return weatherService.cached(cacheKey, fetchFunction);
 }
 
 /**

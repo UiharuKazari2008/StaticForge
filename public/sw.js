@@ -1925,7 +1925,9 @@ async function cacheStaticFiles(files, silent = false) {
         downloadState.startTime = Date.now();
         downloadState.lastProgressTime = Date.now();
         downloadState.files = files;
-        downloadState.abortController = new AbortController();
+        // kept here too: a cancel nulls downloadState.abortController while caches.open is awaited
+        const downloadAbort = new AbortController();
+        downloadState.abortController = downloadAbort;
         downloadState.silent = silent === true;
         downloadState.updatedFiles = [];
         downloadState.absentFiles = [];
@@ -1944,7 +1946,7 @@ async function cacheStaticFiles(files, silent = false) {
         });
         
         const cache = await caches.open(STATIC_CACHE);
-        const signal = downloadState.abortController.signal;
+        const signal = downloadAbort.signal;
         
         // Cache files one by one to track progress
         for (const file of files) {

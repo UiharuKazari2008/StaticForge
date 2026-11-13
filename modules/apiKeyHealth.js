@@ -34,7 +34,9 @@ const PROBES = {
         accept: (status, text) => status === 400 && /validation|invalid request body/i.test(text)
     }),
     runpod: (key) => ({ url: 'https://rest.runpod.io/v1/pods', headers: { authorization: `Bearer ${key}` } }),
-    tokenrouter: (key) => ({ url: `${tokenRouterBase()}/v1/models`, headers: { authorization: `Bearer ${key}` }, gate: true })
+    tokenrouter: (key) => ({ url: `${tokenRouterBase()}/v1/models`, headers: { authorization: `Bearer ${key}` }, gate: true }),
+    // the .p8 key and its ids (apiKeyManager credentialSecret): sign a token, ask WeatherKit's availability (#780)
+    appleweather: (secret) => ({ run: () => require('./weatherService').testCredential(secret) })
 };
 
 // Paired second credentials (apiKeyManager SERVICE_METADATA secondary): slot -> probe.
@@ -101,7 +103,8 @@ function configuredCredentials(gr, services) {
         if (!meta) return;
         manager.getServiceKeys(service).forEach((key, index) => {
             if (key && key.apiKey) {
-                out.push({ service, slot: 'apiKey', index, secret: String(key.apiKey).trim() });
+                const secret = typeof manager.credentialSecret === 'function' ? manager.credentialSecret(service, key) : String(key.apiKey).trim();
+                out.push({ service, slot: 'apiKey', index, secret });
             }
             const field = meta.secondary && meta.secondary.field;
             if (field && key && key[field]) {
@@ -133,6 +136,9 @@ async function runProbe(service, slot, secret) {
     const make = probeFor(service, slot);
     if (!make) return { state: 'warn', message: 'No check exists for this service' };
     const probe = make(secret);
+    if (typeof probe.run === 'function') {
+        try { return await probe.run(); } catch (error) { return { state: 'warn', message: `Could not check (${error.message})` }; }
+    }
     try {
         const send = () => fetch(probe.url, {
             method: probe.method || 'GET',

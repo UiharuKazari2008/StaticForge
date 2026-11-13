@@ -2234,3 +2234,9 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
    #vistaSidebar itself, a 0-height wrapper whose children are fixed. Dragged gadgets leave the pane
    for the root first (vsbDragMove), flyouts live outside it. */
 .vsb-pane { contain: layout paint; }
+
+/* Apple Weather's mark when the weather service uses it (#780): the white logo, Vista's 12 px line */
+.vsb-wx-attribution.is-apple { line-height: 0; padding-top: 5px; }
+.vsb-wx-attribution.is-apple a { display: inline-block; opacity: 0.85; }
+.vsb-wx-attribution.is-apple a:hover { opacity: 1; }
+.vsb-wx-attribution.is-apple img { display: block; width: 66px; height: 12px; }
