@@ -402,13 +402,25 @@ class ServiceWorkerManager {
             this.checkingToastId = null;
         }
         const count = fresh.length || (Array.isArray(files) ? files.length : 0);
-        this._showServiceWorkerTrayPopup('upgrade', {
+        const shown = this._showServiceWorkerTrayPopup('upgrade', {
             kind: 'sw-update',
             message: pack.label,
             filesTotal: count,
             progress: 0
         });
         this.updateToastId = 'service-worker-tray-popup';
+        // No desktop tray (the phone's Melaton Mobile, other non-desktop shells): the offer was
+        // nowhere to be seen. A toast as the other restart prompts use off the desktop; its title
+        // makes Melaton Mobile file it under the update icon (wmShell UPDATE_TOAST).
+        if (!shown && !this._isDesktopTrayMode() && typeof this.foregroundUpdateView !== 'function' && typeof showGlassToast === 'function') {
+            if (this.servicePackToastId && typeof removeGlassToast === 'function') removeGlassToast(this.servicePackToastId);
+            this.servicePackToastId = showGlassToast('warning', 'Update Available',
+                `${pack.name} is ready to install (${count.toLocaleString()} files). Melaton restarts to install it.`,
+                false, false, '<i class="fas fa-arrows-rotate"></i>', [
+                    { text: 'Restart Now', type: 'primary', onClick: () => this.forceRestart(), closeOnClick: true },
+                    { text: 'Later', type: 'secondary', closeOnClick: true }
+                ]);
+        }
         if (this.swRegistration && this.swRegistration.active) {
             this.swRegistration.active.postMessage({ type: 'CANCEL_DOWNLOAD' });
         }
