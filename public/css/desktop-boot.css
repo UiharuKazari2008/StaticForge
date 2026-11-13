@@ -1495,3 +1495,24 @@ html body .modal.secure-desktop-window.resizeable-window:not(#_) > .modal-window
 .modal.secure-desktop-window.resizeable-window:not(.active-window) {
     box-shadow: inset 1px 1px #e9ecf3, inset -1px -1px #e9ecf3 !important;
 }
+
+/* Vista Basic boot dialogs (the mainframe server, Connecting, boot message boxes), checked against
+   a DWM-off MsgBox on the VM: no drop shadow (the Aero frame shadow outranks the rule above, so
+   !important), and with no caption icon the title starts 8 px in from the outer edge (the icon
+   slot's -5 / -10 px margins pulled it onto the edge). */
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal) {
+    box-shadow: inset 1px 1px #fff, inset -1px 0 #3fcef2, inset 0 -1px #28cfe4 !important;
+}
+
+body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal, .active-window) {
+    box-shadow: inset 1px 1px #e2e6ef, inset -1px -1px #e9ecf3 !important;
+}
+
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-title .modal-window-title-main:not(:has(> .icon-image)) {
+    margin-left: 0 !important;
+}
+
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-title .modal-window-title-main:not(:has(> .icon-image)) > span {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+}
