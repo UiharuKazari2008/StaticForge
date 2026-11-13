@@ -1717,7 +1717,12 @@
         } catch (_) { /* not connected yet: the next event tries again */ }
         if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus();
         tmTodayChanged();
+        // nothing read yet (not connected, or the server still starting): try again shortly
+        clearTimeout(tmRetry);
+        if (!tmState.accounts.length && tmRetries < 24) { tmRetries += 1; tmRetry = setTimeout(tmRefresh, 5000); } else if (tmState.accounts.length) tmRetries = 0;
     }
+    let tmRetry = 0;
+    let tmRetries = 0;
 
     // Today drew its Text panel before the accounts arrived: draw it again when what it shows changed
     let tmTodayKey = '';
@@ -1763,7 +1768,9 @@
 
     const TM_EVENTS = [
         ['message', tmOnMessage], ['read', tmOnRead], ['unread', tmOnUnread],
-        ['account', () => tmRefreshSoon(0)], ['resync', () => tmRefreshSoon()], ['chat', () => tmRefreshSoon()]
+        ['account', () => tmRefreshSoon(0)], ['resync', () => tmRefreshSoon()], ['chat', () => tmRefreshSoon()],
+        // the logon step's snapshot landed: Today and the status bar from it at once
+        ['snapshot', () => { tmSeed(tmApi()); tmRefreshSoon(); }]
     ];
 
     function tmBind() {
@@ -1773,7 +1780,11 @@
         tmBound = tm;
         TM_EVENTS.forEach(([ev, fn]) => tm.on(ev, fn));
         tmRefreshSoon(0);
+        // a refresh before the socket is up reads nothing: again on every connect
+        const ws = window.wsClient;
+        if (!tmWsBound && ws && typeof ws.on === 'function') { tmWsBound = true; ws.on('connected', () => tmRefreshSoon(1500)); }
     }
+    let tmWsBound = false;
 
     /** Open Text Messaging on an account (the one with the newest unread message without one). */
     function tmOpenAccount(id) {
