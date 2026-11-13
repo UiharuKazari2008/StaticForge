@@ -3168,15 +3168,19 @@ body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .ex
     overflow: visible;
 }
 /* the papers stand inside the folder: nothing of them shows left of the front flap's outer edge.
-   96 and 48 share one edge (6.25% until 79.17%, then the measured steps). The 256 flap starts
-   further in (8.98%), so Extra Large has its own clip. On the right and below, the papers and
-   their shadows pass the folder's back like Vista's (VM Duo / Pattern). */
+   Each size has its own flap: 96 (Explorer's own shrink of the 256 frame, as the VM draws it)
+   runs down at 9px, then straight to (24,95); 48 at 3px until 79.17%, then the measured steps;
+   256 at 8.98%. On the right and below, the papers and their shadows pass the folder's back like
+   Vista's (VM Duo / Pattern). */
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-live-folder .explorer-live-folder-papers {
     position: absolute;
     inset: 0;
     z-index: 1;
     display: block;
     pointer-events: none;
+    clip-path: polygon(9.375% -20%, 9.375% 78.125%, 25% 98.96%, 25% 115%, 140% 115%, 140% -20%);
+}
+body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-icon-box-md .explorer-live-folder .explorer-live-folder-papers {
     clip-path: polygon(6.25% -20%, 6.25% 79.17%, 8.33% 79.17%, 10.42% 81.25%, 12.5% 83.33%, 14.58% 85.42%, 16.67% 89.58%, 18.75% 91.67%, 20.83% 93.75%, 22.92% 95.83%, 22.92% 115%, 140% 115%, 140% -20%);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-icon-box-xl .explorer-live-folder .explorer-live-folder-papers {
@@ -3340,4 +3344,12 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-
    caps 18px under the tile's top edge, 13px lower than a drive's name) */
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-tile-device .explorer-computer-tile-text {
     top: 13px;
+}
+
+/* a portable device's battery in the details pane: Mobile Device Center's 16px battery before the level */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-value .explorer-details-inline-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 3px;
+    vertical-align: -4px;
 }

@@ -85,6 +85,23 @@
             };
             this.wire();
             this.renderFavorites();
+            // phones coming and going over ActiveSync: Computer's node in the tree lists them again
+            const as = root.activeSync;
+            if (as && typeof as.on === 'function') as.on('state', () => this.refreshTreeComputer());
+        }
+
+        /** Rebuilds Computer's children in the tree when its devices changed (only while it is open). */
+        refreshTreeComputer() {
+            const tree = this.el.tree;
+            const view = this.app.computer;
+            if (!tree || !view || !view.portableDevices || !root.ExplorerComputerView) return;
+            const sig = JSON.stringify(view.portableDevices().map((d) => [d.key, d.name, d.files]));
+            if (sig === this._treeDeviceSig) return;
+            this._treeDeviceSig = sig;
+            const li = [...tree.querySelectorAll('.explorer-tree-node')].find((n) => n.dataset.path === root.ExplorerComputerView.PATH);
+            if (!li || !li._treeLoad) return;
+            li._treeLoad = null;
+            if (li.classList.contains('is-open')) void this.expandTreeNode(li).then(() => this.syncTree());
         }
 
         // ---- breadcrumb ----
@@ -591,9 +608,10 @@
         // ---- Folders tree ----
         // Vista's namespace tree (VM, Explorer's Folders pane): Desktop at the root, then the user's
         // folder, Public, Computer with its drives, Network, Control Panel and Recycle Bin, then the
-        // folders on the desktop. Here the user's folder is the workspace, Public is Workspaces, the
-        // drives are Local Disk (C:) (the VFS root) plus the phone and network drives Computer
-        // shows, and Recycle Bin is the workspace's Trash. Folders load as they open; the tree
+        // folders on the desktop. Here the user's folder is the workspace; Workspaces is not a node
+        // of its own (Yukimi): it stays where it is on Local Disk (C:), and every place under it opens
+        // through Computer ▸ Local Disk (C:) ▸ Workspaces. The drives are Local Disk (C:) (the VFS
+        // root) plus the phones and network drives Computer shows; Recycle Bin is the workspace's Trash. Folders load as they open; the tree
         // opens down to the folder on screen and marks it.
 
         workspaceId() {
@@ -633,7 +651,6 @@
                         : (typeof getWorkspaceDisplayName === 'function' ? getWorkspaceDisplayName(ws) : this.labelFor(`/Workspaces/${ws}`));
                     list.push({ label: name || ws, icon: 'user', path: `/Workspaces/${ws}`, folders: `/Workspaces/${ws}` });
                 }
-                list.push({ label: 'Workspaces', icon: 'public', path: '/Workspaces', folders: '/Workspaces' });
                 if (computerPath && this.app.computer) {
                     list.push({ label: 'Computer', icon: 'computer', path: computerPath, children: () => this.computerSpecs() });
                 }
@@ -647,9 +664,14 @@
             return [{ label: 'Desktop', icon: 'desktop', path: desktopPath, children, open: true }];
         }
 
-        /** Computer's drives in the order its window groups them: hard disk, removable, network. */
-        computerSpecs() {
+        /** Computer's drives in the order its window groups them: hard disk, removable, devices,
+            network. The network drive's state is fetched first (explorerSequenzia.js), so Sequenzia is
+            there the first time Computer opens in the tree. */
+        async computerSpecs() {
             const view = this.app.computer;
+            if (root.explorerSequenzia && typeof root.explorerSequenzia.refreshStatus === 'function') {
+                try { await root.explorerSequenzia.refreshStatus(); } catch (_err) { /* listed without it */ }
+            }
             const list = [{ label: rootLabel(), icon: 'drive', path: '/', folders: '/' }];
             if (!view) return list;
             const open = (key) => () => view.openDrive(key);
@@ -749,7 +771,9 @@
             const ul = li.querySelector(':scope > .explorer-tree-children');
             const depth = Number(li.dataset.depth || 0) + 1;
             const source = spec.children ? spec.children() : this.folderSpecs(spec.folders);
-            li._treeLoad = Promise.resolve(source).then((specs) => {
+            const load = Promise.resolve(source).then((specs) => {
+                // a newer load (the node listed again meanwhile) owns the children
+                if (li._treeLoad !== load) return;
                 ul.innerHTML = '';
                 (specs || []).forEach((child) => ul.appendChild(this.treeNode(child, depth)));
                 // Vista drops the glyph of a folder that turns out to be empty
@@ -760,9 +784,10 @@
                 }
             }).catch((err) => {
                 console.error('Cartograph folders', err);
-                li._treeLoad = null;
+                if (li._treeLoad === load) li._treeLoad = null;
             });
-            return li._treeLoad;
+            li._treeLoad = load;
+            return load;
         }
 
         collapseTreeNode(li) {
@@ -801,8 +826,16 @@
             if (!li) return;
             li.classList.add('is-selected');
             li.setAttribute('aria-selected', 'true');
+            // into view in the tree's own box, up and down only (scrollIntoView would also slide the
+            // nav pane and the tree sideways, cutting the names off on the left)
             const row = li.querySelector(':scope > .explorer-tree-row');
-            if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+            const box = tree.closest('.explorer-folders-tree');
+            if (row && box) {
+                const r = row.getBoundingClientRect();
+                const b = box.getBoundingClientRect();
+                if (r.top < b.top) box.scrollTop -= b.top - r.top;
+                else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom;
+            }
         }
 
         /** The nodes from Desktop down to a path, as Vista walks its namespace to the folder on screen. */
@@ -832,8 +865,6 @@
             if (root.explorerSequenzia && root.explorerSequenzia.isPath(path)) {
                 return head.concat(computer ? [computer] : [], prefixes(String(root.explorerSequenzia.ROOT).split('/').filter(Boolean).length, path));
             }
-            if (ws && (path === `/Workspaces/${ws}` || path.startsWith(`/Workspaces/${ws}/`))) return head.concat(prefixes(2, path));
-            if (path === '/Workspaces' || path.startsWith('/Workspaces/')) return head.concat(prefixes(1, path));
             return head.concat(computer ? [computer] : [], prefixes(0, path));
         }
 

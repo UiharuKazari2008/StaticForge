@@ -110,7 +110,11 @@
                 as.on('state', () => {
                     if (!ExplorerComputerView.isPath(this.app.currentPath)) return;
                     const sig = JSON.stringify(this.portableDevices().map((d) => [d.key, d.name, d.files]));
-                    if (sig === this._deviceSig) return;
+                    if (sig === this._deviceSig) {
+                        // battery, signal and sync news: the details pane of the device on screen
+                        if (this.deviceId() || this.portableDevice(this.selected)) this.app.renderStatusText();
+                        return;
+                    }
                     this._deviceSig = sig;
                     if (this.deviceId()) void this.showDevice();
                     else this.render();
@@ -235,8 +239,44 @@
                     key: `dev:${d.deviceId}`,
                     deviceId: d.deviceId,
                     name: d.name || 'Phone',
-                    files: Array.isArray(d.permissions) && d.permissions.includes('files')
+                    files: Array.isArray(d.permissions) && d.permissions.includes('files'),
+                    raw: d
                 }));
+        }
+
+        /** The device's state for the details pane, as Mobile Device Center shows it: status, battery,
+            connection, cellular signal, sync (activeSyncAgent.js status reports). */
+        deviceFacts(dev) {
+            const d = (dev && dev.raw) || {};
+            const st = d.status || {};
+            const out = [];
+            out.push(['Status', esc(d.session === 'partner' ? 'Connected (partnership)' : 'Connected (guest)')]);
+            const b = st.battery;
+            if (b && b.level != null) {
+                const art = b.level < 10 ? 0 : b.level < 35 ? 1 : b.level < 60 ? 2 : b.level < 85 ? 3 : 4;
+                out.push(['Battery', `<img class="explorer-details-inline-icon" src="/static_images/activesync/battery-${art}-16.png" alt="">${esc(`${Math.round(b.level)}%${b.charging ? ', charging' : ''}${b.saver ? ', battery saver on' : ''}`)}`]);
+            }
+            const bars = (n) => (n == null ? '' : `, signal ${n} of 4`);
+            const wifi = st.wifi && st.wifi.connected ? `${st.wifi.ssid || 'Connected'}${bars(st.wifi.level)}` : '';
+            const cell = st.cellular && st.cellular.present
+                ? (st.cellular.airplane ? 'Flight mode' : [st.cellular.operator, st.cellular.dataType, st.cellular.roaming ? 'roaming' : ''].filter(Boolean).join(' ') + bars(st.cellular.level))
+                : '';
+            // the link Dreamscape reaches the phone over, then the radio it uses for data
+            const via = st.active === 'wifi' ? 'Wi-Fi' : st.active === 'cellular' ? 'Cellular data' : st.active === 'ethernet' ? 'Ethernet' : '';
+            out.push(['Connected via', esc(['ActiveSync', via].filter(Boolean).join(' over '))]);
+            if (wifi) out.push(['Wi-Fi', esc(wifi)]);
+            if (cell) out.push(['Signal', esc(cell)]);
+            const as = root.activeSync;
+            const syncing = as && typeof as.transferring === 'function' && as.transferring();
+            const when = (ms) => {
+                if (!ms) return 'Never';
+                const t = new Date(ms);
+                const time = t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                return t.toDateString() === new Date().toDateString() ? `Today at ${time}` : `${t.toLocaleDateString()} at ${time}`;
+            };
+            out.push(['Sync', esc(syncing ? 'Synchronizing…' : d.partner ? `Last synchronized: ${when(d.lastSync)}` : 'Not set up (guest)')]);
+            if (d.queued) out.push(['Waiting', esc(`${d.queued} item${d.queued === 1 ? '' : 's'} for the device`)]);
+            return out;
         }
 
         portableDevice(key) {
@@ -394,6 +434,12 @@
         async show({ reload = false } = {}) {
             if (!this.el) return;
             this.selected = null;
+            // the phones as the server has them now, in case a peers update was missed ('state' re-renders)
+            const as = root.activeSync;
+            if (as && as.kind === 'computer' && typeof as.refresh === 'function' && Date.now() - (this._devicesAt || 0) > 5000) {
+                this._devicesAt = Date.now();
+                as.refresh().catch(() => {});
+            }
             if (this.deviceId()) {
                 await this.showDevice();
                 return;
@@ -562,6 +608,20 @@
             return `${count} item${count === 1 ? '' : 's'}`;
         }
 
+        /** A device in the details pane: its name, then the facts two pairs a line (Status | Battery,
+            Connected via | Wi-Fi, Signal | Sync ...) in Vista's details grid. */
+        deviceGrid(grid, dev) {
+            const facts = this.deviceFacts(dev);
+            const lines = [];
+            for (let i = 0; i < facts.length; i += 2) lines.push([facts[i], facts[i + 1] || null]);
+            return `<div class="explorer-details-grid">`
+                + `<div class="explorer-details-name">${esc(dev.name)}</div>`
+                + lines.map((pairs, i) => `${i ? '<span></span>' : ''}${pairs.map((p) => (p
+                    ? `<span class="explorer-details-label">${esc(p[0])}:</span><span class="explorer-details-value">${p[1]}</span>`
+                    : '<span></span><span></span>')).join('')}`).join('')
+                + '</div>';
+        }
+
         /** The details pane (explorerVistaChrome.js renderDetails layout and classes). */
         renderDetails() {
             const icon = document.getElementById('explorerDetailsIcon');
@@ -598,13 +658,14 @@
                     return;
                 }
                 setIcon('computer:device', 'portable-device-64.png');
-                info.innerHTML = `<div class="explorer-details-summary">${esc(this.statusText())}</div>`;
+                const here = this.portableDevices().find((x) => x.deviceId === this.deviceId());
+                info.innerHTML = here ? this.deviceGrid(grid, here) : `<div class="explorer-details-summary">${esc(this.statusText())}</div>`;
                 return;
             }
             const device = this.portableDevice(this.selected);
             if (device) {
                 setIcon(`computer:${device.key}`, 'portable-device-64.png');
-                info.innerHTML = `<div class="explorer-details-name">${esc(device.name)}</div><div class="explorer-details-type">Portable Device</div>`;
+                info.innerHTML = this.deviceGrid(grid, device);
                 return;
             }
             const phone = this.phoneDrive(this.selected);
