@@ -1426,10 +1426,9 @@
     box-sizing: border-box;
 }
 
-.wm-weather .wxw-map-track { position: relative; flex: 1 1 auto; min-width: 0; }
-.wm-weather .wxw-map-ticks { position: absolute; left: calc(6 * var(--u)); right: calc(6 * var(--u)); top: 50%; display: flex; justify-content: space-between; pointer-events: none; }
-.wm-weather .wxw-map-ticks i { width: 1px; height: calc(8 * var(--u)); margin-top: calc(-4 * var(--u)); background: rgba(255, 255, 255, 0.25); }
-.wm-weather .wxw-map-slider { position: relative; width: 100%; margin: 0; accent-color: #4aa8ff; }
+/* the shell's WM trackbar (wm-programs.css .wm-slider), its scale in the bar's colours */
+.wm-weather .wxw-map-track { flex: 1 1 auto; min-width: 0; }
+.wm-weather .wxw-map-track .wm-slider-scale { color: #c9d4df; }
 .wm-weather .wxw-map-time { flex: 0 0 auto; min-width: calc(92 * var(--u)); font-size: calc(9.5 * var(--u)); font-weight: 700; text-align: right; }
 
 .wm-weather .wxw-map-legend {

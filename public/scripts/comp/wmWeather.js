@@ -509,7 +509,7 @@
                     <div class="wxw-map-zoom"><button type="button" data-z="1" aria-label="Zoom in">+</button><button type="button" data-z="-1" aria-label="Zoom out">&minus;</button><button type="button" data-z="0" aria-label="Center on the place" class="wxw-map-home"></button></div>
                     <div class="wxw-map-bar">
                         <button type="button" class="wxw-map-play" aria-label="Play"></button>
-                        <div class="wxw-map-track"><div class="wxw-map-ticks"></div><input type="range" class="wxw-map-slider" min="0" max="0" value="0" aria-label="Radar time"></div>
+                        <div class="wxw-map-track"></div>
                         <div class="wxw-map-time"></div>
                     </div>
                     <div class="wxw-map-legend"><span>Light</span><i></i><span>Heavy</span></div>
@@ -577,8 +577,7 @@
             radar: q('.wxw-radar-layer'),
             fullMap: q('.wxw-map-full'),
             mapPlay: q('.wxw-map-play'),
-            mapSlider: q('.wxw-map-slider'),
-            mapTicks: q('.wxw-map-ticks'),
+            mapTrack: q('.wxw-map-track'),
             mapTime: q('.wxw-map-time'),
             mapAttr: q('.wxw-map-attr'),
             alertLayer: q('.wxw-alert-layer'),
@@ -609,7 +608,6 @@
             if (dz === 0) fullMap.home(); else fullMap.zoomBy(dz);
         });
         els.mapPlay.addEventListener('click', () => toggleRadarPlay());
-        els.mapSlider.addEventListener('input', () => { stopRadarPlay(); setRadarFrame(Number(els.mapSlider.value)); });
         els.foot.addEventListener('click', (e) => { const a = e.target.closest('[data-url]'); if (a) openUrl(a.dataset.url); });
         els.prev.addEventListener('click', () => step(-1));
         els.next.addEventListener('click', () => step(1));
@@ -1729,6 +1727,17 @@
             }, { passive: false });
         }
 
+        // first paint now, and again whenever the box changes size (a layer shown, the phone turned)
+        let lastSize = '';
+        const sized = () => {
+            const size = `${host.clientWidth}x${host.clientHeight}`;
+            if (size === lastSize || !host.clientWidth || !host.clientHeight) return;
+            lastSize = size;
+            layout();
+        };
+        if (typeof ResizeObserver === 'function') new ResizeObserver(sized).observe(host);
+        sized();
+
         return {
             layout,
             show,
@@ -1786,17 +1795,38 @@
         if (!fullMap) fullMap = TileMap(els.fullMap, { lat: p.lat, lon: p.lon, zoom: 7, interactive: true, allFrames: true, frameId: () => (radar && radar.frames[radarFrame] ? radar.frames[radarFrame].id : null) });
         else fullMap.center(p.lat, p.lon, 7);
         const frames = radar.frames;
-        els.mapSlider.max = String(Math.max(0, frames.length - 1));
-        els.mapTicks.innerHTML = frames.map(() => '<i></i>').join('');
+        buildRadarTrackbar(frames);
         els.mapAttr.textContent = radar.attribution || '';
         setRadarFrame(frames.length - 1);
         startRadarPlay();
     }
 
+    /**
+     * The radar's time trackbar: the shell's own WM trackbar (wmSettings.ui.trackbar, Settings' Text
+     * Size look), one step per frame, the oldest frame's time and Now at its ends. Never a native
+     * range input (Yukimi, Nov 13: a proper slider or the platform's own).
+     */
+    let radarTrack = null;
+    function buildRadarTrackbar(frames) {
+        els.mapTrack.innerHTML = '';
+        radarTrack = null;
+        const ui = window.wmSettings && window.wmSettings.ui;
+        if (!ui || typeof ui.trackbar !== 'function' || frames.length < 2) return;
+        const first = new Date(frames[0].time * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        radarTrack = ui.trackbar(els.mapTrack, {
+            steps: frames.map((_, i) => i),
+            value: frames.length - 1,
+            lo: first,
+            hi: 'Now',
+            label: 'Radar time',
+            onChange: (i) => { stopRadarPlay(); setRadarFrame(i); }
+        });
+    }
+
     function setRadarFrame(i) {
         if (!radar || !radar.frames.length) return;
         radarFrame = Math.max(0, Math.min(radar.frames.length - 1, i));
-        els.mapSlider.value = String(radarFrame);
+        if (radarTrack) radarTrack.set(radarFrame);
         const f = radar.frames[radarFrame];
         els.mapTime.textContent = frameLabel(f);
         if (fullMap) fullMap.show(f.id);
