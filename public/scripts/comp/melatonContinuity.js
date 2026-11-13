@@ -331,6 +331,8 @@
      * is on" before a reconnect.
      */
     api.keepPhoneConnected = () => isPhone() && api.peers().includes('desktop');
+    /** The DeX window, while the phone window is there: its retries never stop at "Use Reconnect". */
+    api.keepDexConnected = () => isDw() && api.peers().includes('phone');
     /**
      * The DeX window wants a restart for updates (serviceWorkerManager.forceRestart): the phone does it
      * (it installs, one app and one service worker) and the DeX window follows its restart. False when

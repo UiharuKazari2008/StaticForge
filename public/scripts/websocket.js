@@ -1594,6 +1594,9 @@ class WebSocketClient {
      * no-logon-servers message instead. A server that is still booting keeps waiting.
      */
     _offerVistaLogonError() {
+        // Continuity (#798): a hybrid phone's DeX window has no logon server of its own to lose; its
+        // connection is the phone's, which comes back (a rebond, a network change): it waits, never this box
+        if (this._isContinuityDexWindow()) return false;
         return !!(this.vistaLogon
             && this._shouldUsePreStartupDialog()
             && !this._vistaLogonError
@@ -1604,8 +1607,21 @@ class WebSocketClient {
     }
 
     /** Stop the reconnect loop and show Retry / Cancel on the Welcome screen. */
+    /** Continuity (#798): this is a hybrid phone's DeX window (melatonContinuity.js). */
+    _isContinuityDexWindow() {
+        const mc = window.melatonContinuity;
+        try { return !!(mc && typeof mc.isDexWindow === 'function' && mc.isDexWindow()); } catch (_) { return false; }
+    }
+
     _showVistaLogonError() {
         if (!this.vistaLogon || !this._shouldUsePreStartupDialog() || this.winlogonPowerText) return;
+        // the DeX window waits for the phone instead (see _offerVistaLogonError); a failed phase still reconnects
+        if (this._isContinuityDexWindow()) {
+            const mc = window.melatonContinuity;
+            const waiting = mc && typeof mc.waitForPhone === 'function' && mc.waitForPhone();
+            if (!waiting && !this.isConnected() && !this.isConnecting && !this.connectionLock && !this._reconnectTimer) this.reconnect();
+            return;
+        }
         if (!this._vistaLogonError) {
             this._vistaLogonError = true;
             this._userCancelledConnect = true;
@@ -5125,9 +5141,13 @@ class WebSocketClient {
     }
 
     /** Continuity (#798): the phone window while the DeX window rides its socket (melatonContinuity.js). */
+    // (and the DeX window while the phone window is there: it keeps trying instead of "Use Reconnect")
     _keepConnectedForContinuity() {
         const mc = window.melatonContinuity;
-        try { return !!(mc && typeof mc.keepPhoneConnected === 'function' && mc.keepPhoneConnected()); } catch (_) { return false; }
+        try {
+            return !!(mc && ((typeof mc.keepPhoneConnected === 'function' && mc.keepPhoneConnected())
+                || (typeof mc.keepDexConnected === 'function' && mc.keepDexConnected())));
+        } catch (_) { return false; }
     }
 
     reconnect() {
