@@ -308,6 +308,19 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-entering .wm-ti-exp {
     visibility: hidden;
 }
 
+/* ... and then the clock panel grows in from 60 % while it fades in (the move's 80 % grow, 150 ms,
+ * did not read after the run) */
+@keyframes wm-ti-zoom-enter {
+    from { transform: scale(0.6); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-exp {
+    transform-origin: 50% 50%;
+    animation: wm-ti-zoom-enter 0.3s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-entering .wm-ti-list { animation: none; }
+    html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-exp { animation: none; }
 }

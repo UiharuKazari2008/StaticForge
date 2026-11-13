@@ -62,6 +62,7 @@
     // from the top left while it runs up into the clock (the lift-without-speed move, BACK_MS), then
     // the clock panel grows in as after any move. ENTER_ROWS: how far below its place the list starts.
     const ENTER_MS = 550;       // the entrance's run up into the clock (and its scale-in, wm-titanium.css)
+    const ENTER_ZOOM_MS = 300;  // ... then the clock panel grows and fades in (wm-ti-zoom-enter), larger than a move's
     const ENTER_RECENT_MS = 1500; // a Home press this soon after the page came back belongs to that return
     // A Home press while Today is in front blinks the page hidden for a moment (Android pauses and
     // resumes the launcher: 16 ms on the Fold7); hidden longer, the user was in another app
@@ -581,7 +582,7 @@
         if (!animate) {
             host.classList.remove('is-entering');
             cancelAnimationFrame(settle); settle = 0; tw = null;
-            clearTimeout(zoomTimer); zoomTimer = 0; host.classList.remove('is-zoom');
+            clearTimeout(zoomTimer); zoomTimer = 0; host.classList.remove('is-zoom', 'is-zoom-enter');
             sel = i; pos = i; skSel = i; place(); drawExpanded(); sh.refreshSoftKeys();
             return;
         }
@@ -701,6 +702,7 @@
     function arrive() {
         const b = tw.b;
         const open = tw.open;
+        const entering = host.classList.contains('is-entering');
         host.classList.remove('is-entering');
         cancelAnimationFrame(settle);
         settle = 0;
@@ -709,7 +711,7 @@
         pos = b;
         place();
         drawExpanded();
-        zoomIn(open);
+        zoomIn(open, entering);
     }
 
     /** A tap on an item while the list runs: it ends on the next item to reach the band. */
@@ -754,18 +756,19 @@
      * list ran opens the item then.
      */
     let zoomTimer = 0;
-    function zoomIn(open) {
+    function zoomIn(open, entering) {
         clearTimeout(zoomTimer);
-        host.classList.remove('is-zoom');
+        host.classList.remove('is-zoom', 'is-zoom-enter');
         void host.offsetWidth; // restart the animation
-        host.classList.add('is-zoom');
+        // after the entrance (#800): a bigger grow with the panel fading in, so it reads after the run
+        host.classList.add(entering ? 'is-zoom-enter' : 'is-zoom');
         zoomTimer = setTimeout(() => {
             zoomTimer = 0;
-            host.classList.remove('is-zoom');
+            host.classList.remove('is-zoom', 'is-zoom-enter');
             skSel = sel;
             sh.refreshSoftKeys();
             if (open) openSelected();
-        }, ZOOM_MS + KEY_MS);
+        }, (entering ? ENTER_ZOOM_MS : ZOOM_MS) + KEY_MS);
     }
 
     /** The list moves on before the panel has finished arriving: its soft key is up at once. */
@@ -773,7 +776,7 @@
         if (!zoomTimer) return;
         clearTimeout(zoomTimer);
         zoomTimer = 0;
-        host.classList.remove('is-zoom');
+        host.classList.remove('is-zoom', 'is-zoom-enter');
         skSel = sel;
         sh.refreshSoftKeys();
     }
@@ -1009,7 +1012,7 @@
         pageAt.clear();
         expKey = '';
         cancelAnimationFrame(settle); settle = 0; tw = null;
-        clearTimeout(zoomTimer); zoomTimer = 0; host.classList.remove('is-zoom');
+        clearTimeout(zoomTimer); zoomTimer = 0; host.classList.remove('is-zoom', 'is-zoom-enter');
         const at = Math.max(0, panels.findIndex((p) => p.clock));
         sel = at;
         skSel = at;
