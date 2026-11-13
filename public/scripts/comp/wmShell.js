@@ -7634,6 +7634,18 @@
         // layout is loaded before the splash goes, not by the 500 ms poll after Today was drawn in
         // the last one used (watchTodayPrefs); the splash's own limit still ends a boot without it
         if (ready && elapsed >= BOOT_MIN_SPLASH_MS && !loadTodayPrefs(false) && elapsed < BOOT_MAX_SPLASH_MS) return;
+        // the server out of reach: no waiting out the splash's limit, Today from the installed copy
+        // (launch.html startOfflineIfInstalled handed over, or this load's connect already failed);
+        // the connection and the start-up steps follow when the server answers (Yukimi, Nov 13)
+        let offlineStart = false;
+        try { offlineStart = Date.now() - (Number(sessionStorage.getItem('melatonOfflineStart')) || 0) < 120000; } catch (_) { /* storage off */ }
+        const unreachable = !ready && ws && !(typeof ws.isConnected === 'function' && ws.isConnected())
+            && (offlineStart || ws.connectionPhase === 'failed' || (ws.reconnectAttempts || 0) >= 2);
+        if (unreachable && elapsed >= BOOT_MIN_SPLASH_MS) {
+            try { sessionStorage.removeItem('melatonOfflineStart'); } catch (_) { /* storage off */ }
+            finishBoot();
+            return;
+        }
         if ((ready && elapsed >= BOOT_MIN_SPLASH_MS) || elapsed >= BOOT_MAX_SPLASH_MS) {
             let done = null;
             try { done = sessionStorage.getItem(INSTALL_DONE_KEY); } catch (_) { /* storage off */ }

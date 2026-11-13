@@ -1259,6 +1259,7 @@ workbox.routing.registerRoute(
 // rather than leaving the install for the homepage. Setup's format wipes it with every cache.
 const LAUNCH_SHELL_CACHE = 'melaton-launch-shell-v1';
 const LAUNCH_SHELL_KEY = '/launch';
+const APP_SHELL_KEY = '/app';
 
 // perfTrace phase mark inside a traced handler: <label>=<ms since the handler started>
 function perfMark(options, label) {
@@ -1327,9 +1328,24 @@ workbox.routing.registerRoute(
     } catch (_err) {
       response = null;
     }
-    if (response && (response.status < 500 || response.headers.get('x-melaton-shell'))) return response;
+    if (response && (response.status < 500 || response.headers.get('x-melaton-shell'))) {
+      // the app page itself, kept so an installed phone starts without the server (launch.html
+      // startOfflineIfInstalled; Melaton Mobile as Android's launcher must always reach Today)
+      if (response.status === 200 && response.headers.get('x-melaton-shell') === 'app') {
+        try {
+          const cache = await caches.open(LAUNCH_SHELL_CACHE);
+          await cache.put(APP_SHELL_KEY, response.clone());
+        } catch (_err) { /* the page still loads from the network */ }
+      }
+      return response;
+    }
     try {
       const cache = await caches.open(LAUNCH_SHELL_CACHE);
+      const url = new URL(request.url);
+      if (url.pathname === '/app') {
+        const kept = await cache.match(APP_SHELL_KEY);
+        if (kept) return kept;
+      }
       if (await cache.match(LAUNCH_SHELL_KEY)) return Response.redirect('/launch', 302);
     } catch (_err) { /* no boot shell: what the network said */ }
     return response || Response.error();

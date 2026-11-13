@@ -1171,11 +1171,42 @@
             }
         }
 
+        /**
+         * Melaton Mobile, installed (the update engine's synced manifest) with the app page kept by
+         * the service worker (sw.js APP_SHELL_KEY): it starts without the server, to Today, so the
+         * phone never hangs on this card (Yukimi, Nov 13: it will be Android's launcher).
+         */
+        async function phoneCanStartOffline() {
+            if (!document.documentElement.classList.contains('phone-launch')) return false;
+            try {
+                if (!localStorage.getItem('melatonManifestHash')) return false;
+                if (!window.caches) return false;
+                const cache = await caches.open('melaton-launch-shell-v1');
+                return !!(await cache.match('/app'));
+            } catch (e) {
+                return false;
+            }
+        }
+
+        /** Start the installed copy now: the app follows the server when it comes back. */
+        async function startOfflineIfInstalled(reason) {
+            if (!await phoneCanStartOffline()) return false;
+            console.warn('[launch] the server is not reachable (' + reason + '): starting the installed copy');
+            try {
+                sessionStorage.setItem('dreamscapeLaunchHandoff', '1');
+                sessionStorage.setItem('melatonOfflineStart', String(Date.now()));
+            } catch (e) { /* ignore */ }
+            window.location.replace('/app');
+            return true;
+        }
+
         async function checkServerReadiness() {
             try {
                 const response = await fetch('/status', {
                     method: 'OPTIONS',
-                    cache: 'no-cache'
+                    cache: 'no-cache',
+                    // a phone with no data link must not wait out the browser's own timeout
+                    signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
                 });
 
                 if (response.ok) {
@@ -1256,9 +1287,11 @@
             try {
                 const response = await fetch('/app', {
                     method: 'OPTIONS',
-                    cache: 'no-cache'
+                    cache: 'no-cache',
+                    signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
                 });
 
+                if (response.status >= 500) return 'unreachable';
                 if (response.ok) {
                     const data = await response.json();
 
@@ -1279,7 +1312,8 @@
                     return false; // Session invalid
                 }
             } catch (error) {
-                return false;
+                // no answer (a stalled or vanished server): not a signed-out session
+                return 'unreachable';
             }
         }
 
@@ -1368,36 +1402,45 @@
 
             // Step 1: Check online status
             if (!await checkOnlineStatus()) {
-                showError('No internet connection');
                 validationInProgress = false;
+                if (await startOfflineIfInstalled('offline')) return;
+                showError('No internet connection');
                 return;
             }
 
             // Step 2: Check server readiness first
             const readiness = await checkServerReadiness();
             if (readiness === null) {
-                // Server not responding, start polling
                 validationInProgress = false;
+                if (await startOfflineIfInstalled('no answer')) return;
+                // Server not responding, start polling
                 startServerReadinessPolling();
                 return;
             }
 
             if (!readiness.isReady) {
-                // Server is initializing, start polling
                 validationInProgress = false;
+                if (await startOfflineIfInstalled('starting')) return;
+                // Server is initializing, start polling
                 startServerReadinessPolling();
                 return;
             }
 
             // Step 3: Check server accessibility (server is ready)
             if (!await checkServerAccessibility()) {
-                showError('Unable to connect to server', true); // Show rescue button
                 validationInProgress = false;
+                if (await startOfflineIfInstalled('not accessible')) return;
+                showError('Unable to connect to server', true); // Show rescue button
                 return;
             }
 
             // Step 4: Check session validity and version compatibility
-            const sessionResult = await checkSessionValidity();
+            let sessionResult = await checkSessionValidity();
+            if (sessionResult === 'unreachable') {
+                validationInProgress = false;
+                if (await startOfflineIfInstalled('session check')) return;
+                sessionResult = false;
+            }
             if (sessionResult === null) {
                 // Version mismatch - warning already shown
                 validationInProgress = false;

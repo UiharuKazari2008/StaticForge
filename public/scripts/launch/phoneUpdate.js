@@ -16,6 +16,7 @@
 
     const CHECK_TIMEOUT_MS = 30000;
     const POLL_MS = 1500;
+    const FALLBACK_START_MS = 15000; // a failed update on an installed phone: RETRY, else start what it has
     const DONE_HOLD_MS = 1200;
 
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -191,7 +192,25 @@
             const result = await install(engine, e, found, v);
             if (result.ok) return { installed: true };
             v.set({ state: 'error', title: FAIL_TEXT[result.why] || FAIL_TEXT.download, time: '', button: 'RETRY' });
-            await new Promise((resolve) => v.onButton(() => { v.onButton(null); resolve(); }));
+            // an installed phone never stays on this card (it may be Android's launcher, Yukimi
+            // Nov 13): with no tap on RETRY it starts the copy it has, and the update comes later
+            const canStart = await installedCopy();
+            const retry = await new Promise((resolve) => {
+                const t = canStart ? setTimeout(() => { v.onButton(null); resolve(false); }, FALLBACK_START_MS) : null;
+                v.onButton(() => { clearTimeout(t); v.onButton(null); resolve(true); });
+            });
+            if (!retry) { v.hide(); return { installed: false, failed: true }; }
+        }
+    }
+
+    /** This phone has a working install: a synced manifest and the app page the worker keeps. */
+    async function installedCopy() {
+        try {
+            if (!root.localStorage || !root.localStorage.getItem('melatonManifestHash') || !root.caches) return false;
+            const cache = await root.caches.open('melaton-launch-shell-v1');
+            return !!(await cache.match('/app'));
+        } catch (_) {
+            return false;
         }
     }
 
