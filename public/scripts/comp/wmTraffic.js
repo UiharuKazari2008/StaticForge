@@ -116,6 +116,7 @@
             loadFailed = (err && err.message) || 'Traffic could not be loaded';
         }
         changed();
+        armNativeWatch();
     }
 
     /** A fresh report (the server answers from its 3 minute cache unless force). */
@@ -273,7 +274,7 @@
             if (t >= m - LEAVE_WINDOW_MIN && t <= m + until) {
                 const at = new Date(now);
                 at.setHours(Math.floor(m / 60), m % 60, 0, 0);
-                return { direction: dir, leaveAt: at.getTime() };
+                return { direction: dir, leaveAt: at.getTime(), until: at.getTime() + Math.round(until * 60000) };
             }
         }
         return null;
@@ -358,9 +359,78 @@
         if (!dv || dv.direction !== 'home' || !r || !r.traps) { stopCamWatch(); return; }
         const key = `home:${dv.leaveAt}`;
         if (camDrive.key !== key) { camDrive.key = key; camDrive.alerted.clear(); }
+        nativeAlerted(key).forEach((id) => camDrive.alerted.add(id));
+        // the app's own watch has this drive: it alerts (locked or not), the page only keeps count (#810)
+        const native = nativeDrive.active && nativeDrive.key === key;
         const ahead = camerasAhead(r.traps, dv.at, dv.totalM).filter((c) => !camDrive.alerted.has(camKey(c.trap)));
-        ahead.filter((c) => c.aheadM <= CAM_ALERT_M).forEach((c) => { camDrive.alerted.add(camKey(c.trap)); cameraNote(c.trap, c.aheadM); });
+        ahead.filter((c) => c.aheadM <= CAM_ALERT_M).forEach((c) => { camDrive.alerted.add(camKey(c.trap)); if (!native) cameraNote(c.trap, c.aheadM); });
         if (ahead.some((c) => c.aheadM > CAM_ALERT_M)) startCamWatch(); else stopCamWatch();
+    }
+
+    // The Android app's own watch (DSApp window.AndroidDriveWatch, #810): the page is paused while the
+    // phone is locked, so in the way-home window the app gets the route and its cameras and alerts at
+    // 1 mi natively (a location service started while the page is on screen). Without the bridge (a
+    // browser, an older app build) or when it refuses (no location / notifications), the page alerts.
+    const nativeDrive = { sig: '', key: '', active: false, alerted: new Set() };
+
+    function nativeBridge() { const b = window.AndroidDriveWatch; return b && typeof b.start === 'function' ? b : null; }
+
+    function nativeStatus(st) {
+        try {
+            const d = typeof st === 'string' ? JSON.parse(st) : st;
+            if (!d) return;
+            nativeDrive.active = !!d.active;
+            if (d.key) {
+                if (d.key !== nativeDrive.key) nativeDrive.alerted.clear();
+                nativeDrive.key = d.key;
+                (d.alerted || []).forEach((id) => nativeDrive.alerted.add(String(id)));
+            }
+        } catch (_) { /* a bad answer: leave the page's own path on */ }
+    }
+
+    /** Ids the app already alerted for this drive (also after its watch ended), so the page never alerts them again. */
+    function nativeAlerted(key) {
+        const b = nativeBridge();
+        if (b && typeof b.status === 'function') nativeStatus(b.status());
+        return nativeDrive.key === key ? [...nativeDrive.alerted] : [];
+    }
+
+    /** The plan the app watches: the way home's route, its cameras in metres along it, Home / Work, the window's end. */
+    function drivePlan(win) {
+        const r = latest.home;
+        const p = r && r.preferred;
+        if (!p || !Array.isArray(p.line) || p.line.length < 2 || !Array.isArray(r.traps)) return null;
+        const total = onLine(p.line, { lat: p.line[0][0], lon: p.line[0][1] }).totalM;
+        const c = placeCoords();
+        const key = `home:${win.leaveAt}`;
+        return {
+            key,
+            until: win.until,
+            line: p.line,
+            cameras: r.traps.map((t) => ({ id: camKey(t), alongM: Math.round(t.at * total), title: `${t.label || 'Speed camera'} ahead`, street: t.street || '', maxspeed: t.maxspeed || '', count: t.count || 1 })),
+            home: c.home, work: c.work,
+            radiusM: Math.round(((settings && settings.radiusKm) || 1.5) * 1000),
+            alerted: camDrive.key === key ? [...camDrive.alerted] : [],
+            watchM: CAM_WATCH_M, alertM: CAM_ALERT_M, onRouteM: ON_ROUTE_M,
+            reportAt: r.at
+        };
+    }
+
+    /** In the way-home window: hand the app the plan once per drive and report (it ends itself at Home or the window's end). */
+    function armNativeWatch() {
+        const b = nativeBridge();
+        if (!b || !canUse() || !loaded || !configured() || document.hidden) return;
+        const win = driveWindow();
+        if (!win || win.direction !== 'home' || !win.until) return;
+        const plan = drivePlan(win);
+        if (!plan) return;
+        const sig = `${plan.key}|${plan.reportAt}`;
+        if (sig === nativeDrive.sig) return;
+        nativeDrive.sig = sig;
+        let res = null;
+        try { res = JSON.parse(b.start(JSON.stringify(plan)) || 'null'); } catch (_) { res = null; }
+        if (res && res.ok) { nativeDrive.active = true; nativeDrive.key = plan.key; }
+        else { nativeDrive.active = false; console.warn(`[traffic] the app's drive watch is off: ${(res && res.error) || 'no answer'}`); }
     }
 
     function startCamWatch() {
@@ -1053,7 +1123,7 @@
         if (wired || !c || typeof c.on !== 'function') return !!wired;
         wired = true;
         const data = (pk) => (pk && (pk.data || pk)) || {};
-        c.on('traffic_updated', (pk) => { const d = data(pk); if (d.direction && d.report) { latest[d.direction] = d.report; changed(); } });
+        c.on('traffic_updated', (pk) => { const d = data(pk); if (d.direction && d.report) { latest[d.direction] = d.report; changed(); if (d.direction === 'home') armNativeWatch(); } });
         c.on('traffic_report', onReport);
         c.on('traffic_settings_changed', (pk) => { const d = data(pk); if (d.settings) { settings = d.settings; changed(); } });
         c.on('connected', () => load());
@@ -1291,6 +1361,7 @@
             if (key !== windowKey) { windowKey = key; if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus(); if (ws && ws.refreshToday) ws.refreshToday(); }
             // driving: the phone's position each minute, then the time left everywhere it shows
             if (driveWindow()) { readPosition(); if (driving()) changed(); }
+            armNativeWatch();
             watchCameras();
         }, 60 * 1000);
     }
@@ -1298,6 +1369,8 @@
     function register() {
         ws = window.wmShell;
         if (!ws) return;
+        // the app's drive watch: what it alerted while the page was paused (#810)
+        window.addEventListener('dreamscape:drivewatch', (e) => nativeStatus(e.detail));
         watchLeaveWindow();
         ws.registerApp(APP);
         if (typeof ws.registerTodayItem === 'function') {
