@@ -240,8 +240,9 @@ if (window.wsClient) {
                 // Retry loading options
                 await loadOptions();
             } else if (confirmed === 'refresh') {
-                // Refresh the page
-                window.location.reload();
+                // Restart: a cold boot from the home URL (restartClientNavigate), never a reload of /app
+                if (typeof window.restartClientNavigate === 'function') window.restartClientNavigate();
+                else window.location.replace('/');
                 return; // Don't continue with initialization
             }
         }

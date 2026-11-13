@@ -1880,7 +1880,8 @@
         sh.registerTodayItem({
             id: 'text',
             label: 'Text',
-            icon: 'ti-2007',
+            // the row (classic Today, Settings > Today > Items) draws wm61 art; ti-2007 is 6.5's panel glyph
+            icon: 'today-messages',
             after: 'connection',
             text: () => { const n = tmUnread() + chatUnreadTotal(); return n ? `${n} new ${n === 1 ? 'message' : 'messages'}` : 'No new messages'; },
             onTap: () => tmOpenAccount(),

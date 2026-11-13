@@ -3410,16 +3410,24 @@
      * _mobileDomainUnreachable): WM's error box with Retry and Abort, titled by the app in front.
      * Resolves 'retry' or 'abort'.
      */
+    let dcBoxClose = null;
     function domainUnreachable() {
-        const app = current && current !== 'today' ? apps.get(current) : null;
         return messageBox({
-            title: (app && app.title) || 'Melaton Mobile',
+            title: 'Domain Controller',
             text: 'The Domain Controller is unreachable.',
             icon: 'error',
             buttons: [{ text: 'Retry', value: 'retry', default: true }, { text: 'Abort', value: 'abort' }],
             cancelValue: 'abort',
-            modal: true
-        });
+            modal: true,
+            // the title bar's X is Abort; the connection coming back closes it (closeDomainUnreachable)
+            titleAction: { kind: 'close', value: 'abort' },
+            onOpen: (close) => { dcBoxClose = close; }
+        }).finally(() => { dcBoxClose = null; });
+    }
+    function closeDomainUnreachable(value) {
+        if (!dcBoxClose) return false;
+        dcBoxClose(value);
+        return true;
     }
 
     function hideLoadingBox() {
@@ -5072,7 +5080,7 @@
      * WM message box; resolves with the chosen button's value. buttons: [{ text, value }].
      * icon: 'error' | 'warning' | 'info' | 'question' | null.
      */
-    function messageBox({ title = 'Melaton Mobile', text = '', icon = null, buttons = [{ text: 'ok', value: true }], cancelValue = false, input = null, modal = false } = {}) {
+    function messageBox({ title = 'Melaton Mobile', text = '', icon = null, buttons = [{ text: 'ok', value: true }], cancelValue = false, input = null, modal = false, titleAction = null, onOpen = null } = {}) {
         // an ok-only box that does not answer something the user just did (it came on its own, later)
         // is a WM notification instead; one that answers a tap stays a message box (WM's rule)
         if (buttons.length === 1 && !input && !modal && !answersUser()) {
@@ -5085,7 +5093,7 @@
             const okOnly = buttons.length === 1;
             layer.innerHTML = `
                 <div class="wm-msgbox" role="alertdialog" aria-modal="true">
-                    <div class="wm-msgbox-title"><span>${escapeHtml(title)}</span>${okOnly ? '<button type="button" class="wm-title-action" data-kind="ok" aria-label="OK"></button>' : ''}</div>
+                    <div class="wm-msgbox-title"><span>${escapeHtml(title)}</span>${okOnly ? '<button type="button" class="wm-title-action" data-kind="ok" aria-label="OK"></button>' : titleAction ? `<button type="button" class="wm-title-action" data-kind="${titleAction.kind === 'ok' ? 'ok' : 'close'}" aria-label="${titleAction.kind === 'ok' ? 'OK' : 'Close'}"></button>` : ''}</div>
                     <div class="wm-msgbox-body">${icon ? imgTag(`msgbox-${icon}`) : ''}<div class="wm-msgbox-text"></div></div>
                     ${okOnly ? '' : '<div class="wm-msgbox-buttons"></div>'}
                 </div>`;
@@ -5119,6 +5127,9 @@
             if (okOnly) {
                 layer.querySelector('.wm-title-action').addEventListener('click', () => done(buttons[0].value));
             } else {
+                // a box with buttons may still carry the title bar's X / ok (titleAction { kind, value })
+                const ta = titleAction && layer.querySelector('.wm-title-action');
+                if (ta) ta.addEventListener('click', () => done(titleAction.value));
                 const row = layer.querySelector('.wm-msgbox-buttons');
                 for (const b of buttons) {
                     const el = document.createElement('button');
@@ -5142,6 +5153,10 @@
             if (icon || !input) playSystemSound(icon ? MSGBOX_SOUND[icon] || 'SystemDefault' : 'SystemDefault');
             const first = field || layer.querySelector('.wm-msgbox-buttons .is-default') || layer.querySelector('button');
             if (first) first.focus();
+            // the caller may close it itself (onOpen(close): close(value) answers as that value)
+            if (typeof onOpen === 'function') {
+                try { onOpen((value) => { if (painted.isConnected) done(value); }); } catch (_) { /* the caller's own problem */ }
+            }
         });
     }
 
@@ -7782,6 +7797,8 @@
         mainframeBox: (percent, stage) => mainframeBox(percent, stage),
         /** "The Domain Controller is unreachable." Retry / Abort box: resolves 'retry' | 'abort'. */
         domainUnreachable: () => domainUnreachable(),
+        /** Close an open unreachable box as `value` (websocket.js: 'connected' when the link is back). */
+        closeDomainUnreachable: (value) => closeDomainUnreachable(value),
         /** The "Domain Controller is not ready" notification (closes itself on reconnect). */
         dcNotice: () => dcNotice(),
         /** A request now is the user's own command: a tap on a program (not the title bar or a bubble) in the last 700 ms. */

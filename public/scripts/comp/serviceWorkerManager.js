@@ -4472,7 +4472,7 @@ class ServiceWorkerManager {
             if (choice === 'restart') {
                 // restartClientNavigate: public/scripts/comp/modalUtils.js
                 if (typeof restartClientNavigate === 'function') restartClientNavigate();
-                else location.replace('/launch');
+                else location.replace('/');
                 return { blocked: true };
             }
             if (choice === 'retry') return this.runBootSequence();

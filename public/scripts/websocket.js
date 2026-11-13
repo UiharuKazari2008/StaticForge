@@ -1340,15 +1340,18 @@ class WebSocketClient {
         if (!this._dcUnreachablePrompt) {
             // only what the tap itself sends: a poll that happens to run after a tap stays quiet
             if (typeof sh.tapCommand !== 'function' || !sh.tapCommand()) return null;
-            // asked for while out of reach: the standing notice too (wmShell dcNotice)
-            if (typeof sh.dcNotice === 'function') sh.dcNotice();
+            // the connection coming back while the box is up answers it (as a successful Retry)
+            const onBack = () => { if (typeof sh.closeDomainUnreachable === 'function') sh.closeDomainUnreachable('connected'); };
+            this.on('connected', onBack);
             this._dcUnreachablePrompt = (async () => {
                 for (;;) {
+                    if (this.isConnectionHealthy() && this.ws && typeof this.ws.onmessage === 'function') return true;
                     const choice = await sh.domainUnreachable();
+                    if (choice === 'connected') { if (await this._waitForMobileReconnect()) return true; continue; }
                     if (choice !== 'retry') return false;
                     if (await this._waitForMobileReconnect()) return true;
                 }
-            })().finally(() => { this._dcUnreachablePrompt = null; });
+            })().finally(() => { this._dcUnreachablePrompt = null; this.off('connected', onBack); });
         }
         return this._dcUnreachablePrompt.then((ok) => (ok ? this.sendMessage(type, data, showBanner) : Promise.reject(error)));
     }
@@ -1571,7 +1574,7 @@ class WebSocketClient {
         if (choice === 'restart') {
             // restartClientNavigate: public/scripts/comp/modalUtils.js (/launch on the desktop)
             if (typeof restartClientNavigate === 'function') restartClientNavigate();
-            else location.reload();
+            else location.replace('/');
             return;
         }
         this.manualReconnect();
@@ -2582,7 +2585,7 @@ class WebSocketClient {
             if (value === 'restart') {
                 // restartClientNavigate: public/scripts/comp/modalUtils.js (/launch on the desktop)
                 if (typeof restartClientNavigate === 'function') restartClientNavigate();
-                else location.reload();
+                else location.replace('/');
                 return;
             }
             this.retryLogonInitSteps();
@@ -2616,7 +2619,7 @@ class WebSocketClient {
             if (value === 'restart') {
                 // restartClientNavigate: public/scripts/comp/modalUtils.js (/launch on the desktop)
                 if (typeof restartClientNavigate === 'function') restartClientNavigate();
-                else location.reload();
+                else location.replace('/');
                 return;
             }
             this.executeInitSteps();
@@ -5937,7 +5940,8 @@ class WebSocketClient {
         } else {
             try {
                 if (localStorage.getItem('dreamscapeSiteGate') === '1') {
-                    location.href = '/app';
+                    // the home URL: a cold boot through /launch (its logon and update checks)
+                    location.replace('/');
                     return;
                 }
             } catch (_) { /* ignore */ }

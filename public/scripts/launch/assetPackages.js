@@ -17,7 +17,7 @@
  * loads them; scripts/build-wm-sprite-strips.sh, build-wm-status-atlas.py), shipped to nobody.
  *
  * The client's set: automatic (Melaton Mobile booted here: its version, and the density tiers up to
- * the screen's: 1x = wm61, 2x = + wm61-2x, 4x = + wm61-4x) plus the ones added in Melaton Update >
+ * the screen's: 1x = wm61, 2x = + wm61-2x, 4x = + wm61-4x; 6.5 also takes 6.1's, which it draws) plus the ones added in Melaton Update >
  * Applied Updates (pinned, e.g. a phone that also runs a desktop in DeX). The mobile bit stays once
  * set, so a hybrid client keeps its phone art while it runs the desktop. Stored in localStorage
  * 'melatonPackages' and mirrored in the cookie 'melaton_pkgs' (the service worker's and /launch's own
@@ -83,8 +83,15 @@
         return s <= 1.01 ? 1 : s <= 2.01 ? 2 : 4;
     }
     const tierOf = (base, tier) => [base, ...(tier >= 2 ? [`${base}-2x`] : []), ...(tier >= 4 ? [`${base}-4x`] : [])];
-    // the running version's art and the common art, each up to the screen's density
-    const tierIds = (version, tier) => [...tierOf(version, tier), ...tierOf('wmc', tier)];
+    // the running version's art and the common art, each up to the screen's density. 6.5 is built on
+    // 6.1's ROM art: its shell draws message box icons, program icons, status glyphs and Today art
+    // from wm61 (wmShell ART), so a 6.5 phone needs wm61 too; without it all of that art was never
+    // kept and showed as broken images while the server restarted (Yukimi, Nov 13)
+    const tierIds = (version, tier) => [
+        ...(version === 'wm65' ? tierOf('wm61', tier) : []),
+        ...tierOf(version, tier),
+        ...tierOf('wmc', tier)
+    ];
 
     function read() {
         try {

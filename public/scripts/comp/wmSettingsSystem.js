@@ -654,7 +654,7 @@
             });
             if (yes) {
                 const m = swm();
-                if (m && typeof m.forceRestart === 'function') m.forceRestart(); else location.reload();
+                if (m && typeof m.forceRestart === 'function') m.forceRestart(); else if (typeof window.restartClientNavigate === 'function') window.restartClientNavigate(); else location.replace('/');
             }
         }
         return [];
@@ -1651,7 +1651,7 @@
         });
         if (yes) {
             const m = swm();
-            if (m && typeof m.forceRestart === 'function') m.forceRestart(); else location.reload();
+            if (m && typeof m.forceRestart === 'function') m.forceRestart(); else if (typeof window.restartClientNavigate === 'function') window.restartClientNavigate(); else location.replace('/');
         }
         return [wmSettings.keys.version];
     }

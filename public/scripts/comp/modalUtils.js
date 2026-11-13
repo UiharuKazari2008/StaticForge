@@ -7482,8 +7482,10 @@ async function runClientShutdownSequence(finalAction) {
 }
 
 /**
- * Where a full restart lands: the Melaton boot on /launch for the desktop (boot screen,
- * teal, logon, Yozora #420), an in-place reload otherwise.
+ * Where a full restart lands: always a cold boot from the home URL (/ -> /launch: the update
+ * checks and the installer, boot screen, teal, logon, Yozora #420), on the desktop and on Melaton
+ * Mobile alike. A reload of /app skipped the installer, so a large update asked for a restart
+ * again on every one (Yukimi, Nov 13).
  */
 function restartClientNavigate() {
     try {
@@ -7498,11 +7500,7 @@ function restartClientNavigate() {
     // synced its history right after "Restart now? Yes" (history.go), and the phone never
     // restarted. wmShell leaves history alone from here on.
     window.melatonRestarting = true;
-    if (window.isDesktop) {
-        location.replace('/launch');
-    } else {
-        location.reload();
-    }
+    location.replace('/');
 }
 window.restartClientNavigate = restartClientNavigate;
 

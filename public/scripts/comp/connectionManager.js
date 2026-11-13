@@ -251,7 +251,7 @@ async function ensureSessionValid() {
                     await showPinModal();
                     return true;
                 }
-                window.location.href = '/app';
+                window.location.replace('/');
                 return false;
             }
         } catch (_) { /* ignore */ }

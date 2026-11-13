@@ -712,7 +712,7 @@
         const navigate = () => {
             // restartClientNavigate: public/scripts/comp/modalUtils.js
             if (typeof root.restartClientNavigate === 'function') root.restartClientNavigate();
-            else if (root.location) root.location.reload();
+            else if (root.location) root.location.replace('/');
         };
         // runWinlogonPower: public/scripts/comp/winlogonPower.js (the Start menu's Restart). A broken
         // shell may fail or stall on its way down: then straight to /launch.
