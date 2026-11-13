@@ -19,7 +19,7 @@ body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[d
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text^="Open Melaton Update"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Check for updates"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Software Update"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
-body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Open in Notion"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Open in Windows Journal"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Move to..."] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Properties"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Refresh"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
@@ -51,7 +51,7 @@ body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[d
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text^="Open Melaton Update"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon)::before,
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Check for updates"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon)::before,
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Software Update"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon)::before,
-body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Open in Notion"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon)::before,
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Open in Windows Journal"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon)::before,
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Move to..."] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon)::before,
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Properties"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon)::before,
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Refresh"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon)::before,
@@ -94,7 +94,7 @@ body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[d
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text^="Open Melaton Update"]:not(.has-menu-mark) > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Check for updates"]:not(.has-menu-mark) > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Software Update"]:not(.has-menu-mark) > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
-body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Open in Notion"]:not(.has-menu-mark) > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Open in Windows Journal"]:not(.has-menu-mark) > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Move to..."]:not(.has-menu-mark) > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Properties"]:not(.has-menu-mark) > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Refresh"]:not(.has-menu-mark) > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon),
@@ -827,7 +827,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
     background-image: url("/static_images/app_icons/16/test_tube.webp");
 }
 
-/* Notion */
+/* Windows Journal */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-notebook),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-notebook) {
     background-image: url("/static_images/app_icons/16/vista-journal.webp");
@@ -1043,7 +1043,7 @@ body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[d
     background-size: 16px 16px;
 }
 
-body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Open in Notion"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon) {
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Open in Windows Journal"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon) {
     background-image: url("/static_images/app_icons/16/vista-journal.webp");
     background-size: 16px 16px;
 }

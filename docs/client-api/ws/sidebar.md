@@ -64,7 +64,7 @@ The CPU Meter, Weather, Currency, Stocks, Feed Headlines and hosted gadgets' mac
 | `feed` | `url` (https, 300 chars), `count` (3, 4, 5, 6) |
 | `mail` | `unreadOnly`, `count` (3, 4, 5, 6) |
 | `outlook` | `unreadOnly`. Same Dovecote Inbox as Mail, drawn on the Sidebar Outlook skin |
-| `notes` | `color`, `font`, `size` (px), `notes` (up to 10 x 1000 chars), `current`, `noteId` (Notion note id or `''`; when set the gadget reads and writes that note through `notes_get` / `notes_save_content` and refreshes on `note_content_updated`, `note_updated`, `note_deleted`) |
+| `notes` | `color`, `font`, `size` (px), `notes` (up to 10 x 1000 chars), `current`, `noteId` (Windows Journal note id or `''`; when set the gadget reads and writes that note through `notes_get` / `notes_save_content` and refreshes on `note_content_updated`, `note_updated`, `note_deleted`) |
 | `puzzle` | `source`, `base` (picture), `tiles` (16-permutation or null), `seconds` |
 | `slideshow` | `source`, `seconds` (5, 10, 15, 30, 60, 120, 300), `transition` (`none`, `random`, `fade`, `wipe`, `iris`, `slide`, `push`), `shuffle`, `shape` (`landscape` 4:3, `square`, `portrait` 3:4), `scale` (1 to 2.5, undocked size from the corner grip), `search` (null, or an Image Search saved with "Show in photo frame": `{ blocks, workspaceId, viewType, promptSource, filters, blockOptions: { defaultMatchMode }, label }`, the `omegasearch_query` fields, at most 4 KB). The Image Search DSAP shows that button only when opened with `frame=<gadget id>` (`dsap://ispy.dreamscape.jp/?...&frame=g1`). |
 | `stocks` | `symbols` (up to 4, 12 chars, `A-Z` `0-9` `.` `^`) |

@@ -4,7 +4,7 @@
    applications in the system font whatever the user picks, so these keep --font-system (Segoe UI,
    Meiryo for Japanese; app.css, faces in vista-fonts.css):
    - shell: window captions, taskbar and tray, desktop icon labels, the Sidebar
-   - every light-client window and Vista dialog (Run, Cartograph, Periscope, Runes, Notion, the
+   - every light-client window and Vista dialog (Run, Cartograph, Periscope, Runes, Windows Journal, the
      message boxes ...), which already set Segoe UI on their client; the variables follow here too
    - the Windows-analogue apps that still draw on the dark client: Personalize, Runes' value and
      checkpoint dialogs, the Save dialogs, the PIN prompt, the On-Screen Keyboard, Control Panel,

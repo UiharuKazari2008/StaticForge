@@ -1551,10 +1551,10 @@ class NotepadManager {
 
         if (this.notebookCurrentNote) {
             const unsavedMarker = this.notebookHasUnsavedChanges ? ' *' : '';
-            this.notebookTitleElement.textContent = `Notion [${this.notebookCurrentNote.name}]${unsavedMarker}`;
+            this.notebookTitleElement.textContent = `${this.notebookCurrentNote.name}${unsavedMarker} - Windows Journal`;
         } else {
-            // Show "Notion [Untitled] *" for new unsaved notes
-            const title = this.notebookHasUnsavedChanges ? 'Notion [Untitled]*' : 'Notion';
+            // "Untitled* - Windows Journal" for a new unsaved note, "Windows Journal" for none
+            const title = this.notebookHasUnsavedChanges ? 'Untitled* - Windows Journal' : 'Windows Journal';
             this.notebookTitleElement.textContent = title;
         }
     }
@@ -1758,7 +1758,7 @@ class Notepad {
                 { text: 'Open', icon: 'fas fa-folder-open', action: 'open' },
                 { text: 'Save', icon: 'fas fa-save', action: 'save', disabled: !this.hasUnsavedChanges },
                 { separator: true },
-                { text: 'Open in Notion', icon: 'fa-regular fa-window-maximize', action: 'open-in-notion' },
+                { text: 'Open in Windows Journal', icon: 'fa-regular fa-window-maximize', action: 'open-in-notion' },
                 { text: 'Update', icon: 'fas fa-cog', action: 'update', disabled: noNote },
                 { text: 'Add to Desktop', icon: 'fas fa-arrow-down-left', action: 'add-shortcut', disabled: noNote },
                 { separator: true },

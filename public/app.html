@@ -5928,13 +5928,14 @@ Examples:
                 <div class="explorer-favorites">
                     <div class="explorer-nav-heading">Favorite Links</div>
                     <ul id="explorerFavoriteLinks" class="explorer-favorite-links"></ul>
+                    <button type="button" id="explorerFavoritesMore" class="explorer-favorites-more hidden">More <span aria-hidden="true">&raquo;</span></button>
                 </div>
                 <div id="explorerFolders" class="explorer-folders">
                     <button type="button" id="explorerFoldersBar" class="explorer-folders-bar" aria-expanded="false">
                         <span>Folders</span><span class="explorer-folders-chevron" aria-hidden="true"></span>
                     </button>
-                    <div class="explorer-folders-tree win7">
-                        <ul id="explorerFolderTree" class="tree-view"></ul>
+                    <div class="explorer-folders-tree">
+                        <ul id="explorerFolderTree" class="explorer-tree" role="tree"></ul>
                     </div>
                 </div>
             </aside>
@@ -6138,7 +6139,7 @@ Examples:
             <div class="modal-window-title-main">
                 <i class="fas fa-notebook icon-fa"></i>
                 <img src="/static_images/app_icons/24/vista-journal.webp" srcset="/static_images/app_icons/24/vista-journal.webp 1x, /static_images/app_icons/48/vista-journal.webp 2x" alt="" class="icon-image" />
-                <span id="notebookCurrentNoteTitle">Notion</span>
+                <span id="notebookCurrentNoteTitle">Windows Journal</span>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>

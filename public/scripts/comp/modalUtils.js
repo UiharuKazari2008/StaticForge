@@ -6553,7 +6553,7 @@ const startMenuLaunchables = [
     { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'vista-iexplore.png', text: 'Grimoire', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openGrimoireApplet(); } },
     { launchId: 'alchemy', icon: 'fas fa-atom', imageIcon: 'alchemy.png', text: 'Alchemy', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openGrimoireUrl(ALCHEMY_HOME_URL); } },
     { launchId: 'naxt', icon: 'fas fa-flask', imageIcon: 'test_tube.png', text: 'Atelier', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openNaxtApplet(); } },
-    { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'vista-journal.png', text: 'Notion', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.handleNewNote(); } } },
+    { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'vista-journal.png', text: 'Windows Journal', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.handleNewNote(); } } },
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'vista-messenger.png', text: 'Chat', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('chat'); } window.chatSystem.showAllChats(); } },
     { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'vista-explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
     { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'remote_desktop.png', text: 'Remote Desktop Manager', appMenu: true, action: async () => { await featureLoader.loadFeature('remote_desktop'); /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
@@ -8311,7 +8311,7 @@ function getStartMenuPlacesAll() {
         { id: 'user', text: startMenuUserName(), action: () => openExplorerApplet() },
         { id: 'cartograph', text: 'Cartograph', imageIcon: 'vista-explorer.png', action: launch('explorer') },
         { id: 'gallery', text: 'Gallery', imageIcon: 'art.png', desktopOnly: true, action: launch('workspace') },
-        { id: 'notion', text: 'Notion', imageIcon: 'vista-journal.png', action: launch('notebook') },
+        { id: 'notion', text: 'Windows Journal', imageIcon: 'vista-journal.png', action: launch('notebook') },
         // Vista's Games place: the Games Explorer (public/scripts/comp/desktop-apps/vista-games/gamesExplorer.js)
         { id: 'games', text: 'Games', imageIcon: 'vista-games.png', desktopOnly: true, action: launch('games-explorer') },
         { separator: true },

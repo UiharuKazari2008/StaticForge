@@ -388,7 +388,7 @@ function setupMainMenuContextMenus() {
                     },
                     {
                         icon: 'fa-regular fa-notebook',
-                        text: 'Notion',
+                        text: 'Windows Journal',
                         action: 'open-notebook'
                     },
                     {

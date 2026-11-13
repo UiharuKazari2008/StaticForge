@@ -4,7 +4,7 @@
  * files from Cartograph beside Melaton's notes.
  *
  *   File    New Ctrl+N, Open... Ctrl+O, Save Ctrl+S, Save As..., Page Setup..., Print... Ctrl+P, Exit
- *           (a note keeps Open in Notion, Note Properties and Add to Desktop under them)
+ *           (a note keeps Open in Windows Journal, Note Properties and Add to Desktop under them)
  *   Edit    Undo Ctrl+Z, Cut, Copy, Paste, Delete, Find... Ctrl+F, Find Next F3, Replace... Ctrl+H,
  *           Go To... Ctrl+G, Select All Ctrl+A, Time/Date F5 (and a note's Copy Lookback / novel items)
  *   Format  Word Wrap, Font...      View  Status Bar (off while Word Wrap is on, as in Vista)
@@ -209,7 +209,7 @@
                 ];
                 if (isNote) {
                     items.push({ separator: true },
-                        { text: 'Open in Notion', action: 'open-in-notion' },
+                        { text: 'Open in Windows Journal', action: 'open-in-notion' },
                         { text: 'Note Properties...', action: 'update' },
                         { text: 'Add to Desktop', action: 'add-shortcut' });
                 }
@@ -836,7 +836,7 @@
         return np;
     }
 
-    // Notion's New Note still makes a note (it saves to Melaton's notes, as before)
+    // Windows Journal's New Note still makes a note (it saves to Melaton's notes, as before)
     const MgrProto = root.notepadManager && Object.getPrototypeOf(root.notepadManager);
     if (MgrProto && !MgrProto.__vistaNewNote) {
         const handleNewNote = MgrProto.handleNewNote;
