@@ -58,7 +58,8 @@
 
     async function details(alert) {
         if (!alert) return;
-        if (isPhone() && root.wmWeather && typeof root.wmWeather.showAlert === 'function') {
+        // the Weather app's Alert page on the phone and on the desktop (Melaton Weather, #792)
+        if (root.wmWeather && typeof root.wmWeather.showAlert === 'function') {
             root.wmWeather.showAlert(alert);
             return;
         }
@@ -145,7 +146,10 @@
             });
             if (note) return;
         }
-        if (typeof root.showGlassToast === 'function') root.showGlassToast('info', esc(title), esc(text), false, 15000);
+        if (typeof root.showGlassToast === 'function') {
+            root.showGlassToast('info', esc(title), esc(text), false, 15000, null,
+                root.wmWeather ? [{ text: 'Open Weather', type: 'primary', closeOnClick: true, onClick: () => root.wmWeather.open() }] : null);
+        }
     }
 
     function wire() {

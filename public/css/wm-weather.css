@@ -1630,3 +1630,41 @@
 }
 
 .wm-weather .wxw-fx.is-on { opacity: 1; }
+
+/* ================================================================ Melaton Weather on the desktop (#792) */
+
+/* a Vista window: the command bar under the caption, then the phone's page in its wide layout */
+#melatonWeatherModal .wxd-client {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+}
+
+#melatonWeatherModal .wxd-commands { flex: 0 0 auto; display: flex; align-items: center; }
+#melatonWeatherModal .wxd-commands .explorer-command-set { flex: 1 1 auto; }
+#melatonWeatherModal .wxd-sep { width: 1px; height: 20px; margin: 0 4px; background: rgba(255, 255, 255, 0.35); box-shadow: 1px 0 rgba(0, 0, 0, 0.25); }
+#melatonWeatherModal .wxd-spring { flex: 1 1 auto; }
+#melatonWeatherModal .wxd-cmd.is-on { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.45); }
+#melatonWeatherModal .wxd-cmd.is-back::before { content: '\2039'; margin-right: 5px; font-size: 15px; line-height: 1; }
+#melatonWeatherModal .wxd-cmd.is-menu::after { content: ''; margin-left: 6px; border: 4px solid transparent; border-top-color: currentColor; border-bottom: 0; }
+#melatonWeatherModal .wxd-body { position: relative; flex: 1 1 auto; min-height: 0; }
+#melatonWeatherModal .wm-page.wm-weather { --wm-px: 1.25px; }
+#melatonWeatherModal.wxd-busy, #melatonWeatherModal.wxd-busy * { cursor: progress !important; }
+
+/* Settings: a Vista property page (Segoe UI 9 pt, the light client's own controls) */
+#melatonWeatherModal .wxd-settings { background: #fff; color: #000; font: 12px 'Segoe UI', Tahoma, sans-serif; }
+#melatonWeatherModal .wxd-settings .wm-form-hdr { height: auto; padding: 14px 18px 10px; border: 0; color: #1e3287; font-size: 15px; font-weight: normal; }
+#melatonWeatherModal .wxd-settings .wm-form { max-width: 560px; padding: 0 18px 18px; }
+#melatonWeatherModal .wxd-sub { margin: 10px 0 6px; color: #1e3287; font-size: 12px; }
+#melatonWeatherModal .wxd-field { display: flex; align-items: center; gap: 6px; min-height: 22px; }
+#melatonWeatherModal .wxd-row { display: grid; grid-template-columns: 120px minmax(0, 220px); align-items: center; gap: 8px; min-height: 28px; padding-left: 22px; }
+#melatonWeatherModal .wxd-row select { min-width: 0; }
+#melatonWeatherModal .wxd-note { margin: 6px 0; color: #5a5a5a; }
+#melatonWeatherModal .wxd-gap { height: 10px; }
+
+/* the radar's Vista trackbar, its ends labelled */
+#melatonWeatherModal .wxw-map-track { display: flex; flex-direction: column; justify-content: center; }
+#melatonWeatherModal .wxd-track-scale { display: flex; justify-content: space-between; color: #c9d4df; font-size: 11px; }
+#melatonWeatherModal .wxw-map-track input[type="range"] { width: 100%; }

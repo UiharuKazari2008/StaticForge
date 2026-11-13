@@ -6682,6 +6682,8 @@ function buildToolsSubmenuItems() {
         { launchId: 'soundrec', icon: 'fas fa-microphone', imageIcon: 'vista-sound-recorder.png', text: 'Sound Recorder', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'soundrec' }) },
         // Melaton Contacts (Yozora #632; apps/contacts, a system package)
         { launchId: 'contacts', icon: 'fas fa-address-book', imageIcon: 'vista-contacts.png', text: 'Melaton Contacts', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'contacts' }) },
+        // Melaton Weather (Yozora #792): the phone's Weather in a desktop window (wmWeather.js openDesktop)
+        { launchId: 'weather', icon: 'fas fa-cloud-sun', imageIcon: 'melaton-weather.png', text: 'Melaton Weather', appMenuLocation: 'tools', desktopOnly: true, action: () => { if (window.wmWeather && typeof window.wmWeather.openDesktop === 'function') window.wmWeather.openDesktop(); } },
         // Melaton Calendar (Yozora #632; apps/calendar, a system package)
         { launchId: 'calendar', icon: 'fas fa-calendar', imageIcon: 'vista-calendar.png', text: 'Melaton Calendar', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'calendar' }) },
         // Accessories > Snipping Tool (Yozora #632; apps/snipping, a system package)
@@ -7853,6 +7855,7 @@ const START_MENU_SYSTEM_PLACES = {
     'mobile-device-center': { at: 'top' },         // Windows Mobile Device Center
     'melaton-messenger': { at: 'top' },            // Windows Live Messenger / Windows Mail sit at the top level
     calendar: { at: 'top' },                       // Windows Calendar
+    weather: { at: 'top' },                        // Melaton Weather (#792): beside Calendar and Contacts
     contacts: { at: 'top' },                       // Windows Contacts
     'media-player': { at: 'top' },                 // Windows Media Player
     'remote-desktop-connection': { at: 'accessories' },

@@ -1543,6 +1543,11 @@ const vsbMoonPhase = function () {
 };
 
 const vsbWeatherMount = function (inst) {
+    // double-click opens Melaton Weather (#792): the full forecast, alerts, radar and graphs
+    if (inst.el && !inst.el.dataset.vsbWeatherOpen) {
+        inst.el.dataset.vsbWeatherOpen = '1';
+        inst.el.addEventListener('dblclick', () => { if (window.wmWeather && typeof window.wmWeather.openDesktop === 'function') window.wmWeather.openDesktop(); });
+    }
     const wx = vsbEl('div', 'vsb-wx', inst.body);
     inst.parts = { wx };
     inst.data = null;
