@@ -182,13 +182,18 @@
         return c ? { root: c.id, path: CAMERA_DIR } : null;
     }
 
-    /** The folder the app opens in: the camera roll when it has pictures, else the newest album's card. */
+    /**
+     * Where a card opens when it is picked in the drop-down (Yukimi: the camera roll): its
+     * DCIM\Camera when that holds pictures, else the card itself with its albums as folder cells.
+     */
+    function cardStart(rootId) {
+        if (albumAt(rootId, CAMERA_DIR)) return { root: rootId, path: CAMERA_DIR };
+        return { root: rootId, path: '/' };
+    }
+
     function startLocation() {
         const roll = cameraRoll();
-        if (!roll) return null;
-        if (albumAt(roll.root, roll.path)) return roll;
-        // no camera pictures yet (a new phone): the card itself, its albums as folder cells
-        return { root: roll.root, path: '/' };
+        return roll ? cardStart(roll.root) : null;
     }
 
     // ---------------------------------------------------------------- the folder
@@ -295,7 +300,8 @@
     function cellHtml(e) {
         const sel = e.path === selectedPath ? ' is-selected' : '';
         const chk = picked && picked.has(e.path) ? ' is-picked' : '';
-        const dur = e.video ? `<i class="wm-pv-dur">${esc(duration(e.duration))}</i>` : '';
+        // an app without media.list gives no length: none is shown rather than 0:00
+        const dur = e.video && Number(e.duration) > 0 ? `<i class="wm-pv-dur">${esc(duration(e.duration))}</i>` : '';
         return `<button type="button" class="wm-pv-cell wm-photo${e.video ? ' is-video' : ''}${sel}${chk}" data-path="${esc(e.path)}" aria-label="${esc(e.name)}"><img src="${esc(thumbUrl(e))}" alt="" loading="lazy" decoding="async" draggable="false">${dur}</button>`;
     }
 
@@ -629,15 +635,25 @@
         };
     }
 
-    /** The drop-down's card rows: each card, its folder tree under the card on screen. */
+    /**
+     * The drop-down's card rows: each card, and under the card on screen only the path down to the
+     * folder on screen, as WM's list shows My Device > My Documents > My Pictures (ref-pv/03);
+     * other folders are reached through the folder cells. A card picked here opens on its camera roll.
+     */
     function folderItems() {
         const out = [];
         for (const c of cards()) {
-            out.push({ label: c.label, icon: 'fe-storage-card', radio: !!(loc && loc.root === c.id && loc.path === '/'), action: () => sh.busy(open(c.id, '/'), { paint: true }) });
-            if (!loc || loc.root !== c.id) continue;
-            for (const n of treeOf(c.id)) {
-                out.push({ label: n.name, indent: n.depth, radio: loc.path === n.path, action: () => sh.busy(open(c.id, n.path), { paint: true }) });
-            }
+            const here = !!(loc && loc.root === c.id);
+            out.push({
+                label: c.label, icon: 'fe-storage-card', radio: here && loc.path === '/',
+                action: () => { const st = cardStart(c.id); return sh.busy(open(st.root, st.path), { paint: true }); }
+            });
+            if (!here || loc.path === '/') continue;
+            const parts = loc.path.split('/').filter(Boolean);
+            parts.forEach((name, i) => {
+                const path = `/${parts.slice(0, i + 1).join('/')}`;
+                out.push({ label: name, indent: i + 1, radio: path === loc.path, action: () => sh.busy(open(c.id, path), { paint: true }) });
+            });
         }
         return out;
     }

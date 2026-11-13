@@ -5894,7 +5894,6 @@
         // Device (this device's internal storage: the gallery's views). phoneOn(): a card folder is on screen
         const phoneGallery = () => (window.wmPhoneGallery && window.wmPhoneGallery.available() ? window.wmPhoneGallery : null);
         const phoneOn = () => { const g = phoneGallery(); return !!(g && g.location()); };
-        let phoneStarted = false;
         let searchBar = null;
         let searchSubmitted = false; // a search ran since the bar opened: Cancel must clear it
         const activeView = () => {
@@ -6584,22 +6583,15 @@
             },
             show(page) {
                 layoutGrid(page);
-                // the storage cards: the drive's state, and the first opening goes to the phone's
-                // camera roll (WM's Pictures & Videos opens in My Pictures); a later change redraws
+                // the storage cards' state for the drop-down (the app opens on My Device's prints,
+                // Yukimi #788; a card picked there opens on its camera roll); a later change redraws
                 const pgal = window.wmPhoneGallery;
                 if (pgal) {
-                    busy(pgal.init(() => {
+                    pgal.init(() => {
                         const pg = apps.get('gallery') && apps.get('gallery').page;
                         if (pg) renderGrid(pg, false);
                         if (current === 'gallery') renderSoftKeys();
-                    }).then((ok) => {
-                        if (ok && !phoneStarted) {
-                            phoneStarted = true;
-                            const start = pgal.startLocation();
-                            if (start) return pgal.open(start.root, start.path);
-                        }
-                        return null;
-                    }).catch(() => { /* My Device alone */ }), { paint: true });
+                    }).catch(() => { /* My Device alone */ });
                 }
                 // the first fill of the grid behind WM's wait cursor (the folder bar and soft keys are
                 // up at once); later shows only redraw what changed
