@@ -194,7 +194,8 @@
     api.on('phone-ready?', () => announceReady(true));
     api.on('ws-open', () => {
         if (!isPhone()) return;
-        setCarrying(carrierSend({ type: 'sub_open', sub: SUB }));
+        // raw: packets for the DeX window come unwrapped; cc: broadcasts come once, named for it (#798)
+        setCarrying(carrierSend({ type: 'sub_open', sub: SUB, raw: 1, cc: 1 }));
         api.post(carryingNow ? { type: 'ws-opened' } : { type: 'ws-closed', reason: 'The phone is not connected', phoneReady: false });
     });
     api.on('ws-up', (m) => {
@@ -205,6 +206,16 @@
     api.on('ws-close', () => { if (isPhone() && carryingNow) { carrierSend({ type: 'sub_close', sub: SUB }); setCarrying(false); } });
     // the DeX window went away (unplugged, closed, restarting): its sub-client ends with it
     api.on('peer', (m) => { if (m.role === 'desktop' && m.state === 'left' && isPhone() && carryingNow) { carrierSend({ type: 'sub_close', sub: SUB }); setCarrying(false); } });
+    /** websocket.js (phone window): a raw sub-client packet "\u0001<sub>\u0001<packet>", relayed without parsing it. */
+    api.fromServerRaw = (text) => {
+        const at = text.indexOf('\u0001', 1);
+        if (at < 0 || text.slice(1, at) !== SUB || !carryingNow) return;
+        api.post({ type: 'ws-down', data: text.slice(at + 1) });
+    };
+    /** websocket.js (phone window): a broadcast the server sent once for both windows (_cc names the DeX window). */
+    api.relayCopy = (subs, text) => {
+        if (carryingNow && subs.includes(SUB) && typeof text === 'string') api.post({ type: 'ws-down', data: text });
+    };
     /** websocket.js (phone window): a server packet for a sub-client; true when it was one. */
     api.fromServer = (message) => {
         if (!message || (message.type !== 'sub_packet' && message.type !== 'sub_closed')) return false;
@@ -346,11 +357,57 @@
         else if (typeof root.restartClientNavigate === 'function') root.restartClientNavigate();
     });
 
+    // ---- the phone asleep (#798): nothing may stop the app in the background
+    //
+    // A home-screen phone (and so a hybrid one) must keep its link while it sleeps: messages arrive, the
+    // DeX window's connection rides on it. Android's battery optimisation, the per-app "Restricted"
+    // battery use and the restricted standby bucket can each stop it. The app reports them (DSApp
+    // AndroidHome.getPowerState, feat/continuity-power); once the phone has booted, and when the DeX
+    // window joins, a notification offers the fix (at most once a day).
+    const POWER_TOLD = 'melatonPowerToldAt';
+    function powerProblems() {
+        const H = root.AndroidHome;
+        if (!H || typeof H.getPowerState !== 'function') return null;
+        let st = null;
+        try { st = JSON.parse(H.getPowerState()); } catch (_) { return null; }
+        if (!st) return null;
+        return {
+            optimised: st.ignoringOptimizations === false,
+            restricted: st.backgroundRestricted === true || Number(st.standbyBucket) >= 40
+        };
+    }
+    api.powerState = () => { try { return JSON.parse(root.AndroidHome.getPowerState()); } catch (_) { return null; } };
+    function checkPower(force) {
+        if (!isPhone()) return;
+        const H = root.AndroidHome;
+        let home = false;
+        try { home = !!(H && typeof H.isHome === 'function' && H.isHome()); } catch (_) { home = false; }
+        if (!home) return;
+        const p = powerProblems();
+        if (!p || (!p.optimised && !p.restricted)) return;
+        try { if (!force && Date.now() - (Number(localStorage.getItem(POWER_TOLD)) || 0) < 86400000) return; } catch (_) { /* private mode: tell */ }
+        const sh = root.wmShell;
+        if (!sh || typeof sh.notify !== 'function') return;
+        try { localStorage.setItem(POWER_TOLD, String(Date.now())); } catch (_) { /* best effort */ }
+        const text = p.restricted
+            ? 'Battery use for Dreamscape is restricted. While the phone sleeps, Android stops it: messages can be missed and the desktop on the external display loses its connection.\nIn Settings, set Battery to Unrestricted.'
+            : 'Android\'s battery optimisation can stop Dreamscape while the phone sleeps: messages can be missed and the desktop on the external display loses its connection.';
+        const buttons = [p.restricted
+            ? { text: 'Settings', type: 'primary', closeOnClick: true, onClick: () => { try { H.openAppSettings(); } catch (_) { /* old app */ } } }
+            : { text: 'Allow', type: 'primary', closeOnClick: true, onClick: () => { try { H.requestBatteryExemption(); } catch (_) { /* old app */ } } }];
+        sh.notify({ title: 'Battery optimisation', text, icon: 'warning', asNote: true, timeout: false, buttons });
+    }
+    api.checkPower = checkPower;
+
     // the phone window: say when it is ready, and that it is going
     if (api.available) {
         const watch = () => {
             if (!isPhone()) return;
-            new MutationObserver(() => announceReady(false)).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wm-boot'] });
+            new MutationObserver(() => {
+                announceReady(false);
+                if (document.documentElement.dataset.wmBoot === 'done') setTimeout(() => checkPower(false), 5000);
+            }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wm-boot'] });
+            api.on('peer', (m) => { if (m.role === 'desktop' && m.state === 'joined') setTimeout(() => checkPower(false), 5000); });
             const c = root.wsClient;
             if (c && typeof c.on === 'function') {
                 c.on('connected', () => {

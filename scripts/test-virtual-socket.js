@@ -71,6 +71,24 @@ class FakeCarrier extends EventEmitter {
     assert.strictEqual(closed2, 1);
     assert.strictEqual(carrier.out.length, before);
 
+    // raw + cc (#798): a phone page that asked gets unwrapped packets, and a broadcast once with _cc
+    const rawOut = [];
+    const raw = { readyState: 1, send(d, cb) { rawOut.push(d); if (cb) cb(); } };
+    let sub3 = null;
+    vs.handle(raw, { type: 'sub_open', sub: 'desktop', raw: 1, cc: 1 }, (v) => { sub3 = v; });
+    sub3.send('{"type":"x"}');
+    assert.strictEqual(rawOut.pop(), '\u0001desktop\u0001{"type":"x"}');
+    const other = { readyState: 1 };
+    const sent = [];
+    vs.sendCoalesced([raw, sub3, other], { type: 'b' }, (ws, p) => sent.push([ws, p]));
+    assert.strictEqual(sent.length, 2);
+    assert.deepStrictEqual(JSON.parse(sent.find((x) => x[0] === raw)[1]), { type: 'b', _cc: ['desktop'] });
+    assert.deepStrictEqual(JSON.parse(sent.find((x) => x[0] === other)[1]), { type: 'b' });
+    // the sub-client alone (its carrier not a recipient): its own copy
+    const alone = [];
+    vs.sendCoalesced([sub3], { type: 'c' }, (ws, p) => alone.push(ws));
+    assert.deepStrictEqual(alone, [sub3]);
+
     // bad sub ids are ignored
     assert.strictEqual(vs.handle(carrier, { type: 'sub_open', sub: '../x' }, () => { throw new Error('no'); }), true);
     console.log('virtualSocket: ok');

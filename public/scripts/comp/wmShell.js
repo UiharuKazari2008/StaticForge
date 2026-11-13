@@ -2270,6 +2270,8 @@
             ws._recordWsMessage = (direction, message) => {
                 const before = ws.connectionStats ? ws.connectionStats.messagesIn + ws.connectionStats.messagesOut : 0;
                 record(direction, message);
+                // a server message (or a request going out: prints in progress) may change an icon
+                statusDirty();
                 const after = ws.connectionStats ? ws.connectionStats.messagesIn + ws.connectionStats.messagesOut : before + 1;
                 if (after !== before && !(message && QUIET_WS.has(message.type))) dataUsed();
             };
@@ -2333,10 +2335,50 @@
         if (Date.now() - dcDownSince >= DC_NOTICE_MS) dcNotice();
     }
 
+    /**
+     * The title bar repaints when something it shows may have changed, not on a 2 s poll (#798: on a
+     * hybrid phone every tick shared the renderer with the DeX window). What changes it comes in as a
+     * server message (mail, texts, Messenger, IMAP, weather, traffic, the Director, prints, updates),
+     * an Android event (androiddevicestatus, radios), a notification or toast, or a tap; each marks it
+     * dirty and one repaint follows (statusDirty, 250 ms). A slow pass (STATUS_SAFETY_MS) catches
+     * anything that changed without a signal.
+     */
+    const STATUS_SAFETY_MS = 120000;
+    let statusTimer = null;
+    function statusDirty() {
+        if (statusTimer || !shell) return;
+        statusTimer = setTimeout(() => { statusTimer = null; refreshStatus(); }, 250);
+    }
+    function watchStatusSignals() {
+        const ws = window.wsClient;
+        if (ws && typeof ws.on === 'function') { ws.on('connected', statusDirty); ws.on('disconnected', statusDirty); }
+        // a setting, a sound mode, an app opened: taps and keys (volume keys reach the page as keys)
+        document.addEventListener('click', statusDirty, { capture: true, passive: true });
+        document.addEventListener('keyup', statusDirty, { capture: true, passive: true });
+        document.addEventListener('wmSettingsChange', statusDirty);
+        document.addEventListener('wmWeatherChange', statusDirty);
+        document.addEventListener('wmTrafficChange', statusDirty);
+        // the other window of the app (DeX) changed a shared setting
+        window.addEventListener('storage', statusDirty);
+        // back on screen: paint now
+        window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on) refreshStatus(); });
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshStatus(); });
+        setInterval(refreshStatus, STATUS_SAFETY_MS);
+        // Today's clock: on the minute, while Today is up and the screen is on
+        const minute = () => {
+            setTimeout(() => {
+                const today = apps.get('today');
+                if (current === 'today' && document.documentElement.dataset.screenOff === undefined && today && today.page) today.refresh();
+                minute();
+            }, 60000 - (Date.now() % 60000) + 50);
+        };
+        minute();
+    }
+
     function refreshStatus() {
         if (!shell) return;
         applyStartButton();
-        // every 2 s: write only what changed (an attribute write, even of the same value,
+        // on every change (statusDirty): write only what changed (an attribute write, even of the same value,
         // invalidates the [data-icon] rules and lays the title bar out again)
         const ws = window.wsClient;
         const connected = !!(ws && typeof ws.isConnected === 'function' && ws.isConnected());
@@ -2891,24 +2933,21 @@
         };
         ['roaming', 'volume', ...STATUS_APP_ROLES].forEach((r) => el(r).classList.remove('wm-shed'));
         statusFolded = [];
-        // WM 6.1's notification area (#811): a fixed number of slots left of the device icons. The
-        // app icons and the speech bubble each take one; once more are pending than there are
-        // slots, the group icon (whose tap opens the tray of them) takes the last free slot and
-        // holds the rest: the first icons keep the other slots, none is left empty (Yukimi, Nov 13)
+        // WM 6.1's notification area (#811): room for a few icons is kept left of the device icons
+        // (the title ends at the same place whatever is pending). Every app icon shows while the
+        // bar has room; only when it does not, the last ones fold into the one group icon (whose
+        // tap opens the tray of them), as few as it takes; the first icons keep their own places
         const slots = statusSlots();
         const apps = STATUS_APP_ROLES.filter((r) => !el(r).hidden);
         const fold = (keep) => {
-            const folded = apps.slice(keep);
-            folded.forEach((r) => el(r).classList.add('wm-shed'));
-            statusFolded = folded;
+            apps.forEach((r, i) => el(r).classList.toggle('wm-shed', i >= keep));
+            statusFolded = apps.slice(keep);
+            paintNotifyIcon();
         };
-        if (apps.length + (notesForBubbleIcon().length ? 1 : 0) > slots) fold(slots - 1);
         paintNotifyIcon();
         const reserve = shell.querySelector('.wm-status-reserve');
-        const used = (apps.length - statusFolded.length) + (el('notify').hidden ? 0 : 1);
+        const used = apps.length + (el('notify').hidden ? 0 : 1);
         const free = Math.max(0, slots - used);
-        // the unused slots stay as room, so the title ends at the same place whatever is pending
-        // (not with the camera in the bar: its own layout decides there)
         const setReserve = (n) => {
             reserve.hidden = !n;
             if (n) reserve.style.setProperty('--slots', String(n));
@@ -2919,24 +2958,27 @@
         // right of the camera instead of staying left of it (Yukimi, Nov 13, Fold7)
         let cameraInBar = applyCameraHole(bar);
         const relayout = () => { if (cameraInBar) cameraInBar = applyCameraHole(bar); };
+        // the kept room (not with the camera in the bar: its own layout decides there)
         if (!cameraInBar) setReserve(free);
         // the camera in the title bar takes room: away from Today the volume icon steps aside for the
         // status icons (Yukimi, Nov 13); Today keeps it
         if (cameraInBar && current !== 'today' && !el('volume').hidden) { el('volume').classList.add('wm-shed'); relayout(); }
         if (fits()) return;
-        // a bar too narrow for the reserved room gives it up first
+        // a bar too narrow for the kept room gives it up first
         if (!reserve.hidden) { setReserve(0); if (fits()) return; }
         if (!el('roaming').hidden) { el('roaming').classList.add('wm-shed'); relayout(); if (fits()) return; }
-        if (apps.length && statusFolded.length < apps.length) {
-            fold(0);
-            paintNotifyIcon();
+        // fold from the end, one more each time: a group holds two or more (one app icon alone
+        // in it would take the same room as the icon itself)
+        const notesInGroup = notesForBubbleIcon().length ? 1 : 0;
+        for (let keep = apps.length - (notesInGroup ? 1 : 2); keep >= 0; keep--) {
+            fold(keep);
             relayout();
             if (fits()) return;
         }
         if (!el('volume').hidden) { el('volume').classList.add('wm-shed'); relayout(); }
     }
 
-    /** The title bar's notification slots (#811): Settings key wmStatusSlots, 1 to 4, 2 by default. */
+    /** The title bar's kept room in icons (#811): Settings key wmStatusSlots, 1 to 4, 2 by default. */
     function statusSlots() {
         let n = NaN;
         try { n = parseInt(localStorage.getItem('wmStatusSlots'), 10); } catch (_) { n = NaN; }
@@ -3357,7 +3399,7 @@
         if (noteQueued) return;
         noteQueued = true;
         // a timer, not a frame: a tab in the background still keeps its notifications
-        setTimeout(() => { noteQueued = false; refreshNotes(); }, 30);
+        setTimeout(() => { noteQueued = false; refreshNotes(); statusDirty(); }, 30);
     }
 
     /**
@@ -8417,7 +8459,7 @@
         if (!wrapWorkspaceSwitch()) { const t = setInterval(() => { if (wrapWorkspaceSwitch()) clearInterval(t); }, 1000); setTimeout(() => clearInterval(t), 60000); }
         startBoot();
         refreshStatus();
-        setInterval(refreshStatus, 2000);
+        watchStatusSignals();
         window.addEventListener('resize', () => { syncBezel(); if (noteTrayOpen) renderNotes(); else fitStatus(); });
         // the Android app moved or rotated the camera hole (--camera-hole-*)
         window.addEventListener('dreamscape:cutout', () => { syncBezel(); fitStatus(); });

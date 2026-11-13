@@ -276,7 +276,8 @@ class WebSocketServer {
             }
             this.sendToClient(ws, connectionPayload);
 
-            if (clientInfo.authenticated) {
+            // (not a Continuity sub-client: its carrier, the same session, just did, #798)
+            if (clientInfo.authenticated && !ws.virtual) {
                 // A logged-in client restarts the 6-hourly Claude usage refresh (modules/claudeUsageProbe.js).
                 try {
                     require('./claudeUsageProbe').noteClientLogin(this.globalResources);
@@ -452,7 +453,17 @@ class WebSocketServer {
             try {
                 workspaceId = this.globalResources.getWorkspaceManager().getActiveWorkspace(sessionId) || 'default';
             } catch (_err) { /* default workspace */ }
-            const data = await buildGalleryHint({ globalResources: this.globalResources }, workspaceId);
+            // one build per workspace for a few seconds: a hybrid phone and its DeX window (#798), or tabs
+            // reconnecting together after a restart, get the same hint (two metadata queries) relayed
+            if (!this._galleryHintCache) this._galleryHintCache = new Map();
+            const hit = this._galleryHintCache.get(workspaceId);
+            let pending = hit && Date.now() - hit.at < 15000 ? hit.promise : null;
+            if (!pending) {
+                pending = buildGalleryHint({ globalResources: this.globalResources }, workspaceId);
+                this._galleryHintCache.set(workspaceId, { at: Date.now(), promise: pending });
+                pending.catch(() => this._galleryHintCache.delete(workspaceId));
+            }
+            const data = await pending;
             this.sendToClient(ws, {
                 type: 'gallery_hint',
                 data,
@@ -890,15 +901,12 @@ class WebSocketServer {
     }
 
     broadcast(message, filter = null) {
-        let payload = null;
+        const to = [];
         this.forEachSocket(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                if (!filter || filter(this.clients.get(client))) {
-                    if (payload === null) payload = JSON.stringify(message);
-                    this.sendToClient(client, payload);
-                }
-            }
+            if (client.readyState === WebSocket.OPEN && (!filter || filter(this.clients.get(client)))) to.push(client);
         });
+        // a Continuity carrier and its sub-client: one copy over the phone's socket (#798)
+        require('./ws/virtualSocket').sendCoalesced(to, message, (ws, payload) => this.sendToClient(ws, payload));
     }
 
     /** Alias used by generation quips and admin resource broadcasts. */
@@ -907,14 +915,12 @@ class WebSocketServer {
     }
 
     sendToUser(sessionId, message) {
-        let payload = null;
+        const to = [];
         this.forEachSocket(client => {
             const clientInfo = this.clients.get(client);
-            if (clientInfo && clientInfo.sessionId === sessionId && client.readyState === WebSocket.OPEN) {
-                if (payload === null) payload = JSON.stringify(message);
-                this.sendToClient(client, payload);
-            }
+            if (clientInfo && clientInfo.sessionId === sessionId && client.readyState === WebSocket.OPEN) to.push(client);
         });
+        require('./ws/virtualSocket').sendCoalesced(to, message, (ws, payload) => this.sendToClient(ws, payload));
     }
     
     /**

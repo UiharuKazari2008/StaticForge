@@ -41,6 +41,12 @@ class VirtualSocket extends EventEmitter {
             if (done) done(new Error('closed'));
             return;
         }
+        // a phone page that said so (sub_open raw) takes text packets as "\u0001<sub>\u0001<packet>": it
+        // relays them to the DeX window without parsing them first (#798)
+        if (!Buffer.isBuffer(data) && this.carrier._dsRaw) {
+            this.carrier.send(`\u0001${this.sub}\u0001${String(data)}`, done);
+            return;
+        }
         // text packets travel as they are; a binary frame (rare: HTTP carries files) as base64
         const packet = Buffer.isBuffer(data) ? { type: 'sub_packet', sub: this.sub, binary: data.toString('base64') } : { type: 'sub_packet', sub: this.sub, data: String(data) };
         this.carrier.send(JSON.stringify(packet), done);
@@ -67,6 +73,31 @@ class VirtualSocket extends EventEmitter {
 const subsOf = new WeakMap(); // carrier socket -> Map(sub -> VirtualSocket)
 
 /**
+ * One message to many sockets (broadcast, sendToUser): a sub-client whose carrier gets the same message
+ * is not sent its own copy over the same socket; the carrier's copy names it in _cc and the phone page
+ * relays that text to the DeX window (#798). send(ws, payloadString) does the sending.
+ */
+function sendCoalesced(recipients, message, send) {
+    const all = new Set(recipients);
+    const cc = new Map();
+    for (const ws of recipients) {
+        const c = ws && ws.virtual ? ws.carrier : null;
+        if (c && c._dsCc && all.has(c) && c.readyState === OPEN && ws.readyState === OPEN) {
+            if (!cc.has(c)) cc.set(c, []);
+            cc.get(c).push(ws.sub);
+            all.delete(ws);
+        }
+    }
+    let plain = null;
+    for (const ws of all) {
+        const subs = cc.get(ws);
+        if (subs) { send(ws, JSON.stringify(Object.assign({}, message, { _cc: subs }))); continue; }
+        if (plain === null) plain = JSON.stringify(message);
+        send(ws, plain);
+    }
+}
+
+/**
  * A carrier's sub_* packet. connect(vws, req) runs the server's connection handler for a new sub-client.
  * True when the packet was one of these (the caller then stops).
  */
@@ -78,6 +109,9 @@ function handle(carrier, message, connect) {
     let subs = subsOf.get(carrier);
     if (!subs) { subs = new Map(); subsOf.set(carrier, subs); }
     if (type === 'sub_open') {
+        // what the phone page understands: raw relayed packets, and broadcasts sent once with _cc (#798)
+        if (message.raw) carrier._dsRaw = true;
+        if (message.cc) carrier._dsCc = true;
         const old = subs.get(sub);
         if (old) { old._fromCarrier = true; old.close(1001, 'reopened'); subs.delete(sub); }
         if (subs.size >= MAX_SUBS) return true;
@@ -106,4 +140,4 @@ function closeAll(carrier) {
     subs.clear();
 }
 
-module.exports = { VirtualSocket, handle, closeAll };
+module.exports = { VirtualSocket, handle, closeAll, sendCoalesced };

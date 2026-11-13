@@ -4751,6 +4751,12 @@ class WebSocketClient {
             };
 
             this.ws.onmessage = (event) => {
+                // Continuity (#798): a raw packet for the DeX window ("\u0001<sub>\u0001<packet>"): over the bus unparsed
+                if (typeof event.data === 'string' && event.data.charCodeAt(0) === 1 && window.melatonContinuity
+                    && typeof window.melatonContinuity.fromServerRaw === 'function') {
+                    window.melatonContinuity.fromServerRaw(event.data);
+                    return;
+                }
                 let message;
                 try {
                     message = JSON.parse(event.data);
@@ -4761,6 +4767,10 @@ class WebSocketClient {
                 try {
                     // Continuity (#798): a packet for the DeX window this phone window carries goes over the bus
                     if (window.melatonContinuity && typeof window.melatonContinuity.fromServer === 'function' && window.melatonContinuity.fromServer(message)) return;
+                    // a broadcast the server sent once for this window and the DeX window (_cc): relayed as it came
+                    if (message && Array.isArray(message._cc) && window.melatonContinuity && typeof window.melatonContinuity.relayCopy === 'function') {
+                        window.melatonContinuity.relayCopy(message._cc, event.data);
+                    }
                     this._recordWsMessage('in', message);
                     // Flash down arrow to indicate inbound traffic. Not for the Sidebar's live feed: a
                     // push every 2 s kept the tray globe (and the frames behind it) busy while idle
