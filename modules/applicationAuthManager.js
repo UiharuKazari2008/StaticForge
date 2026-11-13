@@ -90,7 +90,8 @@ const SCOPE_WS_PACKETS = {
     ],
     notes: [
         'notes_create', 'notes_get', 'notes_get_by_workspace', 'notes_get_all',
-        'notes_get_all_metadata', 'notes_update', 'notes_save_content', 'notes_delete'
+        'notes_get_all_metadata', 'notes_update', 'notes_save_content', 'notes_delete',
+        'notes_ink_save', 'notes_audio_put', 'notes_audio_get', 'notes_audio_delete', 'notes_audio_copy'
     ],
     knowledge: [
         'list_knowledge_memories', 'get_knowledge_memory', 'delete_knowledge_memory',

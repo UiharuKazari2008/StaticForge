@@ -1349,7 +1349,11 @@ class VfsManager {
             const notesDb = this.globalResources.getNotesDatabase();
             const notes = await notesDb.getNotesByWorkspace(ctx.workspaceId);
             for (const n of notes || []) {
-                if (noteIds.has(n.id)) ctx.noteSizeMap.set(n.id, (n.content || '').length);
+                // a note's size counts its strokes and recordings too (#785: WM lists an ink note at its size)
+                if (noteIds.has(n.id)) {
+                    const audio = n.metadata && Array.isArray(n.metadata.audio) ? n.metadata.audio.reduce((t, x) => t + (Number(x && x.bytes) || 0), 0) : 0;
+                    ctx.noteSizeMap.set(n.id, (n.content || '').length + (n.ink || '').length + audio);
+                }
             }
         }
 
@@ -1709,9 +1713,14 @@ class VfsManager {
                     system: false,
                     protected: false,
                     importable: false,
-                    size: (n.content || '').length,
+                    size: (n.content || '').length + (n.ink || '').length
+                        + (Array.isArray(n.metadata?.audio) ? n.metadata.audio.reduce((t, x) => t + (Number(x && x.bytes) || 0), 0) : 0),
                     modifiedAt: n.updated_at,
-                    workspaceId
+                    workspaceId,
+                    // #785: what the lists need without reading the note (a voice note, ink, recordings)
+                    noteKind: n.note_kind || 'note',
+                    noteInk: n.metadata?.ink?.strokes || 0,
+                    noteAudio: Array.isArray(n.metadata?.audio) ? n.metadata.audio.map((x) => ({ id: x.id, ms: x.ms || 0 })) : []
                 }));
             }
             case 'Scraps': {

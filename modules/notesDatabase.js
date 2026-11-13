@@ -69,6 +69,14 @@ async function createNotesTables() {
     } catch (error) {
         // Column already exists
     }
+
+    // a note's ink (#785): the strokes as JSON, in their own column so the metadata lists stay
+    // light; metadata.ink keeps only a summary ({ strokes, w, h }) for lists and Notepad
+    try {
+        await db.exec(`ALTER TABLE notes ADD COLUMN ink TEXT DEFAULT NULL`);
+    } catch (error) {
+        // Column already exists
+    }
     
     // Create indexes for better performance
     await db.exec(`
@@ -151,7 +159,8 @@ async function createNote(noteData) {
             icon = 'fas fa-file-lines',
             color = '#ffc107',
             note_kind = 'note',
-            metadata = {}
+            metadata = {},
+            ink = null
         } = noteData;
         
         if (!id || !name || !workspaceId) {
@@ -163,8 +172,8 @@ async function createNote(noteData) {
             : (typeof metadata === 'string' ? metadata : JSON.stringify(metadata || {}));
         
         await db.run(
-            `INSERT INTO notes (id, name, workspace_id, content, icon, color, note_kind, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [id, name, workspaceId, content, icon, color, note_kind, metadataJson]
+            `INSERT INTO notes (id, name, workspace_id, content, icon, color, note_kind, metadata, ink) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [id, name, workspaceId, content, icon, color, note_kind, metadataJson, ink == null ? null : (typeof ink === 'string' ? ink : JSON.stringify(ink))]
         );
         
         const note = formatNoteRow(await db.get('SELECT * FROM notes WHERE id = ?', [id]));
@@ -244,7 +253,7 @@ async function getAllNotesMetadata() {
  */
 async function updateNote(noteId, updates) {
     try {
-        const allowedFields = ['name', 'content', 'icon', 'color', 'workspace_id', 'note_kind', 'metadata'];
+        const allowedFields = ['name', 'content', 'icon', 'color', 'workspace_id', 'note_kind', 'metadata', 'ink'];
         const updateFields = [];
         const values = [];
         
@@ -296,6 +305,8 @@ async function deleteNote(noteId) {
         }
         
         await db.run('DELETE FROM notes WHERE id = ?', [noteId]);
+        // its recordings go with it (#785, modules/notesAudio.js)
+        try { await require('./notesAudio').removeAll(noteId); } catch (_) { /* none */ }
         console.log(`📝 Deleted note: ${note.name}`);
         return { success: true, note };
     } catch (error) {

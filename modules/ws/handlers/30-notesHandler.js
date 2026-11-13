@@ -43,6 +43,14 @@ async function handleNotesCreate(handlersCtx, ws, message, clientInfo, wsServer)
             metadata = meta;
         }
 
+        // an ink note (#785): the strokes in their own column, a summary in metadata.ink
+        let ink = message.ink;
+        if (typeof ink === 'string') ink = ink ? JSON.parse(ink) : null;
+        const summary = inkSummary(ink);
+        const inkJson = summary ? JSON.stringify(ink) : null;
+        if (inkJson && inkJson.length > MAX_INK_CHARS) throw new Error('The drawing is too large.');
+        if (summary) metadata = { ...(metadata && typeof metadata === 'object' ? metadata : {}), ink: summary };
+
         const note = await handlersCtx.globalResources.notesDatabase.createNote({
             id,
             name,
@@ -51,7 +59,8 @@ async function handleNotesCreate(handlersCtx, ws, message, clientInfo, wsServer)
             icon,
             color,
             note_kind: note_kind || 'note',
-            metadata: metadata || {}
+            metadata: metadata || {},
+            ink: inkJson
         });
 
         // modules/replicationJournal.js — recordReplicationNoteJournal
@@ -69,7 +78,7 @@ async function handleNotesCreate(handlersCtx, ws, message, clientInfo, wsServer)
 
         wsServer.broadcast({
             type: 'note_created',
-            data: { note },
+            data: { note: lightNote(note) },
             timestamp: new Date().toISOString()
         });
     } catch (error) {
@@ -191,6 +200,179 @@ async function handleNotesUpdate(handlersCtx, ws, message, clientInfo, wsServer)
     }
 }
 
+// ---- ink and recordings (#785): the phone's Notes Draw mode and voice bar, Windows Journal ----
+
+const MAX_INK_CHARS = 6 * 1024 * 1024;
+
+function notesAudio() {
+    return require('../../notesAudio');
+}
+
+/** A note for a broadcast: without its strokes (every client gets it; the owner re-reads them). */
+function lightNote(note) {
+    if (!note) return note;
+    const { ink, ...rest } = note;
+    return rest;
+}
+
+function inkSummary(ink) {
+    if (!ink || !Array.isArray(ink.strokes) || !ink.strokes.length) return null;
+    return { strokes: ink.strokes.length, w: Number(ink.w) || null, h: Number(ink.h) || null };
+}
+
+/** notes_ink_save { noteId, ink: { v, w, h, strokes: [{ tool, color, width, pts }] } | null } */
+async function handleNotesInkSave(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        const { noteId } = message;
+        let ink = message.ink;
+        if (!noteId) {
+            handlersCtx.sendError(ws, 'Note ID is required', 'notes_ink_save', message.requestId);
+            return;
+        }
+        const db = handlersCtx.globalResources.notesDatabase;
+        if (!(await db.getNote(noteId))) throw new Error('Note not found');
+        if (typeof ink === 'string') ink = ink ? JSON.parse(ink) : null;
+        if (ink && (typeof ink !== 'object' || !Array.isArray(ink.strokes))) throw new Error('Invalid ink');
+        const summary = inkSummary(ink);
+        const json = summary ? JSON.stringify(ink) : null;
+        if (json && json.length > MAX_INK_CHARS) throw new Error('The drawing is too large.');
+        await db.updateNote(noteId, { ink: json });
+        const note = await db.updateNoteMetadata(noteId, { ink: summary });
+        await recordReplicationNoteJournal(noteId, { operation: 'UPDATE', payload: { updates: { ink: json } } });
+        handlersCtx.sendToClient(ws, {
+            type: 'notes_ink_save_response',
+            requestId: message.requestId,
+            data: { success: true, note: lightNote(note) },
+            timestamp: new Date().toISOString()
+        });
+        wsServer.broadcast({
+            type: 'note_updated',
+            data: { noteId, updates: { ink: summary }, note: lightNote(note) },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Notes ink save error:', error);
+        handlersCtx.sendError(ws, 'Failed to save the drawing', error.message, message.requestId);
+    }
+}
+
+function audioList(note) {
+    const list = note && note.metadata && Array.isArray(note.metadata.audio) ? note.metadata.audio : [];
+    return list.filter((a) => a && a.id);
+}
+
+/** notes_audio_put { noteId, audioId, name, mime, ms, base64 }: adds or replaces one recording. */
+async function handleNotesAudioPut(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        const { noteId, audioId, base64 } = message;
+        if (!noteId || !audioId || !base64) {
+            handlersCtx.sendError(ws, 'Note ID, recording ID and data are required', 'notes_audio_put', message.requestId);
+            return;
+        }
+        const db = handlersCtx.globalResources.notesDatabase;
+        const before = await db.getNote(noteId);
+        if (!before) throw new Error('Note not found');
+        const saved = await notesAudio().put(noteId, audioId, base64, message.mime);
+        const entry = {
+            id: String(audioId),
+            name: String(message.name || 'Recording').slice(0, 120),
+            ms: Math.max(0, Math.round(Number(message.ms) || 0)),
+            mime: saved.mime,
+            bytes: saved.bytes,
+            at: Math.floor(Date.now() / 1000)
+        };
+        const list = audioList(before).filter((a) => a.id !== entry.id).concat([entry]);
+        const note = await db.updateNoteMetadata(noteId, { audio: list });
+        handlersCtx.sendToClient(ws, {
+            type: 'notes_audio_put_response',
+            requestId: message.requestId,
+            data: { success: true, audio: entry, note: lightNote(note) },
+            timestamp: new Date().toISOString()
+        });
+        wsServer.broadcast({
+            type: 'note_updated',
+            data: { noteId, updates: { audio: list }, note: lightNote(note) },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Notes audio put error:', error);
+        handlersCtx.sendError(ws, 'Failed to save the recording', error.message, message.requestId);
+    }
+}
+
+/** notes_audio_get { noteId, audioId } -> { mime, base64 } */
+async function handleNotesAudioGet(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        const { noteId, audioId } = message;
+        if (!noteId || !audioId) {
+            handlersCtx.sendError(ws, 'Note ID and recording ID are required', 'notes_audio_get', message.requestId);
+            return;
+        }
+        const { buffer, mime } = await notesAudio().read(noteId, audioId);
+        handlersCtx.sendToClient(ws, {
+            type: 'notes_audio_get_response',
+            requestId: message.requestId,
+            data: { success: true, mime, base64: buffer.toString('base64') },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        handlersCtx.sendError(ws, 'Failed to read the recording', error.message, message.requestId);
+    }
+}
+
+/** notes_audio_delete { noteId, audioId } */
+async function handleNotesAudioDelete(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        const { noteId, audioId } = message;
+        if (!noteId || !audioId) {
+            handlersCtx.sendError(ws, 'Note ID and recording ID are required', 'notes_audio_delete', message.requestId);
+            return;
+        }
+        const db = handlersCtx.globalResources.notesDatabase;
+        const before = await db.getNote(noteId);
+        if (!before) throw new Error('Note not found');
+        await notesAudio().remove(noteId, audioId);
+        const list = audioList(before).filter((a) => a.id !== String(audioId));
+        const note = await db.updateNoteMetadata(noteId, { audio: list });
+        handlersCtx.sendToClient(ws, {
+            type: 'notes_audio_delete_response',
+            requestId: message.requestId,
+            data: { success: true, note: lightNote(note) },
+            timestamp: new Date().toISOString()
+        });
+        wsServer.broadcast({
+            type: 'note_updated',
+            data: { noteId, updates: { audio: list }, note: lightNote(note) },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Notes audio delete error:', error);
+        handlersCtx.sendError(ws, 'Failed to delete the recording', error.message, message.requestId);
+    }
+}
+
+/** notes_audio_copy { fromNoteId, toNoteId }: Create Copy gives the copy its own recordings. */
+async function handleNotesAudioCopy(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        const { fromNoteId, toNoteId } = message;
+        if (!fromNoteId || !toNoteId) {
+            handlersCtx.sendError(ws, 'Both note IDs are required', 'notes_audio_copy', message.requestId);
+            return;
+        }
+        const db = handlersCtx.globalResources.notesDatabase;
+        if (!(await db.getNote(toNoteId))) throw new Error('Note not found');
+        const copied = await notesAudio().copyAll(fromNoteId, toNoteId);
+        handlersCtx.sendToClient(ws, {
+            type: 'notes_audio_copy_response',
+            requestId: message.requestId,
+            data: { success: true, copied },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        handlersCtx.sendError(ws, 'Failed to copy the recordings', error.message, message.requestId);
+    }
+}
+
 async function handleNotesDelete(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
         const { noteId } = message;
@@ -285,6 +467,11 @@ function registerPackets(handlersCtx) {
     reg('notes_update', handleNotesUpdate, NOTES_DESTRUCTIVE);
     reg('notes_delete', handleNotesDelete, NOTES_DESTRUCTIVE);
     reg('notes_save_content', handleNotesSaveContent, NOTES_DESTRUCTIVE);
+    reg('notes_ink_save', handleNotesInkSave, NOTES_DESTRUCTIVE);
+    reg('notes_audio_put', handleNotesAudioPut, NOTES_DESTRUCTIVE);
+    reg('notes_audio_get', handleNotesAudioGet);
+    reg('notes_audio_delete', handleNotesAudioDelete, NOTES_DESTRUCTIVE);
+    reg('notes_audio_copy', handleNotesAudioCopy, NOTES_DESTRUCTIVE);
 }
 
 module.exports = {

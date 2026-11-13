@@ -477,6 +477,10 @@ class WebSocketMessageHandlers {
             'notes_update',
             'notes_delete',
             'notes_save_content',
+            'notes_ink_save',
+            'notes_audio_put',
+            'notes_audio_delete',
+            'notes_audio_copy',
             'rebuild_metadata_cache',
             'broadcast_resource_update', // JULES: Fix privilege leak for read-only clients on resource update broadcast
             'delete_knowledge_memory',

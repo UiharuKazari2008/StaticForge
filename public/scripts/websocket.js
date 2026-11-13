@@ -10715,6 +10715,36 @@ class WebSocketClient {
             throw error;
         }
     }
+
+    // ---- a note's ink and recordings (#785): phone Notes, Windows Journal
+
+    /** ink: { v, w, h, strokes: [{ tool, color, width, pts: [[x, y], ...] }] } or null (no drawing). */
+    async saveNoteInk(noteId, ink) {
+        if (!this.isConnected()) throw new Error('WebSocket not connected');
+        return this.sendMessage('notes_ink_save', { noteId, ink });
+    }
+
+    /** Adds or replaces a recording: { audioId, name, mime, ms, base64 } -> { audio, note }. */
+    async putNoteAudio(noteId, rec) {
+        if (!this.isConnected()) throw new Error('WebSocket not connected');
+        return this.sendMessage('notes_audio_put', { noteId, ...rec });
+    }
+
+    /** -> { mime, base64 } */
+    async getNoteAudio(noteId, audioId) {
+        if (!this.isConnected()) throw new Error('WebSocket not connected');
+        return this.sendMessage('notes_audio_get', { noteId, audioId });
+    }
+
+    async deleteNoteAudio(noteId, audioId) {
+        if (!this.isConnected()) throw new Error('WebSocket not connected');
+        return this.sendMessage('notes_audio_delete', { noteId, audioId });
+    }
+
+    async copyNoteAudio(fromNoteId, toNoteId) {
+        if (!this.isConnected()) throw new Error('WebSocket not connected');
+        return this.sendMessage('notes_audio_copy', { fromNoteId, toNoteId });
+    }
 }
 
 // Create global WebSocket instance
