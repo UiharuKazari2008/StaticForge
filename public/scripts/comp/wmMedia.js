@@ -71,7 +71,8 @@
 
     let ws = null;
     let page = null;
-    let layer = 'skin'; // 'skin' | 'library' | 'queue'
+    let layer = 'skin'; // 'skin' | 'library' | 'queue' | 'options'
+    let optsDraft = null; // Options: the packages left unchecked (hidden from Now Playing)
     let libPath = []; // the Library's open levels: ['music'], ['music', 'all'], ['music', 'album', '<folder>'] ...
     let libSel = 0;
     let queueSel = 0;
@@ -226,13 +227,17 @@
 
     window.addEventListener('dreamscape:media', (e) => {
         androidState = (e && e.detail) || null;
+        if (window.wmMediaApps && window.wmMediaApps.noteSeen) window.wmMediaApps.noteSeen(androidState);
         if (page && layer === 'skin') paintSkin();
     });
 
     /** Android's active session that is not Dreamscape's own (else null). */
     function androidSession() {
         const st = androidState || readAndroidState();
-        const list = ((st && st.sessions) || []).filter((s) => !OWN_PACKAGE.test(s.package || ''));
+        // Options > Show what these programs play (shared with Today's Music item: window.wmMediaApps)
+        const A = window.wmMediaApps;
+        const hidden = A && typeof A.hidden === 'function' ? A.hidden() : new Set();
+        const list = ((st && st.sessions) || []).filter((s) => !OWN_PACKAGE.test(s.package || '') && !hidden.has(s.package));
         if (!list.length) return null;
         return list.find((s) => s.id === st.active) || list.find((s) => s.state === 'playing') || list[0];
     }
@@ -322,6 +327,7 @@
     const libs = new Map(); // source id -> { audio, video, playlists, error? }
     const scans = new Map(); // source id -> promise
     let source = null;
+    const unindexed = new Set(); // volumes whose library Android answers "not found" for
 
     function workspaceRoot() {
         let w = 'Default';
@@ -338,7 +344,7 @@
             let cards = 0;
             const removable = vols.filter((v) => v.removable).length;
             vols.forEach((v) => {
-                if (v.state && !/^mounted/.test(v.state)) return;
+                if ((v.state && !/^mounted/.test(v.state)) || unindexed.has(v.id)) return;
                 if (v.primary) out.push({ id: `android:${v.id}`, label: 'My Device', icon: 'wmp-home', kind: 'android', volume: v.id });
                 else {
                     cards += 1;
@@ -415,6 +421,11 @@
         const r = await fetch(`${base}/library/${vol}`, { cache: 'no-store' });
         if (!r.ok) throw new Error(r.status === 403 ? 'Melaton Media is not allowed to read your music and videos.' : 'The library could not be read.');
         const d = await r.json();
+        // storage Android's media library does not index (a USB drive): not a library (newer app builds leave it out of volumes())
+        if (Array.isArray(d.errors) && d.errors.length && d.errors.every((e) => /not found/i.test(e))) {
+            unindexed.add(s.volume);
+            throw new Error("This storage isn't in Android's media library.");
+        }
         const byId = new Map();
         const audio = (d.songs || []).map((x) => {
             const it = {
@@ -724,7 +735,7 @@
     function render() {
         if (!page) return;
         page.dataset.layer = layer;
-        if (layer === 'skin') { fitSkin(); paintSkin(); } else if (layer === 'library') renderLibrary(); else renderQueue();
+        if (layer === 'skin') { fitSkin(); paintSkin(); } else if (layer === 'library') renderLibrary(); else if (layer === 'options') renderOptions(); else renderQueue();
         ws.refreshSoftKeys();
         ws.refreshTitleAction();
     }
@@ -738,6 +749,41 @@
         render();
         ws.syncHistory();
         ensureLibrary(false).then(() => { if (layer === 'library') render(); });
+    }
+
+    // ---------------------------------------------------------------- Options
+
+    /** Options...: which programs' playing Now Playing (and Today's Music item) may show. */
+    function openOptions() {
+        const A = window.wmMediaApps;
+        optsDraft = new Set(A && A.hidden ? A.hidden() : []);
+        layer = 'options';
+        render();
+        ws.syncHistory();
+    }
+
+    function renderOptions() {
+        const box = page.querySelector('.wmp-opts');
+        const A = window.wmMediaApps;
+        const ui = window.wmSettings && window.wmSettings.ui;
+        const choices = A && A.choices ? A.choices() : [];
+        const esc = ws.escapeHtml;
+        const rows = choices.map(([pkg, label]) => (ui ? ui.check('wmp-show', label, !optsDraft.has(pkg), `value="${esc(pkg)}"`)
+            : `<label class="wm-check"><input type="checkbox" name="wmp-show" value="${esc(pkg)}"${optsDraft.has(pkg) ? '' : ' checked'}><span>${esc(label)}</span></label>`)).join('');
+        box.innerHTML = `<div class="wm-form-sub">Now Playing</div>
+            <p>When Melaton Media is not playing, Now Playing shows what these programs play:</p>
+            ${choices.length ? `<div class="wmp-opts-list">${rows}</div>` : '<p class="wm-form-note">No programs have played anything yet.</p>'}
+            <p class="wm-form-note">Clear video players and streaming apps to keep them off Now Playing and the Today screen's Music item.</p>`;
+        box.querySelectorAll('input[name="wmp-show"]').forEach((c) => c.addEventListener('change', () => { if (c.checked) optsDraft.delete(c.value); else optsDraft.add(c.value); }));
+    }
+
+    function saveOptions() {
+        const A = window.wmMediaApps;
+        if (A && A.setHidden && optsDraft) A.setHidden([...optsDraft]);
+        optsDraft = null;
+        layer = 'skin';
+        render();
+        ws.syncHistory();
     }
 
     function openQueue() {
@@ -891,6 +937,7 @@
                 <div class="wmp-lhead"></div>
                 <div class="wmp-llist wm-pv-scroll" role="listbox"></div>
             </div>
+            <div class="wmp-opts wm-pv-scroll"></div>
             <div class="wmp-queue">
                 <div class="wmp-lhead"><span class="wmp-lsel is-static">${ws.art.img('wmp-playlist')}<span>Now Playing</span></span></div>
                 <div class="wmp-qlist wm-pv-scroll" role="listbox"></div>
@@ -973,14 +1020,22 @@
                 if (!media.queue.length && layer === 'skin' && !libs.has(currentSource().id) && !androidMode()) { openLibrary(); return; }
                 render();
             },
-            titleKind: () => (layer === 'skin' ? 'close' : 'ok'),
-            historyDepth: () => (layer === 'skin' ? 0 : layer === 'queue' ? 1 : 1 + libPath.length),
+            // Options has its own Done / Cancel soft keys: no corner button there
+            titleKind: () => (layer === 'skin' ? 'close' : layer === 'options' ? null : 'ok'),
+            historyDepth: () => (layer === 'skin' ? 0 : layer === 'queue' || layer === 'options' ? 1 : 1 + libPath.length),
             onBack() {
+                if (layer === 'options') { optsDraft = null; layer = 'skin'; render(); return true; }
                 if (layer === 'library' && libPath.length) { libPath = libPath.slice(0, -1); libSel = 0; render(); return true; }
                 if (layer !== 'skin') { layer = 'skin'; render(); return true; }
                 return false;
             },
             softKeys() {
+                if (layer === 'options') {
+                    return {
+                        left: { label: 'Done', action: saveOptions },
+                        right: { label: 'Cancel', action: () => { optsDraft = null; layer = 'skin'; render(); ws.syncHistory(); } }
+                    };
+                }
                 if (layer === 'skin') {
                     const it = current();
                     return {
@@ -991,7 +1046,7 @@
                             { label: 'Stop', action: stop, disabled: !media.el || !media.el.getAttribute('src') },
                             { label: 'Shuffle/Repeat', submenu: shuffleRepeat() },
                             { label: 'Full Screen', action: fullScreen, disabled: !(it && it.kind === 'video') }, '-',
-                            { label: 'Options...', disabled: true },
+                            { label: 'Options...', action: openOptions, disabled: !window.wmMediaApps },
                             { label: 'Properties', action: () => properties(it), disabled: !it }, '-',
                             { label: 'About', action: () => ws.notify({ title: 'Melaton Media', icon: 'info', text: 'Melaton Media Player 10 Mobile\nCopyright (c) 2006 Xyridian Corporation. All rights reserved.' }) }
                         ] }

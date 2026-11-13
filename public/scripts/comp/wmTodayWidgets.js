@@ -1801,6 +1801,7 @@
         window.addEventListener('dreamscape:media', (e) => {
             const d = e.detail;
             music.state = d && typeof d === 'object' ? d : (() => { try { return JSON.parse(d); } catch (_) { return null; } })();
+            musicNoteSeen(music.state);
             musicRepaint();
         });
         document.addEventListener('wmMediaChange', musicRepaint);
@@ -1876,8 +1877,54 @@
         return music.list;
     }
 
+    /**
+     * Options... > Show what these programs play: the filter (Yukimi, Nov 13) that keeps video players and
+     * streaming apps off this item and off Melaton Media's Now Playing (wmMedia.js reads the same list
+     * through window.wmMediaApps). The choices are the phone's music players plus every program seen
+     * playing (wmMediaSeenApps: package -> name, kept on the phone); a cleared one is ignored. Stored as
+     * the Today option music.show (the comma list of the cleared packages).
+     */
+    const SEEN_KEY = 'wmMediaSeenApps';
+    const OWN_PKG = /^jp\.net\.seventhreeseven\.dreamscape/;
+    function musicSeen() {
+        try { const v = JSON.parse(localStorage.getItem(SEEN_KEY) || 'null'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; }
+    }
+    function musicNoteSeen(st) {
+        if (!st || !Array.isArray(st.sessions)) return;
+        const seen = musicSeen();
+        let changed = false;
+        st.sessions.forEach((x) => {
+            if (!x || !x.package || OWN_PKG.test(x.package)) return;
+            const name = x.app || x.package;
+            if (seen[x.package] !== name) { seen[x.package] = name; changed = true; }
+        });
+        if (changed) { try { localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); } catch (_) { /* storage off */ } }
+    }
+    function musicHidden() {
+        const v = typeof sh.todayOption === 'function' ? sh.todayOption('music', 'show') : '';
+        return new Set(String(v || '').split(',').filter(Boolean));
+    }
+    function musicShowChoices() {
+        const out = new Map();
+        musicPlayers().forEach((p) => out.set(p.package, p.app || p.package));
+        Object.entries(musicSeen()).forEach(([k, v]) => { if (!out.has(k)) out.set(k, v); });
+        // a hidden program stays on the list (to be turned back on) even if the phone no longer reports it
+        musicHidden().forEach((k) => { if (!out.has(k)) out.set(k, k); });
+        return [...out.entries()].sort((a, b) => favColl.compare(a[1], b[1]));
+    }
+    function musicSetHidden(list) {
+        const all = musicOptionsAll();
+        all.music = Object.assign({}, all.music, { show: [...new Set(list)].join(',') });
+        const key = sh.todayOptionsKey || 'wmTodayOptions';
+        try { localStorage.setItem(key, JSON.stringify(all)); } catch (_) { return; }
+        document.dispatchEvent(new CustomEvent('wmSettingsChange', { detail: { keys: [key] } }));
+        musicRepaint();
+    }
+    window.wmMediaApps = { hidden: () => musicHidden(), choices: () => musicShowChoices(), setHidden: (list) => musicSetHidden(list || []), noteSeen: (st) => musicNoteSeen(st) };
+
     const MUSIC_OPTIONS = [
         { key: 'app', label: 'Default app', value: MUSIC_DEFAULT, get choices() { return musicAppChoices(); } },
+        { key: 'show', label: 'Show what these programs play', type: 'checks', value: '', get choices() { return musicShowChoices(); } },
         {
             key: 'favs', label: 'Favorites', type: 'orderedChecks',
             // the music players first, then every other program (Start's, then the Android ones)
@@ -1895,7 +1942,8 @@
         let droid = null;
         const st = music.state;
         if (st && Array.isArray(st.sessions)) {
-            const live = st.sessions.filter((s) => s && (s.title || s.artist) && ['playing', 'buffering', 'paused'].includes(s.state));
+            const hidden = musicHidden();
+            const live = st.sessions.filter((s) => s && (s.title || s.artist) && ['playing', 'buffering', 'paused'].includes(s.state) && !hidden.has(s.package) && !OWN_PKG.test(s.package || ''));
             const s = live.find((x) => x.id === st.active) || live.find((x) => x.state !== 'paused') || live[0];
             if (s) {
                 const acts = Array.isArray(s.actions) ? s.actions : [];

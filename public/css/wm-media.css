@@ -31,6 +31,28 @@
     background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
 }
 
+/* Options (#801 filter): a plain WM form page */
+.wm-media > .wmp-opts {
+    display: none;
+}
+
+.wm-media[data-layer="options"] > .wmp-opts {
+    display: block;
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
+    background: #fff;
+    color: #000;
+}
+
+.wm-media .wmp-opts-list {
+    display: flex;
+    flex-direction: column;
+    gap: calc(2 * var(--wm-px));
+}
+
+
 .wm-media button {
     margin: 0;
     padding: 0;
