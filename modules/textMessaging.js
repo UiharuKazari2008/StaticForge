@@ -645,11 +645,13 @@ async function pair(accountId) { return provider(accountId).pair(); }
  * The Google sign-in for RCS pairing, taken from Alchemy (Dreamscape's server browser, CDP on 127.0.0.1
  * ALCHEMY_CDP_PORT, default 9339) when the owner presses Continue on the RCS card after signing in at
  * messages.google.com in the private window CardSpace opens (an isolated browser context of its own).
- * Only that context is read, never Alchemy's profile: Google rotates a session's bound cookies in the
- * browser, and a copy the bridge keeps presenting beside them reads as stolen, so Google signs the
- * session out everywhere (the bridge and Alchemy's own Google sign-in both went on Nov 13 2026). The
- * context is disposed once read (no sign-out, so the session stays the bridge's alone). Only the cookies
- * the pairing needs leave Alchemy, straight to the bridge; nothing is logged or stored here.
+ * A browser must never keep presenting the session the bridge got: Google rotates a session's bound
+ * cookies in the browser, and a copy the bridge keeps presenting beside them reads as stolen, so Google
+ * signs the session out everywhere (the bridge and Alchemy's own Google sign-in both went on Nov 13 2026).
+ * So once read, the sign-in leaves Alchemy without a sign-out (that would end it for the bridge too): a
+ * private context is disposed; from the profile (the normal window, where 1Password's extension runs;
+ * private contexts have no extensions) every google.com cookie is expired. Only the cookies the pairing
+ * needs leave Alchemy, straight to the bridge; nothing is logged or stored here.
  */
 const GOOGLE_COOKIES = ['SID', 'HSID', 'SSID', 'APISID', 'SAPISID', 'OSID', '__Secure-1PSIDTS', '__Secure-1PSID', '__Secure-3PSID', '__Secure-1PAPISID', '__Secure-3PAPISID', 'NID'];
 function alchemyGoogleCookies() {
@@ -687,8 +689,10 @@ function alchemyGoogleCookies() {
                     try {
                         const { browserContextIds = [] } = await send('Target.getBrowserContexts');
                         let found = null;
-                        for (const ctx of browserContextIds) {
-                            const r = await send('Storage.getCookies', { browserContextId: ctx });
+                        // private contexts first, the profile ('') last
+                        for (const ctx of [...browserContextIds, '']) {
+                            if (found) break;
+                            const r = await send('Storage.getCookies', ctx ? { browserContextId: ctx } : {});
                             const out = {};
                             for (const c of r.cookies || []) {
                                 const d = String(c.domain || '');
@@ -696,10 +700,20 @@ function alchemyGoogleCookies() {
                                 if (c.name === 'OSID' ? !/messages\.google\.com$/.test(d) : d !== '.google.com') continue;
                                 out[c.name] = c.value;
                             }
-                            if (out.SID && out.SAPISID) found = { ctx, cookies: out };
+                            if (out.SID && out.SAPISID) found = { ctx, cookies: out, all: r.cookies || [] };
                         }
                         // the sign-in is the bridge's from here: no browser may present it again
-                        if (found) await send('Target.disposeBrowserContext', { browserContextId: found.ctx }).catch(() => {});
+                        if (found && found.ctx) await send('Target.disposeBrowserContext', { browserContextId: found.ctx }).catch(() => {});
+                        else if (found) {
+                            for (const c of found.all) {
+                                const d = String(c.domain || '');
+                                if (!/(^|\.)google\.com$/.test(d.replace(/^\./, ''))) continue;
+                                const gone = { name: c.name, value: '', path: c.path || '/', expires: 1, secure: !!c.secure };
+                                if (d.startsWith('.')) gone.domain = d; else gone.url = 'https://' + d + (c.path || '/');
+                                if (c.partitionKey) gone.partitionKey = c.partitionKey;
+                                await send('Storage.setCookies', { cookies: [gone] }).catch(() => {});
+                            }
+                        }
                         clearTimeout(timer);
                         try { ws.close(); } catch (_) { /* gone */ }
                         resolve(found ? found.cookies : {});
@@ -721,7 +735,7 @@ async function pairGoogle(accountId) {
     const p = provider(accountId);
     if (typeof p.pairGoogle !== 'function') throw Object.assign(new Error('Not an RCS account.'), { code: 'BAD_KIND' });
     const cookies = await alchemyGoogleCookies();
-    if (!cookies.SID || !cookies.SAPISID) throw Object.assign(new Error('No Google sign-in for pairing. Press Open Alchemy, sign in to Google in that private window, then press Continue.'), { code: 'NOT_SIGNED_IN' });
+    if (!cookies.SID || !cookies.SAPISID) throw Object.assign(new Error('Alchemy is not signed in to Google. Press Open Alchemy, sign in at Google Messages there, then press Continue.'), { code: 'NOT_SIGNED_IN' });
     return p.pairGoogle(cookies);
 }
 

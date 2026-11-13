@@ -780,7 +780,7 @@
     const TM_PICTURE = '/static_images/app_icons/melaton-messenger.webp';
     const TM_PAIR_HINT = 'On your phone, open Google Messages, tap your profile picture > Device pairing > QR code scanner, and scan this code.';
     const TM_GOOGLE_URL = 'https://messages.google.com/web/authentication';
-    const TM_GOOGLE_STEPS = 'A private Alchemy window opens at Google Messages for web. Sign in there with the Google account your phone uses, close that window, then press Continue.';
+    const TM_GOOGLE_STEPS = 'An Alchemy window opens at Google Messages for web. Sign in there with the Google account your phone uses, close that window, then press Continue. Alchemy then forgets that sign-in (it is Google Messages\' now): sign in to Google again in Alchemy for your own use.';
     const TM_EMOJI_HINT = 'Your phone shows "Is this you?". In Google Messages, tap the emoji that matches this one.';
     const TM_RCS_NOTE = 'Keep Google Messages as your default messaging app. Turn off its notifications: Dreamscape sends them now.';
     const TM_STATE = {
@@ -971,7 +971,7 @@
                 box.append(big, tmText(TM_EMOJI_HINT, 'cpl-tm-hint'));
             } else {
                 box.append(tmText(TM_GOOGLE_STEPS, 'cpl-tm-hint'),
-                    tmButton('Open Alchemy', async () => { await csOpenBrowser(TM_GOOGLE_URL, 'Google Messages', { isolated: true }); }),
+                    tmButton('Open Alchemy', async () => { await csOpenBrowser(TM_GOOGLE_URL, 'Google Messages'); }),
                     tmButton('Continue', async () => {
                         ui.error = '';
                         try {
@@ -1008,7 +1008,7 @@
                 ui.emoji = '';
                 ui.error = '';
                 ui.paired = false;
-                void csOpenBrowser(TM_GOOGLE_URL, 'Google Messages', { isolated: true }).catch(() => {});
+                void csOpenBrowser(TM_GOOGLE_URL, 'Google Messages').catch(() => {});
                 paintTextMessaging();
             }));
             actions.append(tmButton(ui.qr ? 'New QR code' : 'Pair with QR code', async () => {
