@@ -263,6 +263,27 @@ function appleFixture() {
         assert.strictEqual(w.placeFor(41.5, -74.0), null);
     });
 
+    await test('a setting on the stand-in Home keeps its coordinates and saves it', async () => {
+        const cfg = { weather: {} };
+        const writes = [];
+        const gr = {
+            getConfig: ({ path: p }) => p.split('.').reduce((o, k) => (o == null ? o : o[k]), cfg),
+            getSecureConfig: ({ path: p }) => (p === 'location' ? { latitude: 38.28, longitude: -76.5 } : null),
+            getApiKeyManager: () => null,
+            getWebSocketServer: () => ({ broadcast: () => {} }),
+            modifyConfig: () => ({ assign: (path, value) => { writes.push(value); cfg.weather = value; } })
+        };
+        delete require.cache[require.resolve('../modules/weatherService')];
+        const w = require('../modules/weatherService');
+        w.bind(gr);
+        assert.strictEqual(w.getPlaces().home.fallback, true);
+        const places = await w.savePlaces({ home: { rainAlarm: true } });
+        assert.strictEqual(places.home.rainAlarm, true);
+        assert.strictEqual(places.home.lat, 38.28);
+        assert.ok(!places.home.fallback, 'saved as a real Home now');
+        assert.strictEqual(writes.length, 1);
+    });
+
     console.log(failures ? `\n${failures} failed` : '\nall passed');
     process.exit(failures ? 1 : 0);
 })();

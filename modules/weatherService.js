@@ -1158,10 +1158,15 @@ function getPlaces() {
 async function savePlaces(next = {}) {
     if (!gr) throw new WeatherError('Weather service is not ready', 'NOT_READY');
     const cur = Object.assign({}, ((config('weather', {}) || {}).places) || {});
+    const shown = getPlaces();
     PLACE_IDS.forEach((id) => {
         if (!(id in next)) return;
         if (next[id] === null) { delete cur[id]; return; }
-        const p = cleanPlace(Object.assign({}, cur[id] || {}, next[id]));
+        // a change to the stand-in Home (the configured location, never saved) starts from it, so
+        // turning its rain alarm on keeps its coordinates and saves it as Home
+        let base = cur[id];
+        if (!base && shown[id] && shown[id].fallback) { base = Object.assign({}, shown[id]); delete base.fallback; }
+        const p = cleanPlace(Object.assign({}, base || {}, next[id]));
         if (!p) throw new WeatherError(`${PLACE_LABEL[id]} needs a place with coordinates`, 'BAD_PLACE');
         cur[id] = p;
     });
