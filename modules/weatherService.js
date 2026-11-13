@@ -729,12 +729,96 @@ async function fetchApple(lat, lon, opts = {}) {
 
 // ------------------------------------------------------------------------------------------ Open-Meteo
 
-/** Raw Open-Meteo JSON for a full URL on one of its hosts, cached and rate limited (dynamic generation). */
+/**
+ * Raw Open-Meteo JSON for a full URL on one of its hosts, cached and rate limited (dynamic generation).
+ * With Apple Weather in use, forecast-host replies get Apple's values laid over the fields both have
+ * (overlayApple), so the Director's and Rentan's scenes describe the weather the apps show (#792 item 6);
+ * Open-Meteo keeps the fields Apple lacks and every date before Apple's history (August 2021).
+ */
 async function openMeteoRaw(url, { ttl = TTL.rawOpenMeteo } = {}) {
     let host = '';
     try { host = new URL(url).hostname; } catch (_e) { host = ''; }
     if (!OPEN_METEO_HOSTS.has(host)) throw new WeatherError('Not an Open-Meteo address', 'BAD_URL');
-    return memo(`om:raw:${url}`, () => request('openmeteo', url, { timeout: 12000 }), { ttl, noStale: true });
+    const om = await memo(`om:raw:${url}`, () => request('openmeteo', url, { timeout: 12000 }), { ttl, noStale: true });
+    if (host !== 'api.open-meteo.com' || activeProvider() !== 'apple') return om;
+    try {
+        return await overlayApple(om, url);
+    } catch (error) {
+        return om;
+    }
+}
+
+const APPLE_HISTORY_FROM = Date.parse('2021-08-01T00:00:00Z');
+
+// Open-Meteo variable -> (Apple hour or current, both metric) -> value in Open-Meteo's default units
+const OVERLAY = {
+    temperature_2m: (h) => n(h.temperature),
+    apparent_temperature: (h) => n(h.temperatureApparent),
+    dewpoint_2m: (h) => n(h.temperatureDewPoint),
+    dew_point_2m: (h) => n(h.temperatureDewPoint),
+    relative_humidity_2m: (h) => pct(h.humidity),
+    precipitation: (h) => (h.precipitationAmount != null ? n(h.precipitationAmount) : n(h.precipitationIntensity)),
+    precipitation_probability: (h) => pct(h.precipitationChance),
+    weather_code: (h) => (h.conditionCode ? appleCondition(h.conditionCode).code : null),
+    pressure_msl: (h) => n(h.pressure),
+    cloud_cover: (h) => pct(h.cloudCover),
+    visibility: (h) => n(h.visibility),
+    wind_speed_10m: (h) => n(h.windSpeed),
+    wind_direction_10m: (h) => n(h.windDirection),
+    wind_gusts_10m: (h) => n(h.windGust),
+    uv_index: (h) => n(h.uvIndex),
+    is_day: (h) => (h.daylight == null ? null : (h.daylight ? 1 : 0))
+};
+
+/** Lay Apple's hourly (and current) values over an Open-Meteo reply, hour by hour (UTC). */
+async function overlayApple(om, url) {
+    const a = appleAccount();
+    const hourly = om && om.hourly;
+    if (!a || !hourly || !Array.isArray(hourly.time) || !hourly.time.length) return om;
+    const q = new URL(url).searchParams;
+    const lat = round2(q.get('latitude'));
+    const lon = round2(q.get('longitude'));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return om;
+    const off = (Number(om.utc_offset_seconds) || 0) * 1000;
+    const toUtc = (local) => Date.parse(`${local.length <= 10 ? `${local}T00:00` : local}Z`) - off;
+    const t0 = toUtc(hourly.time[0]);
+    const t1 = toUtc(hourly.time[hourly.time.length - 1]) + HOUR;
+    if (!Number.isFinite(t0) || t1 < APPLE_HISTORY_FROM) return om;
+    const start = Math.max(t0, APPLE_HISTORY_FROM);
+    const end = Math.min(t1, Date.now() + 240 * HOUR);
+    if (end <= start) return om;
+    const iso = (ms) => new Date(Math.floor(ms / HOUR) * HOUR).toISOString().replace(/\.\d+Z$/, 'Z');
+    const sets = ['forecastHourly'].concat(om.current ? ['currentWeather'] : []);
+    const body = await memo(`apple:ov:${accountFingerprint(a).slice(0, 8)}:${lat}:${lon}:${iso(start)}:${iso(end)}:${sets.join(',')}`, () => {
+        const params = new URLSearchParams({ dataSets: sets.join(','), hourlyStart: iso(start), hourlyEnd: iso(end), timezone: timezoneOf(lat, lon) });
+        return appleGet(`/api/v1/weather/en/${lat}/${lon}?${params}`, a);
+    }, { ttl: TTL.forecast, failTtl: TTL.forecastFail, noStale: true });
+    const byHour = new Map(((body.forecastHourly && body.forecastHourly.hours) || []).map((h) => [Math.floor(Date.parse(h.forecastStart) / HOUR), h]));
+    if (!byHour.size && !body.currentWeather) return om;
+    const out = Object.assign({}, om, { hourly: Object.assign({}, hourly) });
+    let replaced = 0;
+    Object.keys(OVERLAY).forEach((k) => {
+        if (!Array.isArray(hourly[k])) return;
+        const col = hourly[k].slice();
+        hourly.time.forEach((t, i) => {
+            const h = byHour.get(Math.floor(toUtc(t) / HOUR));
+            if (!h) return;
+            const v = OVERLAY[k](h);
+            if (v != null) { col[i] = v; replaced++; }
+        });
+        out.hourly[k] = col;
+    });
+    if (om.current && body.currentWeather) {
+        const c = body.currentWeather;
+        out.current = Object.assign({}, om.current);
+        Object.keys(OVERLAY).forEach((k) => {
+            if (!(k in om.current)) return;
+            const v = OVERLAY[k](c);
+            if (v != null) out.current[k] = v;
+        });
+    }
+    out.dreamscape_sources = replaced ? 'Apple Weather (temperature, precipitation, wind, clouds, conditions) + Open-Meteo' : 'Open-Meteo';
+    return out;
 }
 
 function normaliseOpenMeteo(b) {
@@ -1503,5 +1587,5 @@ module.exports = {
     cached,
     openMeteoRaw,
     WeatherError,
-    _test: { rainOutlook, distanceKm, monitor, normaliseApple, normaliseOpenMeteo, signAppleToken, normalisePrivateKey, memo, Limiter, Lru, localIso, offsetAt, appleCondition, nextHourSummary, jsonCache, limiters }
+    _test: { overlayApple, rainOutlook, distanceKm, monitor, normaliseApple, normaliseOpenMeteo, signAppleToken, normalisePrivateKey, memo, Limiter, Lru, localIso, offsetAt, appleCondition, nextHourSummary, jsonCache, limiters }
 };
