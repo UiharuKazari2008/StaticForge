@@ -394,6 +394,17 @@
     box-shadow: inset 0 1px rgba(255, 255, 255, 0.45);
 }
 
+/* not checked (no camera list yet, no TomTom answer): a quiet grey "?", not a red count */
+.wm-traffic .trf-row.is-unknown .trf-row-count {
+    min-width: calc(16 * var(--u));
+    padding: calc(2 * var(--u)) calc(5 * var(--u));
+    border-radius: calc(8 * var(--u));
+    background: linear-gradient(to bottom, #5d656e, #3c434b);
+    color: #c9d1d9;
+    text-align: center;
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.25);
+}
+
 .wm-traffic .trf-row-arrow {
     flex: 0 0 auto;
     width: 0;

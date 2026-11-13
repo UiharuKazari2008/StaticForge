@@ -9,6 +9,9 @@ const trafficService = require('../../trafficService');
 //   traffic_check          { direction, force? }       a fresh report for 'work' or 'home'
 //   traffic_advise         { direction, force? }       the leave advisor (Google only)
 //   traffic_settings_save  { settings }                admins; merged into config `traffic`
+//   traffic_where          {}                          { lat, lon, source, accuracyKm }: the phone's place by
+//                                                      its IP, for a browser without device location (a
+//                                                      home-network or unknown IP answers the configured place)
 //
 // Broadcasts to admin clients:
 //   traffic_updated           { direction, report }                 after every check
@@ -66,6 +69,28 @@ async function handleAdvise(handlersCtx, ws, message, clientInfo) {
     }
 }
 
+async function handleWhere(handlersCtx, ws, message, clientInfo) {
+    if (!guard(handlersCtx, ws, message, clientInfo)) return;
+    try {
+        const loc = await require('../../sidebarGadgets').resolveClientLocation(handlersCtx.globalResources, clientInfo && clientInfo.clientIP);
+        if (!loc || !Number.isFinite(Number(loc.lat)) || !Number.isFinite(Number(loc.lon))) {
+            reply(handlersCtx, ws, message, { available: false });
+            return;
+        }
+        const configured = loc.source === 'configured' || loc.configured;
+        reply(handlersCtx, ws, message, {
+            available: true,
+            lat: Math.round(Number(loc.lat) * 1e4) / 1e4,
+            lon: Math.round(Number(loc.lon) * 1e4) / 1e4,
+            source: configured ? 'configured' : 'client_ip',
+            // an IP lookup is a city at best; the configured place is where the server is
+            accuracyKm: configured ? 0.5 : 25
+        });
+    } catch (error) {
+        fail(handlersCtx, ws, message, error, 'The location could not be found');
+    }
+}
+
 async function handleSave(handlersCtx, ws, message, clientInfo) {
     if (!guard(handlersCtx, ws, message, clientInfo, true)) return;
     try {
@@ -90,6 +115,7 @@ function registerPackets(handlersCtx) {
     reg('traffic_check', handleCheck);
     reg('traffic_advise', handleAdvise);
     reg('traffic_settings_save', handleSave, { destructive: true });
+    reg('traffic_where', handleWhere);
     trafficService.startScheduler();
 }
 

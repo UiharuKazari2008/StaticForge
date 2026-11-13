@@ -31,6 +31,7 @@
  *   advisorMax    the leave advisor looks this far ahead (default 90)
  *   notify        reports at the leave times (default true)
  *   timeZone      IANA zone of the leave times (default the server's)
+ *   radiusKm      the phone is at Home / at Work inside this radius (default 1.5)
  *
  * Reports (check): { direction, at, provider, from, to, preferred, routes[], fastest, better,
  * slowdowns[], alerts[], traps[], jams[], level, summary, errors[] }. A route: { id, summary, via,
@@ -138,6 +139,8 @@ function getSettings() {
         betterMin: clampInt(t.betterMin, 1, 60, DEFAULTS.betterMin),
         waitMin: clampInt(t.waitMin, 1, 60, DEFAULTS.waitMin),
         advisorMax: clampInt(t.advisorMax, 15, 120, DEFAULTS.advisorMax),
+        // the phone counts as at Home / at Work inside this radius (the app picks To Work / To Home by it)
+        radiusKm: Number.isFinite(Number(t.radiusKm)) ? Math.max(0.2, Math.min(20, Number(t.radiusKm))) : 1.5,
         notify: t.notify !== false,
         timeZone: validZone(t.timeZone) ? t.timeZone : '',
         budgets: { google: clampInt(budgets.google, 0, 100000, DEFAULTS.budgets.google), tomtom: clampInt(budgets.tomtom, 0, 100000, DEFAULTS.budgets.tomtom) }
@@ -174,6 +177,7 @@ async function saveSettings(next = {}) {
     if ('betterMin' in next) out.betterMin = clampInt(next.betterMin, 1, 60, DEFAULTS.betterMin);
     if ('waitMin' in next) out.waitMin = clampInt(next.waitMin, 1, 60, DEFAULTS.waitMin);
     if ('advisorMax' in next) out.advisorMax = clampInt(next.advisorMax, 15, 120, DEFAULTS.advisorMax);
+    if ('radiusKm' in next && Number.isFinite(Number(next.radiusKm))) out.radiusKm = Math.max(0.2, Math.min(20, Number(next.radiusKm)));
     if ('notify' in next) out.notify = next.notify !== false;
     if ('timeZone' in next) out.timeZone = validZone(next.timeZone) ? next.timeZone : '';
     if (next.budgets && typeof next.budgets === 'object') {

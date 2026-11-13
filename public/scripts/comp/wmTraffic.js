@@ -31,7 +31,10 @@
     const APP_ID = 'traffic';
     const TITLE = 'Traffic';
     const STALE_MS = 3 * 60 * 1000;
-    const LS_DIR = 'wmTrafficDirection';
+    const LS_PLACE = 'wmTrafficPlace'; // { place: 'home' | 'work', at } the last place the phone was found at
+    const GEO_EVERY_MS = 5 * 60 * 1000; // the phone's position is read at most this often, while on screen
+    const DELAY_STATUS_SEC = 15 * 60; // the title bar's car: the commute ahead is this late or more
+    const TODAY_CHECK_MS = 15 * 60 * 1000; // Today asks for a fresh report at most this often
     const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const LAYER_TITLES = { routes: 'Routes', traps: 'Speed Traps', alerts: 'Alerts', slow: 'Slowdowns', advisor: 'Leave Advisor', settings: 'Traffic Settings', item: 'Details' };
 
@@ -135,7 +138,93 @@
     function changed() {
         render();
         if (ws && typeof ws.refreshToday === 'function') ws.refreshToday();
+        if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus();
         document.dispatchEvent(new CustomEvent('wmTrafficChange'));
+    }
+
+    // ---------------------------------------------------------------- where the phone is (Yukimi, Nov 13)
+    //
+    // Inside the Home radius the commute ahead is To Work, inside the Work radius To Home; on the road
+    // the last place found stands (a drive home stays To Home), for up to 12 hours; never found, or no
+    // location, the time of day decides. navigator.geolocation (the DSApp WebView answers it for this
+    // origin, DSApp PR #26) inside the Android app; elsewhere, or when location is refused, the server's
+    // traffic_where: the place by the client's IP (Yukimi: "if you're not in the android app the server
+    // uses the client's IP"; a home-network IP is the configured place). Read at most every 5 minutes
+    // while Today or the app is on screen.
+
+    let here = null; // { lat, lon, accuracy, at }
+    let geoAt = 0;
+    let geoBusy = false;
+    let geoDenied = false;
+    // the Dreamscape Android app (its bridges are on window); a browser has none of them
+    const inApp = () => !!(window.AndroidCaption || window.AndroidNotification || window.AndroidDevice);
+
+    const distKm = (a, b) => {
+        const r = (d) => (d * Math.PI) / 180;
+        const h = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lon - a.lon) / 2) ** 2;
+        return 12742 * Math.asin(Math.min(1, Math.sqrt(h)));
+    };
+
+    /** Home and Work as coordinates: the saved ones, else the ends of the last reports' routes. */
+    function placeCoords() {
+        const s = settings || {};
+        const ends = (d, last) => {
+            const line = latest[d] && latest[d].preferred && latest[d].preferred.line;
+            const p = Array.isArray(line) && line.length ? line[last ? line.length - 1 : 0] : null;
+            return p ? { lat: p[0], lon: p[1] } : null;
+        };
+        const pick = (saved, a, b) => (saved && Number.isFinite(saved.lat) ? { lat: saved.lat, lon: saved.lon } : (a || b));
+        return { home: pick(s.home, ends('work', false), ends('home', true)), work: pick(s.work, ends('work', true), ends('home', false)) };
+    }
+
+    function storedPlace() {
+        try {
+            const v = JSON.parse(localStorage.getItem(LS_PLACE) || 'null');
+            return v && (v.place === 'home' || v.place === 'work') && Date.now() - v.at < 12 * 3600 * 1000 ? v.place : null;
+        } catch (_) { return null; }
+    }
+
+    /** 'home' | 'work' | null: the place the phone is in now, by the last position read. */
+    function placeNow() {
+        if (!here || !configured()) return null;
+        const c = placeCoords();
+        // an IP place is only as good as its lookup: a city-level answer widens the radius to match
+        const r = Math.max((settings && settings.radiusKm) || 1.5, here.accuracyKm || 0);
+        const dh = c.home ? distKm(here, c.home) : Infinity;
+        const dw = c.work ? distKm(here, c.work) : Infinity;
+        if (dh <= r && dh <= dw) return 'home';
+        if (dw <= r) return 'work';
+        return null;
+    }
+
+    function readPosition(force) {
+        if (geoBusy || document.hidden || !configured()) return;
+        if (!force && Date.now() - geoAt < GEO_EVERY_MS) return;
+        geoAt = Date.now();
+        geoBusy = true;
+        const before = direction();
+        const found = (pos) => {
+            geoBusy = false;
+            here = Object.assign({ at: Date.now() }, pos);
+            const p = placeNow();
+            if (p) { try { localStorage.setItem(LS_PLACE, JSON.stringify({ place: p, at: Date.now() })); } catch (_) { /* none */ } }
+            if (direction() !== before) { const r = latest[direction()]; if (configured() && (!r || Date.now() - Date.parse(r.at) > STALE_MS)) quietCheck(direction()); }
+            changed();
+        };
+        const byIp = () => {
+            ask('traffic_where', {}, 15000).then((d) => {
+                if (d && d.available && Number.isFinite(d.lat)) found({ lat: d.lat, lon: d.lon, accuracyKm: d.accuracyKm || 25, source: d.source });
+                else geoBusy = false;
+            }).catch(() => { geoBusy = false; });
+        };
+        if (!inApp() || geoDenied || !navigator.geolocation) { byIp(); return; }
+        navigator.geolocation.getCurrentPosition((pos) => {
+            found({ lat: pos.coords.latitude, lon: pos.coords.longitude, accuracyKm: Math.min(5, (pos.coords.accuracy || 0) / 1000), source: 'device' });
+        }, (err) => {
+            // refused (no permission, or an app build without the WebView location hand-off): the IP from now on
+            if (err && err.code === 1) geoDenied = true;
+            byIp();
+        }, { enableHighAccuracy: false, maximumAge: GEO_EVERY_MS, timeout: 20000 });
     }
 
     // ---------------------------------------------------------------- direction
@@ -152,14 +241,25 @@
         return t >= 3 * 60 && t < 12 * 60 ? 'work' : 'home';
     }
 
+    /** The commute ahead: picked in the app (this visit), else by where the phone is, else by the time. */
     function direction() {
         if (dirPicked) return dirPicked;
+        const p = placeNow() || storedPlace();
+        if (p) return p === 'home' ? 'work' : 'home';
         return autoDirection();
+    }
+
+    /** Where the direction came from, for the plate ("At Home", "At Work", "On the road"). */
+    function whereText() {
+        if (dirPicked) return '';
+        const p = placeNow();
+        if (p) return p === 'home' ? 'At Home' : 'At Work';
+        if (here) return 'On the road';
+        return '';
     }
 
     function setDirection(d) {
         dirPicked = d;
-        try { sessionStorage.setItem(LS_DIR, d); } catch (_) { /* none */ }
         render();
         const r = latest[d];
         if (shown && configured() && (!r || Date.now() - Date.parse(r.at) > STALE_MS)) quietCheck(d);
@@ -172,8 +272,9 @@
     }
 
     async function userRefresh() {
-        const d = direction();
         if (!configured()) { openSettings(); return; }
+        readPosition(true);
+        const d = direction();
         try {
             await ws.busy(check(d, true), { delay: 250, timeout: 45000 });
             if (layers[layers.length - 1] === 'advisor') await ws.busy(loadAdvice(d, true), { delay: 0, timeout: 45000 });
@@ -259,7 +360,8 @@
         els.root.classList.remove('is-empty');
         const fromName = d === 'work' ? 'Home' : 'Work';
         const toName = d === 'work' ? 'Work' : 'Home';
-        els.ends.textContent = `${fromName}  →  ${toName}`;
+        const where = whereText();
+        els.ends.textContent = `${where ? `${where}:  ` : ''}${fromName}  →  ${toName}`;
         if (!r) {
             els.min.textContent = '--';
             els.lcdSub.textContent = checking[d] ? 'Checking traffic...' : 'No report yet';
@@ -287,7 +389,7 @@
         els.status.textContent = majors.length ? `${majors[0].label}${majors[0].street ? ` on ${majors[0].street}` : ''}` : (LEVEL_TEXT[r.level] || '');
         els.status.className = `trf-status is-${majors.length ? 'heavy' : r.level}`;
         // the road strip: slow and jammed stretches, pins along it
-        els.segs.innerHTML = (p.segments || []).filter((s) => s.speed !== 'NORMAL').map((s) => `<i class="is-${s.speed === 'TRAFFIC_JAM' ? 'jam' : 'slow'}" style="left:${(s.from * 100).toFixed(2)}%;width:${Math.max(1.5, (s.to - s.from) * 100).toFixed(2)}%"></i>`).join('');
+        els.segs.innerHTML = segsHtml(p.segments);
         const pins = [].concat(
             (r.traps || []).map((t) => ({ at: t.at, kind: 'trap' })),
             (r.alerts || []).map((a) => ({ at: a.at, kind: a.kind })),
@@ -336,7 +438,7 @@
 
     function rowsHtml(r) {
         const n = (a) => (r && Array.isArray(a) ? a.length : 0);
-        const row = (open, ico, label, count, extra = '') => `<button type="button" class="trf-row${count ? ' has-items' : ''}" data-open="${open}">${icon(ico)}<span class="trf-row-label">${esc(label)}</span>${extra}<span class="trf-row-count">${count == null ? '' : esc(count)}</span><span class="trf-row-arrow"></span></button>`;
+        const row = (open, ico, label, count, extra = '') => `<button type="button" class="trf-row${count === '?' ? ' is-unknown' : count ? ' has-items' : ''}" data-open="${open}">${icon(ico)}<span class="trf-row-label">${esc(label)}</span>${extra}<span class="trf-row-count">${count == null ? '' : esc(count)}</span><span class="trf-row-arrow"></span></button>`;
         const trapCount = r ? (r.camerasChecked ? n(r.traps) : '?') : null;
         return row('traps', 'trap', 'Speed Traps on route', trapCount)
             + row('alerts', 'hazard', 'Alerts', r ? (r.incidentsChecked ? n(r.alerts) : '?') : null)
@@ -349,8 +451,18 @@
         const parts = [];
         if (r) parts.push(`Updated ${clock(r.at)}`);
         if (r) parts.push(['Google', r.incidentsChecked ? 'TomTom' : '', r.camerasChecked ? 'OpenStreetMap' : ''].filter(Boolean).join(', '));
-        if (r && r.errors && r.errors.length) parts.push(r.errors[0]);
+        if (r && r.errors && r.errors.length) parts.push(shortError(r.errors[0]));
         return parts.join('  ·  ');
+    }
+
+    /** A report's note in a few words for the footer (the full text stays in the report). */
+    function shortError(e) {
+        const t = String(e || '');
+        if (/^Speed cameras:/.test(t)) return 'Speed cameras not loaded yet';
+        if (/^TomTom:/.test(t)) return /budget/i.test(t) ? 'TomTom budget used up today' : 'TomTom alerts unavailable';
+        if (/^Could not place/.test(t)) return t.replace(/ \(.*\)$/, '');
+        if (/showing the closest Google route/.test(t)) return 'Your streets could not be joined; showing the closest route';
+        return t.length > 60 ? `${t.slice(0, 57)}...` : t;
     }
 
     // ---------------------------------------------------------------- layers
@@ -407,8 +519,28 @@
         return 'TomTom was not checked for this report. Tap Refresh.';
     }
 
+    /**
+     * The road strip's slow and jammed stretches: neighbours under 1.5 % of the route apart are one
+     * stretch (jammed if any part is), each at least 3 % wide, so a long drive shows bands, not ticks.
+     */
+    function segsHtml(segments) {
+        const out = [];
+        (segments || []).filter((sg) => sg.speed !== 'NORMAL').sort((a, b) => a.from - b.from).forEach((sg) => {
+            const last = out[out.length - 1];
+            if (last && sg.from - last.to < 0.015) {
+                last.to = Math.max(last.to, sg.to);
+                if (sg.speed === 'TRAFFIC_JAM') last.speed = 'TRAFFIC_JAM';
+            } else out.push({ from: sg.from, to: sg.to, speed: sg.speed });
+        });
+        return out.map((sg) => {
+            const w = Math.max(3, (sg.to - sg.from) * 100);
+            const left = Math.min(100 - w, sg.from * 100);
+            return `<i class="is-${sg.speed === 'TRAFFIC_JAM' ? 'jam' : 'slow'}" style="left:${left.toFixed(2)}%;width:${w.toFixed(2)}%"></i>`;
+        }).join('');
+    }
+
     function routeStrip(rt) {
-        const segs = (rt.segments || []).filter((s) => s.speed !== 'NORMAL').map((s) => `<i class="is-${s.speed === 'TRAFFIC_JAM' ? 'jam' : 'slow'}" style="left:${(s.from * 100).toFixed(2)}%;width:${Math.max(1.5, (s.to - s.from) * 100).toFixed(2)}%"></i>`).join('');
+        const segs = segsHtml(rt.segments);
         return `<div class="trf-mini-road"><div class="trf-road-segs">${segs}</div><div class="trf-road-line"></div></div>`;
     }
 
@@ -417,7 +549,7 @@
         return r.routes.map((rt) => {
             const badges = [rt.preferred ? '<span class="trf-badge is-pref">Preferred</span>' : '', rt.fastest ? '<span class="trf-badge is-fast">Fastest</span>' : ''].join('');
             const c = rt.counts || {};
-            const facts = [rt.distanceM ? miles(rt.distanceM) : '', rt.delaySec >= 60 ? `+${minText(rt.delaySec)} traffic` : 'no delay', c.traps ? `${c.traps} camera${c.traps > 1 ? 's' : ''}` : '', c.alerts ? `${c.alerts} alert${c.alerts > 1 ? 's' : ''}` : ''].filter(Boolean).join('  ·  ');
+            const facts = [rt.durationSec != null ? `arrive ${clock(Date.now() + rt.durationSec * 1000)}` : '', rt.distanceM ? miles(rt.distanceM) : '', rt.delaySec >= 60 ? `+${minText(rt.delaySec)} traffic` : 'no delay', c.traps ? `${c.traps} camera${c.traps > 1 ? 's' : ''}` : '', c.alerts ? `${c.alerts} alert${c.alerts > 1 ? 's' : ''}` : ''].filter(Boolean).join('  ·  ');
             const streets = rt.streetsHit && rt.streetsHit.length && r.streets && r.streets.length ? `Uses ${rt.streetsHit.length} of your ${r.streets.length} streets` : '';
             return `<div class="trf-card${rt.preferred ? ' is-pref' : ''}">
                 <div class="trf-card-top"><b class="trf-card-min">${esc(mins(rt.durationSec))}<small>min</small></b><span class="trf-card-name">via ${esc(rt.summary || 'route')}</span>${badges}</div>
@@ -555,6 +687,7 @@
             leadMin: s.leadMin != null ? s.leadMin : 10,
             betterMin: s.betterMin || 5,
             waitMin: s.waitMin || 8,
+            radiusKm: s.radiusKm || 1.5,
             notify: s.notify !== false
         };
         return draft;
@@ -570,6 +703,7 @@
     };
     const LEADS = [[0, 'At the leave time'], [5, '5 minutes before'], [10, '10 minutes before'], [15, '15 minutes before'], [20, '20 minutes before'], [30, '30 minutes before'], [45, '45 minutes before'], [60, '1 hour before']];
     const BETTER = [[3, '3 minutes'], [5, '5 minutes'], [8, '8 minutes'], [10, '10 minutes'], [15, '15 minutes']];
+    const RADII = [[0.5, '0.5 km'], [1, '1 km'], [1.5, '1.5 km'], [2, '2 km'], [3, '3 km'], [5, '5 km']];
     const WAITS = [[5, '5 minutes'], [8, '8 minutes'], [10, '10 minutes'], [15, '15 minutes'], [20, '20 minutes']];
 
     function renderSettings() {
@@ -587,7 +721,8 @@
             ${ui.sub('Places')}
             ${ui.row('Home:', ui.edit('trfHome', f.home, 'placeholder="Street address" data-k="home" maxlength="200"'), { for: 'trfHome' })}
             ${ui.row('Work:', ui.edit('trfWork', f.work, 'placeholder="Street address" data-k="work" maxlength="200"'), { for: 'trfWork' })}
-            ${ui.row('City:', ui.edit('trfArea', f.area, 'placeholder="City, State" data-k="area" maxlength="80"'), { for: 'trfArea' })}
+            ${ui.row('Radius:', ui.comboHtml('radiusKm', label(RADII, f.radiusKm)), { wide: true })}
+            ${ui.note('Inside this distance of Home the phone shows the way to Work, inside it of Work the way Home.')}
             ${ui.gap()}
             ${ui.sub('Preferred route')}
             ${ui.note('Streets from Home to Work, one a line, in the order you drive them (for example Main St, then I-90 E). The way home uses them in reverse.')}
@@ -624,6 +759,7 @@
         combo('leadMin', LEADS, 'leadMin');
         combo('betterMin', BETTER, 'betterMin', (l) => `saves ${l}`);
         combo('waitMin', WAITS, 'waitMin', (l) => `saves ${l}`);
+        combo('radiusKm', RADII, 'radiusKm');
     }
 
     /** "44.08, -103.23" as coordinates, anything else an address. */
@@ -648,7 +784,7 @@
             area: f.area,
             streets: String(f.streets || '').split('\n').map((s) => s.trim()).filter(Boolean),
             leaveHome: f.leaveHome, leaveWork: f.leaveWork, days: f.days,
-            leadMin: Number(f.leadMin), betterMin: Number(f.betterMin), waitMin: Number(f.waitMin), notify: !!f.notify,
+            leadMin: Number(f.leadMin), betterMin: Number(f.betterMin), waitMin: Number(f.waitMin), radiusKm: Number(f.radiusKm), notify: !!f.notify,
             timeZone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { return ''; } })()
         };
         try {
@@ -779,7 +915,7 @@
         },
         show() {
             shown = true;
-            try { const s = sessionStorage.getItem(LS_DIR); if (s && !dirPicked) dirPicked = s; } catch (_) { /* none */ }
+            readPosition();
             syncLayers();
             render();
             if (!loaded) {
@@ -792,7 +928,8 @@
             const r = latest[direction()];
             if (configured() && (!r || Date.now() - Date.parse(r.at) > STALE_MS)) quietCheck(direction());
         },
-        hide() { shown = false; },
+        // a direction picked in the app lasts for the visit; next time the phone's place decides again
+        hide() { shown = false; dirPicked = null; },
         historyDepth: () => layers.length,
         onBack: () => popLayer(),
         titleKind: () => (layers.length ? 'ok' : 'close'),
@@ -809,6 +946,12 @@
 
     // ---------------------------------------------------------------- Today (6.1 row, 6.5 panel)
 
+    /** Leaving now: the clock time it gets there (from a report under 45 minutes old). */
+    function arriveText(r) {
+        if (!r || !r.preferred || r.preferred.durationSec == null || Date.now() - Date.parse(r.at) > 45 * 60 * 1000) return '';
+        return `arrive ${clock(Date.now() + r.preferred.durationSec * 1000)}`;
+    }
+
     function todayLine(d) {
         const r = latest[d];
         const label = d === 'work' ? 'To Work' : 'To Home';
@@ -816,6 +959,8 @@
         const p = r.preferred;
         const delay = r.delaySec >= 60 ? ` (+${mins(r.delaySec)})` : '';
         const bits = [];
+        const arrive = arriveText(r);
+        if (arrive) bits.push(arrive.charAt(0).toUpperCase() + arrive.slice(1));
         if (r.better) bits.push(`Faster via ${r.better.summary}`);
         else if (advice[d] && advice[d].wait) bits.push(`Wait ${advice[d].wait.offsetMin} min`);
         else if (p.summary) bits.push(`via ${p.summary}`);
@@ -826,11 +971,37 @@
     }
 
     let todayHtml = '';
+    let todayCheckAt = 0;
+
+    /** The title bar's car (wmShell role 'traffic'): the commute ahead is 15+ min late; the bubble's lines. */
+    function statusState() {
+        if (!canUse() || !loaded || !configured()) return null;
+        const d = direction();
+        const r = latest[d];
+        if (!r || !r.preferred) return { delayed: false, direction: d, title: 'Traffic', lines: [] };
+        const fresh = Date.now() - Date.parse(r.at) < 45 * 60 * 1000;
+        const p = r.preferred;
+        const lines = [`${d === 'work' ? 'To Work' : 'To Home'}: ${minText(p.durationSec)}${r.delaySec >= 60 ? `, ${minText(r.delaySec)} late` : ''}`];
+        const arrive = arriveText(r);
+        if (arrive) lines.push(`Leave now and ${arrive}.`);
+        if (r.better) lines.push(`Faster: via ${r.better.summary}, saves ${minText(r.better.savesSec)}.`);
+        const majors = (r.alerts || []).filter((a) => a.major);
+        if (majors.length) lines.push(`${majors[0].label}${majors[0].street ? ` on ${majors[0].street}` : ''}.`);
+        if (!fresh) lines.push(`Checked at ${clock(r.at)}.`);
+        return { delayed: fresh && (r.delaySec || 0) >= DELAY_STATUS_SEC, direction: d, title: 'Traffic', lines };
+    }
     function todayRender(el) {
         if (!canUse()) return false;
         if (!loaded) { if (!wired) wire(); return false; }
         if (!configured() && !isAdmin()) return false;
+        readPosition();
         const d = direction();
+        // Today on screen with an old report: one fresh check (at most every 15 min; the server caches too)
+        const r0 = latest[d];
+        if (configured() && !document.hidden && Date.now() - todayCheckAt > TODAY_CHECK_MS && (!r0 || Date.now() - Date.parse(r0.at) > TODAY_CHECK_MS)) {
+            todayCheckAt = Date.now();
+            quietCheck(d);
+        }
         const t = todayLine(d);
         if (!el.dataset.trfBound) {
             el.dataset.trfBound = '1';
@@ -872,6 +1043,9 @@
         open,
         latest: () => latest,
         direction,
+        statusState,
+        /** Read the phone's position now (Refresh does too). */
+        locate: () => readPosition(true),
         refresh: () => check(direction(), false),
         /** Read the settings and last reports again (traffic_get). */
         reload: () => load(),

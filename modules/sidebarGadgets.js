@@ -658,6 +658,8 @@ module.exports = {
     pickSearchImage,
     sanitizeFrameSearch,
     getClientWeather,
+    // Traffic (#795): where a phone outside the Android app is, by its IP (home network = the configured place)
+    resolveClientLocation,
     getHostLoad,
     getFxRate,
     getQuotes,
