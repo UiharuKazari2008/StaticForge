@@ -1114,6 +1114,21 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-sip[aria-pressed="true"]::before
     mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-check.png') 1x, url('/static_images/wm61/menu-check@2x.png') 2x, url('/static_images/wm61/menu-check@4x.png') 4x);
 }
 
+/* a row with its picture in the gutter (Pictures & Videos: My Device, Storage Card) */
+.wm-popup-item.has-icon {
+    padding-left: calc((20 + 12 * var(--wm-indent, 0)) * var(--wm-px)) !important;
+}
+
+.wm-popup-item.has-icon > img {
+    position: absolute;
+    left: calc(2 * var(--wm-px));
+    top: 50%;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
 .wm-popup-item:hover:not(:disabled),
 .wm-popup-item:focus-visible {
     background: var(--wm-highlight) !important;
@@ -2747,6 +2762,112 @@ html.ui-mobile[data-wm-search="1"] .wm-pv-bar {
     background: var(--wm-highlight) !important;
 }
 
+/* a storage card's subfolder (ref-pv/04-card.png): the 32-unit folder over its name; selected,
+   the folder is washed with the highlight and the name turns white as on the device */
+.wm-pv-cell.wm-pv-dir {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: calc(2 * var(--wm-px) * var(--wm-pv-k, 1));
+    padding-top: calc(7 * var(--wm-px) * var(--wm-pv-k, 1)) !important;
+}
+
+.wm-pv-cell.wm-pv-dir img {
+    width: calc(32 * var(--wm-px) * var(--wm-pv-k, 1));
+    height: calc(32 * var(--wm-px) * var(--wm-pv-k, 1));
+    max-width: none;
+    max-height: none;
+    object-fit: contain;
+}
+
+.wm-pv-cell.wm-pv-dir.is-selected img {
+    opacity: 0.55;
+}
+
+.wm-pv-name {
+    max-width: 100%;
+    padding: 0 calc(2 * var(--wm-px));
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--wm-fs);
+    font-weight: normal;
+    color: #000;
+    pointer-events: none;
+}
+
+.wm-pv-cell.is-selected .wm-pv-name {
+    color: var(--wm-highlight-text, #fff);
+}
+
+/* a video's length over the bottom right of its picture */
+.wm-pv-cell.is-video {
+    position: relative;
+}
+
+.wm-pv-dur {
+    position: absolute;
+    right: calc(3 * var(--wm-px));
+    bottom: calc(3 * var(--wm-px));
+    padding: 0 calc(2 * var(--wm-px));
+    font-style: normal;
+    font-size: calc(var(--wm-fs) * 0.85);
+    line-height: 1.2;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.7);
+    pointer-events: none;
+}
+
+/* Menu > Select Pictures: the picked cells framed in the highlight with its check */
+.wm-pv-cell.is-picked {
+    position: relative;
+    box-shadow: inset 0 0 0 calc(2 * var(--wm-px)) var(--wm-highlight);
+}
+
+.wm-pv-cell.is-picked::after {
+    content: '';
+    position: absolute;
+    left: calc(3 * var(--wm-px));
+    top: calc(3 * var(--wm-px));
+    width: calc(9 * var(--wm-px));
+    height: calc(9 * var(--wm-px));
+    background: var(--wm-highlight) center / calc(7 * var(--wm-px)) no-repeat;
+    -webkit-mask: none;
+}
+
+.wm-pv-cell.is-picked::before {
+    content: '';
+    position: absolute;
+    z-index: 1;
+    left: calc(4 * var(--wm-px));
+    top: calc(4 * var(--wm-px));
+    width: calc(7 * var(--wm-px));
+    height: calc(7 * var(--wm-px));
+    background: var(--wm-highlight-text, #fff);
+    -webkit-mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-check.png') 1x, url('/static_images/wm61/menu-check@2x.png') 2x, url('/static_images/wm61/menu-check@4x.png') 4x);
+    mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-check.png') 1x, url('/static_images/wm61/menu-check@2x.png') 2x, url('/static_images/wm61/menu-check@4x.png') 4x);
+}
+
+.wm-pv-phone[hidden],
+.wm-pv-grid[hidden] {
+    display: none;
+}
+
+/* a video in the picture view: the phone's file with the WebView's own controls */
+.wm-pv-video {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.wm-pv-video video {
+    max-width: 100%;
+    max-height: 100%;
+    background: #000;
+}
+
 .wm-pv .wm-photos-empty {
     margin: calc(8 * var(--wm-px));
     font-size: var(--wm-fs);
@@ -3752,4 +3873,74 @@ html.ui-mobile[data-wm-version="6.5"] .wm-viewbar-btn:disabled img {
     width: 0;
     background: var(--wm-highlight);
     transition: width 0.35s ease;
+}
+
+/* ---- Camera (wmCamera.js, #788): the viewfinder filling the content, black around it ---- */
+.wm-camera {
+    /* .wm-page's absolute inset box is the viewfinder's frame */
+    overflow: hidden !important;
+    background: #000;
+    color: #fff;
+}
+
+.wcam-view {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+}
+
+.wcam-view.is-mirrored {
+    transform: scaleX(-1);
+}
+
+.wcam-mode,
+.wcam-saving {
+    position: absolute;
+    left: calc(4 * var(--wm-px));
+    top: calc(4 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px));
+    font-size: var(--wm-fs);
+    font-weight: bold;
+    background: rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+}
+
+.wcam-mode.is-rec::before {
+    content: '';
+    display: inline-block;
+    width: calc(6 * var(--wm-px));
+    height: calc(6 * var(--wm-px));
+    margin-right: calc(3 * var(--wm-px));
+    border-radius: 50%;
+    background: #e00;
+    vertical-align: middle;
+}
+
+.wcam-saving {
+    left: auto;
+    right: calc(4 * var(--wm-px));
+}
+
+.wcam-saving[hidden] {
+    display: none;
+}
+
+.wcam-flash {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.wcam-flash.is-on {
+    animation: wcam-flash 220ms ease-out;
+}
+
+@keyframes wcam-flash {
+    from { opacity: 0.85; }
+    to { opacity: 0; }
 }

@@ -68,7 +68,7 @@
     let selMsg = null; // the selected message's guid
     let replyTo = null; // the message the reply box answers (guid)
     let media = null; // the attachment in the picture view
-    let newDraft = null; // { to, text }
+    let newDraft = null; // { to, text, files }: files = pictures handed over by Pictures & Videos (#788)
     let localN = 0;
     const typingIn = new Map(); // chatGuid -> timer while the other side types
     let wiredTo = null;
@@ -874,9 +874,10 @@
 
     // ---------------------------------------------------------------- new message
 
-    function openNew(addresses, text) {
-        newDraft = { to: (addresses || []).join('; '), text: text || '' };
+    function openNew(addresses, text, files) {
+        newDraft = { to: (addresses || []).join('; '), text: text || '', files: Array.isArray(files) ? files.slice() : [] };
         const v = page.querySelector('.wtm-newview');
+        renderNewFiles();
         v.querySelector('.wtm-new-from').textContent = acctLine(acct());
         v.querySelector('input[name="to"]').value = newDraft.to;
         v.querySelector('.wtm-new-text').value = newDraft.text;
@@ -892,7 +893,24 @@
     };
 
     const newTo = () => String(page.querySelector('.wtm-newview input[name="to"]').value || '').split(/[;,]/).map((s) => s.trim()).filter(Boolean);
-    const canSendNew = () => !!(page && newTo().length && page.querySelector('.wtm-new-text').value.trim());
+    const newFiles = () => (newDraft && newDraft.files) || [];
+    // pictures alone go to a conversation that already exists; a new one starts with the text
+    const canSendNew = () => {
+        if (!page || !newTo().length) return false;
+        if (page.querySelector('.wtm-new-text').value.trim()) return true;
+        const to = newTo();
+        return !!(newFiles().length && to.length === 1 && findChatWith(to[0]));
+    };
+
+    /** The new message's attachments under the text (Messaging's attachment rows), tap one to take it off. */
+    function renderNewFiles() {
+        const box = page && page.querySelector('.wtm-new-atts');
+        if (!box) return;
+        const files = newFiles();
+        const icon = sh && sh.art ? sh.art.img('msg-attachment') : '';
+        box.innerHTML = files.map((f, n) => `<div class="msg-att" role="button" data-n="${n}" title="Remove">${icon}<span>${sh.escapeHtml(f.name || 'attachment')}</span></div>`).join('');
+        box.hidden = !files.length;
+    }
 
     async function sendNew() {
         if (!canSendNew()) return;
@@ -900,12 +918,15 @@
         const id = accountId;
         const addresses = newTo();
         const text = page.querySelector('.wtm-new-text').value.trim();
+        const files = newFiles().slice();
         // a conversation with that one address already: the message goes there
         const have = addresses.length === 1 ? findChatWith(addresses[0]) : null;
         let r = null;
-        try {
-            r = await sh.busy(() => t.send(id, have ? { chatGuid: have.guid, text } : { addresses, text }), { paint: true });
-        } catch (err) { errorBox('The message was not sent.', err); return; }
+        if (text) {
+            try {
+                r = await sh.busy(() => t.send(id, have ? { chatGuid: have.guid, text } : { addresses, text }), { paint: true });
+            } catch (err) { errorBox('The message was not sent.', err); return; }
+        }
         const guid = (r && r.chatGuid) || (have && have.guid);
         newDraft = null;
         if (!guid) { layers.pop(); showLayer(); sh.syncHistory(); refresh({ quiet: true }); return; }
@@ -914,7 +935,9 @@
         if (!c) c = { guid, title: addresses.join(', '), participants: addresses.map((a) => ({ address: a, name: '' })), isGroup: addresses.length > 1, known: true, last: r && r.message };
         if (!chatByGuid(guid) && folder !== 'unknown') chats.unshift(c);
         layers = [];
-        openConversation(c, { replace: true });
+        await openConversation(c, { replace: true });
+        // the pictures follow the text into the conversation, each with its own progress
+        for (const f of files) { if (conv && conv.guid === guid) await sendFile(f); }
     }
 
     function findChatWith(address) {
@@ -1105,6 +1128,7 @@
                 <form class="msg-form" autocomplete="off" onsubmit="return false">
                     <label class="msg-field is-static"><span>From:</span><output class="wtm-new-from"></output></label>
                     <label class="msg-field"><span>To:</span><input name="to" type="text" inputmode="email" autocapitalize="off" spellcheck="false" aria-label="To"></label>
+                    <div class="msg-atts msg-compose-atts wtm-new-atts" hidden></div>
                     <textarea class="msg-text wtm-new-text" aria-label="Message"></textarea>
                 </form>
             </div>
@@ -1175,6 +1199,13 @@
 
         const nv = p.querySelector('.wtm-newview');
         nv.addEventListener('input', () => { if (isCurrent()) sh.refreshSoftKeys(); });
+        nv.querySelector('.wtm-new-atts').addEventListener('click', (e) => {
+            const a = e.target.closest('.msg-att');
+            if (!a || !newDraft) return;
+            newDraft.files.splice(Number(a.dataset.n), 1);
+            renderNewFiles();
+            if (isCurrent()) sh.refreshSoftKeys();
+        });
         nv.querySelector('input[name="to"]').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); nv.querySelector('.wtm-new-text').focus(); }
         });
@@ -1279,7 +1310,20 @@
         return true;
     }
 
+    /**
+     * Pictures & Videos' Send > Text Message (#788): a new message on that account carrying the
+     * files; the person picks the recipient and writes the text as for any new message.
+     */
+    async function composeWithFiles(id, files) {
+        const ok = await compose(id, []);
+        if (!ok || !page) return false;
+        if (newDraft) { newDraft.files = (Array.isArray(files) ? files : []).filter(Boolean); renderNewFiles(); }
+        if (isCurrent()) sh.refreshSoftKeys();
+        return true;
+    }
+
     window.wmTextMessaging = {
+        composeWithFiles: (id, files) => composeWithFiles(id, files),
         showAccount: (id, f) => showAccount(id, f),
         openChat: (id, guid) => openChat(id, guid),
         compose: (id, addresses) => compose(id, addresses),
