@@ -11,7 +11,10 @@
  *   tomtom      (Service key) TomTom Traffic Incident Details v5: accidents, closures, lane closures,
  *               roadworks, hazards and jams in the route's box. Free tier counted per day.
  *   OpenStreetMap  fixed speed and red light cameras (Overpass API: highway=speed_camera nodes and
- *               type=enforcement relations' devices), no key; cached a week per area.
+ *               type=enforcement relations' devices), no key. Every list is saved to
+ *               .cache/traffic-cameras.json and kept: a refresh that fails (Overpass is often at
+ *               capacity; three servers are tried) leaves the last good list in use, and the
+ *               scheduler retries with a backoff until the first list for a commute lands.
  * Google is counted per calendar month and TomTom per day against config traffic.budgets
  * ({ google, tomtom }); a provider past its budget is skipped (the app shows what is left).
  * Waze was dropped (Yukimi, Nov 13 2026): its free plan (100 requests a month) is too small to use.
@@ -46,13 +49,16 @@ const path = require('path');
 const MIN = 60 * 1000;
 const GOOGLE_ROUTES = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const TOMTOM_INCIDENTS = 'https://api.tomtom.com/traffic/services/5/incidentDetails';
-const OVERPASS = 'https://overpass-api.de/api/interpreter';
+// the public Overpass servers, tried in order (the main one is often "at capacity": HTTP 502 / 504 / 429)
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 const DIRECTIONS = ['work', 'home'];
 const DIRECTION_LABEL = { work: 'To Work', home: 'To Home' };
 const DEFAULTS = { leadMin: 10, betterMin: 5, waitMin: 8, advisorMax: 90, notify: true, days: [1, 2, 3, 4, 5], budgets: { google: 4500, tomtom: 2000 } };
 const ROUTE_TTL = 3 * MIN;
 const INCIDENT_TTL = 5 * MIN;
-const CAMERA_TTL = 7 * 24 * 60 * MIN;
+const CAMERA_TTL = 7 * 24 * 60 * MIN; // fixed cameras: refreshed weekly, an older list is still used
+const CAMERA_WAIT_MS = 8000; // a report waits this long for a first camera list, then goes without
+const CAMERA_FILE = process.env.TRAFFIC_CAMERA_FILE || path.join(__dirname, '..', '.cache', 'traffic-cameras.json');
 const CORRIDOR_M = 60; // an incident's point this close to the route is on it
 const CAMERA_M = 40; // a camera this close to the route watches it
 const ADVISOR_STEPS = [0, 15, 30, 45, 60, 90, 120];
@@ -563,10 +569,20 @@ async function tomtomIncidents(box) {
 async function osmCameras(box) {
     const bb = [box.s, box.w, box.n, box.e].map((v) => v.toFixed(4)).join(',');
     const query = `[out:json][timeout:25];(node["highway"="speed_camera"](${bb});rel["type"="enforcement"](${bb}););out body;node(r:"device");out body;`;
-    const res = await getJson(OVERPASS, {
-        timeout: 30000,
-        init: { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'Dreamscape-Traffic/1.0' }, body: `data=${encodeURIComponent(query)}` }
-    });
+    let res = null;
+    let lastError = null;
+    for (const url of OVERPASS) {
+        try {
+            res = await getJson(url, {
+                timeout: 25000,
+                init: { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json', 'User-Agent': 'Dreamscape-Traffic/1.0' }, body: `data=${encodeURIComponent(query)}` }
+            });
+            break;
+        } catch (error) {
+            lastError = error;
+        }
+    }
+    if (!res) throw lastError || new TrafficError('OpenStreetMap could not be reached', 'UNREACHABLE');
     const els = (res && Array.isArray(res.elements) ? res.elements : []);
     const enforce = new Map(); // device node id -> relation tags
     els.filter((e) => e.type === 'relation').forEach((r) => {
@@ -594,6 +610,76 @@ async function osmCameras(box) {
             lon: n.lon
         };
     }).filter(Boolean);
+}
+
+// the camera lists by box, kept on disk: { [boxKey]: { at, cameras } }; a failed refresh backs off
+// (30 min, doubling to 6 h) and the last good list stays in use
+const cameraState = { store: null, inflight: new Map(), backoff: new Map() };
+
+function cameraStore() {
+    if (cameraState.store) return cameraState.store;
+    try { cameraState.store = JSON.parse(fs.readFileSync(CAMERA_FILE, 'utf8')) || {}; } catch (_e) { cameraState.store = {}; }
+    return cameraState.store;
+}
+
+function refreshCameras(boxKey, box) {
+    if (cameraState.inflight.has(boxKey)) return cameraState.inflight.get(boxKey);
+    const b = cameraState.backoff.get(boxKey);
+    if (b && Date.now() < b.until) return Promise.resolve(null);
+    const run = osmCameras(box).then((cameras) => {
+        cameraStore()[boxKey] = { at: Date.now(), cameras };
+        cameraState.backoff.delete(boxKey);
+        try {
+            fs.mkdirSync(path.dirname(CAMERA_FILE), { recursive: true });
+            fs.writeFileSync(`${CAMERA_FILE}.tmp`, JSON.stringify(cameraStore()));
+            fs.renameSync(`${CAMERA_FILE}.tmp`, CAMERA_FILE);
+        } catch (_e) { /* kept in memory */ }
+        return cameras;
+    }, (error) => {
+        const wait = Math.min(6 * 60 * MIN, b ? b.wait * 2 : 30 * MIN);
+        cameraState.backoff.set(boxKey, { until: Date.now() + wait, wait, error: error.message });
+        console.warn(`[traffic] speed cameras: ${error.message} (next try in ${Math.round(wait / MIN)} min)`);
+        return null;
+    }).finally(() => cameraState.inflight.delete(boxKey));
+    cameraState.inflight.set(boxKey, run);
+    return run;
+}
+
+/** The box's cameras: the stored list (refreshed in the background when a week old), else a first fetch for up to 8 s. */
+async function camerasFor(boxKey, box) {
+    const hit = cameraStore()[boxKey];
+    if (hit && Array.isArray(hit.cameras)) {
+        if (Date.now() - hit.at > CAMERA_TTL) refreshCameras(boxKey, box);
+        return hit.cameras;
+    }
+    const first = refreshCameras(boxKey, box);
+    const cams = await Promise.race([first, new Promise((r) => { const t = setTimeout(() => r(undefined), CAMERA_WAIT_MS); if (t.unref) t.unref(); })]);
+    if (cams === undefined) throw new TrafficError('OpenStreetMap is slow to answer; cameras appear on the next check', 'PENDING');
+    if (!cams) throw new TrafficError((cameraState.backoff.get(boxKey) || {}).error || 'OpenStreetMap could not be reached', 'UNREACHABLE');
+    return cams;
+}
+
+/**
+ * The camera area for route points: their box padded ~10 km and snapped outwards to a 0.25 degree grid,
+ * so one stored list covers the commute and its detours, and small route changes keep the same key.
+ */
+function cameraBoxOf(points) {
+    const b = bboxOf(points, 0.1);
+    const g = 0.25;
+    const box = { s: Math.floor(b.s / g) * g, w: Math.floor(b.w / g) * g, n: Math.ceil(b.n / g) * g, e: Math.ceil(b.e / g) * g };
+    return { box, key: [box.s, box.w, box.n, box.e].map((v) => v.toFixed(2)).join(',') };
+}
+
+/** Scheduler: keep every reported commute's camera list on disk and fresh (retries a failed one with its backoff). */
+function upkeepCameras() {
+    loadLatest();
+    DIRECTIONS.forEach((d) => {
+        const line = latest[d] && latest[d].preferred && latest[d].preferred.line;
+        if (!Array.isArray(line) || !line.length) return;
+        const { box, key } = cameraBoxOf(line.map(([lat, lon]) => ({ lat, lon })));
+        const hit = cameraStore()[key];
+        if (!hit || Date.now() - hit.at > CAMERA_TTL) refreshCameras(key, box);
+    });
 }
 
 // ------------------------------------------------------------------------------------------ the check
@@ -769,7 +855,7 @@ async function check(direction, { force = false } = {}) {
         const boxKey = [box.s, box.w, box.n, box.e].map((v) => v.toFixed(2)).join(',');
         [incidents, cameras] = await Promise.all([
             tomtomKey() ? cachedCall(`t:inc:${boxKey}`, INCIDENT_TTL, () => tomtomIncidents(box), force).catch((e) => { errors.push(`TomTom: ${e.message}`); return null; }) : Promise.resolve(null),
-            cachedCall(`o:cam:${boxKey}`, CAMERA_TTL, () => osmCameras(box), false).catch((e) => { errors.push(`Speed cameras: ${e.message}`); return null; })
+            (() => { const cb = cameraBoxOf(pts); return camerasFor(cb.key, cb.box); })().catch((e) => { errors.push(`Speed cameras: ${e.message}`); return null; })
         ]);
     }
     const pw = onRoute(incidents, cameras, preferred);
@@ -952,6 +1038,7 @@ function tick() {
         if (Date.now() - at > 10 * MIN) return; // the server was down: too late to be useful
         runScheduled(direction, 'go').catch((e) => console.warn(`[traffic] go check failed: ${e.message}`));
     });
+    try { upkeepCameras(); } catch (e) { console.warn(`[traffic] camera upkeep: ${e.message}`); }
     // forget old days
     if (sched.fired.size > 20) [...sched.fired].filter((k) => !k.startsWith(now.date)).forEach((k) => sched.fired.delete(k));
 }
@@ -995,8 +1082,9 @@ module.exports = {
     DIRECTIONS,
     _test: {
         decodePolyline, cumulative, locate, normStreet, streetCore, streetOfInstruction, matchStreets, viaWaypoints,
-        normaliseGoogle, slowdownsOf, onRoute, tomtomIncidents, osmCameras, dueNow, localNow, summarise, routeCache, sched,
+        normaliseGoogle, slowdownsOf, onRoute, tomtomIncidents, osmCameras, cameraState, cameraBoxOf, upkeepCameras, dueNow, localNow, summarise, routeCache, sched,
         setFetch: (fn) => { fetchImpl = fn; },
+        getFetch: () => fetchImpl,
         resetUsage: () => { usageState = null; }
     }
 };

@@ -16,6 +16,7 @@ const fs = require('fs');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'traffic-test-'));
 process.env.TRAFFIC_USAGE_FILE = path.join(tmp, 'usage.json');
 process.env.TRAFFIC_LATEST_FILE = path.join(tmp, 'latest.json');
+process.env.TRAFFIC_CAMERA_FILE = path.join(tmp, 'cameras.json');
 
 const svc = require('../modules/trafficService');
 const T = svc._test;
@@ -106,7 +107,7 @@ T.setFetch(async (url, init) => {
             { type: 'Feature', geometry: { type: 'Point', coordinates: [-102.95, 44.05] }, properties: { id: 'far', iconCategory: 9, magnitudeOfDelay: 1, events: [{ description: 'roadworks' }] } }
         ] });
     }
-    if (/overpass-api\.de/.test(url)) {
+    if (/overpass/.test(url)) {
         assert.ok(/speed_camera/.test(decodeURIComponent(init.body)));
         return json({ elements: [
             { type: 'node', id: 11, lat: 44.0002, lon: -102.95, tags: { highway: 'speed_camera', maxspeed: '65 mph' } },
@@ -196,6 +197,7 @@ T.setFetch(async (url, init) => {
 
     await ok('one TomTom / Overpass call serves both directions', async () => {
         T.routeCache.clear();
+        T.cameraState.store = {};
         const before = calls.filter((c) => /tomtom|overpass/.test(c.url)).length;
         await svc.check('work');
         await svc.check('home');
@@ -214,6 +216,50 @@ T.setFetch(async (url, init) => {
         cfg.traffic.budgets = { google: 4500, tomtom: 2000 };
         const p = svc.providers();
         assert.ok(p.google.used > 0 && p.google.configured && p.tomtom.configured && p.tomtom.per === 'day');
+    });
+
+    await ok('Overpass at capacity: the mirror answers; all down: the report goes on, with a backoff', async () => {
+        const real = calls.length;
+        T.routeCache.clear();
+        T.cameraState.store = {};
+        T.cameraState.backoff.clear();
+        const orig = T.getFetch();
+        T.setFetch(async (url, init) => (/overpass-api\.de/.test(url) ? { ok: false, status: 502, text: async () => 'at capacity' } : orig(url, init)));
+        const r = await svc.check('work', { force: true });
+        assert.ok(r.camerasChecked && r.traps.length === 2, JSON.stringify(r.errors));
+        T.routeCache.clear();
+        T.cameraState.store = {};
+        T.setFetch(async (url, init) => (/overpass/.test(url) ? { ok: false, status: 502, text: async () => 'at capacity' } : orig(url, init)));
+        const r2 = await svc.check('work', { force: true });
+        assert.ok(!r2.camerasChecked && r2.preferred && r2.errors.some((e) => /Speed cameras/.test(e)));
+        assert.ok(T.cameraState.backoff.size === 1);
+        T.setFetch(orig);
+        T.cameraState.backoff.clear();
+        assert.ok(calls.length >= real);
+    });
+
+    await ok('cameras are saved to disk and survive an outage (and a restart)', async () => {
+        T.routeCache.clear();
+        T.cameraState.store = {};
+        T.cameraState.backoff.clear();
+        await svc.check('work', { force: true });
+        const file = JSON.parse(fs.readFileSync(process.env.TRAFFIC_CAMERA_FILE, 'utf8'));
+        const keysOnDisk = Object.keys(file);
+        assert.ok(keysOnDisk.length === 1 && file[keysOnDisk[0]].cameras.length >= 2, 'list on disk');
+        // a restart: memory empty, the list comes back from disk; Overpass down and the list a year old
+        T.cameraState.store = null;
+        const store = JSON.parse(fs.readFileSync(process.env.TRAFFIC_CAMERA_FILE, 'utf8'));
+        store[keysOnDisk[0]].at = Date.now() - 365 * 24 * 3600 * 1000;
+        fs.writeFileSync(process.env.TRAFFIC_CAMERA_FILE, JSON.stringify(store));
+        const orig = T.getFetch();
+        T.setFetch(async (url, init) => (/overpass/.test(url) ? { ok: false, status: 502, text: async () => 'at capacity' } : orig(url, init)));
+        T.routeCache.clear();
+        const r = await svc.check('work', { force: true });
+        assert.ok(r.camerasChecked && r.traps.length === 2, 'the old list is used');
+        await new Promise((res) => setTimeout(res, 50));
+        assert.ok(T.cameraState.store[keysOnDisk[0]].cameras.length >= 2, 'a failed refresh keeps the list');
+        T.setFetch(orig);
+        T.cameraState.backoff.clear();
     });
 
     await ok('no Google key: a clear error', async () => {
