@@ -23,7 +23,9 @@ const ALLOWED_FILES = [
     'Windows Print complete.wav',
     'Windows Recycle.wav',
     'Windows Shutdown.wav',
-    'Windows User Account Control.wav'
+    'Windows User Account Control.wav',
+    // Melaton Messenger's own (Windows Live Messenger's new instant message sound, #779)
+    'Messenger New Instant Message.wav'
 ];
 
 const ALLOWED = new Set(ALLOWED_FILES);

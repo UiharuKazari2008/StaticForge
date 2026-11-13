@@ -101,7 +101,7 @@
         const title = d.isGroup && d.chatTitle && d.chatTitle !== who ? `${who} (${d.chatTitle})` : who;
         let body = text(m);
         if (body.length > 160) body = `${body.slice(0, 157)}...`;
-        if (soundOn() && root.desktopSounds && typeof root.desktopSounds.play === 'function') root.desktopSounds.play('notify');
+        if (soundOn() && root.desktopSounds && typeof root.desktopSounds.play === 'function') root.desktopSounds.play('im-message');
         const anchor = ensureIcon();
         if (!anchor || !root.PopoverManager || typeof root.PopoverManager.showPopover !== 'function') return;
         if (anchor.classList.contains('hidden')) {

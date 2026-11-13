@@ -44,7 +44,9 @@
         notify: 'Windows Notify.wav',
         recycle: 'Windows Recycle.wav',
         'critical-stop': 'Windows Critical Stop.wav',
-        uac: 'Windows User Account Control.wav'
+        uac: 'Windows User Account Control.wav',
+        // Melaton Messenger: a new instant message (its program group in the Sound dialog, #779)
+        'im-message': 'Messenger New Instant Message.wav'
     };
 
     // the WAVs the server hands out (modules/desktopSoundsStatic.js ALLOWED_FILES): the Sounds list
@@ -63,7 +65,8 @@
         'Windows Print complete.wav',
         'Windows Recycle.wav',
         'Windows Shutdown.wav',
-        'Windows User Account Control.wav'
+        'Windows User Account Control.wav',
+        'Messenger New Instant Message.wav'
     ];
 
     const PRINT_REQUEST_TYPES = [

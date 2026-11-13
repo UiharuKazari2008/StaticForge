@@ -70,6 +70,10 @@
             ['recycle', 'Empty Recycle Bin'],
             ['navigate', 'Start Navigation']
         ] },
+        // its own program, as Windows Live Messenger lists its events in Vista's Sound dialog (#779)
+        { name: 'Melaton Messenger', events: [
+            ['im-message', 'New Instant Message']
+        ] },
         { name: 'Dreamscape', events: [
             ['planet-enter', 'Open Planet Switcher'],
             ['planet-activate', 'Planet Selected'],
