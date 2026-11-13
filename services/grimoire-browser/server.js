@@ -1611,6 +1611,24 @@ async function closeSession(id) {
 const ISOLATED_KEEP_MS = 15 * 60 * 1000;
 
 let browserLaunch = null;
+
+/**
+ * Ask Chromium to quit (CDP Browser.close: every tab closed, cookies and the profile written, exit_type Normal)
+ * and wait for its process to end by itself. puppeteer's browser.close() SIGKILLs the process right after
+ * sending the same command, cutting that save short; it is only the fallback when Chromium hangs.
+ */
+async function closeBrowserGently(instance, timeoutMs) {
+    const proc = instance && typeof instance.process === 'function' ? instance.process() : null;
+    if (!proc || proc.exitCode !== null || proc.signalCode) {
+        await instance.close().catch(() => {});
+        return true;
+    }
+    const exited = new Promise((resolve) => proc.once('exit', () => resolve(true)));
+    try { await browserClient.send('Browser.close'); } catch (_) { /* the pipe closes as it quits */ }
+    const ok = await Promise.race([exited, new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs).unref())]);
+    if (!ok) await instance.close().catch(() => {});
+    return ok;
+}
 let pageUserAgent = '';
 let pageUserAgentMetadata = null;
 let plainUserAgent = '';
@@ -1896,6 +1914,7 @@ function ensureBrowser() {
 async function restartBrowser() {
     const ids = [...sessions.keys()];
     for (const id of ids) broadcast(sessions.get(id), { type: 'restarting' });
+    await keepSessionCookies().catch(() => {});
     const old = browser;
     browser = null;
     for (const id of ids) await closeSession(id);
@@ -1940,6 +1959,50 @@ function fakeCaptureArgs() {
 }
 
 let browserClient = null;
+
+/**
+ * Logins survive a restart (Yukimi, Nov 13 2026: "accounts not keeping their login after an Alchemy restart").
+ * Chromium drops session cookies (no expiry) at every launch unless it restores the last session, and many
+ * sites sign in with exactly those. Alchemy is a browser that is never "closed" by its owner, so a session
+ * cookie of the profile is made persistent (Chromium's 400-day cap) as soon as it is seen: once a minute and
+ * at shutdown. Host-only cookies are set by url (a domain would widen them to subdomains); private contexts
+ * (CardSpace's isolated sign-in) are left alone.
+ */
+const KEEP_COOKIE_MS = 400 * 24 * 3600 * 1000;
+const KEEP_COOKIES_EVERY_MS = 60 * 1000;
+let keepingCookies = false;
+async function keepSessionCookies() {
+    if (keepingCookies || !browserClient || !browser || !browser.connected) return 0;
+    keepingCookies = true;
+    try {
+        const { cookies = [] } = await browserClient.send('Storage.getCookies', {});
+        const expires = Math.floor((Date.now() + KEEP_COOKIE_MS) / 1000);
+        const keep = [];
+        for (const c of cookies) {
+            if (!c.session) continue;
+            const hostOnly = !String(c.domain || '').startsWith('.');
+            const scheme = c.secure || c.sourceScheme === 'Secure' ? 'https' : 'http';
+            const out = { name: c.name, value: c.value, path: c.path || '/', secure: !!c.secure, httpOnly: !!c.httpOnly, expires };
+            if (hostOnly) out.url = scheme + '://' + c.domain + (c.path || '/');
+            else out.domain = c.domain;
+            if (c.sameSite) out.sameSite = c.sameSite;
+            if (c.priority) out.priority = c.priority;
+            if (c.sourceScheme) out.sourceScheme = c.sourceScheme;
+            if (c.partitionKey) out.partitionKey = c.partitionKey;
+            keep.push(out);
+        }
+        // one at a time: a cookie Chromium refuses (a stale partition key) must not cost the others
+        let kept = 0;
+        for (const c of keep) {
+            try { await browserClient.send('Storage.setCookies', { cookies: [c] }); kept++; } catch (_) {}
+        }
+        return kept;
+    } catch (_) {
+        return 0;
+    } finally {
+        keepingCookies = false;
+    }
+}
 const grantedCaptureOrigins = new Set();
 
 // The camera / mic prompt would open on the invisible X display, so each http(s) origin is granted on its first visit
@@ -2084,6 +2147,12 @@ async function launchBrowser() {
         pipe: true,
         userDataDir: PROFILE_DIR,
         ignoreDefaultArgs: ['--disable-extensions'],
+        // Puppeteer's own signal handlers SIGKILL Chromium and exit before the shutdown below runs: every
+        // restart lost the cookies Chromium had not written yet and left the profile marked Crashed (Nov 13
+        // 2026). The shutdown closes Chromium itself (browser.close: tabs closed, profile saved).
+        handleSIGINT: false,
+        handleSIGTERM: false,
+        handleSIGHUP: false,
         env,
         args
     });
@@ -3424,6 +3493,8 @@ async function main() {
         }
     }, MEMORY_CHECK_MS).unref();
 
+    setInterval(() => { keepSessionCookies().catch(() => {}); }, KEEP_COOKIES_EVERY_MS).unref();
+
     server.listen(PORT, HOST, () => {
         const bound = server.address();
         console.log('[grimoire-browser] listening on http://' + bound.address + ':' + bound.port);
@@ -3436,10 +3507,11 @@ async function main() {
         if (shuttingDown) return;
         shuttingDown = true;
         if (browser) {
-            await Promise.race([
-                browser.close().catch(() => {}),
-                new Promise((resolve) => setTimeout(resolve, 6000).unref())
-            ]);
+            const t0 = Date.now();
+            const kept = await Promise.race([keepSessionCookies(), new Promise((resolve) => setTimeout(() => resolve(-1), 1500).unref())]).catch(() => -1);
+            const closed = await closeBrowserGently(browser, 6000);
+            // a sync write: process.exit follows at once and would drop a piped console.log
+            try { fs.writeSync(1, '[grimoire-browser] shutdown: ' + (kept >= 0 ? kept + ' session cookies kept, ' : 'cookie keep timed out, ') + 'Chromium ' + (closed ? 'closed' : 'did not close') + ' in ' + (Date.now() - t0) + ' ms\n'); } catch (_) {}
         }
         for (const id of [...sessions.keys()]) closeSession(id).catch(() => {});
         stopDisplay();

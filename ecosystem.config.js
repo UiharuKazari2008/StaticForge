@@ -50,6 +50,10 @@ module.exports = {
         time: true,
         // Give Chromium time to save its profile on restart (shutdown waits up to 6s + 1.5s).
         kill_timeout: 10000,
+        // Signal the wrapper only: pm2's tree kill also sent SIGINT straight to Chromium, which then died
+        // without its clean exit (profile exit_type Crashed, unsaved cookies lost) before the wrapper's
+        // browser.close() could run (Nov 13 2026). The wrapper closes Chromium itself.
+        treekill: false,
         env: {
             HOST: '127.0.0.1',
             PORT: '9330',
