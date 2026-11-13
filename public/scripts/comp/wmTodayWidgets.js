@@ -839,9 +839,10 @@
         const w = W && typeof W.current === 'function' ? W.current() : null;
         if (!w) return null;
         const go = () => open('weather');
-        // the condition is the panel's picture, at the top right as on 6.5's panels
+        // the condition is the panel's picture, at the top right as on 6.5's panels; the temperature
+        // rides beside the condensed label as text and e-mail carry their unread counts (Yukimi, Nov 13)
         return {
-            label: 'weather', icon: w.icon ? `w:${w.icon}` : 'x:app-weather-lg',
+            label: 'weather', count: deg(w.temp), icon: w.icon ? `w:${w.icon}` : 'x:app-weather-lg',
             pages: [{
                 title: `${deg(w.temp)}${w.unit || ''} ${w.condition || ''}`.trim(),
                 line2: [w.place, w.region].filter(Boolean).join(', '),
