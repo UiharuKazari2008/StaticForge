@@ -4,17 +4,17 @@
  * Traffic (Yozora #795): the commute service behind Melaton Mobile's Traffic app and its Today item.
  * This module is the only code that calls the traffic hosts; new traffic code goes through it.
  *
- * Providers (Dreamscape CardSpace > Service keys):
- *   googlemaps  Google Routes API computeRoutes (traffic-aware, so billed as "Compute Routes Pro", which
- *               has a monthly free allowance). Drive times, alternatives, the preferred route through
+ * Providers:
+ *   googlemaps  (Service key) Google Routes API computeRoutes, traffic-aware ("Compute Routes Pro": a
+ *               monthly free allowance). Drive times, alternatives, the preferred route through
  *               via-waypoints, slowdowns from speedReadingIntervals, departures in the future.
- *   waze        OpenWeb Ninja's Waze API (through RapidAPI, or direct when the key's Host field is
- *               api.openwebninja.com): alerts and jams in the route's box (police = speed traps,
- *               accidents, hazards, closures, jams). Its free plan is 100 requests a month, so it is
- *               asked at most once per 10 minutes per direction and only within its budget. With no
- *               Google key, Waze's driving directions give the drive times.
- * Both are counted per calendar month against config traffic.budgets ({ google, waze }); a provider
- * past its budget is skipped until the month turns (the app shows what is left).
+ *   tomtom      (Service key) TomTom Traffic Incident Details v5: accidents, closures, lane closures,
+ *               roadworks, hazards and jams in the route's box. Free tier counted per day.
+ *   OpenStreetMap  fixed speed and red light cameras (Overpass API: highway=speed_camera nodes and
+ *               type=enforcement relations' devices), no key; cached a week per area.
+ * Google is counted per calendar month and TomTom per day against config traffic.budgets
+ * ({ google, tomtom }); a provider past its budget is skipped (the app shows what is left).
+ * Waze was dropped (Yukimi, Nov 13 2026): its free plan (100 requests a month) is too small to use.
  *
  * Settings: config `traffic` (admins save):
  *   home / work   { address, label?, lat?, lon? }  an address (Google geocodes it) or coordinates
@@ -45,14 +45,16 @@ const path = require('path');
 
 const MIN = 60 * 1000;
 const GOOGLE_ROUTES = 'https://routes.googleapis.com/directions/v2:computeRoutes';
-const WAZE_RAPID_HOST = 'waze.p.rapidapi.com';
+const TOMTOM_INCIDENTS = 'https://api.tomtom.com/traffic/services/5/incidentDetails';
+const OVERPASS = 'https://overpass-api.de/api/interpreter';
 const DIRECTIONS = ['work', 'home'];
 const DIRECTION_LABEL = { work: 'To Work', home: 'To Home' };
-const DEFAULTS = { leadMin: 10, betterMin: 5, waitMin: 8, advisorMax: 90, notify: true, days: [1, 2, 3, 4, 5], budgets: { google: 4500, waze: 90 } };
+const DEFAULTS = { leadMin: 10, betterMin: 5, waitMin: 8, advisorMax: 90, notify: true, days: [1, 2, 3, 4, 5], budgets: { google: 4500, tomtom: 2000 } };
 const ROUTE_TTL = 3 * MIN;
-const WAZE_TTL = 10 * MIN;
-const CORRIDOR_M = 150;
-const TRAP_CORRIDOR_M = 200;
+const INCIDENT_TTL = 5 * MIN;
+const CAMERA_TTL = 7 * 24 * 60 * MIN;
+const CORRIDOR_M = 60; // an incident's point this close to the route is on it
+const CAMERA_M = 40; // a camera this close to the route watches it
 const ADVISOR_STEPS = [0, 15, 30, 45, 60, 90, 120];
 const CACHE_DIR = path.join(__dirname, '..', '.cache');
 const USAGE_FILE = process.env.TRAFFIC_USAGE_FILE || path.join(CACHE_DIR, 'traffic-usage.json');
@@ -132,7 +134,7 @@ function getSettings() {
         advisorMax: clampInt(t.advisorMax, 15, 120, DEFAULTS.advisorMax),
         notify: t.notify !== false,
         timeZone: validZone(t.timeZone) ? t.timeZone : '',
-        budgets: { google: clampInt(budgets.google, 0, 100000, DEFAULTS.budgets.google), waze: clampInt(budgets.waze, 0, 100000, DEFAULTS.budgets.waze) }
+        budgets: { google: clampInt(budgets.google, 0, 100000, DEFAULTS.budgets.google), tomtom: clampInt(budgets.tomtom, 0, 100000, DEFAULTS.budgets.tomtom) }
     };
 }
 
@@ -171,7 +173,7 @@ async function saveSettings(next = {}) {
     if (next.budgets && typeof next.budgets === 'object') {
         out.budgets = Object.assign({}, cur.budgets || {});
         if ('google' in next.budgets) out.budgets.google = clampInt(next.budgets.google, 0, 100000, DEFAULTS.budgets.google);
-        if ('waze' in next.budgets) out.budgets.waze = clampInt(next.budgets.waze, 0, 100000, DEFAULTS.budgets.waze);
+        if ('tomtom' in next.budgets) out.budgets.tomtom = clampInt(next.budgets.tomtom, 0, 100000, DEFAULTS.budgets.tomtom);
     }
     const saved = gr.modifyConfig('config').assign(['traffic'], out);
     if (saved && typeof saved.then === 'function') await saved;
@@ -199,11 +201,9 @@ function googleKey() {
     return k && k.apiKey ? String(k.apiKey).trim() : null;
 }
 
-function wazeAccount() {
-    const k = serviceKey('waze');
-    if (!k || !k.apiKey) return null;
-    const host = String(k.host || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '') || WAZE_RAPID_HOST;
-    return { key: String(k.apiKey).trim(), host };
+function tomtomKey() {
+    const k = serviceKey('tomtom');
+    return k && k.apiKey ? String(k.apiKey).trim() : null;
 }
 
 let usageState = null;
@@ -212,12 +212,19 @@ function monthKey(d = new Date()) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function dayKey(d = new Date()) {
+    return `${monthKey(d)}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** { month, google, day, tomtom }: Google counts per month, TomTom per day (its free tier is daily). */
 function usage() {
-    const month = monthKey();
     if (!usageState) {
         try { usageState = JSON.parse(fs.readFileSync(USAGE_FILE, 'utf8')); } catch (_e) { usageState = null; }
     }
-    if (!usageState || usageState.month !== month) usageState = { month, google: 0, waze: 0 };
+    if (!usageState || typeof usageState !== 'object') usageState = {};
+    if (usageState.month !== monthKey()) Object.assign(usageState, { month: monthKey(), google: 0 });
+    if (usageState.day !== dayKey()) Object.assign(usageState, { day: dayKey(), tomtom: 0 });
+    delete usageState.waze;
     return usageState;
 }
 
@@ -236,12 +243,12 @@ function canSpend(provider, n = 1) {
     return (usage()[provider] || 0) + n <= budget;
 }
 
-/** { google: { configured, used, budget, left }, waze: { ... }, month } for the app's About / Settings. */
+/** { google: { configured, used, budget, left, per }, tomtom: { ... }, osm: { configured } } for Settings / About. */
 function providers() {
     const s = getSettings();
     const u = usage();
-    const one = (id, configured) => ({ configured, used: u[id] || 0, budget: s.budgets[id], left: Math.max(0, s.budgets[id] - (u[id] || 0)) });
-    return { month: u.month, google: one('google', !!googleKey()), waze: one('waze', !!wazeAccount()) };
+    const one = (id, configured, per) => ({ configured, used: u[id] || 0, budget: s.budgets[id], left: Math.max(0, s.budgets[id] - (u[id] || 0)), per });
+    return { month: u.month, google: one('google', !!googleKey(), 'month'), tomtom: one('tomtom', !!tomtomKey(), 'day'), osm: { configured: true } };
 }
 
 // ------------------------------------------------------------------------------------------ geometry
@@ -490,103 +497,103 @@ function normaliseGoogle(r) {
     };
 }
 
-// ------------------------------------------------------------------------------------------ Waze
-
-function wazeRequest(pathAndQuery) {
-    const a = wazeAccount();
-    if (!a) throw new TrafficError('No Waze key', 'NO_ACCOUNT');
-    if (!canSpend('waze')) throw new TrafficError('This month\'s Waze budget is used up', 'BUDGET');
-    const rapid = /rapidapi\.com$/.test(a.host);
-    const url = rapid ? `https://${a.host}${pathAndQuery}` : `https://${a.host}/waze${pathAndQuery}`;
-    const headers = rapid ? { 'X-RapidAPI-Key': a.key, 'X-RapidAPI-Host': a.host } : { 'x-api-key': a.key };
-    spend('waze');
-    return getJson(url, { timeout: 20000, init: { headers } });
-}
+// ------------------------------------------------------------------------------------------ TomTom incidents
 
 const num = (v) => (v === null || v === undefined || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
 
-function pointOf(o) {
-    if (!o) return null;
-    const lat = num(o.latitude != null ? o.latitude : (o.lat != null ? o.lat : (o.location && (o.location.y != null ? o.location.y : o.location.lat))));
-    const lon = num(o.longitude != null ? o.longitude : (o.lon != null ? o.lon : (o.lng != null ? o.lng : (o.location && (o.location.x != null ? o.location.x : (o.location.lon != null ? o.location.lon : o.location.lng))))));
-    return lat != null && lon != null ? { lat, lon } : null;
-}
+const TOMTOM_FIELDS = '{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description,code,iconCategory},startTime,endTime,from,to,length,delay,roadNumbers,lastReportTime}}}';
+// iconCategory -> our kind and a label when the event has no description
+const TOMTOM_KIND = {
+    1: ['accident', 'Accident'], 2: ['hazard', 'Fog'], 3: ['hazard', 'Dangerous conditions'], 4: ['hazard', 'Rain'],
+    5: ['hazard', 'Ice'], 6: ['jam', 'Traffic jam'], 7: ['lane', 'Lane closed'], 8: ['closure', 'Road closed'],
+    9: ['construction', 'Roadworks'], 10: ['hazard', 'Wind'], 11: ['hazard', 'Flooding'], 14: ['hazard', 'Broken-down vehicle']
+};
 
-function wazeTime(v) {
-    if (v == null) return null;
-    if (typeof v === 'number') return new Date(v > 1e12 ? v : v * 1000).toISOString();
-    const t = Date.parse(String(v).replace(' ', 'T'));
-    return Number.isFinite(t) ? new Date(t).toISOString() : null;
-}
+const sentence = (t) => { const x = String(t || '').trim(); return x ? x.charAt(0).toUpperCase() + x.slice(1) : ''; };
 
-/** Waze alerts and jams in a box: { alerts: [...], jams: [...] } normalised. */
-async function wazeArea(box) {
-    const q = `/alerts-and-jams?top_right=${box.n.toFixed(5)},${box.e.toFixed(5)}&bottom_left=${box.s.toFixed(5)},${box.w.toFixed(5)}&max_alerts=200&max_jams=100`;
-    const res = await wazeRequest(q);
-    const data = (res && (res.data || res)) || {};
-    const alerts = (Array.isArray(data.alerts) ? data.alerts : []).map((a) => {
-        const p = pointOf(a);
-        if (!p) return null;
-        return {
-            id: String(a.alert_id || a.uuid || a.id || `${p.lat},${p.lon},${a.type}`),
-            type: String(a.type || '').toUpperCase(),
-            subtype: String(a.subtype || '').toUpperCase(),
-            street: a.street || '',
-            city: a.city || '',
-            description: a.description || a.reportDescription || '',
-            reportedAt: wazeTime(a.publish_datetime_utc || a.pubMillis || a.publish_time),
-            thumbsUp: num(a.num_thumbs_up != null ? a.num_thumbs_up : a.nThumbsUp) || 0,
-            reliability: num(a.alert_reliability != null ? a.alert_reliability : a.reliability),
-            confidence: num(a.alert_confidence != null ? a.alert_confidence : a.confidence),
-            lat: p.lat,
-            lon: p.lon
-        };
-    }).filter(Boolean);
-    const jams = (Array.isArray(data.jams) ? data.jams : []).map((j) => {
-        const line = (j.line_coordinates || j.line || []).map(pointOf).filter(Boolean);
+/** TomTom incidents in a box: [{ id, kind, label, street, from, to, line: [{ lat, lon }], delaySec, lengthM, magnitude, startedAt, ... }]. */
+async function tomtomIncidents(box) {
+    const key = tomtomKey();
+    if (!key) throw new TrafficError('No TomTom key', 'NO_ACCOUNT');
+    if (!canSpend('tomtom')) throw new TrafficError('Today\'s TomTom budget is used up', 'BUDGET');
+    const q = new URLSearchParams({
+        key,
+        bbox: [box.w, box.s, box.e, box.n].map((v) => v.toFixed(5)).join(','),
+        fields: TOMTOM_FIELDS,
+        language: 'en-US',
+        timeValidityFilter: 'present'
+    });
+    spend('tomtom');
+    const res = await getJson(`${TOMTOM_INCIDENTS}?${q}`, { timeout: 15000 });
+    return (res && Array.isArray(res.incidents) ? res.incidents : []).map((f) => {
+        const p = (f && f.properties) || {};
+        const g = (f && f.geometry) || {};
+        const coords = g.type === 'Point' ? [g.coordinates] : (Array.isArray(g.coordinates) ? g.coordinates : []);
+        const line = coords.filter((c) => Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1])).map(([lon, lat]) => ({ lat, lon }));
         if (!line.length) return null;
+        const [kind, fallback] = TOMTOM_KIND[p.iconCategory] || ['hazard', 'Incident'];
+        const ev = Array.isArray(p.events) && p.events[0] ? p.events[0] : {};
+        const roads = Array.isArray(p.roadNumbers) ? p.roadNumbers.filter(Boolean) : [];
         return {
-            id: String(j.jam_id || j.uuid || j.id || ''),
-            level: num(j.level) || 0,
-            street: j.street || '',
-            city: j.city || '',
-            speedKmh: num(j.speed_kmh != null ? j.speed_kmh : (j.speedKMH != null ? j.speedKMH : j.speed)),
-            lengthM: num(j.length_m != null ? j.length_m : j.length),
-            delaySec: num(j.delay_seconds != null ? j.delay_seconds : j.delay),
-            cause: j.block_alert_type || j.blockingAlertType || '',
-            causeText: j.block_alert_description || j.blockDescription || '',
-            updatedAt: wazeTime(j.update_datetime_utc || j.updateMillis || j.publish_datetime_utc),
+            id: String(p.id || `${line[0].lat},${line[0].lon}`),
+            source: 'tomtom',
+            kind,
+            label: sentence(ev.description) || fallback,
+            street: roads.join(', ') || p.from || '',
+            from: p.from || '',
+            to: p.to || '',
+            description: p.from && p.to ? `${p.from} to ${p.to}` : (p.from || p.to || ''),
+            magnitude: num(p.magnitudeOfDelay) || 0,
+            delaySec: num(p.delay),
+            lengthM: num(p.length),
+            startedAt: p.startTime || null,
+            endsAt: p.endTime || null,
+            reportedAt: p.lastReportTime || p.startTime || null,
             line
         };
     }).filter(Boolean);
-    return { alerts, jams };
 }
 
-/** Waze's own driving directions (no Google key): routes like googleRoutes, without slowdown segments. */
-async function wazeRoutes(from, to) {
-    if (!Number.isFinite(from.lat) || !Number.isFinite(to.lat)) throw new TrafficError('Waze needs Home and Work as coordinates (or a Google Maps key)', 'NO_COORDS');
-    const res = await wazeRequest(`/driving-directions?source_coordinates=${from.lat},${from.lon}&destination_coordinates=${to.lat},${to.lon}&return_route_coordinates=true`);
-    const list = (res && (Array.isArray(res.data) ? res.data : (res.data && res.data.routes))) || [];
-    const routes = list.map((r) => {
-        const points = (r.route_coordinates || r.coordinates || []).map(pointOf).filter(Boolean);
-        const cum = cumulative(points);
-        const durationSec = num(r.duration_seconds != null ? r.duration_seconds : r.duration);
+// ------------------------------------------------------------------------------------------ OpenStreetMap cameras
+
+/**
+ * Fixed speed / red light cameras in a box from OpenStreetMap (Overpass): highway=speed_camera nodes and
+ * the device nodes of type=enforcement relations. [{ id, kind: 'trap', label, maxspeed, lat, lon, ... }].
+ */
+async function osmCameras(box) {
+    const bb = [box.s, box.w, box.n, box.e].map((v) => v.toFixed(4)).join(',');
+    const query = `[out:json][timeout:25];(node["highway"="speed_camera"](${bb});rel["type"="enforcement"](${bb}););out body;node(r:"device");out body;`;
+    const res = await getJson(OVERPASS, {
+        timeout: 30000,
+        init: { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'Dreamscape-Traffic/1.0' }, body: `data=${encodeURIComponent(query)}` }
+    });
+    const els = (res && Array.isArray(res.elements) ? res.elements : []);
+    const enforce = new Map(); // device node id -> relation tags
+    els.filter((e) => e.type === 'relation').forEach((r) => {
+        (r.members || []).filter((m) => m.type === 'node' && m.role === 'device').forEach((m) => enforce.set(m.ref, r.tags || {}));
+    });
+    const seen = new Set();
+    return els.filter((e) => e.type === 'node' && Number.isFinite(e.lat) && Number.isFinite(e.lon)).map((n) => {
+        const t = n.tags || {};
+        const rel = enforce.get(n.id);
+        if (!rel && t.highway !== 'speed_camera') return null;
+        if (seen.has(n.id)) return null;
+        seen.add(n.id);
+        const what = String((rel && rel.enforcement) || t.enforcement || 'maxspeed');
+        const label = /traffic_signals/.test(what) ? 'Red light camera' : /average_speed/.test(what) ? 'Average speed camera' : /mindistance|check|toll|access/.test(what) ? 'Enforcement camera' : 'Speed camera';
         return {
-            summary: r.route_name || r.name || '',
-            labels: [],
-            durationSec: durationSec != null ? Math.round(durationSec) : null,
-            staticSec: null,
-            delaySec: null,
-            distanceM: num(r.length_meters != null ? r.length_meters : r.distance) || Math.round(cum[cum.length - 1] || 0),
-            warnings: r.is_toll ? ['Toll road'] : [],
-            steps: [{ text: r.route_name || '', street: '', fromM: 0, toM: cum[cum.length - 1] || 0 }],
-            segments: [],
-            _points: points,
-            _cum: cum
+            id: `osm:${n.id}`,
+            source: 'osm',
+            kind: 'trap',
+            label,
+            maxspeed: t.maxspeed || (rel && rel.maxspeed) || '',
+            street: t['addr:street'] || (rel && rel.name) || t.name || '',
+            direction: t.direction || t['camera:direction'] || '',
+            fixed: true,
+            lat: n.lat,
+            lon: n.lon
         };
-    }).filter((r) => r.durationSec != null);
-    if (!routes.length) throw new TrafficError('Waze found no route', 'NO_ROUTE');
-    return routes;
+    }).filter(Boolean);
 }
 
 // ------------------------------------------------------------------------------------------ the check
@@ -660,53 +667,29 @@ function slowdownsOf(route) {
     }).filter((sd) => sd.lengthM >= 100);
 }
 
-const ALERT_KIND = {
-    POLICE: 'trap', ACCIDENT: 'accident', HAZARD: 'hazard', ROAD_CLOSED: 'closure', JAM: 'jam', WEATHERHAZARD: 'hazard', CONSTRUCTION: 'construction'
-};
-
-function alertKind(a) {
-    if (/CONSTRUCTION/.test(a.subtype)) return 'construction';
-    return ALERT_KIND[a.type] || 'hazard';
-}
-
-function alertLabel(a) {
-    const kind = alertKind(a);
-    const sub = a.subtype.replace(/^(HAZARD_ON_ROAD_|HAZARD_ON_SHOULDER_|HAZARD_WEATHER_|ACCIDENT_|POLICE_|ROAD_CLOSED_|JAM_)/, '').replace(/_/g, ' ').toLowerCase();
-    const base = { trap: 'Speed trap', accident: 'Accident', hazard: 'Hazard', closure: 'Road closed', jam: 'Traffic jam', construction: 'Construction' }[kind];
-    if (kind === 'trap') return /HIDING/.test(a.subtype) ? 'Speed trap (hidden)' : 'Speed trap';
-    if (kind === 'accident') return /MAJOR/.test(a.subtype) ? 'Major accident' : 'Accident';
-    return sub && !/^(hazard|accident|police|road closed|jam)$/.test(sub) ? `${base}: ${sub}` : base;
-}
-
-/** Waze alerts and jams on a route: { alerts, traps, jams } with positions along it. */
-function onRoute(area, route) {
+/** TomTom incidents and OSM cameras on a route: { alerts, traps, jams } with positions along it. */
+function onRoute(incidents, cameras, route) {
     const out = { alerts: [], traps: [], jams: [] };
-    if (!area || !route || !route._points.length) return out;
+    if (!route || !route._points.length) return out;
     const total = route._cum[route._cum.length - 1] || 1;
-    area.alerts.forEach((a) => {
-        const kind = alertKind(a);
-        if (kind === 'jam') return;
-        const loc = locate(route._points, route._cum, a);
-        if (loc.distM > (kind === 'trap' ? TRAP_CORRIDOR_M : CORRIDOR_M)) return;
-        const row = {
-            id: a.id, kind, label: alertLabel(a), street: a.street, city: a.city, description: a.description,
-            reportedAt: a.reportedAt, thumbsUp: a.thumbsUp, reliability: a.reliability, at: Math.max(0, Math.min(1, loc.alongM / total)),
-            lat: a.lat, lon: a.lon
-        };
-        (kind === 'trap' ? out.traps : out.alerts).push(row);
-    });
-    area.jams.forEach((j) => {
+    const along = (m) => Math.max(0, Math.min(1, m / total));
+    (incidents || []).forEach((inc) => {
+        // a point incident near the route, or a stretch that mostly lies on it
         let near = 0;
-        let firstAlong = Infinity;
-        j.line.forEach((p) => {
+        let first = Infinity;
+        inc.line.forEach((p) => {
             const loc = locate(route._points, route._cum, p);
-            if (loc.distM <= 60) { near++; firstAlong = Math.min(firstAlong, loc.alongM); }
+            if (loc.distM <= CORRIDOR_M) { near++; first = Math.min(first, loc.alongM); }
         });
-        if (near / j.line.length < 0.5) return;
-        out.jams.push({
-            id: j.id, level: j.level, street: j.street, speedKmh: j.speedKmh, lengthM: j.lengthM, delaySec: j.delaySec,
-            cause: j.cause, causeText: j.causeText, updatedAt: j.updatedAt, at: Math.max(0, Math.min(1, firstAlong / total)), major: j.level >= 3
-        });
+        if (!near || (inc.line.length > 1 && near / inc.line.length < 0.5)) return;
+        const base = { id: inc.id, source: inc.source, kind: inc.kind, label: inc.label, street: inc.street, description: inc.description, delaySec: inc.delaySec, lengthM: inc.lengthM, startedAt: inc.startedAt, endsAt: inc.endsAt, reportedAt: inc.reportedAt, magnitude: inc.magnitude, at: along(first), lat: inc.line[0].lat, lon: inc.line[0].lon };
+        if (inc.kind === 'jam') out.jams.push(Object.assign(base, { major: inc.magnitude >= 3 }));
+        else out.alerts.push(Object.assign(base, { major: inc.kind === 'closure' || (inc.kind === 'accident' && inc.magnitude >= 3) }));
+    });
+    (cameras || []).forEach((c) => {
+        const loc = locate(route._points, route._cum, c);
+        if (loc.distM > CAMERA_M) return;
+        out.traps.push(Object.assign({}, c, { at: along(loc.alongM) }));
     });
     const byAt = (a, b) => a.at - b.at;
     out.alerts.sort(byAt); out.traps.sort(byAt); out.jams.sort(byAt);
@@ -728,34 +711,24 @@ function publicRoute(r, extra) {
 
 const fmtMin = (sec) => `${Math.max(1, Math.round(sec / 60))} min`;
 
-/** Read the routes and Waze for one direction and build the report (see the header). */
+/** Read the routes, incidents and cameras for one direction and build the report (see the header). */
 async function check(direction, { force = false } = {}) {
     if (!DIRECTIONS.includes(direction)) throw new TrafficError('direction is work or home', 'BAD_REQUEST');
     const s = getSettings();
     const { from, to } = endpoints(direction, s);
     if (!s.home || !s.work) throw new TrafficError('Set Home and Work first', 'NOT_SET');
-    const google = !!googleKey();
-    const waze = !!wazeAccount();
-    if (!google && !waze) throw new TrafficError('Add a Google Maps or Waze key in Dreamscape CardSpace > Service keys', 'NO_ACCOUNT');
+    if (!googleKey()) throw new TrafficError('Add a Google Maps key in Dreamscape CardSpace > Service keys', 'NO_ACCOUNT');
     const streets = direction === 'work' ? s.streets.slice() : s.streets.slice().reverse();
     const via = viaWaypoints(streets, s.area);
     const errors = [];
     const tag = `${direction}|${JSON.stringify([from, to, via])}`;
-    let routes = [];
-    let provider = google ? 'google' : 'waze';
-    let viaRoute = null;
-    if (google) {
-        const [alts, pref] = await Promise.all([
-            cachedCall(`g:alt:${tag}`, ROUTE_TTL, () => googleRoutes(from, to, { alternatives: true }), force).catch((e) => { errors.push(e.message); return []; }),
-            via.length ? cachedCall(`g:via:${tag}`, ROUTE_TTL, () => googleRoutes(from, to, { via }), force).catch((e) => { errors.push(`Preferred route: ${e.message}`); return []; }) : Promise.resolve([])
-        ]);
-        routes = alts.slice();
-        viaRoute = pref[0] || null;
-    }
-    if (!routes.length && !viaRoute && waze) {
-        provider = 'waze';
-        routes = await cachedCall(`w:dir:${tag}`, WAZE_TTL, () => wazeRoutes(from, to), force).catch((e) => { errors.push(e.message); return []; });
-    }
+    const provider = 'google';
+    const [alts, pref] = await Promise.all([
+        cachedCall(`g:alt:${tag}`, ROUTE_TTL, () => googleRoutes(from, to, { alternatives: true }), force).catch((e) => { errors.push(e.message); return []; }),
+        via.length ? cachedCall(`g:via:${tag}`, ROUTE_TTL, () => googleRoutes(from, to, { via }), force).catch((e) => { errors.push(`Preferred route: ${e.message}`); return []; }) : Promise.resolve([])
+    ]);
+    const routes = alts.slice();
+    const viaRoute = pref[0] || null;
     if (!routes.length && !viaRoute) {
         const err = new TrafficError(errors[0] || 'No route', 'NO_ROUTE');
         throw err;
@@ -784,24 +757,29 @@ async function check(direction, { force = false } = {}) {
     scored.forEach((r, i) => { if (r.durationSec != null && r.durationSec < scored[fastestIdx].durationSec) fastestIdx = i; });
     const preferred = scored[preferredIdx];
 
-    // Waze on the preferred route, and on the faster one when it differs
-    let area = null;
-    if (waze) {
-        const pts = scored[preferredIdx]._points.concat(fastestIdx !== preferredIdx ? scored[fastestIdx]._points : []);
-        if (pts.length) {
-            const box = bboxOf(pts, 0.008);
-            const boxKey = `w:area:${direction}:${[box.n, box.s, box.e, box.w].map((v) => v.toFixed(2)).join(',')}`;
-            area = await cachedCall(boxKey, WAZE_TTL, () => wazeArea(box), false).catch((e) => { errors.push(`Waze: ${e.message}`); return null; });
-        }
+    // TomTom incidents and OSM cameras in the box around every route (one box serves both directions:
+    // it is snapped outwards to a 0.05 degree grid, so the cache key repeats)
+    const pts = [].concat(...scored.map((r) => r._points));
+    let incidents = null;
+    let cameras = null;
+    if (pts.length) {
+        const b = bboxOf(pts, 0.01);
+        const g = 0.05;
+        const box = { s: Math.floor(b.s / g) * g, w: Math.floor(b.w / g) * g, n: Math.ceil(b.n / g) * g, e: Math.ceil(b.e / g) * g };
+        const boxKey = [box.s, box.w, box.n, box.e].map((v) => v.toFixed(2)).join(',');
+        [incidents, cameras] = await Promise.all([
+            tomtomKey() ? cachedCall(`t:inc:${boxKey}`, INCIDENT_TTL, () => tomtomIncidents(box), force).catch((e) => { errors.push(`TomTom: ${e.message}`); return null; }) : Promise.resolve(null),
+            cachedCall(`o:cam:${boxKey}`, CAMERA_TTL, () => osmCameras(box), false).catch((e) => { errors.push(`Speed cameras: ${e.message}`); return null; })
+        ]);
     }
-    const pw = onRoute(area, preferred);
+    const pw = onRoute(incidents, cameras, preferred);
     const slowdowns = slowdownsOf(preferred);
     scored.forEach((r, i) => {
         r.id = `r${i}`;
         r.preferred = i === preferredIdx;
         r.fastest = i === fastestIdx;
         if (!r.summary) r.summary = r.streetsHit && r.streetsHit.length ? r.streetsHit.join(', ') : (i === preferredIdx ? 'Preferred route' : `Route ${i + 1}`);
-        const w = i === preferredIdx ? pw : onRoute(area, r);
+        const w = i === preferredIdx ? pw : onRoute(incidents, cameras, r);
         r.counts = { traps: w.traps.length, alerts: w.alerts.length, jams: w.jams.length, slowdowns: slowdownsOf(r).length };
     });
     const saving = preferred.durationSec != null && scored[fastestIdx].durationSec != null ? preferred.durationSec - scored[fastestIdx].durationSec : 0;
@@ -809,7 +787,7 @@ async function check(direction, { force = false } = {}) {
         ? { id: scored[fastestIdx].id, summary: scored[fastestIdx].summary, savesSec: saving, durationSec: scored[fastestIdx].durationSec }
         : null;
     const delay = preferred.delaySec || pw.jams.reduce((n, j) => n + (j.delaySec || 0), 0) || 0;
-    const major = slowdowns.some((x) => x.major) || pw.jams.some((j) => j.major) || pw.alerts.some((a) => a.kind === 'closure' || /Major/.test(a.label));
+    const major = slowdowns.some((x) => x.major) || pw.jams.some((j) => j.major) || pw.alerts.some((a) => a.major);
     const level = major || (preferred.staticSec && delay > preferred.staticSec * 0.35) ? 'heavy'
         : (delay >= 180 || slowdowns.length || pw.jams.length) ? 'moderate' : 'clear';
     const report = {
@@ -830,7 +808,8 @@ async function check(direction, { force = false } = {}) {
         delaySec: delay,
         major,
         level,
-        wazeChecked: !!area,
+        incidentsChecked: !!incidents,
+        camerasChecked: !!cameras,
         errors
     };
     report.summary = summarise(report);
@@ -848,7 +827,7 @@ function summarise(r) {
     if (majors.length) parts.push(`${majors[0].label}${majors[0].street ? ` on ${majors[0].street}` : ''}${majors.length > 1 ? ` and ${majors.length - 1} more` : ''}.`);
     const heavy = r.slowdowns.filter((x) => x.major);
     if (heavy.length) parts.push(`Heavy traffic${heavy[0].street ? ` on ${heavy[0].street}` : ''}.`);
-    if (r.traps.length) parts.push(`${r.traps.length} speed trap${r.traps.length > 1 ? 's' : ''} on route.`);
+    if (r.traps.length) parts.push(`${r.traps.length} speed camera${r.traps.length > 1 ? 's' : ''} on route.`);
     if (r.better) parts.push(`Faster: via ${r.better.summary} saves ${fmtMin(r.better.savesSec)}.`);
     if (!majors.length && !heavy.length && !r.traps.length && !r.better && r.level === 'clear') parts.push('Traffic is clear.');
     return parts.join(' ');
@@ -870,7 +849,7 @@ async function advise(direction, { force = false } = {}) {
     const s = getSettings();
     const { from, to } = endpoints(direction, s);
     if (!s.home || !s.work) throw new TrafficError('Set Home and Work first', 'NOT_SET');
-    if (!googleKey()) throw new TrafficError('The leave advisor needs a Google Maps key (Waze gives no future drive times)', 'NO_ACCOUNT');
+    if (!googleKey()) throw new TrafficError('The leave advisor needs a Google Maps key', 'NO_ACCOUNT');
     const streets = direction === 'work' ? s.streets.slice() : s.streets.slice().reverse();
     const via = viaWaypoints(streets, s.area);
     const offsets = ADVISOR_STEPS.filter((o) => o <= s.advisorMax);
@@ -1016,7 +995,7 @@ module.exports = {
     DIRECTIONS,
     _test: {
         decodePolyline, cumulative, locate, normStreet, streetCore, streetOfInstruction, matchStreets, viaWaypoints,
-        normaliseGoogle, slowdownsOf, onRoute, alertLabel, dueNow, localNow, summarise, routeCache, sched,
+        normaliseGoogle, slowdownsOf, onRoute, tomtomIncidents, osmCameras, dueNow, localNow, summarise, routeCache, sched,
         setFetch: (fn) => { fetchImpl = fn; },
         resetUsage: () => { usageState = null; }
     }

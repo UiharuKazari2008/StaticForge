@@ -7,8 +7,10 @@
  *   node scripts/generate-wm-traffic-art.js
  *
  * Writes public/static_images/wm61/app-traffic.png (16, @2x 32, @4x 64) and app-traffic-lg.png
- * (32, @2x 64, @4x 128). The 6.5 home screen panel (ti-x-app-traffic-lg) is cut from the -lg @4x by
- * ~/.cache/wm65/art/build.sh's panel().
+ * (32, @2x 64, @4x 128); for 6.5 the Start icon public/static_images/wm65/start-traffic.png (45, @2x
+ * 90, @4x 180) and the home screen panel ti-x-app-traffic-lg.png (43 x 57, @2x 86 x 113, @4x 172 x 226):
+ * the real panels' frame as ~/.cache/wm65/art/build.sh panel() measures it (at 2x: art 76 x 76 at 5,10,
+ * its mirror image from y 87, 40% fading to nothing over 26 px), drawn here at every size from the SVG.
  */
 'use strict';
 
@@ -16,6 +18,7 @@ const path = require('path');
 const sharp = require('sharp');
 
 const OUT = path.resolve(__dirname, '..', 'public', 'static_images', 'wm61');
+const OUT65 = path.resolve(__dirname, '..', 'public', 'static_images', 'wm65');
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 <defs>
@@ -66,12 +69,32 @@ const svgSmall = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
 <rect x="12" y="11.5" width="1" height="4" fill="#7b838c"/>
 </svg>`;
 
+/** A 6.5 home screen panel icon at scale k (1 = the 2x frame): art, then its fading mirror. */
+async function panel(k, file) {
+    const W = Math.round(86 * k);
+    const H = Math.round(113 * k);
+    const A = Math.round(76 * k);
+    const R = Math.round(26 * k);
+    const art = await sharp(Buffer.from(svg), { density: Math.round((72 * A) / 64) * 2 }).resize(A, A).png().toBuffer();
+    const flipped = await sharp(art).flip().extract({ left: 0, top: 0, width: A, height: R }).ensureAlpha().raw().toBuffer();
+    for (let y = 0; y < R; y++) {
+        const f = 0.4 * (1 - y / R);
+        for (let x = 0; x < A; x++) { const i = (y * A + x) * 4 + 3; flipped[i] = Math.round(flipped[i] * f); }
+    }
+    const mirror = await sharp(flipped, { raw: { width: A, height: R, channels: 4 } }).png().toBuffer();
+    await sharp({ create: { width: W, height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+        .composite([{ input: art, left: Math.round(5 * k), top: Math.round(10 * k) }, { input: mirror, left: Math.round(5 * k), top: Math.round(87 * k) }])
+        .png()
+        .toFile(path.join(OUT65, file));
+    console.log(file, W, H);
+}
+
 async function render(src, size, file) {
     await sharp(Buffer.from(src), { density: Math.max(72, Math.round((72 * size) / 16)) })
         .resize(size, size)
         .png()
-        .toFile(path.join(OUT, file));
-    console.log(file, size);
+        .toFile(path.isAbsolute(file) ? file : path.join(OUT, file));
+    console.log(path.basename(file), size);
 }
 
 (async () => {
@@ -81,4 +104,10 @@ async function render(src, size, file) {
     await render(svg, 32, 'app-traffic-lg.png');
     await render(svg, 64, 'app-traffic-lg@2x.png');
     await render(svg, 128, 'app-traffic-lg@4x.png');
+    await render(svg, 45, path.join(OUT65, 'start-traffic.png'));
+    await render(svg, 90, path.join(OUT65, 'start-traffic@2x.png'));
+    await render(svg, 180, path.join(OUT65, 'start-traffic@4x.png'));
+    await panel(0.5, 'ti-x-app-traffic-lg.png');
+    await panel(1, 'ti-x-app-traffic-lg@2x.png');
+    await panel(2, 'ti-x-app-traffic-lg@4x.png');
 })();

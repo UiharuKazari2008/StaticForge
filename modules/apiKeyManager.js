@@ -97,29 +97,25 @@ class ApiKeyManager {
                     ]
                 }
             },
-            // OpenWeb Ninja's Waze API: alerts (speed traps, accidents, closures) and jams on the commute.
-            // Through RapidAPI by default; Host api.openwebninja.com uses the direct API. Free plan: 100 a month.
-            waze: {
-                label: 'Waze',
-                description: 'Speed traps, accidents, hazards and jams on the Melaton Traffic commute (OpenWeb Ninja Waze API)',
-                icon: 'fas fa-car',
+            // TomTom Traffic Incident Details (Melaton Traffic, #795): accidents, closures, roadworks, hazards
+            // and jams on the commute. Free tier counted per day; no status probe (it would spend a call).
+            tomtom: {
+                label: 'TomTom',
+                description: 'Accidents, closures, roadworks and jams on the Melaton Traffic commute (TomTom Traffic API)',
+                icon: 'fas fa-car-burst',
                 requiresRestart: false,
                 keyLabel: 'API key',
-                fields: [
-                    { field: 'host', label: 'Host', placeholder: 'waze.p.rapidapi.com (or api.openwebninja.com)', pattern: '^[a-z0-9.-]{0,80}$', optional: true }
-                ],
                 howTo: {
-                    title: 'How to get a Waze key',
+                    title: 'How to get a TomTom key',
                     steps: [
-                        'Waze has no public API of its own; Melaton Traffic uses OpenWeb Ninja\'s Waze API, sold on RapidAPI and directly.',
-                        'Through RapidAPI: sign in at rapidapi.com, search for "Waze" and open the one by OpenWeb Ninja. On its Pricing tab subscribe to the free Basic plan (100 requests a month).',
-                        'On the API\'s Endpoints tab, copy the X-RapidAPI-Key value from the code sample, paste it in Key value below and leave Host blank.',
-                        'Directly instead: create an account at openwebninja.com, open the Waze API, pick the free plan and copy your API key from the dashboard. Paste it below and set Host to api.openwebninja.com.',
-                        'Melaton Traffic asks Waze at most once every 10 minutes per direction and stops at 90 requests a month, inside the free plan.'
+                        'Create a free account on the TomTom Developer Portal (no credit card is needed for the free tier).',
+                        'Open your Dashboard. TomTom makes a first API key for you; use it, or click Create key and leave the Traffic API ticked.',
+                        'Copy the key and paste it in API key below.',
+                        'The free tier is counted per day. Melaton Traffic asks at most once every 5 minutes for both directions and stops at 2,000 requests a day (its budget).'
                     ],
                     links: [
-                        ['RapidAPI', 'https://rapidapi.com/'],
-                        ['OpenWeb Ninja Waze API', 'https://www.openwebninja.com/api/waze']
+                        ['TomTom Developer Portal', 'https://developer.tomtom.com/'],
+                        ['TomTom pricing and free tier', 'https://developer.tomtom.com/pricing']
                     ]
                 }
             },
@@ -381,7 +377,7 @@ class ApiKeyManager {
             let v = values && values[f.field] != null ? String(values[f.field]).trim() : '';
             if (f.upper) v = v.toUpperCase();
             if (!v && existing && existing[f.field]) v = existing[f.field];
-            if (!v && f.optional) return; // e.g. Waze's Host: blank = the default
+            if (!v && f.optional) return; // an optional extra field may stay blank
             if (!v) throw new Error(`${f.label} is required for ${meta.label}`);
             if (f.pattern && !new RegExp(f.pattern).test(v)) throw new Error(`${f.label} does not look right (${f.placeholder || f.pattern})`);
             out[f.field] = v;

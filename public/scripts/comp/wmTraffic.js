@@ -12,7 +12,8 @@
  * stays around it (title bar, soft keys Refresh | Menu).
  *
  * Data: the server's traffic service (modules/trafficService.js, 292-trafficHandler.js), which calls
- * Google Routes and Waze within monthly budgets. This app never polls: traffic_get reads the last
+ * Google Routes (drive times, slowdowns, routes), TomTom (accidents, closures, roadworks, jams) and
+ * OpenStreetMap (fixed speed and red light cameras), within budgets. This app never polls: traffic_get reads the last
  * reports, traffic_check runs when the app opens on a report older than 3 minutes or on Refresh, and
  * the server pushes traffic_updated after every check (the scheduler's too). traffic_report (at the
  * leave times) is a WM notification with View / Dismiss.
@@ -185,7 +186,8 @@
     // ---------------------------------------------------------------- art (inline, our own)
 
     const ICON_SVG = {
-        trap: '<svg viewBox="0 0 20 20"><path d="M10 1.5l7 2.6v5.2c0 4.3-3 7.6-7 9.2-4-1.6-7-4.9-7-9.2V4.1z" fill="#1d4fa8" stroke="#0a1f46" stroke-width="1"/><path d="M10 4.3l1.3 2.7 3 .4-2.2 2.1.5 3-2.6-1.4-2.6 1.4.5-3-2.2-2.1 3-.4z" fill="#ffd23a" stroke="#7a5a00" stroke-width=".5"/></svg>',
+        trap: '<svg viewBox="0 0 20 20"><rect x="2" y="5" width="12" height="9" rx="1.5" fill="#3a4048" stroke="#111" stroke-width=".8"/><rect x="14" y="7" width="4" height="5" rx="1" fill="#22262b" stroke="#111" stroke-width=".8"/><circle cx="7" cy="9.5" r="3" fill="#0d1a2b" stroke="#8fb6e6" stroke-width="1"/><circle cx="6.2" cy="8.7" r=".9" fill="#cfe4ff"/><rect x="11" y="6.3" width="2" height="1.4" fill="#e8341c"/><path d="M8 14v4M5 18h6" stroke="#555" stroke-width="1.6"/></svg>',
+        lane: '<svg viewBox="0 0 20 20"><rect x="2" y="2" width="16" height="16" fill="#3b4148"/><path d="M7 2v16M13 2v16" stroke="#fff" stroke-width="1" stroke-dasharray="2 2"/><path d="M14.2 6l3 3-3 3M17 9h-5" fill="none" stroke="#ffc21a" stroke-width="1.8"/><path d="M4 5l4 9M8 5l-4 9" stroke="#e8341c" stroke-width="1.8"/></svg>',
         accident: '<svg viewBox="0 0 20 20"><path d="M10 1l2.2 4.6 5-1.4-2.4 4.4 4.2 2.8-5 .7.3 5.1L10 14.3 5.7 17.2l.3-5.1-5-.7 4.2-2.8L2.8 4.2l5 1.4z" fill="#e03018" stroke="#5c0d02" stroke-width=".8"/><path d="M10 6l1 3h-2zM9 10.5h2v1.8H9z" fill="#fff"/></svg>',
         hazard: '<svg viewBox="0 0 20 20"><path d="M10 1.8l8.6 15.4H1.4z" fill="#ffc21a" stroke="#6b4a00" stroke-width="1" stroke-linejoin="round"/><path d="M9 6.5h2l-.4 6h-1.2zM9 13.8h2v2H9z" fill="#1a1a1a"/></svg>',
         closure: '<svg viewBox="0 0 20 20"><rect x="1.5" y="6" width="17" height="6" fill="#fff" stroke="#5c0d02"/><path d="M3 6l4 6M8 6l4 6M13 6l4 6" stroke="#e03018" stroke-width="2.2"/><path d="M4 12v6M16 12v6" stroke="#555" stroke-width="1.6"/></svg>',
@@ -335,9 +337,9 @@
     function rowsHtml(r) {
         const n = (a) => (r && Array.isArray(a) ? a.length : 0);
         const row = (open, ico, label, count, extra = '') => `<button type="button" class="trf-row${count ? ' has-items' : ''}" data-open="${open}">${icon(ico)}<span class="trf-row-label">${esc(label)}</span>${extra}<span class="trf-row-count">${count == null ? '' : esc(count)}</span><span class="trf-row-arrow"></span></button>`;
-        const trapCount = r ? (r.wazeChecked ? n(r.traps) : '?') : null;
+        const trapCount = r ? (r.camerasChecked ? n(r.traps) : '?') : null;
         return row('traps', 'trap', 'Speed Traps on route', trapCount)
-            + row('alerts', 'hazard', 'Alerts', r ? (r.wazeChecked ? n(r.alerts) : '?') : null)
+            + row('alerts', 'hazard', 'Alerts', r ? (r.incidentsChecked ? n(r.alerts) : '?') : null)
             + row('slow', 'slow', 'Slowdowns', r ? n(r.slowdowns) + n((r.jams || []).filter((j) => !r.slowdowns.length || j.major)) : null)
             + row('advisor', 'advisor', direction() === 'home' ? 'When to Leave' : 'Leave Advisor', null)
             + row('routes', 'routes', 'Routes', r ? n(r.routes) : null);
@@ -346,7 +348,7 @@
     function footText(r) {
         const parts = [];
         if (r) parts.push(`Updated ${clock(r.at)}`);
-        if (r && r.provider) parts.push(r.provider === 'google' ? (r.wazeChecked ? 'Google, Waze' : 'Google') : 'Waze');
+        if (r) parts.push(['Google', r.incidentsChecked ? 'TomTom' : '', r.camerasChecked ? 'OpenStreetMap' : ''].filter(Boolean).join(', '));
         if (r && r.errors && r.errors.length) parts.push(r.errors[0]);
         return parts.join('  ·  ');
     }
@@ -390,18 +392,19 @@
         els.layerHdr.textContent = hdr;
         if (top === 'settings') { renderSettings(); return; }
         if (top === 'routes') els.layerBody.innerHTML = routesHtml(r);
-        else if (top === 'traps') els.layerBody.innerHTML = listHtml((r && r.traps) || [], r && !r.wazeChecked ? wazeMissing() : 'No speed traps reported on your route.', 'trap');
-        else if (top === 'alerts') els.layerBody.innerHTML = listHtml((r && r.alerts) || [], r && !r.wazeChecked ? wazeMissing() : 'No accidents, hazards or closures reported on your route.');
+        else if (top === 'traps') els.layerBody.innerHTML = listHtml((r && r.traps) || [], r && !r.camerasChecked ? 'The speed camera list could not be loaded for this report. Tap Refresh.' : 'No speed or red light cameras are mapped on your route.', 'trap')
+            + '<div class="trf-note">Fixed speed and red light cameras mapped on OpenStreetMap. Mobile speed traps are not listed.</div>';
+        else if (top === 'alerts') els.layerBody.innerHTML = listHtml((r && r.alerts) || [], r && !r.incidentsChecked ? incidentsMissing() : 'No accidents, closures or roadworks reported on your route.');
         else if (top === 'slow') els.layerBody.innerHTML = slowHtml(r);
         else if (top === 'advisor') els.layerBody.innerHTML = advisorHtml(d);
         else if (top === 'item') els.layerBody.innerHTML = itemHtml(itemView);
         els.layerBody.className = 'trf-layer-body';
     }
 
-    function wazeMissing() {
-        if (provs && !provs.waze.configured) return 'Speed traps and alerts come from Waze. Add a Waze key in Dreamscape CardSpace > Service keys.';
-        if (provs && provs.waze.left <= 0) return 'This month\'s Waze budget is used up. Alerts return next month.';
-        return 'Waze was not checked for this report. Tap Refresh.';
+    function incidentsMissing() {
+        if (provs && provs.tomtom && !provs.tomtom.configured) return 'Accidents, closures and roadworks come from TomTom. Add a TomTom key in Dreamscape CardSpace > Service keys.';
+        if (provs && provs.tomtom && provs.tomtom.left <= 0) return 'Today\'s TomTom budget is used up. Alerts return tomorrow.';
+        return 'TomTom was not checked for this report. Tap Refresh.';
     }
 
     function routeStrip(rt) {
@@ -414,7 +417,7 @@
         return r.routes.map((rt) => {
             const badges = [rt.preferred ? '<span class="trf-badge is-pref">Preferred</span>' : '', rt.fastest ? '<span class="trf-badge is-fast">Fastest</span>' : ''].join('');
             const c = rt.counts || {};
-            const facts = [rt.distanceM ? miles(rt.distanceM) : '', rt.delaySec >= 60 ? `+${minText(rt.delaySec)} traffic` : 'no delay', c.traps ? `${c.traps} speed trap${c.traps > 1 ? 's' : ''}` : '', c.alerts ? `${c.alerts} alert${c.alerts > 1 ? 's' : ''}` : ''].filter(Boolean).join('  ·  ');
+            const facts = [rt.distanceM ? miles(rt.distanceM) : '', rt.delaySec >= 60 ? `+${minText(rt.delaySec)} traffic` : 'no delay', c.traps ? `${c.traps} camera${c.traps > 1 ? 's' : ''}` : '', c.alerts ? `${c.alerts} alert${c.alerts > 1 ? 's' : ''}` : ''].filter(Boolean).join('  ·  ');
             const streets = rt.streetsHit && rt.streetsHit.length && r.streets && r.streets.length ? `Uses ${rt.streetsHit.length} of your ${r.streets.length} streets` : '';
             return `<div class="trf-card${rt.preferred ? ' is-pref' : ''}">
                 <div class="trf-card-top"><b class="trf-card-min">${esc(mins(rt.durationSec))}<small>min</small></b><span class="trf-card-name">via ${esc(rt.summary || 'route')}</span>${badges}</div>
@@ -432,9 +435,9 @@
         return `<div class="trf-list">${rows.map((a, i) => {
             const where = [a.street, a.city].filter(Boolean).join(', ') || 'On your route';
             const when = a.reportedAt ? `Reported ${ago(a.reportedAt)}` : '';
-            const thumbs = a.thumbsUp ? `${a.thumbsUp} confirmed` : '';
+            const extra = a.maxspeed ? `Limit ${a.maxspeed}` : (a.delaySec >= 60 ? `+${minText(a.delaySec)}` : '');
             const along = a.at != null ? `${Math.round(a.at * 100)}% along` : '';
-            return `<button type="button" class="trf-li" data-item="${kind || 'alert'}:${i}">${icon(a.kind || kind)}<span class="trf-li-text"><b>${esc(a.label)}</b><span>${esc(where)}</span><small>${esc([when, thumbs, along].filter(Boolean).join('  ·  '))}</small></span></button>`;
+            return `<button type="button" class="trf-li" data-item="${kind || 'alert'}:${i}">${icon(a.kind || kind)}<span class="trf-li-text"><b>${esc(a.label)}</b><span>${esc(where)}</span><small>${esc([extra, a.fixed ? '' : when, along].filter(Boolean).join('  ·  '))}</small></span></button>`;
         }).join('')}</div>`;
     }
 
@@ -444,7 +447,7 @@
             kind: 'slow', label: s.speed === 'TRAFFIC_JAM' ? (s.major ? 'Heavy traffic' : 'Traffic jam') : 'Slow traffic',
             where: s.street || 'On your route', note: `${miles(s.lengthM)}  ·  ${Math.round(s.from * 100)}% along`, major: s.major
         })).concat((r.jams || []).map((j) => ({
-            kind: 'jam', label: j.major ? 'Major jam (Waze)' : 'Jam (Waze)', where: j.street || 'On your route',
+            kind: 'jam', label: j.label || (j.major ? 'Major jam' : 'Jam'), where: j.street || 'On your route',
             note: [j.speedKmh != null ? `${Math.round(j.speedKmh / 1.609)} mph` : '', j.delaySec ? `+${minText(j.delaySec)}` : '', j.lengthM ? miles(j.lengthM) : '', j.causeText || ''].filter(Boolean).join('  ·  '),
             major: j.major
         })));
@@ -497,14 +500,16 @@
         const a = it.row;
         const rows = [
             ['Where', [a.street, a.city].filter(Boolean).join(', ') || 'On your route'],
-            ['Reported', a.reportedAt ? `${clock(a.reportedAt)} (${ago(a.reportedAt)})` : ''],
-            ['Confirmed by', a.thumbsUp ? `${a.thumbsUp} driver${a.thumbsUp > 1 ? 's' : ''}` : ''],
-            ['Reliability', a.reliability != null ? `${a.reliability} of 10` : ''],
+            ['Speed limit', a.maxspeed || ''],
+            ['Started', a.startedAt ? `${clock(a.startedAt)} (${ago(a.startedAt)})` : ''],
+            ['Expected to end', a.endsAt ? clock(a.endsAt) : ''],
+            ['Delay', a.delaySec >= 60 ? minText(a.delaySec) : ''],
+            ['Length', a.lengthM ? miles(a.lengthM) : ''],
             ['Along route', a.at != null ? `${Math.round(a.at * 100)}%` : '']
         ].filter(([, v]) => v);
         return `<div class="trf-item">${icon(a.kind || 'hazard', 'is-big')}<b>${esc(a.label)}</b>${a.description ? `<p>${esc(a.description)}</p>` : ''}</div>
             <div class="trf-facts">${rows.map(([l, v]) => `<span>${esc(l)}</span><span>${esc(v)}</span>`).join('')}</div>
-            <div class="trf-note">Reported by Waze drivers.</div>`;
+            <div class="trf-note">${a.source === 'osm' ? 'A fixed camera mapped on OpenStreetMap (© OpenStreetMap contributors).' : 'Reported by TomTom Traffic.'}</div>`;
     }
 
     function onLayerClick(e) {
@@ -576,8 +581,8 @@
         const label = (list, v) => (list.find(([x]) => String(x) === String(v)) || list[0])[1];
         const homeTimes = TIMES(4, 12);
         const workTimes = TIMES(11, 23);
-        const p = provs || { google: {}, waze: {} };
-        const budgetLine = (name, b) => (b && b.configured ? `${name}: ${b.used} of ${b.budget} this month` : `${name}: no key (Dreamscape CardSpace > Service keys)`);
+        const p = provs || { google: {}, tomtom: {} };
+        const budgetLine = (name, b) => (b && b.configured ? `${name}: ${b.used} of ${b.budget} ${b.per === 'day' ? 'today' : 'this month'}` : `${name}: no key (Dreamscape CardSpace > Service keys)`);
         box.innerHTML = `
             ${ui.sub('Places')}
             ${ui.row('Home:', ui.edit('trfHome', f.home, 'placeholder="Street address" data-k="home" maxlength="200"'), { for: 'trfHome' })}
@@ -601,7 +606,8 @@
             ${ui.gap()}
             ${ui.sub('Data')}
             ${ui.note(budgetLine('Google Routes', p.google))}
-            ${ui.note(budgetLine('Waze', p.waze))}`;
+            ${ui.note(budgetLine('TomTom incidents', p.tomtom))}
+            ${ui.note('Speed cameras: OpenStreetMap (no key needed).')}`;
         box.querySelectorAll('input.wm-edit[data-k], textarea[data-k]').forEach((el) => el.addEventListener('input', () => { f[el.dataset.k] = el.value; }));
         box.querySelectorAll('input[data-day]').forEach((el) => el.addEventListener('change', () => {
             const d = Number(el.dataset.day);
@@ -723,12 +729,12 @@
     // ---------------------------------------------------------------- menus
 
     function about() {
-        const p = provs || { google: {}, waze: {} };
-        const line = (n, b) => (b && b.configured ? `${n}: ${b.left} of ${b.budget} requests left this month` : `${n}: not set up`);
+        const p = provs || { google: {}, tomtom: {} };
+        const line = (n, b) => (b && b.configured ? `${n}: ${b.left} of ${b.budget} requests left ${b.per === 'day' ? 'today' : 'this month'}` : `${n}: not set up`);
         ws.messageBox({
             title: TITLE,
             icon: 'info',
-            text: `Melaton Traffic\nVersion 1.0\n\nCopyright © 2026 Xyridian Corporation. All rights reserved.\n\nRoutes and traffic: Google. Speed traps and alerts: Waze.\n${line('Google Routes', p.google)}\n${line('Waze', p.waze)}`
+            text: `Melaton Traffic\nVersion 1.0\n\nCopyright © 2026 Xyridian Corporation. All rights reserved.\n\nRoutes and traffic: Google. Incidents: TomTom. Speed cameras: © OpenStreetMap contributors.\n${line('Google Routes', p.google)}\n${line('TomTom', p.tomtom)}`
         });
     }
 
@@ -762,6 +768,8 @@
         id: APP_ID,
         title: TITLE,
         icon: 'app-traffic',
+        // the 6.5 Start screen's own icon (wm65/start-traffic, 45 / 90 / 180 px)
+        art65: 'traffic',
         inStart: 'programs',
         sip: true,
         mount(p) {
@@ -811,7 +819,7 @@
         if (r.better) bits.push(`Faster via ${r.better.summary}`);
         else if (advice[d] && advice[d].wait) bits.push(`Wait ${advice[d].wait.offsetMin} min`);
         else if (p.summary) bits.push(`via ${p.summary}`);
-        if (r.traps && r.traps.length) bits.push(`${r.traps.length} speed trap${r.traps.length > 1 ? 's' : ''}`);
+        if (r.traps && r.traps.length) bits.push(`${r.traps.length} camera${r.traps.length > 1 ? 's' : ''}`);
         const old = Date.now() - Date.parse(r.at) > 30 * 60 * 1000;
         if (old) bits.push(`at ${clock(r.at)}`);
         return { title: `${label}: ${minText(p.durationSec)}${delay}`, sub: bits.join(', '), level: old ? 'none' : r.level };
@@ -865,6 +873,8 @@
         latest: () => latest,
         direction,
         refresh: () => check(direction(), false),
+        /** Read the settings and last reports again (traffic_get). */
+        reload: () => load(),
         _onReport: onReport
     };
 

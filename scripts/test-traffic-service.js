@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * modules/trafficService.js (Yozora #795) without live calls: street matching, polyline and corridor
- * geometry, slowdowns, Waze alerts on the route, the preferred / better route choice, budgets, the
- * leave advisor and the scheduler's due times. Google and Waze are answered by a fake fetch.
+ * geometry, slowdowns, TomTom incidents and OpenStreetMap cameras on the route, the preferred / better route choice, budgets, the
+ * leave advisor and the scheduler's due times. Google, TomTom and Overpass are answered by a fake fetch.
  *
  *   node scripts/test-traffic-service.js
  */
@@ -35,7 +35,7 @@ let cfg = {
         leaveHome: '07:45', leaveWork: '17:15', leadMin: 10, days: [1, 2, 3, 4, 5]
     }
 };
-const keys = { googlemaps: [{ apiKey: 'g-key' }], waze: [{ apiKey: 'w-key' }] };
+const keys = { googlemaps: [{ apiKey: 'g-key' }], tomtom: [{ apiKey: 't-key' }] };
 const sent = [];
 const gr = {
     getConfig: ({ path: p }) => p.split('.').reduce((o, k) => (o ? o[k] : undefined), cfg),
@@ -85,7 +85,7 @@ const fastRoute = {
 const calls = [];
 T.setFetch(async (url, init) => {
     calls.push({ url, init });
-    const body = init && init.body ? JSON.parse(init.body) : null;
+    const body = init && init.body && /routes\.googleapis/.test(url) ? JSON.parse(init.body) : null;
     const json = (o, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(o) });
     if (/routes\.googleapis/.test(url)) {
         assert.strictEqual(init.headers['X-Goog-Api-Key'], 'g-key');
@@ -96,16 +96,24 @@ T.setFetch(async (url, init) => {
         if (body.computeAlternativeRoutes) return json({ routes: [prefRoute, fastRoute] });
         return json({ routes: [prefRoute] });
     }
-    if (/waze\.p\.rapidapi\.com\/alerts-and-jams/.test(url)) {
-        assert.strictEqual(init.headers['X-RapidAPI-Key'], 'w-key');
-        return json({ status: 'OK', data: {
-            alerts: [
-                { alert_id: 'a1', type: 'POLICE', subtype: 'POLICE_HIDING', street: 'I-90 E', latitude: 44.0005, longitude: -102.95, publish_datetime_utc: '2026-11-13T12:00:00.000Z', num_thumbs_up: 3 },
-                { alert_id: 'a2', type: 'ACCIDENT', subtype: 'ACCIDENT_MAJOR', street: 'Main St', latitude: 44.0, longitude: -102.98 },
-                { alert_id: 'a3', type: 'POLICE', subtype: '', street: 'Far Rd', latitude: 44.05, longitude: -102.95 }
-            ],
-            jams: [{ jam_id: 'j1', level: 4, street: 'I-90 E', delay_seconds: 300, line_coordinates: [{ lat: 44.0, lon: -102.96 }, { lat: 44.0, lon: -102.94 }] }]
-        } });
+    if (/api\.tomtom\.com\/traffic\/services\/5\/incidentDetails/.test(url)) {
+        const q = new URL(url).searchParams;
+        assert.strictEqual(q.get('key'), 't-key');
+        assert.ok(/^-103\.\d+,43\.\d+,-102\.\d+,44\.\d+$/.test(q.get('bbox')), q.get('bbox'));
+        return json({ incidents: [
+            { type: 'Feature', geometry: { type: 'Point', coordinates: [-102.98, 44.0] }, properties: { id: 'i1', iconCategory: 1, magnitudeOfDelay: 3, events: [{ description: 'accident', code: 201 }], from: 'Main St', to: '5th St', roadNumbers: [], delay: 240 } },
+            { type: 'Feature', geometry: { type: 'LineString', coordinates: [[-102.96, 44.0], [-102.95, 44.0], [-102.94, 44.0]] }, properties: { id: 'j1', iconCategory: 6, magnitudeOfDelay: 4, events: [{ description: 'stationary traffic' }], roadNumbers: ['I-90'], delay: 300, length: 1600 } },
+            { type: 'Feature', geometry: { type: 'Point', coordinates: [-102.95, 44.05] }, properties: { id: 'far', iconCategory: 9, magnitudeOfDelay: 1, events: [{ description: 'roadworks' }] } }
+        ] });
+    }
+    if (/overpass-api\.de/.test(url)) {
+        assert.ok(/speed_camera/.test(decodeURIComponent(init.body)));
+        return json({ elements: [
+            { type: 'node', id: 11, lat: 44.0002, lon: -102.95, tags: { highway: 'speed_camera', maxspeed: '65 mph' } },
+            { type: 'node', id: 12, lat: 44.03, lon: -102.95, tags: { highway: 'speed_camera' } },
+            { type: 'relation', id: 90, tags: { type: 'enforcement', enforcement: 'traffic_signals' }, members: [{ type: 'node', ref: 13, role: 'device' }] },
+            { type: 'node', id: 13, lat: 44.0, lon: -102.92, tags: {} }
+        ] });
     }
     throw new Error(`unexpected ${url}`);
 });
@@ -151,17 +159,21 @@ T.setFetch(async (url, init) => {
         assert.ok(r.preferred.viaPreferred);
         assert.strictEqual(r.routes.length, 2, 'the twin alternative is folded into the via route');
         assert.ok(r.better && r.better.summary === 'Omaha St' && r.better.savesSec === 500);
-        assert.deepStrictEqual(r.traps.map((t) => t.id), ['a1']);
-        assert.strictEqual(r.traps[0].label, 'Speed trap (hidden)');
-        assert.deepStrictEqual(r.alerts.map((a) => a.label), ['Major accident']);
+        assert.deepStrictEqual(r.traps.map((t) => t.id), ['osm:11', 'osm:13'], JSON.stringify(r.errors));
+        assert.strictEqual(r.traps[0].label, 'Speed camera');
+        assert.strictEqual(r.traps[0].maxspeed, '65 mph');
+        assert.strictEqual(r.traps[1].label, 'Red light camera');
+        assert.deepStrictEqual(r.alerts.map((a) => a.label), ['Accident']);
+        assert.ok(r.alerts[0].major && r.alerts[0].street === 'Main St');
         assert.strictEqual(r.jams.length, 1);
-        assert.ok(r.jams[0].major);
+        assert.ok(r.jams[0].major && r.jams[0].street === 'I-90');
+        assert.ok(r.incidentsChecked && r.camerasChecked);
         assert.strictEqual(r.slowdowns.length, 1);
         assert.strictEqual(r.slowdowns[0].speed, 'TRAFFIC_JAM');
         assert.strictEqual(r.slowdowns[0].street, 'I-90 E');
         assert.strictEqual(r.level, 'heavy');
         assert.strictEqual(r.delaySec, 600);
-        assert.ok(/1 speed trap on route/.test(r.summary), r.summary);
+        assert.ok(/2 speed cameras on route/.test(r.summary), r.summary);
         assert.ok(/Faster: via Omaha St saves 8 min/.test(r.summary), r.summary);
         assert.ok(!r.preferred._points && Array.isArray(r.preferred.line));
         const b = sent.find((s) => s.msg.type === 'traffic_updated');
@@ -182,13 +194,34 @@ T.setFetch(async (url, init) => {
         cfg.traffic.streets = ['Main Street', 'Interstate 90 East'];
     });
 
-    await ok('budgets stop calls', async () => {
+    await ok('one TomTom / Overpass call serves both directions', async () => {
         T.routeCache.clear();
-        cfg.traffic.budgets = { google: 0, waze: 0 };
+        const before = calls.filter((c) => /tomtom|overpass/.test(c.url)).length;
+        await svc.check('work');
+        await svc.check('home');
+        const n = calls.filter((c) => /tomtom|overpass/.test(c.url)).length - before;
+        assert.strictEqual(n, 2, `calls ${n}`);
+    });
+
+    await ok('budgets stop calls; TomTom past its budget leaves the routes', async () => {
+        T.routeCache.clear();
+        cfg.traffic.budgets = { google: 4500, tomtom: 0 };
+        const r = await svc.check('work', { force: true });
+        assert.ok(!r.incidentsChecked && r.camerasChecked && r.errors.some((e) => /TomTom/.test(e)));
+        T.routeCache.clear();
+        cfg.traffic.budgets = { google: 0, tomtom: 0 };
         await assert.rejects(svc.check('work', { force: true }), /budget/i);
-        cfg.traffic.budgets = { google: 4500, waze: 90 };
+        cfg.traffic.budgets = { google: 4500, tomtom: 2000 };
         const p = svc.providers();
-        assert.ok(p.google.used > 0 && p.google.configured && p.waze.configured);
+        assert.ok(p.google.used > 0 && p.google.configured && p.tomtom.configured && p.tomtom.per === 'day');
+    });
+
+    await ok('no Google key: a clear error', async () => {
+        T.routeCache.clear();
+        const g = keys.googlemaps;
+        delete keys.googlemaps;
+        await assert.rejects(svc.check('work', { force: true }), /Google Maps key/);
+        keys.googlemaps = g;
     });
 
     await ok('leave advisor suggests waiting when it saves enough', async () => {

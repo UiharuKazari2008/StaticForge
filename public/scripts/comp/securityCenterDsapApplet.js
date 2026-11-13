@@ -3850,7 +3850,9 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         this._setKeychainHowTo(root, panel, service);
     },
 
-    // How to obtain the service's key (SERVICE_METADATA.howTo: title, steps, links), Yozora #795
+    // How to obtain the service's key (SERVICE_METADATA.howTo: title, steps, links), Yozora #795. The
+    // links open the host browser (data-browser-tab: featureLoader's catchWebLinkClick leaves them), where
+    // the user signs in to the provider's console, not an Alchemy window inside Dreamscape
     _setKeychainHowTo(root, panel, service) {
         const box = root.querySelector(`#secKeychain${panel}HowTo`);
         if (!box) return;
@@ -3862,7 +3864,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         const links = (Array.isArray(h.links) ? h.links : []).filter(([, url]) => /^https:\/\//.test(String(url || '')));
         box.innerHTML = `<div class="sec-keychain-howto-title">${esc(h.title || 'How to get this key')}</div>`
             + (steps.length ? `<ol>${steps.map((t) => `<li>${esc(t)}</li>`).join('')}</ol>` : '')
-            + (links.length ? `<div class="sec-keychain-howto-links">${links.map(([label, url]) => `<a href="${securityDsapEscapeAttr(esc(url))}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`).join('')}</div>` : '');
+            + (links.length ? `<div class="sec-keychain-howto-links">${links.map(([label, url]) => `<a href="${securityDsapEscapeAttr(esc(url))}" target="_blank" rel="noopener noreferrer" data-browser-tab>${esc(label)}</a>`).join('')}</div>` : '');
     },
 
     _keychainExtraFieldValues(root, panel) {
