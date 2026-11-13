@@ -7482,10 +7482,35 @@ async function runClientShutdownSequence(finalAction) {
 }
 
 /**
- * Where a full restart lands: always a cold boot from the home URL (/ -> /launch: the update
- * checks and the installer, boot screen, teal, logon, Yozora #420), on the desktop and on Melaton
- * Mobile alike. A reload of /app skipped the installer, so a large update asked for a restart
- * again on every one (Yukimi, Nov 13).
+ * The installed app's home: the PWA manifest's start_url (/launch, or /launch?k=<access hash>
+ * behind the site gate; modules/siteGate.js buildDreamscapeManifestJson), read from the page's
+ * manifest and kept in localStorage so a restart while the server is down still has it.
+ */
+const MELATON_HOME_KEY = 'melatonStartUrl';
+function melatonHomeUrl() {
+    let u = null;
+    try { u = localStorage.getItem(MELATON_HOME_KEY); } catch (_) { u = null; }
+    return u && /^\/launch(?:\?|$)/.test(u) ? u : '/launch';
+}
+window.melatonHomeUrl = melatonHomeUrl;
+async function refreshMelatonHomeUrl() {
+    try {
+        const link = document.querySelector('link[rel="manifest"]');
+        const res = await fetch((link && link.getAttribute('href')) || '/manifest.json', { cache: 'no-store', credentials: 'same-origin' });
+        if (!res.ok) return;
+        const start = new URL(String((await res.json()).start_url || ''), location.href);
+        const path = start.origin === location.origin ? start.pathname + start.search : '';
+        // only the app's own launch page (the site gate's cover manifest says '/')
+        if (/^\/launch(?:\?|$)/.test(path)) localStorage.setItem(MELATON_HOME_KEY, path);
+    } catch (_) { /* offline: the kept one */ }
+}
+setTimeout(() => { void refreshMelatonHomeUrl(); }, 5000);
+
+/**
+ * Where a full restart lands: always a cold boot from the installed app's home (melatonHomeUrl:
+ * the manifest's start_url, /launch: the update checks and the installer, boot screen, teal,
+ * logon, Yozora #420), on the desktop and on Melaton Mobile alike. A reload of /app skipped the
+ * installer, so a large update asked for a restart again on every one (Yukimi, Nov 13).
  */
 function restartClientNavigate() {
     try {
@@ -7500,7 +7525,7 @@ function restartClientNavigate() {
     // synced its history right after "Restart now? Yes" (history.go), and the phone never
     // restarted. wmShell leaves history alone from here on.
     window.melatonRestarting = true;
-    location.replace('/');
+    location.replace(melatonHomeUrl());
 }
 window.restartClientNavigate = restartClientNavigate;
 

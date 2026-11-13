@@ -4472,7 +4472,7 @@ class ServiceWorkerManager {
             if (choice === 'restart') {
                 // restartClientNavigate: public/scripts/comp/modalUtils.js
                 if (typeof restartClientNavigate === 'function') restartClientNavigate();
-                else location.replace('/');
+                else location.replace((window.melatonHomeUrl ? window.melatonHomeUrl() : '/launch'));
                 return { blocked: true };
             }
             if (choice === 'retry') return this.runBootSequence();

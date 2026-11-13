@@ -1574,7 +1574,7 @@ class WebSocketClient {
         if (choice === 'restart') {
             // restartClientNavigate: public/scripts/comp/modalUtils.js (/launch on the desktop)
             if (typeof restartClientNavigate === 'function') restartClientNavigate();
-            else location.replace('/');
+            else location.replace((window.melatonHomeUrl ? window.melatonHomeUrl() : '/launch'));
             return;
         }
         this.manualReconnect();
@@ -2585,7 +2585,7 @@ class WebSocketClient {
             if (value === 'restart') {
                 // restartClientNavigate: public/scripts/comp/modalUtils.js (/launch on the desktop)
                 if (typeof restartClientNavigate === 'function') restartClientNavigate();
-                else location.replace('/');
+                else location.replace((window.melatonHomeUrl ? window.melatonHomeUrl() : '/launch'));
                 return;
             }
             this.retryLogonInitSteps();
@@ -2619,7 +2619,7 @@ class WebSocketClient {
             if (value === 'restart') {
                 // restartClientNavigate: public/scripts/comp/modalUtils.js (/launch on the desktop)
                 if (typeof restartClientNavigate === 'function') restartClientNavigate();
-                else location.replace('/');
+                else location.replace((window.melatonHomeUrl ? window.melatonHomeUrl() : '/launch'));
                 return;
             }
             this.executeInitSteps();
@@ -5940,8 +5940,8 @@ class WebSocketClient {
         } else {
             try {
                 if (localStorage.getItem('dreamscapeSiteGate') === '1') {
-                    // the home URL: a cold boot through /launch (its logon and update checks)
-                    location.replace('/');
+                    // the installed app's home (the manifest's start_url): a cold boot through /launch
+                    location.replace((window.melatonHomeUrl ? window.melatonHomeUrl() : '/launch'));
                     return;
                 }
             } catch (_) { /* ignore */ }

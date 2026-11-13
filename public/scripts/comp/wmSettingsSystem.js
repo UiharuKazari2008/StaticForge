@@ -654,7 +654,7 @@
             });
             if (yes) {
                 const m = swm();
-                if (m && typeof m.forceRestart === 'function') m.forceRestart(); else if (typeof window.restartClientNavigate === 'function') window.restartClientNavigate(); else location.replace('/');
+                if (m && typeof m.forceRestart === 'function') m.forceRestart(); else if (typeof window.restartClientNavigate === 'function') window.restartClientNavigate(); else location.replace((window.melatonHomeUrl ? window.melatonHomeUrl() : '/launch'));
             }
         }
         return [];
@@ -1651,7 +1651,7 @@
         });
         if (yes) {
             const m = swm();
-            if (m && typeof m.forceRestart === 'function') m.forceRestart(); else if (typeof window.restartClientNavigate === 'function') window.restartClientNavigate(); else location.replace('/');
+            if (m && typeof m.forceRestart === 'function') m.forceRestart(); else if (typeof window.restartClientNavigate === 'function') window.restartClientNavigate(); else location.replace((window.melatonHomeUrl ? window.melatonHomeUrl() : '/launch'));
         }
         return [wmSettings.keys.version];
     }

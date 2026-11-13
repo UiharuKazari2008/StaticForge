@@ -251,7 +251,7 @@ async function ensureSessionValid() {
                     await showPinModal();
                     return true;
                 }
-                window.location.replace('/');
+                window.location.replace((window.melatonHomeUrl ? window.melatonHomeUrl() : '/launch'));
                 return false;
             }
         } catch (_) { /* ignore */ }

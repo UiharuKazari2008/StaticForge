@@ -242,7 +242,7 @@ if (window.wsClient) {
             } else if (confirmed === 'refresh') {
                 // Restart: a cold boot from the home URL (restartClientNavigate), never a reload of /app
                 if (typeof window.restartClientNavigate === 'function') window.restartClientNavigate();
-                else window.location.replace('/');
+                else window.location.replace((window.melatonHomeUrl ? window.melatonHomeUrl() : '/launch'));
                 return; // Don't continue with initialization
             }
         }
