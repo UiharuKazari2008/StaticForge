@@ -1050,7 +1050,9 @@
     }).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
 
     window.wmTitanium = {
-        enabled, home, select: (i) => select(i, true), panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel,
+        enabled, home, select: (i) => select(i, true),
+        // the coming-back entrance on demand (tests, #800)
+        enter: () => entrance(), panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel,
         // where the list is (tests): the move under way { a, b, n, p } or null, and the dragged position in rows
         motion: () => ({ sel, pos, dragging, move: tw ? { a: tw.a, b: tw.b, n: tw.n, asked: tw.nv, p: tw.p } : null })
     };
