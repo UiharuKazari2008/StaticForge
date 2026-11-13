@@ -351,7 +351,7 @@
         if (!accts.length) return 'No Text Messaging account is set up. Set one up on the desktop in Control Panel > Dreamscape CardSpace.';
         if (listError) return listError;
         if (unpaired(a)) return PAIR_NOTE;
-        if (a && a.status !== 'connected') return `${TITLE} is not connected${a.error ? `: ${a.error}` : '.'}`;
+        if (a && a.status !== 'connected') return `${(a && a.name) || TITLE} is not connected${a.error ? `: ${a.error}` : '.'}`;
         if (folder === 'unknown') return 'No messages from unknown senders.';
         if (folder === 'sent') return 'No messages.';
         return feat('newChat') ? 'To start a conversation, tap Menu, then New.' : 'No messages.';
@@ -409,7 +409,8 @@
         page.querySelector('.wtm-mediaview').hidden = v !== 'media';
         page.dataset.view = v;
         if (isCurrent()) {
-            sh.setTitle(TITLE);
+            // the account's own name: Apple iMessage (BlueBubbles) or Text Messaging (RCS)
+            sh.setTitle((acct() && acct().name) || TITLE);
             sh.refreshSoftKeys();
         }
     }

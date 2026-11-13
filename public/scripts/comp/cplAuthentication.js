@@ -780,7 +780,7 @@
     const TM_PICTURE = '/static_images/app_icons/melaton-messenger.png';
     const TM_PAIR_HINT = 'On your phone, open Google Messages, tap your profile picture > Device pairing > QR code scanner, and scan this code.';
     const TM_GOOGLE_URL = 'https://messages.google.com/web/authentication';
-    const TM_GOOGLE_STEPS = 'Alchemy opens at Google Messages for web. Sign in there with the Google account your phone uses, then press Continue.';
+    const TM_GOOGLE_STEPS = 'An Alchemy window opens at Google Messages for web. Sign in there with the Google account your phone uses, close that window, then press Continue.';
     const TM_EMOJI_HINT = 'Your phone shows "Is this you?". In Google Messages, tap the emoji that matches this one.';
     const TM_RCS_NOTE = 'Keep Google Messages as your default messaging app. Turn off its notifications: Dreamscape sends them now.';
     const TM_STATE = {
@@ -869,6 +869,24 @@
         const enabled = customCheck('Use this account', row.enabled !== false);
         const status = tmStatus(row);
         const testOut = tmText(tmTestText(ui), ui.testError ? 'cpl-tm-error' : '');
+        // the account's client settings (textMessagingBlueBubbles.js DEFAULT_SETTINGS)
+        const st = row.settings || {};
+        const priv = !!(row.server && row.server.privateApi);
+        const opt = (key, text) => { const c = customCheck(text, st[key] !== false); c.key = key; return c; };
+        const opts = [
+            opt('notify', 'Notify me about new messages'),
+            opt('usePrivateApi', 'Use the Private API (tapbacks, replies, edit and unsend, typing, read receipts)'),
+            opt('sendReadReceipts', 'Send read receipts'),
+            opt('sendTyping', 'Send typing indicators'),
+            opt('mergeConversations', "Show a person's iMessage and SMS chats as one conversation"),
+            opt('hideEmptyChats', 'Hide conversations with no messages')
+        ];
+        if (!priv) opts.filter((o) => ['usePrivateApi', 'sendReadReceipts', 'sendTyping'].includes(o.key)).forEach((o) => { o.input.disabled = true; });
+        const optBox = document.createElement('div');
+        optBox.className = 'cpl-tm-options';
+        opts.forEach((o) => optBox.appendChild(o.wrap));
+        const sv = row.server;
+        const serverText = sv ? [sv.version ? `BlueBubbles ${sv.version}` : '', sv.macOs ? `macOS ${sv.macOs}` : '', sv.privateApi ? (sv.helper ? 'Private API on' : 'Private API on, helper not connected') : 'Private API off'].filter(Boolean).join(', ') : 'Unknown until connected';
         details.append(
             customField('Service', tmText('iMessage through a BlueBubbles server')),
             customField('Server address', url),
@@ -876,7 +894,9 @@
             customField('Enabled', enabled.wrap),
             customField('Signed in as', tmText(row.identity || 'Unknown until connected')),
             customField('Status', tmText(status.text, row.status === 'error' ? 'cpl-tm-error' : '')),
-            customField('Test result', testOut)
+            customField('Server', tmText(serverText)),
+            customField('Test result', testOut),
+            customField('Options', optBox)
         );
         actions.append(
             tmButton('Test connection', async () => {
@@ -893,7 +913,9 @@
                 testOut.className = ui.testError ? 'cpl-tm-error' : '';
             }),
             tmButton('Save', async () => {
-                const saved = await tmApi().saveAccount({ id: row.id || undefined, kind: 'bluebubbles', url: url.value, password: pass.value || undefined, enabled: enabled.input.checked });
+                const settings = {};
+                opts.forEach((o) => { if (!o.input.disabled) settings[o.key] = o.input.checked; });
+                const saved = await tmApi().saveAccount({ id: row.id || undefined, kind: 'bluebubbles', url: url.value, password: pass.value || undefined, enabled: enabled.input.checked, settings });
                 tmRows = tmRows.filter((r) => r.id);
                 if (saved && saved.id) { tmUiOf(saved.id).open = true; csSel = `sms:${saved.id}`; }
                 await loadTextMessaging(true);
@@ -933,7 +955,7 @@
                 box.append(big, tmText(TM_EMOJI_HINT, 'cpl-tm-hint'));
             } else {
                 box.append(tmText(TM_GOOGLE_STEPS, 'cpl-tm-hint'),
-                    tmButton('Open Alchemy', async () => { if (typeof root.openGrimoireUrl === 'function') await root.openGrimoireUrl(TM_GOOGLE_URL); }),
+                    tmButton('Open Alchemy', async () => { await csOpenBrowser(TM_GOOGLE_URL, 'Google Messages'); }),
                     tmButton('Continue', async () => {
                         ui.error = '';
                         try {
@@ -970,7 +992,7 @@
                 ui.emoji = '';
                 ui.error = '';
                 ui.paired = false;
-                if (typeof root.openGrimoireUrl === 'function') void root.openGrimoireUrl(TM_GOOGLE_URL).catch(() => {});
+                void csOpenBrowser(TM_GOOGLE_URL, 'Google Messages').catch(() => {});
                 paintTextMessaging();
             }));
             actions.append(tmButton(ui.qr ? 'New QR code' : 'Pair with QR code', async () => {
@@ -1575,7 +1597,25 @@
         }
     }
 
+    /**
+     * A web page CardSpace needs (the Google sign-in for RCS pairing): a standalone Alchemy window. On the
+     * secure desktop nothing behind it can be used, so the window comes up at CardSpace's level
+     * (.cs-secure-companion, above CardSpace) until CardSpace leaves the secure desktop.
+     */
+    async function csOpenBrowser(url, title) {
+        const fl = root.featureLoader;
+        if (fl && typeof fl.loadFeature === 'function') await fl.loadFeature('grimoire');
+        /* global grimoireOpenStandaloneWindow */
+        const open = typeof grimoireOpenStandaloneWindow === 'function' ? grimoireOpenStandaloneWindow : root.grimoireOpenStandaloneWindow;
+        if (typeof open !== 'function') { if (typeof root.openGrimoireUrl === 'function') await root.openGrimoireUrl(url); return; }
+        const before = new Set(document.querySelectorAll('.modal'));
+        open(url, null, title);
+        const made = [...document.querySelectorAll('.modal')].filter((m) => !before.has(m));
+        if (win && win.classList.contains('cs-secure')) made.forEach((m) => m.classList.add('cs-secure-companion'));
+    }
+
     function csSecureOff() {
+        document.querySelectorAll('.modal.cs-secure-companion').forEach((m) => m.classList.remove('cs-secure-companion'));
         if (csSecureWatch) { csSecureWatch.disconnect(); csSecureWatch = null; }
         if (win && win.classList.contains('cs-secure')) {
             win.classList.remove('cs-secure');

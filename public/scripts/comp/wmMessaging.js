@@ -338,15 +338,28 @@
     /** Text Messaging accounts and Dreamscape Messenger's unread counts for the picker. */
     function refreshTm() {
         wireTm();
+        loadChatUserName();
         const t = tmApi();
         loadTmAccounts(false).then(() => { tmRepaint(); if (t && typeof t.summary === 'function') t.summary().then((list) => { if (Array.isArray(list)) tmAccts = list; tmRepaint(); }, () => {}); });
+    }
+
+    // Dreamscape Messenger's subline: your name from the persona settings (Control Panel > Chat, the
+    // phone's Dreamscape Messenger options), read each time the picker loads
+    let chatUserName = '';
+    function loadChatUserName() {
+        const ws = window.wsClient;
+        if (!ws || typeof ws.getPersonaSettings !== 'function') return;
+        Promise.resolve(ws.getPersonaSettings()).then((r) => {
+            const name = String((r && ((r.settings && r.settings.user_name) || (r.data && r.data.settings && r.data.settings.user_name))) || '').trim();
+            if (name !== chatUserName) { chatUserName = name; tmRepaint(); }
+        }, () => { /* keeps the last name */ });
     }
 
     /** The accounts in the picker's order: Text Messaging (each account), Dreamscape Messenger, Dreamscape Mail, the Director personas. */
     function accounts() {
         const tms = tmAccts.map((a) => { const l = tmLabel(a); return { key: `tm:${a.id}`, name: l.title, icon: 'msg-acct-sms', sub: l.subline, dim: true, unread: tmUnread(a.id) }; });
         return tms.concat([
-            { key: 'sms', name: SMS_ACCOUNT, icon: 'app-chat', sub: '', unread: smsUnread() },
+            { key: 'sms', name: SMS_ACCOUNT, icon: 'app-chat', sub: chatUserName, dim: !!chatUserName, unread: smsUnread() },
             { key: 'mail', name: MAIL_ACCOUNT, icon: 'msg-acct-outlook', sub: mailAddress(), dim: true, unread: mailUnread() }
         ]).concat(personas().map(([p, n]) => ({ key: `dir:${p}`, name: n, icon: `today-persona-${p}`, sub: 'Director', dim: true, unread: 0 })));
     }

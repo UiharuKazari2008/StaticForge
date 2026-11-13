@@ -28,7 +28,7 @@
 const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
-const { BlueBubblesProvider, handleKey, normalizeUrl } = require('./textMessagingBlueBubbles');
+const { BlueBubblesProvider, handleKey, normalizeUrl, DEFAULT_SETTINGS: BB_DEFAULTS } = require('./textMessagingBlueBubbles');
 const { RcsProvider } = require('./textMessagingRcs');
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
@@ -116,6 +116,61 @@ function markWritten(accountId, chatGuid) {
     if (knownSaveTimer.unref) knownSaveTimer.unref();
 }
 
+// ---- read marks (BlueBubbles) ----
+// BlueBubbles reports no read flag, and many old SMS carry no read date, so their chats would read as
+// unread forever. Like BlueBubbles' own clients, Dreamscape keeps its own: everything before the first
+// start with this file is read; a chat is unread when an incoming message is newer than the last time
+// it was read here, on the iPhone / Mac (a read date or a read event) or answered.
+
+let readMarks = null; // { baseline, chats: { "<account>|<chat>": ms } }
+let readSaveTimer = null;
+
+function readFile() {
+    let dir;
+    try { dir = resources().getPath('cache'); } catch (_) { dir = null; }
+    return path.join(dir || path.join(__dirname, '..', '.cache'), 'textmessaging-read.json');
+}
+
+function loadReadMarks() {
+    if (readMarks) return readMarks;
+    try {
+        const d = JSON.parse(fs.readFileSync(readFile(), 'utf8'));
+        readMarks = { baseline: Number(d.baseline) || Date.now(), chats: d.chats && typeof d.chats === 'object' ? d.chats : {} };
+    } catch (_) {
+        readMarks = { baseline: Date.now(), chats: {} };
+        saveReadMarks();
+    }
+    return readMarks;
+}
+
+function saveReadMarks() {
+    clearTimeout(readSaveTimer);
+    readSaveTimer = setTimeout(() => {
+        try { fs.writeFileSync(readFile(), JSON.stringify(readMarks)); } catch (error) { log(`read marks save failed: ${error.message}`); }
+    }, 1500);
+    if (readSaveTimer.unref) readSaveTimer.unref();
+}
+
+function markChatRead(accountId, chatGuid, at) {
+    if (!chatGuid) return;
+    const r = loadReadMarks();
+    const key = `${accountId}|${chatGuid}`;
+    const t = at || Date.now();
+    if ((r.chats[key] || 0) >= t) return;
+    r.chats[key] = t;
+    saveReadMarks();
+}
+
+/** A BlueBubbles chat's unread state from the read marks. */
+function applyReadMark(accountId, chat) {
+    const p = providers.get(accountId);
+    if (!p || p.kind !== 'bluebubbles' || !chat) return;
+    const last = chat.last;
+    if (!last || last.fromMe || last.dateRead) { chat.unread = false; return; }
+    const r = loadReadMarks();
+    chat.unread = (Number(last.date) || 0) > Math.max(r.baseline, r.chats[`${accountId}|${chat.guid}`] || 0);
+}
+
 // ---- Dreamscape Contacts (every workspace's Contacts folder) ----
 
 async function scanDreamscapeContacts() {
@@ -167,7 +222,8 @@ function decorateParticipants(chat, ds) {
 }
 
 function isKnownChat(accountId, chat, ds) {
-    if (loadKnown().has(`${accountId}|${chat.guid}`)) return true;
+    const known = loadKnown();
+    if ((chat.guids || [chat.guid]).some((g) => known.has(`${accountId}|${g}`))) return true;
     if (chat.spam) return false;
     if (chat.last && chat.last.fromMe) { markWritten(accountId, chat.guid); return true; }
     return (chat.participants || []).some((p) => p.name || ds.has(handleKey(p.address)));
@@ -177,7 +233,7 @@ function isKnownChat(accountId, chat, ds) {
 
 function makeProvider(account) {
     const hooks = { emit: (event, payload) => onProviderEvent(account.id, event, payload), log: (m) => log(`${account.id}: ${m}`) };
-    if (account.kind === 'bluebubbles') return new BlueBubblesProvider({ id: account.id, url: account.url, password: passwordFor(account.id) }, hooks);
+    if (account.kind === 'bluebubbles') return new BlueBubblesProvider({ id: account.id, url: account.url, password: passwordFor(account.id), settings: account.settings }, hooks);
     if (account.kind === 'rcs') {
         let cacheDir = null;
         try { cacheDir = resources().getPath('cache'); } catch (_) { cacheDir = null; }
@@ -233,7 +289,7 @@ async function onProviderEvent(accountId, event, payload) {
         if (event === 'message' || event === 'updated') {
             summaries.delete(accountId);
             const m = payload.message;
-            if (m && m.fromMe) markWritten(accountId, payload.chatGuid);
+            if (m && m.fromMe) { markWritten(accountId, payload.chatGuid); markChatRead(accountId, payload.chatGuid); }
             const ds = await dreamscapeContacts();
             if (m && !m.fromMe && m.sender && !m.sender.name) { const n = ds.get(handleKey(m.sender.address)); if (n) m.sender.name = n; }
             let known = m && m.fromMe ? true : null;
@@ -255,9 +311,12 @@ async function onProviderEvent(accountId, event, payload) {
             delete out.chat;
             out.known = known;
             out.folder = known ? 'inbox' : 'unknown';
-            out.notify = event === 'message' && m && !m.fromMe && !m.groupEvent && (known || readConfig().notifyUnknown);
+            const acctRow = readConfig().accounts.find((x) => x.id === accountId);
+            const acctNotify = !(acctRow && acctRow.settings && acctRow.settings.notify === false);
+            out.notify = event === 'message' && m && !m.fromMe && !m.groupEvent && acctNotify && (known || readConfig().notifyUnknown);
         } else if (event === 'reaction' || event === 'read') {
             summaries.delete(accountId);
+            if (event === 'read' && payload.read !== false) markChatRead(accountId, payload.chatGuid);
         }
     } catch (error) {
         log(`event ${event} failed: ${error.message}`);
@@ -275,7 +334,8 @@ function accountOut(a) {
     return {
         id: a.id,
         kind: a.kind,
-        name: 'Text Messaging',
+        // BlueBubbles accounts read as Apple iMessage (Yukimi, Nov 13); RCS keeps Text Messaging
+        name: a.kind === 'bluebubbles' ? 'Apple iMessage' : 'Text Messaging',
         service: a.kind === 'bluebubbles' ? 'iMessage' : 'RCS',
         url: a.url || '',
         enabled: a.enabled !== false,
@@ -285,7 +345,9 @@ function accountOut(a) {
         identity: p ? p.identity() : '',
         features: p ? p.features() : {},
         unread: s ? s.value.unread : null,
-        unknownUnread: s ? s.value.unknownUnread : null
+        unknownUnread: s ? s.value.unknownUnread : null,
+        settings: a.kind === 'bluebubbles' ? Object.assign({}, BB_DEFAULTS, a.settings || {}) : Object.assign({ notify: true }, a.settings || {}),
+        server: p && p.info ? { version: p.info.server_version || '', macOs: p.info.os_version || '', privateApi: !!p.info.private_api, helper: !!p.info.helper_connected, computer: p.info.computer_id || '' } : null
     };
 }
 
@@ -326,6 +388,12 @@ function saveAccount(input) {
     if (kind !== 'rcs' && !url) throw Object.assign(new Error('Type the BlueBubbles server address.'), { code: 'NO_URL' });
     const row = { id, kind, url, enabled: body.enabled !== false };
     const at = cfg.accounts.findIndex((a) => a.id === id);
+    // client settings: only known switches, merged over what is stored
+    const allowed = kind === 'bluebubbles' ? Object.keys(BB_DEFAULTS) : ['notify'];
+    const prevSettings = at >= 0 && cfg.accounts[at].settings ? cfg.accounts[at].settings : {};
+    const nextSettings = Object.assign({}, prevSettings);
+    if (body.settings && typeof body.settings === 'object') for (const k of allowed) if (typeof body.settings[k] === 'boolean') nextSettings[k] = body.settings[k];
+    row.settings = nextSettings;
     if (at >= 0) cfg.accounts[at] = Object.assign({}, cfg.accounts[at], row);
     else cfg.accounts.push(row);
     writeConfig(cfg);
@@ -356,14 +424,19 @@ function saveSettings(input) {
 
 async function listChats(accountId, { folder = 'all', limit = 50, offset = 0 } = {}) {
     const p = provider(accountId);
-    const [chats, ds] = await Promise.all([p.listChats({ limit: Math.min(Number(limit) || 50, 200), offset: Number(offset) || 0 }), dreamscapeContacts()]);
-    for (const c of chats) { decorateParticipants(c, ds); c.known = isKnownChat(accountId, c, ds); }
+    // a folder holds only part of the conversations: read deeper so it can fill a page
+    const scan = folder === 'all' ? 0 : 400;
+    const [chats, ds] = await Promise.all([p.listChats({ limit: folder === 'all' ? Math.min(Number(limit) || 50, 200) : 300, offset: folder === 'all' ? Number(offset) || 0 : 0, scan }), dreamscapeContacts()]);
+    for (const c of chats) { decorateParticipants(c, ds); c.known = isKnownChat(accountId, c, ds); applyReadMark(accountId, c); }
     if (!offset) {
         const value = { unread: chats.filter((c) => c.known && c.unread).length, unknownUnread: chats.filter((c) => !c.known && c.unread).length };
         summaries.set(accountId, { at: Date.now(), value });
     }
-    const list = folder === 'inbox' ? chats.filter((c) => c.known) : folder === 'unknown' ? chats.filter((c) => !c.known) : chats;
-    return { chats: list, more: chats.length >= (Number(limit) || 50) };
+    if (folder === 'all') return { chats, more: chats.length >= (Number(limit) || 50) };
+    const all = folder === 'inbox' ? chats.filter((c) => c.known) : chats.filter((c) => !c.known);
+    const from = Number(offset) || 0;
+    const n = Math.min(Number(limit) || 50, 200);
+    return { chats: all.slice(from, from + n), more: all.length > from + n };
 }
 
 /** Unread counts for every account (pickers, Today, tray), cached briefly. */
@@ -391,7 +464,7 @@ async function listMessages(accountId, chatGuid, opts) {
 async function getChat(accountId, chatGuid) {
     const p = provider(accountId);
     const [chat, ds] = await Promise.all([p.getChat(chatGuid), dreamscapeContacts()]);
-    if (chat) { decorateParticipants(chat, ds); chat.known = isKnownChat(accountId, chat, ds); }
+    if (chat) { decorateParticipants(chat, ds); chat.known = isKnownChat(accountId, chat, ds); applyReadMark(accountId, chat); }
     return chat;
 }
 
@@ -474,7 +547,11 @@ async function unpair(accountId) { return provider(accountId).unpair(); }
 async function react(accountId, args) { return provider(accountId).react(args); }
 async function edit(accountId, args) { return provider(accountId).edit(args); }
 async function unsend(accountId, args) { return provider(accountId).unsend(args); }
-async function markRead(accountId, args) { summaries.delete(accountId); return provider(accountId).markRead(args); }
+async function markRead(accountId, args) {
+    summaries.delete(accountId);
+    markChatRead(accountId, args && args.chatGuid);
+    return provider(accountId).markRead(args);
+}
 async function typing(accountId, args) { return provider(accountId).typing(args); }
 async function downloadAttachment(accountId, guid, opts) { return provider(accountId).downloadAttachment(guid, opts); }
 
@@ -489,6 +566,7 @@ function _reset() {
     for (const id of [...providers.keys()]) stopAccount(id);
     started = false;
     knownChats = null;
+    readMarks = null;
     dsContacts = { at: 0, keys: new Map(), promise: null };
     listeners.clear();
 }

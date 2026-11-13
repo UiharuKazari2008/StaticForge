@@ -7463,6 +7463,8 @@
          * Today repaints every 2 s: render must be cheap and repaint only what changed.
          */
         registerTodayItem: (w) => registerTodayItem(w),
+        // an item's data changed after Today drew it (Text Messaging's accounts load late, #779)
+        refreshToday: () => { const t = apps.get('today'); if (t && t.page) t.refresh(); },
         /** Today rows from apps: [{ id, label }] (Settings > Today > Items). */
         listTodayItems: () => todayWidgets.map((w) => ({ id: w.id, label: w.label || w.id, defaultOn: w.defaultOn !== false })),
         /** 6.5 (#739): the registered Today items themselves (their titanium() panels), and the home screen's hook. */

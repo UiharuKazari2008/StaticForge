@@ -67,9 +67,9 @@ function server() {
 
     const list = await p.listChats();
     assert.strictEqual(list.length, 2);
-    assert.strictEqual(list[0].title, 'Alice', 'contact name from the iPhone contacts');
-    assert.strictEqual(list[0].unread, true);
-    assert.strictEqual(list[1].title, '+15559990000');
+    assert.strictEqual(list[0].title, '+15559990000', 'newest conversation first');
+    assert.strictEqual(list[1].title, 'Alice', 'contact name from the iPhone contacts');
+    assert.strictEqual(list[1].unread, true);
 
     const page = await p.listMessages(chats[0].guid);
     assert.deepStrictEqual(page.messages.map((m) => m.guid), ['m1', 'm2'], 'tapbacks fold into their targets, oldest first');

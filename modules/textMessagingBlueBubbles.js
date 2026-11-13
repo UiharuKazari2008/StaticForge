@@ -32,6 +32,20 @@ const REACTION_CODES = {
 };
 const REACTIONS = ['love', 'like', 'dislike', 'laugh', 'emphasize', 'question'];
 
+/**
+ * The account's client settings (Dreamscape CardSpace, the BlueBubbles card; config.json
+ * textMessaging.accounts[].settings). Missing keys take these.
+ */
+const DEFAULT_SETTINGS = {
+    usePrivateApi: true,        // tapbacks, edit / unsend, replies, typing, read receipts (when the server has it)
+    sendReadReceipts: true,     // opening a conversation marks it read on the Mac (the sender sees Read)
+    sendTyping: true,           // the other side sees you typing
+    mergeConversations: true,   // one person's iMessage and SMS chats as one conversation (as the iPhone shows them)
+    hideEmptyChats: true,       // chats with no messages stay out of the lists
+    notify: true                // new messages notify (unknown senders still follow notifyUnknown)
+};
+const MAX_CHAT_SCAN = 500;
+
 function reactionOf(type) {
     if (type == null || type === '') return null;
     if (typeof type === 'number' || /^\d+$/.test(String(type))) return REACTION_CODES[Number(type)] || null;
@@ -74,6 +88,9 @@ class BlueBubblesProvider {
         this.url = normalizeUrl(account.url);
         this.password = String(account.password || '');
         this.hooks = hooks || {};
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, account.settings || {});
+        this.primaryOf = new Map(); // any chat guid -> the guid of the conversation it is merged into
+        this.membersOf = new Map(); // conversation guid -> its chat guids, newest first
         this.status = 'connecting';
         this.error = '';
         this.info = null;
@@ -95,8 +112,14 @@ class BlueBubblesProvider {
     }
 
     features() {
-        const priv = !!(this.info && this.info.private_api);
-        return { privateApi: priv, attachments: true, tapbacks: priv, edit: priv, unsend: priv, reply: priv, typing: priv, readReceipts: priv, newChat: true, effects: priv };
+        const priv = !!(this.info && this.info.private_api) && this.settings.usePrivateApi !== false;
+        return { privateApi: priv, attachments: true, tapbacks: priv, edit: priv, unsend: priv, reply: priv, typing: priv && this.settings.sendTyping !== false, readReceipts: priv && this.settings.sendReadReceipts !== false, newChat: true, effects: priv };
+    }
+
+    /** The conversation a chat belongs to (merged iMessage + SMS), and its chats. */
+    resolve(guid) { return this.primaryOf.get(guid) || guid; }
+
+    members(guid) { const p = this.resolve(guid); return this.membersOf.get(p) || [p];
     }
 
     // ---- REST ----
@@ -206,17 +229,17 @@ class BlueBubblesProvider {
         socket.on('message-send-error', (m) => this.onMessage(m, true));
         socket.on('typing-indicator', (d) => {
             if (!d || !d.guid) return;
-            this.hooks.emit && this.hooks.emit('typing', { accountId: this.id, chatGuid: d.guid, typing: d.display === true });
+            this.hooks.emit && this.hooks.emit('typing', { accountId: this.id, chatGuid: this.resolve(d.guid), typing: d.display === true });
         });
         socket.on('chat-read-status-changed', (d) => {
             if (!d || !d.chatGuid) return;
-            this.hooks.emit && this.hooks.emit('read', { accountId: this.id, chatGuid: d.chatGuid, read: d.read !== false });
+            this.hooks.emit && this.hooks.emit('read', { accountId: this.id, chatGuid: this.resolve(d.chatGuid), read: d.read !== false });
         });
         for (const ev of ['group-name-change', 'participant-added', 'participant-removed', 'participant-left', 'chat-read-status-changed']) {
             if (ev === 'chat-read-status-changed') continue;
             socket.on(ev, (m) => {
                 const chatGuid = m && Array.isArray(m.chats) && m.chats[0] ? m.chats[0].guid : (m && m.chatGuid) || '';
-                this.hooks.emit && this.hooks.emit('chat', { accountId: this.id, chatGuid });
+                this.hooks.emit && this.hooks.emit('chat', { accountId: this.id, chatGuid: this.resolve(chatGuid) });
             });
         }
     }
@@ -228,7 +251,7 @@ class BlueBubblesProvider {
 
     onMessage(raw, updated) {
         if (!raw || !raw.guid) return;
-        const chatGuid = Array.isArray(raw.chats) && raw.chats[0] ? raw.chats[0].guid : '';
+        const chatGuid = this.resolve(Array.isArray(raw.chats) && raw.chats[0] ? raw.chats[0].guid : '');
         const reaction = reactionOf(raw.associatedMessageType);
         if (reaction && raw.associatedMessageGuid) {
             this.hooks.emit && this.hooks.emit('reaction', {
@@ -239,7 +262,9 @@ class BlueBubblesProvider {
             return;
         }
         const message = this.normalizeMessage(raw, chatGuid);
-        this.hooks.emit && this.hooks.emit(updated ? 'updated' : 'message', { accountId: this.id, chatGuid, message, chat: Array.isArray(raw.chats) && raw.chats[0] ? raw.chats[0] : null });
+        // the raw chat only when it is the conversation itself (a merged one is read again by guid)
+        const rawChat = Array.isArray(raw.chats) && raw.chats[0] && raw.chats[0].guid === chatGuid ? raw.chats[0] : null;
+        this.hooks.emit && this.hooks.emit(updated ? 'updated' : 'message', { accountId: this.id, chatGuid, message, chat: rawChat });
     }
 
     // ---- contacts ----
@@ -349,24 +374,67 @@ class BlueBubblesProvider {
 
     // ---- reads ----
 
-    async listChats({ limit = 50, offset = 0 } = {}) {
+    /**
+     * The conversations, newest first: empty chats left out and one person's iMessage and SMS chats
+     * merged (the settings say), so an offset counts conversations, not the Mac's chats.
+     * scan: how many of the Mac's chats to read (the core reads more when it filters by folder).
+     */
+    async listChats({ limit = 50, offset = 0, scan = 0 } = {}) {
         await this.loadContacts().catch(() => {});
-        const rows = await this.call('POST', 'chat/query', { body: { limit, offset, with: ['lastMessage', 'participants'], sort: 'lastmessage' } });
-        return (Array.isArray(rows) ? rows : []).map((c) => this.normalizeChat(c));
+        const want = Math.min(MAX_CHAT_SCAN, Math.max(scan, (offset + limit) * 2 + 20));
+        const rows = await this.call('POST', 'chat/query', { body: { limit: want, offset: 0, with: ['lastMessage', 'participants'], sort: 'lastmessage' } });
+        let chats = (Array.isArray(rows) ? rows : []).map((c) => this.normalizeChat(c));
+        if (this.settings.hideEmptyChats !== false) chats = chats.filter((c) => c.last);
+        chats.sort((a, b) => ((b.last && b.last.date) || 0) - ((a.last && a.last.date) || 0));
+        if (this.settings.mergeConversations !== false) chats = this.merge(chats);
+        return chats.slice(offset, offset + limit);
+    }
+
+    /** One person's 1:1 chats (iMessage, SMS, RCS) as one conversation, under the newest one's guid. */
+    merge(chats) {
+        const out = [];
+        const byPerson = new Map();
+        for (const c of chats) {
+            const key = !c.isGroup && c.participants.length === 1 ? handleKey(c.participants[0].address) : '';
+            const into = key ? byPerson.get(key) : null;
+            if (!into) {
+                c.guids = [c.guid];
+                if (key) byPerson.set(key, c);
+                out.push(c);
+                continue;
+            }
+            into.guids.push(c.guid);
+            into.unread = into.unread || c.unread;
+            if (!into.participants[0].name && c.participants[0].name) into.participants[0].name = c.participants[0].name;
+        }
+        for (const c of out) {
+            this.membersOf.set(c.guid, c.guids);
+            for (const g of c.guids) this.primaryOf.set(g, c.guid);
+        }
+        return out;
     }
 
     async getChat(chatGuid) {
         await this.loadContacts().catch(() => {});
-        const c = await this.call('GET', `chat/${encodeURIComponent(chatGuid)}`, { query: { with: 'participants,lastmessage' } });
-        return c ? this.normalizeChat(c) : null;
+        const guid = this.resolve(chatGuid);
+        const c = await this.call('GET', `chat/${encodeURIComponent(guid)}`, { query: { with: 'participants,lastmessage' } });
+        if (!c) return null;
+        const chat = this.normalizeChat(c);
+        chat.guids = this.members(guid);
+        return chat;
     }
 
     async listMessages(chatGuid, { limit = 50, before = null } = {}) {
         await this.loadContacts().catch(() => {});
-        const rows = await this.call('GET', `chat/${encodeURIComponent(chatGuid)}/message`, {
+        const guid = this.resolve(chatGuid);
+        const pages = await Promise.all(this.members(guid).map((g) => this.call('GET', `chat/${encodeURIComponent(g)}/message`, {
             query: { limit, sort: 'DESC', before: before || undefined, with: 'attachment,handle,attributedBody,messageSummaryInfo' }
-        });
-        const list = Array.isArray(rows) ? rows : [];
+        }).then((rows) => (Array.isArray(rows) ? rows : []), () => [])));
+        const full = pages.some((p) => p.length >= limit);
+        // a merged conversation: the newest `limit` across its chats
+        const all = [].concat(...pages).sort((a, b) => (Number(b.dateCreated) || 0) - (Number(a.dateCreated) || 0));
+        const list = all.slice(0, limit);
+        chatGuid = guid;
         const out = [];
         const byGuid = new Map();
         const reactions = [];
@@ -391,7 +459,7 @@ class BlueBubblesProvider {
         out.sort((a, b) => a.date - b.date);
         // the next page: messages before the oldest one here (clients pass page.cursor back as before)
         const oldest = list.length ? Math.min(...list.map((r) => Number(r.dateCreated) || Infinity)) : null;
-        return { messages: out, more: list.length >= limit, cursor: oldest && Number.isFinite(oldest) ? String(oldest) : null };
+        return { messages: out, more: full || all.length > list.length, cursor: oldest && Number.isFinite(oldest) ? String(oldest) : null };
     }
 
     async downloadAttachment(guid, { thumb } = {}) {
@@ -459,16 +527,17 @@ class BlueBubblesProvider {
     }
 
     async markRead({ chatGuid }) {
-        if (!this.features().privateApi) return { ok: false };
-        await this.call('POST', `chat/${encodeURIComponent(chatGuid)}/read`, { body: {} });
+        // read here always (the core's marks); on the Mac only when read receipts are on
+        if (!this.features().readReceipts) return { ok: false };
+        await Promise.all(this.members(chatGuid).map((g) => this.call('POST', `chat/${encodeURIComponent(g)}/read`, { body: {} }).catch(() => null)));
         return { ok: true };
     }
 
     async typing({ chatGuid, typing }) {
         if (!this.features().typing) return { ok: false };
-        await this.call(typing ? 'POST' : 'DELETE', `chat/${encodeURIComponent(chatGuid)}/typing`);
+        await this.call(typing ? 'POST' : 'DELETE', `chat/${encodeURIComponent(this.resolve(chatGuid))}/typing`);
         return { ok: true };
     }
 }
 
-module.exports = { BlueBubblesProvider, handleKey, normalizeUrl, reactionOf, REACTIONS };
+module.exports = { BlueBubblesProvider, handleKey, normalizeUrl, reactionOf, REACTIONS, DEFAULT_SETTINGS };

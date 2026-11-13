@@ -825,6 +825,18 @@
     opacity: 1;
 }
 
+/* the BlueBubbles card's client options (#779): one check box per line */
+#dreamscapeCardSpaceModal .cpl-tm-options {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+/* a window CardSpace opened for itself (the Google sign-in in Alchemy, #779): usable on the secure desktop */
+.modal.cs-secure-companion {
+    z-index: 2722 !important;
+}
+
 /* CardSpace alone above the dimmed desktop (cplAuthentication.js SECURE_Z + 1) */
 #dreamscapeCardSpaceModal.cs-secure {
     z-index: 2721 !important;

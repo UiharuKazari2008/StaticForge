@@ -1697,12 +1697,21 @@
             }));
         } catch (_) { /* not connected yet: the next event tries again */ }
         if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus();
+        tmTodayChanged();
+    }
+
+    // Today drew its Text panel before the accounts arrived: draw it again when what it shows changed
+    let tmTodayKey = '';
+    function tmTodayChanged() {
+        const key = JSON.stringify([tmState.accounts.map((a) => [a.id, a.identity, a.status, tmState.unread[a.id] || 0]), tmState.last]);
+        if (key !== tmTodayKey) { tmTodayKey = key; if (sh && typeof sh.refreshToday === 'function') sh.refreshToday(); }
     }
 
     function tmOnUnread(d) {
         const by = (d && d.byAccount) || {};
         for (const id of Object.keys(by)) tmState.unread[id] = Number(by[id] && by[id].unread) || 0;
         if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus();
+        tmTodayChanged();
     }
 
     function tmOnMessage(d) {
