@@ -13,6 +13,7 @@
  *   sendFile(accountId, chatGuid, file, { replyTo, audio, onProgress(0..1) }) -> { tempGuid, message }
  *   react(accountId, { chatGuid, messageGuid, messageText, reaction, remove })
  *   edit(accountId, { messageGuid, text }) / unsend(accountId, { messageGuid })
+ *   search(q, { accountId?, limit }) -> [{ accountId, account, chatGuid, chatTitle, known, message }]
  *   markRead(accountId, chatGuid) / markUnread(accountId, chatGuid) / typing(accountId, chatGuid, bool)  (typing is throttled)
  *   testAccount / saveAccount / deleteAccount / saveSettings({ notifyUnknown })
  *   pairRcs(accountId) -> { qr }   (show the URL as a QR code; 'pairing' events: { qr } refreshed, { paired: true })
@@ -187,6 +188,7 @@
     const edit = (accountId, args) => call('tm_edit', Object.assign({ accountId }, args || {}));
     const unsend = (accountId, args) => call('tm_unsend', Object.assign({ accountId }, args || {}));
     const markRead = (accountId, chatGuid) => call('tm_read', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
+    const search = (q, opts) => call('tm_search', Object.assign({ q }, opts || {})).then((d) => d.results || []);
     const deleteChat = (accountId, chatGuid) => call('tm_delete_chat', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
     const markUnread = (accountId, chatGuid) => call('tm_unread', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
     const resolve = (accountId, address) => call('tm_resolve', { accountId, address }).then((d) => d.name || '');
@@ -274,7 +276,7 @@
     root.textMessaging = {
         links, linkify, linkPreview,
         accounts, summary, unread, snapshot, preload, label, chats, chat, messages, send, sendFile, react, edit, unsend,
-        markRead, markUnread, deleteChat, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
+        markRead, markUnread, deleteChat, search, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
         unpairRcs, on, off, REACTIONS
     };
     // A tapped Android notification (the app's TextMessageNotifier, #779): open that conversation in

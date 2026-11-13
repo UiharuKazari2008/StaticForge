@@ -599,6 +599,37 @@ async function markRead(accountId, args) {
     markChatRead(accountId, args && args.chatGuid);
     return provider(accountId).markRead(args);
 }
+/**
+ * Search the text of messages in every connected account (or one): newest first, each with its
+ * account, conversation title and whether the conversation is known (Inbox) or Unknown Senders.
+ */
+async function search(q, { accountId = null, limit = 40 } = {}) {
+    const term = String(q || '').trim();
+    if (term.length < 2) return { results: [] };
+    const ds = await dreamscapeContacts();
+    const out = [];
+    for (const a of readConfig().accounts) {
+        if (accountId && a.id !== accountId) continue;
+        const p = providers.get(a.id);
+        if (!p || p.status !== 'connected' || typeof p.searchMessages !== 'function') continue;
+        let found = [];
+        try { found = await p.searchMessages(term, { limit }); } catch (error) { log(`search ${a.id} failed: ${error.message}`); continue; }
+        const titles = new Map();
+        for (const m of found) {
+            if (m.sender && !m.sender.me && !m.sender.name) { const n = ds.get(handleKey(m.sender.address)); if (n) m.sender.name = n; }
+            if (!titles.has(m.chatGuid)) {
+                let chat = null;
+                try { chat = await getChat(a.id, m.chatGuid); } catch (_) { chat = null; }
+                titles.set(m.chatGuid, chat);
+            }
+            const chat = titles.get(m.chatGuid);
+            out.push({ accountId: a.id, account: accountOut(a).name, chatGuid: m.chatGuid, chatTitle: chat ? chat.title : (m.sender && (m.sender.name || m.sender.address)) || '', known: chat ? chat.known !== false : true, message: m });
+        }
+    }
+    out.sort((x, y) => (y.message.date || 0) - (x.message.date || 0));
+    return { results: out.slice(0, limit) };
+}
+
 async function deleteChat(accountId, args) {
     const p = provider(accountId);
     if (typeof p.deleteChat !== 'function') throw Object.assign(new Error('This account cannot delete conversations.'), { code: 'UNSUPPORTED' });
@@ -638,6 +669,6 @@ function _reset() {
 
 module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
-    listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, typing,
+    listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, search, typing,
     downloadAttachment, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset
 };

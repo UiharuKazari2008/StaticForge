@@ -299,26 +299,15 @@
     color: #555;
 }
 
-/* the RCS / Business tags after a conversation's name (#779) */
+/* RCS / Business after a conversation's name (#779): the device puts details like these in the row's
+ * own font as plain grey text (no boxes or colours), normal weight even on an unread row */
 .wm-tm .wtm-tag {
     flex: none;
-    margin-left: calc(3 * var(--wm-px, 1px));
-    padding: 0 calc(2 * var(--wm-px, 1px));
-    font-size: calc(9 * var(--wm-px, 1px));
-    font-weight: 400;
-    line-height: calc(12 * var(--wm-px, 1px));
-    color: #fff;
-    vertical-align: middle;
-}
-
-.wm-tm .wtm-tag-rcs {
-    background: #1a73e8;
-}
-
-.wm-tm .wtm-tag-biz {
-    background: #6b6b6b;
+    font: inherit;
+    font-weight: normal !important;
+    color: #808080;
 }
 
 .wm-tm .wch-row.is-selected .wtm-tag {
-    outline: var(--wm-px, 1px) solid #fff;
+    color: inherit;
 }

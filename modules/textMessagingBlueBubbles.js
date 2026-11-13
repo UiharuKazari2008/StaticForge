@@ -565,6 +565,18 @@ class BlueBubblesProvider {
         return { ok: true };
     }
 
+    /** Messages whose text holds q, newest first, across every chat (the Mac's whole history). */
+    async searchMessages(q, { limit = 40 } = {}) {
+        await this.loadContacts().catch(() => {});
+        const rows = await this.call('POST', 'message/query', { body: {
+            limit, offset: 0, sort: 'DESC', with: ['chat', 'handle', 'attachment'],
+            where: [{ statement: 'message.text LIKE :term COLLATE NOCASE', args: { term: `%${q}%` } }]
+        }, timeoutMs: 30000 });
+        return (Array.isArray(rows) ? rows : [])
+            .filter((r) => !reactionOf(r.associatedMessageType))
+            .map((r) => this.normalizeMessage(r, this.resolve(Array.isArray(r.chats) && r.chats[0] ? r.chats[0].guid : '')));
+    }
+
     /** Delete the conversation on the Mac (Private API), every chat it merges. */
     async deleteChat({ chatGuid }) {
         this.requirePrivate('Deleting a conversation');

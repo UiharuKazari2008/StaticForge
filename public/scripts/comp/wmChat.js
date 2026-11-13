@@ -1890,7 +1890,9 @@
                     const open = () => tmOpenAccount(a.id);
                     const count = u ? `${u} new` : '';
                     // nothing unread: the account itself (Yukimi, Nov 13), not its last conversation
-                    if (!u) return { title: 'No Unread Messages', line2: sub || a.name || 'Text Messaging', line3: sub ? (a.name || '') : '', onTap: open };
+                    // Yukimi (Nov 13): "Apple iMessage - <Apple ID>" / "Text Messages - <number>"
+                    const kindName = a.kind === 'bluebubbles' ? 'Apple iMessage' : 'Text Messages';
+                    if (!u) return { title: 'No Unread Messages', line2: a.identity ? `${kindName} - ${a.identity}` : kindName, onTap: open };
                     return last
                         ? { title: last.from, line2: last.text, line3: [sub, count].filter(Boolean).join(', '), onTap: open }
                         : { title: `${u} New ${u === 1 ? 'Message' : 'Messages'}`, line2: sub, line3: a.name || '', onTap: open };

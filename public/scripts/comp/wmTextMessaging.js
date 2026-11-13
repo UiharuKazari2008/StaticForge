@@ -348,7 +348,7 @@
         return `<div class="wch-row wtm-row${sel ? ' is-selected' : ''}${unread ? ' is-unread' : ''}${c.isGroup ? ' is-group' : ''}" role="option" aria-selected="${sel}" data-guid="${esc(c.guid)}">`
             + `<span class="wch-ico" data-ico="${unread ? 'msg-unread' : 'msg-read'}"></span>`
             // RCS chats and businesses (RBM agents, Apple Business Chat) marked after the name
-            + `<span class="wch-namecell"><span class="wch-name">${esc(chatTitle(c))}</span>${c.business ? '<span class="wtm-tag wtm-tag-biz">Business</span>' : ''}${c.service === 'RCS' ? '<span class="wtm-tag wtm-tag-rcs">RCS</span>' : ''}</span>`
+            + `<span class="wch-namecell"><span class="wch-name">${esc(chatTitle(c))}</span>${c.business || c.service === 'RCS' ? `<span class="wtm-tag">${[c.business ? 'Business' : '', c.service === 'RCS' ? 'RCS' : ''].filter(Boolean).join(', ')}</span>` : ''}</span>`
             + `<span class="wch-date">${esc(listDate(m && m.date))}</span><span class="wch-size">${sizeText(bytes)}</span>`
             + `<span class="wch-last">${esc(summary(m, c, c.isGroup))}</span></div>`;
     }

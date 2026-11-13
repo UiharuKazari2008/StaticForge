@@ -532,6 +532,34 @@ class RcsProvider {
         return { ok: true };
     }
 
+    /**
+     * Google Messages for web has no message search: the newest conversations are read through the
+     * phone (100 messages each, 6 at a time) and kept until a new message arrives, then searched here.
+     */
+    async searchMessages(q, { limit = 40, conversations = 40 } = {}) {
+        if (!this.searchCache) this.searchCache = new Map(); // conversationID -> { latest, messages }
+        const res = await this.call('conversations', { count: conversations, folder: 'inbox' });
+        const convs = (res && res.conversations) || [];
+        convs.forEach((c) => this.normalizeChat(c));
+        const todo = convs.filter((c) => { const hit = this.searchCache.get(c.conversationID); return !hit || hit.latest !== c.latestMessageID; });
+        for (let i = 0; i < todo.length; i += 6) {
+            await Promise.all(todo.slice(i, i + 6).map(async (c) => {
+                try {
+                    const page = await this.call('messages', { conversationId: c.conversationID, count: 100 });
+                    const messages = ((page && page.messages) || []).map((m) => this.normalizeMessage(m)).filter((m) => m.text);
+                    this.searchCache.set(c.conversationID, { latest: c.latestMessageID, messages });
+                } catch (_) { /* that conversation is skipped this time */ }
+            }));
+        }
+        const needle = String(q).toLowerCase();
+        const out = [];
+        for (const c of convs) {
+            const hit = this.searchCache.get(c.conversationID);
+            if (hit) for (const m of hit.messages) if (m.text.toLowerCase().includes(needle)) out.push(m);
+        }
+        return out.sort((a, b) => b.date - a.date).slice(0, limit);
+    }
+
     /** Delete the conversation (in Google Messages on the phone too). */
     async deleteChat({ chatGuid }) {
         const conv = this.convs.get(chatGuid);
