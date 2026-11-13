@@ -1099,6 +1099,8 @@
                             const written = new Set();
                             // one file per calendar the phone shows: "Phone - <name> (<device>).ics"
                             for (const { cal, events } of calendarSets(now - PAST_MS, now + AHEAD_MS)) {
+                                // a calendar with nothing in the window gets no file (an old one is trashed below)
+                                if (!events.length) continue;
                                 const name = `${safe(`Phone - ${cal.name || 'Calendar'} (${device()})`)}.ics`;
                                 const out = { name: `${cal.name || 'Calendar'} (${device()})`, color: cal.color || '#99ccff', source: `phone:${device()}`, refresh: 0, tasks: [], events: events.map((ev) => Object.assign({}, ev, { phone: undefined })) };
                                 await writeFile(folder, name, MC.toIcs(out), 'text/calendar');
