@@ -237,9 +237,19 @@ function rateGroupForCall(name, args) {
 
 // Yukimi's own agents print far more than an outside key should. Config mcp.rateLimits overrides these.
 const DEFAULT_KEY_RATE_LIMITS = {
-    'claude-code-test': { generate: { max: 120 } },
-    DreamscapeDirector: { generate: { max: 120 } }
+    'claude-code-test': { generate: { max: 120 } }
 };
+
+// The Director's own keys (Wren's jail = 'Dreamscape Director', Yozora = 'Xi') are never rate limited:
+// a 429 mid-turn left Chiyo unable to act. Matched by app name; config mcp.rateLimits.exemptKeys adds more.
+const DEFAULT_EXEMPT_KEYS = ['Dreamscape Director', 'DreamscapeDirector', 'Xi'];
+
+function isExemptCaller(auth, config) {
+    if (!auth) return false;
+    const extra = config && Array.isArray(config.exemptKeys) ? config.exemptKeys.map(String) : [];
+    const exempt = new Set([...DEFAULT_EXEMPT_KEYS, ...extra]);
+    return [auth.applicationKeyId, auth.appName].filter(Boolean).some((id) => exempt.has(String(id)));
+}
 
 function readRateLimitConfig(globalResources) {
     try {
@@ -269,6 +279,7 @@ function cleanLimit(row) {
 function rateLimitSpec(groupId, auth, config) {
     const base = MCP_RATE_GROUP_LIMITS[groupId] || MCP_RATE_GROUP_LIMITS.rpc;
     const cfg = config && typeof config === 'object' ? config : {};
+    if (isExemptCaller(auth, cfg)) return { ...base, max: 0 };
     let spec = { ...base, ...(cleanLimit(cfg.groups && cfg.groups[groupId]) || {}) };
     const ids = [auth && auth.applicationKeyId, auth && auth.appName].filter(Boolean).map(String);
     const keys = { ...DEFAULT_KEY_RATE_LIMITS, ...(cfg.keys && typeof cfg.keys === 'object' ? cfg.keys : {}) };
@@ -405,6 +416,8 @@ module.exports = {
     consumeRateGroup,
     rateLimitSpec,
     DEFAULT_KEY_RATE_LIMITS,
+    DEFAULT_EXEMPT_KEYS,
+    isExemptCaller,
     resetRateGroupHits,
     rateLimitPrincipal,
     sendRateLimitResponse,

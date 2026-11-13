@@ -5,11 +5,16 @@ const { rateLimitSpec, consumeRateGroup, resetRateGroupHits, MCP_RATE_GROUP_LIMI
 
 const outside = { applicationKeyId: 'k-outside', appName: 'Someone' };
 const claude = { applicationKeyId: 'k-claude', appName: 'claude-code-test' };
-const wren = { applicationKeyId: 'k-wren', appName: 'DreamscapeDirector' };
+const wren = { applicationKeyId: 'k-wren', appName: 'Dreamscape Director' };
+const xi = { applicationKeyId: 'k-xi', appName: 'Xi' };
 
 assert.strictEqual(rateLimitSpec('generate', outside, {}).max, MCP_RATE_GROUP_LIMITS.generate.max);
 assert.strictEqual(rateLimitSpec('generate', claude, {}).max, 120);
-assert.strictEqual(rateLimitSpec('generate', wren, {}).max, 120);
+for (const g of Object.keys(MCP_RATE_GROUP_LIMITS)) {
+    assert.strictEqual(rateLimitSpec(g, wren, {}).max, 0, `Director key unlimited in ${g}`);
+    assert.strictEqual(rateLimitSpec(g, xi, {}).max, 0, `Xi key unlimited in ${g}`);
+}
+assert.strictEqual(rateLimitSpec('studio', { appName: 'Extra' }, { exemptKeys: ['Extra'] }).max, 0, 'config exemptKeys');
 assert.strictEqual(rateLimitSpec('studio', claude, {}).max, MCP_RATE_GROUP_LIMITS.studio.max, 'other groups keep their default');
 
 const cfg = {
@@ -21,7 +26,7 @@ const out = rateLimitSpec('generate', outside, cfg);
 assert.strictEqual(out.max, 5);
 assert.strictEqual(out.windowMs, 60000);
 assert.strictEqual(rateLimitSpec('generate', claude, cfg).max, 0, 'config beats the built-in default');
-assert.strictEqual(rateLimitSpec('generate', wren, cfg).max, 120);
+assert.strictEqual(rateLimitSpec('generate', wren, { groups: { generate: { max: 1 } }, keys: { 'Dreamscape Director': { generate: { max: 1 } } } }).max, 0, 'config limits never cap the Director');
 assert.strictEqual(rateLimitSpec('generate', outside, { keys: { 'k-outside': { generate: { max: 'lots' } } } }).max, MCP_RATE_GROUP_LIMITS.generate.max, 'junk is ignored');
 
 resetRateGroupHits();

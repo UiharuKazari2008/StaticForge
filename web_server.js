@@ -1399,6 +1399,17 @@ app.use(helmet({
     crossOriginEmbedderPolicy: false
 }));
 
+// The Director's MCP calls come from loopback before MCP auth has run, so the IP limiter
+// counted them with every other local failure and 429'd Chiyo mid-turn. Loopback MCP requests
+// skip it; MCP auth and the per-key MCP limiter (Director keys exempt) still apply.
+function isLoopbackMcpRequest(req) {
+    let uuid = '';
+    try { uuid = String(globalResources.getMcpPathUuid() || ''); } catch (_) { return false; }
+    if (!uuid || !String(req.path || '').startsWith(`/${uuid}/`)) return false;
+    const ip = String(getRealIP(req) || '');
+    return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+}
+
 // Rate limiting middleware
 const limiter = rateLimit({
     windowMs: SECURITY_CONFIG.RATE_LIMIT_WINDOW_MS,
@@ -1425,6 +1436,9 @@ const limiter = rateLimit({
             return true;
         }
         if (req.path === '/agent' || req.path.startsWith('/agent/')) {
+            return true;
+        }
+        if (isLoopbackMcpRequest(req)) {
             return true;
         }
         
@@ -1471,6 +1485,9 @@ const speedLimiter = slowDown({
             return true;
         }
         if (req.path === '/agent' || req.path.startsWith('/agent/')) {
+            return true;
+        }
+        if (isLoopbackMcpRequest(req)) {
             return true;
         }
         
