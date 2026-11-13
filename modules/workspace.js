@@ -177,7 +177,9 @@ function normalizeWorkspaceMobileToday(raw) {
     // Melaton Mobile 6.5's Start screen order (wmStart65.js wmStart65Layout): the programs moved to
     // the top, latest first, and each folder's own order; item keys such as "a:notes", "folder:games"
     if (raw.start65 && typeof raw.start65 === 'object' && !Array.isArray(raw.start65)) {
-        const keys = (list) => (Array.isArray(list) ? list.filter((k) => str(k, 80)).slice(0, 300) : []);
+        // an Android program's key is "a:android:<package>/<activity>" and can run past 80 characters
+        // (Samsung's Phone: 81); a dropped key put the program at the end on every device (#776)
+        const keys = (list) => (Array.isArray(list) ? list.filter((k) => str(k, 240)).slice(0, 300) : []);
         const order = {};
         if (raw.start65.order && typeof raw.start65.order === 'object' && !Array.isArray(raw.start65.order)) {
             for (const [folder, list] of Object.entries(raw.start65.order).slice(0, 60)) {

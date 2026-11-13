@@ -308,7 +308,8 @@
     // they are from; order: a folder's keys as they were left by dragging ('' is Start itself).
     // A key nothing answers to is skipped (and kept: the program may come back); a program that is
     // in no stored order goes to the end, where the device puts a new program.
-    const strings = (l) => (Array.isArray(l) ? l.filter((k) => typeof k === 'string' && k.length < 120).slice(0, 400) : []);
+    // keys of the Android programs ("a:android:<package>/<activity>") can be long: up to 240 characters
+    const strings = (l) => (Array.isArray(l) ? l.filter((k) => typeof k === 'string' && k.length <= 240).slice(0, 400) : []);
     function layout() {
         const read = (key) => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { return null; } };
         const plain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
