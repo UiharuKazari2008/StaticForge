@@ -2629,6 +2629,17 @@
         if (led.dataset.state !== state) led.dataset.state = state;
     }
 
+    /**
+     * How far down the camera reaches, as the bezel band measures it: Android reports a punch hole's
+     * circle as a box whose lower edge falls short of the lens (Yukimi tuned 6 px on the Fold7 cover
+     * screen); a camera area at a corner (the inner screen) 1 px. The band and Extend Status Bar use it.
+     */
+    function cameraBottom(h) {
+        const mid = h.left + h.width / 2;
+        const central = h.width > 0 && Math.abs(mid - window.innerWidth / 2) < window.innerWidth * 0.2;
+        return h.top + h.height + (central ? 6 : 1);
+    }
+
     function syncBezel() {
         const style = root.style;
         const v = (n) => parseFloat(style.getPropertyValue(n)) || 0;
@@ -2656,8 +2667,7 @@
         // a band only as tall as the camera needs (Yukimi tuned it on the Fold7): a punch hole's circle
         // is estimated from Android's box and gets 6 px; the inner screen's measured camera area 1 px;
         // 18 px where none is reported
-        const under = central ? 6 : 1;
-        const band = edge === 'top' ? (h.height > 0 ? h.top + h.height + under : 18 * px) : 0;
+        const band = edge === 'top' ? (h.height > 0 ? cameraBottom(h) : 18 * px) : 0;
         style.setProperty('--wm-bezel-top', `${band}px`);
         const logoRight = central;
         // The printed logo (Yukimi, Nov 11): from the display's very top edge down to where it ended
@@ -2742,7 +2752,9 @@
         let extOn = false;
         try { extOn = localStorage.getItem('wmCameraExtendBar') === '1'; } catch (_) { /* storage off */ }
         if (extOn && !bezel && !cameraIgnoredNow() && root.dataset.wmBezelEdge === 'top' && hole.width > 0 && hole.height > 0) {
-            extend = Math.max(0, Math.ceil(hole.top + hole.height + 2 * pxu - 26 * pxu));
+            // down to where the bezel band puts the camera's lower edge (cameraBottom), not Android's box:
+            // the box stops short of a punch hole's lens and left a sliver of it under the bar
+            extend = Math.max(0, Math.ceil(cameraBottom(hole) - 26 * pxu));
         }
         if (extend > 0) {
             if (root.style.getPropertyValue('--wm-camera-extend') !== `${extend}px`) root.style.setProperty('--wm-camera-extend', `${extend}px`);

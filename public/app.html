@@ -86,6 +86,8 @@
                 const root = document.documentElement;
                 const cam = localStorage.getItem('wmCamera') === 'bezel' ? 'bezel' : 'clear';
                 root.dataset.wmCamera = cam;
+                // Settings > Screen > Bezel: the soft-key bar's background under the gesture bar (#795)
+                if (localStorage.getItem('wmSoftkeyExtend') === '1') root.dataset.wmSoftkeyExtend = '1';
                 // the camera's edge in both modes: Keep the title bar clear needs it too, or the safe
                 // area's empty band shows above the title bar until the app sends the camera (#776)
                 const all = JSON.parse(localStorage.getItem('wmBezelCache') || '{}');

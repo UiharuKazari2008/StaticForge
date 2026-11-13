@@ -50,6 +50,8 @@
         cameraPortraitOnly: 'wmCameraPortraitOnly',
         // Settings > Screen > Bezel: the title bar grows down to the camera's lower edge (#777)
         cameraExtend: 'wmCameraExtendBar',
+        // ... and the soft-key bar's background reaches under Android's gesture bar (#795)
+        softkeyExtend: 'wmSoftkeyExtend',
         showBluetoothIcon: 'wmShowBluetoothIcon',
         showCellIcon: 'wmShowCellIcon',
         bezelLogoOpacity: 'wmBezelLogoOpacity',
@@ -139,6 +141,12 @@
         root.dataset.wmCamera = cameraStyle();
     }
 
+    // Settings > Screen > Bezel: Extend softkey background under gesture bar (wm-shell.css data-wm-softkey-extend)
+    function applySoftkeyExtend() {
+        if (lsGet(K.softkeyExtend) === '1') root.dataset.wmSoftkeyExtend = '1';
+        else delete root.dataset.wmSoftkeyExtend;
+    }
+
     /**
      * Settings > Screen > Bezel's preview (Yukimi, Nov 12, #777): the top of this phone drawn at its
      * real size and scaled into the page: the camera where Android reports it (a nominal punch hole
@@ -224,6 +232,7 @@
     })();
     applyTitleBar();
     applyCamera();
+    applySoftkeyExtend();
 
     function todayUsesDesktop() {
         const v = lsGet(K.todayUseDesktop);
@@ -1386,6 +1395,7 @@
             init: () => ({
                 scale: currentScale(), camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
                 extend: lsGet(K.cameraExtend) === '1',
+                softExtend: lsGet(K.softkeyExtend) === '1',
                 logoOpacity: Math.min(100, Math.max(10, Number(lsGet(K.bezelLogoOpacity)) || 55)),
                 logoSize: BEZEL_LOGO_SIZES.includes(Number(lsGet(K.bezelLogoSize))) ? Number(lsGet(K.bezelLogoSize)) : 70,
                 logoPos: lsGet(K.bezelLogoPos) || 'auto',
@@ -1413,6 +1423,7 @@
                     el.innerHTML = `<div class="wm-setb-preview" aria-hidden="true"></div>
                         <div class="wm-form-row is-wide"><span class="wm-form-label">Top of screen:</span>${ui.comboHtml('topmode', (MODES.find(([k]) => k === modeNow()) || MODES[0])[1])}</div>
                         ${d.bars ? check('wmHideNavigation', 'Hide the gesture bar', d.bars.hideNavigation) : ''}
+                        ${check('wmSoftkeyExtend', 'Extend softkey background under gesture bar', d.softExtend)}
                         ${check('wmCameraExtend', 'Extend Status Bar to edge of Camera', d.extend)}
                         ${check('wmCameraPortraitOnly', 'Only in portrait (a turned phone uses the whole screen)', d.portraitOnly)}
                         <div class="wm-form-gap"></div>
@@ -1456,6 +1467,8 @@
                         const off = !!(d.bars && !d.bars.hideStatus);
                         el.querySelectorAll('input[name="wmCameraPortraitOnly"]').forEach((i) => { i.disabled = off; });
                         el.querySelectorAll('input[name="wmCameraExtend"]').forEach((i) => { i.disabled = off || d.camera === 'bezel'; });
+                        // only while the gesture bar shows (hidden, there is nothing under it to cover)
+                        el.querySelectorAll('input[name="wmSoftkeyExtend"]').forEach((i) => { i.disabled = !!(d.bars && d.bars.hideNavigation); });
                         drawBezelPreview(q('.wm-setb-preview'), modeNow(), d);
                         const noBezel = off || d.camera !== 'bezel';
                         el.querySelectorAll('[data-act="logopos"], input[name="wmModelShow"], input[name="wmLed"]').forEach((i) => { i.disabled = noBezel; });
@@ -1466,6 +1479,7 @@
                     };
                     if (d.bars) bind('wmHideNavigation', (v) => { d.bars.hideNavigation = v; });
                     bind('wmCameraExtend', (v) => { d.extend = v; });
+                    bind('wmSoftkeyExtend', (v) => { d.softExtend = v; });
                     ui.bindCombo(q('[data-act="topmode"]'), MODES, modeNow(), (v) => {
                         if (d.bars) d.bars.hideStatus = v !== 'android';
                         d.camera = v === 'bezel' ? 'bezel' : 'clear';
@@ -1550,6 +1564,11 @@
                 ];
                 for (const [k, v] of bezelSets) {
                     if ((lsGet(k) || null) !== v) { lsSet(k, v); keys.push(k); }
+                }
+                if (d.softExtend !== (lsGet(K.softkeyExtend) === '1')) {
+                    lsSet(K.softkeyExtend, d.softExtend ? '1' : null);
+                    applySoftkeyExtend();
+                    keys.push(K.softkeyExtend);
                 }
                 if (d.extend !== (lsGet(K.cameraExtend) === '1')) {
                     lsSet(K.cameraExtend, d.extend ? '1' : null);

@@ -452,6 +452,27 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-camera="clear"][data-wm-bezel-edge
     padding-top: var(--wm-camera-extend, 0px);
 }
 
+/* ... and Extend softkey background under gesture bar (#795): with Android's gesture bar showing, the
+ * soft-key bar's own background runs down under it instead of the black system band; the keys keep
+ * their 26-unit row (the 6.1 gradients are top-anchored, 6.5's bar is flat). Not while the keyboard
+ * is up: then the bar sits on the keyboard. */
+html.ui-mobile[data-wm-softkey-extend]:not([data-wm-sip]) #wmShell {
+    --wm-band-bottom: 0px;
+}
+
+html.ui-mobile[data-wm-softkey-extend]:not([data-wm-sip]) #wmShell > .wm-softkeys,
+html.ui-mobile[data-wm-version="6.5"][data-wm-softkey-extend]:not([data-wm-sip]) #wmShell > .wm-softkeys {
+    height: calc(26 * var(--wm-px) + env(safe-area-inset-bottom));
+    margin-bottom: calc(-1 * env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 6.5's bars are see-through on Today and Start: the picture layer (.wm-wall65, wm65.css) runs to the
+ * screen's bottom edge too, else the grown bar showed the shell's white base as a grey strip (Fold7) */
+html.ui-mobile[data-wm-version="6.5"][data-wm-softkey-extend]:not([data-wm-sip]) #wmShell > .wm-wall65 {
+    bottom: 0;
+}
+
 html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::before,
 html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::after {
     content: '';
