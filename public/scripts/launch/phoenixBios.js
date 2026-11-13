@@ -890,7 +890,8 @@
                 if (await ready()) return true;
                 screen.mode = 'text';
                 screen.clear(C.black, C.grey);
-                screen.put(0, 0, `Connecting to Phone... ${spin[i++ % spin.length]}`);
+                screen.put(0, 0, 'Melaton Mobile Continuity');
+                screen.put(0, 1, `Connecting to Phone... ${spin[i++ % spin.length]}`);
                 render();
                 await env.sleep(150);
             }

@@ -165,20 +165,26 @@
         if (!c || !c.ws || c.ws.readyState !== 1) return false;
         try { c.ws.send(JSON.stringify(packet)); return true; } catch (_) { return false; }
     }
-    let carrying = false;
+    let carryingNow = false;
+    function setCarrying(v) { const on = !!v; if (on !== carryingNow) { carryingNow = on; statusChanged(); } return on; }
+    const statusChanged = () => { const sh = root.wmShell; if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus(); };
+    // carrying: the title bar's Continuity glyph follows it
+    Object.defineProperty(api, '_carrying', { get: () => carryingNow });
     api.on('phone-ready?', () => announceReady(true));
     api.on('ws-open', () => {
         if (!isPhone()) return;
-        carrying = carrierSend({ type: 'sub_open', sub: SUB });
-        api.post(carrying ? { type: 'ws-opened' } : { type: 'ws-closed', reason: 'The phone is not connected' });
+        setCarrying(carrierSend({ type: 'sub_open', sub: SUB }));
+        api.post(carryingNow ? { type: 'ws-opened' } : { type: 'ws-closed', reason: 'The phone is not connected' });
     });
     api.on('ws-up', (m) => { if (isPhone() && typeof m.data === 'string' && !carrierSend({ type: 'sub_packet', sub: SUB, data: m.data })) api.post({ type: 'ws-closed', reason: 'The phone is not connected' }); });
-    api.on('ws-close', () => { if (isPhone() && carrying) { carrierSend({ type: 'sub_close', sub: SUB }); carrying = false; } });
+    api.on('ws-close', () => { if (isPhone() && carryingNow) { carrierSend({ type: 'sub_close', sub: SUB }); setCarrying(false); } });
+    // the DeX window went away (unplugged, closed, restarting): its sub-client ends with it
+    api.on('peer', (m) => { if (m.role === 'desktop' && m.state === 'left' && isPhone() && carryingNow) { carrierSend({ type: 'sub_close', sub: SUB }); setCarrying(false); } });
     /** websocket.js (phone window): a server packet for a sub-client; true when it was one. */
     api.fromServer = (message) => {
         if (!message || (message.type !== 'sub_packet' && message.type !== 'sub_closed')) return false;
         if (message.sub !== SUB) return true;
-        if (message.type === 'sub_closed') { carrying = false; api.post({ type: 'ws-closed', reason: 'The server ended the shared connection' }); return true; }
+        if (message.type === 'sub_closed') { setCarrying(false); api.post({ type: 'ws-closed', reason: 'The server ended the shared connection' }); return true; }
         if (typeof message.data === 'string') api.post({ type: 'ws-down', data: message.data });
         return true;
     };
@@ -245,6 +251,8 @@
     /** websocket.js: a WebSocket stand-in when this is the DeX window of a hybrid phone that is ready, else null. */
     // (whenever the phone window is there: not yet ready, it answers ws-closed and websocket.js tries again)
     api.transport = () => (isDw() && api.peers().includes('phone') ? new BusSocket() : null);
+    /** The phone window: true while it carries the DeX window's connection (the title bar's glyph). */
+    api.active = () => isPhone() && carryingNow;
     /** The DeX window of a hybrid phone leaves updates to the phone (serviceWorkerManager.js). */
     api.isDexWindow = () => isDw();
 
@@ -256,7 +264,7 @@
             const c = root.wsClient;
             if (c && typeof c.on === 'function') {
                 c.on('connected', () => { announceReady(false); });
-                c.on('disconnected', () => { carrying = false; api.post({ type: 'ws-closed', reason: 'The phone lost its connection' }); announceReady(false); });
+                c.on('disconnected', () => { setCarrying(false); api.post({ type: 'ws-closed', reason: 'The phone lost its connection' }); announceReady(false); });
             }
             announceReady(true);
         };

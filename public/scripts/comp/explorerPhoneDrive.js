@@ -339,11 +339,23 @@
         return (PS() && PS().deviceName) || 'Phone';
     }
 
-    /** Drive letters after Cartograph's C:, in the phone's root order: D: internal storage, E: a USB drive... */
+    /** Continuity (#798): this is the DeX window of a hybrid phone (its storage is this computer's disks). */
+    function hybridHere() {
+        try {
+            const mc = root.melatonContinuity;
+            const c = mc && typeof mc.hybrid === 'function' ? mc.hybrid() : null;
+            return !!(c && c.hybrid && c.external);
+        } catch (_) { return false; }
+    }
+
+    /** Drive letters after Cartograph's C:, in the phone's root order: D: internal storage, E: a USB drive...
+        A hybrid phone's DeX window letters them too, internal storage first (as the Computer view does). */
     function driveLetter(rootId) {
         // a phone reached over ActiveSync is a portable device: its storages carry no letters (VM)
-        if (remote()) return '';
-        const i = rootsOf(state()).findIndex((r) => r.id === rootId);
+        if (remote() && !hybridHere()) return '';
+        const roots = rootsOf(state());
+        const ordered = roots.filter((r) => r.kind === 'internal').concat(roots.filter((r) => r.kind !== 'internal'));
+        const i = ordered.findIndex((r) => r.id === rootId);
         return i < 0 ? '' : String.fromCharCode(Math.min(90, 68 + i));
     }
 
@@ -377,7 +389,8 @@
     /** Computer ▸ <device>, the page a remote phone's storages hang off (explorerComputerView.js). */
     function devicePage() {
         const view = root.ExplorerComputerView;
-        return remote() && view && PS().deviceId ? view.devicePath(PS().deviceId) : null;
+        // the hybrid phone's storage hangs right off Computer, as its drives (#798)
+        return remote() && !hybridHere() && view && PS().deviceId ? view.devicePath(PS().deviceId) : null;
     }
 
     function crumbs(path) {
@@ -410,8 +423,8 @@
     function crumbIcon(path) {
         const p = parse(path);
         if (path === TRASH) return 'fav-recycle.png';
-        if (remote() && !p.root) return 'portable-device-16.png';
-        if (remote() && p.path === '/') return (rootInfo(p.root) || {}).kind === 'internal' ? 'drive-fixed-16.png' : 'drive-removable-16.png';
+        if (remote() && !hybridHere() && !p.root) return 'portable-device-16.png';
+        if ((remote() || hybridHere()) && p.path === '/') return (rootInfo(p.root) || {}).kind === 'internal' ? 'drive-fixed-16.png' : 'drive-removable-16.png';
         if (!p.root || p.path === '/') return 'drive-removable-16.png';
         return 'crumb-folder.png';
     }

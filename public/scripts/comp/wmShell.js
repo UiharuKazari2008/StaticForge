@@ -63,7 +63,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
+    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-continuity", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => WM_SET.test(name) ? `${name}.png 1x, ${name}@2x.png 2x, ${name}@4x.png 4x` : String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -482,10 +482,11 @@
     // Dreamscape Messenger message (the chat personas) Windows Live Messenger's buddy (WLMMessengerResources 12000)
     // Weather (#792): an active alert at Home / Work, rain due or falling there with the rain alarm on
     // (Melaton glyphs: scripts/generate-wm-weather-status-icons.py)
-    const STATUS_APP_ICONS = { mail: 'status-mail', sms: 'status-sms', chat: 'status-messenger', prints: 'status-prints', director: 'status-director', update: 'status-update', wxalert: 'status-weather-alert', rain: 'status-rain-alarm', traffic: 'status-traffic' };
+    const STATUS_APP_ICONS = { mail: 'status-mail', sms: 'status-sms', chat: 'status-messenger', prints: 'status-prints', director: 'status-director', update: 'status-update', wxalert: 'status-weather-alert', rain: 'status-rain-alarm', traffic: 'status-traffic', continuity: 'status-continuity' };
     // no High Latency icon (Yukimi, Nov 13: a slow link is neither a status icon nor a notification)
     // Traffic (#795): the commute ahead is more than 15 min late (scripts/generate-wm-traffic-status-icon.py)
-    const STATUS_APP_ROLES = ['mail', 'sms', 'chat', 'prints', 'director', 'update', 'wxalert', 'rain', 'traffic'];
+    // Continuity (#798): this phone carries its DeX window's connection (scripts/generate-wm-continuity-status-icon.py)
+    const STATUS_APP_ROLES = ['mail', 'sms', 'chat', 'prints', 'director', 'update', 'wxalert', 'rain', 'traffic', 'continuity'];
     // the Director's clapper while a turn runs: the stick claps (open frames, closed, open again);
     // status-director-clap-strip holds them in that order (scripts/build-wm-sprite-strips.sh)
     const DIRECTOR_CLAP_FRAMES = 6;
@@ -540,6 +541,7 @@
                     <button type="button" class="wm-status-icon wm-status-app" data-role="wxalert" hidden aria-label="Weather alert"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="rain" hidden aria-label="Rain alarm"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="traffic" hidden aria-label="Commute delay"></button>
+                    <button type="button" class="wm-status-icon wm-status-app" data-role="continuity" hidden aria-label="Continuity"></button>
                     <button type="button" class="wm-status-icon" data-role="bluetooth" data-icon="bluetooth" hidden aria-label="Bluetooth"></button>
                     <button type="button" class="wm-status-icon" data-role="data" data-icon="data-off" aria-label="Connectivity"></button>
                     <button type="button" class="wm-status-icon" data-role="cell" hidden aria-label="Mobile network"></button>
@@ -2392,6 +2394,9 @@
         // Traffic (#795): the commute that matters now (by where the phone is) is more than 15 min late
         const tr = window.wmTraffic && typeof window.wmTraffic.statusState === 'function' ? window.wmTraffic.statusState() : null;
         hide(shell.querySelector('[data-role="traffic"]'), !(tr && tr.delayed));
+        // Continuity (#798): while this phone carries its DeX window
+        const mc = window.melatonContinuity;
+        hide(shell.querySelector('[data-role="continuity"]'), !(mc && typeof mc.active === 'function' && mc.active()));
         paintBezelLed();
         if (noteTrayOpen) renderNotes(); else fitStatus();
         const bubble = shell.querySelector('.wm-bubble');
@@ -2775,8 +2780,12 @@
             if (left) left.remove();
             title.style.flex = '';
             status.style.marginLeft = '';
-            return;
+            return false;
         }
+        // Settings > Screen > Bezel > Do not allow status icons to cross over camera hole: the icons
+        // stay right of it; what does not fit folds into the notification group (fitStatusNow)
+        let noCross = false;
+        try { noCross = localStorage.getItem('wmStatusNoCross') === '1'; } catch (_) { /* storage off */ }
         if (!left) {
             left = document.createElement('div');
             left.className = 'wm-status-left';
@@ -2793,13 +2802,14 @@
         // what does not fit right of the camera moves left of it, keeping the order (first icons first)
         const room = br.right - (hole.left + hole.width + pad);
         const shown = () => status._wmOrder.filter((i) => i.parentElement === status && !i.hidden);
-        while (status.getBoundingClientRect().width > room && shown().length > 1) {
+        while (!noCross && status.getBoundingClientRect().width > room && shown().length > 1) {
             const first = shown()[0];
             // hidden icons before it go along, so each side keeps WM's order when one appears
             status._wmOrder.slice(0, status._wmOrder.indexOf(first) + 1).forEach((i) => { if (i.parentElement === status) left.append(i); });
         }
         const lw = left.firstElementChild ? left.getBoundingClientRect().width : 0;
         title.style.flex = `0 0 ${Math.max(0, hole.left - pad - tl - lw)}px`;
+        return true;
     }
 
     function fitStatusNow() {
@@ -2821,7 +2831,10 @@
         ['roaming', 'volume', ...STATUS_APP_ROLES].forEach((r) => el(r).classList.remove('wm-shed'));
         statusFolded = [];
         paintNotifyIcon();
-        applyCameraHole(bar);
+        const cameraInBar = applyCameraHole(bar);
+        // the camera in the title bar takes room: away from Today the volume icon steps aside for the
+        // status icons (Yukimi, Nov 13); Today keeps it
+        if (cameraInBar && current !== 'today' && !el('volume').hidden) el('volume').classList.add('wm-shed');
         if (fits()) return;
         if (!el('roaming').hidden) { el('roaming').classList.add('wm-shed'); if (fits()) return; }
         const apps = STATUS_APP_ROLES.filter((r) => !el(r).hidden);
@@ -3723,7 +3736,7 @@
         return artImageSet((n && NOTE_KIND_ICON[n.type]) || 'status-notify-many');
     }
 
-    const STATUS_APP_LABEL = { mail: 'Messages', sms: 'Text Messages', chat: 'Dreamscape Messenger', prints: 'Prints', director: 'Director', update: 'Updates', wxalert: 'Weather Alert', rain: 'Rain Alarm', traffic: 'Traffic' };
+    const STATUS_APP_LABEL = { mail: 'Messages', sms: 'Text Messages', chat: 'Dreamscape Messenger', prints: 'Prints', director: 'Director', update: 'Updates', wxalert: 'Weather Alert', rain: 'Rain Alarm', traffic: 'Traffic', continuity: 'Continuity' };
 
     /** The bubble icon: pending notifications plus any status icons folded into it by fitStatus. */
     function paintNotifyIcon() {
@@ -4341,6 +4354,9 @@
             }
             const links = w ? [{ label: role === 'wxalert' ? 'View Alerts' : 'Open Weather', action: () => { closeBubble(); if (role === 'wxalert' && typeof w.showAlerts === 'function') w.showAlerts(); else w.open(); } }] : [];
             bubble({ title: STATUS_APP_LABEL[role], role, anchor, sections: links.length ? [...sections, { links }] : sections, buttons: [{ text: 'Hide' }] });
+        } else if (role === 'continuity') {
+            // Continuity (#798): what the glyph stands for
+            bubble({ title: 'Melaton Mobile Continuity', role, anchor, sections: ['The desktop on the connected display is running from this phone and shares its connection.', 'Restarting the phone restarts the desktop too.'], buttons: [{ text: 'Hide' }] });
         } else if (role === 'traffic') {
             // Traffic (#795): the commute time, the delay and when it gets there, and the way into the app
             const t = window.wmTraffic;
@@ -7977,6 +7993,8 @@
         window.addEventListener('resize', () => { syncBezel(); if (noteTrayOpen) renderNotes(); else fitStatus(); });
         // the Android app moved or rotated the camera hole (--camera-hole-*)
         window.addEventListener('dreamscape:cutout', () => { syncBezel(); fitStatus(); });
+        // the app on screen decides whether the volume icon makes room for the camera (fitStatusNow)
+        new MutationObserver(() => fitStatus()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wm-app'] });
         checkTakeover();
         setInterval(checkTakeover, 400);
         setInterval(checkViewer, 150);

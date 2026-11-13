@@ -1,6 +1,6 @@
 {
-  "version": 12,
-  "updatedAt": "2026-11-13T02:11:49.509Z",
+  "version": 14,
+  "updatedAt": "2026-11-13T13:23:17.720Z",
   "icons": {
     "com.google.android.youtube": {
       "name": "com-google-android-youtube-ea08c8-mwe848kg",
@@ -192,11 +192,11 @@
       "updatedAt": "2026-11-13T02:11:46.158Z"
     },
     "com.sirius/sxmp.app.welcome.WelcomeActivity": {
-      "name": "com-sirius-ab83ed-mweccfe0",
+      "name": "com-sirius-ab83ed-mwepi5we",
       "package": "com.sirius",
       "label": "SiriusXM",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-13T02:11:47.055Z"
+      "updatedAt": "2026-11-13T08:20:09.568Z"
     },
     "com.tacobell.ordering/com.tacobell.android.MainActivity": {
       "name": "com-tacobell-ordering-3d8f98-mweccg1t",
@@ -218,6 +218,13 @@
       "label": "WireGuard",
       "model": "gpt-image-2.5-sunburst",
       "updatedAt": "2026-11-13T02:11:49.509Z"
+    },
+    "com.miHoYo.Yuanshen/org.yuzu.yuzu_emu.ui.main.MainActivity": {
+      "name": "com-mihoyo-yuanshen-1dd042-mwf0bzvd",
+      "package": "com.miHoYo.Yuanshen",
+      "label": "Eden Optimized",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T13:23:17.720Z"
     }
   }
 }
