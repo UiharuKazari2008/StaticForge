@@ -21,7 +21,7 @@
  *
  * Settings: config `traffic` (admins save):
  *   home / work   { address, label?, lat?, lon? }  an address (Google geocodes it) or coordinates
- *   area          "Rapid City, SD"  added to the preferred route's street pairs
+ *   area          "Rapid City, SD"  (kept for older settings; streets are placed by anchorStreets)
  *   streets       ['I-90 E', 'Omaha St', ...]  the preferred route from Home to Work, in order
  *   leaveHome / leaveWork  'HH:MM' (24 h) or ''   when the commute starts
  *   days          [1..5]  weekdays (0 Sunday) the leave times apply
@@ -185,6 +185,7 @@ async function saveSettings(next = {}) {
     if (saved && typeof saved.then === 'function') await saved;
     // a changed route or place makes the old reports wrong
     routeCache.clear();
+    anchorCache.clear();
     const settings = getSettings();
     broadcast({ type: 'traffic_settings_changed', data: { settings } });
     return settings;
@@ -384,14 +385,6 @@ function matchStreets(routeText, streets) {
     return { hit, coverage: hit.length / streets.length };
 }
 
-/** Via waypoints for the preferred route: the intersections of each street with the next. */
-function viaWaypoints(streets, area) {
-    if (streets.length < 2) return streets.length === 1 && area ? [`${streets[0]}, ${area}`] : [];
-    const out = [];
-    for (let i = 0; i < streets.length - 1; i++) out.push(`${streets[i]} & ${streets[i + 1]}${area ? `, ${area}` : ''}`);
-    return out;
-}
-
 // ------------------------------------------------------------------------------------------ HTTP
 
 async function getJson(url, opts = {}) {
@@ -445,7 +438,7 @@ async function googleRoutes(from, to, { via = [], alternatives = false, departAt
         units: 'IMPERIAL',
         languageCode: 'en-US'
     };
-    if (via.length) body.intermediates = via.map((address) => ({ address, via: true }));
+    if (via.length) body.intermediates = via.map((v) => (typeof v === 'string' ? { address: v, via: true } : { location: { latLng: { latitude: v.lat, longitude: v.lon } }, via: true }));
     else if (alternatives) body.computeAlternativeRoutes = true;
     if (departAt && departAt > Date.now() + 30 * 1000) body.departureTime = new Date(departAt).toISOString();
     spend('google');
@@ -558,6 +551,27 @@ async function tomtomIncidents(box) {
             line
         };
     }).filter(Boolean);
+}
+
+/** km² of a box (TomTom refuses a bbox over 10,000 km²). */
+function boxAreaKm2(b) {
+    const h = (b.n - b.s) * 111.32;
+    const w = (b.e - b.w) * 111.32 * Math.cos(rad((b.n + b.s) / 2));
+    return Math.abs(h * w);
+}
+
+/** TomTom incidents for a box of any size: split into up to 9 tiles under 9,000 km² each. */
+async function tomtomTiles(box) {
+    const area = boxAreaKm2(box);
+    const n = area <= 9000 ? 1 : Math.ceil(Math.sqrt(area / 9000));
+    if (n > 3) throw new TrafficError(`The commute area is too large for TomTom (${Math.round(area)} km²)`, 'TOO_LARGE');
+    const tiles = [];
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+        tiles.push({ s: box.s + ((box.n - box.s) * i) / n, n: box.s + ((box.n - box.s) * (i + 1)) / n, w: box.w + ((box.e - box.w) * j) / n, e: box.w + ((box.e - box.w) * (j + 1)) / n });
+    }
+    const lists = await Promise.all(tiles.map((t) => tomtomIncidents(t)));
+    const seen = new Set();
+    return [].concat(...lists).filter((x) => (seen.has(x.id) ? false : seen.add(x.id)));
 }
 
 // ------------------------------------------------------------------------------------------ OpenStreetMap cameras
@@ -682,6 +696,129 @@ function upkeepCameras() {
     });
 }
 
+// ------------------------------------------------------------------------------------------ preferred streets
+
+const GOOGLE_GEOCODE = 'https://maps.googleapis.com/maps/api/geocode/json';
+const PLACES_FILE = process.env.TRAFFIC_PLACES_FILE || path.join(__dirname, '..', '.cache', 'traffic-places.json');
+let placesStore = null;
+
+function placesCache() {
+    if (placesStore) return placesStore;
+    try { placesStore = JSON.parse(fs.readFileSync(PLACES_FILE, 'utf8')) || {}; } catch (_e) { placesStore = {}; }
+    return placesStore;
+}
+
+function savePlacesCache() {
+    try {
+        fs.mkdirSync(path.dirname(PLACES_FILE), { recursive: true });
+        fs.writeFileSync(`${PLACES_FILE}.tmp`, JSON.stringify(placesCache()));
+        fs.renameSync(`${PLACES_FILE}.tmp`, PLACES_FILE);
+    } catch (_e) { /* kept in memory */ }
+}
+
+const inBox = (p, b) => p.lat >= b.s && p.lat <= b.n && p.lon >= b.w && p.lon <= b.e;
+
+/**
+ * Google Geocoding for a street or "A & B" near the commute: results outside the corridor box are
+ * refused (a bias alone sends "I-95 & I-295" to Pennsylvania). Answers, misses included, are kept on
+ * disk, so a street is looked up once. { lat, lon, address } | null.
+ */
+async function geocodeNear(query, box) {
+    const key = `${query.toLowerCase()}|${[box.s, box.w, box.n, box.e].map((v) => v.toFixed(1)).join(',')}`;
+    const cache = placesCache();
+    if (key in cache) return cache[key];
+    const gk = googleKey();
+    if (!gk) return null;
+    const q = new URLSearchParams({ address: query, bounds: `${box.s},${box.w}|${box.n},${box.e}`, region: 'us', key: gk });
+    const res = await getJson(`${GOOGLE_GEOCODE}?${q}`, { timeout: 12000 });
+    if (res && res.status && !/^(OK|ZERO_RESULTS)$/.test(res.status)) throw new TrafficError(res.error_message || `Geocoding ${res.status}`, res.status === 'REQUEST_DENIED' ? 'AUTH_FAILED' : 'PROVIDER_ERROR');
+    const hit = (res && Array.isArray(res.results) ? res.results : []).map((r) => ({
+        lat: r.geometry && r.geometry.location && r.geometry.location.lat,
+        lon: r.geometry && r.geometry.location && r.geometry.location.lng,
+        address: r.formatted_address || '',
+        types: r.types || []
+    })).find((r) => Number.isFinite(r.lat) && inBox(r, box) && !r.types.includes('country') && !r.types.includes('administrative_area_level_1'));
+    cache[key] = hit ? { lat: hit.lat, lon: hit.lon, address: hit.address } : null;
+    savePlacesCache();
+    return cache[key];
+}
+
+/** The point at a distance along a route's line. */
+function pointAlong(route, m) {
+    const pts = route._points;
+    const cum = route._cum;
+    if (!pts.length) return null;
+    for (let i = 1; i < pts.length; i++) {
+        if (cum[i] >= m) {
+            const t = cum[i] > cum[i - 1] ? (m - cum[i - 1]) / (cum[i] - cum[i - 1]) : 0;
+            return { lat: pts[i - 1].lat + t * (pts[i].lat - pts[i - 1].lat), lon: pts[i - 1].lon + t * (pts[i].lon - pts[i - 1].lon) };
+        }
+    }
+    return pts[pts.length - 1];
+}
+
+/**
+ * One via point per preferred street, in order: a point on that street from a route Google already
+ * drives (the middle of the first step that names it), else a lookup of "street & next street" /
+ * "street & previous street" / the street alone inside the corridor. { points: [{ lat, lon, street, how }],
+ * missing: [street] }. Streets that cannot be placed are left out and named.
+ */
+async function anchorStreets(streets, routes, extraRoutes = []) {
+    const out = { points: [], missing: [] };
+    if (!streets.length || !routes.length) return out;
+    const all = [].concat(...routes.map((r) => r._points));
+    // the other direction's routes count too (a street Google drives one way is still the same street)
+    const pool = routes.concat(extraRoutes || []);
+    const b = bboxOf(all, 0.15);
+    for (let i = 0; i < streets.length; i++) {
+        const st = streets[i];
+        let p = null;
+        for (const r of pool) {
+            const step = r.steps.find((x) => matchStreets(`${x.text} | ${x.street}`, [st]).hit.length);
+            if (step) { p = Object.assign(pointAlong(r, (step.fromM + step.toM) / 2), { street: st, how: 'route' }); break; }
+        }
+        if (!p) {
+            const tries = [streets[i + 1] && `${st} & ${streets[i + 1]}`, streets[i - 1] && `${st} & ${streets[i - 1]}`, st].filter(Boolean);
+            for (const q of tries) {
+                try {
+                    const g = await geocodeNear(q, b);
+                    // the answer must name this street ("A & B" can come back as a nearby crossing of A)
+                    if (g && matchStreets(g.address, [st]).hit.length) { p = { lat: g.lat, lon: g.lon, street: st, how: 'lookup', address: g.address }; break; }
+                } catch (error) {
+                    out.error = error.message;
+                    break;
+                }
+            }
+        }
+        if (p && Number.isFinite(p.lat)) out.points.push(p); else out.missing.push(st);
+    }
+    // in the order the trip reaches them (along Google's first route), whatever order they were typed in:
+    // a list written out of order would otherwise send the route back and forth
+    const guide = routes[0];
+    out.points.forEach((p) => { p.alongM = locate(guide._points, guide._cum, p).alongM; });
+    out.points.sort((a, b) => a.alongM - b.alongM);
+    return out;
+}
+
+const anchorCache = new Map(); // direction|from|to|streets -> anchors (with the alternatives they came from)
+
+async function preferredPlan(direction, s, from, to, force, errors) {
+    const streets = direction === 'work' ? s.streets.slice() : s.streets.slice().reverse();
+    const tag = `${direction}|${JSON.stringify([from, to, streets])}`;
+    const alts = await cachedCall(`g:alt:${tag}`, ROUTE_TTL, () => googleRoutes(from, to, { alternatives: true }), force).catch((e) => { errors.push(e.message); return []; });
+    let anchors = anchorCache.get(tag);
+    if (!anchors && alts.length && streets.length) {
+        // the way back's alternatives (fetched now if not cached: one call, then shared for 3 min)
+        const other = direction === 'work' ? 'home' : 'work';
+        const otherTag = `${other}|${JSON.stringify([to, from, streets.slice().reverse()])}`;
+        const back = await cachedCall(`g:alt:${otherTag}`, ROUTE_TTL, () => googleRoutes(to, from, { alternatives: true }), false).catch(() => []);
+        anchors = await anchorStreets(streets, alts, back);
+        if (anchors.points.length) anchorCache.set(tag, anchors);
+    }
+    if (anchors && anchors.missing.length) errors.push(`Could not place ${anchors.missing.join(', ')} near your commute${anchors.error ? ` (${anchors.error})` : ''}`);
+    return { streets, tag, alts, via: anchors ? anchors.points.map((p) => ({ lat: p.lat, lon: p.lon })) : [] };
+}
+
 // ------------------------------------------------------------------------------------------ the check
 
 const routeCache = new Map(); // key -> { at, value | promise }
@@ -804,17 +941,18 @@ async function check(direction, { force = false } = {}) {
     const { from, to } = endpoints(direction, s);
     if (!s.home || !s.work) throw new TrafficError('Set Home and Work first', 'NOT_SET');
     if (!googleKey()) throw new TrafficError('Add a Google Maps key in Dreamscape CardSpace > Service keys', 'NO_ACCOUNT');
-    const streets = direction === 'work' ? s.streets.slice() : s.streets.slice().reverse();
-    const via = viaWaypoints(streets, s.area);
     const errors = [];
-    const tag = `${direction}|${JSON.stringify([from, to, via])}`;
     const provider = 'google';
-    const [alts, pref] = await Promise.all([
-        cachedCall(`g:alt:${tag}`, ROUTE_TTL, () => googleRoutes(from, to, { alternatives: true }), force).catch((e) => { errors.push(e.message); return []; }),
-        via.length ? cachedCall(`g:via:${tag}`, ROUTE_TTL, () => googleRoutes(from, to, { via }), force).catch((e) => { errors.push(`Preferred route: ${e.message}`); return []; }) : Promise.resolve([])
-    ]);
+    const { streets, tag, alts, via } = await preferredPlan(direction, s, from, to, force, errors);
+    const pref = via.length ? await cachedCall(`g:via:${tag}`, ROUTE_TTL, () => googleRoutes(from, to, { via }), force).catch((e) => { errors.push(`Preferred route: ${e.message}`); return []; }) : [];
     const routes = alts.slice();
-    const viaRoute = pref[0] || null;
+    let viaRoute = pref[0] || null;
+    // a preferred route far longer than Google's shortest means a street was placed wrong: drop it
+    const shortest = Math.min(...routes.map((r) => r.distanceM || Infinity));
+    if (viaRoute && Number.isFinite(shortest) && viaRoute.distanceM > shortest * 1.35) {
+        errors.push(`Your streets made a route of ${Math.round(viaRoute.distanceM / 1609)} mi against ${Math.round(shortest / 1609)} mi; showing the closest Google route instead`);
+        viaRoute = null;
+    }
     if (!routes.length && !viaRoute) {
         const err = new TrafficError(errors[0] || 'No route', 'NO_ROUTE');
         throw err;
@@ -828,9 +966,10 @@ async function check(direction, { force = false } = {}) {
     if (viaRoute) {
         const text = [viaRoute.summary].concat(viaRoute.steps.map((st) => `${st.text} ${st.street}`)).join(' | ');
         const m = matchStreets(text, streets);
-        Object.assign(viaRoute, { coverage: m.coverage, streetsHit: m.hit, viaPreferred: true });
+        // Google names it after its longest roads, often the same as an alternative's: call it by the user's streets
+        Object.assign(viaRoute, { coverage: m.coverage, streetsHit: m.hit, viaPreferred: true, googleSummary: viaRoute.summary, summary: 'your streets' });
         // the same road as an alternative: keep one (the via route, which follows the streets)
-        const twin = scored.findIndex((r) => r.summary && r.summary === viaRoute.summary && Math.abs((r.distanceM || 0) - (viaRoute.distanceM || 0)) < 300);
+        const twin = scored.findIndex((r) => r.summary && r.summary === viaRoute.googleSummary && Math.abs((r.distanceM || 0) - (viaRoute.distanceM || 0)) < 300);
         if (twin >= 0) scored.splice(twin, 1);
         scored.unshift(viaRoute);
     }
@@ -843,9 +982,9 @@ async function check(direction, { force = false } = {}) {
     scored.forEach((r, i) => { if (r.durationSec != null && r.durationSec < scored[fastestIdx].durationSec) fastestIdx = i; });
     const preferred = scored[preferredIdx];
 
-    // TomTom incidents and OSM cameras in the box around every route (one box serves both directions:
-    // it is snapped outwards to a 0.05 degree grid, so the cache key repeats)
-    const pts = [].concat(...scored.map((r) => r._points));
+    // TomTom incidents and OSM cameras in the box around the preferred and the fastest route (one box
+    // serves both directions: it is snapped outwards to a 0.05 degree grid, so the cache key repeats)
+    const pts = scored[preferredIdx]._points.concat(fastestIdx !== preferredIdx ? scored[fastestIdx]._points : []);
     let incidents = null;
     let cameras = null;
     if (pts.length) {
@@ -854,7 +993,7 @@ async function check(direction, { force = false } = {}) {
         const box = { s: Math.floor(b.s / g) * g, w: Math.floor(b.w / g) * g, n: Math.ceil(b.n / g) * g, e: Math.ceil(b.e / g) * g };
         const boxKey = [box.s, box.w, box.n, box.e].map((v) => v.toFixed(2)).join(',');
         [incidents, cameras] = await Promise.all([
-            tomtomKey() ? cachedCall(`t:inc:${boxKey}`, INCIDENT_TTL, () => tomtomIncidents(box), force).catch((e) => { errors.push(`TomTom: ${e.message}`); return null; }) : Promise.resolve(null),
+            tomtomKey() ? cachedCall(`t:inc:${boxKey}`, INCIDENT_TTL, () => tomtomTiles(box), force).catch((e) => { errors.push(`TomTom: ${e.message}`); return null; }) : Promise.resolve(null),
             (() => { const cb = cameraBoxOf(pts); return camerasFor(cb.key, cb.box); })().catch((e) => { errors.push(`Speed cameras: ${e.message}`); return null; })
         ]);
     }
@@ -870,7 +1009,7 @@ async function check(direction, { force = false } = {}) {
     });
     const saving = preferred.durationSec != null && scored[fastestIdx].durationSec != null ? preferred.durationSec - scored[fastestIdx].durationSec : 0;
     const better = fastestIdx !== preferredIdx && saving >= s.betterMin * 60
-        ? { id: scored[fastestIdx].id, summary: scored[fastestIdx].summary, savesSec: saving, durationSec: scored[fastestIdx].durationSec }
+        ? { id: scored[fastestIdx].id, summary: `${scored[fastestIdx].summary} (${Math.round((scored[fastestIdx].distanceM || 0) / 1609)} mi)`, savesSec: saving, durationSec: scored[fastestIdx].durationSec }
         : null;
     const delay = preferred.delaySec || pw.jams.reduce((n, j) => n + (j.delaySec || 0), 0) || 0;
     const major = slowdowns.some((x) => x.major) || pw.jams.some((j) => j.major) || pw.alerts.some((a) => a.major);
@@ -936,12 +1075,10 @@ async function advise(direction, { force = false } = {}) {
     const { from, to } = endpoints(direction, s);
     if (!s.home || !s.work) throw new TrafficError('Set Home and Work first', 'NOT_SET');
     if (!googleKey()) throw new TrafficError('The leave advisor needs a Google Maps key', 'NO_ACCOUNT');
-    const streets = direction === 'work' ? s.streets.slice() : s.streets.slice().reverse();
-    const via = viaWaypoints(streets, s.area);
     const offsets = ADVISOR_STEPS.filter((o) => o <= s.advisorMax);
     if (!canSpend('google', offsets.length)) throw new TrafficError('Not enough of this month\'s Google Routes budget is left for the leave advisor', 'BUDGET');
     const base = Math.ceil(Date.now() / MIN) * MIN;
-    const tag = `${direction}|${JSON.stringify([from, to, via])}`;
+    const { tag, via } = await preferredPlan(direction, s, from, to, false, []);
     const rows = await Promise.all(offsets.map(async (offsetMin) => {
         const leaveAt = base + offsetMin * MIN;
         try {
@@ -1081,10 +1218,11 @@ module.exports = {
     TrafficError,
     DIRECTIONS,
     _test: {
-        decodePolyline, cumulative, locate, normStreet, streetCore, streetOfInstruction, matchStreets, viaWaypoints,
+        decodePolyline, cumulative, locate, normStreet, streetCore, streetOfInstruction, matchStreets, anchorStreets, anchorCache, boxAreaKm2, pointAlong,
         normaliseGoogle, slowdownsOf, onRoute, tomtomIncidents, osmCameras, cameraState, cameraBoxOf, upkeepCameras, dueNow, localNow, summarise, routeCache, sched,
         setFetch: (fn) => { fetchImpl = fn; },
         getFetch: () => fetchImpl,
-        resetUsage: () => { usageState = null; }
+        resetUsage: () => { usageState = null; },
+        resetPlaces: () => { placesStore = {}; }
     }
 };

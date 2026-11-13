@@ -17,6 +17,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'traffic-test-'));
 process.env.TRAFFIC_USAGE_FILE = path.join(tmp, 'usage.json');
 process.env.TRAFFIC_LATEST_FILE = path.join(tmp, 'latest.json');
 process.env.TRAFFIC_CAMERA_FILE = path.join(tmp, 'cameras.json');
+process.env.TRAFFIC_PLACES_FILE = path.join(tmp, 'places.json');
 
 const svc = require('../modules/trafficService');
 const T = svc._test;
@@ -91,7 +92,10 @@ T.setFetch(async (url, init) => {
     if (/routes\.googleapis/.test(url)) {
         assert.strictEqual(init.headers['X-Goog-Api-Key'], 'g-key');
         if (body.intermediates) {
-            assert.deepStrictEqual(body.intermediates, [{ address: 'Main Street & Interstate 90 East, Testville, SD', via: true }]);
+            // one point per preferred street, taken from the alternative that drives them (Main St, then I-90 E)
+            assert.strictEqual(body.intermediates.length, 2);
+            body.intermediates.forEach((w) => assert.ok(w.via && Number.isFinite(w.location.latLng.latitude), JSON.stringify(w)));
+            assert.ok(body.intermediates[0].location.latLng.longitude < body.intermediates[1].location.latLng.longitude, 'in driving order');
             return json({ routes: [prefRoute] });
         }
         if (body.computeAlternativeRoutes) return json({ routes: [prefRoute, fastRoute] });
@@ -138,11 +142,6 @@ T.setFetch(async (url, init) => {
         assert.strictEqual(T.matchStreets('I-190', ['I-90']).hit.length, 0);
     });
 
-    await ok('via waypoints are street intersections', () => {
-        assert.deepStrictEqual(T.viaWaypoints(['A St', 'B Ave', 'C Rd'], 'Town'), ['A St & B Ave, Town', 'B Ave & C Rd, Town']);
-        assert.deepStrictEqual(T.viaWaypoints(['A St'], 'Town'), ['A St, Town']);
-    });
-
     await ok('polyline round trip and corridor distance', () => {
         const pts = T.decodePolyline(encode(line));
         assert.strictEqual(pts.length, 11);
@@ -156,10 +155,11 @@ T.setFetch(async (url, init) => {
     await ok('check: preferred via route, better route, traps, alerts, jams, slowdowns', async () => {
         const r = await svc.check('work', { force: true });
         assert.strictEqual(r.provider, 'google');
-        assert.strictEqual(r.preferred.summary, 'I-90 E');
+        assert.strictEqual(r.preferred.summary, 'your streets');
+        assert.strictEqual(r.preferred.googleSummary, 'I-90 E');
         assert.ok(r.preferred.viaPreferred);
         assert.strictEqual(r.routes.length, 2, 'the twin alternative is folded into the via route');
-        assert.ok(r.better && r.better.summary === 'Omaha St' && r.better.savesSec === 500);
+        assert.ok(r.better && r.better.summary === 'Omaha St (6 mi)' && r.better.savesSec === 500);
         assert.deepStrictEqual(r.traps.map((t) => t.id), ['osm:11', 'osm:13'], JSON.stringify(r.errors));
         assert.strictEqual(r.traps[0].label, 'Speed camera');
         assert.strictEqual(r.traps[0].maxspeed, '65 mph');
@@ -175,7 +175,7 @@ T.setFetch(async (url, init) => {
         assert.strictEqual(r.level, 'heavy');
         assert.strictEqual(r.delaySec, 600);
         assert.ok(/2 speed cameras on route/.test(r.summary), r.summary);
-        assert.ok(/Faster: via Omaha St saves 8 min/.test(r.summary), r.summary);
+        assert.ok(/Faster: via Omaha St \(6 mi\) saves 8 min/.test(r.summary), r.summary);
         assert.ok(!r.preferred._points && Array.isArray(r.preferred.line));
         const b = sent.find((s) => s.msg.type === 'traffic_updated');
         assert.ok(b && b.admin && !b.user, 'updates go to admins only');
@@ -260,6 +260,44 @@ T.setFetch(async (url, init) => {
         assert.ok(T.cameraState.store[keysOnDisk[0]].cameras.length >= 2, 'a failed refresh keeps the list');
         T.setFetch(orig);
         T.cameraState.backoff.clear();
+    });
+
+    await ok('street lookups: only inside the corridor and naming the street; a far preferred route is dropped', async () => {
+        T.resetPlaces();
+        const route = T.normaliseGoogle(prefRoute);
+        const orig = T.getFetch();
+        T.setFetch(async (url, init) => {
+            if (/geocode\/json/.test(url)) {
+                const q = new URL(url).searchParams.get('address');
+                const results = /Far Rd/.test(q) ? [{ formatted_address: 'Far Rd, Pennsylvania', types: ['route'], geometry: { location: { lat: 40.1, lng: -74.9 } } }]
+                    : /Side St & /.test(q) ? [{ formatted_address: 'Other Ave & Main St, Testville', types: ['intersection'], geometry: { location: { lat: 44.0, lng: -102.97 } } }]
+                    : /Side St/.test(q) ? [{ formatted_address: 'Side St, Testville, SD', types: ['route'], geometry: { location: { lat: 44.001, lng: -102.96 } } }] : [];
+                return { ok: true, status: 200, text: async () => JSON.stringify({ status: results.length ? 'OK' : 'ZERO_RESULTS', results }) };
+            }
+            return orig(url, init);
+        });
+        const a = await T.anchorStreets(['Main Street', 'Side St', 'Far Rd'], [route]);
+        assert.deepStrictEqual(a.points.map((p) => `${p.street}:${p.how}`), ['Main Street:route', 'Side St:lookup']);
+        assert.ok(/Side St, Testville/.test(a.points[1].address), 'the crossing that does not name Side St is refused');
+        assert.deepStrictEqual(a.missing, ['Far Rd']);
+        // a via route 2x the shortest is dropped with a note
+        T.setFetch(async (url, init) => {
+            const body = /routes\.googleapis/.test(url) ? JSON.parse(init.body) : null;
+            if (body && body.intermediates) return { ok: true, status: 200, text: async () => JSON.stringify({ routes: [Object.assign({}, prefRoute, { distanceMeters: 30000 })] }) };
+            return orig(url, init);
+        });
+        T.routeCache.clear();
+        T.anchorCache.clear();
+        const r = await svc.check('work', { force: true });
+        assert.ok(!r.preferred.viaPreferred && r.errors.some((e) => /closest Google route/.test(e)), JSON.stringify(r.errors));
+        T.setFetch(orig);
+        T.routeCache.clear();
+        T.anchorCache.clear();
+    });
+
+    await ok('TomTom: a box over 10,000 km2 is split into tiles', () => {
+        assert.ok(T.boxAreaKm2({ s: 38, n: 39, w: -77.5, e: -76.5 }) > 9000);
+        assert.ok(T.boxAreaKm2({ s: 38.5, n: 38.9, w: -77.1, e: -76.7 }) < 9000);
     });
 
     await ok('no Google key: a clear error', async () => {

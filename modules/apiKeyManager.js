@@ -85,13 +85,14 @@ class ApiKeyManager {
                     steps: [
                         'Sign in to the Google Cloud console and create a project (or pick one you have).',
                         'Link a billing account to the project. Google asks for one even for free use; the Routes API has a free monthly allowance, and Melaton Traffic stops at 4,500 calls a month (its budget in Settings).',
-                        'In APIs & Services > Library, find "Routes API" and click Enable.',
+                        'In APIs & Services > Library, find "Routes API" and click Enable. Enable "Geocoding API" too: it places preferred streets that Google\'s own routes do not use.',
                         'In APIs & Services > Credentials, click Create credentials > API key, and copy the key.',
-                        'Recommended: edit the key, choose Restrict key under API restrictions and tick only Routes API. A budget alert (Billing > Budgets & alerts) warns you before any charge.',
+                        'Recommended: edit the key, choose Restrict key under API restrictions and tick only Routes API and Geocoding API. A budget alert (Billing > Budgets & alerts) warns you before any charge.',
                         'Paste the key in Key value below.'
                     ],
                     links: [
                         ['Enable the Routes API', 'https://console.cloud.google.com/apis/library/routes.googleapis.com'],
+                        ['Enable the Geocoding API', 'https://console.cloud.google.com/apis/library/geocoding-backend.googleapis.com'],
                         ['Credentials (create the key)', 'https://console.cloud.google.com/apis/credentials'],
                         ['Routes API pricing and free use', 'https://developers.google.com/maps/documentation/routes/usage-and-billing']
                     ]
