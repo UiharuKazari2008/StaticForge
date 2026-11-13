@@ -1002,7 +1002,11 @@ class NotepadManager {
 
         this.setupNotebookWorkspaceDropdown();
         this.setupNotebookNovelActions();
-        this.setupNotebookMenuBar();
+        // Windows Journal 1:1 (journal.js, #785): its menus, rebar, ink and page; the old menu bar
+        // only when journal.js is not there
+        this.journal = window.journalUI ? window.journalUI.attach(this) : null;
+        if (!this.journal) this.setupNotebookMenuBar();
+        this.notebookRecent = [];
     }
 
     // Windows Journal's menu bar (shown on the Vista desktop: vista-atelier.css)
@@ -1130,6 +1134,9 @@ class NotepadManager {
         document.querySelectorAll('.novel-notebook-only').forEach((el) => {
             el.classList.toggle('hidden', !isNovel);
         });
+        // Windows Journal: the novel buttons are a band of their own, shown with them
+        const band = this.notebookModal && this.notebookModal.querySelector('.jnl-band-novel');
+        if (band) band.classList.toggle('hidden', !isNovel);
         const undoBtn = document.getElementById('notebookNovelUndoBtn');
         if (undoBtn && isNovel) {
             const stack = note.metadata?.undo_stack || [];
@@ -1203,7 +1210,14 @@ class NotepadManager {
         this.updateNotebookWorkspaceDisplay();
         await this.notebookRefreshNotesList();
         this.notebookUpdateSaveButton();
+        const fresh = this.notebookModal.classList.contains('hidden');
         openModal(this.notebookModal);
+        // Journal opens on a new page (Note1) unless a note is already up
+        if (this.journal && fresh && !this.notebookCurrentNote) {
+            this.notebookTextarea.value = '';
+            this.journal.reset();
+            this.notebookUpdateTitle();
+        }
     }
 
     // Close notebook modal
@@ -1218,6 +1232,7 @@ class NotepadManager {
         closeModal(this.notebookModal);
         this.notebookCurrentNote = null;
         this.notebookTextarea.value = '';
+        if (this.journal) this.journal.reset();
         this.notebookHasUnsavedChanges = false;
         this.notebookUpdateTitle();
         this.notebookUpdateSaveButton();
@@ -1475,9 +1490,18 @@ class NotepadManager {
         }
 
         try {
-            const note = await this.loadNoteById(noteId);
+            // the whole note (strokes and recordings too, #785), not the cached metadata copy
+            let note = await this.loadNoteById(noteId);
+            if (this.journal && window.wsClient) {
+                try { const full = await wsClient.getNote(noteId); if (full && full.note) note = full.note; } catch (_) { /* cached */ }
+            }
             this.notebookCurrentNote = note;
             this.notebookTextarea.value = note.content || '';
+            if (this.journal) {
+                this.journal.toggleRecent(false);
+                this.journal.load(note);
+                this.notebookRecent = [{ id: note.id, name: note.name }].concat((this.notebookRecent || []).filter((n) => n.id !== note.id)).slice(0, 8);
+            }
             this.notebookHasUnsavedChanges = false;
             this.notebookUpdateTitle();
             this.notebookUpdateSaveButton();
@@ -1501,7 +1525,12 @@ class NotepadManager {
         // Create a blank note locally (no server interaction)
         this.notebookCurrentNote = null;
         this.notebookTextarea.value = '';
-        this.notebookHasUnsavedChanges = true;
+        if (this.journal) {
+            this.journal.toggleRecent(false);
+            this.journal.reset();
+        }
+        // Journal's new page is not a change until something is written on it
+        this.notebookHasUnsavedChanges = !this.journal;
         this.notebookUpdateTitle();
         this.notebookUpdateSaveButton();
     }
@@ -1515,13 +1544,17 @@ class NotepadManager {
             }
 
             const content = this.notebookTextarea.value;
+            const J = this.journal;
 
             // If note doesn't exist yet, create it first
             if (!this.notebookCurrentNote || !this.notebookCurrentNote.id) {
-                const name = await showInputDialog('Enter note name:', 'Untitled', 'Note name...');
+                // Journal: the Note Title names it (Save As asks only when the title is empty)
+                const titled = J ? J.titleValue() : '';
+                const name = titled || await showInputDialog('Enter note name:', J ? 'Note1' : 'Untitled', 'Note name...');
                 if (!name) return;
 
-                const note = await this.createNote(name, content);
+                const note = await this.createNote(name, content, J ? J.inkJson() : null);
+                if (J) { J.saved(); J.titleInput.value = name; }
                 this.notebookCurrentNote = note;
                 this.notebookHasUnsavedChanges = false;
                 this.notebookUpdateTitle();
@@ -1531,6 +1564,21 @@ class NotepadManager {
             } else {
                 // Update existing note
                 const success = await this.saveNoteContentById(this.notebookCurrentNote.id, content);
+                if (success && J) {
+                    // the strokes (#785) and a title typed into the Note Title box
+                    if (J.dirty()) {
+                        const res = await wsClient.saveNoteInk(this.notebookCurrentNote.id, J.inkJson());
+                        if (res && res.success === false) throw new Error('The drawing could not be saved.');
+                        J.saved();
+                    }
+                    const title = J.titleValue();
+                    if (title && title !== this.notebookCurrentNote.name) {
+                        await wsClient.updateNote(this.notebookCurrentNote.id, { name: title });
+                        this.notebookCurrentNote.name = title;
+                        this.invalidateWorkspaceNotesCache(this.notebookCurrentNote.workspace_id || this.notebookCurrentWorkspace);
+                        await this.notebookRefreshNotesList();
+                    }
+                }
 
                 if (success) {
                     this.notebookCurrentNote.content = content;
@@ -1545,6 +1593,49 @@ class NotepadManager {
         } catch (error) {
             console.error('Error saving note:', error);
             this.showToast('error', 'Failed to save note', error.message);
+        }
+    }
+
+    /** Windows Journal File > Save As...: a copy under a new name (typing, strokes, recordings). */
+    async notebookSaveAs() {
+        const J = this.journal;
+        const base = (J && J.titleValue()) || (this.notebookCurrentNote && this.notebookCurrentNote.name) || 'Untitled';
+        const name = await showInputDialog('Save as:', base, 'Note name...');
+        if (!name) return;
+        try {
+            const from = this.notebookCurrentNote;
+            const note = await this.createNote(name, this.notebookTextarea.value, J ? J.inkJson() : null);
+            const audio = from && from.metadata && Array.isArray(from.metadata.audio) ? from.metadata.audio : [];
+            if (from && from.id && audio.length) {
+                await wsClient.copyNoteAudio(from.id, note.id);
+                await wsClient.updateNote(note.id, { metadata: { ...(note.metadata || {}), audio } });
+            }
+            this.notebookHasUnsavedChanges = false;
+            await this.notebookRefreshNotesList();
+            await this.notebookLoadNote(note.id, false);
+        } catch (error) {
+            this.showToast('error', 'Failed to save note', error.message);
+        }
+    }
+
+    /** Windows Journal File > Move to Folder...: the note to another workspace's Notes. */
+    async notebookMoveNote() {
+        const note = this.notebookCurrentNote;
+        if (!note || !note.id || typeof showConfirmationDialog !== 'function') return;
+        const list = this.getSortedWorkspacesList ? this.getSortedWorkspacesList() : [];
+        const here = note.workspace_id || this.notebookCurrentWorkspace;
+        const choices = list.filter((w) => (w.id || w[0]) !== here).slice(0, 8).map((w) => ({ text: w.name || w[1] || w.id, value: w.id || w[0], className: 'btn-standard' }));
+        if (!choices.length) return;
+        const to = await showConfirmationDialog(`<p>Move "${this.escapeHtml(note.name)}" to the Notes folder of:</p>`, choices.concat([{ text: 'Cancel', value: null, className: 'btn-standard' }]), null, { title: 'Move to Folder', width: 420 });
+        if (!to) return;
+        try {
+            await wsClient.updateNote(note.id, { workspace_id: to });
+            note.workspace_id = to;
+            this.invalidateWorkspaceNotesCache(here);
+            this.invalidateWorkspaceNotesCache(to);
+            await this.notebookRefreshNotesList();
+        } catch (error) {
+            this.showToast('error', 'Failed to move note', error.message);
         }
     }
 
@@ -1586,7 +1677,11 @@ class NotepadManager {
     notebookUpdateTitle() {
         if (!this.notebookTitleElement) return;
 
-        if (this.notebookCurrentNote) {
+        if (this.journal) {
+            // Journal.exe: "<title> - Windows Journal", a new page is "Note1"; no unsaved marker
+            const name = this.journal.titleValue() || (this.notebookCurrentNote && this.notebookCurrentNote.name) || 'Note1';
+            this.notebookTitleElement.textContent = `${name} - Windows Journal`;
+        } else if (this.notebookCurrentNote) {
             const unsavedMarker = this.notebookHasUnsavedChanges ? ' *' : '';
             this.notebookTitleElement.textContent = `${this.notebookCurrentNote.name}${unsavedMarker} - Windows Journal`;
         } else {
@@ -1631,7 +1726,7 @@ class NotepadManager {
      * @param {string} content - Initial content
      * @returns {Promise<Object>} - Created note object
      */
-    async createNote(name, content = '') {
+    async createNote(name, content = '', ink = null) {
         const noteId = this.generateUUID();
         const workspaceId = this.notebookCurrentWorkspace || activeWorkspace || 'default';
 
@@ -1641,7 +1736,8 @@ class NotepadManager {
             workspaceId: workspaceId,
             content: content,
             icon: 'fas fa-file-lines',
-            color: '#ffc107'
+            color: '#ffc107',
+            ink: ink || undefined
         });
 
         if (response && response.success && response.note) {

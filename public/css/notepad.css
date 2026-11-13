@@ -460,118 +460,476 @@
     height: 520px;
 }
 
-/* ---- Vista light client (#485): Windows Journal. Menu bar: vista-atelier.css. The toolbar is
-   Explorer's command bar markup (vista-explorer.css) in Journal's light colours, the page pane is
-   Journal's, and the note is ruled paper: blue rules on the line height, a red margin. ---- */
-body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-actions-header {
-    min-height: 30px;
-    padding: 0 4px;
-    background: linear-gradient(#fdfeff, #edf2f9 50%, #dfe7f2 50%, #e9eff7);
-    border-top: 0;
-    border-bottom: 1px solid #a0afc3;
-    overflow: visible;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-command-btn.btn-small {
-    color: #000;
-    text-shadow: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-command-btn > i {
-    color: #2b5797;
-}
-
-/* Save carries Vista's save icon (vista-cmdbar/save.png, shell32 258); New and the workspace
-   menu are text only (vistaDialogs.js .vista-text-button) */
-body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] #notebookSaveBtn > i.fa-save {
-    display: block;
-    width: 16px;
-    height: 16px;
-    background: url("/static_images/vista-cmdbar/save.png") no-repeat center / 16px 16px;
-    font-size: 0;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] #notebookSaveBtn > i.fa-save::before {
-    content: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-command-glyph {
-    background: #000;
-    filter: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-command-btn:is(:hover, .active, .context-open, [aria-expanded="true"]):not(:disabled) {
-    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
-    border-color: #3c7fb1;
-    box-shadow: inset 0 0 0 1px #fffc;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-command-btn:active:not(:disabled) {
-    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
-    border-color: #6d91ab;
-    box-shadow: inset 1px 1px 0 #0003;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-command-btn:disabled {
-    color: #8d8d8d;
-}
-
-body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-list-panel {
-    background: #f3f6fa;
-    border-right-color: #a0afc3;
-    border-radius: 0;
-}
-
-body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-note-item {
-    margin-bottom: 2px;
-    background: none;
-    border-color: transparent;
-    border-radius: 3px;
-}
-
-body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-note-item:hover {
-    background: linear-gradient(#fafbfd, #ebf3fd);
-    border-color: #b8d6fb;
-    transform: none;
-}
-
-body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-note-item.active {
-    background: linear-gradient(#dcebfc, #c1dbfc);
-    border-color: #7da2ce;
-}
-
-body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-note-item .note-name {
-    color: #000;
-    font-size: 10pt;
-    font-weight: 400;
-}
-
-body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-empty-state {
-    color: #6d6d6d;
-}
-
-body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notebook-editor-panel {
+/* ---- Windows Journal 1:1 (#785, journal.js). Measured on the Vista VM (~/.cache/vista-vm/journal,
+   j04.png): the menu bar (vista-atelier.css), then the rebar: a #F0F0F0 / #A0A0A0 rule, 31-px bands
+   of #FFF -> #E5EAF5 over #D3DAED -> #E1E6F6 with a #B6BCCC foot; the view sunken by #A0A0A0 / #646464;
+   toolbar buttons 31 px apart round Journal.exe's 24-px art. Page lengths: the VM's px at its
+   1403-px page times --jnl-s (journal.js layout). ---- */
+#notebookModal .notebook-content.jnl {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0 !important;
     background: #fff;
-    border-radius: 0;
 }
 
-body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notepad-textarea {
-    padding: 24px 16px 0 64px;
+#notebookModal .jnl-rebar {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    border-top: 1px solid #f0f0f0;
+    box-shadow: inset 0 1px 0 #a0a0a0;
+    padding-top: 1px;
+    background: linear-gradient(to bottom, #fff 0, #e5eaf5 10px, #d3daed 10px, #e1e6f6 30px, #b6bccc 30px, #b6bccc 31px);
+    background-size: 100% 31px;
+}
+
+#notebookModal .jnl-rebar[hidden],
+#notebookModal .jnl-band[hidden],
+#notebookModal .jnl-band.hidden {
+    display: none !important;
+}
+
+#notebookModal .jnl-band {
+    display: flex;
+    align-items: center;
+    height: 31px;
+    padding: 0 6px 1px 2px;
+    box-sizing: border-box;
+}
+
+#notebookModal .jnl-grip {
+    width: 3px;
+    height: 21px;
+    margin: 0 6px 0 2px;
+    background: radial-gradient(circle at 1px 1px, #7d8999 0.8px, transparent 1px) 0 0 / 3px 4px;
+    opacity: 0.85;
+}
+
+#notebookModal .jnl-btn,
+#notebookModal .jnl-drop,
+#notebookModal .jnl-tbtn {
+    position: relative;
+    height: 30px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background-color: transparent;
+    box-sizing: border-box;
+    box-shadow: none;
     color: #000;
-    font: 11pt/24px 'Segoe UI', 'Noto Sans', sans-serif;
-    background:
-        linear-gradient(to right, transparent 47px, #f0a3a3 47px 48px, transparent 48px),
-        repeating-linear-gradient(#fff 0 23px, #b4cdea 23px 24px);
-    background-attachment: local;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+#notebookModal .jnl-btn {
+    --jnl-strip: url("/static_images/vista-journal/tb-standard.png");
+    width: 31px;
+}
+
+/* the button's picture: one 24-px cell of Journal's strip (the button is wider than its picture) */
+#notebookModal .jnl-btn::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 24px;
+    height: 24px;
+    background: var(--jnl-strip) calc(var(--i) * -24px) 0 no-repeat;
+}
+
+#notebookModal .jnl-band[data-band="pen"] .jnl-btn {
+    --jnl-strip: url("/static_images/vista-journal/tb-pen.png");
+}
+
+#notebookModal .jnl-btn:disabled {
+    --jnl-strip: url("/static_images/vista-journal/tb-standard-disabled.png");
+}
+
+#notebookModal .jnl-band[data-band="pen"] .jnl-btn:disabled {
+    --jnl-strip: url("/static_images/vista-journal/tb-pen-disabled.png");
+}
+
+#notebookModal .jnl-tbtn {
+    padding: 0 8px;
+}
+
+#notebookModal :is(.jnl-btn, .jnl-drop, .jnl-tbtn):not(:disabled):hover {
+    border-color: #a8b8d0;
+    background-color: rgba(255, 255, 255, 0.55);
+}
+
+#notebookModal :is(.jnl-btn, .jnl-drop, .jnl-tbtn):not(:disabled):active,
+#notebookModal .jnl-btn.is-checked {
+    border-color: #6f7c8e #c8d0dc #c8d0dc #6f7c8e;
+    background-color: rgba(214, 222, 238, 0.85);
+}
+
+#notebookModal .jnl-split {
+    display: inline-flex;
+    align-items: stretch;
+}
+
+#notebookModal .jnl-split .jnl-btn.is-checked + .jnl-drop {
+    border-color: #6f7c8e #c8d0dc #c8d0dc #9aa6b6;
+    background-color: rgba(214, 222, 238, 0.85);
+}
+
+#notebookModal .jnl-drop {
+    width: 14px;
+}
+
+#notebookModal .jnl-drop::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    margin: -1px 0 0 -3px;
+    border: 3px solid transparent;
+    border-top: 3px solid #000;
+    border-bottom: 0;
+}
+
+/* the colour of the pen / highlighter in hand, a bar under its picture (Journal draws it) */
+#notebookModal .jnl-split[data-split="pen"] .jnl-btn::after,
+#notebookModal .jnl-split[data-split="highlighter"] .jnl-btn::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    right: 3px;
+    bottom: 2px;
+    height: 2px;
+    background: var(--jnl-pen-color, #000);
+}
+
+#notebookModal .jnl-split[data-split="highlighter"] .jnl-btn::after {
+    background: var(--jnl-hl-color, #ff0);
+}
+
+#notebookModal .jnl-sep {
+    width: 2px;
+    height: 22px;
+    margin: 0 3px;
+    border-left: 1px solid #a7b1c2;
+    border-right: 1px solid #fff;
+    box-sizing: border-box;
+}
+
+#notebookModal .jnl-zoom {
+    width: 87px;
+    height: 20px;
+    margin: 0 4px 0 3px;
+    padding: 0 0 0 3px;
+    border: 1px solid #fff;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+/* ---- the view and the page ---- */
+#notebookModal .jnl-body {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    border-top: 1px solid #a0a0a0;
+    box-shadow: inset 1px 1px 0 #646464;
+}
+
+#notebookModal .jnl-view {
+    position: absolute;
+    inset: 1px 0 0 1px;
+    overflow-x: auto;
+    overflow-y: scroll;
+    background: #808080;
+}
+
+#notebookModal .jnl-view.is-fit {
+    overflow-x: hidden;
+}
+
+#notebookModal .jnl-page {
+    --jnl-s: 1;
+    position: relative;
+    margin: 0 auto;
+    background: #fff;
+    overflow: hidden;
+}
+
+#notebookModal .jnl-view:not(.is-fit) .jnl-page {
+    margin: 8px auto;
+    box-shadow: 1px 1px 0 #404040;
+}
+
+/* the rules from 87 px every 23.5 px (#99CCFF), the margin at 53 px (#BE6482), full height */
+#notebookModal .jnl-page::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(63.5px * var(--jnl-s));
+    bottom: 0;
+    background: repeating-linear-gradient(to bottom, transparent 0, transparent calc(23.5px * var(--jnl-s) - 1px), #99ccff 0, #99ccff calc(23.5px * var(--jnl-s)));
+    pointer-events: none;
+}
+
+#notebookModal .jnl-page::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(53px * var(--jnl-s));
+    width: 1px;
+    background: #be6482;
+    pointer-events: none;
+}
+
+/* the Note Title box: 8 px in, 70 px tall, 9 px from the right, #999 frame, the dashed line at 51 px,
+   "Note Title" and the date in grey under it */
+#notebookModal .jnl-title {
+    position: absolute;
+    z-index: 3;
+    left: calc(8px * var(--jnl-s));
+    right: calc(9px * var(--jnl-s));
+    top: calc(8px * var(--jnl-s));
+    height: calc(70px * var(--jnl-s));
+    box-sizing: border-box;
+    border: 1px solid #999;
+    border-radius: calc(4px * var(--jnl-s));
+    background: #fff linear-gradient(to right, #999 50%, transparent 50%) 0 calc(51px * var(--jnl-s)) / 6px 1px repeat-x;
+}
+
+#notebookModal .jnl-title-input {
+    position: absolute;
+    left: calc(10px * var(--jnl-s));
+    right: calc(10px * var(--jnl-s));
+    top: calc(8px * var(--jnl-s));
+    height: calc(40px * var(--jnl-s));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    box-shadow: none;
+    color: #000;
+    font: max(11px, calc(26px * var(--jnl-s))) "Segoe UI", Tahoma, sans-serif;
+}
+
+#notebookModal :is(.jnl-title-label, .jnl-title-date) {
+    position: absolute;
+    bottom: calc(3px * var(--jnl-s));
+    color: #999;
+    font: max(8px, calc(12px * var(--jnl-s))) "Segoe UI", Tahoma, sans-serif;
+    pointer-events: none;
+}
+
+#notebookModal .jnl-title-label {
+    left: calc(7px * var(--jnl-s));
+}
+
+#notebookModal .jnl-title-date {
+    right: calc(7px * var(--jnl-s));
+}
+
+/* the note's typing on the rules, from the margin */
+#notebookModal .jnl-text.notepad-textarea {
+    position: absolute;
+    z-index: 1;
+    left: calc(59px * var(--jnl-s));
+    right: calc(9px * var(--jnl-s));
+    top: calc(87px * var(--jnl-s));
+    width: auto;
+    margin: 0;
+    padding: 0;
     border: 0;
     border-radius: 0;
+    outline: none;
+    resize: none;
+    overflow: hidden;
+    background: transparent !important;
     box-shadow: none;
+    color: #000;
+    font: max(8px, calc(16px * var(--jnl-s))) / calc(23.5px * var(--jnl-s)) "Segoe UI", Tahoma, sans-serif;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
-body:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .notepad-textarea::placeholder {
+#notebookModal .jnl-ink {
+    position: absolute;
+    z-index: 2;
+    left: 0;
+    top: 0;
+    touch-action: none;
+}
+
+#notebookModal[data-jnl-tool="pen"] .jnl-ink,
+#notebookModal[data-jnl-tool="highlighter"] .jnl-ink,
+#notebookModal[data-jnl-tool="flag"] .jnl-ink {
+    cursor: crosshair;
+}
+
+#notebookModal[data-jnl-tool="eraser"] .jnl-ink {
+    cursor: cell;
+}
+
+#notebookModal[data-jnl-tool="space"] .jnl-ink {
+    cursor: row-resize;
+}
+
+#notebookModal .jnl-clips {
+    position: absolute;
+    z-index: 4;
+    left: 0;
+    right: 0;
+    top: calc(80px * var(--jnl-s));
+    height: 0;
+}
+
+#notebookModal .jnl-clip {
+    position: absolute;
+    top: 0;
+    width: calc(34px * var(--jnl-s) + 8px);
+    height: calc(32px * var(--jnl-s) + 8px);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+}
+
+#notebookModal .jnl-clip img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* ---- View Recent Notes: the workspace's notes in place of the page ---- */
+#notebookModal .jnl-recent-view {
+    position: absolute;
+    inset: 1px 0 0 1px;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    border: 0;
+    border-radius: 0;
+    display: none;
+    flex-direction: column;
+    background: #fff;
+}
+
+#notebookModal.jnl-recent .jnl-recent-view {
+    display: flex;
+}
+
+#notebookModal.jnl-recent :is(.jnl-view, .jnl-pagebar) {
+    visibility: hidden;
+}
+
+#notebookModal .jnl-recent-head {
+    flex: 0 0 auto;
+    padding: 4px 6px;
+    border-bottom: 1px solid #d5dbe6;
+}
+
+#notebookModal .jnl-recent-view .notebook-list-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+
+#notebookModal .notebook-note-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border: 1px solid transparent;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    cursor: default;
+}
+
+#notebookModal .notebook-note-item:hover {
+    border-color: #b8d6fb;
+    background: linear-gradient(to bottom, #fafbfd, #ebf3fd);
+}
+
+#notebookModal .notebook-note-item.active {
+    border-color: #7da2ce;
+    background: linear-gradient(to bottom, #dcebfc, #c1dbfc);
+}
+
+#notebookModal .notebook-empty-state {
+    padding: 16px;
     color: #6d6d6d;
-    font-style: italic;
-    opacity: 1;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+/* ---- the page bar (View > Page Bar), j01.png: "1 / 1" in a 31 x 29 white box with a #D6DFF5 rounded
+   frame, Previous / Next Page as 18-px double-chevron buttons stacked beside it (cropped from the VM;
+   the VM shows them under the scroll bar's arrow, here left of the scroll bar) ---- */
+#notebookModal .jnl-pagebar {
+    position: absolute;
+    z-index: 5;
+    right: 18px;
+    bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+#notebookModal .jnl-pagebar[hidden] {
+    display: none;
+}
+
+#notebookModal .jnl-pagebar-text {
+    min-width: 31px;
+    height: 29px;
+    box-sizing: border-box;
+    padding: 0 3px;
+    border: 1px solid #d6dff5;
+    border-radius: 3px;
+    background: #fff;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    line-height: 27px;
+    text-align: center;
+}
+
+#notebookModal .jnl-pagebar-arrows {
+    display: flex;
+    flex-direction: column;
+    gap: -1px;
+}
+
+#notebookModal .jnl-pagebar-btn {
+    width: 18px;
+    height: 17px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: url("/static_images/vista-journal/pagebar-up.png") 0 0 no-repeat;
+}
+
+#notebookModal .jnl-pagebar-btn[data-jnl-page="next"] {
+    background-image: url("/static_images/vista-journal/pagebar-down.png");
+}
+
+#notebookModal .jnl-pagebar-btn[data-jnl-page="prev"]:disabled {
+    background-image: url("/static_images/vista-journal/pagebar-up-disabled.png");
+}
+
+#notebookModal .jnl-pagebar-btn[data-jnl-page="next"]:disabled {
+    background-image: url("/static_images/vista-journal/pagebar-down-disabled.png");
+}
+
+/* Full Screen (F11): the window over the whole desktop, no frame */
+#notebookModal.jnl-full {
+    position: fixed !important;
+    inset: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    z-index: 100000 !important;
 }
 
 /* Vista (#485): Notepad. A plain white page in Lucida Console under its menu bar (vista-atelier.css) */
@@ -592,4 +950,98 @@ body:not(.windows-classic-theme) .notepad-modal[data-window-client="light"] .not
 body:not(.windows-classic-theme) .notepad-modal[data-window-client="light"] .notepad-textarea::placeholder {
     color: #6d6d6d;
     opacity: 1;
+}
+
+/* ---- Sound Recorder (#785, soundRecorder.js), Vista's SoundRecorder.exe on the VM (sr1.png): one
+   31-px band in the rebar's gradient; [● Start Recording] 112 x 27 at x 9, the time, the 147 x 27
+   level trough (#B2B2B2 frame, #F3F3F3 -> #C8C8C9, #8C8C8C foot), Help + drop arrow at the right ---- */
+#soundRecorderWindow .sr-host {
+    padding: 0 !important;
+}
+
+#soundRecorderWindow .sr-band {
+    display: flex;
+    align-items: center;
+    height: 31px;
+    box-sizing: border-box;
+    padding: 0 8px 1px 9px;
+    background: linear-gradient(to bottom, #fff 0, #e5eaf5 10px, #d3daed 10px, #e1e6f6 30px, #b6bccc 30px, #b6bccc 31px);
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+#soundRecorderWindow .sr-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 112px;
+    height: 27px;
+    margin: 0;
+    padding: 0 0 0 9px;
+    border: 1px solid #707070;
+    border-radius: 3px;
+    background: linear-gradient(to bottom, #f2f2f2 0, #ebebeb 50%, #dddddd 50%, #cfcfcf 100%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
+    color: #000;
+    font: inherit;
+    text-align: left;
+}
+
+#soundRecorderWindow .sr-btn:hover {
+    border-color: #3c7fb1;
+    background: linear-gradient(to bottom, #eaf6fd 0, #d9f0fc 50%, #bee6fd 50%, #a7d9f5 100%);
+}
+
+#soundRecorderWindow .sr-glyph {
+    width: 16px;
+    height: 16px;
+    background: url("/static_images/vista-journal/sr-glyphs.png") 0 0 no-repeat;
+}
+
+#soundRecorderWindow .sr-band.is-recording .sr-glyph {
+    background-position: -16px 0;
+}
+
+#soundRecorderWindow .sr-time {
+    width: 35px;
+    margin: 0 8px 0 31px;
+    color: #000;
+    text-align: right;
+}
+
+#soundRecorderWindow .sr-meter {
+    position: relative;
+    width: 147px;
+    height: 27px;
+    box-sizing: border-box;
+    border: 1px solid #b2b2b2;
+    border-bottom-color: #8c8c8c;
+    background: linear-gradient(to bottom, #f3f3f3, #c8c8c9 30%, #c9c9ca 85%, #eaeaea);
+    overflow: hidden;
+}
+
+#soundRecorderWindow .sr-level {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    background: linear-gradient(to bottom, #b6f2a4, #4cc22c 45%, #2f9e14 55%, #7dd66a);
+}
+
+#soundRecorderWindow .sr-help {
+    width: 16px;
+    height: 16px;
+    margin: 0 0 0 auto;
+    padding: 0;
+    border: 0;
+    background: url("/static_images/vista-journal/sr-glyphs.png") -32px 0 no-repeat;
+}
+
+#soundRecorderWindow .sr-more {
+    width: 0;
+    height: 0;
+    margin: 0 4px 0 11px;
+    border: 3px solid transparent;
+    border-top: 3px solid #000;
+    border-bottom: 0;
 }

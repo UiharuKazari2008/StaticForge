@@ -20,6 +20,8 @@ const FEATURE_MANIFEST = {
             'css/notepad-vista.css'
         ],
         scripts: [
+            'scripts/comp/soundRecorder.js',
+            'scripts/comp/journal.js',
             'scripts/comp/notepadManager.js',
             'scripts/comp/notepadVista.js'
         ]
