@@ -170,9 +170,11 @@
     const DESKTOP_WM_ART = { 'explore-gallery': 'app-agora', novels: 'app-novels', ispy: 'app-image-search', 'image-search': 'app-image-search', 'data-management': 'app-data-management', 'control-panel': 'app-control-panel', import: 'app-import' };
     // shell screens that are not Start items here: 6.5 has no Programs screen (its items are on Start)
     const NOT_LISTED = new Set(['start', 'programs', 'accounts']);
+    const FOLDER_ART65 = new Set(['android', 'work']);
     const FOLDERS = {
         games: { label: 'Games', icon: () => art65('games') },
-        dreamscape: { label: 'Dreamscape', icon: () => art61('app-folder-dreamscape') }
+        // 6.5's own folder with its 3D emblem in front (scripts/build-wm65-folder-icons.py, #805)
+        dreamscape: { label: 'Dreamscape', icon: () => art65('folder-dreamscape') }
     };
 
     // ---- Settings: on WM 6.5 a folder of the Start screen (title "Settings", soft key Back): the
@@ -296,7 +298,8 @@
                 if (apps.some((a) => a.inStart && inFolder(a) === 'games')) items.push({ key: 'folder:games', label: FOLDERS.games.label, img: FOLDERS.games.icon(), folder: 'games' });
                 items.push({ key: 'folder:dreamscape', label: FOLDERS.dreamscape.label, img: FOLDERS.dreamscape.icon(), folder: 'dreamscape' });
                 for (const [id, f] of extra) {
-                    if (apps.some((a) => a.inStart && inFolder(a) === id)) items.push({ key: `folder:${id}`, label: f.label, img: art61(`app-folder-${id}`), folder: id });
+                    // 6.5's folders (Android, Work: their 3D emblem; any other: the plain 6.5 folder)
+                    if (apps.some((a) => a.inStart && inFolder(a) === id)) items.push({ key: `folder:${id}`, label: f.label, img: art65(FOLDER_ART65.has(id) ? `folder-${id}` : 'folder'), folder: id });
                 }
             }
             desktopLaunchables().forEach(desktopItem);
