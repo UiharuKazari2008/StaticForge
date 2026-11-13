@@ -290,3 +290,24 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom .wm-ti-exp {
 @media (prefers-reduced-motion: reduce) {
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom .wm-ti-exp { animation: none; }
 }
+
+/* Coming back to Today (#800, wmTitanium.js entrance): the band is up and empty, the list scales in
+ * from the top left (compositor-only: transform and opacity) while it runs up into the clock in the
+ * lift-without-speed move (310 ms), then the clock panel grows in (wm-ti-zoom) */
+@keyframes wm-ti-enter {
+    from { transform: scale(0.72); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-entering .wm-ti-list {
+    transform-origin: 0 0;
+    animation: wm-ti-enter 0.31s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-entering .wm-ti-exp {
+    visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-entering .wm-ti-list { animation: none; }
+}

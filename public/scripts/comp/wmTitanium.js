@@ -58,6 +58,11 @@
     const ZOOM_MS = 150;        // the panel grows from 80 % to full size, evenly (wm-titanium.css)
     const KEY_MS = 70;          // the right soft key changes 210 - 230 ms after the list stops
     const FADE_MS = 120;        // the arriving item's label fades out under the glass (by eye, not timed)
+    // Coming back to Today (Yukimi, Nov 13, #800): the band is already there, empty; the list scales in
+    // from the top left while it runs up into the clock (the lift-without-speed move, BACK_MS), then
+    // the clock panel grows in as after any move. ENTER_ROWS: how far below its place the list starts.
+    const ENTER_ROWS = 3;
+    const ENTER_RECENT_MS = 1500; // a Home press this soon after the page came back belongs to that return
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     // wm65 art by name ('ti-2051'); 's:owner' / 'x:app-studio-lg' / 'p:wren' = a 6.5 Start icon / a 6.1 set
     // icon / a Director persona's picture; 'w:rain' = a weather condition (ti-w-*)
@@ -571,6 +576,7 @@
     function select(i, animate) {
         i = Math.max(0, Math.min(panels.length - 1, i));
         if (!animate) {
+            host.classList.remove('is-entering');
             cancelAnimationFrame(settle); settle = 0; tw = null;
             clearTimeout(zoomTimer); zoomTimer = 0; host.classList.remove('is-zoom');
             sel = i; pos = i; skSel = i; place(); drawExpanded(); sh.refreshSoftKeys();
@@ -691,6 +697,7 @@
     function arrive() {
         const b = tw.b;
         const open = tw.open;
+        host.classList.remove('is-entering');
         cancelAnimationFrame(settle);
         settle = 0;
         tw = null;
@@ -830,6 +837,7 @@
                     if (tw) pos0 = takeOver();
                     flushZoom();
                     dragging = true;
+                    host.classList.remove('is-entering');
                 } else return;
                 try { host.setPointerCapture(id); } catch (_) { /* capture is a nicety */ }
             }
@@ -965,15 +973,64 @@
      * Home (the phone's Home button, #794): the clock panel in the band at once and every panel back
      * on its first page, as the device's home screen comes back.
      */
-    function home() {
+    function home(opts) {
         pageAt.clear();
         expKey = '';
         // a page on its way stops where it started, at once
-        if (slide.active) { cancelAnimationFrame(slide.raf); slide.active = false; slide.x = 0; host.classList.remove('is-sliding'); }
-        const at = panels.findIndex((p) => p.clock);
-        if (host && !host.hidden && panels.length) select(at >= 0 ? at : 0, false);
-        else homeDone = false; // drawn later: the first draw takes the clock again
+        if (slide && slide.active) { cancelAnimationFrame(slide.raf); slide.active = false; slide.x = 0; host.classList.remove('is-sliding'); }
+        const at = Math.max(0, panels.findIndex((p) => p.clock));
+        if (!(host && !host.hidden && panels.length)) { homeDone = false; return; } // drawn later: the first draw takes the clock again
+        // the press that brought Dreamscape back from an Android app: that return's entrance plays
+        if (Date.now() - shownAt < ENTER_RECENT_MS && host.classList.contains('is-entering')) return;
+        // Home while Today is already on screen (#800): the list runs back to the clock (the key's
+        // pace, 45 ms an item), then the clock panel grows in
+        if (opts && opts.animate) {
+            if (sel !== at || tw || !host.classList.contains('is-rest')) { select(at, true); return; }
+            expKey = '';
+            drawExpanded();
+            return;
+        }
+        select(at, false);
     }
+
+    /** Today comes back (#800): the empty band, the list scaling in from the top left into the clock. */
+    function entrance() {
+        if (!host || host.hidden || !panels.length || dragging) return;
+        if (root.dataset.wmBoot || root.dataset.screenOff !== undefined) return; // the boot reveal / a dark screen
+        if (Date.now() - screenOnAt < ENTER_RECENT_MS) return; // the screen just came on: no show for that
+        if (slide && slide.active) { cancelAnimationFrame(slide.raf); slide.active = false; slide.x = 0; host.classList.remove('is-sliding'); }
+        pageAt.clear();
+        expKey = '';
+        cancelAnimationFrame(settle); settle = 0; tw = null;
+        clearTimeout(zoomTimer); zoomTimer = 0; host.classList.remove('is-zoom');
+        const at = Math.max(0, panels.findIndex((p) => p.clock));
+        sel = at;
+        skSel = at;
+        drawExpanded();
+        host.classList.remove('is-entering');
+        void host.offsetWidth; // restart the scale-in
+        host.classList.add('is-entering');
+        pos = at - ENTER_ROWS; // the list starts lower, as if scrolled, and runs up into the clock
+        startTween(at, at, {});
+        sh.refreshSoftKeys();
+    }
+
+    // when Today comes back: the page from the background (an Android app, the recents list), or Today
+    // from another program
+    let shownAt = 0;
+    let screenOnAt = 0;
+    window.addEventListener('melatonscreen', (e) => { if (e && e.detail && e.detail.on) screenOnAt = Date.now(); });
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') return;
+        shownAt = Date.now();
+        if (root.dataset.wmApp === 'today') requestAnimationFrame(entrance);
+    });
+    let lastApp = root.dataset.wmApp || '';
+    new MutationObserver(() => {
+        const now = root.dataset.wmApp || '';
+        if (now === 'today' && lastApp && lastApp !== 'today') requestAnimationFrame(entrance);
+        lastApp = now;
+    }).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
 
     window.wmTitanium = {
         enabled, home, select: (i) => select(i, true), panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel,

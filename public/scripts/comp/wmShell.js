@@ -7759,6 +7759,9 @@
         try { closeTaskSwitcher(true); } catch (_) { /* not open */ }
         try { closeBubble(); } catch (_) { /* none */ }
         if (viewerActive) closeViewer();
+        // Home while Today is on screen: 6.5's list runs back to the clock; from a program Today comes
+        // back with its entrance (wmTitanium.js, #800)
+        const wasToday = current === 'today' && document.visibilityState === 'visible';
         if (current !== 'today') open('today');
         const t = apps.get('today');
         const page = t && t.page;
@@ -7766,7 +7769,7 @@
             page.scrollTop = 0;
             page.querySelectorAll('*').forEach((el) => { if (el.scrollLeft) el.scrollLeft = 0; });
         }
-        if (window.wmTitanium && typeof window.wmTitanium.home === 'function') window.wmTitanium.home();
+        if (window.wmTitanium && typeof window.wmTitanium.home === 'function') window.wmTitanium.home({ animate: wasToday });
         document.dispatchEvent(new CustomEvent('wmTodayHome'));
     }
     window.addEventListener('melatonhome', goHome);
