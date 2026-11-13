@@ -61,6 +61,13 @@ function hasClientKnock(req) {
     return typeof ua === 'string' && ua.startsWith('DreamscapeShell/');
 }
 
+function hasApplicationKeyBearer(req) {
+    const h = req.headers && req.headers.authorization;
+    const m = typeof h === 'string' ? /^Bearer\s+(\S+)$/i.exec(h.trim()) : null;
+    if (!m) return false;
+    try { return require('./applicationAuthManager').isApplicationKeyFormat(m[1]); } catch (_) { return false; }
+}
+
 function isLoopbackRequest(req, globalResources) {
     const { isLoopbackIp } = require('./clientAddress');
     return isLoopbackIp(clientRealIp(req, globalResources));
@@ -98,6 +105,10 @@ function isSiteGateExempt(req, globalResources) {
 
     // The local agent API answers loopback only; from anywhere else it is the cover
     if (p === '/agent' || p.startsWith('/agent/')) return isLoopbackRequest(req, globalResources);
+    // An agent on this machine with an application key (Claude Code's real tests and admin calls,
+    // Yukimi Nov 12): loopback only, past the cover; authMiddleware still validates the key, its
+    // user agent and its user type, so a wrong key gets the ordinary 401/403, never the site
+    if (hasApplicationKeyBearer(req) && isLoopbackRequest(req, globalResources)) return true;
     // Partner instances carry their replication token, not the gate key. Without a token
     // that matches a configured one the routes stay behind the cover like everything else.
     if (p.startsWith('/replication/sync/') || p.startsWith('/replication/assets/') || p === '/replication/maintenance/ack') {
