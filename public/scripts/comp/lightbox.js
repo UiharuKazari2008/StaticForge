@@ -1258,9 +1258,14 @@ function getLightboxDataSource() {
             height = 0;
         }
 
+        // Phones (#804): the server's full-size WebP (/previews/<stem>@studio.webp, same pixels,
+        // ~1/15 of the PNG: 94 KB against 1.36 MB measured on the Fold) instead of the original PNG,
+        // which took 2-4 s per picture on mobile data. Save / Copy still use the original (data.filename).
+        const phoneSrc = window.uiShell === 'mobile' && img.storage !== 'remote' && typeof localStudioPreviewUrl === 'function'
+            ? localStudioPreviewUrl(filenameToShow) : '';
         return {
             // resolveGalleryFullImageUrl: public/scripts/comp/assetUrlResolver.js
-            src: resolveGalleryFullImageUrl(img) || localGalleryImageUrl(filenameToShow),
+            src: phoneSrc || resolveGalleryFullImageUrl(img) || localGalleryImageUrl(filenameToShow),
             width: width || undefined,
             height: height || undefined,
             data: {
